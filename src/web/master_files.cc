@@ -105,10 +105,48 @@ bool Matches(const std::string& query, const std::string& path) {
   return true;
 }
 
-// Files under `root` that match `query`, nearest first. Neither .git nor a
-// symlinked folder is entered.
+// Files under `root` that match `query`, nearest first. In a repository
+// these are the files git tracks or would add, so dependencies and build
+// output stay out as they do from the agent's grep; elsewhere the folder
+// is walked, entering neither .git nor a symlinked folder.
 json Find(const fs::path& root, const std::string& query) {
   const std::string wanted = AsciiLower(query);
+  const CapturedProcess listed =
+      HostGit(root.string(), {"ls-files", "--cached", "--others",
+                              "--exclude-standard", "-z", "--", "."});
+  // Past the capture's limit, what arrived is still a list, cut. A folder
+  // git lists nothing in (one it ignores, say) is walked instead.
+  if (!listed.output.empty() && (listed.Ok() || !listed.error.empty())) {
+    const std::string& out = listed.output;
+    std::vector<std::string> matched;
+    for (size_t at = 0, end; (end = out.find('\0', at)) != std::string::npos;
+         at = end + 1) {
+      std::string path = out.substr(at, end - at);
+      if (Matches(wanted, AsciiLower(path))) matched.push_back(std::move(path));
+    }
+    const auto depth = [](const std::string& path) {
+      return std::ranges::count(path, '/');
+    };
+    std::ranges::sort(matched, [&](const std::string& a, const std::string& b) {
+      const auto da = depth(a), db = depth(b);
+      return da != db ? da < db : a < b;
+    });
+    json paths = json::array();
+    bool more = !listed.error.empty();
+    for (std::string& path : matched) {
+      std::error_code ec;
+      if (!fs::is_regular_file(fs::symlink_status(root / path, ec)) ||
+          !Shown(root / path)) {
+        continue;
+      }
+      if (paths.size() == kFileFindMatches) {
+        more = true;
+        break;
+      }
+      paths.push_back(std::move(path));
+    }
+    return {{"paths", std::move(paths)}, {"more", more}};
+  }
   json paths = json::array();
   std::deque<fs::path> folders = {root};
   int64_t scanned = 0;

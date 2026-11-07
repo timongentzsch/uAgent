@@ -1,5 +1,6 @@
 import MarkdownIt from "markdown-it";
 import { nextFence } from "./markdown-split.ts";
+import { knownFile } from "./file-types.ts";
 // The Markdown renderer: markdown-it with the app's link and heading rules,
 // split into keyed top-level blocks so a streaming reply re-renders only its
 // tail. Loaded on demand through markdown-view.tsx.
@@ -7,17 +8,52 @@ import { nextFence } from "./markdown-split.ts";
 const markdown = new MarkdownIt({ html: false, linkify: false, breaks: false });
 const safeURL = (url: string) =>
   /^(https?:|mailto:)/i.test(url) || /^(?!\/\/)[/#]/.test(url);
-markdown.validateLink = safeURL;
+const relative = (url: string) =>
+  !!url && !/^([a-z][a-z\d+.-]*:|[/#])/i.test(url);
+// A relative link is kept as a link everywhere; the render decides what it
+// becomes (a file, a reference or its text alone).
+markdown.validateLink = (url) => safeURL(url) || relative(url);
 
 // A file in the files pane resolves its relative images and links in its
-// own folder: `base` is that folder, `url` what serves a path in it. A
-// reply has neither, so a relative link there stays text.
+// own folder: `base` is that folder, `url` what serves a path in it.
+// `refs` makes the paths a message cites open in the Files pane.
 interface FileEnv {
   base?: string;
   url?: (path: string) => string;
+  refs?: boolean;
 }
-const relative = (url: string) =>
-  !!url && !/^([a-z][a-z\d+.-]*:|[/#])/i.test(url);
+
+// A path a message cites and the lines it names: `src/a.ts:12`,
+// `a.ts:12-20` (or with an en dash), `a.ts:12:5` (the column is dropped),
+// `a.ts#L12-L20`, or `src/` for a folder. It has to end in a file type the
+// app knows, name a line or end in a slash, so `ledger.summary`, `1.2.3`
+// and `application/json` stay code.
+const REFERENCE =
+  /^((?:~|\.{1,2})?\/?(?:[\w.@+-]+\/)*[\w.@+-]*)(?::(\d+)(?:[-–](\d+))?(?::\d+)?|#L(\d+)(?:-L?(\d+))?)?$/;
+export function fileReference(text: string) {
+  const match = REFERENCE.exec(text.trim());
+  const path = match?.[1] ?? "";
+  if (!match || !/\w/.test(path)) return undefined;
+  const start = match[2] ?? match[4];
+  const end = match[3] ?? match[5];
+  if (!(knownFile(path) || start || path.endsWith("/"))) return undefined;
+  return { path, lines: start && (end ? `${start}-${end}` : start) };
+}
+// Opens what a reference wraps: a button the surface showing it handles.
+function referenceOpen({ path, lines }: { path: string; lines?: string }) {
+  const escape = markdown.utils.escapeHtml;
+  return `<button type="button" class="file-ref" data-file="${escape(path)}"${lines ? ` data-lines="${lines}"` : ""}>`;
+}
+// The reference a link to a path is, where references are made.
+function referenceLink(env: unknown, href: string) {
+  if (!(env as FileEnv)?.refs || (env as FileEnv).url) return undefined;
+  if (!relative(href) && !/^\/(?!\/)/.test(href)) return undefined;
+  try {
+    return fileReference(decodeURIComponent(href));
+  } catch {
+    return undefined;
+  }
+}
 // The folder-relative path `target` names from `base`, or undefined when it
 // leaves the folder.
 function resolvePath(base: string, target: string) {
@@ -54,6 +90,8 @@ markdown.renderer.rules.image = (tokens, index, _options, env) => {
 markdown.renderer.rules.link_open = (tokens, index, options, env, renderer) => {
   const token = tokens[index];
   const href = String(token.attrGet("href") ?? "");
+  const reference = referenceLink(env, href);
+  if (reference) return referenceOpen(reference);
   const file = fileTarget(env, href);
   if (file) {
     // The pane opens it; a new tab gets the file itself.
@@ -68,6 +106,38 @@ markdown.renderer.rules.link_open = (tokens, index, options, env, renderer) => {
     token.attrSet("target", "_blank");
   }
   return renderer.renderToken(tokens, index, options);
+};
+// The link this closes, in the inline run `tokens`.
+function linkOpen(tokens: { type: string }[], index: number) {
+  for (let at = index - 1; at >= 0; at--) {
+    if (tokens[at].type === "link_close") return undefined;
+    if (tokens[at].type === "link_open") return at;
+  }
+  return undefined;
+}
+markdown.renderer.rules.link_close = (
+  tokens,
+  index,
+  options,
+  env,
+  renderer,
+) => {
+  const open = linkOpen(tokens, index);
+  const href = open === undefined ? "" : String(tokens[open].attrGet("href"));
+  return referenceLink(env, href)
+    ? "</button>"
+    : renderer.renderToken(tokens, index, options);
+};
+// A code span that is a path is a reference, but not inside a link: the
+// link already is one, or leads elsewhere.
+const codeInline = markdown.renderer.rules.code_inline!;
+markdown.renderer.rules.code_inline = (tokens, index, options, env, self) => {
+  const html = codeInline(tokens, index, options, env, self);
+  const reference =
+    (env as FileEnv)?.refs &&
+    linkOpen(tokens, index) === undefined &&
+    fileReference(tokens[index].content);
+  return reference ? `${referenceOpen(reference)}${html}</button>` : html;
 };
 // A reply sits under the page's h1 and a section's h2: its own headings
 // start at h3 (capped at h6), and keep their size by their source level.
@@ -154,16 +224,7 @@ export function markdownBlocks(
   plain = false,
 ): MarkdownBlock[] {
   void plugins(text);
-  // Only a file's own links may be relative: in a reply they would point
-  // into this app.
-  if ((env as FileEnv).url)
-    markdown.validateLink = (url) => safeURL(url) || relative(url);
-  let tokens: ReturnType<typeof markdown.parse>;
-  try {
-    tokens = markdown.parse(text, env);
-  } finally {
-    markdown.validateLink = safeURL;
-  }
+  const tokens = markdown.parse(text, env);
   const lines = text.split(/\n/);
   const blocks: MarkdownBlock[] = [];
   const options = plain

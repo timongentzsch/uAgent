@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { test, expect, headerAction } from "./fixtures.js";
+import { test, expect, headerAction, saveHistory } from "./fixtures.js";
 
 async function folder(project) {
   await mkdir(join(project, "src"));
@@ -240,4 +240,123 @@ test("a folder that is not a repository has no changes toggle", async ({
   const pane = page.getByRole("region", { name: "Files" });
   await expect(pane.getByRole("button", { name: "README.md" })).toBeVisible();
   await expect(pane.getByRole("button", { name: /^Changes/ })).toHaveCount(0);
+});
+
+// A saved conversation in the project whose reply cites `reply`.
+async function citing(host, request, reply) {
+  const id = crypto.randomUUID();
+  const title = `Cites ${id}`;
+  await saveHistory(host, `cites-${id}.json`, {
+    id,
+    title,
+    turns: 1,
+    messages: [
+      { role: "user", content: "Where is two?" },
+      { role: "assistant", content: reply },
+    ],
+  });
+  let found;
+  await expect
+    .poll(async () => {
+      const response = await request.get("/api/sessions?refresh=1");
+      found = (await response.json()).sessions.find(
+        (item) => item.title === title,
+      );
+      return !!found;
+    })
+    .toBe(true);
+  return found;
+}
+
+test("a cited path opens the pane at its lines", async ({
+  page,
+  host,
+  request,
+}) => {
+  await folder(host.project);
+  const cited = await citing(
+    host,
+    request,
+    "It is `src/app.ts:2`, also `app.ts:3`, [the start](src/app.ts#L1), `/tmp/notes.txt:3` and `ledger.summary`.",
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  const transcript = page.locator(".transcript");
+  const pane = page.getByRole("region", { name: "Files" });
+  const marked = pane.locator(".code-view .line[data-target]");
+
+  const first = transcript.getByRole("button", { name: "src/app.ts:2" });
+  await first.click();
+  await expect(pane.getByRole("heading")).toHaveText("src/app.ts");
+  await expect(marked).toHaveText(["export const two = 2;"]);
+  await expect(marked).toBeInViewport();
+  // The reply keeps the focus; the pane only shows the file.
+  await expect(first).toBeFocused();
+
+  // A bare name finds the one file it names.
+  await transcript.getByRole("button", { name: "app.ts:3" }).click();
+  await expect(marked).toHaveText(["export const three = `3"]);
+  // A link to a path is a reference too.
+  await transcript.getByRole("button", { name: "the start" }).click();
+  await expect(marked).toHaveText(["// One."]);
+  // Not a file: plain code.
+  await expect(
+    transcript.getByRole("button", { name: "ledger.summary" }),
+  ).toHaveCount(0);
+  // Outside the folder the pane says so.
+  await transcript.getByRole("button", { name: "/tmp/notes.txt:3" }).click();
+  await expect(
+    pane.getByText("/tmp/notes.txt is outside this conversation's folder"),
+  ).toBeVisible();
+
+  // Enter on a focused reference opens it too.
+  await first.focus();
+  await page.keyboard.press("Enter");
+  await expect(marked).toHaveText(["export const two = 2;"]);
+});
+
+test("a name several files share lists them, and the pick opens at the line", async ({
+  page,
+  host,
+  request,
+}) => {
+  await folder(host.project);
+  await mkdir(join(host.project, "lib"));
+  await writeFile(join(host.project, "lib", "app.ts"), "one\ntwo\n");
+  const cited = await citing(host, request, "See `app.ts:2`.");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  await page
+    .locator(".transcript")
+    .getByRole("button", { name: "app.ts:2" })
+    .click();
+  const pane = page.getByRole("region", { name: "Files" });
+  await expect(
+    pane.getByText("2 files are named app.ts. Pick one to open it at line 2."),
+  ).toBeVisible();
+  await pane.getByRole("option", { name: /lib/ }).click();
+  await expect(pane.getByRole("heading")).toHaveText("lib/app.ts");
+  await expect(pane.locator(".code-view .line[data-target]")).toHaveText([
+    "two",
+  ]);
+});
+
+test("on a phone a cited path opens the sheet at its lines", async ({
+  page,
+  host,
+  request,
+}) => {
+  await folder(host.project);
+  const cited = await citing(host, request, "It is `src/app.ts:2`.");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${cited.id}`);
+  await page
+    .locator(".transcript")
+    .getByRole("button", { name: "src/app.ts:2" })
+    .click();
+  const sheet = page.getByRole("dialog", { name: "Files" });
+  await expect(sheet.locator(".code-view .line[data-target]")).toHaveText([
+    "export const two = 2;",
+  ]);
+  await expect(sheet.getByRole("navigation", { name: "Folder" })).toBeHidden();
 });

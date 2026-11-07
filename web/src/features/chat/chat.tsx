@@ -6,6 +6,7 @@ import type {
 } from "../../shared/types.ts";
 import { useAction } from "../../shared/use-action.ts";
 import { useResource } from "../../shared/use-resource.ts";
+import { useContext } from "preact/hooks";
 import {
   LoadError,
   Placeholder,
@@ -17,6 +18,7 @@ import { isRunning } from "../../state/attention.ts";
 import HistoryStart from "./history-start.tsx";
 import { prepareHistoryNodes } from "./message.tsx";
 import { Transcript } from "./node.tsx";
+import { MessageActions } from "./message-actions.ts";
 import "./chat.css";
 
 // The transcript: the conversation's rows, older history and the placeholder
@@ -82,6 +84,7 @@ function Chat({
   preserveWhile,
 }: ChatProps) {
   const { online, load: loadSnapshot, report } = useHostContext();
+  const { openFile } = useContext(MessageActions);
   const olderPage = useAction();
   // Prepares the history once its snapshot arrives, not on every streamed
   // frame.
@@ -106,6 +109,14 @@ function Chat({
         (!snapshot && !loadError) || (snapshot && !prepared) || undefined
       }
       ref={attachScroller}
+      // Delegated: a file a message cites opens in the Files pane.
+      onClick={(event) => {
+        const cited = (event.target as Element).closest<HTMLElement>(
+          ".file-ref",
+        );
+        if (cited && openFile)
+          openFile({ path: cited.dataset.file!, lines: cited.dataset.lines });
+      }}
     >
       {/* A log a listener can browse, silent as it streams: the status
           line above the composer announces a turn's start and end. */}

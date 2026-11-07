@@ -166,3 +166,25 @@
     opacity: 0;
   }
 }
+
+/* A path a message cites (see markdown.ts): its code, underlined as every
+   link is, opens the file in the Files pane. It is a button, so the base
+   button's box is undone and it runs on with the text. */
+.markdown .file-ref {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  color: var(--accent);
+  background: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .markdown .file-ref:hover code {
+    background: var(--hover);
+  }
+}

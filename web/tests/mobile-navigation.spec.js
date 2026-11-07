@@ -234,3 +234,57 @@ test.describe("mobile navigation and commands", () => {
     await prompt.fill("/att");
   });
 });
+
+// An iPhone home-screen app gives the left edge to the conversations drawer:
+// moving between conversations adds no entry Safari could swipe back to.
+test.describe("in an iPhone home-screen app", () => {
+  test.use({
+    isMobile: true,
+    hasTouch: true,
+    viewport: { width: 390, height: 700 },
+  });
+  test("conversations replace their history entry", async ({ page, host }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "standalone", { value: true });
+      // Every entry the app adds, by its address.
+      window.pushed = [];
+      const push = history.pushState.bind(history);
+      history.pushState = (state, title, url) => {
+        window.pushed.push(String(url ?? ""));
+        push(state, title, url);
+      };
+    });
+    const titles = ["Edge A", "Edge B"];
+    // Where in history the app is, where the browser can tell.
+    const index = () =>
+      page.evaluate(() => globalThis.navigation?.currentEntry?.index ?? 0);
+    for (const title of titles)
+      await savedConversation(host, page.request, title);
+    await page.goto("/");
+    await expect(
+      page.getByRole("button", { name: "Open conversations", exact: true }),
+    ).toBeVisible();
+    const start = await index();
+    for (const title of titles) {
+      await page
+        .getByRole("button", { name: "Open conversations", exact: true })
+        .click();
+      await page.getByRole("button", { name: new RegExp(title) }).click();
+      await expect(
+        page.getByRole("heading", { name: title, exact: true }),
+      ).toBeVisible();
+      // The drawer's own entry is gone once it has closed.
+      await expect
+        .poll(() => page.evaluate(() => history.state?.layer ?? 0))
+        .toBe(0);
+    }
+    // Nothing to go back to: the drawer's entries are gone with it.
+    await expect.poll(index).toBe(start);
+    // The drawer adds its own entry while open; a conversation never does.
+    expect(
+      await page.evaluate(() =>
+        window.pushed.filter((url) => url.includes("session=")),
+      ),
+    ).toEqual([]);
+  });
+});

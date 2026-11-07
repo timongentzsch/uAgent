@@ -1,4 +1,4 @@
-import { entry, settled } from "./dismiss.ts";
+import { entry, settled, underLayers } from "./dismiss.ts";
 import { decisionFocusWaitMs } from "./limits.ts";
 
 // The selected conversation in the URL hash, and moving focus to the
@@ -7,13 +7,23 @@ import { decisionFocusWaitMs } from "./limits.ts";
 export const selectedFromURL = () =>
   new URLSearchParams(location.hash.slice(1)).get("session") || "";
 
+// In an iPhone or iPad home-screen app the left edge opens the conversations
+// drawer. Safari swipes back from that edge whenever there is an entry to go
+// back to, and the touch that stops a scroll cannot be kept from it, so there
+// a conversation takes the place of the last one instead of adding an entry,
+// and is written under any open layer (the drawer it was picked in) rather
+// than over that layer's entry.
+const edgeOpensDrawer =
+  (navigator as { standalone?: boolean }).standalone === true;
+
 // Same-document navigation preserves the shell, connection and browser history.
 export function writeSelection(id: string, replace = false) {
-  settled(() => {
+  (edgeOpensDrawer ? underLayers : settled)(() => {
     const hash = id ? `#session=${encodeURIComponent(id)}` : "";
     if (location.hash === hash) return;
     const url = `${location.pathname}${location.search}${hash}`;
-    history[replace ? "replaceState" : "pushState"](entry(), "", url);
+    const keep = replace || edgeOpensDrawer;
+    history[keep ? "replaceState" : "pushState"](entry(), "", url);
   });
 }
 

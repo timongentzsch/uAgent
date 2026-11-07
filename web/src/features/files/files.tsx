@@ -52,6 +52,8 @@ interface Listing {
 interface Found {
   paths: string[];
   more: boolean;
+  // What was searched for, so an answer is matched to its question.
+  query?: string;
 }
 interface Changed {
   changes: { path: string; state: "M" | "A" | "D" | "R" }[];
@@ -87,6 +89,32 @@ function lineRange(lines?: string): [number, number] | undefined {
   const [first, last = first] = lines.split("-").map(Number);
   return [Math.min(first, last), Math.max(first, last)];
 }
+// Where a path a message wrote leads in `folder`: a file at its lines (or
+// its change), a folder, or outside. The pane starts there when it opens
+// for a citation, so it never shows the list on the way.
+function place({ path: written, lines, changes }: FileTarget, folder: string) {
+  const path = written.startsWith("/")
+    ? written.startsWith(`${folder}/`)
+      ? written.slice(folder.length + 1)
+      : undefined
+    : written.startsWith("~")
+      ? undefined
+      : written.replace(/^(\.\/)+/, "");
+  if (path === undefined)
+    return { dir: "", file: "", showing: "file" as const, outside: written };
+  if (path.endsWith("/"))
+    return { dir: path.slice(0, -1), file: "", showing: "list" as const };
+  const range = lineRange(lines);
+  return {
+    dir: dirOf(path),
+    file: path,
+    showing: "file" as const,
+    changing: !!changes,
+    source: !!range && MARKDOWN.test(path),
+    // Kept without lines too, so a file not found is still looked for.
+    cited: { path, lines: range },
+  };
+}
 
 // The conversation's folder, read only: a list with search beside a viewer
 // for text and code, rendered markdown and images. A turn that ends may
@@ -116,23 +144,25 @@ export default function Files({
   const id = session.id;
   const turn = session.turn_active;
   const view = useContext(ImageViewer);
-  const [dir, setDir] = useState("");
-  const [file, setFile] = useState("");
+  const [start] = useState(() => reveal && place(reveal, folderOf(session)));
+  const [dir, setDir] = useState(start?.dir ?? "");
+  const [file, setFile] = useState(start?.file ?? "");
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
-  const [source, setSource] = useState(false);
+  const [source, setSource] = useState(!!start?.source);
   // The folder's files, or what differs in it from the last commit.
-  const [changing, setChanging] = useState(false);
+  const [changing, setChanging] = useState(!!start?.changing);
   // In a narrow pane only one side shows: the list, or the open file.
-  const [showing, setShowing] = useState<"list" | "file">("list");
+  const [showing, setShowing] = useState<"list" | "file">(
+    start?.showing ?? "list",
+  );
   // A cited file and its lines: marked while it is open. Not there as
   // written, the search looks for it and the lines wait for the pick.
-  const [cited, setCited] = useState<{
-    path: string;
-    lines?: [number, number];
-  }>();
+  const [cited, setCited] = useState<
+    { path: string; lines?: [number, number] } | undefined
+  >(start?.cited);
   // A cited path outside the folder, which the pane cannot show.
-  const [outside, setOutside] = useState("");
+  const [outside, setOutside] = useState(start?.outside ?? "");
   const moved = usePushDirection(showing === "file");
   const url = (path: string) => routes.files(id, "raw", path);
   const listing = useResource(
@@ -143,10 +173,16 @@ export default function Files({
   const found = useResource<Found | undefined>(
     (signal) =>
       search
-        ? new Promise((done) => setTimeout(done, SEARCH_DELAY_MS)).then(() =>
+        ? // A cited path is looked for at once; typing pauses first.
+          new Promise((done) =>
+            setTimeout(done, search === cited?.path ? 0 : SEARCH_DELAY_MS),
+          ).then(() =>
             signal.aborted
               ? undefined
-              : api<Found>(routes.files(id, "find", search)),
+              : api<Found>(routes.files(id, "find", search)).then((value) => ({
+                  ...value,
+                  query: search,
+                })),
           )
         : undefined,
     [id, search],
@@ -275,31 +311,18 @@ export default function Files({
     setCited(undefined);
     setOutside("");
   };
-  // A path as a message wrote it: in this folder, absolute inside it, or
-  // outside it; a folder, a change, or a file at its lines.
-  const show = ({ path: written, lines, changes: diffOf }: FileTarget) => {
-    const folder = folderOf(session);
-    const path = written.startsWith("/")
-      ? written.startsWith(`${folder}/`)
-        ? written.slice(folder.length + 1)
-        : undefined
-      : written.startsWith("~")
-        ? undefined
-        : written.replace(/^(\.\/)+/, "");
-    if (path === undefined) {
-      setFile("");
-      setCited(undefined);
-      setOutside(written);
-      setShowing("file");
-      return;
-    }
-    setChanging(!!diffOf);
-    if (path.endsWith("/")) return browse(path.slice(0, -1));
-    open(path, lineRange(lines));
-    // Kept without lines too, so a file not found is still looked for.
-    setCited({ path, lines: lineRange(lines) });
+  const show = (target: FileTarget) => {
+    const next = place(target, folderOf(session));
+    setDir(next.dir);
+    setFile(next.file);
+    setShowing(next.showing);
+    setChanging(!!next.changing);
+    setSource(!!next.source);
+    setCited(next.cited);
+    setOutside(next.outside ?? "");
+    setQuery("");
   };
-  const handled = useRef(0);
+  const handled = useRef(reveal?.at ?? 0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: each request once
   useEffect(() => {
     if (reveal && handled.current !== reveal.at) {
@@ -317,34 +340,39 @@ export default function Files({
     )
       setChanging(false);
   }, [diff.error]);
-  // A cited file not there as written: the search looks for its path.
+  // A cited file not there as written: the search looks for its path while
+  // the viewer says so; the list shows only if it finds none or several.
+  const missing =
+    cited?.path === file &&
+    !!content.error &&
+    failure(content.error).status === 404;
   // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed read
   useEffect(() => {
-    if (
-      cited?.path === file &&
-      content.error &&
-      failure(content.error).status === 404
-    ) {
+    if (missing) {
       setFile("");
-      setQuery(cited.path);
-      setShowing("list");
+      setQuery(cited!.path);
     }
-  }, [content.error]);
+  }, [missing]);
+  const looking = !!cited && cited.path !== file && search === cited.path;
+  const answered = looking && found.value?.query === search;
   // The files whose path ends with the cited one; a single one opens.
-  const named =
-    cited && cited.path !== file && search === cited.path && found.value
-      ? found.value.paths.filter(
-          (path) => path === cited.path || path.endsWith(`/${cited.path}`),
-        )
-      : [];
+  const named = answered
+    ? found.value!.paths.filter(
+        (path) => path === cited.path || path.endsWith(`/${cited.path}`),
+      )
+    : [];
   // Lines a pick from the search opens at, while a citation waits for it.
   const waiting = cited && cited.path !== file ? cited.lines : undefined;
   // biome-ignore lint/correctness/useExhaustiveDependencies: once the search answers
   useEffect(() => {
-    if (named.length !== 1) return;
+    if (!answered) return;
+    if (named.length !== 1) return setShowing("list");
     open(named[0], waiting);
     setCited({ path: named[0], lines: waiting });
-  }, [found.value]);
+  }, [answered]);
+  // Still looking: the title keeps the cited name, the viewer says so.
+  const seeking = (looking && (!answered || named.length === 1)) || missing;
+  const titled = file || (seeking ? cited!.path : "");
   const crumbs = dir ? dir.split("/") : [];
   const folderName = nameOf(folderOf(session)) || "Files";
   const fileError = content.error ? failure(content.error) : undefined;
@@ -363,14 +391,16 @@ export default function Files({
         )}
         <h2
           class="files-title"
-          title={file || undefined}
+          title={titled || undefined}
           ref={dialog?.heading}
           tabIndex={dialog ? -1 : undefined}
         >
-          {file ? (
+          {titled ? (
             <>
-              <span class="files-dir">{dirOf(file) && `${dirOf(file)}/`}</span>
-              <span class="files-name">{nameOf(file)}</span>
+              <span class="files-dir">
+                {dirOf(titled) && `${dirOf(titled)}/`}
+              </span>
+              <span class="files-name">{nameOf(titled)}</span>
             </>
           ) : (
             folderName
@@ -643,6 +673,8 @@ export default function Files({
             <EmptyState>
               {`${outside} is outside this conversation's folder, so it can't be shown here.`}
             </EmptyState>
+          ) : seeking ? (
+            <Spinner label={`Looking for ${nameOf(cited!.path)}…`} />
           ) : !file ? (
             <EmptyState>Choose a file to read it here.</EmptyState>
           ) : changing ? (

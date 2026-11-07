@@ -369,6 +369,8 @@ test("on a phone a cited path opens the sheet at its lines", async ({
     "export const two = 2;",
   ]);
   await expect(sheet.getByRole("navigation", { name: "Folder" })).toBeHidden();
+  // It opens on the file: the list never shows, so nothing slides across.
+  await expect(sheet.locator(".push")).toHaveCount(0);
 });
 
 test("lines selected in a file go to the chat as a reference", async ({

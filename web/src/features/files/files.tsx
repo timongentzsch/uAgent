@@ -96,6 +96,7 @@ export default function Files({
   close,
   openTerminal,
   reveal,
+  addToChat,
 }: {
   session: Session;
   // Docked beside the chat; in a sheet, the sheet's own close.
@@ -105,6 +106,8 @@ export default function Files({
   openTerminal?: (path: string) => void;
   // A file a message cited, to show at its lines; `at` makes a repeat new.
   reveal?: (FileTarget & { at: number }) | null;
+  // Puts text in the conversation's draft; none where there is no draft.
+  addToChat?: (text: string) => void;
 }) {
   // In a sheet, its header is this one: Close plays the sheet's exit, and
   // the title is where the sheet puts focus.
@@ -207,6 +210,34 @@ export default function Files({
       })
       .join("");
   }, [highlighted.value, file, marked?.[0], marked?.[1]]);
+  // The lines selected in the code, which Add to chat cites. Each line is
+  // a number then its code, so a child's place gives its line.
+  const [chosen, setChosen] = useState<[number, number]>();
+  useEffect(() => {
+    const lineOf = (node: globalThis.Node | null) => {
+      const view = codeView.current;
+      const element = node instanceof Element ? node : node?.parentElement;
+      const row = element?.closest(".line, .line-number");
+      if (!view || !row || row.parentElement !== view) return undefined;
+      return Math.floor([...view.children].indexOf(row) / 2) + 1;
+    };
+    const update = () => {
+      const selection = document.getSelection();
+      const ends = selection?.isCollapsed
+        ? []
+        : [
+            lineOf(selection?.anchorNode ?? null),
+            lineOf(selection?.focusNode ?? null),
+          ];
+      setChosen(
+        ends.length && ends.every(Boolean)
+          ? [Math.min(ends[0]!, ends[1]!), Math.max(ends[0]!, ends[1]!)]
+          : undefined,
+      );
+    };
+    document.addEventListener("selectionchange", update);
+    return () => document.removeEventListener("selectionchange", update);
+  }, []);
   // The first cited line sits in the middle of the view, once per citation.
   const codeView = useRef<HTMLPreElement>(null);
   const scrolled = useRef<object | undefined>(undefined);
@@ -355,6 +386,20 @@ export default function Files({
             onClick={() => setSource(!source)}
           >
             Source
+          </Button>
+        )}
+        {addToChat && chosen && file && !changing && (
+          <Button
+            variant="secondary"
+            // Pressing it must not drop the selection it cites.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() =>
+              addToChat(
+                `\`${file}:${chosen[0]}${chosen[1] > chosen[0] ? `-${chosen[1]}` : ""}\``,
+              )
+            }
+          >
+            Add to chat
           </Button>
         )}
         {file && !deleted && (

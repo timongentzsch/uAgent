@@ -290,8 +290,8 @@ test("a cited path opens the pane at its lines", async ({
   await expect(pane.getByRole("heading")).toHaveText("src/app.ts");
   await expect(marked).toHaveText(["export const two = 2;"]);
   await expect(marked).toBeInViewport();
-  // The reply keeps the focus; the pane only shows the file.
-  await expect(first).toBeFocused();
+  // The pane only shows the file: focus does not move into it.
+  await expect(pane.locator(":focus")).toHaveCount(0);
 
   // A bare name finds the one file it names.
   await transcript.getByRole("button", { name: "app.ts:3" }).click();
@@ -359,4 +359,33 @@ test("on a phone a cited path opens the sheet at its lines", async ({
     "export const two = 2;",
   ]);
   await expect(sheet.getByRole("navigation", { name: "Folder" })).toBeHidden();
+});
+
+test("lines selected in a file go to the chat as a reference", async ({
+  page,
+  session,
+  host,
+}) => {
+  await folder(host.project);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Files");
+  const pane = page.getByRole("region", { name: "Files" });
+  const list = pane.getByRole("navigation", { name: "Folder" });
+  await list.getByRole("button", { name: "src" }).click();
+  await list.getByRole("button", { name: "app.ts" }).click();
+  const add = pane.getByRole("button", { name: "Add to chat" });
+  await expect(add).toHaveCount(0);
+  await pane.locator(".code-view").evaluate((view) => {
+    const lines = view.querySelectorAll(".line");
+    const range = document.createRange();
+    range.setStart(lines[0].firstChild, 0);
+    range.setEnd(lines[1].firstChild, 1);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+  });
+  await add.click();
+  await expect(page.getByLabel("Message or guidance")).toHaveValue(
+    "`src/app.ts:1-2`",
+  );
 });

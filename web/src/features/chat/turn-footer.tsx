@@ -20,7 +20,7 @@ export function TurnFooter({
   answer?: Node;
   session: SessionRef;
 }) {
-  const { statistics, http } = useContext(MessageActions);
+  const { statistics, http, openFile } = useContext(MessageActions);
   const [reviewing, setReviewing] = useState(false);
   const summary = node.summary;
   if (!summary) return null;
@@ -78,7 +78,18 @@ export function TurnFooter({
           size="s"
           close={() => setReviewing(false)}
         >
-          <TurnReview files={files} turn={summary.turn} session={session} />
+          <TurnReview
+            files={files}
+            turn={summary.turn}
+            session={session}
+            show={
+              openFile &&
+              ((path) => {
+                setReviewing(false);
+                openFile({ path, changes: true });
+              })
+            }
+          />
         </Modal>
       )}
     </div>

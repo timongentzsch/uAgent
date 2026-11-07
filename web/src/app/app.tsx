@@ -451,6 +451,22 @@ function App() {
             path ? `${folderOf(session)}/${path}` : folderOf(session),
           )
       : undefined;
+  // What the terminal or the files hand the conversation: added to its
+  // draft, never sent. On a small screen they cover the chat, so they step
+  // aside; the terminal's shells keep running and reattach when it opens.
+  const addToChat = useCallback(
+    (text: string) => {
+      updateDraft(selected, (current) => ({
+        ...current,
+        text: current.text ? `${current.text}\n${text}` : text,
+      }));
+      if (compact) setTerminalOpen(false);
+      if (filesSheet) setFilesOpen(false);
+      focusComposer();
+    },
+    [updateDraft, selected, compact, filesSheet],
+  );
+  const toChat = page === "chat" && session && online ? addToChat : undefined;
   // Beside the chat, or in a sheet that closes itself.
   const files = session && (
     <Files
@@ -459,21 +475,8 @@ function App() {
       close={filesSheet ? undefined : () => setFilesOpen(false)}
       openTerminal={filesTerminal}
       reveal={reveal}
+      addToChat={toChat}
     />
-  );
-  // What the terminal hands the conversation: added to its draft, never sent.
-  // On a small screen the terminal covers the chat, so it steps aside; its
-  // shells keep running and reattach when it opens again.
-  const addToChat = useCallback(
-    (text: string) => {
-      updateDraft(selected, (current) => ({
-        ...current,
-        text: current.text ? `${current.text}\n${text}` : text,
-      }));
-      if (compact) setTerminalOpen(false);
-      focusComposer();
-    },
-    [updateDraft, selected, compact],
   );
   const terminal = (
     <Deferred
@@ -481,7 +484,7 @@ function App() {
       fallback={<Spinner label="Opening the terminal…" />}
       cwd={session ? folderOf(session) : ""}
       request={terminalRequest}
-      addToChat={page === "chat" && session && online ? addToChat : undefined}
+      addToChat={toChat}
       close={() => setTerminalOpen(false)}
       report={report}
     />

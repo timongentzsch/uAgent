@@ -105,6 +105,9 @@
 .turn-file-path {
   flex: 1;
   min-width: 0;
+  justify-content: flex-start;
+  padding-inline: 0;
+  text-align: left;
   overflow-wrap: anywhere;
 }
 .turn-files .failure {

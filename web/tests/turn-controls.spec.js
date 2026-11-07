@@ -146,6 +146,16 @@ test("an undone turn puts its file back", async ({ page, session, host }) => {
   // The files and what the turn spent read as one line.
   await expect(page.locator(".turn-summary")).toHaveText(/^· /);
   expect(await exists(`${host.project}/browser-proof.txt`)).toBe(true);
+  // A changed file opens in the Files pane; outside a repository there is
+  // no diff, so the file itself.
+  await receipt.click();
+  await page
+    .getByRole("dialog", { name: "Changed files" })
+    .getByRole("button", { name: "browser-proof.txt", exact: true })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Files" }).getByRole("heading"),
+  ).toHaveText("browser-proof.txt");
   await receipt.click();
   const sheet = page.getByRole("dialog", { name: "Changed files" });
   await expect(sheet).toContainText("Shell changes aren't tracked");

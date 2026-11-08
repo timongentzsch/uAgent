@@ -1,8 +1,6 @@
-import { useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { Minus, Plus, Scan, TriangleAlert } from "lucide-preact";
 import { Button, IconButton } from "../../shared/ui.tsx";
-import { stored, useStored } from "../../shared/storage.ts";
-import { storageKeys } from "../../shared/storage-keys.ts";
 import Frame, {
   PAGE_HEIGHT_MAX,
   PAGE_WIDTH,
@@ -10,13 +8,25 @@ import Frame, {
   type PageMessage,
 } from "./frame.tsx";
 
-// A folder's HTML files side by side, each a live page: a design as the
-// agent wrote it. Files named <row>-<name>.html form a row per <row>; the
-// rest form the first. A click opens a page; a page that fails says so and
-// offers its errors to the agent.
+// A folder's HTML files on a plane you pan and zoom, each a live page: a
+// design as the agent wrote it. Files named <row>-<name>.html form a row per
+// <row>; the rest form the first. Pinch, ⌘ or Ctrl and the wheel, or a
+// trackpad pinch zoom at the pointer; a drag or the wheel pans. A click opens
+// a page; a page that fails says so and offers its errors to the agent.
 
-const ZOOMS = [0.1, 0.15, 0.2, 0.25, 0.33, 0.5, 0.75, 1];
-const zooms = stored<Record<string, number>>(storageKeys.canvas, {});
+// The plane: artboards at their real size, 80 px apart in a row and 240
+// between rows (room for a name at any zoom), as Claude's canvas spaces them.
+const GAP_X = 80;
+const GAP_Y = 240;
+const ZOOM_MIN = 0.05;
+const ZOOM_MAX = 2;
+// A pointer that moved this far pans rather than opening the page under it.
+const SLOP = 4;
+interface View {
+  x: number;
+  y: number;
+  s: number;
+}
 // What one message may carry of the pages' errors.
 const ERRORS_MAX = 1800;
 
@@ -55,9 +65,6 @@ export default function Canvas({
   open: (path: string) => void;
   addToChat?: (text: string) => void;
 }) {
-  const [kept, setKept] = useStored(zooms);
-  const zoom = kept[dir] ?? 0.2;
-  const setZoom = (value: number) => setKept({ ...kept, [dir]: value });
   const [seen, setSeen] = useState<Record<string, Seen>>({});
   const grouped = useMemo(() => rows(names), [names]);
   const path = (name: string) => (dir ? `${dir}/${name}` : name);
@@ -81,25 +88,129 @@ export default function Canvas({
               };
       return next ? { ...all, [name]: next } : all;
     });
-  const box = useRef<HTMLDivElement>(null);
-  const widthOf = (name: string) => seen[name]?.info?.artboard.w || PAGE_WIDTH;
-  // The widest row across the canvas, its gaps left a tenth.
+  const stage = useRef<HTMLDivElement>(null);
+  const sizeOf = (name: string) => {
+    const info = seen[name]?.info;
+    const fixed = !!info?.artboard.w && !!info.artboard.h;
+    return {
+      w: info?.artboard.w || PAGE_WIDTH,
+      h: fixed
+        ? info!.artboard.h
+        : Math.min(PAGE_HEIGHT_MAX, info?.height || 900),
+    };
+  };
+  // Every page's place on the plane.
+  const placed = useMemo(() => {
+    let y = 0;
+    return grouped.flatMap(([row, files]) => {
+      let x = 0;
+      const top = y;
+      const items = files.map((name) => {
+        const size = sizeOf(name);
+        const item = { name, row, x, y: top, ...size };
+        x += size.w + GAP_X;
+        return item;
+      });
+      y += Math.max(...items.map((item) => item.h)) + GAP_Y;
+      return items;
+    });
+  }, [grouped, seen]);
+  const [view, setView] = useState<View>({ x: 24, y: 48, s: 0.2 });
   const fit = () => {
-    const widest = Math.max(
-      ...grouped.map(([, files]) =>
-        files.reduce((sum, name) => sum + widthOf(name), 0),
-      ),
+    const box = stage.current;
+    if (!box || !placed.length) return;
+    const w = Math.max(...placed.map((item) => item.x + item.w));
+    const h = Math.max(...placed.map((item) => item.y + item.h));
+    const s = Math.min(
+      1,
+      (box.clientWidth - 48) / w,
+      (box.clientHeight - 96) / h,
     );
-    const room = (box.current?.clientWidth ?? 0) * 0.9;
-    if (room && widest) setZoom(Math.min(1, room / widest));
+    setView({ x: (box.clientWidth - w * s) / 2, y: 48, s });
   };
+  // Fit once the pages have said how large they are, and for a new folder.
+  const sized = names.every((name) => seen[name]?.info);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on arrival
+  useEffect(fit, [sized, dir]);
+  // Zoom by `by` around a point of the stage, the point staying put.
+  const zoomAt = (by: number, px: number, py: number) =>
+    setView(({ x, y, s }) => {
+      const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s * by));
+      return {
+        x: px - ((px - x) * next) / s,
+        y: py - ((py - y) * next) / s,
+        s: next,
+      };
+    });
+  const center = (by: number) => {
+    const box = stage.current;
+    if (box) zoomAt(by, box.clientWidth / 2, box.clientHeight / 2);
+  };
+  // The wheel pans; with ⌘ or Ctrl (a trackpad pinch sends Ctrl) it zooms.
+  useEffect(() => {
+    const box = stage.current;
+    if (!box) return;
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const at = box.getBoundingClientRect();
+      if (event.ctrlKey || event.metaKey)
+        zoomAt(
+          Math.exp(-event.deltaY * 0.01),
+          event.clientX - at.left,
+          event.clientY - at.top,
+        );
+      else
+        setView((v) => ({
+          ...v,
+          x: v.x - event.deltaX,
+          y: v.y - event.deltaY,
+        }));
+    };
+    box.addEventListener("wheel", wheel, { passive: false });
+    return () => box.removeEventListener("wheel", wheel);
+  }, []);
+  // One pointer pans, two pinch. A pointer that moved opens nothing.
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const moved = useRef(false);
+  const down = (event: PointerEvent) => {
+    pointers.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    if (pointers.current.size === 1) moved.current = false;
+  };
+  const move = (event: PointerEvent) => {
+    const was = pointers.current.get(event.pointerId);
+    if (!was) return;
+    const all = [...pointers.current.values()];
+    const now = { x: event.clientX, y: event.clientY };
+    if (Math.hypot(now.x - was.x, now.y - was.y) > SLOP) moved.current = true;
+    if (!moved.current) return;
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    if (all.length === 2) {
+      const other = all.find((point) => point !== was)!;
+      const at = stage.current!.getBoundingClientRect();
+      const by =
+        Math.hypot(now.x - other.x, now.y - other.y) /
+        (Math.hypot(was.x - other.x, was.y - other.y) || 1);
+      zoomAt(
+        by,
+        (now.x + other.x) / 2 - at.left,
+        (now.y + other.y) / 2 - at.top,
+      );
+    }
+    setView((v) => ({
+      ...v,
+      x: v.x + (now.x - was.x) / all.length,
+      y: v.y + (now.y - was.y) / all.length,
+    }));
+    pointers.current.set(event.pointerId, now);
+  };
+  const up = (event: PointerEvent) => pointers.current.delete(event.pointerId);
   const failing = names.filter((name) => seen[name]?.errors.length);
-  const step = (by: number) => {
-    const at = ZOOMS.findIndex((value) => value >= zoom);
-    setZoom(ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, at + by))]);
-  };
+  const { x, y, s } = view;
   return (
-    <div class="canvas" ref={box}>
+    <div class="canvas">
       {failing.length > 0 && (
         <p class="canvas-notice">
           <TriangleAlert />
@@ -128,56 +239,68 @@ export default function Canvas({
           )}
         </p>
       )}
-      <div class="canvas-rows">
-        {grouped.map(([row, files]) => (
-          <section key={row} class="canvas-row" aria-label={row || "Pages"}>
-            {row && <h3 class="canvas-row-name">{row.replace(/^\d+/, "")}</h3>}
-            <div class="canvas-strip">
-              {files.map((name) => {
-                const info = seen[name]?.info;
-                const fixed = !!info?.artboard.w && !!info.artboard.h;
-                const width = widthOf(name);
-                const height = fixed
-                  ? info!.artboard.h
-                  : Math.min(PAGE_HEIGHT_MAX, info?.height || 900);
-                const title = info?.title || name;
-                return (
-                  <figure
-                    key={name}
-                    class="canvas-page"
-                    data-failed={seen[name]?.errors.length ? true : undefined}
-                  >
-                    <figcaption class="small">{title}</figcaption>
-                    <div class="canvas-frame">
-                      <Frame
-                        src={page(path(name))}
-                        title={title}
-                        width={width}
-                        height={height}
-                        scale={zoom}
-                        live={false}
-                        onMessage={heard(name)}
-                      />
-                      <Button
-                        variant="quiet"
-                        class="canvas-open"
-                        aria-label={`Open ${title}`}
-                        onClick={() => open(path(name))}
-                      />
-                    </div>
-                  </figure>
-                );
-              })}
-            </div>
-          </section>
+      <div
+        class="canvas-stage"
+        ref={stage}
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={up}
+        onPointerCancel={up}
+      >
+        <div
+          class="canvas-plane"
+          style={{ transform: `translate(${x}px, ${y}px) scale(${s})` }}
+        >
+          {placed.map((item) => {
+            const title = seen[item.name]?.info?.title || item.name;
+            return (
+              <div
+                key={item.name}
+                class="canvas-page"
+                data-failed={seen[item.name]?.errors.length ? true : undefined}
+                style={{ left: `${item.x}px`, top: `${item.y}px` }}
+              >
+                <Frame
+                  src={page(path(item.name))}
+                  title={title}
+                  width={item.w}
+                  height={item.h}
+                  live={false}
+                  onMessage={heard(item.name)}
+                />
+                <Button
+                  variant="quiet"
+                  class="canvas-open"
+                  aria-label={`Open ${title}`}
+                  onClick={() => !moved.current && open(path(item.name))}
+                />
+              </div>
+            );
+          })}
+        </div>
+        {placed.map((item) => (
+          <span
+            key={item.name}
+            class="canvas-name small"
+            style={{
+              left: `${x + item.x * s}px`,
+              top: `${y + item.y * s}px`,
+              maxWidth: `${item.w * s}px`,
+            }}
+          >
+            {item.x === 0 && item.row
+              ? `${item.row.replace(/^\d+/, "")} · `
+              : ""}
+            {seen[item.name]?.info?.title || item.name}
+          </span>
         ))}
       </div>
       <div class="float-toolbar canvas-zoom">
-        <IconButton label="Zoom out" onClick={() => step(-1)}>
+        <IconButton label="Zoom out" onClick={() => center(1 / 1.25)}>
           <Minus />
         </IconButton>
-        <span class="small">{`${Math.round(zoom * 100)}%`}</span>
-        <IconButton label="Zoom in" onClick={() => step(1)}>
+        <span class="small">{`${Math.round(s * 100)}%`}</span>
+        <IconButton label="Zoom in" onClick={() => center(1.25)}>
           <Plus />
         </IconButton>
         <IconButton label="Fit" onClick={fit}>

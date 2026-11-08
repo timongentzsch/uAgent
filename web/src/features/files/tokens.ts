@@ -9,7 +9,8 @@ export interface Token {
   usage: string;
 }
 export interface Tokens {
-  // "light" first: the :root block, then each [data-theme] block.
+  // In file order: the first block's (its [data-theme], else "default"),
+  // then each further [data-theme] block's.
   themes: string[];
   colors: (Token & { values: Record<string, string> })[];
   scales: Record<"space" | "radius" | "shadow" | "font", Token[]>;
@@ -32,7 +33,9 @@ export function readTokens(css: string): Tokens {
     return alias ? colors.has(alias[1]) : COLOR.test(value);
   };
   const blocks = /([^{}]+)\{([^{}]*)\}/g;
-  for (const [, head, body] of css.matchAll(blocks)) {
+  // Overrides for a medium (touch, more contrast) are not tokens of their own.
+  const plain = css.replace(/@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "");
+  for (const [, head, body] of plain.matchAll(blocks)) {
     const selector = head.replace(/\/\*[\s\S]*?\*\//g, "").trim();
     const declarations = [
       ...body.matchAll(
@@ -54,15 +57,17 @@ export function readTokens(css: string): Tokens {
     // (:not(), media queries) is not one.
     if (selector.includes(":not(")) continue;
     const theme = /\[data-theme="?([\w-]+)"?\]/.exec(selector)?.[1];
-    const id = theme ?? (selector.includes(":root") ? "light" : undefined);
+    const id = theme ?? (selector.includes(":root") ? "default" : undefined);
     if (!id) continue;
-    if (!tokens.themes.includes(id)) tokens.themes.push(id);
     for (const [, property, raw, usage = ""] of declarations) {
       if (!property.startsWith("--")) continue;
       const name = property.slice(2);
       const value = raw.trim();
       const scale = SCALES.find((prefix) => name.startsWith(`${prefix}-`));
       const known = colors.get(name);
+      // A theme is a block that sets colours.
+      if ((known || (!scale && color(value))) && !tokens.themes.includes(id))
+        tokens.themes.push(id);
       if (known) known.values[id] = value;
       else if (scale) tokens.scales[scale].push({ name, value, usage });
       else if (color(value)) {
@@ -72,5 +77,13 @@ export function readTokens(css: string): Tokens {
       }
     }
   }
+  // An unnamed :root that only repeats a named theme is that theme.
+  const same = (a: string, b: string) =>
+    tokens.colors.every(
+      (token) =>
+        (token.values[a] ?? token.value) === (token.values[b] ?? token.value),
+    );
+  if (tokens.themes.some((id) => id !== "default" && same("default", id)))
+    tokens.themes = tokens.themes.filter((id) => id !== "default");
   return tokens;
 }

@@ -22,8 +22,6 @@ export const storageKeys = {
   toggles: "uagent-toggles",
   scheduledDraft: "uagent-scheduled-draft",
   overview: "uagent-overview-layout",
-  // A canvas's zoom, by its folder.
-  canvas: "uagent-canvas",
   library: (kind: string, cwd: string) => `uagent-library-${kind}-${cwd}`,
   // Places of the sidebar's list remembered by path, e.g. folded ones.
   places: (name: string) => `uagent.sidebar.${name}`,

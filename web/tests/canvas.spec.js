@@ -42,7 +42,7 @@ test("a design folder opens as a canvas of sandboxed pages", async ({
   await app.goto(`/#session=${session.id}`);
   const files = await openCanvas(app);
   // Rows by name prefix: the pages without one first, then "hero".
-  await expect(files.getByRole("heading", { name: "hero" })).toBeVisible();
+  await expect(files.getByText("hero · Hero A")).toBeVisible();
   await expect(
     files.getByRole("button", { name: "Open Hero A" }),
   ).toBeVisible();
@@ -105,22 +105,44 @@ test("an agent's write reloads its page on the canvas", async ({
   ).toBeVisible();
 });
 
-test("on a phone the canvas rows scroll sideways in the sheet", async ({
+test("the canvas pans and zooms like a plane", async ({
   page: app,
   session,
   host,
 }) => {
   await design(host.project);
-  await app.setViewportSize({ width: 390, height: 844 });
+  await app.setViewportSize({ width: 1440, height: 900 });
   await app.goto(`/#session=${session.id}`);
   const files = await openCanvas(app);
-  const strip = files.locator(".canvas-strip").last();
-  await expect(strip.locator(".canvas-page")).toHaveCount(2);
-  expect(
-    await strip.evaluate(
-      (element) => element.scrollWidth > element.clientWidth,
-    ),
-  ).toBe(true);
+  const level = files.locator(".canvas-zoom .small");
+  const plane = files.locator(".canvas-plane");
+  await expect(
+    app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
+  ).toBeVisible();
+  const before = await level.textContent();
+  // A trackpad pinch arrives as the wheel with Ctrl.
+  const stage = files.locator(".canvas-stage");
+  const box = await stage.boundingBox();
+  await app.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await app.keyboard.down("Control");
+  await app.mouse.wheel(0, -200);
+  await app.keyboard.up("Control");
+  await expect(level).not.toHaveText(before);
+  // A drag pans, and opens nothing.
+  const moved = await plane.getAttribute("style");
+  await app.mouse.down();
+  await app.mouse.move(
+    box.x + box.width / 2 + 120,
+    box.y + box.height / 2 + 40,
+    { steps: 5 },
+  );
+  await app.mouse.up();
+  await expect(plane).not.toHaveAttribute("style", moved);
+  await expect(files.getByRole("button", { name: "Canvas" })).toBeVisible();
+  await files.getByRole("button", { name: "Fit" }).click();
+  await expect(
+    files.getByRole("button", { name: "Open Hero A" }),
+  ).toBeInViewport();
 });
 
 test("a page opened: select and comment, tweaks, print", async ({

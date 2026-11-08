@@ -18,8 +18,8 @@ test("a design system's tokens.css reads back as its tokens", () => {
   --page: #000;
   --ink: #f5f5f5;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --page: #010101; }
+@media (pointer: coarse) {
+  :root { --space-2: 8px; }
 }
 .text-body { font: 400 1rem/1.5 var(--font-mono); /* Running text */ }
 `);

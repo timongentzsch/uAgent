@@ -96,7 +96,8 @@ variant, a dark theme — in the page's head. Not copy, not a colour used once:
 - Name the folder in your reply as `design/landing/`; the reference opens the
   canvas. Name a single artboard by its path.
 - Check what you made before you hand it over, where the `browser` tool is
-  available: open each page you wrote or changed with `open` and its `path`.
+  available: every page you wrote or changed is opened with `open` and its
+  `path` after its last change, before your reply.
   It loads as the canvas shows it and lists the page's problems (larger than
   its artboard, a page of a document that runs past its height, a file that
   did not load). Fix every problem, then look at the page once and fix what

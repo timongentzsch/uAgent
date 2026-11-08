@@ -71,7 +71,7 @@ function DesignCard({
         aria-label={`Open ${path}`}
         onClick={() => open({ path })}
       >
-        <PageThumb base={preview.value.base} path={cover} width={280} />
+        <PageThumb base={preview.value.base} path={cover} />
       </Button>
       <figcaption>
         <strong>{path}</strong>

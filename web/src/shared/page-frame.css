@@ -1,3 +1,9 @@
+/* A page small, in chat and the Library: one hairline edge for every one. */
+.page-thumb {
+  display: flex;
+  width: fit-content;
+  outline: var(--border);
+}
 .page-frame {
   position: relative;
   overflow: hidden;

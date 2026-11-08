@@ -11,8 +11,11 @@ const page = (title, body, size = "1440x900") =>
 async function design(project) {
   const dir = join(project, "design");
   await mkdir(dir);
-  await writeFile(join(dir, "hero-a.html"), page("Hero A", "<h1>Alpha</h1>"));
-  await writeFile(join(dir, "hero-b.html"), page("Hero B", "<h1>Beta</h1>"));
+  await writeFile(
+    join(dir, "01-hero-a.html"),
+    page("Hero A", "<h1>Alpha</h1>"),
+  );
+  await writeFile(join(dir, "01-hero-b.html"), page("Hero B", "<h1>Beta</h1>"));
   await writeFile(
     join(dir, "cover.html"),
     // An error as the page would raise it, without failing the test's page.
@@ -41,8 +44,8 @@ test("a design folder opens as a canvas of sandboxed pages", async ({
   await app.setViewportSize({ width: 1440, height: 900 });
   await app.goto(`/#session=${session.id}`);
   const files = await openCanvas(app);
-  // Rows by name prefix: the pages without one first, then "hero".
-  await expect(files.getByText("hero · Hero A")).toBeVisible();
+  // Rows by step: the pages without a number first, then step 01.
+  await expect(files.getByText("01 · Hero A")).toBeVisible();
   await expect(
     files.getByRole("button", { name: "Open Hero A" }),
   ).toBeVisible();
@@ -450,13 +453,15 @@ test("Back closes the open page and shows the view it was opened from", async ({
   const files = app.getByRole("region", { name: "Files" });
   await files.getByRole("button", { name: "design", exact: true }).click();
   // From the list: back to the list, never to a canvas.
-  await files.getByRole("button", { name: "hero-a.html", exact: true }).click();
+  await files
+    .getByRole("button", { name: "01-hero-a.html", exact: true })
+    .click();
   await expect(
     app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
   ).toBeVisible();
   await files.getByRole("button", { name: "Back to the list" }).click();
   await expect(
-    files.getByRole("button", { name: "hero-b.html", exact: true }),
+    files.getByRole("button", { name: "01-hero-b.html", exact: true }),
   ).toBeVisible();
   await expect(files.locator(".canvas-page")).toHaveCount(0);
   // From the canvas: back to the canvas.

@@ -28,12 +28,21 @@ their message. You make every change by editing the files.
 
 ## A design folder
 
-- One folder is one canvas, e.g. `design/landing/` (in a workspace, any folder).
-  Files named `<row>-<name>.html` form a row per `<row>` (`hero-numbers.html`,
-  `hero-plain.html` → row "hero"); files without a `-` form the first row.
-  Rows and files sort by name; to order them otherwise, start the row with a
-  number (`1onboard-welcome.html`, `2today-home.html`), which the canvas does
-  not show. Lower-case names, `-` only after the row.
+- One folder is one canvas: a flow or a product surface, e.g.
+  `design/landing/` or `design/onboarding/` (in a workspace, any folder).
+- Name pages `NN-screen[--state].html`, lower-case kebab-case:
+  - `NN` is the step, two digits; it is the page's row on the canvas, so the
+    variants and states of a step share it and sit side by side.
+  - `screen` says what the page is; a `--state` (`--error`, `--empty`,
+    `--annual`) marks a state or variant of it.
+  - `design/onboarding/`: `01-welcome.html`, `02-sign-in.html`,
+    `02-sign-in--error.html`, `03-workspace--empty.html`. Two directions of
+    one screen: `01-hero-numbers.html`, `01-hero-session.html`.
+  - The readable name is the page's `<title>` ("Sign in: wrong password"),
+    which the canvas shows; never put words for people in the file name.
+  - A page without a step (`book.html`) sits in the first row.
+- Name a reference by its path from the folder you work in
+  (`design/landing/01-hero-numbers.html`), never a bare file name.
 - Pages of one design may share a stylesheet in the folder (`style.css`); a
   change to it reloads every page.
 - Each file is a complete HTML document:
@@ -133,7 +142,9 @@ A design system is a folder, e.g. `design/system/`, that pages link:
   - One `/* usage */` comment after each declaration.
 - `components/bundle.css` and, per component, `components/<Name>/README.md`
   (what it is for, when to use it, its classes) and
-  `components/<Name>/preview.html`, a small page showing it in a few states.
+  `components/<Name>/preview.html`, a small page showing it in all its
+  states. `<Name>` is the component's name as code uses it (`Button`,
+  `ListRow`).
 - `fonts/` and `assets/<Group>/` (logos, icons): copied files, never redrawn.
 - `book.html`: the brand book (below), which the canvas shows and prints.
 - Pages use it with `<link rel="stylesheet" href="../system/tokens.css">` (and

@@ -451,3 +451,41 @@ test("a page a reply names opens over its design's canvas", async ({
   await pane.getByRole("button", { name: "Back to the canvas" }).click();
   await expect(pane.locator(".canvas-page")).toHaveCount(2);
 });
+
+test("a page a reply names loosely gets no card and no blank frame", async ({
+  page,
+  host,
+  request,
+}) => {
+  const dir = join(host.project, "design", "system", "components", "Button");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, "preview.html"),
+    "<!doctype html><title>Button</title><button>Save</button>",
+  );
+  const cited = await citing(
+    host,
+    request,
+    "Each component has a `preview.html` you can switch between themes.",
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  const transcript = page.locator(".transcript");
+  await expect(
+    transcript.getByRole("button", { name: "preview.html", exact: true }),
+  ).toBeVisible();
+  await expect(transcript.locator(".design-card")).toHaveCount(0);
+  await transcript
+    .getByRole("button", { name: "preview.html", exact: true })
+    .click();
+  // Not at the top of the folder: found by its name, never a blank frame.
+  const pane = page.getByRole("region", { name: "Files" });
+  await expect(pane.getByRole("heading")).toHaveText(
+    "design/system/components/Button/preview.html",
+  );
+  await expect(
+    pane.frameLocator('iframe[title="Button"]').getByRole("button", {
+      name: "Save",
+    }),
+  ).toBeVisible();
+});

@@ -251,7 +251,16 @@ export default function Files({
   const deleted =
     changing && changes.some((c) => c.path === file && c.state === "D");
   const image = IMAGE.test(file) && !changing;
-  const page = HTML.test(file) && !changing && !source;
+  // A page that is there: one cited by a name it does not have goes the way
+  // of any file not found, instead of a blank frame.
+  const page =
+    HTML.test(file) &&
+    !changing &&
+    !source &&
+    (!listing.value ||
+      listing.value.entries.some(
+        (entry) => !entry.dir && entry.name === nameOf(file),
+      ));
   // The canvas, or one page, across the whole pane.
   const stage = (canvas && !file) || page;
   const content = useResource(

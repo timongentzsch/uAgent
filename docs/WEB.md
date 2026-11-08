@@ -83,8 +83,8 @@ only too. What is open is read again when a turn ends.
 
 A folder that holds HTML pages also offers **Canvas**: its pages side by side,
 each live, the way the `design` skill writes a design. Pages named
-`<row>-<name>.html` form a row per name before the dash (`hero-a.html` and
-`hero-b.html` make the row "hero"). The canvas is a plane: drag or scroll to
+`NN-screen[--state].html` form a row per step `NN` (`02-sign-in.html` and
+`02-sign-in--error.html` share row 02); pages without a step form the first. The canvas is a plane: drag or scroll to
 pan; pinch, a trackpad pinch or ⌘/Ctrl with the wheel zooms at the pointer;
 − and + zoom, **Fit** shows every page. A page declares its size with
 `<meta name="artboard" content="1440x900">`, or only a width for a page as tall

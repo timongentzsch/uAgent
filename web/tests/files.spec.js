@@ -436,3 +436,34 @@ test("a design a reply names shows as a card that opens its canvas", async ({
     page.getByRole("region", { name: "Files" }).locator(".canvas-page"),
   ).toHaveCount(2);
 });
+
+test("a page a reply names opens over its design's canvas", async ({
+  page,
+  host,
+  request,
+}) => {
+  const dir = join(host.project, "design", "landing");
+  await mkdir(dir, { recursive: true });
+  for (const name of ["hero-a", "hero-b"])
+    await writeFile(
+      join(dir, `${name}.html`),
+      `<!doctype html><title>${name}</title><meta name="artboard" content="1440x900"><h1>${name}</h1>`,
+    );
+  const cited = await citing(
+    host,
+    request,
+    "The second hero is `design/landing/hero-b.html`.",
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  await page
+    .locator(".transcript")
+    .getByRole("button", { name: "design/landing/hero-b.html" })
+    .click();
+  const pane = page.getByRole("region", { name: "Files" });
+  await expect(
+    page.frameLocator('iframe[title="hero-b"]').getByText("hero-b"),
+  ).toBeVisible();
+  await pane.getByRole("button", { name: "Back to the canvas" }).click();
+  await expect(pane.locator(".canvas-page")).toHaveCount(2);
+});

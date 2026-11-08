@@ -277,8 +277,12 @@ test("a page opened: select and comment, tweaks, print", async ({
   );
   await app.setViewportSize({ width: 1440, height: 900 });
   await app.goto(`/#session=${session.id}`);
-  const files = await openCanvas(app);
-  // A folder of one page opens it.
+  await headerAction(app, "Files");
+  const files = app.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "design", exact: true }).click();
+  // A folder of one page has no canvas: its page is a row.
+  await expect(files.getByRole("button", { name: "Canvas" })).toHaveCount(0);
+  await files.getByRole("button", { name: "hero-a.html", exact: true }).click();
   const frame = app.frameLocator('iframe[title="Hero A"]');
   await expect(frame.getByText("Alpha headline")).toBeVisible();
 
@@ -354,8 +358,8 @@ test("a design system's brand book is a page, and its themes are under Tweaks", 
   const files = app.getByRole("region", { name: "Files" });
   await files.getByRole("button", { name: "design", exact: true }).click();
   await files.getByRole("button", { name: "system", exact: true }).click();
-  // The folder's one page opens as itself.
-  await files.getByRole("button", { name: "Canvas" }).click();
+  // Its one page is a row, not a canvas.
+  await files.getByRole("button", { name: "book.html", exact: true }).click();
   await expect(
     app
       .frameLocator('iframe[title="Brand book"]')
@@ -374,14 +378,13 @@ test("a design system's brand book is a page, and its themes are under Tweaks", 
     files.getByRole("link", { name: "Print or save as PDF" }),
   ).toBeVisible();
 
-  await files.getByRole("button", { name: "Back to the canvas" }).click();
+  await files.getByRole("button", { name: "Back to the list" }).click();
   await files
     .locator(".files-crumbs")
     .getByRole("button", { name: /design$/ })
     .click();
   await files.getByRole("button", { name: "landing", exact: true }).click();
-  await files.getByRole("button", { name: "Canvas" }).click();
-  // A folder of one page opens it.
+  await files.getByRole("button", { name: "hero-a.html", exact: true }).click();
   await files.getByRole("button", { name: "Tweaks" }).click();
   await files.getByRole("button", { name: "dark" }).click();
   const frame = app.frameLocator('iframe[title="Hero A"]');
@@ -390,4 +393,80 @@ test("a design system's brand book is a page, and its themes are under Tweaks", 
   await expect(app.locator("#prompt")).toHaveValue(
     "`design/system/tokens.css` theme dark: ",
   );
+});
+
+test("on a phone a book opens as one page: its tools one row, Back to its list", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const system = join(host.project, "design", "system");
+  await mkdir(system, { recursive: true });
+  await writeFile(join(system, "tokens.css"), ":root{--page:#fff}");
+  await writeFile(
+    join(system, "book.html"),
+    page(
+      "Brand book",
+      '<section style="height:297mm"><h1>Brand</h1></section>',
+      "794",
+    ),
+  );
+  await app.setViewportSize({ width: 390, height: 844 });
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("dialog", { name: "Files" });
+  await files.getByRole("button", { name: "design", exact: true }).click();
+  await files.getByRole("button", { name: "system", exact: true }).click();
+  await files.getByRole("button", { name: "book.html", exact: true }).click();
+  await expect(
+    app
+      .frameLocator('iframe[title="Brand book"]')
+      .getByRole("heading", { name: "Brand" }),
+  ).toBeVisible();
+  // The page's tools stay one row, scrolling sideways when they run out.
+  const tools = files.locator(".page-tools");
+  const row = await tools.evaluate((bar) => {
+    const tops = [...bar.children].map((child) => child.offsetTop);
+    return new Set(tops).size;
+  });
+  expect(row).toBe(1);
+  // Back leaves the page for the folder's list, never an empty view.
+  await files.getByRole("button", { name: "Back to the list" }).click();
+  await expect(files.getByText("Choose a file to read it here.")).toBeHidden();
+  await expect(
+    files.getByRole("button", { name: "book.html", exact: true }),
+  ).toBeVisible();
+});
+
+test("Back closes the open page and shows the view it was opened from", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await design(host.project);
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "design", exact: true }).click();
+  // From the list: back to the list, never to a canvas.
+  await files.getByRole("button", { name: "hero-a.html", exact: true }).click();
+  await expect(
+    app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
+  ).toBeVisible();
+  await files.getByRole("button", { name: "Back to the list" }).click();
+  await expect(
+    files.getByRole("button", { name: "hero-b.html", exact: true }),
+  ).toBeVisible();
+  await expect(files.locator(".canvas-page")).toHaveCount(0);
+  // From the canvas: back to the canvas.
+  await files.getByRole("button", { name: "Canvas" }).click();
+  await files.getByRole("button", { name: "Open Hero B" }).click();
+  await files.getByRole("button", { name: "Back to the canvas" }).click();
+  await expect(files.locator(".canvas-page")).toHaveCount(3);
+  // Toggled off, the canvas gives the list back.
+  await files.getByRole("button", { name: "Canvas" }).click();
+  await expect(
+    files.getByRole("button", { name: "cover.html", exact: true }),
+  ).toBeVisible();
 });

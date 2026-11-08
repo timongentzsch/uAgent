@@ -127,6 +127,12 @@ function place({ path: written, lines, changes }: FileTarget, folder: string) {
   };
 }
 
+// The folder whose own view a cited place sets: a folder, or a page's.
+const arrival = (place: { dir: string; file: string; outside?: string }) =>
+  place.outside || (place.file && !HTML.test(place.file))
+    ? undefined
+    : place.dir;
+
 const WRITES = new Set(["Wrote", "Edited", "Deleted"]);
 // The last file write that finished, as "<node>\n<path written>".
 function lastWrite(nodes: readonly Node[] = []) {
@@ -196,13 +202,15 @@ export default function Files({
   >(start?.cited);
   // A cited path outside the folder, which the pane cannot show.
   const [outside, setOutside] = useState(start?.outside ?? "");
-  // The folder's pages side by side, rather than its list.
+  // The folder's view: its pages side by side rather than its list. Opening
+  // a file never changes it, so closing the file shows the view under it.
   const [canvas, setCanvas] = useState(false);
-  // A folder a message cited opens as a canvas when it holds pages.
-  const [canvasFor, setCanvasFor] = useState(
-    start && !start.file && !start.outside ? start.dir : undefined,
-  );
-  const moved = usePushDirection(showing === "file");
+  // A folder (or a page in one) a message cited, whose own view is set once
+  // its listing answers: a canvas for two pages or more.
+  const [canvasFor, setCanvasFor] = useState(start && arrival(start));
+  // With nothing open, the list is what shows, whatever was shown last.
+  const side = file || outside ? showing : "list";
+  const moved = usePushDirection(side === "file");
   const { store } = useHostContext();
   const written = useSnapshots(store, (all) =>
     lastWrite(all[id]?.state?.view?.nodes),
@@ -375,7 +383,7 @@ export default function Files({
     setOutside(next.outside ?? "");
     setQuery("");
     setCanvas(false);
-    setCanvasFor(next.file || next.outside ? undefined : next.dir);
+    setCanvasFor(arrival(next));
   };
   // A remembered folder that is gone opens the top.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed list
@@ -390,9 +398,11 @@ export default function Files({
   useEffect(() => {
     if (canvasFor === undefined || canvasFor !== dir || !listing.value) return;
     setCanvasFor(undefined);
-    // One page (a design system's book) opens as itself.
-    if (pages.length === 1) open(dir ? `${dir}/${pages[0]}` : pages[0]);
-    else if (pages.length) setCanvas(true);
+    // Two pages or more are a canvas; one (a design system's book) is the
+    // page itself.
+    if (pages.length > 1) setCanvas(true);
+    else if (pages.length === 1 && !file)
+      open(dir ? `${dir}/${pages[0]}` : pages[0]);
   }, [listing.value, canvasFor]);
   // A write reloads the page it changed.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
@@ -460,21 +470,18 @@ export default function Files({
   const fileError = content.error ? failure(content.error) : undefined;
 
   return (
-    <section class="files" aria-label="Files" data-showing={showing}>
+    <section class="files" aria-label="Files" data-showing={side}>
       <header class="files-head">
         {page && (
           <IconButton
             class="files-back files-back-canvas"
-            label="Back to the canvas"
-            onClick={() => {
-              setFile("");
-              setCanvas(pages.length > 1);
-            }}
+            label={canvas ? "Back to the canvas" : "Back to the list"}
+            onClick={() => setFile("")}
           >
             <ChevronLeft />
           </IconButton>
         )}
-        {(file || outside) && showing === "file" && !page && (
+        {side === "file" && !page && (
           <IconButton
             class="files-back"
             label="Back to the list"
@@ -503,15 +510,11 @@ export default function Files({
         {diffText && formatStat(counts) && (
           <span class="files-dir small">{formatStat(counts)}</span>
         )}
-        {!file && !changing && !search && pages.length > 0 && (
+        {!file && !changing && !search && pages.length > 1 && (
           <Button
             variant="secondary"
             aria-pressed={canvas}
-            onClick={() =>
-              pages.length === 1
-                ? open(dir ? `${dir}/${pages[0]}` : pages[0])
-                : setCanvas(!canvas)
-            }
+            onClick={() => setCanvas(!canvas)}
           >
             Canvas
           </Button>

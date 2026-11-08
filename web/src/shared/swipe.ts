@@ -44,10 +44,17 @@ export function useSheetSwipe(
         target.closest('input, textarea, select, [role="slider"]')
       )
         return;
-      // Anything under the finger scrolled away from its top scrolls.
+      // Anything under the finger scrolled away from its top scrolls, and
+      // what takes its own touches (touch-action: none, as the canvas does)
+      // keeps them; the sheet's own header takes them for this pull.
       for (let at: Element | null = target; at; at = at.parentElement) {
         if (at.scrollTop > 0) return;
         if (at === dialog) break;
+        if (
+          at.parentElement !== dialog &&
+          getComputedStyle(at).touchAction === "none"
+        )
+          return;
       }
       const [touch] = event.touches;
       from = { x: touch.clientX, y: touch.clientY };

@@ -145,6 +145,114 @@ test("the canvas pans and zooms like a plane", async ({
   ).toBeInViewport();
 });
 
+// The Files sheet's canvas, its stage, and the zoom level it shows.
+async function phoneCanvas(app, session) {
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("dialog", { name: "Files" });
+  await files.getByRole("button", { name: "design", exact: true }).click();
+  await files.getByRole("button", { name: "Canvas" }).click();
+  await expect(
+    app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
+  ).toBeVisible();
+  const level = files.locator(".canvas-zoom .small");
+  const box = await files.locator(".canvas-stage").boundingBox();
+  return {
+    files,
+    stage: files.locator(".canvas-stage"),
+    cx: box.x + box.width / 2,
+    cy: box.y + box.height / 2,
+    percent: async () => Number.parseInt(await level.textContent(), 10),
+  };
+}
+
+test("one finger pans and two pinch the canvas in a phone's sheet, never pulling it closed", async ({
+  browser,
+  browserName,
+  storageState,
+  session,
+  host,
+}) => {
+  test.skip(browserName !== "chromium", "touch is driven through CDP");
+  await design(host.project);
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+    storageState,
+  });
+  try {
+    const app = await context.newPage();
+    const { files, cx, cy, percent } = await phoneCanvas(app, session);
+    const cdp = await context.newCDPSession(app);
+    // The fingers spread, the lower one moving down as a pull would.
+    const touch = (type, spread) =>
+      cdp.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints:
+          type === "touchEnd"
+            ? []
+            : [
+                { x: cx, y: cy - 20, id: 1 },
+                { x: cx, y: cy + 20 + spread, id: 2 },
+              ],
+      });
+    // One finger dragging down pans the plane; the sheet stays put.
+    const plane = files.locator(".canvas-plane");
+    const placed = await plane.getAttribute("style");
+    const one = (type, y) =>
+      cdp.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: type === "touchEnd" ? [] : [{ x: cx, y, id: 1 }],
+      });
+    await one("touchStart", cy - 100);
+    for (let y = cy - 90; y <= cy + 100; y += 10) await one("touchMove", y);
+    await expect(files).not.toHaveAttribute("data-dragging", "");
+    await one("touchEnd", cy + 100);
+    await expect(files).toBeVisible();
+    await expect(plane).not.toHaveAttribute("style", placed);
+    const before = await percent();
+    await touch("touchStart", 0);
+    for (let spread = 10; spread <= 160; spread += 10)
+      await touch("touchMove", spread);
+    await touch("touchEnd", 160);
+    expect(await percent()).toBeGreaterThan(before * 2);
+    await expect(files).toBeVisible();
+    await expect(files).not.toHaveAttribute("data-dragging", "");
+  } finally {
+    await context.close();
+  }
+});
+
+test("a trackpad pinch as Safari sends it zooms the canvas", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await design(host.project);
+  await app.setViewportSize({ width: 390, height: 844 });
+  const { stage, cx, cy, percent } = await phoneCanvas(app, session);
+  const before = await percent();
+  await stage.evaluate(
+    (node, [x, y]) => {
+      for (const [type, scale] of [
+        ["gesturestart", 1],
+        ["gesturechange", 1.5],
+        ["gesturechange", 2],
+      ])
+        node.dispatchEvent(
+          Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
+            scale,
+            clientX: x,
+            clientY: y,
+          }),
+        );
+    },
+    [cx, cy],
+  );
+  await expect.poll(percent).toBeGreaterThanOrEqual(before * 2 - 1);
+});
+
 test("a page opened: select and comment, tweaks, print", async ({
   page: app,
   session,
@@ -245,7 +353,9 @@ test("a design system shows as one page, and its themes under Tweaks", async ({
   await expect(
     book.getByRole("heading", { name: "Brand", level: 1 }),
   ).toBeVisible();
-  await expect(book.getByText("The ground", { exact: true }).first()).toBeVisible();
+  await expect(
+    book.getByText("The ground", { exact: true }).first(),
+  ).toBeVisible();
   await expect(book.getByText("Inside controls")).toBeVisible();
   await expect(book.getByRole("heading", { name: "Button" })).toBeVisible();
   await expect(

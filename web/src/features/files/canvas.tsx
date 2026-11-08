@@ -147,6 +147,8 @@ export default function Canvas({
     const box = stage.current;
     if (box) zoomAt(by, box.clientWidth / 2, box.clientHeight / 2);
   };
+  // One pointer pans, two pinch. A pointer that moved opens nothing.
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
   // The wheel pans; with ⌘ or Ctrl (a trackpad pinch sends Ctrl) it zooms.
   // biome-ignore lint/correctness/useExhaustiveDependencies: one listener, state by updater
   useEffect(() => {
@@ -168,11 +170,36 @@ export default function Canvas({
           y: v.y - event.deltaY,
         }));
     };
+    // Safari sends a trackpad pinch as gesture events, not the wheel. A
+    // touch pinch sends them too, which the pointers below already zoom.
+    let scale = 1;
+    const gesture = (event: Event) => {
+      const {
+        scale: next,
+        clientX,
+        clientY,
+      } = event as Event & {
+        scale: number;
+        clientX: number;
+        clientY: number;
+      };
+      event.preventDefault();
+      if (event.type === "gesturestart") scale = 1;
+      else if (pointers.current.size < 2) {
+        const at = box.getBoundingClientRect();
+        zoomAt(next / scale, clientX - at.left, clientY - at.top);
+      }
+      scale = next;
+    };
     box.addEventListener("wheel", wheel, { passive: false });
-    return () => box.removeEventListener("wheel", wheel);
+    for (const kind of ["gesturestart", "gesturechange"])
+      box.addEventListener(kind, gesture);
+    return () => {
+      box.removeEventListener("wheel", wheel);
+      for (const kind of ["gesturestart", "gesturechange"])
+        box.removeEventListener(kind, gesture);
+    };
   }, []);
-  // One pointer pans, two pinch. A pointer that moved opens nothing.
-  const pointers = useRef(new Map<number, { x: number; y: number }>());
   const moved = useRef(false);
   const down = (event: PointerEvent) => {
     pointers.current.set(event.pointerId, {
@@ -190,22 +217,35 @@ export default function Canvas({
     if (!moved.current) return;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     if (all.length === 2) {
+      // What was under the fingers' midpoint stays under it, scaled by
+      // how far apart they moved.
       const other = all.find((point) => point !== was)!;
       const at = stage.current!.getBoundingClientRect();
-      const by =
+      const from = {
+        x: (was.x + other.x) / 2 - at.left,
+        y: (was.y + other.y) / 2 - at.top,
+      };
+      const to = {
+        x: (now.x + other.x) / 2 - at.left,
+        y: (now.y + other.y) / 2 - at.top,
+      };
+      const ratio =
         Math.hypot(now.x - other.x, now.y - other.y) /
         (Math.hypot(was.x - other.x, was.y - other.y) || 1);
-      zoomAt(
-        by,
-        (now.x + other.x) / 2 - at.left,
-        (now.y + other.y) / 2 - at.top,
-      );
-    }
-    setView((v) => ({
-      ...v,
-      x: v.x + (now.x - was.x) / all.length,
-      y: v.y + (now.y - was.y) / all.length,
-    }));
+      setView(({ x, y, s }) => {
+        const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s * ratio));
+        return {
+          x: to.x - ((from.x - x) * next) / s,
+          y: to.y - ((from.y - y) * next) / s,
+          s: next,
+        };
+      });
+    } else
+      setView((v) => ({
+        ...v,
+        x: v.x + now.x - was.x,
+        y: v.y + now.y - was.y,
+      }));
     pointers.current.set(event.pointerId, now);
   };
   const up = (event: PointerEvent) => pointers.current.delete(event.pointerId);

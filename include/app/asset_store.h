@@ -27,6 +27,8 @@ inline constexpr size_t kUploadBytes = MiB(8);
 inline constexpr size_t kUploadCount = 8;
 inline constexpr size_t kSessionAssetBytes = MiB(64);
 inline constexpr size_t kGlobalAssetBytes = MiB(512);
+// An asset's record (`<id>.json` beside its bytes), small by construction.
+inline constexpr size_t kAssetRecordBytes = KiB(1);
 
 struct AssetStoreResult {
   json value;
@@ -73,6 +75,15 @@ class AssetStore {
   std::chrono::steady_clock::time_point scanned_ UAGENT_GUARDED_BY(mutex_){};
   size_t bytes_ UAGENT_GUARDED_BY(mutex_) = 0;
 };
+
+// The record of the asset at `stem` (its path without an extension), null
+// when there is none, and the extension its bytes are kept under: empty
+// when the record names one its type cannot have.
+struct AssetRecord {
+  json record;
+  std::string extension;
+};
+AssetRecord ReadAssetRecord(const std::string& stem);
 
 // The process's one store, so its quota scan is shared across callers.
 AssetStore& SessionAssets();

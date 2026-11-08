@@ -444,7 +444,7 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
                                                : scope},
                   {"source", writable ? "uAgent" : scope},
                   {"writable", writable}};
-    if (!ReadRegularFile(entry.path, KiB(512), content, error)) {
+    if (!ReadRegularFile(entry.path, kMemoryFileBytes, content, error)) {
       value["error"] = error;
       return value;
     }
@@ -515,15 +515,11 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
     return {{"error", "unsafe memory path"}};
   }
   std::string previous;
-  const bool exists = PathExists(path.string());
-  if (exists && !ReadRegularFile(path.string(), KiB(512), previous, error)) {
-    return {{"error", error}};
-  }
-  if (!request.contains("revision") ||
-      JsonValue(request, "revision", "") !=
-          (exists ? DocumentRevision(path.string(), previous) : "")) {
-    return {{"error", "This memory changed. Reload it before saving."},
-            {"conflict", true}};
+  bool exists = false;
+  if (json refused = CheckRevision(request, path, kMemoryFileBytes, "memory",
+                                   previous, exists);
+      !refused.is_null()) {
+    return refused;
   }
   if (action != "set" && !exists) return {{"error", "memory not found"}};
   if (action == "rename" || action == "copy") {

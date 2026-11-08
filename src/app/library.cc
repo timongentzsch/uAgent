@@ -165,16 +165,11 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
   if (!AcquireLibraryWriteLease(lease, error)) {
     return {{"error", error}};
   }
-  bool existed = PathExists(path.string());
-  if (existed &&
-      !ReadRegularFile(path.string(), kSkillBodyBytes, previous, error)) {
-    return {{"error", error}};
-  }
-  if (!request.contains("revision") ||
-      JsonValue(request, "revision", "") !=
-          (existed ? DocumentRevision(path.string(), previous) : "")) {
-    return {{"error", "This skill changed. Reload it before saving."},
-            {"conflict", true}};
+  bool existed = false;
+  if (json refused = CheckRevision(request, path, kSkillBodyBytes, "skill",
+                                   previous, existed);
+      !refused.is_null()) {
+    return refused;
   }
   if (action == "forget") {
     std::error_code ec;

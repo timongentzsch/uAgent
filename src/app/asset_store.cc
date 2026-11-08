@@ -45,7 +45,7 @@ AssetUsage InspectAssets(const std::string& folder, bool cleanup) {
                        std::chrono::hours(kOrphanAgeHours)) {
       auto metadata = entry.path();
       metadata.replace_extension(".json");
-      const json record = ReadJsonFile(metadata.string(), 1024);
+      const json record = ReadJsonFile(metadata.string(), kAssetRecordBytes);
       if (!JsonValue(record, "committed", false)) {
         std::filesystem::remove(entry.path(), ec);
         if (!ec) {
@@ -96,7 +96,7 @@ void EvictToolCopies(const std::string& folder, size_t incoming) {
   std::error_code ec;
   for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
     if (entry.path().extension() != ".json") continue;
-    const json record = ReadJsonFile(entry.path().string(), 1024);
+    const json record = ReadJsonFile(entry.path().string(), kAssetRecordBytes);
     if (!JsonValue(record, "tool_copy", false)) continue;
     const auto bytes = JsonValue(record, "bytes", size_t{0});
     copies.push_back({entry.last_write_time(ec), entry.path(), bytes});
@@ -133,6 +133,18 @@ void UnclaimLocked(std::vector<std::pair<std::string, json>>& claims,
 AssetStore& SessionAssets() {
   static AssetStore store;
   return store;
+}
+
+AssetRecord ReadAssetRecord(const std::string& stem) {
+  AssetRecord asset{ReadJsonFile(stem + ".json", kAssetRecordBytes), ""};
+  const std::string mime = JsonValue(asset.record, "mime", "");
+  const std::string extension =
+      JsonValue(asset.record, "extension", ImageExtension(mime));
+  if (extension == ".data" ||
+      (!extension.empty() && extension == ImageExtension(mime))) {
+    asset.extension = extension;
+  }
+  return asset;
 }
 
 AssetStoreResult AssetStore::Store(const std::string& session_path,
@@ -254,18 +266,9 @@ std::string AssetStore::Claim(const std::string& session_path, const json& ids,
       return "invalid attachment name";
     }
     std::string stem = session_path + kSessionAssetsSuffix + "/" + asset_id;
-    std::string metadata, read_error;
-    if (!ReadRegularFile(stem + ".json", 1024, metadata, read_error)) {
-      return "attachment is unavailable";
-    }
-    json asset = json::parse(metadata, nullptr, false);
-    std::string extension = JsonValue(
-        asset, "extension", ImageExtension(JsonValue(asset, "mime", "")));
-    if (extension.empty() ||
-        (extension != ".data" &&
-         extension != ImageExtension(JsonValue(asset, "mime", "")))) {
-      return "invalid file asset";
-    }
+    auto [asset, extension] = ReadAssetRecord(stem);
+    if (asset.is_discarded()) return "attachment is unavailable";
+    if (extension.empty()) return "invalid file asset";
     if (!display.empty()) asset["name"] = display;
     claims.emplace_back(stem + ".json", asset);
     command["attachments"].push_back(

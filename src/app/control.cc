@@ -106,7 +106,7 @@ json ManagementCommand(const std::string& kind, const std::string& argument) {
     request = {{"action", action}, {"key", key}};
     if (action == "set" && value.starts_with("@")) {
       std::string body, error;
-      if (!ReadRegularFile(value.substr(1), KiB(512), body, error)) {
+      if (!ReadRegularFile(value.substr(1), kSkillBodyBytes, body, error)) {
         return {{"error", error}};
       }
       request["content"] = body;

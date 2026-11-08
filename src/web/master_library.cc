@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/app/asset_store.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -93,7 +94,8 @@ void AddShared(const std::string& session, const std::string& session_path,
   for (const auto& entry :
        fs::directory_iterator(session_path + kSessionAssetsSuffix, ec)) {
     if (entry.path().extension() != ".json") continue;
-    const json record = ReadJsonFile(entry.path().string(), 1024);
+    const json record =
+        ReadJsonFile(entry.path().string(), session::kAssetRecordBytes);
     if (!JsonValue(record, "shared", false)) continue;
     items.push_back({{"kind", "file"},
                      {"key", entry.path().stem().string()},

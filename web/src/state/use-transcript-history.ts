@@ -324,7 +324,7 @@ export function useTranscriptHistory(
       if (element.scrollTop < glideTop.current) writeTop(glideTop.current);
       glide();
     } else pin();
-  }, [glide, pin]);
+  }, [glide, pin, writeTop]);
 
   // A reader who moves down into the end follows again: by scrolling there,
   // or by a wheel, swipe or key that finds no more room below. Only the

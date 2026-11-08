@@ -33,29 +33,30 @@ function DesignCard({
   open: (target: FileTarget) => void;
 }) {
   const dir = path.endsWith("/") ? path.slice(0, -1) : "";
-  // A folder's pages, a design system's book first; a page is itself.
+  // A folder's pages, a design system's book first; a page is itself. What
+  // is not there (a name the reply used loosely) gets no card.
+  const folder = dir || path.slice(0, Math.max(0, path.lastIndexOf("/")));
   const pages = useResource(
     () =>
-      dir
-        ? api<{ entries: { name: string; dir: boolean }[] }>(
-            routes.files(session, "list", dir),
-          ).then(
-            (listing) =>
-              listing.entries
-                .filter((entry) => !entry.dir && HTML.test(entry.name))
-                .map((entry) => `${dir}/${entry.name}`)
-                .sort((a, b) =>
-                  a.endsWith("/book.html")
+      api<{ entries: { name: string; dir: boolean }[] }>(
+        routes.files(session, "list", folder),
+      ).then(
+        (listing) =>
+          listing.entries
+            .filter((entry) => !entry.dir && HTML.test(entry.name))
+            .map((entry) => (folder ? `${folder}/${entry.name}` : entry.name))
+            .filter((page) => dir || page === path)
+            .sort((a, b) =>
+              a.endsWith("/book.html")
+                ? -1
+                : b.endsWith("/book.html")
+                  ? 1
+                  : a < b
                     ? -1
-                    : b.endsWith("/book.html")
-                      ? 1
-                      : a < b
-                        ? -1
-                        : 1,
-                ),
-            () => [],
-          )
-        : Promise.resolve([path]),
+                    : 1,
+            ),
+        () => [],
+      ),
     [session, path],
   );
   const preview = usePreviewBase(session);

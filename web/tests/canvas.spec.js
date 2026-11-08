@@ -317,21 +317,28 @@ test("a page opened: select and comment, tweaks, print", async ({
   );
 });
 
-test("a design system shows as one page, and its themes under Tweaks", async ({
+test("a design system's brand book is a page, and its themes are under Tweaks", async ({
   page: app,
   session,
   host,
 }) => {
   const system = join(host.project, "design", "system");
-  await mkdir(join(system, "components", "Button"), { recursive: true });
-  await writeFile(join(system, "README.md"), "# Brand\n\nSquare corners.\n");
+  await mkdir(system, { recursive: true });
   await writeFile(
     join(system, "tokens.css"),
-    ':root, [data-theme="light"] {\n  --page: #ffffff; /* The ground */\n  --space-2: 4px; /* Inside controls */\n}\n[data-theme="dark"] {\n  --page: #000000;\n}\n',
+    ':root, [data-theme="light"] {\n  --page: #ffffff;\n}\n[data-theme="dark"] {\n  --page: #000000;\n}\n',
   );
+  // The book the agent writes: A4 wide, as tall as its pages.
   await writeFile(
-    join(system, "components", "Button", "preview.html"),
-    '<!-- @dsCard group="Actions" height=88 -->\n<!doctype html><title>Button</title><button>Save</button>',
+    join(system, "book.html"),
+    page(
+      "Brand book",
+      '<section style="height:297mm;background:var(--page)"><h1>Brand</h1></section>',
+      "794",
+    ).replace(
+      "</head>",
+      '<meta name="print" content="flow a4"><link rel="stylesheet" href="tokens.css"></head>',
+    ),
   );
   await mkdir(join(host.project, "design", "landing"));
   await writeFile(
@@ -347,43 +354,19 @@ test("a design system shows as one page, and its themes under Tweaks", async ({
   const files = app.getByRole("region", { name: "Files" });
   await files.getByRole("button", { name: "design", exact: true }).click();
   await files.getByRole("button", { name: "system", exact: true }).click();
-  await files.getByRole("button", { name: "System", exact: true }).click();
-  // The brand book: A4 pages from the README, tokens.css and components.
-  const book = app.frameLocator('iframe[title="Brand book"]');
+  await files.getByRole("button", { name: "Canvas" }).click();
+  await files.getByRole("button", { name: "Open Brand book" }).click();
   await expect(
-    book.getByRole("heading", { name: "Brand", level: 1 }),
+    app
+      .frameLocator('iframe[title="Brand book"]')
+      .getByRole("heading", { name: "Brand" }),
   ).toBeVisible();
   await expect(
-    book.getByText("The ground", { exact: true }).first(),
+    files.getByRole("link", { name: "Print or save as PDF" }),
   ).toBeVisible();
-  await expect(book.getByText("Inside controls")).toBeVisible();
-  await expect(book.getByRole("heading", { name: "Button" })).toBeVisible();
-  await expect(
-    book
-      .frameLocator('iframe[title="Button"]')
-      .getByRole("button", { name: "Save" }),
-  ).toBeVisible();
-  await expect(
-    files.getByRole("button", { name: "Print or save as PDF" }),
-  ).toBeVisible();
-  // A pane wider than a page: the book's ground fills it, no blank strip.
-  await files.locator(".system").evaluate((node) => {
-    node.style.width = "1200px";
-  });
-  await expect
-    .poll(() =>
-      files
-        .locator(".system")
-        .evaluate(
-          (node) =>
-            node.getBoundingClientRect().width -
-            node.querySelector("iframe").getBoundingClientRect().width,
-        ),
-    )
-    .toBeLessThan(2);
 
-  // The toggle returns to the list.
-  await files.getByRole("button", { name: "System", exact: true }).click();
+  await files.getByRole("button", { name: "Back to the canvas" }).click();
+  await files.getByRole("button", { name: "Canvas" }).click();
   await files
     .locator(".files-crumbs")
     .getByRole("button", { name: /design$/ })

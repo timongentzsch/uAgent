@@ -47,7 +47,6 @@ import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import type { Node } from "../../shared/types.ts";
 import Canvas, { rows } from "./canvas.tsx";
-import System from "./system.tsx";
 import OpenPage from "./page.tsx";
 
 // The Files pane: a folder's tree, search and previews of text, images and
@@ -198,8 +197,6 @@ export default function Files({
   const [outside, setOutside] = useState(start?.outside ?? "");
   // The folder's pages side by side, rather than its list.
   const [canvas, setCanvas] = useState(false);
-  // A design system's folder as one page: README, tokens, previews.
-  const [system, setSystem] = useState(false);
   // A folder a message cited opens as a canvas when it holds pages.
   const [canvasFor, setCanvasFor] = useState(
     start && !start.file && !start.outside ? start.dir : undefined,
@@ -251,7 +248,7 @@ export default function Files({
   const image = IMAGE.test(file) && !changing;
   const page = HTML.test(file) && !changing && !source;
   // The canvas, or one page, across the whole pane.
-  const stage = ((canvas || system) && !file) || page;
+  const stage = (canvas && !file) || page;
   const content = useResource(
     () =>
       file && !image && !page && !changing
@@ -363,7 +360,6 @@ export default function Files({
   };
   const browse = (path: string) => {
     setCanvas(false);
-    setSystem(false);
     setDir(path);
     setQuery("");
     setShowing("list");
@@ -381,7 +377,6 @@ export default function Files({
     setOutside(next.outside ?? "");
     setQuery("");
     setCanvas(false);
-    setSystem(false);
     setCanvasFor(next.file || next.outside ? undefined : next.dir);
   };
   // A remembered folder that is gone opens the top.
@@ -459,7 +454,7 @@ export default function Files({
   }, [answered]);
   // Still looking: the title keeps the cited name, the viewer says so.
   const seeking = (looking && (!answered || named.length === 1)) || missing;
-  const titled = file || (seeking ? cited!.path : canvas || system ? dir : "");
+  const titled = file || (seeking ? cited!.path : canvas ? dir : "");
   const crumbs = dir ? dir.split("/") : [];
   const folderName = nameOf(folderOf(session)) || "Files";
   const fileError = content.error ? failure(content.error) : undefined;
@@ -514,29 +509,11 @@ export default function Files({
             aria-pressed={canvas}
             onClick={() => {
               setCanvas(!canvas);
-              setSystem(false);
             }}
           >
             Canvas
           </Button>
         )}
-        {!file &&
-          !changing &&
-          !search &&
-          listing.value?.entries.some(
-            (entry) => entry.name === "tokens.css",
-          ) && (
-            <Button
-              variant="secondary"
-              aria-pressed={system}
-              onClick={() => {
-                setSystem(!system);
-                setCanvas(false);
-              }}
-            >
-              System
-            </Button>
-          )}
         {file && !changing && (MARKDOWN.test(file) || HTML.test(file)) && (
           <Button
             variant="secondary"
@@ -616,14 +593,6 @@ export default function Files({
                   (value) => value.text,
                 )
               }
-            />
-          ) : system ? (
-            <System
-              id={id}
-              dir={dir}
-              turn={`${turn}${written}`}
-              page={(path) => pageUrl(path)!}
-              name={folderName}
             />
           ) : (
             <Canvas

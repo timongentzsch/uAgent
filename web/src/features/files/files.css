@@ -433,19 +433,3 @@
   bottom: var(--space-4);
 }
 
-/* A design system's folder as its brand book. */
-.system {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-.system-book {
-  display: block;
-  border: 0;
-  transform-origin: 0 0;
-}
-.system-print {
-  right: var(--space-4);
-  bottom: var(--space-4);
-}

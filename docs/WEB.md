@@ -84,8 +84,9 @@ only too. What is open is read again when a turn ends.
 A folder that holds HTML pages also offers **Canvas**: its pages side by side,
 each live, the way the `design` skill writes a design. Pages named
 `<row>-<name>.html` form a row per name before the dash (`hero-a.html` and
-`hero-b.html` make the row "hero"); − and + zoom, kept per folder on this
-device; on a phone each row scrolls sideways. A page declares its size with
+`hero-b.html` make the row "hero"). The canvas is a plane: drag or scroll to
+pan; pinch, a trackpad pinch or ⌘/Ctrl with the wheel zooms at the pointer;
+− and + zoom, **Fit** shows every page. A page declares its size with
 `<meta name="artboard" content="1440x900">`, or only a width for a page as tall
 as its content. A click opens a page across the pane; **Back** returns to the
 canvas. There, **Select** picks an element: a comment on it is added to your
@@ -101,13 +102,10 @@ image viewer, in a context of its own with no profile or cookies. A page that fa
 your message. A page the agent writes reloads as the write finishes, and the
 agent's reference to the folder opens its canvas.
 
-A folder with a `tokens.css` offers **System**: the design system as a brand
-book in A4 pages, set in its own colours and type. It opens with a cover and
-contents, follows the `README.md` chapter by chapter, then shows the colours of
-every theme with their contrast on the ground, the text styles, the spacing,
-radius and shadow scales, and each `components/<Name>/preview.html` live with
-what it is for. **Print** opens the book alone to print or save as PDF, a sheet
-a page. A page that links a `tokens.css` shows its themes and colours under
+A design system's brand book is a page the agent writes beside its
+`tokens.css`, `book.html`: A4 pages art-directed in the system's own colours
+and type, on its canvas like any page, and printed to PDF a sheet a page. A
+page that links a `tokens.css` shows its themes and colours under
 **Tweaks**, to try at once; **Keep theme** adds them as a line for the agent.
 
 ![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](images/files.gif)

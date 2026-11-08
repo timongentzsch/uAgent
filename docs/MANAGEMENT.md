@@ -60,8 +60,7 @@ In the web UI, the Library lists everything kept in every folder and
 workspace a conversation works in, grouped by place: memories, skills,
 designs and design systems (folders with a page that declares an artboard,
 and folders with a `tokens.css`; see the `design` skill), and files the agent
-shared with `artifact` (files shared before this listing existed are not
-marked and stay out). A rail filters by kind and place, and the search reads
+shared with `artifact`. A rail filters by kind and place, and the search reads
 names, first lines and places. Nothing is copied: each item stays where it
 lives. A memory opens beside the list, where **Move to…** and **Copy to
 everywhere** take it to another place or to every place; a design opens its

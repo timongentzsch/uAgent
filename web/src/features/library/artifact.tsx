@@ -76,6 +76,11 @@ export default function LibraryArtifact({
 }) {
   const kind = item.kind as keyof typeof KIND;
   const file = kind === "file";
+  // A design system's book, which the agent writes beside its tokens.
+  const book =
+    kind === "system"
+      ? item.pages?.find((page) => /(^|\/)book\.html$/.test(page))
+      : undefined;
   const asset =
     file && item.session && item.id ? routes.asset(item.session, item.id) : "";
   return (
@@ -127,9 +132,13 @@ export default function LibraryArtifact({
         ) : (
           <Button
             variant="primary"
-            onClick={() => open({ path: `${item.path}/` })}
+            onClick={() => open({ path: book ?? `${item.path}/` })}
           >
-            {kind === "system" ? "Open its brand book" : "Open canvas"}
+            {kind === "design"
+              ? "Open canvas"
+              : book
+                ? "Open its brand book"
+                : "Open its folder"}
           </Button>
         )}
       </div>

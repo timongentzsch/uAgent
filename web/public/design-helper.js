@@ -139,6 +139,26 @@
     root.style.cursor = on ? "crosshair" : "";
     if (!on) picked = null;
   };
+  // A zoom over the page is the pane's: ⌘ or Ctrl and the wheel (a
+  // trackpad pinch), or Safari's pinch, at the pointer.
+  const zoom = (by, event) =>
+    send("zoom", { by, x: event.clientX, y: event.clientY });
+  addEventListener(
+    "wheel",
+    (event) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      zoom(Math.exp(-event.deltaY * 0.01), event);
+    },
+    { passive: false },
+  );
+  let pinch = 1;
+  for (const kind of ["gesturestart", "gesturechange"])
+    addEventListener(kind, (event) => {
+      event.preventDefault();
+      if (event.type === "gesturechange") zoom(event.scale / pinch, event);
+      pinch = event.type === "gesturestart" ? 1 : event.scale;
+    });
   addEventListener("keydown", (event) => {
     const field = event.target.closest?.(
       "input, textarea, select, [contenteditable]",

@@ -36,7 +36,8 @@ export type PageMessage =
   | { type: "error"; message: string; line: number }
   | { type: "hover" | "picked"; rect: Rect }
   | ({ type: "pick" } & Pick)
-  | { type: "key"; key: string };
+  | { type: "key"; key: string }
+  | { type: "zoom"; by: number; x: number; y: number };
 
 // Tells a page what to do: select on or off, or set a tweak.
 export const tell = (

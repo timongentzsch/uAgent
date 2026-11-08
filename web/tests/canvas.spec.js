@@ -141,7 +141,7 @@ test("the canvas pans and zooms like a plane", async ({
   );
   await app.mouse.up();
   await expect(plane).not.toHaveAttribute("style", moved);
-  await expect(files.getByRole("button", { name: "Canvas" })).toBeVisible();
+  await expect(files.locator(".canvas-page")).toHaveCount(3);
   await files.getByRole("button", { name: "Fit" }).click();
   await expect(
     files.getByRole("button", { name: "Open Hero A" }),
@@ -382,10 +382,6 @@ test("a design system's brand book is a page, and its themes are under Tweaks", 
   ).toBeVisible();
 
   await files.getByRole("button", { name: "Back to the list" }).click();
-  await files
-    .locator(".files-crumbs")
-    .getByRole("button", { name: /design$/ })
-    .click();
   await files.getByRole("button", { name: "landing", exact: true }).click();
   await files.getByRole("button", { name: "hero-a.html", exact: true }).click();
   await files.getByRole("button", { name: "Tweaks" }).click();
@@ -469,9 +465,56 @@ test("Back closes the open page and shows the view it was opened from", async ({
   await files.getByRole("button", { name: "Open Hero B" }).click();
   await files.getByRole("button", { name: "Back to the canvas" }).click();
   await expect(files.locator(".canvas-page")).toHaveCount(3);
-  // Toggled off, the canvas gives the list back.
-  await files.getByRole("button", { name: "Canvas" }).click();
+  // Leaving the canvas gives the list back.
+  await files.getByRole("button", { name: "Back to the list" }).click();
   await expect(
     files.getByRole("button", { name: "cover.html", exact: true }),
   ).toBeVisible();
+});
+
+test("an opened page zooms as the canvas does, from the controls and over the page", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await design(host.project);
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "design", exact: true }).click();
+  await files
+    .getByRole("button", { name: "01-hero-a.html", exact: true })
+    .click();
+  await expect(
+    app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
+  ).toBeVisible();
+  const level = files.locator(".page-body .zoom-controls output");
+  const percent = async () => Number.parseInt(await level.textContent(), 10);
+  // It opens at Fit: the whole artboard, so Fit has nothing to do.
+  const fitted = await percent();
+  expect(fitted).toBeLessThan(100);
+  await expect(files.getByRole("button", { name: "Fit" })).toBeDisabled();
+  // + zooms in; the page is then larger than the pane and scrolls.
+  await files.getByRole("button", { name: "Zoom in" }).click();
+  await files.getByRole("button", { name: "Zoom in" }).click();
+  expect(await percent()).toBeGreaterThan(fitted);
+  const scroller = files.locator(".page-scroll");
+  expect(
+    await scroller.evaluate((box) => box.scrollWidth > box.clientWidth),
+  ).toBe(true);
+  // ⌘ or Ctrl and the wheel over the page itself zooms too.
+  const before = await percent();
+  await app
+    .frameLocator('iframe[title="Hero A"]')
+    .locator("h1")
+    .dispatchEvent("wheel", {
+      ctrlKey: true,
+      deltaY: -100,
+      clientX: 10,
+      clientY: 10,
+    });
+  await expect.poll(percent).toBeGreaterThan(before);
+  await files.getByRole("button", { name: "Fit" }).click();
+  await expect.poll(percent).toBe(fitted);
 });

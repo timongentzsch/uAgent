@@ -76,10 +76,21 @@ the host).
 conversation's folder beside the chat, or as a sheet on a small screen. It
 never writes. Search finds a file by name anywhere in the folder. Code opens
 with line numbers and highlighting, Markdown rendered with its images
-(**Source** shows the text), and an image at full size on a click; any other
-file offers a download. In a git repository, **Changes** lists what differs
+(**Source** shows the text), and an image at full size on a click; an HTML page runs live
+(**Source** shows its code); any other file offers a download. In a git repository, **Changes** lists what differs
 from the last commit, with its count, and opens each as a diff; it is read
 only too. What is open is read again when a turn ends.
+
+A folder that holds HTML pages also offers **Canvas**: its pages side by side,
+each live, the way the `design` skill writes a design. Pages named
+`<row>-<name>.html` form a row per name before the dash (`hero-a.html` and
+`hero-b.html` make the row "hero"); − and + zoom, kept per folder on this
+device; on a phone each row scrolls sideways. A page declares its size with
+`<meta name="artboard" content="1440x900">`, or only a width for a page as tall
+as its content. A click opens a page across the pane; **Back** returns to the
+canvas. A page that fails says so, and **Ask agent to fix** puts its errors in
+your message. A page the agent writes reloads as the write finishes, and the
+agent's reference to the folder opens its canvas.
 
 ![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](images/files.gif)
 
@@ -505,7 +516,15 @@ or a revoked device clears local UI state.
   agent can: the [hidden stores](../SECURITY.md#sandboxing) and µAgent's own
   settings files are refused, and nothing outside the folder is served,
   through a symlink or otherwise. Images are served inline under a
-  sandboxing policy; every other file, HTML included, only as a download.
+  sandboxing policy; every other file only as a download.
+- A folder's pages open from a preview address, `/preview/<token>/…`, that a
+  device gets for a conversation; it lasts until the host stops or a device
+  is revoked. It serves only web files (pages, stylesheets, scripts, data,
+  fonts, media) with the same refusals as above, carries no cookie, and is
+  the one place a request with `Origin: null` is accepted, for reading. Each
+  page runs sandboxed in an opaque origin, so it reaches neither the app nor
+  the API, and its policy lets it load only from its own address and Google
+  Fonts, so it cannot send its address anywhere.
 - The page runs under a content security policy that allows only its own
   scripts, connections and frames. Attached HTML opens sandboxed in an opaque
   origin.

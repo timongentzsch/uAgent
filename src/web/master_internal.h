@@ -99,6 +99,10 @@ class Master {
   void Upload(const Request&, Response&, const httplib::ContentReader&);
   void AssetRead(const Request&, Response&);
   void Files(const Request&, Response&);
+  // A conversation's folder, read only, for sandboxed pages that carry no
+  // cookie: the token in the path is the grant.
+  void PreviewGrant(const Request&, Response&);
+  void Preview(const Request&, Response&);
 
   WebOptions options_;
   std::string executable_, directory_, local_, local_authority_, origin_,
@@ -115,6 +119,11 @@ class Master {
       SnapshotFile(SettingsPath());
   Pipe host_wake_;
   std::vector<Device> devices_ UAGENT_GUARDED_BY(mutex_);
+  // Preview tokens by session id; they last until the host stops or a
+  // device is revoked.
+  std::map<std::string, std::string> previews_ UAGENT_GUARDED_BY(mutex_);
+  // The script every previewed page runs first (web/public/design-helper.js).
+  std::string design_helper_;
   // The open event streams, oldest first. Each holds a flag that ends it at
   // its next step.
   std::list<std::shared_ptr<std::atomic<bool>>> streams_

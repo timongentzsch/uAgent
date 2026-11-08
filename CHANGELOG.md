@@ -4,6 +4,7 @@
 
 ### Changes
 
+- **Designs you see live beside the chat.** A folder of HTML pages opens as a canvas in the Files pane: every page runs live in a sandbox that reaches neither the app nor its API, rows group by name, a page the agent writes reloads at once, and one that fails offers its errors to the agent. The new `design` skill teaches the agent the format, the craft rules and how to build a design system from your code. `write_file` can copy a file you attached into the folder (`from`), so a design can use your logo or photos.
 - **Arrivals glide, as in a messenger.** While you follow a reply, the view eases to new content instead of jumping, a new step, message or paragraph fades in where it lands, and your sent message rises from the input. Jump to latest glides down. Any scroll, key or touch takes over at once; reduced motion keeps everything instant. The three durations are tokens (`--motion-glide`, `--motion-arrive`, `--motion-send`), so your own stylesheet can slow them, speed them up or turn them off with `0ms`.
 
 - **Sending feels settled.** Your message keeps one row from the moment you send it instead of flickering once; "Working" and its clock live only in the status line under the input, while the turn's row counts its steps; on a phone that line opens and closes smoothly instead of snapping the transcript.

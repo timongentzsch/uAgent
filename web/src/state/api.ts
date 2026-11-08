@@ -51,6 +51,8 @@ export const routes = {
     mode: "list" | "read" | "raw" | "find" | "changes" | "diff",
     value: string,
   ) => `/api/sessions/${session}/files?${mode}=${encodeURIComponent(value)}`,
+  // POST: the address the folder's pages are served from, sandboxed.
+  preview: (session: string) => `/api/sessions/${session}/preview`,
 };
 
 // A random 32-hex id for a command: the host answers and deduplicates by it.

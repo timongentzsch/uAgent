@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "include/agent/activity.h"
+#include "include/app/artifact.h"
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"
@@ -125,8 +126,11 @@ TEST_CASE(TestAttachmentEncoding) {
   CHECK(error.empty());
   CHECK(deliveries.size() == 1);
   CHECK(deliveries[0]["delivery"] == "Image");
-  CHECK(request[0]["content"].size() == 3);
+  // The first copy names where it is kept, for write_file's `from`.
+  CHECK(request[0]["content"].size() == 4);
   CHECK(JsonValue(request[0]["content"][2], "text", "")
+            .starts_with("[Attached: "));
+  CHECK(JsonValue(request[0]["content"][3], "text", "")
             .find("earlier attachment") != std::string::npos);
   size_t image_parts = 0;
   for (const json& part : request[0]["content"]) {
@@ -398,6 +402,47 @@ TEST_CASE(TestAudioVideoAttachments) {
 
   std::error_code cleanup;
   fs::remove_all(root, cleanup);
+}
+
+// write_file's `from` copies an attachment of this conversation into the
+// folder, byte for byte, and refuses any other file.
+TEST_CASE(TestWriteFileCopiesAttachments) {
+  namespace fs = std::filesystem;
+  fs::path root = fs::temp_directory_path() / "uagent-copy-attachments";
+  fs::remove_all(root);
+  fs::create_directories(root / "history.jsonl.assets");
+  fs::create_directories(root / "work");
+  const std::string png("\x89PNG\r\n\x1a\n\0bytes", 13);
+  CHECK(ToolWriteFile((root / "history.jsonl.assets/logo.png").string(), png)
+            .Ok());
+  CHECK(ToolWriteFile((root / "elsewhere.png").string(), png).Ok());
+  ActivitySupervisor processes;
+  std::vector<Tool> tools = BuiltinTools(processes, root / "work");
+  CopyAttachments(tools, (root / "history.jsonl").string());
+  const Tool* write = FindTool(tools, "write_file");
+  CHECK(write && write->parameters["properties"].contains("from"));
+  if (!write) return;
+  ToolContext context;
+  const std::string target = (root / "work/logo.png").string();
+  CHECK(write
+            ->run({{"path", target},
+                   {"from", (root / "history.jsonl.assets/logo.png").string()}},
+                  context)
+            .Ok());
+  CHECK(ReadFile(target, 1024).value_or("") == png);
+  CHECK(!write
+             ->run({{"path", (root / "work/other.png").string()},
+                    {"from", (root / "elsewhere.png").string()}},
+                   context)
+             .Ok());
+  CHECK(
+      !write->run({{"path", (root / "work/none.txt").string()}}, context).Ok());
+  CHECK(write
+            ->run({{"path", (root / "work/note.txt").string()},
+                   {"content", "plain"}},
+                  context)
+            .Ok());
+  fs::remove_all(root);
 }
 
 }  // namespace uagent

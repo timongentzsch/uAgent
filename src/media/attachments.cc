@@ -882,6 +882,9 @@ bool PrepareAttachments(json& messages,
                                      : "; contents not included") +
                           "]"}});
       } else if (detail.empty()) {
+        // Where it is kept, so a tool can copy it (write_file's `from`).
+        prepared.push_back(
+            {{"type", "text"}, {"text", "[Attached: " + path + "]"}});
         // Successful first delivery: later identical parts in this request
         // reference it (see above) instead of duplicating payload.
         const std::string fingerprint = AttachmentFingerprint(attachment);

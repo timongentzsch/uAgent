@@ -263,6 +263,57 @@ std::optional<json> ReadDiff(const fs::path& folder, const Changes& changes,
               {"more", more}};
 }
 
+// What a previewed page may load, by name: its pages, stylesheets, scripts,
+// data, fonts and media. Anything else in the folder stays out of reach.
+std::string PreviewMime(const fs::path& path) {
+  const std::string ext = AsciiLower(path.extension().string());
+  for (const auto& [suffix, mime] : {std::pair{".html", "text/html"},
+                                     {".htm", "text/html"},
+                                     {".css", "text/css"},
+                                     {".js", "text/javascript"},
+                                     {".mjs", "text/javascript"},
+                                     {".json", "application/json"},
+                                     {".woff2", "font/woff2"},
+                                     {".woff", "font/woff"},
+                                     {".ttf", "font/ttf"},
+                                     {".otf", "font/otf"}}) {
+    if (ext == suffix) return mime;
+  }
+  const std::string mime = AttachmentMime(path.string());
+  return mime.starts_with("image/") || mime.starts_with("audio/") ||
+                 mime.starts_with("video/")
+             ? mime
+             : std::string();
+}
+
+// The page may reach its own folder's address and Google Fonts, nothing else:
+// no connection, image or form can carry the address, and so its token, away.
+// The address is written out rather than as 'self', which engines resolve
+// differently in an opaque origin.
+std::string PreviewPolicy(const std::string& origin, const std::string& base) {
+  const std::string self = origin + base;
+  return "sandbox allow-scripts allow-forms allow-modals; default-src " + self +
+         "; script-src " + self + " 'unsafe-inline'; style-src " + self +
+         " 'unsafe-inline' https://fonts.googleapis.com; font-src " + self +
+         " https://fonts.gstatic.com data:; img-src " + self +
+         " data: blob:; media-src " + self +
+         " data: blob:; form-action 'none'; base-uri 'none'; "
+         "frame-ancestors " +
+         origin;
+}
+
+// `script` inlined first in the page: after its doctype, so the page keeps
+// standards mode, and the parser puts it first in <head>.
+std::string WithScript(std::string html, const std::string& script) {
+  size_t at = html.starts_with("\xEF\xBB\xBF") ? 3 : 0;
+  if (AsciiLower(html.substr(at, 9)) == "<!doctype") {
+    const size_t close = html.find('>', at);
+    at = close == std::string::npos ? at : close + 1;
+  }
+  html.insert(at, "<script>" + script + "</script>");
+  return html;
+}
+
 }  // namespace
 
 void Master::Files(const Request& request, Response& response) {
@@ -357,6 +408,59 @@ void Master::Files(const Request& request, Response& response) {
   Reply(response, {{"text", Utf8Prefix(std::move(bytes), kFileViewBytes)},
                    {"bytes", size},
                    {"more", more}});
+}
+
+void Master::PreviewGrant(const Request& request, Response& response) {
+  const std::string id = request.matches[1].str();
+  std::lock_guard lock(mutex_);
+  if (host_.Folder(id).empty()) {
+    Error(response, "unknown session", 404);
+    return;
+  }
+  std::string& token = previews_[id];
+  if (token.empty()) token = RandomToken();
+  if (token.empty()) {
+    previews_.erase(id);
+    Error(response, "cannot make a preview token", 500);
+    return;
+  }
+  Reply(response, {{"base", "/preview/" + token + "/"}});
+}
+
+void Master::Preview(const Request& request, Response& response) {
+  const std::string token = request.matches[1].str();
+  const std::string relative = request.matches[2].str();
+  std::string folder;
+  {
+    std::lock_guard lock(mutex_);
+    for (const auto& [id, granted] : previews_) {
+      if (EqualSecret(token, granted)) folder = host_.Folder(id);
+    }
+  }
+  std::optional<fs::path> root =
+      folder.empty() ? std::nullopt : CanonicalDirectory(folder);
+  std::optional<fs::path> target =
+      !root || relative.find('\0') != std::string::npos
+          ? std::nullopt
+          : Resolve(*root, relative);
+  const std::string mime = target ? PreviewMime(*target) : std::string();
+  const std::string* origin = ExpectedOrigin(request);
+  std::string bytes, error;
+  if (mime.empty() || !origin ||
+      !ReadRegularFile(target->string(), kUploadBytes, bytes, error)) {
+    Error(response, "not found", 404);
+    return;
+  }
+  if (mime == "text/html") bytes = WithScript(std::move(bytes), design_helper_);
+  response.headers.erase("Content-Security-Policy");
+  response.headers.erase("Cross-Origin-Resource-Policy");
+  response.set_header("Content-Security-Policy",
+                      PreviewPolicy(*origin, "/preview/" + token + "/"));
+  // The page's own origin is opaque: its loads are cross-origin.
+  response.set_header("Cross-Origin-Resource-Policy", "cross-origin");
+  response.set_header("Access-Control-Allow-Origin", "*");
+  response.set_content(std::move(bytes),
+                       mime == "text/html" ? "text/html; charset=utf-8" : mime);
 }
 
 }  // namespace uagent::web::master

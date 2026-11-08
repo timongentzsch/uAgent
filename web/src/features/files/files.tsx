@@ -40,7 +40,12 @@ import { MarkdownFile } from "../../shared/markdown-view.tsx";
 import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
 import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
-import { IMAGE, MARKDOWN } from "../../shared/file-types.ts";
+import { HTML, IMAGE, MARKDOWN } from "../../shared/file-types.ts";
+import { useHostContext } from "../../state/host-context.ts";
+import { useSnapshots } from "../../state/snapshot-store.ts";
+import type { Node } from "../../shared/types.ts";
+import Canvas from "./canvas.tsx";
+import { OpenPage } from "./frame.tsx";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
@@ -116,6 +121,19 @@ function place({ path: written, lines, changes }: FileTarget, folder: string) {
   };
 }
 
+const WRITES = new Set(["Wrote", "Edited", "Deleted"]);
+// The last file write that finished, as "<node>\n<path written>".
+function lastWrite(nodes: readonly Node[] = []) {
+  for (let at = nodes.length - 1; at >= 0; at--) {
+    const node = nodes[at];
+    if (node.kind === "call" && node.state === "ok" && node.headline) {
+      if (WRITES.has(node.headline.verb))
+        return `${node.id}\n${node.headline.target}`;
+    }
+  }
+  return "";
+}
+
 // The conversation's folder, read only: a list with search beside a viewer
 // for text and code, rendered markdown and images. A turn that ends may
 // have changed the folder, so what is open is read again then.
@@ -163,11 +181,30 @@ export default function Files({
   >(start?.cited);
   // A cited path outside the folder, which the pane cannot show.
   const [outside, setOutside] = useState(start?.outside ?? "");
+  // The folder's pages side by side, rather than its list.
+  const [canvas, setCanvas] = useState(false);
+  // A folder a message cited opens as a canvas when it holds pages.
+  const [canvasFor, setCanvasFor] = useState(
+    start && !start.file && !start.outside ? start.dir : undefined,
+  );
   const moved = usePushDirection(showing === "file");
+  const { store } = useHostContext();
+  const written = useSnapshots(store, (all) =>
+    lastWrite(all[id]?.state?.view?.nodes),
+  );
+  // Each page's version: a write to it reloads its frame.
+  const [versions, setVersions] = useState<Record<string, number>>({});
+  const preview = useResource(
+    () => api<{ base: string }>(routes.preview(id), {}),
+    [id],
+  );
+  const pageUrl = (path: string) =>
+    preview.value &&
+    `${preview.value.base}${path.split("/").map(encodeURIComponent).join("/")}?v=${versions[path] ?? 0}.${versions[""] ?? 0}`;
   const url = (path: string) => routes.files(id, "raw", path);
   const listing = useResource(
     () => api<Listing>(routes.files(id, "list", dir)),
-    [id, dir, turn],
+    [id, dir, turn, written],
   );
   const search = query.trim();
   const found = useResource<Found | undefined>(
@@ -195,15 +232,18 @@ export default function Files({
   const deleted =
     changing && changes.some((c) => c.path === file && c.state === "D");
   const image = IMAGE.test(file) && !changing;
+  const page = HTML.test(file) && !changing && !source;
+  // The canvas, or one page, across the whole pane.
+  const stage = (canvas && !file) || page;
   const content = useResource(
     () =>
-      file && !image && !changing
+      file && !image && !page && !changing
         ? api<FileText>(routes.files(id, "read", file)).then((value) => ({
             ...value,
             path: file,
           }))
         : undefined,
-    [id, file, turn, changing],
+    [id, file, turn, changing, page],
   );
   const diff = useResource(
     () =>
@@ -292,7 +332,7 @@ export default function Files({
     setFile(path);
     setDir(dirOf(path));
     // Rendered Markdown has no lines to mark: cited lines open its source.
-    setSource(!!lines && MARKDOWN.test(path));
+    setSource(!!lines && (MARKDOWN.test(path) || HTML.test(path)));
     setQuery("");
     setShowing("file");
     setCited(lines && { path, lines });
@@ -305,6 +345,7 @@ export default function Files({
     setCited(undefined);
   };
   const browse = (path: string) => {
+    setCanvas(false);
     setDir(path);
     setQuery("");
     setShowing("list");
@@ -321,7 +362,28 @@ export default function Files({
     setCited(next.cited);
     setOutside(next.outside ?? "");
     setQuery("");
+    setCanvas(false);
+    setCanvasFor(next.file || next.outside ? undefined : next.dir);
   };
+  const pages = (listing.value?.entries ?? [])
+    .filter((entry) => !entry.dir && HTML.test(entry.name))
+    .map((entry) => entry.name);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once the listing answers
+  useEffect(() => {
+    if (canvasFor === undefined || canvasFor !== dir || !listing.value) return;
+    setCanvasFor(undefined);
+    if (pages.length) setCanvas(true);
+  }, [listing.value, canvasFor]);
+  // A write reloads the page it changed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
+  useEffect(() => {
+    const target = written.slice(written.indexOf("\n") + 1);
+    if (!target) return;
+    const path = place({ path: target }, folderOf(session)).file;
+    // A page, or what pages share (a stylesheet, an image): all reload.
+    const key = path && HTML.test(path) ? path : "";
+    if (path) setVersions((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
+  }, [written]);
   const handled = useRef(reveal?.at ?? 0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: each request once
   useEffect(() => {
@@ -372,7 +434,7 @@ export default function Files({
   }, [answered]);
   // Still looking: the title keeps the cited name, the viewer says so.
   const seeking = (looking && (!answered || named.length === 1)) || missing;
-  const titled = file || (seeking ? cited!.path : "");
+  const titled = file || (seeking ? cited!.path : canvas ? dir : "");
   const crumbs = dir ? dir.split("/") : [];
   const folderName = nameOf(folderOf(session)) || "Files";
   const fileError = content.error ? failure(content.error) : undefined;
@@ -380,7 +442,19 @@ export default function Files({
   return (
     <section class="files" aria-label="Files" data-showing={showing}>
       <header class="files-head">
-        {(file || outside) && showing === "file" && (
+        {page && (
+          <IconButton
+            class="files-back files-back-canvas"
+            label="Back to the canvas"
+            onClick={() => {
+              setFile("");
+              setCanvas(true);
+            }}
+          >
+            <ChevronLeft />
+          </IconButton>
+        )}
+        {(file || outside) && showing === "file" && !page && (
           <IconButton
             class="files-back"
             label="Back to the list"
@@ -409,7 +483,16 @@ export default function Files({
         {diffText && formatStat(counts) && (
           <span class="files-dir small">{formatStat(counts)}</span>
         )}
-        {file && !changing && MARKDOWN.test(file) && (
+        {!file && !changing && !search && pages.length > 0 && (
+          <Button
+            variant="secondary"
+            aria-pressed={canvas}
+            onClick={() => setCanvas(!canvas)}
+          >
+            Canvas
+          </Button>
+        )}
+        {file && !changing && (MARKDOWN.test(file) || HTML.test(file)) && (
           <Button
             variant="secondary"
             aria-pressed={source}
@@ -458,8 +541,30 @@ export default function Files({
           </IconButton>
         )}
       </header>
+      {stage && (
+        <div class="files-stage">
+          {!preview.value ? (
+            preview.error ? (
+              <LoadError error={preview.error} retry={preview.retry} />
+            ) : (
+              <Spinner label="Opening the pages…" />
+            )
+          ) : page ? (
+            <OpenPage key={file} src={pageUrl(file)!} title={nameOf(file)} />
+          ) : (
+            <Canvas
+              dir={dir}
+              names={pages}
+              page={(path) => pageUrl(path)!}
+              open={open}
+              addToChat={addToChat}
+            />
+          )}
+        </div>
+      )}
       <div
         class="files-columns"
+        hidden={stage || undefined}
         data-direction={moved === "back" ? "back" : undefined}
       >
         <nav

@@ -41,6 +41,7 @@ const EXTENSIONS: Record<string, string> = {
 };
 export const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
 export const MARKDOWN = /\.(md|markdown)$/i;
+export const HTML = /\.html?$/i;
 // Files with no language that are still plainly files.
 const PLAIN = /\.(txt|csv|log|lock|pdf)$/i;
 

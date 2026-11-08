@@ -138,6 +138,19 @@ def answer(handler, body):
             )
         if "artifact-share" not in done:
             return tool_call("artifact", {"path": "report.html"}, call_id="artifact-share")
+    if "Design probe" in prompt and not any(
+        message.get("tool_call_id") == "design-write" for message in body["messages"]
+    ):
+        return tool_call(
+            "write_file",
+            {
+                "path": "design/hero-a.html",
+                "content": '<!doctype html><meta name="artboard" content="1440x900">'
+                "<title>Hero A</title><h1>Rewritten</h1>",
+                "overwrite": True,
+            },
+            call_id="design-write",
+        )
     if "Long diff probe" in prompt and not any(
         message.get("tool_call_id") == "long-write" for message in body["messages"]
     ):

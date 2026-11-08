@@ -115,7 +115,10 @@ std::vector<Tool> BuildTools(AppContext& context,
   // Reading a named URL needs no hosted route, so it does not follow search's
   // availability.
   tools.push_back(WebFetchTool(api));
-  if (!session_path.empty()) tools.push_back(ArtifactTool(session_path));
+  if (!session_path.empty()) {
+    tools.push_back(ArtifactTool(session_path));
+    CopyAttachments(tools, session_path);
+  }
   if (context.channel) {
     tools.push_back(ScheduleTool([app = &context] {
       return ChosenSelection(app->runtime.api, app->provider.providers);

@@ -2,10 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { Minus, Plus, Scan, TriangleAlert } from "lucide-preact";
 import { Button, IconButton } from "../../shared/ui.tsx";
 import Frame, {
-  PAGE_HEIGHT_MAX,
-  PAGE_WIDTH,
   type PageInfo,
   type PageMessage,
+  pageSize,
 } from "../../shared/page-frame.tsx";
 
 // A folder's HTML files on a plane you pan and zoom, each a live page: a
@@ -30,7 +29,7 @@ interface View {
 // What one message may carry of the pages' errors.
 const ERRORS_MAX = 1800;
 
-export const rowOf = (name: string) =>
+const rowOf = (name: string) =>
   name.includes("-") ? name.slice(0, name.indexOf("-")) : "";
 
 // The page's files grouped into rows, rows and files in name order.
@@ -89,16 +88,7 @@ export default function Canvas({
       return next ? { ...all, [name]: next } : all;
     });
   const stage = useRef<HTMLDivElement>(null);
-  const sizeOf = (name: string) => {
-    const info = seen[name]?.info;
-    const fixed = !!info?.artboard.w && !!info.artboard.h;
-    return {
-      w: info?.artboard.w || PAGE_WIDTH,
-      h: fixed
-        ? info!.artboard.h
-        : Math.min(PAGE_HEIGHT_MAX, info?.height || 900),
-    };
-  };
+  const sizeOf = (name: string) => pageSize(seen[name]?.info);
   // Every page's place on the plane.
   // biome-ignore lint/correctness/useExhaustiveDependencies: sizes come from seen
   const placed = useMemo(() => {

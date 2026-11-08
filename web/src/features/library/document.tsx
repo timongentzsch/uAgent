@@ -82,7 +82,6 @@ export default function LibraryDocument({
   entry,
   cwd,
   places,
-  listed,
   online,
   limit,
   close,
@@ -96,8 +95,6 @@ export default function LibraryDocument({
   // place's.
   cwd: string;
   places: LibraryPlace[];
-  // The listing's copy, newer when it changed on disk.
-  listed?: LibraryItem;
   online: boolean;
   limit?: number;
   close: () => void;
@@ -106,6 +103,8 @@ export default function LibraryDocument({
   changed: () => void;
 }) {
   const fresh = "new" in entry;
+  // The listing's copy, newer when it changed on disk.
+  const listed = fresh ? undefined : entry;
   const drafts = useMemo(
     () => tabDrafts<Draft>(storageKeys.library(kind, cwd)),
     [kind, cwd],

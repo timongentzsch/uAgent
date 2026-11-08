@@ -5,10 +5,6 @@
   padding: var(--pad);
   border-bottom: var(--border);
 }
-.management-toolbar > .field {
-  flex: 1;
-  max-width: var(--sheet);
-}
 .management-toolbar > p {
   flex: 1;
   margin: 0;
@@ -23,10 +19,6 @@
   padding: var(--pad);
   overflow: auto;
   border-right: var(--border);
-}
-.management-list > .text-control {
-  margin-bottom: var(--gap);
-  width: 100%;
 }
 .management-editor {
   margin: 0;
@@ -60,7 +52,11 @@
   margin-top: var(--gap);
 }
 .library-group h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
   margin: 0;
+  padding-right: var(--inset-x);
   font-weight: var(--weight-regular);
 }
 .library-group h2 > .folder-label {
@@ -167,12 +163,6 @@
   flex: 0 0 var(--sheet);
   border-left: var(--border);
 }
-.library-group h2 {
-  display: flex;
-  align-items: center;
-  gap: var(--gap);
-  padding-right: var(--inset-x);
-}
 .library-row .row-label {
   display: flex;
   align-items: center;
@@ -216,12 +206,6 @@
   .management-toolbar {
     flex-wrap: wrap;
   }
-  .management-toolbar .field {
-    order: 3;
-    min-width: 100%;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-  }
   .management-toolbar > button {
     margin-left: auto;
   }
@@ -235,8 +219,7 @@
   .editor-head > button {
     display: flex;
   }
-  .management:has(.has-selection) .management-toolbar > :not(.field),
-  .management:has(.has-selection .schedule-editor) .management-toolbar {
+  .management:has(.has-selection) .management-toolbar {
     display: none;
   }
   .management-body.has-selection .management-list {

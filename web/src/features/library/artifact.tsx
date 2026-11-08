@@ -9,7 +9,11 @@ import type {
 import { Button, LoadError, Spinner, Time } from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
 import { useResource } from "../../shared/use-resource.ts";
-import Frame, { PAGE_WIDTH } from "../../shared/page-frame.tsx";
+import Frame, {
+  type PageInfo,
+  pageAddress,
+  pageSize,
+} from "../../shared/page-frame.tsx";
 
 // A design, a design system or a shared file, as the Library shows one: its
 // pages small, and the way to where it is worked on.
@@ -23,31 +27,28 @@ function Thumbnails({ session, pages }: { session: string; pages: string[] }) {
     () => api<{ base: string }>(routes.preview(session), {}),
     [session],
   );
-  // Each page's artboard, once it says; a page is a desktop screen until then.
-  const [sizes, setSizes] = useState<Record<string, { w: number; h: number }>>(
-    {},
-  );
+  // What each page says of itself; a page is a desktop screen until then,
+  // and a tall one shows its top.
+  const [sizes, setSizes] = useState<Record<string, PageInfo>>({});
   if (preview.error)
     return <LoadError error={preview.error} retry={preview.retry} />;
   if (!preview.value) return <Spinner label="Drawing pages…" />;
   return (
     <div class="library-pages">
       {pages.map((page) => {
-        const size = sizes[page];
-        const w = size?.w || PAGE_WIDTH;
-        const h = size?.h || Math.round((PAGE_WIDTH * 10) / 16);
+        const { w, h } = pageSize(sizes[page], 900);
         return (
           <figure key={page}>
             <Frame
-              src={`${preview.value!.base}${page.split("/").map(encodeURIComponent).join("/")}`}
+              src={pageAddress(preview.value!.base, page)}
               title={page}
               width={w}
               height={h}
               scale={THUMB / Math.max(w, h)}
               live={false}
               onMessage={(message) => {
-                if (message.type === "ready" && message.artboard.w)
-                  setSizes((all) => ({ ...all, [page]: message.artboard }));
+                if (message.type === "ready")
+                  setSizes((all) => ({ ...all, [page]: message }));
               }}
             />
             <figcaption class="small muted">
@@ -82,7 +83,7 @@ export default function LibraryArtifact({
       ? item.pages?.find((page) => /(^|\/)book\.html$/.test(page))
       : undefined;
   const asset =
-    file && item.session && item.id ? routes.asset(item.session, item.id) : "";
+    file && item.session ? routes.asset(item.session, item.key) : "";
   return (
     <div class="library-document">
       <div class="editor-head">

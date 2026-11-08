@@ -12,7 +12,9 @@
   };
   const tweaks = () => {
     try {
-      return JSON.parse(document.getElementById("tweaks")?.textContent || "null");
+      return JSON.parse(
+        document.getElementById("tweaks")?.textContent || "null",
+      );
     } catch {
       return null;
     }
@@ -20,11 +22,13 @@
   // A CSS variable, or a data- attribute for the page's CSS to select on.
   const tweak = (name, value) => {
     if (name.startsWith("--")) root.style.setProperty(name, String(value));
-    else if (/^[a-z][a-z0-9-]{0,31}$/.test(name)) root.dataset[name] = String(value);
+    else if (/^[a-z][a-z0-9-]{0,31}$/.test(name))
+      root.dataset[name] = String(value);
   };
   addEventListener("DOMContentLoaded", () => {
     for (const [name, spec] of Object.entries(tweaks() || {}))
-      if (!name.startsWith("--") && spec && "default" in spec) tweak(name, spec.default);
+      if (!name.startsWith("--") && spec && "default" in spec)
+        tweak(name, spec.default);
   });
 
   if (parent === window) {
@@ -46,7 +50,10 @@
     parent.postMessage({ uagentDesign: 1, type, ...data }, "*");
   const height = () => root.scrollHeight;
   const failed = (message, line) =>
-    send("error", { message: String(message || "error").slice(0, 300), line: line || 0 });
+    send("error", {
+      message: String(message || "error").slice(0, 300),
+      line: line || 0,
+    });
   addEventListener("error", (event) => failed(event.message, event.lineno));
   addEventListener("unhandledrejection", (event) =>
     failed(event.reason?.message || event.reason, 0),
@@ -55,11 +62,12 @@
     send("ready", {
       title: document.title,
       artboard: artboard(),
-      print: meta("print"),
       tweaks: tweaks(),
       height: height(),
       // Where its stylesheets are, so the app can read a design system's.
-      sheets: [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href),
+      sheets: [...document.querySelectorAll('link[rel="stylesheet"]')].map(
+        (link) => link.href,
+      ),
     });
     let last = 0;
     new ResizeObserver(() => {
@@ -76,12 +84,20 @@
   const step = (element) => {
     if (element.id) return `#${CSS.escape(element.id)}`;
     const tag = element.localName;
-    const same = [...element.parentElement.children].filter((e) => e.localName === tag);
-    return same.length > 1 ? `${tag}:nth-of-type(${same.indexOf(element) + 1})` : tag;
+    const same = [...element.parentElement.children].filter(
+      (e) => e.localName === tag,
+    );
+    return same.length > 1
+      ? `${tag}:nth-of-type(${same.indexOf(element) + 1})`
+      : tag;
   };
   const selector = (element) => {
     const steps = [];
-    for (let at = element; at && at !== document.body && at !== root; at = at.parentElement) {
+    for (
+      let at = element;
+      at && at !== document.body && at !== root;
+      at = at.parentElement
+    ) {
       steps.unshift(step(at));
       if (at.id) break;
     }
@@ -91,7 +107,9 @@
   let frame = 0;
   const hover = (event) => {
     cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => send("hover", { rect: box(event.target) }));
+    frame = requestAnimationFrame(() =>
+      send("hover", { rect: box(event.target) }),
+    );
   };
   const pick = (event) => {
     event.preventDefault();
@@ -101,7 +119,12 @@
       rect: box(picked),
       selector: selector(picked),
       tag: picked.localName,
-      text: (picked.innerText || picked.getAttribute("alt") || picked.getAttribute("aria-label") || "")
+      text: (
+        picked.innerText ||
+        picked.getAttribute("alt") ||
+        picked.getAttribute("aria-label") ||
+        ""
+      )
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 60),
@@ -117,13 +140,16 @@
     if (!on) picked = null;
   };
   addEventListener("keydown", (event) => {
-    const field = event.target.closest?.("input, textarea, select, [contenteditable]");
+    const field = event.target.closest?.(
+      "input, textarea, select, [contenteditable]",
+    );
     if (!field && ["Escape", "ArrowLeft", "ArrowRight"].includes(event.key))
       send("key", { key: event.key });
   });
   addEventListener("message", (event) => {
     if (event.source !== parent || event.data?.uagentDesign !== 1) return;
     if (event.data.type === "select") select(!!event.data.on);
-    if (event.data.type === "tweak") tweak(String(event.data.name), event.data.value);
+    if (event.data.type === "tweak")
+      tweak(String(event.data.name), event.data.value);
   });
 })();

@@ -100,6 +100,9 @@ const detail = (item: LibraryItem) =>
       : item.kind === "file"
         ? bytes(item.bytes ?? 0)
         : item.description || item.source;
+// The control a memory or skill is managed through.
+const control = (kind?: LibraryKind) =>
+  kind === "skill" ? ("skills" as const) : ("memory" as const);
 type Selection =
   | { key: string; place: string }
   | { new: LibraryKind; where: string };
@@ -226,7 +229,7 @@ export default function Library({
     selected && "new" in selected ? (
       <LibraryDocument
         key={`new-${selected.new}`}
-        kind={selected.new === "skill" ? "skills" : "memory"}
+        kind={control(selected.new)}
         entry={{
           new: true,
           content:
@@ -248,11 +251,10 @@ export default function Library({
     ) : current?.kind === "memory" || current?.kind === "skill" ? (
       <LibraryDocument
         key={`${current.place}\n${current.key}`}
-        kind={current.kind === "skill" ? "skills" : "memory"}
+        kind={control(current.kind)}
         entry={current}
         cwd={home(current.place)}
         places={places}
-        listed={current}
         online={online}
         limit={listing.value?.limits[current.kind]}
         close={() => setSelected(null)}
@@ -423,7 +425,7 @@ export default function Library({
       {importing && (
         <ImportDialog
           cwd={home()}
-          kind={importing === "skill" ? "skills" : "memory"}
+          kind={control(importing)}
           close={() => {
             setImporting(null);
             listing.retry();

@@ -11,7 +11,6 @@ export interface PageInfo {
   title: string;
   // A fixed artboard's size; 0 × 0 for a page, which is as tall as it is.
   artboard: { w: number; h: number };
-  print: string;
   tweaks: Record<string, unknown> | null;
   height: number;
   // Its stylesheets' addresses.
@@ -46,9 +45,23 @@ export const tell = (
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 
 // A page is drawn this wide when it names no size.
-export const PAGE_WIDTH = 1440;
+const PAGE_WIDTH = 1440;
 // How tall a page's frame may grow on the canvas.
-export const PAGE_HEIGHT_MAX = 4000;
+const PAGE_HEIGHT_MAX = 4000;
+
+// The size a page is drawn at: its artboard, or as wide as it says (else
+// PAGE_WIDTH) and as tall as it measured, up to `most`.
+export function pageSize(info?: PageInfo, most = PAGE_HEIGHT_MAX) {
+  const fixed = !!info?.artboard.w && !!info.artboard.h;
+  return {
+    fixed,
+    w: info?.artboard.w || PAGE_WIDTH,
+    h: fixed ? info!.artboard.h : Math.min(most, info?.height || 900),
+  };
+}
+// A file of the folder at its preview address.
+export const pageAddress = (base: string, path: string) =>
+  base + path.split("/").map(encodeURIComponent).join("/");
 
 export default function Frame({
   src,

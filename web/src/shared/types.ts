@@ -965,13 +965,11 @@ export interface LibraryItem {
   // for every place's.
   kind?: LibraryKind;
   place?: string;
-  // A design's page count and first pages; a shared file's conversation,
-  // asset id and type.
+  // A design's page count and first pages; a shared file's conversation
+  // (its key is the asset's id).
   count?: number;
   pages?: string[];
   session?: string;
-  id?: string;
-  mime?: string;
 }
 export type LibraryKind = "memory" | "skill" | "design" | "system" | "file";
 // A folder or workspace the Library lists, with its latest conversation.

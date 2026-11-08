@@ -15,6 +15,7 @@ import Frame, {
   type PageInfo,
   type Pick,
   type Rect,
+  pageSize,
   tell,
 } from "../../shared/page-frame.tsx";
 import { readTokens } from "./tokens.ts";
@@ -34,7 +35,6 @@ interface Tweak {
   step?: number;
   // Shown beside the value, never applied: the page's CSS gives the unit.
   unit?: string;
-  section?: string;
 }
 
 // The lines it adds to the draft, which the design skill reads.
@@ -112,11 +112,9 @@ export default function OpenPage({
     document.addEventListener("keydown", keys);
     return () => document.removeEventListener("keydown", keys);
   });
-  const fixed = !!info?.artboard.w && !!info.artboard.h;
   // Its size as a picture: an artboard's, or a page's full height.
-  const size = fixed
-    ? info!.artboard
-    : { w: info?.artboard.w || 1440, h: Math.min(8000, info?.height || 900) };
+  const size = pageSize(info, 8000);
+  const { fixed } = size;
   const scale =
     fixed && room.w
       ? Math.min(1, room.w / info!.artboard.w, room.h / info!.artboard.h)
@@ -270,7 +268,10 @@ export default function OpenPage({
                   setSaid({ ...message, src });
                   if (selecting)
                     tell(frame.current, { type: "select", on: true });
-                } else if (message.type === "hover") setHover(message.rect);
+                } else if (message.type === "size")
+                  // A page that grows (its fonts, its images) is pictured whole.
+                  setSaid((was) => was && { ...was, height: message.height });
+                else if (message.type === "hover") setHover(message.rect);
                 else if (message.type === "pick") setPicked(message);
                 else if (message.type === "picked")
                   setPicked((was) => was && { ...was, rect: message.rect });

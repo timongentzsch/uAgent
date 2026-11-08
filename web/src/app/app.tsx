@@ -224,16 +224,16 @@ function App() {
     },
     [setChosen],
   );
-  // Every event that changes a session changes its catalogue entry too, so
-  // the shell reads the entry and renders once per change; a snapshot's
-  // metadata stands in only for a session the catalogue does not list yet.
-  // A file cited in one conversation is no place in another's folder.
-  // A file asked for in another conversation is shown once that one opens.
+  // A file cited in one conversation is no place in another's folder; one
+  // asked for in another conversation (from the Library) shows once it opens.
   const revealNext = useRef<FileTarget | null>(null);
   useEffect(() => {
     setReveal(revealNext.current && { ...revealNext.current, at: Date.now() });
     revealNext.current = null;
   }, [selected]);
+  // Every event that changes a session changes its catalogue entry too, so
+  // the shell reads the entry and renders once per change; a snapshot's
+  // metadata stands in only for a session the catalogue does not list yet.
   const listedSession = sessionById(catalogue.sessions, selected);
   const metadata = useSnapshots(snapshots, (all) =>
     listedSession ? undefined : all[selected]?.metadata,

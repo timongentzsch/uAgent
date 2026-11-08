@@ -47,6 +47,7 @@ import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import type { Node } from "../../shared/types.ts";
 import Canvas, { rows } from "./canvas.tsx";
+import { pageAddress } from "../../shared/page-frame.tsx";
 import OpenPage from "./page.tsx";
 
 // The Files pane: a folder's tree, search and previews of text, images and
@@ -214,7 +215,7 @@ export default function Files({
   );
   const pageUrl = (path: string) =>
     preview.value &&
-    `${preview.value.base}${path.split("/").map(encodeURIComponent).join("/")}?v=${versions[path] ?? 0}.${versions[""] ?? 0}`;
+    `${pageAddress(preview.value.base, path)}?v=${versions[path] ?? 0}.${versions[""] ?? 0}`;
   const url = (path: string) => routes.files(id, "raw", path);
   const listing = useResource(
     () => api<Listing>(routes.files(id, "list", dir)),

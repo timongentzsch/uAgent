@@ -175,5 +175,11 @@ directed in the system's own voice, never a template.
 - Every colour, size and face through `var(--…)`, so the book follows the
   tokens; a value appears only as a printed label.
 - Art direction: full-bleed colour pages, type set large as image, the
-  system's own accent and grid. A page that runs short gets a full-bleed
-  block or a larger specimen, never empty space. No stock placeholders.
+  system's own accent and grid. No stock placeholders.
+- Every page is full and fits: lay each out as a grid over its whole height
+  (the cover too, its title, statement and strip spread to the foot). Budget
+  its content before writing it; what would run past 297mm goes to a page of
+  its own, and a page that runs short gets a full-bleed block or a larger
+  specimen, never empty space.
+- Names as written: no `text-transform` on a name or token (`µAgent` set in
+  capitals turns into "ΜAGENT").

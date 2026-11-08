@@ -178,7 +178,12 @@ Master::Master(WebOptions options, std::string executable,
       origin_(options_.origin.empty() ? local_ : options_.origin),
       epoch_(RandomToken(16)),
       secret_(RandomToken()),
-      host_(epoch_, kQueueBytes, executable_, directory_) {}
+      host_(epoch_, kQueueBytes, executable_, directory_) {
+  host_.SetPreview([this](const std::string& id) {
+    const std::string base = PreviewBase(id);
+    return base.empty() ? base : local_ + base;
+  });
+}
 
 bool Master::Initialize(std::string& error) {
   if (epoch_.empty() || secret_.empty() || !host_wake_.Open()) {

@@ -157,6 +157,7 @@ Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
     options.overrides["UAGENT_APPROVAL"] =
         JsonValue(session.launch, "permissions", "ask");
   }
+  if (preview_) options.preview = preview_(session.id);
   Connection connection = create ? Open(executable_, session.cwd, session.path,
                                         session.draft_title, options, error)
                                  : Connect(session.path);

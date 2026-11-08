@@ -19,6 +19,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "include/agent/session_store.h"
@@ -214,6 +215,11 @@ class SessionHost {
   json SpaceControl(const json& command, const std::string& device,
                     std::string& error);
   json Configure(const json& command);
+  // Where the web host serves a session's folder (its origin and preview
+  // path), given to each runtime it starts; none outside the web host.
+  void SetPreview(std::function<std::string(const std::string&)> preview) {
+    preview_ = std::move(preview);
+  }
   // Replaces the pinned conversations and folders, announced as pins.changed.
   json SetPins(const json& command, std::string& error);
   std::string AssetPath(const std::string& id) const;
@@ -249,6 +255,7 @@ class SessionHost {
       UAGENT_REQUIRES(scan_mutex_);
   std::string DeleteSpace(const std::string& path, const std::string& device);
   std::string epoch_;
+  std::function<std::string(const std::string&)> preview_;
   std::string executable_, directory_;
   // Ordered event log and attachment quotas live in their own components;
   // the host keeps the lock, the wakeup signal and session identity.

@@ -18,9 +18,11 @@
 
 #include "include/agent/path_policy.h"
 #include "include/browser/browser.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
+#include "include/core/strings.h"
 #include "include/media/attachments.h"
 #include "include/tools/image_result.h"
 
@@ -568,14 +570,27 @@ std::string Settle(const BrowserAccess& access, const ToolContext& context) {
   return notes;
 }
 
-// open with a path shows a page the model wrote: the file's markup replaces
-// path and url. Returns what is wrong with the file, if anything.
+// open with a path shows a page the model wrote. Where the web host serves
+// this conversation's folder, the page opens there, so its stylesheets,
+// images and fonts load as on the canvas; elsewhere its markup replaces path
+// and url. Returns what is wrong with the file, if anything.
 std::string InlinePageFile(json& args) {
   const std::string path = JsonValue(args, "path", "");
   const std::string kind = std::filesystem::path(path).extension().string();
   std::string markup, error;
+  const std::string served = EnvStr("UAGENT_INTERNAL_PREVIEW");
+  const size_t split = served.find('\n');
+  const std::filesystem::path folder =
+      CanonicalAccessPath(served.substr(0, split));
+  const std::filesystem::path file = CanonicalAccessPath(path);
   if (kind != ".html" && kind != ".htm" && kind != ".svg") {
     error = "path takes a self-contained .html or .svg file";
+  } else if (split != std::string::npos && PathWithin(file, folder) &&
+             std::filesystem::is_regular_file(file)) {
+    args.erase("path");
+    args["url"] = served.substr(split + 1) +
+                  PercentEncode(file.lexically_relative(folder).string(), "/");
+    return "";
   } else if (ReadRegularFile(path, kPageFileBytes, markup, error) &&
              markup.empty()) {
     error = "the file is empty";
@@ -778,9 +793,10 @@ constexpr char kBrowserDescription[] =
     "open with new_tab=true keeps the current page; tabs lists tabs, "
     "switches to target_id, and with close=true closes it instead, unless "
     "it is the current one. To look at a page you wrote, open takes path "
-    "instead of url: a self-contained .html or .svg file, shown without a "
-    "server (file:// URLs are refused, and its relative links do not "
-    "load). upload with element, view_id and path gives a file of this "
+    "instead of url: an .html or .svg file; one in this conversation's "
+    "folder loads its stylesheets and images as the canvas shows it, and "
+    "reports its problems (file:// URLs are refused). upload with element, "
+    "view_id and path gives a file of this "
     "conversation's folder to a file field, or to the chooser the element "
     "opens; what a page downloads lands in its downloads folder, and the "
     "next result says when the download ended. console returns the page's "
@@ -1087,7 +1103,8 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       }
       args["file"] = file.string();
     }
-    if (action == "open" && !JsonValue(args, "path", "").empty()) {
+    const bool page = action == "open" && !JsonValue(args, "path", "").empty();
+    if (page) {
       if (const std::string error = InlinePageFile(args); !error.empty()) {
         return ToolFailure(ToolErrorCode::kInvalidArguments, error);
       }
@@ -1133,6 +1150,15 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       }
     }
     ToolResult result = told(Act(access, args, action, context, *seen));
+    // A page of the folder says what is wrong with it as drawn
+    // (web/public/design-helper.js).
+    if (page && result.Ok()) {
+      const json report = Ask(access, {{"find", "uagent page: "}}, "console");
+      if (JsonValue(report, "count", size_t{0})) {
+        result.output += "\nProblems on this page:\n" +
+                         JsonValue(report, "lines", std::string());
+      }
+    }
     if (answer && result.Ok()) {
       std::lock_guard lock(seen->mutex);
       seen->answer = *answer;

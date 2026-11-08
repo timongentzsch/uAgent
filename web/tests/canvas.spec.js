@@ -240,14 +240,21 @@ test("a design system shows as one page, and its themes under Tweaks", async ({
   await files.getByRole("button", { name: "design", exact: true }).click();
   await files.getByRole("button", { name: "system", exact: true }).click();
   await files.getByRole("button", { name: "System", exact: true }).click();
-  await expect(files.getByRole("heading", { name: "Brand" })).toBeVisible();
-  await expect(files.getByText("The ground")).toBeVisible();
-  await expect(files.getByText("Inside controls")).toBeVisible();
-  await expect(files.getByRole("heading", { name: "Actions" })).toBeVisible();
+  // The brand book: A4 pages from the README, tokens.css and components.
+  const book = app.frameLocator('iframe[title="Brand book"]');
   await expect(
-    app
+    book.getByRole("heading", { name: "Brand", level: 1 }),
+  ).toBeVisible();
+  await expect(book.getByText("The ground", { exact: true }).first()).toBeVisible();
+  await expect(book.getByText("Inside controls")).toBeVisible();
+  await expect(book.getByRole("heading", { name: "Button" })).toBeVisible();
+  await expect(
+    book
       .frameLocator('iframe[title="Button"]')
       .getByRole("button", { name: "Save" }),
+  ).toBeVisible();
+  await expect(
+    files.getByRole("button", { name: "Print or save as PDF" }),
   ).toBeVisible();
 
   // The toggle returns to the list.

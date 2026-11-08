@@ -100,6 +100,7 @@ export default function Canvas({
     };
   };
   // Every page's place on the plane.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sizes come from seen
   const placed = useMemo(() => {
     let y = 0;
     return grouped.flatMap(([row, files]) => {
@@ -147,6 +148,7 @@ export default function Canvas({
     if (box) zoomAt(by, box.clientWidth / 2, box.clientHeight / 2);
   };
   // The wheel pans; with ⌘ or Ctrl (a trackpad pinch sends Ctrl) it zooms.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one listener, state by updater
   useEffect(() => {
     const box = stage.current;
     if (!box) return;

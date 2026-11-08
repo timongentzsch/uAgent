@@ -447,62 +447,19 @@
   bottom: var(--space-4);
 }
 
-/* A design system's folder as one page. */
+/* A design system's folder as its brand book. */
 .system {
+  position: relative;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-12);
-  padding: var(--space-12);
-  background: var(--bg);
+  overflow: hidden;
 }
-.system-title {
-  margin: 0 0 var(--space-4);
-  font-size: var(--font-small);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.system-colors {
-  border-collapse: collapse;
-}
-.system-colors th {
-  text-align: left;
-  font-weight: var(--weight-regular);
-  color: var(--muted);
-}
-.system-colors td {
-  padding: var(--space-1) var(--space-4) var(--space-1) 0;
-}
-.system-swatch {
+.system-book {
   display: block;
-  width: var(--control);
-  height: var(--control-s);
-  border: var(--border);
+  border: 0;
+  transform-origin: 0 0;
 }
-.system-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2) var(--space-6);
-  margin: 0 0 var(--space-2);
-}
-.system-preview {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-6);
-}
-.system-frame {
-  display: flex;
-  border: var(--border);
-}
-.system-frame > .page-frame {
-  flex: 1;
-}
-.system-frame iframe {
-  width: 100%;
-  height: 100%;
+.system-print {
+  right: var(--space-4);
+  bottom: var(--space-4);
 }

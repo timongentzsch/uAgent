@@ -219,6 +219,8 @@ function App() {
   // Every event that changes a session changes its catalogue entry too, so
   // the shell reads the entry and renders once per change; a snapshot's
   // metadata stands in only for a session the catalogue does not list yet.
+  // A file cited in one conversation is no place in another's folder.
+  useEffect(() => setReveal(null), [selected]);
   const listedSession = sessionById(catalogue.sessions, selected);
   const metadata = useSnapshots(snapshots, (all) =>
     listedSession ? undefined : all[selected]?.metadata,

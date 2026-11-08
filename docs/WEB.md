@@ -101,12 +101,13 @@ image viewer, in a context of its own with no profile or cookies. A page that fa
 your message. A page the agent writes reloads as the write finishes, and the
 agent's reference to the folder opens its canvas.
 
-A folder with a `tokens.css` offers **System**: a design system as one page,
-its `README.md` rendered, then the colours of every theme, the text styles,
-spacing, radius, shadow and font scales read from `tokens.css` with the
-comment after each as its use, and each `components/<Name>/preview.html` live,
-grouped and sized by its first line (`<!-- @dsCard group="Actions" height=88
--->`). A page that links a `tokens.css` shows its themes and colours under
+A folder with a `tokens.css` offers **System**: the design system as a brand
+book in A4 pages, set in its own colours and type. It opens with a cover and
+contents, follows the `README.md` chapter by chapter, then shows the colours of
+every theme with their contrast on the ground, the text styles, the spacing,
+radius and shadow scales, and each `components/<Name>/preview.html` live with
+what it is for. **Print** opens the book alone to print or save as PDF, a sheet
+a page. A page that links a `tokens.css` shows its themes and colours under
 **Tweaks**, to try at once; **Keep theme** adds them as a line for the agent.
 
 ![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](images/files.gif)

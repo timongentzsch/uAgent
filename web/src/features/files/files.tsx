@@ -40,6 +40,8 @@ import { MarkdownFile } from "../../shared/markdown-view.tsx";
 import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
 import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
+import { stored } from "../../shared/storage.ts";
+import { storageKeys } from "../../shared/storage-keys.ts";
 import { HTML, IMAGE, MARKDOWN } from "../../shared/file-types.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
@@ -83,6 +85,9 @@ const SAMPLE_LISTING: Listing = {
   more: false,
 };
 const SHOWN = 50;
+// The folder Files last showed in each conversation's folder, so a
+// conversation of the same folder opens where the last one left off.
+const kept = stored<Record<string, string>>(storageKeys.filesAt, {});
 // Typing pauses this long before the folder is searched.
 const SEARCH_DELAY_MS = 150;
 const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
@@ -167,7 +172,13 @@ export default function Files({
   const turn = session.turn_active;
   const view = useContext(ImageViewer);
   const [start] = useState(() => reveal && place(reveal, folderOf(session)));
-  const [dir, setDir] = useState(start?.dir ?? "");
+  const [dir, setDir] = useState(
+    start?.dir ?? kept.read()[folderOf(session)] ?? "",
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
+  useEffect(() => {
+    kept.write({ ...kept.read(), [folderOf(session)]: dir });
+  }, [dir]);
   const [file, setFile] = useState(start?.file ?? "");
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -373,6 +384,12 @@ export default function Files({
     setSystem(false);
     setCanvasFor(next.file || next.outside ? undefined : next.dir);
   };
+  // A remembered folder that is gone opens the top.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed list
+  useEffect(() => {
+    if (dir && listing.error && failure(listing.error).status === 404)
+      setDir("");
+  }, [listing.error]);
   const pages = (listing.value?.entries ?? [])
     .filter((entry) => !entry.dir && HTML.test(entry.name))
     .map((entry) => entry.name);
@@ -606,7 +623,7 @@ export default function Files({
               dir={dir}
               turn={`${turn}${written}`}
               page={(path) => pageUrl(path)!}
-              url={url}
+              name={folderName}
             />
           ) : (
             <Canvas

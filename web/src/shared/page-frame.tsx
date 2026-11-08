@@ -1,5 +1,7 @@
-import { useLayoutEffect, useRef } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { api, routes } from "../state/api.ts";
 import { useLatest } from "./use-latest.ts";
+import { useResource } from "./use-resource.ts";
 import "./page-frame.css";
 
 // One page of the folder, live in a sandboxed frame. It runs in an opaque
@@ -125,5 +127,38 @@ export default function Frame({
         }
       />
     </div>
+  );
+}
+
+// The address a conversation's folder is previewed from, minted once.
+export const usePreviewBase = (session: string) =>
+  useResource(
+    () => api<{ base: string }>(routes.preview(session), {}),
+    [session],
+  );
+
+// A page small and still: drawn at its own size (a tall one, its top) and
+// scaled to `width`.
+export function PageThumb({
+  base,
+  path,
+  width = 240,
+}: {
+  base: string;
+  path: string;
+  width?: number;
+}) {
+  const [info, setInfo] = useState<PageInfo>();
+  const { w, h } = pageSize(info, 900);
+  return (
+    <Frame
+      src={pageAddress(base, path)}
+      title={info?.title || path}
+      width={w}
+      height={h}
+      scale={width / Math.max(w, h)}
+      live={false}
+      onMessage={(message) => message.type === "ready" && setInfo(message)}
+    />
   );
 }

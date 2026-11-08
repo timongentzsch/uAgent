@@ -166,7 +166,10 @@ test("the Library lists every place's things, opens them beside and moves a memo
   await page.locator(LOADED_ROWS).filter({ hasText: "design/landing" }).click();
   await expect(page.locator(".library-pages iframe")).toHaveCount(1);
   await page.getByRole("button", { name: "Open canvas", exact: true }).click();
-  await expect(page.locator(".canvas-page")).toHaveCount(1);
+  // A design of one page opens as that page.
+  await expect(
+    page.frameLocator('iframe[title="Hero"]').getByText("hi"),
+  ).toBeVisible();
 
   // On a phone the kinds are chips, the place a field, an item the page.
   await nav.getByRole("button", { name: "Library", exact: true }).click();

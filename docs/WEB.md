@@ -99,8 +99,12 @@ it alone to print or save as PDF, at its artboard's size or, for a document,
 on Letter or A4. Where the [agent's browser](BROWSER.md) runs, it also draws
 the page as a PNG at twice its size, to download, copy or draw on in the
 image viewer, in a context of its own with no profile or cookies. A page that fails says so, and **Ask agent to fix** puts its errors in
-your message. A page the agent writes reloads as the write finishes, and the
-agent's reference to the folder opens its canvas.
+your message. A page the agent writes reloads as the write finishes. A folder
+of one page opens that page; a page that names only its width (an A4
+document, such as a design system's book) fits across the pane and scrolls
+inside, as a PDF does. A design a reply names (`design/landing/`, or a page)
+shows under the reply as a card with its first page live and small; **Open**
+shows it in the pane.
 
 A design system's brand book is a page the agent writes beside its
 `tokens.css`, `book.html`: A4 pages art-directed in the system's own colours

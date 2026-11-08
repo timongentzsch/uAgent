@@ -168,6 +168,13 @@ pre.node-text {
   border: var(--border);
   background: var(--surface);
 }
+/* A design a reply names: its first page small, as a button that opens it. */
+.design-card-cover {
+  justify-self: start;
+  min-height: 0;
+  padding: 0;
+  border: var(--border);
+}
 .node-file > figcaption {
   display: flex;
   flex-wrap: wrap;

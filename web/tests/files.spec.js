@@ -401,3 +401,38 @@ test("lines selected in a file go to the chat as a reference", async ({
     "`src/app.ts:1-2`",
   );
 });
+
+test("a design a reply names shows as a card that opens its canvas", async ({
+  page,
+  host,
+  request,
+}) => {
+  const dir = join(host.project, "design", "landing");
+  await mkdir(dir, { recursive: true });
+  for (const name of ["hero-a", "hero-b"])
+    await writeFile(
+      join(dir, `${name}.html`),
+      `<!doctype html><title>${name}</title><meta name="artboard" content="1440x900"><h1>${name}</h1>`,
+    );
+  const cited = await citing(
+    host,
+    request,
+    "The landing page is in `design/landing/`; the plan is `notes.md`.",
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  // One card, for the design only, its first page live and small.
+  const card = page.locator(".transcript .design-card");
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText("design/landing/");
+  await expect(card).toContainText("2 pages");
+  await expect(
+    page
+      .frameLocator('.design-card iframe[title="hero-a"]')
+      .getByText("hero-a"),
+  ).toBeVisible();
+  await card.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Files" }).locator(".canvas-page"),
+  ).toHaveCount(2);
+});

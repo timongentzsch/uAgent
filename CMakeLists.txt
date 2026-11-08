@@ -288,6 +288,7 @@ option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
 include(cmake/embed_web.cmake)
 add_library(uagent_web src/web/master.cc src/web/master_auth.cc
                        src/web/master_command.cc src/web/master_files.cc
+                       src/web/master_library.cc
                        src/web/master_stream.cc src/web/master_terminal.cc
                        src/web/terminal.cc src/web/browser_viewer.cc
                        src/web/rfb_filter.cc "${_web_generated}")

@@ -11,7 +11,12 @@ import {
 } from "lucide-preact";
 import { Button, IconButton, Switch } from "../../shared/ui.tsx";
 import { Input, Textarea } from "../../shared/form-controls.tsx";
-import Frame, { type PageInfo, type Pick, type Rect, tell } from "./frame.tsx";
+import Frame, {
+  type PageInfo,
+  type Pick,
+  type Rect,
+  tell,
+} from "../../shared/page-frame.tsx";
 import { readTokens } from "./tokens.ts";
 import { useResource } from "../../shared/use-resource.ts";
 

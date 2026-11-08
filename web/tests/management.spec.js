@@ -1,6 +1,6 @@
 import { test, expect, withoutServiceWorker } from "./fixtures.js";
 import { mkdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
 // Library rows the list loaded, not the rows its placeholder draws.
 const LOADED_ROWS = ".library-row:not(.placeholder *)";
@@ -16,8 +16,8 @@ const LOADED_ROWS = ".library-row:not(.placeholder *)";
     }) => {
       await page.setViewportSize(viewport);
       const { promise: gate, resolve: release } = Promise.withResolvers();
-      await page.route("**/api/command", async (route) => {
-        if (route.request().postDataJSON()?.kind === "memory") await gate;
+      await page.route("**/api/library", async (route) => {
+        await gate;
         await route.continue();
       });
       await page.goto(`/#session=${session.id}`);
@@ -30,33 +30,31 @@ const LOADED_ROWS = ".library-row:not(.placeholder *)";
       await nav.getByRole("button", { name: "Library", exact: true }).click();
       const measure = () =>
         page.evaluate(() => {
-          const box = (selector) => {
-            const rect = document
-              .querySelector(selector)
-              .getBoundingClientRect();
-            return {
+          const rect = document
+            .querySelector(".management")
+            .getBoundingClientRect();
+          return {
+            shell: {
               x: rect.x,
               y: rect.y,
               width: rect.width,
               height: rect.height,
-            };
-          };
-          return {
-            shell: box(".management"),
+            },
             overflow: document.documentElement.scrollWidth - innerWidth,
           };
         });
       let loading;
       try {
-        // One status per section (global, project) while the list loads.
         await expect(
-          page.getByRole("status", { name: "Loading library…" }).first(),
+          page.getByRole("status", { name: "Loading library…" }),
         ).toBeVisible();
         loading = await measure();
       } finally {
         release();
       }
-      await expect(page.getByLabel("Library type")).toBeVisible();
+      await expect(
+        page.getByRole("status", { name: "Loading library…" }),
+      ).toHaveCount(0);
       const loaded = await measure();
       for (const edge of ["x", "y", "width", "height"])
         expect(
@@ -69,7 +67,124 @@ const LOADED_ROWS = ".library-row:not(.placeholder *)";
   }
 }
 
-test("library drafts, shared controls and scheduled results", async ({
+test("the Library lists every place's things, opens them beside and moves a memory", async ({
+  page,
+  host: fixture,
+  command,
+  session,
+}) => {
+  await withoutServiceWorker(page);
+  const design = resolve(fixture.project, "design/landing");
+  await mkdir(design, { recursive: true });
+  await writeFile(
+    resolve(design, "hero-a.html"),
+    '<!doctype html><meta name="artboard" content="390x844"><title>Hero</title><p>hi</p>',
+  );
+  const second = resolve(fixture.project, "../second-project");
+  await mkdir(second, { recursive: true });
+  await command("create", { cwd: second });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`/#session=${session.id}`);
+  const nav = page.getByRole("complementary");
+  await nav.getByRole("button", { name: "Library", exact: true }).click();
+  const group = (path) =>
+    page.getByRole("region", { name: basename(path), exact: true });
+  const editor = page.getByLabel("Document content");
+
+  // A new memory is named and placed, then opens beside the list.
+  await page.getByRole("button", { name: "New memory", exact: true }).click();
+  await page.getByLabel("Name", { exact: true }).fill("browser-lesson");
+  await page
+    .getByRole("combobox", { name: "Where", exact: true })
+    .selectOption({ label: basename(fixture.project) });
+  await editor.fill(
+    "# Durable lesson\n\nKeep native controls shared.\n\n| Scope | Rule |\n| --- | --- |\n| All | Shared |",
+  );
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(
+    group(fixture.project)
+      .locator(LOADED_ROWS)
+      .filter({ hasText: "browser-lesson" }),
+  ).toContainText("memory · Durable lesson");
+  await expect(
+    page.getByRole("heading", { name: "Durable lesson" }),
+  ).toBeVisible();
+  await expect(editor).toHaveCount(0);
+  await expect(page.locator(".document-preview table")).toHaveCSS(
+    "border-collapse",
+    "collapse",
+  );
+
+  // An unsaved edit waits in the tab for the item's next opening.
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await editor.fill("Unsaved draft survives navigation.");
+  await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
+  await nav.getByRole("button", { name: "Library", exact: true }).click();
+  await page.locator(LOADED_ROWS).filter({ hasText: "browser-lesson" }).click();
+  await expect(editor).toHaveValue("Unsaved draft survives navigation.");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Durable lesson" }),
+  ).toBeVisible();
+
+  // The search reads what an item says, not only its name.
+  const search = page.getByLabel("Search library");
+  await search.fill("native controls");
+  await expect(page.locator(LOADED_ROWS)).toHaveCount(0);
+  await search.fill("durable");
+  await expect(page.locator(LOADED_ROWS)).toHaveCount(1);
+  await search.fill("");
+
+  // Moved to another place, it is that place's alone.
+  await page.getByRole("button", { name: "Library item menu" }).click();
+  await page.getByRole("menuitem", { name: "Move to…" }).click();
+  await page
+    .getByRole("dialog", { name: "Move browser-lesson" })
+    .getByRole("combobox", { name: "Where" })
+    .selectOption({ label: basename(second) });
+  await page.getByRole("button", { name: "Move", exact: true }).click();
+  await expect(group(second).locator(LOADED_ROWS)).toContainText(
+    "browser-lesson",
+  );
+  await expect(
+    group(fixture.project)
+      .locator(LOADED_ROWS)
+      .filter({ hasText: "browser-lesson" }),
+  ).toHaveCount(0);
+
+  // A design shows its pages and opens as the canvas.
+  await page
+    .getByRole("navigation", { name: "Library filters" })
+    .getByRole("button", { name: /^Designs/ })
+    .click();
+  await expect(page.locator(LOADED_ROWS)).toHaveCount(1);
+  await page.locator(LOADED_ROWS).filter({ hasText: "design/landing" }).click();
+  await expect(page.locator(".library-pages iframe")).toHaveCount(1);
+  await page.getByRole("button", { name: "Open canvas", exact: true }).click();
+  await expect(page.locator(".canvas-page")).toHaveCount(1);
+
+  // On a phone the kinds are chips, the place a field, an item the page.
+  await nav.getByRole("button", { name: "Library", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const place = page.getByLabel("Place", { exact: true });
+  await expect(place).toBeVisible();
+  await place.selectOption({ label: basename(second) });
+  await page.getByRole("button", { name: /^Everything/ }).click();
+  await page.locator(LOADED_ROWS).filter({ hasText: "browser-lesson" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Durable lesson" }),
+  ).toBeVisible();
+  await expect(page.locator(LOADED_ROWS)).not.toBeVisible();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.locator(LOADED_ROWS)).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("scheduled tasks run, report and pause", async ({
   page,
   host: fixture,
 }) => {
@@ -77,190 +192,7 @@ test("library drafts, shared controls and scheduled results", async ({
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-
   const nav = page.getByRole("complementary");
-  await nav.getByRole("button", { name: "Library", exact: true }).click();
-  await page.getByLabel("Folder", { exact: true }).fill(fixture.project);
-  await page.getByLabel("Folder", { exact: true }).press("Tab");
-  const tabs = await page
-    .locator(".management-toolbar .segmented")
-    .boundingBox();
-  const project = await page
-    .getByLabel("Folder", { exact: true })
-    .boundingBox();
-  expect(project.x - tabs.x - tabs.width).toBeGreaterThan(0);
-  await page.getByRole("button", { name: "Add memory", exact: true }).click();
-  await page.getByLabel("Name", { exact: true }).fill("browser-lesson");
-  const editor = page.getByLabel("Document content");
-  await editor.fill(
-    "# Durable lesson\n\nKeep native controls shared.\n\n| Scope | Rule |\n| --- | --- |\n| All clients | Shared events |\n\n```js\nconst shared = true;\n```",
-  );
-  // The textarea fills the flex editor after the shared native-control wrapper.
-  await expect
-    .poll(() =>
-      editor.evaluate((node) =>
-        Math.abs(
-          node.getBoundingClientRect().height -
-            node.parentElement.getBoundingClientRect().height,
-        ),
-      ),
-    )
-    .toBeLessThan(1);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(
-    page.locator(LOADED_ROWS).filter({ hasText: "browser-lesson" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Durable lesson" }),
-  ).toBeVisible();
-  await expect(editor).toHaveCount(0);
-  // Markdown styling must work before a conversation has ever loaded.
-  await expect(page.locator(".document-preview table")).toHaveCSS(
-    "border-collapse",
-    "collapse",
-  );
-  await expect(page.locator(".document-preview .code-copy")).toHaveCount(1);
-  await expect(
-    page.getByRole("button", { name: /^(Source|Preview)$/ }),
-  ).toHaveCount(0);
-  await page.getByRole("button", { name: "Edit", exact: true }).click();
-  await editor.fill("Unsaved draft survives navigation.");
-  await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
-  await nav.getByRole("button", { name: "Library", exact: true }).click();
-  await page.getByLabel("Folder", { exact: true }).fill(fixture.project);
-  await page.getByLabel("Folder", { exact: true }).press("Tab");
-  await expect(editor).toHaveValue("Unsaved draft survives navigation.");
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(editor).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "Durable lesson" }),
-  ).toBeVisible();
-  const projectGroup = page.getByRole("region", {
-    name: fixture.project,
-    exact: true,
-  });
-  await expect(projectGroup.locator(LOADED_ROWS)).toContainText(
-    "browser-lesson",
-  );
-  await page.getByRole("button", { name: "Edit", exact: true }).click();
-  await editor.fill("Draft belongs to the first project.");
-  const secondProject = resolve(fixture.project, "../second-project");
-  await mkdir(secondProject, { recursive: true });
-  let releaseList;
-  const listReady = new Promise((resolve) => {
-    releaseList = resolve;
-  });
-  await page.route("**/api/command", async (route) => {
-    const request = route.request().postDataJSON();
-    if (
-      request.kind === "memory" &&
-      request.action === "list" &&
-      request.cwd === secondProject
-    )
-      await listReady;
-    await route.continue();
-  });
-  await page.getByLabel("Folder", { exact: true }).fill(secondProject);
-  await page.getByLabel("Folder", { exact: true }).press("Tab");
-  const secondGroup = page.getByRole("region", {
-    name: secondProject,
-    exact: true,
-  });
-  try {
-    await expect(secondGroup.getByRole("status")).toBeVisible();
-    // Faithful loading skeleton mirrors the row shell: placeholders only
-    // (aria-hidden), never stale entries from the previous project.
-    await expect(secondGroup.locator(LOADED_ROWS)).toHaveCount(0);
-    await expect(secondGroup.getByText("browser-lesson")).toHaveCount(0);
-  } finally {
-    releaseList();
-  }
-  await page.unroute("**/api/command");
-  await expect(
-    secondGroup.getByText(/^No memories here\. A memory is a fact/),
-  ).toBeVisible();
-  await expect(projectGroup.locator(LOADED_ROWS)).toHaveCount(0);
-  await page.getByRole("button", { name: "Add memory", exact: true }).click();
-  await page.getByLabel("Name", { exact: true }).fill("browser-lesson");
-  await editor.fill("This belongs only to the second project.");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(secondGroup.locator(LOADED_ROWS)).toContainText(
-    "browser-lesson",
-  );
-  const filter = page.getByLabel("Filter library");
-  await filter.selectOption(`project:${fixture.project}`);
-  await expect(page.getByLabel("Folder", { exact: true })).toHaveValue(
-    fixture.project,
-  );
-  await expect(secondGroup).toHaveCount(0);
-  await expect(
-    page.getByRole("region", { name: "Global memories", exact: true }),
-  ).toHaveCount(0);
-  await expect(editor).toHaveValue("Draft belongs to the first project.");
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Durable lesson" }),
-  ).toBeVisible();
-  await filter.selectOption("global");
-  const globalGroup = page.getByRole("region", {
-    name: "Global memories",
-    exact: true,
-  });
-  await expect(globalGroup).toBeVisible();
-  await expect(projectGroup).toHaveCount(0);
-  await filter.selectOption("all");
-  await secondGroup.getByRole("button", { expanded: false }).click();
-  await secondGroup.locator(LOADED_ROWS).click();
-  await expect(page.locator(".document-preview")).toHaveText(
-    "This belongs only to the second project.",
-  );
-  await projectGroup.getByRole("button", { expanded: false }).click();
-  await projectGroup.locator(LOADED_ROWS).click();
-  await expect(
-    page.getByRole("heading", { name: "Durable lesson" }),
-  ).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Back", exact: true }).click();
-  await filter.selectOption(`project:${secondProject}`);
-  await expect(secondGroup.locator(LOADED_ROWS)).toBeVisible();
-  await expect(secondGroup.getByRole("status")).toHaveCount(0);
-  await expect(projectGroup).toHaveCount(0);
-  await secondGroup.locator(LOADED_ROWS).click();
-  await expect(page.locator(".document-preview")).toHaveText(
-    "This belongs only to the second project.",
-  );
-  await page.getByRole("button", { name: "Edit", exact: true }).click();
-  await editor.fill("Temporary mobile edit.");
-  const cancel = await page
-    .getByRole("button", { name: "Cancel", exact: true })
-    .boundingBox();
-  const save = await page
-    .getByRole("button", { name: "Save", exact: true })
-    .boundingBox();
-  expect(save.x - cancel.x - cancel.width).toBeGreaterThan(0);
-  expect(save.y).toBe(cancel.y);
-  expect(save.height).toBe(cancel.height);
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(editor).toHaveCount(0);
-  await expect(page.locator(".document-preview")).toHaveText(
-    "This belongs only to the second project.",
-  );
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await filter.selectOption(`project:${fixture.project}`);
-  await page.getByRole("button", { name: "Skills", exact: true }).click();
-  await expect(filter).toHaveValue("project");
-  await page.getByRole("button", { name: "Add skill", exact: true }).click();
-  await page.getByLabel("Name", { exact: true }).fill("browser-review");
-  await editor.fill("---\ndescription: Review a change\n---\nCheck the diff.");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(
-    page.locator(LOADED_ROWS).filter({ hasText: "browser-review" }),
-  ).toBeVisible();
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await page
@@ -330,6 +262,7 @@ test("library drafts, shared controls and scheduled results", async ({
 test("a skill kept by Claude Code is imported from the Library", async ({
   page,
   host: fixture,
+  session,
 }) => {
   await withoutServiceWorker(page);
   const skill = resolve(fixture.home, ".claude/skills/synced/id/demo");
@@ -338,15 +271,12 @@ test("a skill kept by Claude Code is imported from the Library", async ({
     resolve(skill, "SKILL.md"),
     "---\ndescription: Demo skill\n---\nRun it with `Bash`.\n",
   );
-  await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await page.goto(`/#session=${session.id}`);
   await page
     .getByRole("complementary")
     .getByRole("button", { name: "Library", exact: true })
     .click();
-  await page.getByLabel("Folder", { exact: true }).fill(fixture.project);
-  await page.getByLabel("Folder", { exact: true }).press("Tab");
-  await page.getByRole("button", { name: "Skills", exact: true }).click();
+  await page.getByRole("button", { name: /^Skills/ }).click();
   await page.getByRole("button", { name: "Import", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "Import from Claude Code and Codex",
@@ -356,6 +286,9 @@ test("a skill kept by Claude Code is imported from the Library", async ({
   await expect(dialog).toContainText("Already in µAgent");
   await dialog.getByRole("button", { name: "Close" }).click();
   await expect(
-    page.locator(LOADED_ROWS).filter({ hasText: /demo.*global · uAgent/ }),
+    page
+      .getByRole("region", { name: "Everywhere", exact: true })
+      .locator(LOADED_ROWS)
+      .filter({ hasText: /demo.*skill · Demo skill/ }),
   ).toBeVisible();
 });

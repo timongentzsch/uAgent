@@ -252,20 +252,6 @@
   flex-direction: column;
   background: var(--surface);
 }
-.page-frame {
-  position: relative;
-  overflow: hidden;
-  background: var(--bg);
-}
-.page-frame iframe {
-  display: block;
-  border: 0;
-  transform-origin: 0 0;
-  background: var(--bg);
-}
-.page-frame:not([data-live]) iframe {
-  pointer-events: none;
-}
 .open-page {
   flex: 1;
   min-height: 0;

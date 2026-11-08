@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "preact/hooks";
-import { useLatest } from "../../shared/use-latest.ts";
+import { useLatest } from "./use-latest.ts";
+import "./page-frame.css";
 
 // One page of the folder, live in a sandboxed frame. It runs in an opaque
 // origin and is served from a preview address, so it can reach neither this

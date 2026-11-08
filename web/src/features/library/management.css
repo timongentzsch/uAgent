@@ -66,11 +66,6 @@
 .library-group h2 > .folder-label {
   padding-inline: var(--inset-x);
 }
-.library-group h2 > button {
-  width: 100%;
-  justify-content: flex-start;
-  gap: var(--gap);
-}
 .library-group .folder-label {
   min-width: 0;
   flex: 1;
@@ -127,6 +122,93 @@
 .run-row > button:first-child {
   flex: 1;
 }
+/* The Library: a rail of kinds and places, the list, and an item beside. */
+.library .management-toolbar > .text-control:first-child {
+  flex: 1;
+  max-width: var(--sheet);
+}
+.library-place {
+  display: none;
+}
+.library-rail {
+  flex: 0 0 var(--pane-s);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+  padding: var(--pad);
+  overflow: auto;
+  border-right: var(--border);
+}
+.library-kinds,
+.library-where {
+  display: flex;
+  flex-direction: column;
+}
+.library-rail h2 {
+  margin: 0;
+  padding-inline: var(--inset-x);
+  font-weight: var(--weight-regular);
+}
+.library-rail button {
+  justify-content: flex-start;
+  min-width: 0;
+}
+.library-rail button > small {
+  margin-left: auto;
+}
+.library-rail .folder-label {
+  min-width: 0;
+}
+.library .management-list {
+  flex: 1;
+  border-right: 0;
+}
+.library .management-editor {
+  flex: 0 0 var(--sheet);
+  border-left: var(--border);
+}
+.library-group h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding-right: var(--inset-x);
+}
+.library-row .row-label {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+.library-row .row-label > svg {
+  flex: none;
+}
+.library-document {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+.library-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--pad);
+}
+.library-pages figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
 @container column (max-width: 43rem) {
   .editor-actions > small {
     flex-basis: 100%;
@@ -174,5 +256,35 @@
   }
   .management-body:not(.has-selection):has(.schedule-editor) .management-list {
     flex: none;
+  }
+  /* On a phone the kinds are a row of chips over the list, and the place
+     a field in the toolbar. */
+  .library .management-body {
+    flex-direction: column;
+  }
+  .library-rail {
+    flex: none;
+    flex-direction: row;
+    padding-block: var(--gap);
+    border-right: 0;
+    border-bottom: var(--border);
+  }
+  .library-kinds {
+    flex-direction: row;
+  }
+  .library-rail h2,
+  .library-where,
+  .library .has-selection .library-rail {
+    display: none;
+  }
+  .library-rail button {
+    flex: none;
+  }
+  .library-place {
+    display: inline-flex;
+  }
+  .library .management-editor {
+    flex: 1;
+    border-left: 0;
   }
 }

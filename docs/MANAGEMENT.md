@@ -56,16 +56,33 @@ over the size limits, or it belongs to another folder. Nothing is
 overwritten, and nothing is cut to fit. Codex's memory summary is listed
 too; condensing it takes a model, so invoke `$import`.
 
-In the web UI, **Edit** opens an item's source; drafts survive navigation in
-the current tab, and a stale revision cannot overwrite a newer file.
-**Refresh** picks up changes made in another editor.
+In the web UI, the Library lists everything kept in every folder and
+workspace a conversation works in, grouped by place: memories, skills,
+designs and design systems (folders with a page that declares an artboard,
+and folders with a `tokens.css`; see the `design` skill), and files the agent
+shared with `artifact` (files shared before this listing existed are not
+marked and stay out). A rail filters by kind and place, and the search reads
+names, first lines and places. Nothing is copied: each item stays where it
+lives. A memory opens beside the list, where **Move to…** and **Copy to
+everywhere** take it to another place or to every place; a design opens its
+canvas in the Files pane of the place's latest conversation; a shared file
+opens, downloads or leads to its conversation. A folder no conversation
+works in is not listed; start one there first. **Edit** opens an item's
+source; drafts survive navigation in the current tab, and a stale revision
+cannot overwrite a newer file.
 
 From a script:
 
 ```sh
 uagent --control '{"kind":"memory","action":"list","cwd":"/absolute/project"}'
 uagent --control '{"kind":"skills","action":"list","cwd":"/absolute/project"}'
+uagent --control '{"kind":"library","places":["/a","/b"]}'
 ```
+
+`library` lists the memories and skills of every folder in `places`, each
+with its `kind` and `place` (`""` for what every place shares, listed once);
+a memory carries its first line as `description`. The web host's
+`GET /api/library` adds designs and shared files to it.
 
 | Action | Applies to | Arguments |
 | --- | --- | --- |

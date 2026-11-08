@@ -961,6 +961,30 @@ export interface LibraryItem {
   error?: string;
   required_tools?: string[];
   files?: string[];
+  // In the Library's listing: what it is and the place it belongs to, ""
+  // for every place's.
+  kind?: LibraryKind;
+  place?: string;
+  // A design's page count and first pages; a shared file's conversation,
+  // asset id and type.
+  count?: number;
+  pages?: string[];
+  session?: string;
+  id?: string;
+  mime?: string;
+}
+export type LibraryKind = "memory" | "skill" | "design" | "system" | "file";
+// A folder or workspace the Library lists, with its latest conversation.
+export interface LibraryPlace {
+  path: string;
+  name: string;
+  workspace: boolean;
+  session?: string;
+}
+export interface LibraryListing {
+  places: LibraryPlace[];
+  items: LibraryItem[];
+  limits: { memory: number; skill: number; memory_enabled: boolean };
 }
 export interface ImportItem {
   key: string;

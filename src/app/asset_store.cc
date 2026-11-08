@@ -137,7 +137,8 @@ AssetStore& SessionAssets() {
 
 AssetStoreResult AssetStore::Store(const std::string& session_path,
                                    const std::string& bytes, std::string name,
-                                   bool committed, bool tool_copy) {
+                                   bool committed, bool tool_copy,
+                                   bool shared) {
   std::lock_guard assets(mutex_);
   const std::string folder = session_path + kSessionAssetsSuffix;
   if (!EnsurePrivateDirectory(folder)) {
@@ -216,7 +217,8 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
                                   {"extension", ".data"},
                                   {"bytes", bytes.size()},
                                   {"committed", committed},
-                                  {"tool_copy", tool_copy}}),
+                                  {"tool_copy", tool_copy},
+                                  {"shared", shared}}),
                         error)) {
     return {{}, "cannot persist upload metadata", 500};
   }

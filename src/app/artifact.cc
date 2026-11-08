@@ -28,7 +28,7 @@ Tool ArtifactTool(const std::string& session_path) {
       [session_path](const json& args, const ToolContext&) {
         session::AssetStoreResult stored =
             StoreSessionFile(session_path, JsonValue(args, "path", ""), "",
-                             /*tool_copy=*/false);
+                             /*tool_copy=*/false, /*shared=*/true);
         // A file that cannot be read is the call's mistake; one the store
         // refuses (status set) is not.
         if (!stored.error.empty()) {

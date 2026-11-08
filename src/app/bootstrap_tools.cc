@@ -39,7 +39,7 @@ namespace uagent {
 session::AssetStoreResult StoreSessionFile(const std::string& session_path,
                                            const std::string& path,
                                            const std::string& name,
-                                           bool tool_copy) {
+                                           bool tool_copy, bool shared) {
   session::AssetStoreResult stored;
   std::string bytes;
   if (!ReadRegularFile(path, session::kUploadBytes, bytes, stored.error)) {
@@ -48,7 +48,7 @@ session::AssetStoreResult StoreSessionFile(const std::string& session_path,
   return session::SessionAssets().Store(
       session_path, bytes,
       name.empty() ? std::filesystem::path(path).filename().string() : name,
-      /*committed=*/true, tool_copy);
+      /*committed=*/true, tool_copy, shared);
 }
 
 std::vector<Tool> BuildTools(AppContext& context,

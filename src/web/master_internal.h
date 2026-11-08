@@ -6,7 +6,8 @@
 // defined across master.cc (startup, routes, settings), master_auth.cc
 // (pairing and devices), master_command.cc (commands and receipts),
 // master_stream.cc (snapshots, events, uploads, assets), master_files.cc
-// (the files in a conversation's folder) and master_terminal.cc (terminals).
+// (the files in a conversation's folder), master_library.cc (the Library's
+// listing) and master_terminal.cc (terminals).
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #define CPPHTTPLIB_NO_DEFAULT_USER_AGENT
@@ -59,6 +60,14 @@ bool EqualSecret(std::string_view a, std::string_view b);
 void ServeFile(Response& response, std::string bytes, const std::string& mime,
                const std::string& name, bool inline_view);
 
+// Whether the Files pane and the Library may show `path`: what the file tools
+// may read, nothing hidden from them and none of µAgent's own configuration.
+bool Shown(const std::filesystem::path& path);
+// The files under `root`, by path from it, unchecked by Shown; `more` when
+// the list is cut.
+std::vector<std::string> Candidates(const std::filesystem::path& root,
+                                    bool& more);
+
 // Browser instances "0" to "4", each watched by at most one viewer.
 inline constexpr size_t kViewerInstances = 5;
 
@@ -108,6 +117,7 @@ class Master {
   std::string PreviewBase(const std::string& id);
   void Picture(const Request&, Response&, const std::filesystem::path& root);
   void Preview(const Request&, Response&);
+  void Library(const Request&, Response&);
 
   WebOptions options_;
   std::string executable_, directory_, local_, local_authority_, origin_,

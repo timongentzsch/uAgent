@@ -25,7 +25,7 @@ bool InteractiveApprovalAvailable();
 session::AssetStoreResult StoreSessionFile(const std::string& session_path,
                                            const std::string& path,
                                            const std::string& name,
-                                           bool tool_copy);
+                                           bool tool_copy, bool shared = false);
 std::vector<Tool> BuildTools(AppContext& context,
                              const std::filesystem::path& workspace,
                              const json& trusted_snapshot,

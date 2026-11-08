@@ -399,7 +399,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       .tap();
     await drawer.getByRole("button", { name: "Library", exact: true }).tap();
     await viewport(844);
-    await page.getByRole("button", { name: "Add memory", exact: true }).tap();
+    await page.getByRole("button", { name: "New memory", exact: true }).tap();
     await input(page.getByLabel("Name", { exact: true }), "keyboard draft");
     await input(
       page.getByLabel("Document content", { exact: true }),

@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -423,11 +424,28 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
   return MemoryAction(action, key, content, *cwd);
 }
 
+namespace {
+// What a memory says, in a line for a list: its front matter's description,
+// else its first line of text.
+std::string MemorySummary(const std::string& content) {
+  std::istringstream input(content);
+  std::string summary, line;
+  if (content.starts_with("---")) ParseSkillFrontMatter(input, &summary);
+  while (Trim(summary).empty() && std::getline(input, line)) {
+    summary = line.substr(std::min(line.find_first_not_of("# "), line.size()));
+  }
+  return Utf8Prefix(Trim(summary), 160);
+}
+}  // namespace
+
 json MemoryControl(const json& request, const std::filesystem::path& cwd) {
   const std::string action = JsonValue(request, "action", "list");
   const std::string key = JsonValue(request, "key", "");
   const auto entries = ListMemories(cwd, 4096);
   const auto events = LoadMemoryEvents();
+  // The Library's list carries each memory's first line; the terminal's
+  // names only.
+  const bool summary = request.value("summary", false);
   auto describe = [&](const MemoryEntry& entry, bool body) {
     const auto slash = entry.key.find('/');
     const std::string scope{ScopePrefix(entry.key)};
@@ -446,6 +464,8 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
       return value;
     }
     value["revision"] = DocumentRevision(entry.path, content);
+    if (summary)
+      value["description"] = MemorySummary(RedactMemorySecrets(content));
     value["bytes"] = content.size();
     value["modified"] = SnapshotFile(entry.path).modified_seconds * 1000;
     const auto reloaded =

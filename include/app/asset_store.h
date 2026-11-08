@@ -48,9 +48,11 @@ class AssetStore {
   // than waiting for a message to claim it. `tool_copy`: a display copy of a
   // file a tool read (a screenshot); these share half the session's budget,
   // oldest evicted first, so they never crowd out the user's own files.
+  // `shared`: a file the agent handed the person, which the Library lists.
   AssetStoreResult Store(const std::string& session_path,
                          const std::string& bytes, std::string name,
-                         bool committed = false, bool tool_copy = false);
+                         bool committed = false, bool tool_copy = false,
+                         bool shared = false);
   // Resolves attachment id claims into command["attachments"], runs gate
   // (the host's session-liveness check) before committing anything, then
   // size-checks and commits. gate's non-empty return aborts uncommitted.

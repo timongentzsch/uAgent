@@ -6,7 +6,7 @@ import Frame, {
   PAGE_WIDTH,
   type PageInfo,
   type PageMessage,
-} from "./frame.tsx";
+} from "../../shared/page-frame.tsx";
 
 // A folder's HTML files on a plane you pan and zoom, each a live page: a
 // design as the agent wrote it. Files named <row>-<name>.html form a row per

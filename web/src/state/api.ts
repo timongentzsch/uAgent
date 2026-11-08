@@ -41,6 +41,8 @@ export const routes = {
     `/api/sessions/${session}/assets/${id}`,
   attachments: (session: string, name: string) =>
     `/api/sessions/${session}/attachments?name=${encodeURIComponent(name)}`,
+  // Everything the Library lists, from every place.
+  library: "/api/library",
   // Rows that contain q, in every conversation or, with a session, in one.
   search: (q: string, session?: string) =>
     `/api/search?q=${encodeURIComponent(q)}${session ? `&session=${session}` : ""}`,

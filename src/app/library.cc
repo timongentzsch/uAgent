@@ -2,8 +2,10 @@
 #include "include/app/library.h"
 
 #include <algorithm>
+#include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/app/config_proposal.h"
@@ -208,8 +210,39 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
              ? json{{"error", "saved skill is outside the discovery limit"}}
              : json{{"item", describe(*saved, true)}};
 }
+// Every place's memories and skills in one list, each tagged with its kind
+// and the place it belongs to: "" for what every place shares (global,
+// bundled, another agent's), listed once.
+json LibraryOverview(const json& request) {
+  json items = json::array(), limits = json::object();
+  std::set<std::string> seen;
+  for (const json& place : request.value("places", json::array())) {
+    const auto cwd = CanonicalDirectory(
+        place.is_string() ? place.get<std::string>() : std::string());
+    if (!cwd) continue;
+    for (const char* kind : {"memory", "skill"}) {
+      const bool memory = kind == std::string_view("memory");
+      json listed =
+          memory ? MemoryControl({{"action", "list"}, {"summary", true}}, *cwd)
+                 : SkillControl({{"action", "list"}}, *cwd);
+      limits[kind] = listed.value("limit", 0);
+      if (memory) limits["memory_enabled"] = listed.value("enabled", true);
+      for (json& item : listed["items"]) {
+        if (!seen.insert(JsonValue(item, "path", "")).second) continue;
+        item["kind"] = kind;
+        item["place"] =
+            JsonValue(item, "scope", "") == "project" ? cwd->string() : "";
+        items.push_back(std::move(item));
+      }
+    }
+  }
+  return {{"items", std::move(items)}, {"limits", std::move(limits)}};
+}
 json LibraryControl(const json& request,
                     const std::filesystem::path& workspace) {
+  if (JsonValue(request, "kind", "") == "library") {
+    return LibraryOverview(request);
+  }
   const auto resolved = CanonicalDirectory(workspace);
   if (!resolved) return {{"error", "choose an accessible folder"}};
   const std::filesystem::path& cwd = *resolved;
@@ -218,7 +251,8 @@ json LibraryControl(const json& request,
   if (kind == "skills") return SkillControl(request, cwd);
   if (kind == "import") return ImportControl(request, cwd);
   return {{"error",
-           "unknown kind; use memory, skills, import, schedule, instructions, "
+           "unknown kind; use library, memory, skills, import, schedule, "
+           "instructions, "
            "permission_rules, models or provider"}};
 }
 }  // namespace uagent

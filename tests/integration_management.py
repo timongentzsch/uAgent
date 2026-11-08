@@ -221,7 +221,7 @@ def test_schedule_calendar_dst_and_conflicts(root, home, *, binary):
     lock.unlink()
     assert_true(call(action="list")["runner_active"] is False, "a missing host read as unknown")
     unnamed = control(binary, root, env, "", action="list")
-    assert_true("unknown kind; use memory" in unnamed["error"], unnamed)
+    assert_true("unknown kind; use library, memory" in unnamed["error"], unnamed)
 
 
 def test_a_schedule_change_reaches_a_waiting_event_stream_at_once(root, home, *, binary):

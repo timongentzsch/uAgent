@@ -10,9 +10,17 @@ import type {
   InspectorTarget,
   TerminalInfo,
   FileTarget,
+  LibraryKind,
+  LibraryPlace,
 } from "../shared/types.ts";
 import { render, type ComponentChildren } from "preact";
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/hooks";
 import { emptyDraft, hasContent } from "../state/store.ts";
 import { command, manage } from "../state/api.ts";
 import { ConversationContext, HostContext } from "../state/host-context.ts";
@@ -99,7 +107,7 @@ function App() {
   const [place, setPlace] = useState("");
   const [shell, setShell] = useState<TerminalInfo | null>(null);
   // Which Library tab /memory or /skills asked for.
-  const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
+  const [libraryKind, setLibraryKind] = useState<LibraryKind | "">("");
   // Library and Scheduled sit above the conversation: back returns to it.
   useDismiss(page !== "chat", () => setPage("chat"));
   // What opens over the page: the conversations drawer, the app's dialogs,
@@ -220,7 +228,12 @@ function App() {
   // the shell reads the entry and renders once per change; a snapshot's
   // metadata stands in only for a session the catalogue does not list yet.
   // A file cited in one conversation is no place in another's folder.
-  useEffect(() => setReveal(null), [selected]);
+  // A file asked for in another conversation is shown once that one opens.
+  const revealNext = useRef<FileTarget | null>(null);
+  useEffect(() => {
+    setReveal(revealNext.current && { ...revealNext.current, at: Date.now() });
+    revealNext.current = null;
+  }, [selected]);
   const listedSession = sessionById(catalogue.sessions, selected);
   const metadata = useSnapshots(snapshots, (all) =>
     listedSession ? undefined : all[selected]?.metadata,
@@ -311,6 +324,22 @@ function App() {
   });
   const { startConversation, newPlace, startIn, startScratch, projects } =
     places;
+  // A path in a place's Files pane, asked for from the Library: in the
+  // place's latest conversation, or a new one where it has none.
+  const showInPlace = useCallback(
+    (place: LibraryPlace, target: FileTarget) => {
+      setFilesOpen(true);
+      if (place.session === selected) {
+        setPage("chat");
+        openFile(target);
+        return;
+      }
+      revealNext.current = target;
+      if (place.session) void choose(place.session);
+      else void startConversation(place.path).catch(report);
+    },
+    [selected, openFile, choose, startConversation, report],
+  );
   const { submit, deliver, forkAndOpen, showContext, runCommand } = useCommands(
     {
       host,
@@ -710,10 +739,10 @@ function App() {
                       <Library
                         key={libraryKind}
                         initialKind={libraryKind}
-                        projects={projects}
-                        cwd={session?.cwd || projects[0] || ""}
                         online={online}
                         version={managementVersion}
+                        openFiles={showInPlace}
+                        choose={choose}
                       />
                     )}
                     {page === "folder" && (

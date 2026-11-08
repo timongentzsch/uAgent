@@ -90,7 +90,6 @@ test("files beside the chat: browse, read, search and view", async ({
   );
 
   // Markdown is rendered; its image and link resolve in its folder.
-  await list.getByRole("button", { name: /^project$/ }).click();
   await list.getByRole("button", { name: "README.md" }).click();
   await expect(pane.locator(".markdown [data-level='1']")).toHaveText("Demo");
   await expect(pane.getByRole("img", { name: "The shot" })).toHaveJSProperty(
@@ -104,7 +103,6 @@ test("files beside the chat: browse, read, search and view", async ({
   await expect(pane.getByRole("heading")).toHaveText("src/app.ts");
 
   // An image opens in the viewer; a file that is not text offers a download.
-  await list.getByRole("button", { name: /^project$/ }).click();
   await list.getByRole("button", { name: "shot.png" }).click();
   await pane.getByRole("button", { name: "View shot.png" }).click();
   await expect(page.getByRole("dialog", { name: "shot.png" })).toBeVisible();
@@ -204,7 +202,7 @@ test("changes list what differs from the last commit and open as a diff", async 
   const toggle = list.getByRole("button", { name: "Changes 2" });
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  await expect(list.locator(".files-entries button")).toHaveText([
+  await expect(list.locator(".tree-row")).toHaveText([
     "Msrc/app.ts",
     "Aadded.txt",
   ]);
@@ -488,4 +486,42 @@ test("a page a reply names loosely gets no card and no blank frame", async ({
       name: "Save",
     }),
   ).toBeVisible();
+});
+
+test("the folder is a tree: folders open in place, by click or keys, and stay open", async ({
+  page,
+  session,
+  host,
+}) => {
+  await folder(host.project);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Files");
+  const pane = page.getByRole("region", { name: "Files" });
+  const list = pane.getByRole("navigation", { name: "Folder" });
+  const src = list.getByRole("button", { name: "src", exact: true });
+  await expect(src).toHaveAttribute("aria-expanded", "false");
+  // A folder opens in place: its files appear beneath it, the rest stays.
+  await src.click();
+  await expect(src).toHaveAttribute("aria-expanded", "true");
+  await expect(list.getByRole("button", { name: "app.ts" })).toBeVisible();
+  await expect(list.getByRole("button", { name: "README.md" })).toBeVisible();
+  // Left closes it; Right opens it again; Down walks into it.
+  await src.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(src).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("ArrowRight");
+  await expect(src).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("ArrowDown");
+  await expect(list.getByRole("button", { name: "app.ts" })).toBeFocused();
+  // Closing and reopening the pane keeps what was open.
+  await headerAction(page, "Files");
+  await headerAction(page, "Files");
+  await expect(
+    pane.getByRole("navigation", { name: "Folder" }).getByRole("button", {
+      name: "app.ts",
+    }),
+  ).toBeVisible();
+  await list.getByRole("button", { name: "Collapse all" }).click();
+  await expect(list.getByRole("button", { name: "app.ts" })).toHaveCount(0);
 });

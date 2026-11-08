@@ -74,14 +74,17 @@ the host).
 
 **Files** (the folder button in a conversation's header) shows the
 conversation's folder beside the chat, or as a sheet on a small screen. It
-never writes. Search finds a file by name anywhere in the folder. Code opens
+never writes. The folder is a tree, as VS Code's Explorer draws one: a folder
+opens in place, the arrow keys walk and open it, and the folders left open
+are kept per folder on this device. Search finds a file by name anywhere in
+the folder. Code opens
 with line numbers and highlighting, Markdown rendered with its images
 (**Source** shows the text), and an image at full size on a click; an HTML page runs live
 (**Source** shows its code); any other file offers a download. In a git repository, **Changes** lists what differs
 from the last commit, with its count, and opens each as a diff; it is read
 only too. What is open is read again when a turn ends.
 
-A folder that holds HTML pages also offers **Canvas**: its pages side by side,
+A folder of two pages or more offers **Canvas** on its row: its pages side by side,
 each live, the way the `design` skill writes a design. Pages named
 `NN-screen[--state].html` form a row per step `NN` (`02-sign-in.html` and
 `02-sign-in--error.html` share row 02); pages without a step form the first. The canvas is a plane: drag or scroll to
@@ -98,7 +101,9 @@ screen, the arrow keys stepping through the folder's pages; the printer opens
 it alone to print or save as PDF, at its artboard's size or, for a document,
 on Letter or A4. Where the [agent's browser](BROWSER.md) runs, it also draws
 the page as a PNG at twice its size, to download, copy or draw on in the
-image viewer, in a context of its own with no profile or cookies. A page that fails says so, and **Ask agent to fix** puts its errors in
+image viewer, in a context of its own with no profile or cookies. An opened page starts at its fit and zooms as the canvas does (−, +, Fit,
+or ⌘/Ctrl with the wheel and a pinch, over the page too), scrolling once it
+is larger than the pane. A page that fails says so, and **Ask agent to fix** puts its errors in
 your message. A page the agent writes reloads as the write finishes. A folder
 of one page opens that page; a page that names only its width (an A4
 document, such as a design system's book) fits across the pane and scrolls

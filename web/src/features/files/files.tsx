@@ -9,10 +9,9 @@ import {
 } from "preact/hooks";
 import {
   ChevronLeft,
+  ChevronsDownUp,
   Download,
   File,
-  Folder,
-  Image,
   Terminal,
   X,
 } from "lucide-preact";
@@ -47,6 +46,7 @@ import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import type { Node } from "../../shared/types.ts";
 import Canvas, { rows } from "./canvas.tsx";
+import FileTree from "./tree.tsx";
 import { pageAddress, usePreviewBase } from "../../shared/page-frame.tsx";
 import OpenPage from "./page.tsx";
 
@@ -87,7 +87,13 @@ const SAMPLE_LISTING: Listing = {
 const SHOWN = 50;
 // The folder Files last showed in each conversation's folder, so a
 // conversation of the same folder opens where the last one left off.
-const kept = stored<Record<string, string>>(storageKeys.filesAt, {});
+// The folders open in the tree, per conversation folder, on this device.
+const kept = stored<Record<string, string[]>>(storageKeys.filesAt, {});
+// A path's folders from the top: `a/b` is `a` and `a/b`.
+const ancestors = (dir: string) =>
+  dir
+    ? dir.split("/").map((_, at, parts) => parts.slice(0, at + 1).join("/"))
+    : [];
 // Typing pauses this long before the folder is searched.
 const SEARCH_DELAY_MS = 150;
 const dirOf = (path: string) =>
@@ -177,13 +183,28 @@ export default function Files({
   const turn = session.turn_active;
   const view = useContext(ImageViewer);
   const [start] = useState(() => reveal && place(reveal, folderOf(session)));
-  const [dir, setDir] = useState(
-    start?.dir ?? kept.read()[folderOf(session)] ?? "",
-  );
+  // The folder in context: the open file's, or the one a citation names.
+  const [dir, setDir] = useState(start?.dir ?? "");
+  const [expanded, setExpanded] = useState(() => {
+    const saved = kept.read()[folderOf(session)];
+    return new Set([
+      ...(Array.isArray(saved) ? saved : []),
+      ...ancestors(start?.dir ?? ""),
+    ]);
+  });
   // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
   useEffect(() => {
-    kept.write({ ...kept.read(), [folderOf(session)]: dir });
-  }, [dir]);
+    kept.write({ ...kept.read(), [folderOf(session)]: [...expanded] });
+  }, [expanded]);
+  // Opens `path` and its folders in the tree.
+  const unfold = (path: string) =>
+    setExpanded((all) => new Set([...all, ...ancestors(path)]));
+  const toggle = (path: string) =>
+    setExpanded((all) => {
+      const next = new Set(all);
+      if (!next.delete(path)) next.add(path);
+      return next;
+    });
   const [file, setFile] = useState(start?.file ?? "");
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -224,6 +245,11 @@ export default function Files({
   const listing = useResource(
     () => api<Listing>(routes.files(id, "list", dir)),
     [id, dir, turn, written],
+  );
+  // The tree's top, read as the folder in context is.
+  const root = useResource(
+    () => api<Listing>(routes.files(id, "list", "")),
+    [id, turn, written],
   );
   const search = query.trim();
   const found = useResource<Found | undefined>(
@@ -359,6 +385,7 @@ export default function Files({
     if (path.endsWith("/")) return browse(path.slice(0, -1));
     setFile(path);
     setDir(dirOf(path));
+    unfold(dirOf(path));
     // Rendered Markdown has no lines to mark: cited lines open its source.
     setSource(!!lines && (MARKDOWN.test(path) || HTML.test(path)));
     setQuery("");
@@ -375,6 +402,7 @@ export default function Files({
   const browse = (path: string) => {
     setCanvas(false);
     setDir(path);
+    unfold(path);
     setQuery("");
     setShowing("list");
     setCited(undefined);
@@ -383,6 +411,7 @@ export default function Files({
   const show = (target: FileTarget) => {
     const next = place(target, folderOf(session));
     setDir(next.dir);
+    unfold(next.dir);
     setFile(next.file);
     setShowing(next.showing);
     setChanging(!!next.changing);
@@ -473,7 +502,6 @@ export default function Files({
   // Still looking: the title keeps the cited name, the viewer says so.
   const seeking = (looking && (!answered || named.length === 1)) || missing;
   const titled = file || (seeking ? cited!.path : canvas ? dir : "");
-  const crumbs = dir ? dir.split("/") : [];
   const folderName = nameOf(folderOf(session)) || "Files";
   const fileError = content.error ? failure(content.error) : undefined;
 
@@ -485,6 +513,15 @@ export default function Files({
             class="files-back files-back-canvas"
             label={canvas ? "Back to the canvas" : "Back to the list"}
             onClick={() => setFile("")}
+          >
+            <ChevronLeft />
+          </IconButton>
+        )}
+        {canvas && !file && (
+          <IconButton
+            class="files-back files-back-canvas"
+            label="Back to the list"
+            onClick={() => setCanvas(false)}
           >
             <ChevronLeft />
           </IconButton>
@@ -518,15 +555,7 @@ export default function Files({
         {diffText && formatStat(counts) && (
           <span class="files-dir small">{formatStat(counts)}</span>
         )}
-        {!file && !changing && !search && pages.length > 1 && (
-          <Button
-            variant="secondary"
-            aria-pressed={canvas}
-            onClick={() => setCanvas(!canvas)}
-          >
-            Canvas
-          </Button>
-        )}
+
         {file && !changing && (MARKDOWN.test(file) || HTML.test(file)) && (
           <Button
             variant="secondary"
@@ -724,12 +753,12 @@ export default function Files({
           ) : changing ? (
             <>
               {changes.length ? (
-                <ul class="files-entries">
+                <ul class="files-tree dense">
                   {changes.map((change) => (
                     <li key={change.path}>
                       <Button
                         variant="quiet"
-                        class="entry"
+                        class="entry tree-row"
                         aria-current={change.path === file ? "true" : undefined}
                         onClick={() => open(change.path)}
                       >
@@ -750,61 +779,37 @@ export default function Files({
             </>
           ) : (
             <>
-              <div class="files-crumbs">
-                {["", ...crumbs].map((name, at) => {
-                  const path = crumbs.slice(0, at).join("/");
-                  return (
-                    <Button
-                      key={path}
-                      variant="quiet"
-                      aria-current={path === dir ? "location" : undefined}
-                      onClick={() => browse(path)}
-                    >
-                      {name || folderName}
-                    </Button>
-                  );
-                })}
+              <div class="files-tree-head">
+                <span class="small truncate">{folderName}</span>
+                <IconButton
+                  label="Collapse all"
+                  onClick={() => setExpanded(new Set())}
+                >
+                  <ChevronsDownUp />
+                </IconButton>
               </div>
-              {listing.error ? (
-                <LoadError error={listing.error} retry={listing.retry} />
-              ) : listing.value && !listing.value.entries.length ? (
+              {root.error ? (
+                <LoadError error={root.error} retry={root.retry} />
+              ) : root.value && !root.value.entries.length ? (
                 <EmptyState>This folder is empty.</EmptyState>
               ) : (
-                <Placeholder label="Loading files…" when={!listing.value}>
-                  <ul class="files-entries">
-                    {(listing.value ?? SAMPLE_LISTING).entries.map((entry) => {
-                      const path = join(dir, entry.name);
-                      return (
-                        <li key={entry.name}>
-                          <Button
-                            variant="quiet"
-                            class="entry"
-                            aria-current={path === file ? "true" : undefined}
-                            onClick={() =>
-                              entry.dir ? browse(path) : open(path)
-                            }
-                          >
-                            {entry.dir ? (
-                              <Folder />
-                            ) : IMAGE.test(entry.name) ? (
-                              <Image />
-                            ) : (
-                              <File />
-                            )}
-                            <span class="files-name truncate">
-                              {entry.name}
-                            </span>
-                          </Button>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                <Placeholder label="Loading files…" when={!root.value}>
+                  <FileTree
+                    root={root.value ?? SAMPLE_LISTING}
+                    session={id}
+                    version={`${turn}${written}`}
+                    expanded={expanded}
+                    dir={dir}
+                    file={file}
+                    toggle={toggle}
+                    open={(path) => open(path)}
+                    canvas={(path) => {
+                      setDir(path);
+                      setFile("");
+                      setCanvas(true);
+                    }}
+                  />
                 </Placeholder>
-              )}
-              {listing.value?.more && (
-                <p class="files-note small">
-                  Some entries may not be listed. Search to find the rest.
-                </p>
               )}
             </>
           )}

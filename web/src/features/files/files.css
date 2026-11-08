@@ -80,45 +80,65 @@
 .files-state[data-state="D"] {
   color: var(--removed);
 }
-.files-crumbs {
+/* The folder as a tree (tree.tsx): its name over it, then rows a nested
+   folder indents, a guide line marking its depth, as VS Code draws one. */
+.files-tree-head {
   display: flex;
-  flex-wrap: wrap;
-  font-size: var(--font-small);
-}
-.files-crumbs button {
-  min-height: var(--control);
-  padding-inline: var(--space-2);
+  align-items: center;
+  gap: var(--gap);
+  padding-left: var(--space-2);
   color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
 }
-.files-crumbs button + button::before {
-  content: "/";
-  margin-right: var(--space-2);
-  color: var(--muted);
-}
-.files-crumbs [aria-current] {
-  color: var(--text);
-  font-weight: var(--weight-strong);
-}
-.files-entries,
-.files-results {
+.files-tree-head > span {
   flex: 1;
-  min-height: 0;
-  overflow: auto;
+}
+.files-tree,
+.files-tree ul,
+.files-results {
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.files-entries button,
+.files-tree,
+.files-results {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.files-tree ul {
+  margin-left: var(--space-6);
+  border-left: var(--border);
+}
+.tree-folder {
+  display: flex;
+  align-items: center;
+}
+.tree-folder > .tree-row {
+  flex: 1;
+  min-width: 0;
+}
+.tree-row,
 .files-results button {
   width: 100%;
   min-height: var(--row);
   justify-content: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-1) var(--space-3);
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
   text-align: left;
 }
-.files-entries .lucide {
+.tree-row .lucide {
+  flex: none;
   color: var(--muted);
+}
+.tree-twisty {
+  width: var(--icon);
+  flex: none;
+  transition: rotate var(--motion-fast) var(--ease-standard);
+}
+.tree-row[aria-expanded="true"] > .tree-twisty {
+  rotate: 90deg;
 }
 .files-results .files-dir {
   flex: 1;
@@ -279,10 +299,19 @@
   display: flex;
   background: var(--surface);
 }
-.page-stage[data-fixed] {
-  align-items: center;
-  justify-content: center;
+/* The page scrolls inside the stage once zoomed past it; a fixed or wide
+   page is centred while it fits (margin: auto keeps all of it in reach). */
+.page-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  overflow: auto;
+}
+.page-stage[data-fixed] .page-scroll {
   padding: var(--space-6);
+}
+.page-stage:is([data-fixed], [data-wide]) .page-holder {
+  margin: auto;
 }
 .page-holder {
   position: relative;
@@ -292,9 +321,6 @@
 .page-stage[data-fixed] .page-holder {
   flex: none;
   border: var(--border);
-}
-.page-stage[data-wide] {
-  justify-content: center;
 }
 .page-stage[data-wide] .page-holder {
   flex: none;

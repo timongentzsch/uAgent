@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import {
   Copy,
   ExternalLink,
@@ -19,6 +19,12 @@ import Frame, {
   tell,
 } from "../../shared/page-frame.tsx";
 import { readTokens } from "./tokens.ts";
+import { ZoomControls } from "../../shared/zoom-surface.tsx";
+
+// The zoom of an opened page, as a scale of its real size, and one step.
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 1.25;
 import { useResource } from "../../shared/use-resource.ts";
 
 // A page opened across the pane: a fixed artboard scaled to fit, a page at
@@ -73,6 +79,7 @@ export default function OpenPage({
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const stage = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
   const [room, setRoom] = useState({ w: 0, h: 0 });
   // What the page said it is, for the address it said it at.
   const [said, setSaid] = useState<PageInfo & { src: string }>();
@@ -118,13 +125,69 @@ export default function OpenPage({
   // A fixed artboard fits the stage whole; a page that names only its width
   // (an A4 document) fits it across and scrolls down inside, as a PDF does.
   const wide = !!info?.artboard.w;
-  const scale = !room.w
+  const fit = !room.w
     ? 1
     : fixed
       ? Math.min(1, room.w / info!.artboard.w, room.h / info!.artboard.h)
       : wide
         ? Math.min(1, room.w / info!.artboard.w)
         : 1;
+  // How far the person zoomed from the fit; each page opens at the fit.
+  const [zoom, setZoom] = useState(1);
+  useEffect(() => setZoom(1), [src]);
+  const scale = fit * zoom;
+  // Scales by `by` keeping the point (x, y) of the scroller where it is.
+  const anchor = useRef<{ x: number; y: number; cx: number; cy: number }>(
+    undefined,
+  );
+  const zoomAt = (by: number, x: number, y: number) => {
+    const box = scroller.current;
+    if (!box) return;
+    anchor.current = {
+      x,
+      y,
+      cx: (box.scrollLeft + x) / scale,
+      cy: (box.scrollTop + y) / scale,
+    };
+    setZoom((was) =>
+      Math.min(ZOOM_MAX / fit, Math.max(ZOOM_MIN / fit, was * by)),
+    );
+  };
+  useLayoutEffect(() => {
+    const box = scroller.current;
+    const at = anchor.current;
+    if (!box || !at) return;
+    box.scrollLeft = at.cx * scale - at.x;
+    box.scrollTop = at.cy * scale - at.y;
+    anchor.current = undefined;
+  }, [scale]);
+  // The middle of the view, for − and +.
+  const middle = (by: number) =>
+    scroller.current &&
+    zoomAt(
+      by,
+      scroller.current.clientWidth / 2,
+      scroller.current.clientHeight / 2,
+    );
+  // ⌘ or Ctrl and the wheel (a trackpad pinch) over the margin; over the
+  // page, its helper sends the same as a zoom message.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one listener, state by updater
+  useEffect(() => {
+    const box = scroller.current;
+    if (!box) return;
+    const wheel = (event: WheelEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      const at = box.getBoundingClientRect();
+      zoomAt(
+        Math.exp(-event.deltaY * 0.01),
+        event.clientX - at.left,
+        event.clientY - at.top,
+      );
+    };
+    box.addEventListener("wheel", wheel, { passive: false });
+    return () => box.removeEventListener("wheel", wheel);
+  }, []);
   const select = (on: boolean) => {
     setSelecting(on);
     setHover(undefined);
@@ -255,49 +318,71 @@ export default function OpenPage({
           data-fixed={fixed || undefined}
           data-wide={(wide && !fixed) || undefined}
         >
-          <div
-            class="page-holder"
-            style={
-              wide
-                ? {
-                    width: `${info!.artboard.w * scale}px`,
-                    height: `${fixed ? info!.artboard.h * scale : room.h}px`,
-                  }
-                : undefined
-            }
-          >
-            <Frame
-              key={load}
-              src={src}
-              title={info?.title || path}
-              frameRef={frame}
-              width={wide ? info!.artboard.w : undefined}
-              height={
-                fixed ? info!.artboard.h : wide ? room.h / scale : undefined
+          <div class="page-scroll" ref={scroller}>
+            <div
+              class="page-holder"
+              style={
+                wide
+                  ? {
+                      width: `${info!.artboard.w * scale}px`,
+                      height: `${fixed ? info!.artboard.h * scale : room.h}px`,
+                    }
+                  : undefined
               }
-              scale={scale}
-              onMessage={(message) => {
-                if (message.type === "ready") {
-                  setSaid({ ...message, src });
-                  if (selecting)
-                    tell(frame.current, { type: "select", on: true });
-                } else if (message.type === "size")
-                  // A page that grows (its fonts, its images) is pictured whole.
-                  setSaid((was) => was && { ...was, height: message.height });
-                else if (message.type === "hover") setHover(message.rect);
-                else if (message.type === "pick") setPicked(message);
-                else if (message.type === "picked")
-                  setPicked((was) => was && { ...was, rect: message.rect });
-                else if (message.type === "key" && document.fullscreenElement) {
-                  if (message.key === "ArrowRight") step(1);
-                  if (message.key === "ArrowLeft") step(-1);
-                } else if (message.type === "key" && message.key === "Escape")
-                  select(false);
-              }}
-            />
-            {selecting && hover && mark(hover, "hover")}
-            {picked && mark(picked.rect, "picked")}
+            >
+              <Frame
+                key={load}
+                src={src}
+                title={info?.title || path}
+                frameRef={frame}
+                width={wide ? info!.artboard.w : undefined}
+                height={
+                  fixed ? info!.artboard.h : wide ? room.h / scale : undefined
+                }
+                scale={scale}
+                onMessage={(message) => {
+                  if (message.type === "ready") {
+                    setSaid({ ...message, src });
+                    if (selecting)
+                      tell(frame.current, { type: "select", on: true });
+                  } else if (message.type === "zoom") {
+                    // A point of the page, where it sits in the scroller.
+                    const page = frame.current!.getBoundingClientRect();
+                    const box = scroller.current!.getBoundingClientRect();
+                    zoomAt(
+                      message.by,
+                      page.left + message.x * scale - box.left,
+                      page.top + message.y * scale - box.top,
+                    );
+                  } else if (message.type === "size")
+                    // A page that grows (its fonts, its images) is pictured whole.
+                    setSaid((was) => was && { ...was, height: message.height });
+                  else if (message.type === "hover") setHover(message.rect);
+                  else if (message.type === "pick") setPicked(message);
+                  else if (message.type === "picked")
+                    setPicked((was) => was && { ...was, rect: message.rect });
+                  else if (
+                    message.type === "key" &&
+                    document.fullscreenElement
+                  ) {
+                    if (message.key === "ArrowRight") step(1);
+                    if (message.key === "ArrowLeft") step(-1);
+                  } else if (message.type === "key" && message.key === "Escape")
+                    select(false);
+                }}
+              />
+              {selecting && hover && mark(hover, "hover")}
+              {picked && mark(picked.rect, "picked")}
+            </div>
           </div>
+          {wide && (
+            <ZoomControls
+              percent={Math.round(scale * 100)}
+              out={() => middle(1 / ZOOM_STEP)}
+              in={() => middle(ZOOM_STEP)}
+              fit={zoom !== 1 ? () => setZoom(1) : undefined}
+            />
+          )}
         </div>
         {tweaking && (
           <aside class="page-tweaks" aria-label="Tweaks">

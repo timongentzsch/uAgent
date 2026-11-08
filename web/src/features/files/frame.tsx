@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "preact/hooks";
+import { useLayoutEffect, useRef } from "preact/hooks";
 import { useLatest } from "../../shared/use-latest.ts";
 
 // One page of the folder, live in a sandboxed frame. It runs in an opaque
@@ -13,6 +13,8 @@ export interface PageInfo {
   print: string;
   tweaks: Record<string, unknown> | null;
   height: number;
+  // Its stylesheets' addresses.
+  sheets?: string[];
 }
 export interface Rect {
   x: number;
@@ -72,8 +74,8 @@ export default function Frame({
   const own = useRef<HTMLIFrameElement>(null);
   const frame = frameRef ?? own;
   const handle = useLatest(onMessage);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: one listener per frame
-  useEffect(() => {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one listener per frame, before the page can answer
+  useLayoutEffect(() => {
     const heard = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
       if (event.data?.uagentDesign === 1) handle.current?.(event.data);

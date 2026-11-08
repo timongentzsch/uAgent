@@ -58,6 +58,8 @@
       print: meta("print"),
       tweaks: tweaks(),
       height: height(),
+      // Where its stylesheets are, so the app can read a design system's.
+      sheets: [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href),
     });
     let last = 0;
     new ResizeObserver(() => {

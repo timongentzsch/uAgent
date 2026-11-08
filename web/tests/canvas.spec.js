@@ -182,3 +182,63 @@ test("a page opened: select and comment, tweaks, print", async ({
     /\/preview\/[0-9a-f]{48}\/design\/hero-a\.html\?v=[\d.]+#print$/,
   );
 });
+
+test("a design system shows as one page, and its themes under Tweaks", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const system = join(host.project, "design", "system");
+  await mkdir(join(system, "components", "Button"), { recursive: true });
+  await writeFile(join(system, "README.md"), "# Brand\n\nSquare corners.\n");
+  await writeFile(
+    join(system, "tokens.css"),
+    ':root, [data-theme="light"] {\n  --page: #ffffff; /* The ground */\n  --space-2: 4px; /* Inside controls */\n}\n[data-theme="dark"] {\n  --page: #000000;\n}\n',
+  );
+  await writeFile(
+    join(system, "components", "Button", "preview.html"),
+    '<!-- @dsCard group="Actions" height=88 -->\n<!doctype html><title>Button</title><button>Save</button>',
+  );
+  await mkdir(join(host.project, "design", "landing"));
+  await writeFile(
+    join(host.project, "design", "landing", "hero-a.html"),
+    page("Hero A", "<h1>Alpha</h1>").replace(
+      "</head>",
+      '<link rel="stylesheet" href="../system/tokens.css"></head>',
+    ),
+  );
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "design", exact: true }).click();
+  await files.getByRole("button", { name: "system", exact: true }).click();
+  await files.getByRole("button", { name: "System", exact: true }).click();
+  await expect(files.getByRole("heading", { name: "Brand" })).toBeVisible();
+  await expect(files.getByText("The ground")).toBeVisible();
+  await expect(files.getByText("Inside controls")).toBeVisible();
+  await expect(files.getByRole("heading", { name: "Actions" })).toBeVisible();
+  await expect(
+    app
+      .frameLocator('iframe[title="Button"]')
+      .getByRole("button", { name: "Save" }),
+  ).toBeVisible();
+
+  // The toggle returns to the list.
+  await files.getByRole("button", { name: "System", exact: true }).click();
+  await files
+    .locator(".files-crumbs")
+    .getByRole("button", { name: /design$/ })
+    .click();
+  await files.getByRole("button", { name: "landing", exact: true }).click();
+  await files.getByRole("button", { name: "Canvas" }).click();
+  await files.getByRole("button", { name: "Open Hero A" }).click();
+  await files.getByRole("button", { name: "Tweaks" }).click();
+  await files.getByRole("button", { name: "dark" }).click();
+  const frame = app.frameLocator('iframe[title="Hero A"]');
+  await expect(frame.locator("html")).toHaveAttribute("data-theme", "dark");
+  await files.getByRole("button", { name: "Keep theme" }).click();
+  await expect(app.locator("#prompt")).toHaveValue(
+    "`design/system/tokens.css` theme dark: ",
+  );
+});

@@ -9,6 +9,8 @@ import {
 import { Button, IconButton, Switch } from "../../shared/ui.tsx";
 import { Input, Textarea } from "../../shared/form-controls.tsx";
 import Frame, { type PageInfo, type Pick, type Rect, tell } from "./frame.tsx";
+import { readTokens } from "./tokens.ts";
+import { useResource } from "../../shared/use-resource.ts";
 
 // A page opened across the pane: a fixed artboard scaled to fit, a page at
 // the pane's own width. Select picks an element to comment on; Tweaks tries
@@ -41,9 +43,15 @@ export default function OpenPage({
   siblings,
   go,
   addToChat,
+  base,
+  read,
 }: {
   path: string;
   src: string;
+  // The folder's preview address, and a file of the folder as text: a
+  // design system the page links shows under Theme.
+  base: string;
+  read: (path: string) => Promise<string>;
   // The pages of its folder in canvas order, which Present steps through.
   siblings: string[];
   go: (path: string) => void;
@@ -101,6 +109,20 @@ export default function OpenPage({
     if (!on) setPicked(undefined);
     tell(frame.current, { type: "select", on });
   };
+  // The design system the page links, by its tokens.css.
+  const sheet = info?.sheets?.find((href) => /\/tokens\.css(\?|$)/.test(href));
+  const system = sheet
+    ? decodeURIComponent(new URL(sheet).pathname.slice(base.length))
+    : "";
+  const theme = useResource(
+    () => (system ? read(system).then(readTokens) : undefined),
+    [system],
+  );
+  const [themed, setThemed] = useState<Record<string, string>>({});
+  const tryTheme = (name: string, value: string) => {
+    setThemed((all) => ({ ...all, [name]: value }));
+    tell(frame.current, { type: "tweak", name, value });
+  };
   const declared = Object.entries(
     (info?.tweaks ?? {}) as Record<string, Tweak>,
   );
@@ -130,7 +152,7 @@ export default function OpenPage({
           <MousePointerClick />
           Select
         </Button>
-        {declared.length > 0 && (
+        {(declared.length > 0 || !!theme.value?.colors.length) && (
           <Button
             variant="secondary"
             aria-pressed={tweaking}
@@ -280,10 +302,64 @@ export default function OpenPage({
                 </div>
               );
             })}
+            {theme.value && theme.value.colors.length > 0 && (
+              <section class="page-theme" aria-label="Theme">
+                <span class="small">
+                  Theme <span class="muted">{system}</span>
+                </span>
+                {theme.value.themes.length > 1 && (
+                  <div class="segmented">
+                    {theme.value.themes.map((id) => (
+                      <Button
+                        key={id}
+                        variant="secondary"
+                        aria-pressed={
+                          (themed.theme ?? theme.value!.themes[0]) === id
+                        }
+                        onClick={() => tryTheme("theme", id)}
+                      >
+                        {id}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                {theme.value.colors
+                  .filter((color) => /^#[0-9a-f]{6}$/i.test(color.value))
+                  .map((color) => (
+                    <label key={color.name} class="page-theme-token small">
+                      <Input
+                        type="color"
+                        value={themed[`--${color.name}`] ?? color.value}
+                        onInput={(event) =>
+                          tryTheme(`--${color.name}`, event.currentTarget.value)
+                        }
+                      />
+                      {color.name}
+                    </label>
+                  ))}
+                {addToChat && Object.keys(themed).length > 0 && (
+                  <Button
+                    onClick={() => {
+                      const { theme: id, ...colors } = themed;
+                      addToChat(
+                        `\`${system}\` theme ${id ?? theme.value!.themes[0]}: ${Object.entries(
+                          colors,
+                        )
+                          .map(([name, value]) => `${name} ${value}`)
+                          .join(", ")}`,
+                      );
+                    }}
+                  >
+                    Keep theme
+                  </Button>
+                )}
+              </section>
+            )}
             <div class="page-tweak-actions">
               <Button
                 variant="secondary"
                 onClick={() => {
+                  setThemed({});
                   setValues({});
                   setLoad(load + 1);
                 }}

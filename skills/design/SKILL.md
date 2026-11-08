@@ -94,6 +94,8 @@ variant, a dark theme — in the page's head. Not copy, not a colour used once:
     text or selector, as the comment asks.
   - `` `path` tweaks: --accent #2f6fde, … ``: write those values as defaults.
   - `` `path` threw: message (line n) ``: fix the error.
+  - `` `system/tokens.css` theme dark: --page #0f1115, … ``: write those
+    values in that theme's block of the design system.
   Change only what was asked; suggest anything broader in your reply.
 
 ## Craft

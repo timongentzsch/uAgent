@@ -46,13 +46,6 @@ std::filesystem::path CanonicalOrSelf(const std::filesystem::path& path) {
   return error ? path : canonical;
 }
 
-std::optional<std::string> FirstLine(const std::filesystem::path& path) {
-  std::ifstream input(path);
-  std::string line;
-  return std::getline(input, line) ? std::optional<std::string>(Trim(line))
-                                   : std::nullopt;
-}
-
 std::filesystem::path RepositoryIdentity(const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   fs::path root = ProjectRoot(cwd);
@@ -60,19 +53,11 @@ std::filesystem::path RepositoryIdentity(const std::filesystem::path& cwd) {
   std::error_code error;
   if (fs::is_directory(dot_git, error)) return CanonicalOrSelf(dot_git);
 
-  std::optional<std::string> pointer = FirstLine(dot_git);
-  constexpr const char* kGitDir = "gitdir:";
-  if (!pointer || !pointer->starts_with(kGitDir)) {
-    return CanonicalOrSelf(root);
-  }
-  fs::path git_dir = Trim(pointer->substr(strlen(kGitDir)));
-  if (git_dir.is_relative()) git_dir = root / git_dir;
-  git_dir = CanonicalOrSelf(git_dir);
-  std::optional<std::string> common = FirstLine(git_dir / "commondir");
-  if (!common) return git_dir;
-  fs::path common_dir(*common);
-  if (common_dir.is_relative()) common_dir = git_dir / common_dir;
-  return CanonicalOrSelf(common_dir);
+  // A linked worktree is its repository; a `.git` file that names another
+  // repository without being its worktree names nothing.
+  const GitWorktree worktree = FindGitWorktree(root.string());
+  return worktree.common_dir.empty() ? CanonicalOrSelf(root)
+                                     : fs::path(worktree.common_dir);
 }
 
 struct RepositoryPaths {
@@ -445,7 +430,7 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
   const auto events = LoadMemoryEvents();
   // The Library's list carries each memory's first line; the terminal's
   // names only.
-  const bool summary = request.value("summary", false);
+  const bool summary = JsonValue(request, "summary", false);
   auto describe = [&](const MemoryEntry& entry, bool body) {
     const auto slash = entry.key.find('/');
     const std::string scope{ScopePrefix(entry.key)};

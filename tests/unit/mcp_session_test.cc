@@ -650,8 +650,12 @@ TEST_CASE(TestScopedBaseAndMemory) {
   fs::path linked_repo = root / "linked-repo";
   fs::path linked_git_dir = main_repo / ".git/worktrees/linked-repo";
   fs::create_directories(linked_git_dir);
+  fs::create_directories(main_repo / ".git/objects");
   fs::create_directories(linked_repo);
   CHECK(ToolWriteFile((linked_git_dir / "commondir").string(), "../..\n")
+            .output.starts_with("wrote "));
+  CHECK(ToolWriteFile((linked_git_dir / "gitdir").string(),
+                      (linked_repo / ".git").string() + "\n")
             .output.starts_with("wrote "));
   CHECK(ToolWriteFile((linked_repo / ".git").string(),
                       "gitdir: " + linked_git_dir.string() + "\n")
@@ -662,6 +666,17 @@ TEST_CASE(TestScopedBaseAndMemory) {
   fs::current_path(linked_repo);
   CHECK(ToolMemoryAction("get", "project/shared-worktree", std::nullopt)
             .output.find("shared fact") != std::string::npos);
+  // A `.git` file that names another repository without being its worktree
+  // reaches none of that repository's memory.
+  fs::path hostile = root / "hostile-repo";
+  fs::create_directories(hostile);
+  CHECK(ToolWriteFile((hostile / ".git").string(),
+                      "gitdir: " + (main_repo / ".git").string() + "\n")
+            .output.starts_with("wrote "));
+  fs::current_path(hostile);
+  CHECK(ToolMemoryAction("get", "project/shared-worktree", std::nullopt)
+            .output.find("shared fact") == std::string::npos);
+  fs::current_path(linked_repo);
   CHECK(ToolMemoryAction("forget", "project/shared-worktree", std::nullopt)
             .output.starts_with("forgot "));
   fs::current_path(workspace);

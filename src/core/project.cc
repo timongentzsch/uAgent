@@ -195,4 +195,44 @@ std::string WriteUserStyle(const std::string& text,
                          /*shared=*/false);
 }
 
+namespace {
+std::string TrimLine(std::string_view text) {
+  return Trim(std::string(text.substr(0, text.find_first_of("\r\n"))));
+}
+}  // namespace
+
+GitWorktree FindGitWorktree(const std::string& folder) {
+  namespace fs = std::filesystem;
+  std::error_code error;
+  for (fs::path dir = folder; dir.has_relative_path() && dir != dir.root_path();
+       dir = dir.parent_path()) {
+    const fs::path dot_git = dir / ".git";
+    if (!fs::exists(dot_git, error)) continue;
+    if (!fs::is_regular_file(dot_git, error)) return {};
+    const std::string line =
+        TrimLine(ReadFile(dot_git.string(), 4096).value_or(""));
+    constexpr std::string_view kPrefix = "gitdir:";
+    if (!line.starts_with(kPrefix)) return {};
+    fs::path git_dir = Trim(line.substr(kPrefix.size()));
+    if (git_dir.is_relative()) git_dir = dir / git_dir;
+    git_dir = CanonicalAccessPath(git_dir.string());
+    const fs::path worktrees = git_dir.parent_path();
+    const fs::path common_dir = worktrees.parent_path();
+    auto line_of = [&](const char* name) {
+      return TrimLine(ReadFile((git_dir / name).string(), 4096).value_or(""));
+    };
+    fs::path shared = line_of("commondir");
+    if (shared.is_relative()) shared = git_dir / shared;
+    if (worktrees.filename() != "worktrees" ||
+        !fs::is_directory(common_dir / "objects", error) ||
+        CanonicalAccessPath(shared.string()) != common_dir ||
+        CanonicalAccessPath(line_of("gitdir")) !=
+            CanonicalAccessPath(dot_git.string())) {
+      return {};
+    }
+    return {git_dir.string(), common_dir.string()};
+  }
+  return {};
+}
+
 }  // namespace uagent

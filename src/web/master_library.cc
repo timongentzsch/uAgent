@@ -94,11 +94,11 @@ void AddShared(const std::string& session, const std::string& session_path,
        fs::directory_iterator(session_path + kSessionAssetsSuffix, ec)) {
     if (entry.path().extension() != ".json") continue;
     const json record = ReadJsonFile(entry.path().string(), 1024);
-    if (!record.value("shared", false)) continue;
+    if (!JsonValue(record, "shared", false)) continue;
     items.push_back({{"kind", "file"},
                      {"key", entry.path().stem().string()},
                      {"name", JsonValue(record, "name", "file")},
-                     {"bytes", record.value("bytes", 0)},
+                     {"bytes", JsonValue(record, "bytes", int64_t{0})},
                      {"session", session},
                      {"place", place},
                      {"modified", Modified(entry.path())}});
@@ -133,7 +133,7 @@ void Master::Library(const Request&, Response& response) {
                {"workspace", false}};
     }
     // The conversation a place's designs open in: its latest of its own.
-    const int64_t updated = session.value("updated", int64_t{0});
+    const int64_t updated = JsonValue(session, "updated", int64_t{0});
     if (JsonValue(session, "parent", "").empty() && updated >= latest[cwd]) {
       latest[cwd] = updated;
       place["session"] = id;

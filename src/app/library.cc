@@ -216,7 +216,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
 json LibraryOverview(const json& request) {
   json items = json::array(), limits = json::object();
   std::set<std::string> seen;
-  for (const json& place : request.value("places", json::array())) {
+  for (const json& place : JsonValue(request, "places", json::array())) {
     const auto cwd = CanonicalDirectory(
         place.is_string() ? place.get<std::string>() : std::string());
     if (!cwd) continue;
@@ -225,8 +225,8 @@ json LibraryOverview(const json& request) {
       json listed =
           memory ? MemoryControl({{"action", "list"}, {"summary", true}}, *cwd)
                  : SkillControl({{"action", "list"}}, *cwd);
-      limits[kind] = listed.value("limit", 0);
-      if (memory) limits["memory_enabled"] = listed.value("enabled", true);
+      limits[kind] = JsonValue(listed, "limit", int64_t{0});
+      if (memory) limits["memory_enabled"] = JsonValue(listed, "enabled", true);
       for (json& item : listed["items"]) {
         if (!seen.insert(JsonValue(item, "path", "")).second) continue;
         item["kind"] = kind;

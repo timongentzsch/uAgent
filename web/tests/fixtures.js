@@ -119,7 +119,7 @@ export async function saveHistory(
 
 // A saved conversation with one exchange, as the host lists it: the list
 // leaves out an empty one unless it is open.
-export async function savedConversation(host, request, title) {
+export async function savedConversation(host, request, title, reply = "Done") {
   const id = crypto.randomUUID();
   await saveHistory(host, `saved-${id}.json`, {
     id,
@@ -127,7 +127,7 @@ export async function savedConversation(host, request, title) {
     turns: 1,
     messages: [
       { role: "user", content: title },
-      { role: "assistant", content: "Done" },
+      { role: "assistant", content: reply },
     ],
   });
   let found;

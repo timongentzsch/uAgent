@@ -4,7 +4,13 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { test, expect, headerAction, saveHistory } from "./fixtures.js";
+import {
+  test,
+  expect,
+  headerAction,
+  saveHistory,
+  savedConversation,
+} from "./fixtures.js";
 
 async function folder(project) {
   await mkdir(join(project, "src"));
@@ -243,30 +249,8 @@ test("a folder that is not a repository has no changes toggle", async ({
 });
 
 // A saved conversation in the project whose reply cites `reply`.
-async function citing(host, request, reply) {
-  const id = crypto.randomUUID();
-  const title = `Cites ${id}`;
-  await saveHistory(host, `cites-${id}.json`, {
-    id,
-    title,
-    turns: 1,
-    messages: [
-      { role: "user", content: "Where is two?" },
-      { role: "assistant", content: reply },
-    ],
-  });
-  let found;
-  await expect
-    .poll(async () => {
-      const response = await request.get("/api/sessions?refresh=1");
-      found = (await response.json()).sessions.find(
-        (item) => item.title === title,
-      );
-      return !!found;
-    })
-    .toBe(true);
-  return found;
-}
+const citing = (host, request, reply) =>
+  savedConversation(host, request, `Cites ${crypto.randomUUID()}`, reply);
 
 test("a cited path opens the pane at its lines", async ({
   page,

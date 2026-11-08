@@ -19,6 +19,7 @@ from integration_support import (
     tool_call,
     tool_calls,
     tool_results,
+    wait_until,
     write_json_response,
     write_session,
 )
@@ -312,10 +313,7 @@ def test_activity_progress_polls_do_not_trip_identical_call_guard(root, home, *,
         if poll <= 4:
             pathlib.Path(f"{trigger_prefix}-{poll}").touch()
             ack = pathlib.Path(f"{ack_prefix}-{poll}")
-            deadline = time.monotonic() + budget(3)
-            while not ack.exists() and time.monotonic() < deadline:
-                time.sleep(0.01)
-            assert_true(ack.exists(), f"activity did not produce progress {poll}")
+            wait_until(ack.exists, f"activity did not produce progress {poll}", timeout=3)
             return tool_call("activity", {"operation": "poll", "id": state["id"]})
         complete = all(
             any(f"progress-{index}" in result for result in results) for index in range(1, 5)

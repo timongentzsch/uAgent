@@ -102,18 +102,13 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 == {"mode": "default", "effective": "yolo", "default": "yolo"},
                 "choice taken back",
             )
-            status, refused, _ = client.json(
-                "/api/command",
-                {
-                    "v": 2,
-                    "kind": "config",
-                    "request_id": "e" * 32,
-                    "session_id": session["id"],
-                    "generation": "",
-                    "operation": "apply",
-                    "scope": "conversation",
-                    "changes": [{"key": "UAGENT_MAX_STEPS", "value": "9"}],
-                },
+            status, refused = client.send(
+                "config",
+                session,
+                generation="",
+                operation="apply",
+                scope="conversation",
+                changes=[{"key": "UAGENT_MAX_STEPS", "value": "9"}],
             )
             assert_true("cannot be set for one conversation" in json.dumps(refused), refused)
             client.command("permissions", session, mode="ask")
@@ -222,7 +217,6 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
 
 
 def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
-    import http.client
 
     def unavailable(handler, _body):
         write_json_response(handler, {"error": {"message": "temporary unavailable"}}, status=503)
@@ -254,15 +248,8 @@ def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
             )
             listing = client.json("/api/sessions")[1]
             client.command("submit", session, text="Fail this request")
-            stream = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
+            stream, response = client.events(listing)
             try:
-                stream.request(
-                    "GET",
-                    f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
-                    headers={"Cookie": client.cookie},
-                )
-                response = stream.getresponse()
-                assert_true(response.status == 200, response.status)
                 # Replay every transition: polling can miss a premature idle state.
                 while line := response.readline():
                     if not line.startswith(b"data: "):
@@ -585,17 +572,6 @@ def test_a_conversation_without_a_model_takes_the_one_chosen_from_the_catalogue(
             assert_true(served == ["beta"], served)
 
 
-def open_event_stream(client):
-    listing = client.json("/api/sessions")[1]
-    connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=budget(15))
-    connection.request(
-        "GET",
-        f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
-        headers={"Cookie": client.cookie},
-    )
-    return connection, connection.getresponse()
-
-
 def drop_event_stream(connection):
     """Closes the client's end at once, though a reader is waiting on it."""
     with contextlib.suppress(OSError, AttributeError):
@@ -626,12 +602,10 @@ def test_a_page_that_reloads_again_and_again_still_gets_its_event_stream(root, h
     with web_host(binary, root, home, "http://127.0.0.1:1") as (client, code, _, _):
         client.pair(code)
         for _ in range(4):
-            connection, response = open_event_stream(client)
-            assert_true(response.status == 200, response.status)
+            connection, response = client.events()
             connection.close()
         started = time.monotonic()
-        connection, response = open_event_stream(client)
-        assert_true(response.status == 200, response.status)
+        connection, response = client.events()
         ready, _ = watch_event_stream(response)
         assert_true(ready.wait(budget(5)), "the fifth stream never caught up")
         assert_true(time.monotonic() - started < budget(5), "the fifth stream was slow")
@@ -647,13 +621,11 @@ def test_a_new_event_stream_replaces_the_oldest_one_when_the_limit_is_reached(
         client.pair(code)
         open_streams = []
         for _ in range(4):
-            open_streams.append(open_event_stream(client))
-            assert_true(open_streams[-1][1].status == 200, open_streams[-1][1].status)
+            open_streams.append(client.events())
         watched = [watch_event_stream(response) for _, response in open_streams]
         for ready, _ in watched:
             assert_true(ready.wait(budget(5)), "a stream never caught up")
-        connection, response = open_event_stream(client)
-        assert_true(response.status == 200, response.status)
+        connection, response = client.events()
         newest_ready, _ = watch_event_stream(response)
         assert_true(newest_ready.wait(budget(5)), "the fifth stream never caught up")
         assert_true(watched[0][1].wait(budget(5)), "the oldest stream stayed open")

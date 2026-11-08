@@ -154,15 +154,7 @@ def refusal(client, session, **values):
 
 def watch(client):
     """The events the host publishes from now on, as they arrive."""
-    listing = client.json("/api/sessions")[1]
-    connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=60)
-    connection.request(
-        "GET",
-        f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
-        headers={"Cookie": client.cookie},
-    )
-    response = connection.getresponse()
-    assert_true(response.status == 200, response.status)
+    connection, response = client.events(timeout=60)
     frames = []
 
     def read():

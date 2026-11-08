@@ -387,7 +387,6 @@ def test_partial_usage_reconciles_without_double_counting(root, home, *, binary)
 
 
 def test_worker_batches_fast_deltas_without_delaying_a_quiet_tail(root, home, *, binary):
-    import http.client
 
     second_written = threading.Event()
     release_final = threading.Event()
@@ -423,15 +422,7 @@ def test_worker_batches_fast_deltas_without_delaying_a_quiet_tail(root, home, *,
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
             session = client.create(root)
-            listing = client.json("/api/sessions")[1]
-            connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
-            connection.request(
-                "GET",
-                f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
-                headers={"Cookie": client.cookie},
-            )
-            response = connection.getresponse()
-            assert_true(response.status == 200, response.status)
+            connection, response = client.events()
             deltas = []
             observed_tail = threading.Event()
             completed = threading.Event()
@@ -491,7 +482,6 @@ def test_checkpoints_reach_browsers_as_changed_rows(root, home, *, binary):
     """After the view a browser loaded, a checkpoint sends the rows that
     changed and its state without the view; applying them in order gives
     the view a fresh load returns."""
-    import http.client
 
     with Server([lambda _, _body: event({"content": "row " * 500})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
@@ -504,13 +494,7 @@ def test_checkpoints_reach_browsers_as_changed_rows(root, home, *, binary):
                     value["state"].get("turns") == 1 and value["metadata"]["status"] == "idle"
                 ),
             )
-            connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
-            connection.request(
-                "GET",
-                f"/api/events?cursor={loaded['epoch']}:{loaded['cursor']}",
-                headers={"Cookie": client.cookie},
-            )
-            response = connection.getresponse()
+            connection, response = client.events(loaded)
             frames = []
             seen = [0]
 

@@ -9,7 +9,7 @@ import socket
 import subprocess
 import time
 
-from integration_support import base_env, budget, live_process_states, wait_until
+from integration_support import assert_true, base_env, budget, live_process_states, wait_until
 from session_support import close_sessions, remove_runtime, stop_sessions
 
 
@@ -71,15 +71,34 @@ class WebClient:
         self.cookie = headers["Set-Cookie"].split(";", 1)[0]
         return value
 
-    def command(self, kind, session=None, **values):
+    def send(self, kind, session=None, **values):
+        """A command and the host's answer: its status and result, refused or not."""
         self.sequence += 1
         payload = {"v": 2, "kind": kind, "request_id": f"{self.sequence:032x}"}
         if session:
             payload.update(session_id=session["id"], generation=session.get("generation", ""))
         payload.update(values)
         status, result, _ = self.json("/api/command", payload)
+        return status, result
+
+    def command(self, kind, session=None, **values):
+        status, result = self.send(kind, session, **values)
         assert status == 200, result
         return result
+
+    def events(self, listing=None, timeout=15):
+        """The event stream from `listing`'s cursor (the catalogue's now when
+        none): its connection and its open response."""
+        listing = listing or self.json("/api/sessions")[1]
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=budget(timeout))
+        connection.request(
+            "GET",
+            f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
+            headers={"Cookie": self.cookie},
+        )
+        response = connection.getresponse()
+        assert_true(response.status == 200, response.status)
+        return connection, response
 
     def snapshot(self, session):
         status, value, _ = self.json("/api/sessions/" + session["id"])

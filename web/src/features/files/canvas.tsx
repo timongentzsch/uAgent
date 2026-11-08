@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { Minus, Plus, Scan, TriangleAlert } from "lucide-preact";
-import { Button, IconButton } from "../../shared/ui.tsx";
+import { TriangleAlert } from "lucide-preact";
+import { Button } from "../../shared/ui.tsx";
+import { ZoomControls } from "../../shared/zoom-surface.tsx";
+import {
+  capturePointer,
+  distance,
+  midpoint,
+  pinchView,
+  type Point,
+  TAP_SLOP_PX,
+  type ZoomView,
+} from "../../shared/zoom.ts";
 import Frame, {
   type PageInfo,
   type PageMessage,
@@ -17,15 +27,7 @@ import Frame, {
 // between rows (room for a name at any zoom), as Claude's canvas spaces them.
 const GAP_X = 80;
 const GAP_Y = 240;
-const ZOOM_MIN = 0.05;
-const ZOOM_MAX = 2;
-// A pointer that moved this far pans rather than opening the page under it.
-const SLOP = 4;
-interface View {
-  x: number;
-  y: number;
-  s: number;
-}
+const ZOOM: [number, number] = [0.05, 2];
 // What one message may carry of the pages' errors.
 const ERRORS_MAX = 1800;
 
@@ -106,39 +108,32 @@ export default function Canvas({
       return items;
     });
   }, [grouped, seen]);
-  const [view, setView] = useState<View>({ x: 24, y: 48, s: 0.2 });
+  const [view, setView] = useState<ZoomView>({ x: 24, y: 48, scale: 0.2 });
   const fit = () => {
     const box = stage.current;
     if (!box || !placed.length) return;
     const w = Math.max(...placed.map((item) => item.x + item.w));
     const h = Math.max(...placed.map((item) => item.y + item.h));
-    const s = Math.min(
+    const scale = Math.min(
       1,
       (box.clientWidth - 48) / w,
       (box.clientHeight - 96) / h,
     );
-    setView({ x: (box.clientWidth - w * s) / 2, y: 48, s });
+    setView({ x: (box.clientWidth - w * scale) / 2, y: 48, scale });
   };
   // Fit once the pages have said how large they are, and for a new folder.
   const sized = names.every((name) => seen[name]?.info);
   // biome-ignore lint/correctness/useExhaustiveDependencies: on arrival
   useEffect(fit, [sized, dir]);
-  // Zoom by `by` around a point of the stage, the point staying put.
-  const zoomAt = (by: number, px: number, py: number) =>
-    setView(({ x, y, s }) => {
-      const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s * by));
-      return {
-        x: px - ((px - x) * next) / s,
-        y: py - ((py - y) * next) / s,
-        s: next,
-      };
-    });
+  // Scale by `by`, what was under `from` moving to `to` (by default, staying).
+  const zoomAt = (by: number, from: Point, to = from) =>
+    setView((was) => pinchView(was, 0, 0, from, to, by, ZOOM));
   const center = (by: number) => {
     const box = stage.current;
-    if (box) zoomAt(by, box.clientWidth / 2, box.clientHeight / 2);
+    if (box) zoomAt(by, { x: box.clientWidth / 2, y: box.clientHeight / 2 });
   };
   // One pointer pans, two pinch. A pointer that moved opens nothing.
-  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pointers = useRef(new Map<number, Point>());
   // The wheel pans; with ⌘ or Ctrl (a trackpad pinch sends Ctrl) it zooms.
   // biome-ignore lint/correctness/useExhaustiveDependencies: one listener, state by updater
   useEffect(() => {
@@ -148,11 +143,10 @@ export default function Canvas({
       event.preventDefault();
       const at = box.getBoundingClientRect();
       if (event.ctrlKey || event.metaKey)
-        zoomAt(
-          Math.exp(-event.deltaY * 0.01),
-          event.clientX - at.left,
-          event.clientY - at.top,
-        );
+        zoomAt(Math.exp(-event.deltaY * 0.01), {
+          x: event.clientX - at.left,
+          y: event.clientY - at.top,
+        });
       else
         setView((v) => ({
           ...v,
@@ -177,7 +171,7 @@ export default function Canvas({
       if (event.type === "gesturestart") scale = 1;
       else if (pointers.current.size < 2) {
         const at = box.getBoundingClientRect();
-        zoomAt(next / scale, clientX - at.left, clientY - at.top);
+        zoomAt(next / scale, { x: clientX - at.left, y: clientY - at.top });
       }
       scale = next;
     };
@@ -203,33 +197,23 @@ export default function Canvas({
     if (!was) return;
     const all = [...pointers.current.values()];
     const now = { x: event.clientX, y: event.clientY };
-    if (Math.hypot(now.x - was.x, now.y - was.y) > SLOP) moved.current = true;
+    if (distance([now, was]) > TAP_SLOP_PX) moved.current = true;
     if (!moved.current) return;
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    capturePointer(event.currentTarget as HTMLElement, event.pointerId);
     if (all.length === 2) {
       // What was under the fingers' midpoint stays under it, scaled by
       // how far apart they moved.
       const other = all.find((point) => point !== was)!;
       const at = stage.current!.getBoundingClientRect();
-      const from = {
-        x: (was.x + other.x) / 2 - at.left,
-        y: (was.y + other.y) / 2 - at.top,
-      };
-      const to = {
-        x: (now.x + other.x) / 2 - at.left,
-        y: (now.y + other.y) / 2 - at.top,
-      };
-      const ratio =
-        Math.hypot(now.x - other.x, now.y - other.y) /
-        (Math.hypot(was.x - other.x, was.y - other.y) || 1);
-      setView(({ x, y, s }) => {
-        const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s * ratio));
-        return {
-          x: to.x - ((from.x - x) * next) / s,
-          y: to.y - ((from.y - y) * next) / s,
-          s: next,
-        };
+      const local = (point: Point) => ({
+        x: point.x - at.left,
+        y: point.y - at.top,
       });
+      zoomAt(
+        distance([now, other]) / (distance([was, other]) || 1),
+        local(midpoint([was, other])),
+        local(midpoint([now, other])),
+      );
     } else
       setView((v) => ({
         ...v,
@@ -240,7 +224,7 @@ export default function Canvas({
   };
   const up = (event: PointerEvent) => pointers.current.delete(event.pointerId);
   const failing = names.filter((name) => seen[name]?.errors.length);
-  const { x, y, s } = view;
+  const { x, y, scale: s } = view;
   return (
     <div class="canvas">
       {failing.length > 0 && (
@@ -327,18 +311,12 @@ export default function Canvas({
           </span>
         ))}
       </div>
-      <div class="float-toolbar canvas-zoom">
-        <IconButton label="Zoom out" onClick={() => center(1 / 1.25)}>
-          <Minus />
-        </IconButton>
-        <span class="small">{`${Math.round(s * 100)}%`}</span>
-        <IconButton label="Zoom in" onClick={() => center(1.25)}>
-          <Plus />
-        </IconButton>
-        <IconButton label="Fit" onClick={fit}>
-          <Scan />
-        </IconButton>
-      </div>
+      <ZoomControls
+        percent={Math.round(s * 100)}
+        out={() => center(1 / 1.25)}
+        in={() => center(1.25)}
+        fit={fit}
+      />
     </div>
   );
 }

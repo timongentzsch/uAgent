@@ -114,7 +114,7 @@ test("the canvas pans and zooms like a plane", async ({
   await app.setViewportSize({ width: 1440, height: 900 });
   await app.goto(`/#session=${session.id}`);
   const files = await openCanvas(app);
-  const level = files.locator(".canvas-zoom .small");
+  const level = files.locator(".zoom-controls output");
   const plane = files.locator(".canvas-plane");
   await expect(
     app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
@@ -155,7 +155,7 @@ async function phoneCanvas(app, session) {
   await expect(
     app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
   ).toBeVisible();
-  const level = files.locator(".canvas-zoom .small");
+  const level = files.locator(".zoom-controls output");
   const box = await files.locator(".canvas-stage").boundingBox();
   return {
     files,

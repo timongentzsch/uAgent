@@ -96,7 +96,7 @@ export default function OpenPage({
     const observer = new ResizeObserver(([entry]) =>
       setRoom({ w: entry.contentRect.width, h: entry.contentRect.height }),
     );
-    if (stage.current) observer.observe(stage.current);
+    if (scroller.current) observer.observe(scroller.current);
     return () => observer.disconnect();
   }, []);
   // Another page: nothing picked or tried carries over.

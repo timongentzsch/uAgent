@@ -138,28 +138,25 @@ export const usePreviewBase = (session: string) =>
     [session],
   );
 
+// How tall every page thumbnail is, in chat and the Library alike.
+const THUMB_HEIGHT = 160;
+
 // A page small and still: drawn at its own size (a tall one, its top) and
-// scaled to `width`.
-export function PageThumb({
-  base,
-  path,
-  width = 240,
-}: {
-  base: string;
-  path: string;
-  width?: number;
-}) {
+// scaled to one height, so thumbnails line up whatever their pages.
+export function PageThumb({ base, path }: { base: string; path: string }) {
   const [info, setInfo] = useState<PageInfo>();
   const { w, h } = pageSize(info, 900);
   return (
-    <Frame
-      src={pageAddress(base, path)}
-      title={info?.title || path}
-      width={w}
-      height={h}
-      scale={width / Math.max(w, h)}
-      live={false}
-      onMessage={(message) => message.type === "ready" && setInfo(message)}
-    />
+    <div class="page-thumb">
+      <Frame
+        src={pageAddress(base, path)}
+        title={info?.title || path}
+        width={w}
+        height={h}
+        scale={THUMB_HEIGHT / h}
+        live={false}
+        onMessage={(message) => message.type === "ready" && setInfo(message)}
+      />
+    </div>
   );
 }

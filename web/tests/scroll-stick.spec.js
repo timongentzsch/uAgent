@@ -126,6 +126,44 @@ test("streamed content only grows and stays pinned to the end", async ({
   ).toHaveCount(0);
 });
 
+// Following with motion on, the view glides after a long reply. WebKit
+// sets the scroller back to an older offset as streamed text lands; the
+// glide must not follow it back, so the view never steps up.
+test("a glide that follows a long reply never steps back", async ({
+  page,
+  session,
+  command,
+}) => {
+  test.setTimeout(120000);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const prompt = await startProbe(page, session, command);
+  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+    timeout: 60000,
+  });
+  await prompt.fill("Long continuity probe");
+  await prompt.press("Enter");
+  await expect(
+    page.locator(".message.response .markdown[data-streaming]"),
+  ).toBeVisible();
+  await page.locator(".transcript").evaluate((element) => {
+    window.tops = [];
+    const frame = () => {
+      window.tops.push(element.scrollTop);
+      window.topFrame = requestAnimationFrame(frame);
+    };
+    frame();
+  });
+  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+    timeout: 60000,
+  });
+  const tops = await page.evaluate(() => {
+    cancelAnimationFrame(window.topFrame);
+    return window.tops;
+  });
+  const steps = tops.filter((top, index) => index && top < tops[index - 1] - 1);
+  expect(steps).toEqual([]);
+});
+
 test("scrolled-up reader is never yanked down by streaming", async ({
   page,
   session,

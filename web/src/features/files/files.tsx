@@ -679,39 +679,49 @@ export default function Files({
               </Button>
             </div>
           )}
-          <Input
-            type="search"
-            class="files-search"
-            aria-label="Search files"
-            placeholder="Search files…"
-            role="combobox"
-            aria-expanded={!!search}
-            aria-controls="files-results"
-            aria-autocomplete="list"
-            aria-activedescendant={
-              results.length ? `files-result-${index}` : undefined
-            }
-            value={query}
-            onInput={(event) => {
-              setQuery(event.currentTarget.value);
-              setIndex(0);
-              setCited(undefined);
-            }}
-            onKeyDown={(event) => {
-              if (event.isComposing || !plainKey(event)) return;
-              if (event.key === "Escape" && query) setQuery("");
-              else if (
-                (event.key === "ArrowDown" || event.key === "ArrowUp") &&
-                results.length
-              )
-                setIndex(nextIndex(index, event.key, results.length));
-              else if (event.key === "Enter" && results[index])
-                open(results[index], waiting);
-              else return;
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-          />
+          <div class="files-search-row">
+            <Input
+              type="search"
+              class="files-search"
+              aria-label="Search files"
+              placeholder="Search files…"
+              role="combobox"
+              aria-expanded={!!search}
+              aria-controls="files-results"
+              aria-autocomplete="list"
+              aria-activedescendant={
+                results.length ? `files-result-${index}` : undefined
+              }
+              value={query}
+              onInput={(event) => {
+                setQuery(event.currentTarget.value);
+                setIndex(0);
+                setCited(undefined);
+              }}
+              onKeyDown={(event) => {
+                if (event.isComposing || !plainKey(event)) return;
+                if (event.key === "Escape" && query) setQuery("");
+                else if (
+                  (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+                  results.length
+                )
+                  setIndex(nextIndex(index, event.key, results.length));
+                else if (event.key === "Enter" && results[index])
+                  open(results[index], waiting);
+                else return;
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+            />
+            {!changing && (
+              <IconButton
+                label="Collapse all"
+                onClick={() => setExpanded(new Set())}
+              >
+                <ChevronsDownUp />
+              </IconButton>
+            )}
+          </div>
           {search ? (
             <>
               {named.length > 1 && (
@@ -779,15 +789,6 @@ export default function Files({
             </>
           ) : (
             <>
-              <div class="files-tree-head">
-                <span class="small truncate">{folderName}</span>
-                <IconButton
-                  label="Collapse all"
-                  onClick={() => setExpanded(new Set())}
-                >
-                  <ChevronsDownUp />
-                </IconButton>
-              </div>
               {root.error ? (
                 <LoadError error={root.error} retry={root.retry} />
               ) : root.value && !root.value.entries.length ? (

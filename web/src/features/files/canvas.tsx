@@ -296,14 +296,19 @@ export default function Canvas({
             );
           })}
         </div>
-        {placed.map((item) => (
+        {placed.map((item, at) => (
           <span
             key={item.name}
             class="canvas-name small"
             style={{
               left: `${x + item.x * s}px`,
               top: `${y + item.y * s}px`,
-              maxWidth: `${item.w * s}px`,
+              // A name runs up to the next frame of its row; the last one's
+              // as far as the canvas's names may (files.css).
+              maxWidth:
+                placed[at + 1]?.y === item.y
+                  ? `${(placed[at + 1].x - item.x) * s}px`
+                  : undefined,
             }}
           >
             {item.x === 0 && item.row ? `${item.row} · ` : ""}

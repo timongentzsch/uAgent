@@ -179,6 +179,10 @@ export function useTranscriptHistory(
   // loop, 0 when idle); the sizes it last saw tell growth from a resize, and
   // a finger on the screen keeps it still.
   const gliding = useRef(0);
+  // Where the glide last put the view. WebKit sets an overflow scroller back
+  // to an older offset when its content changes mid-glide; the glide goes on
+  // from here, and follow() puts the view back before it paints.
+  const glideTop = useRef(0);
   const sized = useRef({ height: 0, client: 0 });
   const touching = useRef(false);
 
@@ -269,6 +273,7 @@ export function useTranscriptHistory(
     if (gliding.current) return;
     const tau = motionMs("glide") / 3;
     let last = performance.now();
+    glideTop.current = scroller.current?.scrollTop ?? 0;
     const step = (now: number) => {
       const element = scroller.current;
       if (!element || !following.current) {
@@ -276,7 +281,8 @@ export function useTranscriptHistory(
         return;
       }
       const end = element.scrollHeight - element.clientHeight;
-      const gap = end - element.scrollTop;
+      const from = Math.max(element.scrollTop, glideTop.current);
+      const gap = end - from;
       // At least a pixel a frame, so every frame moves the view.
       const move = Math.max(1, gap * (1 - Math.exp(-(now - last) / tau)));
       last = now;
@@ -290,7 +296,8 @@ export function useTranscriptHistory(
         gliding.current = 0;
         return;
       }
-      writeTop(element.scrollTop + move);
+      writeTop(from + move);
+      glideTop.current = from + move;
       gliding.current = requestAnimationFrame(step);
     };
     gliding.current = requestAnimationFrame(step);
@@ -313,9 +320,11 @@ export function useTranscriptHistory(
     )
       pin();
     // A change that grew nothing lets a running glide finish.
-    else if (grew || gliding.current) glide();
-    else pin();
-  }, [glide, pin]);
+    else if (grew || gliding.current) {
+      if (element.scrollTop < glideTop.current) writeTop(glideTop.current);
+      glide();
+    } else pin();
+  }, [glide, pin, writeTop]);
 
   // A reader who moves down into the end follows again: by scrolling there,
   // or by a wheel, swipe or key that finds no more room below. Only the

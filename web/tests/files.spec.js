@@ -413,7 +413,7 @@ test("a design a reply names shows as a card that opens its canvas", async ({
       .frameLocator('.design-card iframe[title="hero-a"]')
       .getByText("hero-a"),
   ).toBeVisible();
-  await card.getByRole("button", { name: "Open", exact: true }).click();
+  await card.getByRole("button", { name: "Open design/landing/" }).click();
   await expect(
     page.getByRole("region", { name: "Files" }).locator(".canvas-page"),
   ).toHaveCount(2);

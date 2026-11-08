@@ -8,7 +8,7 @@ import { PageThumb, usePreviewBase } from "../../shared/page-frame.tsx";
 
 // A design a reply names (`design/landing/`, `design/system/book.html`),
 // shown under it as a card, as a shared file is: its first page live and
-// small, and Open, which shows it in the Files pane.
+// small, a button that shows it in the Files pane.
 
 // At most this many cards a reply shows.
 const CARDS = 2;
@@ -71,7 +71,7 @@ function DesignCard({
         aria-label={`Open ${path}`}
         onClick={() => open({ path })}
       >
-        <PageThumb base={preview.value.base} path={cover} width={280} />
+        <PageThumb base={preview.value.base} path={cover} />
       </Button>
       <figcaption>
         <strong>{path}</strong>
@@ -82,9 +82,6 @@ function DesignCard({
               : `${count} ${count === 1 ? "page" : "pages"}`}
           </span>
         )}
-        <Button variant="quiet" onClick={() => open({ path })}>
-          Open
-        </Button>
       </figcaption>
     </figure>
   );

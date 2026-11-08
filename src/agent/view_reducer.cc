@@ -65,7 +65,8 @@ bool Upsert(json& nodes, const json& node) {
 
 // Drops the oldest nodes past the view's bounds, in one walk of the view,
 // and then up to the next turn, so the view starts where one does; returns
-// how many went.
+// how many went. A newest turn larger than the view keeps its head, the
+// message that started it, over its latest steps.
 size_t BoundView(json& view) {
   json& nodes = view["nodes"];
   size_t bytes = JsonEstimatedBytes(nodes);
@@ -75,19 +76,36 @@ size_t BoundView(json& view) {
     bytes -= std::min(bytes, JsonEstimatedBytes(nodes[dropped]));
     ++dropped;
   }
+  const auto is_turn = [&nodes](size_t at) {
+    return Field(nodes[at], "kind") == "turn";
+  };
+  bool head = false;
   if (dropped) {
-    const auto turn = std::find_if(
-        nodes.begin() + static_cast<std::ptrdiff_t>(dropped), nodes.end(),
-        [](const json& node) { return Field(node, "kind") == "turn"; });
-    if (turn != nodes.end()) {
-      dropped = static_cast<size_t>(turn - nodes.begin());
+    size_t next = dropped, last = dropped;
+    while (next < nodes.size() && !is_turn(next)) ++next;
+    while (last > 0 && !is_turn(last - 1)) --last;
+    const auto at = [&nodes](size_t index) {
+      return nodes.begin() + static_cast<std::ptrdiff_t>(index);
+    };
+    if (next < nodes.size()) {
+      dropped = next;
+      nodes.erase(at(0), at(next));
+    } else if (last == 0) {
+      nodes.erase(at(0), at(dropped));
+    } else {
+      // last - 1 is the turn the cut fell in: its head stays, in the room
+      // of one more of its steps.
+      dropped = std::min(dropped + 1, nodes.size());
+      nodes.erase(at(last), at(dropped));
+      nodes.erase(at(0), at(last - 1));
+      dropped -= 1;
+      head = true;
     }
-    nodes.erase(nodes.begin(),
-                nodes.begin() + static_cast<std::ptrdiff_t>(dropped));
     view["more"] = true;
   }
+  // Older rows continue from the first one held after a kept head.
   const auto first =
-      std::find_if(nodes.begin(), nodes.end(),
+      std::find_if(nodes.begin() + (head ? 1 : 0), nodes.end(),
                    [](const json& node) { return node.contains("sequence"); });
   if (first != nodes.end()) {
     view["before"] = JsonValue(*first, "sequence", uint64_t{0});

@@ -82,16 +82,13 @@
 }
 /* The folder as a tree (tree.tsx): its name over it, then rows a nested
    folder indents, a guide line marking its depth, as VS Code draws one. */
-.files-tree-head {
+/* The search, and Collapse all beside it. */
+.files-search-row {
   display: flex;
   align-items: center;
-  gap: var(--gap);
-  padding-left: var(--space-2);
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
+  gap: var(--space-2);
 }
-.files-tree-head > span {
+.files-search-row > .text-control {
   flex: 1;
 }
 .files-tree,
@@ -307,7 +304,7 @@
   display: flex;
   overflow: auto;
 }
-.page-stage[data-fixed] .page-scroll {
+.page-stage:is([data-fixed], [data-wide]) .page-scroll {
   padding: var(--space-6);
 }
 .page-stage:is([data-fixed], [data-wide]) .page-holder {
@@ -318,12 +315,11 @@
   flex: 1;
   display: flex;
 }
-.page-stage[data-fixed] .page-holder {
+/* A page with a size sits on the stage with a hairline edge, drawn outside
+   it so the page never covers it. */
+.page-stage:is([data-fixed], [data-wide]) .page-holder {
   flex: none;
-  border: var(--border);
-}
-.page-stage[data-wide] .page-holder {
-  flex: none;
+  outline: var(--border);
 }
 .page-holder > .page-frame {
   flex: 1;
@@ -440,6 +436,7 @@
 }
 .canvas-name {
   position: absolute;
+  max-width: var(--popover);
   transform: translateY(calc(-100% - var(--space-2)));
   overflow: hidden;
   text-overflow: ellipsis;

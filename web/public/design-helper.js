@@ -49,7 +49,7 @@
     const { w, h } = artboard();
     if (w && h && (root.scrollWidth > w + 1 || root.scrollHeight > h + 1))
       found.push(
-        `the page is ${root.scrollWidth}x${root.scrollHeight}, larger than its ${w}x${h} artboard`,
+        `the page is ${root.scrollWidth}x${root.scrollHeight}, larger than its ${w}x${h} artboard: make it fit, or for a page that scrolls give the artboard only its width (content="${w}")`,
       );
     document.querySelectorAll("body > section").forEach((page, at) => {
       if (page.scrollHeight > page.clientHeight + 1)

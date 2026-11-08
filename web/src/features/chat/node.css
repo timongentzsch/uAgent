@@ -165,11 +165,13 @@ div.node-row > .row-chevron {
   background: var(--surface);
 }
 /* A design a reply names: its first page small, as a button that opens it. */
+.design-card {
+  margin-top: var(--space-4);
+}
 .design-card-cover {
   justify-self: start;
   min-height: 0;
   padding: 0;
-  border: var(--border);
 }
 .node-file > figcaption {
   display: flex;

@@ -464,8 +464,9 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
       return value;
     }
     value["revision"] = DocumentRevision(entry.path, content);
-    if (summary)
+    if (summary) {
       value["description"] = MemorySummary(RedactMemorySecrets(content));
+    }
     value["bytes"] = content.size();
     value["modified"] = SnapshotFile(entry.path).modified_seconds * 1000;
     const auto reloaded =

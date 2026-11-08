@@ -417,8 +417,8 @@ void Master::Files(const Request& request, Response& response) {
 }
 
 std::string Master::PreviewBase(const std::string& id) {
-  std::lock_guard lock(mutex_);
   if (host_.Folder(id).empty()) return "";
+  std::lock_guard lock(previews_mutex_);
   std::string& token = previews_[id];
   if (token.empty()) token = RandomToken();
   if (token.empty()) previews_.erase(id);
@@ -437,13 +437,14 @@ void Master::PreviewGrant(const Request& request, Response& response) {
 void Master::Preview(const Request& request, Response& response) {
   const std::string token = request.matches[1].str();
   const std::string relative = request.matches[2].str();
-  std::string folder;
+  std::string session;
   {
-    std::lock_guard lock(mutex_);
+    std::lock_guard lock(previews_mutex_);
     for (const auto& [id, granted] : previews_) {
-      if (EqualSecret(token, granted)) folder = host_.Folder(id);
+      if (EqualSecret(token, granted)) session = id;
     }
   }
+  const std::string folder = session.empty() ? "" : host_.Folder(session);
   std::optional<fs::path> root =
       folder.empty() ? std::nullopt : CanonicalDirectory(folder);
   std::optional<fs::path> target =

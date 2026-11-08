@@ -2,6 +2,9 @@
 // page is sandboxed in an opaque origin; this tells the app what the page is,
 // what went wrong in it and what the person picked, by postMessage, and
 // applies the tweaks the app sends. Opened alone with #print, it prints.
+// Once loaded, it reports what is wrong with the page as drawn (larger than
+// its artboard, a page of a document that runs past it, a file that did not
+// load): as errors to the app, or on the console of the agent's browser.
 (() => {
   const root = document.documentElement;
   const meta = (name) =>
@@ -31,7 +34,38 @@
         tweak(name, spec.default);
   });
 
+  // A file the page links that did not load.
+  const missing = [];
+  addEventListener(
+    "error",
+    (event) => {
+      const url = event.target?.src || event.target?.href;
+      if (event.target !== window && url) missing.push(url);
+    },
+    true,
+  );
+  const problems = () => {
+    const found = missing.map((url) => `${url} did not load`);
+    const { w, h } = artboard();
+    if (w && h && (root.scrollWidth > w + 1 || root.scrollHeight > h + 1))
+      found.push(
+        `the page is ${root.scrollWidth}x${root.scrollHeight}, larger than its ${w}x${h} artboard`,
+      );
+    document.querySelectorAll("body > section").forEach((page, at) => {
+      if (page.scrollHeight > page.clientHeight + 1)
+        found.push(
+          `page ${at + 1} runs ${page.scrollHeight - page.clientHeight}px past its height`,
+        );
+    });
+    return found;
+  };
+  const checked = (report) =>
+    addEventListener("load", () =>
+      document.fonts.ready.then(() => problems().forEach(report)),
+    );
+
   if (parent === window) {
+    checked((problem) => console.warn(`uagent page: ${problem}`));
     if (location.hash !== "#print") return;
     // A fixed artboard prints as one page its size; a document flows.
     addEventListener("load", async () => {
@@ -49,6 +83,7 @@
   const send = (type, data) =>
     parent.postMessage({ uagentDesign: 1, type, ...data }, "*");
   const height = () => root.scrollHeight;
+  checked((problem) => send("error", { message: problem, line: 0 }));
   const failed = (message, line) =>
     send("error", {
       message: String(message || "error").slice(0, 300),

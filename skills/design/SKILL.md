@@ -95,9 +95,13 @@ variant, a dark theme — in the page's head. Not copy, not a colour used once:
 
 - Name the folder in your reply as `design/landing/`; the reference opens the
   canvas. Name a single artboard by its path.
-- Do not render, screenshot or open the pages to check them unless asked: the
-  canvas shows a page that fails, and the person will point. Do not hand
-  designs over with `artifact`: it snapshots a single file.
+- Check what you made before you hand it over, where the `browser` tool is
+  available: open each page you wrote or changed with `open` and its `path`.
+  It loads as the canvas shows it and lists the page's problems (larger than
+  its artboard, a page of a document that runs past its height, a file that
+  did not load). Fix every problem, then look at the page once and fix what
+  reads wrong. Pages you did not touch need no second look.
+- Do not hand designs over with `artifact`: it snapshots a single file.
 - Their message may carry lines the canvas wrote:
   - `` `path` `selector` “text” — comment ``: change that element, found by its
     text or selector, as the comment asks.

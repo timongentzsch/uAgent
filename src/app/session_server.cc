@@ -101,6 +101,7 @@ Options OptionsFromLaunch(const json& launch) {
   options.debug = JsonValue(launch, "debug", false);
   options.debug_path = JsonValue(launch, "debug_path", "");
   options.trust_project = JsonValue(launch, "trust_project", false);
+  options.preview = JsonValue(launch, "preview", "");
   if (const json* overrides = JsonObject(launch, "overrides")) {
     for (auto it = overrides->begin(); it != overrides->end(); ++it) {
       if (it.value().is_string()) {
@@ -133,7 +134,8 @@ Connection Open(const std::string& executable, const std::string& cwd,
                  {"debug", options.debug},
                  {"debug_path", options.debug_path},
                  {"trust_project", options.trust_project},
-                 {"session", options.session}};
+                 {"session", options.session},
+                 {"preview", options.preview}};
   const auto deadline = std::chrono::steady_clock::now() + kRuntimeStartTimeout;
   for (;;) {
     const std::string launch =

@@ -518,3 +518,33 @@ test("an opened page zooms as the canvas does, from the controls and over the pa
   await files.getByRole("button", { name: "Fit" }).click();
   await expect.poll(percent).toBe(fitted);
 });
+
+test("a page that runs past its size or misses a file says so", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const dir = join(host.project, "design", "book");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, "book.html"),
+    page(
+      "Book",
+      '<style>section{height:300px;overflow:hidden}</style><section><div style="height:500px">Long</div></section><img src="missing.png" alt="">',
+      "794",
+    ),
+  );
+  await writeFile(join(dir, "02-cover.html"), page("Cover", "<p>ok</p>"));
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "design", exact: true }).click();
+  await files.getByRole("button", { name: "book", exact: true }).click();
+  await files.getByRole("button", { name: "Canvas" }).click();
+  await expect(files.getByText("1 page failed to run")).toBeVisible();
+  await files.getByRole("button", { name: "Ask agent to fix" }).click();
+  await expect(app.locator("#prompt")).toHaveValue(
+    /`design\/book\/book\.html` threw: .*missing\.png did not load.*page 1 runs 200px past its height/,
+  );
+});

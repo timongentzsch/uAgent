@@ -136,7 +136,11 @@ class Master {
   std::vector<Device> devices_ UAGENT_GUARDED_BY(mutex_);
   // Preview tokens by session id; they last until the host stops or a
   // device is revoked.
-  std::map<std::string, std::string> previews_ UAGENT_GUARDED_BY(mutex_);
+  // The preview grants, by session, under their own lock: the host asks
+  // for one while starting a runtime, outside any lock of ours.
+  std::mutex previews_mutex_;
+  std::map<std::string, std::string> previews_
+      UAGENT_GUARDED_BY(previews_mutex_);
   // The script every previewed page runs first (web/public/design-helper.js).
   std::string design_helper_;
   // The open event streams, oldest first. Each holds a flag that ends it at

@@ -856,6 +856,12 @@ int WorkerMain(int argc, char** argv) {
       options.overrides["UAGENT_SESSION_BUDGET"] = std::to_string(budget);
     }
   }
+  // The browser opens a page of this folder where the web host serves it, so
+  // its stylesheets and images load as on the canvas (tools/browser.cc).
+  if (!options.preview.empty()) {
+    ::setenv("UAGENT_INTERNAL_PREVIEW",
+             (std::string(argv[2]) + "\n" + options.preview).c_str(), 1);
+  }
   WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5], agent);
   if (const int failed = channel.Start()) return failed;
   Observability observation;

@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
+#include <cctype>
+#include <charconv>
 #include <cstdint>
 #include <deque>
 #include <filesystem>
@@ -328,9 +330,10 @@ void Master::Files(const Request& request, Response& response) {
   }
   const int modes = request.has_param("list") + request.has_param("read") +
                     request.has_param("raw") + request.has_param("find") +
-                    request.has_param("changes") + request.has_param("diff");
+                    request.has_param("changes") + request.has_param("diff") +
+                    request.has_param("png");
   if (modes != 1) {
-    Error(response, "name one of list, read, raw, find, changes or diff");
+    Error(response, "name one of list, read, raw, find, changes, diff or png");
     return;
   }
   std::optional<fs::path> root = CanonicalDirectory(folder);
@@ -360,6 +363,10 @@ void Master::Files(const Request& request, Response& response) {
       return;
     }
     Reply(response, *diff);
+    return;
+  }
+  if (request.has_param("png")) {
+    Picture(request, response, *root);
     return;
   }
   if (request.has_param("find")) {
@@ -410,21 +417,22 @@ void Master::Files(const Request& request, Response& response) {
                    {"more", more}});
 }
 
-void Master::PreviewGrant(const Request& request, Response& response) {
-  const std::string id = request.matches[1].str();
+std::string Master::PreviewBase(const std::string& id) {
   std::lock_guard lock(mutex_);
-  if (host_.Folder(id).empty()) {
+  if (host_.Folder(id).empty()) return "";
+  std::string& token = previews_[id];
+  if (token.empty()) token = RandomToken();
+  if (token.empty()) previews_.erase(id);
+  return token.empty() ? "" : "/preview/" + token + "/";
+}
+
+void Master::PreviewGrant(const Request& request, Response& response) {
+  const std::string base = PreviewBase(request.matches[1].str());
+  if (base.empty()) {
     Error(response, "unknown session", 404);
     return;
   }
-  std::string& token = previews_[id];
-  if (token.empty()) token = RandomToken();
-  if (token.empty()) {
-    previews_.erase(id);
-    Error(response, "cannot make a preview token", 500);
-    return;
-  }
-  Reply(response, {{"base", "/preview/" + token + "/"}});
+  Reply(response, {{"base", base}});
 }
 
 void Master::Preview(const Request& request, Response& response) {
@@ -446,7 +454,7 @@ void Master::Preview(const Request& request, Response& response) {
   const std::string mime = target ? PreviewMime(*target) : std::string();
   const std::string* origin = ExpectedOrigin(request);
   std::string bytes, error;
-  if (mime.empty() || !origin ||
+  if (!target || mime.empty() || !origin ||
       !ReadRegularFile(target->string(), kUploadBytes, bytes, error)) {
     Error(response, "not found", 404);
     return;
@@ -461,6 +469,56 @@ void Master::Preview(const Request& request, Response& response) {
   response.set_header("Access-Control-Allow-Origin", "*");
   response.set_content(std::move(bytes),
                        mime == "text/html" ? "text/html; charset=utf-8" : mime);
+}
+
+// A page drawn by the agent's Chrome at its artboard's size, as a PNG: the
+// browser opens the page's preview address on this host's loopback, in a
+// throwaway context of its own.
+void Master::Picture(const Request& request, Response& response,
+                     const fs::path& root) {
+  const std::string path = request.get_param_value("png");
+  const std::optional<fs::path> target = Resolve(root, path);
+  const std::string base = PreviewBase(request.matches[1].str());
+  if (!target || !fs::is_regular_file(*target) || base.empty()) {
+    Error(response, "not found", 404);
+    return;
+  }
+  if (browser::DataDirectory().empty()) {
+    Error(response, "the agent's browser is not set up on this host", 503);
+    return;
+  }
+  std::string url = local_ + base;
+  for (const unsigned char ch : path) {
+    if (std::isalnum(ch) ||
+        std::string_view("/-._~").find(ch) != std::string_view::npos) {
+      url.push_back(static_cast<char>(ch));
+    } else {
+      static constexpr char kHex[] = "0123456789ABCDEF";
+      url += {'%', kHex[ch >> 4], kHex[ch & 15]};
+    }
+  }
+  const auto number = [&](const char* name, int fallback) {
+    const std::string text = request.get_param_value(name);
+    int value = fallback;
+    std::from_chars(text.data(), text.data() + text.size(), value);
+    return value;
+  };
+  const json result = browser::Request({{"op", "capture"},
+                                        {"instance_id", "0"},
+                                        {"url", url},
+                                        {"width", number("w", 1440)},
+                                        {"height", number("h", 900)},
+                                        {"scale", number("scale", 1)}},
+                                       browser::kActionMs);
+  std::string bytes;
+  if (!result.contains("png") ||
+      !Base64Decode(JsonValue(result, "png", ""), bytes, kUploadBytes)) {
+    Error(response, JsonValue(result, "error", "the browser drew no picture"),
+          502);
+    return;
+  }
+  ServeFile(response, std::move(bytes), "image/png",
+            target->stem().string() + ".png", !request.has_param("download"));
 }
 
 }  // namespace uagent::web::master

@@ -174,6 +174,10 @@ test("a page opened: select and comment, tweaks, print", async ({
     /`design\/hero-a\.html` tweaks: variant stacked$/,
   );
 
+  // Pictures need the agent's browser, which this host has not.
+  await expect(
+    files.getByRole("link", { name: "Download as PNG" }),
+  ).toHaveCount(0);
   // PDF opens the page alone, which prints itself.
   await expect(
     files.getByRole("link", { name: "Print or save as PDF" }),

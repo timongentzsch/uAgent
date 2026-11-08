@@ -478,6 +478,7 @@ function App() {
       openTerminal={filesTerminal}
       reveal={reveal}
       addToChat={toChat}
+      pictures={browserAvailable}
     />
   );
   const terminal = (

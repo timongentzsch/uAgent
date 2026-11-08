@@ -144,6 +144,7 @@ export default function Files({
   openTerminal,
   reveal,
   addToChat,
+  pictures,
 }: {
   session: Session;
   // Docked beside the chat; in a sheet, the sheet's own close.
@@ -155,6 +156,8 @@ export default function Files({
   reveal?: (FileTarget & { at: number }) | null;
   // Puts text in the conversation's draft; none where there is no draft.
   addToChat?: (text: string, keep?: boolean) => void;
+  // Whether the agent's browser can draw a page as a picture.
+  pictures?: boolean;
 }) {
   // In a sheet, its header is this one: Close plays the sheet's exit, and
   // the title is where the sheet puts focus.
@@ -584,6 +587,13 @@ export default function Files({
               go={open}
               addToChat={addToChat}
               base={preview.value.base}
+              picture={
+                pictures
+                  ? (w, h, scale) =>
+                      `${routes.files(id, "png", file)}&w=${w}&h=${h}&scale=${scale}`
+                  : undefined
+              }
+              view={view}
               read={(path) =>
                 api<FileText>(routes.files(id, "read", path)).then(
                   (value) => value.text,

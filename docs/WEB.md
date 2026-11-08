@@ -95,7 +95,9 @@ stays open for the next one. **Tweaks** tries the levers the page declares
 the agent to write, **Reset** reloads the page. **Present** shows it full
 screen, the arrow keys stepping through the folder's pages; the printer opens
 it alone to print or save as PDF, at its artboard's size or, for a document,
-on Letter or A4. A page that fails says so, and **Ask agent to fix** puts its errors in
+on Letter or A4. Where the [agent's browser](BROWSER.md) runs, it also draws
+the page as a PNG at twice its size, to download, copy or draw on in the
+image viewer, in a context of its own with no profile or cookies. A page that fails says so, and **Ask agent to fix** puts its errors in
 your message. A page the agent writes reloads as the write finishes, and the
 agent's reference to the folder opens its canvas.
 

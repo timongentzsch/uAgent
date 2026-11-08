@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
+  Copy,
   ExternalLink,
+  ImageDown,
+  PenLine,
   MousePointerClick,
   Presentation,
   Printer,
@@ -45,6 +48,8 @@ export default function OpenPage({
   addToChat,
   base,
   read,
+  picture,
+  view,
 }: {
   path: string;
   src: string;
@@ -52,6 +57,10 @@ export default function OpenPage({
   // design system the page links shows under Theme.
   base: string;
   read: (path: string) => Promise<string>;
+  // The page drawn as a PNG by the agent's browser, where there is one.
+  picture?: (width: number, height: number, scale: number) => string;
+  // Opens a picture in the image viewer, which can draw on it.
+  view: (image: { src: string; name: string }) => void;
   // The pages of its folder in canvas order, which Present steps through.
   siblings: string[];
   go: (path: string) => void;
@@ -99,6 +108,10 @@ export default function OpenPage({
     return () => document.removeEventListener("keydown", keys);
   });
   const fixed = !!info?.artboard.w && !!info.artboard.h;
+  // Its size as a picture: an artboard's, or a page's full height.
+  const size = fixed
+    ? info!.artboard
+    : { w: info?.artboard.w || 1440, h: Math.min(8000, info?.height || 900) };
   const scale =
     fixed && room.w
       ? Math.min(1, room.w / info!.artboard.w, room.h / info!.artboard.h)
@@ -169,6 +182,41 @@ export default function OpenPage({
           >
             <Presentation />
           </IconButton>
+        )}
+        {picture && info && (
+          <>
+            <a
+              class="file-button quiet icon-button"
+              href={`${picture(size.w, size.h, 2)}&download=1`}
+              download
+              aria-label="Download as PNG"
+              title="PNG"
+            >
+              <ImageDown />
+            </a>
+            <IconButton
+              label="Copy as PNG"
+              onClick={() =>
+                navigator.clipboard.write([
+                  new ClipboardItem({
+                    "image/png": fetch(picture(size.w, size.h, 2)).then(
+                      (response) => response.blob(),
+                    ),
+                  }),
+                ])
+              }
+            >
+              <Copy />
+            </IconButton>
+            <IconButton
+              label="Draw on it"
+              onClick={() =>
+                view({ src: picture(size.w, size.h, 1), name: `${path}.png` })
+              }
+            >
+              <PenLine />
+            </IconButton>
+          </>
         )}
         <a
           class="file-button quiet icon-button"

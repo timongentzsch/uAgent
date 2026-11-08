@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <filesystem>
 #include <list>
 #include <map>
 #include <memory>
@@ -102,6 +103,10 @@ class Master {
   // A conversation's folder, read only, for sandboxed pages that carry no
   // cookie: the token in the path is the grant.
   void PreviewGrant(const Request&, Response&);
+  // The preview address of a session's folder, minted once; empty when
+  // the session is unknown.
+  std::string PreviewBase(const std::string& id);
+  void Picture(const Request&, Response&, const std::filesystem::path& root);
   void Preview(const Request&, Response&);
 
   WebOptions options_;

@@ -773,6 +773,7 @@ json Runtime::Execute(const json& command) {
   std::string error;
   if (mode_ == "human") return {{"error", kHumanControls}};
   if (!Start(error)) return {{"error", error}};
+  if (op == "capture") return Capture(command);
   if (!Agent(command, error)) return {{"error", error}};
   // Chrome's word that the attached tab is gone (closed by hand, or
   // replaced) is read with the next reply: ask for the tabs, then attach a

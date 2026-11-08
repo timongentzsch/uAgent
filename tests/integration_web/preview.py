@@ -79,6 +79,11 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
                 f"/api/sessions/{session['id']}/files?list=", headers={"Origin": "null"}
             )
             assert_true(status == 403, (status, body))
+            # A picture needs the agent's browser, which this host has not.
+            status, body, _ = client.request(
+                f"/api/sessions/{session['id']}/files?png=design/hero-a.html&w=390&h=844"
+            )
+            assert_true(status == 503, (status, body))
             # Logging the device out ends its grants.
             client.command("logout")
             status, body, _ = page("design/hero-a.html")

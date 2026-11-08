@@ -18,8 +18,9 @@ import Frame, {
 } from "../../shared/page-frame.tsx";
 
 // A folder's HTML files on a plane you pan and zoom, each a live page: a
-// design as the agent wrote it. Files named <row>-<name>.html form a row per
-// <row>; the rest form the first. Pinch, ⌘ or Ctrl and the wheel, or a
+// design as the agent wrote it. A page's step (`02-` in
+// `02-pricing--annual.html`) is its row; pages without one form the first.
+// Pinch, ⌘ or Ctrl and the wheel, or a
 // trackpad pinch zoom at the pointer; a drag or the wheel pans. A click opens
 // a page; a page that fails says so and offers its errors to the agent.
 
@@ -31,8 +32,9 @@ const ZOOM: [number, number] = [0.05, 2];
 // What one message may carry of the pages' errors.
 const ERRORS_MAX = 1800;
 
-const rowOf = (name: string) =>
-  name.includes("-") ? name.slice(0, name.indexOf("-")) : "";
+// A page's step, its leading number (`02-pricing--annual.html` is step
+// 02); the variants and states of a step share its row.
+const rowOf = (name: string) => /^(\d+)-/.exec(name)?.[1] ?? "";
 
 // The page's files grouped into rows, rows and files in name order.
 export function rows(names: string[]) {
@@ -304,9 +306,7 @@ export default function Canvas({
               maxWidth: `${item.w * s}px`,
             }}
           >
-            {item.x === 0 && item.row
-              ? `${item.row.replace(/^\d+/, "")} · `
-              : ""}
+            {item.x === 0 && item.row ? `${item.row} · ` : ""}
             {seen[item.name]?.info?.title || item.name}
           </span>
         ))}

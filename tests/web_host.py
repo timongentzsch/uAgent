@@ -144,7 +144,7 @@ def answer(handler, body):
         return tool_call(
             "write_file",
             {
-                "path": "design/hero-a.html",
+                "path": "design/01-hero-a.html",
                 "content": '<!doctype html><meta name="artboard" content="1440x900">'
                 "<title>Hero A</title><h1>Rewritten</h1>",
                 "overwrite": True,

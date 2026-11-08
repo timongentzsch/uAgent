@@ -393,7 +393,9 @@ export default function Files({
   useEffect(() => {
     if (canvasFor === undefined || canvasFor !== dir || !listing.value) return;
     setCanvasFor(undefined);
-    if (pages.length) setCanvas(true);
+    // One page (a design system's book) opens as itself.
+    if (pages.length === 1) open(dir ? `${dir}/${pages[0]}` : pages[0]);
+    else if (pages.length) setCanvas(true);
   }, [listing.value, canvasFor]);
   // A write reloads the page it changed.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
@@ -469,7 +471,7 @@ export default function Files({
             label="Back to the canvas"
             onClick={() => {
               setFile("");
-              setCanvas(true);
+              setCanvas(pages.length > 1);
             }}
           >
             <ChevronLeft />
@@ -508,9 +510,11 @@ export default function Files({
           <Button
             variant="secondary"
             aria-pressed={canvas}
-            onClick={() => {
-              setCanvas(!canvas);
-            }}
+            onClick={() =>
+              pages.length === 1
+                ? open(dir ? `${dir}/${pages[0]}` : pages[0])
+                : setCanvas(!canvas)
+            }
           >
             Canvas
           </Button>

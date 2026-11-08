@@ -278,7 +278,7 @@ test("a page opened: select and comment, tweaks, print", async ({
   await app.setViewportSize({ width: 1440, height: 900 });
   await app.goto(`/#session=${session.id}`);
   const files = await openCanvas(app);
-  await files.getByRole("button", { name: "Open Hero A" }).click();
+  // A folder of one page opens it.
   const frame = app.frameLocator('iframe[title="Hero A"]');
   await expect(frame.getByText("Alpha headline")).toBeVisible();
 
@@ -354,26 +354,34 @@ test("a design system's brand book is a page, and its themes are under Tweaks", 
   const files = app.getByRole("region", { name: "Files" });
   await files.getByRole("button", { name: "design", exact: true }).click();
   await files.getByRole("button", { name: "system", exact: true }).click();
+  // The folder's one page opens as itself.
   await files.getByRole("button", { name: "Canvas" }).click();
-  await files.getByRole("button", { name: "Open Brand book" }).click();
   await expect(
     app
       .frameLocator('iframe[title="Brand book"]')
       .getByRole("heading", { name: "Brand" }),
   ).toBeVisible();
+  // An A4 page fits the pane across, as a PDF does, and scrolls inside.
+  const across = () =>
+    files.locator(".page-stage").evaluate((stage) => ({
+      stage: stage.getBoundingClientRect().width,
+      page: stage.querySelector("iframe").getBoundingClientRect().width,
+    }));
+  await expect
+    .poll(async () => (await across()).page)
+    .toBeLessThanOrEqual((await across()).stage);
   await expect(
     files.getByRole("link", { name: "Print or save as PDF" }),
   ).toBeVisible();
 
   await files.getByRole("button", { name: "Back to the canvas" }).click();
-  await files.getByRole("button", { name: "Canvas" }).click();
   await files
     .locator(".files-crumbs")
     .getByRole("button", { name: /design$/ })
     .click();
   await files.getByRole("button", { name: "landing", exact: true }).click();
   await files.getByRole("button", { name: "Canvas" }).click();
-  await files.getByRole("button", { name: "Open Hero A" }).click();
+  // A folder of one page opens it.
   await files.getByRole("button", { name: "Tweaks" }).click();
   await files.getByRole("button", { name: "dark" }).click();
   const frame = app.frameLocator('iframe[title="Hero A"]');

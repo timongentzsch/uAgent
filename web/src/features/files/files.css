@@ -294,6 +294,12 @@
   flex: none;
   border: var(--border);
 }
+.page-stage[data-wide] {
+  justify-content: center;
+}
+.page-stage[data-wide] .page-holder {
+  flex: none;
+}
 .page-holder > .page-frame {
   flex: 1;
 }

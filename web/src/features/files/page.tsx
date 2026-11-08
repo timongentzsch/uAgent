@@ -115,10 +115,16 @@ export default function OpenPage({
   // Its size as a picture: an artboard's, or a page's full height.
   const size = pageSize(info, 8000);
   const { fixed } = size;
-  const scale =
-    fixed && room.w
+  // A fixed artboard fits the stage whole; a page that names only its width
+  // (an A4 document) fits it across and scrolls down inside, as a PDF does.
+  const wide = !!info?.artboard.w;
+  const scale = !room.w
+    ? 1
+    : fixed
       ? Math.min(1, room.w / info!.artboard.w, room.h / info!.artboard.h)
-      : 1;
+      : wide
+        ? Math.min(1, room.w / info!.artboard.w)
+        : 1;
   const select = (on: boolean) => {
     setSelecting(on);
     setHover(undefined);
@@ -243,14 +249,19 @@ export default function OpenPage({
         </a>
       </div>
       <div class="page-body">
-        <div class="page-stage" ref={stage} data-fixed={fixed || undefined}>
+        <div
+          class="page-stage"
+          ref={stage}
+          data-fixed={fixed || undefined}
+          data-wide={(wide && !fixed) || undefined}
+        >
           <div
             class="page-holder"
             style={
-              fixed
+              wide
                 ? {
                     width: `${info!.artboard.w * scale}px`,
-                    height: `${info!.artboard.h * scale}px`,
+                    height: `${fixed ? info!.artboard.h * scale : room.h}px`,
                   }
                 : undefined
             }
@@ -260,8 +271,10 @@ export default function OpenPage({
               src={src}
               title={info?.title || path}
               frameRef={frame}
-              width={fixed ? info!.artboard.w : undefined}
-              height={fixed ? info!.artboard.h : undefined}
+              width={wide ? info!.artboard.w : undefined}
+              height={
+                fixed ? info!.artboard.h : wide ? room.h / scale : undefined
+              }
               scale={scale}
               onMessage={(message) => {
                 if (message.type === "ready") {

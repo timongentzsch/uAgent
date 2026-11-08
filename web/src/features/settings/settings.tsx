@@ -1,3 +1,4 @@
+import { nameOf } from "../../shared/file-types.ts";
 import "./settings.css";
 import { ChevronLeft } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -32,7 +33,7 @@ export default function Settings(props: SettingsProps) {
   // The folder's page needs its conversation.
   const current = (picked === "project" && !session ? null : picked) || "user";
   const [, title, , describe] = SCOPES.find(([id]) => id === current)!;
-  const folder = session?.cwd?.split("/").pop();
+  const folder = session?.cwd && nameOf(session.cwd);
   const drilled = phone && picked !== null;
   const instructions = (label: string, detail: string) => (
     <Group>

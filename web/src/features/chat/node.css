@@ -87,10 +87,6 @@ div.node-row > .row-chevron {
   overflow: auto;
   overscroll-behavior: contain;
 }
-pre.node-text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 .node-body > .diff {
   padding-inline: 0;
 }

@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 
 // One action at a time with its outcome: `run` resolves true when the work
 // succeeded, `busy` is true while it runs, and `error` holds the last
-// failure until the next run starts.
+// failure until the next run starts (or `setError` sets or clears it).
 export function useAction() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -19,5 +19,5 @@ export function useAction() {
       setBusy(false);
     }
   };
-  return { run, busy, error };
+  return { run, busy, error, setError };
 }

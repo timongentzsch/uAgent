@@ -1,3 +1,4 @@
+import { nameOf } from "../../shared/file-types.ts";
 import { ChevronLeft } from "lucide-preact";
 import { routes } from "../../state/api.ts";
 import type {
@@ -24,7 +25,7 @@ function Thumbnails({ session, pages }: { session: string; pages: string[] }) {
       {pages.map((page) => (
         <figure key={page}>
           <PageThumb base={preview.value!.base} path={page} />
-          <figcaption class="small muted">{page.split("/").at(-1)}</figcaption>
+          <figcaption class="small muted">{nameOf(page)}</figcaption>
         </figure>
       ))}
     </div>

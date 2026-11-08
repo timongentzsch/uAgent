@@ -1,3 +1,4 @@
+import { useAction } from "../../shared/use-action.ts";
 import { usePushDirection } from "../../shared/motion.ts";
 import { tabDrafts, useStored } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
@@ -102,8 +103,7 @@ export default function Scheduled({
     seconds
       ? formatMoment(new Date(seconds * 1000), prefs, undefined, zone)
       : "—";
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const { run: act, busy, error, setError } = useAction();
   const [confirm, setConfirm] = useState(false);
 
   const current = scheduled?.tasks?.find((entry) => entry.id === task?.id);
@@ -167,10 +167,8 @@ export default function Scheduled({
   const rule = (value: Partial<ScheduleRule>) => {
     if (task) edit({ schedule: { ...task.schedule, ...value } });
   };
-  async function action(action: string, key = task?.id) {
-    setBusy(true);
-    setError(null);
-    try {
+  const action = (action: string, key = task?.id) =>
+    act(async () => {
       const result = await manage("schedule", {
         action,
         key,
@@ -186,12 +184,7 @@ export default function Scheduled({
         setConfirm(false);
       }
       await refresh();
-    } catch (failure) {
-      setError(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
+    });
   // Until the tasks arrive, the list is drawn from these (see <Placeholder>).
   const shown = scheduled ?? SAMPLE_SCHEDULE;
   const runs = [...(scheduled?.runs || [])]

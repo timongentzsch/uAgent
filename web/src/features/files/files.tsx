@@ -42,7 +42,7 @@ import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
 import { stored } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
-import { HTML, IMAGE, MARKDOWN } from "../../shared/file-types.ts";
+import { HTML, IMAGE, MARKDOWN, nameOf } from "../../shared/file-types.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import type { Node } from "../../shared/types.ts";
@@ -90,7 +90,6 @@ const SHOWN = 50;
 const kept = stored<Record<string, string>>(storageKeys.filesAt, {});
 // Typing pauses this long before the folder is searched.
 const SEARCH_DELAY_MS = 150;
-const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const dirOf = (path: string) =>
   path.slice(0, Math.max(0, path.lastIndexOf("/")));
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
@@ -501,7 +500,7 @@ export default function Files({
               <span class="files-dir">
                 {dirOf(titled) && `${dirOf(titled)}/`}
               </span>
-              <span class="files-name">{nameOf(titled)}</span>
+              <span class="files-name truncate">{nameOf(titled)}</span>
             </>
           ) : (
             folderName
@@ -695,7 +694,7 @@ export default function Files({
               >
                 {(path) => (
                   <>
-                    <span class="files-name">{nameOf(path)}</span>
+                    <span class="files-name truncate">{nameOf(path)}</span>
                     <span class="files-dir">{dirOf(path)}</span>
                   </>
                 )}
@@ -728,7 +727,7 @@ export default function Files({
                         <span class="files-state" data-state={change.state}>
                           {change.state}
                         </span>
-                        <span class="files-name">{change.path}</span>
+                        <span class="files-name truncate">{change.path}</span>
                       </Button>
                     </li>
                   ))}
@@ -783,7 +782,9 @@ export default function Files({
                             ) : (
                               <File />
                             )}
-                            <span class="files-name">{entry.name}</span>
+                            <span class="files-name truncate">
+                              {entry.name}
+                            </span>
                           </Button>
                         </li>
                       );

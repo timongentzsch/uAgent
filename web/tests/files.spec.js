@@ -458,11 +458,11 @@ test("a page a reply names opens over its design's canvas", async ({
   await page.goto(`/#session=${cited.id}`);
   await page
     .locator(".transcript")
-    .getByRole("button", { name: "design/landing/hero-b.html" })
+    .getByRole("button", { name: "design/landing/hero-b.html", exact: true })
     .click();
   const pane = page.getByRole("region", { name: "Files" });
   await expect(
-    page.frameLocator('iframe[title="hero-b"]').getByText("hero-b"),
+    pane.frameLocator('iframe[title="hero-b"]').getByText("hero-b"),
   ).toBeVisible();
   await pane.getByRole("button", { name: "Back to the canvas" }).click();
   await expect(pane.locator(".canvas-page")).toHaveCount(2);

@@ -92,7 +92,7 @@ type Body = (props: {
   online: boolean;
   loadFull: () => void;
 }) => ComponentChildren;
-const Text: Body = ({ text }) => <pre class="node-text">{text}</pre>;
+const Text: Body = ({ text }) => <pre class="node-text plain">{text}</pre>;
 const bodies: Record<BodyKind, Body> = {
   text: Text,
   markdown: ({ text }) => (

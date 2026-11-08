@@ -120,12 +120,6 @@
 .files-entries .lucide {
   color: var(--muted);
 }
-.files-name {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
 .files-results .files-dir {
   flex: 1;
   min-width: 0;

@@ -3,8 +3,3 @@
 .list-row {
   background: none;
 }
-.list-row :is(.row-label, .row-detail) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}

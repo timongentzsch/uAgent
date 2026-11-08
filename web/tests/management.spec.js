@@ -92,7 +92,12 @@ test("the Library lists every place's things, opens them beside and moves a memo
   const editor = page.getByLabel("Document content");
 
   // A new memory is named and placed, then opens beside the list.
-  await page.getByRole("button", { name: "New memory", exact: true }).click();
+  // Under Everything, New asks which: a memory or a skill.
+  await page
+    .locator(".management-toolbar")
+    .getByRole("button", { name: "New", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "Memory", exact: true }).click();
   await page.getByLabel("Name", { exact: true }).fill("browser-lesson");
   await page
     .getByRole("combobox", { name: "Where", exact: true })

@@ -366,6 +366,21 @@ test("a design system shows as one page, and its themes under Tweaks", async ({
   await expect(
     files.getByRole("button", { name: "Print or save as PDF" }),
   ).toBeVisible();
+  // A pane wider than a page: the book's ground fills it, no blank strip.
+  await files.locator(".system").evaluate((node) => {
+    node.style.width = "1200px";
+  });
+  await expect
+    .poll(() =>
+      files
+        .locator(".system")
+        .evaluate(
+          (node) =>
+            node.getBoundingClientRect().width -
+            node.querySelector("iframe").getBoundingClientRect().width,
+        ),
+    )
+    .toBeLessThan(2);
 
   // The toggle returns to the list.
   await files.getByRole("button", { name: "System", exact: true }).click();

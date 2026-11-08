@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import type { FunctionComponent } from "preact";
 import {
   BookOpen,
+  ChevronDown,
   Brain,
   FileText,
   LayoutDashboard,
@@ -30,6 +31,7 @@ import { usePushDirection } from "../../shared/motion.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { matches } from "../../shared/fuzzy.ts";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
 import FolderLabel from "../../shared/folder-label.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import ImportDialog from "./import.tsx";
@@ -127,7 +129,7 @@ export default function Library({
   const [where, setWhere] = useState(ALL);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Selection | null>(null);
-  const [importing, setImporting] = useState(false);
+  const [importing, setImporting] = useState<"memory" | "skill" | null>(null);
   const moved = usePushDirection(!!selected);
   // Workspaces first, then folders, each by name, as the sidebar lists them.
   const places = [...(listing.value?.places ?? [])].sort(
@@ -160,7 +162,6 @@ export default function Library({
     path || (where !== ALL && where) || places[0]?.path || "";
   const fresh = (value: LibraryKind) =>
     setSelected({ new: value, where: where === ALL ? "" : where });
-  const knowledge = kind === "skill" ? "skill" : "memory";
   const placeLabel = (path: string) => {
     const place = placeOf(path);
     return path ? (
@@ -294,20 +295,56 @@ export default function Library({
             </option>
           ))}
         </Select>
-        <Button
-          disabled={!online || !places.length}
-          onClick={() => setImporting(true)}
-        >
-          Import
-        </Button>
-        <Button
-          variant="primary"
-          disabled={!online || !places.length}
-          onClick={() => fresh(knowledge)}
-        >
-          <Plus />
-          New {knowledge}
-        </Button>
+        {kind === "memory" || kind === "skill" ? (
+          <>
+            <Button
+              disabled={!online || !places.length}
+              onClick={() => setImporting(kind)}
+            >
+              Import
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!online || !places.length}
+              onClick={() => fresh(kind)}
+            >
+              <Plus />
+              New {kind}
+            </Button>
+          </>
+        ) : (
+          // Everything else is made by agents: memories and skills alike.
+          (["Import", "New"] as const).map((action) => (
+            <Menu
+              key={action}
+              label={action}
+              trigger={
+                <>
+                  {action}
+                  <ChevronDown />
+                </>
+              }
+            >
+              {(["memory", "skill"] as const).map((value) => (
+                <MenuItem
+                  key={value}
+                  disabled={!online || !places.length}
+                  onClick={() =>
+                    action === "New" ? fresh(value) : setImporting(value)
+                  }
+                >
+                  {action === "New"
+                    ? value === "memory"
+                      ? "Memory"
+                      : "Skill"
+                    : value === "memory"
+                      ? "Memories…"
+                      : "Skills…"}
+                </MenuItem>
+              ))}
+            </Menu>
+          ))
+        )}
       </div>
       {listing.value?.limits.memory_enabled === false && (
         <p class="muted">
@@ -386,9 +423,9 @@ export default function Library({
       {importing && (
         <ImportDialog
           cwd={home()}
-          kind={kind === "skill" ? "skills" : "memory"}
+          kind={importing === "skill" ? "skills" : "memory"}
           close={() => {
-            setImporting(false);
+            setImporting(null);
             listing.retry();
           }}
         />

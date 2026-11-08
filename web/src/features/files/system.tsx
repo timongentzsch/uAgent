@@ -113,7 +113,9 @@ export default function System({
             sandbox="allow-same-origin allow-modals"
             srcdoc={html.value}
             style={{
-              width: `${SHEET}px`,
+              // At least a sheet wide, else the pane: the book's ground
+              // fills it, its pages centred.
+              width: `${Math.max(SHEET, room.w / scale)}px`,
               height: `${room.h / scale}px`,
               transform: `scale(${scale})`,
             }}

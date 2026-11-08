@@ -44,8 +44,8 @@ import { HTML, IMAGE, MARKDOWN } from "../../shared/file-types.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import type { Node } from "../../shared/types.ts";
-import Canvas from "./canvas.tsx";
-import { OpenPage } from "./frame.tsx";
+import Canvas, { rows } from "./canvas.tsx";
+import OpenPage from "./page.tsx";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
@@ -153,7 +153,7 @@ export default function Files({
   // A file a message cited, to show at its lines; `at` makes a repeat new.
   reveal?: (FileTarget & { at: number }) | null;
   // Puts text in the conversation's draft; none where there is no draft.
-  addToChat?: (text: string) => void;
+  addToChat?: (text: string, keep?: boolean) => void;
 }) {
   // In a sheet, its header is this one: Close plays the sheet's exit, and
   // the title is where the sheet puts focus.
@@ -550,7 +550,15 @@ export default function Files({
               <Spinner label="Opening the pages…" />
             )
           ) : page ? (
-            <OpenPage key={file} src={pageUrl(file)!} title={nameOf(file)} />
+            <OpenPage
+              path={file}
+              src={pageUrl(file)!}
+              siblings={rows(pages).flatMap(([, names]) =>
+                names.map((name) => join(dirOf(file), name)),
+              )}
+              go={open}
+              addToChat={addToChat}
+            />
           ) : (
             <Canvas
               dir={dir}

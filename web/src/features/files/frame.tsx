@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { useLatest } from "../../shared/use-latest.ts";
 
 // One page of the folder, live in a sandboxed frame. It runs in an opaque
@@ -14,10 +14,33 @@ export interface PageInfo {
   tweaks: Record<string, unknown> | null;
   height: number;
 }
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+export interface Pick {
+  rect: Rect;
+  selector: string;
+  tag: string;
+  text: string;
+}
 export type PageMessage =
   | ({ type: "ready" } & PageInfo)
   | { type: "size"; height: number }
-  | { type: "error"; message: string; line: number };
+  | { type: "error"; message: string; line: number }
+  | { type: "hover" | "picked"; rect: Rect }
+  | ({ type: "pick" } & Pick)
+  | { type: "key"; key: string };
+
+// Tells a page what to do: select on or off, or set a tweak.
+export const tell = (
+  frame: HTMLIFrameElement | null,
+  message:
+    | { type: "select"; on: boolean }
+    | { type: "tweak"; name: string; value: unknown },
+) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 
 // A page is drawn this wide when it names no size.
 export const PAGE_WIDTH = 1440;
@@ -32,6 +55,7 @@ export default function Frame({
   scale = 1,
   live = true,
   onMessage,
+  frameRef,
 }: {
   src: string;
   title: string;
@@ -42,9 +66,13 @@ export default function Frame({
   // On the canvas a frame is a picture: the canvas takes the pointer.
   live?: boolean;
   onMessage?: (message: PageMessage) => void;
+  // The frame itself, to tell the page things.
+  frameRef?: { current: HTMLIFrameElement | null };
 }) {
-  const frame = useRef<HTMLIFrameElement>(null);
+  const own = useRef<HTMLIFrameElement>(null);
+  const frame = frameRef ?? own;
   const handle = useLatest(onMessage);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one listener per frame
   useEffect(() => {
     const heard = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
@@ -79,47 +107,6 @@ export default function Frame({
               }
             : undefined
         }
-      />
-    </div>
-  );
-}
-
-// A page opened in the pane: a fixed artboard scaled to fit, centred; a page
-// at the pane's own width, so it lays out as it would there.
-export function OpenPage({
-  src,
-  title,
-  onMessage,
-}: {
-  src: string;
-  title: string;
-  onMessage?: (message: PageMessage) => void;
-}) {
-  const box = useRef<HTMLDivElement>(null);
-  const [room, setRoom] = useState({ w: 0, h: 0 });
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  useEffect(() => {
-    const observer = new ResizeObserver(([entry]) =>
-      setRoom({ w: entry.contentRect.width, h: entry.contentRect.height }),
-    );
-    if (box.current) observer.observe(box.current);
-    return () => observer.disconnect();
-  }, []);
-  const fixed = size.w > 0 && size.h > 0;
-  const scale =
-    fixed && room.w ? Math.min(1, room.w / size.w, room.h / size.h) : 1;
-  return (
-    <div class="open-page" ref={box} data-fixed={fixed || undefined}>
-      <Frame
-        src={src}
-        title={title}
-        width={fixed ? size.w : undefined}
-        height={fixed ? size.h : undefined}
-        scale={scale}
-        onMessage={(message) => {
-          if (message.type === "ready") setSize(message.artboard);
-          onMessage?.(message);
-        }}
       />
     </div>
   );

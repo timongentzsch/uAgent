@@ -454,12 +454,14 @@ function App() {
   // What the terminal or the files hand the conversation: added to its
   // draft, never sent. On a small screen they cover the chat, so they step
   // aside; the terminal's shells keep running and reattach when it opens.
+  // A design's comments keep it open, for the next one.
   const addToChat = useCallback(
-    (text: string) => {
+    (text: string, keep = false) => {
       updateDraft(selected, (current) => ({
         ...current,
         text: current.text ? `${current.text}\n${text}` : text,
       }));
+      if (keep) return;
       if (compact) setTerminalOpen(false);
       if (filesSheet) setFilesOpen(false);
       focusComposer();

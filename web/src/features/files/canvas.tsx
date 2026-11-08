@@ -72,7 +72,7 @@ export default function Canvas({
                 ...was,
                 info: { ...was.info, height: message.height },
               }
-            : {
+            : message.type === "error" && {
                 ...was,
                 errors: [
                   ...was.errors,

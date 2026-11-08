@@ -270,22 +270,105 @@
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
 }
-.open-page > .page-frame {
+.page-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--border);
+  background: var(--bg);
+}
+.page-body {
   flex: 1;
+  min-height: 0;
+  display: flex;
 }
-.open-page > .page-frame iframe {
-  width: 100%;
-  height: 100%;
+.page-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  background: var(--surface);
 }
-.open-page[data-fixed] {
+.page-stage[data-fixed] {
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
 }
-.open-page[data-fixed] > .page-frame {
+.page-holder {
+  position: relative;
+  flex: 1;
+  display: flex;
+}
+.page-stage[data-fixed] .page-holder {
   flex: none;
   border: var(--border);
+}
+.page-holder > .page-frame {
+  flex: 1;
+}
+.page-stage:not([data-fixed]) .page-frame iframe {
+  width: 100%;
+  height: 100%;
+}
+.page-mark {
+  position: absolute;
+  pointer-events: none;
+  outline: var(--focus-ring);
+}
+.page-mark.hover {
+  opacity: var(--opacity-disabled);
+}
+.page-tweaks {
+  width: var(--pane);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-4);
+  border-left: var(--border);
+  background: var(--bg);
+}
+.page-tweak {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.page-swatch {
+  min-width: var(--control);
+}
+.page-tweak-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.page-comment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-top: var(--border);
+  background: var(--bg);
+}
+/* Presented: the page alone, as large as it fits. */
+.page-stage:fullscreen {
+  padding: 0;
+  background: var(--bg);
+}
+@container files (max-width: 40rem) {
+  .page-body {
+    flex-direction: column;
+  }
+  .page-tweaks {
+    width: auto;
+    max-height: 50%;
+    border-left: 0;
+    border-top: var(--border);
+  }
 }
 .canvas {
   flex: 1;

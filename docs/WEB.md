@@ -88,7 +88,14 @@ each live, the way the `design` skill writes a design. Pages named
 device; on a phone each row scrolls sideways. A page declares its size with
 `<meta name="artboard" content="1440x900">`, or only a width for a page as tall
 as its content. A click opens a page across the pane; **Back** returns to the
-canvas. A page that fails says so, and **Ask agent to fix** puts its errors in
+canvas. There, **Select** picks an element: a comment on it is added to your
+message as a line naming the page, the element and its text, and the pane
+stays open for the next one. **Tweaks** tries the levers the page declares
+(colours, ranges, choices, switches) at once; **Keep** adds them as a line for
+the agent to write, **Reset** reloads the page. **Present** shows it full
+screen, the arrow keys stepping through the folder's pages; the printer opens
+it alone to print or save as PDF, at its artboard's size or, for a document,
+on Letter or A4. A page that fails says so, and **Ask agent to fix** puts its errors in
 your message. A page the agent writes reloads as the write finishes, and the
 agent's reference to the folder opens its canvas.
 

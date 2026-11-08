@@ -74,7 +74,9 @@ variant, a dark theme — in the page's head. Not copy, not a colour used once:
 - Editors: `color` (3–4 `options` show as swatches), `range` (`int` and
   `float` too, with `min`, `max`, `step`, `unit`), `enum`, `boolean`.
 - A name starting with `--` is a CSS variable on `:root`: define it in your
-  CSS with the same default and use `var(--accent)`. Any other name is a
+  CSS with the same default and use `var(--accent)`. Ranges set a bare
+  number and `unit` is only shown, so give the unit in CSS:
+  `gap: calc(var(--gap) * 1px)`. Any other name is a
   `data-` attribute on `<html>` (`data-variant="stacked"`, `data-phone="false"`)
   that your CSS selects on.
 - `default` is the current value: when the person keeps a value, write it

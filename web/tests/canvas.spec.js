@@ -73,7 +73,7 @@ test("a design folder opens as a canvas of sandboxed pages", async ({
   // Opening a page shows it alone; Source shows its code; Back returns.
   await files.getByRole("button", { name: "Open Hero B" }).click();
   await expect(
-    app.frameLocator('iframe[title="hero-b.html"]').getByText("Beta"),
+    app.frameLocator('iframe[title="Hero B"]').getByText("Beta"),
   ).toBeVisible();
   await files.getByRole("button", { name: "Source" }).click();
   await expect(files.locator(".code-view")).toContainText("<h1>Beta</h1>");
@@ -121,4 +121,64 @@ test("on a phone the canvas rows scroll sideways in the sheet", async ({
       (element) => element.scrollWidth > element.clientWidth,
     ),
   ).toBe(true);
+});
+
+test("a page opened: select and comment, tweaks, print", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const dir = join(host.project, "design");
+  await mkdir(dir);
+  const tweaks = JSON.stringify({
+    "--gap": { editor: "range", default: 8, min: 0, max: 32, unit: "px" },
+    variant: {
+      editor: "enum",
+      default: "split",
+      options: ["split", "stacked"],
+    },
+  });
+  await writeFile(
+    join(dir, "hero-a.html"),
+    page(
+      "Hero A",
+      `<script type="application/json" id="tweaks">${tweaks}</script><main><h1>Alpha headline</h1></main>`,
+    ),
+  );
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  const files = await openCanvas(app);
+  await files.getByRole("button", { name: "Open Hero A" }).click();
+  const frame = app.frameLocator('iframe[title="Hero A"]');
+  await expect(frame.getByText("Alpha headline")).toBeVisible();
+
+  // Select picks an element; the comment goes into the draft, pane open.
+  await files.getByRole("button", { name: "Select" }).click();
+  await frame.getByText("Alpha headline").click();
+  await files.getByRole("textbox", { name: "Comment" }).fill("Make it bigger");
+  await files.getByRole("button", { name: "Add to chat" }).click();
+  await expect(app.locator("#prompt")).toHaveValue(
+    "`design/hero-a.html` `main > h1` “Alpha headline” — Make it bigger",
+  );
+  await expect(files).toBeVisible();
+
+  // Tweaks apply at once; Keep adds them for the agent.
+  await files.getByRole("button", { name: "Tweaks" }).click();
+  await files.getByRole("button", { name: "stacked" }).click();
+  await expect(frame.locator("html")).toHaveAttribute(
+    "data-variant",
+    "stacked",
+  );
+  await files.getByRole("button", { name: "Keep" }).click();
+  await expect(app.locator("#prompt")).toHaveValue(
+    /`design\/hero-a\.html` tweaks: variant stacked$/,
+  );
+
+  // PDF opens the page alone, which prints itself.
+  await expect(
+    files.getByRole("link", { name: "Print or save as PDF" }),
+  ).toHaveAttribute(
+    "href",
+    /\/preview\/[0-9a-f]{48}\/design\/hero-a\.html\?v=[\d.]+#print$/,
+  );
 });

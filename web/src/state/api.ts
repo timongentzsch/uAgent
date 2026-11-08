@@ -41,6 +41,8 @@ export const routes = {
     `/api/sessions/${session}/assets/${id}`,
   attachments: (session: string, name: string) =>
     `/api/sessions/${session}/attachments?name=${encodeURIComponent(name)}`,
+  // Everything the Library lists, from every place.
+  library: "/api/library",
   // Rows that contain q, in every conversation or, with a session, in one.
   search: (q: string, session?: string) =>
     `/api/search?q=${encodeURIComponent(q)}${session ? `&session=${session}` : ""}`,
@@ -48,9 +50,11 @@ export const routes = {
   // and `diff` answer JSON, `raw` is the file itself.
   files: (
     session: string,
-    mode: "list" | "read" | "raw" | "find" | "changes" | "diff",
+    mode: "list" | "read" | "raw" | "find" | "changes" | "diff" | "png",
     value: string,
   ) => `/api/sessions/${session}/files?${mode}=${encodeURIComponent(value)}`,
+  // POST: the address the folder's pages are served from, sandboxed.
+  preview: (session: string) => `/api/sessions/${session}/preview`,
 };
 
 // A random 32-hex id for a command: the host answers and deduplicates by it.

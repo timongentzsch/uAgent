@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -45,13 +46,6 @@ std::filesystem::path CanonicalOrSelf(const std::filesystem::path& path) {
   return error ? path : canonical;
 }
 
-std::optional<std::string> FirstLine(const std::filesystem::path& path) {
-  std::ifstream input(path);
-  std::string line;
-  return std::getline(input, line) ? std::optional<std::string>(Trim(line))
-                                   : std::nullopt;
-}
-
 std::filesystem::path RepositoryIdentity(const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   fs::path root = ProjectRoot(cwd);
@@ -59,19 +53,11 @@ std::filesystem::path RepositoryIdentity(const std::filesystem::path& cwd) {
   std::error_code error;
   if (fs::is_directory(dot_git, error)) return CanonicalOrSelf(dot_git);
 
-  std::optional<std::string> pointer = FirstLine(dot_git);
-  constexpr const char* kGitDir = "gitdir:";
-  if (!pointer || !pointer->starts_with(kGitDir)) {
-    return CanonicalOrSelf(root);
-  }
-  fs::path git_dir = Trim(pointer->substr(strlen(kGitDir)));
-  if (git_dir.is_relative()) git_dir = root / git_dir;
-  git_dir = CanonicalOrSelf(git_dir);
-  std::optional<std::string> common = FirstLine(git_dir / "commondir");
-  if (!common) return git_dir;
-  fs::path common_dir(*common);
-  if (common_dir.is_relative()) common_dir = git_dir / common_dir;
-  return CanonicalOrSelf(common_dir);
+  // A linked worktree is its repository; a `.git` file that names another
+  // repository without being its worktree names nothing.
+  const GitWorktree worktree = FindGitWorktree(root.string());
+  return worktree.common_dir.empty() ? CanonicalOrSelf(root)
+                                     : fs::path(worktree.common_dir);
 }
 
 struct RepositoryPaths {
@@ -423,11 +409,28 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
   return MemoryAction(action, key, content, *cwd);
 }
 
+namespace {
+// What a memory says, in a line for a list: its front matter's description,
+// else its first line of text.
+std::string MemorySummary(const std::string& content) {
+  std::istringstream input(content);
+  std::string summary, line;
+  if (content.starts_with("---")) ParseSkillFrontMatter(input, &summary);
+  while (Trim(summary).empty() && std::getline(input, line)) {
+    summary = line.substr(std::min(line.find_first_not_of("# "), line.size()));
+  }
+  return Utf8Prefix(Trim(summary), 160);
+}
+}  // namespace
+
 json MemoryControl(const json& request, const std::filesystem::path& cwd) {
   const std::string action = JsonValue(request, "action", "list");
   const std::string key = JsonValue(request, "key", "");
   const auto entries = ListMemories(cwd, 4096);
   const auto events = LoadMemoryEvents();
+  // The Library's list carries each memory's first line; the terminal's
+  // names only.
+  const bool summary = JsonValue(request, "summary", false);
   auto describe = [&](const MemoryEntry& entry, bool body) {
     const auto slash = entry.key.find('/');
     const std::string scope{ScopePrefix(entry.key)};
@@ -441,11 +444,14 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
                                                : scope},
                   {"source", writable ? "uAgent" : scope},
                   {"writable", writable}};
-    if (!ReadRegularFile(entry.path, KiB(512), content, error)) {
+    if (!ReadRegularFile(entry.path, kMemoryFileBytes, content, error)) {
       value["error"] = error;
       return value;
     }
     value["revision"] = DocumentRevision(entry.path, content);
+    if (summary) {
+      value["description"] = MemorySummary(RedactMemorySecrets(content));
+    }
     value["bytes"] = content.size();
     value["modified"] = SnapshotFile(entry.path).modified_seconds * 1000;
     const auto reloaded =
@@ -509,15 +515,11 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
     return {{"error", "unsafe memory path"}};
   }
   std::string previous;
-  const bool exists = PathExists(path.string());
-  if (exists && !ReadRegularFile(path.string(), KiB(512), previous, error)) {
-    return {{"error", error}};
-  }
-  if (!request.contains("revision") ||
-      JsonValue(request, "revision", "") !=
-          (exists ? DocumentRevision(path.string(), previous) : "")) {
-    return {{"error", "This memory changed. Reload it before saving."},
-            {"conflict", true}};
+  bool exists = false;
+  if (json refused = CheckRevision(request, path, kMemoryFileBytes, "memory",
+                                   previous, exists);
+      !refused.is_null()) {
+    return refused;
   }
   if (action != "set" && !exists) return {{"error", "memory not found"}};
   if (action == "rename" || action == "copy") {

@@ -40,7 +40,15 @@ import { MarkdownFile } from "../../shared/markdown-view.tsx";
 import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
 import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
-import { IMAGE, MARKDOWN } from "../../shared/file-types.ts";
+import { stored } from "../../shared/storage.ts";
+import { storageKeys } from "../../shared/storage-keys.ts";
+import { HTML, IMAGE, MARKDOWN, nameOf } from "../../shared/file-types.ts";
+import { useHostContext } from "../../state/host-context.ts";
+import { useSnapshots } from "../../state/snapshot-store.ts";
+import type { Node } from "../../shared/types.ts";
+import Canvas, { rows } from "./canvas.tsx";
+import { pageAddress, usePreviewBase } from "../../shared/page-frame.tsx";
+import OpenPage from "./page.tsx";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
@@ -77,9 +85,11 @@ const SAMPLE_LISTING: Listing = {
   more: false,
 };
 const SHOWN = 50;
+// The folder Files last showed in each conversation's folder, so a
+// conversation of the same folder opens where the last one left off.
+const kept = stored<Record<string, string>>(storageKeys.filesAt, {});
 // Typing pauses this long before the folder is searched.
 const SEARCH_DELAY_MS = 150;
-const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const dirOf = (path: string) =>
   path.slice(0, Math.max(0, path.lastIndexOf("/")));
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
@@ -116,6 +126,25 @@ function place({ path: written, lines, changes }: FileTarget, folder: string) {
   };
 }
 
+// The folder whose own view a cited place sets: a folder, or a page's.
+const arrival = (place: { dir: string; file: string; outside?: string }) =>
+  place.outside || (place.file && !HTML.test(place.file))
+    ? undefined
+    : place.dir;
+
+const WRITES = new Set(["Wrote", "Edited", "Deleted"]);
+// The last file write that finished, as "<node>\n<path written>".
+function lastWrite(nodes: readonly Node[] = []) {
+  for (let at = nodes.length - 1; at >= 0; at--) {
+    const node = nodes[at];
+    if (node.kind === "call" && node.state === "ok" && node.headline) {
+      if (WRITES.has(node.headline.verb))
+        return `${node.id}\n${node.headline.target}`;
+    }
+  }
+  return "";
+}
+
 // The conversation's folder, read only: a list with search beside a viewer
 // for text and code, rendered markdown and images. A turn that ends may
 // have changed the folder, so what is open is read again then.
@@ -125,6 +154,7 @@ export default function Files({
   openTerminal,
   reveal,
   addToChat,
+  pictures,
 }: {
   session: Session;
   // Docked beside the chat; in a sheet, the sheet's own close.
@@ -135,7 +165,9 @@ export default function Files({
   // A file a message cited, to show at its lines; `at` makes a repeat new.
   reveal?: (FileTarget & { at: number }) | null;
   // Puts text in the conversation's draft; none where there is no draft.
-  addToChat?: (text: string) => void;
+  addToChat?: (text: string, keep?: boolean) => void;
+  // Whether the agent's browser can draw a page as a picture.
+  pictures?: boolean;
 }) {
   // In a sheet, its header is this one: Close plays the sheet's exit, and
   // the title is where the sheet puts focus.
@@ -145,7 +177,13 @@ export default function Files({
   const turn = session.turn_active;
   const view = useContext(ImageViewer);
   const [start] = useState(() => reveal && place(reveal, folderOf(session)));
-  const [dir, setDir] = useState(start?.dir ?? "");
+  const [dir, setDir] = useState(
+    start?.dir ?? kept.read()[folderOf(session)] ?? "",
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
+  useEffect(() => {
+    kept.write({ ...kept.read(), [folderOf(session)]: dir });
+  }, [dir]);
   const [file, setFile] = useState(start?.file ?? "");
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -163,11 +201,29 @@ export default function Files({
   >(start?.cited);
   // A cited path outside the folder, which the pane cannot show.
   const [outside, setOutside] = useState(start?.outside ?? "");
-  const moved = usePushDirection(showing === "file");
+  // The folder's view: its pages side by side rather than its list. Opening
+  // a file never changes it, so closing the file shows the view under it.
+  const [canvas, setCanvas] = useState(false);
+  // A folder (or a page in one) a message cited, whose own view is set once
+  // its listing answers: a canvas for two pages or more.
+  const [canvasFor, setCanvasFor] = useState(start && arrival(start));
+  // With nothing open, the list is what shows, whatever was shown last.
+  const side = file || outside ? showing : "list";
+  const moved = usePushDirection(side === "file");
+  const { store } = useHostContext();
+  const written = useSnapshots(store, (all) =>
+    lastWrite(all[id]?.state?.view?.nodes),
+  );
+  // Each page's version: a write to it reloads its frame.
+  const [versions, setVersions] = useState<Record<string, number>>({});
+  const preview = usePreviewBase(id);
+  const pageUrl = (path: string) =>
+    preview.value &&
+    `${pageAddress(preview.value.base, path)}?v=${versions[path] ?? 0}.${versions[""] ?? 0}`;
   const url = (path: string) => routes.files(id, "raw", path);
   const listing = useResource(
     () => api<Listing>(routes.files(id, "list", dir)),
-    [id, dir, turn],
+    [id, dir, turn, written],
   );
   const search = query.trim();
   const found = useResource<Found | undefined>(
@@ -195,15 +251,18 @@ export default function Files({
   const deleted =
     changing && changes.some((c) => c.path === file && c.state === "D");
   const image = IMAGE.test(file) && !changing;
+  const page = HTML.test(file) && !changing && !source;
+  // The canvas, or one page, across the whole pane.
+  const stage = (canvas && !file) || page;
   const content = useResource(
     () =>
-      file && !image && !changing
+      file && !image && !page && !changing
         ? api<FileText>(routes.files(id, "read", file)).then((value) => ({
             ...value,
             path: file,
           }))
         : undefined,
-    [id, file, turn, changing],
+    [id, file, turn, changing, page],
   );
   const diff = useResource(
     () =>
@@ -292,7 +351,7 @@ export default function Files({
     setFile(path);
     setDir(dirOf(path));
     // Rendered Markdown has no lines to mark: cited lines open its source.
-    setSource(!!lines && MARKDOWN.test(path));
+    setSource(!!lines && (MARKDOWN.test(path) || HTML.test(path)));
     setQuery("");
     setShowing("file");
     setCited(lines && { path, lines });
@@ -305,6 +364,7 @@ export default function Files({
     setCited(undefined);
   };
   const browse = (path: string) => {
+    setCanvas(false);
     setDir(path);
     setQuery("");
     setShowing("list");
@@ -321,7 +381,38 @@ export default function Files({
     setCited(next.cited);
     setOutside(next.outside ?? "");
     setQuery("");
+    setCanvas(false);
+    setCanvasFor(arrival(next));
   };
+  // A remembered folder that is gone opens the top.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed list
+  useEffect(() => {
+    if (dir && listing.error && failure(listing.error).status === 404)
+      setDir("");
+  }, [listing.error]);
+  const pages = (listing.value?.entries ?? [])
+    .filter((entry) => !entry.dir && HTML.test(entry.name))
+    .map((entry) => entry.name);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once the listing answers
+  useEffect(() => {
+    if (canvasFor === undefined || canvasFor !== dir || !listing.value) return;
+    setCanvasFor(undefined);
+    // Two pages or more are a canvas; one (a design system's book) is the
+    // page itself.
+    if (pages.length > 1) setCanvas(true);
+    else if (pages.length === 1 && !file)
+      open(dir ? `${dir}/${pages[0]}` : pages[0]);
+  }, [listing.value, canvasFor]);
+  // A write reloads the page it changed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
+  useEffect(() => {
+    const target = written.slice(written.indexOf("\n") + 1);
+    if (!target) return;
+    const path = place({ path: target }, folderOf(session)).file;
+    // A page, or what pages share (a stylesheet, an image): all reload.
+    const key = path && HTML.test(path) ? path : "";
+    if (path) setVersions((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
+  }, [written]);
   const handled = useRef(reveal?.at ?? 0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: each request once
   useEffect(() => {
@@ -372,15 +463,24 @@ export default function Files({
   }, [answered]);
   // Still looking: the title keeps the cited name, the viewer says so.
   const seeking = (looking && (!answered || named.length === 1)) || missing;
-  const titled = file || (seeking ? cited!.path : "");
+  const titled = file || (seeking ? cited!.path : canvas ? dir : "");
   const crumbs = dir ? dir.split("/") : [];
   const folderName = nameOf(folderOf(session)) || "Files";
   const fileError = content.error ? failure(content.error) : undefined;
 
   return (
-    <section class="files" aria-label="Files" data-showing={showing}>
+    <section class="files" aria-label="Files" data-showing={side}>
       <header class="files-head">
-        {(file || outside) && showing === "file" && (
+        {page && (
+          <IconButton
+            class="files-back files-back-canvas"
+            label={canvas ? "Back to the canvas" : "Back to the list"}
+            onClick={() => setFile("")}
+          >
+            <ChevronLeft />
+          </IconButton>
+        )}
+        {side === "file" && !page && (
           <IconButton
             class="files-back"
             label="Back to the list"
@@ -400,7 +500,7 @@ export default function Files({
               <span class="files-dir">
                 {dirOf(titled) && `${dirOf(titled)}/`}
               </span>
-              <span class="files-name">{nameOf(titled)}</span>
+              <span class="files-name truncate">{nameOf(titled)}</span>
             </>
           ) : (
             folderName
@@ -409,7 +509,16 @@ export default function Files({
         {diffText && formatStat(counts) && (
           <span class="files-dir small">{formatStat(counts)}</span>
         )}
-        {file && !changing && MARKDOWN.test(file) && (
+        {!file && !changing && !search && pages.length > 1 && (
+          <Button
+            variant="secondary"
+            aria-pressed={canvas}
+            onClick={() => setCanvas(!canvas)}
+          >
+            Canvas
+          </Button>
+        )}
+        {file && !changing && (MARKDOWN.test(file) || HTML.test(file)) && (
           <Button
             variant="secondary"
             aria-pressed={source}
@@ -458,8 +567,51 @@ export default function Files({
           </IconButton>
         )}
       </header>
+      {stage && (
+        <div class="files-stage">
+          {!preview.value ? (
+            preview.error ? (
+              <LoadError error={preview.error} retry={preview.retry} />
+            ) : (
+              <Spinner label="Opening the pages…" />
+            )
+          ) : page ? (
+            <OpenPage
+              path={file}
+              src={pageUrl(file)!}
+              siblings={rows(pages).flatMap(([, names]) =>
+                names.map((name) => join(dirOf(file), name)),
+              )}
+              go={open}
+              addToChat={addToChat}
+              base={preview.value.base}
+              picture={
+                pictures
+                  ? (w, h, scale) =>
+                      `${routes.files(id, "png", file)}&w=${w}&h=${h}&scale=${scale}`
+                  : undefined
+              }
+              view={view}
+              read={(path) =>
+                api<FileText>(routes.files(id, "read", path)).then(
+                  (value) => value.text,
+                )
+              }
+            />
+          ) : (
+            <Canvas
+              dir={dir}
+              names={pages}
+              page={(path) => pageUrl(path)!}
+              open={open}
+              addToChat={addToChat}
+            />
+          )}
+        </div>
+      )}
       <div
         class="files-columns"
+        hidden={stage || undefined}
         data-direction={moved === "back" ? "back" : undefined}
       >
         <nav
@@ -542,7 +694,7 @@ export default function Files({
               >
                 {(path) => (
                   <>
-                    <span class="files-name">{nameOf(path)}</span>
+                    <span class="files-name truncate">{nameOf(path)}</span>
                     <span class="files-dir">{dirOf(path)}</span>
                   </>
                 )}
@@ -575,7 +727,7 @@ export default function Files({
                         <span class="files-state" data-state={change.state}>
                           {change.state}
                         </span>
-                        <span class="files-name">{change.path}</span>
+                        <span class="files-name truncate">{change.path}</span>
                       </Button>
                     </li>
                   ))}
@@ -630,7 +782,9 @@ export default function Files({
                             ) : (
                               <File />
                             )}
-                            <span class="files-name">{entry.name}</span>
+                            <span class="files-name truncate">
+                              {entry.name}
+                            </span>
                           </Button>
                         </li>
                       );

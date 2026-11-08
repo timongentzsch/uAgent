@@ -32,9 +32,12 @@ test("bare slash commands open their screens", async ({ page, session }) => {
     ["/memory", "Memories"],
   ]) {
     await run(command);
+    // The Library opens filtered to that kind.
     await expect(
-      page.getByRole("button", { name: tab, exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
+      page
+        .getByRole("navigation", { name: "Library filters" })
+        .getByRole("button", { name: new RegExp(`^${tab}`) }),
+    ).toHaveAttribute("aria-current", "true");
     await conversation.click();
     await expect(composer).toBeEnabled();
   }

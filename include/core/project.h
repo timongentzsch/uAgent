@@ -29,6 +29,18 @@ struct ProjectInstructions {
 };
 
 std::filesystem::path ProjectRoot(const std::filesystem::path& cwd);
+
+struct GitWorktree {
+  std::string git_dir;     // <main>/.git/worktrees/<name>
+  std::string common_dir;  // <main>/.git
+};
+// A linked worktree keeps its git directory, and the repository's shared one,
+// outside the folder: its `.git` is a file naming them. Only a genuine pair is
+// believed -- the directory must be a child of the shared one's `worktrees`
+// and point back at this `.git` -- because a hostile repository could
+// otherwise name any folder and have it opened. Empty when `folder` and the
+// folders above it hold no such file.
+GitWorktree FindGitWorktree(const std::string& folder);
 // Whether `dir` is in a git repository: it or a parent has a .git, as a
 // directory or, in a worktree, as a file.
 bool InGitRepository(const std::filesystem::path& dir);

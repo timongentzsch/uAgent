@@ -220,6 +220,9 @@ inline constexpr int64_t kWebSearchMaxTokens = 6000;
 // Memory and skills.
 inline constexpr size_t kMemoryExtractBytes = KiB(32);
 inline constexpr size_t kSkillBodyBytes = KiB(512);
+// The most of a memory file the library reads (its own size rule is far
+// smaller; a file put there by hand can be larger).
+inline constexpr size_t kMemoryFileBytes = KiB(512);
 inline constexpr size_t kSkillDescriptionBytes = 1024;
 // MCP servers are untrusted; these bound what one may make the agent hold.
 // Startup window the optional servers share before discovery moves to a turn

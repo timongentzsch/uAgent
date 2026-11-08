@@ -1,6 +1,7 @@
 // A zoomable view of a surface: scale around a point and pan, never smaller
 // than the surface nor past its edges. Shared by the image viewer and the
-// remote browser screen.
+// remote browser screen; the design canvas, a plane with no edges, zooms in
+// a range of its own.
 export interface ZoomView {
   scale: number;
   x: number;
@@ -65,6 +66,7 @@ export function panView(
 
 // Scales by `scaleRatio` keeping the content under `start` under `current`:
 // a pinch that also pans, or (start = current) a zoom around one point.
+// With a `range`, the view has no edges and its scale stays in that range.
 export function pinchView(
   view: ZoomView,
   width: number,
@@ -72,19 +74,16 @@ export function pinchView(
   start: Point,
   current: Point,
   scaleRatio: number,
+  range?: [number, number],
 ) {
-  const scale = clamp(view.scale * scaleRatio, 1, MAXIMUM_ZOOM);
-  const anchorX = (start.x - view.x) / view.scale;
-  const anchorY = (start.y - view.y) / view.scale;
-  return constrainView(
-    {
-      scale,
-      x: current.x - anchorX * scale,
-      y: current.y - anchorY * scale,
-    },
-    width,
-    height,
-  );
+  const [least, most] = range ?? [1, MAXIMUM_ZOOM];
+  const scale = clamp(view.scale * scaleRatio, least, most);
+  const next = {
+    scale,
+    x: current.x - ((start.x - view.x) / view.scale) * scale,
+    y: current.y - ((start.y - view.y) / view.scale) * scale,
+  };
+  return range ? next : constrainView(next, width, height);
 }
 
 // Two fingers as a pinch began: their spread and middle, and the view then.

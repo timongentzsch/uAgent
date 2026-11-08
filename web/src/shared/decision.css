@@ -55,10 +55,6 @@
   font-size: var(--font-small);
 }
 /* An approval's headline: the command or change, where, and what it risks. */
-.decision-command {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 .decision-folder {
   flex: 0 1 auto;
   min-width: 0;

@@ -110,22 +110,7 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
 }
 
 inline std::string McpFileUri(const std::filesystem::path& path) {
-  constexpr char kHex[] = "0123456789ABCDEF";
-  std::string uri = "file://";
-  for (char raw : path.string()) {
-    const unsigned char byte = Byte(raw);
-    bool safe = (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') ||
-                (byte >= '0' && byte <= '9') || byte == '-' || byte == '_' ||
-                byte == '.' || byte == '~' || byte == '/';
-    if (safe) {
-      uri += static_cast<char>(byte);
-    } else {
-      uri += '%';
-      uri += kHex[byte >> 4];
-      uri += kHex[byte & 0x0f];
-    }
-  }
-  return uri;
+  return "file://" + PercentEncode(path.string(), "/");
 }
 
 inline bool McpResolveRoots(const json& conf, json& roots, std::string& error) {

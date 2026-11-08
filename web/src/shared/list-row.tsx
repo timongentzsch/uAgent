@@ -25,13 +25,13 @@ export function ListRow({
       class={`list-row ${className}`}
     >
       <span class="row-text">
-        <span class="row-label">
+        <span class="row-label truncate">
           {title}
           {unread && (
             <span class="status-led unread" role="img" aria-label={unread} />
           )}
         </span>
-        {meta && <small class="row-detail">{meta}</small>}
+        {meta && <small class="row-detail truncate">{meta}</small>}
       </span>
       {children}
     </Button>

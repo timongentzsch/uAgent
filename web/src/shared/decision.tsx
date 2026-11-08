@@ -153,7 +153,7 @@ export default function Decision({
               {diff ? (
                 <DiffView text={preview} />
               ) : (
-                <pre class="decision-command">{preview}</pre>
+                <pre class="decision-command plain">{preview}</pre>
               )}
               {/* Where it runs and what it risks share one line. */}
               {(cwd || !!approval.risks?.length) && (

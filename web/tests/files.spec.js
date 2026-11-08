@@ -4,7 +4,13 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { test, expect, headerAction, saveHistory } from "./fixtures.js";
+import {
+  test,
+  expect,
+  headerAction,
+  saveHistory,
+  savedConversation,
+} from "./fixtures.js";
 
 async function folder(project) {
   await mkdir(join(project, "src"));
@@ -243,30 +249,8 @@ test("a folder that is not a repository has no changes toggle", async ({
 });
 
 // A saved conversation in the project whose reply cites `reply`.
-async function citing(host, request, reply) {
-  const id = crypto.randomUUID();
-  const title = `Cites ${id}`;
-  await saveHistory(host, `cites-${id}.json`, {
-    id,
-    title,
-    turns: 1,
-    messages: [
-      { role: "user", content: "Where is two?" },
-      { role: "assistant", content: reply },
-    ],
-  });
-  let found;
-  await expect
-    .poll(async () => {
-      const response = await request.get("/api/sessions?refresh=1");
-      found = (await response.json()).sessions.find(
-        (item) => item.title === title,
-      );
-      return !!found;
-    })
-    .toBe(true);
-  return found;
-}
+const citing = (host, request, reply) =>
+  savedConversation(host, request, `Cites ${crypto.randomUUID()}`, reply);
 
 test("a cited path opens the pane at its lines", async ({
   page,
@@ -400,4 +384,70 @@ test("lines selected in a file go to the chat as a reference", async ({
   await expect(page.getByLabel("Message or guidance")).toHaveValue(
     "`src/app.ts:1-2`",
   );
+});
+
+test("a design a reply names shows as a card that opens its canvas", async ({
+  page,
+  host,
+  request,
+}) => {
+  const dir = join(host.project, "design", "landing");
+  await mkdir(dir, { recursive: true });
+  for (const name of ["hero-a", "hero-b"])
+    await writeFile(
+      join(dir, `${name}.html`),
+      `<!doctype html><title>${name}</title><meta name="artboard" content="1440x900"><h1>${name}</h1>`,
+    );
+  const cited = await citing(
+    host,
+    request,
+    "The landing page is in `design/landing/`; the plan is `notes.md`.",
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  // One card, for the design only, its first page live and small.
+  const card = page.locator(".transcript .design-card");
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText("design/landing/");
+  await expect(card).toContainText("2 pages");
+  await expect(
+    page
+      .frameLocator('.design-card iframe[title="hero-a"]')
+      .getByText("hero-a"),
+  ).toBeVisible();
+  await card.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Files" }).locator(".canvas-page"),
+  ).toHaveCount(2);
+});
+
+test("a page a reply names opens over its design's canvas", async ({
+  page,
+  host,
+  request,
+}) => {
+  const dir = join(host.project, "design", "landing");
+  await mkdir(dir, { recursive: true });
+  for (const name of ["hero-a", "hero-b"])
+    await writeFile(
+      join(dir, `${name}.html`),
+      `<!doctype html><title>${name}</title><meta name="artboard" content="1440x900"><h1>${name}</h1>`,
+    );
+  const cited = await citing(
+    host,
+    request,
+    "The second hero is `design/landing/hero-b.html`.",
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  await page
+    .locator(".transcript")
+    .getByRole("button", { name: "design/landing/hero-b.html", exact: true })
+    .click();
+  const pane = page.getByRole("region", { name: "Files" });
+  await expect(
+    pane.frameLocator('iframe[title="hero-b"]').getByText("hero-b"),
+  ).toBeVisible();
+  await pane.getByRole("button", { name: "Back to the canvas" }).click();
+  await expect(pane.locator(".canvas-page")).toHaveCount(2);
 });

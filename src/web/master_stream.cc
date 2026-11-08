@@ -14,6 +14,7 @@
 #include "include/agent/session_search.h"
 #include "include/agent/session_store.h"
 #include "include/agent/transcript.h"
+#include "include/app/asset_store.h"
 #include "include/app/session_host.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -26,7 +27,6 @@
 namespace uagent::web::master {
 
 namespace {
-constexpr size_t kAssetMetadataBytes = KiB(1);
 // A stream with nothing to send looks again this often, which is how soon it
 // notices its page has gone; it writes a heartbeat every kReplayWait.
 constexpr auto kReplayPoll = std::chrono::seconds(1);
@@ -210,16 +210,10 @@ void Master::AssetRead(const Request& request, Response& response) {
     Error(response, "asset unavailable", 404);
     return;
   }
-  std::string metadata, bytes, error;
-  if (!ReadRegularFile(stem + ".json", kAssetMetadataBytes, metadata, error)) {
-    Error(response, "asset unavailable", 404);
-    return;
-  }
-  json asset = json::parse(metadata, nullptr, false);
-  std::string mime = JsonValue(asset, "mime", ""),
-              extension = JsonValue(asset, "extension", ImageExtension(mime));
-  if ((extension != ".data" &&
-       (extension.empty() || extension != ImageExtension(mime))) ||
+  std::string bytes, error;
+  const auto [asset, extension] = session::ReadAssetRecord(stem);
+  const std::string mime = JsonValue(asset, "mime", "");
+  if (extension.empty() ||
       !ReadRegularFile(stem + extension, kUploadBytes, bytes, error)) {
     Error(response, "asset unavailable", 404);
     return;
@@ -257,22 +251,14 @@ void ServeFile(Response& response, std::string bytes, const std::string& mime,
   if (!inline_view) {
     // RFC 6266: an ASCII fallback for old clients, the exact UTF-8 name
     // percent-encoded for the rest.
-    std::string fallback, encoded;
+    std::string fallback;
     for (const char ch : name) {
       const auto byte = static_cast<unsigned char>(ch);
       fallback += byte < 32 || byte > 126 || ch == '"' || ch == '\\' ? '_' : ch;
-      if (std::isalnum(byte) || std::strchr("-._~", ch) != nullptr) {
-        encoded += ch;
-      } else {
-        constexpr char kHex[] = "0123456789ABCDEF";
-        encoded += '%';
-        encoded += kHex[byte >> 4];
-        encoded += kHex[byte & 15];
-      }
     }
     response.set_header("Content-Disposition",
                         "attachment; filename=\"" + fallback +
-                            "\"; filename*=UTF-8''" + encoded);
+                            "\"; filename*=UTF-8''" + PercentEncode(name));
   }
   response.set_content(std::move(bytes),
                        inline_view || html ? mime : kOctetStreamMime);

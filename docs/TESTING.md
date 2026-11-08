@@ -162,7 +162,7 @@ Playwright has two projects. `chromium` runs every spec. `webkit` runs
 `btw`, `guidance-queue`, `phone-layout`, `reload`, `mobile-navigation`,
 `loading-surfaces`, `session-state`, `ui-quality`, `browser`, `model-picker`,
 `ask`, `menu`, `image-viewer`, `dismiss`, `history-anchor`, `scroll-restore`,
-`scroll-stick`, `search` and `screen-motion`. A failed test is not retried.
+`scroll-stick`, `search`, `screen-motion` and `canvas`. A failed test is not retried.
 Four workers run locally and two in CI. Traces and screenshots of failures are
 kept in `web/test-results`.
 

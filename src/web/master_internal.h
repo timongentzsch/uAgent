@@ -6,7 +6,8 @@
 // defined across master.cc (startup, routes, settings), master_auth.cc
 // (pairing and devices), master_command.cc (commands and receipts),
 // master_stream.cc (snapshots, events, uploads, assets), master_files.cc
-// (the files in a conversation's folder) and master_terminal.cc (terminals).
+// (the files in a conversation's folder), master_library.cc (the Library's
+// listing) and master_terminal.cc (terminals).
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #define CPPHTTPLIB_NO_DEFAULT_USER_AGENT
@@ -19,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <filesystem>
 #include <list>
 #include <map>
 #include <memory>
@@ -57,6 +59,14 @@ bool EqualSecret(std::string_view a, std::string_view b);
 // shown in the browser when `inline_view`, else saved as `name`.
 void ServeFile(Response& response, std::string bytes, const std::string& mime,
                const std::string& name, bool inline_view);
+
+// Whether the Files pane and the Library may show `path`: what the file tools
+// may read, nothing hidden from them and none of µAgent's own configuration.
+bool Shown(const std::filesystem::path& path);
+// The files under `root`, by path from it, unchecked by Shown; `more` when
+// the list is cut.
+std::vector<std::string> Candidates(const std::filesystem::path& root,
+                                    bool& more);
 
 // Browser instances "0" to "4", each watched by at most one viewer.
 inline constexpr size_t kViewerInstances = 5;
@@ -99,6 +109,15 @@ class Master {
   void Upload(const Request&, Response&, const httplib::ContentReader&);
   void AssetRead(const Request&, Response&);
   void Files(const Request&, Response&);
+  // A conversation's folder, read only, for sandboxed pages that carry no
+  // cookie: the token in the path is the grant.
+  void PreviewGrant(const Request&, Response&);
+  // The preview address of a session's folder, minted once; empty when
+  // the session is unknown.
+  std::string PreviewBase(const std::string& id);
+  void Picture(const Request&, Response&, const std::filesystem::path& root);
+  void Preview(const Request&, Response&);
+  void Library(const Request&, Response&);
 
   WebOptions options_;
   std::string executable_, directory_, local_, local_authority_, origin_,
@@ -115,6 +134,11 @@ class Master {
       SnapshotFile(SettingsPath());
   Pipe host_wake_;
   std::vector<Device> devices_ UAGENT_GUARDED_BY(mutex_);
+  // Preview tokens by session id; they last until the host stops or a
+  // device is revoked.
+  std::map<std::string, std::string> previews_ UAGENT_GUARDED_BY(mutex_);
+  // The script every previewed page runs first (web/public/design-helper.js).
+  std::string design_helper_;
   // The open event streams, oldest first. Each holds a flag that ends it at
   // its next step.
   std::list<std::shared_ptr<std::atomic<bool>>> streams_

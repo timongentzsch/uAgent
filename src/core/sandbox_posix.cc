@@ -32,6 +32,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
+#include "include/core/project.h"
 #include "include/core/sandbox.h"
 #include "include/core/settings_store.h"
 #include "include/core/signals.h"
@@ -276,55 +277,6 @@ std::string ExpandHome(std::string path) {
   const std::string home = UserHome();
   if (path.starts_with("~/") && !home.empty()) path = home + path.substr(1);
   return path;
-}
-
-std::string TrimLine(std::string_view text) {
-  return Trim(std::string(text.substr(0, text.find_first_of("\r\n"))));
-}
-
-struct GitWorktree {
-  std::string git_dir;     // <main>/.git/worktrees/<name>
-  std::string common_dir;  // <main>/.git
-};
-
-// A linked worktree keeps its git directory, and the repository's shared one,
-// outside the folder: its `.git` is a file naming them. Only a genuine pair is
-// believed -- the directory must be a child of the shared one's `worktrees`
-// and point back at this `.git` -- because a hostile repository could
-// otherwise name any folder and have it opened. Empty when `folder` and the
-// folders above it hold no such file.
-GitWorktree FindGitWorktree(const std::string& folder) {
-  namespace fs = std::filesystem;
-  std::error_code error;
-  for (fs::path dir = folder; dir.has_relative_path() && dir != dir.root_path();
-       dir = dir.parent_path()) {
-    const fs::path dot_git = dir / ".git";
-    if (!fs::exists(dot_git, error)) continue;
-    if (!fs::is_regular_file(dot_git, error)) return {};
-    const std::string line =
-        TrimLine(ReadFile(dot_git.string(), 4096).value_or(""));
-    constexpr std::string_view kPrefix = "gitdir:";
-    if (!line.starts_with(kPrefix)) return {};
-    fs::path git_dir = Trim(line.substr(kPrefix.size()));
-    if (git_dir.is_relative()) git_dir = dir / git_dir;
-    git_dir = CanonicalAccessPath(git_dir.string());
-    const fs::path worktrees = git_dir.parent_path();
-    const fs::path common_dir = worktrees.parent_path();
-    auto line_of = [&](const char* name) {
-      return TrimLine(ReadFile((git_dir / name).string(), 4096).value_or(""));
-    };
-    fs::path shared = line_of("commondir");
-    if (shared.is_relative()) shared = git_dir / shared;
-    if (worktrees.filename() != "worktrees" ||
-        !fs::is_directory(common_dir / "objects", error) ||
-        CanonicalAccessPath(shared.string()) != common_dir ||
-        CanonicalAccessPath(line_of("gitdir")) !=
-            CanonicalAccessPath(dot_git.string())) {
-      return {};
-    }
-    return {git_dir.string(), common_dir.string()};
-  }
-  return {};
 }
 
 // Closed: the visible entries of the home folder, of ~/.uagent/spaces and of

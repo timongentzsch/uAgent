@@ -842,11 +842,7 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home, *, binary
 
     def kill_wrapper(_, body):
         state["pid"] = detached_pid(body)
-        for _ in range(40):
-            if child_file.exists():
-                break
-            time.sleep(0.05)
-        assert_true(child_file.exists(), "detached child did not start")
+        wait_until(child_file.exists, "detached child did not start", timeout=2)
         state["child"] = int(child_file.read_text(encoding="utf-8"))
         return tool_call("run", {"command": f"kill -KILL {state['pid']}"})
 

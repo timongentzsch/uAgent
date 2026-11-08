@@ -67,8 +67,9 @@ tokens are a stable surface; class names change between releases.
 1. Read the current sheet with `uagent` topic `style`, and the tokens from
    `references/tokens.css` when installed (else
    `web/src/shared/styles/tokens.css` in a source checkout): the first
-   `:root` block holds the scales (spacing, type, sizes, motion), the next
-   two blocks the dark and light palettes.
+   `:root` block holds the scales (spacing, type, sizes, motion), then come
+   a touch keyboard's overrides and, under "The two palettes", the dark
+   palette (`:root`) and the light one (`:root[data-theme="light"]`).
 2. Write only the tokens that change, and keep what the sheet already holds.
    The sheet outranks every token, so `:root { ... }` changes both palettes.
    For one palette use `:root[data-theme="dark"]` or `"light"`; to reach the

@@ -58,6 +58,9 @@ class Runtime {
   json Probe();
   // The page as text, with the screenshot when `image` asks for it.
   json Observe(bool image);
+  // A page of the host's preview address drawn at a size, as a PNG, in a
+  // tab of a throwaway context: no profile, no cookies, no agent's tab.
+  json Capture(const json& command);
   // More of the page's text than a look carries, or the lines that match.
   json Read(const json& command);
   // What the page logged and threw, and what it asked of the network.

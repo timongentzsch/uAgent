@@ -1,3 +1,4 @@
+import DesignCards from "./design-card.tsx";
 import "../../shared/attachments.css";
 import "./message.css";
 import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
@@ -203,7 +204,12 @@ function Message({
         {name}
       </h3>
       {reply ? (
-        words
+        <>
+          {words}
+          {openFile && !node.streaming && text && (
+            <DesignCards session={session.id} text={text} open={openFile} />
+          )}
+        </>
       ) : (
         <div class="message-line">
           <div class="message-text">

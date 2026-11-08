@@ -302,7 +302,7 @@ function Card({
         </span>
       </span>
       {step && (
-        <small class="overview-step">
+        <small class="overview-step truncate">
           <DataText>{step}</DataText>
         </small>
       )}

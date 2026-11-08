@@ -110,11 +110,6 @@
 .overview-card[data-state="waiting"] .overview-state {
   color: var(--accent);
 }
-.overview-step {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .overview-todo {
   display: grid;
   gap: var(--space-1);

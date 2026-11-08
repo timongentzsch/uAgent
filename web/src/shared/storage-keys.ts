@@ -22,6 +22,8 @@ export const storageKeys = {
   toggles: "uagent-toggles",
   scheduledDraft: "uagent-scheduled-draft",
   overview: "uagent-overview-layout",
+  // The folder Files last showed, by the conversation's folder.
+  filesAt: "uagent-files-at",
   library: (kind: string, cwd: string) => `uagent-library-${kind}-${cwd}`,
   // Places of the sidebar's list remembered by path, e.g. folded ones.
   places: (name: string) => `uagent.sidebar.${name}`,

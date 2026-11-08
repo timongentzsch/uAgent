@@ -503,4 +503,67 @@ json Runtime::Finished() {
   }
   return ended;
 }
+json Runtime::Capture(const json& command) {
+  const std::string url = JsonValue(command, "url", "");
+  const int width = std::clamp(JsonValue(command, "width", 0), 1, 8000);
+  const int height = std::clamp(JsonValue(command, "height", 0), 1, 8000);
+  const double scale = std::clamp(JsonValue(command, "scale", 1.0), 1.0, 2.0);
+  // Only the host's own preview pages, never a site with cookies to lose.
+  if (!url.starts_with("http://127.0.0.1:") ||
+      url.find("/preview/") == std::string::npos) {
+    return {{"error", "capture takes a preview address"}};
+  }
+  const json reply = Call("Target.createBrowserContext");
+  const json* made = JsonObject(reply, "result");
+  const std::string context =
+      made ? JsonValue(*made, "browserContextId", "") : "";
+  if (context.empty()) {
+    return {{"error", "Chrome made no context: " + CdError(reply)}};
+  }
+  const json created =
+      Call("Target.createTarget", {{"url", "about:blank"},
+                                   {"browserContextId", context},
+                                   {"background", true}});
+  const json* opened = JsonObject(created, "result");
+  const std::string target = opened ? JsonValue(*opened, "targetId", "") : "";
+  const json attach = target.empty()
+                          ? created
+                          : Call("Target.attachToTarget",
+                                 {{"targetId", target}, {"flatten", true}});
+  const json* attached =
+      target.empty() ? nullptr : JsonObject(attach, "result");
+  const std::string session =
+      attached ? JsonValue(*attached, "sessionId", "") : "";
+  json shot;
+  if (!session.empty()) {
+    Call("Emulation.setDeviceMetricsOverride",
+         {{"width", width},
+          {"height", height},
+          {"deviceScaleFactor", scale},
+          {"mobile", false}},
+         session);
+    Call("Page.navigate", {{"url", url}}, session);
+    // Loaded, its fonts in, or ten seconds.
+    Call("Runtime.evaluate",
+         {{"expression",
+           "new Promise(done => { const go = () => document.fonts.ready.then("
+           "() => done(true)); document.readyState === 'complete' ? go() : "
+           "addEventListener('load', go); setTimeout(() => done(false), "
+           "10000); })"},
+          {"awaitPromise", true}},
+         session);
+    shot = Call("Page.captureScreenshot", {{"format", "png"}}, session);
+  }
+  if (!target.empty()) Call("Target.closeTarget", {{"targetId", target}});
+  Call("Target.disposeBrowserContext", {{"browserContextId", context}});
+  const json* result = JsonObject(shot, "result");
+  const std::string data = result ? JsonValue(*result, "data", "") : "";
+  if (data.empty()) {
+    return {{"error", "Chrome drew no picture: " +
+                          (session.empty() ? "no tab, " + CdError(attach)
+                                           : CdError(shot))}};
+  }
+  return {{"ok", true}, {"png", data}};
+}
+
 }  // namespace uagent::browser

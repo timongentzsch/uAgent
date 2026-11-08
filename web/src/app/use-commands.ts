@@ -75,7 +75,7 @@ export function useCommands({
   setModal: (modal: AppModal | null) => void;
   open: (modal: AppModal) => void;
   setPage: (page: Page) => void;
-  setLibraryKind: (kind: "memory" | "skills") => void;
+  setLibraryKind: (kind: "memory" | "skill") => void;
   compact: boolean;
   setDrawer: (open: boolean) => void;
   // Opens search over everything.
@@ -109,12 +109,12 @@ export function useCommands({
     "/tools": () => setModal({ type: "tools", session_id: selected }),
     "/rename": () => session && setModal({ type: "rename", session }),
     "/memory": () => showLibrary("memory"),
-    "/skills": () => showLibrary("skills"),
+    "/skills": () => showLibrary("skill"),
     "/schedule": () => setPage("scheduled"),
     // The list is always beside a wide conversation: search instead.
     "/sessions": () => (compact ? setDrawer(true) : search()),
   };
-  function showLibrary(kind: "memory" | "skills") {
+  function showLibrary(kind: "memory" | "skill") {
     setLibraryKind(kind);
     setPage("library");
   }

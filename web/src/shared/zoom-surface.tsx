@@ -240,33 +240,47 @@ export function ZoomSurface({
       <div class="zoom-content" ref={content}>
         {children}
       </div>
-      <div
-        class="float-toolbar zoom-controls"
-        role="group"
-        aria-label="Zoom"
-        // Presses here are the controls', not the surface's gestures.
-        onPointerDown={(event) => event.stopPropagation()}
-        onDblClick={(event) => event.stopPropagation()}
-      >
-        <IconButton
-          label="Zoom out"
-          disabled={scale <= 1}
-          onClick={() => step(1 / ZOOM_STEP)}
-        >
-          <Minus />
-        </IconButton>
-        <output aria-live="polite">{percent}%</output>
-        <IconButton
-          label="Zoom in"
-          disabled={scale >= MAXIMUM_ZOOM}
-          onClick={() => step(ZOOM_STEP)}
-        >
-          <Plus />
-        </IconButton>
-        <IconButton label="Fit" disabled={scale <= 1} onClick={fit}>
-          <Scan />
-        </IconButton>
-      </div>
+      <ZoomControls
+        percent={percent}
+        out={scale > 1 ? () => step(1 / ZOOM_STEP) : undefined}
+        in={scale < MAXIMUM_ZOOM ? () => step(ZOOM_STEP) : undefined}
+        fit={scale > 1 ? fit : undefined}
+      />
+    </div>
+  );
+}
+
+// The zoom level with − and +, and Fit; an action left out is disabled.
+// Presses here are the controls', never the surface's gestures.
+export function ZoomControls({
+  percent,
+  out,
+  in: zoomIn,
+  fit,
+}: {
+  percent: number;
+  out?: () => void;
+  in?: () => void;
+  fit?: () => void;
+}) {
+  return (
+    <div
+      class="float-toolbar zoom-controls"
+      role="group"
+      aria-label="Zoom"
+      onPointerDown={(event) => event.stopPropagation()}
+      onDblClick={(event) => event.stopPropagation()}
+    >
+      <IconButton label="Zoom out" disabled={!out} onClick={out}>
+        <Minus />
+      </IconButton>
+      <output aria-live="polite">{percent}%</output>
+      <IconButton label="Zoom in" disabled={!zoomIn} onClick={zoomIn}>
+        <Plus />
+      </IconButton>
+      <IconButton label="Fit" disabled={!fit} onClick={fit}>
+        <Scan />
+      </IconButton>
     </div>
   );
 }

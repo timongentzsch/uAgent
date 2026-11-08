@@ -37,4 +37,20 @@ bool LibraryPath(const std::filesystem::path& root,
 bool AcquireLibraryWriteLease(FileLease& lease, std::string& error) {
   return lease.Acquire(UagentDir("library") + "/" + kWriteLockFile, error);
 }
+json CheckRevision(const json& request, const std::filesystem::path& path,
+                   size_t cap, const std::string& noun, std::string& previous,
+                   bool& exists) {
+  std::string error;
+  exists = PathExists(path.string());
+  if (exists && !ReadRegularFile(path.string(), cap, previous, error)) {
+    return {{"error", error}};
+  }
+  if (!request.contains("revision") ||
+      JsonValue(request, "revision", "") !=
+          (exists ? DocumentRevision(path.string(), previous) : "")) {
+    return {{"error", "This " + noun + " changed. Reload it before saving."},
+            {"conflict", true}};
+  }
+  return json();
+}
 }  // namespace uagent

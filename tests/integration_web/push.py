@@ -71,6 +71,9 @@ def pending_approval_push(root, home, binary, extra_env=None):
             assert_true(status == 200 and subscribed["subscribed"], subscribed)
             session = client.create(root)
             client.command("rename", session, title=TITLE)
+            # The rename settles before the turn starts, or the submit can
+            # find the session busy.
+            client.until(session, lambda value: value["metadata"].get("title") == TITLE)
             client.command("submit", session, text="Run PUSH_PRIVATE_TEXT")
             client.until(session, lambda value: bool(value.get("pending")))
             wait_until(

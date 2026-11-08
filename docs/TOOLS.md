@@ -29,7 +29,7 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | --- | --- | --- |
 | `read_path` | read text or line ranges, list directories, load images and documents | always |
 | `grep` | regex or literal search of file contents or paths | always |
-| `write_file` | create a file; replacing one needs `overwrite=true` | full toolset |
+| `write_file` | create a file; replacing one needs `overwrite=true`; `from` copies a file attached to the conversation (its `[Attached: …]` path) instead of `content` | full toolset |
 | `edit_file` | apply ordered exact replacements atomically | full toolset |
 | `delete_file` | delete a regular file and show the removed content | full toolset |
 | `run` | run a supervised shell command, optionally with a PTY or detached; its required `description` is what the row shows | always |

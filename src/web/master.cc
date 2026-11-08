@@ -270,7 +270,12 @@ bool Master::Initialize(std::string& error) {
     const std::string origin = request.get_header_value("Origin");
     const bool instance = request.path == "/api/instance";
     const bool mutation = request.method != "GET" && request.method != "HEAD";
-    if (!expected_origin || (!origin.empty() && origin != *expected_origin) ||
+    // A previewed page runs in an opaque origin, so its own fonts and
+    // scripts arrive with "Origin: null"; the token in the path is the grant.
+    const bool preview =
+        !mutation && origin == "null" && request.path.starts_with("/preview/");
+    if (!expected_origin ||
+        (!preview && !origin.empty() && origin != *expected_origin) ||
         (mutation && !instance && origin != *expected_origin)) {
       Error(response, "invalid Host or Origin", 403);
       return httplib::Server::HandlerResponse::Handled;
@@ -539,6 +544,10 @@ void Master::RegisterApiRoutes() {
     }
     Reply(response, push_->Capabilities(device));
   });
+  server_.Get("/api/library",
+              [this](const Request& request, Response& response) {
+                Library(request, response);
+              });
   server_.Get("/api/search",
               [this](const Request& request, Response& response) {
                 Search(request, response);
@@ -585,6 +594,14 @@ void Master::RegisterApiRoutes() {
   server_.Get(R"(/api/sessions/([a-f0-9]{16,64})/files)",
               [this](const Request& request, Response& response) {
                 Files(request, response);
+              });
+  server_.Post(R"(/api/sessions/([a-f0-9]{16,64})/preview)",
+               [this](const Request& request, Response& response) {
+                 PreviewGrant(request, response);
+               });
+  server_.Get(R"(/preview/([a-f0-9]{48})/(.+))",
+              [this](const Request& request, Response& response) {
+                Preview(request, response);
               });
 }
 
@@ -645,6 +662,20 @@ bool Master::RegisterAssetRoutes(std::string& error) {
   // rebuild of this binary: that folder alone answers, never a mix of it
   // and the embedded bundle. Never set outside a test run.
   const char* dist = getenv("UAGENT_INTERNAL_WEB_DIST");
+  std::string ignored;
+  if (dist) {
+    ReadRegularFile(std::string(dist) + "/design-helper.js", kUploadBytes,
+                    design_helper_, ignored);
+  }
+  for (const Asset& asset : Assets()) {
+    if (dist || asset.path != "/design-helper.js") continue;
+    if (asset.gzip) {
+      Gunzip(asset, design_helper_);
+    } else {
+      design_helper_.assign(reinterpret_cast<const char*>(asset.data),
+                            asset.size);
+    }
+  }
   if (dist) {
     server_.set_file_extension_and_mimetype_mapping(
         "webmanifest", "application/manifest+json");

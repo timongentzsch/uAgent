@@ -76,10 +76,41 @@ the host).
 conversation's folder beside the chat, or as a sheet on a small screen. It
 never writes. Search finds a file by name anywhere in the folder. Code opens
 with line numbers and highlighting, Markdown rendered with its images
-(**Source** shows the text), and an image at full size on a click; any other
-file offers a download. In a git repository, **Changes** lists what differs
+(**Source** shows the text), and an image at full size on a click; an HTML page runs live
+(**Source** shows its code); any other file offers a download. In a git repository, **Changes** lists what differs
 from the last commit, with its count, and opens each as a diff; it is read
 only too. What is open is read again when a turn ends.
+
+A folder that holds HTML pages also offers **Canvas**: its pages side by side,
+each live, the way the `design` skill writes a design. Pages named
+`<row>-<name>.html` form a row per name before the dash (`hero-a.html` and
+`hero-b.html` make the row "hero"). The canvas is a plane: drag or scroll to
+pan; pinch, a trackpad pinch or ⌘/Ctrl with the wheel zooms at the pointer;
+− and + zoom, **Fit** shows every page. A page declares its size with
+`<meta name="artboard" content="1440x900">`, or only a width for a page as tall
+as its content. A click opens a page across the pane; **Back** returns to the
+canvas. There, **Select** picks an element: a comment on it is added to your
+message as a line naming the page, the element and its text, and the pane
+stays open for the next one. **Tweaks** tries the levers the page declares
+(colours, ranges, choices, switches) at once; **Keep** adds them as a line for
+the agent to write, **Reset** reloads the page. **Present** shows it full
+screen, the arrow keys stepping through the folder's pages; the printer opens
+it alone to print or save as PDF, at its artboard's size or, for a document,
+on Letter or A4. Where the [agent's browser](BROWSER.md) runs, it also draws
+the page as a PNG at twice its size, to download, copy or draw on in the
+image viewer, in a context of its own with no profile or cookies. A page that fails says so, and **Ask agent to fix** puts its errors in
+your message. A page the agent writes reloads as the write finishes. A folder
+of one page opens that page; a page that names only its width (an A4
+document, such as a design system's book) fits across the pane and scrolls
+inside, as a PDF does. A design a reply names (`design/landing/`, or a page)
+shows under the reply as a card with its first page live and small; **Open**
+shows it in the pane.
+
+A design system's brand book is a page the agent writes beside its
+`tokens.css`, `book.html`: A4 pages art-directed in the system's own colours
+and type, on its canvas like any page, and printed to PDF a sheet a page. A
+page that links a `tokens.css` shows its themes and colours under
+**Tweaks**, to try at once; **Keep theme** adds them as a line for the agent.
 
 ![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](images/files.gif)
 
@@ -505,7 +536,15 @@ or a revoked device clears local UI state.
   agent can: the [hidden stores](../SECURITY.md#sandboxing) and µAgent's own
   settings files are refused, and nothing outside the folder is served,
   through a symlink or otherwise. Images are served inline under a
-  sandboxing policy; every other file, HTML included, only as a download.
+  sandboxing policy; every other file only as a download.
+- A folder's pages open from a preview address, `/preview/<token>/…`, that a
+  device gets for a conversation; it lasts until the host stops or a device
+  is revoked. It serves only web files (pages, stylesheets, scripts, data,
+  fonts, media) with the same refusals as above, carries no cookie, and is
+  the one place a request with `Origin: null` is accepted, for reading. Each
+  page runs sandboxed in an opaque origin, so it reaches neither the app nor
+  the API, and its policy lets it load only from its own address and Google
+  Fonts, so it cannot send its address anywhere.
 - The page runs under a content security policy that allows only its own
   scripts, connections and frames. Attached HTML opens sandboxed in an opaque
   origin.

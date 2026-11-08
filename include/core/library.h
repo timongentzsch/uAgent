@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <string>
 
+#include "include/core/file_watch.h"
+#include "include/core/json.h"
 #include "include/core/lease.h"
 
 namespace uagent {
@@ -21,5 +23,13 @@ bool LibraryPath(const std::filesystem::path& root,
 bool AcquireLibraryWriteLease(FileLease& lease, std::string& error);
 // A single safe path component within the library name bound.
 bool LibraryName(const std::string& name);
+// The document at `path` as a write request last read it: read (at most
+// `cap` bytes) into `previous`, `exists` set, and checked against the
+// request's `revision`. An error reply when it cannot be read, or when it
+// changed since (`conflict`, naming the `noun`); empty when the write may go
+// ahead.
+json CheckRevision(const json& request, const std::filesystem::path& path,
+                   size_t cap, const std::string& noun, std::string& previous,
+                   bool& exists);
 }  // namespace uagent
 #endif  // UAGENT_INCLUDE_CORE_LIBRARY_H_

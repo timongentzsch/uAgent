@@ -27,6 +27,8 @@ inline constexpr size_t kUploadBytes = MiB(8);
 inline constexpr size_t kUploadCount = 8;
 inline constexpr size_t kSessionAssetBytes = MiB(64);
 inline constexpr size_t kGlobalAssetBytes = MiB(512);
+// An asset's record (`<id>.json` beside its bytes), small by construction.
+inline constexpr size_t kAssetRecordBytes = KiB(1);
 
 struct AssetStoreResult {
   json value;
@@ -48,9 +50,11 @@ class AssetStore {
   // than waiting for a message to claim it. `tool_copy`: a display copy of a
   // file a tool read (a screenshot); these share half the session's budget,
   // oldest evicted first, so they never crowd out the user's own files.
+  // `shared`: a file the agent handed the person, which the Library lists.
   AssetStoreResult Store(const std::string& session_path,
                          const std::string& bytes, std::string name,
-                         bool committed = false, bool tool_copy = false);
+                         bool committed = false, bool tool_copy = false,
+                         bool shared = false);
   // Resolves attachment id claims into command["attachments"], runs gate
   // (the host's session-liveness check) before committing anything, then
   // size-checks and commits. gate's non-empty return aborts uncommitted.
@@ -71,6 +75,15 @@ class AssetStore {
   std::chrono::steady_clock::time_point scanned_ UAGENT_GUARDED_BY(mutex_){};
   size_t bytes_ UAGENT_GUARDED_BY(mutex_) = 0;
 };
+
+// The record of the asset at `stem` (its path without an extension), null
+// when there is none, and the extension its bytes are kept under: empty
+// when the record names one its type cannot have.
+struct AssetRecord {
+  json record;
+  std::string extension;
+};
+AssetRecord ReadAssetRecord(const std::string& stem);
 
 // The process's one store, so its quota scan is shared across callers.
 AssetStore& SessionAssets();

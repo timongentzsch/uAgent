@@ -1,7 +1,6 @@
 """Management controls use native storage and ordinary session workers."""
 
 import datetime
-import http.client
 import json
 import re
 import signal
@@ -221,7 +220,7 @@ def test_schedule_calendar_dst_and_conflicts(root, home, *, binary):
     lock.unlink()
     assert_true(call(action="list")["runner_active"] is False, "a missing host read as unknown")
     unnamed = control(binary, root, env, "", action="list")
-    assert_true("unknown kind; use memory" in unnamed["error"], unnamed)
+    assert_true("unknown kind; use library, memory" in unnamed["error"], unnamed)
 
 
 def test_a_schedule_change_reaches_a_waiting_event_stream_at_once(root, home, *, binary):
@@ -229,15 +228,7 @@ def test_a_schedule_change_reaches_a_waiting_event_stream_at_once(root, home, *,
     send sends it then, not at its next heartbeat 15 seconds on."""
     with web_host(binary, root, home, "http://127.0.0.1:1") as (client, code, _, env):
         client.pair(code)
-        listing = client.json("/api/sessions")[1]
-        stream = http.client.HTTPConnection("127.0.0.1", client.port, timeout=budget(30))
-        stream.request(
-            "GET",
-            f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
-            headers={"Cookie": client.cookie},
-        )
-        response = stream.getresponse()
-        assert_true(response.status == 200, response.status)
+        stream, response = client.events(timeout=30)
         ready, pushed = threading.Event(), threading.Event()
 
         def read_events():

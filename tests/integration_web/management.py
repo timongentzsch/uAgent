@@ -1,4 +1,3 @@
-import http.client
 import json
 import signal
 import subprocess
@@ -106,19 +105,7 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
                 "historical model changed",
             )
 
-            def rejected(kind, target, **fields):
-                client.sequence += 1
-                return client.json(
-                    "/api/command",
-                    {
-                        "v": 2,
-                        "request_id": f"{client.sequence:032x}",
-                        "kind": kind,
-                        "session_id": target["id"],
-                        "generation": target.get("generation", ""),
-                        **fields,
-                    },
-                )
+            rejected = client.send
 
             assert_true(rejected("delete", session)[0] == 409, "deleted a live worker")
             client.command("close", session)
@@ -235,16 +222,7 @@ def test_web_delete_keeps_everything_while_an_agent_worktree_holds_work(root, ho
             client.pair(code)
             sessions = client.json("/api/sessions")[1]["sessions"]
             saved = next(item for item in sessions if item.get("title") == "lead")
-            status, refused, _ = client.json(
-                "/api/command",
-                {
-                    "v": 2,
-                    "request_id": "0" * 32,
-                    "kind": "delete",
-                    "session_id": saved["id"],
-                    "generation": saved.get("generation", ""),
-                },
-            )
+            status, refused = client.send("delete", saved)
             assert_true(status == 409 and "uncommitted changes" in str(refused), refused)
             assert_true("agent-0a1b2c3d" in str(refused), refused)
     assert_true(lead.exists() and agent.exists(), "deleted despite the refusal")
@@ -568,14 +546,7 @@ def test_web_stopped_background_command_ends_its_row(root, home, *, binary):
 
 def push_log(client, listing, kind, field):
     """The `field` of each `kind` frame the host pushes from now on, in order."""
-    connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
-    connection.request(
-        "GET",
-        f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
-        headers={"Cookie": client.cookie},
-    )
-    response = connection.getresponse()
-    assert_true(response.status == 200, response.status)
+    _, response = client.events(listing)
     pushed = []
 
     def read_events():
@@ -623,19 +594,14 @@ def test_web_pins_are_one_list_for_every_browser_and_survive_a_restart(root, hom
             assert_true(result["pins"] == pins, result)
             wait_until(lambda: pushed == [pins], f"pins were not pushed: {pushed}")
             assert_true(client.json("/api/sessions")[1]["pins"] == pins, "pins not listed")
-            for number, bad in enumerate(
-                (
-                    [{"kind": "folder", "id": str(root)}] * 65,
-                    [{"kind": "file", "id": "x"}],
-                    [{"kind": "session"}],
-                    ["x"],
-                    {"kind": "folder", "id": "x"},
-                )
+            for bad in (
+                [{"kind": "folder", "id": str(root)}] * 65,
+                [{"kind": "file", "id": "x"}],
+                [{"kind": "session"}],
+                ["x"],
+                {"kind": "folder", "id": "x"},
             ):
-                status, refused, _ = client.json(
-                    "/api/command",
-                    {"v": 2, "kind": "pins", "request_id": f"{0xE0 + number:032x}", "pins": bad},
-                )
+                status, refused = client.send("pins", pins=bad)
                 assert_true(status == 409, (bad, refused))
             assert_true(client.json("/api/sessions")[1]["pins"] == pins, "a refusal changed pins")
             host.send_signal(signal.SIGTERM)

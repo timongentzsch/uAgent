@@ -164,6 +164,7 @@ void Master::RevokeDevice(CommandCall& call) {
     return;
   }
   push_->Revoke(remove);
+  previews_.clear();
   if (remove == call.device) {
     call.response.set_header(
         "Set-Cookie",

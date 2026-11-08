@@ -41,10 +41,12 @@ const EXTENSIONS: Record<string, string> = {
 };
 export const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
 export const MARKDOWN = /\.(md|markdown)$/i;
+export const HTML = /\.html?$/i;
 // Files with no language that are still plainly files.
 const PLAIN = /\.(txt|csv|log|lock|pdf)$/i;
 
-const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+// A path's last part: the file or folder it names.
+export const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 // A file's language, by its name or else its extension.
 export function languageFor(path: string) {

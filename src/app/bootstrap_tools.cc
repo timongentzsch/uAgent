@@ -39,7 +39,7 @@ namespace uagent {
 session::AssetStoreResult StoreSessionFile(const std::string& session_path,
                                            const std::string& path,
                                            const std::string& name,
-                                           bool tool_copy) {
+                                           bool tool_copy, bool shared) {
   session::AssetStoreResult stored;
   std::string bytes;
   if (!ReadRegularFile(path, session::kUploadBytes, bytes, stored.error)) {
@@ -48,7 +48,7 @@ session::AssetStoreResult StoreSessionFile(const std::string& session_path,
   return session::SessionAssets().Store(
       session_path, bytes,
       name.empty() ? std::filesystem::path(path).filename().string() : name,
-      /*committed=*/true, tool_copy);
+      /*committed=*/true, tool_copy, shared);
 }
 
 std::vector<Tool> BuildTools(AppContext& context,
@@ -115,7 +115,10 @@ std::vector<Tool> BuildTools(AppContext& context,
   // Reading a named URL needs no hosted route, so it does not follow search's
   // availability.
   tools.push_back(WebFetchTool(api));
-  if (!session_path.empty()) tools.push_back(ArtifactTool(session_path));
+  if (!session_path.empty()) {
+    tools.push_back(ArtifactTool(session_path));
+    CopyAttachments(tools, session_path);
+  }
   if (context.channel) {
     tools.push_back(ScheduleTool([app = &context] {
       return ChosenSelection(app->runtime.api, app->provider.providers);

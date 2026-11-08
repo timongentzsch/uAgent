@@ -53,17 +53,11 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
                 endpoint, raw=SMALL_PNG, headers={"Content-Type": "image/png"}
             )
             assert_true(status == 200, image)
-            status, rejected, _ = client.json(
-                "/api/command",
-                {
-                    "v": 2,
-                    "request_id": "a" * 32,
-                    "kind": "submit",
-                    "session_id": session["id"],
-                    "generation": session["generation"],
-                    "attachment_ids": [image["id"], "f" * 32],
-                    "text": "Reject the incomplete attachment batch",
-                },
+            status, rejected = client.send(
+                "submit",
+                session,
+                attachment_ids=[image["id"], "f" * 32],
+                text="Reject the incomplete attachment batch",
             )
             assert_true(status == 409 and "unavailable" in rejected["error"], rejected)
             record = json.loads((home / f".uagent/web/drafts/{session['id']}.json").read_text())
@@ -88,17 +82,8 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
             outside = root / "separate-workspace"
             outside.mkdir()
             peer = client.create(outside)
-            status, denied, _ = client.json(
-                "/api/command",
-                {
-                    "v": 2,
-                    "request_id": "b" * 32,
-                    "kind": "submit",
-                    "session_id": peer["id"],
-                    "generation": peer["generation"],
-                    "attachment_ids": [image["id"]],
-                    "text": "Wrong session image",
-                },
+            status, denied = client.send(
+                "submit", peer, attachment_ids=[image["id"]], text="Wrong session image"
             )
             assert_true(status == 409 and "unavailable" in denied["error"], denied)
             record = json.loads((home / f".uagent/web/drafts/{session['id']}.json").read_text())

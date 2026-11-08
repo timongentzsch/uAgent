@@ -1,6 +1,6 @@
 ---
 name: design
-description: Design pages, screens, decks or a design system as HTML shown live in Files
+description: Design or restyle pages, screens, decks, a design system: HTML shown in Files
 ---
 
 # Design
@@ -41,8 +41,6 @@ their message. You make every change by editing the files.
   - The readable name is the page's `<title>` ("Sign in: wrong password"),
     which the canvas shows; never put words for people in the file name.
   - A page without a step (`book.html`) sits in the first row.
-- Name a reference by its path from the folder you work in
-  (`design/landing/01-hero-numbers.html`), never a bare file name.
 - Pages of one design may share a stylesheet in the folder (`style.css`); a
   change to it reloads every page.
 - Each file is a complete HTML document:
@@ -55,9 +53,8 @@ their message. You make every change by editing the files.
   - `<meta name="print" content="flow letter">` (or `a4`) makes a document
     that paginates when printed; a fixed artboard prints as one page.
 - Markup first. Draw every screen, card and row in HTML; scripts only for
-  behaviour (state, a toggle, a carousel), never to build the page. Lay out
-  groups with flex or grid and `gap`.
-- Links between files (`<a href="hero-plain.html">`) make a clickable
+  behaviour (state, a toggle, a carousel), never to build the page.
+- Links between files (`<a href="02-sign-in.html">`) make a clickable
   prototype; a flow that shares state is one file with sections it shows and
   hides.
 - No network except Google Fonts (one `fonts.googleapis.com/css2` link).
@@ -93,15 +90,18 @@ variant, a dark theme — in the page's head. Not copy, not a colour used once:
 
 ## Working with the canvas
 
-- Name the folder in your reply as `design/landing/`; the reference opens the
-  canvas. Name a single artboard by its path.
-- Check what you made before you hand it over, where the `browser` tool is
-  available: every page you wrote or changed is opened with `open` and its
-  `path` after its last change, before your reply.
-  It loads as the canvas shows it and lists the page's problems (larger than
-  its artboard, a page of a document that runs past its height, a file that
-  did not load). Fix every problem, then look at the page once and fix what
-  reads wrong. Pages you did not touch need no second look.
+- In your reply, name the folder (`design/landing/`), which opens the
+  canvas, and a single page by its path from the folder you work in
+  (`design/landing/01-hero-numbers.html`), never a bare file name.
+- Check what you made before you reply, where the `browser` tool is
+  available:
+  1. After its last change, open every page you wrote or changed with
+     `open` and its `path`. It loads as the canvas shows it and lists the
+     page's problems: larger than its artboard, a document page that runs
+     past its height, a file that did not load.
+  2. Fix every problem and open the page again, until none is listed.
+  3. Look at the page once and fix what reads wrong or strays from the
+     design system's tokens. Pages you did not touch need no second look.
 - Do not hand designs over with `artifact`: it snapshots a single file.
 - Their message may carry lines the canvas wrote:
   - `` `path` `selector` “text” — comment ``: change that element, found by its
@@ -117,85 +117,21 @@ variant, a dark theme — in the page's head. Not copy, not a colour used once:
 - No filler: no lorem ipsum, invented numbers or padding sections. A missing
   fact is a visible placeholder such as [YOUR PRICE]. Ask before adding
   sections or copy nobody asked for.
-- Follow an existing design's vocabulary: its type, colours, spacing, density
-  and states.
 - Without a brand: type from the subject; if neutral, one sans for text and
   one for headings, from Google Fonts with a system fallback. A tinted ground,
   0–2 accents of like lightness and chroma. Commit to one nameable look.
 - Avoid the tropes: gradient washes, emoji, cards with a coloured left border,
   everything centred and rounded.
-- Accessible as drawn: real `<button>`, `<a href>`, `<input>` with `<label>`;
-  `aria-label` on icon-only buttons; text contrast at least 4.5:1 (3:1 from
-  24px); touch targets at least 44px on phone screens; colours that must be
-  told apart differ in lightness too.
-- Print: body text at least 12pt (16px), margins about 72px, a document's
-  headings in order; keep fixed pages fully inside their size.
+- Accessible as drawn (WCAG AA): real controls with labels, 44px touch
+  targets on phone screens.
 - Do not recreate another company's distinctive design or branding.
 
 ## A design system
 
-A design system is a folder, e.g. `design/system/`, that pages link:
-
-- `README.md`: usage rules that name tokens ("buttons are `--accent` on
-  `--page`"), voice, iconography, the source it came from and its commit,
-  and a "Not synced" list of what could not be placed.
-- `tokens.css`: the only token file.
-  - Colours in a `:root, [data-theme="light"] { … }` block and one
-    `[data-theme="<id>"] { … }` block per further theme.
-  - `--space-*`, `--radius-*`, `--shadow-*` and `--font-<family>` variables.
-  - A `.text-<style>` class per text style (`font`, `letter-spacing`).
-  - One `/* usage */` comment after each declaration.
-- `components/bundle.css` and, per component, `components/<Name>/README.md`
-  (what it is for, when to use it, its classes) and
-  `components/<Name>/preview.html`, a small page showing it in all its
-  states. `<Name>` is the component's name as code uses it (`Button`,
-  `ListRow`).
-- `fonts/` and `assets/<Group>/` (logos, icons): copied files, never redrawn.
-- `book.html`: the brand book (below), which the canvas shows and prints.
-- Pages use it with `<link rel="stylesheet" href="../system/tokens.css">` (and
-  `bundle.css`) and `data-theme` on `<html>`.
-
-Building one from a codebase:
-
-1. Ask once what to include if it is unclear: tokens, fonts, logos and icons,
-   docs, which components.
-2. Take tokens exactly as the code has them: CSS custom properties under
-   `:root` and theme selectors (`[data-theme="dark"]`, `.dark`, a
-   `prefers-color-scheme: dark` block), a token file or a theme object.
-   Keep names, values and aliases (`var(--other)`); skip what is computed
-   (`calc()`, `color-mix()`) and list it under "Not synced". Never invent a
-   value.
-3. Copy font files, logos and icons; condense the docs into usage rules.
-4. Components: list them, ask which, and write each as CSS classes with a
-   preview, from the code's real styles.
-5. Write the brand book last, from what the folder now holds.
-6. On a later re-sync, update changed values, add new ones, keep notes and
-   prose, and list tokens the code no longer defines; ask before removing
-   them. Bring the book up to date with them.
-
-### The brand book
-
-`book.html` is the system as a branding agency would hand it over: art
-directed in the system's own voice, never a template.
-
-- One document: `<meta name="artboard" content="794">` (A4 wide, as tall as
-  it runs), `<meta name="print" content="flow a4">`, and links to
-  `tokens.css` and `components/bundle.css`. Every page is a `<section>`
-  exactly 210mm × 297mm with `break-after: page` and `overflow: hidden`; its
-  running footer (title, page number) sits at the page's foot.
-- Contents: a cover; the idea and principles (from README.md); colour, every
-  colour a swatch with its token, value, use and contrast on the ground;
-  type, every family and text style set large as a specimen; space and shape,
-  the scales drawn to size; the components in use, from `bundle.css` classes
-  or `components/<Name>/preview.html` in an `<iframe>`; a do and don't page.
-- Every colour, size and face through `var(--…)`, so the book follows the
-  tokens; a value appears only as a printed label.
-- Art direction: full-bleed colour pages, type set large as image, the
-  system's own accent and grid. No stock placeholders.
-- Every page is full and fits: lay each out as a grid over its whole height
-  (the cover too, its title, statement and strip spread to the foot). Budget
-  its content before writing it; what would run past 297mm goes to a page of
-  its own, and a page that runs short gets a full-bleed block or a larger
-  specimen, never empty space.
-- Names as written: no `text-transform` on a name or token (`µAgent` set in
-  capitals turns into "ΜAGENT").
+A design system is a folder, e.g. `design/system/`: `tokens.css` (colours
+per theme, space, radius, shadow, fonts, text styles), `components/` (a
+`bundle.css`, and per component a README and a `preview.html`), a
+`README.md` of usage rules and `book.html`, its brand book. Pages use it with
+`<link rel="stylesheet" href="../system/tokens.css">` (and `bundle.css`) and
+`data-theme` on `<html>`. To build, re-sync or extend one, read
+`references/design-system.md` first.

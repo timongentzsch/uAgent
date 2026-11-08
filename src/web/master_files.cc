@@ -486,16 +486,7 @@ void Master::Picture(const Request& request, Response& response,
     Error(response, "the agent's browser is not set up on this host", 503);
     return;
   }
-  std::string url = local_ + base;
-  for (const unsigned char ch : path) {
-    if (std::isalnum(ch) ||
-        std::string_view("/-._~").find(ch) != std::string_view::npos) {
-      url.push_back(static_cast<char>(ch));
-    } else {
-      static constexpr char kHex[] = "0123456789ABCDEF";
-      url += {'%', kHex[ch >> 4], kHex[ch & 15]};
-    }
-  }
+  const std::string url = local_ + base + PercentEncode(path, "/");
   const auto number = [&](const char* name, int fallback) {
     const std::string text = request.get_param_value(name);
     int value = fallback;

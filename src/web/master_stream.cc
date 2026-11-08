@@ -257,22 +257,14 @@ void ServeFile(Response& response, std::string bytes, const std::string& mime,
   if (!inline_view) {
     // RFC 6266: an ASCII fallback for old clients, the exact UTF-8 name
     // percent-encoded for the rest.
-    std::string fallback, encoded;
+    std::string fallback;
     for (const char ch : name) {
       const auto byte = static_cast<unsigned char>(ch);
       fallback += byte < 32 || byte > 126 || ch == '"' || ch == '\\' ? '_' : ch;
-      if (std::isalnum(byte) || std::strchr("-._~", ch) != nullptr) {
-        encoded += ch;
-      } else {
-        constexpr char kHex[] = "0123456789ABCDEF";
-        encoded += '%';
-        encoded += kHex[byte >> 4];
-        encoded += kHex[byte & 15];
-      }
     }
     response.set_header("Content-Disposition",
                         "attachment; filename=\"" + fallback +
-                            "\"; filename*=UTF-8''" + encoded);
+                            "\"; filename*=UTF-8''" + PercentEncode(name));
   }
   response.set_content(std::move(bytes),
                        inline_view || html ? mime : kOctetStreamMime);

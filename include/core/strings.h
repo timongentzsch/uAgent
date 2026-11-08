@@ -62,6 +62,10 @@ size_t Utf8BoundaryAfter(const std::string& s, size_t offset);
 // Cap a string at a UTF-8 boundary without splitting a codepoint.
 std::string Utf8Prefix(std::string s, size_t cap);
 
+// `text` with every byte but RFC 3986's unreserved characters (letters,
+// digits, -._~) and those in `keep` written as %XX.
+std::string PercentEncode(std::string_view text, std::string_view keep = "");
+
 // The same bound with an ellipsis when truncation is required.
 std::string Utf8Trunc(std::string s, size_t cap);
 

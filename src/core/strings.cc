@@ -167,6 +167,23 @@ size_t Utf8BoundaryAfter(const std::string& s, size_t offset) {
   return offset;
 }
 
+std::string PercentEncode(std::string_view text, std::string_view keep) {
+  static constexpr char kHex[] = "0123456789ABCDEF";
+  std::string out;
+  for (const char ch : text) {
+    const unsigned char byte = Byte(ch);
+    if ((byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') ||
+        (byte >= '0' && byte <= '9') ||
+        std::string_view("-._~").find(ch) != std::string_view::npos ||
+        keep.find(ch) != std::string_view::npos) {
+      out += ch;
+    } else {
+      out += {'%', kHex[byte >> 4], kHex[byte & 15]};
+    }
+  }
+  return out;
+}
+
 std::string Utf8Prefix(std::string s, size_t cap) {
   if (s.size() <= cap) return s;
   s.resize(Utf8BoundaryBefore(s, cap));

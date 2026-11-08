@@ -1305,4 +1305,26 @@ TEST_CASE(TestSessionPrefixMatch) {
   CHECK(MatchSessionPrefix("   ").empty());
 }
 
+// A turn larger than the live view keeps the message that started it over
+// its latest steps, so a compact view never shows a turn without its prompt;
+// older rows continue from the first step held.
+TEST_CASE(TestViewKeepsTheHeadOfALargeTurn) {
+  json nodes =
+      json::array({{{"id", "t-1"}, {"kind", "turn"}, {"sequence", 1}}});
+  for (int i = 0; i < 100; ++i) {
+    nodes.push_back({{"id", "step-" + std::to_string(i)},
+                     {"kind", "call"},
+                     {"parent", "w-1"},
+                     {"sequence", i + 2}});
+  }
+  json view = {{"nodes", json::array()}};
+  MergeNodes(view, nodes);
+  REQUIRE(!view["nodes"].empty());
+  CHECK(view["nodes"].front()["id"] == "t-1");
+  CHECK(view["nodes"].back()["id"] == "step-99");
+  CHECK(view["nodes"].size() <= kViewNodes);
+  CHECK(view["more"] == true);
+  CHECK(view["before"] == view["nodes"][1]["sequence"]);
+}
+
 }  // namespace uagent

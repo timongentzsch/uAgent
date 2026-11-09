@@ -48,6 +48,8 @@ class Runtime {
   json* OpenDialog();
   bool SelectPage(std::string& error);
   bool AttachPage(std::string target, std::string& error);
+  // Draws a tab at the viewer's chosen page size, as Chrome's device mode.
+  void Emulate(const std::string& session);
   bool Agent(const json& command, std::string& error);
   json Status(bool include_page = true);
   json Targets();
@@ -99,6 +101,12 @@ class Runtime {
   std::string selected_profile_ = "default";
   std::string profile_error_;
   std::string mode_ = "idle";
+  // The page size the viewer chose ("" is the window's own), and the
+  // window's page area, measured once, that a larger size is fitted into.
+  std::string viewport_;
+  int window_width_ = 0, window_height_ = 0;
+  // How much smaller than its size that page is drawn.
+  double input_scale_ = 1;
   bool profile_setup_ = false;
   bool loading_ = false;
   // Each tab's one attachment, so a tab returned to keeps what its session

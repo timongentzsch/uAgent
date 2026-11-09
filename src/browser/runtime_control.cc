@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "include/browser/browser.h"
@@ -14,6 +15,64 @@
 #include "src/browser/runtime_internal.h"
 
 namespace uagent::browser {
+namespace {
+// The page sizes the viewer offers, in CSS pixels at one pixel each: the
+// layout is what they test, and a denser one only costs pixels.
+struct Viewport {
+  const char* name;
+  int width, height;
+  bool mobile;
+};
+constexpr Viewport kViewports[] = {{"laptop", 1440, 900, false},
+                                   {"desktop", 1920, 1080, false},
+                                   {"tablet", 820, 1180, true},
+                                   {"phone", 390, 844, true}};
+const Viewport* FindViewport(std::string_view name) {
+  for (const Viewport& viewport : kViewports) {
+    if (name == viewport.name) return &viewport;
+  }
+  return nullptr;
+}
+}  // namespace
+
+void Runtime::Emulate(const std::string& session) {
+  const Viewport* size = FindViewport(viewport_);
+  input_scale_ = 1;
+  if (!size) {
+    Call("Emulation.clearDeviceMetricsOverride", json::object(), session);
+    Call("Emulation.setTouchEmulationEnabled", {{"enabled", false}}, session);
+    return;
+  }
+  // A tab not yet emulated shows the window's page area, in the window's
+  // pixels: the CSS sizes carry the site's zoom, and are fractional.
+  if (!window_width_) {
+    const json metrics = Call("Page.getLayoutMetrics", json::object(), session);
+    const json* result = JsonObject(metrics, "result");
+    const json* area = result ? JsonObject(*result, "layoutViewport") : nullptr;
+    window_width_ =
+        area ? static_cast<int>(JsonValue(*area, "clientWidth", 0.0)) : 0;
+    window_height_ =
+        area ? static_cast<int>(JsonValue(*area, "clientHeight", 0.0)) : 0;
+    if (window_width_ <= 0 || window_height_ <= 0) {
+      window_width_ = window_height_ = 0;
+      return;
+    }
+  }
+  // A size larger than the window is drawn smaller, to be seen whole.
+  input_scale_ =
+      std::min({1.0, static_cast<double>(window_width_) / size->width,
+                static_cast<double>(window_height_) / size->height});
+  Call("Emulation.setDeviceMetricsOverride",
+       {{"width", size->width},
+        {"height", size->height},
+        {"deviceScaleFactor", 1},
+        {"mobile", size->mobile},
+        {"scale", input_scale_}},
+       session);
+  Call("Emulation.setTouchEmulationEnabled", {{"enabled", size->mobile}},
+       session);
+}
+
 // What needs no page: profiles, who is watching and who drives, and handing
 // the browser over and back. Null for anything else.
 json Runtime::Control(const std::string& op, const json& command) {
@@ -74,6 +133,18 @@ json Runtime::Control(const std::string& op, const json& command) {
     }
     Stop();
     SaveHandover();
+    return Status();
+  }
+  if (op == "viewport") {
+    std::string size = JsonValue(command, "viewport", "");
+    if (!size.empty() && !FindViewport(size)) {
+      return {{"error", "unknown page size"}};
+    }
+    if (!viewer_.empty() && viewer_ != JsonValue(command, "device", "")) {
+      return {{"error", "another device controls the browser"}};
+    }
+    viewport_ = std::move(size);
+    for (const auto& [target, session] : sessions_) Emulate(session);
     return Status();
   }
   if (op == "takeover" || op == "setup_profile") {

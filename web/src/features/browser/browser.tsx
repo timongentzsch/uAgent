@@ -23,7 +23,7 @@ import {
 import { SheetButton } from "../../shared/sheet.tsx";
 import { ChevronDown, Keyboard } from "lucide-preact";
 import BrowserTouch from "./touch.tsx";
-import { hideTouchCursor, sendPointer } from "./rfb.ts";
+import { hideTouchCursor, sendPointer, setViewOnly } from "./rfb.ts";
 import { BrowserFrame, BrowserTools } from "./frame.tsx";
 import { useLatest } from "../../shared/use-latest.ts";
 import { KeyBar, keepFocus } from "../../shared/key-bar.tsx";
@@ -59,6 +59,7 @@ interface BrowserInstance {
 }
 interface BrowserStatus {
   instance_id?: string;
+  viewport?: string;
   parallel_capacity?: number;
   instances?: BrowserInstance[];
   queue?: { session_id: string; shared: boolean }[];
@@ -136,7 +137,7 @@ function Screen({
         `${scheme}//${location.host}${routes.browserViewer}${instance === "0" ? "" : `?instance=${instance}`}`,
       );
       let denied = false;
-      rfb.viewOnly = viewOnly.current;
+      setViewOnly(rfb, viewOnly.current);
       rfb.scaleViewport = true;
       rfb.resizeSession = false;
       rfb.clipViewport = false;
@@ -167,7 +168,7 @@ function Screen({
     };
   }, [instance, report, viewer, setConnection]);
   useEffect(() => {
-    if (viewer.current) viewer.current.viewOnly = readOnly;
+    if (viewer.current) setViewOnly(viewer.current, readOnly);
   }, [readOnly, viewer]);
   return (
     <BrowserTouch
@@ -318,11 +319,13 @@ export default function BrowserPanel({
       | "create_profile"
       | "select_profile"
       | "setup_profile"
-      | "configure",
+      | "configure"
+      | "viewport",
     fields: {
       name?: string;
       profile_id?: string;
       parallel_capacity?: number;
+      viewport?: string;
     } = {},
   ) => {
     const session = sessionById(sessions, status.session_id);
@@ -629,6 +632,25 @@ export default function BrowserPanel({
           Research browsers start signed out. Use the shared browser for saved
           logins.
         </small>
+        <label>
+          Page size
+          <Select
+            aria-label="Page size"
+            value={status.viewport || ""}
+            disabled={busy || otherDevice}
+            onChange={(event) =>
+              void run(() =>
+                send("viewport", { viewport: event.currentTarget.value }),
+              )
+            }
+          >
+            <option value="">Window</option>
+            <option value="laptop">Laptop · 1440 × 900</option>
+            <option value="desktop">Desktop · 1920 × 1080</option>
+            <option value="tablet">Tablet · 820 × 1180</option>
+            <option value="phone">Phone · 390 × 844</option>
+          </Select>
+        </label>
         {(status.instances?.length || 0) > 1 && (
           <label>
             Viewing

@@ -193,7 +193,8 @@ void Master::BrowserCommand(CommandCall& call) {
   const std::string action = JsonValue(call.command, "action", "");
   if (action != "takeover" && action != "done" && action != "stop" &&
       action != "create_profile" && action != "select_profile" &&
-      action != "setup_profile" && action != "configure") {
+      action != "setup_profile" && action != "configure" &&
+      action != "viewport") {
     call.error = "unsupported browser control";
     return;
   }
@@ -267,7 +268,8 @@ json Master::BrowserControl(const json& command, const std::string& device,
        {"parallel_capacity", JsonValue(command, "parallel_capacity", -1)},
        {"interaction_id", interaction},
        {"name", JsonValue(command, "name", "")},
-       {"profile_id", JsonValue(command, "profile_id", "")}},
+       {"profile_id", JsonValue(command, "profile_id", "")},
+       {"viewport", JsonValue(command, "viewport", "")}},
       browser::kActionMs);
   error = JsonValue(result, "error", "");
   if (!error.empty() || action != "done") return result;

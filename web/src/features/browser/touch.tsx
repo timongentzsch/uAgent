@@ -204,6 +204,7 @@ export default function BrowserTouch({
     <div
       class="browser-screen"
       ref={screen}
+      data-watching={!pointer || undefined}
       role="group"
       aria-label={label}
       onPointerDownCapture={(event) => {

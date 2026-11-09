@@ -131,6 +131,21 @@ The agent's `browser` tool and the viewer drive the same visible tab.
 - Chrome stops after 15 minutes without browser work, unless you control it
   or the agent waits for you, and starts again on the next action. Watching
   alone does not keep it running.
+  A research browser's Chrome stops as soon as its conversation releases it.
+- Chrome keeps no earlier pages alive for Back (Back reloads them) and does
+  not look for casting devices. Watching streams a lighter picture than
+  driving (JPEG quality level 4 instead of 6).
+
+## Page size
+
+In the browser status menu, **Page size** draws pages at a laptop
+(1440 × 900), desktop (1920 × 1080), tablet (820 × 1180) or phone (390 × 844)
+size, as Chrome's device mode does, or at the window's own size (the default).
+A size larger than the window is drawn smaller to fit; tablet and phone also
+report touch and a mobile viewport. The agent sees and clicks the page at that
+size. It applies to the tabs the agent has open and every tab it opens next,
+is kept until µAgent restarts, and can be changed by any viewer while
+no other device controls the browser.
 
 ## Parallel research
 

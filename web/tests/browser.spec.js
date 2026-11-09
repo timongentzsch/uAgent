@@ -399,6 +399,11 @@ test("watches an active agent without taking control", async ({
   await expect(dialog.getByRole("button", { name: "Take over" })).toBeVisible();
   for (const name of ["Copy", "Paste"])
     await expect(dialog.getByRole("button", { name })).toBeDisabled();
+  // Watching keeps this device's pointer; Chrome's is for whoever drives.
+  await expect(dialog.locator(".browser-rfb canvas")).toHaveCSS(
+    "cursor",
+    "default",
+  );
   // The viewer leaves the page's viewport alone, open and after it closes:
   // the reader may still zoom the page (WCAG 1.4.4).
   const meta = page.locator('meta[name="viewport"]');

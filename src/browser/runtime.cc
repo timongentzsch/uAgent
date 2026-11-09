@@ -360,9 +360,11 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   }
   // Manual profile setup uses ordinary Chrome, without a debugging endpoint.
   // Both modes own the same profile exclusively and restore its saved tabs.
-  const std::string no_downloads =
+  // Also no pages kept alive for Back (a renderer each, ~150 MB, measured
+  // on dev) and no casting devices looked for on the network.
+  const std::string disabled_features =
       "--disable-features=OptimizationGuideModelDownloading,"
-      "OptimizationHintsFetching";
+      "OptimizationHintsFetching,BackForwardCache,MediaRouter";
   std::vector<std::string> chrome = {
       "google-chrome-stable", "--user-data-dir=" + profile, "--no-first-run",
       "--no-default-browser-check",
@@ -377,7 +379,8 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
       "--hide-crash-restore-bubble",
       // Keep the profile small: no downloaded components or on-device
       // models (most of a 258 MB profile), and a bounded page cache.
-      "--disable-component-update", no_downloads, "--disk-cache-size=67108864",
+      "--disable-component-update", disabled_features,
+      "--disk-cache-size=67108864",
       // A person's browser, not a test runner: the debugging pipe would
       // mark every page navigator.webdriver, and with no GPU Chrome offers
       // pages no WebGL. Sites read both as a bot and refuse the user's
@@ -469,7 +472,17 @@ json Runtime::Call(const std::string& method, const json& parameters,
   const bool held = !session.empty() && session == page_session_ &&
                     method != "Page.handleJavaScriptDialog";
   if (held && OpenDialog()) return {{"dialog", true}};
-  const int64_t id = Send(method, parameters, session);
+  // A page drawn smaller than its size reads the pointer in drawn pixels.
+  json scaled;
+  if (input_scale_ != 1 && (method == "Input.dispatchMouseEvent" ||
+                            method == "Input.dispatchDragEvent")) {
+    scaled = parameters;
+    for (const char* axis : {"x", "y"}) {
+      scaled[axis] = JsonValue(parameters, axis, 0.0) * input_scale_;
+    }
+  }
+  const int64_t id =
+      Send(method, scaled.is_null() ? parameters : scaled, session);
   if (id < 0) return {{"error", "Chrome control pipe is stuck or closed"}};
   for (;;) {
     size_t end = cdp_buffer_.find('\0');
@@ -642,6 +655,7 @@ bool Runtime::AttachPage(std::string target, std::string& error) {
   Call("Network.enable",
        {{"maxTotalBufferSize", 0}, {"maxResourceBufferSize", 0}},
        attached_session);
+  if (!viewport_.empty()) Emulate(attached_session);
   page_session_ = sessions_[target_] = std::move(attached_session);
   return true;
 }
@@ -661,6 +675,7 @@ json Runtime::Status(bool include_page) {
                  {"viewer", viewer_},
                  {"profile_id", selected_profile_},
                  {"profile_setup", profile_setup_},
+                 {"viewport", viewport_},
                  {"profiles", profiles},
                  {"generation", generation_},
                  {"display", display_}};

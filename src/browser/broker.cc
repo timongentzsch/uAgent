@@ -372,14 +372,20 @@ json Broker::Execute(const json& command) {
          {"session_id", JsonValue(snapshot, "session_id", "")}});
     snapshot = slot.runtime->Execute({{"op", "snapshot"}});
   }
+  const bool released = release || (op == "release" &&
+                                    JsonValue(snapshot, "mode", "") != "human");
+  // A research browser's profile is wiped for its next holder anyway: its
+  // Chrome ends with the release instead of idling until then.
+  if (released && index > 0) {
+    slot.runtime->Shutdown();
+    snapshot = slot.runtime->Execute({{"op", "snapshot"}});
+  }
   {
     std::lock_guard lock(s.mutex);
     slot.status = std::move(snapshot);
     slot.busy = false;
     slot.used = s.now();
-    if (release ||
-        (op == "release" && JsonValue(slot.status, "mode", "") != "human") ||
-        (op == "stop" && !result.contains("error"))) {
+    if (released || (op == "stop" && !result.contains("error"))) {
       if (op == "release") {
         result = {{"ok", true}, {"instance_id", std::to_string(index)}};
       }

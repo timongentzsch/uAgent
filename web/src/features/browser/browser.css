@@ -38,6 +38,11 @@ dialog.browser-view[data-layout="sheet"] {
 .browser-rfb canvas {
   display: block;
 }
+/* noVNC sets the remote pointer inline, and Chrome's is often blank: it
+   takes over the local one only while this device drives. */
+.browser-screen[data-watching] .browser-rfb canvas {
+  cursor: default !important;
+}
 
 /* Overlays on the screen: a centred message, a top banner, a bottom toast
    and the clipboard card. None of them take layout space. */

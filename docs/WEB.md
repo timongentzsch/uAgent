@@ -96,12 +96,14 @@ canvas. There, **Select** picks an element: a comment on it is added to your
 message as a line naming the page, the element and its text, and the pane
 stays open for the next one. **Tweaks** tries the levers the page declares
 (colours, ranges, choices, switches) at once; **Keep** adds them as a line for
-the agent to write, **Reset** reloads the page. **Present** shows it full
-screen, the arrow keys stepping through the folder's pages; the printer opens
-it alone to print or save as PDF, at its artboard's size or, for a document,
-on Letter or A4. Where the [agent's browser](BROWSER.md) runs, it also draws
-the page as a PNG at twice its size, to download, copy or draw on in the
-image viewer, in a context of its own with no profile or cookies. An opened page starts at its fit and zooms as the canvas does (−, +, Fit,
+the agent to write, **Reset** reloads the page. **Present** shows it over the
+whole app (full screen where the browser allows), the arrow keys, Space and
+Page Down stepping through the folder's pages; **End** or Esc stop. The
+printer saves it as a PDF, at its artboard's size or, for a document, on its
+paper: where the [agent's browser](BROWSER.md) runs it prints the PDF itself
+(it also draws the page as a PNG at twice its size, to download, copy or draw
+on in the image viewer, in a context of its own with no profile or cookies);
+elsewhere it opens the page alone to print. An opened page starts at its fit and zooms as the canvas does (−, +, Fit,
 or ⌘/Ctrl with the wheel and a pinch, over the page too), scrolling once it
 is larger than the pane. A page that fails says so, and **Ask agent to fix** puts its errors in
 your message. A page the agent writes reloads as the write finishes. A folder
@@ -110,6 +112,23 @@ document, such as a design system's book) fits across the pane and scrolls
 inside, as a PDF does. A design a reply names (`design/landing/`, or a page)
 shows under the reply as a card with its first page live and small; **Open**
 shows it in the pane.
+
+A **deck** is a folder of slides, pages declared with
+`<meta name="artboard" content="1920x1080 slide">` (16:9 unless you ask for
+another size), one file per slide in name order. Its canvas lays the slides out
+in order, numbered, with **Present** and the deck's PDF, a sheet a slide. A
+slide's last `<aside>` is its speaker notes: never drawn, shown under the slide
+on a phone held upright or with N, and in **Presenter view**, a window of its
+own with the slide now and the next, the notes and a clock. Either window
+moves both.
+
+A **doc** is one page on paper, `<meta name="print" content="flow a4">` (A4
+unless you ask for Letter, Legal, A3, A5, landscape or a size in millimetres):
+as wide as its paper, with lines where print will start each page (an
+estimate; the PDF is exact). **Edit** lets you type in its headings,
+paragraphs, list items and table cells; each block is saved to the file as you
+leave it, unless the agent changed that block meanwhile. Download it as PDF or
+as Markdown. The Library lists decks and docs with designs.
 
 A design system's brand book is a page the agent writes beside its
 `tokens.css`, `book.html`: A4 pages art-directed in the system's own colours

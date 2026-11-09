@@ -1,6 +1,6 @@
 ---
 name: design
-description: Design or restyle pages, screens, decks, a design system: HTML shown in Files
+description: Design or restyle pages, screens, slide decks, documents (memos, reports) and a design system: HTML shown in Files
 ---
 
 # Design
@@ -46,12 +46,13 @@ their message. You make every change by editing the files.
 - Each file is a complete HTML document:
   - `<title>` names the artboard.
   - `<meta name="artboard" content="1440x900">` fixes its size: a phone
-    screen 390x844, a desktop screen 1440x900, a slide 1920x1080, a square post
-    1080x1080, a Letter page 816x1056, A4 794x1123. `content="1440"` (a width
+    screen 390x844, a desktop screen 1440x900, a square post 1080x1080. A
+    slide is `1920x1080 slide` (`references/decks.md`). `content="1440"` (a width
     only) makes a page: fluid, its height its content, laid out with
     `max-width`, `%`, `fr` and `rem` so it also works at a phone's width.
-  - `<meta name="print" content="flow letter">` (or `a4`) makes a document
-    that paginates when printed; a fixed artboard prints as one page.
+  - `<meta name="print" content="flow a4">` makes a document on paper that
+    paginates when printed (`references/docs.md`); a fixed artboard prints as
+    one page.
 - Markup first. Draw every screen, card and row in HTML; scripts only for
   behaviour (state, a toggle, a carousel), never to build the page.
 - Links between files (`<a href="02-sign-in.html">`) make a clickable
@@ -135,3 +136,10 @@ per theme, space, radius, shadow, fonts, text styles), `components/` (a
 `<link rel="stylesheet" href="../system/tokens.css">` (and `bundle.css`) and
 `data-theme` on `<html>`. To build, re-sync or extend one, read
 `references/design-system.md` first.
+
+## Decks and documents
+
+A slide deck (a presentation, a talk): read `references/decks.md` first. A
+document on paper (a memo, report, brief, letter, handout): read
+`references/docs.md` first. Both are pages of this kind, on the canvas, with
+the design system.

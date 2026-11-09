@@ -26,14 +26,27 @@ int64_t Modified(const fs::path& path) {
   return SnapshotFile(path.string()).modified_seconds * 1000;
 }
 
-// The designs in `root`: folders with a page that declares an artboard (see
-// the design skill), and design systems, folders with a tokens.css. Each
-// names up to four of its pages, for thumbnails.
+// The meta tag named `name` in a page's head, as written; empty when none.
+std::string MetaTag(const std::string& head, const std::string& name) {
+  const size_t at = head.find("name=\"" + name + "\"");
+  const size_t open = at == std::string::npos ? at : head.rfind('<', at);
+  const size_t close = at == std::string::npos ? at : head.find('>', at);
+  return open == std::string::npos || close == std::string::npos
+             ? std::string()
+             : head.substr(open, close - open);
+}
+
+// The designs in `root` (see the design skill): folders with a page that
+// declares an artboard, a deck when every page is a slide; documents, each
+// page on paper (print flow) its own; and design systems, folders with a
+// tokens.css, whose own pages are theirs. Each names up to four of its
+// pages, for thumbnails.
 void AddDesigns(const fs::path& root, json& items) {
   struct Folder {
-    std::vector<std::string> pages;
+    std::vector<std::string> pages, docs;
     int64_t modified = 0;
     bool artboard = false, system = false;
+    size_t slides = 0;
   };
   std::map<std::string, Folder> folders;
   bool more = false;
@@ -50,41 +63,64 @@ void AddDesigns(const fs::path& root, json& items) {
       folder.system = true;
       continue;
     }
-    folder.pages.push_back(path);
-    if (!folder.artboard) {
-      const auto head = ReadFile((root / relative).string(), KiB(4));
-      folder.artboard =
-          head && head->find("name=\"artboard\"") != std::string::npos;
+    const std::string head =
+        ReadFile((root / relative).string(), KiB(4)).value_or("");
+    if (MetaTag(head, "print").find("\"flow") != std::string::npos) {
+      folder.docs.push_back(path);
+      continue;
     }
+    const std::string artboard = MetaTag(head, "artboard");
+    folder.pages.push_back(path);
+    folder.artboard = folder.artboard || !artboard.empty();
+    folder.slides += artboard.find(" slide\"") != std::string::npos;
   }
-  std::vector<std::pair<std::string, Folder>> found;
+  struct Found {
+    int64_t modified;
+    json item;
+  };
+  std::vector<Found> found;
+  const auto item = [&](const char* kind, const std::string& dir,
+                        std::vector<std::string> pages, int64_t modified) {
+    std::ranges::sort(pages);
+    const size_t count = pages.size();
+    pages.resize(std::min<size_t>(count, 4));
+    return Found{modified,
+                 {{"kind", kind},
+                  {"key", root.string() + "/" + dir},
+                  {"name", dir.empty() ? root.filename().string() : dir},
+                  {"path", dir},
+                  {"place", root.string()},
+                  {"count", count},
+                  {"pages", std::move(pages)},
+                  {"modified", modified}}};
+  };
   for (auto& [dir, folder] : folders) {
-    // A system's component previews are its own, not designs.
+    // A system's component previews and book are its own, not designs.
     const bool inside = std::ranges::any_of(folders, [&](const auto& other) {
       return other.second.system && other.first != dir &&
              (other.first.empty() || dir.starts_with(other.first + "/"));
     });
-    if (folder.system || (folder.artboard && !inside)) {
-      found.emplace_back(dir, std::move(folder));
+    if (folder.system) {
+      folder.pages.insert(folder.pages.end(), folder.docs.begin(),
+                          folder.docs.end());
+      found.push_back(item("system", dir, folder.pages, folder.modified));
+      continue;
+    }
+    if (inside) continue;
+    if (folder.artboard) {
+      const bool deck = folder.slides == folder.pages.size();
+      found.push_back(
+          item(deck ? "deck" : "design", dir, folder.pages, folder.modified));
+    }
+    for (const std::string& doc : folder.docs) {
+      found.push_back(item("doc", doc, {doc}, Modified(root / doc)));
     }
   }
-  std::ranges::sort(found, [](const auto& a, const auto& b) {
-    return a.second.modified > b.second.modified;
+  std::ranges::sort(found, [](const Found& a, const Found& b) {
+    return a.modified > b.modified;
   });
   if (found.size() > kPlaceDesigns) found.resize(kPlaceDesigns);
-  for (auto& [dir, folder] : found) {
-    std::ranges::sort(folder.pages);
-    const size_t count = folder.pages.size();
-    folder.pages.resize(std::min<size_t>(count, 4));
-    items.push_back({{"kind", folder.system ? "system" : "design"},
-                     {"key", root.string() + "/" + dir},
-                     {"name", dir.empty() ? root.filename().string() : dir},
-                     {"path", dir},
-                     {"place", root.string()},
-                     {"count", count},
-                     {"pages", folder.pages},
-                     {"modified", folder.modified}});
-  }
+  for (Found& entry : found) items.push_back(std::move(entry.item));
 }
 
 // The files the agent shared in the conversation at `session_path`.

@@ -13,11 +13,28 @@ def test_web_library_lists_everything_by_place(root, home, *, binary):
         )
     # Plain HTML is no design.
     (site / "index.html").write_text("<!doctype html><title>site</title>")
+    # A folder of slides is a deck; a page on paper is a document of its own,
+    # also beside slides; a system's book is the system's.
+    (site / "decks/talk").mkdir(parents=True)
+    for name in ("01-cover", "02-plan"):
+        (site / f"decks/talk/{name}.html").write_text(
+            f'<!doctype html><meta content="1920x1080 slide" name="artboard"><title>{name}</title>'
+        )
+    (site / "decks/talk/handout.html").write_text(
+        '<!doctype html><meta name="print" content="flow a4"><title>handout</title>'
+    )
+    (site / "docs").mkdir()
+    (site / "docs/memo.html").write_text(
+        '<!doctype html><meta name="print" content="flow letter"><title>memo</title>'
+    )
     app = root.resolve() / "app"
     (app / "design/system/components/Button").mkdir(parents=True)
     (app / "design/system/tokens.css").write_text(":root{--ink:#111}")
     (app / "design/system/components/Button/preview.html").write_text(
         '<!doctype html><meta name="artboard" content="400">'
+    )
+    (app / "design/system/book.html").write_text(
+        '<!doctype html><meta name="print" content="flow a4"><title>book</title>'
     )
     (app / "report.html").write_text("<p>report</p>")
 
@@ -70,6 +87,14 @@ def test_web_library_lists_everything_by_place(root, home, *, binary):
 
             assert_true(find("design") == [("design/landing", str(site))], listing["items"])
             assert_true(find("system") == [("design/system", str(app))], listing["items"])
+            assert_true(find("deck") == [("decks/talk", str(site))], listing["items"])
+            assert_true(
+                sorted(find("doc"))
+                == [("decks/talk/handout.html", str(site)), ("docs/memo.html", str(site))],
+                listing["items"],
+            )
+            deck = next(item for item in listing["items"] if item["kind"] == "deck")
+            assert_true(deck["count"] == 2, deck)
             assert_true(find("file") == [("report.html", str(app))], listing["items"])
             memories = {item["name"]: item for item in listing["items"] if item["kind"] == "memory"}
             assert_true(memories["tone"]["place"] == str(site), memories)

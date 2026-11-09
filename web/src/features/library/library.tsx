@@ -8,6 +8,8 @@ import {
   LayoutDashboard,
   Palette,
   Plus,
+  Presentation,
+  ScrollText,
 } from "lucide-preact";
 import { api, routes } from "../../state/api.ts";
 import type {
@@ -50,6 +52,8 @@ const RAIL: [string, [LibraryKind | "", string][]][] = [
     "Artifacts",
     [
       ["design", "Designs"],
+      ["deck", "Decks"],
+      ["doc", "Docs"],
       ["system", "Design systems"],
       ["file", "Shared files"],
     ],
@@ -64,6 +68,8 @@ const RAIL: [string, [LibraryKind | "", string][]][] = [
 ];
 const ICON: Record<LibraryKind, FunctionComponent> = {
   design: LayoutDashboard,
+  deck: Presentation,
+  doc: ScrollText,
   system: Palette,
   file: FileText,
   memory: Brain,
@@ -71,6 +77,8 @@ const ICON: Record<LibraryKind, FunctionComponent> = {
 };
 const NAME: Record<LibraryKind, string> = {
   design: "design",
+  deck: "deck",
+  doc: "doc",
   system: "design system",
   file: "shared file",
   memory: "memory",
@@ -97,9 +105,13 @@ const detail = (item: LibraryItem) =>
     ? "tokens.css"
     : item.kind === "design"
       ? `${item.count} ${item.count === 1 ? "page" : "pages"}`
-      : item.kind === "file"
-        ? bytes(item.bytes ?? 0)
-        : item.description || item.source;
+      : item.kind === "deck"
+        ? `${item.count} ${item.count === 1 ? "slide" : "slides"}`
+        : item.kind === "doc"
+          ? "on paper"
+          : item.kind === "file"
+            ? bytes(item.bytes ?? 0)
+            : item.description || item.source;
 // The control a memory or skill is managed through.
 const control = (kind?: LibraryKind) =>
   kind === "skill" ? ("skills" as const) : ("memory" as const);

@@ -972,7 +972,14 @@ export interface LibraryItem {
   pages?: string[];
   session?: string;
 }
-export type LibraryKind = "memory" | "skill" | "design" | "system" | "file";
+export type LibraryKind =
+  | "memory"
+  | "skill"
+  | "design"
+  | "deck"
+  | "doc"
+  | "system"
+  | "file";
 // A folder or workspace the Library lists, with its latest conversation.
 export interface LibraryPlace {
   path: string;

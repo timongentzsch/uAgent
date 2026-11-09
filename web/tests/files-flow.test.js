@@ -49,12 +49,21 @@ const cited = async (path, lines, from = START) => {
 // Every state the pane can be in when a citation arrives.
 const before = [
   START,
-  { view: { kind: "canvas", dir: "decks/a" }, back: [{ kind: "list", dir: "decks/a" }] },
+  {
+    view: { kind: "canvas", dir: "decks/a" },
+    back: [{ kind: "list", dir: "decks/a" }],
+  },
   {
     view: { kind: "page", path: "decks/a/02-plan.html" },
-    back: [{ kind: "list", dir: "decks/a" }, { kind: "canvas", dir: "decks/a" }],
+    back: [
+      { kind: "list", dir: "decks/a" },
+      { kind: "canvas", dir: "decks/a" },
+    ],
   },
-  { view: { kind: "file", path: "src/app.ts" }, back: [{ kind: "list", dir: "src" }] },
+  {
+    view: { kind: "file", path: "src/app.ts" },
+    back: [{ kind: "list", dir: "src" }],
+  },
 ];
 
 test("a cited folder of pages opens its canvas, Back to its list, from anywhere", async () => {
@@ -79,7 +88,10 @@ test("a cited folder of one page opens that page; one of none, its list", async 
 test("a cited page opens it, Back to its canvas when its folder has one", async () => {
   assert.deepEqual(await cited("decks/a/01-cover.html"), {
     view: { kind: "page", path: "decks/a/01-cover.html" },
-    back: [{ kind: "list", dir: "decks/a" }, { kind: "canvas", dir: "decks/a" }],
+    back: [
+      { kind: "list", dir: "decks/a" },
+      { kind: "canvas", dir: "decks/a" },
+    ],
   });
   assert.deepEqual(await cited("decks/b/01-cover.html"), {
     view: { kind: "page", path: "decks/b/01-cover.html" },
@@ -152,10 +164,16 @@ test("a cited change opens as its diff", async () => {
 });
 
 test("inside the pane a click pushes, a pick pushes, Back pops to where it was", async () => {
-  const canvas = { view: { kind: "canvas", dir: "decks/a" }, back: [{ kind: "list", dir: "decks/a" }] };
+  const canvas = {
+    view: { kind: "canvas", dir: "decks/a" },
+    back: [{ kind: "list", dir: "decks/a" }],
+  };
   const opened = push(canvas, { kind: "page", path: "decks/a/02-plan.html" });
   assert.deepEqual(pop(opened), canvas);
-  assert.deepEqual(pop(pop(opened)), { view: { kind: "list", dir: "decks/a" }, back: [] });
+  assert.deepEqual(pop(pop(opened)), {
+    view: { kind: "list", dir: "decks/a" },
+    back: [],
+  });
   // Back with nowhere to go stays.
   assert.deepEqual(pop(START), START);
   // A folder link followed from inside settles in place, Back to here.

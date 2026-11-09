@@ -67,7 +67,9 @@ def test_web_files_list_read_serve_and_find(root, home, *, binary):
             )
             status, value = answer(read="link/main.py")
             assert_true(
-                status == 200 and value == {"text": "print('hi')\n", "bytes": 12, "more": False},
+                status == 200
+                and value.pop("revision")
+                and value == {"text": "print('hi')\n", "bytes": 12, "more": False},
                 value,
             )
             status, value = answer(read="big.txt")

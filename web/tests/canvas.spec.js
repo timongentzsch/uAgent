@@ -311,17 +311,19 @@ test("a page opened: select and comment, tweaks, print", async ({
     /`design\/hero-a\.html` tweaks: variant stacked$/,
   );
 
-  // Pictures need the agent's browser, which this host has not.
-  await expect(
-    files.getByRole("link", { name: "Download as PNG" }),
-  ).toHaveCount(0);
+  // Export: pictures need the agent's browser, which this host has not, so
   // PDF opens the page alone, which prints itself.
-  await expect(
-    files.getByRole("link", { name: "Print or save as PDF" }),
-  ).toHaveAttribute(
-    "href",
+  await files.getByRole("button", { name: "Export" }).click();
+  await expect(app.getByRole("menuitem", { name: "PNG image" })).toHaveCount(0);
+  await expect(app.getByRole("menuitem", { name: "Markdown" })).toHaveCount(0);
+  const [alone] = await Promise.all([
+    app.waitForEvent("popup"),
+    app.getByRole("menuitem", { name: "Print or save as PDF" }).click(),
+  ]);
+  expect(alone.url()).toMatch(
     /\/preview\/[0-9a-f]{48}\/design\/hero-a\.html\?v=[\d.]+#print$/,
   );
+  await alone.close();
 });
 
 test("a design system's brand book is a page, and its themes are under Tweaks", async ({
@@ -377,9 +379,7 @@ test("a design system's brand book is a page, and its themes are under Tweaks", 
   await expect
     .poll(async () => (await across()).page)
     .toBeLessThanOrEqual((await across()).stage);
-  await expect(
-    files.getByRole("link", { name: "Print or save as PDF" }),
-  ).toBeVisible();
+  await expect(files.getByRole("button", { name: "Export" })).toBeVisible();
 
   await files.getByRole("button", { name: "Back to the list" }).click();
   await files.getByRole("button", { name: "landing", exact: true }).click();
@@ -575,4 +575,194 @@ test("a page that runs past its size or misses a file says so", async ({
   await expect(app.locator("#prompt")).toHaveValue(
     /`design\/book\/book\.html` threw: .*missing\.png did not load.*page 1 runs 200px past its height/,
   );
+});
+
+test("a slide with text over text and a document block taller than a page say so", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const dir = join(host.project, "design", "checks");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, "01-slide.html"),
+    page(
+      "Slide",
+      '<p style="position:absolute;top:100px;left:100px;margin:0;font-size:40px">Revenue grew</p>' +
+        '<p style="position:absolute;top:110px;left:120px;margin:0;font-size:40px">Footer note</p>' +
+        '<div style="position:absolute;top:1040px;left:100px;overflow:hidden;height:20px"><p style="margin:0;font-size:40px">Cut off</p></div>' +
+        "<aside>Notes stay out of the check.</aside>",
+      "1920x1080 slide",
+    ),
+  );
+  // A5 with no artboard: as wide as its paper, and a figure taller than it.
+  await writeFile(
+    join(dir, "memo.html"),
+    '<!doctype html><html><head><title>Memo</title><meta name="print" content="flow a5"></head>' +
+      '<body style="margin:0"><figure style="height:1000px;margin:0">tall</figure></body></html>',
+  );
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "design", exact: true }).click();
+  await files.getByRole("button", { name: "checks", exact: true }).click();
+  await files.getByRole("button", { name: "Canvas" }).click();
+  await expect(files.getByText("2 pages failed to run")).toBeVisible();
+  await files.getByRole("button", { name: "Ask agent to fix" }).click();
+  const draft = app.locator("#prompt");
+  await expect(draft).toHaveValue(
+    /`design\/checks\/01-slide\.html` threw: “Cut off” runs past the slide's 1920x1080 edge.*“Revenue grew” overlaps “Footer note”/,
+  );
+  await expect(draft).toHaveValue(
+    /`design\/checks\/memo\.html` threw: a figure is 1000px tall, more than a page \(794px\)/,
+  );
+});
+
+test("a deck lies in slide order, presents with its notes, and the presenter's window follows", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const dir = join(host.project, "decks", "talk");
+  await mkdir(dir, { recursive: true });
+  const slide = (title, notes) =>
+    page(
+      title,
+      `<h1>${title}</h1>${notes ? `<aside>${notes}</aside>` : ""}`,
+      "1920x1080 slide",
+    );
+  await writeFile(join(dir, "01-cover.html"), slide("Cover", "Say hello."));
+  await writeFile(join(dir, "02-plan.html"), slide("Plan", "Three steps."));
+  await writeFile(join(dir, "10-end.html"), slide("End"));
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "decks", exact: true }).click();
+  await files.getByRole("button", { name: "talk", exact: true }).click();
+  await files.getByRole("button", { name: "Canvas" }).click();
+  await expect(files.getByText("3 slides")).toBeVisible();
+  await expect(files.locator(".canvas-name")).toHaveText([
+    "01 · Cover",
+    "02 · Plan",
+    "03 · End",
+  ]);
+
+  await files.getByRole("button", { name: "Present" }).click();
+  const stage = files.locator(".page-stage[data-presenting]");
+  await expect(stage).toBeVisible();
+  await expect(stage.getByText("1 / 3")).toBeVisible();
+  // The notes are the presenter's, never drawn on the slide.
+  const slideFrame = stage.frameLocator("iframe");
+  await expect(
+    slideFrame.getByRole("heading", { name: "Cover" }),
+  ).toBeVisible();
+  await expect(slideFrame.getByText("Say hello.")).toBeHidden();
+  await app.keyboard.press("n");
+  await expect(stage.locator(".page-notes")).toHaveText("Say hello.");
+  await app.keyboard.press("ArrowRight");
+  await expect(stage.getByText("2 / 3")).toBeVisible();
+  await expect(stage.locator(".page-notes")).toHaveText("Three steps.");
+
+  // The presenter's window: now, next and the notes; its keys move the deck.
+  const [presenter] = await Promise.all([
+    app.waitForEvent("popup"),
+    stage.getByRole("button", { name: "Presenter view" }).click(),
+  ]);
+  const view = presenter.getByRole("main", { name: "Presenter view" });
+  await expect(view.getByText("Slide 2 of 3")).toBeVisible();
+  await expect(view.locator(".presenter-notes")).toHaveText("Three steps.");
+  await presenter.keyboard.press("ArrowRight");
+  await expect(view.getByText("Slide 3 of 3")).toBeVisible();
+  await expect(view.getByText("End of the deck")).toBeVisible();
+  await expect(stage.getByText("3 / 3")).toBeVisible();
+  await stage.getByRole("button", { name: "Back" }).click();
+  await expect(view.getByText("Slide 2 of 3")).toBeVisible();
+  await presenter.close();
+
+  await stage.getByRole("button", { name: "End" }).click();
+  await expect(files.locator(".page-stage[data-presenting]")).toHaveCount(0);
+  // An opened slide steps with the arrow keys and the buttons over its edges.
+  const slideNow = files.locator(".page-stage").frameLocator("iframe");
+  await expect(slideNow.getByRole("heading", { name: "Plan" })).toBeVisible();
+  await app.keyboard.press("ArrowRight");
+  await expect(slideNow.getByRole("heading", { name: "End" })).toBeVisible();
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await expect(slideNow.getByRole("heading", { name: "Plan" })).toBeVisible();
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await expect(slideNow.getByRole("heading", { name: "End" })).toBeVisible();
+});
+
+test("a document is edited in place, saved to its file, and exports Markdown", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const dir = join(host.project, "docs");
+  await mkdir(dir, { recursive: true });
+  const memo = join(dir, "memo.html");
+  const filler = Array.from(
+    { length: 40 },
+    (_, at) =>
+      `<p>Paragraph ${at + 1} of the memo, long enough to fill some of a page.</p>`,
+  ).join("");
+  await writeFile(
+    memo,
+    '<!doctype html>\n<html><head><title>Memo</title><meta name="print" content="flow a5"></head>' +
+      "<body><h1>Q3 memo</h1><p>Revenue grew.</p><ul><li>One</li><li>Two</li></ul>" +
+      "<table><tr><th>Ask</th><th>When</th></tr><tr><td>Hire</td><td>Nov</td></tr></table>" +
+      `${filler}</body></html>`,
+  );
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "docs", exact: true }).click();
+  await files.getByRole("button", { name: "memo.html", exact: true }).click();
+  // Its pages: breaks marked where print puts them.
+  await expect(files.locator(".page-break").first()).toHaveText("Page 2");
+
+  // Markdown, from the page itself.
+  const [download] = await Promise.all([
+    app.waitForEvent("download"),
+    files
+      .getByRole("button", { name: "Export" })
+      .click()
+      .then(() => app.getByRole("menuitem", { name: "Markdown" }).click()),
+  ]);
+  expect(download.suggestedFilename()).toBe("memo.md");
+  const { readFile } = await import("node:fs/promises");
+  const text = await readFile(await download.path(), "utf8");
+  expect(text).toContain("# Q3 memo\n\nRevenue grew.\n\n- One\n- Two");
+  expect(text).toContain("| Ask | When |\n| --- | --- |\n| Hire | Nov |");
+
+  // Edit: a block typed in place is saved to the file, nothing else changes.
+  await files.getByRole("button", { name: "Edit" }).click();
+  const page = files.frameLocator("iframe");
+  const paragraph = page.getByText("Revenue grew.");
+  await paragraph.click();
+  await app.keyboard.press("End");
+  await app.keyboard.type(" Churn held flat.");
+  await page.getByRole("heading", { name: "Q3 memo" }).click();
+  await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
+    "Saved",
+  );
+  const saved = await readFile(memo, "utf8");
+  expect(saved).toContain("<p>Revenue grew. Churn held flat.</p>");
+  expect(saved).toContain("<td>Hire</td>");
+  expect(
+    saved.startsWith("<!doctype html>\n<html><head><title>Memo</title>"),
+  ).toBe(true);
+
+  // The agent rewrote that block meanwhile: the edit is refused, not merged.
+  await writeFile(memo, saved.replace("Churn held flat.", "Churn fell."));
+  await paragraph.click();
+  await app.keyboard.press("End");
+  await app.keyboard.type(" Again.");
+  await page.getByRole("heading", { name: "Q3 memo" }).click();
+  await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
+    /The document changed/,
+  );
+  expect(await readFile(memo, "utf8")).toContain("Churn fell.");
 });

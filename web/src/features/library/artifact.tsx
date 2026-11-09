@@ -13,7 +13,13 @@ import { PageThumb, usePreviewBase } from "../../shared/page-frame.tsx";
 // A design, a design system or a shared file, as the Library shows one: its
 // pages small, and the way to where it is worked on.
 
-const KIND = { design: "Design", system: "Design system", file: "Shared file" };
+const KIND = {
+  design: "Design",
+  deck: "Deck",
+  doc: "Doc",
+  system: "Design system",
+  file: "Shared file",
+};
 
 function Thumbnails({ session, pages }: { session: string; pages: string[] }) {
   const preview = usePreviewBase(session);
@@ -47,6 +53,7 @@ export default function LibraryArtifact({
   choose: (session: string) => void;
 }) {
   const kind = item.kind as keyof typeof KIND;
+  const unit = kind === "deck" ? "slide" : "page";
   const file = kind === "file";
   // A design system's book, which the agent writes beside its tokens.
   const book =
@@ -66,8 +73,8 @@ export default function LibraryArtifact({
       </div>
       <p class="muted">
         {KIND[kind]} · {place?.name ?? item.place}
-        {item.count
-          ? ` · ${item.count} ${item.count === 1 ? "page" : "pages"}`
+        {item.count && kind !== "doc"
+          ? ` · ${item.count} ${unit}${item.count === 1 ? "" : "s"}`
           : ""}
         {file && item.bytes !== undefined ? ` · ${bytes(item.bytes)}` : ""}
         {item.modified ? (
@@ -104,13 +111,19 @@ export default function LibraryArtifact({
         ) : (
           <Button
             variant="primary"
-            onClick={() => open({ path: book ?? `${item.path}/` })}
+            onClick={() =>
+              open({
+                path: book ?? (kind === "doc" ? item.path : `${item.path}/`),
+              })
+            }
           >
-            {kind === "design"
+            {kind === "design" || kind === "deck"
               ? "Open canvas"
-              : book
-                ? "Open its brand book"
-                : "Open its folder"}
+              : kind === "doc"
+                ? "Open document"
+                : book
+                  ? "Open its brand book"
+                  : "Open its folder"}
           </Button>
         )}
       </div>

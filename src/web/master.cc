@@ -600,6 +600,10 @@ void Master::RegisterApiRoutes() {
               [this](const Request& request, Response& response) {
                 Files(request, response);
               });
+  server_.Post(R"(/api/sessions/([a-f0-9]{16,64})/files)",
+               [this](const Request& request, Response& response) {
+                 FileWrite(request, response);
+               });
   server_.Post(R"(/api/sessions/([a-f0-9]{16,64})/preview)",
                [this](const Request& request, Response& response) {
                  PreviewGrant(request, response);

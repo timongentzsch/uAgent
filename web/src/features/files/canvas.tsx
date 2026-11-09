@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { TriangleAlert } from "lucide-preact";
+import {
+  ChevronDown,
+  FileOutput,
+  Presentation,
+  TriangleAlert,
+} from "lucide-preact";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
+import { saveLink } from "../../shared/share.ts";
 import { Button } from "../../shared/ui.tsx";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import {
@@ -21,6 +28,8 @@ import Frame, {
 // A folder's HTML files on a plane you pan and zoom, each a live page: a
 // design as the agent wrote it. A page's step (`02-` in
 // `02-pricing--annual.html`) is its row; pages without one form the first.
+// A deck, a folder whose every page is a slide, lies in slide order instead,
+// numbered, and presents and prints from here.
 // Pinch, ⌘ or Ctrl and the wheel, or a
 // trackpad pinch zoom at the pointer; a drag or the wheel pans. A click opens
 // a page; a page that fails says so and offers its errors to the agent.
@@ -29,6 +38,8 @@ import Frame, {
 // between rows (room for a name at any zoom), as Claude's canvas spaces them.
 const GAP_X = 80;
 const GAP_Y = 240;
+// A deck's slides to a row.
+const DECK_COLUMNS = 4;
 const ZOOM: [number, number] = [0.05, 2];
 // What one message may carry of the pages' errors.
 const ERRORS_MAX = 1800;
@@ -61,6 +72,8 @@ export default function Canvas({
   page,
   open,
   addToChat,
+  present,
+  deckPdf,
 }: {
   dir: string;
   names: string[];
@@ -68,6 +81,9 @@ export default function Canvas({
   page: (path: string) => string;
   open: (path: string) => void;
   addToChat?: (text: string) => void;
+  // A deck: present it from its first slide, and its PDF at a slide size.
+  present?: (path: string) => void;
+  deckPdf?: (width: number, height: number) => string;
 }) {
   const [seen, setSeen] = useState<Record<string, Seen>>({});
   const grouped = useMemo(() => rows(names), [names]);
@@ -94,9 +110,24 @@ export default function Canvas({
     });
   const stage = useRef<HTMLDivElement>(null);
   const sizeOf = (name: string) => pageSize(seen[name]?.info);
+  const deck =
+    names.length > 0 &&
+    names.every((name) => seen[name]?.info?.kind === "slide");
+  const order = grouped.flatMap(([, files]) => files);
   // Every page's place on the plane.
   // biome-ignore lint/correctness/useExhaustiveDependencies: sizes come from seen
   const placed = useMemo(() => {
+    if (deck)
+      return order.map((name, at) => {
+        const size = sizeOf(name);
+        return {
+          name,
+          row: String(at + 1).padStart(2, "0"),
+          x: (at % DECK_COLUMNS) * (size.w + GAP_X),
+          y: Math.floor(at / DECK_COLUMNS) * (size.h + GAP_Y),
+          ...size,
+        };
+      });
     let y = 0;
     return grouped.flatMap(([row, files]) => {
       let x = 0;
@@ -110,7 +141,7 @@ export default function Canvas({
       y += Math.max(...items.map((item) => item.h)) + GAP_Y;
       return items;
     });
-  }, [grouped, seen]);
+  }, [grouped, seen, deck]);
   const [view, setView] = useState<ZoomView>({ x: 24, y: 48, scale: 0.2 });
   const fit = () => {
     const box = stage.current;
@@ -218,6 +249,40 @@ export default function Canvas({
   const { x, y, scale: s } = view;
   return (
     <div class="canvas">
+      {deck && (present || deckPdf) && (
+        <div class="canvas-deck-tools">
+          <span class="small muted">{order.length} slides</span>
+          {deckPdf && (
+            <Menu
+              label="Export"
+              trigger={
+                <>
+                  <FileOutput />
+                  Export
+                  <ChevronDown />
+                </>
+              }
+            >
+              <MenuItem
+                onClick={() =>
+                  saveLink(
+                    `${deckPdf(placed[0].w, placed[0].h)}&download=1`,
+                    `${dir.split("/").pop() || "deck"}.pdf`,
+                  )
+                }
+              >
+                PDF, a page per slide
+              </MenuItem>
+            </Menu>
+          )}
+          {present && (
+            <Button variant="primary" onClick={() => present(path(order[0]))}>
+              <Presentation />
+              Present
+            </Button>
+          )}
+        </div>
+      )}
       {failing.length > 0 && (
         <p class="canvas-notice">
           <TriangleAlert />
@@ -300,7 +365,7 @@ export default function Canvas({
                   : undefined,
             }}
           >
-            {item.x === 0 && item.row ? `${item.row} · ` : ""}
+            {(deck || item.x === 0) && item.row ? `${item.row} · ` : ""}
             {seen[item.name]?.info?.title || item.name}
           </span>
         ))}

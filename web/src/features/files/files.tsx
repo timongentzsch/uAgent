@@ -9,7 +9,7 @@ import {
 } from "preact/hooks";
 import { ChevronLeft, ChevronsDownUp, Download, File, X } from "lucide-preact";
 import { usePushDirection } from "../../shared/motion.ts";
-import type { FileTarget, Session } from "../../shared/types.ts";
+import type { Session } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
 import { api, routes } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
@@ -39,9 +39,26 @@ import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import type { Node } from "../../shared/types.ts";
 import Canvas, { rows } from "./canvas.tsx";
+import {
+  backLabel,
+  cite,
+  dirOf,
+  type Flow,
+  follow,
+  folderOfView,
+  type Lines,
+  lineRange,
+  pop,
+  push,
+  resolve,
+  swap,
+  type View,
+} from "./flow.ts";
 import FileTree from "./tree.tsx";
 import { pageAddress, usePreviewBase } from "../../shared/page-frame.tsx";
 import OpenPage from "./page.tsx";
+import { openPresenter } from "./present.ts";
+import { applyEdit } from "./doc-edit.ts";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
@@ -65,6 +82,8 @@ interface FileText {
   text: string;
   bytes: number;
   more: boolean;
+  // What a save is checked against; empty when the text was cut.
+  revision?: string;
 }
 
 // Search results shown at once; typing more narrows them.
@@ -78,8 +97,6 @@ const SAMPLE_LISTING: Listing = {
   more: false,
 };
 const SHOWN = 50;
-// The folder Files last showed in each conversation's folder, so a
-// conversation of the same folder opens where the last one left off.
 // The folders open in the tree, per conversation folder, on this device.
 const kept = stored<Record<string, string[]>>(storageKeys.filesAt, {});
 // A path's folders from the top: `a/b` is `a` and `a/b`.
@@ -89,62 +106,7 @@ const ancestors = (dir: string) =>
     : [];
 // Typing pauses this long before the folder is searched.
 const SEARCH_DELAY_MS = 150;
-const dirOf = (path: string) =>
-  path.slice(0, Math.max(0, path.lastIndexOf("/")));
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
-// "12" or "12-20" as the first and last line.
-function lineRange(lines?: string): [number, number] | undefined {
-  if (!lines) return undefined;
-  const [first, last = first] = lines.split("-").map(Number);
-  return [Math.min(first, last), Math.max(first, last)];
-}
-// Navigation changes together; searches, tree expansion and loaded data do not.
-interface FileLocation {
-  dir: string;
-  file: string;
-  showing: "list" | "file";
-  source?: boolean;
-  changing?: boolean;
-  cited?: { path: string; lines?: [number, number] };
-  outside?: string;
-  canvas?: boolean;
-  canvasFor?: string;
-}
-// Where a path a message wrote leads in `folder`: a file at its lines (or
-// its change), a folder, or outside. The pane starts there when it opens
-// for a citation, so it never shows the list on the way.
-function place(
-  { path: written, lines, changes }: FileTarget,
-  folder: string,
-): FileLocation {
-  const path = written.startsWith("/")
-    ? written.startsWith(`${folder}/`)
-      ? written.slice(folder.length + 1)
-      : undefined
-    : written.startsWith("~")
-      ? undefined
-      : written.replace(/^(\.\/)+/, "");
-  if (path === undefined)
-    return { dir: "", file: "", showing: "file" as const, outside: written };
-  if (path.endsWith("/"))
-    return { dir: path.slice(0, -1), file: "", showing: "list" as const };
-  const range = lineRange(lines);
-  return {
-    dir: dirOf(path),
-    file: path,
-    showing: "file" as const,
-    changing: !!changes,
-    source: !!range && MARKDOWN.test(path),
-    // Kept without lines too, so a file not found is still looked for.
-    cited: { path, lines: range },
-  };
-}
-
-// The folder whose own view a cited place sets: a folder, or a page's.
-const arrival = (place: { dir: string; file: string; outside?: string }) =>
-  place.outside || (place.file && !HTML.test(place.file))
-    ? undefined
-    : place.dir;
 
 const WRITES = new Set(["Wrote", "Edited", "Deleted"]);
 // The last file write that finished, as "<node>\n<path written>".
@@ -160,20 +122,23 @@ function lastWrite(nodes: readonly Node[] = []) {
 }
 
 // The conversation's folder, read only: a list with search beside a viewer
-// for text and code, rendered markdown and images. A turn that ends may
-// have changed the folder, so what is open is read again then.
+// for text and code, rendered markdown and images, pages and their canvas.
+// Where it is lives with the app (`flow`, see flow.ts), so it stays put
+// while closed or moved between the sheet and the docked pane. A turn that
+// ends may have changed the folder, so what is open is read again then.
 export default function Files({
   session,
   close,
-  reveal,
+  flow,
+  setFlow,
   addToChat,
   pictures,
 }: {
   session: Session;
   // Docked beside the chat; in a sheet, the sheet's own close.
   close?: () => void;
-  // A file a message cited, to show at its lines; `at` makes a repeat new.
-  reveal?: (FileTarget & { at: number }) | null;
+  flow: Flow;
+  setFlow: (update: (flow: Flow) => Flow) => void;
   // Puts text in the conversation's draft; none where there is no draft.
   addToChat?: (text: string, keep?: boolean) => void;
   // Whether the agent's browser can draw a page as a picture.
@@ -185,53 +150,64 @@ export default function Files({
   const closeFiles = close ?? dialog?.close;
   const id = session.id;
   const turn = session.turn_active;
-  const view = useContext(ImageViewer);
-  const [start] = useState(() => reveal && place(reveal, folderOf(session)));
-  // The folder in context: the open file's, or the one a citation names.
-  const [location, setLocation] = useState<FileLocation>(() => ({
-    dir: "",
-    file: "",
-    showing: "list",
-    ...start,
-    canvasFor: start ? arrival(start) : undefined,
-  }));
-  const navigate = (change: Partial<FileLocation>) =>
-    setLocation((current) => ({ ...current, ...change }));
-  const {
-    dir,
-    file,
-    source = false,
-    changing = false,
-    showing,
-    cited,
-    outside = "",
-    canvas = false,
-    canvasFor,
-  } = location;
+  const viewer = useContext(ImageViewer);
+  const { view, back } = flow;
+  // The folder the view shows or sits in, and what it has open.
+  const dir = folderOfView(view);
+  const file = view.kind === "file" || view.kind === "page" ? view.path : "";
+  const changing = view.kind === "file" && !!view.diff;
+  const source = view.kind === "file" && !!view.source;
+  const marked = view.kind === "file" ? view.lines : undefined;
+  // From the tree, search or changes (the list itself): Back is the list.
+  const fromList = (next: View) =>
+    setFlow(() => ({
+      view: next,
+      back: [{ kind: "list", dir: folderOfView(next) }],
+    }));
+  // A path clicked in a file or on a canvas: looked up, Back to here.
+  const go = (path: string, lines?: Lines) =>
+    setFlow((current) => follow(current, path, lines));
+  // What a path from the list opens: a page across the pane, else the file.
+  const opened = (path: string, lines?: Lines): View =>
+    HTML.test(path) && !lines
+      ? { kind: "page", path }
+      : {
+          kind: "file",
+          path,
+          lines,
+          source: !!lines && (MARKDOWN.test(path) || HTML.test(path)),
+        };
   const [expanded, setExpanded] = useState(() => {
     const saved = kept.read()[folderOf(session)];
-    return new Set([
-      ...(Array.isArray(saved) ? saved : []),
-      ...ancestors(start?.dir ?? ""),
-    ]);
+    return new Set([...(Array.isArray(saved) ? saved : []), ...ancestors(dir)]);
   });
   // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
   useEffect(() => {
     kept.write({ ...kept.read(), [folderOf(session)]: [...expanded] });
   }, [expanded]);
-  // Opens `path` and its folders in the tree.
-  const unfold = (path: string) =>
-    setExpanded((all) => new Set([...all, ...ancestors(path)]));
+  // The tree shows where the view is.
+  useEffect(
+    () => setExpanded((all) => new Set([...all, ...ancestors(dir)])),
+    [dir],
+  );
   const toggle = (path: string) =>
     setExpanded((all) => {
       const next = new Set(all);
       if (!next.delete(path)) next.add(path);
       return next;
     });
+  // The list column's own modes: the tree or the changes, and a search.
+  const [tab, setTab] = useState<"files" | "changes">(
+    changing ? "changes" : "files",
+  );
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
-  // With nothing open, the list is what shows, whatever was shown last.
-  const side = file || outside ? showing : "list";
+  // On a phone the list or the view shows: the view while something is in
+  // it.
+  const side =
+    view.kind === "file" || view.kind === "outside" || view.kind === "resolve"
+      ? "file"
+      : "list";
   const moved = usePushDirection(side === "file");
   const { store } = useHostContext();
   const written = useSnapshots(store, (all) =>
@@ -244,10 +220,17 @@ export default function Files({
     preview.value &&
     `${pageAddress(preview.value.base, path)}?v=${versions[path] ?? 0}.${versions[""] ?? 0}`;
   const url = (path: string) => routes.files(id, "raw", path);
+  // Tagged with its folder: another folder's listing stays shown until this
+  // one answers, and is never taken for it.
   const listing = useResource(
-    () => api<Listing>(routes.files(id, "list", dir)),
+    () =>
+      api<Listing>(routes.files(id, "list", dir)).then((value) => ({
+        ...value,
+        dir,
+      })),
     [id, dir, turn, written],
   );
+  const here = listing.value?.dir === dir ? listing.value : undefined;
   // The tree's top, read as the folder in context is.
   const root = useResource(
     () => api<Listing>(routes.files(id, "list", "")),
@@ -257,16 +240,10 @@ export default function Files({
   const found = useResource<Found | undefined>(
     (signal) =>
       search
-        ? // A cited path is looked for at once; typing pauses first.
-          new Promise((done) =>
-            setTimeout(done, search === cited?.path ? 0 : SEARCH_DELAY_MS),
-          ).then(() =>
+        ? new Promise((done) => setTimeout(done, SEARCH_DELAY_MS)).then(() =>
             signal.aborted
               ? undefined
-              : api<Found>(routes.files(id, "find", search)).then((value) => ({
-                  ...value,
-                  query: search,
-                })),
+              : api<Found>(routes.files(id, "find", search)),
           )
         : undefined,
     [id, search],
@@ -278,32 +255,23 @@ export default function Files({
   const changes = changed.value?.changes ?? [];
   const deleted =
     changing && changes.some((c) => c.path === file && c.state === "D");
-  const image = IMAGE.test(file) && !changing;
-  // A page that is there: one cited by a name it does not have goes the way
-  // of any file not found, instead of a blank frame.
-  const page =
-    HTML.test(file) &&
-    !changing &&
-    !source &&
-    (!listing.value ||
-      listing.value.entries.some(
-        (entry) => !entry.dir && entry.name === nameOf(file),
-      ));
+  const image = view.kind === "file" && IMAGE.test(file) && !changing;
+  const page = view.kind === "page";
   // The canvas, or one page, across the whole pane.
-  const stage = (canvas && !file) || page;
+  const stage = view.kind === "canvas" || page;
   const content = useResource(
     () =>
-      file && !image && !page && !changing
+      view.kind === "file" && !image && !changing
         ? api<FileText>(routes.files(id, "read", file)).then((value) => ({
             ...value,
             path: file,
           }))
         : undefined,
-    [id, file, turn, changing, page],
+    [id, file, turn, changing, view.kind],
   );
   const diff = useResource(
     () =>
-      file && changing
+      changing
         ? api<FileText>(routes.files(id, "diff", file)).then((value) => {
             // Counted once as it arrives, not on every render.
             const kinds = value.text.split("\n").map(diffLineClass);
@@ -331,7 +299,6 @@ export default function Files({
         : undefined,
     [text?.text, file, markdown],
   );
-  const marked = cited?.path === file ? cited.lines : undefined;
   const code = useMemo(() => {
     if (highlighted.value?.path !== file) return undefined;
     const [first, last] = marked ?? [0, -1];
@@ -370,162 +337,129 @@ export default function Files({
     document.addEventListener("selectionchange", update);
     return () => document.removeEventListener("selectionchange", update);
   }, []);
-  // The first cited line sits in the middle of the view, once per citation.
+  // The first marked line sits in the middle of the view, once per view.
   const codeView = useRef<HTMLPreElement>(null);
-  const scrolled = useRef<object | undefined>(undefined);
+  const scrolled = useRef<View | undefined>(undefined);
   useLayoutEffect(() => {
     const first = codeView.current?.querySelector("[data-target]");
-    if (!cited || !first || scrolled.current === cited) return;
-    scrolled.current = cited;
+    if (!first || scrolled.current === view) return;
+    scrolled.current = view;
     first.scrollIntoView({ block: "center" });
-  }, [code, cited]);
+  }, [code, view]);
 
   const results = found.value
     ? fuzzy(found.value.paths, search, (path) => path).slice(0, SHOWN)
     : [];
-  const open = (path: string, lines?: [number, number]) => {
-    if (path.endsWith("/")) return browse(path.slice(0, -1));
-    navigate({
-      file: path,
-      dir: dirOf(path),
-      showing: "file",
-      outside: "",
-      // Rendered pages have no lines to mark: citations open their source.
-      source: !!lines && (MARKDOWN.test(path) || HTML.test(path)),
-      cited: lines && { path, lines },
-    });
-    unfold(dirOf(path));
-    setQuery("");
-  };
-  const pick = (changing: boolean) =>
-    navigate({ changing, file: "", showing: "list", cited: undefined });
-  const browse = (dir: string) => {
-    navigate({
-      dir,
-      canvas: false,
-      showing: "list",
-      cited: undefined,
-      outside: "",
-    });
-    unfold(dir);
-    setQuery("");
-  };
-  const show = (target: FileTarget) => {
-    const next = place(target, folderOf(session));
-    // A reveal replaces navigation rather than inheriting the prior file's modes.
-    setLocation({ ...next, canvasFor: arrival(next) });
-    unfold(next.dir);
-    setQuery("");
-  };
-  // A remembered folder that is gone opens the top.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed list
+  // A path being looked up settles once, on what it is (see flow.ts).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per lookup
   useEffect(() => {
-    if (dir && listing.error && failure(listing.error).status === 404)
-      navigate({ dir: "" });
-  }, [listing.error]);
-  const pages = (listing.value?.entries ?? [])
+    if (view.kind !== "resolve") return;
+    let current = true;
+    void resolve(flow, view, {
+      list: (dir) =>
+        api<Listing>(routes.files(id, "list", dir)).catch((error) => {
+          if (failure(error).status === 404) return null;
+          throw error;
+        }),
+      find: (name) =>
+        api<Found>(routes.files(id, "find", nameOf(name))).then(
+          (value) => value.paths,
+        ),
+    }).then(
+      (settled) =>
+        current &&
+        setFlow((latest) => (latest.view === view ? settled : latest)),
+      () =>
+        current &&
+        setFlow((latest) =>
+          latest.view === view
+            ? swap(latest, {
+                kind: "list",
+                dir: "",
+                note: `${view.path} could not be looked up.`,
+              })
+            : latest,
+        ),
+    );
+    return () => {
+      current = false;
+    };
+  }, [view]);
+  // A folder or page that went away (deleted, moved) leaves its view.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed or changed listing
+  useEffect(() => {
+    if (view.kind === "list" && dir && listing.error)
+      if (failure(listing.error).status === 404)
+        setFlow((current) =>
+          swap(current, {
+            kind: "list",
+            dir: "",
+            note: `${dir} is not in this folder.`,
+          }),
+        );
+    if (
+      page &&
+      here &&
+      !here.entries.some((entry) => !entry.dir && entry.name === nameOf(file))
+    )
+      setFlow((current) =>
+        swap(current, {
+          kind: "list",
+          dir,
+          note: `${nameOf(file)} is not there any more.`,
+        }),
+      );
+  }, [listing.error, here]);
+  // A cited change that is no longer one opens as the file.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed diff
+  useEffect(() => {
+    if (changing && diff.error && failure(diff.error).status === 404)
+      setFlow((current) =>
+        current.view.kind === "file"
+          ? swap(current, { ...current.view, diff: false })
+          : current,
+      );
+  }, [diff.error]);
+  const pages = (here?.entries ?? [])
     .filter((entry) => !entry.dir && HTML.test(entry.name))
     .map((entry) => entry.name);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: once the listing answers
-  useEffect(() => {
-    if (canvasFor === undefined || canvasFor !== dir || !listing.value) return;
-    navigate({ canvasFor: undefined });
-    // Two pages or more are a canvas; one (a design system's book) is the
-    // page itself.
-    if (pages.length > 1) navigate({ canvas: true });
-    else if (pages.length === 1 && !file)
-      open(dir ? `${dir}/${pages[0]}` : pages[0]);
-  }, [listing.value, canvasFor]);
   // A write reloads the page it changed.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
   useEffect(() => {
     const target = written.slice(written.indexOf("\n") + 1);
     if (!target) return;
-    const path = place({ path: target }, folderOf(session)).file;
+    const cited = cite({ path: target }, folderOf(session)).view;
+    const path = cited.kind === "resolve" ? cited.path : "";
     // A page, or what pages share (a stylesheet, an image): all reload.
     const key = path && HTML.test(path) ? path : "";
     if (path) setVersions((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
   }, [written]);
-  const handled = useRef(reveal?.at ?? 0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: each request once
-  useEffect(() => {
-    if (reveal && handled.current !== reveal.at) {
-      handled.current = reveal.at;
-      show(reveal);
-    }
-  }, [reveal]);
-  // A cited change that is no longer one opens as the file.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed diff
-  useEffect(() => {
-    if (
-      cited?.path === file &&
-      diff.error &&
-      failure(diff.error).status === 404
-    )
-      navigate({ changing: false });
-  }, [diff.error]);
-  // A cited file not there as written: the search looks for its path while
-  // the viewer says so; the list shows only if it finds none or several.
-  const missing =
-    cited?.path === file &&
-    !!content.error &&
-    failure(content.error).status === 404;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed read
-  useEffect(() => {
-    if (missing) {
-      navigate({ file: "" });
-      setQuery(cited!.path);
-    }
-  }, [missing]);
-  const looking = !!cited && cited.path !== file && search === cited.path;
-  const answered = looking && found.value?.query === search;
-  // The files whose path ends with the cited one; a single one opens.
-  const named = answered
-    ? found.value!.paths.filter(
-        (path) => path === cited.path || path.endsWith(`/${cited.path}`),
-      )
-    : [];
-  // Lines a pick from the search opens at, while a citation waits for it.
-  const waiting = cited && cited.path !== file ? cited.lines : undefined;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: once the search answers
-  useEffect(() => {
-    if (!answered) return;
-    if (named.length !== 1) return navigate({ showing: "list" });
-    open(named[0], waiting);
-    navigate({ cited: { path: named[0], lines: waiting } });
-  }, [answered]);
-  // Still looking: the title keeps the cited name, the viewer says so.
-  const seeking = (looking && (!answered || named.length === 1)) || missing;
-  const titled = file || (seeking ? cited!.path : canvas ? dir : "");
+  const titled =
+    view.kind === "canvas"
+      ? dir
+      : view.kind === "resolve" || view.kind === "pick"
+        ? view.kind === "pick"
+          ? view.name
+          : view.path
+        : file;
   const folderName = nameOf(folderOf(session)) || "Files";
   const fileError = content.error ? failure(content.error) : undefined;
+  const above = back[back.length - 1];
 
   return (
     <section class="files" aria-label="Files" data-showing={side}>
       <header class="files-head">
-        {page && (
+        {above && (
           <IconButton
-            class="files-back files-back-canvas"
-            label={canvas ? "Back to the canvas" : "Back to the list"}
-            onClick={() => navigate({ file: "" })}
-          >
-            <ChevronLeft />
-          </IconButton>
-        )}
-        {canvas && !file && (
-          <IconButton
-            class="files-back files-back-canvas"
-            label="Back to the list"
-            onClick={() => navigate({ canvas: false })}
-          >
-            <ChevronLeft />
-          </IconButton>
-        )}
-        {side === "file" && !page && (
-          <IconButton
-            class="files-back"
-            label="Back to the list"
-            onClick={() => navigate({ showing: "list" })}
+            // Beside the list on a wide pane, a file needs no way back to
+            // it; everything else covers the list.
+            class={
+              view.kind === "file" && above.kind === "list"
+                ? "files-back"
+                : "files-back files-back-canvas"
+            }
+            label={backLabel(above)}
+            onClick={() => setFlow(pop)}
           >
             <ChevronLeft />
           </IconButton>
@@ -555,7 +489,18 @@ export default function Files({
           <Button
             variant="secondary"
             aria-pressed={source}
-            onClick={() => navigate({ source: !source })}
+            onClick={() =>
+              setFlow((current) =>
+                swap(
+                  current,
+                  page
+                    ? { kind: "file", path: file, source: true }
+                    : source && HTML.test(file)
+                      ? { kind: "page", path: file }
+                      : { kind: "file", path: file, source: !source },
+                ),
+              )
+            }
           >
             Source
           </Button>
@@ -581,7 +526,7 @@ export default function Files({
             download={nameOf(file)}
             onClick={shareOrDownload}
             aria-label={`Download ${nameOf(file)}`}
-            title="Download"
+            title={`Download ${nameOf(file)}`}
           >
             <Download />
           </a>
@@ -605,9 +550,11 @@ export default function Files({
               path={file}
               src={pageUrl(file)!}
               siblings={rows(pages).flatMap(([, names]) =>
-                names.map((name) => join(dirOf(file), name)),
+                names.map((name) => join(dir, name)),
               )}
-              go={open}
+              go={(path) =>
+                setFlow((current) => swap(current, { kind: "page", path }))
+              }
               addToChat={addToChat}
               base={preview.value.base}
               picture={
@@ -616,20 +563,60 @@ export default function Files({
                       `${routes.files(id, "png", file)}&w=${w}&h=${h}&scale=${scale}`
                   : undefined
               }
-              view={view}
+              pdf={pictures ? routes.files(id, "pdf", file) : undefined}
+              presenter={(slides, at) =>
+                openPresenter({ session: id, slides, at })
+              }
+              save={async (edit) => {
+                const read = await api<FileText>(
+                  routes.files(id, "read", file),
+                );
+                const text = read.revision ? applyEdit(read.text, edit) : null;
+                if (text === null)
+                  throw new Error(
+                    "The document changed since it was shown. Reopen it to edit.",
+                  );
+                await api(routes.fileWrite(id), {
+                  path: file,
+                  text,
+                  revision: read.revision,
+                });
+              }}
+              presentAtOpen={view.kind === "page" && !!view.present}
+              presented={() =>
+                setFlow((current) =>
+                  current.view.kind === "page"
+                    ? swap(current, { ...current.view, present: false })
+                    : current,
+                )
+              }
+              view={viewer}
               read={(path) =>
                 api<FileText>(routes.files(id, "read", path)).then(
                   (value) => value.text,
                 )
               }
             />
+          ) : !here ? (
+            <Spinner label="Opening the pages…" />
           ) : (
             <Canvas
               dir={dir}
               names={pages}
               page={(path) => pageUrl(path)!}
-              open={open}
+              open={(path) => setFlow((current) => push(current, opened(path)))}
               addToChat={addToChat}
+              present={(path) =>
+                setFlow((current) =>
+                  push(current, { kind: "page", path, present: true }),
+                )
+              }
+              deckPdf={
+                pictures
+                  ? (w, h) =>
+                      `${routes.files(id, "pdf", `${dir}/`)}&w=${w}&h=${h}`
+                  : undefined
+              }
             />
           )}
         </div>
@@ -652,15 +639,15 @@ export default function Files({
             <div class="files-modes">
               <Button
                 variant="secondary"
-                aria-pressed={!changing}
-                onClick={() => pick(false)}
+                aria-pressed={tab === "files"}
+                onClick={() => setTab("files")}
               >
                 Files
               </Button>
               <Button
                 variant="secondary"
-                aria-pressed={changing}
-                onClick={() => pick(true)}
+                aria-pressed={tab === "changes"}
+                onClick={() => setTab("changes")}
               >
                 {`Changes ${changes.length}`}
               </Button>
@@ -683,7 +670,6 @@ export default function Files({
               onInput={(event) => {
                 setQuery(event.currentTarget.value);
                 setIndex(0);
-                navigate({ cited: undefined });
               }}
               onKeyDown={(event) => {
                 if (event.isComposing || !plainKey(event)) return;
@@ -694,13 +680,13 @@ export default function Files({
                 )
                   setIndex(nextIndex(index, event.key, results.length));
                 else if (event.key === "Enter" && results[index])
-                  open(results[index], waiting);
+                  fromList(opened(results[index]));
                 else return;
                 event.preventDefault();
                 event.stopPropagation();
               }}
             />
-            {!changing && (
+            {tab === "files" && (
               <IconButton
                 label="Collapse all"
                 onClick={() => setExpanded(new Set())}
@@ -709,14 +695,41 @@ export default function Files({
               </IconButton>
             )}
           </div>
-          {search ? (
+          {view.kind === "list" && view.note && (
+            <p class="files-note small" role="status">
+              {view.note}
+            </p>
+          )}
+          {view.kind === "pick" && !search ? (
             <>
-              {named.length > 1 && (
-                <p class="files-note small">
-                  {`${named.length} files are named ${nameOf(cited!.path)}.`}
-                  {waiting && ` Pick one to open it at line ${waiting[0]}.`}
-                </p>
-              )}
+              <p class="files-note small">
+                {`${view.paths.length} files are named ${nameOf(view.name)}.`}
+                {view.lines
+                  ? ` Pick one to open it at line ${view.lines[0]}.`
+                  : " Pick one to open it."}
+              </p>
+              <SuggestionList
+                id="files-results"
+                class="files-results"
+                label="Matching files"
+                prefix="files-result"
+                items={view.paths}
+                index={index}
+                pick={(path) =>
+                  setFlow((current) => follow(current, path, view.lines))
+                }
+                keyOf={(path) => path}
+              >
+                {(path) => (
+                  <>
+                    <span class="files-name truncate">{nameOf(path)}</span>
+                    <span class="files-dir">{dirOf(path)}</span>
+                  </>
+                )}
+              </SuggestionList>
+            </>
+          ) : search ? (
+            <>
               <SuggestionList
                 id="files-results"
                 class="files-results"
@@ -724,7 +737,7 @@ export default function Files({
                 prefix="files-result"
                 items={results}
                 index={index}
-                pick={(path) => open(path, waiting)}
+                pick={(path) => fromList(opened(path))}
                 keyOf={(path) => path}
               >
                 {(path) => (
@@ -747,7 +760,7 @@ export default function Files({
                 )
               )}
             </>
-          ) : changing ? (
+          ) : tab === "changes" ? (
             <>
               {changes.length ? (
                 <ul class="files-tree dense">
@@ -757,7 +770,13 @@ export default function Files({
                         variant="quiet"
                         class="entry tree-row"
                         aria-current={change.path === file ? "true" : undefined}
-                        onClick={() => open(change.path)}
+                        onClick={() =>
+                          fromList({
+                            kind: "file",
+                            path: change.path,
+                            diff: true,
+                          })
+                        }
                       >
                         <span class="files-state" data-state={change.state}>
                           {change.state}
@@ -790,10 +809,13 @@ export default function Files({
                     dir={dir}
                     file={file}
                     toggle={toggle}
-                    open={(path) => open(path)}
-                    canvas={(path) => {
-                      navigate({ dir: path, file: "", canvas: true });
-                    }}
+                    open={(path) => fromList(opened(path))}
+                    canvas={(path) =>
+                      setFlow(() => ({
+                        view: { kind: "canvas", dir: path },
+                        back: [{ kind: "list", dir: path }],
+                      }))
+                    }
                   />
                 </Placeholder>
               )}
@@ -808,27 +830,24 @@ export default function Files({
             const link = target.closest<HTMLAnchorElement>("a[data-file]");
             if (link && !(event.metaKey || event.ctrlKey)) {
               event.preventDefault();
-              open(link.dataset.file!);
+              go(link.dataset.file!);
             }
             const reference = target.closest<HTMLElement>(".file-ref");
             if (reference)
-              show({
-                path: reference.dataset.file!,
-                lines: reference.dataset.lines,
-              });
+              go(reference.dataset.file!, lineRange(reference.dataset.lines));
             if (
               target instanceof HTMLImageElement &&
               target.closest(".markdown")
             )
-              view({ src: target.src, name: target.alt || nameOf(file) });
+              viewer({ src: target.src, name: target.alt || nameOf(file) });
           }}
         >
-          {outside ? (
+          {view.kind === "outside" ? (
             <EmptyState>
-              {`${outside} is outside this conversation's folder, so it can't be shown here.`}
+              {`${view.path} is outside this conversation's folder, so it can't be shown here.`}
             </EmptyState>
-          ) : seeking ? (
-            <Spinner label={`Looking for ${nameOf(cited!.path)}…`} />
+          ) : view.kind === "resolve" ? (
+            <Spinner label={`Looking for ${nameOf(view.path)}…`} />
           ) : !file ? (
             <EmptyState>Choose a file to read it here.</EmptyState>
           ) : changing ? (
@@ -851,7 +870,7 @@ export default function Files({
               variant="quiet"
               class="files-image"
               aria-label={`View ${nameOf(file)}`}
-              onClick={() => view({ src: url(file), name: nameOf(file) })}
+              onClick={() => viewer({ src: url(file), name: nameOf(file) })}
             >
               <img src={url(file)} alt={nameOf(file)} />
             </Button>

@@ -237,6 +237,10 @@ while chunk := os.read(3, 4096):
             }
         elif command["method"] == "Page.captureScreenshot":
             result = {"data": "c2hvdA=="}
+        elif command["method"] == "Page.printToPDF":
+            result = {"data": "JVBERg=="}
+        elif command["method"] == "Target.createBrowserContext":
+            result = {"browserContextId": "throwaway"}
         elif command["method"] == "Runtime.evaluate":
             asked = command["params"]["expression"]
             if "scrollIntoView" in asked:

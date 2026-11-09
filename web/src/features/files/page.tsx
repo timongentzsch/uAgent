@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import {
-  Copy,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
-  ImageDown,
+  FileOutput,
   PenLine,
   MousePointerClick,
+  Pencil,
   Presentation,
-  Printer,
   SlidersHorizontal,
 } from "lucide-preact";
 import { Button, IconButton, Switch } from "../../shared/ui.tsx";
@@ -23,6 +25,11 @@ import { bindZoomWheel } from "../../shared/zoom.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import type { ViewedImage } from "../../shared/attachments.tsx";
+import { presentChannel } from "./present.ts";
+import type { BlockEdit } from "./doc-edit.ts";
+import { downloadBlob, saveLink } from "../../shared/share.ts";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
+import { nameOf } from "../../shared/file-types.ts";
 
 // The zoom of an opened page, as a scale of its real size, and one step.
 const ZOOM_MIN = 0.1;
@@ -32,8 +39,9 @@ import { useResource } from "../../shared/use-resource.ts";
 
 // A page opened across the pane: a fixed artboard scaled to fit, a page at
 // the pane's own width. Select picks an element to comment on; Tweaks tries
-// the levers the page declares; Present shows it full screen, stepping
-// through its folder; Open and PDF show it alone in a tab.
+// the levers the page declares; Present shows it over the whole app (full
+// screen where the browser allows), stepping through its folder with a
+// slide's notes; Open and PDF show it alone in a tab.
 
 interface Tweak {
   editor?: string;
@@ -63,6 +71,11 @@ export default function OpenPage({
   base,
   read,
   picture,
+  pdf,
+  presenter,
+  presentAtOpen,
+  presented,
+  save,
   view,
 }: {
   path: string;
@@ -73,6 +86,16 @@ export default function OpenPage({
   read: (path: string) => Promise<string>;
   // The page drawn as a PNG by the agent's browser, where there is one.
   picture?: (width: number, height: number, scale: number) => string;
+  // The page printed as a PDF on its paper by the agent's browser.
+  pdf?: string;
+  // Opens the presenter's view of a deck at a slide, in a window.
+  presenter?: (slides: string[], at: string) => void;
+  // A document's edited block saved to its file.
+  save?: (edit: BlockEdit) => Promise<void>;
+  // Opened to present at once (the canvas's Present), which `presented`
+  // then clears.
+  presentAtOpen?: boolean;
+  presented?: () => void;
   // Opens a picture in the image viewer, which can draw on it.
   view: (image: ViewedImage) => void;
   // The pages of its folder in canvas order, which Present steps through.
@@ -108,20 +131,104 @@ export default function OpenPage({
     setHover(undefined);
     setValues({});
   }, [src]);
+  // Presenting: over the app, full screen where the browser allows, the
+  // notes shown on a phone held upright or with N. Leaving full screen (a
+  // presenter's window opening takes it away) keeps presenting; End or Esc
+  // stop.
+  const [presenting, setPresenting] = useState(false);
+  const [notesShown, setNotesShown] = useState(false);
+  const present = (on: boolean) => {
+    setPresenting(on);
+    setNotesShown(on && matchMedia("(orientation: portrait)").matches);
+    if (on) stage.current?.requestFullscreen?.().catch(() => {});
+    else if (document.fullscreenElement) document.exitFullscreen();
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, as opened
+  useEffect(() => {
+    if (!presentAtOpen) return;
+    present(true);
+    presented?.();
+  }, []);
+  // The presenter's window moves this one, and this one it.
+  const channel = useRef<BroadcastChannel>(undefined);
+  const follow = useLatest(
+    (at: unknown) =>
+      typeof at === "string" && at !== path && siblings.includes(at) && go(at),
+  );
+  // One channel for the page's life: a new one per render would miss what
+  // arrives while it is swapped.
+  useEffect(() => {
+    const opened = presentChannel();
+    opened.onmessage = (event) => follow.current(event.data?.at);
+    channel.current = opened;
+    return () => opened.close();
+  }, []);
   const step = (by: number) => {
     const at = siblings.indexOf(path);
     const next = siblings[(at + by + siblings.length) % siblings.length];
-    if (at >= 0 && next !== path) go(next);
+    if (at < 0 || next === path) return;
+    go(next);
+    channel.current?.postMessage({ at: next });
   };
+  const presentKey = (key: string) => {
+    if (["ArrowRight", " ", "PageDown"].includes(key)) step(1);
+    if (["ArrowLeft", "PageUp"].includes(key)) step(-1);
+    if (key === "n" || key === "N") setNotesShown((shown) => !shown);
+    if (key === "Escape") present(false);
+  };
+  // An opened slide steps through its deck with the arrow keys too, unless
+  // a field has them.
+  const slideKey = (key: string) => {
+    if (key === "ArrowRight") step(1);
+    if (key === "ArrowLeft") step(-1);
+  };
+  const slides = info?.kind === "slide" && siblings.length > 1;
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
-      if (!document.fullscreenElement) return;
-      if (event.key === "ArrowRight") step(1);
-      if (event.key === "ArrowLeft") step(-1);
+      if (presenting) presentKey(event.key);
+      else if (
+        slides &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !(event.target as Element).closest?.(
+          "input, textarea, select, [contenteditable]",
+        )
+      )
+        slideKey(event.key);
     };
     document.addEventListener("keydown", keys);
     return () => document.removeEventListener("keydown", keys);
   });
+  // A document: Edit lets its text be typed in place, each block saved as
+  // it is left; its page breaks are marked where print will put them.
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState("");
+  const [breaks, setBreaks] = useState<number[]>([]);
+  const edit = (on: boolean) => {
+    setEditing(on);
+    if (on) select(false);
+    tell(frame.current, { type: "edit", on });
+  };
+  const keep = async (change: BlockEdit) => {
+    setSaved("Saving…");
+    try {
+      await save?.(change);
+      setSaved("Saved");
+    } catch (error) {
+      setSaved(error instanceof Error ? error.message : "Not saved");
+    }
+  };
+  useEffect(() => {
+    setEditing(false);
+    setSaved("");
+    setBreaks([]);
+  }, [src]);
+  // A new page fades in once it has drawn.
+  const [arriving, setArriving] = useState(true);
+  useEffect(() => setArriving(true), [src]);
+  // Its exports' name: the file's, without .html.
+  const stem = nameOf(path).replace(/\.html?$/i, "");
   // Its size as a picture: an artboard's, or a page's full height.
   const size = pageSize(info, 8000);
   const { fixed } = size;
@@ -180,6 +287,10 @@ export default function OpenPage({
       return bindZoomWheel(box, (by, at) => wheelZoom.current(by, at.x, at.y));
   }, [wheelZoom]);
   const select = (on: boolean) => {
+    if (on && editing) {
+      setEditing(false);
+      tell(frame.current, { type: "edit", on: false });
+    }
     setSelecting(on);
     setHover(undefined);
     if (!on) setPicked(undefined);
@@ -228,6 +339,21 @@ export default function OpenPage({
           <MousePointerClick />
           Select
         </Button>
+        {save && info?.kind === "doc" && (
+          <Button
+            variant="secondary"
+            aria-pressed={editing}
+            onClick={() => edit(!editing)}
+          >
+            <Pencil />
+            Edit
+          </Button>
+        )}
+        {saved && (
+          <span class="small muted" role="status">
+            {saved}
+          </span>
+        )}
         {(declared.length > 0 || !!theme.value?.colors.length) && (
           <Button
             variant="secondary"
@@ -238,63 +364,81 @@ export default function OpenPage({
             Tweaks
           </Button>
         )}
-        {document.fullscreenEnabled && (
+        <IconButton label="Present" onClick={() => present(true)}>
+          <Presentation />
+        </IconButton>
+        {picture && info && (
           <IconButton
-            label="Present"
-            onClick={() => stage.current?.requestFullscreen()}
+            label="Draw on it"
+            onClick={() =>
+              view({
+                src: picture(size.w, size.h, 1),
+                name: `${stem}.png`,
+                edit: true,
+              })
+            }
           >
-            <Presentation />
+            <PenLine />
           </IconButton>
         )}
-        {picture && info && (
-          <>
-            <a
-              class="file-button quiet icon-button"
-              href={`${picture(size.w, size.h, 2)}&download=1`}
-              download
-              aria-label="Download as PNG"
-              title="PNG"
-            >
-              <ImageDown />
-            </a>
-            <IconButton
-              label="Copy as PNG"
-              onClick={() =>
-                navigator.clipboard.write([
-                  new ClipboardItem({
-                    "image/png": fetch(picture(size.w, size.h, 2)).then(
-                      (response) => response.blob(),
-                    ),
-                  }),
-                ])
-              }
-            >
-              <Copy />
-            </IconButton>
-            <IconButton
-              label="Draw on it"
-              onClick={() =>
-                view({
-                  src: picture(size.w, size.h, 1),
-                  name: `${path}.png`,
-                  edit: true,
-                })
-              }
-            >
-              <PenLine />
-            </IconButton>
-          </>
-        )}
-        <a
-          class="file-button quiet icon-button"
-          href={`${src}#print`}
-          target="_blank"
-          rel="noopener"
-          aria-label="Print or save as PDF"
-          title="PDF"
+        {/* The page in another format: what fits its kind. Its source is
+            Download in the pane's header. */}
+        <Menu
+          label="Export"
+          trigger={
+            <>
+              <FileOutput />
+              Export
+              <ChevronDown />
+            </>
+          }
         >
-          <Printer />
-        </a>
+          {pdf ? (
+            <MenuItem
+              onClick={() => saveLink(`${pdf}&download=1`, `${stem}.pdf`)}
+            >
+              PDF
+            </MenuItem>
+          ) : (
+            <MenuItem
+              onClick={() => window.open(`${src}#print`, "_blank", "noopener")}
+            >
+              Print or save as PDF
+            </MenuItem>
+          )}
+          {picture && info && (
+            <>
+              <MenuItem
+                onClick={() =>
+                  saveLink(
+                    `${picture(size.w, size.h, 2)}&download=1`,
+                    `${stem}.png`,
+                  )
+                }
+              >
+                PNG image
+              </MenuItem>
+              <MenuItem
+                onClick={() =>
+                  navigator.clipboard.write([
+                    new ClipboardItem({
+                      "image/png": fetch(picture(size.w, size.h, 2)).then(
+                        (response) => response.blob(),
+                      ),
+                    }),
+                  ])
+                }
+              >
+                Copy as image
+              </MenuItem>
+            </>
+          )}
+          {info?.kind === "doc" && (
+            <MenuItem onClick={() => tell(frame.current, { type: "markdown" })}>
+              Markdown
+            </MenuItem>
+          )}
+        </Menu>
         <a
           class="file-button quiet icon-button"
           href={src}
@@ -312,10 +456,12 @@ export default function OpenPage({
           ref={stage}
           data-fixed={fixed || undefined}
           data-wide={(wide && !fixed) || undefined}
+          data-presenting={presenting || undefined}
         >
           <div class="page-scroll" ref={scroller}>
             <div
               class="page-holder"
+              data-arriving={arriving || undefined}
               style={
                 wide
                   ? {
@@ -338,6 +484,9 @@ export default function OpenPage({
                 onMessage={(message) => {
                   if (message.type === "ready") {
                     setSaid({ ...message, src });
+                    setArriving(false);
+                    if (editing)
+                      tell(frame.current, { type: "edit", on: true });
                     if (selecting)
                       tell(frame.current, { type: "select", on: true });
                   } else if (message.type === "zoom") {
@@ -352,25 +501,99 @@ export default function OpenPage({
                   } else if (message.type === "size")
                     // A page that grows (its fonts, its images) is pictured whole.
                     setSaid((was) => was && { ...was, height: message.height });
+                  else if (message.type === "pages") setBreaks(message.breaks);
+                  else if (message.type === "edit") void keep(message);
+                  else if (message.type === "markdown")
+                    downloadBlob(
+                      new Blob([message.text], { type: "text/markdown" }),
+                      `${stem}.md`,
+                    );
                   else if (message.type === "hover") setHover(message.rect);
                   else if (message.type === "pick") setPicked(message);
                   else if (message.type === "picked")
                     setPicked((was) => was && { ...was, rect: message.rect });
+                  else if (message.type === "key" && presenting)
+                    presentKey(message.key);
                   else if (
                     message.type === "key" &&
-                    document.fullscreenElement
-                  ) {
-                    if (message.key === "ArrowRight") step(1);
-                    if (message.key === "ArrowLeft") step(-1);
-                  } else if (message.type === "key" && message.key === "Escape")
+                    slides &&
+                    !selecting &&
+                    message.key !== "Escape"
+                  )
+                    slideKey(message.key);
+                  else if (message.type === "key" && message.key === "Escape")
                     select(false);
                 }}
               />
+              {info?.kind === "doc" &&
+                breaks.map((at, number) => (
+                  <span
+                    key={at}
+                    class="page-break small"
+                    style={{ top: `${at * scale}px` }}
+                  >
+                    Page {number + 2}
+                  </span>
+                ))}
               {selecting && hover && mark(hover, "hover")}
               {picked && mark(picked.rect, "picked")}
             </div>
           </div>
-          {wide && (
+          {slides && !presenting && (
+            <>
+              <IconButton
+                class="page-step page-step-back"
+                label="Previous slide"
+                onClick={() => step(-1)}
+              >
+                <ChevronLeft />
+              </IconButton>
+              <IconButton
+                class="page-step page-step-next"
+                label="Next slide"
+                onClick={() => step(1)}
+              >
+                <ChevronRight />
+              </IconButton>
+            </>
+          )}
+          {presenting && notesShown && info?.notes && (
+            <p class="page-notes">{info.notes}</p>
+          )}
+          {presenting && (
+            <div class="page-present-bar">
+              <span class="small muted">
+                {siblings.indexOf(path) + 1} / {siblings.length}
+              </span>
+              {info?.notes && (
+                <Button
+                  variant="secondary"
+                  aria-pressed={notesShown}
+                  onClick={() => setNotesShown(!notesShown)}
+                >
+                  Notes
+                </Button>
+              )}
+              {presenter && info?.kind === "slide" && (
+                <Button
+                  variant="secondary"
+                  onClick={() => presenter(siblings, path)}
+                >
+                  Presenter view
+                </Button>
+              )}
+              <Button variant="secondary" onClick={() => step(-1)}>
+                Back
+              </Button>
+              <Button variant="primary" onClick={() => step(1)}>
+                Next
+              </Button>
+              <Button variant="secondary" onClick={() => present(false)}>
+                End
+              </Button>
+            </div>
+          )}
+          {wide && !presenting && (
             <ZoomControls
               percent={Math.round(scale * 100)}
               out={() => middle(1 / ZOOM_STEP)}

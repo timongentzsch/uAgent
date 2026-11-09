@@ -11,8 +11,13 @@ import "./page-frame.css";
 
 export interface PageInfo {
   title: string;
-  // A fixed artboard's size; 0 × 0 for a page, which is as tall as it is.
-  artboard: { w: number; h: number };
+  // A fixed artboard's size; 0 × 0 for a page, which is as tall as it is. A
+  // document is its paper's width.
+  artboard: { w: number; h: number; slide?: boolean };
+  // A slide of a deck, a document on paper, or any other design.
+  kind?: "slide" | "doc" | "design";
+  // A slide's speaker notes.
+  notes?: string;
   tweaks: Record<string, unknown> | null;
   height: number;
   // Its stylesheets' addresses.
@@ -37,13 +42,19 @@ export type PageMessage =
   | { type: "hover" | "picked"; rect: Rect }
   | ({ type: "pick" } & Pick)
   | { type: "key"; key: string }
-  | { type: "zoom"; by: number; x: number; y: number };
+  | { type: "zoom"; by: number; x: number; y: number }
+  // A document's page breaks, its edited block, its text as Markdown.
+  | { type: "pages"; breaks: number[] }
+  | { type: "edit"; index: number; before: string; html: string }
+  | { type: "markdown"; text: string };
 
 // Tells a page what to do: select on or off, or set a tweak.
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
     | { type: "select"; on: boolean }
+    | { type: "edit"; on: boolean }
+    | { type: "markdown" }
     | { type: "tweak"; name: string; value: unknown },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 

@@ -1,9 +1,11 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <filesystem>
 #include <string>
 #include <utility>
 
 #include "include/app/session_host.h"
+#include "include/core/fs.h"
 
 namespace uagent::session {
 
@@ -43,6 +45,30 @@ AssetStoreResult SessionHost::StoreAsset(const std::string& session_id,
     }
   }
   return stored;
+}
+
+std::string SessionHost::DeleteShared(const std::string& session_id,
+                                      const std::string& asset) {
+  const std::string path = AssetPath(session_id);
+  if (path.empty() || asset.empty() ||
+      asset.find_first_not_of("0123456789abcdef") != std::string::npos) {
+    return "not found";
+  }
+  const std::string stem = path + kSessionAssetsSuffix + "/" + asset;
+  {
+    std::unique_lock guard = assets_.GuardMutation();
+    const AssetRecord found = ReadAssetRecord(stem);
+    if (!JsonValue(found.record, "shared", false)) return "not found";
+    std::error_code ec;
+    if (!found.extension.empty()) {
+      std::filesystem::remove(stem + found.extension, ec);
+    }
+    if (ec || !std::filesystem::remove(stem + ".json", ec)) {
+      return "cannot delete the file";
+    }
+  }
+  assets_.Invalidate();
+  return "";
 }
 
 }  // namespace uagent::session

@@ -68,6 +68,7 @@ import FolderOverview from "../features/overview/overview.tsx";
 import Pairing from "../features/pairing/pairing.tsx";
 import Files from "../features/files/files.tsx";
 import { START, cite, type Flow } from "../features/files/flow.ts";
+import { useSelection } from "../shared/selection.ts";
 import { presenterDeck } from "../features/files/present.ts";
 import Spotlight, { ShortcutList } from "../features/search/spotlight.tsx";
 
@@ -417,6 +418,29 @@ function App() {
     [report],
   );
   // The open conversation's menu also holds the level its transcript shows.
+  // Conversations and workspaces picked in the list, and what is done to
+  // them all at once (features/sidebar, shared/selection.ts).
+  const selection = useSelection();
+  const latestSelection = useLatest(selection);
+  const actOnSelection = useCallback(
+    (
+      action: "move" | "close" | "delete",
+      sessions: Session[],
+      spaces: Space[],
+    ) => {
+      if (action === "move")
+        open({ type: "move", session: sessions[0], sessions });
+      else if (action === "delete")
+        open({ type: "delete-many", sessions, spaces });
+      else
+        void (async () => {
+          for (const item of sessions)
+            if (item.generation) await command("close", item).catch(report);
+          await refresh();
+        })();
+    },
+    [open, report, refresh],
+  );
   const conversationMenu = useCallback(
     (
       item: Session,
@@ -443,6 +467,9 @@ function App() {
             : undefined
         }
         more={extra?.more}
+        select={
+          withDetail ? undefined : () => latestSelection.current.start(item.id)
+        }
       >
         {extra?.top}
       </ConversationMenu>
@@ -618,6 +645,8 @@ function App() {
       spaces={catalogue.spaces || NO_SPACES}
       pins={pins}
       spaceMenu={places.spaceMenu}
+      selection={selection}
+      act={actOnSelection}
       selected={page === "chat" ? selected : ""}
       unread={unread}
       choose={choose}

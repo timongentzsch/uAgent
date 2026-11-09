@@ -224,3 +224,22 @@
 .drawer .sidebar-head .brand {
   display: none;
 }
+
+/* Picked to act on with others: the row's checkbox and a fill. The open
+   conversation keeps its stripe, so the two never look alike. */
+.session-row[data-picked]:not(:has([aria-current])),
+.place-head[data-picked] {
+  box-shadow: none;
+}
+/* While something is picked the footer is its bar, its actions under the
+   count, each as wide. */
+.sidebar footer > .selection-bar {
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+}
+.sidebar .selection-actions > * {
+  flex: 1;
+  font-size: var(--font-small);
+  white-space: nowrap;
+}

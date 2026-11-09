@@ -108,3 +108,28 @@ def test_web_library_lists_everything_by_place(root, home, *, binary):
             design = next(item for item in listing["items"] if item["kind"] == "design")
             assert_true(design["count"] == 2 and len(design["pages"]) == 2, design)
             assert_true(listing["limits"]["memory"] > 0, listing["limits"])
+
+            # Deleting: only what the listing names, never a place or past it.
+            def delete(**fields):
+                return client.request("/api/library/delete", fields)[0]
+
+            file = next(item for item in listing["items"] if item["kind"] == "file")
+            for refused in (
+                {"kind": "deck", "place": str(root), "key": deck["key"]},
+                {"kind": "design", "place": str(site), "key": f"{site}/.."},
+                {"kind": "file", "session": shared["id"], "key": "../" + file["key"]},
+            ):
+                assert_true(delete(**refused) == 404, refused)
+            for fields in (
+                {"kind": "deck", "place": str(site), "key": deck["key"]},
+                {"kind": "doc", "place": str(site), "key": f"{site}/docs/memo.html"},
+                {"kind": "file", "session": file["session"], "key": file["key"]},
+            ):
+                assert_true(delete(**fields) == 200, fields)
+            for gone in ("decks/talk", "docs/memo.html"):
+                assert_true(not (site / gone).exists(), gone)
+            assert_true((site / "docs").is_dir() and (site / "index.html").exists(), "kept")
+            listing = json.loads(client.request("/api/library")[1])
+            kinds = sorted(item["kind"] for item in listing["items"] if item["kind"] != "memory")
+            # The handout was the deck folder's: it went with it.
+            assert_true(kinds == ["design", "system"], listing["items"])

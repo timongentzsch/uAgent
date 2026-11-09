@@ -5,7 +5,8 @@ import { useLatest } from "./use-latest.ts";
 // and the shortcuts sheet and search show them. `keys` is
 // "Mod+K" style, Mod being ⌘ on a Mac and Ctrl elsewhere; Ctrl is Ctrl
 // everywhere, and ⌘ too on a Mac. Entries without `global` are the
-// composer's own, listed so they can be found.
+// composer's own, listed so they can be found. `outside` ones are text in
+// a field, and a dialog's or menu's own keys there: they act only outside.
 export const SHORTCUTS = [
   { id: "search", keys: "Mod+K", label: "Search", global: true },
   {
@@ -14,7 +15,13 @@ export const SHORTCUTS = [
     label: "Find in this conversation",
     global: true,
   },
-  { id: "shortcuts", keys: "?", label: "Keyboard shortcuts", global: true },
+  {
+    id: "shortcuts",
+    keys: "?",
+    label: "Keyboard shortcuts",
+    global: true,
+    outside: true,
+  },
   {
     id: "previous",
     keys: "Alt+ArrowUp",
@@ -32,6 +39,27 @@ export const SHORTCUTS = [
     keys: "Ctrl+`",
     label: "Show or hide the terminal",
     global: true,
+  },
+  {
+    id: "select-all",
+    keys: "Mod+A",
+    label: "Select all, while selecting",
+    global: true,
+    outside: true,
+  },
+  {
+    id: "delete-selected",
+    keys: "Backspace",
+    label: "Delete the selected",
+    global: true,
+    outside: true,
+  },
+  {
+    id: "deselect",
+    keys: "Escape",
+    label: "Stop selecting",
+    global: true,
+    outside: true,
   },
   { id: "send", keys: "Enter", label: "Send the message" },
   { id: "newline", keys: "Shift+Enter", label: "New line in the message" },
@@ -55,6 +83,7 @@ const NAMES: Record<string, string> = {
   ArrowUp: "↑",
   ArrowDown: "↓",
   Escape: "Esc",
+  Backspace: "⌫",
 };
 
 // A shortcut's keys as they are printed on the keyboard.
@@ -67,7 +96,9 @@ export const keysOf = (id: ShortcutId) =>
 export const isTextEntry = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
   (target.isContentEditable ||
-    target.matches("input, textarea, select, [role=textbox]"));
+    target.matches(
+      "input:not([type=checkbox], [type=radio]), textarea, select, [role=textbox]",
+    ));
 
 function matches(keys: string, event: KeyboardEvent) {
   const parts = keys.split("+");
@@ -85,8 +116,9 @@ function matches(keys: string, event: KeyboardEvent) {
   );
 }
 
-// One keydown listener for the whole app runs the global shortcuts given
-// handlers; the latest handlers run, without re-subscribing.
+// A keydown listener runs the global shortcuts given handlers (the app's,
+// and the sidebar's while it selects); the latest handlers run, without
+// re-subscribing.
 export function useShortcuts(
   handlers: Partial<Record<ShortcutId, () => void>>,
 ) {
@@ -99,7 +131,11 @@ export function useShortcuts(
           "global" in item &&
           latest.current[item.id] &&
           matches(item.keys, event) &&
-          !(item.keys === "?" && isTextEntry(event.target)),
+          !(
+            "outside" in item &&
+            (isTextEntry(event.target) ||
+              (event.target as Element).closest?.("dialog, [role=menu]"))
+          ),
       );
       if (!shortcut) return;
       event.preventDefault();

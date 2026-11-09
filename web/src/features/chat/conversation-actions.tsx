@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import type { StatisticsModal } from "../../shared/types.ts";
+import type { Session, StatisticsModal } from "../../shared/types.ts";
 import { command, manage } from "../../state/api.ts";
 import { useAction } from "../../shared/use-action.ts";
 import {
@@ -11,6 +11,34 @@ import { plural } from "../../shared/quantities.ts";
 import { Actions, Button, LoadError, Input } from "../../shared/ui.tsx";
 // The dialog body that renames or deletes a conversation or a workspace, or
 // renames a terminal.
+
+// Deletes a conversation as its menu does. A live one closes first: close
+// stops a running turn gracefully, then delete removes the record. A
+// closing worker can retire while that spreads, so delete retries until the
+// host has let go of it.
+export async function deleteConversation(session: Session) {
+  if (!session.generation) return void (await command("delete", session));
+  try {
+    await command("close", session);
+  } catch (failure) {
+    // Nothing to stop (already closed, or owned elsewhere): only a
+    // stale-worker refusal goes on to delete; anything else is the error.
+    if (!/stale worker generation/i.test(String(failure))) throw failure;
+  }
+  const closed = { ...session, generation: "" };
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await command("delete", closed);
+      return;
+    } catch (failure) {
+      lastError = failure;
+      if (!/stop and close/i.test(String(failure))) break;
+      await new Promise((resolve) => setTimeout(resolve, deleteRetryDelayMs));
+    }
+  }
+  throw lastError;
+}
 
 export default function ConversationActions({
   modal,
@@ -53,43 +81,8 @@ export default function ConversationActions({
             close();
             return;
           }
-          if (modal.type === "delete" && modal.session.generation) {
-            // Live sessions close first: close aborts a running turn
-            // gracefully, then delete removes the record. A closing worker
-            // can retire while deactivation propagates, so delete retries
-            // until the generation clears server-side.
-            try {
-              await command("close", modal.session);
-            } catch (failure) {
-              // Nothing to stop (already closed, or owned elsewhere):
-              // only a stale-worker rejection falls through to delete;
-              // anything else aborts with the real error.
-              if (!/stale worker generation/i.test(String(failure)))
-                throw failure;
-            }
-            const closed = { ...modal.session, generation: "" };
-            let lastError: unknown = null;
-            for (let attempt = 0; attempt < 4; attempt++) {
-              try {
-                await command("delete", closed);
-                lastError = null;
-                break;
-              } catch (failure) {
-                lastError = failure;
-                if (!/stop and close/i.test(String(failure))) break;
-                await new Promise((resolve) =>
-                  setTimeout(resolve, deleteRetryDelayMs),
-                );
-              }
-            }
-            if (lastError) throw lastError;
-          } else {
-            await command(
-              modal.type,
-              modal.session,
-              modal.type === "rename" ? { title: title.trim() } : {},
-            );
-          }
+          if (modal.type === "delete") await deleteConversation(modal.session);
+          else await command("rename", modal.session, { title: title.trim() });
           await changed(modal.type, modal.session.id);
           close();
         });

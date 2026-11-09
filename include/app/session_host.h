@@ -234,6 +234,10 @@ class SessionHost {
   std::string Folder(const std::string& id) const;
   AssetStoreResult StoreAsset(const std::string& session_id,
                               const std::string& bytes, std::string name);
+  // Deletes a file the agent shared in a conversation, its record and its
+  // bytes; the error, empty when it went.
+  std::string DeleteShared(const std::string& session_id,
+                           const std::string& asset);
   SnapshotResult Snapshot(const std::string& id, const SnapshotQuery& query);
   bool Contains(const std::string& id) const;
   SessionCommandResult ExecuteCommand(json command, const std::string& device,

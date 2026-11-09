@@ -25,17 +25,18 @@ function familyOf(sessions: Session[], item: Session) {
   return family;
 }
 
-// The dialog body that moves a conversation to another folder or workspace:
-// a place picked from the list or typed as a path.
+// The dialog body that moves conversations (one, or the sidebar's
+// selection) to another folder or workspace: a place picked from the list
+// or typed as a path.
 export default function MoveConversation({
-  session,
+  moving,
   sessions,
   spaces,
   online,
   close,
 }: {
-  // As the catalogue holds it now, so the dialog follows what runs.
-  session: Session;
+  // As the catalogue holds them now, so the dialog follows what runs.
+  moving: Session[];
   sessions: Session[];
   spaces: Space[];
   online: boolean;
@@ -44,8 +45,10 @@ export default function MoveConversation({
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState("");
   const { run, busy, error } = useAction();
-  const current = folderOf(session);
-  const family = familyOf(sessions, session);
+  // The place they all are in, if one.
+  const places = new Set(moving.map(folderOf));
+  const current = places.size === 1 ? [...places][0] : "";
+  const family = moving.flatMap((item) => familyOf(sessions, item));
   const running = family.filter((item) => item.turn_active || item.pending);
   const typed = query.trim().startsWith("/") ? query.trim() : "";
   const target = chosen || typed;
@@ -82,7 +85,9 @@ export default function MoveConversation({
         // The page follows the conversation to its new id when the host
         // announces the move, here and on every other device.
         void run(async () => {
-          await command("move", session, { cwd: target });
+          for (const item of moving)
+            if (folderOf(item) !== target)
+              await command("move", item, { cwd: target });
           close();
         });
       }}
@@ -115,9 +120,12 @@ export default function MoveConversation({
         </EmptyState>
       )}
       <p class="muted">
-        Moves the conversation
-        {family.length > 1 && ` and its ${plural(family.length - 1, "agent")}`}.
-        Files stay in {current}, and memories stay with the old folder.
+        {moving.length > 1
+          ? `Moves ${plural(moving.length, "conversation")}`
+          : "Moves the conversation"}
+        {family.length > moving.length &&
+          ` and ${plural(family.length - moving.length, "agent")}`}
+        {`. Files stay ${current ? `in ${current}` : "where they are"}, and memories stay with the old ${current ? "folder" : "folders"}.`}
       </p>
       {running.length > 0 && (
         <p role="status">

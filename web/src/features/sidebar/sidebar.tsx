@@ -1,6 +1,6 @@
 import { ConnectionStatus } from "../../shared/connection-status.tsx";
 import { Fragment, type ComponentChildren } from "preact";
-import { useMemo, useRef } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef } from "preact/hooks";
 import type { Pin, Session, Space, TerminalInfo } from "../../shared/types.ts";
 import {
   ChevronDown,
@@ -38,6 +38,10 @@ import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
 import { collapsed, useFolding } from "./folding.ts";
 import { PinItem } from "./pins.tsx";
+import type { SelectionApi } from "../../shared/selection.ts";
+import { useLatest } from "../../shared/use-latest.ts";
+import { useShortcuts } from "../../shared/shortcuts.ts";
+import { Input } from "../../shared/form-controls.tsx";
 import "./sidebar.css";
 
 // Before the catalogue arrives, the list draws these (see <Placeholder>).
@@ -184,6 +188,11 @@ type SessionRowProps = {
   online: boolean;
   choose: (id: string) => void;
   menu: (session: Session) => ComponentChildren;
+  // Picked to act on with others; while picking, its checkbox shows.
+  picked: boolean;
+  selecting: boolean;
+  pick: (id: string, event: MouseEvent) => boolean;
+  toggle: (id: string) => void;
 };
 
 // One conversation in the list, on one line: its title and its state. The
@@ -195,14 +204,27 @@ function SessionRow({
   online,
   choose,
   menu,
+  picked,
+  selecting,
+  pick,
+  toggle,
 }: SessionRowProps) {
   const state = statusOf(item, online);
   const shown = STATES[state];
   return (
-    <div class="session-row entry">
+    <div class="session-row entry" data-picked={picked || undefined}>
+      {selecting && (
+        <Input
+          type="checkbox"
+          class="row-check"
+          checked={picked}
+          aria-label={`Select ${item.title || "Untitled"}`}
+          onChange={() => toggle(item.id)}
+        />
+      )}
       <ListRow
         class="session"
-        onClick={() => choose(item.id)}
+        onClick={(event) => pick(item.id, event) || choose(item.id)}
         aria-current={selected ? "page" : undefined}
         title={<SessionName item={item} />}
         unread={unread && "Unread messages"}
@@ -282,6 +304,13 @@ type SidebarProps = {
   pins: Pin[];
   // What can be done to a workspace: rename it, delete it.
   spaceMenu: (space: Space, conversations: number) => ComponentChildren;
+  // Conversations and workspaces picked to act on together, and the act.
+  selection: SelectionApi;
+  act: (
+    action: "move" | "close" | "delete",
+    sessions: Session[],
+    spaces: Space[],
+  ) => void;
   selected: string;
   unread: Set<string>;
   choose: (id: string) => void;
@@ -314,6 +343,8 @@ function SidebarView({
   spaces,
   pins,
   spaceMenu,
+  selection,
+  act,
   selected,
   unread,
   choose,
@@ -347,6 +378,60 @@ function SidebarView({
     () => arrange(all, drawing ? [] : spaces, online, pins, terminals || []),
     [all, drawing, spaces, online, pins, terminals],
   );
+  // What can be picked, in the order the list shows it: each workspace,
+  // then the conversations of each place that is open.
+  const pickable = ([path, entries]: Place) => [
+    ...(spaces.some((space) => space.path === path) ? [path] : []),
+    ...(collapsed.has(path) ? [] : entries.flatMap(rowsOf).map((s) => s.id)),
+  ];
+  const order = (() => {
+    return [
+      ...top.flatMap((pinned) =>
+        "entry" in pinned
+          ? rowsOf(pinned.entry).map((item) => item.id)
+          : "place" in pinned
+            ? pickable(pinned.place)
+            : [],
+      ),
+      ...kinds.flatMap(([, places]) => places.flatMap(pickable)),
+    ];
+  })();
+  // A conversation or workspace gone (deleted, moved) leaves the selection.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on a changed list
+  useEffect(() => {
+    if (selection.ids.size)
+      selection.keep([
+        ...all.map((item) => item.id),
+        ...spaces.map((space) => space.path),
+      ]);
+  }, [all, spaces]);
+  const latest = useLatest({ selection, order });
+  const pick = useCallback(
+    (id: string, event: MouseEvent) =>
+      latest.current.selection.click(id, event, latest.current.order),
+    [latest],
+  );
+  const toggle = useCallback(
+    (id: string) => latest.current.selection.toggle(id),
+    [latest],
+  );
+  const picked = {
+    sessions: all.filter((item) => selection.ids.has(item.id)),
+    spaces: spaces.filter((space) => selection.ids.has(space.path)),
+  };
+  // Keys while selecting, wherever the focus is (Safari focuses no clicked
+  // row): ⌘A all, ⌫ deletes, Esc stops.
+  useShortcuts(
+    selection.selecting
+      ? {
+          "select-all": () => selection.all(order),
+          "delete-selected": selection.ids.size
+            ? () => act("delete", picked.sessions, picked.spaces)
+            : undefined,
+          deselect: selection.clear,
+        }
+      : {},
+  );
   // How many conversations each place holds, whatever the search shows.
   const counts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -363,6 +448,10 @@ function SidebarView({
       online={online}
       choose={choose}
       menu={menu}
+      picked={selection.ids.has(item.id)}
+      selecting={selection.selecting}
+      pick={pick}
+      toggle={toggle}
     />
   );
   // A conversation's rows: itself, then its agents at work beneath it.
@@ -408,7 +497,19 @@ function SidebarView({
     ).length;
     return (
       <section key={cwd}>
-        <div class="place-head entry">
+        <div
+          class="place-head entry"
+          data-picked={selection.ids.has(cwd) || undefined}
+        >
+          {selection.selecting && space && (
+            <Input
+              type="checkbox"
+              class="row-check"
+              checked={selection.ids.has(cwd)}
+              aria-label={`Select the workspace ${name}`}
+              onChange={() => toggle(cwd)}
+            />
+          )}
           <IconButton
             label={`Conversations of ${name}`}
             aria-expanded={!folded}
@@ -427,7 +528,7 @@ function SidebarView({
               title={`Overview of ${name}`}
               disabled={drawing}
               aria-current={shownPlace === cwd ? "page" : undefined}
-              onClick={() => overview(cwd)}
+              onClick={(event) => (space && pick(cwd, event)) || overview(cwd)}
             >
               <FolderLabel path={cwd} space={!!space}>
                 {space?.name}
@@ -597,7 +698,11 @@ function SidebarView({
           )}
         </Button>
       </div>
-      <nav ref={rows} aria-label="Conversations">
+      <nav
+        ref={rows}
+        aria-label="Conversations"
+        data-selecting={selection.selecting || undefined}
+      >
         <Placeholder label="Loading conversations…" when={drawing}>
           {list.length ? (
             list
@@ -609,15 +714,53 @@ function SidebarView({
           )}
         </Placeholder>
       </nav>
-      <footer>
-        <ConnectionStatus phase={connection} className="connection small" />
-        <IconButton label="Refresh" onClick={refresh}>
-          <RefreshCw />
-        </IconButton>
-        <IconButton label="Settings" onClick={settings}>
-          <Settings />
-        </IconButton>
-      </footer>
+      {selection.selecting ? (
+        <footer class="selection-bar">
+          <div role="toolbar" aria-label="Selection">
+            <strong aria-live="polite">{`${selection.ids.size} selected`}</strong>
+            <Button variant="secondary" onClick={() => selection.clear()}>
+              {selection.mode ? "Done" : "Clear"}
+            </Button>
+          </div>
+          <div class="selection-actions">
+            <Button
+              variant="secondary"
+              disabled={
+                !online || !picked.sessions.length || picked.spaces.length > 0
+              }
+              onClick={() => act("move", picked.sessions, [])}
+            >
+              Move to…
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={
+                !online || !picked.sessions.some((item) => item.generation)
+              }
+              onClick={() => act("close", picked.sessions, [])}
+            >
+              Close
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!online || !selection.ids.size}
+              onClick={() => act("delete", picked.sessions, picked.spaces)}
+            >
+              Delete…
+            </Button>
+          </div>
+        </footer>
+      ) : (
+        <footer>
+          <ConnectionStatus phase={connection} className="connection small" />
+          <IconButton label="Refresh" onClick={refresh}>
+            <RefreshCw />
+          </IconButton>
+          <IconButton label="Settings" onClick={settings}>
+            <Settings />
+          </IconButton>
+        </footer>
+      )}
     </>
   );
 }

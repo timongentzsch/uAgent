@@ -128,6 +128,7 @@ test("the conversation menu is short and More holds the rest", async ({
   ).toBeVisible();
 });
 
+// Plus Select: a list row is what can be picked.
 test("a conversation's row menu has the same top level", async ({
   page,
   session,
@@ -141,5 +142,5 @@ test("a conversation's row menu has the same top level", async ({
   await row.getByRole("button", { name: "Conversation menu" }).click();
   await expect(
     page.getByRole("menu", { name: "Conversation menu" }).getByRole("menuitem"),
-  ).toHaveText(["Pin", "Rename", "Move to…", "More"]);
+  ).toHaveText(["Pin", "Rename", "Move to…", "Select", "More"]);
 });

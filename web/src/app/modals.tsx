@@ -5,6 +5,7 @@ import type {
   Session,
 } from "../shared/types.ts";
 import { folderOf } from "../shared/display.ts";
+import { plural } from "../shared/quantities.ts";
 import { maxSpaceNameChars } from "../shared/limits.ts";
 import { createContext, type ComponentProps } from "preact";
 import { useContext } from "preact/hooks";
@@ -21,6 +22,7 @@ import { BrowserLoading } from "../features/browser/frame.tsx";
 import Settings from "../features/settings/settings.tsx";
 import Statistics from "../features/chat/statistics.tsx";
 import ConversationActions from "../features/chat/conversation-actions.tsx";
+import DeleteMany from "../features/chat/delete-many.tsx";
 import MoveConversation from "../features/chat/move-conversation.tsx";
 import Inspector from "../features/chat/inspector.tsx";
 import Raw from "../features/chat/raw.tsx";
@@ -180,15 +182,48 @@ export default function Modals({
         </Modal>
       )}
       {modal?.type === "move" && (
-        <Modal title={`Move “${modal.session.title}”`} close={close}>
+        <Modal
+          title={
+            modal.sessions && modal.sessions.length > 1
+              ? `Move ${plural(modal.sessions.length, "conversation")}`
+              : `Move “${modal.session.title}”`
+          }
+          close={close}
+        >
           <MoveConversation
-            session={
-              sessionById(catalogue.sessions, modal.session.id) || modal.session
-            }
+            moving={(modal.sessions ?? [modal.session]).map(
+              (item) => sessionById(catalogue.sessions, item.id) || item,
+            )}
             sessions={catalogue.sessions}
             spaces={catalogue.spaces || []}
             online={online}
             close={close}
+          />
+        </Modal>
+      )}
+      {modal?.type === "delete-many" && (
+        <Modal
+          title={`Delete ${[
+            modal.spaces.length && plural(modal.spaces.length, "workspace"),
+            modal.sessions.length &&
+              plural(modal.sessions.length, "conversation"),
+          ]
+            .filter(Boolean)
+            .join(" and ")}?`}
+          close={close}
+        >
+          <DeleteMany
+            sessions={modal.sessions}
+            spaces={modal.spaces}
+            online={online}
+            close={close}
+            done={async (gone) => {
+              // A workspace takes its conversations with it.
+              for (const item of catalogue.sessions)
+                if (gone.includes(item.id) || gone.includes(folderOf(item)))
+                  forget(item.id);
+              await refresh();
+            }}
           />
         </Modal>
       )}

@@ -95,6 +95,7 @@ export function ConversationMenu({
   detail,
   children,
   more,
+  select,
 }: {
   item: Session;
   fork: (item: Session) => void;
@@ -114,6 +115,9 @@ export function ConversationMenu({
   // first under More.
   children?: ComponentChildren;
   more?: ComponentChildren;
+  // In the list: picks this row and starts picking more (a phone's way to
+  // ⌘-click).
+  select?: () => void;
 }) {
   const { online, load: loadSnapshot, report } = useHostContext();
   return (
@@ -137,6 +141,7 @@ export function ConversationMenu({
           Move to…
         </MenuItem>
       )}
+      {select && <MenuItem onClick={select}>Select</MenuItem>}
       <MenuSub label="More">
         {more}
         <MenuItem

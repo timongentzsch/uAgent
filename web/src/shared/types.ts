@@ -936,7 +936,9 @@ export type AppModal =
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
   | { type: "new"; place: "workspace" | "folder" }
-  | { type: "move"; session: Session }
+  // `sessions`: several moved at once, from the sidebar's selection.
+  | { type: "move"; session: Session; sessions?: Session[] }
+  | { type: "delete-many"; sessions: Session[]; spaces: Space[] }
   // section: a settings section to open on, e.g. from /permissions.
   | { type: "settings"; section?: string }
   | { type: "tools"; session_id: string };

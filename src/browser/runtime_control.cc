@@ -59,8 +59,9 @@ void Runtime::Emulate(const std::string& session) {
     }
   }
   // A size larger than the window is drawn smaller, to be seen whole.
-  input_scale_ = std::min({1.0, double(window_width_) / size->width,
-                           double(window_height_) / size->height});
+  input_scale_ =
+      std::min({1.0, static_cast<double>(window_width_) / size->width,
+                static_cast<double>(window_height_) / size->height});
   Call("Emulation.setDeviceMetricsOverride",
        {{"width", size->width},
         {"height", size->height},

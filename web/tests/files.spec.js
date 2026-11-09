@@ -561,3 +561,145 @@ test("a cited design folder opens its canvas at once, with Files already open", 
     .click();
   await expect(pane.locator(".canvas-page")).toHaveCount(2);
 });
+
+// Two decks whose covers share a name, beside the folder of files.
+async function decks(project) {
+  await folder(project);
+  for (const [deck, slides] of [
+    ["a", ["01-cover.html", "02-plan.html"]],
+    ["b", ["01-cover.html", "02-end.html"]],
+  ]) {
+    const dir = join(project, "decks", deck);
+    await mkdir(dir, { recursive: true });
+    for (const name of slides)
+      await writeFile(
+        join(dir, name),
+        `<!doctype html><title>${deck} ${name}</title><meta name="artboard" content="1920x1080 slide"><h1>${deck} ${name}</h1>`,
+      );
+  }
+}
+
+test("a cited name two files share asks which, even over another deck's canvas", async ({
+  page,
+  host,
+  request,
+}) => {
+  await decks(host.project);
+  const cited = await citing(
+    host,
+    request,
+    "Deck `decks/a/` and its cover `01-cover.html`.",
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  const transcript = page.locator(".transcript");
+  const pane = page.getByRole("region", { name: "Files" });
+  await transcript.locator(".file-ref", { hasText: "decks/a/" }).click();
+  await expect(pane.locator(".canvas-page")).toHaveCount(2);
+  await transcript.locator(".file-ref", { hasText: "01-cover.html" }).click();
+  // The matches, never a canvas or a blank page.
+  await expect(pane.locator(".canvas-page")).toHaveCount(0);
+  await expect(
+    pane.getByText("2 files are named 01-cover.html."),
+  ).toBeVisible();
+  const matches = pane.getByRole("listbox", { name: "Matching files" });
+  await expect(matches.getByRole("option")).toHaveCount(2);
+  await matches.getByRole("option", { name: /decks\/b/ }).click();
+  await expect(
+    pane
+      .frameLocator("iframe")
+      .getByRole("heading", { name: "b 01-cover.html" }),
+  ).toBeVisible();
+  // Back returns to the matches.
+  await pane.getByRole("button", { name: "Back to the matches" }).click();
+  await expect(matches.getByRole("option")).toHaveCount(2);
+});
+
+test("the tree's Canvas shows that folder's pages, never the last one's", async ({
+  page,
+  session,
+  host,
+}) => {
+  await decks(host.project);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Files");
+  const pane = page.getByRole("region", { name: "Files" });
+  const list = pane.getByRole("navigation", { name: "Folder" });
+  await list.getByRole("button", { name: "decks", exact: true }).click();
+  // Each deck's own canvas, its own slides.
+  for (const deck of ["a", "b"]) {
+    if (deck === "b")
+      await pane.getByRole("button", { name: "Back to the list" }).click();
+    await list.getByRole("button", { name: deck, exact: true }).click();
+    await list
+      .locator(`.tree-folder:has([data-path="decks/${deck}"])`)
+      .getByRole("button", { name: "Canvas" })
+      .click();
+    await expect(pane.locator(".canvas-name")).toHaveText([
+      `01 · ${deck} 01-cover.html`,
+      `02 · ${deck} ${deck === "a" ? "02-plan" : "02-end"}.html`,
+    ]);
+  }
+});
+
+test("closed and opened again, Files is where it was left", async ({
+  page,
+  host,
+  request,
+}) => {
+  await decks(host.project);
+  const cited = await citing(host, request, "See `decks/a/02-plan.html`.");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  await page
+    .locator(".transcript .file-ref", { hasText: "decks/a/02-plan.html" })
+    .click();
+  const pane = page.getByRole("region", { name: "Files" });
+  const slide = pane
+    .frameLocator("iframe")
+    .getByRole("heading", { name: "a 02-plan.html" });
+  await expect(slide).toBeVisible();
+  await pane.getByRole("button", { name: "Close files" }).click();
+  await expect(pane).toHaveCount(0);
+  await headerAction(page, "Files");
+  await expect(slide).toBeVisible();
+  // Its way back is kept too: up to its deck's canvas.
+  await pane.getByRole("button", { name: "Back to the canvas" }).click();
+  await expect(pane.locator(".canvas-page")).toHaveCount(2);
+});
+
+test("a cited folder that is not there says so, on the folder's top", async ({
+  page,
+  host,
+  request,
+}) => {
+  await decks(host.project);
+  const cited = await citing(host, request, "See `decks/gone/`.");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  await page
+    .locator(".transcript .file-ref", { hasText: "decks/gone/" })
+    .click();
+  const pane = page.getByRole("region", { name: "Files" });
+  await expect(
+    pane.getByText("decks/gone/ is not in this folder."),
+  ).toBeVisible();
+  await expect(pane.locator(".canvas-page")).toHaveCount(0);
+});
+
+test("a canvas stays open when the window narrows to a phone's sheet", async ({
+  page,
+  host,
+  request,
+}) => {
+  await decks(host.project);
+  const cited = await citing(host, request, "See `decks/a/`.");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  await page.locator(".transcript .file-ref", { hasText: "decks/a/" }).click();
+  await expect(page.locator(".canvas-page")).toHaveCount(2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const sheet = page.getByRole("dialog", { name: "Files" });
+  await expect(sheet.locator(".canvas-page")).toHaveCount(2);
+});

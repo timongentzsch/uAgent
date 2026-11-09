@@ -67,6 +67,7 @@ import Scheduled from "../features/scheduled/scheduled.tsx";
 import FolderOverview from "../features/overview/overview.tsx";
 import Pairing from "../features/pairing/pairing.tsx";
 import Files from "../features/files/files.tsx";
+import { START, cite, type Flow } from "../features/files/flow.ts";
 import { presenterDeck } from "../features/files/present.ts";
 import Spotlight, { ShortcutList } from "../features/search/spotlight.tsx";
 
@@ -118,18 +119,25 @@ function App() {
   const [drawer, setDrawer] = useState(false);
   // The conversation's files: beside the chat, or a sheet on a small screen.
   const [filesOpen, setFilesOpen] = useState(false);
-  // A file a message cites, to show there; `at` makes a repeat a new ask.
-  const [reveal, setReveal] = useState<(FileTarget & { at: number }) | null>(
-    null,
+  // Where each conversation's Files pane is, kept while it is closed or
+  // moves between the sheet and the docked pane (features/files/flow.ts).
+  const [flows, setFlows] = useState<Record<string, Flow>>({});
+  const setFlow = useCallback(
+    (id: string, update: (flow: Flow) => Flow) =>
+      setFlows((all) => ({ ...all, [id]: update(all[id] ?? START) })),
+    [],
   );
-  const openFile = useCallback((target: FileTarget) => {
-    setReveal({ ...target, at: Date.now() });
-    setFilesOpen(true);
-  }, []);
-  // Opened again from the header, the pane starts at its list.
-  useEffect(() => {
-    if (!filesOpen) setReveal(null);
-  }, [filesOpen]);
+  // A path cited in a conversation opens there, with a fresh history. The
+  // open conversation and its folder, as of this render.
+  const selectedRef = useRef("");
+  const folderRef = useRef("");
+  const openFile = useCallback(
+    (target: FileTarget, id = selectedRef.current) => {
+      setFlow(id, () => cite(target, folderRef.current));
+      setFilesOpen(true);
+    },
+    [setFlow],
+  );
   // The terminal under the chat.
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [modal, setModal] = useState<AppModal | null>(null);
@@ -222,11 +230,12 @@ function App() {
     },
     [setChosen],
   );
-  // A file cited in one conversation is no place in another's folder; one
-  // asked for in another conversation (from the Library) shows once it opens.
+  // A path asked for in another conversation (from the Library) opens there
+  // once it is the one shown.
   const revealNext = useRef<FileTarget | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on each conversation chosen
   useEffect(() => {
-    setReveal(revealNext.current && { ...revealNext.current, at: Date.now() });
+    if (revealNext.current) openFile(revealNext.current, selected);
     revealNext.current = null;
   }, [selected]);
   // Every event that changes a session changes its catalogue entry too, so
@@ -237,6 +246,8 @@ function App() {
     listedSession ? undefined : all[selected]?.metadata,
   );
   const session = listedSession || metadata;
+  selectedRef.current = selected;
+  folderRef.current = session ? folderOf(session) : "";
   // The list leaves out empty conversations but the open one, also behind
   // the Library or a terminal. Which one is open matters only while it is
   // empty, so choosing among the others does not filter the list again.
@@ -488,7 +499,8 @@ function App() {
       key={session.id}
       session={session}
       close={filesSheet ? undefined : () => setFilesOpen(false)}
-      reveal={reveal}
+      flow={flows[session.id] ?? START}
+      setFlow={(update) => setFlow(session.id, update)}
       addToChat={toChat}
       pictures={browserAvailable}
     />

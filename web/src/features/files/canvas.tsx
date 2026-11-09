@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { Presentation, Printer, TriangleAlert } from "lucide-preact";
+import {
+  ChevronDown,
+  FileOutput,
+  Presentation,
+  TriangleAlert,
+} from "lucide-preact";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
+import { saveLink } from "../../shared/share.ts";
 import { Button } from "../../shared/ui.tsx";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import {
@@ -246,15 +253,27 @@ export default function Canvas({
         <div class="canvas-deck-tools">
           <span class="small muted">{order.length} slides</span>
           {deckPdf && (
-            <a
-              class="file-button quiet icon-button"
-              href={`${deckPdf(placed[0].w, placed[0].h)}&download=1`}
-              download
-              aria-label="Download the deck as PDF"
-              title="PDF"
+            <Menu
+              label="Export"
+              trigger={
+                <>
+                  <FileOutput />
+                  Export
+                  <ChevronDown />
+                </>
+              }
             >
-              <Printer />
-            </a>
+              <MenuItem
+                onClick={() =>
+                  saveLink(
+                    `${deckPdf(placed[0].w, placed[0].h)}&download=1`,
+                    `${dir.split("/").pop() || "deck"}.pdf`,
+                  )
+                }
+              >
+                PDF, a page per slide
+              </MenuItem>
+            </Menu>
           )}
           {present && (
             <Button variant="primary" onClick={() => present(path(order[0]))}>

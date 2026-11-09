@@ -4,6 +4,7 @@
 
 ### Changes
 
+- **The browser is lighter.** Chrome keeps no earlier pages alive for Back and does not look for casting devices: after ten page visits it held 4 renderers and 333 MB instead of 10 and 446 MB. A research browser's Chrome stops when its conversation releases it instead of idling for 15 minutes. Watching streams about two-thirds fewer bytes while a page scrolls; driving keeps the sharper picture.
 - **The terminal panel is one row of tabs.** Each terminal is a tab naming its folder, with **+**, the menu and hide beside them, in place of a title row over a second row of tabs. Files no longer has its own terminal button; the header's opens the panel.
 - **The browser can draw pages at a laptop, desktop, tablet or phone size.** **Page size** in the browser's status menu applies Chrome's device mode to the agent's tabs, fitted into the window, so a mobile layout can be checked by you and the agent alike. While you only watch, your own pointer stays visible; Chrome's takes over when you drive.
 - **Files is an explorer tree.** Folders open in place with indent guides, as in VS Code's Explorer; the arrow keys walk the tree, the open folders are kept per folder, and a folder of pages offers its canvas on its row. An opened page zooms as the canvas does, from its controls or a pinch over the page.

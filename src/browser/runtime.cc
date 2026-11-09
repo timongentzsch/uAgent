@@ -360,9 +360,11 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   }
   // Manual profile setup uses ordinary Chrome, without a debugging endpoint.
   // Both modes own the same profile exclusively and restore its saved tabs.
-  const std::string no_downloads =
+  // Also no pages kept alive for Back (a renderer each, ~150 MB, measured
+  // on dev) and no casting devices looked for on the network.
+  const std::string disabled_features =
       "--disable-features=OptimizationGuideModelDownloading,"
-      "OptimizationHintsFetching";
+      "OptimizationHintsFetching,BackForwardCache,MediaRouter";
   std::vector<std::string> chrome = {
       "google-chrome-stable", "--user-data-dir=" + profile, "--no-first-run",
       "--no-default-browser-check",
@@ -377,7 +379,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
       "--hide-crash-restore-bubble",
       // Keep the profile small: no downloaded components or on-device
       // models (most of a 258 MB profile), and a bounded page cache.
-      "--disable-component-update", no_downloads, "--disk-cache-size=67108864",
+      "--disable-component-update", disabled_features, "--disk-cache-size=67108864",
       // A person's browser, not a test runner: the debugging pipe would
       // mark every page navigator.webdriver, and with no GPU Chrome offers
       // pages no WebGL. Sites read both as a bot and refuse the user's

@@ -131,6 +131,10 @@ The agent's `browser` tool and the viewer drive the same visible tab.
 - Chrome stops after 15 minutes without browser work, unless you control it
   or the agent waits for you, and starts again on the next action. Watching
   alone does not keep it running.
+  A research browser's Chrome stops as soon as its conversation releases it.
+- Chrome keeps no earlier pages alive for Back (Back reloads them) and does
+  not look for casting devices. Watching streams a lighter picture than
+  driving (JPEG quality level 4 instead of 6).
 
 ## Page size
 

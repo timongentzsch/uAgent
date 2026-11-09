@@ -468,6 +468,12 @@ TEST_CASE(TestBrowserParallelScheduling) {
                       {"element", 1},
                       {"view_id", "old"}})
             .contains("error"));
+  // A research browser's Chrome ends with its release: its next holder gets
+  // a fresh profile anyway.
+  CHECK(!broker.Execute({{"op", "release"}, {"session_id", kSessionC}})
+             .contains("error"));
+  CHECK(!broker.Execute({{"op", "status"}, {"instance_id", "1"}})
+             .value("running", true));
   // Capacity survives service restart; isolated browsing never touches the
   // shared persistent profile.
   CHECK(!fs::exists(directory / "profile"));

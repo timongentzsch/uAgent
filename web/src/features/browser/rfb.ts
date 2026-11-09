@@ -24,3 +24,10 @@ export function sendPointer(rfb: RFB, x: number, y: number, mask: number) {
   if (rfb.viewOnly || state !== "connected" || !sock) return;
   RFB.messages.pointerEvent(sock, Math.round(x), Math.round(y), mask);
 }
+
+// Watching takes a lighter picture (JPEG quality level 4 of noVNC's 0-9)
+// than driving (its default, 6): text to read, not to aim at.
+export function setViewOnly(rfb: RFB, viewOnly: boolean) {
+  rfb.viewOnly = viewOnly;
+  rfb.qualityLevel = viewOnly ? 4 : 6;
+}

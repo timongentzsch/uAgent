@@ -23,7 +23,7 @@ import {
 import { SheetButton } from "../../shared/sheet.tsx";
 import { ChevronDown, Keyboard } from "lucide-preact";
 import BrowserTouch from "./touch.tsx";
-import { hideTouchCursor, sendPointer } from "./rfb.ts";
+import { hideTouchCursor, sendPointer, setViewOnly } from "./rfb.ts";
 import { BrowserFrame, BrowserTools } from "./frame.tsx";
 import { useLatest } from "../../shared/use-latest.ts";
 import { KeyBar, keepFocus } from "../../shared/key-bar.tsx";
@@ -137,7 +137,7 @@ function Screen({
         `${scheme}//${location.host}${routes.browserViewer}${instance === "0" ? "" : `?instance=${instance}`}`,
       );
       let denied = false;
-      rfb.viewOnly = viewOnly.current;
+      setViewOnly(rfb, viewOnly.current);
       rfb.scaleViewport = true;
       rfb.resizeSession = false;
       rfb.clipViewport = false;
@@ -168,7 +168,7 @@ function Screen({
     };
   }, [instance, report, viewer, setConnection]);
   useEffect(() => {
-    if (viewer.current) viewer.current.viewOnly = readOnly;
+    if (viewer.current) setViewOnly(viewer.current, readOnly);
   }, [readOnly, viewer]);
   return (
     <BrowserTouch

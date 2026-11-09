@@ -530,3 +530,34 @@ test("the folder is a tree: folders open in place, by click or keys, and stay op
   await list.getByRole("button", { name: "Collapse all" }).click();
   await expect(list.getByRole("button", { name: "app.ts" })).toHaveCount(0);
 });
+
+test("a cited design folder opens its canvas at once, with Files already open", async ({
+  page,
+  host,
+  request,
+}) => {
+  await folder(host.project);
+  const landing = join(host.project, "design", "landing");
+  await mkdir(landing, { recursive: true });
+  for (const name of ["01-hero.html", "02-pricing.html"])
+    await writeFile(
+      join(landing, name),
+      `<!doctype html><title>${name}</title><meta name="artboard" content="1440x900"><p>${name}</p>`,
+    );
+  const cited = await citing(host, request, "See `design/landing/`.");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${cited.id}`);
+  // Files shows the folder's top: its listing is loaded, and is not the
+  // cited folder's.
+  await headerAction(page, "Files");
+  const pane = page.getByRole("region", { name: "Files" });
+  await expect(
+    pane
+      .getByRole("navigation", { name: "Folder" })
+      .getByRole("button", { name: "src" }),
+  ).toBeVisible();
+  await page
+    .locator(".transcript .file-ref", { hasText: "design/landing/" })
+    .click();
+  await expect(pane.locator(".canvas-page")).toHaveCount(2);
+});

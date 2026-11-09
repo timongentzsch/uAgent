@@ -250,8 +250,14 @@ export default function Files({
     preview.value &&
     `${pageAddress(preview.value.base, path)}?v=${versions[path] ?? 0}.${versions[""] ?? 0}`;
   const url = (path: string) => routes.files(id, "raw", path);
+  // Tagged with its folder: another folder's listing stays shown until this
+  // one answers, and must not be taken for it.
   const listing = useResource(
-    () => api<Listing>(routes.files(id, "list", dir)),
+    () =>
+      api<Listing>(routes.files(id, "list", dir)).then((value) => ({
+        ...value,
+        dir,
+      })),
     [id, dir, turn, written],
   );
   // The tree's top, read as the folder in context is.
@@ -434,7 +440,12 @@ export default function Files({
     .map((entry) => entry.name);
   // biome-ignore lint/correctness/useExhaustiveDependencies: once the listing answers
   useEffect(() => {
-    if (canvasFor === undefined || canvasFor !== dir || !listing.value) return;
+    if (
+      canvasFor === undefined ||
+      canvasFor !== dir ||
+      listing.value?.dir !== dir
+    )
+      return;
     navigate({ canvasFor: undefined });
     // Two pages or more are a canvas; one (a design system's book) is the
     // page itself.

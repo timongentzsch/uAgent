@@ -369,3 +369,6 @@ Add behavior at its owning boundary:
 Tests assert the externally meaningful contract at that boundary. Keep
 distinct safety, concurrency and platform cases, and avoid tests that only
 count implementation strings. [Testing](TESTING.md) documents the checks.
+
+See [State ownership](STATE_MACHINES.md) for the runtime and UI state-machine
+inventory, transition invariants, and refactoring decisions.

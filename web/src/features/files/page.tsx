@@ -1,14 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import {
-  Copy,
+  ChevronDown,
   ExternalLink,
-  FileText,
-  ImageDown,
+  FileOutput,
   PenLine,
   MousePointerClick,
   Pencil,
   Presentation,
-  Printer,
   SlidersHorizontal,
 } from "lucide-preact";
 import { Button, IconButton, Switch } from "../../shared/ui.tsx";
@@ -27,7 +25,8 @@ import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import type { ViewedImage } from "../../shared/attachments.tsx";
 import { presentChannel } from "./present.ts";
 import type { BlockEdit } from "./doc-edit.ts";
-import { downloadBlob } from "../../shared/share.ts";
+import { downloadBlob, saveLink } from "../../shared/share.ts";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { nameOf } from "../../shared/file-types.ts";
 
 // The zoom of an opened page, as a scale of its real size, and one step.
@@ -207,6 +206,8 @@ export default function OpenPage({
   // A new page fades in once it has drawn.
   const [arriving, setArriving] = useState(true);
   useEffect(() => setArriving(true), [src]);
+  // Its exports' name: the file's, without .html.
+  const stem = nameOf(path).replace(/\.html?$/i, "");
   // Its size as a picture: an artboard's, or a page's full height.
   const size = pageSize(info, 8000);
   const { fixed } = size;
@@ -346,74 +347,77 @@ export default function OpenPage({
           <Presentation />
         </IconButton>
         {picture && info && (
-          <>
-            <a
-              class="file-button quiet icon-button"
-              href={`${picture(size.w, size.h, 2)}&download=1`}
-              download
-              aria-label="Download as PNG"
-              title="PNG"
-            >
-              <ImageDown />
-            </a>
-            <IconButton
-              label="Copy as PNG"
-              onClick={() =>
-                navigator.clipboard.write([
-                  new ClipboardItem({
-                    "image/png": fetch(picture(size.w, size.h, 2)).then(
-                      (response) => response.blob(),
-                    ),
-                  }),
-                ])
-              }
-            >
-              <Copy />
-            </IconButton>
-            <IconButton
-              label="Draw on it"
-              onClick={() =>
-                view({
-                  src: picture(size.w, size.h, 1),
-                  name: `${path}.png`,
-                  edit: true,
-                })
-              }
-            >
-              <PenLine />
-            </IconButton>
-          </>
-        )}
-        {pdf ? (
-          <a
-            class="file-button quiet icon-button"
-            href={`${pdf}&download=1`}
-            download
-            aria-label="Download as PDF"
-            title="PDF"
-          >
-            <Printer />
-          </a>
-        ) : (
-          <a
-            class="file-button quiet icon-button"
-            href={`${src}#print`}
-            target="_blank"
-            rel="noopener"
-            aria-label="Print or save as PDF"
-            title="PDF"
-          >
-            <Printer />
-          </a>
-        )}
-        {info?.kind === "doc" && (
           <IconButton
-            label="Download as Markdown"
-            onClick={() => tell(frame.current, { type: "markdown" })}
+            label="Draw on it"
+            onClick={() =>
+              view({
+                src: picture(size.w, size.h, 1),
+                name: `${stem}.png`,
+                edit: true,
+              })
+            }
           >
-            <FileText />
+            <PenLine />
           </IconButton>
         )}
+        {/* The page in another format: what fits its kind. Its source is
+            Download in the pane's header. */}
+        <Menu
+          label="Export"
+          trigger={
+            <>
+              <FileOutput />
+              Export
+              <ChevronDown />
+            </>
+          }
+        >
+          {pdf ? (
+            <MenuItem
+              onClick={() => saveLink(`${pdf}&download=1`, `${stem}.pdf`)}
+            >
+              PDF
+            </MenuItem>
+          ) : (
+            <MenuItem
+              onClick={() => window.open(`${src}#print`, "_blank", "noopener")}
+            >
+              Print or save as PDF
+            </MenuItem>
+          )}
+          {picture && info && (
+            <>
+              <MenuItem
+                onClick={() =>
+                  saveLink(
+                    `${picture(size.w, size.h, 2)}&download=1`,
+                    `${stem}.png`,
+                  )
+                }
+              >
+                PNG image
+              </MenuItem>
+              <MenuItem
+                onClick={() =>
+                  navigator.clipboard.write([
+                    new ClipboardItem({
+                      "image/png": fetch(picture(size.w, size.h, 2)).then(
+                        (response) => response.blob(),
+                      ),
+                    }),
+                  ])
+                }
+              >
+                Copy as image
+              </MenuItem>
+            </>
+          )}
+          {info?.kind === "doc" && (
+            <MenuItem onClick={() => tell(frame.current, { type: "markdown" })}>
+              Markdown
+            </MenuItem>
+          )}
+        </Menu>
         <a
           class="file-button quiet icon-button"
           href={src}
@@ -481,7 +485,7 @@ export default function OpenPage({
                   else if (message.type === "markdown")
                     downloadBlob(
                       new Blob([message.text], { type: "text/markdown" }),
-                      `${nameOf(path).replace(/\.html?$/i, "")}.md`,
+                      `${stem}.md`,
                     );
                   else if (message.type === "hover") setHover(message.rect);
                   else if (message.type === "pick") setPicked(message);

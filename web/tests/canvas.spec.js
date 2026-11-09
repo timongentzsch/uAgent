@@ -311,17 +311,19 @@ test("a page opened: select and comment, tweaks, print", async ({
     /`design\/hero-a\.html` tweaks: variant stacked$/,
   );
 
-  // Pictures need the agent's browser, which this host has not.
-  await expect(
-    files.getByRole("link", { name: "Download as PNG" }),
-  ).toHaveCount(0);
+  // Export: pictures need the agent's browser, which this host has not, so
   // PDF opens the page alone, which prints itself.
-  await expect(
-    files.getByRole("link", { name: "Print or save as PDF" }),
-  ).toHaveAttribute(
-    "href",
+  await files.getByRole("button", { name: "Export" }).click();
+  await expect(app.getByRole("menuitem", { name: "PNG image" })).toHaveCount(0);
+  await expect(app.getByRole("menuitem", { name: "Markdown" })).toHaveCount(0);
+  const [alone] = await Promise.all([
+    app.waitForEvent("popup"),
+    app.getByRole("menuitem", { name: "Print or save as PDF" }).click(),
+  ]);
+  expect(alone.url()).toMatch(
     /\/preview\/[0-9a-f]{48}\/design\/hero-a\.html\?v=[\d.]+#print$/,
   );
+  await alone.close();
 });
 
 test("a design system's brand book is a page, and its themes are under Tweaks", async ({
@@ -377,9 +379,7 @@ test("a design system's brand book is a page, and its themes are under Tweaks", 
   await expect
     .poll(async () => (await across()).page)
     .toBeLessThanOrEqual((await across()).stage);
-  await expect(
-    files.getByRole("link", { name: "Print or save as PDF" }),
-  ).toBeVisible();
+  await expect(files.getByRole("button", { name: "Export" })).toBeVisible();
 
   await files.getByRole("button", { name: "Back to the list" }).click();
   await files.getByRole("button", { name: "landing", exact: true }).click();
@@ -717,7 +717,10 @@ test("a document is edited in place, saved to its file, and exports Markdown", a
   // Markdown, from the page itself.
   const [download] = await Promise.all([
     app.waitForEvent("download"),
-    files.getByRole("button", { name: "Download as Markdown" }).click(),
+    files
+      .getByRole("button", { name: "Export" })
+      .click()
+      .then(() => app.getByRole("menuitem", { name: "Markdown" }).click()),
   ]);
   expect(download.suggestedFilename()).toBe("memo.md");
   const { readFile } = await import("node:fs/promises");

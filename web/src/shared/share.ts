@@ -25,13 +25,18 @@ export function shareOrDownload(event: Event) {
   })();
 }
 
+// An address downloaded as a file named `name`.
+export function saveLink(href: string, name: string) {
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = name;
+  link.click();
+}
+
 // Bytes made in the page, downloaded as a file named `name`.
 export function downloadBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.click();
+  saveLink(url, name);
   // Some browsers start the download after click() returns.
   setTimeout(() => URL.revokeObjectURL(url), downloadRevokeMs);
 }

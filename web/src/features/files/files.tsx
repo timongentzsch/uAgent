@@ -587,7 +587,7 @@ export default function Files({
             download={nameOf(file)}
             onClick={shareOrDownload}
             aria-label={`Download ${nameOf(file)}`}
-            title="Download"
+            title={`Download ${nameOf(file)}`}
           >
             <Download />
           </a>

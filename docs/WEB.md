@@ -98,12 +98,14 @@ stays open for the next one. **Tweaks** tries the levers the page declares
 (colours, ranges, choices, switches) at once; **Keep** adds them as a line for
 the agent to write, **Reset** reloads the page. **Present** shows it over the
 whole app (full screen where the browser allows), the arrow keys, Space and
-Page Down stepping through the folder's pages; **End** or Esc stop. The
-printer saves it as a PDF, at its artboard's size or, for a document, on its
-paper: where the [agent's browser](BROWSER.md) runs it prints the PDF itself
-(it also draws the page as a PNG at twice its size, to download, copy or draw
-on in the image viewer, in a context of its own with no profile or cookies);
-elsewhere it opens the page alone to print. An opened page starts at its fit and zooms as the canvas does (−, +, Fit,
+Page Down stepping through the folder's pages; **End** or Esc stop.
+**Download** in the pane's header saves the page's HTML source; **Export**
+saves it in another format: a PDF, at its artboard's size or, for a document,
+on its paper, and where the [agent's browser](BROWSER.md) runs, a PNG at twice
+its size (or copied as an image); a doc also as Markdown. The agent's browser
+prints and draws in a context of its own with no profile or cookies; without
+it, PDF opens the page alone to print. **Draw on it** opens that picture
+straight in the image viewer's markup. An opened page starts at its fit and zooms as the canvas does (−, +, Fit,
 or ⌘/Ctrl with the wheel and a pinch, over the page too), scrolling once it
 is larger than the pane. A page that fails says so, and **Ask agent to fix** puts its errors in
 your message. A page the agent writes reloads as the write finishes. A folder

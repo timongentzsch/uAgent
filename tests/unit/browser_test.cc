@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <filesystem>
 #include <fstream>
@@ -605,6 +606,38 @@ TEST_CASE(TestBrowserHandBackOnClose) {
   runtime.StopIfIdle(std::chrono::minutes(0));
   CHECK(runtime.Execute({{"op", "status"}}).value("running", false));
   runtime.Shutdown();
+}
+
+// A page size the viewer chose is how Chrome draws every attached tab,
+// fitted into the window; the window's own size takes the override off.
+TEST_CASE(TestBrowserViewportPresets) {
+  FakeRuntime fake("viewport");
+  CHECK(fake.runtime.Execute({{"op", "viewport"}, {"viewport", "watch"}})
+            .value("error", "") == "unknown page size");
+  CHECK(fake.runtime.Execute({{"op", "viewport"}, {"viewport", "phone"}})
+            .value("viewport", "") == "phone");
+  CHECK(!fake.Act({{"op", "tabs"}}).contains("error"));
+  CHECK(fake.runtime.Execute({{"op", "viewport"}, {"viewport", ""}})
+            .value("viewport", "x")
+            .empty());
+  json emulated;
+  bool cleared = false;
+  std::ifstream log(fake.data / "profile" / "cdp.jsonl");
+  for (std::string line; std::getline(log, line);) {
+    const json command = json::parse(line);
+    const std::string method = command.value("method", "");
+    if (method == "Emulation.setDeviceMetricsOverride") {
+      emulated = command["params"];
+    }
+    cleared = cleared || method == "Emulation.clearDeviceMetricsOverride";
+  }
+  CHECK(emulated.value("width", 0) == 390);
+  CHECK(emulated.value("height", 0) == 844);
+  CHECK(emulated.value("mobile", false));
+  // The fake's window shows 800x600 of page: the phone is drawn at 600/844.
+  CHECK(std::abs(emulated.value("scale", 0.0) - 600.0 / 844) < 1e-9);
+  CHECK(cleared);
+  fake.runtime.Shutdown();
 }
 
 // Every attached page masks password fields before anything is drawn, and

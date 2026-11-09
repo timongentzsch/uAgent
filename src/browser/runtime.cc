@@ -642,6 +642,7 @@ bool Runtime::AttachPage(std::string target, std::string& error) {
   Call("Network.enable",
        {{"maxTotalBufferSize", 0}, {"maxResourceBufferSize", 0}},
        attached_session);
+  if (!viewport_.empty()) Emulate(attached_session);
   page_session_ = sessions_[target_] = std::move(attached_session);
   return true;
 }
@@ -661,6 +662,7 @@ json Runtime::Status(bool include_page) {
                  {"viewer", viewer_},
                  {"profile_id", selected_profile_},
                  {"profile_setup", profile_setup_},
+                 {"viewport", viewport_},
                  {"profiles", profiles},
                  {"generation", generation_},
                  {"display", display_}};

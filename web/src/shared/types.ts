@@ -779,6 +779,7 @@ export interface CommandInputs {
     name?: string;
     profile_id?: string;
     parallel_capacity?: number;
+    viewport?: string;
   };
   instructions: {
     action: string;

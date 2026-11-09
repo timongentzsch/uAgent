@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import type { FunctionComponent } from "preact";
 import {
   BookOpen,
@@ -11,7 +11,7 @@ import {
   Presentation,
   ScrollText,
 } from "lucide-preact";
-import { api, routes } from "../../state/api.ts";
+import { api, manage, routes } from "../../state/api.ts";
 import type {
   FileTarget,
   LibraryItem,
@@ -25,17 +25,22 @@ import {
   EmptyState,
   Input,
   LoadError,
+  Modal,
   Placeholder,
   Select,
   Time,
 } from "../../shared/ui.tsx";
 import { usePushDirection } from "../../shared/motion.ts";
-import { bytes } from "../../shared/quantities.ts";
+import { bytes, plural } from "../../shared/quantities.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { matches } from "../../shared/fuzzy.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import FolderLabel from "../../shared/folder-label.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
+import { useSelection } from "../../shared/selection.ts";
+import { RowCheck, SelectionBar } from "../../shared/selection-bar.tsx";
+import { useShortcuts } from "../../shared/shortcuts.ts";
+import DeleteMany, { deleteTitle } from "../../shared/delete-many.tsx";
 import ImportDialog from "./import.tsx";
 import LibraryDocument from "./document.tsx";
 import LibraryArtifact from "./artifact.tsx";
@@ -84,6 +89,19 @@ const NAME: Record<LibraryKind, string> = {
   memory: "memory",
   skill: "skill",
 };
+const NAMES: Partial<Record<LibraryKind, string>> = { memory: "memories" };
+// What deleting one of a kind removes.
+const GOES: Record<LibraryKind, string> = {
+  design: "deleted from the project, folder and all",
+  deck: "deleted from the project, folder and all",
+  system: "deleted from the project, folder and all",
+  doc: "deleted from the project",
+  file: "deleted",
+  memory: "forgotten",
+  skill: "forgotten; supporting files stay",
+};
+// An item's id in the selection: its place and key.
+const idOf = (item: LibraryItem) => `${item.place ?? ""}\n${item.key}`;
 // Every place's own, as a place filter; "*" is every place.
 const ALL = "*";
 // Rows drawn while the list loads (see <Placeholder>).
@@ -145,6 +163,8 @@ export default function Library({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Selection | null>(null);
   const [importing, setImporting] = useState<"memory" | "skill" | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const selection = useSelection();
   const moved = usePushDirection(!!selected);
   // Workspaces first, then folders, each by name, as the sidebar lists them.
   const places = [...(listing.value?.places ?? [])].sort(
@@ -177,6 +197,47 @@ export default function Library({
     path || (where !== ALL && where) || places[0]?.path || "";
   const fresh = (value: LibraryKind) =>
     setSelected({ new: value, where: where === ALL ? "" : where });
+  // Picking, as the sidebar picks: in the order the list shows.
+  const order = groups.flatMap(({ rows }) => rows.map(idOf));
+  const picked = items.filter((item) => selection.ids.has(idOf(item)));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on a new listing
+  useEffect(() => {
+    if (listing.value && selection.ids.size)
+      selection.keep(listing.value.items.map(idOf));
+  }, [listing.value]);
+  useShortcuts(
+    selection.selecting
+      ? {
+          "select-all": () => selection.all(order),
+          "delete-selected": picked.length
+            ? () => setDeleting(true)
+            : undefined,
+          deselect: selection.clear,
+        }
+      : {},
+  );
+  // Each the way its own pane deletes it; one already gone (a doc in a
+  // deck's folder) counts as gone.
+  const remove = (item: LibraryItem) =>
+    item.kind === "memory" || item.kind === "skill"
+      ? manage(control(item.kind), {
+          cwd: home(item.place),
+          action: "forget",
+          key: item.key,
+          revision: item.revision,
+        })
+      : api(routes.libraryDelete, {
+          kind: item.kind,
+          place: item.place,
+          key: item.key,
+          session: item.session,
+        }).catch((error) => {
+          if (error?.status !== 404) throw error;
+        });
+  const kinds = (Object.keys(NAME) as LibraryKind[]).flatMap((value) => {
+    const count = picked.filter((item) => item.kind === value).length;
+    return count ? [{ value, count }] : [];
+  });
   const placeLabel = (path: string) => {
     const place = placeOf(path);
     return path ? (
@@ -200,37 +261,50 @@ export default function Library({
       {rows.map((item) => {
         const Icon = ICON[item.kind ?? "memory"];
         return (
-          <ListRow
-            key={`${item.place}\n${item.key}`}
-            class="library-row entry"
-            aria-current={
-              (current?.key === item.key && current.place === item.place) ||
-              undefined
-            }
-            onClick={() =>
-              setSelected({ key: item.key, place: item.place ?? "" })
-            }
-            title={
-              <>
-                <Icon />
-                <DataText>{item.name}</DataText>
-              </>
-            }
-            meta={
-              <DataText>
-                {NAME[item.kind ?? "memory"]} · {detail(item)}
-                {item.status && item.status !== "available"
-                  ? ` · ${item.status}`
-                  : ""}
-              </DataText>
-            }
+          <div
+            key={idOf(item)}
+            class="library-item"
+            data-picked={selection.ids.has(idOf(item)) || undefined}
           >
-            {item.modified ? (
-              <small class="muted">
-                <Time value={item.modified} />
-              </small>
-            ) : null}
-          </ListRow>
+            {selection.selecting && (
+              <RowCheck
+                picked={selection.ids.has(idOf(item))}
+                label={`Select ${item.name}`}
+                toggle={() => selection.toggle(idOf(item))}
+              />
+            )}
+            <ListRow
+              class="library-row entry"
+              aria-current={
+                (current?.key === item.key && current.place === item.place) ||
+                undefined
+              }
+              onClick={(event) =>
+                selection.click(idOf(item), event, order) ||
+                setSelected({ key: item.key, place: item.place ?? "" })
+              }
+              title={
+                <>
+                  <Icon />
+                  <DataText>{item.name}</DataText>
+                </>
+              }
+              meta={
+                <DataText>
+                  {NAME[item.kind ?? "memory"]} · {detail(item)}
+                  {item.status && item.status !== "available"
+                    ? ` · ${item.status}`
+                    : ""}
+                </DataText>
+              }
+            >
+              {item.modified ? (
+                <small class="muted">
+                  <Time value={item.modified} />
+                </small>
+              ) : null}
+            </ListRow>
+          </div>
         );
       })}
     </section>
@@ -238,7 +312,19 @@ export default function Library({
   const count = (test: (item: LibraryItem) => boolean) =>
     found.filter(test).length;
   const document =
-    selected && "new" in selected ? (
+    picked.length > 0 ? (
+      <section class="library-summary" aria-label="Selection">
+        <h2>{`${picked.length} selected`}</h2>
+        <ul>
+          {kinds.map(({ value, count }) => (
+            <li key={value}>
+              <strong>{plural(count, NAME[value], NAMES[value])}</strong>
+              <span class="muted">{` · ${GOES[value]}`}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ) : selected && "new" in selected ? (
       <LibraryDocument
         key={`new-${selected.new}`}
         kind={control(selected.new)}
@@ -414,6 +500,17 @@ export default function Library({
           </div>
         </nav>
         <div class={moved ? "management-list push" : "management-list"}>
+          {selection.selecting && (
+            <SelectionBar selection={selection}>
+              <Button
+                variant="destructive"
+                disabled={!online || !picked.length}
+                onClick={() => setDeleting(true)}
+              >
+                Delete…
+              </Button>
+            </SelectionBar>
+          )}
           {listing.error ? (
             <LoadError error={listing.error} retry={listing.retry} />
           ) : !listing.value ? (
@@ -434,6 +531,31 @@ export default function Library({
           </div>
         )}
       </div>
+      {deleting && (
+        <Modal
+          title={deleteTitle(
+            kinds.map(({ value, count }) => [count, NAME[value], NAMES[value]]),
+          )}
+          close={() => setDeleting(false)}
+        >
+          <DeleteMany
+            entries={picked.map((item) => ({
+              key: idOf(item),
+              name: `${item.name} · ${NAME[item.kind ?? "memory"]}`,
+              remove: () => remove(item),
+            }))}
+            note={`${kinds
+              .map(
+                ({ value, count }) =>
+                  `${plural(count, NAME[value], NAMES[value])}: ${GOES[value]}`,
+              )
+              .join("; ")}. `}
+            online={online}
+            done={() => listing.retry()}
+            close={() => setDeleting(false)}
+          />
+        </Modal>
+      )}
       {importing && (
         <ImportDialog
           cwd={home()}

@@ -43,6 +43,8 @@ export const routes = {
     `/api/sessions/${session}/attachments?name=${encodeURIComponent(name)}`,
   // Everything the Library lists, from every place.
   library: "/api/library",
+  // Deletes one of its designs, decks, docs, design systems or shared files.
+  libraryDelete: "/api/library/delete",
   // Rows that contain q, in every conversation or, with a session, in one.
   search: (q: string, session?: string) =>
     `/api/search?q=${encodeURIComponent(q)}${session ? `&session=${session}` : ""}`,

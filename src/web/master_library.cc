@@ -196,4 +196,56 @@ void Master::Library(const Request&, Response& response) {
                    {"limits", std::move(library["limits"])}});
 }
 
+// Deletes one artifact the Library lists: a design's, deck's or design
+// system's folder, a doc's file, or a file shared in a conversation. Only
+// what the place's listing names now goes, and never a place itself.
+void Master::LibraryDelete(const Request& request, Response& response) {
+  const json body = json::parse(request.body, nullptr, false);
+  const std::string kind = JsonValue(body, "kind", "");
+  const std::string key = JsonValue(body, "key", "");
+  if (kind == "file") {
+    const std::string error =
+        host_.DeleteShared(JsonValue(body, "session", ""), key);
+    if (error.empty()) {
+      Reply(response, json::object());
+    } else {
+      Error(response, error, error == "not found" ? 404 : 500);
+    }
+    return;
+  }
+  const std::string place = JsonValue(body, "place", "");
+  const json catalogue = host_.Catalogue();
+  const auto names = [&](const char* list, const char* field) {
+    return std::ranges::any_of(catalogue[list], [&](const json& each) {
+      return JsonValue(each, field, "") == place;
+    });
+  };
+  json listed = json::array();
+  if (!place.empty() && (names("spaces", "path") || names("sessions", "cwd"))) {
+    AddDesigns(place, listed);
+  }
+  const auto found = std::ranges::find_if(listed, [&](const json& item) {
+    return JsonValue(item, "kind", "") == kind &&
+           JsonValue(item, "key", "") == key;
+  });
+  // A design at a place's root is the place: it stays.
+  const std::string path =
+      found == listed.end() ? "" : JsonValue(*found, "path", "");
+  if (path.empty()) {
+    Error(response, "not found", 404);
+    return;
+  }
+  std::error_code ec;
+  if (kind == "doc") {
+    fs::remove(fs::path(place) / path, ec);
+  } else {
+    fs::remove_all(fs::path(place) / path, ec);
+  }
+  if (ec) {
+    Error(response, "cannot delete: " + ec.message(), 500);
+    return;
+  }
+  Reply(response, json::object());
+}
+
 }  // namespace uagent::web::master

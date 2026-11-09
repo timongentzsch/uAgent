@@ -1,0 +1,20 @@
+.row-check {
+  flex: none;
+  margin-inline-start: var(--space-4);
+}
+/* The count and Clear, then the actions, on one line when there is room. */
+.selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.selection-bar > [role="toolbar"],
+.selection-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.selection-bar > [role="toolbar"] > strong {
+  flex: 1;
+}

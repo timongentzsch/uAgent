@@ -171,6 +171,33 @@
 .library-row .row-label > svg {
   flex: none;
 }
+/* A row and, while picking, its checkbox before it. */
+.library-item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.library-item > .list-row {
+  flex: 1;
+  min-width: 0;
+}
+.library .selection-bar {
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--gap);
+  border-bottom: var(--border);
+}
+/* What the picked hold, by kind, and what deleting does to each. */
+.library-summary h2 {
+  margin: 0 0 var(--gap);
+}
+.library-summary ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.library-summary li + li {
+  margin-top: var(--space-2);
+}
 .library-document {
   margin: 0;
   padding: 0;

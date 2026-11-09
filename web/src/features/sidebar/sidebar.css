@@ -231,26 +231,15 @@
 .place-head[data-picked] {
   box-shadow: none;
 }
-.row-check {
-  flex: none;
-  margin-inline-start: var(--space-4);
-}
-/* While something is picked the footer is its bar: the count and Clear,
-   then what can be done to all of them. */
-.sidebar .selection-bar {
+/* While something is picked the footer is its bar, its actions under the
+   count, each as wide. */
+.sidebar footer > .selection-bar {
+  flex: 1;
   flex-direction: column;
   align-items: stretch;
-  padding-inline: var(--space-2);
 }
-.selection-bar > [role="toolbar"],
-.selection-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.selection-bar > [role="toolbar"] > strong {
+.sidebar .selection-actions > * {
   flex: 1;
-}
-.selection-actions > * {
-  flex: 1;
+  font-size: var(--font-small);
+  white-space: nowrap;
 }

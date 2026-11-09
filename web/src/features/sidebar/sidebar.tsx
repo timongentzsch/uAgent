@@ -41,7 +41,7 @@ import { PinItem } from "./pins.tsx";
 import type { SelectionApi } from "../../shared/selection.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 import { useShortcuts } from "../../shared/shortcuts.ts";
-import { Input } from "../../shared/form-controls.tsx";
+import { RowCheck, SelectionBar } from "../../shared/selection-bar.tsx";
 import "./sidebar.css";
 
 // Before the catalogue arrives, the list draws these (see <Placeholder>).
@@ -214,12 +214,10 @@ function SessionRow({
   return (
     <div class="session-row entry" data-picked={picked || undefined}>
       {selecting && (
-        <Input
-          type="checkbox"
-          class="row-check"
-          checked={picked}
-          aria-label={`Select ${item.title || "Untitled"}`}
-          onChange={() => toggle(item.id)}
+        <RowCheck
+          picked={picked}
+          label={`Select ${item.title || "Untitled"}`}
+          toggle={() => toggle(item.id)}
         />
       )}
       <ListRow
@@ -502,12 +500,10 @@ function SidebarView({
           data-picked={selection.ids.has(cwd) || undefined}
         >
           {selection.selecting && space && (
-            <Input
-              type="checkbox"
-              class="row-check"
-              checked={selection.ids.has(cwd)}
-              aria-label={`Select the workspace ${name}`}
-              onChange={() => toggle(cwd)}
+            <RowCheck
+              picked={selection.ids.has(cwd)}
+              label={`Select the workspace ${name}`}
+              toggle={() => toggle(cwd)}
             />
           )}
           <IconButton
@@ -715,14 +711,8 @@ function SidebarView({
         </Placeholder>
       </nav>
       {selection.selecting ? (
-        <footer class="selection-bar">
-          <div role="toolbar" aria-label="Selection">
-            <strong aria-live="polite">{`${selection.ids.size} selected`}</strong>
-            <Button variant="secondary" onClick={() => selection.clear()}>
-              {selection.mode ? "Done" : "Clear"}
-            </Button>
-          </div>
-          <div class="selection-actions">
+        <footer>
+          <SelectionBar selection={selection}>
             <Button
               variant="secondary"
               disabled={
@@ -748,7 +738,7 @@ function SidebarView({
             >
               Delete…
             </Button>
-          </div>
+          </SelectionBar>
         </footer>
       ) : (
         <footer>

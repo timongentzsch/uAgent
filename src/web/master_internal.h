@@ -120,6 +120,7 @@ class Master {
   void Picture(const Request&, Response&, const std::filesystem::path& root);
   void Preview(const Request&, Response&);
   void Library(const Request&, Response&);
+  void LibraryDelete(const Request&, Response&);
 
   WebOptions options_;
   std::string executable_, directory_, local_, local_authority_, origin_,

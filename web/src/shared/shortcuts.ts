@@ -43,14 +43,14 @@ export const SHORTCUTS = [
   {
     id: "select-all",
     keys: "Mod+A",
-    label: "Select all conversations, while selecting",
+    label: "Select all, while selecting",
     global: true,
     outside: true,
   },
   {
     id: "delete-selected",
     keys: "Backspace",
-    label: "Delete the selected conversations",
+    label: "Delete the selected",
     global: true,
     outside: true,
   },

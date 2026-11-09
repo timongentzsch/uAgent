@@ -22,7 +22,8 @@ import { BrowserLoading } from "../features/browser/frame.tsx";
 import Settings from "../features/settings/settings.tsx";
 import Statistics from "../features/chat/statistics.tsx";
 import ConversationActions from "../features/chat/conversation-actions.tsx";
-import DeleteMany from "../features/chat/delete-many.tsx";
+import DeleteConversations from "../features/chat/delete-many.tsx";
+import { deleteTitle } from "../shared/delete-many.tsx";
 import MoveConversation from "../features/chat/move-conversation.tsx";
 import Inspector from "../features/chat/inspector.tsx";
 import Raw from "../features/chat/raw.tsx";
@@ -203,16 +204,13 @@ export default function Modals({
       )}
       {modal?.type === "delete-many" && (
         <Modal
-          title={`Delete ${[
-            modal.spaces.length && plural(modal.spaces.length, "workspace"),
-            modal.sessions.length &&
-              plural(modal.sessions.length, "conversation"),
-          ]
-            .filter(Boolean)
-            .join(" and ")}?`}
+          title={deleteTitle([
+            [modal.spaces.length, "workspace"],
+            [modal.sessions.length, "conversation"],
+          ])}
           close={close}
         >
-          <DeleteMany
+          <DeleteConversations
             sessions={modal.sessions}
             spaces={modal.spaces}
             online={online}

@@ -553,6 +553,10 @@ void Master::RegisterApiRoutes() {
               [this](const Request& request, Response& response) {
                 Library(request, response);
               });
+  server_.Post("/api/library/delete",
+               [this](const Request& request, Response& response) {
+                 LibraryDelete(request, response);
+               });
   server_.Get("/api/search",
               [this](const Request& request, Response& response) {
                 Search(request, response);

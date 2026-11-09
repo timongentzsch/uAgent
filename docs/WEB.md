@@ -129,8 +129,8 @@ unless you ask for Letter, Legal, A3, A5, landscape or a size in millimetres):
 as wide as its paper, with lines where print will start each page (an
 estimate; the PDF is exact). **Edit** lets you type in its headings,
 paragraphs, list items and table cells; each block is saved to the file as you
-leave it, unless the agent changed that block meanwhile. Download it as PDF or
-as Markdown. The Library lists decks and docs with designs.
+leave it, unless the agent changed that block meanwhile. **Export** gives it as
+PDF or Markdown. The Library lists decks and docs with designs.
 
 A design system's brand book is a page the agent writes beside its
 `tokens.css`, `book.html`: A4 pages art-directed in the system's own colours

@@ -16,6 +16,8 @@ export interface PageInfo {
   artboard: { w: number; h: number; slide?: boolean };
   // A slide of a deck, a document on paper, or any other design.
   kind?: "slide" | "doc" | "design";
+  // A slide's speaker notes.
+  notes?: string;
   tweaks: Record<string, unknown> | null;
   height: number;
   // Its stylesheets' addresses.

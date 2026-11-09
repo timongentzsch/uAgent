@@ -379,10 +379,111 @@
   border-top: var(--border);
   background: var(--bg);
 }
-/* Presented: the page alone, as large as it fits. */
-.page-stage:fullscreen {
-  padding: 0;
+/* Presented: the page alone over the whole app, as large as it fits, and
+   fullscreen where the browser allows. A slide's notes go under it on a
+   phone held upright, or wherever N shows them. */
+.page-stage[data-presenting] {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-present);
+  flex-direction: column;
   background: var(--bg);
+}
+.page-stage[data-presenting] .page-scroll {
+  padding: 0;
+}
+.page-holder {
+  transition: opacity var(--motion-slow) var(--ease-standard);
+}
+.page-holder[data-arriving] {
+  opacity: 0;
+}
+.page-notes {
+  margin: 0;
+  max-height: 40%;
+  overflow-y: auto;
+  padding: var(--space-6);
+  border-top: var(--border);
+  font-size: var(--font-title);
+  white-space: pre-line;
+}
+.page-present-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-top: var(--border);
+}
+.page-present-bar > :first-child {
+  flex: 1;
+}
+
+/* The presenter's window: now, then next and the notes beside it. */
+.presenter {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--bg);
+  color: var(--text);
+}
+.presenter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: var(--border);
+}
+.presenter-bar:last-child {
+  justify-content: flex-end;
+  border-top: var(--border);
+  border-bottom: 0;
+}
+.presenter-clock {
+  margin-left: auto;
+  font-size: var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+.presenter-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  padding: var(--space-6);
+}
+.presenter-now,
+.presenter-side {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.presenter-now {
+  justify-content: center;
+}
+.presenter-slide {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.presenter-side .presenter-slide {
+  flex: 0 0 30%;
+}
+.presenter-slide .page-frame {
+  outline: var(--border);
+}
+.presenter-notes {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow-y: auto;
+  font-size: var(--font-title);
+  white-space: pre-line;
+}
+.presenter-end {
+  flex: 0 0 30%;
+  margin: 0;
 }
 @container files (max-width: 40rem) {
   .page-body {
@@ -394,6 +495,17 @@
     border-left: 0;
     border-top: var(--border);
   }
+}
+/* A deck's own tools over its canvas. */
+.canvas-deck-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--border);
+}
+.canvas-deck-tools > :first-child {
+  flex: 1;
 }
 .canvas {
   position: relative;

@@ -23,6 +23,7 @@ import { bindZoomWheel } from "../../shared/zoom.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import type { ViewedImage } from "../../shared/attachments.tsx";
+import { presentChannel } from "./present.ts";
 
 // The zoom of an opened page, as a scale of its real size, and one step.
 const ZOOM_MIN = 0.1;
@@ -32,8 +33,9 @@ import { useResource } from "../../shared/use-resource.ts";
 
 // A page opened across the pane: a fixed artboard scaled to fit, a page at
 // the pane's own width. Select picks an element to comment on; Tweaks tries
-// the levers the page declares; Present shows it full screen, stepping
-// through its folder; Open and PDF show it alone in a tab.
+// the levers the page declares; Present shows it over the whole app (full
+// screen where the browser allows), stepping through its folder with a
+// slide's notes; Open and PDF show it alone in a tab.
 
 interface Tweak {
   editor?: string;
@@ -64,6 +66,9 @@ export default function OpenPage({
   read,
   picture,
   pdf,
+  presenter,
+  presentAtOpen,
+  presented,
   view,
 }: {
   path: string;
@@ -76,6 +81,12 @@ export default function OpenPage({
   picture?: (width: number, height: number, scale: number) => string;
   // The page printed as a PDF on its paper by the agent's browser.
   pdf?: string;
+  // Opens the presenter's view of a deck at a slide, in a window.
+  presenter?: (slides: string[], at: string) => void;
+  // Opened to present at once (the canvas's Present), which `presented`
+  // then clears.
+  presentAtOpen?: boolean;
+  presented?: () => void;
   // Opens a picture in the image viewer, which can draw on it.
   view: (image: ViewedImage) => void;
   // The pages of its folder in canvas order, which Present steps through.
@@ -111,20 +122,59 @@ export default function OpenPage({
     setHover(undefined);
     setValues({});
   }, [src]);
+  // Presenting: over the app, full screen where the browser allows, the
+  // notes shown on a phone held upright or with N. Leaving full screen (a
+  // presenter's window opening takes it away) keeps presenting; End or Esc
+  // stop.
+  const [presenting, setPresenting] = useState(false);
+  const [notesShown, setNotesShown] = useState(false);
+  const present = (on: boolean) => {
+    setPresenting(on);
+    setNotesShown(on && matchMedia("(orientation: portrait)").matches);
+    if (on) stage.current?.requestFullscreen?.().catch(() => {});
+    else if (document.fullscreenElement) document.exitFullscreen();
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, as opened
+  useEffect(() => {
+    if (!presentAtOpen) return;
+    present(true);
+    presented?.();
+  }, []);
+  // The presenter's window moves this one, and this one it.
+  const channel = useRef<BroadcastChannel>(undefined);
+  const follow = useLatest(
+    (at: unknown) =>
+      typeof at === "string" && at !== path && siblings.includes(at) && go(at),
+  );
+  // One channel for the page's life: a new one per render would miss what
+  // arrives while it is swapped.
+  useEffect(() => {
+    const opened = presentChannel();
+    opened.onmessage = (event) => follow.current(event.data?.at);
+    channel.current = opened;
+    return () => opened.close();
+  }, []);
   const step = (by: number) => {
     const at = siblings.indexOf(path);
     const next = siblings[(at + by + siblings.length) % siblings.length];
-    if (at >= 0 && next !== path) go(next);
+    if (at < 0 || next === path) return;
+    go(next);
+    channel.current?.postMessage({ at: next });
+  };
+  const presentKey = (key: string) => {
+    if (["ArrowRight", " ", "PageDown"].includes(key)) step(1);
+    if (["ArrowLeft", "PageUp"].includes(key)) step(-1);
+    if (key === "n" || key === "N") setNotesShown((shown) => !shown);
+    if (key === "Escape") present(false);
   };
   useEffect(() => {
-    const keys = (event: KeyboardEvent) => {
-      if (!document.fullscreenElement) return;
-      if (event.key === "ArrowRight") step(1);
-      if (event.key === "ArrowLeft") step(-1);
-    };
+    const keys = (event: KeyboardEvent) => presenting && presentKey(event.key);
     document.addEventListener("keydown", keys);
     return () => document.removeEventListener("keydown", keys);
   });
+  // A new page fades in once it has drawn.
+  const [arriving, setArriving] = useState(true);
+  useEffect(() => setArriving(true), [src]);
   // Its size as a picture: an artboard's, or a page's full height.
   const size = pageSize(info, 8000);
   const { fixed } = size;
@@ -241,14 +291,9 @@ export default function OpenPage({
             Tweaks
           </Button>
         )}
-        {document.fullscreenEnabled && (
-          <IconButton
-            label="Present"
-            onClick={() => stage.current?.requestFullscreen()}
-          >
-            <Presentation />
-          </IconButton>
-        )}
+        <IconButton label="Present" onClick={() => present(true)}>
+          <Presentation />
+        </IconButton>
         {picture && info && (
           <>
             <a
@@ -327,10 +372,12 @@ export default function OpenPage({
           ref={stage}
           data-fixed={fixed || undefined}
           data-wide={(wide && !fixed) || undefined}
+          data-presenting={presenting || undefined}
         >
           <div class="page-scroll" ref={scroller}>
             <div
               class="page-holder"
+              data-arriving={arriving || undefined}
               style={
                 wide
                   ? {
@@ -353,6 +400,7 @@ export default function OpenPage({
                 onMessage={(message) => {
                   if (message.type === "ready") {
                     setSaid({ ...message, src });
+                    setArriving(false);
                     if (selecting)
                       tell(frame.current, { type: "select", on: true });
                   } else if (message.type === "zoom") {
@@ -371,13 +419,9 @@ export default function OpenPage({
                   else if (message.type === "pick") setPicked(message);
                   else if (message.type === "picked")
                     setPicked((was) => was && { ...was, rect: message.rect });
-                  else if (
-                    message.type === "key" &&
-                    document.fullscreenElement
-                  ) {
-                    if (message.key === "ArrowRight") step(1);
-                    if (message.key === "ArrowLeft") step(-1);
-                  } else if (message.type === "key" && message.key === "Escape")
+                  else if (message.type === "key" && presenting)
+                    presentKey(message.key);
+                  else if (message.type === "key" && message.key === "Escape")
                     select(false);
                 }}
               />
@@ -385,7 +429,43 @@ export default function OpenPage({
               {picked && mark(picked.rect, "picked")}
             </div>
           </div>
-          {wide && (
+          {presenting && notesShown && info?.notes && (
+            <p class="page-notes">{info.notes}</p>
+          )}
+          {presenting && (
+            <div class="page-present-bar">
+              <span class="small muted">
+                {siblings.indexOf(path) + 1} / {siblings.length}
+              </span>
+              {info?.notes && (
+                <Button
+                  variant="secondary"
+                  aria-pressed={notesShown}
+                  onClick={() => setNotesShown(!notesShown)}
+                >
+                  Notes
+                </Button>
+              )}
+              {presenter && info?.kind === "slide" && (
+                <Button
+                  variant="secondary"
+                  onClick={() => presenter(siblings, path)}
+                >
+                  Presenter view
+                </Button>
+              )}
+              <Button variant="secondary" onClick={() => step(-1)}>
+                Back
+              </Button>
+              <Button variant="primary" onClick={() => step(1)}>
+                Next
+              </Button>
+              <Button variant="secondary" onClick={() => present(false)}>
+                End
+              </Button>
+            </div>
+          )}
+          {wide && !presenting && (
             <ZoomControls
               percent={Math.round(scale * 100)}
               out={() => middle(1 / ZOOM_STEP)}

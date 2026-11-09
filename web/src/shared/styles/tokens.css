@@ -165,6 +165,7 @@
        over everything. */
     --z-popover: 5;
     --z-toast: 10;
+    --z-present: 15; /* a page presented over the whole app */
     --z-skip-link: 20;
     /* Dialog widths (Modal's size): a few actions, a form, a document or
        list, the browser; and a panel's height. */

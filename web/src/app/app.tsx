@@ -67,10 +67,12 @@ import Scheduled from "../features/scheduled/scheduled.tsx";
 import FolderOverview from "../features/overview/overview.tsx";
 import Pairing from "../features/pairing/pairing.tsx";
 import Files from "../features/files/files.tsx";
+import { presenterDeck } from "../features/files/present.ts";
 import Spotlight, { ShortcutList } from "../features/search/spotlight.tsx";
 
 // The terminal's code (xterm.js) is fetched the first time it opens.
 const terminalPanel = () => import("../features/terminal/terminal.tsx");
+const presenterView = () => import("../features/files/presenter.tsx");
 const folderTerminal = () =>
   import("../features/terminal/terminal.tsx").then((module) => ({
     default: module.FolderTerminal,
@@ -883,9 +885,19 @@ function App() {
 }
 lockPageZoom();
 applyDevicePrefs();
+// A presenter's window shows the deck's presenter view, not the app.
+const presenting = presenterDeck();
 render(
   <ErrorBoundary>
-    <App />
+    {presenting ? (
+      <Deferred
+        load={presenterView}
+        fallback={<Spinner label="Opening the presenter view…" />}
+        deck={presenting}
+      />
+    ) : (
+      <App />
+    )}
   </ErrorBoundary>,
   document.getElementById("app")!,
 );

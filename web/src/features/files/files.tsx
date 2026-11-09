@@ -42,6 +42,7 @@ import Canvas, { rows } from "./canvas.tsx";
 import FileTree from "./tree.tsx";
 import { pageAddress, usePreviewBase } from "../../shared/page-frame.tsx";
 import OpenPage from "./page.tsx";
+import { openPresenter } from "./present.ts";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
@@ -228,6 +229,8 @@ export default function Files({
       if (!next.delete(path)) next.add(path);
       return next;
     });
+  // The canvas's Present: the slide it opens starts presenting.
+  const [presentNext, setPresentNext] = useState(false);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   // With nothing open, the list is what shows, whatever was shown last.
@@ -617,6 +620,11 @@ export default function Files({
                   : undefined
               }
               pdf={pictures ? routes.files(id, "pdf", file) : undefined}
+              presenter={(slides, at) =>
+                openPresenter({ session: id, slides, at })
+              }
+              presentAtOpen={presentNext}
+              presented={() => setPresentNext(false)}
               view={view}
               read={(path) =>
                 api<FileText>(routes.files(id, "read", path)).then(
@@ -631,6 +639,16 @@ export default function Files({
               page={(path) => pageUrl(path)!}
               open={open}
               addToChat={addToChat}
+              present={(path) => {
+                setPresentNext(true);
+                open(path);
+              }}
+              deckPdf={
+                pictures
+                  ? (w, h) =>
+                      `${routes.files(id, "pdf", `${dir}/`)}&w=${w}&h=${h}`
+                  : undefined
+              }
             />
           )}
         </div>

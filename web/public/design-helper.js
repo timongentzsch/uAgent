@@ -55,10 +55,16 @@
     else if (/^[a-z][a-z0-9-]{0,31}$/.test(name))
       root.dataset[name] = String(value);
   };
+  // A slide's speaker notes: its last <aside>, never drawn.
+  const notes = () =>
+    artboard().slide
+      ? [...document.querySelectorAll("body > aside")].pop() || null
+      : null;
   addEventListener("DOMContentLoaded", () => {
     for (const [name, spec] of Object.entries(tweaks() || {}))
       if (!name.startsWith("--") && spec && "default" in spec)
         tweak(name, spec.default);
+    notes()?.style.setProperty("display", "none", "important");
   });
 
   // A file the page links that did not load.
@@ -140,13 +146,9 @@
   const problems = () => {
     const found = missing.map((url) => `${url} did not load`);
     const { w, h, slide } = artboard();
-    if (w && root.scrollWidth > w + 1)
+    if (w && h && (root.scrollWidth > w + 1 || root.scrollHeight > h + 1))
       found.push(
-        `the page is ${root.scrollWidth}px wide, wider than its ${w}px artboard`,
-      );
-    if (w && h && root.scrollHeight > h + 1)
-      found.push(
-        `the page is ${root.scrollHeight}px tall, taller than its ${w}x${h} artboard: make it fit, or for a page that scrolls give the artboard only its width (content="${w}")`,
+        `the page is ${root.scrollWidth}x${root.scrollHeight}, larger than its ${w}x${h} artboard: make it fit, or for a page that scrolls give the artboard only its width (content="${w}")`,
       );
     document.querySelectorAll("body > section").forEach((page, at) => {
       if (page.scrollHeight > page.clientHeight + 1)
@@ -209,6 +211,7 @@
       title: document.title,
       artboard: artboard(),
       kind: kind(),
+      notes: notes()?.textContent.trim() || "",
       tweaks: tweaks(),
       height: height(),
       // Where its stylesheets are, so the app can read a design system's.

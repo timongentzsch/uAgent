@@ -616,5 +616,70 @@ test("a slide with text over text and a document block taller than a page say so
   await expect(draft).toHaveValue(
     /`design\/checks\/memo\.html` threw: a figure is 1000px tall, more than a page \(794px\)/,
   );
-  await expect(draft).not.toHaveValue(/wider than its/);
+});
+
+test("a deck lies in slide order, presents with its notes, and the presenter's window follows", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const dir = join(host.project, "decks", "talk");
+  await mkdir(dir, { recursive: true });
+  const slide = (title, notes) =>
+    page(
+      title,
+      `<h1>${title}</h1>${notes ? `<aside>${notes}</aside>` : ""}`,
+      "1920x1080 slide",
+    );
+  await writeFile(join(dir, "01-cover.html"), slide("Cover", "Say hello."));
+  await writeFile(join(dir, "02-plan.html"), slide("Plan", "Three steps."));
+  await writeFile(join(dir, "10-end.html"), slide("End"));
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "decks", exact: true }).click();
+  await files.getByRole("button", { name: "talk", exact: true }).click();
+  await files.getByRole("button", { name: "Canvas" }).click();
+  await expect(files.getByText("3 slides")).toBeVisible();
+  await expect(files.locator(".canvas-name")).toHaveText([
+    "01 · Cover",
+    "02 · Plan",
+    "03 · End",
+  ]);
+
+  await files.getByRole("button", { name: "Present" }).click();
+  const stage = files.locator(".page-stage[data-presenting]");
+  await expect(stage).toBeVisible();
+  await expect(stage.getByText("1 / 3")).toBeVisible();
+  // The notes are the presenter's, never drawn on the slide.
+  const slideFrame = stage.frameLocator("iframe");
+  await expect(
+    slideFrame.getByRole("heading", { name: "Cover" }),
+  ).toBeVisible();
+  await expect(slideFrame.getByText("Say hello.")).toBeHidden();
+  await app.keyboard.press("n");
+  await expect(stage.locator(".page-notes")).toHaveText("Say hello.");
+  await app.keyboard.press("ArrowRight");
+  await expect(stage.getByText("2 / 3")).toBeVisible();
+  await expect(stage.locator(".page-notes")).toHaveText("Three steps.");
+
+  // The presenter's window: now, next and the notes; its keys move the deck.
+  const [presenter] = await Promise.all([
+    app.waitForEvent("popup"),
+    stage.getByRole("button", { name: "Presenter view" }).click(),
+  ]);
+  const view = presenter.getByRole("main", { name: "Presenter view" });
+  await expect(view.getByText("Slide 2 of 3")).toBeVisible();
+  await expect(view.locator(".presenter-notes")).toHaveText("Three steps.");
+  await presenter.keyboard.press("ArrowRight");
+  await expect(view.getByText("Slide 3 of 3")).toBeVisible();
+  await expect(view.getByText("End of the deck")).toBeVisible();
+  await expect(stage.getByText("3 / 3")).toBeVisible();
+  await stage.getByRole("button", { name: "Back" }).click();
+  await expect(view.getByText("Slide 2 of 3")).toBeVisible();
+  await presenter.close();
+
+  await stage.getByRole("button", { name: "End" }).click();
+  await expect(files.locator(".page-stage[data-presenting]")).toHaveCount(0);
 });

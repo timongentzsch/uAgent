@@ -658,6 +658,40 @@ TEST_CASE(TestBrowserViewportPresets) {
   fake.runtime.Shutdown();
 }
 
+// A preview page is drawn as a PNG at a size, or printed as a PDF on its
+// own paper, in a throwaway context; any other address is refused.
+TEST_CASE(TestBrowserCapturePngAndPdf) {
+  FakeRuntime fake("capture");
+  const std::string page = "http://127.0.0.1:1/preview/token/docs/memo.html";
+  CHECK(
+      fake.runtime.Execute({{"op", "capture"}, {"url", "https://example.com/"}})
+          .value("error", "") == "capture takes a preview address");
+  CHECK(fake.runtime
+            .Execute({{"op", "capture"},
+                      {"url", page},
+                      {"width", 794},
+                      {"height", 1123}})
+            .value("png", "") == "c2hvdA==");
+  const json printed = fake.runtime.Execute({{"op", "capture"},
+                                             {"url", page + "#paper"},
+                                             {"width", 794},
+                                             {"height", 1123},
+                                             {"pdf", true}});
+  CHECK(printed.value("pdf", "") == "JVBERg==");
+  CHECK(!printed.contains("png"));
+  json options;
+  std::ifstream log(fake.data / "profile" / "cdp.jsonl");
+  for (std::string line; std::getline(log, line);) {
+    const json command = json::parse(line);
+    if (command.value("method", "") == "Page.printToPDF") {
+      options = command["params"];
+    }
+  }
+  CHECK(options.value("preferCSSPageSize", false));
+  CHECK(options.value("printBackground", false));
+  fake.runtime.Shutdown();
+}
+
 // Every attached page masks password fields before anything is drawn, and
 // back refuses a history entry the agent could not open by URL.
 TEST_CASE(TestBrowserSecretMaskAndBack) {

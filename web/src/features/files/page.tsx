@@ -63,6 +63,7 @@ export default function OpenPage({
   base,
   read,
   picture,
+  pdf,
   view,
 }: {
   path: string;
@@ -73,6 +74,8 @@ export default function OpenPage({
   read: (path: string) => Promise<string>;
   // The page drawn as a PNG by the agent's browser, where there is one.
   picture?: (width: number, height: number, scale: number) => string;
+  // The page printed as a PDF on its paper by the agent's browser.
+  pdf?: string;
   // Opens a picture in the image viewer, which can draw on it.
   view: (image: ViewedImage) => void;
   // The pages of its folder in canvas order, which Present steps through.
@@ -285,16 +288,28 @@ export default function OpenPage({
             </IconButton>
           </>
         )}
-        <a
-          class="file-button quiet icon-button"
-          href={`${src}#print`}
-          target="_blank"
-          rel="noopener"
-          aria-label="Print or save as PDF"
-          title="PDF"
-        >
-          <Printer />
-        </a>
+        {pdf ? (
+          <a
+            class="file-button quiet icon-button"
+            href={`${pdf}&download=1`}
+            download
+            aria-label="Download as PDF"
+            title="PDF"
+          >
+            <Printer />
+          </a>
+        ) : (
+          <a
+            class="file-button quiet icon-button"
+            href={`${src}#print`}
+            target="_blank"
+            rel="noopener"
+            aria-label="Print or save as PDF"
+            title="PDF"
+          >
+            <Printer />
+          </a>
+        )}
         <a
           class="file-button quiet icon-button"
           href={src}

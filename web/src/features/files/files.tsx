@@ -616,6 +616,7 @@ export default function Files({
                       `${routes.files(id, "png", file)}&w=${w}&h=${h}&scale=${scale}`
                   : undefined
               }
+              pdf={pictures ? routes.files(id, "pdf", file) : undefined}
               view={view}
               read={(path) =>
                 api<FileText>(routes.files(id, "read", path)).then(

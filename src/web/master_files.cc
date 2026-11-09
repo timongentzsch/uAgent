@@ -303,6 +303,41 @@ std::string PreviewPolicy(const std::string& origin, const std::string& base) {
          origin;
 }
 
+// A whole-number query parameter, kept within [low, high].
+int ParamNumber(const Request& request, const char* name, int fallback, int low,
+                int high) {
+  const std::string text = request.get_param_value(name);
+  int value = fallback;
+  std::from_chars(text.data(), text.data() + text.size(), value);
+  return std::clamp(value, low, high);
+}
+
+// A deck's slides, one sheet each, for printing to one PDF. It is made here
+// from the folder's file names alone, so it runs unsandboxed: each slide
+// keeps its own sandbox in its frame, and its frame-ancestors let this page
+// hold it.
+std::string DeckPage(const fs::path& folder, int width, int height) {
+  std::vector<std::string> slides;
+  std::error_code error;
+  for (const auto& entry : fs::directory_iterator(folder, error)) {
+    if (entry.is_regular_file(error) && entry.path().extension() == ".html") {
+      slides.push_back(entry.path().filename().string());
+    }
+  }
+  std::ranges::sort(slides);
+  const std::string size =
+      std::to_string(width) + "px " + std::to_string(height) + "px";
+  std::string page =
+      "<!doctype html><meta charset=\"utf-8\"><style>@page{size:" + size +
+      ";margin:0}html,body{margin:0}iframe{display:block;border:0;width:" +
+      std::to_string(width) + "px;height:" + std::to_string(height) +
+      "px;break-after:page}</style>";
+  for (const std::string& slide : slides) {
+    page += "<iframe src=\"" + PercentEncode(slide) + "\"></iframe>";
+  }
+  return page;
+}
+
 // `script` inlined first in the page: after its doctype, so the page keeps
 // standards mode, and the parser puts it first in <head>.
 std::string WithScript(std::string html, const std::string& script) {
@@ -330,9 +365,10 @@ void Master::Files(const Request& request, Response& response) {
   const int modes = request.has_param("list") + request.has_param("read") +
                     request.has_param("raw") + request.has_param("find") +
                     request.has_param("changes") + request.has_param("diff") +
-                    request.has_param("png");
+                    request.has_param("png") + request.has_param("pdf");
   if (modes != 1) {
-    Error(response, "name one of list, read, raw, find, changes, diff or png");
+    Error(response,
+          "name one of list, read, raw, find, changes, diff, png or pdf");
     return;
   }
   std::optional<fs::path> root = CanonicalDirectory(folder);
@@ -364,7 +400,7 @@ void Master::Files(const Request& request, Response& response) {
     Reply(response, *diff);
     return;
   }
-  if (request.has_param("png")) {
+  if (request.has_param("png") || request.has_param("pdf")) {
     Picture(request, response, *root);
     return;
   }
@@ -451,8 +487,21 @@ void Master::Preview(const Request& request, Response& response) {
       !root || relative.find('\0') != std::string::npos
           ? std::nullopt
           : Resolve(*root, relative);
-  const std::string mime = target ? PreviewMime(*target) : std::string();
   const std::string* origin = ExpectedOrigin(request);
+  if (target && origin && request.has_param("deck") &&
+      fs::is_directory(*target)) {
+    response.headers.erase("Content-Security-Policy");
+    response.set_header("Content-Security-Policy",
+                        "default-src " + *origin + "/preview/" + token +
+                            "/; style-src 'unsafe-inline'; frame-ancestors "
+                            "'none'");
+    response.set_content(
+        DeckPage(*target, ParamNumber(request, "w", 1920, 1, 8000),
+                 ParamNumber(request, "h", 1080, 1, 8000)),
+        "text/html; charset=utf-8");
+    return;
+  }
+  const std::string mime = target ? PreviewMime(*target) : std::string();
   std::string bytes, error;
   if (!target || mime.empty() || !origin ||
       !ReadRegularFile(target->string(), kUploadBytes, bytes, error)) {
@@ -471,15 +520,17 @@ void Master::Preview(const Request& request, Response& response) {
                        mime == "text/html" ? "text/html; charset=utf-8" : mime);
 }
 
-// A page drawn by the agent's Chrome at its artboard's size, as a PNG: the
-// browser opens the page's preview address on this host's loopback, in a
-// throwaway context of its own.
+// A page drawn by the agent's Chrome in a throwaway context of its own, on
+// this host's loopback: a PNG at the artboard's size, or a PDF on the page's
+// paper. A folder's PDF is its deck, every slide a sheet.
 void Master::Picture(const Request& request, Response& response,
                      const fs::path& root) {
-  const std::string path = request.get_param_value("png");
+  const bool pdf = request.has_param("pdf");
+  const std::string path = request.get_param_value(pdf ? "pdf" : "png");
   const std::optional<fs::path> target = Resolve(root, path);
   const std::string base = PreviewBase(request.matches[1].str());
-  if (!target || !fs::is_regular_file(*target) || base.empty()) {
+  const bool deck = pdf && target && fs::is_directory(*target);
+  if (!target || !(deck || fs::is_regular_file(*target)) || base.empty()) {
     Error(response, "not found", 404);
     return;
   }
@@ -487,29 +538,35 @@ void Master::Picture(const Request& request, Response& response,
     Error(response, "the agent's browser is not set up on this host", 503);
     return;
   }
-  const std::string url = local_ + base + PercentEncode(path, "/");
-  const auto number = [&](const char* name, int fallback) {
-    const std::string text = request.get_param_value(name);
-    int value = fallback;
-    std::from_chars(text.data(), text.data() + text.size(), value);
-    return value;
-  };
-  const json result = browser::Request({{"op", "capture"},
-                                        {"instance_id", "0"},
-                                        {"url", url},
-                                        {"width", number("w", 1440)},
-                                        {"height", number("h", 900)},
-                                        {"scale", number("scale", 1)}},
-                                       browser::kActionMs);
+  const int width = ParamNumber(request, "w", deck ? 1920 : 1440, 1, 8000);
+  const int height = ParamNumber(request, "h", deck ? 1080 : 900, 1, 8000);
+  std::string url = local_ + base + PercentEncode(path, "/");
+  if (deck) {
+    url += (url.ends_with("/") ? "?deck&w=" : "/?deck&w=") +
+           std::to_string(width) + "&h=" + std::to_string(height);
+  } else if (pdf) {
+    url += "#paper";
+  }
+  const json result =
+      browser::Request({{"op", "capture"},
+                        {"instance_id", "0"},
+                        {"url", url},
+                        {"width", width},
+                        {"height", height},
+                        {"scale", ParamNumber(request, "scale", 1, 1, 2)},
+                        {"pdf", pdf}},
+                       browser::kActionMs);
+  const char* kind = pdf ? "pdf" : "png";
   std::string bytes;
-  if (!result.contains("png") ||
-      !Base64Decode(JsonValue(result, "png", ""), bytes, kUploadBytes)) {
-    Error(response, JsonValue(result, "error", "the browser drew no picture"),
+  if (!result.contains(kind) ||
+      !Base64Decode(JsonValue(result, kind, ""), bytes, kUploadBytes)) {
+    Error(response, JsonValue(result, "error", "the browser drew nothing"),
           502);
     return;
   }
-  ServeFile(response, std::move(bytes), "image/png",
-            target->stem().string() + ".png", !request.has_param("download"));
+  ServeFile(response, std::move(bytes), pdf ? "application/pdf" : "image/png",
+            (deck ? target->filename() : target->stem()).string() + "." + kind,
+            !request.has_param("download"));
 }
 
 }  // namespace uagent::web::master

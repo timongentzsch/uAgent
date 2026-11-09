@@ -79,11 +79,29 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
                 f"/api/sessions/{session['id']}/files?list=", headers={"Origin": "null"}
             )
             assert_true(status == 403, (status, body))
-            # A picture needs the agent's browser, which this host has not.
-            status, body, _ = client.request(
-                f"/api/sessions/{session['id']}/files?png=design/hero-a.html&w=390&h=844"
+            # A deck prints through a page made from the folder's file names:
+            # each slide framed, one sheet each, the slides keeping their own
+            # sandbox; the page itself runs none of the folder's content.
+            (project / 'design/02 "b".html').write_text("<p>b</p>")
+            status, deck, headers = page("design/?deck&w=1440&h=99999")
+            assert_true(status == 200, (status, deck))
+            assert_true(b"@page{size:1440px 8000px;margin:0}" in deck, deck[:200])
+            assert_true(
+                deck.index(b'<iframe src="02%20%22b%22.html">')
+                < deck.index(b'<iframe src="hero-a.html">'),
+                deck,
             )
-            assert_true(status == 503, (status, body))
+            policy = headers["Content-Security-Policy"]
+            assert_true("sandbox" not in policy and "frame-ancestors 'none'" in policy, policy)
+            assert_true(b"uagentDesign" not in deck, deck[:200])
+            # A picture or a PDF needs the agent's browser, which this host has not.
+            for asked in (
+                "png=design/hero-a.html&w=390&h=844",
+                "pdf=design/hero-a.html",
+                "pdf=design/",
+            ):
+                status, body, _ = client.request(f"/api/sessions/{session['id']}/files?{asked}")
+                assert_true(status == 503, (asked, status, body))
             # Logging the device out ends its grants.
             client.command("logout")
             status, body, _ = page("design/hero-a.html")

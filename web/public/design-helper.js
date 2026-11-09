@@ -1,18 +1,45 @@
 // Runs first in every page the Files pane previews (the host inlines it). The
 // page is sandboxed in an opaque origin; this tells the app what the page is,
 // what went wrong in it and what the person picked, by postMessage, and
-// applies the tweaks the app sends. Opened alone with #print, it prints.
+// applies the tweaks the app sends. Opened alone with #paper it takes its
+// paper size for printing; with #print it also prints.
 // Once loaded, it reports what is wrong with the page as drawn (larger than
-// its artboard, a page of a document that runs past it, a file that did not
-// load): as errors to the app, or on the console of the agent's browser.
+// its artboard, text over text on a slide, a page of a document that runs
+// past it, a file that did not load): as errors to the app, or on the
+// console of the agent's browser.
 (() => {
   const root = document.documentElement;
   const meta = (name) =>
     document.querySelector(`meta[name="${name}"]`)?.content.trim() || "";
-  const artboard = () => {
-    const [w, h] = meta("artboard").split("x").map(Number);
-    return { w: w || 0, h: h || 0 };
+  // Paper in millimetres: a name, "landscape" after it, or WxHmm.
+  const PAPER = {
+    a3: [297, 420],
+    a4: [210, 297],
+    a5: [148, 210],
+    letter: [215.9, 279.4],
+    legal: [215.9, 355.6],
   };
+  const paper = () => {
+    const [flow, name = "a4", turn] = meta("print").toLowerCase().split(/\s+/);
+    if (flow !== "flow") return null;
+    const custom = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)mm$/.exec(name);
+    const [w, h] = custom ? [+custom[1], +custom[2]] : PAPER[name] || PAPER.a4;
+    return turn === "landscape" ? { w: h, h: w } : { w, h };
+  };
+  const PX_PER_MM = 96 / 25.4;
+  // The artboard ("1440x900", "1920x1080 slide", or a width only); a document
+  // without one is its paper's width.
+  const artboard = () => {
+    const [, w, h, slide] =
+      /^(\d+)(?:x(\d+))?(\s+slide)?$/.exec(meta("artboard")) || [];
+    const sheet = paper();
+    return {
+      w: +w || (sheet ? Math.round(sheet.w * PX_PER_MM) : 0),
+      h: +h || 0,
+      slide: !!slide,
+    };
+  };
+  const kind = () => (artboard().slide ? "slide" : paper() ? "doc" : "design");
   const tweaks = () => {
     try {
       return JSON.parse(
@@ -44,12 +71,82 @@
     },
     true,
   );
+  // The boxes of a text node's lines.
+  const lines = (node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return [...range.getClientRects()].filter((r) => r.width && r.height);
+  };
+  const crosses = (a, b) =>
+    Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
+    Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+  // Text drawn over other text: on a slide nothing may overlap.
+  const overlaps = () => {
+    const texts = [];
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walk.nextNode()) {
+      const node = walk.currentNode;
+      if (!node.textContent.trim() || node.parentElement.closest("aside"))
+        continue;
+      texts.push({ node, boxes: lines(node) });
+    }
+    const found = [];
+    const words = (node) => `“${node.textContent.trim().slice(0, 40)}”`;
+    for (let i = 0; i < texts.length && found.length < 5; i++)
+      for (let j = i + 1; j < texts.length; j++)
+        if (
+          texts[i].boxes.some((a) => texts[j].boxes.some((b) => crosses(a, b)))
+        ) {
+          found.push(
+            `${words(texts[i].node)} overlaps ${words(texts[j].node)}: give them room, or split the slide`,
+          );
+          break;
+        }
+    return found;
+  };
+  // A length the page's CSS gives, in pixels.
+  const pixels = (length) => {
+    const probe = document.createElement("div");
+    probe.style.cssText = `position:absolute;visibility:hidden;height:${length}`;
+    document.body.append(probe);
+    const value = probe.offsetHeight;
+    probe.remove();
+    return value;
+  };
+  // A block that cannot break and is taller than a page of the document.
+  const tallBlocks = () => {
+    const sheet = paper();
+    let margins = 0;
+    for (const style of document.styleSheets) {
+      try {
+        const rule = [...style.cssRules].find((r) => r instanceof CSSPageRule);
+        if (rule)
+          margins =
+            pixels(rule.style.marginTop || "0") +
+            pixels(rule.style.marginBottom || "0");
+      } catch {
+        // A linked sheet from another origin: its rules are not readable.
+      }
+    }
+    const page = sheet.h * PX_PER_MM - margins;
+    return [...document.querySelectorAll("figure, table, img, svg, pre")]
+      .filter((block) => !block.parentElement.closest("figure, table, svg"))
+      .filter((block) => block.getBoundingClientRect().height > page + 1)
+      .map(
+        (block) =>
+          `a ${block.localName} is ${Math.round(block.getBoundingClientRect().height)}px tall, more than a page (${Math.round(page)}px): shrink it or split it`,
+      );
+  };
   const problems = () => {
     const found = missing.map((url) => `${url} did not load`);
-    const { w, h } = artboard();
-    if (w && h && (root.scrollWidth > w + 1 || root.scrollHeight > h + 1))
+    const { w, h, slide } = artboard();
+    if (w && root.scrollWidth > w + 1)
       found.push(
-        `the page is ${root.scrollWidth}x${root.scrollHeight}, larger than its ${w}x${h} artboard: make it fit, or for a page that scrolls give the artboard only its width (content="${w}")`,
+        `the page is ${root.scrollWidth}px wide, wider than its ${w}px artboard`,
+      );
+    if (w && h && root.scrollHeight > h + 1)
+      found.push(
+        `the page is ${root.scrollHeight}px tall, taller than its ${w}x${h} artboard: make it fit, or for a page that scrolls give the artboard only its width (content="${w}")`,
       );
     document.querySelectorAll("body > section").forEach((page, at) => {
       if (page.scrollHeight > page.clientHeight + 1)
@@ -57,6 +154,8 @@
           `page ${at + 1} runs ${page.scrollHeight - page.clientHeight}px past its height`,
         );
     });
+    if (slide) found.push(...overlaps());
+    if (paper()) found.push(...tallBlocks());
     return found;
   };
   const checked = (report) =>
@@ -64,19 +163,31 @@
       document.fonts.ready.then(() => problems().forEach(report)),
     );
 
+  // Its paper for printing: a fixed artboard is one sheet its size, a
+  // document its paper, with its own @page margins kept.
+  const paperStyle = () => {
+    const { w, h } = artboard();
+    const sheet = paper();
+    const style = document.createElement("style");
+    style.textContent =
+      (w && h
+        ? `@page{size:${w}px ${h}px;margin:0}`
+        : sheet
+          ? `@page{size:${sheet.w}mm ${sheet.h}mm}`
+          : "") +
+      "html{print-color-adjust:exact;-webkit-print-color-adjust:exact}";
+    document.head.prepend(style);
+  };
+
   if (parent === window) {
     checked((problem) => console.warn(`uagent page: ${problem}`));
-    if (location.hash !== "#print") return;
-    // A fixed artboard prints as one page its size; a document flows.
-    addEventListener("load", async () => {
-      const { w, h } = artboard();
-      const paper = meta("print").split(/\s+/)[1] || "letter";
-      const style = document.createElement("style");
-      style.textContent = `@page{size:${w && h ? `${w}px ${h}px` : paper};margin:0}html{print-color-adjust:exact;-webkit-print-color-adjust:exact}`;
-      document.head.append(style);
-      await document.fonts.ready;
-      print();
-    });
+    if (location.hash !== "#print" && location.hash !== "#paper") return;
+    addEventListener("DOMContentLoaded", paperStyle);
+    if (location.hash === "#print")
+      addEventListener("load", async () => {
+        await document.fonts.ready;
+        print();
+      });
     return;
   }
 
@@ -97,6 +208,7 @@
     send("ready", {
       title: document.title,
       artboard: artboard(),
+      kind: kind(),
       tweaks: tweaks(),
       height: height(),
       // Where its stylesheets are, so the app can read a design system's.

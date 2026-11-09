@@ -552,7 +552,11 @@ json Runtime::Capture(const json& command) {
            "10000); })"},
           {"awaitPromise", true}},
          session);
-    shot = Call("Page.captureScreenshot", {{"format", "png"}}, session);
+    shot = JsonValue(command, "pdf", false)
+               ? Call("Page.printToPDF",
+                      {{"printBackground", true}, {"preferCSSPageSize", true}},
+                      session)
+               : Call("Page.captureScreenshot", {{"format", "png"}}, session);
   }
   if (!target.empty()) Call("Target.closeTarget", {{"targetId", target}});
   Call("Target.disposeBrowserContext", {{"browserContextId", context}});
@@ -563,7 +567,8 @@ json Runtime::Capture(const json& command) {
                           (session.empty() ? "no tab, " + CdError(attach)
                                            : CdError(shot))}};
   }
-  return {{"ok", true}, {"png", data}};
+  return {{"ok", true},
+          {JsonValue(command, "pdf", false) ? "pdf" : "png", data}};
 }
 
 }  // namespace uagent::browser

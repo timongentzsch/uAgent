@@ -576,3 +576,45 @@ test("a page that runs past its size or misses a file says so", async ({
     /`design\/book\/book\.html` threw: .*missing\.png did not load.*page 1 runs 200px past its height/,
   );
 });
+
+test("a slide with text over text and a document block taller than a page say so", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const dir = join(host.project, "design", "checks");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, "01-slide.html"),
+    page(
+      "Slide",
+      '<p style="position:absolute;top:100px;left:100px;margin:0;font-size:40px">Revenue grew</p>' +
+        '<p style="position:absolute;top:110px;left:120px;margin:0;font-size:40px">Footer note</p>' +
+        "<aside>Notes stay out of the check.</aside>",
+      "1920x1080 slide",
+    ),
+  );
+  // A5 with no artboard: as wide as its paper, and a figure taller than it.
+  await writeFile(
+    join(dir, "memo.html"),
+    '<!doctype html><html><head><title>Memo</title><meta name="print" content="flow a5"></head>' +
+      '<body style="margin:0"><figure style="height:1000px;margin:0">tall</figure></body></html>',
+  );
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "design", exact: true }).click();
+  await files.getByRole("button", { name: "checks", exact: true }).click();
+  await files.getByRole("button", { name: "Canvas" }).click();
+  await expect(files.getByText("2 pages failed to run")).toBeVisible();
+  await files.getByRole("button", { name: "Ask agent to fix" }).click();
+  const draft = app.locator("#prompt");
+  await expect(draft).toHaveValue(
+    /`design\/checks\/01-slide\.html` threw: “Revenue grew” overlaps “Footer note”/,
+  );
+  await expect(draft).toHaveValue(
+    /`design\/checks\/memo\.html` threw: a figure is 1000px tall, more than a page \(794px\)/,
+  );
+  await expect(draft).not.toHaveValue(/wider than its/);
+});

@@ -50,7 +50,7 @@ export const routes = {
   // and `diff` answer JSON, `raw` is the file itself.
   files: (
     session: string,
-    mode: "list" | "read" | "raw" | "find" | "changes" | "diff" | "png",
+    mode: "list" | "read" | "raw" | "find" | "changes" | "diff" | "png" | "pdf",
     value: string,
   ) => `/api/sessions/${session}/files?${mode}=${encodeURIComponent(value)}`,
   // POST: the address the folder's pages are served from, sandboxed.

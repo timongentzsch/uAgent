@@ -11,8 +11,11 @@ import "./page-frame.css";
 
 export interface PageInfo {
   title: string;
-  // A fixed artboard's size; 0 × 0 for a page, which is as tall as it is.
-  artboard: { w: number; h: number };
+  // A fixed artboard's size; 0 × 0 for a page, which is as tall as it is. A
+  // document is its paper's width.
+  artboard: { w: number; h: number; slide?: boolean };
+  // A slide of a deck, a document on paper, or any other design.
+  kind?: "slide" | "doc" | "design";
   tweaks: Record<string, unknown> | null;
   height: number;
   // Its stylesheets' addresses.

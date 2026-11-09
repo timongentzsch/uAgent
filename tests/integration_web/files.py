@@ -273,3 +273,46 @@ def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
             assert_true(value["changes"] == [{"path": "first.txt", "state": "A"}], value)
             status, value = answer(fresh, diff="first.txt")
             assert_true(status == 200 and "+first" in value["text"], value)
+
+
+def test_web_files_save_a_person_s_edit_against_its_revision(root, home, *, binary):
+    project = root / "files"
+    (project / "docs").mkdir(parents=True)
+    (project / "docs/memo.html").write_text("<p>old</p>")
+    (project / "blob.bin").write_bytes(b"\x00\x01binary")
+    elsewhere = root / "elsewhere.txt"
+    elsewhere.write_text("outside")
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project, activate=False)
+            files = f"/api/sessions/{session['id']}/files"
+            _, read, _ = client.json(files + "?" + urlencode({"read": "docs/memo.html"}))
+            revision = read["revision"]
+            assert_true(read["text"] == "<p>old</p>" and revision, read)
+
+            def save(path, text, revision):
+                return client.json(files, {"path": path, "text": text, "revision": revision})
+
+            status, saved, _ = save("docs/memo.html", "<p>new</p>", revision)
+            assert_true(status == 200 and saved["revision"] != revision, (status, saved))
+            assert_true((project / "docs/memo.html").read_text() == "<p>new</p>", "not saved")
+            # Saved against what it was read at: a second save on the old
+            # revision, or after the agent wrote, is refused.
+            status, refused, _ = save("docs/memo.html", "<p>lost</p>", revision)
+            assert_true(status == 409 and "changed" in refused["error"], (status, refused))
+            (project / "docs/memo.html").write_text("<p>agent</p>")
+            status, refused, _ = save("docs/memo.html", "<p>lost</p>", saved["revision"])
+            assert_true(status == 409, (status, refused))
+            assert_true((project / "docs/memo.html").read_text() == "<p>agent</p>", "overwrote")
+            # Only a text file that is there, inside the folder.
+            for path in ("docs/new.html", "blob.bin", "../elsewhere.txt", str(elsewhere)):
+                status, refused, _ = save(path, "x", "")
+                assert_true(status == 404, (path, status, refused))
+            assert_true(not (project / "docs/new.html").exists(), "made a file")
+            assert_true(elsewhere.read_text() == "outside", "wrote outside")
+            assert_true(
+                WebClient(client.port).request(files, {"path": "docs/memo.html", "text": "x"})[0]
+                == 401,
+                "anonymous save",
+            )

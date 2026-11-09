@@ -3,7 +3,7 @@ import type { RawOptions, Exchange, JSONValue } from "../../shared/types.ts";
 import { useId, useMemo, useState } from "preact/hooks";
 import { useResource } from "../../shared/use-resource.ts";
 import { Download } from "lucide-preact";
-import { downloadRevokeMs } from "../../shared/limits.ts";
+import { downloadBlob } from "../../shared/share.ts";
 import {
   Actions,
   Button,
@@ -223,17 +223,12 @@ export default function Raw({
         <Button
           type="button"
           disabled={body === undefined}
-          onClick={() => {
-            const url = URL.createObjectURL(
+          onClick={() =>
+            downloadBlob(
               new Blob([original], { type: "text/plain;charset=utf-8" }),
-            );
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = `${exchange?.id || id || "result"}-${tab}.txt`;
-            link.click();
-            // Some browsers start the download after click() returns.
-            setTimeout(() => URL.revokeObjectURL(url), downloadRevokeMs);
-          }}
+              `${exchange?.id || id || "result"}-${tab}.txt`,
+            )
+          }
         >
           <Download />
           Download

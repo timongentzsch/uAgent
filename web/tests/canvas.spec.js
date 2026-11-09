@@ -683,3 +683,73 @@ test("a deck lies in slide order, presents with its notes, and the presenter's w
   await stage.getByRole("button", { name: "End" }).click();
   await expect(files.locator(".page-stage[data-presenting]")).toHaveCount(0);
 });
+
+test("a document is edited in place, saved to its file, and exports Markdown", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const dir = join(host.project, "docs");
+  await mkdir(dir, { recursive: true });
+  const memo = join(dir, "memo.html");
+  const filler = Array.from(
+    { length: 40 },
+    (_, at) =>
+      `<p>Paragraph ${at + 1} of the memo, long enough to fill some of a page.</p>`,
+  ).join("");
+  await writeFile(
+    memo,
+    '<!doctype html>\n<html><head><title>Memo</title><meta name="print" content="flow a5"></head>' +
+      "<body><h1>Q3 memo</h1><p>Revenue grew.</p><ul><li>One</li><li>Two</li></ul>" +
+      "<table><tr><th>Ask</th><th>When</th></tr><tr><td>Hire</td><td>Nov</td></tr></table>" +
+      `${filler}</body></html>`,
+  );
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "docs", exact: true }).click();
+  await files.getByRole("button", { name: "memo.html", exact: true }).click();
+  // Its pages: breaks marked where print puts them.
+  await expect(files.locator(".page-break").first()).toHaveText("Page 2");
+
+  // Markdown, from the page itself.
+  const [download] = await Promise.all([
+    app.waitForEvent("download"),
+    files.getByRole("button", { name: "Download as Markdown" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("memo.md");
+  const { readFile } = await import("node:fs/promises");
+  const text = await readFile(await download.path(), "utf8");
+  expect(text).toContain("# Q3 memo\n\nRevenue grew.\n\n- One\n- Two");
+  expect(text).toContain("| Ask | When |\n| --- | --- |\n| Hire | Nov |");
+
+  // Edit: a block typed in place is saved to the file, nothing else changes.
+  await files.getByRole("button", { name: "Edit" }).click();
+  const page = files.frameLocator("iframe");
+  const paragraph = page.getByText("Revenue grew.");
+  await paragraph.click();
+  await app.keyboard.press("End");
+  await app.keyboard.type(" Churn held flat.");
+  await page.getByRole("heading", { name: "Q3 memo" }).click();
+  await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
+    "Saved",
+  );
+  const saved = await readFile(memo, "utf8");
+  expect(saved).toContain("<p>Revenue grew. Churn held flat.</p>");
+  expect(saved).toContain("<td>Hire</td>");
+  expect(
+    saved.startsWith("<!doctype html>\n<html><head><title>Memo</title>"),
+  ).toBe(true);
+
+  // The agent rewrote that block meanwhile: the edit is refused, not merged.
+  await writeFile(memo, saved.replace("Churn held flat.", "Churn fell."));
+  await paragraph.click();
+  await app.keyboard.press("End");
+  await app.keyboard.type(" Again.");
+  await page.getByRole("heading", { name: "Q3 memo" }).click();
+  await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
+    /The document changed/,
+  );
+  expect(await readFile(memo, "utf8")).toContain("Churn fell.");
+});

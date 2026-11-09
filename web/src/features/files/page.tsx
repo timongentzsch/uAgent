@@ -2,9 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import {
   Copy,
   ExternalLink,
+  FileText,
   ImageDown,
   PenLine,
   MousePointerClick,
+  Pencil,
   Presentation,
   Printer,
   SlidersHorizontal,
@@ -24,6 +26,9 @@ import { useLatest } from "../../shared/use-latest.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import type { ViewedImage } from "../../shared/attachments.tsx";
 import { presentChannel } from "./present.ts";
+import type { BlockEdit } from "./doc-edit.ts";
+import { downloadBlob } from "../../shared/share.ts";
+import { nameOf } from "../../shared/file-types.ts";
 
 // The zoom of an opened page, as a scale of its real size, and one step.
 const ZOOM_MIN = 0.1;
@@ -69,6 +74,7 @@ export default function OpenPage({
   presenter,
   presentAtOpen,
   presented,
+  save,
   view,
 }: {
   path: string;
@@ -83,6 +89,8 @@ export default function OpenPage({
   pdf?: string;
   // Opens the presenter's view of a deck at a slide, in a window.
   presenter?: (slides: string[], at: string) => void;
+  // A document's edited block saved to its file.
+  save?: (edit: BlockEdit) => Promise<void>;
   // Opened to present at once (the canvas's Present), which `presented`
   // then clears.
   presentAtOpen?: boolean;
@@ -172,6 +180,30 @@ export default function OpenPage({
     document.addEventListener("keydown", keys);
     return () => document.removeEventListener("keydown", keys);
   });
+  // A document: Edit lets its text be typed in place, each block saved as
+  // it is left; its page breaks are marked where print will put them.
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState("");
+  const [breaks, setBreaks] = useState<number[]>([]);
+  const edit = (on: boolean) => {
+    setEditing(on);
+    if (on) select(false);
+    tell(frame.current, { type: "edit", on });
+  };
+  const keep = async (change: BlockEdit) => {
+    setSaved("Saving…");
+    try {
+      await save?.(change);
+      setSaved("Saved");
+    } catch (error) {
+      setSaved(error instanceof Error ? error.message : "Not saved");
+    }
+  };
+  useEffect(() => {
+    setEditing(false);
+    setSaved("");
+    setBreaks([]);
+  }, [src]);
   // A new page fades in once it has drawn.
   const [arriving, setArriving] = useState(true);
   useEffect(() => setArriving(true), [src]);
@@ -233,6 +265,10 @@ export default function OpenPage({
       return bindZoomWheel(box, (by, at) => wheelZoom.current(by, at.x, at.y));
   }, [wheelZoom]);
   const select = (on: boolean) => {
+    if (on && editing) {
+      setEditing(false);
+      tell(frame.current, { type: "edit", on: false });
+    }
     setSelecting(on);
     setHover(undefined);
     if (!on) setPicked(undefined);
@@ -281,6 +317,21 @@ export default function OpenPage({
           <MousePointerClick />
           Select
         </Button>
+        {save && info?.kind === "doc" && (
+          <Button
+            variant="secondary"
+            aria-pressed={editing}
+            onClick={() => edit(!editing)}
+          >
+            <Pencil />
+            Edit
+          </Button>
+        )}
+        {saved && (
+          <span class="small muted" role="status">
+            {saved}
+          </span>
+        )}
         {(declared.length > 0 || !!theme.value?.colors.length) && (
           <Button
             variant="secondary"
@@ -355,6 +406,14 @@ export default function OpenPage({
             <Printer />
           </a>
         )}
+        {info?.kind === "doc" && (
+          <IconButton
+            label="Download as Markdown"
+            onClick={() => tell(frame.current, { type: "markdown" })}
+          >
+            <FileText />
+          </IconButton>
+        )}
         <a
           class="file-button quiet icon-button"
           href={src}
@@ -401,6 +460,8 @@ export default function OpenPage({
                   if (message.type === "ready") {
                     setSaid({ ...message, src });
                     setArriving(false);
+                    if (editing)
+                      tell(frame.current, { type: "edit", on: true });
                     if (selecting)
                       tell(frame.current, { type: "select", on: true });
                   } else if (message.type === "zoom") {
@@ -415,6 +476,13 @@ export default function OpenPage({
                   } else if (message.type === "size")
                     // A page that grows (its fonts, its images) is pictured whole.
                     setSaid((was) => was && { ...was, height: message.height });
+                  else if (message.type === "pages") setBreaks(message.breaks);
+                  else if (message.type === "edit") void keep(message);
+                  else if (message.type === "markdown")
+                    downloadBlob(
+                      new Blob([message.text], { type: "text/markdown" }),
+                      `${nameOf(path).replace(/\.html?$/i, "")}.md`,
+                    );
                   else if (message.type === "hover") setHover(message.rect);
                   else if (message.type === "pick") setPicked(message);
                   else if (message.type === "picked")
@@ -425,6 +493,16 @@ export default function OpenPage({
                     select(false);
                 }}
               />
+              {info?.kind === "doc" &&
+                breaks.map((at, number) => (
+                  <span
+                    key={at}
+                    class="page-break small"
+                    style={{ top: `${at * scale}px` }}
+                  >
+                    Page {number + 2}
+                  </span>
+                ))}
               {selecting && hover && mark(hover, "hover")}
               {picked && mark(picked.rect, "picked")}
             </div>

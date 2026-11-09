@@ -42,13 +42,19 @@ export type PageMessage =
   | { type: "hover" | "picked"; rect: Rect }
   | ({ type: "pick" } & Pick)
   | { type: "key"; key: string }
-  | { type: "zoom"; by: number; x: number; y: number };
+  | { type: "zoom"; by: number; x: number; y: number }
+  // A document's page breaks, its edited block, its text as Markdown.
+  | { type: "pages"; breaks: number[] }
+  | { type: "edit"; index: number; before: string; html: string }
+  | { type: "markdown"; text: string };
 
 // Tells a page what to do: select on or off, or set a tweak.
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
     | { type: "select"; on: boolean }
+    | { type: "edit"; on: boolean }
+    | { type: "markdown" }
     | { type: "tweak"; name: string; value: unknown },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 

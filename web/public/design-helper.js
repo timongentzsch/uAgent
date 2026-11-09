@@ -119,9 +119,9 @@
     probe.remove();
     return value;
   };
-  // A block that cannot break and is taller than a page of the document.
-  const tallBlocks = () => {
-    const sheet = paper();
+  // The height of a page's text: its paper less the @page margins the
+  // page's own <style> gives.
+  const pageHeight = () => {
     let margins = 0;
     for (const style of document.styleSheets) {
       try {
@@ -134,7 +134,11 @@
         // A linked sheet from another origin: its rules are not readable.
       }
     }
-    const page = sheet.h * PX_PER_MM - margins;
+    return paper().h * PX_PER_MM - margins;
+  };
+  // A block that cannot break and is taller than a page of the document.
+  const tallBlocks = () => {
+    const page = pageHeight();
     return [...document.querySelectorAll("figure, table, img, svg, pre")]
       .filter((block) => !block.parentElement.closest("figure, table, svg"))
       .filter((block) => block.getBoundingClientRect().height > page + 1)
@@ -193,6 +197,160 @@
     return;
   }
 
+  // A document's text blocks, in order: what a person edits in place.
+  const EDITABLE =
+    "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote";
+  const blocks = () =>
+    [...document.body.querySelectorAll(EDITABLE)].filter(
+      (block) => !block.parentElement.closest(EDITABLE),
+    );
+  // Where print will start each page after the first, estimated from the
+  // blocks' heights: one that cannot break moves whole to the next page,
+  // and a heading goes with what follows it. The PDF is the exact one.
+  const ATOMIC = "figure, img, svg, pre, tr, h1, h2, h3, h4, h5, h6, li";
+  const pageBreaks = () => {
+    const height = pageHeight();
+    const top = (el) => el.getBoundingClientRect().top + scrollY;
+    const bottom = (el) => el.getBoundingClientRect().bottom + scrollY;
+    const parts = [
+      ...document.body.querySelectorAll(`${ATOMIC}, p, blockquote, dt, dd`),
+    ].filter((el) => !el.parentElement.closest(ATOMIC) && el.offsetHeight);
+    const breaks = [];
+    let start = parts.length ? top(parts[0]) : 0;
+    let previous = null;
+    for (const part of parts) {
+      const forced = getComputedStyle(part).breakBefore === "page";
+      if (!forced && bottom(part) <= start + height) {
+        previous = part;
+        continue;
+      }
+      let at = forced || part.matches(ATOMIC) ? top(part) : start + height;
+      if (/^H[1-6]$/.test(previous?.tagName || "") && at === top(part))
+        at = top(previous);
+      if (at <= start) at = start + height;
+      breaks.push(Math.round(at));
+      start = at;
+      while (bottom(part) > start + height) {
+        start += height;
+        breaks.push(Math.round(start));
+      }
+      previous = part;
+    }
+    return breaks;
+  };
+  // The page as Markdown: its text, headings, lists, tables, links and images.
+  const markdown = () => {
+    const inline = (node) =>
+      [...node.childNodes]
+        .map((child) => {
+          if (child.nodeType === Node.TEXT_NODE)
+            return child.textContent.replace(/\s+/g, " ");
+          if (child.nodeType !== Node.ELEMENT_NODE) return "";
+          const text = inline(child);
+          switch (child.localName) {
+            case "b":
+            case "strong":
+              return text.trim() ? `**${text.trim()}**` : "";
+            case "i":
+            case "em":
+              return text.trim() ? `*${text.trim()}*` : "";
+            case "code":
+              return `\`${child.textContent}\``;
+            case "a":
+              return `[${text.trim()}](${child.getAttribute("href") || ""})`;
+            case "img":
+              return `![${child.alt || ""}](${child.getAttribute("src") || ""})`;
+            case "br":
+              return "  \n";
+            case "svg":
+            case "script":
+            case "style":
+              return "";
+            default:
+              return text;
+          }
+        })
+        .join("");
+    const block = (node, depth = 0) => {
+      const out = [];
+      for (const child of node.children) {
+        const tag = child.localName;
+        const text = () => inline(child).trim();
+        if (/^h[1-6]$/.test(tag)) out.push(`${"#".repeat(+tag[1])} ${text()}`);
+        else if (tag === "p" || tag === "figcaption") out.push(text());
+        else if (tag === "blockquote") out.push(text().replace(/^/gm, "> "));
+        else if (tag === "pre")
+          out.push(`\`\`\`\n${child.textContent.replace(/\n$/, "")}\n\`\`\``);
+        else if (tag === "hr") out.push("---");
+        else if (tag === "img") out.push(inline({ childNodes: [child] }));
+        else if (tag === "ul" || tag === "ol")
+          out.push(
+            [...child.children]
+              .map(
+                (item, at) =>
+                  `${"  ".repeat(depth)}${tag === "ol" ? `${at + 1}.` : "-"} ${inline(item).trim()}` +
+                  [...item.children]
+                    .filter(
+                      (sub) => sub.localName === "ul" || sub.localName === "ol",
+                    )
+                    .map((sub) => `\n${block({ children: [sub] }, depth + 1)}`)
+                    .join(""),
+              )
+              .join("\n"),
+          );
+        else if (tag === "table") {
+          const rows = [...child.querySelectorAll("tr")].map((row) =>
+            [...row.children].map((cell) =>
+              inline(cell).trim().replace(/\|/g, "\\|"),
+            ),
+          );
+          if (rows.length)
+            out.push(
+              [
+                `| ${rows[0].join(" | ")} |`,
+                `| ${rows[0].map(() => "---").join(" | ")} |`,
+                ...rows.slice(1).map((cells) => `| ${cells.join(" | ")} |`),
+              ].join("\n"),
+            );
+        } else if (
+          !["script", "style", "aside", "svg", "template"].includes(tag)
+        ) {
+          const inner = block(child, depth);
+          if (inner) out.push(inner);
+        }
+      }
+      return out.filter(Boolean).join("\n\n");
+    };
+    return `${block(document.body)}\n`;
+  };
+  // Edit: text blocks take typing; a block left changed is reported with its
+  // place and its text before, which the app checks against the file.
+  const before = new WeakMap();
+  const focused = (event) => {
+    const block = event.target.closest?.("[contenteditable]");
+    if (block && !before.has(block))
+      before.set(block, { html: block.innerHTML, text: block.textContent });
+  };
+  const left = (event) => {
+    const block = event.target.closest?.("[contenteditable]");
+    const was = block && before.get(block);
+    if (!was || was.html === block.innerHTML) return;
+    before.delete(block);
+    send("edit", {
+      index: blocks().indexOf(block),
+      before: was.text,
+      html: block.innerHTML,
+    });
+  };
+  const edit = (on) => {
+    for (const block of blocks())
+      if (on) block.setAttribute("contenteditable", "plaintext-only");
+      else block.removeAttribute("contenteditable");
+    const toggle = on ? addEventListener : removeEventListener;
+    toggle("focusin", focused, true);
+    toggle("focusout", left, true);
+  };
+
   const send = (type, data) =>
     parent.postMessage({ uagentDesign: 1, type, ...data }, "*");
   const height = () => root.scrollHeight;
@@ -222,6 +380,7 @@
     let last = 0;
     new ResizeObserver(() => {
       if (height() !== last) send("size", { height: (last = height()) });
+      if (paper()) send("pages", { breaks: pageBreaks() });
     }).observe(root);
   });
 
@@ -319,6 +478,8 @@
   addEventListener("message", (event) => {
     if (event.source !== parent || event.data?.uagentDesign !== 1) return;
     if (event.data.type === "select") select(!!event.data.on);
+    if (event.data.type === "edit" && paper()) edit(!!event.data.on);
+    if (event.data.type === "markdown") send("markdown", { text: markdown() });
     if (event.data.type === "tweak")
       tweak(String(event.data.name), event.data.value);
   });

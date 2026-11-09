@@ -328,6 +328,17 @@
   width: 100%;
   height: 100%;
 }
+/* Where print will start a document's next page: a hairline across it. */
+.page-break {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: var(--border);
+  pointer-events: none;
+  text-align: right;
+  color: var(--muted);
+  padding-right: var(--space-2);
+}
 .page-mark {
   position: absolute;
   pointer-events: none;
@@ -420,7 +431,7 @@
 
 /* The presenter's window: now, then next and the notes beside it. */
 .presenter {
-  height: 100dvh;
+  height: var(--viewport-height);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   background: var(--bg);

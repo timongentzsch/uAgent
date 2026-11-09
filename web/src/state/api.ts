@@ -53,6 +53,8 @@ export const routes = {
     mode: "list" | "read" | "raw" | "find" | "changes" | "diff" | "png" | "pdf",
     value: string,
   ) => `/api/sessions/${session}/files?${mode}=${encodeURIComponent(value)}`,
+  // POST {path, text, revision}: a person's edit of a text file.
+  fileWrite: (session: string) => `/api/sessions/${session}/files`,
   // POST: the address the folder's pages are served from, sandboxed.
   preview: (session: string) => `/api/sessions/${session}/preview`,
 };

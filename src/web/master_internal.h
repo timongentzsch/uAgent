@@ -110,6 +110,7 @@ class Master {
   void Upload(const Request&, Response&, const httplib::ContentReader&);
   void AssetRead(const Request&, Response&);
   void Files(const Request&, Response&);
+  void FileWrite(const Request&, Response&);
   // A conversation's folder, read only, for sandboxed pages that carry no
   // cookie: the token in the path is the grant.
   void PreviewGrant(const Request&, Response&);

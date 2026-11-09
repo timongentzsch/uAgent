@@ -43,6 +43,7 @@ import FileTree from "./tree.tsx";
 import { pageAddress, usePreviewBase } from "../../shared/page-frame.tsx";
 import OpenPage from "./page.tsx";
 import { openPresenter } from "./present.ts";
+import { applyEdit } from "./doc-edit.ts";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
@@ -66,6 +67,8 @@ interface FileText {
   text: string;
   bytes: number;
   more: boolean;
+  // What a save is checked against; empty when the text was cut.
+  revision?: string;
 }
 
 // Search results shown at once; typing more narrows them.
@@ -623,6 +626,21 @@ export default function Files({
               presenter={(slides, at) =>
                 openPresenter({ session: id, slides, at })
               }
+              save={async (edit) => {
+                const read = await api<FileText>(
+                  routes.files(id, "read", file),
+                );
+                const text = read.revision ? applyEdit(read.text, edit) : null;
+                if (text === null)
+                  throw new Error(
+                    "The document changed since it was shown. Reopen it to edit.",
+                  );
+                await api(routes.fileWrite(id), {
+                  path: file,
+                  text,
+                  revision: read.revision,
+                });
+              }}
               presentAtOpen={presentNext}
               presented={() => setPresentNext(false)}
               view={view}

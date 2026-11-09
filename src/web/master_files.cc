@@ -17,7 +17,9 @@
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/env.h"
+#include "include/core/file_watch.h"
 #include "include/core/fs.h"
+#include "include/core/library.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
@@ -447,9 +449,57 @@ void Master::Files(const Request& request, Response& response) {
     return;
   }
   const bool more = bytes.size() > kFileViewBytes;
+  // What a person's edit is saved against: only a file read whole.
+  const std::string revision =
+      more ? std::string() : DocumentRevision(target->string(), bytes);
   Reply(response, {{"text", Utf8Prefix(std::move(bytes), kFileViewBytes)},
                    {"bytes", size},
-                   {"more", more}});
+                   {"more", more},
+                   {"revision", revision}});
+}
+
+// A person's edit of a text file in the conversation's folder, saved only if
+// the file is still as they read it. Making files is the agent's.
+void Master::FileWrite(const Request& request, Response& response) {
+  std::string folder;
+  {
+    std::lock_guard lock(mutex_);
+    folder = host_.Folder(request.matches[1].str());
+  }
+  const json body = request.body.size() > kFileViewBytes + KiB(64)
+                        ? json()
+                        : json::parse(request.body, nullptr, false);
+  const std::optional<fs::path> root =
+      folder.empty() ? std::nullopt : CanonicalDirectory(folder);
+  if (!root || !body.is_object()) {
+    Error(response, root ? "invalid request" : "unknown session", 400);
+    return;
+  }
+  const std::optional<fs::path> target =
+      Resolve(*root, JsonValue(body, "path", ""));
+  if (!target || !fs::is_regular_file(*target) || !LikelyTextFile(*target)) {
+    Error(response, "not found", 404);
+    return;
+  }
+  const std::string text = JsonValue(body, "text", "");
+  if (text.size() > kFileViewBytes) {
+    Error(response, "too large to save here", 413);
+    return;
+  }
+  std::string previous, error;
+  bool exists = false;
+  if (json refused = CheckRevision(body, *target, kFileViewBytes, "file",
+                                   previous, exists);
+      !refused.is_null()) {
+    Error(response, JsonValue(refused, "error", "cannot save"),
+          refused.contains("conflict") ? 409 : 500);
+    return;
+  }
+  if (!AtomicWriteFile(target->string(), text, 0644, true, error)) {
+    Error(response, error, 500);
+    return;
+  }
+  Reply(response, {{"revision", DocumentRevision(target->string(), text)}});
 }
 
 std::string Master::PreviewBase(const std::string& id) {

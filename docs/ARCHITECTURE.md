@@ -133,8 +133,8 @@ and reaps session-owned children. An internal writer lease keeps two runtimes
 from owning one file; clients never take it. Runtime discovery uses private
 sockets, a bounded startup scan and native directory notifications. Schedule,
 prompt and library invalidation uses the same multi-path watcher and wakes at
-the next schedule deadline. Independent conversations may share a folder
-folder; edits to shared files still need coordination.
+the next schedule deadline. Independent conversations may share a folder;
+edits to shared files still need coordination.
 
 An agent is a session another session started. Its file is saved beside its
 parent's, with an `agent` header object (`parent`, `edits`, `depth`,
@@ -298,8 +298,10 @@ boundary; prompt wording only complements them.
 
 Ordinary approval may be automatic, but changes to µAgent's own configuration
 and other mandatory-human operations always need a person. Reusing a shell
-approval is scoped to the exact command, not the executable name. The shared
-sandbox wrapper is applied when a command is spawned, and confinement that is
+approval can match a validated simple-command prefix while the sandbox is
+enforced; compound commands and commands outside the sandbox require an exact
+match. The shared sandbox wrapper is applied when a command is spawned, and
+confinement that is
 explicitly required fails closed when it cannot be enforced. Linux and macOS
 share policy composition and have separate platform tests. Child environments
 apply the shared credential and permission policy. See

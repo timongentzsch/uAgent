@@ -40,10 +40,8 @@ high-contrast theme, applies.
 
 ### Reduced motion
 
-Plain mode holds the spinner still: the working row changes only when the
-work it names changes, and its elapsed time once a second. To keep it, save it
-once from a session, for example `/config user UAGENT_PLAIN=1`; it applies
-when a terminal next starts.
+Plain mode uses append-only output without an animated working row. Save
+`/config user UAGENT_PLAIN=1` to apply it when a terminal next starts.
 
 ### Other
 

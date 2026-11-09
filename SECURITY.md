@@ -8,7 +8,7 @@ selected files, tool results and attachments to the configured endpoint;
 treat that endpoint as trusted infrastructure. Use a container, VM or
 restricted account for untrusted code.
 
-![What each part can reach: paired devices reach the web host; only the session runtime holds the model key and talks to the endpoint; commands and MCP servers run in the OS sandbox, write only the folder, temporary files and caches, and cannot reach your other folders, ~/.uagent, credential stores, the browser profile or secrets in the environment; the runtime acts in Chrome but gets no field values back](docs/images/boundaries.svg)
+![What each part can reach: paired devices reach the web host; only the session runtime holds the model key and talks to the endpoint; commands and MCP servers run in the OS sandbox, write only the folder, temporary files and caches, and cannot reach your other folders, ~/.uagent, credential stores, the browser profile or secrets in the environment; the runtime acts in Chrome and receives ordinary field values, with sensitive fields masked](docs/images/boundaries.svg)
 
 ## What the agent may do without asking
 
@@ -46,7 +46,7 @@ In every mode:
     the instruction files, which hold no credential;
   - reading, through the file tools, one of your folders that the sandbox
     closes to commands (see **Reads** below);
-  - the `uagent_configure` and `uagent_instructions` tools;
+  - the `uagent_configure` and `uagent_file` tools;
   - `run(sandbox=false)`, and `run(root=true)`.
 
 An **agent**, a conversation another one started, acts for you unattended.
@@ -129,25 +129,24 @@ never goes to the parent.
   serving are described in [Web interface](docs/WEB.md#security-model).
 - The web host's terminal gives a paired device your own shell, unsandboxed:
   pairing is the boundary, and `UAGENT_WEB_TERMINAL=off` removes it. The
-  shell gets the same secret-deny environment as the agent's commands, so
-  "Add to chat" cannot carry µAgent's credentials into a model's context,
-  and the agent never reads a terminal.
+  shell gets the same secret-deny environment as the agent's commands.
+  The agent never reads a terminal, but output you send with "Add to chat"
+  enters model context and may contain secrets read by that shell.
 
 ## Browser automation
 
-The agent drives a browser in one of two ways.
-
-**The shared Chrome of the web host** (the `browser` tool, available while
-`UAGENT_BROWSER_DATA` is set and the web host runs it). You and the agent see
+The `browser` tool drives the web host's shared Chrome, available while
+`UAGENT_BROWSER_DATA` is set and the web host runs it. You and the agent see
 and drive the same browser, and its profile keeps your saved logins and
 cookies.
 
 - Actions that change the page need approval like any mutating call.
 - The agent can use a saved login without seeing it: `fill_saved` has Chrome
   fill the one it offers for the focused field and does not read what was
-  filled. The page text the agent gets says whether a field holds something,
-  never what, the request list it reads has no bodies, and it cannot type
-  into a password field. Screenshots draw password fields as dots;
+  filled. Page text includes the start of ordinary field values; password,
+  one-time-code and card fields expose only whether they are filled. The
+  request list has no bodies, and it cannot type into a password field.
+  Screenshots draw password fields as dots;
   [the browser guide](docs/BROWSER.md#isolation) lists the fields that are
   not masked.
 - With the sandbox on, commands cannot read the profile or connect to its
@@ -348,7 +347,7 @@ saved settings, with mandatory human approval for each change), an MCP
 server that opts out, and the µAgent process of a memory extraction (its
 commands are confined).
 
-Besides `off`, a session can run unconfined in two ways, both reported:
+Besides `off`, these operations or fallback conditions can run unconfined:
 
 - `run(sandbox=false)` always asks a person. Yolo and a remembered grant
   cannot give that approval, and headless or delegated runs have nobody to

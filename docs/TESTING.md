@@ -7,9 +7,12 @@ tools, and how CI selects them. Build and style rules are in
 ## Common cases
 
 The suite needs no API key or network. Iterate on the debug tree; the release
-tree links with LTO, which takes about 20 s after any edit.
+tree links with LTO, which makes incremental linking slower. Build the web
+bundle before configuring or rebuilding the native binary so embedded-asset
+checks see the current bundle. Run these steps sequentially:
 
 ```sh
+(cd web && npm ci && npm run build)
 cmake --preset debug
 cmake --build --preset debug --parallel
 ```
@@ -20,9 +23,9 @@ cmake --build --preset debug --parallel
 | one unit test | `build/debug/uagent_tests --test TestActivitySessions` | seconds |
 | one integration test | `python3 tests/integration.py build/debug/uagent --test test_plain_turn` | seconds |
 | integration tests by name | `python3 tests/integration.py build/debug/uagent -k compaction` | seconds |
-| a web edit | `npm test` and `npm run typecheck` in `web/` | 2 s |
-| one web spec in a browser | `npm run build`, then `npm run test:spec -- tests/phone-layout.spec.js` in `web/` | 10 s + the spec |
-| everything before a commit | `ctest --preset debug` | about 50 s |
+| a web edit | `npm test` and `npm run typecheck` in `web/` | seconds |
+| one web spec in a browser | `npm run build`, then `npm run test:spec -- tests/phone-layout.spec.js` in `web/` | build + the spec |
+| the native and integration suites | `ctest --preset debug` | minutes |
 | web work before a push | `npm run test:browser` in `web/` (both browsers) | minutes |
 | what only CI's compilers and linters report | `.github/ci-local.sh` | minutes; incremental after the first run |
 
@@ -79,8 +82,7 @@ The groups are `runtime`, `tools`, `ui`, `providers`, `mcp`, `agents`,
 - A failed case is not run again, here or in the browser suite: one that
   passes only sometimes has found a race, in the test or in the app.
 - `-j N` runs the selection in N processes. Every case has its own home and
-  ports, so the whole suite takes about 20 s at `-j 8` and two minutes in one
-  process.
+  ports; runtime depends on the machine, build and selected cases.
 
 ### Sanitizers, coverage and fuzzers
 
@@ -138,7 +140,8 @@ How the tests are isolated:
 - Each test owns its host, temporary HOME and folder, mock provider, pairing
   cookie and output directory, and waits on visible state or an API condition
   rather than a fixed delay.
-- The Vite dev server `render-count.spec.js` loads the app from takes a port
+- The Vite dev server used by fixtures such as `action.spec.js` and
+  `render-count.spec.js` takes a port
   derived from the checkout's path and never reuses a server already
   listening there, so a run cannot test another checkout's tree.
 
@@ -158,11 +161,9 @@ What a spec may assume about time:
   `browser.spec.js`, and the pauses between the wheel and scroll steps in
   `scroll-stick.spec.js`.
 
-Playwright has two projects. `chromium` runs every spec. `webkit` runs
-`btw`, `guidance-queue`, `phone-layout`, `reload`, `mobile-navigation`,
-`loading-surfaces`, `session-state`, `ui-quality`, `browser`, `model-picker`,
-`ask`, `menu`, `image-viewer`, `dismiss`, `history-anchor`, `scroll-restore`,
-`scroll-stick`, `search`, `screen-motion` and `canvas`. A failed test is not retried.
+Playwright has two projects. `chromium` runs every spec; `webkit` runs the
+cross-browser selection in [playwright.config.js](../web/playwright.config.js),
+including action admission and management flows. A failed test is not retried.
 Four workers run locally and two in CI. Traces and screenshots of failures are
 kept in `web/test-results`.
 
@@ -223,14 +224,15 @@ On a pull request, `.github/changes.py` selects jobs by the paths changed:
 | Changed paths | Jobs |
 | --- | --- |
 | only `docs/`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE` | `lint` |
-| those and `web/` | `lint`, `web` |
-| anything else | every job |
+| those and `web/` | `lint`, `web`, `web-browser` |
+| anything else | native and web jobs, with the additional filters below |
 
-A pull request that touches native code runs what a push to `master` runs,
-with one exception that `master` then covers: `clang-tidy` reads the
-translation units the pull request changed, in one job; when it changes a
-header, the build files or the rules, it reads all of them, as `master`
-always does. `coverage` runs weekly and by hand only.
+For native changes, `clang-tidy` reads the changed translation units in one
+job. Changes to headers, top-level CMake files, `.github/`, vendored code or
+`.clang-tidy` select all units across three runners, as non-PR runs do.
+`coverage` runs weekly and by hand only. The selection source is
+[changes.py](../.github/changes.py); [ci.yml](../.github/workflows/ci.yml) defines
+the jobs and their conditions.
 
 The Linux build jobs reuse compiled objects through ccache
 (`.github/actions/native-setup`), restored in every run and saved only from
@@ -251,10 +253,10 @@ Master, scheduled and manual runs always run them.
 | `thread-sanitizer` | On master and for heavy changes: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `coverage` | Weekly and by hand: `core` and every integration group with a branch report; fails under 67% line coverage |
 | `lint` | `.github/lint.sh`: clang-format, cpplint, Ruff and the source contracts |
-| `clang-tidy` | clang-tidy, translation units split across three runners |
-| `web` | Biome format check and lint, Node tests, bundle and size check, a release host with Web Push |
+| `clang-tidy` | clang-tidy, changed units on one runner or all units across three |
+| `web` | Biome format check and lint, Node tests, bundle and size report, a release host with Web Push |
 | `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), split across three runners |
-| `image` | On master and when `deploy/`, `.dockerignore` or a workflow changes: builds the container image for x86_64 and starts it under compose's seccomp profile |
+| `image` | On non-PR runs, or when `deploy/`, `.dockerignore` or a workflow changes: builds the container image for x86_64 and starts it under compose's seccomp profile |
 | `CI result` | fails if any required job failed or was cancelled |
 
 The `master requires CI` ruleset requires `CI result`, so a red run blocks a

@@ -115,3 +115,22 @@ memory/compaction algorithms, every persistence crash point, all schedule time
 transitions and all UI async permutations would require separate, deeper
 reviews. No code was deleted merely to hit a line-count target; ownership and
 behavior take precedence over net deletion.
+
+## Documentation follow-up
+
+Reviewed all 31 tracked Markdown files against current repository behavior,
+including root guides, deployment and benchmark notes, bundled skill references,
+and test documentation. Historical changelog entries and dated benchmark results
+remain historical records; external service behavior was not remeasured.
+
+Corrected browser field visibility in security text and its diagram, the renamed
+configuration tool, terminal-output privacy limits, approval-prefix semantics,
+per-turn tool availability, headless resume instructions, plain-mode motion,
+stylesheet storage, web build order and CI selection. Volatile bundle sizes and
+browser-spec lists now point to their measurement or configuration source.
+
+Validation: 144 local Markdown links and heading targets resolved; referenced
+source paths and configuration-variable names were checked against the tree.
+The updated SVG was rendered and inspected. Repository lint/source-contract
+checks and `git diff --check` passed. This follow-up changes documentation only;
+the production/test validation above remains tied to its recorded source commit.

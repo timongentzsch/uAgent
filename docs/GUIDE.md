@@ -326,7 +326,8 @@ uagent -p "fix the tests" --yolo --budget 2 --token-budget 20000
   Nothing else goes to stdout; problems go to stderr, and a conversation that
   cannot be continued still gets an envelope, with `error` set.
 - A `-p` run is saved like any conversation: `-c -p` continues the latest
-  one in the folder, and `--resume` a named one.
+  one in the folder. `--resume` opens an interactive conversation picker and
+  cannot be combined with `-p`.
 - `--json-stream` prints events as they happen, each
   `{"schema": "uagent.event.v2", "seq": N, "time": "…", "type": "…",
   "data": {…}}`. Types include `turn.started`, `usage.updated`, `notice`,

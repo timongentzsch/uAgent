@@ -33,6 +33,7 @@ Paths are under `~/.uagent` unless shown otherwise.
 | settings, for all conversations and per folder | `config/settings.json` (and its `.lock`) |
 | folder trust, permission rules, first-run welcome shown | `config/trusted-projects.json`, `config/permissions.json`, `config/welcomed` |
 | your instructions | `AGENTS.md` |
+| web interface stylesheet | `config/style.css` |
 | your skills | `skills/*` |
 | shared browser profile (saved logins, cookies) | the directory `UAGENT_BROWSER_DATA` names |
 | runtime sockets and their leases | `/tmp/uagent-<uid>-<hash>/*.sock`, `*.sock.lock` |

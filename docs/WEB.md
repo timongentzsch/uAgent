@@ -225,8 +225,7 @@ shells at once:
 - **The page's own terminal** (the button in the header, Ctrl+`, also ⌘+`
   on a Mac) opens a panel under the chat and Files, in tabs like VS Code's
   terminal. **+** starts another, in the open conversation's folder, or in
-  your home folder when no conversation is open; **Open terminal here** in
-  Files starts one in the folder it shows. Its shells belong to this page:
+  your home folder when no conversation is open. Its shells belong to this page:
   they end when their tab or the panel closes or the page is left or
   reloaded, and are never listed.
 

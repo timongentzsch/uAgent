@@ -20,6 +20,8 @@ export interface ViewedImage {
   name: string;
   // A composer draft's own file, which an annotated copy replaces.
   draftId?: string;
+  // Opens in markup, and leaving markup closes the viewer.
+  edit?: boolean;
 }
 
 const annotator = () => import("./annotate.tsx");
@@ -41,7 +43,7 @@ export function ImageViewerDialog({
   close: () => void;
   annotate?: (file: File, draftId?: string) => Promise<boolean>;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(!!image.edit);
   // The image's real width, so the zoom level reads as its actual size.
   const [natural, setNatural] = useState<number>();
   return (
@@ -77,7 +79,7 @@ export function ImageViewerDialog({
           ownsDialog
           src={image.src}
           name={image.name}
-          cancel={() => setEditing(false)}
+          cancel={image.edit ? close : () => setEditing(false)}
           attach={async (file: File) => {
             // A failed upload is reported and leaves the markup open.
             if (await annotate(file, image.draftId)) close();

@@ -96,9 +96,9 @@ json TranscriptView::Page(uint64_t before) const {
   std::set<std::string> ids;
   size_t bytes = 0, whole = 0;
   bool more = false;
-  for (auto it = std::make_reverse_iterator(before ? entries.lower_bound(before)
-                                                   : entries.end());
-       it != entries.rend() && !more; ++it) {
+  auto it = std::make_reverse_iterator(before ? entries.lower_bound(before)
+                                              : entries.end());
+  for (; it != entries.rend() && !more; ++it) {
     made.clear();
     EntryNodes(conversation_, it->first, it->second, true, made);
     for (auto node = made.rbegin(); node != made.rend() && !more; ++node) {
@@ -114,12 +114,30 @@ json TranscriptView::Page(uint64_t before) const {
       if (page.back()["kind"] == "turn") whole = page.size();
     }
   }
-  // The page ends on a whole turn, unless one turn is larger than a page.
-  if (more && whole) page.resize(whole);
+  // The page ends on a whole turn. A turn larger than a page keeps its head,
+  // the message that started it, as the live view does (view_reducer.cc):
+  // its steps are drawn under it.
+  bool head = false;
+  if (more && whole) {
+    page.resize(whole);
+  } else if (more) {
+    for (--it; it != entries.rend() && !head; ++it) {
+      made.clear();
+      EntryNodes(conversation_, it->first, it->second, true, made);
+      for (json& node : made) {
+        if (node["kind"] != "turn") continue;
+        page.push_back(std::move(node));
+        head = true;
+        break;
+      }
+    }
+  }
   std::reverse(page.begin(), page.end());
   page = WithStructure(std::move(page), facts);
+  // Older rows continue from the first one held after a kept head.
   const auto first = std::ranges::find_if(
-      page, [](const json& node) { return node.contains("sequence"); });
+      page.begin() + (head ? 1 : 0), page.end(),
+      [](const json& node) { return node.contains("sequence"); });
   const json oldest = first == page.end() ? json(0) : (*first)["sequence"];
   return {
       {"fork", JsonValue(facts, "fork-origin", json(nullptr))},

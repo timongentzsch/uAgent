@@ -128,12 +128,8 @@ function App() {
   useEffect(() => {
     if (!filesOpen) setReveal(null);
   }, [filesOpen]);
-  // The terminal under the chat, and a folder asked to open one in.
+  // The terminal under the chat.
   const [terminalOpen, setTerminalOpen] = useState(false);
-  const [terminalRequest, setTerminalRequest] = useState<{
-    cwd: string;
-    at: number;
-  } | null>(null);
   const [modal, setModal] = useState<AppModal | null>(null);
   // Search (Mod+K) or the shortcuts sheet (?).
   const [overlay, setOverlay] = useState<"search" | "shortcuts" | null>(null);
@@ -466,22 +462,6 @@ function App() {
     [showTerminal, report],
   );
   const toggleTerminal = useCallback(() => setTerminalOpen((on) => !on), []);
-  // A tab in a folder of the conversation's; the files sheet makes way for it.
-  const openTerminal = useCallback(
-    (cwd: string) => {
-      if (filesSheet) setFilesOpen(false);
-      setTerminalRequest({ cwd, at: Date.now() });
-      setTerminalOpen(true);
-    },
-    [filesSheet],
-  );
-  const filesTerminal =
-    terminalAvailable && session
-      ? (path: string) =>
-          openTerminal(
-            path ? `${folderOf(session)}/${path}` : folderOf(session),
-          )
-      : undefined;
   // What the terminal or the files hand the conversation: added to its
   // draft, never sent. On a small screen they cover the chat, so they step
   // aside; the terminal's shells keep running and reattach when it opens.
@@ -506,7 +486,6 @@ function App() {
       key={session.id}
       session={session}
       close={filesSheet ? undefined : () => setFilesOpen(false)}
-      openTerminal={filesTerminal}
       reveal={reveal}
       addToChat={toChat}
       pictures={browserAvailable}
@@ -517,7 +496,6 @@ function App() {
       load={terminalPanel}
       fallback={<Spinner label="Opening the terminal…" />}
       cwd={session ? folderOf(session) : ""}
-      request={terminalRequest}
       addToChat={toChat}
       close={() => setTerminalOpen(false)}
       report={report}

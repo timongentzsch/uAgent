@@ -29,12 +29,12 @@
   padding-inline: var(--inset-x);
   border-bottom: var(--border);
 }
-/* Under the bar once there are two, scrolling sideways. */
+/* The bar's tabs, one per shell, scrolling sideways. */
 .terminal-tabs {
   display: flex;
+  flex: 1;
+  min-width: 0;
   gap: var(--space-2);
-  padding-inline: var(--inset-x);
-  border-bottom: var(--border);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -42,6 +42,9 @@
   display: flex;
   flex: none;
   align-items: center;
+}
+.terminal-tab .terminal-place {
+  flex: none;
 }
 
 .terminal-tabpanel {

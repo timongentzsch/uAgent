@@ -7,14 +7,7 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import {
-  ChevronLeft,
-  ChevronsDownUp,
-  Download,
-  File,
-  Terminal,
-  X,
-} from "lucide-preact";
+import { ChevronLeft, ChevronsDownUp, Download, File, X } from "lucide-preact";
 import { usePushDirection } from "../../shared/motion.ts";
 import type { FileTarget, Session } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
@@ -172,7 +165,6 @@ function lastWrite(nodes: readonly Node[] = []) {
 export default function Files({
   session,
   close,
-  openTerminal,
   reveal,
   addToChat,
   pictures,
@@ -180,9 +172,6 @@ export default function Files({
   session: Session;
   // Docked beside the chat; in a sheet, the sheet's own close.
   close?: () => void;
-  // Opens a terminal in the folder shown, by its path in this one; none
-  // while the host offers no terminal.
-  openTerminal?: (path: string) => void;
   // A file a message cited, to show at its lines; `at` makes a repeat new.
   reveal?: (FileTarget & { at: number }) | null;
   // Puts text in the conversation's draft; none where there is no draft.
@@ -596,14 +585,6 @@ export default function Files({
           >
             <Download />
           </a>
-        )}
-        {openTerminal && !file && !changing && (
-          <IconButton
-            label="Open terminal here"
-            onClick={() => openTerminal(dir)}
-          >
-            <Terminal />
-          </IconButton>
         )}
         {closeFiles && (
           <IconButton label="Close files" onClick={closeFiles}>

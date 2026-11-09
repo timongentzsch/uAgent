@@ -404,7 +404,6 @@ export function FolderTerminal({
 // the page ends them.
 export default function TerminalPanel({
   cwd,
-  request,
   addToChat,
   close,
   report,
@@ -412,8 +411,6 @@ export default function TerminalPanel({
   // Where a new terminal starts: the conversation's folder, or the home
   // folder ("").
   cwd: string;
-  // A folder to open a terminal in, asked for at `at`.
-  request: { cwd: string; at: number } | null;
   // Puts text into the open conversation's composer; none without one.
   addToChat?: (text: string) => void;
   close: () => void;
@@ -424,17 +421,16 @@ export default function TerminalPanel({
   const [ended, setEnded] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const views = useRef(new Map<string, View>());
-  const handled = useRef(0);
 
-  const open = async (folder: string) => {
+  const open = async () => {
     setBusy(true);
     try {
-      const { id } = await manage("terminal", { action: "open", cwd: folder });
+      const { id } = await manage("terminal", { action: "open", cwd });
       if (!id) return;
       setTabs((current) => {
         let number = 1;
         while (current.some((tab) => tab.number === number)) number++;
-        return [...current, { id, cwd: folder, folder: "", number }];
+        return [...current, { id, cwd, folder: "", number }];
       });
       setActive(id);
     } catch (error) {
@@ -458,36 +454,48 @@ export default function TerminalPanel({
     else if (active === id) setActive(kept[kept.length - 1].id);
   };
 
-  // A new shell when the panel opens, and one for each folder asked for.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once, and for each new request
+  // A new shell when the panel opens.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once
   useEffect(() => {
-    if (request && handled.current !== request.at) {
-      handled.current = request.at;
-      void open(request.cwd);
-    } else if (!handled.current) {
-      handled.current = -1;
-      void open(cwd);
-    }
-  }, [request]);
+    void open();
+  }, []);
 
   const current = tabs.find((tab) => tab.id === active);
   if (!tabs.length && busy) return <Spinner label="Opening the terminal…" />;
   return (
     <div class="terminal-panel">
       <div class="terminal-bar">
-        {current ? (
-          <Place
-            name={`Terminal ${current.number}`}
-            cwd={current.cwd}
-            ended={ended.includes(current.id)}
-          />
-        ) : (
-          <span class="terminal-place" />
-        )}
+        <div class="terminal-tabs" role="group" aria-label="Terminals">
+          {tabs.map((tab) => (
+            <div class="terminal-tab entry" key={tab.id}>
+              <Button
+                variant="quiet"
+                aria-current={tab.id === active ? "true" : undefined}
+                aria-controls={`terminal-${tab.id}`}
+                onClick={() => {
+                  setActive(tab.id);
+                  views.current.get(tab.id)?.focus();
+                }}
+              >
+                <Place
+                  name={`Terminal ${tab.number}`}
+                  cwd={tab.cwd}
+                  ended={ended.includes(tab.id)}
+                />
+              </Button>
+              <IconButton
+                label={`Close Terminal ${tab.number}`}
+                onClick={() => void remove(tab.id)}
+              >
+                <X />
+              </IconButton>
+            </div>
+          ))}
+        </div>
         <IconButton
           label="New terminal"
           disabled={busy || tabs.length >= maxTerminals}
-          onClick={() => void open(cwd)}
+          onClick={() => void open()}
         >
           <Plus />
         </IconButton>
@@ -512,32 +520,6 @@ export default function TerminalPanel({
           <ChevronDown />
         </IconButton>
       </div>
-      {tabs.length > 1 && (
-        <div class="terminal-tabs" role="group" aria-label="Terminals">
-          {tabs.map((tab) => (
-            <div class="terminal-tab entry" key={tab.id}>
-              <Button
-                variant="quiet"
-                aria-current={tab.id === active ? "true" : undefined}
-                aria-controls={`terminal-${tab.id}`}
-                title={tab.cwd}
-                onClick={() => {
-                  setActive(tab.id);
-                  views.current.get(tab.id)?.focus();
-                }}
-              >
-                Terminal {tab.number}
-              </Button>
-              <IconButton
-                label={`Close Terminal ${tab.number}`}
-                onClick={() => void remove(tab.id)}
-              >
-                <X />
-              </IconButton>
-            </div>
-          ))}
-        </div>
-      )}
       {tabs.map((tab) => (
         <TerminalView
           key={tab.id}

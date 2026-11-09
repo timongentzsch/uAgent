@@ -1,6 +1,6 @@
 ---
 name: design
-description: Design or restyle pages, screens, slide decks, documents (memos, reports) and a design system: HTML shown in Files
+description: Slide decks and presentations, documents on paper (memos, reports), screens, pages and design systems: make or restyle them as HTML pages shown in Files
 ---
 
 # Design

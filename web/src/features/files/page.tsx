@@ -22,6 +22,7 @@ import { readTokens } from "./tokens.ts";
 import { bindZoomWheel } from "../../shared/zoom.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
+import type { ViewedImage } from "../../shared/attachments.tsx";
 
 // The zoom of an opened page, as a scale of its real size, and one step.
 const ZOOM_MIN = 0.1;
@@ -73,7 +74,7 @@ export default function OpenPage({
   // The page drawn as a PNG by the agent's browser, where there is one.
   picture?: (width: number, height: number, scale: number) => string;
   // Opens a picture in the image viewer, which can draw on it.
-  view: (image: { src: string; name: string }) => void;
+  view: (image: ViewedImage) => void;
   // The pages of its folder in canvas order, which Present steps through.
   siblings: string[];
   go: (path: string) => void;
@@ -273,7 +274,11 @@ export default function OpenPage({
             <IconButton
               label="Draw on it"
               onClick={() =>
-                view({ src: picture(size.w, size.h, 1), name: `${path}.png` })
+                view({
+                  src: picture(size.w, size.h, 1),
+                  name: `${path}.png`,
+                  edit: true,
+                })
               }
             >
               <PenLine />

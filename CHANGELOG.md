@@ -4,6 +4,7 @@
 
 ### Changes
 
+- **The terminal panel is one row of tabs.** Each terminal is a tab naming its folder, with **+**, the menu and hide beside them, in place of a title row over a second row of tabs. Files no longer has its own terminal button; the header's opens the panel.
 - **Files is an explorer tree.** Folders open in place with indent guides, as in VS Code's Explorer; the arrow keys walk the tree, the open folders are kept per folder, and a folder of pages offers its canvas on its row. An opened page zooms as the canvas does, from its controls or a pinch over the page.
 - **The Library shows everything, from every place.** Memories, skills, designs, design systems and files the agent shared are one list, grouped by folder and workspace as the sidebar groups conversations, with a rail to filter by kind and place and a search that reads what an item says. A memory opens beside the list and can move to another place or be copied to every place; a design shows its pages and opens its canvas; a shared file opens, downloads or leads back to its conversation. On a phone the kinds are chips and the place is a field.
 - **Designs you see live beside the chat.** A folder of HTML pages opens as a canvas in the Files pane: every page runs live in a sandbox that reaches neither the app nor its API, rows group by name, a page the agent writes reloads at once, and one that fails offers its errors to the agent. The new `design` skill teaches the agent the format, the craft rules and how to build a design system from your code, with its brand book: A4 pages the agent art-directs in the system's own voice, which read like a PDF on any screen and print to one. A design a reply names shows under it as a card, its first page live, that opens it. Pages are named by step, screen and state (`02-sign-in--error.html`): the step is the canvas row, so a screen's variants and states sit side by side. `write_file` can copy a file you attached into the folder (`from`), so a design can use your logo or photos.
@@ -38,6 +39,9 @@
 - **A `run` row reads as what it does.** `run` requires a `description` ("Run the unit tests"), shown on the row, with the command when it opens. Approvals still show the command. The `intent` argument of `run` and `scratch` is gone, and "edited N files" no longer counts commands.
 
 ### Fixes
+
+- **A conversation of one long turn shows again.** When a single turn held more steps than one page, a saved conversation opened with only "Load older retained messages": the page carried the turn's steps but not the message that started it, so none could be drawn. A page now keeps that message, as the live view already did, and older steps load after it.
+- **Draw on a page opens the markup at once.** In a design, the pen button goes straight to annotating the page's picture, with a spinner while the picture renders, instead of the image viewer first. The viewer no longer shows a zoom cursor, since a click there does not zoom.
 
 - **Root commands ask for a password only when sudo needs one.** A user sudo lets in without a password (NOPASSWD), or a session already running as root, is no longer asked: µAgent checks with `sudo -n` first, on the target machine too, and runs the command with no prompt.
 - **Deleting a conversation removes its agents' worktrees on macOS too.** An agent's worktree was recognised only when its saved folder was spelled like the home folder, so `/private/var/…` against `/var/…` left the worktree in place, unchecked for unsaved work. Paths are now compared where they lead.

@@ -11,9 +11,12 @@ test("terminal tabs run commands and add their text to the chat", async ({
   await headerAction(page, "Terminal");
   const dock = page.getByRole("region", { name: "Terminal" });
   const shown = dock.locator(".terminal-tabpanel:not([hidden])");
-  // Opening the panel starts a shell in the conversation's folder.
-  await expect(dock.locator(".terminal-place")).toHaveText(/^Terminal 1 · /);
-  await expect(dock.locator(".terminal-tab")).toHaveCount(0);
+  // Opening the panel starts a shell in the conversation's folder, its tab
+  // the bar's title.
+  await expect(dock.locator("[aria-current] .terminal-place")).toHaveText(
+    /^Terminal 1 · /,
+  );
+  await expect(dock.locator(".terminal-tab")).toHaveCount(1);
   await expect(shown.locator(".xterm-rows")).toContainText(/\S/);
   await shown.locator(".xterm").click();
   await page.keyboard.type("echo first-$((6*7))\n");
@@ -28,7 +31,7 @@ test("terminal tabs run commands and add their text to the chat", async ({
   await expect(shown.locator(".xterm-rows")).toContainText("second-6");
 
   // Back on the first tab, what it shows goes into the draft, unsent.
-  await dock.getByRole("button", { name: "Terminal 1", exact: true }).click();
+  await dock.getByRole("button", { name: /^Terminal 1 · / }).click();
   await expect(shown.locator(".xterm-rows")).toContainText("first-42");
   await dock.getByRole("button", { name: "Terminal menu" }).click();
   await page.getByRole("menuitem", { name: "Add to chat" }).click();
@@ -43,7 +46,9 @@ test("terminal tabs run commands and add their text to the chat", async ({
   await headerAction(page, "Terminal");
   await expect(dock).toHaveCount(0);
   await headerAction(page, "Terminal");
-  await expect(dock.locator(".terminal-place")).toHaveText(/^Terminal 1 · /);
+  await expect(dock.locator("[aria-current] .terminal-place")).toHaveText(
+    /^Terminal 1 · /,
+  );
   await expect(shown.locator(".xterm-rows")).not.toContainText("first-42");
 });
 
@@ -55,13 +60,13 @@ test("a terminal keeps its number, and a new one takes the lowest free", async (
   await page.goto(`/#session=${session.id}`);
   await headerAction(page, "Terminal");
   const dock = page.getByRole("region", { name: "Terminal" });
-  const place = dock.locator(".terminal-place");
+  const place = dock.locator("[aria-current] .terminal-place");
   await expect(place).toHaveText(/^Terminal 1 · /);
   await dock.getByRole("button", { name: "New terminal" }).click();
   await expect(dock.locator(".terminal-tab")).toHaveCount(2);
   await expect(place).toHaveText(/^Terminal 2 · /);
   await dock.getByRole("button", { name: "Close Terminal 1" }).click();
-  await expect(dock.locator(".terminal-tab")).toHaveCount(0);
+  await expect(dock.locator(".terminal-tab")).toHaveCount(1);
   await expect(place).toHaveText(/^Terminal 2 · /);
   await dock.getByRole("button", { name: "New terminal" }).click();
   await expect(dock.locator(".terminal-tab")).toHaveCount(2);
@@ -224,11 +229,11 @@ test.describe("on a touch phone", () => {
     const sheet = page.getByRole("dialog", { name: "Terminal" });
     await expect(sheet.locator(".xterm-rows")).toContainText(/\S/);
     await expect(sheet.locator(".terminal-place")).toHaveText("Terminal 1 · ~");
-    await expect(sheet.locator(".terminal-tab")).toHaveCount(0);
+    await expect(sheet.locator(".terminal-tab")).toHaveCount(1);
     await expect(page.locator(".terminal-dock")).toHaveCount(0);
     // Every control in the bar has a name.
     for (const button of await sheet.locator(".terminal-bar button").all())
-      expect(await button.getAttribute("aria-label")).toBeTruthy();
+      await expect(button).toHaveAccessibleName(/\S/);
     const box = async (selector) => sheet.locator(selector).boundingBox();
     const keys = await box(".terminal-keys");
     const view = await box(".terminal-view");

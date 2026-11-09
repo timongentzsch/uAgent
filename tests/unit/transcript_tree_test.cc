@@ -615,6 +615,27 @@ TEST_CASE(TestGoldenPagesEndOnWholeTurns) {
   CHECK(seen == 180);
 }
 
+// A turn larger than a page keeps its head on the first page, so its steps
+// have a turn to sit under, and older pages continue after the head.
+TEST_CASE(TestGoldenPageOfOneLongTurnKeepsItsHead) {
+  Recorder turns;
+  turns.Say("one long task");
+  for (int index = 1; index <= 100; ++index) {
+    turns.Reply("r-0-" + std::to_string(index) + "-1", "step");
+  }
+  turns.Footer(100, "complete");
+  const TranscriptView view(turns.History());
+  const json first = view.Page(0);
+  REQUIRE(first["more"].get<bool>());
+  const json& nodes = first["nodes"];
+  CHECK(nodes.front()["kind"] == "turn");
+  CHECK(nodes.back()["kind"] == "footer");
+  CHECK(first["before"] == nodes[1]["sequence"]);
+  const json older = view.Page(first["before"].get<uint64_t>());
+  CHECK(!older["more"].get<bool>());
+  CHECK(older["nodes"].front()["id"] == nodes.front()["id"]);
+}
+
 // A compaction says what it kept and how long it took.
 TEST_CASE(TestCompactionNoticeSaysWhatWent) {
   const json node = EntryNode({{"kind", "compaction"},

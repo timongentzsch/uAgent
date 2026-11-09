@@ -45,15 +45,7 @@ void Master::RegisterTerminalRoutes() {
 // socket for the same shell replaces this one.
 void Master::TerminalSocket(const Request& request,
                             httplib::ws::WebSocket& socket) {
-  std::string device;
-  {
-    std::lock_guard lock(mutex_);
-    const std::string* expected_origin = ExpectedOrigin(request);
-    if (expected_origin &&
-        request.get_header_value("Origin") == *expected_origin) {
-      device = DeviceId(request);
-    }
-  }
+  const std::string device = WebSocketDevice(request);
   if (device.empty() || !terminals_) {
     socket.close(httplib::ws::CloseStatus::PolicyViolation);
     return;

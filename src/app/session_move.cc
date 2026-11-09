@@ -423,9 +423,7 @@ std::string SessionHost::MoveConversation(
     const auto member = sessions_.find(SessionIdFor(info.path));
     if (member != sessions_.end()) {
       HostSession& session = *member->second;
-      if (session.closing || session.connecting ||
-          session.status == SessionStatus::kUpdating ||
-          session.status == SessionStatus::kDeleting) {
+      if (session.LifecycleBusy() || session.connecting) {
         error = "\"" + info.title + "\" is busy; try again";
       } else if (session.pid > 0 && !session.exited) {
         error = Busy(session) ? "\"" + info.title + "\" is running"

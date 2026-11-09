@@ -297,8 +297,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     result.error = "unknown session";
     return result;
   }
-  if (session->closing || session->status == SessionStatus::kUpdating ||
-      session->status == SessionStatus::kDeleting) {
+  if (session->LifecycleBusy()) {
     result.error = "conversation update in progress";
     return result;
   }

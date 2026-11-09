@@ -105,10 +105,25 @@ function lineRange(lines?: string): [number, number] | undefined {
   const [first, last = first] = lines.split("-").map(Number);
   return [Math.min(first, last), Math.max(first, last)];
 }
+// Navigation changes together; searches, tree expansion and loaded data do not.
+interface FileLocation {
+  dir: string;
+  file: string;
+  showing: "list" | "file";
+  source?: boolean;
+  changing?: boolean;
+  cited?: { path: string; lines?: [number, number] };
+  outside?: string;
+  canvas?: boolean;
+  canvasFor?: string;
+}
 // Where a path a message wrote leads in `folder`: a file at its lines (or
 // its change), a folder, or outside. The pane starts there when it opens
 // for a citation, so it never shows the list on the way.
-function place({ path: written, lines, changes }: FileTarget, folder: string) {
+function place(
+  { path: written, lines, changes }: FileTarget,
+  folder: string,
+): FileLocation {
   const path = written.startsWith("/")
     ? written.startsWith(`${folder}/`)
       ? written.slice(folder.length + 1)
@@ -184,7 +199,26 @@ export default function Files({
   const view = useContext(ImageViewer);
   const [start] = useState(() => reveal && place(reveal, folderOf(session)));
   // The folder in context: the open file's, or the one a citation names.
-  const [dir, setDir] = useState(start?.dir ?? "");
+  const [location, setLocation] = useState<FileLocation>(() => ({
+    dir: "",
+    file: "",
+    showing: "list",
+    ...start,
+    canvasFor: start ? arrival(start) : undefined,
+  }));
+  const navigate = (change: Partial<FileLocation>) =>
+    setLocation((current) => ({ ...current, ...change }));
+  const {
+    dir,
+    file,
+    source = false,
+    changing = false,
+    showing,
+    cited,
+    outside = "",
+    canvas = false,
+    canvasFor,
+  } = location;
   const [expanded, setExpanded] = useState(() => {
     const saved = kept.read()[folderOf(session)];
     return new Set([
@@ -205,29 +239,8 @@ export default function Files({
       if (!next.delete(path)) next.add(path);
       return next;
     });
-  const [file, setFile] = useState(start?.file ?? "");
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
-  const [source, setSource] = useState(!!start?.source);
-  // The folder's files, or what differs in it from the last commit.
-  const [changing, setChanging] = useState(!!start?.changing);
-  // In a narrow pane only one side shows: the list, or the open file.
-  const [showing, setShowing] = useState<"list" | "file">(
-    start?.showing ?? "list",
-  );
-  // A cited file and its lines: marked while it is open. Not there as
-  // written, the search looks for it and the lines wait for the pick.
-  const [cited, setCited] = useState<
-    { path: string; lines?: [number, number] } | undefined
-  >(start?.cited);
-  // A cited path outside the folder, which the pane cannot show.
-  const [outside, setOutside] = useState(start?.outside ?? "");
-  // The folder's view: its pages side by side rather than its list. Opening
-  // a file never changes it, so closing the file shows the view under it.
-  const [canvas, setCanvas] = useState(false);
-  // A folder (or a page in one) a message cited, whose own view is set once
-  // its listing answers: a canvas for two pages or more.
-  const [canvasFor, setCanvasFor] = useState(start && arrival(start));
   // With nothing open, the list is what shows, whatever was shown last.
   const side = file || outside ? showing : "list";
   const moved = usePushDirection(side === "file");
@@ -383,50 +396,43 @@ export default function Files({
     : [];
   const open = (path: string, lines?: [number, number]) => {
     if (path.endsWith("/")) return browse(path.slice(0, -1));
-    setFile(path);
-    setDir(dirOf(path));
+    navigate({
+      file: path,
+      dir: dirOf(path),
+      showing: "file",
+      outside: "",
+      // Rendered pages have no lines to mark: citations open their source.
+      source: !!lines && (MARKDOWN.test(path) || HTML.test(path)),
+      cited: lines && { path, lines },
+    });
     unfold(dirOf(path));
-    // Rendered Markdown has no lines to mark: cited lines open its source.
-    setSource(!!lines && (MARKDOWN.test(path) || HTML.test(path)));
     setQuery("");
-    setShowing("file");
-    setCited(lines && { path, lines });
-    setOutside("");
   };
-  const pick = (next: boolean) => {
-    setChanging(next);
-    setFile("");
-    setShowing("list");
-    setCited(undefined);
-  };
-  const browse = (path: string) => {
-    setCanvas(false);
-    setDir(path);
-    unfold(path);
+  const pick = (changing: boolean) =>
+    navigate({ changing, file: "", showing: "list", cited: undefined });
+  const browse = (dir: string) => {
+    navigate({
+      dir,
+      canvas: false,
+      showing: "list",
+      cited: undefined,
+      outside: "",
+    });
+    unfold(dir);
     setQuery("");
-    setShowing("list");
-    setCited(undefined);
-    setOutside("");
   };
   const show = (target: FileTarget) => {
     const next = place(target, folderOf(session));
-    setDir(next.dir);
+    // A reveal replaces navigation rather than inheriting the prior file's modes.
+    setLocation({ ...next, canvasFor: arrival(next) });
     unfold(next.dir);
-    setFile(next.file);
-    setShowing(next.showing);
-    setChanging(!!next.changing);
-    setSource(!!next.source);
-    setCited(next.cited);
-    setOutside(next.outside ?? "");
     setQuery("");
-    setCanvas(false);
-    setCanvasFor(arrival(next));
   };
   // A remembered folder that is gone opens the top.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed list
   useEffect(() => {
     if (dir && listing.error && failure(listing.error).status === 404)
-      setDir("");
+      navigate({ dir: "" });
   }, [listing.error]);
   const pages = (listing.value?.entries ?? [])
     .filter((entry) => !entry.dir && HTML.test(entry.name))
@@ -434,10 +440,10 @@ export default function Files({
   // biome-ignore lint/correctness/useExhaustiveDependencies: once the listing answers
   useEffect(() => {
     if (canvasFor === undefined || canvasFor !== dir || !listing.value) return;
-    setCanvasFor(undefined);
+    navigate({ canvasFor: undefined });
     // Two pages or more are a canvas; one (a design system's book) is the
     // page itself.
-    if (pages.length > 1) setCanvas(true);
+    if (pages.length > 1) navigate({ canvas: true });
     else if (pages.length === 1 && !file)
       open(dir ? `${dir}/${pages[0]}` : pages[0]);
   }, [listing.value, canvasFor]);
@@ -467,7 +473,7 @@ export default function Files({
       diff.error &&
       failure(diff.error).status === 404
     )
-      setChanging(false);
+      navigate({ changing: false });
   }, [diff.error]);
   // A cited file not there as written: the search looks for its path while
   // the viewer says so; the list shows only if it finds none or several.
@@ -478,7 +484,7 @@ export default function Files({
   // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed read
   useEffect(() => {
     if (missing) {
-      setFile("");
+      navigate({ file: "" });
       setQuery(cited!.path);
     }
   }, [missing]);
@@ -495,9 +501,9 @@ export default function Files({
   // biome-ignore lint/correctness/useExhaustiveDependencies: once the search answers
   useEffect(() => {
     if (!answered) return;
-    if (named.length !== 1) return setShowing("list");
+    if (named.length !== 1) return navigate({ showing: "list" });
     open(named[0], waiting);
-    setCited({ path: named[0], lines: waiting });
+    navigate({ cited: { path: named[0], lines: waiting } });
   }, [answered]);
   // Still looking: the title keeps the cited name, the viewer says so.
   const seeking = (looking && (!answered || named.length === 1)) || missing;
@@ -512,7 +518,7 @@ export default function Files({
           <IconButton
             class="files-back files-back-canvas"
             label={canvas ? "Back to the canvas" : "Back to the list"}
-            onClick={() => setFile("")}
+            onClick={() => navigate({ file: "" })}
           >
             <ChevronLeft />
           </IconButton>
@@ -521,7 +527,7 @@ export default function Files({
           <IconButton
             class="files-back files-back-canvas"
             label="Back to the list"
-            onClick={() => setCanvas(false)}
+            onClick={() => navigate({ canvas: false })}
           >
             <ChevronLeft />
           </IconButton>
@@ -530,7 +536,7 @@ export default function Files({
           <IconButton
             class="files-back"
             label="Back to the list"
-            onClick={() => setShowing("list")}
+            onClick={() => navigate({ showing: "list" })}
           >
             <ChevronLeft />
           </IconButton>
@@ -560,7 +566,7 @@ export default function Files({
           <Button
             variant="secondary"
             aria-pressed={source}
-            onClick={() => setSource(!source)}
+            onClick={() => navigate({ source: !source })}
           >
             Source
           </Button>
@@ -696,7 +702,7 @@ export default function Files({
               onInput={(event) => {
                 setQuery(event.currentTarget.value);
                 setIndex(0);
-                setCited(undefined);
+                navigate({ cited: undefined });
               }}
               onKeyDown={(event) => {
                 if (event.isComposing || !plainKey(event)) return;
@@ -805,9 +811,7 @@ export default function Files({
                     toggle={toggle}
                     open={(path) => open(path)}
                     canvas={(path) => {
-                      setDir(path);
-                      setFile("");
-                      setCanvas(true);
+                      navigate({ dir: path, file: "", canvas: true });
                     }}
                   />
                 </Placeholder>

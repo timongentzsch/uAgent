@@ -101,6 +101,14 @@ std::string Master::DeviceId(const Request& request) const {
   }
   return {};
 }
+// Both streaming endpoints require the same origin and paired device.
+std::string Master::WebSocketDevice(const Request& request) {
+  std::lock_guard lock(mutex_);
+  const std::string* origin = ExpectedOrigin(request);
+  return origin && request.get_header_value("Origin") == *origin
+             ? DeviceId(request)
+             : std::string();
+}
 void Master::Authenticate(const Request& request, Response& response) {
   if (request.body.size() > kAuthenticationRequestBytes) {
     Error(response, "authentication request too large", 413);

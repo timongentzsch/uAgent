@@ -120,6 +120,13 @@ struct HostSession {
   // Settings that need a restart changed: recycle this runtime once idle.
   bool restart = false;
 
+  // A lifecycle operation owns the session; ordinary commands and catalogue
+  // refreshes must leave it alone. Callers hold the host mutex.
+  bool LifecycleBusy() const {
+    return closing || status == SessionStatus::kUpdating ||
+           status == SessionStatus::kDeleting;
+  }
+
   ~HostSession();
   bool Send(json frame);
 };

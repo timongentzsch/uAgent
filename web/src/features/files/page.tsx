@@ -19,6 +19,8 @@ import Frame, {
   tell,
 } from "../../shared/page-frame.tsx";
 import { readTokens } from "./tokens.ts";
+import { bindZoomWheel } from "../../shared/zoom.ts";
+import { useLatest } from "../../shared/use-latest.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 
 // The zoom of an opened page, as a scale of its real size, and one step.
@@ -169,25 +171,13 @@ export default function OpenPage({
       scroller.current.clientWidth / 2,
       scroller.current.clientHeight / 2,
     );
-  // ⌘ or Ctrl and the wheel (a trackpad pinch) over the margin; over the
-  // page, its helper sends the same as a zoom message.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: one listener, state by updater
+  // Wheel listeners keep the current fit and scale when the page resizes.
+  const wheelZoom = useLatest(zoomAt);
   useEffect(() => {
     const box = scroller.current;
-    if (!box) return;
-    const wheel = (event: WheelEvent) => {
-      if (!(event.ctrlKey || event.metaKey)) return;
-      event.preventDefault();
-      const at = box.getBoundingClientRect();
-      zoomAt(
-        Math.exp(-event.deltaY * 0.01),
-        event.clientX - at.left,
-        event.clientY - at.top,
-      );
-    };
-    box.addEventListener("wheel", wheel, { passive: false });
-    return () => box.removeEventListener("wheel", wheel);
-  }, []);
+    if (box)
+      return bindZoomWheel(box, (by, at) => wheelZoom.current(by, at.x, at.y));
+  }, [wheelZoom]);
   const select = (on: boolean) => {
     setSelecting(on);
     setHover(undefined);

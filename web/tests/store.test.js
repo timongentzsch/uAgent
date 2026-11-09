@@ -469,3 +469,28 @@ test("a state frame that restates its session keeps the session's object", async
   apply(frame(3, "Reading"));
   assert.equal(host.state.catalogue.sessions[0].turn_status, "Reading");
 });
+
+test("receipts retain queued guidance until the transcript consumes it", async () => {
+  const { outgoingAfter } = await import("../src/state/store.ts");
+  const { outgoingStatus: status } = await import(
+    "../src/shared/message-view.ts"
+  );
+  for (const prior of Object.values(status)) {
+    const item = { status: prior };
+    const queued = prior === status.guidance || prior === status.next;
+    assert.equal(
+      outgoingAfter(item, { unknown: true, pending: true, accepted: true }),
+      status.unconfirmed,
+    );
+    assert.equal(
+      outgoingAfter(item, { pending: true, accepted: false }),
+      queued ? prior : status.awaiting,
+    );
+    assert.equal(
+      outgoingAfter(item, { accepted: true }),
+      queued ? prior : status.sent,
+    );
+    assert.equal(outgoingAfter(item, { accepted: false }), status.refused);
+    assert.equal(outgoingAfter(item, {}), status.refused);
+  }
+});

@@ -628,15 +628,7 @@ void Master::RegisterBrowserRoutes() {
   server_.WebSocket(
       "/api/browser/viewer",
       [this](const Request& request, httplib::ws::WebSocket& socket) {
-        std::string device;
-        {
-          std::lock_guard lock(mutex_);
-          const std::string* expected_origin = ExpectedOrigin(request);
-          if (expected_origin &&
-              request.get_header_value("Origin") == *expected_origin) {
-            device = DeviceId(request);
-          }
-        }
+        const std::string device = WebSocketDevice(request);
         const std::string instance = request.has_param("instance")
                                          ? request.get_param_value("instance")
                                          : "0";

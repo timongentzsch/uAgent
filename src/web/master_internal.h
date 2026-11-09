@@ -100,6 +100,7 @@ class Master {
   json PublicDevices() const UAGENT_REQUIRES(mutex_);
   void LoadDevices();
   bool SaveDevices() const UAGENT_REQUIRES(mutex_);
+  std::string WebSocketDevice(const Request& request);
   std::string DeviceId(const Request& request) const UAGENT_REQUIRES(mutex_);
   void Authenticate(const Request& request, Response& response);
   void Snapshot(const Request&, Response&);

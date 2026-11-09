@@ -114,3 +114,24 @@ export const pinchTo = (
     midpoint(points),
     start.distance > 0 ? distance(points) / start.distance : 1,
   );
+
+// Modifier-wheel zooms at the pointer; ordinary wheel movement belongs to
+// the surface (pan a canvas, scroll a page, or pan an enlarged image).
+export function bindZoomWheel(
+  element: HTMLElement,
+  zoom: (ratio: number, point: Point) => void,
+  pan?: (dx: number, dy: number) => boolean,
+) {
+  const wheel = (event: WheelEvent) => {
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      const rect = element.getBoundingClientRect();
+      zoom(Math.exp(-event.deltaY * 0.01), {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      });
+    } else if (pan?.(-event.deltaX, -event.deltaY)) event.preventDefault();
+  };
+  element.addEventListener("wheel", wheel, { passive: false });
+  return () => element.removeEventListener("wheel", wheel);
+}

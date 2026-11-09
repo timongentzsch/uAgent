@@ -1,4 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useAction } from "../../shared/use-action.ts";
+import { useLayoutEffect, useMemo, useState } from "preact/hooks";
 import { ChevronLeft, Pencil } from "lucide-preact";
 import { tabDrafts } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
@@ -128,8 +129,7 @@ export default function LibraryDocument({
   const [name, setName] = useState("");
   const [where, setWhere] = useState(fresh ? entry.where : cwd);
   const [editing, setEditing] = useState(fresh);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const { run: act, busy, error } = useAction();
   const [dialog, setDialog] = useState<"delete" | "rename" | "move" | null>(
     null,
   );
@@ -154,21 +154,12 @@ export default function LibraryDocument({
   }, [item, content, name, where, dirty, drafts]);
   const forget = () => drafts.forget(item?.key);
   const stale = !!(item?.key && listed && item.revision !== listed.revision);
-  const current = useRef(0);
-  async function run(task: () => Promise<void>) {
-    const at = ++current.current;
-    setBusy(true);
-    setError(null);
-    try {
+  const run = (task: () => Promise<void>) =>
+    act(async () => {
       await task();
-      if (at === current.current) setDialog(null);
+      setDialog(null);
       refresh();
-    } catch (failure) {
-      if (at === current.current) setError(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
+    });
   const call = (
     action: string,
     fields: Record<string, unknown> = {},

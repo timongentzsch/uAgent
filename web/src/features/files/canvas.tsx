@@ -3,6 +3,7 @@ import { TriangleAlert } from "lucide-preact";
 import { Button } from "../../shared/ui.tsx";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import {
+  bindZoomWheel,
   capturePointer,
   distance,
   midpoint,
@@ -141,21 +142,10 @@ export default function Canvas({
   useEffect(() => {
     const box = stage.current;
     if (!box) return;
-    const wheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const at = box.getBoundingClientRect();
-      if (event.ctrlKey || event.metaKey)
-        zoomAt(Math.exp(-event.deltaY * 0.01), {
-          x: event.clientX - at.left,
-          y: event.clientY - at.top,
-        });
-      else
-        setView((v) => ({
-          ...v,
-          x: v.x - event.deltaX,
-          y: v.y - event.deltaY,
-        }));
-    };
+    const unbindWheel = bindZoomWheel(box, zoomAt, (dx, dy) => {
+      setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
+      return true;
+    });
     // Safari sends a trackpad pinch as gesture events, not the wheel. A
     // touch pinch sends them too, which the pointers below already zoom.
     let scale = 1;
@@ -177,11 +167,10 @@ export default function Canvas({
       }
       scale = next;
     };
-    box.addEventListener("wheel", wheel, { passive: false });
     for (const kind of ["gesturestart", "gesturechange"])
       box.addEventListener(kind, gesture);
     return () => {
-      box.removeEventListener("wheel", wheel);
+      unbindWheel();
       for (const kind of ["gesturestart", "gesturechange"])
         box.removeEventListener(kind, gesture);
     };

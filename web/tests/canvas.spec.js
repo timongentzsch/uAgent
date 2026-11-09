@@ -683,6 +683,15 @@ test("a deck lies in slide order, presents with its notes, and the presenter's w
 
   await stage.getByRole("button", { name: "End" }).click();
   await expect(files.locator(".page-stage[data-presenting]")).toHaveCount(0);
+  // An opened slide steps with the arrow keys and the buttons over its edges.
+  const slideNow = files.locator(".page-stage").frameLocator("iframe");
+  await expect(slideNow.getByRole("heading", { name: "Plan" })).toBeVisible();
+  await app.keyboard.press("ArrowRight");
+  await expect(slideNow.getByRole("heading", { name: "End" })).toBeVisible();
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await expect(slideNow.getByRole("heading", { name: "Plan" })).toBeVisible();
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await expect(slideNow.getByRole("heading", { name: "End" })).toBeVisible();
 });
 
 test("a document is edited in place, saved to its file, and exports Markdown", async ({

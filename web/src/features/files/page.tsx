@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import {
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   FileOutput,
   PenLine,
@@ -174,8 +176,27 @@ export default function OpenPage({
     if (key === "n" || key === "N") setNotesShown((shown) => !shown);
     if (key === "Escape") present(false);
   };
+  // An opened slide steps through its deck with the arrow keys too, unless
+  // a field has them.
+  const slideKey = (key: string) => {
+    if (key === "ArrowRight") step(1);
+    if (key === "ArrowLeft") step(-1);
+  };
+  const slides = info?.kind === "slide" && siblings.length > 1;
   useEffect(() => {
-    const keys = (event: KeyboardEvent) => presenting && presentKey(event.key);
+    const keys = (event: KeyboardEvent) => {
+      if (presenting) presentKey(event.key);
+      else if (
+        slides &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !(event.target as Element).closest?.(
+          "input, textarea, select, [contenteditable]",
+        )
+      )
+        slideKey(event.key);
+    };
     document.addEventListener("keydown", keys);
     return () => document.removeEventListener("keydown", keys);
   });
@@ -493,6 +514,13 @@ export default function OpenPage({
                     setPicked((was) => was && { ...was, rect: message.rect });
                   else if (message.type === "key" && presenting)
                     presentKey(message.key);
+                  else if (
+                    message.type === "key" &&
+                    slides &&
+                    !selecting &&
+                    message.key !== "Escape"
+                  )
+                    slideKey(message.key);
                   else if (message.type === "key" && message.key === "Escape")
                     select(false);
                 }}
@@ -511,6 +539,24 @@ export default function OpenPage({
               {picked && mark(picked.rect, "picked")}
             </div>
           </div>
+          {slides && !presenting && (
+            <>
+              <IconButton
+                class="page-step page-step-back"
+                label="Previous slide"
+                onClick={() => step(-1)}
+              >
+                <ChevronLeft />
+              </IconButton>
+              <IconButton
+                class="page-step page-step-next"
+                label="Next slide"
+                onClick={() => step(1)}
+              >
+                <ChevronRight />
+              </IconButton>
+            </>
+          )}
           {presenting && notesShown && info?.notes && (
             <p class="page-notes">{info.notes}</p>
           )}

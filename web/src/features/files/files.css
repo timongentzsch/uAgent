@@ -328,6 +328,20 @@
   width: 100%;
   height: 100%;
 }
+/* An opened slide's way to the deck's previous and next, over its edges. */
+.page-step {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  background: var(--bg);
+  border: var(--border);
+}
+.page-step-back {
+  left: var(--space-4);
+}
+.page-step-next {
+  right: var(--space-4);
+}
 /* Where print will start a document's next page: a hairline across it. */
 .page-break {
   position: absolute;

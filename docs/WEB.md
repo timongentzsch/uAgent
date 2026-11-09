@@ -438,6 +438,14 @@ before Submit.
   messages and opening a folded tool row to reach it; Esc closes it.
 - `?` outside a text field lists every shortcut. Alt+↑ and Alt+↓ step through
   the conversations in sidebar order.
+- **Several at once**: Ctrl-click (⌘-click) picks a conversation or a
+  workspace's header without opening it, and Shift-click adds the run from
+  the last one picked, across places; on a phone, **Select** in a row's
+  menu starts picking with taps. While picking, the sidebar's footer is a
+  bar with **Move to…**, **Close** and **Delete…**; Ctrl+A (⌘A) picks all,
+  ⌫ asks to delete and Esc stops. One confirmation names what goes: a
+  workspace takes its conversations, and what could not be deleted stays
+  picked with the reason. The Library picks the same way.
 - **Move to…** in a conversation's menu (not an agent's, and not before the
   first message) moves it, with the agents it started, to another folder or
   workspace: pick a place from the list or type a folder's path, and Move.

@@ -65,7 +65,12 @@ names, first lines and places. Nothing is copied: each item stays where it
 lives. A memory opens beside the list, where **Move to…** and **Copy to
 everywhere** take it to another place or to every place; a design opens its
 canvas in the Files pane of the place's latest conversation; a shared file
-opens, downloads or leads to its conversation. A folder no conversation
+opens, downloads or leads to its conversation. Ctrl-click (⌘-click) and
+Shift-click pick several items, of any kind and place, and **Delete…**
+removes them after one confirmation: memories and skills are forgotten
+(a skill's supporting files stay), designs, decks and design systems are
+deleted with their folder, docs with their file, and shared files for
+good. A folder no conversation
 works in is not listed; start one there first. **Edit** opens an item's
 source; drafts survive navigation in the current tab, and a stale revision
 cannot overwrite a newer file.
@@ -81,7 +86,10 @@ uagent --control '{"kind":"library","places":["/a","/b"]}'
 `library` lists the memories and skills of every folder in `places`, each
 with its `kind` and `place` (`""` for what every place shares, listed once);
 a memory carries its first line as `description`. The web host's
-`GET /api/library` adds designs and shared files to it.
+`GET /api/library` adds designs and shared files to it, and
+`POST /api/library/delete` (`kind`, `place`, `key`, or `session` and `key`
+for a shared file) deletes one of those, only as the listing names it and
+never a place itself.
 
 | Action | Applies to | Arguments |
 | --- | --- | --- |

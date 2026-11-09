@@ -11,6 +11,9 @@ Clients submit commands and project its events. Local UI state owns navigation,
 editing and interaction. See [Architecture](ARCHITECTURE.md),
 [Persistence](PERSISTENCE.md) and [Web](WEB.md) for the surrounding contracts.
 
+For the module-by-module review depth, findings and test limits, see the
+[November review record](reviews/2026-11-module-review.md).
+
 ## Review decisions
 
 | Area | Decision | Why |

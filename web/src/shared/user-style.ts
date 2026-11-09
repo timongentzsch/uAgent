@@ -6,8 +6,10 @@
 import { routes } from "../state/api.ts";
 
 let sheet: HTMLStyleElement | undefined;
+let revision = 0;
 
 export async function refreshUserStyle() {
+  const requested = ++revision;
   let css: string;
   try {
     const response = await fetch(routes.userStyle, { cache: "no-cache" });
@@ -16,7 +18,8 @@ export async function refreshUserStyle() {
   } catch {
     return;
   }
-  if (sheet?.textContent === css) return;
+  // A slow response body must not undo a later refresh, even if it failed.
+  if (requested !== revision || sheet?.textContent === css) return;
   sheet ??= document.createElement("style");
   sheet.textContent = css;
   document.head.append(sheet);

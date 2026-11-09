@@ -19,3 +19,40 @@ export function mountAction(options) {
     },
   };
 }
+
+export async function mountUploads() {
+  const { useDraftUploads } = await import("../src/app/use-draft-uploads.ts");
+  const { useState } = await import("preact/hooks");
+  const { emptyDraft } = await import("../src/state/store.ts");
+  const root = document.body.appendChild(document.createElement("div"));
+  let uploads, drafts, select, selected;
+  const errors = [];
+  function Probe() {
+    const [id, setId] = useState("first");
+    const [value, setDrafts] = useState({});
+    selected = id;
+    select = setId;
+    drafts = value;
+    const draft = value[id] || emptyDraft();
+    uploads = useDraftUploads({
+      session: { id },
+      online: true,
+      selected: id,
+      draft,
+      uploading: draft.files.some((file) => file.pending),
+      setDrafts,
+      report: (error) => errors.push(error.message),
+    });
+    return null;
+  }
+  render(h(Probe), root);
+  return {
+    upload: () => uploads.upload([new File(["text"], "note.txt")]),
+    select: (id) => select(id),
+    state: () => ({ selected, drafts, errors }),
+    close: () => {
+      render(null, root);
+      root.remove();
+    },
+  };
+}

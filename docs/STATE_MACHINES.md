@@ -16,7 +16,7 @@ editing and interaction. See [Architecture](ARCHITECTURE.md),
 | Area | Decision | Why |
 | --- | --- | --- |
 | Files navigation | One `FileLocation` record; named open, browse, changes and reveal transitions | Related fields change together. Reveal replaces prior modes; closing a file preserves its folder view. |
-| UI mutations | `useAction` admits one operation synchronously, before the next render | Disabling a rendered button alone cannot prevent two calls in the same event turn. Library saves and pairing use this owner. |
+| UI mutations | `useAction` admits one operation synchronously by default; history reads opt into concurrency | Disabling a rendered button alone cannot prevent two calls in the same event turn. Library saves and pairing use this owner. |
 | Outgoing receipts | Pure `outgoingAfter` transition, separate from transcript confirmation | An accepted queued message remains recallable until the runtime consumes it. Unknown receipts must not be presented as success. |
 | Reconnection | Share refresh completion; retain separate resume and catalogue error boundaries | Transport-open is not caught-up. Replacing this with a single connected boolean would weaken readiness. |
 | Wheel zoom | One binding in `shared/zoom.ts`, with surface-owned pan policy | Modifier-wheel handling is shared; page scrolling, bounded images and an unbounded canvas differ. Page listeners read current scale. |
@@ -83,7 +83,7 @@ mixed machine has both.
 | Outgoing commands and receipts | `web/src/app/use-commands.ts`, `web/src/state/api.ts`, `store.ts` | Waiting/sending/queued/awaiting/sent/refused/unconfirmed; receipt timeout is not rejection or permission to replay. |
 | Transcript paging and scrolling | `web/src/state/use-transcript-history.ts`, `node-reader.ts`, `transcript-bookmarks.ts` | Follow/anchor/restore/glide, pending history and search jumps; touch/wheel interruption and session identity control restoration. |
 | Shared async resources | `web/src/shared/use-resource.ts` | Load/reload/settled/error/aborted; retain prior value while replacing a request, discard superseded answers. |
-| Shared async actions | `web/src/shared/use-action.ts` | Idle → running → success/error; overlap returns false without invoking work; independent hook instances remain independent. |
+| Shared async actions | `web/src/shared/use-action.ts` | Idle → running → success/error; overlap returns false by default; concurrent reads count all pending work, and independent hook instances remain independent. |
 | Files navigation and citation search | `web/src/features/files/files.tsx` | Folder/file/source/diff/canvas and narrow-pane selection; reveal resets modes, missing citations search, Back preserves the underlying folder view. |
 | Preview and design messaging | `web/src/shared/page-frame.tsx`, `web/src/features/files/page.tsx`, `canvas.tsx` | Load/identify/resize/error/reload, select/hover/pick/comment, tweak/theme and fullscreen; messages belong to the current frame/source. |
 | Pan, pinch and wheel | `web/src/shared/zoom.ts`, `zoom-surface.tsx`, `web/src/features/browser/gestures.ts`, `touch.tsx` | Pointer admission → drag/pinch → release/cancel; retain surface-specific bounds, tap suppression and Safari handling. |

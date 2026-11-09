@@ -14,7 +14,9 @@ test("actions admit one caller before render and recover after failure", async (
   const admitted = await page.evaluate(async () => {
     const { mountAction } = await import("/tests/action-harness.js");
     const errors = [];
-    const action = mountAction((error) => errors.push(error.message));
+    const action = mountAction({
+      report: (error) => errors.push(error.message),
+    });
     const other = mountAction();
     let finish;
     let calls = 0;
@@ -65,4 +67,56 @@ test("actions admit one caller before render and recover after failure", async (
     window.probe.action.close();
     window.probe.other.close();
   });
+});
+
+test("concurrent reads remain busy until both out-of-order answers settle", async ({
+  page,
+}) => {
+  await page.route(`${DEV_SERVER_URL}/action-test`, (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>Action test</title>",
+    }),
+  );
+  await page.goto(`${DEV_SERVER_URL}/action-test`);
+  await page.evaluate(async () => {
+    const { mountAction } = await import("/tests/action-harness.js");
+    const action = mountAction({ concurrent: true });
+    let firstDone, secondDone;
+    const first = action.run(
+      () =>
+        new Promise((done) => {
+          firstDone = done;
+        }),
+    );
+    const second = action.run(
+      () =>
+        new Promise((done) => {
+          secondDone = done;
+        }),
+    );
+    window.probe = { action, firstDone, secondDone, first, second };
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.probe.action.state().busy))
+    .toBe(true);
+  expect(
+    await page.evaluate(async () => {
+      window.probe.secondDone();
+      return window.probe.second;
+    }),
+  ).toBe(true);
+  expect(await page.evaluate(() => window.probe.action.state().busy)).toBe(
+    true,
+  );
+  expect(
+    await page.evaluate(async () => {
+      window.probe.firstDone();
+      return window.probe.first;
+    }),
+  ).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => window.probe.action.state().busy))
+    .toBe(false);
+  await page.evaluate(() => window.probe.action.close());
 });

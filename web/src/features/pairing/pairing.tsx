@@ -28,9 +28,11 @@ export default function Pairing({
   const [code, setCode] = useState("");
   // The host refused the code: used, mistyped or too old.
   const [expired, setExpired] = useState(false);
-  const { run, busy } = useAction((error) => {
-    if (failure(error).status === 403) setExpired(true);
-    else report(error);
+  const { run, busy } = useAction({
+    report: (error) => {
+      if (failure(error).status === 403) setExpired(true);
+      else report(error);
+    },
   });
   const pair = (value: string) =>
     run(async () => {

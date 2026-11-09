@@ -229,7 +229,12 @@ while chunk := os.read(3, 4096):
                 ]
             }
         elif command["method"] == "Page.getLayoutMetrics":
-            result = {"cssVisualViewport": {"clientWidth": 800, "clientHeight": 600}}
+            # As Chrome reports them: the window's pixels, and fractional CSS
+            # pixels that carry the site's zoom.
+            result = {
+                "layoutViewport": {"clientWidth": 800, "clientHeight": 600},
+                "cssVisualViewport": {"clientWidth": 800, "clientHeight": 600},
+            }
         elif command["method"] == "Page.captureScreenshot":
             result = {"data": "c2hvdA=="}
         elif command["method"] == "Runtime.evaluate":

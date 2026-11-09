@@ -105,6 +105,8 @@ class Runtime {
   // window's page area, measured once, that a larger size is fitted into.
   std::string viewport_;
   int window_width_ = 0, window_height_ = 0;
+  // How much smaller than its size that page is drawn.
+  double input_scale_ = 1;
   bool profile_setup_ = false;
   bool loading_ = false;
   // Each tab's one attachment, so a tab returned to keeps what its session

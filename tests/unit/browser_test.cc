@@ -617,10 +617,16 @@ TEST_CASE(TestBrowserViewportPresets) {
   CHECK(fake.runtime.Execute({{"op", "viewport"}, {"viewport", "phone"}})
             .value("viewport", "") == "phone");
   CHECK(!fake.Act({{"op", "tabs"}}).contains("error"));
+  // The page is drawn smaller, and Chrome reads the pointer as drawn.
+  CHECK(!fake.Act({{"op", "click"},
+                   {"x", 100},
+                   {"y", 100},
+                   {"view_id", fake.View()}})
+             .contains("error"));
   CHECK(fake.runtime.Execute({{"op", "viewport"}, {"viewport", ""}})
             .value("viewport", "x")
             .empty());
-  json emulated;
+  json emulated, pressed;
   bool cleared = false;
   std::ifstream log(fake.data / "profile" / "cdp.jsonl");
   for (std::string line; std::getline(log, line);) {
@@ -630,7 +636,13 @@ TEST_CASE(TestBrowserViewportPresets) {
       emulated = command["params"];
     }
     cleared = cleared || method == "Emulation.clearDeviceMetricsOverride";
+    if (method == "Input.dispatchMouseEvent" &&
+        command["params"].value("type", "") == "mousePressed") {
+      pressed = command["params"];
+    }
   }
+  CHECK(std::abs(pressed.value("x", 0.0) - 100 * 600.0 / 844) < 1e-9);
+  CHECK(std::abs(pressed.value("y", 0.0) - 100 * 600.0 / 844) < 1e-9);
   CHECK(emulated.value("width", 0) == 390);
   CHECK(emulated.value("height", 0) == 844);
   CHECK(emulated.value("mobile", false));

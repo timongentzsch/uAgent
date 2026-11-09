@@ -37,33 +37,36 @@ const Viewport* FindViewport(std::string_view name) {
 
 void Runtime::Emulate(const std::string& session) {
   const Viewport* size = FindViewport(viewport_);
+  input_scale_ = 1;
   if (!size) {
     Call("Emulation.clearDeviceMetricsOverride", json::object(), session);
     Call("Emulation.setTouchEmulationEnabled", {{"enabled", false}}, session);
     return;
   }
-  // A tab not yet emulated shows the window's own page area.
+  // A tab not yet emulated shows the window's page area, in the window's
+  // pixels: the CSS sizes carry the site's zoom, and are fractional.
   if (!window_width_) {
     const json metrics = Call("Page.getLayoutMetrics", json::object(), session);
     const json* result = JsonObject(metrics, "result");
-    const json* area =
-        result ? JsonObject(*result, "cssVisualViewport") : nullptr;
-    window_width_ = area ? JsonValue(*area, "clientWidth", 0) : 0;
-    window_height_ = area ? JsonValue(*area, "clientHeight", 0) : 0;
+    const json* area = result ? JsonObject(*result, "layoutViewport") : nullptr;
+    window_width_ =
+        area ? static_cast<int>(JsonValue(*area, "clientWidth", 0.0)) : 0;
+    window_height_ =
+        area ? static_cast<int>(JsonValue(*area, "clientHeight", 0.0)) : 0;
     if (window_width_ <= 0 || window_height_ <= 0) {
       window_width_ = window_height_ = 0;
       return;
     }
   }
   // A size larger than the window is drawn smaller, to be seen whole.
-  const double scale = std::min({1.0, double(window_width_) / size->width,
-                                 double(window_height_) / size->height});
+  input_scale_ = std::min({1.0, double(window_width_) / size->width,
+                           double(window_height_) / size->height});
   Call("Emulation.setDeviceMetricsOverride",
        {{"width", size->width},
         {"height", size->height},
         {"deviceScaleFactor", 1},
         {"mobile", size->mobile},
-        {"scale", scale}},
+        {"scale", input_scale_}},
        session);
   Call("Emulation.setTouchEmulationEnabled", {{"enabled", size->mobile}},
        session);

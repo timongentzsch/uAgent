@@ -21,6 +21,7 @@ import {
 } from "preact/hooks";
 import {
   confirmOutgoing,
+  outgoingAfter,
   retainedViews,
   hasContent,
   patchCatalogue,
@@ -28,11 +29,7 @@ import {
 import { applyEvent as applyHostEvent } from "./apply-event.ts";
 import { api, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
-import {
-  outgoingStatus,
-  queuedGuidance,
-  waitingToSend,
-} from "../shared/message-view.ts";
+import { waitingToSend } from "../shared/message-view.ts";
 import { wentBack } from "../shared/dismiss.ts";
 import { slide } from "../shared/motion.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
@@ -364,19 +361,7 @@ export function useHost(
     (outcome: Outcome) => {
       const awaited = receiveOutcome(outcome);
       patchOutgoing(outcome.request_id, (item) => ({
-        status: outcome.unknown
-          ? outgoingStatus.unconfirmed
-          : outcome.pending
-            ? queuedGuidance(item)
-              ? item.status
-              : outgoingStatus.awaiting
-            : outcome.accepted
-              ? // Accepted guidance waits for its step and stays
-                // recallable until the transcript shows it.
-                queuedGuidance(item)
-                ? item.status
-                : outgoingStatus.sent
-              : outgoingStatus.refused,
+        status: outgoingAfter(item, outcome),
         error: outcome.error,
       }));
       return (
@@ -513,6 +498,13 @@ export function useHost(
         resume.current = message.lastEventId || resume.current;
       });
     };
+    const finishRefresh = () => {
+      reconnecting.current = false;
+      if (refreshAgain.current) {
+        refreshAgain.current = false;
+        reconnect();
+      }
+    };
     // A reconnect of a view this device holds reopens the stream at the last
     // event it applied, and keeps the catalogue and snapshots it has: only a
     // start, a rescan or a lost cursor reads them again.
@@ -521,11 +513,7 @@ export function useHost(
       try {
         follow(known, resume.current);
       } finally {
-        reconnecting.current = false;
-        if (refreshAgain.current) {
-          refreshAgain.current = false;
-          reconnect();
-        }
+        finishRefresh();
       }
       return;
     }
@@ -597,11 +585,7 @@ export function useHost(
         retryLater();
       }
     } finally {
-      reconnecting.current = false;
-      if (refreshAgain.current) {
-        refreshAgain.current = false;
-        reconnect();
-      }
+      finishRefresh();
     }
   }, [load, report, forget, onResult, dropStream, signedOut, settleOutgoing]);
   // Reads the catalogue again without asking for a rescan; one a refresh

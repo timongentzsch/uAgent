@@ -10,6 +10,7 @@ First-party C++ follows the
 Build and run the hermetic suite; it needs no API key or network:
 
 ```sh
+(cd web && npm ci && npm run build)
 cmake --preset debug
 cmake --build --preset debug --parallel
 ctest --preset debug --output-on-failure

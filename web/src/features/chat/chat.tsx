@@ -85,7 +85,7 @@ function Chat({
 }: ChatProps) {
   const { online, load: loadSnapshot, report } = useHostContext();
   const { openFile } = useContext(MessageActions);
-  const olderPage = useAction();
+  const olderPage = useAction({ concurrent: true });
   // Prepares the history once its snapshot arrives, not on every streamed
   // frame.
   const { value: preparedKey } = useResource(

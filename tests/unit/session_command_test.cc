@@ -302,6 +302,36 @@ TEST_CASE(TestTransientBatcherHoldsStreamedText) {
   CHECK(sent.back().type == AppType(EventId::kTurnCompleted));
 }
 
+// Exercise the timer owner as well as Push's synchronous flush path.
+TEST_CASE(TestTransientBatcherTimerAndShutdown) {
+  std::promise<void> delivered;
+  auto ready = delivered.get_future();
+  std::string text;
+  bool notified = false;
+  session::TransientBatcher batcher([&](const AppEvent& event) {
+    text += JsonValue(event.data, "text", "");
+    if (!notified && text == "ab") {
+      notified = true;
+      delivered.set_value();
+    }
+  });
+  const std::string delta(AppType(EventId::kAnswerDelta));
+  batcher.Start();
+  batcher.Push({0, "", delta, {{"response_id", "r"}, {"text", "a"}}});
+  batcher.Push({0, "", delta, {{"response_id", "r"}, {"text", "b"}}});
+  const bool timed_flush =
+      ready.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+  batcher.Push({0, "", delta, {{"response_id", "r"}, {"text", "c"}}});
+  batcher.Stop();
+  batcher.Flush();
+  CHECK(timed_flush);
+  CHECK(text == "abc");
+  // Stop and explicit Flush remain safe when repeated during destruction.
+  batcher.Stop();
+  batcher.Flush();
+  CHECK(text == "abc");
+}
+
 TEST_CASE(TestReceiptLog) {
   session::ReceiptLog log;
   json command = CommandEnvelope("submit");

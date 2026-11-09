@@ -1,3 +1,4 @@
+import { useAction } from "../../shared/use-action.ts";
 import { useEffect, useState } from "preact/hooks";
 import { api, routes } from "../../state/api.ts";
 import { failure } from "../../shared/types.ts";
@@ -25,13 +26,17 @@ export default function Pairing({
   report: (error: unknown) => void;
 }) {
   const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
   // The host refused the code: used, mistyped or too old.
   const [expired, setExpired] = useState(false);
-  async function pair(value: string) {
-    setBusy(true);
-    setExpired(false);
-    try {
+  const { run, busy } = useAction({
+    report: (error) => {
+      if (failure(error).status === 403) setExpired(true);
+      else report(error);
+    },
+  });
+  const pair = (value: string) =>
+    run(async () => {
+      setExpired(false);
       await api(routes.auth, {
         code: value.trim(),
         name: /iPhone|iPad/.test(navigator.userAgent)
@@ -41,13 +46,7 @@ export default function Pairing({
             : "Browser",
       });
       await paired();
-    } catch (error) {
-      if (failure(error).status === 403) setExpired(true);
-      else report(error);
-    } finally {
-      setBusy(false);
-    }
-  }
+    });
   // A pairing link connects without typing.
   // biome-ignore lint/correctness/useExhaustiveDependencies: tries the link's code once, on mount
   useEffect(() => {

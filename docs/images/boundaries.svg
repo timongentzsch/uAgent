@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 460" width="1000" height="460" role="img" aria-label="What each part of µAgent can reach: paired devices reach the web host over HTTPS and SSE; the web host and the session runtime share a Unix socket; only the session runtime holds the model API key and talks to the model endpoint. Commands and MCP servers run inside the OS sandbox, write only the folder, temporary files and package caches, and cannot reach your other folders, ~/.uagent, the cloud and git credential stores, the browser profile or secrets in the environment. The web host starts the browser service and streams its screen; the runtime acts in Chrome but gets no field values back; Chrome's managed policy blocks its password pages, passwords.google.com and DevTools.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 460" width="1000" height="460" role="img" aria-label="What each part of µAgent can reach: paired devices reach the web host over HTTPS and SSE; the web host and the session runtime share a Unix socket; only the session runtime holds the model API key and talks to the model endpoint. Commands and MCP servers run inside the OS sandbox, write only the folder, temporary files and package caches, and cannot reach your other folders, ~/.uagent, the cloud and git credential stores, the browser profile or secrets in the environment. The web host starts the browser service and streams its screen; the runtime acts in Chrome and receives ordinary field values, with sensitive fields masked; Chrome's managed policy blocks its password pages, passwords.google.com and DevTools.">
 <style>
 .bg { fill: #ffffff; }
 text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 13px; fill: #1f2328; }
@@ -83,7 +83,7 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size:
 <path class="ln" d="M290 146V300" marker-end="url(#a)"/>
 <text class="m lbl" x="290" y="232" text-anchor="middle">starts it, streams screen</text>
 <path class="ln" d="M540 146V190H390V300" marker-end="url(#a)"/>
-<text class="m lbl" x="455" y="182" text-anchor="middle">acts; sees no field values</text>
+<text class="m lbl" x="455" y="182" text-anchor="middle">acts; secrets masked</text>
 <path class="cut" d="M520 412H450" marker-end="url(#n)"/>
 <text class="no lbl" x="485" y="405" text-anchor="middle">blocked</text>
 </svg>

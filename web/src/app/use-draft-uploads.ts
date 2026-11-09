@@ -1,4 +1,4 @@
-import { useCallback } from "preact/hooks";
+import { useCallback, useRef } from "preact/hooks";
 import type { Dispatch, StateUpdater } from "preact/hooks";
 import type { Draft, Session } from "../shared/types.ts";
 import { emptyDraft } from "../state/store.ts";
@@ -7,8 +7,8 @@ import { dedupeName } from "../features/composer/mention.ts";
 import { maxDraftFiles, maxUploadBytes } from "../shared/limits.ts";
 
 // Files on their way into the open conversation's draft. No state of its
-// own: the drafts are the host layer's, and each render binds these to the
-// conversation then selected.
+// own beyond admission: the drafts are the host layer's, and each render
+// binds these to the conversation then selected.
 export function useDraftUploads({
   session,
   online,
@@ -26,6 +26,7 @@ export function useDraftUploads({
   setDrafts: Dispatch<StateUpdater<Record<string, Draft>>>;
   report: (error: unknown) => void;
 }) {
+  const active = useRef(new Set<string>());
   // One conversation's draft changes; the others keep theirs.
   const updateDraft = useCallback(
     (id: string, change: (draft: Draft) => Draft) =>
@@ -55,7 +56,7 @@ export function useDraftUploads({
       report(new Error("Not connected: nothing was attached. Add it again."));
       return false;
     }
-    if (uploading) return false;
+    if (uploading || active.current.has(selected)) return false;
     const id = selected;
     if (
       files.length + draft.files.length > maxDraftFiles ||
@@ -82,6 +83,8 @@ export function useDraftUploads({
         pending: true,
       };
     });
+    // Admission is synchronous; another conversation can still upload.
+    active.current.add(id);
     updateDraft(id, (draft) => ({
       ...draft,
       files: [...draft.files, ...pendingFiles],
@@ -107,6 +110,7 @@ export function useDraftUploads({
       report(failure);
       return false;
     } finally {
+      active.current.delete(id);
       const pendingIds = new Set(pendingFiles.map((item) => item.id));
       updateDraft(id, (draft) => ({
         ...draft,

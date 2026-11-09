@@ -3,9 +3,7 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a coding agent in a 6 MB binary. A conversation idles in about
-30 MB and spends about 12 ms of CPU on a turn, a small fraction of what
-Claude Code, Codex CLI or omp need. It is sandboxed to your project folder,
+µAgent is a native coding agent sandboxed to your project folder. It
 keeps one conversation across terminal, script and phone, and drives a real
 Chrome that you can watch and take over.
 
@@ -20,8 +18,9 @@ every metric.
 
 - **One C++20 binary,** no runtime to install. Each conversation is one
   process; the terminal and the web host attach to it over a Unix socket.
-- **The web interface is embedded:** 1.5 MB gzipped in total, about 120 KB on
-  first load, with compressed API responses and resumable event streams.
+- **The web interface is embedded,** with optional renderers loaded on demand,
+  compressed API responses and resumable event streams. `npm run size` in
+  `web/` reports the current bundle and first-load sizes.
 - **Chrome starts only when the agent first uses it,** and stops on request.
 - **Fewer tokens:** the prompt cache serves 77–94% of input on both OpenAI and
   Anthropic routes, compaction reads the cached conversation instead of
@@ -59,7 +58,7 @@ every metric.
 - **Any endpoint.** Chat Completions, OpenAI Responses and Anthropic Messages,
   local or hosted.
 
-![What each part can reach: paired devices reach the web host; only the session runtime holds the model key and talks to the endpoint; commands and MCP servers run in the OS sandbox, write only the folder, temporary files and caches, and cannot reach your other folders, ~/.uagent, credential stores, the browser profile or secrets in the environment; the runtime acts in Chrome but gets no field values back](docs/images/boundaries.svg)
+![What each part can reach: paired devices reach the web host; only the session runtime holds the model key and talks to the endpoint; commands and MCP servers run in the OS sandbox, write only the folder, temporary files and caches, and cannot reach your other folders, ~/.uagent, credential stores, the browser profile or secrets in the environment; the runtime acts in Chrome and receives ordinary field values, with sensitive fields masked](docs/images/boundaries.svg)
 
 ![The terminal on the left and the web interface on a phone on the right showing the same conversation: a request to add a docstring, the approval for the edit, and the streaming answer](docs/images/terminal.gif)
 

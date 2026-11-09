@@ -96,6 +96,10 @@ test("files beside the chat: browse, read, search and view", async ({
     "naturalWidth",
     1,
   );
+  await expect(pane.getByRole("button", { name: "Source" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
   await pane.getByRole("button", { name: "Source" }).click();
   await expect(pane.locator(".code-view .line-number")).toHaveCount(3);
   await pane.getByRole("button", { name: "Source" }).click();
@@ -200,6 +204,7 @@ test("changes list what differs from the last commit and open as a diff", async 
   const pane = page.getByRole("region", { name: "Files" });
   const list = pane.getByRole("navigation", { name: "Folder" });
   const toggle = list.getByRole("button", { name: "Changes 2" });
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await expect(list.locator(".tree-row")).toHaveText([

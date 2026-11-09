@@ -183,9 +183,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     auto& session = *it->second;
     // A connecting session is read unlocked by its runtime's launch; the
     // next scan brings it up to date.
-    if (session.closing || session.connecting ||
-        session.status == SessionStatus::kUpdating ||
-        session.status == SessionStatus::kDeleting) {
+    if (session.LifecycleBusy() || session.connecting) {
       continue;
     }
     session.cwd = item.cwd;
@@ -213,10 +211,8 @@ bool SessionHost::RefreshCatalogue(bool force) {
   for (auto it = sessions_.begin(); it != sessions_.end();) {
     const HostSession& session = *it->second;
     if (listed.contains(it->first) || session.status == SessionStatus::kDraft ||
-        session.status == SessionStatus::kUpdating ||
-        session.status == SessionStatus::kDeleting || session.closing ||
-        session.connecting || (session.pid > 0 && !session.exited) ||
-        PathExists(session.path)) {
+        session.LifecycleBusy() || session.connecting ||
+        (session.pid > 0 && !session.exited) || PathExists(session.path)) {
       ++it;
       continue;
     }
@@ -247,9 +243,7 @@ void SessionHost::RefreshPresence() {
   UniqueLock lock(mutex_);
   std::vector<std::shared_ptr<HostSession>> candidates;
   for (const auto& [id, session] : sessions_) {
-    if ((session->pid <= 0 || session->exited) && !session->closing &&
-        session->status != SessionStatus::kUpdating &&
-        session->status != SessionStatus::kDeleting &&
+    if ((session->pid <= 0 || session->exited) && !session->LifecycleBusy() &&
         sockets.contains(std::filesystem::path(SocketPath(session->path))
                              .filename()
                              .string())) {

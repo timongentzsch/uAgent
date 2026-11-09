@@ -58,9 +58,9 @@ captured log is kept, which it reads after the output and no row shows.
 
 Independent calls to parallel-safe tools run up to four at a time; results
 are appended in the order the model issued the calls. A tool with a per-turn
-cap (`web_search` 4) is withdrawn for the rest of the turn
-once the cap is reached. Tool limits, timeouts and turn budgets apply in
-every approval mode.
+cap (`web_search` 4 by default) stays advertised to preserve the prompt
+cache, but refuses further calls until the next turn. Tool limits, timeouts
+and turn budgets apply in every approval mode.
 
 ## Approval
 

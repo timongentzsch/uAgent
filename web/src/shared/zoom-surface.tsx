@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { Minus, Plus, Scan } from "lucide-preact";
 import { IconButton } from "./ui.tsx";
 import {
+  bindZoomWheel,
   capturePointer,
   constrainView,
   MAXIMUM_ZOOM,
@@ -113,22 +114,19 @@ export function ZoomSurface({
     if (!element) return;
     const observer = new ResizeObserver(() => apply(view.current));
     observer.observe(element);
-    // ⌘ on a Mac, Ctrl elsewhere; a trackpad pinch arrives as Ctrl+wheel.
-    const wheel = (event: WheelEvent) => {
-      if (event.ctrlKey || event.metaKey) {
-        event.preventDefault();
-        zoomAt(
-          { x: event.clientX, y: event.clientY },
-          Math.exp(-event.deltaY * 0.01),
-        );
-      } else if (view.current.scale > 1) {
-        event.preventDefault();
+    const unbindWheel = bindZoomWheel(
+      element,
+      (ratio, at) => {
         const { width, height } = bounds();
-        apply(
-          panView(view.current, width, height, -event.deltaX, -event.deltaY),
-        );
-      }
-    };
+        apply(pinchView(view.current, width, height, at, at, ratio));
+      },
+      (dx, dy) => {
+        if (view.current.scale <= 1) return false;
+        const { width, height } = bounds();
+        apply(panView(view.current, width, height, dx, dy));
+        return true;
+      },
+    );
     // The browser's own page zoom keys zoom the content instead.
     const key = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
@@ -138,11 +136,10 @@ export function ZoomSurface({
       else return;
       event.preventDefault();
     };
-    element.addEventListener("wheel", wheel, { passive: false });
     addEventListener("keydown", key);
     return () => {
       observer.disconnect();
-      element.removeEventListener("wheel", wheel);
+      unbindWheel();
       removeEventListener("keydown", key);
     };
   }, []);

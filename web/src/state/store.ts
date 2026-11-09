@@ -1,9 +1,11 @@
+import { outgoingStatus, queuedGuidance } from "../shared/message-view.ts";
 import type {
   Catalogue,
   Draft,
   ExecutionPhase,
   HostEvent,
   Outgoing,
+  Outcome,
   Session,
   Snapshot,
   State,
@@ -190,6 +192,14 @@ export function keptSession(prior: Session | undefined, next: Session) {
 // A session's count of arrivals only rises.
 export function raiseIncoming(item: Session, incoming: number): Session {
   return (item.incoming || 0) < incoming ? { ...item, incoming } : item;
+}
+
+// Receipts acknowledge commands; only the transcript consumes queued guidance.
+export function outgoingAfter(item: Outgoing, outcome: Outcome) {
+  if (outcome.unknown) return outgoingStatus.unconfirmed;
+  if (!outcome.pending && !outcome.accepted) return outgoingStatus.refused;
+  if (queuedGuidance(item)) return item.status;
+  return outcome.pending ? outgoingStatus.awaiting : outgoingStatus.sent;
 }
 
 // A row the host sent replaces the outgoing one for its request. Unchanged

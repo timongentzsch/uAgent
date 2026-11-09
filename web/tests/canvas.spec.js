@@ -503,6 +503,34 @@ test("an opened page zooms as the canvas does, from the controls and over the pa
   expect(
     await scroller.evaluate((box) => box.scrollWidth > box.clientWidth),
   ).toBe(true);
+  // Margin-wheel zoom uses the current scale, including after prior zooms.
+  // The same content point stays under the pointer on each successive step.
+  for (let step = 0; step < 2; step++) {
+    const anchor = await scroller.evaluate((box) => {
+      const rect = box.getBoundingClientRect();
+      const x = box.clientWidth / 2,
+        y = box.clientHeight / 2;
+      const before = { x: box.scrollLeft + x, y: box.scrollTop + y };
+      box.dispatchEvent(
+        new WheelEvent("wheel", {
+          ctrlKey: true,
+          deltaY: -10,
+          cancelable: true,
+          clientX: rect.left + x,
+          clientY: rect.top + y,
+        }),
+      );
+      return { before, x, y };
+    });
+    await expect
+      .poll(async () =>
+        scroller.evaluate((box, at) => {
+          const ratio = Math.exp(0.1);
+          return Math.abs(box.scrollLeft + at.x - at.before.x * ratio);
+        }, anchor),
+      )
+      .toBeLessThan(2);
+  }
   // ⌘ or Ctrl and the wheel over the page itself zooms too.
   const before = await percent();
   await app

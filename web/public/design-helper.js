@@ -86,8 +86,10 @@
   const crosses = (a, b) =>
     Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
     Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
-  // Text drawn over other text: on a slide nothing may overlap.
+  // Text drawn over other text, or past the slide's edge (cut off there
+  // when the page hides its overflow): on a slide neither may happen.
   const overlaps = () => {
+    const { w, h } = artboard();
     const texts = [];
     const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     while (walk.nextNode()) {
@@ -98,6 +100,14 @@
     }
     const found = [];
     const words = (node) => `“${node.textContent.trim().slice(0, 40)}”`;
+    for (const { node, boxes } of texts)
+      if (
+        found.length < 5 &&
+        boxes.some((box) => box.bottom > h + 1 || box.right > w + 1)
+      )
+        found.push(
+          `${words(node)} runs past the slide's ${w}x${h} edge: shorten it, or split the slide`,
+        );
     for (let i = 0; i < texts.length && found.length < 5; i++)
       for (let j = i + 1; j < texts.length; j++)
         if (

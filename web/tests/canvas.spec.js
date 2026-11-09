@@ -590,6 +590,7 @@ test("a slide with text over text and a document block taller than a page say so
       "Slide",
       '<p style="position:absolute;top:100px;left:100px;margin:0;font-size:40px">Revenue grew</p>' +
         '<p style="position:absolute;top:110px;left:120px;margin:0;font-size:40px">Footer note</p>' +
+        '<div style="position:absolute;top:1040px;left:100px;overflow:hidden;height:20px"><p style="margin:0;font-size:40px">Cut off</p></div>' +
         "<aside>Notes stay out of the check.</aside>",
       "1920x1080 slide",
     ),
@@ -611,7 +612,7 @@ test("a slide with text over text and a document block taller than a page say so
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   const draft = app.locator("#prompt");
   await expect(draft).toHaveValue(
-    /`design\/checks\/01-slide\.html` threw: “Revenue grew” overlaps “Footer note”/,
+    /`design\/checks\/01-slide\.html` threw: “Cut off” runs past the slide's 1920x1080 edge.*“Revenue grew” overlaps “Footer note”/,
   );
   await expect(draft).toHaveValue(
     /`design\/checks\/memo\.html` threw: a figure is 1000px tall, more than a page \(794px\)/,

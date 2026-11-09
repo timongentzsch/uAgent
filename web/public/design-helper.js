@@ -176,14 +176,21 @@
     const sheet = paper();
     const style = document.createElement("style");
     style.textContent =
-      (w && h
+      w && h
         ? `@page{size:${w}px ${h}px;margin:0}`
         : sheet
           ? `@page{size:${sheet.w}mm ${sheet.h}mm}`
-          : "") +
-      "html{print-color-adjust:exact;-webkit-print-color-adjust:exact}";
+          : "";
     document.head.prepend(style);
   };
+  // Printed as drawn, backgrounds too, also in a deck's frames, which a
+  // printer's own background setting does not reach.
+  addEventListener("DOMContentLoaded", () => {
+    const colors = document.createElement("style");
+    colors.textContent =
+      "html{print-color-adjust:exact;-webkit-print-color-adjust:exact}";
+    document.head.prepend(colors);
+  });
 
   if (parent === window) {
     checked((problem) => console.warn(`uagent page: ${problem}`));

@@ -4,15 +4,93 @@ import concurrent.futures
 import http.client
 import json
 import os
+import pathlib
+import shutil
 import signal
 import socket
 import stat
 import subprocess
+import sys
 import time
 
 from integration_support import assert_true, base_env, budget, wait_until
 from session_support import remove_runtime
 from web_support import web_host
+
+
+def test_remote_disconnect_ignores_failures_from_inflight_streams(root, home, *, binary):
+    remote_home = root / "remote-home"
+    remote_home.mkdir()
+    managed = remote_home / ".uagent/remote"
+    managed.mkdir(parents=True)
+    (managed / "uagent").symlink_to(binary)
+    remote_env = base_env(remote_home, "http://127.0.0.1:1")
+    started = subprocess.run(
+        [binary, "--remote-start"],
+        env=remote_env,
+        capture_output=True,
+        text=True,
+        timeout=budget(20),
+    )
+    assert_true(started.returncode == 0, started.stderr)
+    pid = int((remote_home / ".uagent/web/master.lock").read_text().split()[0])
+    tools = root / "bin"
+    tools.mkdir()
+    ssh = tools / "ssh"
+    shutil.copyfile(pathlib.Path(__file__).resolve().parents[1] / "fixtures/ssh_relay.py", ssh)
+    ssh.write_text(f"#!{sys.executable}\n" + ssh.read_text())
+    ssh.chmod(0o700)
+    stream = None
+    try:
+        with web_host(
+            binary,
+            root,
+            home,
+            "http://127.0.0.1:1",
+            extra_env={
+                "PATH": f"{tools}:{os.environ['PATH']}",
+                "UAGENT_TEST_SSH_HOME": str(remote_home),
+            },
+        ) as (client, code, _, _):
+            client.pair(code)
+            status, value, _ = client.json("/api/hosts", {"action": "add", "address": "peer"})
+            assert_true(status == 200, value)
+            host = value["id"]
+
+            def phase():
+                return client.json("/api/hosts")[1]["hosts"][0]["phase"]
+
+            wait_until(lambda: phase() == "connected", timeout=budget(10), message="connect failed")
+            prefix = "/api/hosts/" + host
+            listing = client.json(prefix + "/api/sessions")[1]
+            stream = http.client.HTTPConnection("127.0.0.1", client.port, timeout=budget(10))
+            stream.request(
+                "GET",
+                prefix + f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
+                headers={"Cookie": client.cookie},
+            )
+            response = stream.getresponse()
+            assert_true(response.status == 200, response.status)
+            assert_true(response.readline() == b"event: ready\n", "stream not ready")
+            client.json("/api/hosts", {"action": "disconnect", "id": host})
+            wait_until(
+                lambda: phase() == "disconnected",
+                timeout=budget(5),
+                message="explicit disconnect was lost",
+            )
+            time.sleep(2)
+            assert_true(phase() == "disconnected", "stale stream failure reconnected SSH")
+            client.json("/api/hosts", {"action": "reconnect", "id": host})
+            wait_until(lambda: phase() == "connected", timeout=budget(10), message="retry failed")
+            assert_true(
+                client.json(prefix + "/api/sessions")[1]["epoch"] == listing["epoch"],
+                "disconnect replaced the remote backend",
+            )
+    finally:
+        if stream:
+            stream.close()
+        os.kill(pid, signal.SIGTERM)
+        remove_runtime(remote_home)
 
 
 def test_remote_auth_failure_stops_until_manual_reconnect(root, home, *, binary):

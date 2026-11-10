@@ -345,13 +345,15 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
     if (host.disconnect) {
       host.disconnect = false;
       host.failed = false;
-      lock.unlock();
-      Close(host);
-      lock.lock();
+      // Invalidate in-flight streams before closing their SSH transport.
+      // Their failures must not turn an explicit disconnect into a retry.
       host.endpoint.reset();
       host.phase = "disconnected";
       host.error.clear();
       due = Clock::time_point::max();
+      lock.unlock();
+      Close(host);
+      lock.lock();
     }
     if (host.failed && !host.disconnect) {
       host.failed = false;

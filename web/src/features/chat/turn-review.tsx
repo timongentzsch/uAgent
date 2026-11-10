@@ -3,7 +3,7 @@ import type { SessionRef, TurnFile } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
 import { Actions, Button } from "../../shared/ui.tsx";
 import { useAction } from "../../shared/use-action.ts";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { formatStat } from "../../shared/display.ts";
 
 // A turn's changed files, each with its Undo, and each opening its diff
@@ -20,6 +20,7 @@ export default function TurnReview({
   session: SessionRef;
   show?: (path: string) => void;
 }) {
+  const { command } = useApi();
   const [restored, setRestored] = useState<string[]>([]);
   const [kept, setKept] = useState<Record<string, string>>({});
   const { run, busy, error } = useAction();

@@ -8,7 +8,7 @@ import {
   FolderOpen,
   Image,
 } from "lucide-preact";
-import { api, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { Button, LoadError } from "../../shared/ui.tsx";
 import { HTML, IMAGE, MARKDOWN } from "../../shared/file-types.ts";
@@ -126,6 +126,7 @@ function FolderNode({
   name: string;
   props: TreeProps;
 }) {
+  const { api, routes } = useApi();
   const open = props.expanded.has(path);
   const listing = useResource(
     () =>

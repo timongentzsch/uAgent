@@ -2,8 +2,8 @@ import { useAction } from "../../shared/use-action.ts";
 import { useLayoutEffect, useMemo, useState } from "preact/hooks";
 import { ChevronLeft, Pencil } from "lucide-preact";
 import { tabDrafts } from "../../shared/storage.ts";
-import { storageKeys } from "../../shared/storage-keys.ts";
-import { manage } from "../../state/api.ts";
+import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
+import { useApi } from "../../state/api.ts";
 import type { LibraryItem, LibraryPlace } from "../../shared/types.ts";
 import {
   Actions,
@@ -103,12 +103,14 @@ export default function LibraryDocument({
   opened?: (key: string, place: string) => void;
   changed: () => void;
 }) {
+  const { manage, host } = useApi();
   const fresh = "new" in entry;
   // The listing's copy, newer when it changed on disk.
   const listed = fresh ? undefined : entry;
   const drafts = useMemo(
-    () => tabDrafts<Draft>(storageKeys.library(kind, cwd)),
-    [kind, cwd],
+    () =>
+      tabDrafts<Draft>(hostStorageKey(storageKeys.library(kind, cwd), host)),
+    [kind, cwd, host],
   );
   const key = fresh ? "" : entry.key;
   const loaded = useResource(

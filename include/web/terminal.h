@@ -98,6 +98,7 @@ class Terminals {
   std::unique_ptr<TerminalViewer> Attach(const std::string& id);
   // Ends every shell; Open refuses from then on.
   void Shutdown();
+  bool Running() const;
 
  private:
   void Loop();

@@ -114,8 +114,7 @@
   }
 }
 /* One line to a row: the title and its state. The time and the menu show
-   while the row is pointed at or focused; a touch screen draws the menu
-   on the open row only. */
+   while the row is pointed at or focused; touch keeps the menu visible. */
 .sidebar .session {
   flex: 1;
   font-size: var(--font-small);
@@ -143,9 +142,8 @@
     opacity: 1;
   }
 }
-/* On a touch screen only the open row draws its ⋯; a long press opens any
-   row's menu. The others stay for a screen reader and a keyboard, out of the
-   flow and the touch's way, at the row's end where the menu opens. */
+/* Touch has no hover: show each conversation's menu so Select is discoverable.
+   A long press remains a shortcut. Workspace menus keep their compact layout. */
 @media (pointer: coarse) {
   .session-row,
   .place-head {
@@ -161,7 +159,6 @@
   .session-row .action-menu {
     opacity: 1;
   }
-  .session-row:not(:has([aria-current], :focus-visible)) .action-menu,
   .place-head:not(:has([aria-current], :focus-visible))
     > .action-menu:last-child {
     position: absolute;
@@ -242,4 +239,85 @@
   flex: 1;
   font-size: var(--font-small);
   white-space: nowrap;
+}
+
+.section-fold {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+.section-fold svg {
+  width: 1em;
+  height: 1em;
+}
+.source-label {
+  margin: var(--space-2) var(--indent);
+}
+.source-shortcut {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+.recent-source {
+  display: block;
+  margin: calc(-1 * var(--stripe)) var(--space-3) var(--space-2);
+}
+.host-list {
+  flex: none;
+  border-top: var(--border);
+  padding-top: var(--space-2);
+}
+.host-list .list-group {
+  margin: 0;
+}
+.host-list-scroll {
+  max-height: var(--scroll-s);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.host-row {
+  width: 100%;
+  gap: var(--space-2);
+  justify-content: flex-start;
+  font-size: var(--font-small);
+}
+.host-row > .truncate {
+  flex: 1;
+  text-align: left;
+}
+.host-phase {
+  flex: none;
+  color: var(--muted);
+}
+.host-square {
+  width: var(--space-4);
+  height: var(--space-4);
+  flex: none;
+  border: 1px solid var(--muted);
+}
+.host-square[data-connected] {
+  background: var(--text);
+  border-color: var(--text);
+}
+.host-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.host-error {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (pointer: coarse) {
+  .sidebar .host-row,
+  .sidebar .section-fold,
+  .sidebar .source-shortcut {
+    min-height: var(--touch);
+  }
+  .host-list-scroll {
+    max-height: var(--scroll-s);
+  }
 }

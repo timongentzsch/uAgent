@@ -13,6 +13,65 @@ const row = (page, title) =>
     .getByRole("navigation", { name: "Conversations" })
     .locator(".session-row", { hasText: title });
 
+test.describe("touch selection", () => {
+  test.use({
+    isMobile: true,
+    hasTouch: true,
+    viewport: { width: 390, height: 844 },
+  });
+
+  test("square checks have roomy targets and tapping rows keeps the drawer open", async ({
+    page,
+    host,
+    request,
+  }, testInfo) => {
+    await three(host, request);
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Open conversations", exact: true })
+      .tap();
+    await row(page, "Alpha talk")
+      .getByRole("button", { name: "Conversation menu" })
+      .tap();
+    await page.getByRole("menuitem", { name: "Select", exact: true }).tap();
+    const bar = page.getByRole("toolbar", { name: "Selection", exact: true });
+    await expect(bar.getByText("1 selected")).toBeVisible();
+    await expect(
+      page.getByText("Tap rows to select", { exact: true }),
+    ).toBeVisible();
+    const bravo = row(page, "Bravo talk");
+    const checkbox = bravo.getByRole("checkbox");
+    await expect(checkbox).toHaveCSS("border-radius", "0px");
+    await expect(checkbox).toHaveCSS("appearance", "none");
+    const target = bravo.locator(".row-check");
+    const box = await target.boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    // The input's padding is also tappable, outside the visible square.
+    await target.tap({ position: { x: 3, y: 3 } });
+    await expect(checkbox).toBeChecked();
+    await expect(bar.getByText("2 selected")).toBeVisible();
+    await row(page, "Charlie talk").locator(".list-row").tap();
+    await expect(bar.getByText("3 selected")).toBeVisible();
+    await expect(page).not.toHaveURL(/#session=/);
+    await page.screenshot({ path: testInfo.outputPath("phone-selection.png") });
+    // Empty selection stays in selection mode until Done is tapped.
+    for (const title of ["Alpha talk", "Bravo talk", "Charlie talk"])
+      await row(page, title).locator(".list-row").tap();
+    await expect(bar.getByText("0 selected")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Delete…", exact: true }),
+    ).toBeDisabled();
+    await bar.getByRole("button", { name: "Done", exact: true }).tap();
+    await expect(bar).toHaveCount(0);
+    await expect(
+      page.getByText("Tap rows to select", { exact: true }),
+    ).toHaveCount(0);
+    await row(page, "Bravo talk").locator(".list-row").tap();
+    await expect(page).toHaveURL(/#session=/);
+  });
+});
+
 test("⌘ picks one, Shift a run, one confirmation deletes them all", async ({
   page,
   host,
@@ -39,6 +98,13 @@ test("⌘ picks one, Shift a run, one confirmation deletes them all", async ({
   await expect(bar.getByText("3 selected")).toBeVisible();
   for (const title of ours)
     await expect(row(page, title).getByRole("checkbox")).toBeChecked();
+  // Painting a square must preserve the native keyboard interaction.
+  const check = row(page, ours[0]).getByRole("checkbox");
+  await check.focus();
+  await page.keyboard.press("Space");
+  await expect(bar.getByText("2 selected")).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(bar.getByText("3 selected")).toBeVisible();
   // Esc ends it.
   await page.keyboard.press("Escape");
   await expect(bar).toHaveCount(0);

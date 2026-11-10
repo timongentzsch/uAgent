@@ -40,9 +40,12 @@ struct WebOptions {
   // without output.
   bool terminal = false;
   int64_t terminal_idle_minutes = 0;
+  // Internal headless host: the ordinary API on a private Unix socket.
+  std::string socket;
 };
 // argv is the host's own command line: a restart from the settings re-execs
 // it after a clean shutdown.
 int MasterMain(const WebOptions& options, char** argv);
+int RemoteStart(bool stop = false);
 }  // namespace uagent::web
 #endif

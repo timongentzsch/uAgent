@@ -22,7 +22,7 @@ import {
   useState,
 } from "preact/hooks";
 import { emptyDraft, hasContent } from "../state/store.ts";
-import { command, manage } from "../state/api.ts";
+import { useApi, localApi } from "../state/api.ts";
 import { ConversationContext, HostContext } from "../state/host-context.ts";
 import { Modal, ErrorBoundary, Deferred, Spinner } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
@@ -43,7 +43,7 @@ import { useLatest } from "../shared/use-latest.ts";
 import { stored, tabStorage } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
 
-import { useHost } from "../state/use-host.ts";
+import HostsShell, { type HostAppProps, useHosts } from "./hosts.tsx";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { DetailContext } from "../features/chat/node.tsx";
 import { detailLevels } from "../shared/tree.ts";
@@ -103,12 +103,21 @@ const keptPage = stored<Page>(
   { where: tabStorage },
 );
 
-function App() {
-  const [page, setPage] = useState<Page>(keptPage.read);
+function App({ host, bindResult, reading }: HostAppProps) {
+  const hosts = useHosts();
+  const { command, manage } = useApi();
+  const [page, setPage] = useState<Page>(() =>
+    new URLSearchParams(location.hash.slice(1)).has("place")
+      ? "folder"
+      : keptPage.read(),
+  );
+  useEffect(() => reading(page === "chat"), [page, reading]);
   useEffect(() => keptPage.write(page), [page]);
   // The folder or workspace whose overview the folder page shows, and the
   // folder terminal the terminal page shows.
-  const [place, setPlace] = useState("");
+  const [place, setPlace] = useState(
+    () => new URLSearchParams(location.hash.slice(1)).get("place") || "",
+  );
   const [shell, setShell] = useState<TerminalInfo | null>(null);
   // Which Library tab /memory or /skills asked for.
   const [libraryKind, setLibraryKind] = useState<LibraryKind | "">("");
@@ -162,13 +171,13 @@ function App() {
   const [notice, setNotice] = useState("");
   // The banner shows one line: a new notice replaces an older error.
   useEffect(() => {
-    if (notice) setError("");
-  }, [notice]);
+    if (notice) host.setError("");
+  }, [notice, host.setError]);
   const onResult = useCallback((value: JSONValue, inspect: boolean) => {
     if (inspect) setModal({ type: "raw", value });
     else setNotice(typeof value === "string" ? value : JSON.stringify(value));
   }, []);
-  const host = useHost(onResult, page === "chat");
+  useEffect(() => bindResult(onResult), [bindResult, onResult]);
   const {
     managementVersion,
     authenticated,
@@ -287,10 +296,12 @@ function App() {
       if (fields?.request_id) correlate(fields.request_id);
       return command(kind, session, fields);
     },
-    [online, session, correlate],
+    [online, session, correlate, command],
   );
   const choose = useCallback(
     async (id: string) => {
+      if (hosts?.active && !online)
+        void hosts.action("connect", hosts.active).catch(report);
       setNotice("");
       setPage("chat");
       const change = () => {
@@ -300,7 +311,7 @@ function App() {
       if (id === selected) change();
       else slide(false, id, change);
     },
-    [selected, setSelected],
+    [selected, setSelected, hosts?.active, report, online, hosts?.action],
   );
   const { browserAvailable, install, setInstall, update, attach } = useBoot({
     upload,
@@ -403,9 +414,9 @@ function App() {
     try {
       const registration = await navigator.serviceWorker?.getRegistration();
       await (await registration?.pushManager?.getSubscription())?.unsubscribe();
-      await command("logout");
+      await localApi.command("logout");
       clearSides();
-      reset();
+      (hosts?.sources.find((source) => !source.id)?.state?.reset || reset)();
       setModal(null);
     } catch (failure) {
       report(failure);
@@ -439,7 +450,7 @@ function App() {
           await refresh();
         })();
     },
-    [open, report, refresh],
+    [open, report, refresh, command],
   );
   const conversationMenu = useCallback(
     (
@@ -478,7 +489,13 @@ function App() {
   );
   // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
-    const order = sessionOrder(rows, catalogue.spaces, online, pins);
+    const order = sessionOrder(
+      rows,
+      catalogue.spaces,
+      online,
+      pins,
+      hosts?.active,
+    );
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
@@ -489,6 +506,43 @@ function App() {
     setPage("terminal");
     setDrawer(false);
   }, []);
+  const destination = hosts?.destination;
+  const followedDestination = useRef<typeof destination>(null);
+  useEffect(() => {
+    if (
+      !destination ||
+      destination.id !== hosts?.active ||
+      followedDestination.current === destination
+    )
+      return;
+    if (
+      destination.terminal &&
+      !catalogue.terminals?.some((item) => item.id === destination.terminal)
+    )
+      return;
+    followedDestination.current = destination;
+    setDrawer(false);
+    if (destination.settings)
+      setModal({ type: "settings", section: destination.settings });
+    else if (destination.terminal) {
+      const terminal = catalogue.terminals?.find(
+        (item) => item.id === destination.terminal,
+      );
+      if (terminal) showTerminal(terminal);
+    } else if (destination.place) {
+      setPlace(destination.place);
+      setPage("folder");
+    } else if (destination.session) {
+      setSelected(destination.session);
+      setPage("chat");
+    }
+  }, [
+    destination,
+    hosts?.active,
+    setSelected,
+    showTerminal,
+    catalogue.terminals,
+  ]);
   // A folder's new terminal, shown at once.
   const newTerminal = useCallback(
     (folder: string) =>
@@ -499,7 +553,7 @@ function App() {
         },
         report,
       ),
-    [showTerminal, report],
+    [showTerminal, report, manage],
   );
   const toggleTerminal = useCallback(() => setTerminalOpen((on) => !on), []);
   // What the terminal or the files hand the conversation: added to its
@@ -574,7 +628,7 @@ function App() {
         if (page === "terminal" && shell?.id === terminal.id)
           overview(terminal.folder);
       }, report),
-    [page, shell, overview, report],
+    [page, shell, overview, report, manage],
   );
   const terminalMenu = useCallback(
     (terminal: TerminalInfo) => (
@@ -937,7 +991,7 @@ render(
         deck={presenting}
       />
     ) : (
-      <App />
+      <HostsShell App={App} />
     )}
   </ErrorBoundary>,
   document.getElementById("app")!,

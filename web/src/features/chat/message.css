@@ -51,6 +51,22 @@
 .message-meta .action-menu {
   flex-shrink: 0;
 }
+/* In a narrow pane, a timestamp must not reserve a column beside every
+   line of the message. Keep the text full-width and its controls below. */
+@container column (max-width: 43rem) {
+  .message-line {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .message-line > .message-meta {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .message-line > .message-meta time {
+    white-space: normal;
+  }
+}
 /* A session or turn error under the transcript, in the tool-failure red. */
 .failure {
   margin: 0;

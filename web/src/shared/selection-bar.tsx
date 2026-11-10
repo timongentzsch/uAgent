@@ -44,6 +44,9 @@ export function SelectionBar({
           {selection.mode ? "Done" : "Clear"}
         </Button>
       </div>
+      {selection.mode && (
+        <span class="selection-hint small">Tap rows to select</span>
+      )}
       <div class="selection-actions">{children}</div>
     </div>
   );

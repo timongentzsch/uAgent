@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Node, View } from "../../shared/types.ts";
 import { IconButton, Input } from "../../shared/ui.tsx";
 import { highlights, occurrences, rangesIn } from "../../shared/find.ts";
-import { api, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 
 // What opens the find bar: the conversation, its words, and the row to
@@ -59,6 +59,7 @@ export function FindBar({
   reveal: (target: Element | Range) => void;
   close: () => void;
 }) {
+  const { api, routes } = useApi();
   const [words, setWords] = useState(request.words);
   const [saved, setSaved] = useState<{
     words: string;
@@ -106,7 +107,7 @@ export function FindBar({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, request.session]);
+  }, [query, request.session, routes.search, api]);
 
   const spots = useMemo(() => {
     if (query.length < 2 || saved.words !== query) return [];

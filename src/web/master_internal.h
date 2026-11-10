@@ -25,6 +25,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <shared_mutex>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -37,6 +39,7 @@
 #include "include/core/time.h"
 #include "include/web/protocol.h"
 #include "include/web/push.h"
+#include "include/web/remote_hosts.h"
 #include "include/web/terminal.h"
 
 // The web host's private names live in uagent::web::master, so the helpers
@@ -86,6 +89,7 @@ class Master {
 
  private:
   void RegisterApiRoutes();
+  void RegisterRemoteRoutes();
   void RegisterBrowserRoutes();
   void RegisterTerminalRoutes();
   // The folders' shells, as every device lists them; null with the terminal
@@ -132,6 +136,10 @@ class Master {
   int auth_attempts_ UAGENT_GUARDED_BY(mutex_) = 0;
   httplib::Server server_;
   std::mutex mutex_;
+  // Mutations and schedule admissions hold a shared lease. An SSH-only
+  // update takes the exclusive lease until shutdown, after proving idle.
+  std::shared_mutex admission_;
+  std::optional<std::unique_lock<std::shared_mutex>> updating_;
   std::mutex settings_mutex_;
   FileStamp settings_ UAGENT_GUARDED_BY(settings_mutex_) =
       SnapshotFile(SettingsPath());
@@ -194,6 +202,7 @@ class Master {
   // Set by a restart from the settings: MasterMain re-execs after shutdown.
   std::atomic<bool> reexec_{false};
   std::unique_ptr<PushSender> push_;
+  std::unique_ptr<RemoteHosts> remotes_;
   browser::ServiceProcess browser_process_;
   std::array<std::atomic<bool>, kViewerInstances> viewer_active_{};
   // Null while web.terminal is off.

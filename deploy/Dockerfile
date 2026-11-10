@@ -15,11 +15,12 @@ COPY --from=frontend /web/dist /src/web/dist
 RUN cmake -S . -B /tmp/uagent-build -DCMAKE_BUILD_TYPE=Release \
     -DUAGENT_WEB_PUSH=ON -DBUILD_TESTING=OFF \
     && cmake --build /tmp/uagent-build --target uagent -j 4 \
-    && cmake --install /tmp/uagent-build --prefix /opt/uagent --strip
+    && UAGENT_BUILD_DIR=/tmp/uagent-build UAGENT_PREFIX=/opt/uagent \
+       UAGENT_NONINTERACTIVE=1 UAGENT_REMOTE_BUNDLE="$(test ! -d /src/remote-bundle || echo /src/remote-bundle)" ./install.sh
 
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
-    bash ca-certificates curl git ripgrep tini tigervnc-standalone-server \
+    bash ca-certificates curl git ripgrep openssh-client tini tigervnc-standalone-server \
     xauth fonts-liberation fonts-dejavu-core fonts-noto-core \
     fonts-noto-color-emoji libcurl4 \
     && touch /etc/default/google-chrome \

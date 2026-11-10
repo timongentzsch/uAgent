@@ -30,6 +30,7 @@ extern char** environ;
 #include "include/browser/browser.h"
 #include "include/cli/cli.h"
 #include "include/cli/options.h"
+#include "include/core/build.h"
 #include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/events.h"
@@ -41,6 +42,7 @@ extern char** environ;
 #include "include/core/usage.h"
 #include "include/tools/memory.h"
 #include "include/web/protocol.h"
+#include "include/web/remote_hosts.h"
 
 namespace uagent {
 namespace {
@@ -148,7 +150,8 @@ int ShowSystemPrompt(Options options, char* executable,
 }
 
 // --web: the master process; only user configuration reaches it.
-int WebMain(const Options& options, char** argv) {
+int WebMain(const Options& options, char** argv,
+            const std::string& socket = "") {
   if (!options.prompt.empty() || options.json || options.json_stream ||
       options.resume_latest || options.resume_pick || options.yolo ||
       options.trust_project || !options.attach_paths.empty()) {
@@ -204,7 +207,7 @@ int WebMain(const Options& options, char** argv) {
       {static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
        setting("UAGENT_WEB_PUSH_CONTACT"), notification_detail, bind,
        setting("UAGENT_BROWSER_DATA"), terminal_on,
-       std::clamp(idle_minutes, idle.minimum, idle.maximum)},
+       std::clamp(idle_minutes, idle.minimum, idle.maximum), socket},
       argv);
 }
 
@@ -235,6 +238,10 @@ int HeadlessMain(Options options, char* executable,
 }  // namespace
 
 int Main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--build-id") {
+    printf("%s\n", std::string(BuildIdentity()).c_str());
+    return 0;
+  }
   // Both hidden modes are re-execs of this binary that must do their one job
   // before any of the startup below runs: the sandbox trampoline in particular
   // has to confine itself while it is still the only thing in the process.
@@ -249,6 +256,18 @@ int Main(int argc, char** argv) {
   }
   InitializeProcess();
   SetExecutablePath(argv[0]);
+  if (argc == 3 && std::string_view(argv[1]) == "--check-remote-bundle") {
+    std::string error;
+    if (web::CheckRemoteBundle(argv[2], error)) return 0;
+    fprintf(stderr, "%s\n", error.c_str());
+    return 2;
+  }
+  if (argc == 2 && (std::string_view(argv[1]) == "--remote-start" ||
+                    std::string_view(argv[1]) == "--remote-stop-if-idle"))
+    return web::RemoteStart(std::string_view(argv[1]) ==
+                            "--remote-stop-if-idle");
+  if (argc == 2 && std::string_view(argv[1]) == "--remote-host")
+    return WebMain(Options{}, argv, RuntimeDir() + "/web.sock");
   if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
     return session::WorkerMain(argc, argv);
   }

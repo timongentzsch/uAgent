@@ -1,3 +1,4 @@
+import { HostLabel } from "../../shared/host-scope.tsx";
 import "./spotlight.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type {
@@ -16,7 +17,7 @@ import { fuzzy, matches } from "../../shared/fuzzy.ts";
 import { occurrences } from "../../shared/find.ts";
 import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
-import { api, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 
 // A row of some conversation that holds the words (GET /api/search): its
 // conversation, where, and how many of that conversation's rows hold them.
@@ -120,6 +121,7 @@ export default function Spotlight({
   // The global shortcuts' actions, listed by their names.
   actions: Partial<Record<ShortcutId, () => void>>;
 }) {
+  const { api, routes } = useApi();
   const close = useDialogClose();
   const wide = !useCompact();
   const [query, setQuery] = useState("");
@@ -148,7 +150,7 @@ export default function Spotlight({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [words, searching]);
+  }, [words, searching, routes.search, api]);
 
   const byId = new Map(sessions.map((item) => [item.id, item]));
   const recent = [...sessions].sort(
@@ -300,6 +302,7 @@ export default function Spotlight({
   };
   return (
     <div class="spotlight" ref={root}>
+      <HostLabel />
       <Input
         type="search"
         aria-label="Search conversations, messages, commands and settings"
@@ -386,6 +389,7 @@ export default function Spotlight({
 // The rows around a hit, read once the selection rests on it: what was said
 // before it and the row itself, with the words marked.
 function Preview({ hit, words }: { hit: Hit; words: string }) {
+  const { api, routes } = useApi();
   const [rows, setRows] = useState<Node[] | null>(null);
   const cache = useRef(new Map<string, Node[]>());
   const id = `${hit.session_id}:${hit.sequence}`;
@@ -411,7 +415,7 @@ function Preview({ hit, words }: { hit: Hit; words: string }) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [id, hit.session_id, hit.sequence]);
+  }, [id, hit.session_id, hit.sequence, routes.session, api]);
   const who = (node: Node) =>
     node.headline
       ? [node.headline.verb, node.headline.target].filter(Boolean).join(" ")

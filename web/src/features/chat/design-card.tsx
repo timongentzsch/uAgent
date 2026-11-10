@@ -1,4 +1,4 @@
-import { api, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import type { FileTarget } from "../../shared/types.ts";
 import { Button } from "../../shared/ui.tsx";
 import { HTML } from "../../shared/file-types.ts";
@@ -32,6 +32,7 @@ function DesignCard({
   path: string;
   open: (target: FileTarget) => void;
 }) {
+  const { api, routes } = useApi();
   const dir = path.endsWith("/") ? path.slice(0, -1) : "";
   // A folder's pages, a design system's book first; a page is itself. What
   // is not there (a name the reply used loosely) gets no card.

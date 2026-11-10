@@ -2,7 +2,7 @@ import type { SessionRef, State } from "./types.ts";
 import { useState } from "preact/hooks";
 import { useAction } from "./use-action.ts";
 import { useResource } from "./use-resource.ts";
-import { command } from "../state/api.ts";
+import { useApi } from "../state/api.ts";
 import { Field, Select, LoadError } from "./ui.tsx";
 import { SearchSelect } from "./search-select.tsx";
 import { ModelLoading, ModelActions, ModelDefaults } from "./loading.tsx";
@@ -29,6 +29,7 @@ export default function ModelPicker({
   save?: (value: string) => unknown;
   close: () => void;
 }) {
+  const { command } = useApi();
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState(state?.effort || "default");
   // The choice is this conversation's; saving it for all is asked for.

@@ -96,9 +96,13 @@ jobs:
       # Homebrew's libcrypto statically so the archive runs on hosts without
       # Homebrew.
       - name: Configure
-        run: >-
-          cmake --preset ci-release -B build
-          ${{ runner.os == 'macOS' && '-DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl@3 -DOPENSSL_USE_STATIC_LIBS=TRUE' || '' }}
+        shell: bash
+        run: |
+          flags=()
+          if [[ "$RUNNER_OS" = macOS ]]; then
+            flags+=("-DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" -DOPENSSL_USE_STATIC_LIBS=TRUE -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0)
+          fi
+          cmake --preset ci-release -B build "${flags[@]}"
       - name: Build
         # Bounded to the cores actually present. `--parallel` with no count
         # hands Make an unlimited `-j`, and this tree's translation units are
@@ -121,18 +125,60 @@ jobs:
           package_root="$RUNNER_TEMP/package"
           prefix="$package_root/uagent-$version"
           package_home=$(mktemp -d)
-          HOME="$package_home" UAGENT_BUILD_DIR="$PWD/build" UAGENT_PREFIX="$prefix" ./install.sh
+          HOME="$package_home" UAGENT_LOCAL_ONLY=1 UAGENT_BUILD_DIR="$PWD/build" UAGENT_PREFIX="$prefix" ./install.sh
           test -z "$(ls -A "$package_home")"
           "$prefix/bin/uagent" --version
           mkdir -p dist
           archive="uagent-$version-${{ matrix.target }}.tar.gz"
           COPYFILE_DISABLE=1 tar -C "$package_root" -czf "dist/$archive" "uagent-$version"
-          python3 tests/package_contents.py "dist/$archive"
+          python3 tests/package_contents.py --local-only "dist/$archive"
+          (cd dist && cmake -E sha256sum "$archive" > "$archive.sha256")
+          # Same runtime and resources, with only the preview helper embedded.
+          cmake -S . -B build -DUAGENT_EMBED_WEB=OFF
+          cmake --build build --target uagent --parallel 4
+          python3 .github/remote_bundle.py payload --prefix "$prefix" --binary build/uagent --target "${{ matrix.target }}" --out payloads
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-${{ matrix.target }}
+          path: |
+            dist/*
+            payloads/*
+          if-no-files-found: error
+          retention-days: 7
+
+  remote-bundle:
+    needs: [changes, build-and-test]
+    if: needs.changes.outputs.native == 'true' && needs.changes.outputs.heavy == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: native
+      - name: Assemble complete installations
+        run: |
+          mkdir dist
+          cp native/dist/* dist/
+          python3 .github/remote_bundle.py assemble --input native/payloads --out remote-bundle --releases dist
+          for archive in dist/*.tar.gz; do python3 tests/package_contents.py "$archive"; done
+          build=$(python3 -c 'import json; print(json.load(open("remote-bundle/manifest.json"))["build"])')
+          version=$(sed -nE 's/^project\(uagent VERSION ([^ ]+).*/\1/p' CMakeLists.txt)
+          archive="uagent-$version-remote-$build.tar.gz"
+          tar -C remote-bundle -czf "dist/$archive" manifest.json linux-x86_64.tar.gz linux-arm64.tar.gz macos-x86_64.tar.gz macos-arm64.tar.gz
           (cd dist && cmake -E sha256sum "$archive" > "$archive.sha256")
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-${{ matrix.target }}
+          name: release-complete
           path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: remote-bundle
+          path: remote-bundle/*
           if-no-files-found: error
           retention-days: 7
 
@@ -385,7 +431,7 @@ jobs:
   # The image a release publishes is otherwise first built after its tag.
   # Started under compose's seccomp profile, which can stop it starting.
   image:
-    needs: changes
+    needs: [changes, remote-bundle]
     if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -393,6 +439,10 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: remote-bundle
+          path: remote-bundle
       - name: Build the container image
         run: docker buildx build -f deploy/Dockerfile --load -t uagent-image .
       - name: Start it
@@ -401,7 +451,7 @@ jobs:
   checks:
     name: CI result
     if: always()
-    needs: [changes, web-dist, build-and-test, sanitizers, thread-sanitizer, coverage, lint, clang-tidy, web, web-browser, image]
+    needs: [changes, web-dist, build-and-test, remote-bundle, sanitizers, thread-sanitizer, coverage, lint, clang-tidy, web, web-browser, image]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

@@ -120,6 +120,16 @@ struct HostSession {
   // Settings that need a restart changed: recycle this runtime once idle.
   bool restart = false;
 
+  bool RestartBusy() const {
+    if (const json* activities = JsonArray(state, "activities")) {
+      for (const json& activity : *activities) {
+        if (ActivityRuns(activity)) return true;
+      }
+    }
+    return turn_active || command_busy || !pending.is_null() ||
+           !active_exchanges.empty() || LifecycleBusy();
+  }
+
   // A lifecycle operation owns the session; ordinary commands and catalogue
   // refreshes must leave it alone. Callers hold the host mutex.
   bool LifecycleBusy() const {
@@ -212,6 +222,8 @@ class SessionHost {
   std::vector<std::string> PresencePaths() const;
   HostWaitState RunSchedules(bool& recovered);
   void Shutdown();
+  // Conservative admission gate: even an attached idle runtime is left alone.
+  bool IdleForUpdate() const;
   json Catalogue() const;
   // What the host answers itself, for the settings screens: management of
   // the library, schedules and the like (announced as management.changed

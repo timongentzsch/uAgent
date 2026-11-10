@@ -2,7 +2,7 @@ import { useCallback, useRef } from "preact/hooks";
 import type { Dispatch, StateUpdater } from "preact/hooks";
 import type { Draft, Session } from "../shared/types.ts";
 import { emptyDraft } from "../state/store.ts";
-import { requestId, uploadAttachment } from "../state/api.ts";
+import { requestId, useApi } from "../state/api.ts";
 import { dedupeName } from "../features/composer/mention.ts";
 import { maxDraftFiles, maxUploadBytes } from "../shared/limits.ts";
 
@@ -26,6 +26,7 @@ export function useDraftUploads({
   setDrafts: Dispatch<StateUpdater<Record<string, Draft>>>;
   report: (error: unknown) => void;
 }) {
+  const { uploadAttachment } = useApi();
   const active = useRef(new Set<string>());
   // One conversation's draft changes; the others keep theirs.
   const updateDraft = useCallback(

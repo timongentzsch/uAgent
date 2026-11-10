@@ -2,6 +2,32 @@ cmake_minimum_required(VERSION 3.21)
 project(uagent VERSION 1.8.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
+# Hash runtime inputs rather than HEAD: unpublished edits must not attach to
+# an older worker that happens to carry the same release version. Frontend
+# assets are deliberately absent so the normal and remote flavors agree.
+file(GLOB_RECURSE _runtime_inputs CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/*"
+     "${CMAKE_CURRENT_SOURCE_DIR}/include/*"
+     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/*"
+     "${CMAKE_CURRENT_SOURCE_DIR}/skills/*")
+list(FILTER _runtime_inputs EXCLUDE REGEX "(^|/)([.]|__pycache__)|[.]pyc$")
+list(APPEND _runtime_inputs "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_web.cmake"
+     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/build_identity.cc.in"
+     "${CMAKE_CURRENT_SOURCE_DIR}/web/public/design-helper.js"
+     "${CMAKE_CURRENT_SOURCE_DIR}/docs/ARCHITECTURE.md"
+     "${CMAKE_CURRENT_SOURCE_DIR}/web/src/shared/styles/tokens.css")
+list(SORT _runtime_inputs)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_runtime_inputs})
+set(_runtime_hashes "${PROJECT_VERSION}")
+foreach(_input IN LISTS _runtime_inputs)
+  file(SHA256 "${_input}" _hash)
+  file(RELATIVE_PATH _name "${CMAKE_CURRENT_SOURCE_DIR}" "${_input}")
+  string(APPEND _runtime_hashes "${_name}:${_hash}\n")
+endforeach()
+string(SHA256 UAGENT_BUILD_ID "${_runtime_hashes}")
+configure_file(cmake/build_identity.cc.in build_identity.cc @ONLY)
+
 if(NOT UNIX)
   message(FATAL_ERROR "uagent currently requires a POSIX platform")
 endif()
@@ -112,6 +138,7 @@ endif()
 # touching tools/ headers rebuilds tools+app only.
 add_library(
   uagent_core_base
+  "${CMAKE_CURRENT_BINARY_DIR}/build_identity.cc"
   src/core/turn_status.cc
   src/core/capture.cc
   src/core/child_env.cc
@@ -286,7 +313,9 @@ add_executable(uagent src/main.cc)
 # shown over noVNC) the web host runs.
 option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
 include(cmake/embed_web.cmake)
-add_library(uagent_web src/web/master.cc src/web/master_auth.cc
+add_library(uagent_web src/web/master.cc src/web/remote_start.cc
+                      src/web/remote_hosts.cc src/web/master_remote.cc src/web/master_auth.cc
+                       src/web/remote_proxy.cc
                        src/web/master_command.cc src/web/master_files.cc
                        src/web/master_library.cc
                        src/web/master_stream.cc src/web/master_terminal.cc
@@ -381,7 +410,9 @@ if(BUILD_TESTING)
     tests/unit/wire_test.cc)
   # uagent_web brings uagent_app; linking both lists it twice.
   target_sources(uagent_tests PRIVATE tests/unit/web_terminal_test.cc
+                                      tests/unit/web_remote_test.cc
                                       tests/unit/browser_test.cc)
+  target_include_directories(uagent_tests SYSTEM PRIVATE third_party/cpp-httplib)
   if(UAGENT_WEB_PUSH)
     target_sources(uagent_tests PRIVATE tests/unit/web_push_test.cc)
   endif()

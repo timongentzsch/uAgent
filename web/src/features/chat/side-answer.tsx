@@ -6,7 +6,7 @@ import { useAction } from "../../shared/use-action.ts";
 import { failure } from "../../shared/types.ts";
 import MessageInput from "../../shared/message-input.tsx";
 import Decision from "../../shared/decision.tsx";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
@@ -23,6 +23,7 @@ export default function SideAnswer({
   choose: (id: string) => Promise<void>;
   close: () => void;
 }) {
+  const { command } = useApi();
   const { store, load, online, report, setModal } = useHostContext();
   const snapshot = useSnapshots(store, (all) =>
     side.id ? all[side.id] : undefined,

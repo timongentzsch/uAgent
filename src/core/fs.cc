@@ -201,7 +201,11 @@ bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
 }
 
 bool EnsurePrivateDirectory(const std::string& path) {
-  std::filesystem::path current = GlobalBase();
+  const std::string runtime = RuntimeDir();
+  std::filesystem::path current =
+      path == runtime || path.starts_with(runtime + "/") ? runtime
+                                                         : GlobalBase();
+  const auto root = current;
   auto relative = std::filesystem::path(path).lexically_relative(current);
   if (relative.empty() || relative.is_absolute()) return false;
   for (const auto& part : relative) {
@@ -221,6 +225,10 @@ bool EnsurePrivateDirectory(const std::string& path) {
   }
   CreatePrivateDirectories(path);
   struct stat info{};
+  if (root == runtime &&
+      (lstat(root.c_str(), &info) != 0 || !S_ISDIR(info.st_mode) ||
+       info.st_uid != geteuid() || (info.st_mode & kGroupOtherModeBits) != 0))
+    return false;
   return lstat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode) &&
          info.st_uid == geteuid() && (info.st_mode & kGroupOtherModeBits) == 0;
 }

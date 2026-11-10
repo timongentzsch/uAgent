@@ -1,3 +1,4 @@
+import { HostLabel } from "../../shared/host-scope.tsx";
 import type { TargetedSubmitEvent } from "preact";
 import { useState } from "preact/hooks";
 import { CircleAlert, LayoutGrid, List, SquareTerminal } from "lucide-preact";
@@ -7,7 +8,7 @@ import type {
   Space,
   TerminalInfo,
 } from "../../shared/types.ts";
-import { api, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { statusOf, type SessionState } from "../../state/attention.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { folderOf } from "../../shared/display.ts";
@@ -68,6 +69,7 @@ export default function FolderOverview({
   showTerminal: (terminal: TerminalInfo) => void;
   newTerminal?: (folder: string) => void;
 }) {
+  const { api, routes } = useApi();
   const { online, report } = useHostContext();
   const narrow = useNarrowColumn();
   const [kept, keep] = useState(layoutKept.read);
@@ -107,6 +109,7 @@ export default function FolderOverview({
   return (
     <section class="overview" aria-label={`Overview of ${name}`}>
       <header class="overview-head">
+        <HostLabel />
         <h2>
           <DataText>{name}</DataText>
         </h2>

@@ -10,12 +10,35 @@
 
 #include "include/app/launch.h"
 #include "include/app/session.h"
+#include "include/app/session_host.h"
 #include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/tools/files.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+
+TEST_CASE(TestWorkerRestartWaitsForActivityAndApprovals) {
+  session::HostSession worker;
+  CHECK(!worker.RestartBusy());
+  worker.turn_active = true;
+  CHECK(worker.RestartBusy());
+  worker.turn_active = false;
+  worker.command_busy = true;
+  CHECK(worker.RestartBusy());
+  worker.command_busy = false;
+  worker.pending = {{"request_id", "approval"}};
+  CHECK(worker.RestartBusy());
+  worker.pending = nullptr;
+  worker.active_exchanges["tool"] = json::object();
+  CHECK(worker.RestartBusy());
+  worker.active_exchanges.clear();
+  CHECK(!worker.RestartBusy());
+  worker.state["activities"] = json::array({{{"status", "running"}}});
+  CHECK(worker.RestartBusy());
+  worker.state["activities"][0]["status"] = "finished";
+  CHECK(!worker.RestartBusy());
+}
 
 // A worker reports the executable it started from in its hello, so a host can
 // recycle workers left running across an upgrade.

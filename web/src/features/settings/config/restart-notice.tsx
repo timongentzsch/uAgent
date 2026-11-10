@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { plural } from "../../../shared/quantities.ts";
 import { Group, LoadError, Row } from "../../../shared/ui.tsx";
 import { useAction } from "../../../shared/use-action.ts";
-import { manage } from "../../../state/api.ts";
+import { useApi } from "../../../state/api.ts";
 
 // A saved change that only a restart applies offers that restart: the
 // running conversations, or the web host for its own settings.
@@ -18,6 +18,7 @@ export function RestartNotice({
   // Only this folder's conversations need it.
   folder?: string;
 }) {
+  const { manage } = useApi();
   const action = useAction();
   const [done, setDone] = useState("");
   const restart = () =>

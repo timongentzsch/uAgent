@@ -13,7 +13,7 @@ import {
   Spinner,
   Time,
 } from "../../shared/ui.tsx";
-import { readPages, command, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { formatBody } from "../../shared/format.ts";
 import { servedBy } from "../../shared/display.ts";
 import { formatEventStream } from "./raw-capture.ts";
@@ -32,6 +32,7 @@ export default function Raw({
   prepare,
   part = "request",
 }: RawOptions & { latest?: Exchange[]; instructions?: () => void }) {
+  const { command, readPages, routes } = useApi();
   const http = context || exchanges !== undefined;
   const [captured, setCaptured] = useState(exchanges || []);
   const [attempt, setAttempt] = useState(

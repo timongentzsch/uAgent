@@ -6,7 +6,7 @@ import type {
   InstructionStack,
   Session,
 } from "../../shared/types.ts";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import {
   Actions,
   Button,
@@ -41,6 +41,7 @@ export default function Instructions({
   version: number;
   showRequest?: () => void;
 }) {
+  const { command } = useApi();
   const [cwd, setCwd] = useState(session?.cwd || projects[0] || "");
   // Tagged with its folder, so another folder's files never show, or get
   // saved, under this one.
@@ -130,6 +131,7 @@ function InstructionCard({
   online: boolean;
   saved: (stack: InstructionStack) => void;
 }) {
+  const { command } = useApi();
   // Null until edited: the field shows the file as it is, including a newer
   // version loaded meanwhile, and an edit in progress is never replaced. An
   // edit remembers the text it started from, so saving over a file changed

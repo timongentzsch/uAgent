@@ -254,6 +254,14 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       kScopeUser),
         "Browser data folder")),
     registry::Terminal(registry::Named(
+        registry::Str("web.remoteBundle", "UAGENT_REMOTE_BUNDLE", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "web",
+                      "directory containing the verified four-target bundle "
+                      "for this build",
+                      kScopeUser),
+        "Remote bundle folder")),
+    registry::Terminal(registry::Named(
         registry::Int("web.port", "UAGENT_WEB_PORT", {}, 8080, 1024, 65535,
                       ReloadPolicy::kRestartRequired, "web",
                       "the web host's loopback port", kScopeUser),

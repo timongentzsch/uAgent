@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Validate a µAgent binary archive and its bundled skill tree."""
 
+import argparse
+import hashlib
+import json
 import pathlib
-import sys
 import tarfile
 
 
@@ -11,9 +13,11 @@ def fail(message):
 
 
 def main():
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: package_contents.py ARCHIVE")
-    archive = pathlib.Path(sys.argv[1])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("archive", type=pathlib.Path)
+    parser.add_argument("--local-only", action="store_true")
+    args = parser.parse_args()
+    archive = args.archive
     source = pathlib.Path(__file__).resolve().parents[1]
     expected_skills = set()
     for path in (source / "skills").rglob("*"):
@@ -68,6 +72,32 @@ def main():
         missing = sorted(expected_skills - packaged_skills)
         extra = sorted(packaged_skills - expected_skills)
         fail(f"skill tree differs; missing={missing}, extra={extra}")
+    if not args.local_only:
+        manifests = [
+            name
+            for name in files
+            if name.startswith(f"{root}/share/uagent/remote/") and name.endswith("/manifest.json")
+        ]
+        if len(manifests) != 1:
+            fail("one complete remote bundle is required")
+        with tarfile.open(archive, "r:gz") as package:
+            manifest = json.load(package.extractfile(manifests[0]))
+            targets = {"linux-x86_64", "linux-arm64", "macos-x86_64", "macos-arm64"}
+            if (
+                set(manifest["targets"]) != targets
+                or manifests[0].split("/")[-2] != manifest["build"]
+            ):
+                fail("remote targets or build identity differ")
+            for target, record in manifest["targets"].items():
+                name = manifests[0].removesuffix("manifest.json") + target + ".tar.gz"
+                if name not in files:
+                    fail(f"remote payload {target} missing")
+                with package.extractfile(name) as payload:
+                    if (
+                        package.getmember(name).size != record["bytes"]
+                        or hashlib.file_digest(payload, "sha256").hexdigest() != record["sha256"]
+                    ):
+                        fail(f"remote payload {target} integrity differs")
     print(f"verified {archive}: {len(packaged_skills)} bundled skill files")
 
 

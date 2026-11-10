@@ -5,7 +5,7 @@ import { Actions, Button, cleanText, Input, Textarea } from "./ui.tsx";
 import Ask from "./ask.tsx";
 import { AttachmentList } from "./attachments.tsx";
 import DiffView from "./diff-view.tsx";
-import { routes } from "../state/api.ts";
+import { useApi } from "../state/api.ts";
 import "./decision.css";
 
 // The approval's own answers (the host's choice table); anything else it
@@ -33,6 +33,7 @@ export default function Decision({
   online: boolean;
   report: Report;
 }) {
+  const { routes } = useApi();
   const options = (pending.options ?? []).map((item) =>
     typeof item === "string"
       ? { value: item, label: item }

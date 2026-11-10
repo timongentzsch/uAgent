@@ -242,10 +242,13 @@ bool SessionHost::RecycleStaleWorkerLocked(
   if ((current.empty() || current == session->binary) && !session->restart) {
     return false;
   }
-  // Binary upgraded since this worker spawned: graceful close, then the
-  // caller spawns fresh. Same semantics as user-initiated close of a busy
-  // session; a worker that ignores close keeps serving (fail open, retried
-  // on the next touch).
+  // An upgrade is not a request to cancel work. The scheduler revisits a
+  // pending restart after the worker reports that it has become idle.
+  if (session->RestartBusy()) {
+    session->restart = true;
+    return false;
+  }
+  // Close an idle stale worker, then let the caller attach a fresh one.
   DebugLog("worker_binary_recycle", {{"session", session->id}});
   // Claimed now, so no other pass starts a second recycle while this one
   // waits; restored if the worker keeps running.

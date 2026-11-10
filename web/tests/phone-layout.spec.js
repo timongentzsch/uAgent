@@ -5,7 +5,100 @@ import {
   headerAction,
   online,
   selectProbeModel,
+  saveHistory,
 } from "./fixtures.js";
+
+test.describe("message layout", () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  test("narrow messages use the full width with metadata below the text", async ({
+    page,
+    host,
+    request,
+  }, testInfo) => {
+    await saveHistory(host, "message-layout.json", {
+      id: "message-layout",
+      title: "Message layout",
+      turns: 1,
+      messages: [
+        {
+          role: "user",
+          content:
+            "how to serve those models whats the best setup? what are they optimized for",
+        },
+        {
+          role: "assistant",
+          content: "Model serving depends on the workload.",
+        },
+      ],
+      display: {
+        ids: [1, 2],
+        facts: { "m-1": { time: "2026-11-08T10:57:00.000Z" } },
+        next: 3,
+      },
+    });
+    await request.get("/api/sessions?refresh=1");
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Message layout", exact: true })
+      .click();
+    const message = page.locator(".message.user");
+    await expect(message).toBeVisible();
+    const meta = message.locator(".message-meta");
+    const menu = meta.getByRole("button", { name: /^Actions for / });
+    for (const width of [390, 320, 600]) {
+      await page.setViewportSize({ width, height: 844 });
+      // Read both boxes in one frame while the resized viewport settles.
+      await expect
+        .poll(() =>
+          message.evaluate((node) => {
+            const body = node
+              .querySelector(".message-text")
+              .getBoundingClientRect();
+            const footer = node
+              .querySelector(".message-meta")
+              .getBoundingClientRect();
+            return (
+              footer.y >= body.bottom - 1 &&
+              Math.abs(body.width - footer.width) < 1
+            );
+          }),
+        )
+        .toBe(true);
+      await expect(meta.locator("time")).toBeVisible();
+      const target = await menu.boundingBox();
+      expect(target.width).toBeGreaterThanOrEqual(44);
+      expect(target.height).toBeGreaterThanOrEqual(44);
+      expect(
+        await message.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      ).toBe(true);
+      if (width === 390)
+        await page.screenshot({
+          path: testInfo.outputPath("phone-message.png"),
+        });
+    }
+    await menu.tap();
+    await expect(
+      page.getByRole("menuitem", { name: "Edit from here", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    // Resizing the same conversation restores the wider layout.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect
+      .poll(() =>
+        message.evaluate((node) => {
+          const body = node
+            .querySelector(".message-text")
+            .getBoundingClientRect();
+          const metadata = node
+            .querySelector(".message-meta")
+            .getBoundingClientRect();
+          return Math.abs(body.y - metadata.y) < 1 && metadata.x >= body.right;
+        }),
+      )
+      .toBe(true);
+  });
+});
 
 test("mobile chrome keeps an opaque safe area and applies appearance before app startup", async ({
   page,
@@ -77,7 +170,8 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     // The drawer runs to the bottom edge; its content stays above the inset.
     expect(drawerBox.y + drawerBox.height).toBe(844);
     const footer = await drawer
-      .getByText("Connected", { exact: true })
+      .locator("footer")
+      .getByRole("status")
       .boundingBox();
     expect(footer.y + footer.height).toBeLessThanOrEqual(844 - 34);
     expect(

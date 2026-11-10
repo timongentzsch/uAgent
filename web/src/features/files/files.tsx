@@ -11,7 +11,7 @@ import { ChevronLeft, ChevronsDownUp, Download, File, X } from "lucide-preact";
 import { usePushDirection } from "../../shared/motion.ts";
 import type { Session } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
-import { api, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import {
   Button,
@@ -33,7 +33,7 @@ import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
 import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
 import { stored } from "../../shared/storage.ts";
-import { storageKeys } from "../../shared/storage-keys.ts";
+import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
 import { HTML, IMAGE, MARKDOWN, nameOf } from "../../shared/file-types.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
@@ -98,7 +98,11 @@ const SAMPLE_LISTING: Listing = {
 };
 const SHOWN = 50;
 // The folders open in the tree, per conversation folder, on this device.
-const kept = stored<Record<string, string[]>>(storageKeys.filesAt, {});
+const folderStore = (host: string) =>
+  stored<Record<string, string[]>>(
+    hostStorageKey(storageKeys.filesAt, host),
+    {},
+  );
 // A path's folders from the top: `a/b` is `a` and `a/b`.
 const ancestors = (dir: string) =>
   dir
@@ -144,6 +148,8 @@ export default function Files({
   // Whether the agent's browser can draw a page as a picture.
   pictures?: boolean;
 }) {
+  const { routes, api, host } = useApi();
+  const kept = useMemo(() => folderStore(host), [host]);
   // In a sheet, its header is this one: Close plays the sheet's exit, and
   // the title is where the sheet puts focus.
   const dialog = useDialog();

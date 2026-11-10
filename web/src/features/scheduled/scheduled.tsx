@@ -1,8 +1,9 @@
+import { HostScope } from "../../shared/host-scope.tsx";
 import { useAction } from "../../shared/use-action.ts";
 import { usePushDirection } from "../../shared/motion.ts";
 import { tabDrafts, useStored } from "../../shared/storage.ts";
-import { storageKeys } from "../../shared/storage-keys.ts";
-import { manage } from "../../state/api.ts";
+import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
+import { useApi } from "../../state/api.ts";
 import {
   defaultScheduleSeconds,
   maxScheduleMinutes,
@@ -13,7 +14,7 @@ import type {
   ScheduledState,
   ScheduleRule,
 } from "../../shared/types.ts";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { Plus, Play, Square, ChevronLeft } from "lucide-preact";
 import {
   Button,
@@ -58,7 +59,7 @@ const blank = (cwd: string): ScheduledTask => ({
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   },
 });
-const drafts = tabDrafts<ScheduledTask>(storageKeys.scheduledDraft);
+
 const taskActive = (state: string) =>
   ["queued", "starting", "running", "waiting", "stopping"].includes(state);
 function localInput(at?: number) {
@@ -95,6 +96,14 @@ export default function Scheduled({
   choose: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
 }) {
+  const { manage, host } = useApi();
+  const drafts = useMemo(
+    () =>
+      tabDrafts<ScheduledTask>(
+        hostStorageKey(storageKeys.scheduledDraft, host),
+      ),
+    [host],
+  );
   const [task, setTask] = useState(drafts.open.read);
   const moved = usePushDirection(!!task);
   const [prefs] = useStored(devicePrefs.time);
@@ -193,6 +202,7 @@ export default function Scheduled({
   return (
     <div class="management">
       <div class="management-toolbar">
+        <HostScope />
         <p class="muted">
           Runs while the uAgent host is open. Your browser can close.
         </p>

@@ -9,7 +9,7 @@ import type {
   SessionRef,
 } from "../../shared/types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { command, manage } from "../../state/api.ts";
+import { useApi, type ApiClient } from "../../state/api.ts";
 import {
   cleanText,
   EmptyState,
@@ -26,6 +26,7 @@ import Markdown from "../../shared/markdown-view.tsx";
 // activity's output. State (version guards, loading, errors) stays with the
 // caller.
 async function fetchActivityDetail(
+  { manage, command }: ApiClient,
   session: SessionRef,
   cwd: string,
   item: ActivityDetail,
@@ -78,6 +79,7 @@ export default function Inspector({
   report: Report;
   close: () => void;
 }) {
+  const client = useApi();
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -113,6 +115,7 @@ export default function Inspector({
     }
     try {
       const next = await fetchActivityDetail(
+        client,
         session,
         cwd,
         item,

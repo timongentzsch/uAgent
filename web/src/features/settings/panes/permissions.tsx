@@ -9,11 +9,12 @@ import {
 } from "../../../shared/ui.tsx";
 import { useAction } from "../../../shared/use-action.ts";
 import { useResource } from "../../../shared/use-resource.ts";
-import { manage } from "../../../state/api.ts";
+import { useApi } from "../../../state/api.ts";
 import { useSettings } from "../context.ts";
 
 // The rules kept for the open conversation's repository.
 export function PermissionsPane() {
+  const { manage } = useApi();
   const { session, online } = useSettings();
   const cwd = session?.cwd;
   const {

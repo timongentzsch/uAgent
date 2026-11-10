@@ -359,6 +359,11 @@ bool Terminals::Close(const std::string& id) {
   return true;
 }
 
+bool Terminals::Running() const {
+  std::lock_guard lock(mutex_);
+  return !shells_.empty() || !closing_.empty();
+}
+
 std::vector<TerminalInfo> Terminals::List() const {
   std::lock_guard lock(mutex_);
   std::vector<TerminalInfo> list;

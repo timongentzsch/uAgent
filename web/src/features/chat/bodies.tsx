@@ -18,7 +18,7 @@ import { ImageTile } from "../../shared/attachments.tsx";
 import { HostContext } from "../../state/host-context.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { coarsePointer } from "../../shared/layout.ts";
-import { routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useNodeReader } from "../../state/node-reader.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { MessageActions } from "./message-actions.ts";
@@ -167,6 +167,7 @@ export function NodeBody({
   online: boolean;
   session: SessionRef;
 }) {
+  const { routes } = useApi();
   const { read, inspect, activity, open } = useContext(MessageActions);
   const load = useNodeReader(session, read);
   const body = node.body;

@@ -26,7 +26,7 @@ import {
   updateChecked,
 } from "./ui.tsx";
 import { SheetButton } from "./sheet.tsx";
-import { command } from "../state/api.ts";
+import { useApi } from "../state/api.ts";
 import { useAction } from "./use-action.ts";
 import { useElapsed } from "./time.ts";
 import { focusDecision, revealLiveRow } from "./navigation.ts";
@@ -209,6 +209,7 @@ export function ActivityControls({
   online: boolean;
   report: Report;
 }) {
+  const { command } = useApi();
   const { run, busy } = useAction();
   const act = (operation: "stop" | "background") =>
     run(() =>
@@ -298,6 +299,7 @@ function AgentRow({
   report: Report;
   open: () => void;
 }) {
+  const { command } = useApi();
   const { run, busy } = useAction();
   const name = cleanText(agent.title || "Agent");
   return (

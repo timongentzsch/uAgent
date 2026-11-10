@@ -4,6 +4,9 @@ import { decisionFocusWaitMs } from "./limits.ts";
 // The selected conversation in the URL hash, and moving focus to the
 // composer or a decision, including from a notification's link.
 
+export const hostFromURL = () =>
+  new URLSearchParams(location.hash.slice(1)).get("host") || "";
+
 export const selectedFromURL = () =>
   new URLSearchParams(location.hash.slice(1)).get("session") || "";
 
@@ -17,9 +20,16 @@ const edgeOpensDrawer =
   (navigator as { standalone?: boolean }).standalone === true;
 
 // Same-document navigation preserves the shell, connection and browser history.
-export function writeSelection(id: string, replace = false) {
+export function writeSelection(
+  id: string,
+  replace = false,
+  host = hostFromURL(),
+) {
   (edgeOpensDrawer ? underLayers : settled)(() => {
-    const hash = id ? `#session=${encodeURIComponent(id)}` : "";
+    const params = new URLSearchParams();
+    if (host) params.set("host", host);
+    if (id) params.set("session", id);
+    const hash = params.size ? `#${params}` : "";
     if (location.hash === hash) return;
     const url = `${location.pathname}${location.search}${hash}`;
     const keep = replace || edgeOpensDrawer;

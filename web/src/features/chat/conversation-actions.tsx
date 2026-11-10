@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import type { Session, StatisticsModal } from "../../shared/types.ts";
-import { command, manage } from "../../state/api.ts";
+import { useApi, type ApiClient } from "../../state/api.ts";
 import { useAction } from "../../shared/use-action.ts";
 import {
   deleteRetryDelayMs,
@@ -16,7 +16,10 @@ import { Actions, Button, LoadError, Input } from "../../shared/ui.tsx";
 // stops a running turn gracefully, then delete removes the record. A
 // closing worker can retire while that spreads, so delete retries until the
 // host has let go of it.
-export async function deleteConversation(session: Session) {
+export async function deleteConversation(
+  session: Session,
+  command: ApiClient["command"],
+) {
   if (!session.generation) return void (await command("delete", session));
   try {
     await command("close", session);
@@ -51,6 +54,7 @@ export default function ConversationActions({
   changed: (kind: string, id: string) => Promise<void>;
   close: () => void;
 }) {
+  const { manage, command } = useApi();
   const [title, setTitle] = useState(
     modal.space?.name || modal.session?.title || modal.terminal?.title || "",
   );
@@ -81,7 +85,8 @@ export default function ConversationActions({
             close();
             return;
           }
-          if (modal.type === "delete") await deleteConversation(modal.session);
+          if (modal.type === "delete")
+            await deleteConversation(modal.session, command);
           else await command("rename", modal.session, { title: title.trim() });
           await changed(modal.type, modal.session.id);
           close();

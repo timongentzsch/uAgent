@@ -8,7 +8,7 @@ import type {
   Snapshot,
   Space,
 } from "../shared/types.ts";
-import { command } from "../state/api.ts";
+import { useApi } from "../state/api.ts";
 import { folderOf } from "../shared/display.ts";
 import { scratchSpace } from "../shared/limits.ts";
 import { SpaceMenu } from "./menus.tsx";
@@ -37,6 +37,7 @@ export function usePlaces({
   setModal: (modal: AppModal | null) => void;
   setBusy: (busy: boolean) => void;
 }) {
+  const { command } = useApi();
   const [folder, setFolder] = useState("");
   const [space, setSpace] = useState("");
   // A workspace typed into the dialog, or a folder, starts a conversation.
@@ -90,7 +91,7 @@ export function usePlaces({
         starting.current = false;
       }
     },
-    [upsertSession, choose, load],
+    [upsertSession, choose, load, command],
   );
   // Asks for the place's name or path, which starts a conversation there.
   const newPlace = useCallback(

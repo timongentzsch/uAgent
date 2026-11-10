@@ -139,6 +139,7 @@ every flag.
 [Memory, skills and schedules](docs/MANAGEMENT.md) ·
 [Skills](skills/README.md) ·
 [Operations](docs/OPERATIONS.md) ·
+[Remote hosts](docs/REMOTE_HOSTS.md) ·
 [Persistence](docs/PERSISTENCE.md) ·
 [Accessibility](docs/ACCESSIBILITY.md) ·
 [Security](SECURITY.md) ·
@@ -150,6 +151,6 @@ every flag.
 
 The tests need no API key or network: C++ unit tests, Python integration
 tests against a mock provider and Playwright browser tests, run in CI on
-Linux x86_64 and arm64 and macOS arm64 with sanitizers and clang-tidy.
+Linux and macOS on x86_64 and arm64 with sanitizers and clang-tidy.
 [Contributing](CONTRIBUTING.md) covers building and checks;
 [Testing](docs/TESTING.md) covers running one test.

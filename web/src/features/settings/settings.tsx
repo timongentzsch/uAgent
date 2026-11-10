@@ -1,3 +1,5 @@
+import { HostScope } from "../../shared/host-scope.tsx";
+import { useHosts } from "../../state/sources.ts";
 import { nameOf } from "../../shared/file-types.ts";
 import "./settings.css";
 import { ChevronLeft } from "lucide-preact";
@@ -18,6 +20,7 @@ import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 // The shell: which scope is open, the list of scopes, and its page.
 export default function Settings(props: SettingsProps) {
   const { session, online, catalogue, mcp: servers } = props;
+  const local = useHosts()?.sources.find((source) => !source.id)?.state;
   // Null until a scope is picked: a phone shows the list first, and a
   // picked scope is a layer the back gesture returns from.
   const [picked, setPicked] = useState<Scope | null>(
@@ -69,7 +72,25 @@ export default function Settings(props: SettingsProps) {
       </>
     ),
     browser: <DisplayPane />,
-    host: <DevicesPane />,
+    host: local ? (
+      <SettingsContext.Provider
+        value={{
+          ...props,
+          catalogue: local.catalogue,
+          online: local.online,
+          refresh: local.refresh,
+          selected: local.selected,
+          session: local.catalogue.sessions.find(
+            (item) => item.id === local.selected,
+          ),
+          notifications: local.notifications,
+        }}
+      >
+        <DevicesPane />
+      </SettingsContext.Provider>
+    ) : (
+      <DevicesPane />
+    ),
   };
   return (
     <SettingsContext.Provider value={props}>
@@ -96,6 +117,10 @@ export default function Settings(props: SettingsProps) {
           class={moved && "push"}
         />
         <div ref={body} class={moved ? "settings-pane push" : "settings-pane"}>
+          <HostScope
+            settings={current}
+            device={current === "host" || current === "browser"}
+          />
           {!phone && <h3 class="settings-pane-title">{title}</h3>}
           <p class="settings-scope">{describe(session?.cwd)}</p>
           {pages[current]}

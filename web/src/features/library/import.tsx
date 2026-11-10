@@ -1,4 +1,4 @@
-import { manage } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import type { ImportItem } from "../../shared/types.ts";
 import { useState } from "preact/hooks";
 import {
@@ -22,6 +22,7 @@ export default function ImportDialog({
   kind: "memory" | "skills";
   close: () => void;
 }) {
+  const { manage } = useApi();
   const only = kind === "skills" ? "skill" : "memory";
   const list = () =>
     manage("import", { cwd, action: "list", only }).then(

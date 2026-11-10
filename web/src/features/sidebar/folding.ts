@@ -22,9 +22,20 @@ function remembered(name: string) {
 
 // Places folded to their header.
 export const collapsed = remembered("collapsed");
+export const opened = remembered("opened");
+export const placeKey = (host: string, path: string) =>
+  host ? `${host}:${path}` : path;
 
 // Redraws the caller when the set changes.
 export function useFolding() {
   const [, redraw] = useState(0);
-  useEffect(() => collapsed.subscribe(() => redraw((count) => count + 1)), []);
+  useEffect(() => {
+    const changed = () => redraw((count) => count + 1);
+    const a = collapsed.subscribe(changed),
+      b = opened.subscribe(changed);
+    return () => {
+      a();
+      b();
+    };
+  }, []);
 }

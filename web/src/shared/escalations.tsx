@@ -1,7 +1,7 @@
 import { useEffect } from "preact/hooks";
 import { useResource } from "./use-resource.ts";
 import type { Act, Pending, Session } from "./types.ts";
-import { api, command, routes } from "../state/api.ts";
+import { useApi } from "../state/api.ts";
 import { useHostContext } from "../state/host-context.ts";
 import { Button, LoadError, Spinner } from "./ui.tsx";
 import Decision from "./decision.tsx";
@@ -43,6 +43,7 @@ export default function WaitingList({
 // The decision a session waits on: undefined while it loads, null once the
 // session no longer waits.
 function usePendingDecision(item: Session) {
+  const { api, routes } = useApi();
   const resource = useResource(
     () =>
       api<{ pending?: Pending | null }>(routes.session(item.id)).then(
@@ -67,6 +68,7 @@ function Escalation({
   where: boolean;
   choose: (id: string) => void;
 }) {
+  const { command } = useApi();
   const { online, report } = useHostContext();
   const { value: pending, error, retry } = usePendingDecision(item);
   if (pending === null) return null;

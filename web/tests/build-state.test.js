@@ -83,6 +83,7 @@ const { pathToFileURL } = require("node:url");
           UAGENT_PREFIX: resolve(root, "prefix"),
           INSTALL_TEST_LOG: log,
           UAGENT_NONINTERACTIVE: "1",
+          UAGENT_LOCAL_ONLY: "1",
           ...extra,
         },
       });

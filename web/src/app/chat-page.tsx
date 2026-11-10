@@ -12,7 +12,7 @@ import type {
 } from "../shared/types.ts";
 import { queuedGuidance } from "../shared/message-view.ts";
 import { useCallback, useMemo } from "preact/hooks";
-import { api, routes } from "../state/api.ts";
+import { useApi } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
 import { Welcome, Button, Actions } from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
@@ -106,6 +106,7 @@ export default function ChatPage({
   find: FindRequest | null;
   closeFind: () => void;
 }) {
+  const { api, routes } = useApi();
   const { store, online, report, load, setModal } = useHostContext();
   const { setFollowing, draft, setDraft, submit } = useConversation();
   const snapshot = useSnapshots(store, (all) => all[selected]);
@@ -174,7 +175,7 @@ export default function ChatPage({
         },
       };
     });
-  }, [more, before, selected, updateView, transcript]);
+  }, [more, before, selected, updateView, transcript, routes.session, api]);
   // What the composer is given keeps its identity across streamed frames.
   const send = useCallback(
     (event: Event, queue?: boolean) => submit(event, jumpToLatest, queue),

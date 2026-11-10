@@ -29,7 +29,7 @@ import type {
 import type { TargetedKeyboardEvent } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
-import { command, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useConversation, useHostContext } from "../../state/host-context.ts";
 import { isRunning } from "../../state/attention.ts";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
@@ -107,6 +107,7 @@ function Composer({
   agents: Session[];
   choose: (id: string) => void;
 }) {
+  const { routes, command } = useApi();
   const { online, connection, report } = useHostContext();
   const narrow = useNarrowColumn();
   const { upload, uploading, busy, act, following } = useConversation();

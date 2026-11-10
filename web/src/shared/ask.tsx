@@ -14,7 +14,7 @@ import {
 } from "./ui.tsx";
 import { motionMs } from "./motion.ts";
 import { ImageTile } from "./attachments.tsx";
-import { routes, uploadAttachment } from "../state/api.ts";
+import { useApi } from "../state/api.ts";
 import { bytes } from "./quantities.ts";
 import { maxUploadBytes } from "./limits.ts";
 
@@ -57,6 +57,7 @@ export default function Ask({
   cancel: () => void;
   report: Report;
 }) {
+  const { uploadAttachment } = useApi();
   const [answers, setAnswers] = useState(() => questions.map(blank));
   const update = (index: number, change: Partial<Answer>) =>
     setAnswers((current) =>
@@ -303,6 +304,7 @@ function QuestionPage({
   // Moves on to the next page after a moment; absent on the last one.
   advance?: () => void;
 }) {
+  const { routes } = useApi();
   const multiple = !!item.multi_select;
   const type = multiple ? "checkbox" : "radio";
   const heading = cleanText(item.header);

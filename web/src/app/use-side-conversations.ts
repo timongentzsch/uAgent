@@ -1,23 +1,24 @@
-import { useCallback } from "preact/hooks";
+import { useCallback, useMemo } from "preact/hooks";
 import type { Report, Session, Snapshot } from "../shared/types.ts";
 import { stored, useStored } from "../shared/storage.ts";
-import { storageKeys } from "../shared/storage-keys.ts";
-import { command, requestId } from "../state/api.ts";
+import { storageKeys, hostStorageKey } from "../shared/storage-keys.ts";
+import { requestId, useApi } from "../state/api.ts";
 
 // The /btw side conversations of the shell: one per conversation, kept in
 // local storage across reloads. Used by the shell and the chat page.
 
 type Side = { question: string; id?: string; firstRequest: string };
 
-const kept = stored<Record<string, Side>>(
-  storageKeys.sideConversations,
-  {},
-  undefined,
-  {
-    kept: (value) =>
-      Object.fromEntries(Object.entries(value).filter(([, side]) => side.id)),
-  },
-);
+const sideStore = (host: string) =>
+  stored<Record<string, Side>>(
+    hostStorageKey(storageKeys.sideConversations, host),
+    {},
+    undefined,
+    {
+      kept: (value) =>
+        Object.fromEntries(Object.entries(value).filter(([, side]) => side.id)),
+    },
+  );
 
 // The /btw side conversation of each conversation: started from a question,
 // kept across reloads once it has its own session, and asked again there.
@@ -32,6 +33,8 @@ export function useSideConversations({
   refresh: () => Promise<void>;
   report: Report;
 }) {
+  const { command, host } = useApi();
+  const kept = useMemo(() => sideStore(host), [host]);
   const [sides, setSides] = useStored(kept);
   const side = sides[selected] || null;
   const closeSide = useCallback(

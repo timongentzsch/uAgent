@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import type { Session, Space } from "../../shared/types.ts";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { folderOf } from "../../shared/display.ts";
 import { matches } from "../../shared/fuzzy.ts";
 import { plural } from "../../shared/quantities.ts";
@@ -42,6 +42,7 @@ export default function MoveConversation({
   online: boolean;
   close: () => void;
 }) {
+  const { command } = useApi();
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState("");
   const { run, busy, error } = useAction();

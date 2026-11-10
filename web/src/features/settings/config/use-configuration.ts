@@ -4,7 +4,7 @@ import type {
   ConfigChange,
   Configuration,
 } from "../../../shared/types.ts";
-import { manage } from "../../../state/api.ts";
+import { useApi } from "../../../state/api.ts";
 import type { SavedScope } from "./facts.ts";
 
 // What is saved at `scope` and the two ways to change it. The host answers:
@@ -16,6 +16,7 @@ export function useConfiguration(
   folder: string | undefined,
   version: number,
 ) {
+  const { manage } = useApi();
   const where = folder ? { cwd: folder } : {};
   // Loads and saves answer in any order; only an answer to a request made
   // after the one last shown is shown.

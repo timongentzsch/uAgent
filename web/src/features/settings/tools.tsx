@@ -13,7 +13,7 @@ import {
   Placeholder,
   Select,
 } from "../../shared/ui.tsx";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { capitalize } from "../../shared/display.ts";
 import { useResource } from "../../shared/use-resource.ts";
@@ -68,6 +68,7 @@ export default function Tools({
   busy: boolean;
   changed: () => void;
 }) {
+  const { command } = useApi();
   const {
     value: catalogue,
     error,

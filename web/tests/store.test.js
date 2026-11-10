@@ -10,7 +10,7 @@ import {
   withActivities,
   keptSession,
 } from "../src/state/store.ts";
-import { api, command, receiveOutcome } from "../src/state/api.ts";
+import { api, command, receiveOutcome, createApi } from "../src/state/api.ts";
 import { stored } from "../src/shared/storage.ts";
 import { maxHttpExchanges } from "../src/shared/limits.ts";
 import {
@@ -492,5 +492,57 @@ test("receipts retain queued guidance until the transcript consumes it", async (
     );
     assert.equal(outgoingAfter(item, { accepted: false }), status.refused);
     assert.equal(outgoingAfter(item, {}), status.refused);
+  }
+});
+
+test("host clients keep equal request IDs and delayed commands isolated", async () => {
+  const original = globalThis.fetch;
+  const paths = [];
+  globalThis.fetch = async (path) => {
+    paths.push(path);
+    return new Response(JSON.stringify({ accepted: true, pending: true }), {
+      status: 200,
+    });
+  };
+  try {
+    const a = createApi("a"),
+      b = createApi("b");
+    const abort = new AbortController();
+    const first = a.command(
+      "rename",
+      { id: "same", generation: "g" },
+      { title: "A", request_id: "same-request" },
+      { signal: abort.signal },
+    );
+    const second = b.command(
+      "rename",
+      { id: "same", generation: "g" },
+      { title: "B", request_id: "same-request" },
+    );
+    assert.equal(
+      b.receiveOutcome({ request_id: "same-request", accepted: true }),
+      true,
+    );
+    await second;
+    assert.equal(
+      a.receiveOutcome({ request_id: "same-request", accepted: true }),
+      true,
+    );
+    await first;
+    const later = a.command;
+    const delayed = later(
+      "rename",
+      { id: "same", generation: "g" },
+      { title: "later", request_id: "later" },
+    );
+    a.receiveOutcome({ request_id: "later", accepted: true });
+    await delayed;
+    assert.deepEqual(paths, [
+      "/api/hosts/a/api/command",
+      "/api/hosts/b/api/command",
+      "/api/hosts/a/api/command",
+    ]);
+  } finally {
+    globalThis.fetch = original;
   }
 });

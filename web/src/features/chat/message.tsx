@@ -21,7 +21,7 @@ import { X } from "lucide-preact";
 import { Button, IconButton, Time } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
-import { routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useNodeReader } from "../../state/node-reader.ts";
 import { isRow } from "../../shared/tree.ts";
 import { TurnFooter } from "./turn-footer.tsx";
@@ -111,6 +111,7 @@ function BroughtFiles({
   online: boolean;
   session: SessionRef;
 }) {
+  const { routes } = useApi();
   const assets = routes.assets(session.id);
   if (!node.files?.length) return null;
   return online ? (
@@ -129,6 +130,7 @@ function Message({
   online: boolean;
   session: SessionRef;
 }) {
+  const { routes } = useApi();
   const {
     read,
     report,

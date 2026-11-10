@@ -30,6 +30,7 @@ HEAVY_DIRS = (
     "include/browser/",
     ".github/",
     "cmake/",
+    "deploy/",
     "third_party/",
 )
 
@@ -39,7 +40,7 @@ def heavy(paths):
     ThreadSanitizer and Linux ARM64: for the build, the workflows and the
     web host and browser."""
     return any(
-        path.startswith(HEAVY_DIRS) or path in ("CMakeLists.txt", "CMakePresets.json")
+        path.startswith(HEAVY_DIRS) or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore")
         for path in paths
     )
 
@@ -50,6 +51,7 @@ def build_matrix(with_arm):
         {"target": "linux-x86_64", "runner": "ubuntu-24.04", "arch": "x86_64"},
         {"target": "linux-arm64", "runner": "ubuntu-24.04-arm", "arch": "aarch64"},
         {"target": "macos-arm64", "runner": "macos-15", "arch": "arm64"},
+        {"target": "macos-x86_64", "runner": "macos-15-intel", "arch": "x86_64"},
     ]
     return json.dumps({"include": legs if with_arm else [legs[0], legs[2]]})
 
@@ -61,7 +63,7 @@ def tidy(paths):
     wide = any(
         path.endswith((".h", ".hpp", ".clang-tidy"))
         or path.startswith((".github/", "third_party/"))
-        or path in ("CMakeLists.txt", "CMakePresets.json")
+        or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore")
         for path in paths
     )
     units = [

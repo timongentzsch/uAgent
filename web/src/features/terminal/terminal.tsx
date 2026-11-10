@@ -10,7 +10,7 @@ import type {
   TerminalInfo,
   TerminalNotice,
 } from "../../shared/types.ts";
-import { manage, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { folderName } from "../../shared/folder-label.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { Button, IconButton, Spinner } from "../../shared/ui.tsx";
@@ -122,6 +122,7 @@ function TerminalView({
   register?: (id: string, view: View | null) => void;
   ended?: (id: string) => void;
 }) {
+  const { routes } = useApi();
   const box = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const fit = useRef<FitAddon | null>(null);
@@ -291,7 +292,7 @@ function TerminalView({
       socket.current?.close();
       socket.current = null;
     };
-  }, [id, attempt]);
+  }, [id, attempt, routes.terminal]);
 
   // A tab shown again takes the room it now has, and the keys.
   useEffect(() => {
@@ -416,6 +417,7 @@ export default function TerminalPanel({
   close: () => void;
   report: Report;
 }) {
+  const { manage } = useApi();
   const [tabs, setTabs] = useState<PageTerminal[]>([]);
   const [active, setActive] = useState("");
   const [ended, setEnded] = useState<string[]>([]);

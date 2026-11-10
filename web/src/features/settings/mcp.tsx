@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import type { McpServer, Session } from "../../shared/types.ts";
 import { Button, Group, LoadError, Row, Switch } from "../../shared/ui.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useAction } from "../../shared/use-action.ts";
 import { plural } from "../../shared/quantities.ts";
 
@@ -30,6 +30,7 @@ export function McpServers({
   servers?: McpServer[];
   online: boolean;
 }) {
+  const { command } = useApi();
   const [open, setOpen] = useState("");
   const [busy, setBusy] = useState("");
   // The switch shows the requested value while the server starts or stops.

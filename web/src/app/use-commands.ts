@@ -11,7 +11,7 @@ import type {
 import { failure } from "../shared/types.ts";
 import { rememberSend } from "../state/use-transcript-history.ts";
 import { emptyDraft } from "../state/store.ts";
-import { command, requestId } from "../state/api.ts";
+import { requestId, useApi } from "../state/api.ts";
 import type { HostState } from "../state/use-host.ts";
 import {
   holdable,
@@ -85,6 +85,7 @@ export function useCommands({
   changeDetail: (level: string) => void;
   askSide: (parent: Session, question: string) => Promise<void>;
 }) {
+  const { command, manage } = useApi();
   const {
     catalogue,
     snapshots,
@@ -153,7 +154,7 @@ export function useCommands({
     else if (name === "/quit")
       throw new Error("Use Close conversation in the conversation menu.");
     else if (name === "/restart") {
-      setNotice(await restartConversation(session!));
+      setNotice(await restartConversation(session!, manage));
     } else if (name === "/fork") {
       await forkAndOpen(session, { argument });
     } else if (name === "/rewind" && argument) {
@@ -163,7 +164,7 @@ export function useCommands({
       if (!argument) throw new Error("Use /btw QUESTION");
       await askSide(session!, argument);
     } else if (name === "/share") {
-      setNotice(await shareTranscript(session!));
+      setNotice(await shareTranscript(session!, command));
     } else if (name === "/instructions" && !argument) {
       setModal({ type: "instructions" });
     } else if (name === "/http") {

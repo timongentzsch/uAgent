@@ -289,7 +289,7 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
     // A restart asked for during a turn happens once that turn has ended.
     std::vector<std::shared_ptr<HostSession>> restarting;
     for (const auto& [id, session] : sessions_) {
-      if (session->restart && !session->turn_active && session->pid > 0 &&
+      if (session->restart && !session->RestartBusy() && session->pid > 0 &&
           !session->exited && !session->closing) {
         restarting.push_back(session);
       }

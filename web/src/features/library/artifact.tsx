@@ -1,6 +1,6 @@
 import { nameOf } from "../../shared/file-types.ts";
 import { ChevronLeft } from "lucide-preact";
-import { routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import type {
   FileTarget,
   LibraryItem,
@@ -52,6 +52,7 @@ export default function LibraryArtifact({
   open: (target: FileTarget) => void;
   choose: (session: string) => void;
 }) {
+  const { routes } = useApi();
   const kind = item.kind as keyof typeof KIND;
   const unit = kind === "deck" ? "slide" : "page";
   const file = kind === "file";

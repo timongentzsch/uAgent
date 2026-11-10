@@ -1,3 +1,5 @@
+import { createContext } from "preact";
+import { useContext } from "preact/hooks";
 import type {
   Asset,
   BodyPage,
@@ -18,8 +20,9 @@ import { failure } from "../shared/types.ts";
 export const protocol = 2;
 
 // Every host path the page calls, so a path is written once.
-export const routes = {
+const localRoutes = {
   auth: "/api/auth",
+  hosts: "/api/hosts",
   browserStatus: "/api/browser/status",
   browserViewer: "/api/browser/viewer",
   command: "/api/command",
@@ -67,155 +70,209 @@ export const requestId = () =>
     .map((value) => value.toString(16).padStart(2, "0"))
     .join("");
 
-// A request to the host: a GET, or a POST of `body` as JSON. Resolves to the
-// parsed answer. A failure throws with `status` set when the host answered,
-// `network` when nothing did, and `rejected` when it refused a command.
-export async function api<T = unknown>(
-  path: string,
-  body?: unknown,
-  options: RequestInit = {},
-): Promise<T> {
-  const response = await fetch(path, {
-    credentials: "same-origin",
-    cache: "no-store",
-    ...(body === undefined
-      ? {}
-      : {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }),
-    ...options,
-  }).catch((error) => {
-    const result = failure(error);
-    result.network = true;
-    throw result;
-  });
-  // A proxy's HTML error page still carries its status to the caller.
-  const data = await response.json().catch(() => null);
-  if (!response.ok || !data || data.accepted === false) {
-    const error = failure(new Error(data?.error || `HTTP ${response.status}`));
-    error.status = response.status;
-    error.rejected = data?.accepted === false;
-    throw error;
-  }
-  if (data.v !== undefined && data.v !== protocol)
-    throw new Error(
-      "App/server version differs. Save your draft, then update this app.",
-    );
-  return data as T;
-}
-
-// Stores a file among the session's attachments. Its id then rides a
-// command's attachment_ids, which the host claims and resolves.
-export function uploadAttachment(session: string, file: File, name: string) {
-  return api<Asset>(routes.attachments(session, name), undefined, {
-    method: "POST",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
-    body: file,
-  });
-}
-
-// Reads a body the host serves in pages and joins it: `path` ends in a query
-// and gets `&offset=`, or is a function of the offset. `limit` is in bytes of
-// text; past it the read fails.
-export async function readPages(
-  path: string | ((offset: number) => Promise<BodyPage>),
-  signal?: AbortSignal,
-  limit = Infinity,
-) {
-  const parts: string[] = [];
-  let size = 0;
-  let offset = 0,
-    page: BodyPage;
-  do {
-    signal?.throwIfAborted();
-    page =
-      typeof path === "function"
-        ? await path(offset)
-        : await api<BodyPage>(`${path}&offset=${offset}`, undefined, {
-            signal,
-          });
-    signal?.throwIfAborted();
-    size += new Blob([page.text || ""]).size;
-    if (size > limit) throw new Error("Content exceeds the download budget.");
-    parts.push(page.text || "");
-    if (page.more && page.next <= offset) throw new Error("Incomplete body.");
-    offset = page.next;
-  } while (page.more);
-  return { ...page, text: parts.join("") };
-}
-
-const receipts = new Map<string, (outcome: Outcome) => void>();
-
-// True when a command from this page waits on it: its caller shows the
-// outcome, so nothing else needs to.
-export function receiveOutcome(outcome: Outcome) {
-  const waiting = receipts.get(outcome.request_id);
-  if (!outcome.pending) waiting?.(outcome);
-  return !!waiting;
-}
-
-export async function command<K extends CommandKind>(
-  kind: K,
-  session?: SessionRef | null,
-  fields?: CommandFields<K>,
-  options: { signal?: AbortSignal } = {},
-): Promise<CommandReceipt<K>> {
-  options.signal?.throwIfAborted();
-  const request_id = fields?.request_id || requestId();
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  let abort: (() => void) | undefined;
-  const receipt = new Promise<Outcome>((resolve) => {
-    abort = () => resolve({ request_id, accepted: true, pending: true });
-    options.signal?.addEventListener("abort", abort, { once: true });
-    receipts.set(request_id, resolve);
-    timeout = setTimeout(abort, commandReceiptWaitMs);
-  });
-  try {
-    let result = await api<Outcome>(
-      routes.command,
-      {
-        v: protocol,
-        request_id,
-        kind,
-        ...(session
-          ? { session_id: session.id, generation: session.generation }
-          : {}),
-        ...fields,
-      },
-      options,
-    );
-    if (result.pending) result = await receipt;
-    options.signal?.throwIfAborted();
-    if (result.accepted === false) {
-      const error = failure(new Error(result.error || "Command rejected"));
-      error.rejected = true;
+export function createApi(host = "") {
+  const prefix = host ? `/api/hosts/${host}` : "";
+  const routes = Object.fromEntries(
+    Object.entries(localRoutes).map(([key, value]) => [
+      key,
+      typeof value === "string"
+        ? prefix + value
+        : (...args: unknown[]) =>
+            prefix + (value as (...args: unknown[]) => string)(...args),
+    ]),
+  ) as typeof localRoutes;
+  // A request to the host: a GET, or a POST of `body` as JSON. Resolves to the
+  // parsed answer. A failure throws with `status` set when the host answered,
+  // `network` when nothing did, and `rejected` when it refused a command.
+  async function api<T = unknown>(
+    path: string,
+    body?: unknown,
+    options: RequestInit = {},
+  ): Promise<T> {
+    if (
+      prefix &&
+      path.startsWith("/api/hosts/") &&
+      !path.startsWith(`${prefix}/`)
+    )
+      throw new Error("This resource belongs to another host.");
+    const target =
+      prefix && path.startsWith("/api/") && !path.startsWith(`${prefix}/`)
+        ? prefix + path
+        : path;
+    const response = await fetch(target, {
+      credentials: "same-origin",
+      cache: "no-store",
+      ...(body === undefined
+        ? {}
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }),
+      ...options,
+    }).catch((error) => {
+      const result = failure(error);
+      result.network = true;
+      throw result;
+    });
+    // A proxy's HTML error page still carries its status to the caller.
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data || data.accepted === false) {
+      const error = failure(
+        new Error(data?.error || `HTTP ${response.status}`),
+      );
+      error.status = response.status;
+      error.rejected = data?.accepted === false;
       throw error;
     }
-    return result as CommandReceipt<K>;
-  } finally {
-    clearTimeout(timeout);
-    receipts.delete(request_id);
-    if (abort) options.signal?.removeEventListener("abort", abort);
+    if (data.v !== undefined && data.v !== protocol)
+      throw new Error(
+        "App/server version differs. Save your draft, then update this app.",
+      );
+    return data as T;
   }
+
+  // Stores a file among the session's attachments. Its id then rides a
+  // command's attachment_ids, which the host claims and resolves.
+  function uploadAttachment(session: string, file: File, name: string) {
+    return api<Asset>(routes.attachments(session, name), undefined, {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+  }
+
+  // Reads a body the host serves in pages and joins it: `path` ends in a query
+  // and gets `&offset=`, or is a function of the offset. `limit` is in bytes of
+  // text; past it the read fails.
+  async function readPages(
+    path: string | ((offset: number) => Promise<BodyPage>),
+    signal?: AbortSignal,
+    limit = Infinity,
+  ) {
+    const parts: string[] = [];
+    let size = 0;
+    let offset = 0,
+      page: BodyPage;
+    do {
+      signal?.throwIfAborted();
+      page =
+        typeof path === "function"
+          ? await path(offset)
+          : await api<BodyPage>(`${path}&offset=${offset}`, undefined, {
+              signal,
+            });
+      signal?.throwIfAborted();
+      size += new Blob([page.text || ""]).size;
+      if (size > limit) throw new Error("Content exceeds the download budget.");
+      parts.push(page.text || "");
+      if (page.more && page.next <= offset) throw new Error("Incomplete body.");
+      offset = page.next;
+    } while (page.more);
+    return { ...page, text: parts.join("") };
+  }
+
+  const receipts = new Map<string, (outcome: Outcome) => void>();
+
+  // True when a command from this page waits on it: its caller shows the
+  // outcome, so nothing else needs to.
+  function receiveOutcome(outcome: Outcome) {
+    const waiting = receipts.get(outcome.request_id);
+    if (!outcome.pending) waiting?.(outcome);
+    return !!waiting;
+  }
+
+  async function command<K extends CommandKind>(
+    kind: K,
+    session?: SessionRef | null,
+    fields?: CommandFields<K>,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<CommandReceipt<K>> {
+    options.signal?.throwIfAborted();
+    const request_id = fields?.request_id || requestId();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let abort: (() => void) | undefined;
+    const receipt = new Promise<Outcome>((resolve) => {
+      abort = () => resolve({ request_id, accepted: true, pending: true });
+      options.signal?.addEventListener("abort", abort, { once: true });
+      receipts.set(request_id, resolve);
+      timeout = setTimeout(abort, commandReceiptWaitMs);
+    });
+    try {
+      let result = await api<Outcome>(
+        routes.command,
+        {
+          v: protocol,
+          request_id,
+          kind,
+          ...(session
+            ? { session_id: session.id, generation: session.generation }
+            : {}),
+          ...fields,
+        },
+        options,
+      );
+      if (result.pending) result = await receipt;
+      options.signal?.throwIfAborted();
+      if (result.accepted === false) {
+        const error = failure(new Error(result.error || "Command rejected"));
+        error.rejected = true;
+        throw error;
+      }
+      return result as CommandReceipt<K>;
+    } finally {
+      clearTimeout(timeout);
+      receipts.delete(request_id);
+      if (abort) options.signal?.removeEventListener("abort", abort);
+    }
+  }
+
+  // A command whose answer is its result: the host's own, or a conversation's
+  // when `session` names one. A result that has not arrived in time is an
+  // error here, so callers handle one outcome.
+  async function manage<K extends CommandKind>(
+    kind: K,
+    fields?: CommandFields<K>,
+    {
+      session = null,
+      signal,
+    }: { session?: SessionRef | null; signal?: AbortSignal } = {},
+  ): Promise<CommandResults[K]> {
+    const result = await command(kind, session, fields, { signal });
+    if (result.pending)
+      throw new Error(
+        "The operation is still pending. Refresh to inspect its result.",
+      );
+    return result.result;
+  }
+
+  return {
+    host,
+    routes,
+    api,
+    command,
+    manage,
+    readPages,
+    uploadAttachment,
+    receiveOutcome,
+  };
 }
 
-// A command whose answer is its result: the host's own, or a conversation's
-// when `session` names one. A result that has not arrived in time is an
-// error here, so callers handle one outcome.
-export async function manage<K extends CommandKind>(
-  kind: K,
-  fields?: CommandFields<K>,
-  {
-    session = null,
-    signal,
-  }: { session?: SessionRef | null; signal?: AbortSignal } = {},
-): Promise<CommandResults[K]> {
-  const result = await command(kind, session, fields, { signal });
-  if (result.pending)
-    throw new Error(
-      "The operation is still pending. Refresh to inspect its result.",
-    );
-  return result.result;
+export type ApiClient = ReturnType<typeof createApi>;
+export const localApi = createApi();
+export const {
+  routes,
+  api,
+  command,
+  manage,
+  readPages,
+  uploadAttachment,
+  receiveOutcome,
+} = localApi;
+const clients = new Map<string, ApiClient>([["", localApi]]);
+export function hostApi(id: string) {
+  if (!clients.has(id)) clients.set(id, createApi(id));
+  return clients.get(id)!;
 }
+export const ApiContext = createContext(localApi);
+export const useApi = () => useContext(ApiContext);

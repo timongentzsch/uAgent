@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
-import { api, routes } from "../state/api.ts";
+import { useApi } from "../state/api.ts";
 import { useLatest } from "./use-latest.ts";
 import { useResource } from "./use-resource.ts";
 import "./page-frame.css";
@@ -143,11 +143,13 @@ export default function Frame({
 }
 
 // The address a conversation's folder is previewed from, minted once.
-export const usePreviewBase = (session: string) =>
-  useResource(
+export function usePreviewBase(session: string) {
+  const { api, routes } = useApi();
+  return useResource(
     () => api<{ base: string }>(routes.preview(session), {}),
     [session],
   );
+}
 
 // How tall every page thumbnail is, in chat and the Library alike.
 const THUMB_HEIGHT = 160;

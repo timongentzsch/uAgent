@@ -71,7 +71,9 @@ class ChangeSelectionTest(unittest.TestCase):
             return [leg["target"] for leg in json.loads(build_matrix(with_arm))["include"]]
 
         self.assertEqual(targets(False), ["linux-x86_64", "macos-arm64"])
-        self.assertEqual(targets(True), ["linux-x86_64", "linux-arm64", "macos-arm64"])
+        self.assertEqual(
+            targets(True), ["linux-x86_64", "linux-arm64", "macos-arm64", "macos-x86_64"]
+        )
 
 
 if __name__ == "__main__":

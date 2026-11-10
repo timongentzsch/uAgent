@@ -54,6 +54,8 @@ std::filesystem::path InstalledSkillsPath() {
   fs::path resolved = fs::canonical(executable, ec);
   if (ec) resolved = fs::absolute(executable, ec);
   if (ec || resolved.parent_path().empty()) return {};
+  const auto adjacent = resolved.parent_path() / "share/uagent/skills";
+  if (PathExists(adjacent)) return adjacent;
   return resolved.parent_path().parent_path() / "share/uagent/skills";
 }
 

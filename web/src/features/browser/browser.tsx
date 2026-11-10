@@ -7,7 +7,7 @@ import {
   type Report,
   type Session,
 } from "../../shared/types.ts";
-import { api, command, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { sessionById } from "../../state/attention.ts";
 import { useExit } from "../../shared/motion.ts";
 import { coarsePointer } from "../../shared/layout.ts";
@@ -120,6 +120,7 @@ function Screen({
   setConnection: (phase: ConnectionPhase) => void;
   children: ComponentChildren;
 }) {
+  const { routes } = useApi();
   const target = useRef<HTMLDivElement>(null);
   const viewOnly = useLatest(readOnly);
   useEffect(() => {
@@ -166,7 +167,7 @@ function Screen({
       viewer.current?.disconnect();
       viewer.current = null;
     };
-  }, [instance, report, viewer, setConnection]);
+  }, [instance, report, viewer, setConnection, routes.browserViewer]);
   useEffect(() => {
     if (viewer.current) setViewOnly(viewer.current, readOnly);
   }, [readOnly, viewer]);
@@ -211,6 +212,7 @@ export default function BrowserPanel({
   handoff?: boolean;
   sessionId?: string;
 }) {
+  const { api, routes, command } = useApi();
   const [instance, setInstance] = useState("0");
   const [status, setStatus] = useState<BrowserStatus>({});
   const [busy, setBusy] = useState(false);
@@ -277,7 +279,7 @@ export default function BrowserPanel({
       inFlight.current = request;
       return request;
     },
-    [instance, report],
+    [instance, report, routes.browserStatus, api],
   );
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;

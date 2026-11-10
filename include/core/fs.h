@@ -55,8 +55,8 @@ std::string RuntimeDir();
 // and a reader and a writer disagreeing about it would silently lose data.
 std::filesystem::path ProjectBase(const std::filesystem::path& cwd);
 
-// Create a directory inside the private user state tree without following
-// directory symlinks, and verify its ownership and mode.
+// Create a directory inside the private user state or runtime tree without
+// following directory symlinks, and verify its ownership and mode.
 bool EnsurePrivateDirectory(const std::string& path);
 
 // The agent's directory layout. Named where a second file also spells the

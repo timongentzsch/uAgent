@@ -1,3 +1,5 @@
+import { useHosts } from "../../state/sources.ts";
+import { Fold, SharedShortcuts, OtherPlaces, HostList } from "./hosts.tsx";
 import { ConnectionStatus } from "../../shared/connection-status.tsx";
 import { Fragment, type ComponentChildren } from "preact";
 import { useCallback, useEffect, useMemo, useRef } from "preact/hooks";
@@ -36,7 +38,7 @@ import { plural } from "../../shared/quantities.ts";
 import { statusOf, type SessionState } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
-import { collapsed, useFolding } from "./folding.ts";
+import { collapsed, placeKey, useFolding } from "./folding.ts";
 import { PinItem } from "./pins.tsx";
 import type { SelectionApi } from "../../shared/selection.ts";
 import { useLatest } from "../../shared/use-latest.ts";
@@ -165,19 +167,22 @@ export const sessionOrder = (
   spaces: Space[] | undefined,
   online = true,
   pins: Pin[] = [],
+  host = "",
 ) => {
   const { top, kinds } = arrange(sessions, spaces, online, pins);
   const rows = ([path, entries]: Place) =>
-    collapsed.has(path) ? [] : entries.flatMap(rowsOf);
+    collapsed.has(placeKey(host, path)) ? [] : entries.flatMap(rowsOf);
   return [
-    ...top.flatMap((pinned) =>
+    ...(collapsed.has("$pinned") ? [] : top).flatMap((pinned) =>
       "entry" in pinned
         ? rowsOf(pinned.entry)
         : "place" in pinned
           ? rows(pinned.place)
           : [],
     ),
-    ...kinds.flatMap(([, places]) => places.flatMap(rows)),
+    ...(collapsed.has(`$host:${host}`) ? [] : kinds).flatMap(([, places]) =>
+      places.flatMap(rows),
+    ),
   ];
 };
 
@@ -364,6 +369,8 @@ function SidebarView({
   search,
 }: SidebarProps) {
   const { online, connection, refresh } = useHostContext();
+  const hosts = useHosts();
+  const host = hosts?.active || "";
   useFolding();
   const rows = useRef<HTMLElement>(null);
   useLongPress(rows, ".session-row, .place-head");
@@ -380,18 +387,22 @@ function SidebarView({
   // then the conversations of each place that is open.
   const pickable = ([path, entries]: Place) => [
     ...(spaces.some((space) => space.path === path) ? [path] : []),
-    ...(collapsed.has(path) ? [] : entries.flatMap(rowsOf).map((s) => s.id)),
+    ...(collapsed.has(placeKey(host, path))
+      ? []
+      : entries.flatMap(rowsOf).map((s) => s.id)),
   ];
   const order = (() => {
     return [
-      ...top.flatMap((pinned) =>
+      ...(collapsed.has("$pinned") ? [] : top).flatMap((pinned) =>
         "entry" in pinned
           ? rowsOf(pinned.entry).map((item) => item.id)
           : "place" in pinned
             ? pickable(pinned.place)
             : [],
       ),
-      ...kinds.flatMap(([, places]) => places.flatMap(pickable)),
+      ...(collapsed.has(`$host:${host}`) ? [] : kinds).flatMap(([, places]) =>
+        places.flatMap(pickable),
+      ),
     ];
   })();
   // A conversation or workspace gone (deleted, moved) leaves the selection.
@@ -480,7 +491,7 @@ function SidebarView({
   const place = ([cwd, entries]: Place) => {
     const space = kept.get(cwd);
     const name = space?.name || folderName(cwd);
-    const folded = collapsed.has(cwd);
+    const folded = collapsed.has(placeKey(host, cwd));
     const conversations = entries.flatMap(function all(entry): Session[] {
       return [entry.item, ...entry.agents.flatMap(all)];
     });
@@ -513,7 +524,7 @@ function SidebarView({
             onClick={(event) => {
               // Focus stays on the header, not in the rows it takes away.
               event.currentTarget.focus();
-              collapsed.set(cwd, !folded);
+              collapsed.set(placeKey(host, cwd), !folded);
             }}
           >
             {folded ? <ChevronRight /> : <ChevronDown />}
@@ -555,7 +566,7 @@ function SidebarView({
             <MenuItem
               disabled={!online}
               onClick={() => {
-                collapsed.set(cwd, false);
+                collapsed.set(placeKey(host, cwd), false);
                 start(cwd);
               }}
             >
@@ -590,22 +601,33 @@ function SidebarView({
       {rows}
     </div>
   );
+  const activePins = top.map((pinned) =>
+    "entry" in pinned
+      ? conversation(pinned.entry)
+      : "place" in pinned
+        ? place(pinned.place)
+        : terminalRow(pinned.terminal),
+  );
   const list = [
-    ...(top.length
-      ? [
-          group(
-            "Pinned",
-            top.map((pinned) =>
-              "entry" in pinned
-                ? conversation(pinned.entry)
-                : "place" in pinned
-                  ? place(pinned.place)
-                  : terminalRow(pinned.terminal),
-            ),
+    <SharedShortcuts key="shortcuts" activePins={activePins} />,
+    ...(hosts
+      ? hosts.sources.map((source) =>
+          source.id === host ? (
+            <Fold key={source.id} name={`$host:${host}`} label={source.name}>
+              {kinds.map(([kind, shown]) => group(kind, shown.map(place)))}
+              {!kinds.some(([, shown]) => shown.length) &&
+                !activePins.length && (
+                  <EmptyState>
+                    No conversations yet. New starts one in a workspace or
+                    folder on this host.
+                  </EmptyState>
+                )}
+            </Fold>
+          ) : (
+            <OtherPlaces key={source.id} source={source} />
           ),
-        ]
-      : []),
-    ...kinds.map(([kind, shown]) => group(kind, shown.map(place))),
+        )
+      : kinds.map(([kind, shown]) => group(kind, shown.map(place)))),
   ];
   return (
     <>
@@ -710,6 +732,7 @@ function SidebarView({
           )}
         </Placeholder>
       </nav>
+      <HostList />
       {selection.selecting ? (
         <footer>
           <SelectionBar selection={selection}>

@@ -28,3 +28,7 @@ export const storageKeys = {
   // Places of the sidebar's list remembered by path, e.g. folded ones.
   places: (name: string) => `uagent.sidebar.${name}`,
 };
+
+// Local keeps its existing keys; remote content is qualified by its owner.
+export const hostStorageKey = (key: string, host: string) =>
+  host ? `${key}:host:${host}` : key;

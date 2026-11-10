@@ -58,6 +58,7 @@ case $os-$(uname -m) in
   Linux-x86_64) target=linux-x86_64 ;;
   Linux-aarch64 | Linux-arm64) target=linux-arm64 ;;
   Darwin-arm64) target=macos-arm64 ;;
+  Darwin-x86_64) target=macos-x86_64 ;;
   *) target= ;;
 esac
 # What the release archives are built against (the CI runners): an older
@@ -252,6 +253,31 @@ if [ "$mode" = source ]; then
     cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
   fi
   cmake --build "$build" --target uagent --parallel "$build_jobs"
+  if [ "${UAGENT_LOCAL_ONLY:-0}" != 1 ]; then
+    build_id=$("$build/uagent" --build-id)
+    bundle=${UAGENT_REMOTE_BUNDLE:-"$prefix/share/uagent/remote/$build_id"}
+    if [ ! -f "$bundle/manifest.json" ] && [ -z "${UAGENT_REMOTE_BUNDLE:-}" ]; then
+      source_version=$("$build/uagent" --version | sed 's/^uagent //')
+      bundle_name=uagent-$source_version-remote-$build_id.tar.gz
+      bundle_url=https://github.com/$repo/releases/download/v$source_version/$bundle_name
+      if fetch "$bundle_url" "$tmp/$bundle_name" && fetch "$bundle_url.sha256" "$tmp/bundle.sha256"; then
+        expected=$(cut -d' ' -f1 < "$tmp/bundle.sha256")
+        actual=$(cmake -E sha256sum "$tmp/$bundle_name" | cut -d' ' -f1)
+        [ "$expected" = "$actual" ] || { echo "remote bundle checksum differs; nothing was installed" >&2; exit 1; }
+        # Only the manifest and four compressed payloads belong at this level.
+        tar -tzf "$tmp/$bundle_name" | while IFS= read -r member; do
+          case $member in manifest.json|linux-x86_64.tar.gz|linux-arm64.tar.gz|macos-x86_64.tar.gz|macos-arm64.tar.gz) ;; *) exit 1 ;; esac
+        done
+        bundle=$tmp/remote-bundle
+        mkdir "$bundle"
+        tar -xzf "$tmp/$bundle_name" -C "$bundle"
+      fi
+    fi
+    cmake "-DBINARY=$build/uagent" "-DBUNDLE=$bundle" \
+      "-DDESTINATION=$prefix/share/uagent/remote" -P "$root/cmake/install_remote_bundle.cmake"
+  else
+    echo "Local-only developer install: a complete remote bundle was not required."
+  fi
   cmake --install "$build" --prefix "$prefix" --strip
   policy_source=$root/deploy/chrome-policy.json
 else
@@ -281,6 +307,8 @@ else
   if ! problem=$("$unpacked/bin/uagent" --version 2>&1 >/dev/null); then
     build_from_source "the prebuilt µAgent does not start here: $(echo "$problem" | head -n 1)"
   fi
+  build_id=$("$unpacked/bin/uagent" --build-id)
+  "$unpacked/bin/uagent" --check-remote-bundle "$unpacked/share/uagent/remote/$build_id"
   mkdir -p "$prefix/bin" "$prefix/share/doc"
   # What a release ships replaces what an earlier one did; a binary that is
   # running keeps its old file until it restarts.

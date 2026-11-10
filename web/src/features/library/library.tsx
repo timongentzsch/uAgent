@@ -1,3 +1,4 @@
+import { HostScope } from "../../shared/host-scope.tsx";
 import { useEffect, useState } from "preact/hooks";
 import type { FunctionComponent } from "preact";
 import {
@@ -11,7 +12,7 @@ import {
   Presentation,
   ScrollText,
 } from "lucide-preact";
-import { api, manage, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import type {
   FileTarget,
   LibraryItem,
@@ -151,6 +152,7 @@ export default function Library({
   openFiles: (place: LibraryPlace, target: FileTarget) => void;
   choose: (session: string) => void;
 }) {
+  const { api, routes, manage } = useApi();
   const listing = useResource(
     (signal) =>
       online
@@ -374,6 +376,7 @@ export default function Library({
   return (
     <div class="management library">
       <div class="management-toolbar">
+        <HostScope />
         <Input
           aria-label="Search library"
           type="search"

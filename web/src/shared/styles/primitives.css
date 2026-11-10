@@ -36,6 +36,60 @@
     padding: 0;
     accent-color: var(--accent);
   }
+  /* Keep native checkbox semantics, with the same square edges and palette
+     as the rest of the app. Switches own their separate track below. */
+  input[type="checkbox"]:not([switch]) {
+    appearance: none;
+    display: inline-grid;
+    place-content: center;
+    flex-shrink: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--on-accent);
+    cursor: pointer;
+  }
+  /* Paint the box and tick in the same grid cell, independently of the hit
+     area, so selection rows can enlarge the native input for touch. */
+  input[type="checkbox"]:not([switch])::before {
+    content: "";
+    grid-area: 1 / 1;
+    width: var(--icon-l);
+    height: var(--icon-l);
+    border: var(--border-field);
+    background: var(--surface);
+  }
+  input[type="checkbox"]:not([switch])::after {
+    content: "";
+    grid-area: 1 / 1;
+    place-self: center;
+    width: calc(var(--icon-l) * 0.25);
+    height: calc(var(--icon-l) * 0.5);
+    border: solid currentColor;
+    border-width: 0 var(--stroke) var(--stroke) 0;
+    transform: translateY(-15%) rotate(45deg);
+    visibility: hidden;
+  }
+  input[type="checkbox"]:not([switch]):checked::before {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  input[type="checkbox"]:not([switch]):checked::after {
+    visibility: visible;
+  }
+  input[type="checkbox"]:not([switch]):disabled {
+    opacity: var(--opacity-disabled);
+    cursor: not-allowed;
+  }
+  @media (forced-colors: active) {
+    input[type="checkbox"]:not([switch]) {
+      appearance: auto;
+    }
+    input[type="checkbox"]:not([switch])::before,
+    input[type="checkbox"]:not([switch])::after {
+      content: none;
+    }
+  }
   /* Switch: the checkbox drawn as a square track and knob, with a 44px touch
      area. Like every control here it is flat: no rounding, no shadow. */
   .switch {

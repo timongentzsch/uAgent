@@ -7,7 +7,9 @@ test("an older row's statistics open without dropping the loaded pages", async (
   host,
 }) => {
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^Connected$/ }),
+  ).toBeVisible();
   // Eighty turns as the host saves them: a message of yours, its answer and
   // the turn's footer, whose menu holds the answer's statistics.
   const ids = [];

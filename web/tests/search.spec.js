@@ -52,7 +52,9 @@ async function seed(page, host) {
     },
   };
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^Connected$/ }),
+  ).toBeVisible();
   await saveHistory(host, "needle.json", {
     id: "needle",
     title: "Needle",
@@ -159,7 +161,9 @@ test("the find bar keeps focus on words the transcript does not show", async ({
   host,
 }) => {
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^Connected$/ }),
+  ).toBeVisible();
   // The host counts the link's address; the message shows only its text.
   await saveHistory(host, "burrow.json", {
     id: "burrow",
@@ -190,7 +194,9 @@ test("search is a centered panel that groups, marks and steps back", async ({
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^Connected$/ }),
+  ).toBeVisible();
   const far = `${"Ordinary words go on for a while. ".repeat(8)}a wombat`;
   await saveHistory(host, "far.json", {
     id: "far",

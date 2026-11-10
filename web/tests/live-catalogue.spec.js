@@ -8,7 +8,9 @@ test("the session list follows sessions created and deleted elsewhere", async ({
   host,
 }) => {
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^Connected$/ }),
+  ).toBeVisible();
   const messages = [
     { role: "user", content: "Made elsewhere" },
     { role: "assistant", content: "Done" },

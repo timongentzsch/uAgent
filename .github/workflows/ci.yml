@@ -101,6 +101,9 @@ jobs:
           flags=()
           if [[ "$RUNNER_OS" = macOS ]]; then
             openssl_prefix=$(brew --prefix openssl@3)
+            # Intel runners also expose Homebrew headers through CPATH.
+            # Mark that path as external even when CMake omits it as implicit.
+            export CXXFLAGS="${CXXFLAGS:-} -isystem $(brew --prefix)/include"
             flags+=("-DOPENSSL_ROOT_DIR=$openssl_prefix" "-DOPENSSL_INCLUDE_DIR=$openssl_prefix/include" -DOPENSSL_USE_STATIC_LIBS=TRUE -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0)
           fi
           cmake --preset ci-release -B build "${flags[@]}"

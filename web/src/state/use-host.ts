@@ -631,7 +631,6 @@ export function useHost(
     refresh();
   }, [refresh]);
   useEffect(() => {
-    refresh();
     const recover = (event?: Event) => {
       if (document.visibilityState !== "visible") return;
       if (
@@ -701,7 +700,7 @@ export function useHost(
       removeEventListener("popstate", hash);
       document.removeEventListener("visibilitychange", recover);
     };
-  }, [refresh, reconnect, dropStream, snapshots, hostId]);
+  }, [reconnect, dropStream, snapshots, hostId]);
   useEffect(() => {
     if (enabled) reconnect();
     else {

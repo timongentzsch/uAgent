@@ -20,7 +20,9 @@ test.describe("mobile navigation and commands", () => {
   }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/");
-    await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("status").filter({ hasText: /^Connected$/ }),
+    ).toBeVisible();
 
     const firstTitle = `Navigation A ${testInfo.project.name}`;
     const secondTitle = `Navigation B ${testInfo.project.name}`;

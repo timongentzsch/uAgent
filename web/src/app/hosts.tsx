@@ -55,6 +55,23 @@ function Controller({
       result.current = () => {};
     };
   }, []);
+  // Cross-host shortcuts need names, folders and ordering, not each runtime
+  // caption. Publishing those frames would render the active shell twice.
+  const navigation = JSON.stringify({
+    sessions: state.listed.map(
+      ({ id, generation, title, cwd, parent, updated }) => ({
+        id,
+        generation,
+        title,
+        cwd,
+        parent,
+        updated,
+      }),
+    ),
+    spaces: state.catalogue.spaces,
+    pins: state.catalogue.pins,
+    terminals: state.catalogue.terminals,
+  });
   // Publish sidebar metadata only; streamed transcript frames stay inside
   // this host's snapshot store and never enter another host's event log.
   // biome-ignore lint/correctness/useExhaustiveDependencies: publish metadata only; snapshot frames and the transient return object are not sidebar state.
@@ -63,7 +80,7 @@ function Controller({
     [
       source.id,
       publish,
-      state.catalogue,
+      navigation,
       state.online,
       state.connection,
       state.unread,

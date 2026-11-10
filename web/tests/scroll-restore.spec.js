@@ -16,7 +16,9 @@ test("returning to a session restores its position unfollowed", async ({
   host: fixture,
 }) => {
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^Connected$/ }),
+  ).toBeVisible();
   await seed(fixture, "a.json", "restore-a", "Restore A");
   await seed(fixture, "b.json", "restore-b", "Restore B");
   await page.getByRole("button", { name: "Refresh", exact: true }).click();

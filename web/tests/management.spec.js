@@ -199,7 +199,9 @@ test("scheduled tasks run, report and pause", async ({
   await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^Connected$/ }),
+  ).toBeVisible();
   const nav = page.getByRole("complementary");
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
   await page.getByRole("button", { name: "New task", exact: true }).click();

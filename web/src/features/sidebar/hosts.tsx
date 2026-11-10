@@ -15,7 +15,7 @@ import { Menu } from "../../shared/menu.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import { folderOf } from "../../shared/display.ts";
 import type { Pin, Session } from "../../shared/types.ts";
-import { PinItem } from "./pins.tsx";
+import { livePins, PinItem } from "./pins.tsx";
 import { collapsed, opened, placeKey, useFolding } from "./folding.ts";
 
 export function Fold({
@@ -48,6 +48,15 @@ export function Fold({
     </div>
   );
 }
+function sourcePins(source: Source) {
+  const catalogue = source.state?.catalogue;
+  return livePins(
+    catalogue?.pins,
+    source.state?.listed || [],
+    catalogue?.spaces,
+    catalogue?.terminals || [],
+  );
+}
 function SourcePin({ source, pin }: { source: Source; pin: Pin }) {
   const current = useHostContext();
   if (!source.state) return null;
@@ -57,7 +66,7 @@ function SourcePin({ source, pin }: { source: Source; pin: Pin }) {
         value={{
           ...current,
           online: source.state.online,
-          pins: source.state.catalogue.pins || [],
+          pins: sourcePins(source),
           report: source.state.report,
         }}
       >
@@ -100,16 +109,14 @@ export function SharedShortcuts({
 }) {
   const hosts = useHosts();
   if (!hosts) return activePins;
-  const pinned = hosts.sources.filter(
-    (source) => source.state?.catalogue.pins?.length,
-  );
+  const pinned = hosts.sources.filter((source) => sourcePins(source).length);
   const recent = hosts.sources
     .flatMap((source) =>
       (source.state?.listed || [])
         .filter(
           (session) =>
             !session.parent &&
-            !source.state?.catalogue.pins?.some(
+            !sourcePins(source).some(
               (pin) => pin.kind === "session" && pin.id === session.id,
             ),
         )
@@ -128,7 +135,7 @@ export function SharedShortcuts({
               )}
               {source.id === hosts.active
                 ? activePins
-                : source.state?.catalogue.pins?.map((pin) => {
+                : sourcePins(source).map((pin) => {
                     const session = source.state?.listed.find(
                       (item) => item.id === pin.id,
                     );

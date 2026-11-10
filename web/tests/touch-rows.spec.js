@@ -1,5 +1,4 @@
-// On a touch screen a list row draws its ⋯ only while it is the open one;
-// a long press opens any row's menu.
+// Touch menus remain visible; a long press also opens any row's menu.
 import { test, expect, online, savedConversation } from "./fixtures.js";
 
 const LONG_PRESS_MS = 450;
@@ -38,7 +37,7 @@ async function twoRows(page, host, session) {
   return { drawer, row, menuOf, touch, at };
 }
 
-test("only the open row draws its ⋯, and every row's stays reachable", async ({
+test("every touch row shows its menu and keeps keyboard access", async ({
   page,
   host,
   session,
@@ -48,7 +47,7 @@ test("only the open row draws its ⋯, and every row's stays reachable", async (
   await expect(open).toHaveCount(1);
   await expect(open.locator(".action-menu")).toHaveCSS("opacity", "1");
   const hidden = menuOf("Other row");
-  await expect(hidden.locator("..")).toHaveCSS("opacity", "0");
+  await expect(hidden.locator("..")).toHaveCSS("opacity", "1");
   // A key press makes the next focus a keyboard's, which draws the button.
   await page.keyboard.press("Shift");
   await hidden.focus();

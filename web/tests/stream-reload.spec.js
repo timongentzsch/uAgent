@@ -61,7 +61,9 @@ test("an event stream refused mid-restart reconnects on its own", async ({
     refused++ < 2 ? route.fulfill({ status: 502, body: "" }) : route.continue(),
   );
   await page.goto(`/#session=${session.id}`);
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^Connected$/ }),
+  ).toBeVisible();
   expect(refused).toBeGreaterThan(2);
 });
 

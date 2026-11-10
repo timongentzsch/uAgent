@@ -7,7 +7,9 @@ test("edit from a message continues in a fork with the message to edit", async (
   host,
 }) => {
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^Connected$/ }),
+  ).toBeVisible();
   const messages = [
     { role: "user", content: "First request" },
     { role: "assistant", content: "First answer" },

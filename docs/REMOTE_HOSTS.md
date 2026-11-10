@@ -29,7 +29,8 @@ missing, run `ssh-copy-id user@machine`, then verify `ssh ALIAS` again.
 Never copy keys into the browser or disable host verification.
 
 Linux requires glibc 2.38 or later; macOS requires version 15 or later. Both
-support x86_64 and ARM64. No compiler, sudo or network download is used during
+support x86_64 and ARM64. Linux also needs the standard C++ runtime, libcurl,
+OpenSSL 3 and zlib runtime libraries. No compiler, sudo or network download is used during
 remote setup. The user's normal uAgent CLI is left in place. Managed payloads
 live under `~/.uagent/remote/`; resources stay beside each version's executable.
 

@@ -139,7 +139,7 @@ test.describe("a conversation slides in", () => {
     await expect(
       page
         .getByRole("dialog", { name: "Conversations" })
-        .locator("[aria-current]"),
+        .locator('.session[aria-current="page"]'),
     ).toContainText("Motion A");
   });
 

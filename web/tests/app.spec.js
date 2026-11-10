@@ -24,7 +24,9 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await page
     .getByRole("button", { name: "Connect device", exact: true })
     .click();
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: /^Connected$/ }),
+  ).toBeVisible();
 
   await startInFolder(page, fixture.project);
   const model = page.getByRole("button", {

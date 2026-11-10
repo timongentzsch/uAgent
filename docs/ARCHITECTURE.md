@@ -18,7 +18,8 @@ One immutable installed executable serves independent main clients through
 isolated per-runtime processes. Authenticated RPC runs over OpenSSH Unix-socket
 forwarding. Startup supplies the execution credential and sandbox preset through
 stdin; no provider configuration crosses that boundary. Results include bounded
-binary attachments and cached mutation receipts. Shared PTY shells live in `app/terminal.cc`. The gateway owns no application
+binary attachments and cached mutation receipts. Shared PTY shells live in
+`app/terminal.cc`. The gateway owns no application
 configuration, history or scheduler. See [Remote hosts](REMOTE_HOSTS.md) for
 recovery boundaries and current feature limits.
 
@@ -31,6 +32,7 @@ recovery boundaries and current feature limits.
 | `src/app/` | Bootstrap (`bootstrap.cc`; tool assembly in `bootstrap_tools.cc`, approval decisions in `approvals.cc`), session transport and lifecycle |
 | `src/app/session_*.cc` | The session runtime, its terminal client and the web host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
+| `src/app/execution*.cc`, `workspace_files.cc`, `terminal.cc` | Execution RPC, remote client/worker lifetime, file operations and PTY shells; provider state stays in the main runtime |
 | `src/app/folder_overview.cc`, `launch.cc` | A folder at a glance (spend, changes, git) for the web's overview and `/overview`, and where a launched session runs |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, session links and search, supervision services (activities, child agent), mail delivery, the edit journal behind `/undo`, memory store and the transcript view every client draws |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
@@ -43,7 +45,7 @@ recovery boundaries and current feature limits.
 | `src/media/` | Attachment encoding and display projections |
 | `src/transport/` | Session frames and SSE framing |
 | `src/ui/` | Terminal input and presentation; the Markdown renderer is `markdown.cc` with `markdown_math.cc` and `markdown_table.cc` |
-| `src/web/` | Authenticated HTTP/SSE adapter (`master*.cc`), embedded assets, the browser viewer (`browser_viewer.cc`, `rfb_filter.cc`), terminal WebSocket adapters (`master_terminal.cc`, `master_remote_terminal.cc`) and optional push (`push.cc`; `no_push.cc` when `UAGENT_WEB_PUSH=OFF`) |
+| `src/web/` | Authenticated HTTP/SSE adapter (`master*.cc`), SSH connection/bundle management (`remote_hosts.cc`), embedded assets, browser viewer (`browser_viewer.cc`, `rfb_filter.cc`), terminal WebSocket adapters (`master_terminal.cc`, `master_remote_terminal.cc`) and optional push (`push.cc`; `no_push.cc` when `UAGENT_WEB_PUSH=OFF`) |
 | `web/src/` | Browser event projection and presentation: `app/` shell and its hooks, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting |
 | `tests/`, `benchmarks/` | Behavioral contracts and measurement |
 
@@ -86,7 +88,7 @@ request is answered plain.
 
 ## Session runtime and clients
 
-![The terminal and the web host attach over a Unix socket to one session runtime process per conversation; a browser or phone reaches the web host over HTTP and SSE; the web host starts the agent's browser, Chrome and Xvnc with one signed-in profile, on first use and streams its live screen to paired devices; the runtime's browser tool drives Chrome over a private socket; a script runs one turn in its own headless process; the agent loop runs tools in a sandbox and calls Chat Completions, OpenAI Responses or Anthropic Messages endpoints over HTTPS](images/architecture.svg)
+![The main owns session runtimes, providers, keys and history; terminal and paired browser clients attach to it, while authenticated SSH routes only files, Git, commands and terminals to a shared remote execution gateway](images/architecture.svg)
 
 Each interactive conversation has one runtime process, and a private Unix
 socket is its command and event boundary. The terminal and the web host attach

@@ -22,8 +22,72 @@ the other options.
 | `bench_core.cc` | Source of `uagent_bench`, built with `UAGENT_BUILD_BENCHMARKS=ON`; `--session PATH` measures a saved conversation in place of the built long one |
 | `scenarios/` | One declarative JSON file per evaluation scenario |
 | `baselines/` | Committed results: `hermetic.json` gates `eval.py` |
+| `results/`, `plot.py` | Dated measurement snapshots and reproducible size/encoding charts; Matplotlib is optional reporting tooling |
+
+## Current measurements
+
+Snapshot: **2026-11-10**, production commit `015ce3a1`, runtime build
+`9bcf08dc…55a976c`. [Raw results](results/2026-11-10.json) retain package
+hashes, five native benchmark samples per case, the hermetic summary and web
+asset sizes. These are dated measurements, not floating claims about a later
+checkout. [CI artifacts](https://github.com/timongentzsch/uAgent/actions/runs/42872865321)
+supply all four native installations; local CPU measurements use an Apple M1
+Pro, macOS 27.0.1 and Apple clang 21.0.0, Release `-O3`, Web Push enabled.
+
+| Target | Main binary | Complete installation | Remote binary | Remote transfer with resources |
+| --- | ---: | ---: | ---: | ---: |
+| Linux x86_64 | 7.35 MB | 20.52 MB | 4.82 MB | 2.31 MB |
+| Linux ARM64 | 6.43 MB | 19.60 MB | 3.94 MB | 2.10 MB |
+| macOS x86_64 | 11.62 MB | 24.79 MB | 9.11 MB | 3.94 MB |
+| macOS ARM64 | 10.64 MB | 23.81 MB | 8.10 MB | 4.24 MB |
+
+MB is 1,000,000 bytes. Complete installation sums unpacked regular-file sizes,
+including documentation, skills and **all four compressed gateway payloads**.
+Remote binary excludes those resources; transfer includes the selected binary,
+skills and licenses in one compressed archive. Filesystem allocation and system
+libraries are not counted. No remote performance comparison between platforms
+is implied by these size measurements.
+
+The fresh hermetic evaluation passes **13 scenarios, 16 variants and 110
+checks**, including the baseline and variant comparisons. A separate fresh-HOME
+mock-provider probe advertises **14 tools / 11,437 schema bytes**, with a
+2,574-character system message. It is the observed request, not every optional
+tool or a count of billed provider tokens. The audit reads captured schemas
+directly; no generated tool-reference file or personal profile is required.
+
+![Five-run medians for 1000 request payload serializations in three provider dialects, comparing full and cached payload construction](../docs/images/request-encoding.svg)
+
+The chart measures local payload serialization, not model or network latency.
+All five core runs use the same built-in workload without a personal session.
+The web bundle's first JS/CSS fetch is **192,908 compressed bytes**; all shipped
+web assets total **2,289,382 compressed bytes**, including optional renderers.
+
+Reproduce the local measurements and charts from the repository root:
+
+```sh
+cmake -S . -B build/bench -DCMAKE_BUILD_TYPE=Release \
+  -DUAGENT_BUILD_BENCHMARKS=ON -DUAGENT_WEB_PUSH=ON
+cmake --build build/bench --target uagent uagent_bench --parallel 4
+python3 benchmarks/eval.py build/bench/uagent --check --report /tmp/eval.json
+python3 benchmarks/audit.py build/bench/uagent --json /tmp/audit.json
+for run in 1 2 3 4 5; do build/bench/uagent_bench > "/tmp/core-$run.txt"; done
+(cd web && npm run size)
+uv run --with matplotlib python benchmarks/plot.py benchmarks/results/2026-11-10.json
+```
+
+Build `web/dist` first as described in [Testing](../docs/TESTING.md#common-cases).
+The charts use the committed snapshot; changing it requires new measurements,
+not just a date edit. Package figures come from summing regular-file members of
+each complete release archive and checking the matching gateway manifest.
 
 ## Footprint comparison
+
+![Historical 2026-10-28 comparison of µAgent, Claude Code, Codex CLI and omp: installation size, idle memory, headless CPU and peak memory](../docs/images/footprint-2026-10-28.svg)
+
+This older comparison remains historical: it predates the remote bundle and
+measures a **local-only µAgent installation**. Its 6.4 MB row must not be used
+as the current complete-install size or mixed with newly measured competitor
+rows. The other tools were not remeasured for the 2026-11-10 snapshot.
 
 `compare_agents.py` measures each tool the same way, with runs alternating
 between the tools so background load affects all of them:
@@ -49,15 +113,20 @@ Processes are attributed by PID: the started process, its descendants, and new
 detached processes started from the tool's executable. Idle memory varies
 between runs by tens of MB for the Node-based tools. Time to first screen ends
 at the first half second without output, so a startup animation (omp's logo)
-counts in full; the README's chart leaves it out.
+counts in full; the historical comparison chart leaves it out.
 
 ### In a container
 
-The README's chart comes from `footprint.Dockerfile`: µAgent built from this
-checkout beside Claude Code, Codex CLI and omp at the versions its build
-arguments pin, all four answering through one endpoint that serves Claude
+The historical comparison used `footprint.Dockerfile`: µAgent built from its
+checkout beside Claude Code, Codex CLI and omp, all four answering through one endpoint that serves Claude
 Haiku 5.5 on the Responses and Anthropic Messages routes (`footprint-run.sh`
-lists the paths). Run it on an otherwise idle host with fixed limits:
+lists the paths). The current recipe installs the complete gateway bundle
+through `install.sh`. For an unpublished checkout, put its verified matching
+bundle in `remote-bundle/` before building; see
+[source/container installation](../docs/REMOTE_HOSTS.md#installers-and-containers).
+Codex, Bun and omp have pinned build arguments; Claude Code uses its installer.
+Retain the generated JSON's actual version strings with any new comparison.
+Run it on an otherwise idle host with fixed limits:
 
 ```sh
 docker build -f benchmarks/footprint.Dockerfile -t uagent-footprint .

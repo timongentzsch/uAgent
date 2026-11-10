@@ -8,7 +8,7 @@ selected files, tool results and attachments to the configured endpoint;
 treat that endpoint as trusted infrastructure. Use a container, VM or
 restricted account for untrusted code.
 
-![What each part can reach: paired devices reach the web host; only the session runtime holds the model key and talks to the endpoint; commands and MCP servers run in the OS sandbox, write only the folder, temporary files and caches, and cannot reach your other folders, ~/.uagent, credential stores, the browser profile or secrets in the environment; the runtime acts in Chrome and receives ordinary field values, with sensitive fields masked](docs/images/boundaries.svg)
+![Provider keys and provider HTTP stay on the main; local and remote commands use their OS sandbox, authenticated SSH carries execution requests, and remote shared accounts retain ordinary filesystem permissions](docs/images/boundaries.svg)
 
 ## What the agent may do without asking
 
@@ -132,6 +132,27 @@ never goes to the parent.
   shell gets the same secret-deny environment as the agent's commands.
   The agent never reads a terminal, but output you send with "Add to chat"
   enters model context and may contain secrets read by that shell.
+
+## Remote execution
+
+The main owns provider settings, model keys, approvals and conversation history.
+Model HTTP requests go directly from the main to the configured endpoint.
+Only file, Git, command and terminal operations cross the SSH gateway boundary;
+provider configuration and keys are not sent to the remote executable. A
+provider's `localhost` address therefore means the main machine.
+
+Multiple mains reuse one installed executable with separate authenticated
+execution processes. Each request authenticates; the RPC credential arrives
+over SSH stdin, not argv or environment. SSH children receive a filtered
+environment, with agent and environment forwarding disabled. The gateway
+does not load or save remote application configuration or history.
+
+Remote commands use the remote OS sandbox and account. Paired-device terminals
+are that account's unsandboxed shell. Sharing an SSH account shares ordinary
+filesystem permissions; it does not isolate users from each other's files.
+The remote account and administrators can inspect remote execution data and
+process memory, while provider keys remain on the main. See
+[remote ownership and limits](docs/REMOTE_HOSTS.md#ownership-and-isolation).
 
 ## Browser automation
 

@@ -13,6 +13,8 @@ editing and interaction. See [Architecture](ARCHITECTURE.md),
 
 For the module-by-module review depth, findings and test limits, see the
 [November review record](reviews/2026-11-module-review.md).
+The [remote execution review](reviews/2026-11-remote-execution.md) records the
+PR #336 source audit and its open cleanup candidates separately.
 
 ## Review decisions
 
@@ -60,6 +62,9 @@ mixed machine has both.
 | Snapshot/replay subscription | `src/app/replay_log.cc`, `session_snapshot.cc`, `src/web/master_stream.cc` | Implicit epoch/cursor/generation protocol: snapshot → replay → ready, or resync on a gap. |
 | Scheduled task/run | `src/app/schedule.cc`, `session_schedules.cc` | Implicit persisted statuses: due/queued/active/terminal, pause/resume and recovery; schedule revision and run state are independent. |
 | Approval and question | `src/app/approvals.cc`, `permissions.cc`, `session_worker.cc` | Mixed: proposal/request → waiting → answer/refusal/cancellation; answer identity and policy remain runtime-owned. |
+| Remote SSH connection | `src/web/remote_hosts.cc` | Disconnected → connecting → connected/reconnecting; bounded retry, explicit disconnect and authentication failure differ. Main startup is disconnected. Refresh/expansion does not initiate SSH; explicitly opening remote work can connect. |
+| Remote execution context | `src/app/execution.cc`, `execution_client.cc`, `execution_wire.cc` | Attach/authenticate → execute/receipt → detach or expire; client, runtime and sandbox identity own the process. Unknown mutations are resolved by receipt, not replayed. |
+| Remote terminal reattachment | `src/web/master_remote_terminal.cc`, `src/app/terminal.cc` | Main-owned identity → remote handle → viewer attachment/replacement; same-build main restarts can reattach, remote restart loses volatile state. |
 | Configuration proposal | `src/app/config_proposal.cc`, `config_control.cc`, `src/core/effective_config.cc` | Implicit prepare/validate/commit/expire/conflict, followed by reload or restart effects; preserve direct-user versus agent policy. |
 | Library/asset mutation | `src/app/library.cc`, `asset_store.cc`, `session_assets.cc`, `import.cc` | Implicit revision and ownership protocol: stage/read → validate revision → write/import/claim or conflict; attachment claiming is distinct from uploading. |
 | Conversation persistence | `src/agent/session_store.cc`, `conversation.cc`, `src/core/private_store.cc` | Implicit read/validate/replace and archive/checkpoint lifecycles; partial state cannot replace valid live state. |
@@ -72,7 +77,7 @@ mixed machine has both.
 | HTTP attempt and retry | `src/api/client.cc`, `exchange.cc`, `src/providers/policy.cc` | Implicit attempt/header/body/completion/cancel and retry policy; preserve remote-error classification and accounting. |
 | SSE and session framing | `src/transport/sse.cc`, `session.cc` | Implicit byte parsers: partial line/frame → complete message or bounded failure; CR/LF and chunk splits matter. |
 | Remote framebuffer filter | `src/web/rfb_filter.cc`, `web/src/features/browser/rfb.ts` | Implicit protocol handshake/message framing and input policy; retain partial-frame buffering. |
-| Terminal host/viewer | `src/web/terminal.cc`, `master_terminal.cc`, `src/app/session_terminal*.cc` | Mixed process/socket/replay/input modes: attach/replaced/exit; output replay and process lifetime differ. |
+| Terminal host/viewer | `src/app/terminal.cc`, `src/web/master_terminal.cc`, `src/app/session_terminal*.cc` | Mixed process/socket/replay/input modes: attach/replaced/exit; output replay and process lifetime differ. |
 | CLI input and composer | `src/ui/input_decoder.cc`, `interactive.cc`, `composer.cc` | Implicit text/escape/sequence/paste/editor/history/search; paste completion, overflow and escape timeout are separate. |
 | Streaming terminal presentation | `src/ui/markdown*.cc`, `presentation.cc`, `live_region.cc`, `src/core/turn_status.cc` | Implicit fence/table/math/text and committed/live output; parser carry and redraw state must survive chunks. |
 | Shutdown and resource ownership | `src/app/runtime.cc`, `src/core/events.cc`, `debug.cc`, `signals.cc`, `include/core/fd.h`, `lease.h` | Implicit owned/released, running/stopping/drained; destructors, wake descriptors and joins provide the transition boundary. |
@@ -82,6 +87,7 @@ mixed machine has both.
 | Machine | Owner | Important transitions/invariants |
 | --- | --- | --- |
 | Host authentication and connectivity | `web/src/state/use-host.ts` | Unknown/authenticated/revoked, offline/open/catching-up/ready, retry/rescan/resume; mutation readiness waits for the ready watermark. |
+| Contextual host/folder choice | `web/src/shared/host-field.tsx`, `features/files/folder-picker.tsx`, `app/modals.tsx` | Choose host → connect if needed → browse/select → create; stale loads cannot replace a typed path, and changing a selection does not retarget existing work. |
 | Event and snapshot projection | `web/src/state/apply-event.ts`, `store.ts`, `snapshot-store.ts` | Apply ordered events, merge history and replace snapshots; retired streams and stale snapshots cannot win. |
 | Outgoing commands and receipts | `web/src/app/use-commands.ts`, `web/src/state/api.ts`, `store.ts` | Waiting/sending/queued/awaiting/sent/refused/unconfirmed; receipt timeout is not rejection or permission to replay. |
 | Transcript paging and scrolling | `web/src/state/use-transcript-history.ts`, `node-reader.ts`, `transcript-bookmarks.ts` | Follow/anchor/restore/glide, pending history and search jumps; touch/wheel interruption and session identity control restoration. |

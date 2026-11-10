@@ -10,7 +10,8 @@ refer to the main machine.
 flowchart LR
   Browser[Desktop or phone] -->|Paired HTTP / SSE / WebSocket| Main[Main uAgent]
   Main -->|HTTPS with main credentials| Provider[Model provider]
-  Main -->|Authenticated execution RPC over SSH| Remote[Remote gateway]
+  Main -->|Authenticated execution RPC over SSH| Remote[Shared gateway executable]
+  Other[Another main: its own keys and history] -->|Independent authenticated execution| Remote
   Remote --> Files[Remote files and Git]
   Remote --> Processes[Commands and terminals]
 ```
@@ -73,12 +74,15 @@ on the main. Existing remote CLI data is neither migrated nor removed.
 | Connected | SSH is available; execution contexts attach when used. |
 | Connecting | Repeated Connect or Reconnect joins the current attempt. |
 | Reconnecting | Network failures retry with bounded, jittered delays around 1, 2, 4, 8 and 15 seconds. |
-| Disconnected | Explicit disconnect, authentication failure or exhausted retries waits for Connect or Reconnect. |
+| Disconnected | Initial main startup, explicit disconnect, authentication failure or exhausted retries waits for Connect or Reconnect. |
 | Main unavailable | Restore the browser's connection to the main first. |
 
 **Reconnect** is available in host details and resets the retry budget.
 Authentication failures show an SSH action to take instead of retrying forever.
-Browsing history, expanding groups and refreshing the page never initiates SSH.
+Paging loaded history, expanding groups and refreshing the page do not initiate
+SSH. Explicitly opening a remote conversation or folder can connect its host.
+Saved hosts start disconnected after restarting the main. You can also choose
+**Reconnect** in host details, or **Connect** while selecting a host for new work.
 
 **Disconnect** closes SSH access. Main-owned history remains readable; already
 running remote commands and terminals can survive a transport drop. Reconnect

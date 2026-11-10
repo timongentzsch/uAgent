@@ -151,19 +151,6 @@ def rebuild_fanout() -> dict[str, int]:
     return dict(counts.most_common(6))
 
 
-def tool_surface() -> list[dict[str, str]]:
-    """The generated reference is the committed description of the tool surface."""
-    path = ROOT / "skills" / "uagent-config" / "references" / "tools.md"
-    rows = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        # A description may itself contain an escaped pipe, so the row is only
-        # required to have at least the columns before it.
-        cells = [cell.strip() for cell in line.split("|")[1:-1]]
-        if len(cells) >= 8 and cells[0].startswith("`") and cells[1].isdigit():
-            rows.append({"name": cells[0].strip("`"), "bytes": cells[1], "when": cells[5]})
-    return rows
-
-
 def scenario_coverage() -> dict[str, Any]:
     scenarios = load_scenarios([])
     tools: collections.Counter[str] = collections.Counter()
@@ -225,8 +212,6 @@ def real_tool_mix(history: Path, days: int) -> dict[str, int]:
 def collect(binary: Path, arguments) -> dict[str, Any]:
     session = probe_session(binary)
     profile = probe_session(binary, with_profile=True) if arguments.profile else {}
-    surface = tool_surface()
-    always = sum(int(row["bytes"]) for row in surface if row["when"] == "always")
     coverage = scenario_coverage()
     resources = evaluation_resources()
     real = (
@@ -234,19 +219,19 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
         if arguments.history
         else {}
     )
-    # History outlives releases: a journal can name a tool this build no longer
-    # has, and that is a rename to acknowledge, not a coverage gap to chase.
-    current = {row["name"] for row in surface}
-    retired = sorted(name for name in real if name not in current)
-    live = {name: count for name, count in real.items() if name in current}
-    total_real = sum(live.values()) or 1
+    # A fresh probe omits conditional tools. A historical name absent from it
+    # may still be supported, so report that absence without calling it retired.
+    advertised = set(session["per_tool_bytes"]) | set(profile.get("per_tool_bytes", {}))
+    total_real = sum(real.values()) or 1
     uncovered = [
         name
-        for name, count in live.items()
-        if count / total_real >= COVERAGE_FLOOR and name not in coverage["tool_calls"]
+        for name, count in real.items()
+        if name in advertised
+        and count / total_real >= COVERAGE_FLOOR
+        and name not in coverage["tool_calls"]
     ]
     return {
-        "schema": "uagent.audit.v3",
+        "schema": "uagent.audit.v4",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "hardware": {
             "binary_bytes": binary.stat().st_size,
@@ -256,7 +241,6 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
             "system_chars": session["system_chars"],
             "schema_bytes": session["schema_bytes"],
             "advertised_tools": session["advertised_tools"],
-            "always_on_schema_bytes": always,
             "largest_schemas": dict(list(session["per_tool_bytes"].items())[:5]),
         },
         # Reported, never gated: it depends on what this machine has stored,
@@ -271,7 +255,6 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
         },
         "speed": {"rebuild_fanout": rebuild_fanout() if arguments.host else {}},
         "capability": {
-            "surface_tools": len(surface),
             **coverage,
         },
         "trajectory": {
@@ -283,10 +266,10 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
             "hermetic_baseline": resources,
         },
         "representativeness": {
-            "real_calls": total_real if live else 0,
-            "real_mix": dict(list(live.items())[:8]),
+            "real_calls": total_real if real else 0,
+            "real_mix": dict(list(real.items())[:8]),
             "uncovered_above_floor": uncovered,
-            "retired_names_in_history": retired,
+            "not_advertised_in_probe": sorted(set(real) - advertised),
         }
         if arguments.history
         else None,
@@ -303,8 +286,7 @@ def render(report: dict[str, Any]) -> None:
     print(
         f"token         system {token['system_chars']:,} chars + schemas "
         f"{token['schema_bytes']:,} B "
-        f"over {token['advertised_tools']} advertised tools "
-        f"({token['always_on_schema_bytes']:,} B always-on)"
+        f"over {token['advertised_tools']} advertised tools"
     )
     print(f"              largest: {token['largest_schemas']}")
     profile = report.get("profile_token", {})
@@ -320,8 +302,7 @@ def render(report: dict[str, Any]) -> None:
         print(f"speed         rebuild fanout (TUs per header): {fanout}")
     capability = report["capability"]
     print(
-        f"capability    {capability['surface_tools']} tools; "
-        f"{capability['scenarios']} scenarios {capability['tiers']} with "
+        f"capability    {capability['scenarios']} scenarios {capability['tiers']} with "
         f"{capability['checks']} checks over {sorted(capability['tool_calls'])}"
     )
     trajectory = report.get("trajectory", {})
@@ -346,13 +327,13 @@ def render(report: dict[str, Any]) -> None:
         print(f"real usage    {representativeness['real_calls']} calls: {share}")
         uncovered = representativeness["uncovered_above_floor"]
         print(f"              uncovered above {COVERAGE_FLOOR:.0%}: {uncovered or 'none'}")
-        if representativeness["retired_names_in_history"]:
+        if representativeness["not_advertised_in_probe"]:
             print(
-                "              retired names in history: "
-                f"{representativeness['retired_names_in_history']}"
+                "              not advertised in this probe: "
+                f"{representativeness['not_advertised_in_probe']}"
             )
     else:
-        print("real usage    requested history contains no current-tool calls")
+        print("real usage    requested history contains no tool calls")
 
 
 def parse_args():

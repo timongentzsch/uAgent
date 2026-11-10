@@ -33,15 +33,15 @@ address. Or open the URL and type the code.
   shell that installed it, so agent commands find the same tools, and an
   update restarts it. `uagent --web` then only prints a pairing code.
 
-The sidebar lists this OS user's conversations by place: **Workspaces**
-first, then **Folders**. A place's name opens its overview, the chevron
+The sidebar groups this main's conversations by execution host, then by place:
+**Workspaces** on Local and **Folders** on Local or a remote host. A place's name opens its overview, the chevron
 before it folds the place away (remembered per browser) and **+** starts a
 conversation there. Each conversation is followed by its agents: those at
-work or waiting with their state, the finished ones folded into one "N
-agents" line that opens in place (remembered per browser). **Pin** in the
+work or waiting with their state; finished agents remain accessible from
+their reports and search. **Recent** is collapsible. **Pin** in the
 menu of a conversation, workspace or folder moves it to a **Pinned** section
 at the top, in the order pinned; **Unpin** returns it. The pins belong to
-the host, so every paired device shows the same. Browsing saved history
+the main, so every paired device shows the same, including remote conversations. Browsing saved history
 starts no model and runs no command.
 
 On a touch screen only the open row draws its ⋯; a long press on any row opens
@@ -59,9 +59,14 @@ conversation, and the conversations as cards (a list on a phone; the toggle
 is remembered per browser), each with its state (Working, Needs you,
 Stopped, Idle), current step, to-do progress, agents, last change and cost.
 
-**New** at the top of the sidebar starts a conversation in a
-**Workspace…** (a name, new or existing) or a **Folder…** (a directory on
-the host).
+**New** at the top of the sidebar and **New conversation** on the home screen
+start work. Conversation and folder actions choose a **Host** and reuse the
+Files tree to browse a directory; typing a path remains optional. Named
+**Workspaces** belong to Local. An existing conversation or folder supplies its
+host, shown beside the conversation title. There is no application-wide host
+switch. The bottom **Hosts** panel shows status and measured main-to-host SSH
+round trip, with **Add host**, **Reconnect** and **Disconnect** in host details.
+[Remote hosts](REMOTE_HOSTS.md) explains setup and recovery.
 
 - A **workspace** is a folder the host keeps under `~/.uagent/spaces/`,
   created the first time its name is used. Use one for work that belongs to
@@ -232,7 +237,7 @@ opt in with `-DUAGENT_WEB_PUSH=ON` and need OpenSSL 3.
 
 ## Terminal
 
-A terminal is your own shell on the host. There are two kinds, up to eight
+A terminal is your own shell on the conversation's execution host. There are two kinds, up to eight
 shells at once:
 
 - **A folder's terminal** starts from **+ → Terminal** on a folder or
@@ -266,7 +271,9 @@ shells at once:
   it, and the one it moved from offers **Use here**. It ends when you close
   it, when it exits, or when no device has had it open and it printed
   nothing for `UAGENT_WEB_TERMINAL_IDLE_MINUTES`. Stopping the web host ends
-  every shell; nothing is written to disk.
+  its Local shells; nothing is written to disk. Remote shells live in the
+  execution gateway and can survive SSH loss or a same-build main restart.
+  Reconnect to reattach; a remote restart or build upgrade loses their handles.
 - **Turn it off** with `/config user UAGENT_WEB_TERMINAL=off`, or in
   Settings → All conversations; it applies when the web host restarts. The
   routes then refuse and the terminals are gone.
@@ -448,7 +455,8 @@ before Submit.
   picked with the reason. The Library picks the same way.
 - **Move to…** in a conversation's menu (not an agent's, and not before the
   first message) moves it, with the agents it started, to another folder or
-  workspace: pick a place from the list or type a folder's path, and Move.
+  workspace on Local: pick a place from the list or type a folder's path, and Move.
+  Moving remote conversations or moving between hosts is unavailable.
   Its files stay in the old folder, an agent working in a worktree of its
   own keeps it, and memories stay with the old folder; the conversation says
   so in a note the model reads in its next request. The dialog names what

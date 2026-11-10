@@ -7,17 +7,21 @@
 keeps one conversation across terminal, script and phone, and drives a real
 Chrome that you can watch and take over.
 
-![Bars comparing µAgent, Claude Code, Codex CLI and omp: install on disk 6.4, 294, 446 and 1064 MB; idle session memory 29, 161, 290 and 314 MB; CPU per headless turn 12, 436, 139 and 1329 ms; peak memory per headless turn 16.5, 222, 291 and 391 MB](docs/images/footprint.svg)
+![Current package sizes on Linux and macOS, x86_64 and ARM64: complete installations include the main binary, resources, documentation and all four gateway payloads; the remote receives only its matching gateway](docs/images/footprint.svg)
 
-Medians of five runs in a 2-CPU, 4 GB Docker container on 2026-10-28, all four
-answering through the same Claude Haiku 5.5 endpoint;
-[the method](benchmarks/README.md#footprint-comparison) has the versions and
-every metric.
+Complete installations are 19.6–24.8 MB; a remote gateway executable is
+3.9–9.1 MB, transferred with its resources in 2.1–4.2 MB. Measured from the
+four-platform CI archives on 2026-11-10; MB means 1,000,000 bytes.
+[Benchmarks](benchmarks/README.md#current-measurements) records the build,
+raw measurements and local performance results. The older competitor comparison
+is retained there as a dated historical measurement.
 
 ## Built to be light
 
 - **One C++20 binary,** no runtime to install. Each conversation is one
   process; the terminal and the web host attach to it over a Unix socket.
+  Complete installations also carry four compressed native gateways, so a
+  remote host needs no compiler or download.
 - **The web interface is embedded,** with optional renderers loaded on demand,
   compressed API responses and resumable event streams. `npm run size` in
   `web/` reports the current bundle and first-load sizes.
@@ -27,7 +31,7 @@ every metric.
   resending it, and a browser result for the page just seen carries only what
   changed.
 
-![The terminal and the web host attach over a Unix socket to one session runtime process per conversation; a browser or phone reaches the web host over HTTP and SSE; the web host starts the agent's browser, Chrome and Xvnc with one signed-in profile, on first use and streams its live screen to paired devices; the runtime's browser tool drives Chrome over a private socket; a script runs one turn in its own headless process; the agent loop runs tools in a sandbox and calls Chat Completions, OpenAI Responses or Anthropic Messages endpoints over HTTPS](docs/images/architecture.svg)
+![The main owns session runtimes, providers, keys and history; terminal and paired browser clients attach to it, while authenticated SSH routes only files, Git, commands and terminals to a shared remote execution gateway](docs/images/architecture.svg)
 
 ## What it does
 
@@ -50,6 +54,10 @@ every metric.
 - **One conversation, every device.** Start in the terminal, continue on your
   phone (an installable web app with notifications), or run a turn from a
   script with `uagent -p "..." --json`.
+- **Local or remote files.** Add an SSH host, then choose it when creating a
+  conversation or opening a folder. The main keeps providers, keys, settings
+  and history; a shared remote gateway runs files, Git, commands and terminals.
+  See [remote hosts](docs/REMOTE_HOSTS.md) for setup and current limits.
 - **Works in parallel.** A conversation starts agents, conversations of
   their own that research or change code and report back, listed beneath it;
   a folder's overview shows what works, what needs you, spend and changes.
@@ -58,7 +66,7 @@ every metric.
 - **Any endpoint.** Chat Completions, OpenAI Responses and Anthropic Messages,
   local or hosted.
 
-![What each part can reach: paired devices reach the web host; only the session runtime holds the model key and talks to the endpoint; commands and MCP servers run in the OS sandbox, write only the folder, temporary files and caches, and cannot reach your other folders, ~/.uagent, credential stores, the browser profile or secrets in the environment; the runtime acts in Chrome and receives ordinary field values, with sensitive fields masked](docs/images/boundaries.svg)
+![Provider keys and provider HTTP stay on the main; local and remote commands use their OS sandbox, authenticated SSH carries execution requests, and remote shared accounts retain ordinary filesystem permissions](docs/images/boundaries.svg)
 
 ![The terminal on the left and the web interface on a phone on the right showing the same conversation: a request to add a docstring, the approval for the edit, and the streaming answer](docs/images/terminal.gif)
 
@@ -82,13 +90,13 @@ Anthropic keys (any of them) and a default model:
   Docker.
 - **Here:** the release for Linux x86_64 or arm64 with glibc 2.38 or newer
   (Ubuntu 24.04, Debian 13, Fedora 39, Arch and later) or macOS 15 or newer on
-  Apple silicon, checked against its checksum and that it starts, and
+  Apple silicon or Intel, checked against its checksum and that it starts, and
   installed under `~/.local` with its skills; it
   offers to put `~/.local/bin` on your `PATH` and to keep the web interface
   running as a service that starts when you log in (systemd or launchd). On
   Linux it can include the agent's browser; on macOS that runs only in the
   container. Older systems (Ubuntu 22.04, Debian 12, RHEL 9), musl
-  distributions, Intel Macs and other machines build from source instead, or
+  distributions and other machines build from source instead, or
   run the container.
 
 Run the same line again to update. `UAGENT_INSTALL=container|here` chooses
@@ -106,7 +114,9 @@ the image or the binary itself. Releases ship archives (`bin/uagent`; keep
 
 Building needs CMake 3.21+, a C++20 compiler, libcurl 7.66+, zlib and
 Node.js for the web interface. `-DUAGENT_WEB_PUSH=ON` adds Web Push (needs
-OpenSSL 3).
+OpenSSL 3). A source installation also needs the matching four-platform remote
+bundle; [remote installation](docs/REMOTE_HOSTS.md#installers-and-containers)
+explains supplying it or explicitly choosing a local-only developer install.
 
 ## Quick start
 

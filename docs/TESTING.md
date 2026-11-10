@@ -176,6 +176,9 @@ tools, model rounds, batch width, deduplication, cumulative request and result
 size, folder immutability). Results are compared with
 `benchmarks/baselines/hermetic.json`. `benchmarks/run_trace.py` holds the run
 timing and trace aggregation the eval and the audit share.
+The [benchmark snapshot](../benchmarks/README.md#current-measurements) records
+dated package sizes and local CPU samples; its chart generator needs optional
+Matplotlib, not a new runtime or test dependency.
 
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check

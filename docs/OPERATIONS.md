@@ -4,6 +4,11 @@ Settings, limits, budgets, recovery and failure triage. µAgent is a local,
 single-user CLI for macOS and Linux; [Security](../SECURITY.md) describes
 what it confines.
 
+Remote folders use the main's same settings, providers, models and keys.
+The gateway owns execution only; it needs no remote application setup.
+[Remote hosts](REMOTE_HOSTS.md) covers SSH, manual reconnect, measured round
+trip and the distinction between transport loss and remote-process restart.
+
 ## Settings
 
 Saved settings live in one private document,

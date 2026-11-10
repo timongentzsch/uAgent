@@ -1,5 +1,5 @@
 # The footprint comparison in a container: µAgent built from this checkout
-# beside Claude Code, Codex CLI and omp at pinned versions. See the
+# beside Claude Code, Codex CLI and omp. Record actual versions; see the
 # "In a container" part of benchmarks/README.md for the build and run lines.
 FROM node:24-bookworm-slim AS frontend
 WORKDIR /web
@@ -10,21 +10,22 @@ RUN npm run build
 
 FROM ubuntu:24.04 AS native
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    ca-certificates cmake g++ make libcurl4-openssl-dev zlib1g-dev libssl-dev pkg-config \
+    ca-certificates curl cmake g++ make libcurl4-openssl-dev zlib1g-dev libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .
 COPY --from=frontend /web/dist /src/web/dist
 RUN cmake -S . -B /tmp/build -DCMAKE_BUILD_TYPE=Release -DUAGENT_WEB_PUSH=ON -DBUILD_TESTING=OFF \
-    && cmake --build /tmp/build --target uagent -j 8 \
-    && cmake --install /tmp/build --prefix /opt/uagent --strip
+    && cmake --build /tmp/build --target uagent -j 4 \
+    && UAGENT_BUILD_DIR=/tmp/build UAGENT_PREFIX=/opt/uagent \
+       UAGENT_NONINTERACTIVE=1 UAGENT_REMOTE_BUNDLE="$(test ! -d /src/remote-bundle || echo /src/remote-bundle)" ./install.sh
 
 FROM ubuntu:24.04
 ARG CODEX_VERSION=0.165.0
 ARG BUN_VERSION=1.4.4
 ARG OMP_VERSION=18.13.2
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    ca-certificates curl git python3 libcurl4t64 libssl3t64 zlib1g unzip xz-utils \
+    ca-certificates curl git openssh-client python3 libcurl4t64 libssl3t64 zlib1g unzip xz-utils \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=native /opt/uagent /opt/uagent
 RUN useradd -m bench

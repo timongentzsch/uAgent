@@ -260,6 +260,12 @@ conversation open in a terminal is the same one in the browser.
 [Web interface](WEB.md) covers phones, other machines and notifications;
 [The agent's browser](BROWSER.md) covers the Chrome the agent can drive.
 
+For a folder on another machine, use **Hosts → Add host**, then choose that
+**Host** in **New conversation** or **New folder** and browse its Files tree.
+The main still owns model keys, settings and history. The bottom Hosts panel
+reports connectivity and measured round trip; it does not switch the whole
+application. [Remote hosts](REMOTE_HOSTS.md) covers SSH setup and limits.
+
 ## Agents
 
 For work with independent parts the agent starts **agents**: conversations

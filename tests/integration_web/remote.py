@@ -3,6 +3,7 @@
 import base64
 import concurrent.futures
 import contextlib
+import hashlib
 import json
 import os
 import pathlib
@@ -286,6 +287,89 @@ def test_execution_binary_files_revisions_and_remote_approval(root, home, *, bin
         )
         assert_true(conflict.get("conflict"), conflict)
         assert_true((project / "text").read_text() == "outside edit", "conflict overwritten")
+
+
+def test_file_operations_match_local_http_and_execution_gateway(root, home, *, binary):
+    project = root / "project"
+    project.mkdir()
+    (project / "note.txt").write_text("before")
+    (project / "large.txt").write_text("x" + "é" * 600_000)
+    (root / "secret.txt").write_text("outside")
+    (project / "outside").symlink_to(root / "secret.txt")
+    subprocess.run(["git", "init", "-q", str(project)], check=True, capture_output=True)
+    with web_host(binary, root, home, "http://127.0.0.1:1") as (client, code, _, _):
+        client.pair(code)
+        session = client.create(project, activate=False)
+        endpoint = f"/api/sessions/{session['id']}/files"
+        with gateway(binary, home, project) as (_, call):
+            for mode, path in (
+                ("list", ""),
+                ("read", "note.txt"),
+                ("read", "large.txt"),
+                ("find", "nt"),
+                ("changes", ""),
+                ("diff", "note.txt"),
+                ("read", "missing.txt"),
+                ("read", "../secret.txt"),
+                ("read", "outside"),
+            ):
+                status, local, _ = client.json(endpoint + "?" + urlencode({mode: path}))
+                remote = call({"op": "files", "mode": mode, "path": path})
+                assert_true(status == remote.pop("status", 200) and local == remote, (mode, path))
+            for transport in ("local", "remote"):
+                read = call({"op": "files", "mode": "read", "path": "note.txt"})
+                operation = {
+                    "op": "files",
+                    "mode": "write",
+                    "path": "note.txt",
+                    "text": f"saved through {transport}",
+                    "revision": read["revision"],
+                }
+                for expected in (200, 409):
+                    if transport == "local":
+                        status, result, _ = client.json(endpoint, operation)
+                    else:
+                        result = call(operation)
+                        status = result.get("status", 200)
+                    assert_true(status == expected, (transport, result))
+                assert_true((project / "note.txt").read_text() == operation["text"], "edit lost")
+
+
+def test_remote_bundle_requires_all_matching_payloads(root, home, *, binary):
+    bundle = root / "bundle"
+    bundle.mkdir()
+    env = base_env(home, "http://127.0.0.1:1")
+    build = subprocess.check_output([binary, "--build-id"], env=env, text=True).strip()
+    # The checker validates archive bytes; installation checks their contents.
+    manifest = {"build": build, "targets": {}}
+    for target in ("linux-x86_64", "linux-arm64", "macos-x86_64", "macos-arm64"):
+        content = target.encode()
+        (bundle / f"{target}.tar.gz").write_bytes(content)
+        manifest["targets"][target] = {
+            "bytes": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+
+    def check(value, expected):
+        (bundle / "manifest.json").write_text(json.dumps(value))
+        result = subprocess.run(
+            [binary, "--check-remote-bundle", str(bundle)], env=env, capture_output=True, text=True
+        )
+        assert_true((result.returncode == 0) == expected, result.stderr)
+
+    check(manifest, True)
+    check({**manifest, "build": "different-build"}, False)
+    check({**manifest, "targets": []}, False)
+    check({**manifest, "targets": dict(list(manifest["targets"].items())[:3])}, False)
+    for target in manifest["targets"]:
+        payload = bundle / f"{target}.tar.gz"
+        content = payload.read_bytes()
+        payload.write_bytes(b"!" + content[1:])
+        check(manifest, False)
+        payload.unlink()
+        check(manifest, False)
+        payload.write_bytes(content)
+    check(manifest, True)
 
 
 def test_remote_auth_failure_stops_until_manual_reconnect(root, home, *, binary):

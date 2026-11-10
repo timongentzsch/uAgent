@@ -3,8 +3,6 @@
 #include "include/app/workspace_files.h"
 
 #include <algorithm>
-#include <cctype>
-#include <charconv>
 #include <cstdint>
 #include <deque>
 #include <filesystem>
@@ -87,6 +85,7 @@ std::optional<fs::path> Resolve(const fs::path& root,
   return target;
 }
 
+namespace {
 // A folder's entries, folders first. A symlink shows as what it points to,
 // and only when that is inside `root`.
 std::optional<json> List(const fs::path& root, const fs::path& folder) {
@@ -138,6 +137,8 @@ std::optional<json> List(const fs::path& root, const fs::path& folder) {
   return json{{"entries", std::move(rows)}, {"more", more}};
 }
 
+}  // namespace
+
 json Folders(const std::string& path) {
   std::string requested = path;
   if (requested.empty() || requested == "~") {
@@ -161,6 +162,7 @@ json Folders(const std::string& path) {
   return *listed;
 }
 
+namespace {
 // Whether `query`'s characters, spaces aside, appear in `path` in order.
 bool Matches(const std::string& query, const std::string& path) {
   size_t at = 0;
@@ -204,6 +206,16 @@ json Find(const fs::path& root, const std::string& query) {
   return {{"paths", std::move(paths)}, {"more", more}};
 }
 
+struct Change {
+  std::string path;
+  char state;
+  bool untracked;
+};
+struct Changes {
+  bool repository = false;
+  std::vector<Change> list;
+  bool more = false;
+};
 Changes ReadChanges(const fs::path& folder, const std::string& pathspec) {
   Changes changes;
   const CapturedProcess prefix =
@@ -272,6 +284,8 @@ std::optional<json> ReadDiff(const fs::path& folder, const Changes& changes,
   return json{{"text", Utf8Prefix(std::move(diff.output), kFileViewBytes)},
               {"more", more}};
 }
+
+}  // namespace
 
 // What a previewed page may load, by name: its pages, stylesheets, scripts,
 // data, fonts and media. Anything else in the folder stays out of reach.

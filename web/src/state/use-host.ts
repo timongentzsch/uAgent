@@ -1,5 +1,5 @@
 import { stored, tabStorage, useStored } from "../shared/storage.ts";
-import { storageKeys, hostStorageKey } from "../shared/storage-keys.ts";
+import { storageKeys } from "../shared/storage-keys.ts";
 import type {
   JSONValue,
   Snapshot,
@@ -27,7 +27,7 @@ import {
   patchCatalogue,
 } from "./store.ts";
 import { applyEvent as applyHostEvent } from "./apply-event.ts";
-import { protocol, useApi } from "./api.ts";
+import { protocol, localApi } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
 import { waitingToSend } from "../shared/message-view.ts";
 import { wentBack } from "../shared/dismiss.ts";
@@ -48,64 +48,53 @@ import { needsYou } from "./attention.ts";
 // What this device keeps of the host's state. A draft is saved once typing
 // pauses, not per key; an upload still in flight when the page went away
 // never finishes, and its chip would have no id the host knows.
-function createKept(host: string) {
-  const key = (value: string) => hostStorageKey(value, host);
-  return {
-    pins: stored<NonNullable<Catalogue["pins"]>>(key("uagent-pins"), []),
-    // Streamed events change the list many times a second; it is kept once
-    // they pause, and when the page hides.
-    catalogue: stored<Catalogue["sessions"]>(
-      key(storageKeys.catalogue),
-      [],
-      undefined,
-      {
-        delay: catalogueSaveDelayMs,
-      },
-    ),
-    spaces: stored<NonNullable<Catalogue["spaces"]>>(
-      key(storageKeys.spaces),
-      [],
-    ),
-    drafts: stored<Record<string, Draft>>(
-      key(storageKeys.drafts),
-      {},
-      (value) =>
+const kept = {
+  pins: stored<NonNullable<Catalogue["pins"]>>("uagent-pins", []),
+  // Streamed events change the list many times a second; it is kept once
+  // they pause, and when the page hides.
+  catalogue: stored<Catalogue["sessions"]>(
+    storageKeys.catalogue,
+    [],
+    undefined,
+    {
+      delay: catalogueSaveDelayMs,
+    },
+  ),
+  spaces: stored<NonNullable<Catalogue["spaces"]>>(storageKeys.spaces, []),
+  drafts: stored<Record<string, Draft>>(
+    storageKeys.drafts,
+    {},
+    (value) =>
+      Object.fromEntries(
+        Object.entries(
+          (value && typeof value === "object" ? value : {}) as Record<
+            string,
+            Draft
+          >,
+        ).map(([id, draft]) => [
+          id,
+          { ...draft, files: draft.files.filter((file) => !file.pending) },
+        ]),
+      ),
+    {
+      delay: draftSaveDelayMs,
+      kept: (value) =>
         Object.fromEntries(
-          Object.entries(
-            (value && typeof value === "object" ? value : {}) as Record<
-              string,
-              Draft
-            >,
-          ).map(([id, draft]) => [
-            id,
-            { ...draft, files: draft.files.filter((file) => !file.pending) },
-          ]),
+          Object.entries(value).filter(([, draft]) => hasContent(draft)),
         ),
-      {
-        delay: draftSaveDelayMs,
-        kept: (value) =>
-          Object.fromEntries(
-            Object.entries(value).filter(([, draft]) => hasContent(draft)),
-          ),
-      },
-    ),
-    unread: stored(
-      key(storageKeys.unread),
-      new Set<string>(),
-      (value) => new Set(Array.isArray(value) ? (value as string[]) : []),
-      { kept: (value) => [...value] },
-    ),
-    outgoing: stored<Outgoing[]>(key(storageKeys.outgoing), [], undefined, {
-      where: tabStorage,
-    }),
-    read: stored<Record<string, number>>(key(storageKeys.read), {}),
-  };
-}
-const hostStores = new Map<string, ReturnType<typeof createKept>>();
-function stores(id: string) {
-  if (!hostStores.has(id)) hostStores.set(id, createKept(id));
-  return hostStores.get(id)!;
-}
+    },
+  ),
+  unread: stored(
+    storageKeys.unread,
+    new Set<string>(),
+    (value) => new Set(Array.isArray(value) ? (value as string[]) : []),
+    { kept: (value) => [...value] },
+  ),
+  outgoing: stored<Outgoing[]>(storageKeys.outgoing, [], undefined, {
+    where: tabStorage,
+  }),
+  read: stored<Record<string, number>>(storageKeys.read, {}),
+};
 
 // What the sidebar lists: conversations, not scheduled runs or their tasks.
 function listedSessions({
@@ -135,23 +124,15 @@ function envelope(data: string): HostEvent | undefined {
 
 export type HostState = ReturnType<typeof useHost>;
 
-// One SSE subscription owns host snapshots, command receipts and read state.
+// The main owns the catalogue, SSE stream, command receipts and read state.
+// Execution hosts are conversation context, never separate subscriptions.
 export function useHost(
   onResult: (value: JSONValue, inspect: boolean) => void,
   readingConversation = true,
-  enabled = true,
-  active = true,
 ) {
-  const { api, routes, receiveOutcome, host: hostId } = useApi();
-  const kept = stores(hostId);
-  const allowed = useRef(enabled);
-  const visible = useRef(active);
-  allowed.current = enabled;
-  visible.current = active;
+  const { api, routes, receiveOutcome } = localApi;
   const [managementVersion, setManagementVersion] = useState(0);
-  const [authenticated, setAuthenticated] = useState<boolean | null>(
-    hostId ? true : null,
-  );
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [online, setOnline] = useState(false);
   const [connecting, setConnecting] = useState(true);
   const connectedOnce = useRef(false);
@@ -201,7 +182,6 @@ export function useHost(
   const selection = useRef(selected);
   const flush = useRef((_id?: string) => {});
   const notifications = useRef(false);
-  const noRemotePush = useRef(false);
   const subscribed = useRef(false);
   const reading = useRef(false);
   const readCounts = useRef(kept.read.read());
@@ -372,7 +352,7 @@ export function useHost(
       }));
       if (selection.current === id) {
         selection.current = movedTo || "";
-        if (visible.current) writeSelection(movedTo || "", true);
+        writeSelection(movedTo || "", true);
         setSelected(movedTo || "");
       }
     },
@@ -414,7 +394,7 @@ export function useHost(
       snapshots,
       selection,
       reading,
-      notifications: hostId ? noRemotePush : notifications,
+      notifications,
       subscribed,
       localRequests,
       flush,
@@ -434,10 +414,6 @@ export function useHost(
   // what they capture (report, forget, onResult, ...) is.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   const refresh = useCallback(async () => {
-    if (!allowed.current) {
-      setConnecting(false);
-      return;
-    }
     rescan.current ||= !resuming.current;
     resuming.current = false;
     clearTimeout(retry.current.timer);
@@ -456,7 +432,6 @@ export function useHost(
     const follow = (list: Catalogue, from: string) => {
       const floor = Number(from.slice(from.indexOf(":") + 1));
       resume.current = from;
-      if (!allowed.current) return;
       const events = new EventSource(routes.events(from));
       stream.current = events;
       events.onopen = () => {
@@ -498,7 +473,7 @@ export function useHost(
         connectedOnce.current = true;
         setOnline(true);
         setConnecting(false);
-        if (visible.current) refreshUserStyle(routes.userStyle);
+        refreshUserStyle(routes.userStyle);
       });
       events.addEventListener("resync", () => {
         if (stream.current === events && !signal.aborted) refresh();
@@ -523,8 +498,7 @@ export function useHost(
           return;
         }
         applyEvent(event);
-        if (visible.current && event.kind === "turn_status")
-          refreshUserStyle(routes.userStyle);
+        if (event.kind === "turn_status") refreshUserStyle(routes.userStyle);
         resume.current = message.lastEventId || resume.current;
       });
     };
@@ -609,7 +583,7 @@ export function useHost(
       setConnecting(false);
       // Only the host's refusal asks for pairing: a host that cannot be
       // reached keeps the app on screen while it is tried again.
-      if (failure(error).status === 401 && !hostId) signedOut();
+      if (failure(error).status === 401) signedOut();
       else {
         report(error);
         retryLater();
@@ -643,7 +617,6 @@ export function useHost(
     // fires, and hashchange follows popstate.
     let drawn = false;
     const hash = (event: Event) => {
-      if (!visible.current) return;
       drawn ||= !!(event as PopStateEvent & { hasUAVisualTransition?: boolean })
         .hasUAVisualTransition;
       clearTimeout(navigation);
@@ -694,16 +667,10 @@ export function useHost(
       removeEventListener("popstate", hash);
       document.removeEventListener("visibilitychange", recover);
     };
-  }, [reconnect, dropStream, snapshots, hostId]);
+  }, [reconnect, dropStream, snapshots]);
   useEffect(() => {
-    if (enabled) reconnect();
-    else {
-      clearTimeout(retry.current.timer);
-      dropStream();
-      setOnline(false);
-      setConnecting(false);
-    }
-  }, [enabled, reconnect, dropStream]);
+    reconnect();
+  }, [reconnect]);
   useEffect(() => {
     if (authenticated && catalogue.pins) kept.pins.write(catalogue.pins);
   }, [authenticated, catalogue.pins, kept.pins.write]);
@@ -729,17 +696,16 @@ export function useHost(
   // written only when that count changes.
   const attention = needsYou(listed);
   useEffect(() => {
-    if (!visible.current) return;
     document.title = attention ? `(${attention}) µAgent` : "µAgent";
     if ("setAppBadge" in navigator)
       (attention
         ? navigator.setAppBadge(attention)
         : navigator.clearAppBadge()
       ).catch(() => {});
-  }, [attention, active]);
+  }, [attention]);
   // Reading the conversation marks each of its snapshots read.
   useEffect(() => {
-    if (!active || !readingConversation || !following) return;
+    if (!readingConversation || !following) return;
     const read = () => {
       const snapshot = snapshots.get()[selected];
       if (document.visibilityState !== "visible" || !snapshot) return;
@@ -757,14 +723,7 @@ export function useHost(
     };
     read();
     return snapshots.subscribe(read);
-  }, [
-    selected,
-    following,
-    readingConversation,
-    snapshots,
-    active,
-    kept.read.write,
-  ]);
+  }, [selected, following, readingConversation, snapshots, kept.read.write]);
   const updateView = useCallback(
     (id: string, update: (snapshot: Snapshot) => Snapshot) => {
       if (!live.current[id]) return;
@@ -776,13 +735,12 @@ export function useHost(
   const select = useCallback(
     (id: string) => {
       selection.current = id;
-      if (visible.current)
-        writeSelection(
-          id,
-          false,
-          catalogueRef.current?.sessions.find((session) => session.id === id)
-            ?.host || "",
-        );
+      writeSelection(
+        id,
+        false,
+        catalogueRef.current?.sessions.find((session) => session.id === id)
+          ?.host || "",
+      );
       // Following is owned solely by the transcript history controller:
       // a switch resumes the saved position
       // (or pins a fresh surface), which notifies through onFollow.
@@ -798,7 +756,7 @@ export function useHost(
         );
       setSelected(id);
     },
-    [snapshots, hostId],
+    [snapshots],
   );
   const correlate = useCallback((requestId: string) => {
     localRequests.current.add(requestId);
@@ -814,7 +772,7 @@ export function useHost(
     setOnline(false);
     setConnecting(false);
     connectedOnce.current = false;
-    if (visible.current) writeSelection("", true, hostId);
+    writeSelection("", true, "");
     setSelected("");
   }
   useEffect(() => {

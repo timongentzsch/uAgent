@@ -8,7 +8,9 @@
 #include "include/app/execution.h"
 #include "include/core/json.h"
 namespace uagent::web {
-bool CheckRemoteBundle(const std::string& directory, std::string& error);
+// Return the manifest only after every payload matches this build and its hash.
+std::optional<json> CheckRemoteBundle(const std::string& directory,
+                                      std::string& error);
 
 // Serving-host owned SSH transports. Reads never initiate a connection.
 class RemoteHosts {

@@ -1,43 +1,24 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
-#include <cctype>
 #include <charconv>
-#include <cstdint>
-#include <deque>
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <system_error>
 #include <utility>
-#include <vector>
 
-#include "include/agent/path_policy.h"
 #include "include/app/execution.h"
-#include "include/app/launch.h"
-#include "include/app/session_host.h"
 #include "include/app/workspace_files.h"
-#include "include/core/capture.h"
-#include "include/core/env.h"
-#include "include/core/file_watch.h"
 #include "include/core/fs.h"
-#include "include/core/library.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
-#include "include/tools/files.h"
 #include "src/web/master_internal.h"
 
 namespace uagent::web::master {
 namespace fs = std::filesystem;
-using workspace_files::Change;
-using workspace_files::Changes;
 using workspace_files::DeckPage;
-using workspace_files::Find;
-using workspace_files::List;
 using workspace_files::PreviewMime;
-using workspace_files::ReadChanges;
-using workspace_files::ReadDiff;
 using workspace_files::Resolve;
 namespace {
 
@@ -85,149 +66,87 @@ std::string WithScript(std::string html, const std::string& script) {
 }  // namespace
 
 void Master::Files(const Request& request, Response& response) {
+  const std::string id = request.matches[1].str();
   std::string folder;
   {
     std::lock_guard lock(mutex_);
-    folder = host_.Folder(request.matches[1].str());
+    folder = host_.Folder(id);
   }
   if (folder.empty()) {
     Error(response, "unknown session", 404);
     return;
   }
-  const int modes = request.has_param("list") + request.has_param("read") +
-                    request.has_param("raw") + request.has_param("find") +
-                    request.has_param("changes") + request.has_param("diff") +
-                    request.has_param("png") + request.has_param("pdf");
+  int modes = 0;
+  std::string mode, path;
+  for (const char* name :
+       {"list", "read", "raw", "find", "changes", "diff", "png", "pdf"}) {
+    if (!request.has_param(name)) continue;
+    ++modes;
+    mode = name;
+    path = request.get_param_value(name);
+  }
   if (modes != 1) {
     Error(response,
           "name one of list, read, raw, find, changes, diff, png or pdf");
     return;
   }
-  const std::string id = request.matches[1].str();
-  if (host_.WorkspaceOf(id).Remote()) {
-    const json target = host_.Execution(id);
-    if (target.is_null()) {
-      Error(response, "Host is disconnected. Choose Reconnect.", 503);
-      return;
-    }
-    execution::Client remote(execution::TargetFromJson(target));
-    json operation = {{"op", "files"}};
-    for (const char* mode :
-         {"list", "read", "raw", "find", "changes", "diff", "png", "pdf"}) {
-      if (!request.has_param(mode)) continue;
-      if (std::string_view(mode) == "png" || std::string_view(mode) == "pdf") {
-        Picture(request, response, fs::path(folder));
-        return;
-      }
-      operation["mode"] = mode;
-      operation["path"] = request.get_param_value(mode);
-    }
-    const json result = remote.Call(operation);
-    if (result.contains("error")) {
-      Error(response, JsonValue(result, "error", "Remote file unavailable"),
-            JsonValue(result, "status", 503));
-      return;
-    }
-    if (JsonValue(operation, "mode", "") == "raw") {
-      std::string bytes;
-      if (!HexDecode(JsonValue(result, "data", ""), bytes, kUploadBytes)) {
-        Error(response, "Invalid remote file", 502);
-        return;
-      }
-      std::string mime = RasterMime(bytes);
-      if (mime.empty()) mime = SvgMime(bytes);
-      const bool image = !mime.empty();
-      ServeFile(response, std::move(bytes), image ? mime : kOctetStreamMime,
-                JsonValue(result, "name", "file"),
-                image && !request.has_param("download"));
-    } else {
-      Reply(response, result);
-    }
-    return;
-  }
-  std::optional<fs::path> root = CanonicalDirectory(folder);
+  const bool remote = host_.WorkspaceOf(id).Remote();
+  const std::optional<fs::path> root =
+      remote ? fs::path(folder) : CanonicalDirectory(folder);
   if (!root) {
     Error(response, "not found", 404);
     return;
   }
-  if (request.has_param("changes") || request.has_param("diff")) {
-    const bool listing = request.has_param("changes");
-    const Changes changes = ReadChanges(
-        *root, listing ? "." : ":(literal)" + request.get_param_value("diff"));
-    if (listing) {
-      json rows = json::array();
-      for (const Change& change : changes.list) {
-        rows.push_back(
-            {{"path", change.path}, {"state", std::string(1, change.state)}});
-      }
-      Reply(response, {{"changes", std::move(rows)},
-                       {"more", changes.more},
-                       {"repository", changes.repository}});
-      return;
-    }
-    const std::optional<json> diff =
-        ReadDiff(*root, changes, request.get_param_value("diff"));
-    if (!diff) {
-      Error(response, "not found", 404);
-      return;
-    }
-    Reply(response, *diff);
+  const json execution_target = remote ? host_.Execution(id) : json();
+  if (remote && execution_target.is_null()) {
+    Error(response, "Host is disconnected. Choose Reconnect.", 503);
     return;
   }
-  if (request.has_param("png") || request.has_param("pdf")) {
+  if (mode == "png" || mode == "pdf") {
     Picture(request, response, *root);
     return;
   }
-  if (request.has_param("find")) {
-    Reply(response, Find(*root, request.get_param_value("find")));
-    return;
+  std::string bytes, name;
+  if (remote || mode != "raw") {
+    const json operation = {{"op", "files"}, {"mode", mode}, {"path", path}};
+    json result;
+    if (remote) {
+      execution::Client client(execution::TargetFromJson(execution_target));
+      result = client.Call(operation);
+    } else {
+      result = workspace_files::Request(*root, operation);
+    }
+    if (result.contains("error")) {
+      Error(response, JsonValue(result, "error", "File unavailable"),
+            JsonValue(result, "status", remote ? 503 : 404));
+      return;
+    }
+    if (mode != "raw") {
+      Reply(response, result);
+      return;
+    }
+    if (!HexDecode(JsonValue(result, "data", ""), bytes, kUploadBytes)) {
+      Error(response, "Invalid remote file", 502);
+      return;
+    }
+    name = JsonValue(result, "name", "file");
+  } else {
+    // Local downloads keep their direct byte path, without RPC encoding.
+    const auto target = Resolve(*root, path);
+    std::string error;
+    if (!target ||
+        !ReadRegularFile(target->string(), kUploadBytes, bytes, error)) {
+      Error(response, "not found", 404);
+      return;
+    }
+    name = target->filename().string();
   }
-  const std::string mode = request.has_param("list")   ? "list"
-                           : request.has_param("read") ? "read"
-                                                       : "raw";
-  std::optional<fs::path> target =
-      Resolve(*root, request.get_param_value(mode));
-  std::optional<json> listing;
-  if (target && mode == "list") listing = List(*root, *target);
-  if (listing) {
-    Reply(response, *listing);
-    return;
-  }
-  // Read a byte past the text shown, so a cut is seen.
-  const bool read = mode == "read";
-  std::error_code ec;
-  const uintmax_t size = target ? fs::file_size(*target, ec) : 0;
-  std::string bytes, error;
-  if (!target || mode == "list" || ec ||
-      !ReadRegularFile(target->string(),
-                       read ? kFileViewBytes + 1 : kUploadBytes, bytes, error,
-                       read)) {
-    Error(response, "not found", 404);
-    return;
-  }
-  if (!read) {
-    // Only an image opens in the browser; anything else, HTML included,
-    // downloads, so no file in the folder runs on this origin.
-    std::string mime = RasterMime(bytes);
-    if (mime.empty()) mime = SvgMime(bytes);
-    const bool image = !mime.empty();
-    ServeFile(response, std::move(bytes), image ? mime : kOctetStreamMime,
-              target->filename().string(),
-              image && !request.has_param("download"));
-    return;
-  }
-  if (!LikelyTextFile(*target)) {
-    Error(response, "not a text file", 415);
-    return;
-  }
-  const bool more = bytes.size() > kFileViewBytes;
-  // What a person's edit is saved against: only a file read whole.
-  const std::string revision =
-      more ? std::string() : DocumentRevision(target->string(), bytes);
-  Reply(response, {{"text", Utf8Prefix(std::move(bytes), kFileViewBytes)},
-                   {"bytes", size},
-                   {"more", more},
-                   {"revision", revision}});
+  // Only an image opens in the browser; HTML and other files download.
+  std::string mime = RasterMime(bytes);
+  if (mime.empty()) mime = SvgMime(bytes);
+  const bool image = !mime.empty();
+  ServeFile(response, std::move(bytes), image ? mime : kOctetStreamMime, name,
+            image && !request.has_param("download"));
 }
 
 // A person's edit of a text file in the conversation's folder, saved only if
@@ -271,31 +190,15 @@ void Master::FileWrite(const Request& request, Response& response) {
     Error(response, root ? "invalid request" : "unknown session", 400);
     return;
   }
-  const std::optional<fs::path> target =
-      Resolve(*root, JsonValue(body, "path", ""));
-  if (!target || !fs::is_regular_file(*target) || !LikelyTextFile(*target)) {
-    Error(response, "not found", 404);
-    return;
+  json operation = body;
+  operation["mode"] = "write";
+  const json result = workspace_files::Request(*root, operation);
+  if (result.contains("error")) {
+    Error(response, JsonValue(result, "error", "cannot save"),
+          JsonValue(result, "status", 500));
+  } else {
+    Reply(response, result);
   }
-  const std::string text = JsonValue(body, "text", "");
-  if (text.size() > kFileViewBytes) {
-    Error(response, "too large to save here", 413);
-    return;
-  }
-  std::string previous, error;
-  bool exists = false;
-  if (json refused = CheckRevision(body, *target, kFileViewBytes, "file",
-                                   previous, exists);
-      !refused.is_null()) {
-    Error(response, JsonValue(refused, "error", "cannot save"),
-          refused.contains("conflict") ? 409 : 500);
-    return;
-  }
-  if (!AtomicWriteFile(target->string(), text, 0644, true, error)) {
-    Error(response, error, 500);
-    return;
-  }
-  Reply(response, {{"revision", DocumentRevision(target->string(), text)}});
 }
 
 std::string Master::PreviewBase(const std::string& id) {

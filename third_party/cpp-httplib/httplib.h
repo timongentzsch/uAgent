@@ -1758,8 +1758,6 @@ struct Response {
   Headers headers;
   Headers trailers;
   std::string body;
-  // A relay has already applied the upstream request ranges.
-  bool ranges_applied = false;
   std::string location; // Redirect location
 
   // User-defined context — set by pre-routing/pre-request handlers and read
@@ -2760,9 +2758,7 @@ public:
                            const Params &params = {},
                            const Headers &headers = {},
                            const std::string &body = {},
-                           const std::string &content_type = {},
-                           ContentProvider upload = {}, size_t upload_length = 0,
-                           bool chunked_upload = false);
+                           const std::string &content_type = {});
 
   bool send(Request &req, Response &res, Error &error);
   Result send(const Request &req);
@@ -3148,9 +3144,7 @@ public:
                                        const Params &params = {},
                                        const Headers &headers = {},
                                        const std::string &body = {},
-                                       const std::string &content_type = {},
-                           ContentProvider upload = {}, size_t upload_length = 0,
-                           bool chunked_upload = false);
+                                       const std::string &content_type = {});
 
   bool send(Request &req, Response &res, Error &error);
   Result send(const Request &req);
@@ -9647,7 +9641,6 @@ inline void coalesce_ranges(Ranges &ranges, size_t content_length) {
 }
 
 inline bool range_error(Request &req, Response &res) {
-  if (res.ranges_applied) { return false; }
   if (!req.ranges.empty() && 200 <= res.status && res.status < 300) {
     if (res.body.empty() && res.content_provider_ && res.content_length_ == 0) {
       req.ranges.clear();
@@ -13238,7 +13231,7 @@ Server::write_content_with_provider(Stream &strm, const Request &req,
     // only for a 2xx status, slicing under any other status would write a body
     // that disagrees with the header already sent, from an unchecked offset.
     auto is_partial =
-        !res.ranges_applied && !req.ranges.empty() && res.status == StatusCode::PartialContent_206;
+        !req.ranges.empty() && res.status == StatusCode::PartialContent_206;
 
     if (!is_partial) {
       return detail::write_content(strm, res.content_provider_, 0,
@@ -13969,8 +13962,6 @@ inline bool Server::apply_static_file_compression(const Request &req,
 inline void Server::apply_ranges(const Request &req, Response &res,
                                  std::string &content_type,
                                  std::string &boundary) const {
-  const Ranges no_ranges;
-  const auto &ranges = res.ranges_applied ? no_ranges : req.ranges;
   // A known-length content provider leaves `res.body` empty, so the compressor
   // at the end of this function never runs for one (issue #2545). A file-backed
   // provider is fully readable right here, so compress it and answer with an
@@ -13980,7 +13971,7 @@ inline void Server::apply_ranges(const Request &req, Response &res,
   // none of the framing below applies.
   if (apply_static_file_compression(req, res)) { return; }
 
-  if (ranges.size() > 1 && res.status == StatusCode::PartialContent_206) {
+  if (req.ranges.size() > 1 && res.status == StatusCode::PartialContent_206) {
     auto it = res.headers.find("Content-Type");
     if (it != res.headers.end()) {
       content_type = it->second;
@@ -13998,11 +13989,11 @@ inline void Server::apply_ranges(const Request &req, Response &res,
   if (res.body.empty()) {
     if (res.content_length_ > 0) {
       size_t length = 0;
-      if (ranges.empty() || res.status != StatusCode::PartialContent_206) {
+      if (req.ranges.empty() || res.status != StatusCode::PartialContent_206) {
         length = res.content_length_;
-      } else if (ranges.size() == 1) {
+      } else if (req.ranges.size() == 1) {
         auto offset_and_length = detail::get_range_offset_and_length(
-            ranges[0], res.content_length_);
+            req.ranges[0], res.content_length_);
 
         length = offset_and_length.second;
 
@@ -14026,11 +14017,11 @@ inline void Server::apply_ranges(const Request &req, Response &res,
       }
     }
   } else {
-    if (ranges.empty() || res.status != StatusCode::PartialContent_206) {
+    if (req.ranges.empty() || res.status != StatusCode::PartialContent_206) {
       ;
-    } else if (ranges.size() == 1) {
+    } else if (req.ranges.size() == 1) {
       auto offset_and_length =
-          detail::get_range_offset_and_length(ranges[0], res.body.size());
+          detail::get_range_offset_and_length(req.ranges[0], res.body.size());
       auto offset = offset_and_length.first;
       auto length = offset_and_length.second;
 
@@ -14882,8 +14873,7 @@ inline ClientImpl::StreamHandle
 ClientImpl::open_stream(const std::string &method, const std::string &path,
                         const Params &params, const Headers &headers,
                         const std::string &body,
-                        const std::string &content_type, ContentProvider upload,
-                        size_t upload_length, bool chunked_upload) {
+                        const std::string &content_type) {
   StreamHandle handle;
   handle.response = detail::make_unique<Response>();
   handle.error = Error::Success;
@@ -14955,15 +14945,7 @@ ClientImpl::open_stream(const std::string &method, const std::string &path,
   req.path = query_path;
   req.headers = headers;
   req.body = body;
-  req.content_provider_ = std::move(upload);
-  req.content_length_ = upload_length;
-  req.is_chunked_content_provider_ = chunked_upload;
 
-  if (req.content_provider_) {
-    req.set_header("Content-Type", content_type);
-    if (chunked_upload) req.set_header("Transfer-Encoding", "chunked");
-    else req.set_header("Content-Length", std::to_string(upload_length));
-  }
   prepare_default_headers(req, true, content_type);
 
   auto &strm = *handle.stream_;
@@ -14985,11 +14967,6 @@ ClientImpl::open_stream(const std::string &method, const std::string &path,
       handle.response.reset();
       return handle;
     }
-  }
-
-  if (req.content_provider_ && !write_content_with_provider(strm, req, handle.error)) {
-    handle.response.reset();
-    return handle;
   }
 
   if (!read_response_line(strm, req, *handle.response) ||
@@ -17651,10 +17628,8 @@ inline Result Client::Options(const std::string &path, const Headers &headers) {
 inline ClientImpl::StreamHandle
 Client::open_stream(const std::string &method, const std::string &path,
                     const Params &params, const Headers &headers,
-                    const std::string &body, const std::string &content_type,
-                    ContentProvider upload, size_t upload_length, bool chunked_upload) {
-  return cli_->open_stream(method, path, params, headers, body, content_type,
-                           std::move(upload), upload_length, chunked_upload);
+                    const std::string &body, const std::string &content_type) {
+  return cli_->open_stream(method, path, params, headers, body, content_type);
 }
 
 inline bool Client::send(Request &req, Response &res, Error &error) {

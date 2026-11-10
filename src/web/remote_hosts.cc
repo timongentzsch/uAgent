@@ -1,8 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 #include "include/web/remote_hosts.h"
 
-#include <sys/socket.h>
-
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
@@ -29,14 +27,12 @@ namespace uagent::web {
 namespace {
 using Clock = std::chrono::steady_clock;
 struct Host {
-  std::string id, address, name, control, socket, log, client, executable, auth;
-  uint64_t generation = 0;
+  std::string id, address, name, control, log, client, executable, auth;
   mutable std::mutex mutex;
   std::condition_variable wake;
   std::jthread worker;
   std::string phase = "disconnected", error;
-  bool requested = false, disconnect = false, attempting = false,
-       failed = false;
+  bool requested = false, disconnect = false, attempting = false;
   int retry = 0;
   pid_t pid = -1;
   bool endpoint = false;
@@ -89,7 +85,6 @@ std::optional<double> RoundTrip(const Host& host) {
 void Close(Host& host) {
   if (host.pid > 0) StopProcess(host.pid, true, std::chrono::milliseconds(500));
   host.pid = -1;
-  unlink(host.socket.c_str());
   unlink(host.control.c_str());
 }
 std::string Bundle(const std::string& executable) {
@@ -134,29 +129,11 @@ bool Install(const Host& host, const std::string& executable,
   const std::string target =
       std::string(mac ? "macos-" : "linux-") + (arm ? "arm64" : "x86_64");
   const std::string bundle = Bundle(executable);
-  const json manifest = ReadJsonFile(bundle + "/manifest.json", MiB(1));
-  if (JsonValue(manifest, "build", "") != BuildIdentity() ||
-      !manifest.contains("targets") || !manifest["targets"].contains(target) ||
-      manifest["targets"].size() != 4) {
-    error =
-        "This installation has no complete matching remote bundle. Install the "
-        "four-target bundle for this build.";
-    return false;
-  }
-  if (!CheckRemoteBundle(bundle, error)) return false;
+  const auto manifest = CheckRemoteBundle(bundle, error);
+  if (!manifest) return false;
   const std::string archive = bundle + "/" + target + ".tar.gz";
-  CapturedProcess checksum;
-#ifdef __APPLE__
-  checksum = CaptureProcess({"/usr/bin/shasum", "-a", "256", archive});
-#else
-  checksum = CaptureProcess({"sha256sum", archive});
-#endif
-  const std::string hash = JsonValue(manifest["targets"][target], "sha256", "");
-  if (!checksum.Ok() || hash.size() != 64 ||
-      !checksum.output.starts_with(hash + " ")) {
-    error = "Remote bundle integrity check failed.";
-    return false;
-  }
+  const std::string hash =
+      JsonValue((*manifest)["targets"][target], "sha256", "");
   std::string bytes, read_error;
   if (!ReadRegularFile(archive, MiB(128), bytes, read_error)) {
     error = "Cannot read remote payload: " + read_error;
@@ -305,7 +282,6 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
   while (!stop.stop_requested()) {
     if (host.disconnect) {
       host.disconnect = false;
-      host.failed = false;
       // Invalidate in-flight streams before closing their SSH transport.
       // Their failures must not turn an explicit disconnect into a retry.
       host.endpoint = false;
@@ -316,16 +292,6 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       lock.unlock();
       Close(host);
       lock.lock();
-    }
-    if (host.failed && !host.disconnect) {
-      host.failed = false;
-      lock.unlock();
-      Close(host);
-      lock.lock();
-      host.endpoint = false;
-      host.retry = 0;
-      host.phase = "reconnecting";
-      due = Clock::now() + std::chrono::seconds(1);
     }
     if (host.endpoint) {
       int status = 0;
@@ -342,7 +308,6 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       host.phase = host.retry ? "reconnecting" : "connecting";
       host.round_trip_ms.reset();
       host.attempting = true;
-      ++host.generation;
       lock.unlock();
       bool endpoint = false;
       std::string error;
@@ -383,15 +348,15 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       sample_due = Clock::now() + std::chrono::seconds(30);
     }
     host.wake.wait_for(lock, std::chrono::seconds(1), [&] {
-      return stop.stop_requested() || host.requested || host.disconnect ||
-             host.failed;
+      return stop.stop_requested() || host.requested || host.disconnect;
     });
   }
   lock.unlock();
   Close(host);
 }
 }  // namespace
-bool CheckRemoteBundle(const std::string& directory, std::string& error) {
+std::optional<json> CheckRemoteBundle(const std::string& directory,
+                                      std::string& error) {
   const json manifest = ReadJsonFile(directory + "/manifest.json", MiB(1));
   if (JsonValue(manifest, "build", "") != BuildIdentity() ||
       !manifest.contains("targets") || !manifest["targets"].is_object() ||
@@ -399,7 +364,7 @@ bool CheckRemoteBundle(const std::string& directory, std::string& error) {
     error =
         "A complete four-target remote bundle for this exact build is "
         "required.";
-    return false;
+    return std::nullopt;
   }
   for (const char* target :
        {"linux-x86_64", "linux-arm64", "macos-x86_64", "macos-arm64"}) {
@@ -413,7 +378,7 @@ bool CheckRemoteBundle(const std::string& directory, std::string& error) {
         !std::all_of(expected.begin(), expected.end(),
                      [](unsigned char ch) { return std::isxdigit(ch); })) {
       error = "Remote payload is missing or malformed: " + std::string(target);
-      return false;
+      return std::nullopt;
     }
 #ifdef __APPLE__
     const auto checksum =
@@ -423,10 +388,10 @@ bool CheckRemoteBundle(const std::string& directory, std::string& error) {
 #endif
     if (!checksum.Ok() || !checksum.output.starts_with(expected + " ")) {
       error = "Remote payload integrity differs: " + std::string(target);
-      return false;
+      return std::nullopt;
     }
   }
-  return true;
+  return manifest;
 }
 
 struct RemoteHosts::Impl {
@@ -460,7 +425,6 @@ struct RemoteHosts::Impl {
     if (!EnsurePrivateDirectory(directory)) return {};
     const std::string base = directory + "/" + id.substr(0, 12);
     host->control = base + ".ctl";
-    host->socket = base + ".sock";
     host->log = GlobalBase() + "/web/ssh-" + id + ".log";
     hosts[id] = host;
     host->worker = std::jthread([host, this](std::stop_token stop) {

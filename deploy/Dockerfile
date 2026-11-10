@@ -1,3 +1,4 @@
+ARG UAGENT_INSTALL_STAGE=native
 FROM node:24-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS frontend
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
@@ -18,6 +19,13 @@ RUN cmake -S . -B /tmp/uagent-build -DCMAKE_BUILD_TYPE=Release \
     && UAGENT_BUILD_DIR=/tmp/uagent-build UAGENT_PREFIX=/opt/uagent \
        UAGENT_NONINTERACTIVE=1 UAGENT_REMOTE_BUNDLE="$(test ! -d /src/remote-bundle || echo /src/remote-bundle)" ./install.sh
 
+# CI supplies the complete installation it already built and tested.
+FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS prebuilt
+COPY uagent-install.tar.gz /tmp/uagent-install.tar.gz
+RUN mkdir -p /opt/uagent && tar -xzf /tmp/uagent-install.tar.gz -C /opt/uagent --strip-components=1
+
+FROM ${UAGENT_INSTALL_STAGE} AS installation
+
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
     bash ca-certificates curl git ripgrep openssh-client tini tigervnc-standalone-server \
@@ -29,7 +37,7 @@ RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 instal
     && rm -f /tmp/chrome.deb \
     && rm -rf /var/lib/apt/lists/*
 # The install, not the bare binary: the bundled skills sit beside it.
-COPY --from=native /opt/uagent/ /usr/local/
+COPY --from=installation /opt/uagent/ /usr/local/
 COPY deploy/chrome-policy.json /etc/opt/chrome/policies/managed/uagent.json
 RUN groupadd --gid 10001 agent && useradd --uid 10001 --gid 10001 \
     --home-dir /data/agent --shell /bin/bash agent \

@@ -446,10 +446,16 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: remote-bundle
-          path: remote-bundle
+          name: release-complete
+          path: image-release
+      - name: Verify the tested Linux installation
+        run: |
+          version=$(sed -nE 's/^project\(uagent VERSION ([^ ]+).*/\1/p' CMakeLists.txt)
+          archive="uagent-$version-linux-x86_64.tar.gz"
+          (cd image-release && sha256sum -c "$archive.sha256")
+          cp "image-release/$archive" uagent-install.tar.gz
       - name: Build the container image
-        run: docker buildx build -f deploy/Dockerfile --load -t uagent-image .
+        run: docker buildx build -f deploy/Dockerfile --build-arg UAGENT_INSTALL_STAGE=prebuilt --load -t uagent-image .
       - name: Start it
         run: docker run --rm --security-opt seccomp=deploy/seccomp-chrome.json uagent-image uagent --version
 

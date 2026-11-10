@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 // Blocked site data can deny either the storage getter or its methods. Keep
 // this visit's known values in memory so drafts and editors remain usable.
@@ -156,7 +156,9 @@ export function useStored<T>(store: Stored<T>) {
       }),
     [store],
   );
-  useEffect(() => {
+  // A visible update must survive an immediate reload. Delayed stores still
+  // debounce serialization; committing here also lets pagehide flush them.
+  useLayoutEffect(() => {
     if (kept.current !== value) store.write((kept.current = value));
   }, [store, value]);
   return [value, setValue] as const;

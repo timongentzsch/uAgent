@@ -108,6 +108,12 @@ for (const [label, viewport, touch] of [
       const viewer = page.getByRole("dialog", { name: "tall.png" });
       const screenshot = viewer.getByRole("img", { name: "tall.png" });
       await expect(screenshot).toBeVisible();
+      const controls = viewer.getByRole("group", { name: "Zoom" });
+      const level = controls.locator("output");
+      // Image decoding and the fit observer follow the initial paint.
+      await expect
+        .poll(async () => Number((await level.textContent()).replace("%", "")))
+        .toBeLessThan(100);
       const fitted = await screenshot.boundingBox();
       const frame = await viewer
         .getByRole("group", { name: "tall.png" })
@@ -116,8 +122,6 @@ for (const [label, viewport, touch] of [
       expect(fitted.y + fitted.height).toBeLessThanOrEqual(
         frame.y + frame.height + 0.5,
       );
-      const controls = viewer.getByRole("group", { name: "Zoom" });
-      const level = controls.locator("output");
       const scaled = async () =>
         (await screenshot.boundingBox()).width / fitted.width;
       // The level is against the real size: 2400px shown in a shorter frame.

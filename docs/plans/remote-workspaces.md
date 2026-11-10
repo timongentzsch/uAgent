@@ -1,8 +1,10 @@
 # Remote workspaces over SSH
 
-Status: implementation in progress, 2026-11-10, following the Fable 5.2 review.
-The checklist below remains the acceptance contract. Local passing checks,
-four native CI payloads, dev installation and GPU validation are separate gates.
+Implementation: [PR #336](https://github.com/timongentzsch/uAgent/pull/336),
+2026-11-10, following the Fable 5.2 review. The checklist below remains the
+acceptance contract; the PR records current validation and deployment evidence.
+Local checks, four native CI payloads, dev installation and GPU validation
+are separate gates.
 See [Remote hosts](../REMOTE_HOSTS.md) for the implemented connection flow.
 
 The first update gate is deliberately conservative: an attached runtime,
@@ -57,9 +59,9 @@ The review and follow-up source inspection establish these reuse points:
 | `sidebar.tsx`, `pins.tsx`, `folding.ts`, `app.tsx` | Grouping, keyboard order, whole-list pin writes, folding and one desktop/drawer sidebar already exist. |
 | `install.sh`, `CMakeLists.txt`, CI packaging | Three platform builds exist; Intel macOS and the complete remote bundle need release work. Current minimums include glibc 2.38 and macOS 15. |
 
-A streaming proxy, process survival, payload sizes and platform compatibility
-have not been validated at runtime. The choices below are the implementation
-contract; stage 1 proves the transport and lifecycle assumptions first.
+At this source baseline, streaming proxy behavior, process survival, payload
+sizes and platform compatibility had no runtime proof. The stages below are
+the implementation contract; the PR records the resulting checks and limits.
 
 ## User experience
 

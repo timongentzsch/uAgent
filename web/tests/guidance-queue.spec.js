@@ -32,6 +32,16 @@ for (const width of [320, 390, 1280]) {
     await expect(page.locator(".message.user", { hasText: text })).toHaveCount(
       0,
     );
+    // Once drawn, the queued intent is durable even on an immediate reload.
+    expect(
+      await page.evaluate(
+        (text) =>
+          JSON.parse(sessionStorage.getItem("uagent-outgoing") || "[]").find(
+            (item) => item.body?.text === text,
+          )?.status,
+        text,
+      ),
+    ).toBe("Queued for after this turn");
     await page.reload();
     await online(page);
     await expect(tray).toContainText(text);

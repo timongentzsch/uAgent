@@ -24,9 +24,10 @@
 namespace uagent {
 
 std::filesystem::path ProjectRoot(const std::filesystem::path& cwd) {
-  if (Workspace().Remote())
+  if (Workspace().Remote()) {
     return JsonValue(WorkspaceRequest({{"op", "instructions"}}), "root",
                      Workspace().path);
+  }
   for (auto path = cwd;; path = path.parent_path()) {
     std::error_code ec;
     if (std::filesystem::exists(path / ".git", ec)) return path;
@@ -36,8 +37,9 @@ std::filesystem::path ProjectRoot(const std::filesystem::path& cwd) {
 }
 
 bool InGitRepository(const std::filesystem::path& dir) {
-  if (Workspace().Remote())
+  if (Workspace().Remote()) {
     return JsonValue(WorkspaceRequest({{"op", "instructions"}}), "git", false);
+  }
   std::error_code ec;
   return std::filesystem::exists(ProjectRoot(dir) / ".git", ec);
 }
@@ -56,10 +58,11 @@ std::filesystem::path InstructionFileIn(const std::filesystem::path& dir) {
 
 std::filesystem::path InstructionPath(bool project,
                                       const std::filesystem::path& cwd) {
-  if (project && Workspace().Remote())
+  if (project && Workspace().Remote()) {
     return JsonValue(
         WorkspaceRequest({{"op", "instructions"}, {"action", "path"}}), "path",
         Workspace().path + "/AGENTS.md");
+  }
   return InstructionFileIn(project ? ProjectRoot(cwd)
                                    : std::filesystem::path(GlobalBase()));
 }
@@ -90,14 +93,18 @@ ProjectInstructions LoadProjectInstructions(const std::filesystem::path& cwd,
     const json project = WorkspaceRequest({{"op", "instructions"}});
     const std::string text = JsonValue(project, "text", "");
     const size_t remaining = max_bytes - loaded.text.size();
-    if (remaining && !text.empty())
+    if (remaining && !text.empty()) {
       loaded.text += "\n\n" + Utf8Prefix(text, remaining);
+    }
     loaded.truncated =
         text.size() > remaining || JsonValue(project, "truncated", false);
-    if (const json* sources = JsonArray(project, "sources"))
-      for (const auto& source : *sources)
-        if (source.is_string())
+    if (const json* sources = JsonArray(project, "sources")) {
+      for (const auto& source : *sources) {
+        if (source.is_string()) {
           loaded.sources.push_back(source.get<std::string>());
+        }
+      }
+    }
     return loaded;
   }
 
@@ -154,10 +161,11 @@ json InstructionFiles(const std::filesystem::path& cwd) {
                           ? &result["files"]
                           : nullptr) {
       for (auto it = files->begin(); it != files->end();) {
-        if (JsonValue(*it, "scope", "") == "user")
+        if (JsonValue(*it, "scope", "") == "user") {
           it = files->erase(it);
-        else
+        } else {
           ++it;
+        }
       }
       const auto user = InstructionPath(false, cwd);
       files->insert(files->begin(), json{{"scope", "user"},

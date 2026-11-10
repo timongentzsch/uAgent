@@ -302,36 +302,42 @@ json Request(const fs::path& root, const json& request) {
   if (mode == "changes" || mode == "diff") {
     const Changes changes =
         ReadChanges(root, mode == "changes" ? "." : ":(literal)" + path);
-    if (mode == "diff")
+    if (mode == "diff") {
       return ReadDiff(root, changes, path)
           .value_or(json{{"error", "not found"}, {"status", 404}});
+    }
     json rows = json::array();
-    for (const auto& change : changes.list)
+    for (const auto& change : changes.list) {
       rows.push_back(
           {{"path", change.path}, {"state", std::string(1, change.state)}});
+    }
     return {{"changes", rows},
             {"more", changes.more},
             {"repository", changes.repository}};
   }
   const auto target = Resolve(root, path);
   if (!target) return {{"error", "not found"}, {"status", 404}};
-  if (mode == "list")
+  if (mode == "list") {
     return List(root, *target)
         .value_or(json{{"error", "not found"}, {"status", 404}});
-  if (mode == "deck")
+  }
+  if (mode == "deck") {
     return {{"text", DeckPage(*target, JsonValue(request, "width", 1920),
                               JsonValue(request, "height", 1080))}};
+  }
   if (mode == "stat") {
     std::error_code error;
     return {{"directory", fs::is_directory(*target, error)},
             {"regular", fs::is_regular_file(*target, error)}};
   }
   if (mode == "write") {
-    if (!LikelyTextFile(*target) || !fs::is_regular_file(*target))
+    if (!LikelyTextFile(*target) || !fs::is_regular_file(*target)) {
       return {{"error", "not found"}, {"status", 404}};
+    }
     const std::string text = JsonValue(request, "text", "");
-    if (text.size() > kFileViewBytes)
+    if (text.size() > kFileViewBytes) {
       return {{"error", "too large to save here"}, {"status", 413}};
+    }
     std::string previous, error;
     bool exists = false;
     json refused = CheckRevision(request, *target, kFileViewBytes, "file",
@@ -340,19 +346,22 @@ json Request(const fs::path& root, const json& request) {
       refused["status"] = refused.contains("conflict") ? 409 : 500;
       return refused;
     }
-    if (!AtomicWriteFile(target->string(), text, 0644, true, error))
+    if (!AtomicWriteFile(target->string(), text, 0644, true, error)) {
       return {{"error", error}, {"status", 500}};
+    }
     return {{"revision", DocumentRevision(target->string(), text)}};
   }
   std::string bytes, error;
   const bool read = mode == "read";
   if (!ReadRegularFile(target->string(),
                        read ? kFileViewBytes + 1 : session::kUploadBytes, bytes,
-                       error, read))
+                       error, read)) {
     return {{"error", "not found"}, {"status", 404}};
+  }
   if (read) {
-    if (!LikelyTextFile(*target))
+    if (!LikelyTextFile(*target)) {
       return {{"error", "not a text file"}, {"status", 415}};
+    }
     const bool more = bytes.size() > kFileViewBytes;
     std::error_code ec;
     return {
@@ -361,12 +370,14 @@ json Request(const fs::path& root, const json& request) {
         {"more", more},
         {"revision", more ? "" : DocumentRevision(target->string(), bytes)}};
   }
-  if (mode != "raw" && mode != "preview")
+  if (mode != "raw" && mode != "preview") {
     return {{"error", "unknown file operation"}};
+  }
   const std::string mime = mode == "preview" ? PreviewMime(*target)
                                              : AttachmentMime(target->string());
-  if (mode == "preview" && mime.empty())
+  if (mode == "preview" && mime.empty()) {
     return {{"error", "not found"}, {"status", 404}};
+  }
   return {{"data", HexEncode(bytes)},
           {"mime", mime},
           {"name", target->filename().string()}};

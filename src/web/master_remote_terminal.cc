@@ -1,4 +1,7 @@
 // Copyright 2026 Timon Gentzsch
+#include <string>
+#include <utility>
+
 #include "include/app/execution.h"
 #include "include/core/fs.h"
 #include "include/core/private_store.h"
@@ -23,8 +26,9 @@ void Master::LoadRemoteTerminals() {
         !session::OpaqueId(JsonValue(row, "runtime", "")) ||
         !session::OpaqueId(JsonValue(row, "terminal", "")) ||
         !session::OpaqueId(JsonValue(row, "host", "")) || cwd.empty() ||
-        cwd.front() != '/')
+        cwd.front() != '/') {
       continue;
+    }
     remote_terminals_.push_back(row);
   }
 }
@@ -34,8 +38,9 @@ bool Master::RemoteTerminalCommand(CommandCall& call) {
   json record;
   {
     std::lock_guard lock(remote_terminals_mutex_);
-    for (const json& item : remote_terminals_)
+    for (const json& item : remote_terminals_) {
       if (JsonValue(item, "id", "") == id) record = item;
+    }
   }
   const std::string host = record.is_null()
                                ? JsonValue(call.command, "host", "")
@@ -75,8 +80,9 @@ bool Master::RemoteTerminalCommand(CommandCall& call) {
   const json result = remote.Call(request);
   call.error = JsonValue(result, "error", "");
   if (action == "close" && (call.error == "Remote terminal was interrupted." ||
-                            call.error == "Terminal has ended."))
+                            call.error == "Terminal has ended.")) {
     call.error.clear();
+  }
   if (!call.error.empty()) return true;
   if (action == "open") {
     record["terminal"] = JsonValue(result, "terminal", "");
@@ -90,16 +96,18 @@ bool Master::RemoteTerminalCommand(CommandCall& call) {
       if (remote_terminals_.size() >= kWebTerminals) {
         call.error = "Terminal limit reached.";
         abandon = true;
-      } else
+      } else {
         remote_terminals_.push_back(record);
+      }
     } else {
       for (auto it = remote_terminals_.begin(); it != remote_terminals_.end();
            ++it) {
         if (JsonValue(*it, "id", "") != id) continue;
-        if (action == "close")
+        if (action == "close") {
           remote_terminals_.erase(it);
-        else if (action == "rename")
+        } else if (action == "rename") {
           (*it)["title"] = JsonValue(call.command, "title", "");
+        }
         break;
       }
     }
@@ -108,18 +116,20 @@ bool Master::RemoteTerminalCommand(CommandCall& call) {
                           call.error) &&
         action == "open") {
       for (auto it = remote_terminals_.begin(); it != remote_terminals_.end();
-           ++it)
+           ++it) {
         if (JsonValue(*it, "id", "") == JsonValue(record, "id", "")) {
           remote_terminals_.erase(it);
           break;
         }
+      }
       abandon = true;
     }
   }
-  if (abandon)
+  if (abandon) {
     remote.Call({{"op", "terminal"},
                  {"action", "close"},
                  {"terminal", JsonValue(record, "terminal", "")}});
+  }
   if (call.error.empty()) {
     const json terminals = TerminalList();
     call.outcome["result"] = {{"id", record["id"]}, {"terminals", terminals}};
@@ -133,8 +143,9 @@ bool Master::RemoteTerminalSocket(const std::string& id,
   json record;
   {
     std::lock_guard lock(remote_terminals_mutex_);
-    for (const json& item : remote_terminals_)
+    for (const json& item : remote_terminals_) {
       if (JsonValue(item, "id", "") == id) record = item;
+    }
   }
   if (record.is_null()) return false;
   const json target = remotes_->Target(JsonValue(record, "host", ""),
@@ -183,16 +194,19 @@ bool Master::RemoteTerminalSocket(const std::string& id,
   while (!stopped) {
     const auto read = socket.read(data);
     if (read == httplib::ws::ReadResult::Fail ||
-        data.size() > kWebTerminalMessageBytes)
+        data.size() > kWebTerminalMessageBytes) {
       break;
+    }
     if (read == httplib::ws::ReadResult::Binary) {
-      if (command("write", {{"data", HexEncode(data)}}).contains("error"))
+      if (command("write", {{"data", HexEncode(data)}}).contains("error")) {
         break;
+      }
     } else {
       const json value = json::parse(data, nullptr, false);
       if (JsonValue(value, "type", "") != "resize" ||
-          command("resize", value).contains("error"))
+          command("resize", value).contains("error")) {
         break;
+      }
     }
   }
   stopped = true;

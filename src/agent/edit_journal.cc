@@ -143,9 +143,9 @@ json EditJournal::Revert(int64_t turn, const std::string& path) {
     } else if (Workspace().Remote()) {
       std::string before;
       if (entry.existed && !ReadRegularFile(Blob(turn, entry.path),
-                                            kUndoFileBytes, before, error))
+                                            kUndoFileBytes, before, error)) {
         reason = error;
-      else {
+      } else {
         const json result = WorkspaceRequest(
             {{"op", "undo"},
              {"path", entry.path},

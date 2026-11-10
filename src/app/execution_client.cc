@@ -2,9 +2,12 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "include/agent/activity_supervisor.h"
 #include "include/agent/session_store.h"
@@ -41,8 +44,9 @@ struct Client::Impl {
   json opened;
   std::string completion_request, error;
   explicit Impl(Target value) : target(std::move(value)) {
-    if (target.sandbox.empty())
+    if (target.sandbox.empty()) {
       target.sandbox = StringSetting(Cfg("UAGENT_SANDBOX"));
+    }
     socket = RuntimeDir() + "/e-" +
              HashHex(target.client + target.runtime + target.sandbox) + ".sock";
   }
@@ -121,8 +125,9 @@ struct Client::Impl {
     const std::string remote = JsonValue(identity, "socket", "");
     if (JsonValue(identity, "build", "") != BuildIdentity() || remote.empty() ||
         remote.front() != '/' ||
-        remote.find_first_of(":\n\r") != std::string::npos)
+        remote.find_first_of(":\n\r") != std::string::npos) {
       return false;
+    }
     auto cancel = Ssh();
     cancel.insert(cancel.begin() + 1,
                   {"-O", "cancel", "-L", socket + ":" + remote});
@@ -155,17 +160,19 @@ json Client::Call(json request, const ToolContext* context) {
   if ((op == "run" || op == "check") && request.contains("args")) {
     const std::string args = JsonDump(request["args"]);
     const std::string attachments = UagentDir(kHistoryDir) + "/";
-    if (args.find(attachments) != std::string::npos)
+    if (args.find(attachments) != std::string::npos) {
       return {{"error",
                "Attachments live on the main host. Copy one with write_file "
                "from= before using it remotely."}};
+    }
   }
   request["approval"] = ApprovalModeName(CurrentApprovalMode());
   const bool completion = op == "completions";
   if (completion) {
     std::lock_guard lock(impl_->mutex);
-    if (impl_->completion_request.empty())
+    if (impl_->completion_request.empty()) {
       impl_->completion_request = RandomToken(16);
+    }
     request["id"] = impl_->completion_request;
   }
   const bool run =
@@ -185,8 +192,9 @@ json Client::Call(json request, const ToolContext* context) {
   json result;
   {
     if (access(impl_->socket.c_str(), F_OK) != 0 &&
-        (op == "activities" || !impl_->Attach()))
+        (op == "activities" || !impl_->Attach())) {
       return impl_->Failure();
+    }
   }
   result = impl_->Exchange(request, context);
   auto received = [&](json value) {
@@ -196,8 +204,9 @@ json Client::Call(json request, const ToolContext* context) {
     }
     return value;
   };
-  if (!result.is_null() && !JsonValue(result, "pending", false))
+  if (!result.is_null() && !JsonValue(result, "pending", false)) {
     return received(std::move(result));
+  }
   if (!run) {
     if (op == "activities") return Unavailable();
     if (!impl_->Attach()) return Unavailable();
@@ -215,8 +224,9 @@ json Client::Call(json request, const ToolContext* context) {
     json receipt = impl_->Exchange({{"op", "result"}, {"id", id}});
     if (AbortRequested()) impl_->Exchange({{"op", "cancel"}, {"id", id}});
     if (!JsonValue(receipt, "known", false)) return received(Unavailable());
-    if (JsonValue(receipt, "done", false))
+    if (JsonValue(receipt, "done", false)) {
       return received(receipt.value("result", json()));
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
   return Unavailable();
@@ -265,8 +275,9 @@ std::vector<Tool> Client::Tools(const std::string& session_path) {
       const auto mode = CurrentApprovalMode();
       if (cache->args == args && cache->mode == mode &&
           Clock::now() - cache->at < std::chrono::seconds(1) &&
-          !cache->result.is_null())
+          !cache->result.is_null()) {
         return cache->result;
+      }
       const json result =
           Call({{"op", "check"}, {"tool", name}, {"args", args}});
       if (!result.contains("error")) {
@@ -285,12 +296,14 @@ std::vector<Tool> Client::Tools(const std::string& session_path) {
         [check](const json& args) -> std::optional<ToolArgumentIssue> {
       json value = check(args);
       if (const std::string failure = JsonValue(value, "error", "");
-          !failure.empty())
+          !failure.empty()) {
         return ArgumentIssue("remote.unavailable", failure);
-      if (const json* issue = JsonObject(value, "issue"))
+      }
+      if (const json* issue = JsonObject(value, "issue")) {
         return ArgumentIssue(JsonValue(*issue, "code", "remote.invalid"),
                              JsonValue(*issue, "message", "Invalid arguments"),
                              JsonValue(*issue, "field", ""));
+      }
       return std::nullopt;
     };
     tool.mutates = [check](const json& args) {
@@ -325,10 +338,11 @@ std::vector<Tool> Client::Tools(const std::string& session_path) {
       if (checked.contains("error")) return DecodeResult(checked);
       const json scope = checked.value("scope", json());
       if (!context.approved.is_null() &&
-          context.approved != scope.value("subject", json()))
+          context.approved != scope.value("subject", json())) {
         return ToolFailure(
             ToolErrorCode::kPermissionDenied,
             "What this call reaches changed after approval; ask again.");
+      }
       const json response = Call(
           {{"op", "run"}, {"tool", name}, {"args", args}, {"scope", scope}},
           &context);

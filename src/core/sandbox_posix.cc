@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <iterator>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -625,11 +626,13 @@ const SandboxStatus& SandboxRuntime() {
     static std::map<ApprovalMode, SandboxStatus> cache;
     std::lock_guard lock(mutex);
     const auto mode = CurrentApprovalMode();
-    if (const auto found = cache.find(mode); found != cache.end())
+    if (const auto found = cache.find(mode); found != cache.end()) {
       return found->second;
+    }
     SandboxStatus answer = remote();
-    if (answer.reason != "Remote sandbox is unavailable.")
+    if (answer.reason != "Remote sandbox is unavailable.") {
       return cache.emplace(mode, std::move(answer)).first->second;
+    }
     static thread_local SandboxStatus refused;
     refused = std::move(answer);
     return refused;
@@ -659,9 +662,10 @@ std::string SandboxInheritance() {
 }
 
 json SandboxDiagnosticJson() {
-  if (Workspace().Remote())
+  if (Workspace().Remote()) {
     return WorkspaceRequest({{"op", "sandbox"}})
         .value("diagnostic", json::object());
+  }
   const SandboxStatus& status = SandboxRuntime();
   switch (status.mode) {
     case SandboxMode::kOff:

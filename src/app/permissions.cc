@@ -175,7 +175,17 @@ std::string RuleSubject(const Tool& tool, const json& arguments,
   if (tool.approval_subject) return JsonDump(tool.approval_subject(arguments));
   if (const std::string* path = JsonStringRef(arguments, "path")) {
     // Inside the folder by its place there, so a rule reads as ./src/.
-    const std::filesystem::path canonical = CanonicalAccessPath(*path);
+    std::filesystem::path canonical;
+    if (Workspace().Remote()) {
+      const json checked = WorkspaceRequest({{"op", "check"},
+                                             {"tool", "read_path"},
+                                             {"args", {{"path", *path}}}});
+      canonical = JsonValue(checked.value("scope", json::object())
+                                .value("subject", json::object()),
+                            "resolved", *path);
+    } else {
+      canonical = CanonicalAccessPath(*path);
+    }
     if (PathWithin(canonical, root)) {
       return "./" + canonical.lexically_relative(root).generic_string();
     }

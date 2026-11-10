@@ -280,10 +280,11 @@ ToolResult StartAgents(const Api& api,
   }
   // Plan mode only reads, and so do the agents it starts.
   if (CurrentApprovalMode() == ApprovalMode::kPlan) launch.edits = "none";
-  if (launch.edits == "worktree" && Workspace().Remote())
+  if (launch.edits == "worktree" && Workspace().Remote()) {
     return ToolFailure(
         ToolErrorCode::kUnavailable,
         "Remote worktree agents are unavailable; use edits folder or none.");
+  }
   if (launch.edits == "worktree" && !InGitRepository(CanonicalCwd())) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "this folder is not in git, so there is no worktree; "
@@ -479,8 +480,9 @@ ToolResult Report(const SessionInfo& info) {
 // What it changed, from the host's git, never a model-run shell.
 ToolResult Diff(const SessionInfo& info) {
   if (!info.host.empty()) {
-    if (info.host != Workspace().host || info.cwd != Workspace().path)
+    if (info.host != Workspace().host || info.cwd != Workspace().path) {
       return Unavailable("Open the remote conversation to inspect its files.");
+    }
     const ToolResult result = execution::DecodeResult(WorkspaceRequest(
         {{"op", "run"},
          {"tool", "run"},

@@ -276,8 +276,9 @@ bool Connect(Host& host, const std::string& executable, bool& endpoint,
     present = Run(host, "test -x " + host.executable + " && " +
                             host.executable + " --build-id");
     if ((!present.Ok() || Trim(present.output) != build) &&
-        !Install(host, executable, error))
+        !Install(host, executable, error)) {
       return false;
+    }
   }
   endpoint = true;
   return true;
@@ -335,7 +336,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       lock.lock();
       host.attempting = false;
       if (connected) {
-        host.endpoint = std::move(endpoint);
+        host.endpoint = endpoint;
         host.phase = "connected";
         host.error.clear();
         host.retry = 0;
@@ -423,8 +424,9 @@ struct RemoteHosts::Impl {
       if (!WritePrivateFile(
               private_path,
               JsonDump({{"client", host->client}, {"auth", host->auth}}),
-              error))
+              error)) {
         return {};
+      }
     }
     host->id = id;
     host->address = address;

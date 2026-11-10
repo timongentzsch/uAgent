@@ -16,10 +16,14 @@ if "-O" in args and args[args.index("-O") + 1] == "check":
 elif "-O" in args:
     with socket.socket(socket.AF_UNIX) as command:
         command.connect(control)
-        command.sendall((args[args.index("-O")+1]+" "+args[args.index("-L") + 1]).encode())
+        command.sendall((args[args.index("-O") + 1] + " " + args[args.index("-L") + 1]).encode())
         assert command.recv(2) == b"ok"
 elif "-M" not in args:
-    env = {key:value for key,value in os.environ.items() if key in {"PATH","SHELL","LANG","TERM"} or key.startswith("LC_")}
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key in {"PATH", "SHELL", "LANG", "TERM"} or key.startswith("LC_")
+    }
     env["HOME"] = (pathlib.Path(os.environ["HOME"]) / "ssh-fixture-home").read_text().strip()
     sys.exit(subprocess.call(["sh", "-c", args[-1]], env=env))
 else:
@@ -43,17 +47,23 @@ else:
         except OSError:
             pass
         finally:
-            try: target.shutdown(socket.SHUT_WR)
-            except OSError: pass
+            try:
+                target.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
 
     def forward(listener, target):
         while True:
-            try: source, _ = listener.accept()
-            except OSError: return
-            destination = socket.socket(socket.AF_UNIX)
-            try: destination.connect(target)
+            try:
+                source, _ = listener.accept()
             except OSError:
-                source.close(); destination.close()
+                return
+            destination = socket.socket(socket.AF_UNIX)
+            try:
+                destination.connect(target)
+            except OSError:
+                source.close()
+                destination.close()
                 continue
             peers.extend((source, destination))
             for first, second in ((source, destination), (destination, source)):
@@ -66,13 +76,16 @@ else:
         while True:
             command, _ = commands.accept()
             with command:
-                action, spec = command.recv(4096).decode().split(" ",1)
-                local, remote = spec.split(":",1)
+                action, spec = command.recv(4096).decode().split(" ", 1)
+                local, remote = spec.split(":", 1)
                 if action == "cancel":
-                    listener = forwards.pop(spec,None)
-                    if listener: listener.close()
-                    try: os.unlink(local)
-                    except FileNotFoundError: pass
+                    listener = forwards.pop(spec, None)
+                    if listener:
+                        listener.close()
+                    try:
+                        os.unlink(local)
+                    except FileNotFoundError:
+                        pass
                 elif spec not in forwards:
                     listener = socket.socket(socket.AF_UNIX)
                     listener.bind(local)

@@ -1,4 +1,6 @@
 // Copyright 2026 Timon Gentzsch
+#include <string>
+
 #include "include/app/execution.h"
 #include "include/app/launch.h"
 #include "include/core/workspace.h"

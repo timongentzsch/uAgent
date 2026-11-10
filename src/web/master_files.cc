@@ -30,7 +30,15 @@
 
 namespace uagent::web::master {
 namespace fs = std::filesystem;
-using namespace workspace_files;
+using workspace_files::Change;
+using workspace_files::Changes;
+using workspace_files::DeckPage;
+using workspace_files::Find;
+using workspace_files::List;
+using workspace_files::PreviewMime;
+using workspace_files::ReadChanges;
+using workspace_files::ReadDiff;
+using workspace_files::Resolve;
 namespace {
 
 // The page may reach its own folder's address and Google Fonts, nothing else:
@@ -132,8 +140,9 @@ void Master::Files(const Request& request, Response& response) {
       ServeFile(response, std::move(bytes), image ? mime : kOctetStreamMime,
                 JsonValue(result, "name", "file"),
                 image && !request.has_param("download"));
-    } else
+    } else {
       Reply(response, result);
+    }
     return;
   }
   std::optional<fs::path> root = CanonicalDirectory(folder);
@@ -248,11 +257,12 @@ void Master::FileWrite(const Request& request, Response& response) {
     operation["op"] = "files";
     operation["mode"] = "write";
     const json result = remote.Call(operation);
-    if (result.contains("error"))
+    if (result.contains("error")) {
       Error(response, JsonValue(result, "error", "Remote write failed"),
             JsonValue(result, "status", 503));
-    else
+    } else {
       Reply(response, result);
+    }
     return;
   }
   const std::optional<fs::path> root =
@@ -341,10 +351,11 @@ void Master::Preview(const Request& request, Response& response) {
       return;
     }
     std::string mime = JsonValue(result, "mime", "text/html");
-    if (deck)
+    if (deck) {
       bytes = JsonValue(result, "text", "");
-    else if (mime == "text/html")
+    } else if (mime == "text/html") {
       bytes = WithScript(std::move(bytes), design_helper_);
+    }
     response.headers.erase("Content-Security-Policy");
     response.headers.erase("Cross-Origin-Resource-Policy");
     response.set_header(

@@ -227,8 +227,9 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   if (!result.record) return result;
   const auto& metadata = result.record->metadata;
   if (!metadata.host.empty() || Workspace().Remote()) {
-    if (metadata.host == Workspace().host && metadata.cwd == expected_cwd)
+    if (metadata.host == Workspace().host && metadata.cwd == expected_cwd) {
       return result;
+    }
     return {Error(SessionStoreError::kWrongWorkspace,
                   "session belongs to another execution host or folder"),
             std::nullopt};

@@ -346,10 +346,11 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   RuntimeConfig config = config_manager.Initialize();
   auto remote = execution::CurrentClient();
   if (remote && !remote->Open(error)) return Failure(error);
-  if (remote)
+  if (remote) {
     PrintWarning(
         "Remote project MCP and browser file transfers are unavailable; "
         "providers and global settings run on the main host.");
+  }
   PrintWarning(config_manager.Problem());
   if (headless && !config_manager.Problem().empty()) {
     fprintf(stderr, "uagent: %s\n", config_manager.Problem().c_str());
@@ -374,7 +375,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     context->runtime.processes.RemoteWorkspace(true);
     context->remote_watch =
         std::jthread([remote, supervisor = &context->runtime.processes](
-                         std::stop_token stop) {
+                         const std::stop_token& stop) {
           uint64_t generation = 0;
           while (!stop.stop_requested()) {
             const json state = remote->Call({{"op", "activities"}});
@@ -383,8 +384,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
               generation = next;
               supervisor->Wake();
             }
-            for (int i = 0; i < 60 && !stop.stop_requested(); ++i)
+            for (int i = 0; i < 60 && !stop.stop_requested(); ++i) {
               std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
           }
         });
   }

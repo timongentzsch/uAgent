@@ -235,8 +235,9 @@ json SessionControl(AppSession& session, const json& request) {
 }
 
 json ActivityControl(ActivitySupervisor& processes, const json& request) {
-  if (processes.RemoteWorkspace())
+  if (processes.RemoteWorkspace()) {
     return WorkspaceRequest({{"op", "activity_control"}, {"request", request}});
+  }
   std::string operation = JsonValue(request, "operation", "list");
   if (operation == "background") {
     return processes.RequestForegroundBackground()

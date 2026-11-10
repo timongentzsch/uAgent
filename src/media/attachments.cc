@@ -942,8 +942,9 @@ std::vector<Attachment> AttachmentQueue::TakeForCall(
     if (it->source_call_id == call_id) {
       result.push_back(std::move(*it));
       it = pending_.erase(it);
-    } else
+    } else {
       ++it;
+    }
   }
   return result;
 }

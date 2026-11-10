@@ -7,11 +7,15 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "include/agent/activity.h"
@@ -47,8 +51,9 @@ struct CallState {
 class Worker {
  public:
   ~Worker() {
-    for (const json& record : DetachedRecords())
+    for (const json& record : DetachedRecords()) {
       ToolActivityStop(processes_, JsonValue(record, "pid", int64_t{0}));
+    }
     ActivityShutdownAll(processes_);
   }
   void CancelAll() {
@@ -86,14 +91,16 @@ class Worker {
     std::shared_ptr<CallState> call;
     {
       std::lock_guard lock(mutex_);
-      if (const auto it = calls_.find(id); it != calls_.end())
+      if (const auto it = calls_.find(id); it != calls_.end()) {
         return it->second->done ? it->second->result : json{{"pending", true}};
+      }
       if (calls_.size() >= session::kReceiptEntries) {
         auto old =
             std::find_if(calls_.begin(), calls_.end(),
                          [](const auto& entry) { return entry.second->done; });
-        if (old == calls_.end())
+        if (old == calls_.end()) {
           return {{"error", "Remote execution is busy."}};
+        }
         calls_.erase(old);
       }
       call = std::make_shared<CallState>();
@@ -112,9 +119,10 @@ class Worker {
  private:
   json Scope(const Tool& tool, const json& args) {
     json subject = tool.approval_subject ? tool.approval_subject(args) : args;
-    if (const auto* path = JsonStringRef(args, "path"))
+    if (const auto* path = JsonStringRef(args, "path")) {
       subject = {{"path", *path},
                  {"resolved", CanonicalAccessPath(*path).string()}};
+    }
     return {{"subject", subject},
             {"approval", static_cast<int>(RequiredApproval(tool, args))},
             {"outside", tool.needs_approval && tool.needs_approval(args)}};
@@ -125,8 +133,9 @@ class Worker {
       const std::string action = JsonValue(request, "action", "");
       if (action == "open") {
         std::lock_guard lock(terminal_mutex_);
-        if (!terminals_)
+        if (!terminals_) {
           terminals_ = std::make_unique<Terminals>(16, std::chrono::hours(24));
+        }
         std::string error;
         const std::string id =
             terminals_->Open(CanonicalCwd(), CanonicalCwd(), error);
@@ -137,18 +146,20 @@ class Worker {
       {
         std::lock_guard lock(terminal_mutex_);
         if (!terminals_) return {{"error", "Remote terminal was interrupted."}};
-        if (action == "close")
+        if (action == "close") {
           return terminals_->Close(JsonValue(request, "terminal", ""))
                      ? json::object()
                      : json{{"error", "Terminal has ended."}};
+        }
         if (action == "rename") {
           const std::string error =
               terminals_->Rename(JsonValue(request, "terminal", ""),
                                  JsonValue(request, "title", ""));
           return error.empty() ? json::object() : json{{"error", error}};
         }
-        if (!session::OpaqueId(token))
+        if (!session::OpaqueId(token)) {
           return {{"error", "Invalid terminal viewer."}};
+        }
         if (action == "attach") {
           auto attached =
               terminals_->Attach(JsonValue(request, "terminal", ""));
@@ -157,8 +168,9 @@ class Worker {
           return json::object();
         }
         const auto it = viewers_.find(token);
-        if (it == viewers_.end())
+        if (it == viewers_.end()) {
           return {{"error", "Terminal viewer has ended."}};
+        }
         if (action == "detach") {
           viewers_.erase(it);
           return json::object();
@@ -190,23 +202,26 @@ class Worker {
       }
       return {{"error", "Unknown terminal action."}};
     }
-    if (operation == "activity_control")
+    if (operation == "activity_control") {
       return ActivityControl(processes_,
                              request.value("request", json::object()));
+    }
     if (operation == "shutdown") {
-      for (const json& record : DetachedRecords())
+      for (const json& record : DetachedRecords()) {
         ToolActivityStop(processes_, JsonValue(record, "pid", int64_t{0}));
+      }
       ActivityShutdownAll(processes_);
       return json::object();
     }
-    if (operation == "activities")
+    if (operation == "activities") {
       return {{"views", processes_.ActivityViews()},
               {"pending", processes_.PendingCount()},
               {"count", processes_.Count()},
               {"generation", processes_.Generation()}};
+    }
     if (operation == "completions") {
       json rows = json::array();
-      for (const auto& c : ActivityTakeCompletedDetails(processes_))
+      for (const auto& c : ActivityTakeCompletedDetails(processes_)) {
         rows.push_back({{"activity_id", c.activity_id},
                         {"status", c.status},
                         {"command", c.command},
@@ -214,16 +229,19 @@ class Worker {
                         {"hint", c.hint},
                         {"display_label", c.display_label},
                         {"started_ms", c.started_ms}});
+      }
       ToolResult stopped;
       stopped.ended = processes_.TakeStopped();
       return {{"completions", rows}, {"stopped", EncodeResult(stopped)}};
     }
-    if (operation == "ping")
+    if (operation == "ping") {
       return {{"build", BuildIdentity()}, {"cwd", CanonicalCwd()}};
+    }
     if (operation == "instructions") {
       const std::string action = JsonValue(request, "action", "load");
-      if (action == "path")
+      if (action == "path") {
         return {{"path", InstructionPath(true, CanonicalCwd()).string()}};
+      }
       if (action == "files") return InstructionFiles(CanonicalCwd());
       if (action == "write") {
         const auto base = JsonStringRef(request, "base");
@@ -243,19 +261,22 @@ class Worker {
     if (operation == "folder") return FolderGitFacts(CanonicalCwd());
     if (operation == "schedule_check") {
       ApprovalMode mode;
-      if (!ParseApprovalMode(JsonValue(request, "mode", "ask"), mode))
+      if (!ParseApprovalMode(JsonValue(request, "mode", "ask"), mode)) {
         return {{"error", "Invalid task permissions."}};
+      }
       SetApprovalMode(mode);
       return ScheduleCheck(request);
     }
-    if (operation == "files")
+    if (operation == "files") {
       return workspace_files::Request(CanonicalCwd(), request);
+    }
     if (operation == "bytes") {
       const std::string path = JsonValue(request, "path", "");
       if (HiddenPath(path)) return {{"error", "Protected remote path."}};
       std::string bytes, error;
-      if (!ReadRegularFile(path, MiB(8), bytes, error))
+      if (!ReadRegularFile(path, MiB(8), bytes, error)) {
         return {{"error", error}};
+      }
       return {{"data", HexEncode(bytes)}};
     }
     if (operation == "undo") {
@@ -266,16 +287,18 @@ class Worker {
       if (hash.empty()
               ? PathExists(path)
               : !ReadRegularFile(path, EditFileBytes(), current, error) ||
-                    HashHex(current) != hash)
+                    HashHex(current) != hash) {
         return {{"error", "changed since"}};
+      }
       if (!JsonValue(request, "existed", false)) {
         std::error_code ec;
         std::filesystem::remove(path, ec);
         return ec ? json{{"error", ec.message()}} : json::object();
       }
       std::string before;
-      if (!HexDecode(JsonValue(request, "before", ""), before, MiB(2)))
+      if (!HexDecode(JsonValue(request, "before", ""), before, MiB(2))) {
         return {{"error", "Invalid undo bytes."}};
+      }
       auto written = ToolAtomicWrite(
           path, before, static_cast<mode_t>(JsonValue(request, "mode", 0644)),
           true);
@@ -283,8 +306,9 @@ class Worker {
     }
     if (operation == "sandbox") {
       ApprovalMode mode;
-      if (ParseApprovalMode(JsonValue(request, "approval", "ask"), mode))
+      if (ParseApprovalMode(JsonValue(request, "approval", "ask"), mode)) {
         SetApprovalMode(mode);
+      }
       return {{"inheritance", SandboxInheritance()},
               {"diagnostic", SandboxDiagnosticJson()}};
     }
@@ -295,17 +319,19 @@ class Worker {
         // inputs cross the boundary; defaults cover the execution tool limits.
         const std::string preset = JsonValue(request, "sandbox", "default");
         SandboxPreset parsed;
-        if (!ParseSandboxPreset(preset, &parsed))
+        if (!ParseSandboxPreset(preset, &parsed)) {
           return {{"error", "Invalid remote sandbox preset."}};
-        if (preset != StringSetting(Cfg("UAGENT_SANDBOX")))
+        }
+        if (preset != StringSetting(Cfg("UAGENT_SANDBOX"))) {
           return {{"error", "Execution sandbox changed; reopen the context."}};
+        }
         RegisterFileTools(tools_, processes_, CanonicalCwd());
         RegisterExecTools(tools_, processes_, CanonicalCwd(), nullptr);
         RegisterActivityTool(tools_, processes_);
         opened_ = true;
       }
       json tools = json::array();
-      for (const Tool& t : tools_)
+      for (const Tool& t : tools_) {
         tools.push_back({{"name", t.name},
                          {"description", t.description},
                          {"parameters", t.parameters},
@@ -315,6 +341,7 @@ class Worker {
                          {"timeout_s", t.timeout_s},
                          {"result_chars", t.result_chars},
                          {"category", t.category}});
+      }
       return {{"tools", tools}, {"cwd", CanonicalCwd()}};
     }
     const Tool* tool = nullptr;
@@ -325,14 +352,16 @@ class Worker {
     }
     if (!tool) return {{"error", "Unknown execution tool."}};
     ApprovalMode mode;
-    if (!ParseApprovalMode(JsonValue(request, "approval", "ask"), mode))
+    if (!ParseApprovalMode(JsonValue(request, "approval", "ask"), mode)) {
       return {{"error", "Invalid approval mode."}};
+    }
     SetApprovalMode(mode);
     json args = request.value("args", json::object());
     if (tool->name == "write_file" && args.contains("content_hex")) {
       std::string bytes;
-      if (!HexDecode(JsonValue(args, "content_hex", ""), bytes, MiB(8)))
+      if (!HexDecode(JsonValue(args, "content_hex", ""), bytes, MiB(8))) {
         return {{"error", "Invalid attachment bytes."}};
+      }
       args.erase("content_hex");
       args["content"] = std::move(bytes);
     }
@@ -353,24 +382,27 @@ class Worker {
            tool->mandatory_reason ? tool->mandatory_reason(canonical) : ""}};
       result["scope"] = Scope(*tool, canonical);
       result["subject"] = result["scope"]["subject"];
-      if (issue)
+      if (issue) {
         result["issue"] = {{"code", issue->code},
                            {"message", issue->message},
                            {"field", issue->field}};
+      }
       return result;
     }
     if (operation != "run") return {{"error", "Invalid execution request."}};
-    if (request.contains("scope") && request["scope"] != Scope(*tool, args))
+    if (request.contains("scope") && request["scope"] != Scope(*tool, args)) {
       return EncodeResult(ToolFailure(
           ToolErrorCode::kPermissionDenied,
           "What this call reaches changed after approval; ask again."));
+    }
     ToolContext context;
     context.call_id = JsonValue(request, "call_id", "");
     context.turn_id = JsonValue(request, "turn_id", int64_t{0});
     context.approved = request.value("approved", json());
     context.timeout_s = JsonValue(request, "timeout_s", int64_t{300});
-    if (context.timeout_s > 0)
+    if (context.timeout_s > 0) {
       context.deadline = Clock::now() + std::chrono::seconds(context.timeout_s);
+    }
     auto issue = FindToolArgumentIssue(*tool, args);
     if (!issue && tool->validate) issue = tool->validate(args);
     ToolResult result =
@@ -442,8 +474,9 @@ int Serve(const std::string& directory, const std::string& cwd,
       if (*it->done) {
         it->thread.join();
         it = connections.erase(it);
-      } else
+      } else {
         ++it;
+      }
     }
     pollfd ready{listener.Get(), POLLIN, 0};
     if (poll(&ready, 1, 1000) > 0 && (ready.revents & POLLIN)) {
@@ -455,11 +488,12 @@ int Serve(const std::string& directory, const std::string& cwd,
           {std::thread([fd = std::move(fd), &worker, done, &auth]() {
              const json request =
                  Receive(fd.Get(), Clock::now() + std::chrono::seconds(30));
-             if (request.is_object())
+             if (request.is_object()) {
                Send(fd.Get(),
                     JsonValue(request, "auth", "") == auth
                         ? worker->Request(request)
                         : json{{"error", "Gateway authentication failed."}});
+             }
              *done = true;
            }),
            done});
@@ -468,8 +502,9 @@ int Serve(const std::string& directory, const std::string& cwd,
     // period; no detached process or execution log becomes durable history.
     if (connections.empty() &&
         Clock::now() - touched > std::chrono::minutes(5) &&
-        !worker->HasChildren())
+        !worker->HasChildren()) {
       break;
+    }
   }
   RequestAbort();
   worker->CancelAll();
@@ -482,8 +517,9 @@ int Serve(const std::string& directory, const std::string& cwd,
 }
 }  // namespace
 int Main(int argc, char** argv) {
-  if (argc != 5 || !session::OpaqueId(argv[2]) || !session::OpaqueId(argv[3]))
+  if (argc != 5 || !session::OpaqueId(argv[2]) || !session::OpaqueId(argv[3])) {
     return 64;
+  }
   std::string startup;
   if (!std::getline(std::cin, startup) || startup.size() > KiB(4)) return 64;
   const json options = json::parse(startup, nullptr, false);
@@ -495,16 +531,18 @@ int Main(int argc, char** argv) {
   std::vector<std::string> remove;
   for (char** entry = ProcessEnvironment(); entry && *entry; ++entry) {
     std::string_view value(*entry);
-    if (value.starts_with("UAGENT_"))
+    if (value.starts_with("UAGENT_")) {
       remove.emplace_back(value.substr(0, value.find('=')));
+    }
   }
   for (const auto& key : remove) unsetenv(key.c_str());
   PublishSettings(json{{"UAGENT_SANDBOX", preset}});
   std::string requested = argv[4];
-  if (requested.empty() || requested == "~")
+  if (requested.empty() || requested == "~") {
     requested = UserHome();
-  else if (requested.starts_with("~/"))
+  } else if (requested.starts_with("~/")) {
     requested = UserHome() + requested.substr(1);
+  }
   const auto folder = CanonicalDirectory(requested);
   if (!folder) {
     printf("%s\n",
@@ -517,8 +555,9 @@ int Main(int argc, char** argv) {
       HashHex(std::string(BuildIdentity()) + argv[2] + argv[3] + preset);
   if (!EnsurePrivateDirectory(directory)) return 67;
   const std::string path = directory + "/socket";
-  if (std::string_view(argv[1]) == "--execution-worker")
+  if (std::string_view(argv[1]) == "--execution-worker") {
     return Serve(directory, folder->string(), auth);
+  }
   auto ping = [&]() {
     Fd fd = ConnectUnix(path);
     return fd && Send(fd.Get(), json{{"op", "ping"}, {"auth", auth}})
@@ -536,8 +575,9 @@ int Main(int argc, char** argv) {
                                folder->string()},
                       .group = SpawnSpec::Group::kSession,
                       .fds = {{0, source.Get()}, {1}, {2}}},
-                     pid))
+                     pid)) {
       return 68;
+    }
     source.Reset();
     if (!WriteAllWithin(sink.Get(), startup + "\n", 2000)) return 68;
     sink.Reset();

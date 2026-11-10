@@ -503,13 +503,13 @@ std::string Hex64(uint64_t value) {
 }  // namespace
 
 std::string HexEncode(std::string_view data) {
-  constexpr char digits[] = "0123456789abcdef";
+  constexpr char kDigits[] = "0123456789abcdef";
   std::string result;
   result.reserve(data.size() * 2);
   for (char value : data) {
     const auto byte = static_cast<unsigned char>(value);
-    result += digits[byte >> 4];
-    result += digits[byte & 15];
+    result += kDigits[byte >> 4];
+    result += kDigits[byte & 15];
   }
   return result;
 }

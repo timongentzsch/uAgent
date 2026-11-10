@@ -40,9 +40,10 @@ std::optional<std::string> OptionImageIssue(const std::string& path) {
     const json checked = WorkspaceRequest(
         {{"op", "check"}, {"tool", "read_path"}, {"args", {{"path", path}}}});
     if (checked.contains("error") || checked.contains("issue") ||
-        JsonValue(checked, "approval", 2) != 0)
+        JsonValue(checked, "approval", 2) != 0) {
       return "an option's image must be a readable file you made in the remote "
              "folder";
+    }
     return std::nullopt;
   }
   if (PathApprovalRequired(path, CanonicalCwd()) || HiddenPath(path) ||

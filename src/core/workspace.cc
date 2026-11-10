@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 #include "include/core/workspace.h"
 
+#include <string>
 #include <utility>
 
 #include "include/core/fs.h"
@@ -8,7 +9,10 @@
 namespace uagent {
 namespace {
 WorkspaceIdentity workspace;
-std::string execution_state;
+std::string& ExecutionState() {
+  static std::string state;
+  return state;
+}
 std::function<json(const json&)> workspace_request;
 }  // namespace
 std::string WorkspaceIdentity::Key() const {
@@ -31,14 +35,15 @@ bool ReadWorkspaceFile(const std::string& path, size_t limit,
   if (!Workspace().Remote()) return ReadRegularFile(path, limit, bytes, error);
   const json result = WorkspaceRequest({{"op", "bytes"}, {"path", path}});
   if (HexDecode(JsonValue(result, "data", ""), bytes, limit) &&
-      result.contains("data"))
+      result.contains("data")) {
     return true;
+  }
   error = JsonValue(result, "error", "Cannot read remote file.");
   return false;
 }
 void SetWorkspace(WorkspaceIdentity value) { workspace = std::move(value); }
 void SetExecutionStateDirectory(std::string value) {
-  execution_state = std::move(value);
+  ExecutionState() = std::move(value);
 }
-const std::string& ExecutionStateDirectory() { return execution_state; }
+const std::string& ExecutionStateDirectory() { return ExecutionState(); }
 }  // namespace uagent

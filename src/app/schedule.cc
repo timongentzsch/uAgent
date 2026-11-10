@@ -333,10 +333,11 @@ json ScheduleSave(json& store, const json& request, const std::string& id,
                  ? std::nullopt
                  : std::optional<std::filesystem::path>(requested));
   if (!cwd) return {{"error", "folder is unavailable"}};
-  if (!host.empty() && environment == "worktree")
+  if (!host.empty() && environment == "worktree") {
     return {{"error",
              "Remote schedules run in the selected folder; remote worktrees "
              "are unavailable."}};
+  }
   if (found == store["tasks"].end() &&
       (!id.empty() || store["tasks"].size() >= kTasks)) {
     return {{"error", "task not found or task limit reached"}};

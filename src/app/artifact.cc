@@ -66,7 +66,8 @@ Tool ArtifactTool(const std::string& session_path) {
           {{"op", "check"}, {"tool", "read_path"}, {"args", args}});
     };
     tool.needs_approval = [check](const json& args) {
-      return JsonValue(check(args), "approval", 2) != 0;
+      return JsonValue(check(args).value("scope", json::object()), "outside",
+                       true);
     };
     tool.approval_class = [check](const json& args) {
       return JsonValue(check(args), "approval", 2) == 2
@@ -76,17 +77,20 @@ Tool ArtifactTool(const std::string& session_path) {
     tool.validate =
         [check](const json& args) -> std::optional<ToolArgumentIssue> {
       const json value = check(args);
-      if (value.contains("error"))
+      if (value.contains("error")) {
         return ArgumentIssue("remote.unavailable",
                              JsonValue(value, "error", "Remote unavailable"));
-      if (const json* issue = JsonObject(value, "issue"))
+      }
+      if (const json* issue = JsonObject(value, "issue")) {
         return ArgumentIssue(
             JsonValue(*issue, "code", "remote.invalid"),
             JsonValue(*issue, "message", "Invalid remote path"));
+      }
       return std::nullopt;
     };
-  } else
+  } else {
     tool.run = RefusingHidden(std::move(tool.run));
+  }
   tool.capabilities = Capability(ToolCapability::kInspect);
   tool.parallel_safe = true;
   return tool;

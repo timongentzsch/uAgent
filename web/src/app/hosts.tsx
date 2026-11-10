@@ -52,23 +52,52 @@ export default function HostsShell({
   const [active, setActive] = useState(hostFromURL);
   const [destination, setDestination] = useState<HostDestination | null>(null);
   const gatewayOnline = state.online;
+  // Keep filtered catalogue arrays stable while the composer changes its draft.
+  const scopes = useMemo(
+    () =>
+      new Map(
+        ["", ...hosts.map((host) => host.id)].map((id) => [
+          id,
+          {
+            listed: state.listed.filter(
+              (session) => (session.host || "") === id,
+            ),
+            catalogue: {
+              ...state.catalogue,
+              sessions: state.catalogue.sessions.filter(
+                (session) => (session.host || "") === id,
+              ),
+              spaces: id ? [] : state.catalogue.spaces,
+              pins: state.catalogue.pins?.filter(
+                (pin) => (pin.host || "") === id,
+              ),
+              terminals: state.catalogue.terminals?.filter(
+                (terminal) => (terminal.host || "") === id,
+              ),
+            },
+          },
+        ]),
+      ),
+    [hosts, state.listed, state.catalogue],
+  );
   const scoped = useCallback(
-    (id: string): HostState => ({
-      ...state,
-      listed: state.listed.filter((session) => (session.host || "") === id),
-      catalogue: {
-        ...state.catalogue,
-        sessions: state.catalogue.sessions.filter(
-          (session) => (session.host || "") === id,
-        ),
-        spaces: id ? [] : state.catalogue.spaces,
-        pins: state.catalogue.pins?.filter((pin) => (pin.host || "") === id),
-        terminals: state.catalogue.terminals?.filter(
-          (terminal) => ((terminal as { host?: string }).host || "") === id,
-        ),
-      },
-    }),
-    [state],
+    (id: string): HostState => ({ ...state, ...scopes.get(id) }),
+    [state, scopes],
+  );
+  // Sidebar consumers need navigation metadata and stable actions, not drafts.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only publish navigation changes; the transient state object also carries composer drafts.
+  const navigation = useMemo(
+    () => state,
+    [
+      state.listed,
+      state.catalogue,
+      state.online,
+      state.connection,
+      state.unread,
+      state.authenticated,
+      state.selected,
+      state.notifications,
+    ],
   );
   useEffect(() => {
     const changed = () => {
@@ -151,13 +180,16 @@ export default function HostsShell({
         id: "",
         name: "Local",
         address: location.host,
-        phase: state.connection,
+        phase: navigation.connection,
         error: "",
-        state: scoped(""),
+        state: { ...navigation, ...scopes.get("") },
       },
-      ...hosts.map((host) => ({ ...host, state: scoped(host.id) })),
+      ...hosts.map((host) => ({
+        ...host,
+        state: { ...navigation, ...scopes.get(host.id) },
+      })),
     ],
-    [hosts, state, scoped],
+    [hosts, navigation, scopes],
   );
   const context = useMemo(
     () => ({ sources, active, gatewayOnline, open, action, destination }),

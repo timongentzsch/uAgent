@@ -192,8 +192,9 @@ std::string DeleteConversation(const std::string& path,
   // the whole tree as it was.
   for (const SessionInfo& info : doomed) {
     if (!info.host.empty() || !LaunchWorktree(info.cwd) ||
-        !PathExists(info.cwd))
+        !PathExists(info.cwd)) {
       continue;
+    }
     if (std::string kept = WorktreeKeepsWork(info.cwd); !kept.empty()) {
       return named(info, kept);
     }

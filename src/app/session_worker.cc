@@ -836,8 +836,9 @@ int WorkerMain(int argc, char** argv) {
     if (chdir(argv[2]) != 0) return kWorkerNoWorkspace;
   } else {
     const std::string local = RuntimeDir() + "/remote-cwd/" + argv[4];
-    if (!EnsurePrivateDirectory(local) || chdir(local.c_str()) != 0)
+    if (!EnsurePrivateDirectory(local) || chdir(local.c_str()) != 0) {
       return kWorkerNoWorkspace;
+    }
     SetWorkspace({options.host, argv[2]});
     execution::SetClient(std::make_shared<execution::Client>(
         execution::TargetFromJson(options.execution)));

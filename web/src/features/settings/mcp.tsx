@@ -36,6 +36,12 @@ export function McpServers({
   // The switch shows the requested value while the server starts or stops.
   const [wanted, setWanted] = useState<boolean | null>(null);
   const { run, error } = useAction();
+  if (scope === "project" && session?.host)
+    return (
+      <Group>
+        <Row label="Project MCP is unavailable for remote folders" />
+      </Group>
+    );
   if (!session)
     return (
       <Group footer="Servers start with a conversation, so their state is that conversation's.">

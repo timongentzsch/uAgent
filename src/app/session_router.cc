@@ -158,8 +158,9 @@ json SessionHost::SetPins(const json& command, std::string& error) {
   if (command.contains("host")) {
     const std::string host = JsonValue(command, "host", "");
     for (json& pin : pins) pin["host"] = host;
-    for (const json& pin : pins_)
+    for (const json& pin : pins_) {
       if (JsonValue(pin, "host", "") != host) pins.push_back(pin);
+    }
     if (!ValidPins(pins)) {
       error = "pin limit reached";
       return json::object();
@@ -311,9 +312,10 @@ SessionCommandResult SessionHost::ExecuteCommand(
     const std::string folder = JsonValue(command, "cwd", "");
     {
       std::lock_guard lock(mutex_);
-      if (remote_target_)
+      if (remote_target_) {
         target = remote_target_(JsonValue(command, "host", ""), folder,
                                 HashHex("folder:" + folder));
+      }
     }
     if (target.is_null()) {
       result.error =

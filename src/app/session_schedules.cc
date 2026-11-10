@@ -248,22 +248,24 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
             remote_target_ ? remote_target_(host, JsonValue(run, "cwd", ""),
                                             JsonValue(run, "session_id", ""))
                            : json();
-        if (target.is_null())
+        if (target.is_null()) {
           failure =
               "Remote host is disconnected. Reconnect before running this "
               "task.";
-        else {
+        } else {
           execution::Client remote(execution::TargetFromJson(target));
           if (!remote.Open(failure)) {
             if (failure.empty()) failure = "Remote execution could not start.";
-          } else if (!check.empty())
+          } else if (!check.empty()) {
             checked = remote.Call(
                 {{"op", "schedule_check"},
                  {"command", check},
                  {"mode", JsonValue(definition, "permissions", "ask")}});
+          }
         }
-      } else if (starting && failure.empty() && !check.empty())
+      } else if (starting && failure.empty() && !check.empty()) {
         checked = RunScheduleCheck(JsonValue(run, "cwd", ""), check);
+      }
       const json current = starting ? ReadSchedules() : before;
       lock.lock();
       if (stopping_) return wait;

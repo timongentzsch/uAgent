@@ -305,7 +305,7 @@ bool Agent::DrainActivities(bool start_turn) {
       ActivityTakeCompletedDetails(processes_);
   if (processes_.RemoteWorkspace()) {
     const json result = WorkspaceRequest({{"op", "completions"}});
-    if (const json* rows = JsonArray(result, "completions"))
+    if (const json* rows = JsonArray(result, "completions")) {
       for (const json& c : *rows) {
         ActivityCompletion completion;
         completion.activity_id = JsonValue(c, "activity_id", int64_t{0});
@@ -317,13 +317,16 @@ bool Agent::DrainActivities(bool start_turn) {
         completion.started_ms = JsonValue(c, "started_ms", int64_t{0});
         completions.push_back(std::move(completion));
       }
+    }
     const json* stopped = JsonObject(result, "stopped");
-    if (const json* rows = stopped ? JsonArray(*stopped, "ended") : nullptr)
-      for (const auto& e : *rows)
+    if (const json* rows = stopped ? JsonArray(*stopped, "ended") : nullptr) {
+      for (const auto& e : *rows) {
         processes_.Stopped(
             {JsonValue(e, "activity_id", int64_t{0}), JsonValue(e, "status", 0),
              JsonValue(e, "output", ""), JsonValue(e, "duration_ms", 0.0),
              JsonValue(e, "stopped", false)});
+      }
+    }
   }
   for (ActivityCompletion& completion : completions) {
     if (completion.kind == ActivityKind::kMemory) {

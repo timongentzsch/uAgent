@@ -31,17 +31,17 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
         }
         return httplib::Server::HandlerResponse::Unhandled;
       });
-  const std::string data =
+  const std::string json_bytes =
       "{\n  \"base\": \"/preview/grant/\", \"url\": \"/api/download\"\n}\n";
   upstream.Get("/api/example", [&](const auto&, auto& response) {
-    response.set_content(data, "application/json");
+    response.set_content(json_bytes, "application/json");
   });
   upstream.Get("/preview/grant/data.json", [&](const auto&, auto& response) {
-    response.set_content(data, "application/json");
+    response.set_content(json_bytes, "application/json");
   });
   upstream.Get("/api/sessions/test/assets/data",
                [&](const auto&, auto& response) {
-                 response.set_content(data, "application/json");
+                 response.set_content(json_bytes, "application/json");
                });
   upstream.Post("/api/sessions/test/preview", [](const auto&, auto& response) {
     response.set_content(
@@ -116,15 +116,16 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
                                        {"Origin", "https://serving.example"}});
   CHECK(result && result->status == 200);
   if (result) {
-    CHECK(result->body == data);
+    CHECK(result->body == json_bytes);
     CHECK(!result->has_header("Set-Cookie"));
   }
   for (const auto* path :
        {"/preview/grant/data.json", "/api/sessions/test/assets/data"}) {
     auto file = client.Get(path);
-    CHECK(file && file->status == 200 && file->body == data);
+    CHECK(file && file->status == 200 && file->body == json_bytes);
     auto range = client.Get(path, httplib::Headers{{"Range", "bytes=2-15"}});
-    CHECK(range && range->status == 206 && range->body == data.substr(2, 14));
+    CHECK(range && range->status == 206 &&
+          range->body == json_bytes.substr(2, 14));
   }
   auto grant = client.Post("/api/sessions/test/preview?check=1", "{}",
                            "application/json");

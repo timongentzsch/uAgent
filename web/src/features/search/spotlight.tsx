@@ -1,4 +1,3 @@
-import { HostLabel } from "../../shared/host-scope.tsx";
 import "./spotlight.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type {
@@ -302,7 +301,6 @@ export default function Spotlight({
   };
   return (
     <div class="spotlight" ref={root}>
-      <HostLabel />
       <Input
         type="search"
         aria-label="Search conversations, messages, commands and settings"

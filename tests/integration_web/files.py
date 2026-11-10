@@ -318,3 +318,19 @@ def test_web_files_save_a_person_s_edit_against_its_revision(root, home, *, bina
                 == 401,
                 "anonymous save",
             )
+
+
+def test_web_folder_picker_lists_directories_on_the_main(root, home, *, binary):
+    projects = home / "Projects"
+    (projects / "nested").mkdir(parents=True)
+    (projects / "notes.txt").write_text("not a folder")
+    with web_host(binary, root, home, "http://127.0.0.1:1") as (web, code, _, _):
+        assert_true(web.request("/api/folders?path=~")[0] == 401, "folder listing was public")
+        web.pair(code)
+        status, listing, _ = web.json("/api/folders?" + urlencode({"path": str(projects)}))
+        assert_true(status == 200 and listing["path"] == str(projects.resolve()), listing)
+        assert_true([row["name"] for row in listing["entries"]] == ["nested"], listing)
+        assert_true(listing["parent"] == str(home.resolve()), listing)
+        protected = home / ".uagent/web"
+        status, _, _ = web.json("/api/folders?" + urlencode({"path": str(protected)}))
+        assert_true(status == 404, "protected application state was browsable")

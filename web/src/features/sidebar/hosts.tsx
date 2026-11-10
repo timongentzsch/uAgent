@@ -11,6 +11,7 @@ import {
   LoadError,
   Modal,
 } from "../../shared/ui.tsx";
+import HostLatency from "./host-latency.tsx";
 import { Menu } from "../../shared/menu.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import { folderOf } from "../../shared/display.ts";
@@ -272,10 +273,12 @@ export function OtherPlaces({ source }: { source: Source }) {
         <Button
           variant="quiet"
           class="entry"
-          onClick={() => hosts.open(source.id)}
+          onClick={() =>
+            hosts.open(source.id, "", "", { create: "conversation" })
+          }
         >
           {source.phase === "connected"
-            ? "Open host"
+            ? "New conversation…"
             : "Connect to browse folders"}
         </Button>
       )}
@@ -287,7 +290,6 @@ export function HostList() {
   const [detail, setDetail] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [address, setAddress] = useState("");
-  const [folder, setFolder] = useState("");
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   if (!hosts) return null;
@@ -330,7 +332,6 @@ export function HostList() {
               key={source.id}
               variant="quiet"
               class="host-row entry"
-              aria-current={hosts.active === source.id ? "true" : undefined}
               onClick={() => {
                 setError(null);
                 setDetail(source.id);
@@ -345,7 +346,12 @@ export function HostList() {
                 aria-hidden="true"
               />
               <span class="truncate">{source.name}</span>
-              <span class="host-phase caption">{status(source)}</span>
+              <span class="host-phase caption">
+                {status(source)}
+                {source.phase === "connected" && source.round_trip_ms != null
+                  ? ` · ${Math.round(source.round_trip_ms)} ms`
+                  : ""}
+              </span>
             </Button>
           ))}
         </div>
@@ -387,8 +393,8 @@ export function HostList() {
                 />
               </label>
               <p class="small muted">
-                Uses SSH access configured on the serving host. The remote agent
-                runs beside your files.
+                Uses SSH access configured on the serving host. The remote
+                gateway executes file and command requests beside your files.
               </p>
               <Button
                 variant="primary"
@@ -407,16 +413,12 @@ export function HostList() {
                 <p>The serving host is unavailable. Reconnect to it first.</p>
               )}
               {source!.error && <p class="host-error small">{source!.error}</p>}
+              {!!source!.id &&
+                source!.phase === "connected" &&
+                hosts.gatewayOnline && (
+                  <HostLatency key={source!.id} id={source!.id} />
+                )}
               <div class="host-actions">
-                <Button
-                  disabled={!hosts.gatewayOnline}
-                  onClick={() => {
-                    hosts.open(source!.id);
-                    setDetail(null);
-                  }}
-                >
-                  Open host
-                </Button>
                 {!!source!.id && (
                   <>
                     <Button
@@ -437,35 +439,10 @@ export function HostList() {
                   </>
                 )}
               </div>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  hosts.open(source!.id, "", folder.trim());
-                  setDetail(null);
-                  setFolder("");
-                }}
-              >
-                <label>
-                  Folder path
-                  <Input
-                    value={folder}
-                    placeholder="/home/user/project"
-                    onInput={(event) => setFolder(event.currentTarget.value)}
-                  />
-                </label>
-                <Button
-                  disabled={
-                    !hosts.gatewayOnline || !folder.trim().startsWith("/")
-                  }
-                >
-                  Open folder
-                </Button>
-              </form>
               {!!source!.id && (
                 <p class="small muted">
                   Disconnect closes SSH access. Work continues on the remote
-                  host. Reconnect restores the catalogue before enabling
-                  actions.
+                  host. Reconnect restores remote file and command access.
                 </p>
               )}
             </>

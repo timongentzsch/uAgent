@@ -190,6 +190,12 @@ json Client::Call(json request, const ToolContext* context) {
     }
   }
   json result;
+  // A new viewer is safe to attach only after its forward is live. A stale
+  // socket left by a disconnected SSH master cannot have accepted this attach.
+  if (op == "terminal" && JsonValue(request, "action", "") == "attach" &&
+      !impl_->Attach()) {
+    return impl_->Failure();
+  }
   {
     if (access(impl_->socket.c_str(), F_OK) != 0 &&
         (op == "activities" || !impl_->Attach())) {

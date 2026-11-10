@@ -9,6 +9,7 @@
 #include "include/core/json.h"
 namespace uagent::workspace_files {
 bool Shown(const std::filesystem::path& path);
+json Folders(const std::string& path);
 std::vector<std::string> Candidates(const std::filesystem::path& root,
                                     bool& more);
 std::optional<std::filesystem::path> Resolve(const std::filesystem::path& root,

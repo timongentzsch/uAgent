@@ -7,6 +7,7 @@ export interface SavedHost {
   address: string;
   phase: "connected" | "connecting" | "reconnecting" | "disconnected";
   error: string;
+  round_trip_ms?: number | null;
 }
 export interface Source extends SavedHost {
   state?: HostState;
@@ -17,6 +18,7 @@ export interface HostDestination {
   place: string;
   terminal?: string;
   settings?: string;
+  create?: "conversation" | "folder";
 }
 interface Hosts {
   destination: HostDestination | null;
@@ -27,7 +29,11 @@ interface Hosts {
     id: string,
     session?: string,
     place?: string,
-    view?: { terminal?: string; settings?: string },
+    view?: {
+      terminal?: string;
+      settings?: string;
+      create?: "conversation" | "folder";
+    },
   ) => void;
   action: (action: string, id?: string, address?: string) => Promise<string>;
 }

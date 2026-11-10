@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -39,6 +40,7 @@ struct Host {
   int retry = 0;
   pid_t pid = -1;
   bool endpoint = false;
+  std::optional<double> round_trip_ms;
 };
 bool Address(const std::string& address) {
   return !address.empty() && address.size() <= 255 && address[0] != '-' &&
@@ -71,6 +73,18 @@ CapturedProcess Run(const Host& host, const std::string& command,
   argv.push_back(command);
   ChildEnvironment environment({}, ChildEnvironmentPolicy::kUserShell);
   return CaptureProcess(argv, 30, input, environment.Data());
+}
+std::optional<double> RoundTrip(const Host& host) {
+  auto argv = Ssh(host);
+  // An existing mux connection or failure: a measurement never reconnects.
+  argv.insert(argv.begin() + 1, {"-o", "ProxyCommand=false"});
+  argv.emplace_back("true");
+  ChildEnvironment environment({}, ChildEnvironmentPolicy::kUserShell);
+  const auto started = Clock::now();
+  const auto probe = CaptureProcess(argv, 3, "", environment.Data());
+  if (!probe.Ok()) return std::nullopt;
+  return std::chrono::duration<double, std::milli>(Clock::now() - started)
+      .count();
 }
 void Close(Host& host) {
   if (host.pid > 0) StopProcess(host.pid, true, std::chrono::milliseconds(500));
@@ -287,6 +301,7 @@ bool Connect(Host& host, const std::string& executable, bool& endpoint,
 void Work(Host& host, const std::string& executable, std::stop_token stop) {
   std::unique_lock lock(host.mutex);
   auto due = Clock::time_point::max();
+  auto sample_due = Clock::time_point::min();
   while (!stop.stop_requested()) {
     if (host.disconnect) {
       host.disconnect = false;
@@ -295,6 +310,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       // Their failures must not turn an explicit disconnect into a retry.
       host.endpoint = false;
       host.phase = "disconnected";
+      host.round_trip_ms.reset();
       host.error.clear();
       due = Clock::time_point::max();
       lock.unlock();
@@ -324,6 +340,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
     if (host.requested || Clock::now() >= due) {
       host.requested = false;
       host.phase = host.retry ? "reconnecting" : "connecting";
+      host.round_trip_ms.reset();
       host.attempting = true;
       ++host.generation;
       lock.unlock();
@@ -338,6 +355,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       if (connected) {
         host.endpoint = endpoint;
         host.phase = "connected";
+        sample_due = Clock::time_point::min();
         host.error.clear();
         host.retry = 0;
         due = Clock::time_point::max();
@@ -356,6 +374,13 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
           due = Clock::time_point::max();
         }
       }
+    }
+    if (host.endpoint && !host.disconnect && Clock::now() >= sample_due) {
+      lock.unlock();
+      const auto measured = RoundTrip(host);
+      lock.lock();
+      if (host.endpoint && !host.disconnect) host.round_trip_ms = measured;
+      sample_due = Clock::now() + std::chrono::seconds(30);
     }
     host.wake.wait_for(lock, std::chrono::seconds(1), [&] {
       return stop.stop_requested() || host.requested || host.disconnect ||
@@ -473,9 +498,34 @@ json RemoteHosts::List() const {
                     {"name", host->name},
                     {"address", host->address},
                     {"phase", host->phase},
-                    {"error", host->error}});
+                    {"error", host->error},
+                    {"round_trip_ms", host->endpoint && host->round_trip_ms
+                                          ? json(*host->round_trip_ms)
+                                          : json(nullptr)}});
   }
   return rows;
+}
+json RemoteHosts::Ping(const std::string& id) const {
+  std::shared_ptr<Host> host;
+  {
+    std::lock_guard lock(impl_->mutex);
+    const auto found = impl_->hosts.find(id);
+    if (found == impl_->hosts.end()) return {{"error", "Unknown host."}};
+    host = found->second;
+  }
+  {
+    std::lock_guard lock(host->mutex);
+    if (!host->endpoint || host->disconnect) {
+      return {{"error", "Host is disconnected."}};
+    }
+  }
+  const auto measured = RoundTrip(*host);
+  if (!measured) return {{"error", "Round-trip measurement unavailable."}};
+  {
+    std::lock_guard lock(host->mutex);
+    if (host->endpoint && !host->disconnect) host->round_trip_ms = measured;
+  }
+  return {{"round_trip_ms", *measured}};
 }
 json RemoteHosts::Change(const json& action, std::string& error) {
   std::lock_guard lock(impl_->mutex);

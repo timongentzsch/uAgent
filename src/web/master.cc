@@ -27,6 +27,7 @@
 #include "include/app/folder_overview.h"
 #include "include/app/self_description.h"
 #include "include/app/session_host.h"
+#include "include/app/workspace_files.h"
 #include "include/browser/browser.h"
 #include "include/core/build.h"
 #include "include/core/detail.h"
@@ -631,6 +632,32 @@ void Master::RegisterApiRoutes() {
               [this](const Request& request, Response& response) {
                 Search(request, response);
               });
+  // Browse directories before a conversation has been created.
+  server_.Get(
+      "/api/folders", [this](const Request& request, Response& response) {
+        const std::string host = request.get_param_value("host");
+        const std::string path = request.get_param_value("path");
+        json result;
+        if (host.empty()) {
+          result = workspace_files::Folders(path);
+        } else {
+          const json target =
+              remotes_->Target(host, "~", HashHex("folder-browser"));
+          if (target.is_null()) {
+            Error(response,
+                  "Host is disconnected. Choose Connect or Reconnect.", 503);
+            return;
+          }
+          execution::Client remote(execution::TargetFromJson(target));
+          result = remote.Call({{"op", "folders"}, {"path", path}});
+        }
+        if (result.contains("error")) {
+          Error(response, JsonValue(result, "error", "Folder unavailable"),
+                JsonValue(result, "status", 503));
+        } else {
+          Reply(response, result);
+        }
+      });
   // A folder at a glance, for its overview: spend, changes and git.
   server_.Get("/api/folder", [this](const Request& request,
                                     Response& response) {

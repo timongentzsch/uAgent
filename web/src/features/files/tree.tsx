@@ -17,7 +17,7 @@ import { HTML, IMAGE, MARKDOWN } from "../../shared/file-types.ts";
 // folder opens in place, rows are dense with indent guides, an icon says a
 // file's type. A folder of two pages or more offers its canvas on its row.
 
-interface Listing {
+export interface Listing {
   entries: { name: string; dir: boolean }[];
   more: boolean;
 }
@@ -32,9 +32,11 @@ export interface TreeProps {
   toggle: (path: string) => void;
   open: (path: string) => void;
   canvas: (dir: string) => void;
+  list?: (path: string, signal: AbortSignal) => Promise<Listing>;
 }
 
-const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
+const join = (dir: string, name: string) =>
+  dir ? `${dir.replace(/\/$/, "")}/${name}` : name;
 const CODE = /\.(css|js|mjs|ts|tsx|json)$/i;
 const icon = (name: string) =>
   HTML.test(name) || CODE.test(name) ? (
@@ -129,11 +131,15 @@ function FolderNode({
   const { api, routes } = useApi();
   const open = props.expanded.has(path);
   const listing = useResource(
-    () =>
+    (signal) =>
       open
-        ? api<Listing>(routes.files(props.session, "list", path))
+        ? props.list
+          ? props.list(path, signal)
+          : api<Listing>(routes.files(props.session, "list", path), undefined, {
+              signal,
+            })
         : undefined,
-    [props.session, path, open, props.version],
+    [props.session, path, open, props.version, props.list],
   );
   const pages = (listing.value?.entries ?? []).filter(
     (entry) => !entry.dir && HTML.test(entry.name),
@@ -207,13 +213,15 @@ function walk(event: KeyboardEvent, props: TreeProps) {
   event.preventDefault();
 }
 
-export default function FileTree(props: TreeProps & { root: Listing }) {
+export default function FileTree(
+  props: TreeProps & { root: Listing; rootPath?: string },
+) {
   return (
     <ul
       class="files-tree dense"
       onKeyDown={(event) => walk(event as unknown as KeyboardEvent, props)}
     >
-      <Entries path="" props={props} listing={props.root} />
+      <Entries path={props.rootPath || ""} props={props} listing={props.root} />
     </ul>
   );
 }

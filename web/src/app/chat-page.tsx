@@ -93,7 +93,7 @@ export default function ChatPage({
   outgoing: Outgoing[];
   loadError: unknown;
   // Asks for a workspace's name or a folder's path, to start a conversation.
-  newPlace: (place: "workspace" | "folder") => void;
+  newPlace: (place: "conversation" | "workspace" | "folder") => void;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
   choose: (id: string) => Promise<void>;
   side: { question: string; id?: string; firstRequest: string } | null;
@@ -317,18 +317,21 @@ export default function ChatPage({
       ]}
     >
       <p>
-        Start in a workspace or a folder on your host, or open a conversation
-        from the list.
+        Start a conversation and choose where it runs, or open one from the
+        list.
       </p>
       <Actions>
+        <Button
+          variant="primary"
+          onClick={() => newPlace("conversation")}
+          disabled={!online}
+        >
+          New conversation
+        </Button>
         <Button onClick={() => newPlace("workspace")} disabled={!online}>
           New workspace…
         </Button>
-        <Button
-          variant="primary"
-          onClick={() => newPlace("folder")}
-          disabled={!online}
-        >
+        <Button onClick={() => newPlace("folder")} disabled={!online}>
           New folder…
         </Button>
       </Actions>

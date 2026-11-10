@@ -23,6 +23,7 @@ export const protocol = 2;
 const localRoutes = {
   auth: "/api/auth",
   hosts: "/api/hosts",
+  hostPing: (id: string) => `/api/hosts/${id}/ping`,
   browserStatus: "/api/browser/status",
   browserViewer: "/api/browser/viewer",
   command: "/api/command",
@@ -31,6 +32,7 @@ const localRoutes = {
   pushSubscriptions: "/api/push/subscriptions",
   // A folder at a glance: its spend, changes and git.
   folder: (path: string) => `/api/folder?path=${encodeURIComponent(path)}`,
+  folders: (path: string) => `/api/folders?path=${encodeURIComponent(path)}`,
   sessions: "/api/sessions",
   // The person's own stylesheet, CSS rather than JSON.
   userStyle: "/api/user.css",
@@ -77,6 +79,9 @@ export function createApi(host = "") {
     ...localRoutes,
     folder: (path: string) =>
       localRoutes.folder(path) +
+      (host ? `&host=${encodeURIComponent(host)}` : ""),
+    folders: (path: string) =>
+      localRoutes.folders(path) +
       (host ? `&host=${encodeURIComponent(host)}` : ""),
   };
   // A request to the host: a GET, or a POST of `body` as JSON. Resolves to the

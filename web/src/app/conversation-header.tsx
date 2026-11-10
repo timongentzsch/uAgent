@@ -15,6 +15,7 @@ import {
 } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
 import { useCompact, useNarrowColumn } from "../shared/layout.ts";
+import { useHosts } from "../state/sources.ts";
 import { useHostContext } from "../state/host-context.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { isBrowsing } from "./chat-page.tsx";
@@ -89,6 +90,10 @@ export default function ConversationHeader({
   ) => ComponentChildren;
 }) {
   const { store, setModal } = useHostContext();
+  const hosts = useHosts();
+  const executionHost =
+    hosts?.sources.find((source) => source.id === (session?.host || ""))
+      ?.name || "Local";
   const compact = useCompact();
   const narrow = useNarrowColumn();
   // The browser icon shows when this conversation's agent is using it.
@@ -150,6 +155,9 @@ export default function ConversationHeader({
             "µAgent"
           )}
         </h1>
+        {page === "chat" && session && (
+          <p class="head-subtitle small muted">{executionHost}</p>
+        )}
         {/* An agent leads back to the conversation that started it. */}
         {page === "chat" && parent && (
           <p class="head-subtitle small">

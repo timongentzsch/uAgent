@@ -138,6 +138,29 @@ std::optional<json> List(const fs::path& root, const fs::path& folder) {
   return json{{"entries", std::move(rows)}, {"more", more}};
 }
 
+json Folders(const std::string& path) {
+  std::string requested = path;
+  if (requested.empty() || requested == "~") {
+    requested = UserHome();
+  } else if (requested.starts_with("~/")) {
+    requested = UserHome() + requested.substr(1);
+  }
+  const auto folder = CanonicalDirectory(requested);
+  if (!folder || !Shown(*folder)) {
+    return {{"error", "Choose an accessible folder."}, {"status", 404}};
+  }
+  auto listed = List(folder->root_path(), *folder);
+  if (!listed) return {{"error", "Cannot list this folder."}, {"status", 403}};
+  json entries = json::array();
+  for (const json& entry : (*listed)["entries"]) {
+    if (JsonValue(entry, "dir", false)) entries.push_back(entry);
+  }
+  (*listed)["entries"] = std::move(entries);
+  (*listed)["path"] = folder->string();
+  (*listed)["parent"] = folder->parent_path().string();
+  return *listed;
+}
+
 // Whether `query`'s characters, spaces aside, appear in `path` in order.
 bool Matches(const std::string& query, const std::string& path) {
   size_t at = 0;

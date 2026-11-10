@@ -270,6 +270,9 @@ class Worker {
     if (operation == "files") {
       return workspace_files::Request(CanonicalCwd(), request);
     }
+    if (operation == "folders") {
+      return workspace_files::Folders(JsonValue(request, "path", "~"));
+    }
     if (operation == "bytes") {
       const std::string path = JsonValue(request, "path", "");
       if (HiddenPath(path)) return {{"error", "Protected remote path."}};

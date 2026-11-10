@@ -4,6 +4,16 @@
 #include "src/web/master_internal.h"
 namespace uagent::web::master {
 void Master::RegisterRemoteRoutes() {
+  server_.Get("/api/hosts/([0-9a-f]{32})/ping", [this](const Request& request,
+                                                       Response& response) {
+    const json result = remotes_->Ping(request.matches[1].str());
+    if (result.contains("error")) {
+      Error(response, JsonValue(result, "error", "Measurement unavailable"),
+            503);
+    } else {
+      Reply(response, result);
+    }
+  });
   server_.Get("/api/hosts", [this](const Request&, Response& response) {
     Reply(response, {{"hosts", remotes_->List()}});
   });

@@ -64,7 +64,7 @@ Use the existing hosts.json id (empty for Local) in history, drafts, session
 headers, schedules, trust, folder settings and memory. Hash the host into
 WorkspaceId only for remote folders, preserving Local IDs. Disable borrowed
 Claude memories for remote folders. Session identity and caches include the host; equal paths/IDs on
-separate machines must not collide. Host switching in the UI does not retarget
+separate machines must not collide. Selecting a host for new work does not retarget
 outstanding work.
 
 Expose one Workspace value (host, path). Run the main remote-conversation
@@ -135,9 +135,18 @@ remotely and fail visibly when offline. Remote folders remain supported.
 
 Keep host-grouped folders/workspaces/conversations, pins, initially collapsed
 Recent, bottom Hosts status, square selection controls and compact mobile rows.
-Settings/providers/models are main-owned global surfaces. Switching host changes
-execution context only. Main history/settings stay available while a host is
-unavailable; remote execution controls explain the missing connection.
+Settings/providers/models are main-owned global surfaces. There is no global
+host switch. New conversation and folder actions offer an explicit Host field
+and reuse the Files folder tree to choose a directory. Existing conversations
+and folders supply their own execution context; conversation headers name the
+host. The home screen exposes New conversation.
+
+The bottom Hosts panel describes connection state, offers Add host and opens
+connection details with Reconnect/Disconnect and measured Main → host SSH
+request round trip. Sample connected rows every 30 seconds and open details
+every 5 seconds without reconnecting as a side effect. Main history/settings
+stay available while a host is unavailable; execution controls explain the
+missing connection.
 
 Retain automatic platform detection/bootstrap, strict SSH identity checks,
 actionable key guidance, bounded automatic retry and manual Reconnect. Connects

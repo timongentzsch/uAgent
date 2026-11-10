@@ -4,6 +4,10 @@ import type {
   InspectorTarget,
   Session,
 } from "../shared/types.ts";
+import { ApiContext, hostApi } from "../state/api.ts";
+import { useHosts } from "../state/sources.ts";
+import HostField from "../shared/host-field.tsx";
+import FolderPicker from "../features/files/folder-picker.tsx";
 import { folderOf } from "../shared/display.ts";
 import { plural } from "../shared/quantities.ts";
 import { maxSpaceNameChars } from "../shared/limits.ts";
@@ -83,11 +87,30 @@ export default function Modals({
   // The places to start in, and the New dialog's fields.
   places: Pick<
     Places,
-    "projects" | "folder" | "setFolder" | "space" | "setSpace" | "create"
+    | "projects"
+    | "folder"
+    | "setFolder"
+    | "space"
+    | "setSpace"
+    | "create"
+    | "newHost"
+    | "setNewHost"
   >;
 }) {
   const preferences = useContext(PreferencesContext)!;
-  const { projects, folder, setFolder, space, setSpace, create } = places;
+  const {
+    projects,
+    folder,
+    setFolder,
+    space,
+    setSpace,
+    create,
+    newHost,
+    setNewHost,
+  } = places;
+  const hosts = useHosts();
+  const newSource = hosts?.sources.find((source) => source.id === newHost);
+  const executionOnline = !newHost || newSource?.phase === "connected";
   const {
     store,
     online,
@@ -258,10 +281,42 @@ export default function Modals({
       )}
       {modal?.type === "new" && (
         <Modal
-          title={modal.place === "workspace" ? "New workspace" : "New folder"}
+          title={
+            modal.place === "workspace"
+              ? "New workspace"
+              : modal.place === "conversation"
+                ? "New conversation"
+                : "New folder"
+          }
           close={close}
         >
           <form onSubmit={create}>
+            <HostField
+              value={newHost}
+              change={(id) => {
+                setNewHost(id);
+                setFolder("");
+              }}
+              localOnly={modal.place === "workspace"}
+            />
+            {!executionOnline && (
+              <Button
+                type="button"
+                disabled={!online}
+                busy={
+                  newSource?.phase === "connecting" ||
+                  newSource?.phase === "reconnecting"
+                }
+                onClick={() =>
+                  void hosts?.action("connect", newHost).catch(report)
+                }
+              >
+                Connect to {newSource?.name || "host"}
+              </Button>
+            )}
+            {newSource?.error && (
+              <p class="host-error small">{newSource.error}</p>
+            )}
             {modal.place === "workspace" ? (
               <>
                 <label>
@@ -288,39 +343,25 @@ export default function Modals({
                 </p>
               </>
             ) : (
-              <>
-                <label>
-                  Folder on the host
-                  <Input
-                    autoFocus
-                    list="new-conversation-folders"
-                    value={folder}
-                    onInput={(event) => setFolder(event.currentTarget.value)}
-                    placeholder="/path/to/folder"
-                    required
-                    autoComplete="off"
-                  />
-                </label>
-                <datalist id="new-conversation-folders">
-                  {projects
-                    .filter(
-                      (path) =>
-                        !catalogue.spaces?.some((item) => item.path === path),
-                    )
-                    .map((path) => (
-                      <option key={path} value={path} />
-                    ))}
-                </datalist>
-                <p class="muted">
-                  A folder is a directory of yours, in Git or not.
-                </p>
-              </>
+              <ApiContext.Provider value={hostApi(newHost)}>
+                <FolderPicker
+                  key={newHost}
+                  value={folder}
+                  change={setFolder}
+                  online={online && executionOnline}
+                />
+              </ApiContext.Provider>
             )}
             <Actions>
               <Button
                 type="submit"
                 variant="primary"
-                disabled={busy || !online}
+                disabled={
+                  busy ||
+                  !online ||
+                  !executionOnline ||
+                  (modal.place !== "workspace" && !folder.trim())
+                }
               >
                 {modal.place === "workspace"
                   ? "Open workspace"

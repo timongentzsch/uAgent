@@ -937,7 +937,7 @@ export type AppModal =
   | { type: "instructions" }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
-  | { type: "new"; place: "workspace" | "folder" }
+  | { type: "new"; place: "conversation" | "workspace" | "folder" }
   // `sessions`: several moved at once, from the sidebar's selection.
   | { type: "move"; session: Session; sessions?: Session[] }
   | { type: "delete-many"; sessions: Session[]; spaces: Space[] }

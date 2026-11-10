@@ -522,7 +522,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
       return;
     followedDestination.current = destination;
     setDrawer(false);
-    if (destination.settings)
+    if (destination.create) newPlace(destination.create);
+    else if (destination.settings)
       setModal({ type: "settings", section: destination.settings });
     else if (destination.terminal) {
       const terminal = catalogue.terminals?.find(
@@ -542,6 +543,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
     setSelected,
     showTerminal,
     catalogue.terminals,
+    newPlace,
   ]);
   // A folder's new terminal, shown at once.
   const newTerminal = useCallback(

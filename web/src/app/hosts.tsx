@@ -159,7 +159,11 @@ export default function HostsShell({
       id: string,
       session = "",
       place = "",
-      view: { terminal?: string; settings?: string } = {},
+      view: {
+        terminal?: string;
+        settings?: string;
+        create?: "conversation" | "folder";
+      } = {},
     ) => {
       if (id && hosts.find((host) => host.id === id)?.phase === "disconnected")
         void action("connect", id).catch((error) => state.report(error));

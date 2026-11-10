@@ -16,6 +16,7 @@ class RemoteHosts {
   explicit RemoteHosts(std::string executable);
   ~RemoteHosts();
   json List() const;
+  json Ping(const std::string& id) const;
   json Change(const json& action, std::string& error);
   json Target(const std::string& id, const std::string& cwd,
               const std::string& runtime) const;

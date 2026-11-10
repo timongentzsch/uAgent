@@ -1,0 +1,24 @@
+.folder-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.folder-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.folder-picker-path {
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.folder-picker .files-tree {
+  max-height: var(--scroll-m);
+  min-height: 0;
+}
+@media (pointer: coarse) {
+  .folder-picker .tree-row {
+    min-height: var(--touch);
+  }
+}

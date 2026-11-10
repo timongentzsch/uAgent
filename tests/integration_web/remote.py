@@ -400,6 +400,11 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
             wait_until(
                 lambda: phase() == "connected", timeout=budget(12), message="SSH did not connect"
             )
+            measured = web.json(f"/api/hosts/{host}/ping")
+            assert_true(measured[0] == 200 and measured[1]["round_trip_ms"] >= 0, measured)
+            browsed = web.json("/api/folders?" + urlencode({"host": host, "path": str(project)}))
+            assert_true(browsed[0] == 200 and browsed[1]["path"] == str(project.resolve()), browsed)
+            assert_true(all(row["dir"] for row in browsed[1]["entries"]), browsed)
             session = web.command("create", cwd=str(project), host=host)["session"]
             assert_true(session["host"] == host, session)
             session = web.command("activate", session)["session"]
@@ -471,6 +476,9 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
                 lambda: phase() == "disconnected", timeout=budget(5), message="disconnect ignored"
             )
             assert_true(web.snapshot(session)["metadata"]["host"] == host, "offline history lost")
+            assert_true(
+                web.request(f"/api/hosts/{host}/ping")[0] == 503, "offline ping reconnected"
+            )
             web.json("/api/hosts", {"action": "reconnect", "id": host})
             wait_until(
                 lambda: phase() == "connected",
@@ -479,6 +487,11 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
             )
             recovered = web.json(f"/api/sessions/{session['id']}/files?read=remote.txt")
             assert_true(recovered[0] == 200, recovered)
+            viewer = Socket(web, f"/api/terminals/{terminal}")
+            viewer.type('printf "after-disconnect-%s\\n" "$REMOTE_PTY_SURVIVAL"\n')
+            output, _, closed = viewer.until("after-disconnect-still-here")
+            assert_true(closed is None, output)
+            viewer.close()
         with web_host(binary, root, home, provider.url, extra_env=environment) as (web, code, _, _):
             web.pair(code)
             assert_true(

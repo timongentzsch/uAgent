@@ -8,7 +8,8 @@ import type {
   Snapshot,
   Space,
 } from "../shared/types.ts";
-import { useApi } from "../state/api.ts";
+import { hostApi, useApi } from "../state/api.ts";
+import { useHosts } from "../state/sources.ts";
 import { folderOf } from "../shared/display.ts";
 import { scratchSpace } from "../shared/limits.ts";
 import { SpaceMenu } from "./menus.tsx";
@@ -37,7 +38,10 @@ export function usePlaces({
   setModal: (modal: AppModal | null) => void;
   setBusy: (busy: boolean) => void;
 }) {
-  const { command } = useApi();
+  const { command, host } = useApi();
+  const hosts = useHosts();
+  const multipleHosts = (hosts?.sources.length || 0) > 1;
+  const [newHost, setNewHost] = useState(host);
   const [folder, setFolder] = useState("");
   const [space, setSpace] = useState("");
   // A workspace typed into the dialog, or a folder, starts a conversation.
@@ -50,6 +54,8 @@ export function usePlaces({
       await startConversation(
         workspace ? "" : folder,
         workspace ? space.trim() : "",
+        "",
+        newHost,
       );
       setModal(null);
     } catch (failure) {
@@ -62,12 +68,12 @@ export function usePlaces({
   // With `text`, its first message is sent.
   const starting = useRef(false);
   const startConversation = useCallback(
-    async (folder: string, space = "", text = "") => {
+    async (folder: string, space = "", text = "", targetHost = host) => {
       if (starting.current) return;
       starting.current = true;
       try {
         // A workspace is asked for by its name; the host keeps its folder.
-        const created = await command(
+        const created = await hostApi(targetHost).command(
           "create",
           null,
           space ? { space } : { cwd: folder },
@@ -86,29 +92,34 @@ export function usePlaces({
           await choose(created.session.id);
         }
         await load(created.session.id);
+        if (targetHost !== host) hosts?.open(targetHost, created.session.id);
         return created.session.id;
       } finally {
         starting.current = false;
       }
     },
-    [upsertSession, choose, load, command],
+    [upsertSession, choose, load, command, host, hosts?.open],
   );
   // Asks for the place's name or path, which starts a conversation there.
   const newPlace = useCallback(
-    (place: "workspace" | "folder") => {
+    (place: "conversation" | "workspace" | "folder") => {
+      setNewHost(place === "workspace" ? "" : host);
       setSpace("");
       setFolder("");
       open({ type: "new", place });
     },
-    [open],
+    [open, host],
   );
   const startIn = useCallback(
     (cwd: string) => startConversation(cwd).catch(report),
     [startConversation, report],
   );
   const startScratch = useCallback(
-    () => startConversation("", scratchSpace).catch(report),
-    [startConversation, report],
+    () =>
+      multipleHosts
+        ? newPlace("conversation")
+        : startConversation("", scratchSpace).catch(report),
+    [startConversation, report, multipleHosts, newPlace],
   );
   const projects = useMemo(
     () => [
@@ -127,6 +138,8 @@ export function usePlaces({
     [open],
   );
   return {
+    newHost,
+    setNewHost,
     folder,
     setFolder,
     space,

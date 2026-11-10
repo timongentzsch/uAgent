@@ -75,8 +75,7 @@ test("late snapshots and retired streams cannot replace current session state", 
           devices: [],
         },
       });
-    if (path === "/api/hosts")
-      return route.fulfill({ json: { hosts: [] } });
+    if (path === "/api/hosts") return route.fulfill({ json: { hosts: [] } });
     if (path === "/api/browser/status")
       return route.fulfill({ status: 404, json: { error: "Not found" } });
     if (path === "/api/user.css")

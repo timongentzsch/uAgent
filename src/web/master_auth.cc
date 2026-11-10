@@ -41,10 +41,20 @@ bool EqualSecret(std::string_view a, std::string_view b) {
   return difference == 0;
 }
 
-std::string Master::Pair() {
-  pair_ = RandomToken(12);
-  pair_deadline_ = Clock::now() + kPairingLifetime;
-  return pair_;
+std::string Master::Pair(bool instance) {
+  const std::string code = RandomToken(12);
+  const auto now = Clock::now();
+  const auto deadline = now + kPairingLifetime;
+  if (instance) {
+    std::erase_if(instance_pairs_,
+                  [now](const Pairing& pair) { return now > pair.deadline; });
+    if (instance_pairs_.size() >= kWebDeviceLimit) instance_pairs_.pop_front();
+    instance_pairs_.push_back({code, deadline});
+  } else {
+    pair_ = code;
+    pair_deadline_ = deadline;
+  }
+  return code;
 }
 json Master::PublicDevices() const {
   json out = json::array();
@@ -125,8 +135,13 @@ void Master::Authenticate(const Request& request, Response& response) {
     Error(response, "pairing rate limit; retry in a minute", 429);
     return;
   }
-  if (now > pair_deadline_ ||
-      !EqualSecret(JsonValue(input, "code", ""), pair_)) {
+  const std::string code = JsonValue(input, "code", "");
+  const bool browser_pair = now <= pair_deadline_ && EqualSecret(code, pair_);
+  const auto instance_pair = std::find_if(
+      instance_pairs_.begin(), instance_pairs_.end(), [&](const Pairing& pair) {
+        return now <= pair.deadline && EqualSecret(code, pair.code);
+      });
+  if (!browser_pair && instance_pair == instance_pairs_.end()) {
     Error(response, "invalid or expired pairing code", 403);
     return;
   }
@@ -152,7 +167,11 @@ void Master::Authenticate(const Request& request, Response& response) {
     Error(response, "cannot persist device", 500);
     return;
   }
-  pair_.clear();
+  if (browser_pair) {
+    pair_.clear();
+  } else {
+    instance_pairs_.erase(instance_pair);
+  }
   const std::string* expected_origin = ExpectedOrigin(request);
   response.set_header(
       "Set-Cookie",

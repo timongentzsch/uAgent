@@ -94,10 +94,12 @@ def test_remote_start_joins_and_idle_update_preserves_terminals(root, home, *, b
         endpoint = json.loads(start().stdout)
         pid = int((home / ".uagent/web/master.lock").read_text().split()[0])
         assert_true(stat.S_IMODE(os.stat(endpoint["socket"]).st_mode) == 0o600, endpoint)
-        status, value, headers = request(
-            "/api/auth", {"code": endpoint["pairing_code"], "name": "Remote test"}
-        )
-        assert_true(status == 200, value)
+        grants = [identity["pairing_code"] for identity in [*identities, endpoint]]
+        assert_true(len(set(grants)) == len(grants), "discoveries shared a pairing code")
+        for grant in grants:
+            status, value, headers = request("/api/auth", {"code": grant, "name": "Remote test"})
+            assert_true(status == 200, value)
+            assert_true(request("/api/auth", {"code": grant})[0] == 403, "grant reused")
         cookie = headers["Set-Cookie"].split(";", 1)[0]
         status, value, _ = request(
             "/api/command",
@@ -140,12 +142,13 @@ def test_remote_start_joins_and_idle_update_preserves_terminals(root, home, *, b
 
 def test_remote_start_reuses_installed_web_host_without_replacing_it(root, home, *, binary):
     with web_host(binary, root, home, "http://127.0.0.1:1") as (client, code, _, _):
-        client.pair(code)
         env = base_env(home, "http://127.0.0.1:1")
         result = subprocess.run(
             [binary, "--remote-start"], env=env, capture_output=True, text=True, timeout=budget(10)
         )
         assert_true(result.returncode == 0, result.stdout + result.stderr)
+        # Authenticated SSH discovery must not invalidate the browser's code.
+        client.pair(code)
         identity = json.loads(result.stdout)
         assert_true(identity["epoch"] == client.json("/api/sessions")[1]["epoch"], identity)
         refused = subprocess.run(

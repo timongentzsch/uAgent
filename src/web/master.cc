@@ -527,7 +527,7 @@ void Master::RegisterApiRoutes() {
                      {"idle_update", true},
                      {"epoch", epoch_},
                      {"url", origin_},
-                     {"pairing_code", Pair()}});
+                     {"pairing_code", Pair(true)}});
   });
   server_.Post("/api/auth", [this](const Request& request, Response& response) {
     Authenticate(request, response);

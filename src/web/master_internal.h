@@ -100,7 +100,7 @@ class Master {
   const std::string* ExpectedOrigin(const Request& request) const;
   static std::string ConfiguredDetail();
   void PublishSettings();
-  std::string Pair() UAGENT_REQUIRES(mutex_);
+  std::string Pair(bool instance = false) UAGENT_REQUIRES(mutex_);
   json PublicDevices() const UAGENT_REQUIRES(mutex_);
   void LoadDevices();
   bool SaveDevices() const UAGENT_REQUIRES(mutex_);
@@ -132,6 +132,13 @@ class Master {
   std::string pair_ UAGENT_GUARDED_BY(mutex_);
   session::SessionHost host_;
   Clock::time_point pair_deadline_ UAGENT_GUARDED_BY(mutex_){};
+  struct Pairing {
+    std::string code;
+    Clock::time_point deadline;
+  };
+  // Independent one-use grants let concurrent SSH discoveries pair without
+  // replacing each other's code or the one shown in the serving terminal.
+  std::deque<Pairing> instance_pairs_ UAGENT_GUARDED_BY(mutex_);
   Clock::time_point auth_window_ UAGENT_GUARDED_BY(mutex_){};
   int auth_attempts_ UAGENT_GUARDED_BY(mutex_) = 0;
   httplib::Server server_;

@@ -1,12 +1,12 @@
-import {
-  test,
-  expect,
-  savedConversation,
-  withoutServiceWorker,
-} from "./fixtures.js";
+import { test, expect, savedConversation } from "./fixtures.js";
+// Mocked host APIs must stay intercepted across reload and worker updates.
+test.use({ serviceWorkers: "block" });
 const remote = "b".repeat(32);
 async function offlineHost(page) {
-  await withoutServiceWorker(page);
+  // These API mocks exercise a client without the separate PWA lifecycle.
+  await page.addInitScript(() => {
+    delete Navigator.prototype.serviceWorker;
+  });
   let reads = 0;
   const actions = [];
   await page.route("**/api/hosts", async (route) => {

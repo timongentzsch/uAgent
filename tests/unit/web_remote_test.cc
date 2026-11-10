@@ -31,7 +31,19 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
         }
         return httplib::Server::HandlerResponse::Unhandled;
       });
-  upstream.Get("/api/example", [](const auto&, auto& response) {
+  const std::string data =
+      "{\n  \"base\": \"/preview/grant/\", \"url\": \"/api/download\"\n}\n";
+  upstream.Get("/api/example", [&](const auto&, auto& response) {
+    response.set_content(data, "application/json");
+  });
+  upstream.Get("/preview/grant/data.json", [&](const auto&, auto& response) {
+    response.set_content(data, "application/json");
+  });
+  upstream.Get("/api/sessions/test/assets/data",
+               [&](const auto&, auto& response) {
+                 response.set_content(data, "application/json");
+               });
+  upstream.Post("/api/sessions/test/preview", [](const auto&, auto& response) {
     response.set_content(
         R"({"base":"/preview/grant/","url":"/api/download","text":"http://localhost/api/unchanged"})",
         "application/json");
@@ -104,11 +116,25 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
                                        {"Origin", "https://serving.example"}});
   CHECK(result && result->status == 200);
   if (result) {
-    const json body = json::parse(result->body, nullptr, false);
-    CHECK(JsonValue(body, "base", "") == "/preview/hosts/owner/grant/");
-    CHECK(JsonValue(body, "url", "") == "/api/hosts/owner/api/download");
-    CHECK(JsonValue(body, "text", "") == "http://localhost/api/unchanged");
+    CHECK(result->body == data);
     CHECK(!result->has_header("Set-Cookie"));
+  }
+  for (const auto* path :
+       {"/preview/grant/data.json", "/api/sessions/test/assets/data"}) {
+    auto file = client.Get(path);
+    CHECK(file && file->status == 200 && file->body == data);
+    auto range = client.Get(path, httplib::Headers{{"Range", "bytes=2-15"}});
+    CHECK(range && range->status == 206 && range->body == data.substr(2, 14));
+  }
+  auto grant = client.Post("/api/sessions/test/preview?check=1", "{}",
+                           "application/json");
+  CHECK(grant && grant->status == 200);
+  if (grant) {
+    const json body = json::parse(grant->body, nullptr, false);
+    CHECK(JsonValue(body, "base", "") == "/preview/hosts/owner/grant/");
+    CHECK(JsonValue(body, "url", "") == "/api/download");
+    CHECK(JsonValue(body, "text", "") == "http://localhost/api/unchanged");
+    CHECK(!grant->has_header("Set-Cookie"));
   }
   auto preview = client.Get("/preview/grant/index.html");
   CHECK(preview && preview->status == 200);

@@ -30,29 +30,6 @@ httplib::Headers Headers(const RemoteEndpoint& endpoint,
   }
   return headers;
 }
-void RewriteLinks(json& value, const RemoteEndpoint& endpoint,
-                  const std::string& prefix) {
-  if (value.is_object()) {
-    for (auto it = value.begin(); it != value.end(); ++it) {
-      if ((it.key() == "url" || it.key() == "preview" || it.key() == "base") &&
-          it->is_string()) {
-        auto text = it->get<std::string>();
-        if (text.starts_with(endpoint.origin + "/")) {
-          text.erase(0, endpoint.origin.size());
-        }
-        if (text.starts_with("/preview/")) {
-          *it = "/preview/hosts/" + prefix.substr(11) + text.substr(8);
-        } else if (text.starts_with("/api/")) {
-          *it = prefix + text;
-        }
-      } else {
-        RewriteLinks(*it, endpoint, prefix);
-      }
-    }
-  } else if (value.is_array()) {
-    for (auto& item : value) RewriteLinks(item, endpoint, prefix);
-  }
-}
 }  // namespace
 void ProxyHttp(const RemoteEndpoint& endpoint, const std::string& prefix,
                const std::string& path, const httplib::Request& request,
@@ -133,9 +110,11 @@ void ProxyHttp(const RemoteEndpoint& endpoint, const std::string& prefix,
     return;
   }
   const std::string mime = stream->response->get_header_value("Content-Type");
-  // API JSON is bounded already. Only URL-bearing fields are changed; tool
-  // output and user text are never rewritten as if they were routes.
-  if (mime.starts_with("application/json")) {
+  // Only the preview grant contains a server-minted address to translate.
+  // Every other response, including JSON assets and tool data, stays opaque.
+  const std::string route = path.substr(0, path.find('?'));
+  if (request.method == "POST" && route.starts_with("/api/sessions/") &&
+      route.ends_with("/preview") && mime.starts_with("application/json")) {
     std::array<char, 16384> bytes;
     std::string body;
     ssize_t count = 0;
@@ -155,7 +134,10 @@ void ProxyHttp(const RemoteEndpoint& endpoint, const std::string& prefix,
     }
     json parsed = json::parse(body, nullptr, false);
     if (!parsed.is_discarded()) {
-      RewriteLinks(parsed, endpoint, prefix);
+      const std::string base = JsonValue(parsed, "base", "");
+      if (base.starts_with("/preview/")) {
+        parsed["base"] = "/preview/hosts/" + prefix.substr(11) + base.substr(8);
+      }
       body = JsonDump(parsed);
     }
     response.set_content(std::move(body), mime);

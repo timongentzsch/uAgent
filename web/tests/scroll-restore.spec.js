@@ -1,7 +1,7 @@
 // Session return restores the saved position unfollowed: switching away
 // and back must neither pin to the bottom nor strand the reader. Seeded
 // histories keep this deterministic (no streaming or backend timing).
-import { test, expect, leaveEnd, saveHistory } from "./fixtures.js";
+import { connected, test, expect, leaveEnd, saveHistory } from "./fixtures.js";
 
 function seed(host, file, id, title) {
   const messages = Array.from({ length: 60 }, (_, index) => ({
@@ -16,9 +16,7 @@ test("returning to a session restores its position unfollowed", async ({
   host: fixture,
 }) => {
   await page.goto("/");
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   await seed(fixture, "a.json", "restore-a", "Restore A");
   await seed(fixture, "b.json", "restore-b", "Restore B");
   await page.getByRole("button", { name: "Refresh", exact: true }).click();

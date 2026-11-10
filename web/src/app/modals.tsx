@@ -8,7 +8,7 @@ import { ApiContext, hostApi } from "../state/api.ts";
 import { useHosts } from "../state/sources.ts";
 import HostField from "../shared/host-field.tsx";
 import FolderPicker from "../features/files/folder-picker.tsx";
-import { folderOf } from "../shared/display.ts";
+import { folderOf, projectsOf } from "../shared/display.ts";
 import { plural } from "../shared/quantities.ts";
 import { maxSpaceNameChars } from "../shared/limits.ts";
 import { createContext, type ComponentProps } from "preact";
@@ -349,6 +349,11 @@ export default function Modals({
                   value={folder}
                   change={setFolder}
                   online={online && executionOnline}
+                  projects={
+                    newSource?.state
+                      ? projectsOf(newSource.state.catalogue.sessions)
+                      : projects
+                  }
                 />
               </ApiContext.Provider>
             )}

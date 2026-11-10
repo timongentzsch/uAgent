@@ -832,11 +832,18 @@ int WorkerMain(int argc, char** argv) {
   if (!launch.is_object()) return kWorkerBadLaunch;
   // Before anyone can connect: a runtime that cannot work never answers.
   Options options = OptionsFromLaunch(launch);
+  struct RemoteCwd {
+    std::string path;
+    ~RemoteCwd() {
+      if (!path.empty()) rmdir(path.c_str());
+    }
+  } remote_cwd;
   if (options.host.empty()) {
     if (chdir(argv[2]) != 0) return kWorkerNoWorkspace;
   } else {
-    const std::string local = RuntimeDir() + "/remote-cwd/" + argv[4];
-    if (!EnsurePrivateDirectory(local) || chdir(local.c_str()) != 0) {
+    remote_cwd.path = RuntimeDir() + "/remote-cwd/" + argv[4];
+    if (!EnsurePrivateDirectory(remote_cwd.path) ||
+        chdir(remote_cwd.path.c_str()) != 0) {
       return kWorkerNoWorkspace;
     }
     SetWorkspace({options.host, argv[2]});

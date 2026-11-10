@@ -9,6 +9,7 @@ import { type ComponentType } from "preact";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -16,8 +17,13 @@ import {
 import { ApiContext, hostApi, localApi } from "../state/api.ts";
 import { useHost, type HostState } from "../state/use-host.ts";
 import type { JSONValue } from "../shared/types.ts";
-import { hostFromURL, writeSelection } from "../shared/navigation.ts";
+import {
+  hostFromURL,
+  selectedFromURL,
+  writeSelection,
+} from "../shared/navigation.ts";
 import { stored, useStored } from "../shared/storage.ts";
+import { useLatest } from "../shared/use-latest.ts";
 
 const saved = stored<SavedHost[]>("uagent-hosts", [], undefined, {
   kept: (hosts) =>
@@ -42,6 +48,7 @@ export default function HostsShell({
   const [reading, setReading] = useState(true);
   // One main-owned catalogue and stream, including offline remote history.
   const state = useHost(deliver, reading);
+  const catalogue = useLatest(state.catalogue.sessions);
   const bindResult = useCallback((handler: ResultHandler) => {
     result.current = handler;
     return () => {
@@ -165,7 +172,17 @@ export default function HostsShell({
         create?: "conversation" | "folder";
       } = {},
     ) => {
-      if (id && hosts.find((host) => host.id === id)?.phase === "disconnected")
+      // Sessions belong to the main catalogue, including notification links
+      // that carry only a session id.
+      const sessionOwner = catalogue.current.find(
+        (item) => item.id === session,
+      );
+      if (sessionOwner) id = sessionOwner.host || "";
+      if (
+        gatewayOnline &&
+        id &&
+        hosts.find((host) => host.id === id)?.phase === "disconnected"
+      )
         void action("connect", id).catch((error) => state.report(error));
       writeSelection(session, false, id);
       if (place) {
@@ -176,7 +193,7 @@ export default function HostsShell({
       setDestination({ id, session, place, ...view });
       setActive(id);
     },
-    [hosts, action, state.report],
+    [hosts, action, state.report, gatewayOnline],
   );
   const sources = useMemo<Source[]>(
     () => [
@@ -195,11 +212,35 @@ export default function HostsShell({
     ],
     [hosts, navigation, scopes],
   );
-  const context = useMemo(
-    () => ({ sources, active, gatewayOnline, open, action, destination }),
-    [sources, active, gatewayOnline, open, action, destination],
+  const linkedId = selectedFromURL();
+  const linkedSession = state.catalogue.sessions.find(
+    (session) => session.id === linkedId,
   );
-  const selected = sources.some((source) => source.id === active) ? active : "";
+  const owner = linkedSession ? linkedSession.host || "" : active;
+  const selected = sources.some((source) => source.id === owner) ? owner : "";
+  // Cold notification links may lack a host. Preserve their decision target
+  // while correcting the URL once the main catalogue identifies the session.
+  useLayoutEffect(() => {
+    if (!linkedSession || !sources.some((source) => source.id === owner))
+      return;
+    setActive(owner);
+    const params = new URLSearchParams(location.hash.slice(1));
+    if (owner) params.set("host", owner);
+    else params.delete("host");
+    if (params.toString() !== location.hash.slice(1))
+      history.replaceState(history.state, "", `#${params}`);
+  }, [linkedSession, owner, sources]);
+  const context = useMemo(
+    () => ({
+      sources,
+      active: selected,
+      gatewayOnline,
+      open,
+      action,
+      destination,
+    }),
+    [sources, selected, gatewayOnline, open, action, destination],
+  );
   return (
     <HostsContext.Provider value={context}>
       <ApiContext.Provider value={hostApi(selected)}>

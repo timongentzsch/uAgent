@@ -15,7 +15,7 @@ std::optional<json> CheckRemoteBundle(const std::string& directory,
 // Serving-host owned SSH transports. Reads never initiate a connection.
 class RemoteHosts {
  public:
-  explicit RemoteHosts(std::string executable);
+  RemoteHosts(const std::string& executable, const std::string& bundle);
   ~RemoteHosts();
   json List() const;
   json Ping(const std::string& id) const;

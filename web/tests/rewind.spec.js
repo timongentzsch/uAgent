@@ -1,15 +1,13 @@
 // Rewinding never loses work: it continues in a fork cut before the message,
 // with that message back in the composer, and the original stays.
-import { test, expect, saveHistory } from "./fixtures.js";
+import { connected, test, expect, saveHistory } from "./fixtures.js";
 
 test("edit from a message continues in a fork with the message to edit", async ({
   page,
   host,
 }) => {
   await page.goto("/");
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   const messages = [
     { role: "user", content: "First request" },
     { role: "assistant", content: "First answer" },

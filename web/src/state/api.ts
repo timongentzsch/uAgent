@@ -23,7 +23,7 @@ export const protocol = 2;
 const localRoutes = {
   auth: "/api/auth",
   hosts: "/api/hosts",
-  hostPing: (id: string) => `/api/hosts/${id}/ping`,
+  hostPing: (id: string) => `/api/hosts/${encodeURIComponent(id)}/ping`,
   browserStatus: "/api/browser/status",
   browserViewer: "/api/browser/viewer",
   command: "/api/command",

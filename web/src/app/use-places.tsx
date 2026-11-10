@@ -9,8 +9,8 @@ import type {
   Space,
 } from "../shared/types.ts";
 import { hostApi, useApi } from "../state/api.ts";
-import { useHosts } from "../state/sources.ts";
-import { folderOf } from "../shared/display.ts";
+import { useHosts, useMultipleHosts } from "../state/sources.ts";
+import { folderOf, projectsOf } from "../shared/display.ts";
 import { scratchSpace } from "../shared/limits.ts";
 import { SpaceMenu } from "./menus.tsx";
 import { collapsed } from "../features/sidebar/folding.ts";
@@ -40,7 +40,7 @@ export function usePlaces({
 }) {
   const { command, host } = useApi();
   const hosts = useHosts();
-  const multipleHosts = (hosts?.sources.length || 0) > 1;
+  const multipleHosts = useMultipleHosts();
   const [newHost, setNewHost] = useState(host);
   const [folder, setFolder] = useState("");
   const [space, setSpace] = useState("");
@@ -122,13 +122,7 @@ export function usePlaces({
     [startConversation, report, multipleHosts, newPlace],
   );
   const projects = useMemo(
-    () => [
-      ...new Set(
-        catalogue.sessions
-          .map((entry) => entry.cwd)
-          .filter((path): path is string => !!path),
-      ),
-    ],
+    () => projectsOf(catalogue.sessions),
     [catalogue.sessions],
   );
   const spaceMenu = useCallback(

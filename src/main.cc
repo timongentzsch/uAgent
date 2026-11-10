@@ -151,8 +151,7 @@ int ShowSystemPrompt(Options options, char* executable,
 }
 
 // --web: the master process; only user configuration reaches it.
-int WebMain(const Options& options, char** argv,
-            const std::string& socket = "") {
+int WebMain(const Options& options, char** argv) {
   if (!options.prompt.empty() || options.json || options.json_stream ||
       options.resume_latest || options.resume_pick || options.yolo ||
       options.trust_project || !options.attach_paths.empty()) {
@@ -208,7 +207,8 @@ int WebMain(const Options& options, char** argv,
       {static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
        setting("UAGENT_WEB_PUSH_CONTACT"), notification_detail, bind,
        setting("UAGENT_BROWSER_DATA"), terminal_on,
-       std::clamp(idle_minutes, idle.minimum, idle.maximum), socket},
+       std::clamp(idle_minutes, idle.minimum, idle.maximum),
+       setting("UAGENT_REMOTE_BUNDLE")},
       argv);
 }
 

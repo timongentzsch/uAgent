@@ -37,7 +37,7 @@ test.describe("touch selection", () => {
     const bar = page.getByRole("toolbar", { name: "Selection", exact: true });
     await expect(bar.getByText("1 selected")).toBeVisible();
     await expect(
-      page.getByText("Tap rows to select", { exact: true }),
+      page.getByText("Click or tap rows to select", { exact: true }),
     ).toBeVisible();
     const bravo = row(page, "Bravo talk");
     const checkbox = bravo.getByRole("checkbox");
@@ -65,7 +65,7 @@ test.describe("touch selection", () => {
     await bar.getByRole("button", { name: "Done", exact: true }).tap();
     await expect(bar).toHaveCount(0);
     await expect(
-      page.getByText("Tap rows to select", { exact: true }),
+      page.getByText("Click or tap rows to select", { exact: true }),
     ).toHaveCount(0);
     await row(page, "Bravo talk").locator(".list-row").tap();
     await expect(page).toHaveURL(/#session=/);

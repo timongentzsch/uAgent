@@ -64,7 +64,7 @@ start work. Conversation and folder actions choose a **Host** and reuse the
 Files tree to browse a directory; typing a path remains optional. Named
 **Workspaces** belong to Local. An existing conversation or folder supplies its
 host, shown beside the conversation title. There is no application-wide host
-switch. The bottom **Hosts** panel shows status and measured main-to-host SSH
+switch. The bottom **Remote hosts** panel shows status and measured main-to-host SSH
 round trip, with **Add host**, **Reconnect** and **Disconnect** in host details.
 [Remote hosts](REMOTE_HOSTS.md) explains setup and recovery.
 

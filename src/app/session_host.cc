@@ -232,17 +232,6 @@ std::optional<std::chrono::steady_clock::time_point> SessionHost::RescanDue()
   return scanned_ + std::chrono::seconds(kCatalogueRescanSeconds);
 }
 
-bool SessionHost::IdleForUpdate() const {
-  std::lock_guard lock(mutex_);
-  for (const auto& [id, session] : sessions_) {
-    if ((session->pid > 0 && !session->exited) || session->connecting ||
-        session->RestartBusy()) {
-      return false;
-    }
-  }
-  return true;
-}
-
 void SessionHost::RefreshPresence() {
   RefreshCatalogue();
   // The runtimes' sockets, listed once: the cost of a pass is the runtimes

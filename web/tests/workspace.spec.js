@@ -1,4 +1,5 @@
 import {
+  connected,
   test,
   expect,
   online,
@@ -237,9 +238,7 @@ test("unread completions, background activity and conversation lifecycle", async
     })
     .toBe("idle");
   await context.setOffline(false);
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   await expect(page.getByLabel("Unread messages", { exact: true })).toHaveCount(
     1,
   );
@@ -357,9 +356,7 @@ test("retained history stays bounded and merges overlapping pages once", async (
   host: fixture,
 }, testInfo) => {
   await page.goto("/");
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   const messages = Array.from({ length: 2000 }, (_, index) => ({
     role: index % 2 ? "assistant" : "user",
     content:
@@ -460,9 +457,7 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
   host: fixture,
 }) => {
   await page.goto("/");
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   const messages = Array.from({ length: 300 }, (_, index) => ({
     role: index % 2 ? "assistant" : "user",
     content: `Retained message ${index}. ` + "History anchor. ".repeat(20),

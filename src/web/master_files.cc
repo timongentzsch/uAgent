@@ -172,9 +172,11 @@ void Master::FileWrite(const Request& request, Response& response) {
       return;
     }
     execution::Client remote(execution::TargetFromJson(target));
-    json operation = body;
-    operation["op"] = "files";
-    operation["mode"] = "write";
+    const json operation = {{"op", "files"},
+                            {"mode", "write"},
+                            {"path", JsonValue(body, "path", "")},
+                            {"text", JsonValue(body, "text", "")},
+                            {"revision", JsonValue(body, "revision", "")}};
     const json result = remote.Call(operation);
     if (result.contains("error")) {
       Error(response, JsonValue(result, "error", "Remote write failed"),

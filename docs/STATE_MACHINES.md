@@ -14,7 +14,7 @@ editing and interaction. See [Architecture](ARCHITECTURE.md),
 For the module-by-module review depth, findings and test limits, see the
 [November review record](reviews/2026-11-module-review.md).
 The [remote execution review](reviews/2026-11-remote-execution.md) records the
-PR #336 source audit and its open cleanup candidates separately.
+PR #336 source audit and the cleanup resolutions separately.
 
 ## Review decisions
 

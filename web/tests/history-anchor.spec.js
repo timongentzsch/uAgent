@@ -1,13 +1,11 @@
-import { test, expect, saveHistory } from "./fixtures.js";
+import { connected, test, expect, saveHistory } from "./fixtures.js";
 
 test("reading a paragraph survives offsetting changes inside one message", async ({
   page,
   host,
 }) => {
   await page.goto("/");
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   const messages = Array.from({ length: 46 }, (_, index) => ({
     role: index % 2 ? "assistant" : "user",
     content:

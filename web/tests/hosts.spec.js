@@ -1,12 +1,31 @@
-import { test, expect, savedConversation } from "./fixtures.js";
+import {
+  test,
+  expect,
+  savedConversation,
+  connected,
+  online,
+  selectProbeModel,
+} from "./fixtures.js";
 // Mocked host APIs must stay intercepted across reload and worker updates.
 test.use({ serviceWorkers: "block" });
 const remote = "b".repeat(32);
-async function offlineHost(page, phase = "disconnected") {
+async function offlineHost(
+  page,
+  phase = "disconnected",
+  notifications = false,
+) {
   // These API mocks exercise a client without the separate PWA lifecycle.
-  await page.addInitScript(() => {
-    delete Navigator.prototype.serviceWorker;
-  });
+  await page.addInitScript((notifications) => {
+    if (notifications) {
+      Object.defineProperty(navigator, "serviceWorker", {
+        value: Object.assign(new EventTarget(), {
+          register: () => new Promise(() => {}),
+          getRegistration: async () => undefined,
+          ready: new Promise(() => {}),
+        }),
+      });
+    } else delete Navigator.prototype.serviceWorker;
+  }, notifications);
   let reads = 0;
   const actions = [];
   await page.route("**/api/hosts", async (route) => {
@@ -216,6 +235,12 @@ test("host details show measured main-to-host latency without a switch action", 
     route.fulfill({ json: { round_trip_ms: 27.4 } }),
   );
   await page.goto("/");
+  await expect(
+    page.locator(".host-list").getByText("Remote hosts", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".host-list").getByRole("button", { name: /Local/ }),
+  ).toHaveCount(0);
   await page
     .locator(".host-list")
     .getByRole("button", { name: /GPU.*Connected/ })
@@ -252,7 +277,7 @@ test("late home loading preserves path entry and its caret", async ({
     name: "New conversation",
     exact: true,
   });
-  const path = dialog.getByRole("textbox", { name: "Folder on the host" });
+  const path = dialog.getByLabel("Folder on the host");
   await path.focus();
   release();
   await expect(dialog.locator(".folder-picker-path")).toHaveText(host.home);
@@ -262,4 +287,274 @@ test("late home loading preserves path entry and its caret", async ({
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
   await expect(page.getByLabel("Message or guidance")).toBeVisible();
+});
+
+for (const phase of ["connected", "connecting"]) {
+  test(`reconnect is disabled while ${phase}`, async ({ page }) => {
+    await offlineHost(page, phase);
+    await page.goto("/");
+    await page
+      .locator(".host-list")
+      .getByRole("button", { name: /GPU/ })
+      .click();
+    await expect(
+      page
+        .getByRole("dialog", { name: "GPU", exact: true })
+        .getByRole("button", { name: "Reconnect", exact: true }),
+    ).toBeDisabled();
+  });
+}
+
+test("adding a host submits with a click", async ({ page }) => {
+  const observed = await offlineHost(page);
+  await page.goto("/");
+  await expect(connected(page)).toBeVisible();
+  await page.getByRole("button", { name: "Add host", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "Add remote host",
+    exact: true,
+  });
+  await dialog.getByRole("textbox").fill("devbox");
+  await dialog.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect
+    .poll(() => observed.actions)
+    .toEqual([{ action: "add", address: "devbox" }]);
+});
+
+for (const notification of [false, true]) {
+  test(`${notification ? "notification" : "cold link"} resolves the conversation's execution host`, async ({
+    page,
+  }) => {
+    await offlineHost(page, "connected", notification);
+    const session = "a".repeat(32);
+    await page.goto(
+      notification ? "/" : `/#session=${session}&decision=decision`,
+    );
+    await expect(
+      page.locator(".host-list").getByRole("button", { name: /GPU/ }),
+    ).toBeVisible();
+    await expect(connected(page)).toBeVisible();
+    if (notification)
+      await page.evaluate((id) => {
+        navigator.serviceWorker.dispatchEvent(
+          new MessageEvent("message", {
+            data: { type: "OPEN_SESSION", id, decision: "decision" },
+          }),
+        );
+      }, session);
+    await expect
+      .poll(() =>
+        new URLSearchParams(new URL(page.url()).hash.slice(1)).get("host"),
+      )
+      .toBe(remote);
+    await expect(page.locator(".execution-host")).toHaveText("GPU");
+    await expect(
+      page
+        .getByRole("group", { name: "GPU", exact: true })
+        .locator('[aria-current="page"]'),
+    ).toContainText("GPU conversation");
+    // The decision link is consumed after requesting focus; ownership remains.
+    expect(
+      new URLSearchParams(new URL(page.url()).hash.slice(1)).get("session"),
+    ).toBe(session);
+  });
+}
+
+test("an unknown host falls back to the full Local conversation list", async ({
+  page,
+  host,
+  request,
+}) => {
+  await offlineHost(page);
+  await savedConversation(host, request, "Local fallback");
+  await page.goto(`/#host=${"d".repeat(32)}`);
+  const local = page.getByRole("group", { name: "Local", exact: true });
+  const row = local
+    .locator(".session-row")
+    .filter({ hasText: "Local fallback" });
+  await expect(row.locator('[aria-haspopup="menu"]')).toBeVisible();
+  await row
+    .getByRole("button", { name: /Local fallback/ })
+    .first()
+    .click();
+  await expect(page.locator(".execution-host")).toHaveText("Local");
+});
+
+test("choosing a disconnected host's own conversation reconnects once", async ({
+  page,
+}) => {
+  const observed = await offlineHost(page);
+  await page.goto(`/#host=${remote}`);
+  await expect(connected(page)).toBeVisible();
+  await page
+    .getByRole("group", { name: "GPU", exact: true })
+    .getByRole("button", { name: /GPU conversation/ })
+    .first()
+    .click();
+  await expect
+    .poll(() => observed.actions)
+    .toEqual([{ action: "connect", id: remote }]);
+});
+
+test("known folders follow the chosen host without duplicate suggestions", async ({
+  page,
+  host,
+  request,
+}) => {
+  await savedConversation(host, request, "First local folder");
+  await savedConversation(host, request, "Second local folder");
+  await offlineHost(page, "connected");
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "New conversation", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "New conversation",
+    exact: true,
+  });
+  await expect(dialog.locator("datalist option")).toHaveCount(1);
+  await expect(dialog.locator("datalist option")).toHaveAttribute(
+    "value",
+    host.project,
+  );
+  await dialog
+    .getByRole("combobox", { name: "Host", exact: true })
+    .selectOption(remote);
+  await expect(dialog.locator("datalist option")).toHaveCount(1);
+  await expect(dialog.locator("datalist option")).toHaveAttribute(
+    "value",
+    "/srv/project",
+  );
+});
+
+test("single-host headers and scheduled tasks omit redundant host controls", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  await expect(page.locator(".execution-host")).toHaveCount(0);
+  await page.getByRole("button", { name: "Scheduled", exact: true }).click();
+  await page.getByRole("button", { name: "New task", exact: true }).click();
+  await expect(
+    page.getByRole("combobox", { name: "Execution host", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("side conversations stay main-owned across execution host navigation", async ({
+  page,
+  session,
+  command,
+}) => {
+  await selectProbeModel(command, session, { yolo: true });
+  await offlineHost(page);
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  await page.getByLabel("Message or guidance").fill("/btw Side tool probe");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const side = page.getByRole("complementary", { name: "Side conversation" });
+  await expect(side).toContainText("SIDE-TOOL-COMPLETE");
+  await page
+    .getByRole("group", { name: "GPU", exact: true })
+    .getByRole("button", { name: /GPU conversation/ })
+    .first()
+    .click();
+  await expect(side).toHaveCount(0);
+  await page.evaluate((id) => {
+    location.hash = `session=${id}`;
+  }, session.id);
+  await expect(side).toContainText("SIDE-TOOL-COMPLETE");
+  await side.getByRole("button", { name: "Dismiss side conversation" }).click();
+  await page.reload();
+  await online(page);
+  await expect(side).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      Object.keys(localStorage).filter((key) =>
+        key.startsWith("uagent-side-conversations:host:"),
+      ),
+    ),
+  ).toEqual([]);
+});
+
+test("offline gateway navigation does not request a remote connection", async ({
+  page,
+  context,
+}) => {
+  await offlineHost(page);
+  await page.goto(`/#host=${remote}`);
+  await expect(connected(page)).toBeVisible();
+  await context.setOffline(true);
+  await expect(connected(page)).toHaveCount(0);
+  const posts = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/hosts") && request.method() === "POST")
+      posts.push(request.postDataJSON());
+  });
+  await page
+    .getByRole("group", { name: "GPU", exact: true })
+    .getByRole("button", { name: /GPU conversation/ })
+    .first()
+    .click();
+  await expect
+    .poll(() =>
+      new URLSearchParams(new URL(page.url()).hash.slice(1)).get("session"),
+    )
+    .toBe("a".repeat(32));
+  expect(posts).toEqual([]);
+});
+
+test("host connection actions wait for the current request", async ({
+  page,
+}) => {
+  await offlineHost(page, "reconnecting");
+  const { promise: gate, resolve: release } = Promise.withResolvers();
+  await page.route("**/api/hosts", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await gate;
+    await route.fulfill({ json: { id: remote } });
+  });
+  await page.goto("/");
+  await page.locator(".host-list").getByRole("button", { name: /GPU/ }).click();
+  const dialog = page.getByRole("dialog", { name: "GPU", exact: true });
+  try {
+    await dialog
+      .getByRole("button", { name: "Reconnect", exact: true })
+      .click();
+    await expect(
+      dialog.getByRole("button", { name: "Disconnect", exact: true }),
+    ).toBeDisabled();
+  } finally {
+    release();
+  }
+});
+
+test("a scheduled draft retains its execution host while navigating", async ({
+  page,
+}) => {
+  await offlineHost(page);
+  await page.goto("/");
+  await expect(connected(page)).toBeVisible();
+  await page.getByRole("button", { name: "Scheduled", exact: true }).click();
+  await page.getByRole("button", { name: "New task", exact: true }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Main-owned draft");
+  await page
+    .getByRole("group", { name: "GPU", exact: true })
+    .getByRole("button", { name: /GPU conversation/ })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Scheduled", exact: true }).click();
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
+    "Main-owned draft",
+  );
+  await expect(
+    page.getByRole("combobox", { name: "Execution host", exact: true }),
+  ).toHaveValue("");
+  expect(
+    await page.evaluate(() =>
+      Object.keys(sessionStorage).filter((key) =>
+        key.startsWith("uagent-scheduled-draft:host:"),
+      ),
+    ),
+  ).toEqual([]);
 });

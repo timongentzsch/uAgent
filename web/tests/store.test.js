@@ -10,7 +10,7 @@ import {
   withActivities,
   keptSession,
 } from "../src/state/store.ts";
-import { api, command, receiveOutcome, createApi } from "../src/state/api.ts";
+import { api, command, receiveOutcome, hostApi } from "../src/state/api.ts";
 import { stored } from "../src/shared/storage.ts";
 import { maxHttpExchanges } from "../src/shared/limits.ts";
 import {
@@ -497,22 +497,22 @@ test("receipts retain queued guidance until the transcript consumes it", async (
 
 test("host clients share the main receipt stream without retargeting delayed commands", async () => {
   const original = globalThis.fetch;
-  const paths = [];
-  globalThis.fetch = async (path) => {
-    paths.push(path);
+  const requests = [];
+  globalThis.fetch = async (path, options) => {
+    requests.push({ path, body: JSON.parse(options.body) });
     return new Response(JSON.stringify({ accepted: true, pending: true }), {
       status: 200,
     });
   };
   try {
-    const a = createApi("a"),
-      b = createApi("b");
-    const abort = new AbortController();
+    const a = hostApi("a"),
+      b = hostApi("b");
+    assert.equal(a, hostApi("a"));
+    assert.notEqual(a, b);
     const first = a.command(
       "rename",
       { id: "same", generation: "g" },
       { title: "A", request_id: "same-request" },
-      { signal: abort.signal },
     );
     const second = b.command(
       "rename",
@@ -530,14 +530,39 @@ test("host clients share the main receipt stream without retargeting delayed com
     );
     await first;
     const later = a.command;
-    const delayed = later(
-      "rename",
-      { id: "same", generation: "g" },
-      { title: "later", request_id: "later" },
-    );
+    const delayed = later("create", null, {
+      cwd: "/project",
+      request_id: "later",
+    });
     a.receiveOutcome({ request_id: "later", accepted: true });
     await delayed;
-    assert.deepEqual(paths, ["/api/command", "/api/command", "/api/command"]);
+    const remote = b.command("create", null, {
+      cwd: "/project",
+      request_id: "remote",
+    });
+    a.receiveOutcome({ request_id: "remote", accepted: true });
+    await remote;
+    assert.deepEqual(
+      requests.map(({ path }) => path),
+      Array(4).fill("/api/command"),
+    );
+    assert.deepEqual(
+      requests.map(({ body }) => body.host),
+      [undefined, undefined, "a", "b"],
+    );
+    assert.deepEqual(
+      requests.slice(0, 2).map(({ body }) => body.session_id),
+      ["same", "same"],
+    );
+    assert.equal(
+      b.routes.folder("/some folder"),
+      "/api/folder?path=%2Fsome%20folder&host=b",
+    );
+    assert.equal(
+      b.routes.folders("/some folder"),
+      "/api/folders?path=%2Fsome%20folder&host=b",
+    );
+    assert.equal(b.routes.hostPing("a/b"), "/api/hosts/a%2Fb/ping");
   } finally {
     globalThis.fetch = original;
   }

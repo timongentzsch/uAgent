@@ -39,3 +39,4 @@ interface Hosts {
 }
 export const HostsContext = createContext<Hosts | null>(null);
 export const useHosts = () => useContext(HostsContext);
+export const useMultipleHosts = () => (useHosts()?.sources.length || 0) > 1;

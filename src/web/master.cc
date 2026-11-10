@@ -29,7 +29,6 @@
 #include "include/app/session_host.h"
 #include "include/app/workspace_files.h"
 #include "include/browser/browser.h"
-#include "include/core/build.h"
 #include "include/core/detail.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
@@ -176,9 +175,7 @@ Master::Master(WebOptions options, std::string executable,
     : options_(std::move(options)),
       executable_(std::move(executable)),
       directory_(std::move(directory)),
-      local_(options_.socket.empty()
-                 ? "http://127.0.0.1:" + std::to_string(options_.port)
-                 : "http://localhost"),
+      local_("http://127.0.0.1:" + std::to_string(options_.port)),
       local_authority_(local_.substr(7)),
       origin_(options_.origin.empty() ? local_ : options_.origin),
       epoch_(RandomToken(16)),
@@ -253,8 +250,8 @@ bool Master::Initialize(std::string& error) {
   host_.RefreshInvalidations({});
   server_.new_task_queue = [] {
     return new httplib::ThreadPool(kIdleWorkerThreads,
-                                   kWebSseConnections * 17 + kViewerInstances +
-                                       kWebTerminalSockets * 17 +
+                                   kWebSseConnections + kViewerInstances +
+                                       kWebTerminalSockets +
                                        kRequestWorkerThreads,
                                    kWorkerQueue);
   };
@@ -298,15 +295,6 @@ bool Master::Initialize(std::string& error) {
         return httplib::Server::HandlerResponse::Handled;
       }
     }
-    if (!instance && (mutation || request.has_header("Upgrade"))) {
-      auto admission = std::make_shared<std::shared_lock<std::shared_mutex>>(
-          admission_, std::try_to_lock);
-      if (!admission->owns_lock()) {
-        Error(response, "Host is updating; reconnect shortly.", 503);
-        return httplib::Server::HandlerResponse::Handled;
-      }
-      response.user_data.set("admission", std::move(admission));
-    }
     return httplib::Server::HandlerResponse::Unhandled;
   });
   // JSON replies go out gzipped to a client that takes it. Assets carry
@@ -342,36 +330,23 @@ bool Master::Initialize(std::string& error) {
               {{"kind", "terminals.changed"}, {"terminals", TerminalList()}});
         });
   }
-  remotes_ = std::make_unique<RemoteHosts>(executable_);
+  remotes_ = std::make_unique<RemoteHosts>(executable_, options_.remote_bundle);
   RegisterRemoteRoutes();
   LoadRemoteTerminals();
   RegisterApiRoutes();
   RegisterTerminalRoutes();
   if (!browser::DataDirectory().empty()) RegisterBrowserRoutes();
   if (!RegisterAssetRoutes(error)) return false;
-  if (!options_.socket.empty()) {
-    if (!EnsurePrivateDirectory(RuntimeDir())) {
-      error = "cannot create the private web socket directory";
-      return false;
-    }
-    server_.set_address_family(AF_UNIX);
-    unlink(options_.socket.c_str());
-  }
-  if (!server_.bind_to_port(
-          options_.socket.empty() ? options_.bind : options_.socket,
-          options_.socket.empty() ? options_.port : 80)) {
+  if (!server_.bind_to_port(options_.bind, options_.port)) {
     error = "web port is unavailable; no alternate server was started";
     return false;
   }
-  if (!options_.socket.empty()) chmod(options_.socket.c_str(), 0600);
   return true;
 }
 
 int Master::Run() {
   std::string error;
   json discovery = {{"v", kProtocol},
-                    {"build", BuildIdentity()},
-                    {"socket", options_.socket},
                     {"port", options_.port},
                     {"url", origin_},
                     {"secret", secret_},
@@ -412,8 +387,6 @@ int Master::Run() {
         if (reexec_) std::this_thread::sleep_for(kRestartReply);
         break;
       }
-      std::shared_lock admission(admission_, std::try_to_lock);
-      if (!admission.owns_lock()) continue;
       PublishSettings();
       // Sessions an agent creates or deletes reach every client.
       host_.RefreshCatalogue();
@@ -437,14 +410,7 @@ int Master::Run() {
     bool recovered = false;
     for (;;) {
       if (stopping_) break;
-      std::shared_lock admission(admission_, std::try_to_lock);
-      if (!admission.owns_lock()) {
-        WaitForAnyFileChange({}, Clock::now() + std::chrono::seconds(1),
-                             host_wake_.read.Get());
-        continue;
-      }
       auto wait = host_.RunSchedules(recovered);
-      admission.unlock();
       if (wait.wake) host_wake_.Wake();
       WaitForAnyFileChange(wait.paths, wait.deadline, host_wake_.read.Get(),
                            wait.observed);
@@ -494,43 +460,11 @@ void Master::RegisterApiRoutes() {
       Error(response, "instance authentication failed", 403);
       return;
     }
-    const json command = json::parse(request.body, nullptr, false);
-    if (JsonValue(command, "action", "") == "stop-if-idle") {
-      std::unique_lock admission(admission_, std::try_to_lock);
-      if (!admission.owns_lock() || !host_.IdleForUpdate() ||
-          (terminals_ && terminals_->Running())) {
-        Error(response,
-              "Remote host has active conversations, jobs or terminals. Finish "
-              "or close them, then reconnect.",
-              409);
-        return;
-      }
-      // Only detached managed hosts can be updated automatically. A normal
-      // web service belongs to its installer/service manager.
-      if (options_.socket.empty()) {
-        Error(response,
-              "An installed web service owns this host. Update and restart "
-              "that service explicitly.",
-              409);
-        return;
-      }
-      std::lock_guard lock(mutex_);
-      if (updating_) {
-        Error(response, "Host is already updating", 409);
-        return;
-      }
-      updating_.emplace(std::move(admission));
-      Reply(response, {{"stopping", true}});
-      WakeDescriptor(shutdown_fd.load());
-      return;
-    }
     std::lock_guard lock(mutex_);
     Reply(response, {{"v", kProtocol},
-                     {"build", BuildIdentity()},
-                     {"idle_update", true},
                      {"epoch", epoch_},
                      {"url", origin_},
-                     {"pairing_code", Pair(true)}});
+                     {"pairing_code", Pair()}});
   });
   server_.Post("/api/auth", [this](const Request& request, Response& response) {
     Authenticate(request, response);
@@ -920,7 +854,6 @@ int MasterMain(const WebOptions& options, char** argv) {
                           content, read_error)) {
         json discovery = json::parse(content, nullptr, false);
         int port = JsonValue(discovery, "port", 0);
-        const std::string socket = JsonValue(discovery, "socket", "");
         std::string secret = JsonValue(discovery, "secret", "");
         if (JsonValue(discovery, "v", 0) != kProtocol) {
           fprintf(stderr,
@@ -929,13 +862,7 @@ int MasterMain(const WebOptions& options, char** argv) {
           return 2;
         }
         if (port >= 1024 && port <= 65535 && OpaqueId(secret)) {
-          httplib::Client client(socket.empty() ? "http://127.0.0.1:" +
-                                                      std::to_string(port)
-                                                : "http://localhost");
-          if (!socket.empty()) {
-            client.set_address_family(AF_UNIX);
-            client.set_hostname_addr_map({{"localhost", socket}});
-          }
+          httplib::Client client("http://127.0.0.1:" + std::to_string(port));
           client.set_connection_timeout(1);
           client.set_read_timeout(1);
           auto response =
@@ -947,12 +874,6 @@ int MasterMain(const WebOptions& options, char** argv) {
                     JsonValue(discovery, "epoch", "") ||
                 JsonValue(identity, "v", 0) != kProtocol) {
               break;
-            }
-            if (!socket.empty()) {
-              printf(
-                  "A remote workspace host already owns this user account. "
-                  "Open it through the serving uAgent host.\n");
-              return 0;
             }
             if (options.port != port ||
                 (!options.origin.empty() &&

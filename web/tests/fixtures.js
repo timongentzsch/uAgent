@@ -6,6 +6,10 @@ import { dirname, resolve } from "node:path";
 
 export { expect };
 
+// The serving host connection, independent of remote-host status rows.
+export const connected = (page) =>
+  page.getByRole("status").filter({ hasText: /^Connected$/ });
+
 // Cold lazy-module tests stay independent of precaching: a valid, empty
 // service worker never serves a chunk from cache.
 export const withoutServiceWorker = (page) =>

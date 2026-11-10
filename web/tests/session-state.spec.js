@@ -1,4 +1,5 @@
 import {
+  connected,
   test,
   expect,
   online,
@@ -109,9 +110,7 @@ test("late snapshots and retired streams cannot replace current session state", 
       { index, epoch, cursor },
     );
   await ready(0, 10);
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   await page
     .getByRole("button", { name: "Show full message", exact: true })
     .click();
@@ -183,9 +182,7 @@ test("late snapshots and retired streams cannot replace current session state", 
     globalThis.testStreams[0].onerror(new Event("error")),
   );
   await expect(context).toHaveAttribute("title", /Estimated context: 12,000 /);
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   await expect(page.locator(".error-banner")).toHaveCount(0);
 });
 
@@ -330,9 +327,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
     });
   });
   await page.goto(fixture.origin);
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   await selectProbeModel(command, session);
   await page.goto(`/#session=${session.id}`);
   await expect(page).toHaveURL(new RegExp(session.id));

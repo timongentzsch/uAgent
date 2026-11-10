@@ -3,6 +3,7 @@
 // scrolling sideways down to a narrow Split View window. Sizes are those a
 // foldable phone may report; the logic never names a device.
 import {
+  connected,
   test,
   expect,
   headerAction,
@@ -25,9 +26,7 @@ const sizes = [
 async function openLong(page, host) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   const messages = Array.from({ length: 60 }, (_, index) => ({
     role: index % 2 ? "assistant" : "user",
     content: `Sized message ${index}. ` + "Filler text here. ".repeat(8),

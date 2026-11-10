@@ -1,4 +1,5 @@
 import {
+  connected,
   test,
   expect,
   online,
@@ -15,9 +16,7 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
   host: fixture,
 }) => {
   await page.goto("/");
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   await startInFolder(page, fixture.project);
   const composer = page.getByLabel("Message or guidance");
   await composer.fill("/instructions");
@@ -118,9 +117,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
 }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
 
   await startInFolder(page, fixture.project);
   const prompt = page.getByLabel("Message or guidance");

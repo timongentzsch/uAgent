@@ -15,7 +15,7 @@ import {
 } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
 import { useCompact, useNarrowColumn } from "../shared/layout.ts";
-import { useHosts } from "../state/sources.ts";
+import { useHosts, useMultipleHosts } from "../state/sources.ts";
 import { useHostContext } from "../state/host-context.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { isBrowsing } from "./chat-page.tsx";
@@ -91,6 +91,7 @@ export default function ConversationHeader({
 }) {
   const { store, setModal } = useHostContext();
   const hosts = useHosts();
+  const multipleHosts = useMultipleHosts();
   const executionHost =
     hosts?.sources.find((source) => source.id === (session?.host || ""))
       ?.name || "Local";
@@ -156,7 +157,7 @@ export default function ConversationHeader({
               "µAgent"
             )}
           </h1>
-          {page === "chat" && session && (
+          {multipleHosts && page === "chat" && session && (
             <span
               class="execution-host small muted truncate"
               title="Execution host"

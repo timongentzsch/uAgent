@@ -1,5 +1,5 @@
 import { type ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import { ChevronDown, ChevronRight, Plus } from "lucide-preact";
 import { ApiContext, hostApi } from "../../state/api.ts";
 import { HostContext, useHostContext } from "../../state/host-context.ts";
@@ -58,7 +58,15 @@ function sourcePins(source: Source) {
     catalogue?.terminals || [],
   );
 }
-function SourcePin({ source, pin }: { source: Source; pin: Pin }) {
+function SourcePin({
+  source,
+  pin,
+  pins,
+}: {
+  source: Source;
+  pin: Pin;
+  pins: Pin[];
+}) {
   const current = useHostContext();
   if (!source.state) return null;
   return (
@@ -67,7 +75,7 @@ function SourcePin({ source, pin }: { source: Source; pin: Pin }) {
         value={{
           ...current,
           online: source.state.online,
-          pins: sourcePins(source),
+          pins,
           report: source.state.report,
         }}
       >
@@ -81,11 +89,11 @@ function SourcePin({ source, pin }: { source: Source; pin: Pin }) {
 function Shortcut({
   source,
   session,
-  pinned = false,
+  pins,
 }: {
   source: Source;
   session: Session;
-  pinned?: boolean;
+  pins?: Pin[];
 }) {
   const hosts = useHosts()!;
   return (
@@ -97,8 +105,12 @@ function Shortcut({
       >
         <span class="truncate">{session.title || "Untitled"}</span>
       </Button>
-      {pinned && (
-        <SourcePin source={source} pin={{ kind: "session", id: session.id }} />
+      {pins && (
+        <SourcePin
+          source={source}
+          pin={{ kind: "session", id: session.id }}
+          pins={pins}
+        />
       )}
     </div>
   );
@@ -109,18 +121,26 @@ export function SharedShortcuts({
   activePins: ComponentChildren;
 }) {
   const hosts = useHosts();
+  const sources = useMemo(
+    () =>
+      (hosts?.sources || []).map((source) => {
+        const pins = sourcePins(source);
+        return {
+          source,
+          pins,
+          sessions: new Set(
+            pins.filter((pin) => pin.kind === "session").map((pin) => pin.id),
+          ),
+        };
+      }),
+    [hosts?.sources],
+  );
   if (!hosts) return activePins;
-  const pinned = hosts.sources.filter((source) => sourcePins(source).length);
-  const recent = hosts.sources
-    .flatMap((source) =>
+  const pinned = sources.filter(({ pins }) => pins.length);
+  const recent = sources
+    .flatMap(({ source, sessions }) =>
       (source.state?.listed || [])
-        .filter(
-          (session) =>
-            !session.parent &&
-            !sourcePins(source).some(
-              (pin) => pin.kind === "session" && pin.id === session.id,
-            ),
-        )
+        .filter((session) => !session.parent && !sessions.has(session.id))
         .map((session) => ({ source, session })),
     )
     .sort((a, b) => (b.session.updated || 0) - (a.session.updated || 0))
@@ -129,14 +149,14 @@ export function SharedShortcuts({
     <>
       {!!pinned.length && (
         <Fold name="$pinned" label="Pinned">
-          {pinned.map((source) => (
+          {pinned.map(({ source, pins }) => (
             <div key={source.id}>
               {hosts.sources.length > 1 && (
                 <p class="source-label caption muted">{source.name}</p>
               )}
               {source.id === hosts.active
                 ? activePins
-                : sourcePins(source).map((pin) => {
+                : pins.map((pin) => {
                     const session = source.state?.listed.find(
                       (item) => item.id === pin.id,
                     );
@@ -146,7 +166,7 @@ export function SharedShortcuts({
                           key={pin.id}
                           source={source}
                           session={session}
-                          pinned
+                          pins={pins}
                         />
                       ) : null;
                     const terminal = source.state?.catalogue.terminals?.find(
@@ -170,7 +190,7 @@ export function SharedShortcuts({
                             {terminal?.title || folderName(pin.id)}
                           </span>
                         </Button>
-                        <SourcePin source={source} pin={pin} />
+                        <SourcePin source={source} pin={pin} pins={pins} />
                       </div>
                     );
                   })}
@@ -315,7 +335,7 @@ export function HostList() {
     }
   };
   const status = (source: Source) =>
-    !hosts.gatewayOnline && source.id
+    !hosts.gatewayOnline
       ? "Unavailable"
       : {
           connected: "Connected",
@@ -325,35 +345,37 @@ export function HostList() {
         }[source.phase];
   return (
     <div class="host-list">
-      <Fold name="$hosts" label="Hosts">
+      <Fold name="$hosts" label="Remote hosts">
         <div class="host-list-scroll">
-          {hosts.sources.map((source) => (
-            <Button
-              key={source.id}
-              variant="quiet"
-              class="host-row entry"
-              onClick={() => {
-                setError(null);
-                setDetail(source.id);
-              }}
-            >
-              <span
-                class="host-square"
-                data-connected={
-                  (hosts.gatewayOnline && source.phase === "connected") ||
-                  undefined
-                }
-                aria-hidden="true"
-              />
-              <span class="truncate">{source.name}</span>
-              <span class="host-phase caption">
-                {status(source)}
-                {source.phase === "connected" && source.round_trip_ms != null
-                  ? ` · ${Math.round(source.round_trip_ms)} ms`
-                  : ""}
-              </span>
-            </Button>
-          ))}
+          {hosts.sources
+            .filter((source) => source.id)
+            .map((source) => (
+              <Button
+                key={source.id}
+                variant="quiet"
+                class="host-row entry"
+                onClick={() => {
+                  setError(null);
+                  setDetail(source.id);
+                }}
+              >
+                <span
+                  class="host-square"
+                  data-connected={
+                    (hosts.gatewayOnline && source.phase === "connected") ||
+                    undefined
+                  }
+                  aria-hidden="true"
+                />
+                <span class="truncate">{source.name}</span>
+                <span class="host-phase caption">
+                  {status(source)}
+                  {source.phase === "connected" && source.round_trip_ms != null
+                    ? ` · ${Math.round(source.round_trip_ms)} ms`
+                    : ""}
+                </span>
+              </Button>
+            ))}
         </div>
         <Button
           variant="quiet"
@@ -397,6 +419,7 @@ export function HostList() {
                 gateway executes file and command requests beside your files.
               </p>
               <Button
+                type="submit"
                 variant="primary"
                 busy={busy}
                 disabled={!address.trim() || !hosts.gatewayOnline}
@@ -413,38 +436,36 @@ export function HostList() {
                 <p>The serving host is unavailable. Reconnect to it first.</p>
               )}
               {source!.error && <p class="host-error small">{source!.error}</p>}
-              {!!source!.id &&
-                source!.phase === "connected" &&
-                hosts.gatewayOnline && (
-                  <HostLatency key={source!.id} id={source!.id} />
-                )}
-              <div class="host-actions">
-                {!!source!.id && (
-                  <>
-                    <Button
-                      disabled={!hosts.gatewayOnline}
-                      busy={busy}
-                      onClick={() => void run("reconnect", source!.id)}
-                    >
-                      Reconnect
-                    </Button>
-                    <Button
-                      disabled={
-                        !hosts.gatewayOnline || source!.phase === "disconnected"
-                      }
-                      onClick={() => void run("disconnect", source!.id)}
-                    >
-                      Disconnect
-                    </Button>
-                  </>
-                )}
-              </div>
-              {!!source!.id && (
-                <p class="small muted">
-                  Disconnect closes SSH access. Work continues on the remote
-                  host. Reconnect restores remote file and command access.
-                </p>
+              {source!.phase === "connected" && hosts.gatewayOnline && (
+                <HostLatency key={source!.id} id={source!.id} />
               )}
+              <div class="host-actions">
+                <Button
+                  disabled={
+                    !hosts.gatewayOnline ||
+                    source!.phase === "connected" ||
+                    source!.phase === "connecting"
+                  }
+                  busy={busy}
+                  onClick={() => void run("reconnect", source!.id)}
+                >
+                  Reconnect
+                </Button>
+                <Button
+                  disabled={
+                    busy ||
+                    !hosts.gatewayOnline ||
+                    source!.phase === "disconnected"
+                  }
+                  onClick={() => void run("disconnect", source!.id)}
+                >
+                  Disconnect
+                </Button>
+              </div>
+              <p class="small muted">
+                Disconnect closes SSH access. Work continues on the remote host.
+                Reconnect restores remote file and command access.
+              </p>
             </>
           )}
           {error && <LoadError error={error} />}

@@ -1,8 +1,8 @@
-import { useHosts } from "../../app/hosts.tsx";
+import { useHosts, useMultipleHosts } from "../../state/sources.ts";
 import { useAction } from "../../shared/use-action.ts";
 import { usePushDirection } from "../../shared/motion.ts";
 import { tabDrafts, useStored } from "../../shared/storage.ts";
-import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
+import { storageKeys } from "../../shared/storage-keys.ts";
 import { useApi } from "../../state/api.ts";
 import {
   defaultScheduleSeconds,
@@ -14,7 +14,7 @@ import type {
   ScheduledState,
   ScheduleRule,
 } from "../../shared/types.ts";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { Plus, Play, Square, ChevronLeft } from "lucide-preact";
 import {
   Button,
@@ -36,10 +36,15 @@ import { ProjectField } from "../../shared/project-field.tsx";
 import { formatMoment } from "../../shared/time.ts";
 import { devicePrefs } from "../../shared/device-prefs.ts";
 import { ListRow } from "../../shared/list-row.tsx";
-import { capitalize, permissionLabels } from "../../shared/display.ts";
+import {
+  capitalize,
+  permissionLabels,
+  projectsOf,
+} from "../../shared/display.ts";
 
 // The Scheduled page: tasks that run on a timetable or once, their next runs
 // and results, and the editor for one task.
+const drafts = tabDrafts<ScheduledTask>(storageKeys.scheduledDraft);
 
 const blank = (cwd: string, host = ""): ScheduledTask => ({
   host,
@@ -98,20 +103,13 @@ export default function Scheduled({
   refresh: () => Promise<void>;
 }) {
   const { manage, host } = useApi();
-  const drafts = useMemo(
-    () =>
-      tabDrafts<ScheduledTask>(
-        hostStorageKey(storageKeys.scheduledDraft, host),
-      ),
-    [host],
-  );
   const [task, setTask] = useState(drafts.open.read);
   const hosts = useHosts();
-  const taskProjects =
-    hosts?.sources
-      .find((source) => source.id === (task?.host || ""))
-      ?.state?.catalogue.sessions.map((session) => session.cwd || "")
-      .filter(Boolean) || projects;
+  const multipleHosts = useMultipleHosts();
+  const taskSessions = hosts?.sources.find(
+    (source) => source.id === (task?.host || ""),
+  )?.state?.catalogue.sessions;
+  const taskProjects = taskSessions ? projectsOf(taskSessions) : projects;
   const moved = usePushDirection(!!task);
   const [prefs] = useStored(devicePrefs.time);
   // A run's moment by the viewer's time preferences, in its task's zone.
@@ -312,24 +310,26 @@ export default function Scheduled({
                         }
                       />
                     </Field>
-                    <Field label="Execution host">
-                      <Select
-                        value={task.host || ""}
-                        onChange={(event) =>
-                          edit({
-                            host: event.currentTarget.value,
-                            cwd: "",
-                            environment: "local",
-                          })
-                        }
-                      >
-                        {hosts?.sources.map((source) => (
-                          <option value={source.id} key={source.id}>
-                            {source.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
+                    {multipleHosts && (
+                      <Field label="Execution host">
+                        <Select
+                          value={task.host || ""}
+                          onChange={(event) =>
+                            edit({
+                              host: event.currentTarget.value,
+                              cwd: "",
+                              environment: "local",
+                            })
+                          }
+                        >
+                          {hosts?.sources.map((source) => (
+                            <option value={source.id} key={source.id}>
+                              {source.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    )}
                     <ProjectField
                       value={task.cwd}
                       projects={taskProjects}

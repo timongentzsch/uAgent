@@ -105,6 +105,11 @@ const keptPage = stored<Page>(
 
 function App({ host, bindResult, reading }: HostAppProps) {
   const hosts = useHosts();
+  const activeHost = hosts?.active;
+  const hostPhase = hosts?.sources.find(
+    (source) => source.id === activeHost,
+  )?.phase;
+  const hostAction = hosts?.action;
   const { command, manage } = useApi();
   const [page, setPage] = useState<Page>(() =>
     new URLSearchParams(location.hash.slice(1)).has("place")
@@ -300,8 +305,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
   );
   const choose = useCallback(
     async (id: string) => {
-      if (hosts?.active && !online)
-        void hosts.action("connect", hosts.active).catch(report);
+      if (online && activeHost && hostPhase === "disconnected")
+        void hostAction?.("connect", activeHost).catch(report);
       setNotice("");
       setPage("chat");
       const change = () => {
@@ -311,7 +316,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
       if (id === selected) change();
       else slide(false, id, change);
     },
-    [selected, setSelected, hosts?.active, report, online, hosts?.action],
+    [selected, setSelected, activeHost, hostPhase, hostAction, report, online],
   );
   const { browserAvailable, install, setInstall, update, attach } = useBoot({
     upload,

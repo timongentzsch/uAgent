@@ -134,14 +134,14 @@ remotely and fail visibly when offline. Remote folders remain supported.
 ## UI and recovery
 
 Keep host-grouped folders/workspaces/conversations, pins, initially collapsed
-Recent, bottom Hosts status, square selection controls and compact mobile rows.
+Recent, bottom Remote hosts status, square selection controls and compact mobile rows.
 Settings/providers/models are main-owned global surfaces. There is no global
 host switch. New conversation and folder actions offer an explicit Host field
 and reuse the Files folder tree to choose a directory. Existing conversations
 and folders supply their own execution context; conversation headers name the
 host. The home screen exposes New conversation.
 
-The bottom Hosts panel describes connection state, offers Add host and opens
+The bottom Remote hosts panel describes connection state, offers Add host and opens
 connection details with Reconnect/Disconnect and measured Main → host SSH
 request round trip. Sample connected rows every 30 seconds and open details
 every 5 seconds without reconnecting as a side effect. Main history/settings

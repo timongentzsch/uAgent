@@ -1,4 +1,10 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "preact/hooks";
+import {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "preact/hooks";
 import { ArrowUp, Home } from "lucide-preact";
 import { useApi } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
@@ -23,11 +29,14 @@ export default function FolderPicker({
   value,
   change,
   online,
+  projects,
 }: {
   value: string;
   change: (path: string) => void;
   online: boolean;
+  projects: string[];
 }) {
+  const suggestions = useId();
   const { api, routes, host } = useApi();
   const [root, setRoot] = useState("~");
   const [expanded, setExpanded] = useState(new Set<string>());
@@ -60,6 +69,7 @@ export default function FolderPicker({
       <label>
         Folder on the host
         <Input
+          list={suggestions}
           value={value}
           onFocus={() => {
             editing.current = true;
@@ -72,6 +82,11 @@ export default function FolderPicker({
           disabled={!online}
         />
       </label>
+      <datalist id={suggestions}>
+        {projects.map((path) => (
+          <option key={path} value={path} />
+        ))}
+      </datalist>
       <div class="folder-picker-actions">
         <IconButton
           label="Home folder"

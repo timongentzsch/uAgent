@@ -501,8 +501,8 @@ int Serve(const std::string& directory, const std::string& cwd,
            }),
            done});
     }
-    // A connected main pings every minute. A lost main leaves a finite grace
-    // period; no detached process or execution log becomes durable history.
+    // Active session workers poll activities. A lost main leaves a finite
+    // grace period; execution logs never become durable conversation history.
     if (connections.empty() &&
         Clock::now() - touched > std::chrono::minutes(5) &&
         !worker->HasChildren()) {

@@ -39,7 +39,7 @@ internal library callers used the original arguments. The vendor README also
 named `TestRemoteProxyStreamsAndKeepsCredentialsHostOwned`, which is absent.
 
 Removed only the relay-specific vendor extensions and obsolete documentation.
-The prior vendor fixes and the socket liveness analyzer annotation remain.
+The socket liveness analyzer annotation remains as the only vendor change.
 File ranges, previews and terminals keep the established HTTP implementation.
 
 ### P2: shared file-service extraction — resolved
@@ -124,3 +124,58 @@ core tests, 345 integration tests and the behavioral evaluation. One Linux-only
 integration test is skipped on macOS. All 121 frontend unit tests, TypeScript
 checks, Biome lint and repository lint pass. Browser and hosted CI results are
 tracked in the PR so their status is not confused with this source review.
+
+## Second review and follow-up
+
+Claude Code **Opus 5.5, high effort** reviewed `0fc24e65` against `9cdbb553`,
+including the in-progress sidebar and bundle-validator edits. A second pass
+read every changed frontend diff (95 files). These were source reviews; the
+reviewer did not run tests or inspect private configurations. SVG bodies,
+Firefox rendering and iOS standalone navigation were not runtime-validated.
+
+The backend follow-up addresses all six actionable findings:
+
+- Removed the unreachable Unix-socket web-host/update mode, its admission
+  locks and idle-update endpoint. Restored the bounded request-pool sizing.
+- Resolve `web.remoteBundle` through user configuration with environment
+  precedence. The integration regression installs from a saved setting and
+  from an environment override with an intentionally invalid saved path.
+- Build remote file-write RPCs from the public path/text/revision fields.
+  Browser-supplied IDs cannot become internal receipt identities; repeated
+  extra IDs are covered by successive writes through HTTP.
+- Disable Reconnect while connected or connecting; the frontend checks both.
+- Correct stale panel names, execution-liveness comments and review/vendor
+  provenance statements.
+- Preserve historical competitor-version provenance alongside the fresh,
+  separately versioned comparison.
+
+Optional cleanup removes the obsolete discovery-pairing queue and redundant
+Local guards in the remote-only panel. The worker removes its empty temporary
+remote working directory on normal exit; `rmdir` does not delete contents.
+A crashed process can still leave a directory until runtime-directory cleanup.
+
+The frontend addendum identified ownership and interaction issues: Add host
+submission, notification/session host routing, unknown-host fallback,
+reconnect admission, draft ownership, repeated pin scans, folder suggestions,
+Local-only UI clutter, selection copy, concurrent connection controls, and
+API-test coverage. The follow-up centralizes their shared behavior instead of
+adding separate desktop/mobile implementations. Validation is recorded below.
+
+
+### Follow-up validation
+
+- Debug native build and all native CTest groups passed; the web group was
+  run separately with **93 passing integration cases**.
+- **121 frontend unit tests** and **61 focused Chromium/WebKit tests** passed,
+  including new connection, routing, draft and folder-selection regressions.
+- Render checks use **1,000 conversations** and verify that an activity tick
+  updates only the affected conversation row.
+- Type checks, production web build, formatting, lint and source contracts
+  passed. The comparison's 20 headless turns all succeeded; each idle session
+  settled, and cleanup left no measured tool processes running.
+
+This follow-up removes **32 net first-party production lines** relative to
+`0fc24e65` (physical lines under `src/`, `include/` and `web/src/`). Tests,
+documentation and benchmark reporting are counted separately. Hosted CI and
+production deployment remain separate gates; these local results do not claim
+a deployment or live remote-host retest of the follow-up.

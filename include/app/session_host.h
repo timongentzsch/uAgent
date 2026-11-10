@@ -225,8 +225,6 @@ class SessionHost {
   std::vector<std::string> PresencePaths() const;
   HostWaitState RunSchedules(bool& recovered);
   void Shutdown();
-  // Conservative admission gate: even an attached idle runtime is left alone.
-  bool IdleForUpdate() const;
   json Catalogue() const;
   // What the host answers itself, for the settings screens: management of
   // the library, schedules and the like (announced as management.changed

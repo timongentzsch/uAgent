@@ -6,6 +6,9 @@ import type { Session, Statistics } from "./types.ts";
 
 // The folder a session belongs to: its working directory.
 export const folderOf = (item: Session) => item.cwd || "";
+export const projectsOf = (sessions: readonly Session[]) => [
+  ...new Set(sessions.map(folderOf).filter(Boolean)),
+];
 
 // One name per approval mode, wherever a mode is shown or chosen.
 export const permissionLabels = {

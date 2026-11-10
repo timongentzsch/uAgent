@@ -1,8 +1,9 @@
-import { useHosts } from "../state/sources.ts";
+import { useHosts, useMultipleHosts } from "../state/sources.ts";
 
 export function HostLabel() {
   const hosts = useHosts();
-  return hosts && hosts.sources.length > 1 ? (
+  const multiple = useMultipleHosts();
+  return hosts && multiple ? (
     <p class="small muted">
       Host · {hosts.sources.find((source) => source.id === hosts.active)?.name}
     </p>

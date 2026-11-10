@@ -45,7 +45,7 @@ export function SelectionBar({
         </Button>
       </div>
       {selection.mode && (
-        <span class="selection-hint small">Tap rows to select</span>
+        <span class="selection-hint small">Click or tap rows to select</span>
       )}
       <div class="selection-actions">{children}</div>
     </div>

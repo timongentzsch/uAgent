@@ -1,4 +1,4 @@
-import { test, expect, withoutServiceWorker } from "./fixtures.js";
+import { connected, test, expect, withoutServiceWorker } from "./fixtures.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 
@@ -199,9 +199,7 @@ test("scheduled tasks run, report and pause", async ({
   await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   const nav = page.getByRole("complementary");
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
   await page.getByRole("button", { name: "New task", exact: true }).click();

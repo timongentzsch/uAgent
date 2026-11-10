@@ -18,7 +18,7 @@ flowchart LR
 
 ## Connect
 
-1. Open **Hosts** at the bottom of the sidebar, then **Add host**.
+1. Open **Remote hosts** at the bottom of the sidebar, then **Add host**.
 2. Enter an SSH alias or `user@machine`. This uses the main machine's SSH
    configuration, keys, jump hosts and known hosts.
 3. The main copies the matching bundled native executable when needed. Opening a
@@ -28,7 +28,7 @@ flowchart LR
    Conversations appear under their host and name it in the header. Pins work
    across hosts; **Recent** is collapsible.
 
-The bottom **Hosts** panel monitors connections; it does not switch application
+The bottom **Remote hosts** panel monitors connections; it does not switch application
 mode. Open a host for its status, reconnect/disconnect controls and measured
 **Main → host** SSH request round trip. Connected rows refresh this measurement
 every 30 seconds; open details refresh every 5 seconds. The value includes

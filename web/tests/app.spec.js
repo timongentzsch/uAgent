@@ -1,4 +1,5 @@
 import {
+  connected,
   test,
   expect,
   startInFolder,
@@ -24,9 +25,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await page
     .getByRole("button", { name: "Connect device", exact: true })
     .click();
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Connected$/ }),
-  ).toBeVisible();
+  await expect(connected(page)).toBeVisible();
 
   await startInFolder(page, fixture.project);
   const model = page.getByRole("button", {

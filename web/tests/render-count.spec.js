@@ -28,7 +28,7 @@ const SESSIONS = [
   session(ID, 0),
   PARENT,
   AGENT,
-  ...Array.from({ length: 40 }, (_, index) =>
+  ...Array.from({ length: 1000 }, (_, index) =>
     session((index + 1).toString(16).padStart(32, "b"), index + 1),
   ),
 ];
@@ -287,7 +287,7 @@ test("streaming renders only what changed", async ({ page }) => {
   );
   expect(ticks.RowLine || 0).toBe(0);
   expect(ticks.MessageView || 0).toBe(0);
-  // The sidebar renders that session's row, not the other forty.
+  // The sidebar renders that session's row, not the other thousand.
   expect(ticks.SessionRow).toBeGreaterThan(0);
   expect(ticks.SessionRow).toBeLessThanOrEqual(20);
 

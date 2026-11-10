@@ -87,15 +87,7 @@ void Close(Host& host) {
   host.pid = -1;
   unlink(host.control.c_str());
 }
-std::string Bundle(const std::string& executable) {
-  std::string supplied = EnvStr("UAGENT_REMOTE_BUNDLE");
-  if (!supplied.empty()) return supplied;
-  return (std::filesystem::path(executable).parent_path().parent_path() /
-          "share/uagent/remote" / std::string(BuildIdentity()))
-      .string();
-}
-bool Install(const Host& host, const std::string& executable,
-             std::string& error) {
+bool Install(const Host& host, const std::string& bundle, std::string& error) {
   auto probe = Run(host,
                    "printf 'uagent-platform='; uname -s; uname -m; if test "
                    "\"$(uname -s)\" = Darwin; then sw_vers -productVersion; "
@@ -128,7 +120,6 @@ bool Install(const Host& host, const std::string& executable,
   }
   const std::string target =
       std::string(mac ? "macos-" : "linux-") + (arm ? "arm64" : "x86_64");
-  const std::string bundle = Bundle(executable);
   const auto manifest = CheckRemoteBundle(bundle, error);
   if (!manifest) return false;
   const std::string archive = bundle + "/" + target + ".tar.gz";
@@ -173,7 +164,7 @@ bool Install(const Host& host, const std::string& executable,
   }
   return true;
 }
-bool Connect(Host& host, const std::string& executable, bool& endpoint,
+bool Connect(Host& host, const std::string& bundle, bool& endpoint,
              std::string& error, bool& retryable) {
   retryable = false;
   Close(host);
@@ -267,7 +258,7 @@ bool Connect(Host& host, const std::string& executable, bool& endpoint,
     present = Run(host, "test -x " + host.executable + " && " +
                             host.executable + " --build-id");
     if ((!present.Ok() || Trim(present.output) != build) &&
-        !Install(host, executable, error)) {
+        !Install(host, bundle, error)) {
       return false;
     }
   }
@@ -275,7 +266,7 @@ bool Connect(Host& host, const std::string& executable, bool& endpoint,
   return true;
 }
 
-void Work(Host& host, const std::string& executable, std::stop_token stop) {
+void Work(Host& host, const std::string& bundle, std::stop_token stop) {
   std::unique_lock lock(host.mutex);
   auto due = Clock::time_point::max();
   auto sample_due = Clock::time_point::min();
@@ -312,8 +303,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       bool endpoint = false;
       std::string error;
       bool retryable = false;
-      const bool connected =
-          Connect(host, executable, endpoint, error, retryable);
+      const bool connected = Connect(host, bundle, endpoint, error, retryable);
       if (!connected) Close(host);
       lock.lock();
       host.attempting = false;
@@ -357,7 +347,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
 }  // namespace
 std::optional<json> CheckRemoteBundle(const std::string& directory,
                                       std::string& error) {
-  const json manifest = ReadJsonFile(directory + "/manifest.json", MiB(1));
+  json manifest = ReadJsonFile(directory + "/manifest.json", MiB(1));
   if (JsonValue(manifest, "build", "") != BuildIdentity() ||
       !manifest.contains("targets") || !manifest["targets"].is_object() ||
       manifest["targets"].size() != 4) {
@@ -395,10 +385,10 @@ std::optional<json> CheckRemoteBundle(const std::string& directory,
 }
 
 struct RemoteHosts::Impl {
-  std::string executable;
+  std::string bundle;
   mutable std::mutex mutex;
   std::map<std::string, std::shared_ptr<Host>> hosts;
-  explicit Impl(std::string path) : executable(std::move(path)) {}
+  explicit Impl(std::string path) : bundle(std::move(path)) {}
   std::shared_ptr<Host> Add(const std::string& id, const std::string& address,
                             const std::string& name) {
     auto host = std::make_shared<Host>();
@@ -428,13 +418,19 @@ struct RemoteHosts::Impl {
     host->log = GlobalBase() + "/web/ssh-" + id + ".log";
     hosts[id] = host;
     host->worker = std::jthread([host, this](std::stop_token stop) {
-      Work(*host, executable, std::move(stop));
+      Work(*host, bundle, std::move(stop));
     });
     return host;
   }
 };
-RemoteHosts::RemoteHosts(std::string executable)
-    : impl_(std::make_unique<Impl>(std::move(executable))) {
+RemoteHosts::RemoteHosts(const std::string& executable,
+                         const std::string& bundle)
+    : impl_(std::make_unique<Impl>(
+          bundle.empty()
+              ? (std::filesystem::path(executable).parent_path().parent_path() /
+                 "share/uagent/remote" / std::string(BuildIdentity()))
+                    .string()
+              : bundle)) {
   const json saved = ReadJsonFile(GlobalBase() + "/web/hosts.json", KiB(64));
   if (saved.is_array()) {
     for (const json& row : saved) {

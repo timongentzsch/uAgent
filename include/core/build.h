@@ -3,7 +3,8 @@
 #define UAGENT_INCLUDE_CORE_BUILD_H_
 #include <string_view>
 namespace uagent {
-// Runtime source identity, shared by native targets and minimal remote payloads.
+// Runtime source identity, shared by native targets and minimal remote
+// payloads.
 std::string_view BuildIdentity();
 }  // namespace uagent
 #endif

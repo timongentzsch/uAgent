@@ -227,8 +227,9 @@ bool EnsurePrivateDirectory(const std::string& path) {
   struct stat info{};
   if (root == runtime &&
       (lstat(root.c_str(), &info) != 0 || !S_ISDIR(info.st_mode) ||
-       info.st_uid != geteuid() || (info.st_mode & kGroupOtherModeBits) != 0))
+       info.st_uid != geteuid() || (info.st_mode & kGroupOtherModeBits) != 0)) {
     return false;
+  }
   return lstat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode) &&
          info.st_uid == geteuid() && (info.st_mode & kGroupOtherModeBits) == 0;
 }

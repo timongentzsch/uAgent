@@ -40,7 +40,8 @@ def heavy(paths):
     ThreadSanitizer and Linux ARM64: for the build, the workflows and the
     web host and browser."""
     return any(
-        path.startswith(HEAVY_DIRS) or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore")
+        path.startswith(HEAVY_DIRS)
+        or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore")
         for path in paths
     )
 

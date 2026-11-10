@@ -241,8 +241,9 @@ bool Connect(Host& host, const std::string& executable,
                      "test -x \"$HOME/.uagent/remote/uagent\" && "
                      "\"$HOME/.uagent/remote/uagent\" --build-id");
   if ((!present.Ok() || Trim(present.output) != BuildIdentity()) &&
-      !Install(host, executable, error))
+      !Install(host, executable, error)) {
     return false;
+  }
   auto startup = Run(host, "\"$HOME/.uagent/remote/uagent\" --remote-start");
   const json identity = json::parse(startup.output, nullptr, false);
   if (!startup.Ok() || JsonValue(identity, "build", "") != BuildIdentity()) {
@@ -370,12 +371,12 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       } else {
         host.error = std::move(error);
         host.endpoint.reset();
-        constexpr int delays[] = {1, 2, 4, 8, 15};
+        constexpr int kDelays[] = {1, 2, 4, 8, 15};
         if (host.retry < 5) {
           host.phase = "reconnecting";
           // A little per-host jitter avoids retry bursts after a network drop.
           due = Clock::now() +
-                std::chrono::milliseconds(delays[host.retry++] * 1000 +
+                std::chrono::milliseconds(kDelays[host.retry++] * 1000 +
                                           static_cast<int>(host.id[0]) * 3);
         } else {
           host.phase = "disconnected";
@@ -451,8 +452,9 @@ struct RemoteHosts::Impl {
     host->socket = base + ".sock";
     host->log = GlobalBase() + "/web/ssh-" + id + ".log";
     hosts[id] = host;
-    host->worker = std::jthread(
-        [host, this](std::stop_token stop) { Work(*host, executable, stop); });
+    host->worker = std::jthread([host, this](std::stop_token stop) {
+      Work(*host, executable, std::move(stop));
+    });
     return host;
   }
 };
@@ -463,8 +465,9 @@ RemoteHosts::RemoteHosts(std::string executable)
     for (const json& row : saved) {
       const std::string id = JsonValue(row, "id", ""),
                         address = JsonValue(row, "address", "");
-      if (OpaqueId(id) && Address(address) && impl_->hosts.size() < 16)
+      if (OpaqueId(id) && Address(address) && impl_->hosts.size() < 16) {
         impl_->Add(id, address, JsonValue(row, "name", address));
+      }
     }
   }
 }
@@ -499,11 +502,12 @@ json RemoteHosts::Change(const json& action, std::string& error) {
       error = "Enter an SSH alias or user@machine (maximum 16 hosts).";
       return nullptr;
     }
-    for (const auto& [key, item] : impl_->hosts)
+    for (const auto& [key, item] : impl_->hosts) {
       if (item->address == address) {
         error = "That host is already saved.";
         return nullptr;
       }
+    }
     host = impl_->Add(RandomToken(16), address,
                       JsonValue(action, "name", address).substr(0, 80));
     if (!host) {
@@ -511,9 +515,10 @@ json RemoteHosts::Change(const json& action, std::string& error) {
       return nullptr;
     }
     json saved = json::array();
-    for (const auto& [key, item] : impl_->hosts)
+    for (const auto& [key, item] : impl_->hosts) {
       saved.push_back(
           {{"id", key}, {"name", item->name}, {"address", item->address}});
+    }
     if (!WritePrivateFile(GlobalBase() + "/web/hosts.json", JsonDump(saved),
                           error)) {
       host->worker.request_stop();
@@ -559,7 +564,7 @@ std::optional<RemoteEndpoint> RemoteHosts::Endpoint(
     const uint64_t generation = found->second->generation;
     endpoint->unavailable = [owner, generation] {
       if (auto host = owner.lock()) {
-        std::lock_guard state(host->mutex);
+        std::lock_guard endpoint_lock(host->mutex);
         if (host->endpoint && host->generation == generation &&
             !host->disconnect) {
           host->failed = true;

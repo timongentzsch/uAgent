@@ -783,7 +783,7 @@ export function useHost(
   const select = useCallback(
     (id: string) => {
       selection.current = id;
-      writeSelection(id);
+      if (visible.current) writeSelection(id, false, hostId);
       // Following is owned solely by the transcript history controller:
       // a switch resumes the saved position
       // (or pins a fresh surface), which notifies through onFollow.
@@ -799,7 +799,7 @@ export function useHost(
         );
       setSelected(id);
     },
-    [snapshots],
+    [snapshots, hostId],
   );
   const correlate = useCallback((requestId: string) => {
     localRequests.current.add(requestId);
@@ -815,7 +815,7 @@ export function useHost(
     setOnline(false);
     setConnecting(false);
     connectedOnce.current = false;
-    writeSelection("", true);
+    if (visible.current) writeSelection("", true, hostId);
     setSelected("");
   }
   useEffect(() => {

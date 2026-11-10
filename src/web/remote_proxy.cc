@@ -179,7 +179,8 @@ void ProxySocket(const RemoteEndpoint& endpoint, const std::string& path,
       "ws" + endpoint.origin.substr(4) + path,
       {{"Origin", endpoint.origin}, {"Cookie", endpoint.cookie}});
   upstream.set_connection_timeout(5);
-  upstream.set_read_timeout(30);
+  // The peer pings every 30 seconds; leave room for its missed-pong budget.
+  upstream.set_read_timeout(90);
   if (!endpoint.socket.empty()) {
     upstream.set_address_family(AF_UNIX);
     const std::string authority = endpoint.origin.substr(7);
@@ -187,6 +188,7 @@ void ProxySocket(const RemoteEndpoint& endpoint, const std::string& path,
     upstream.set_hostname_addr_map({{host, endpoint.socket}});
   }
   if (!upstream.connect()) {
+    if (endpoint.unavailable) endpoint.unavailable();
     downstream.close(httplib::ws::CloseStatus::PolicyViolation);
     return;
   }

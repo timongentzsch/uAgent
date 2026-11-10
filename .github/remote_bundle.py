@@ -5,6 +5,7 @@ import hashlib
 import json
 import pathlib
 import platform
+import re
 import shutil
 import subprocess
 import tarfile
@@ -61,6 +62,28 @@ def payload(args):
         root = pathlib.Path(directory)
         shutil.copy2(args.binary, root / "uagent")
         subprocess.run(["strip", str(root / "uagent")], check=True)
+        if (
+            subprocess.check_output([str(root / "uagent"), "--build-id"], text=True).strip()
+            != build
+        ):
+            raise ValueError("stripped payload does not start with the expected identity")
+        if os_name == "linux":
+            versions = subprocess.check_output(
+                ["readelf", "--version-info", str(root / "uagent")], text=True
+            )
+            required = [
+                tuple(map(int, version.split(".")))
+                for version in re.findall(r"GLIBC_([0-9.]+)", versions)
+            ]
+            if required and max(required) > (2, 38):
+                raise ValueError(f"payload exceeds the glibc 2.38 floor: {max(required)}")
+        else:
+            commands = subprocess.check_output(["otool", "-l", str(root / "uagent")], text=True)
+            minimum = re.findall(r"\bminos ([0-9.]+)", commands)
+            if not minimum or any(
+                tuple(map(int, version.split("."))) > (15, 0, 0) for version in minimum
+            ):
+                raise ValueError("payload exceeds the macOS 15 deployment floor")
         shutil.copytree(args.prefix / "share/uagent/skills", root / "share/uagent/skills")
         shutil.copytree(
             args.prefix / "share/doc/uagent/licenses", root / "share/doc/uagent/licenses"

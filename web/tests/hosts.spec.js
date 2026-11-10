@@ -75,7 +75,9 @@ test("restored hosts stay disconnected; Recent explicitly opens the owning host"
     .getByRole("button", { name: "Local conversation", exact: true })
     .click();
   await expect(page).toHaveURL(new RegExp(`#session=${local.id}$`));
-  await expect(page.getByRole("heading", { name: "Local conversation", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Local conversation", level: 1 }),
+  ).toBeVisible();
   await recent
     .getByRole("button", { name: "GPU conversation", exact: true })
     .click();

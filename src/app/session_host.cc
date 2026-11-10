@@ -234,8 +234,9 @@ bool SessionHost::IdleForUpdate() const {
   std::lock_guard lock(mutex_);
   for (const auto& [id, session] : sessions_) {
     if ((session->pid > 0 && !session->exited) || session->connecting ||
-        session->RestartBusy())
+        session->RestartBusy()) {
       return false;
+    }
   }
   return true;
 }

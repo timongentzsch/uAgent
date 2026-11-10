@@ -263,11 +263,13 @@ int Main(int argc, char** argv) {
     return 2;
   }
   if (argc == 2 && (std::string_view(argv[1]) == "--remote-start" ||
-                    std::string_view(argv[1]) == "--remote-stop-if-idle"))
+                    std::string_view(argv[1]) == "--remote-stop-if-idle")) {
     return web::RemoteStart(std::string_view(argv[1]) ==
                             "--remote-stop-if-idle");
-  if (argc == 2 && std::string_view(argv[1]) == "--remote-host")
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--remote-host") {
     return WebMain(Options{}, argv, RuntimeDir() + "/web.sock");
+  }
   if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
     return session::WorkerMain(argc, argv);
   }

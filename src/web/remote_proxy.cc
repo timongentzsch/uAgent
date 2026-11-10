@@ -24,8 +24,9 @@ httplib::Headers Headers(const RemoteEndpoint& endpoint,
                            {"Origin", endpoint.origin}};
   for (const char* key : {"Content-Type", "Range", "If-Range", "If-None-Match",
                           "If-Match", "Accept", "Last-Event-ID"}) {
-    if (request.has_header(key))
+    if (request.has_header(key)) {
       headers.emplace(key, request.get_header_value(key));
+    }
   }
   return headers;
 }
@@ -36,12 +37,14 @@ void RewriteLinks(json& value, const RemoteEndpoint& endpoint,
       if ((it.key() == "url" || it.key() == "preview" || it.key() == "base") &&
           it->is_string()) {
         auto text = it->get<std::string>();
-        if (text.starts_with(endpoint.origin + "/"))
+        if (text.starts_with(endpoint.origin + "/")) {
           text.erase(0, endpoint.origin.size());
-        if (text.starts_with("/preview/"))
+        }
+        if (text.starts_with("/preview/")) {
           *it = "/preview/hosts/" + prefix.substr(11) + text.substr(8);
-        else if (text.starts_with("/api/"))
+        } else if (text.starts_with("/api/")) {
           *it = prefix + text;
+        }
       } else {
         RewriteLinks(*it, endpoint, prefix);
       }
@@ -97,8 +100,9 @@ void ProxyHttp(const RemoteEndpoint& endpoint, const std::string& prefix,
         "ETag", "Content-Security-Policy", "X-Content-Type-Options",
         "Referrer-Policy", "Cross-Origin-Resource-Policy",
         "Access-Control-Allow-Origin"}) {
-    if (stream->response->has_header(key))
+    if (stream->response->has_header(key)) {
       response.set_header(key, stream->response->get_header_value(key));
+    }
   }
   if (path.starts_with("/preview/")) {
     std::string policy = response.get_header_value("Content-Security-Policy");
@@ -121,9 +125,10 @@ void ProxyHttp(const RemoteEndpoint& endpoint, const std::string& prefix,
   }
   if (request.method == "HEAD" || response.status == 204 ||
       response.status == 304) {
-    if (stream->response->has_header("Content-Length"))
+    if (stream->response->has_header("Content-Length")) {
       response.set_header("Content-Length",
                           stream->response->get_header_value("Content-Length"));
+    }
     return;
   }
   const std::string mime = stream->response->get_header_value("Content-Type");
@@ -196,8 +201,9 @@ void ProxySocket(const RemoteEndpoint& endpoint, const std::string& path,
     std::string message;
     for (;;) {
       auto kind = upstream.read(message);
-      if (kind == httplib::ws::ReadResult::Fail || message.size() > MiB(1))
+      if (kind == httplib::ws::ReadResult::Fail || message.size() > MiB(1)) {
         break;
+      }
       const bool sent = kind == httplib::ws::ReadResult::Binary
                             ? downstream.send(message.data(), message.size())
                             : downstream.send(message);

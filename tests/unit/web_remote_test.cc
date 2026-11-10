@@ -46,8 +46,9 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
     response.set_chunked_content_provider(
         "text/event-stream", [&](size_t offset, httplib::DataSink& sink) {
           if (!offset) return sink.write("event: ready\ndata: {}\n\n", 23);
-          while (!release && sink.is_writable())
+          while (!release && sink.is_writable()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+          }
           sink.done();
           return true;
         });
@@ -57,10 +58,11 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
     for (;;) {
       const auto kind = socket.read(message);
       if (kind == httplib::ws::ReadResult::Fail) break;
-      if (kind == httplib::ws::ReadResult::Binary)
+      if (kind == httplib::ws::ReadResult::Binary) {
         socket.send(message.data(), message.size());
-      else
+      } else {
         socket.send(message);
+      }
     }
   });
   CHECK(upstream.bind_to_port(socket, 80));

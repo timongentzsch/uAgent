@@ -16,10 +16,11 @@ void Master::RegisterRemoteRoutes() {
                  const json action = json::parse(request.body, nullptr, false);
                  std::string error;
                  json result = remotes_->Change(action, error);
-                 if (!error.empty())
+                 if (!error.empty()) {
                    Error(response, error);
-                 else
+                 } else {
                    Reply(response, result);
+                 }
                });
   const std::string pattern =
       R"(/api/hosts/([a-f0-9]{32})(/(?:api|preview)/.*))";

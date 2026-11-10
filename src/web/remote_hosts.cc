@@ -182,7 +182,8 @@ bool Install(const Host& host, const std::string& executable,
   return true;
 }
 bool Connect(Host& host, const std::string& executable,
-             RemoteEndpoint& endpoint, std::string& error) {
+             RemoteEndpoint& endpoint, std::string& error, bool& retryable) {
+  retryable = false;
   Close(host);
   SpawnSpec spec;
   spec.argv = {"ssh",
@@ -231,10 +232,30 @@ bool Connect(Host& host, const std::string& executable,
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
   if (!ready) {
-    error = "SSH could not connect. On the serving host, run ssh " +
-            host.address +
-            " to verify its fingerprint and key access; use ssh-copy-id " +
-            host.address + " if needed. Details: " + host.log;
+    const std::string detail = ReadFile(host.log, KiB(64)).value_or("");
+    if (detail.find("Host key verification failed") != std::string::npos ||
+        detail.find("REMOTE HOST IDENTIFICATION HAS CHANGED") !=
+            std::string::npos) {
+      error =
+          "SSH host identity needs attention. On the serving host, run "
+          "ssh " +
+          host.address + " and verify its fingerprint.";
+    } else if (detail.find("Permission denied") != std::string::npos) {
+      error =
+          "SSH key access failed. On the serving host, unlock an "
+          "encrypted key with ssh-add, then verify ssh " +
+          host.address + "; use ssh-copy-id " + host.address +
+          " if a key has not been installed.";
+    } else if (detail.find("Could not resolve hostname") != std::string::npos) {
+      error =
+          "SSH destination was not found. Check the address or alias "
+          "in the serving host's ~/.ssh/config.";
+    } else {
+      retryable = true;
+      error = "SSH network connection failed. Check that " + host.address +
+              " is reachable from the serving host.";
+    }
+    error += " Details: " + host.log;
     return false;
   }
   auto present = Run(host,
@@ -272,6 +293,7 @@ bool Connect(Host& host, const std::string& executable,
                                   : remote_socket)});
   auto forward = CaptureProcess(forwarding, 10);
   if (!forward.Ok()) {
+    retryable = true;
     error = "SSH could not forward the private remote API.";
     return false;
   }
@@ -296,6 +318,7 @@ bool Connect(Host& host, const std::string& executable,
       JsonDump({{"code", code}, {"name", "Remote workspace gateway"}}),
       "application/json");
   if (!paired || paired->status != 200) {
+    retryable = !paired;
     error = "Remote API authentication failed.";
     return false;
   }
@@ -358,7 +381,9 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       lock.unlock();
       RemoteEndpoint endpoint;
       std::string error;
-      const bool connected = Connect(host, executable, endpoint, error);
+      bool retryable = false;
+      const bool connected =
+          Connect(host, executable, endpoint, error, retryable);
       if (!connected) Close(host);
       lock.lock();
       host.attempting = false;
@@ -372,7 +397,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
         host.error = std::move(error);
         host.endpoint.reset();
         constexpr int kDelays[] = {1, 2, 4, 8, 15};
-        if (host.retry < 5) {
+        if (retryable && host.retry < 5) {
           host.phase = "reconnecting";
           // A little per-host jitter avoids retry bursts after a network drop.
           due = Clock::now() +

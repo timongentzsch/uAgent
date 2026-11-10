@@ -10,9 +10,47 @@ import stat
 import subprocess
 import time
 
-from integration_support import assert_true, base_env, budget
+from integration_support import assert_true, base_env, budget, wait_until
 from session_support import remove_runtime
 from web_support import web_host
+
+
+def test_remote_auth_failure_stops_until_manual_reconnect(root, home, *, binary):
+    tools = root / "bin"
+    tools.mkdir()
+    ssh = tools / "ssh"
+    ssh.write_text(
+        '#!/bin/sh\necho attempt >> "$HOME/ssh-attempts"\n'
+        'echo "Permission denied (publickey)." >&2\nexit 255\n'
+    )
+    ssh.chmod(0o700)
+    attempts = home / "ssh-attempts"
+    with web_host(
+        binary,
+        root,
+        home,
+        "http://127.0.0.1:1",
+        extra_env={"PATH": f"{tools}:{os.environ['PATH']}"},
+    ) as (client, code, _, _):
+        client.pair(code)
+        status, value, _ = client.json("/api/hosts", {"action": "add", "address": "GPU"})
+        assert_true(status == 200, value)
+        host = value["id"]
+
+        def failed():
+            rows = client.json("/api/hosts")[1]["hosts"]
+            return rows and rows[0]["phase"] == "disconnected" and rows[0]["error"]
+
+        wait_until(failed, timeout=budget(10), message="authentication failure did not settle")
+        assert_true("ssh-add" in failed(), failed())
+        time.sleep(2)
+        assert_true(len(attempts.read_text().splitlines()) == 1, "authentication was retried")
+        client.json("/api/hosts", {"action": "reconnect", "id": host})
+        wait_until(
+            lambda: len(attempts.read_text().splitlines()) == 2,
+            timeout=budget(10),
+            message="manual reconnect did not start a fresh attempt",
+        )
 
 
 def test_remote_start_joins_and_idle_update_preserves_terminals(root, home, *, binary):

@@ -4,6 +4,7 @@ import base64
 import concurrent.futures
 import contextlib
 import hashlib
+import io
 import json
 import os
 import pathlib
@@ -11,6 +12,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tarfile
 import time
 import uuid
 from urllib.parse import urlencode
@@ -372,6 +374,81 @@ def test_remote_bundle_requires_all_matching_payloads(root, home, *, binary):
     check(manifest, True)
 
 
+def test_remote_bundle_user_setting_and_environment_precedence(root, home, *, binary):
+    build = subprocess.check_output([binary, "--build-id"], text=True).strip()
+    bundle = root / "bundle"
+    bundle.mkdir()
+    payload = io.BytesIO()
+    # Installation only needs a matching executable; no runtime is started.
+    script = f"#!/bin/sh\nprintf '%s\\n' '{build}'\n".encode()
+    with tarfile.open(fileobj=payload, mode="w:gz") as archive:
+        member = tarfile.TarInfo("uagent")
+        member.size, member.mode = len(script), 0o755
+        archive.addfile(member, io.BytesIO(script))
+    content = payload.getvalue()
+    manifest = {"build": build, "targets": {}}
+    for target in ("linux-x86_64", "linux-arm64", "macos-x86_64", "macos-arm64"):
+        (bundle / f"{target}.tar.gz").write_bytes(content)
+        manifest["targets"][target] = {
+            "bytes": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+    (bundle / "manifest.json").write_text(json.dumps(manifest))
+    tools = root / "bin"
+    tools.mkdir()
+    source = pathlib.Path(__file__).resolve().parents[1] / "fixtures/ssh_relay.py"
+    ssh = tools / "ssh"
+    ssh.write_text(f"#!{sys.executable}\n" + source.read_text())
+    ssh.chmod(0o700)
+    settings = home / ".uagent/config/settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    for override in (False, True):
+        remote_home = root / f"remote-{override}"
+        remote_home.mkdir()
+        (home / "ssh-fixture-home").write_text(str(remote_home))
+        settings.write_text(
+            json.dumps(
+                {
+                    "format": 3,
+                    "all": {"web.remoteBundle": str(root / "missing" if override else bundle)},
+                    "projects": {},
+                }
+            )
+        )
+        environment = {
+            "PATH": f"{tools}:{os.environ['PATH']}",
+            "UAGENT_REMOTE_BUNDLE": str(bundle) if override else None,
+        }
+        with web_host(binary, root, home, "http://127.0.0.1:1", extra_env=environment) as (
+            web,
+            code,
+            _,
+            _,
+        ):
+            web.pair(code)
+            status, value, _ = web.json(
+                "/api/hosts", {"action": "add", "address": f"peer-{override}"}
+            )
+            assert_true(status == 200, value)
+
+            def connected(value=value):
+                return any(
+                    row["id"] == value["id"] and row["phase"] == "connected"
+                    for row in web.json("/api/hosts")[1]["hosts"]
+                )
+
+            try:
+                wait_until(
+                    connected, timeout=budget(15), message="configured bundle was not installed"
+                )
+            except AssertionError:
+                raise AssertionError(web.json("/api/hosts")[1]) from None
+            assert_true(
+                (remote_home / f".uagent/remote/builds/{build}/uagent").is_file(),
+                "installation missing",
+            )
+
+
 def test_remote_auth_failure_stops_until_manual_reconnect(root, home, *, binary):
     tools = root / "bin"
     tools.mkdir()
@@ -533,6 +610,19 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
                 f"/api/sessions/{session['id']}/files?" + urlencode({"read": "remote.txt"})
             )[1]
             assert_true(result["text"] == "remote-command-ok", result)
+            for text in ("first edit", "second edit"):
+                saved = web.json(
+                    f"/api/sessions/{session['id']}/files",
+                    {
+                        "path": "remote.txt",
+                        "text": text,
+                        "revision": result["revision"],
+                        "id": "browser-must-not-own-rpc-receipts",
+                    },
+                )
+                assert_true(saved[0] == 200, saved)
+                result = web.json(f"/api/sessions/{session['id']}/files?read=remote.txt")[1]
+                assert_true(result["text"] == text, result)
             # A worker can disappear while its SSH master remains healthy.
             rows = subprocess.check_output(["ps", "-axo", "pid=,args="], text=True)
             for row in rows.splitlines():

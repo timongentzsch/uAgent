@@ -101,6 +101,7 @@ void ProxyHttp(const RemoteEndpoint& endpoint, const std::string& prefix,
         "Referrer-Policy", "Cross-Origin-Resource-Policy",
         "Access-Control-Allow-Origin"}) {
     if (stream->response->has_header(key)) {
+      response.headers.erase(key);
       response.set_header(key, stream->response->get_header_value(key));
     }
   }

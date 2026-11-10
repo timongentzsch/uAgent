@@ -18,6 +18,9 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
   CHECK(EnsurePrivateDirectory(RuntimeDir()));
   unlink(socket_path.c_str());
   httplib::Server upstream, gateway;
+  gateway.set_default_headers(
+      {{"Content-Security-Policy", "default-src 'none'"},
+       {"Cross-Origin-Resource-Policy", "same-origin"}});
   upstream.set_address_family(AF_UNIX);
   upstream.set_pre_routing_handler(
       [](const httplib::Request& request, httplib::Response& response) {
@@ -32,6 +35,13 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
     response.set_content(
         R"({"base":"/preview/grant/","url":"/api/download","text":"http://localhost/api/unchanged"})",
         "application/json");
+  });
+  upstream.Get("/preview/grant/index.html", [](const auto&, auto& response) {
+    response.set_header("Content-Security-Policy",
+                        "default-src http://localhost/preview/grant/; "
+                        "frame-ancestors http://localhost");
+    response.set_header("Cross-Origin-Resource-Policy", "cross-origin");
+    response.set_content("<p>Remote preview</p>", "text/html");
   });
   const std::string bytes =
       std::string(MiB(2), 'x') + std::string("\0\xff\x01", 3);
@@ -70,9 +80,10 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
                                      "remote=private"};
   auto relay = [&](const auto& request, auto& response) {
     web::ProxyHttp(endpoint, "/api/hosts/owner", request.target, request,
-                   response);
+                   response, "https://serving.example");
   };
   gateway.Get(R"(/api/.*)", relay);
+  gateway.Get(R"(/preview/.*)", relay);
   gateway.Post(R"(/api/.*)", [&](const httplib::Request& request,
                                  httplib::Response& response,
                                  const httplib::ContentReader& reader) {
@@ -98,6 +109,16 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
     CHECK(JsonValue(body, "url", "") == "/api/hosts/owner/api/download");
     CHECK(JsonValue(body, "text", "") == "http://localhost/api/unchanged");
     CHECK(!result->has_header("Set-Cookie"));
+  }
+  auto preview = client.Get("/preview/grant/index.html");
+  CHECK(preview && preview->status == 200);
+  if (preview) {
+    CHECK(preview->get_header_value_count("Content-Security-Policy") == 1);
+    CHECK(preview->get_header_value("Content-Security-Policy") ==
+          "default-src https://serving.example/preview/hosts/owner/grant/; "
+          "frame-ancestors https://serving.example");
+    CHECK(preview->get_header_value("Cross-Origin-Resource-Policy") ==
+          "cross-origin");
   }
   auto upload = client.Post("/api/upload", bytes, "application/octet-stream");
   CHECK(upload && upload->body == "yes");

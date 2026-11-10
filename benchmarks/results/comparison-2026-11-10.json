@@ -1,0 +1,1029 @@
+{
+  "uagent": {
+    "idle": [
+      {
+        "first_screen_ms": 49.63333299383521,
+        "settled": true,
+        "rss_kib": 27240,
+        "idle_cpu_ms": 0.0,
+        "process_count": 2,
+        "tree": [
+          "child /opt/uagent/bin/uagent --session-worker /tmp/agents-footprint-2bw5vrcd/uagent /home/bench/.uagent/hi",
+          "child /opt/uagent/bin/uagent"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 71.8663340085186,
+        "settled": true,
+        "rss_kib": 27064,
+        "idle_cpu_ms": 0.0,
+        "process_count": 2,
+        "tree": [
+          "child /opt/uagent/bin/uagent --session-worker /tmp/agents-footprint-2bw5vrcd/uagent /home/bench/.uagent/hi",
+          "child /opt/uagent/bin/uagent"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 71.52258302085102,
+        "settled": true,
+        "rss_kib": 27076,
+        "idle_cpu_ms": 0.0,
+        "process_count": 2,
+        "tree": [
+          "child /opt/uagent/bin/uagent",
+          "child /opt/uagent/bin/uagent --session-worker /tmp/agents-footprint-2bw5vrcd/uagent /home/bench/.uagent/hi"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 64.33575000846758,
+        "settled": true,
+        "rss_kib": 27080,
+        "idle_cpu_ms": 0.0,
+        "process_count": 2,
+        "tree": [
+          "child /opt/uagent/bin/uagent --session-worker /tmp/agents-footprint-2bw5vrcd/uagent /home/bench/.uagent/hi",
+          "child /opt/uagent/bin/uagent"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 69.61791700450704,
+        "settled": true,
+        "rss_kib": 27076,
+        "idle_cpu_ms": 0.0,
+        "process_count": 2,
+        "tree": [
+          "child /opt/uagent/bin/uagent",
+          "child /opt/uagent/bin/uagent --session-worker /tmp/agents-footprint-2bw5vrcd/uagent /home/bench/.uagent/hi"
+        ],
+        "left_running": []
+      }
+    ],
+    "headless": [
+      {
+        "wall_ms": 1939.5318340393715,
+        "cpu_ms": 24.901,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 15420,
+        "tree_at_peak": [
+          "child /opt/uagent/bin/uagent -p Reply with the single word: ok --json --model proxy/claude-haiku-5-5"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 1163.2296679890715,
+        "cpu_ms": 22.349,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 15404,
+        "tree_at_peak": [
+          "child /opt/uagent/bin/uagent -p Reply with the single word: ok --json --model proxy/claude-haiku-5-5"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 1121.2938340031542,
+        "cpu_ms": 15.933,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 15420,
+        "tree_at_peak": [
+          "child /opt/uagent/bin/uagent -p Reply with the single word: ok --json --model proxy/claude-haiku-5-5"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 1468.7309170258231,
+        "cpu_ms": 17.061,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 15412,
+        "tree_at_peak": [
+          "child /opt/uagent/bin/uagent -p Reply with the single word: ok --json --model proxy/claude-haiku-5-5"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 1162.1387919876724,
+        "cpu_ms": 15.68,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 15420,
+        "tree_at_peak": [
+          "child /opt/uagent/bin/uagent -p Reply with the single word: ok --json --model proxy/claude-haiku-5-5"
+        ],
+        "ok": true,
+        "left_running": []
+      }
+    ],
+    "version": [
+      {
+        "wall_ms": 6.27879099920392,
+        "cpu_ms": 5.070999999999999
+      },
+      {
+        "wall_ms": 5.271540954709053,
+        "cpu_ms": 4.244999999999999
+      },
+      {
+        "wall_ms": 4.980999976396561,
+        "cpu_ms": 3.9239999999999995
+      },
+      {
+        "wall_ms": 5.513499956578016,
+        "cpu_ms": 4.327999999999999
+      },
+      {
+        "wall_ms": 4.896167025435716,
+        "cpu_ms": 4.082
+      },
+      {
+        "wall_ms": 4.996292002033442,
+        "cpu_ms": 4.076
+      },
+      {
+        "wall_ms": 4.779500013682991,
+        "cpu_ms": 3.7329999999999997
+      },
+      {
+        "wall_ms": 5.168457981199026,
+        "cpu_ms": 4.069999999999999
+      },
+      {
+        "wall_ms": 5.6541250087320805,
+        "cpu_ms": 4.444
+      },
+      {
+        "wall_ms": 5.297416995745152,
+        "cpu_ms": 4.314
+      },
+      {
+        "wall_ms": 5.251082999166101,
+        "cpu_ms": 4.17
+      },
+      {
+        "wall_ms": 5.154459038749337,
+        "cpu_ms": 4.111
+      },
+      {
+        "wall_ms": 4.915500001516193,
+        "cpu_ms": 3.9089999999999994
+      },
+      {
+        "wall_ms": 5.293083027936518,
+        "cpu_ms": 4.2299999999999995
+      },
+      {
+        "wall_ms": 4.731624969281256,
+        "cpu_ms": 3.73
+      },
+      {
+        "wall_ms": 4.914957971777767,
+        "cpu_ms": 3.904
+      },
+      {
+        "wall_ms": 5.209499970078468,
+        "cpu_ms": 4.1770000000000005
+      },
+      {
+        "wall_ms": 5.280707962810993,
+        "cpu_ms": 4.193
+      },
+      {
+        "wall_ms": 5.342959018889815,
+        "cpu_ms": 4.226999999999999
+      },
+      {
+        "wall_ms": 4.770457977429032,
+        "cpu_ms": 3.777
+      },
+      {
+        "wall_ms": 4.966332984622568,
+        "cpu_ms": 3.9979999999999998
+      },
+      {
+        "wall_ms": 5.096833978313953,
+        "cpu_ms": 4.087999999999999
+      },
+      {
+        "wall_ms": 5.5065000196918845,
+        "cpu_ms": 4.359
+      },
+      {
+        "wall_ms": 5.134166975039989,
+        "cpu_ms": 3.994
+      },
+      {
+        "wall_ms": 5.407125048805028,
+        "cpu_ms": 4.188
+      },
+      {
+        "wall_ms": 4.7954999608919024,
+        "cpu_ms": 3.747
+      },
+      {
+        "wall_ms": 6.139707984402776,
+        "cpu_ms": 4.787999999999999
+      },
+      {
+        "wall_ms": 5.327749997377396,
+        "cpu_ms": 4.144
+      },
+      {
+        "wall_ms": 6.166499981191009,
+        "cpu_ms": 4.926
+      },
+      {
+        "wall_ms": 5.442333989776671,
+        "cpu_ms": 4.335999999999999
+      }
+    ],
+    "errors": [],
+    "version_string": "uagent 1.8.0",
+    "size": {
+      "executable_bytes": 6429544,
+      "install_bytes": 19583574,
+      "install_files": 38,
+      "install_counts": "bin/ and share/uagent/",
+      "non_system_libraries": 0
+    }
+  },
+  "claude": {
+    "idle": [
+      {
+        "first_screen_ms": 526.3843749999069,
+        "settled": true,
+        "rss_kib": 159856,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child /home/bench/.local/bin/claude --strict-mcp-config --mcp-config {\"mcpServers\":{}} --setting-sources p"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 572.3241259693168,
+        "settled": true,
+        "rss_kib": 154172,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child /home/bench/.local/bin/claude --strict-mcp-config --mcp-config {\"mcpServers\":{}} --setting-sources p"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 495.396249985788,
+        "settled": true,
+        "rss_kib": 154600,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child /home/bench/.local/bin/claude --strict-mcp-config --mcp-config {\"mcpServers\":{}} --setting-sources p"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 685.3303749812767,
+        "settled": true,
+        "rss_kib": 154160,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child /home/bench/.local/bin/claude --strict-mcp-config --mcp-config {\"mcpServers\":{}} --setting-sources p"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 858.9793749852106,
+        "settled": true,
+        "rss_kib": 154280,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child /home/bench/.local/bin/claude --strict-mcp-config --mcp-config {\"mcpServers\":{}} --setting-sources p"
+        ],
+        "left_running": []
+      }
+    ],
+    "headless": [
+      {
+        "wall_ms": 2316.1502919974737,
+        "cpu_ms": 579.733,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 230616,
+        "tree_at_peak": [
+          "child /home/bench/.local/bin/claude --strict-mcp-config --mcp-config {\"mcpServers\":{}} --setting-sources p"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 2354.237709019799,
+        "cpu_ms": 574.484,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 228748,
+        "tree_at_peak": [
+          "child /home/bench/.local/bin/claude --strict-mcp-config --mcp-config {\"mcpServers\":{}} --setting-sources p"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 2393.2644170126878,
+        "cpu_ms": 572.5129999999999,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 230492,
+        "tree_at_peak": [
+          "child /home/bench/.local/bin/claude --strict-mcp-config --mcp-config {\"mcpServers\":{}} --setting-sources p"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 2270.6295429961756,
+        "cpu_ms": 538.526,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 230220,
+        "tree_at_peak": [
+          "child /home/bench/.local/bin/claude --strict-mcp-config --mcp-config {\"mcpServers\":{}} --setting-sources p"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 2360.6655430048704,
+        "cpu_ms": 547.067,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 229044,
+        "tree_at_peak": [
+          "child /home/bench/.local/bin/claude --strict-mcp-config --mcp-config {\"mcpServers\":{}} --setting-sources p"
+        ],
+        "ok": true,
+        "left_running": []
+      }
+    ],
+    "version": [
+      {
+        "wall_ms": 5.563125014305115,
+        "cpu_ms": 5.441
+      },
+      {
+        "wall_ms": 6.021582987159491,
+        "cpu_ms": 5.943
+      },
+      {
+        "wall_ms": 5.8828750043176115,
+        "cpu_ms": 5.757
+      },
+      {
+        "wall_ms": 5.198667000513524,
+        "cpu_ms": 5.072
+      },
+      {
+        "wall_ms": 6.343707966152579,
+        "cpu_ms": 6.1979999999999995
+      },
+      {
+        "wall_ms": 5.619124975055456,
+        "cpu_ms": 5.492999999999999
+      },
+      {
+        "wall_ms": 5.671375023666769,
+        "cpu_ms": 5.566
+      },
+      {
+        "wall_ms": 5.667416960932314,
+        "cpu_ms": 5.4719999999999995
+      },
+      {
+        "wall_ms": 5.254749965388328,
+        "cpu_ms": 5.124999999999999
+      },
+      {
+        "wall_ms": 6.072124990168959,
+        "cpu_ms": 5.97
+      },
+      {
+        "wall_ms": 5.192500015255064,
+        "cpu_ms": 5.026999999999999
+      },
+      {
+        "wall_ms": 5.755833990406245,
+        "cpu_ms": 5.6530000000000005
+      },
+      {
+        "wall_ms": 5.716708023101091,
+        "cpu_ms": 5.616
+      },
+      {
+        "wall_ms": 5.828583030961454,
+        "cpu_ms": 5.697
+      },
+      {
+        "wall_ms": 5.38554199738428,
+        "cpu_ms": 5.289999999999999
+      },
+      {
+        "wall_ms": 5.695625033695251,
+        "cpu_ms": 5.577
+      },
+      {
+        "wall_ms": 5.736082966905087,
+        "cpu_ms": 5.623
+      },
+      {
+        "wall_ms": 5.502999993041158,
+        "cpu_ms": 5.388
+      },
+      {
+        "wall_ms": 5.6162080145441,
+        "cpu_ms": 5.49
+      },
+      {
+        "wall_ms": 5.727458978071809,
+        "cpu_ms": 5.593
+      },
+      {
+        "wall_ms": 5.432416975963861,
+        "cpu_ms": 5.313
+      },
+      {
+        "wall_ms": 5.9219590038992465,
+        "cpu_ms": 5.733999999999999
+      },
+      {
+        "wall_ms": 5.259082943666726,
+        "cpu_ms": 5.135
+      },
+      {
+        "wall_ms": 5.800124956294894,
+        "cpu_ms": 5.6499999999999995
+      },
+      {
+        "wall_ms": 5.281833000481129,
+        "cpu_ms": 5.184
+      },
+      {
+        "wall_ms": 5.789624992758036,
+        "cpu_ms": 5.659
+      },
+      {
+        "wall_ms": 7.0259589701890945,
+        "cpu_ms": 6.856999999999999
+      },
+      {
+        "wall_ms": 5.334666988346726,
+        "cpu_ms": 5.204999999999999
+      },
+      {
+        "wall_ms": 6.0747499810531735,
+        "cpu_ms": 5.877
+      },
+      {
+        "wall_ms": 6.013041012920439,
+        "cpu_ms": 5.89
+      }
+    ],
+    "errors": [],
+    "version_string": "2.1.322 (Claude Code)",
+    "size": {
+      "executable_bytes": 341501368,
+      "install_bytes": 341501368,
+      "install_files": 1,
+      "install_counts": "the single executable",
+      "non_system_libraries": 0
+    }
+  },
+  "codex": {
+    "idle": [
+      {
+        "first_screen_ms": 442.7524170023389,
+        "settled": true,
+        "rss_kib": 114388,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child /home/bench/codex/bin/codex -c mcp_servers={} --disable plugins --disable apps --disable computer_us"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 489.72804099321365,
+        "settled": true,
+        "rss_kib": 169168,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child /home/bench/codex/bin/codex -c mcp_servers={} --disable plugins --disable apps --disable computer_us"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 459.15708399843425,
+        "settled": true,
+        "rss_kib": 165824,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child /home/bench/codex/bin/codex -c mcp_servers={} --disable plugins --disable apps --disable computer_us"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 459.31720797671005,
+        "settled": true,
+        "rss_kib": 167676,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child /home/bench/codex/bin/codex -c mcp_servers={} --disable plugins --disable apps --disable computer_us"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 495.3336249454878,
+        "settled": true,
+        "rss_kib": 164268,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child /home/bench/codex/bin/codex -c mcp_servers={} --disable plugins --disable apps --disable computer_us"
+        ],
+        "left_running": []
+      }
+    ],
+    "headless": [
+      {
+        "wall_ms": 1527.2589590167627,
+        "cpu_ms": 175.08599999999998,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 150376,
+        "tree_at_peak": [
+          "child /home/bench/codex/bin/codex exec --ephemeral Reply with the single word: ok"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 1801.5727089950815,
+        "cpu_ms": 156.36499999999998,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 155632,
+        "tree_at_peak": [
+          "child /home/bench/codex/bin/codex exec --ephemeral Reply with the single word: ok"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 3659.899669000879,
+        "cpu_ms": 140.351,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 156592,
+        "tree_at_peak": [
+          "child /home/bench/codex/bin/codex exec --ephemeral Reply with the single word: ok"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 2510.302209004294,
+        "cpu_ms": 165.69400000000002,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 157928,
+        "tree_at_peak": [
+          "child /home/bench/codex/bin/codex exec --ephemeral Reply with the single word: ok"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 1753.190251009073,
+        "cpu_ms": 146.90200000000002,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 153760,
+        "tree_at_peak": [
+          "child /home/bench/codex/bin/codex exec --ephemeral Reply with the single word: ok"
+        ],
+        "ok": true,
+        "left_running": []
+      }
+    ],
+    "version": [
+      {
+        "wall_ms": 2.772625011857599,
+        "cpu_ms": 2.82
+      },
+      {
+        "wall_ms": 2.529249992221594,
+        "cpu_ms": 2.5399999999999996
+      },
+      {
+        "wall_ms": 2.562167006544769,
+        "cpu_ms": 2.5460000000000003
+      },
+      {
+        "wall_ms": 2.3115419899113476,
+        "cpu_ms": 2.322
+      },
+      {
+        "wall_ms": 2.3060000385157764,
+        "cpu_ms": 2.2129999999999996
+      },
+      {
+        "wall_ms": 2.2061659838072956,
+        "cpu_ms": 2.185
+      },
+      {
+        "wall_ms": 2.499875030480325,
+        "cpu_ms": 2.431
+      },
+      {
+        "wall_ms": 2.301083004567772,
+        "cpu_ms": 2.306
+      },
+      {
+        "wall_ms": 2.5812920066528022,
+        "cpu_ms": 2.588
+      },
+      {
+        "wall_ms": 2.200749993789941,
+        "cpu_ms": 2.29
+      },
+      {
+        "wall_ms": 2.0764170330949128,
+        "cpu_ms": 2.0460000000000003
+      },
+      {
+        "wall_ms": 2.253500046208501,
+        "cpu_ms": 2.216
+      },
+      {
+        "wall_ms": 2.2527080145664513,
+        "cpu_ms": 2.239
+      },
+      {
+        "wall_ms": 2.2890419932082295,
+        "cpu_ms": 2.225
+      },
+      {
+        "wall_ms": 2.2887499653734267,
+        "cpu_ms": 2.214
+      },
+      {
+        "wall_ms": 2.498790971003473,
+        "cpu_ms": 2.433
+      },
+      {
+        "wall_ms": 3.502250008750707,
+        "cpu_ms": 2.317
+      },
+      {
+        "wall_ms": 2.660041966009885,
+        "cpu_ms": 2.671
+      },
+      {
+        "wall_ms": 2.1272089798003435,
+        "cpu_ms": 2.09
+      },
+      {
+        "wall_ms": 2.3294169805012643,
+        "cpu_ms": 2.278
+      },
+      {
+        "wall_ms": 2.1182080381549895,
+        "cpu_ms": 2.086
+      },
+      {
+        "wall_ms": 2.5182919926010072,
+        "cpu_ms": 2.516
+      },
+      {
+        "wall_ms": 2.1171249682083726,
+        "cpu_ms": 2.097
+      },
+      {
+        "wall_ms": 2.195167005993426,
+        "cpu_ms": 2.097
+      },
+      {
+        "wall_ms": 2.6835419703274965,
+        "cpu_ms": 2.642
+      },
+      {
+        "wall_ms": 2.575207967311144,
+        "cpu_ms": 2.5799999999999996
+      },
+      {
+        "wall_ms": 4.199667018838227,
+        "cpu_ms": 2.9309999999999996
+      },
+      {
+        "wall_ms": 2.527291013393551,
+        "cpu_ms": 2.518
+      },
+      {
+        "wall_ms": 2.803207957185805,
+        "cpu_ms": 2.6969999999999996
+      },
+      {
+        "wall_ms": 2.265582967083901,
+        "cpu_ms": 2.2030000000000003
+      }
+    ],
+    "errors": [],
+    "version_string": "codex-cli 0.167.0",
+    "size": {
+      "executable_bytes": 278794648,
+      "install_bytes": 480699380,
+      "install_files": 44,
+      "install_counts": "the cask package (bin, codex-resources, codex-path)",
+      "non_system_libraries": null
+    }
+  },
+  "omp": {
+    "idle": [
+      {
+        "first_screen_ms": 4073.118459957186,
+        "settled": true,
+        "rss_kib": 349836,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child bun /home/bench/omp/node_modules/.bin/omp --no-extensions --no-skills --no-rules --no-lsp --no-title"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 4182.21308500506,
+        "settled": true,
+        "rss_kib": 323172,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child bun /home/bench/omp/node_modules/.bin/omp --no-extensions --no-skills --no-rules --no-lsp --no-title"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 3959.6295439987443,
+        "settled": true,
+        "rss_kib": 330812,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child bun /home/bench/omp/node_modules/.bin/omp --no-extensions --no-skills --no-rules --no-lsp --no-title"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 3982.7142099966295,
+        "settled": true,
+        "rss_kib": 330272,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child bun /home/bench/omp/node_modules/.bin/omp --no-extensions --no-skills --no-rules --no-lsp --no-title"
+        ],
+        "left_running": []
+      },
+      {
+        "first_screen_ms": 3991.232960950583,
+        "settled": true,
+        "rss_kib": 330696,
+        "idle_cpu_ms": 0.0,
+        "process_count": 1,
+        "tree": [
+          "child bun /home/bench/omp/node_modules/.bin/omp --no-extensions --no-skills --no-rules --no-lsp --no-title"
+        ],
+        "left_running": []
+      }
+    ],
+    "headless": [
+      {
+        "wall_ms": 2997.3211680189706,
+        "cpu_ms": 1923.201,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 367784,
+        "tree_at_peak": [
+          "child bun /home/bench/omp/node_modules/.bin/omp --no-extensions --no-skills --no-rules --no-lsp --no-title"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 2065.9529590047896,
+        "cpu_ms": 1803.135,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 380764,
+        "tree_at_peak": [
+          "child bun /home/bench/omp/node_modules/.bin/omp --no-extensions --no-skills --no-rules --no-lsp --no-title"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 2332.976459991187,
+        "cpu_ms": 1803.77,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 365828,
+        "tree_at_peak": [
+          "child bun /home/bench/omp/node_modules/.bin/omp --no-extensions --no-skills --no-rules --no-lsp --no-title"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 2292.5229180254973,
+        "cpu_ms": 1871.797,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 370488,
+        "tree_at_peak": [
+          "child bun /home/bench/omp/node_modules/.bin/omp --no-extensions --no-skills --no-rules --no-lsp --no-title"
+        ],
+        "ok": true,
+        "left_running": []
+      },
+      {
+        "wall_ms": 2214.6724180202,
+        "cpu_ms": 2037.1209999999999,
+        "detached_cpu_ms_seen": 0,
+        "peak_rss_kib": 369872,
+        "tree_at_peak": [
+          "child bun /home/bench/omp/node_modules/.bin/omp --no-extensions --no-skills --no-rules --no-lsp --no-title"
+        ],
+        "ok": true,
+        "left_running": []
+      }
+    ],
+    "version": [
+      {
+        "wall_ms": 494.5486669894308,
+        "cpu_ms": 504.52699999999993
+      },
+      {
+        "wall_ms": 492.31562501518056,
+        "cpu_ms": 502.135
+      },
+      {
+        "wall_ms": 491.70975002925843,
+        "cpu_ms": 502.85
+      },
+      {
+        "wall_ms": 494.68645901652053,
+        "cpu_ms": 504.12499999999994
+      },
+      {
+        "wall_ms": 493.93191700801253,
+        "cpu_ms": 504.79600000000005
+      },
+      {
+        "wall_ms": 495.1279999804683,
+        "cpu_ms": 506.32199999999995
+      },
+      {
+        "wall_ms": 491.2387509830296,
+        "cpu_ms": 504.679
+      },
+      {
+        "wall_ms": 493.60804102616385,
+        "cpu_ms": 504.86699999999996
+      },
+      {
+        "wall_ms": 492.18129203654826,
+        "cpu_ms": 503.79200000000003
+      },
+      {
+        "wall_ms": 490.845083957538,
+        "cpu_ms": 502.70899999999995
+      },
+      {
+        "wall_ms": 493.51383396424353,
+        "cpu_ms": 504.45099999999996
+      },
+      {
+        "wall_ms": 525.9848749847151,
+        "cpu_ms": 537.99
+      },
+      {
+        "wall_ms": 481.5788760315627,
+        "cpu_ms": 493.49999999999994
+      },
+      {
+        "wall_ms": 492.5084580318071,
+        "cpu_ms": 498.70599999999996
+      },
+      {
+        "wall_ms": 488.5084169800393,
+        "cpu_ms": 500.224
+      },
+      {
+        "wall_ms": 486.60450003808364,
+        "cpu_ms": 496.267
+      },
+      {
+        "wall_ms": 484.03804196277633,
+        "cpu_ms": 495.64899999999994
+      },
+      {
+        "wall_ms": 492.09745903499424,
+        "cpu_ms": 501.55799999999994
+      },
+      {
+        "wall_ms": 485.0204170215875,
+        "cpu_ms": 497.394
+      },
+      {
+        "wall_ms": 490.25383294792846,
+        "cpu_ms": 500.23300000000006
+      },
+      {
+        "wall_ms": 497.3434590501711,
+        "cpu_ms": 509.798
+      },
+      {
+        "wall_ms": 491.1460420116782,
+        "cpu_ms": 500.52399999999994
+      },
+      {
+        "wall_ms": 493.7877499614842,
+        "cpu_ms": 505.953
+      },
+      {
+        "wall_ms": 525.1392500358634,
+        "cpu_ms": 535.137
+      },
+      {
+        "wall_ms": 503.7444999907166,
+        "cpu_ms": 515.447
+      },
+      {
+        "wall_ms": 565.8615829888731,
+        "cpu_ms": 583.766
+      },
+      {
+        "wall_ms": 508.0662500113249,
+        "cpu_ms": 519.6800000000001
+      },
+      {
+        "wall_ms": 507.3756250203587,
+        "cpu_ms": 516.559
+      },
+      {
+        "wall_ms": 520.7814589957707,
+        "cpu_ms": 531.7259999999999
+      },
+      {
+        "wall_ms": 537.2111669857986,
+        "cpu_ms": 547.827
+      }
+    ],
+    "errors": [],
+    "version_string": "omp/18.18.6",
+    "size": {
+      "executable_bytes": 126170399,
+      "install_bytes": 401341304,
+      "install_files": 17398,
+      "install_counts": "node_modules and bun",
+      "non_system_libraries": 0
+    }
+  },
+  "_machine": {
+    "platform": "Linux-7.0.14-linuxkit-aarch64-with-glibc2.39",
+    "machine": "aarch64",
+    "chip": "Apple M1 Pro, Linux ARM64 Docker, 2 CPU / 4 GiB",
+    "cpus": 2,
+    "date": "2026-11-10",
+    "runs": {
+      "version": 30,
+      "session": 5
+    }
+  },
+  "_provenance": {
+    "uagent_commit": "0fc24e65dd97c650e4dc40417290a0bbfced5329",
+    "uagent_build": "f8c6b0f0e19ce1b74f07fd5a40dae89dcbd0be0f7422ef7e498abd2cb85f9dca",
+    "ci_run": "https://github.com/timongentzsch/uAgent/actions/runs/42888183412",
+    "archive": "uagent-1.8.0-linux-arm64.tar.gz",
+    "archive_sha256": "64cd2296d8646ac3c374537d13a3db9273f30146f7ca868a297c229dcbffe5da",
+    "runtime": "Bun 1.4.4 (omp)",
+    "model": "claude-haiku-5-5",
+    "prompt": "Reply with the single word: ok",
+    "limits": {
+      "cpus": 2,
+      "memory_bytes": 4294967296,
+      "memory_swap_bytes": 4294967296
+    },
+    "notes": [
+      "Complete uagent installation includes all four gateway payloads.",
+      "All tools share one model proxy; provider wait time is not CPU time.",
+      "CPU is reaped process usage plus last observed detached-helper CPU; detached sampling has OS ps resolution.",
+      "Idle RSS and peak RSS use KiB / 1024 = MiB. Disk size uses decimal MB.",
+      "Runtime-only stage installed competitors; verified CI release mounted read-only at /opt/uagent. Proxy network namespace shared for localhost access; proxy CPU is outside the benchmark cgroup.",
+      "Historical 2026-10-28 values are not reused."
+    ]
+  }
+}

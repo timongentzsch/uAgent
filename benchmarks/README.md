@@ -82,12 +82,51 @@ each complete release archive and checking the matching gateway manifest.
 
 ## Footprint comparison
 
-![Historical 2026-10-28 comparison of µAgent, Claude Code, Codex CLI and omp: installation size, idle memory, headless CPU and peak memory](../docs/images/footprint-2026-10-28.svg)
+Measured **2026-11-10** on Apple M1 Pro in Linux ARM64 Docker, with 2 CPUs,
+4 GiB memory and no additional swap. All tools answered the same one-word
+prompt through the same Claude Haiku 5.5 endpoint. Each row is a median of
+five interleaved runs; all 20 headless turns succeeded. Startup uses 30 runs
+following three warm-ups. [Raw samples and provenance](results/comparison-2026-11-10.json)
+include actual versions, all samples, cleanup checks and the CI archive hash.
 
-This older comparison remains historical: it predates the remote bundle and
-measures a **local-only µAgent installation**. Its 6.4 MB row must not be used
-as the current complete-install size or mixed with newly measured competitor
-rows. The other tools were not remeasured for the 2026-11-10 snapshot.
+![Idle memory and CPU per headless turn for µAgent, Claude Code, Codex CLI and omp](../docs/images/comparison.svg)
+
+| Tool | Measured version | Complete install (MB) | Idle memory (MiB) | CPU per headless turn (ms) |
+| --- | --- | ---: | ---: | ---: |
+| µAgent | 1.8.0 / `0fc24e65` | 19.6 | 26.4 | 17 |
+| Claude Code | 2.1.322 | 341.5 | 150.7 | 573 |
+| Codex CLI | 0.167.0 | 480.7 | 161.9 | 156 |
+| omp | 18.18.6 + Bun 1.4.4 | 401.3 | 322.9 | 1872 |
+
+µAgent's install includes all four gateway payloads. The measured binary came
+from [CI run 42888183412](https://github.com/timongentzsch/uAgent/actions/runs/42888183412);
+subsequent review fixes are not relabeled as measured. The runtime-only stage
+of the recipe installed the competitors; the verified CI installation was
+mounted read-only at `/opt/uagent`. The container shared the proxy's network
+namespace to reach its localhost endpoint. Proxy CPU is outside the measured
+process tree. See the raw report for the exact archive and resource limits.
+
+CPU time measures local work, not model quality or response speed. Idle RSS
+sums the tool's processes and helpers; shared pages can be counted more than
+once. MiB = 1,048,576 bytes, while installation MB = 1,000,000 bytes. Detached
+helper CPU uses the last observed OS process sample; sub-second work may fall
+below that sampler's resolution. The current harness adds this to reaped CPU
+usage, refuses to chart failed comparisons, and retains each raw sample.
+
+Render this chart again without calling a provider:
+
+```sh
+python3 benchmarks/compare_agents.py \
+  --from-report benchmarks/results/comparison-2026-11-10.json \
+  --chart docs/images/comparison.svg
+```
+
+The [2026-10-28 chart](../docs/images/footprint-2026-10-28.svg) is historical:
+it measured a local-only µAgent install, Codex CLI 0.165.0, omp 18.13.2 and
+Bun 1.4.4 (the pins at `9cdbb553`). Claude Code's installer version was not
+retained. Its values are not mixed into the new comparison.
+
+### Method
 
 `compare_agents.py` measures each tool the same way, with runs alternating
 between the tools so background load affects all of them:
@@ -117,8 +156,9 @@ counts in full; the historical comparison chart leaves it out.
 
 ### In a container
 
-The historical comparison used `footprint.Dockerfile`: µAgent built from its
-checkout beside Claude Code, Codex CLI and omp, all four answering through one endpoint that serves Claude
+`footprint.Dockerfile` builds µAgent from its
+checkout beside Claude Code, Codex CLI and omp, all four answering through one
+endpoint that serves Claude
 Haiku 5.5 on the Responses and Anthropic Messages routes (`footprint-run.sh`
 lists the paths). The current recipe installs the complete gateway bundle
 through `install.sh`. For an unpublished checkout, put its verified matching
@@ -133,7 +173,7 @@ docker build -f benchmarks/footprint.Dockerfile -t uagent-footprint .
 docker run --rm --cpus=2 --memory=4g --memory-swap=4g --network host \
   -e PROXY_URL=http://127.0.0.1:8787 --env-file proxy-key.env \
   -v "$PWD/out:/out" uagent-footprint \
-  --machine "AMD Ryzen 9 7950X3D in a 2-CPU, 4 GB Docker container"
+  --machine "YOUR CPU, Linux container, 2 CPU / 4 GiB"
 ```
 
 `proxy-key.env` holds `PROXY_KEY=…`; keep it out of the repository. The chart

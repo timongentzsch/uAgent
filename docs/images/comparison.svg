@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 282" width="800" height="282" role="img" aria-label="Footprint of the agents">
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1f2328; }
+  .headline { font-size: 23px; font-weight: 700; }
+  .title { font-size: 13px; font-weight: 600; }
+  .name { font-size: 12px; }
+  .value { font-size: 12px; font-variant-numeric: tabular-nums; }
+  .note { font-size: 10px; fill: #656d76; }
+  .bar { fill: #b4bac1; }
+  .bar.uagent { fill: #111111; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #0d1117; }
+    text { fill: #e6edf3; }
+    .note { fill: #8b949e; }
+    .bar { fill: #4a525c; }
+    .bar.uagent { fill: #eeeeee; }
+  }
+</style>
+<rect class="bg" width="800" height="282"/>
+<text class="headline" x="20" y="42">Memory and CPU usage</text>
+<text class="title" x="20" y="92">Idle session memory, MiB</text>
+<text class="name" x="20" y="119">µAgent</text>
+<rect class="bar uagent" x="108" y="106" width="18.0" height="18"/>
+<text class="value" x="132.0" y="119">26.4</text>
+<text class="name" x="20" y="147">Claude Code</text>
+<rect class="bar" x="108" y="134" width="102.6" height="18"/>
+<text class="value" x="216.6" y="147">150.7</text>
+<text class="name" x="20" y="175">Codex CLI</text>
+<rect class="bar" x="108" y="162" width="110.3" height="18"/>
+<text class="value" x="224.3" y="175">161.9</text>
+<text class="name" x="20" y="203">omp</text>
+<rect class="bar" x="108" y="190" width="220.0" height="18"/>
+<text class="value" x="334.0" y="203">322.9</text>
+<text class="title" x="420" y="92">CPU per headless turn, ms</text>
+<text class="name" x="420" y="119">µAgent</text>
+<rect class="bar uagent" x="508" y="106" width="2.0" height="18"/>
+<text class="value" x="516.0" y="119">17</text>
+<text class="name" x="420" y="147">Claude Code</text>
+<rect class="bar" x="508" y="134" width="67.3" height="18"/>
+<text class="value" x="581.3" y="147">573</text>
+<text class="name" x="420" y="175">Codex CLI</text>
+<rect class="bar" x="508" y="162" width="18.4" height="18"/>
+<text class="value" x="532.4" y="175">156</text>
+<text class="name" x="420" y="203">omp</text>
+<rect class="bar" x="508" y="190" width="220.0" height="18"/>
+<text class="value" x="734.0" y="203">1872</text>
+<text class="note" x="20" y="258">2026-11-10 · medians of 5 runs · Apple M1 Pro, Linux ARM64 Docker, 2 CPU / 4 GiB</text>
+<text class="note" x="20" y="274">Same model endpoint · lower is better · CPU time excludes model/network waiting · versions and method: benchmarks/README.md</text>
+</svg>

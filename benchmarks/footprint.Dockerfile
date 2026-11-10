@@ -21,11 +21,11 @@ RUN cmake -S . -B /tmp/build -DCMAKE_BUILD_TYPE=Release -DUAGENT_WEB_PUSH=ON -DB
        UAGENT_NONINTERACTIVE=1 UAGENT_REMOTE_BUNDLE="$(test ! -d /src/remote-bundle || echo /src/remote-bundle)" ./install.sh
 
 FROM ubuntu:24.04
-ARG CODEX_VERSION=0.165.0
+ARG CODEX_VERSION=0.167.0
 ARG BUN_VERSION=1.4.4
-ARG OMP_VERSION=18.13.2
+ARG OMP_VERSION=18.18.6
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    ca-certificates curl git openssh-client python3 libcurl4t64 libssl3t64 zlib1g unzip xz-utils \
+    ca-certificates curl git openssh-client procps python3 libcurl4t64 libssl3t64 zlib1g unzip xz-utils \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=native /opt/uagent /opt/uagent
 RUN useradd -m bench

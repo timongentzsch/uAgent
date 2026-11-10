@@ -13,6 +13,7 @@ servers, plugins, hooks or helpers from the machine's configuration (see BARE_FL
 import argparse
 import contextlib
 import fcntl
+import html
 import json
 import os
 import pathlib
@@ -387,7 +388,7 @@ def measure_headless(tool, project):
     detached = sum(c for pid, c in attribution.last.items() if pid not in attribution.descendants)
     return {
         "wall_ms": wall * 1000,
-        "cpu_ms": reaped,
+        "cpu_ms": reaped + detached * 1000,
         "detached_cpu_ms_seen": detached * 1000,
         "peak_rss_kib": peak,
         "tree_at_peak": tree,
@@ -524,12 +525,14 @@ def table(tools, report):
     row("Non-system shared libraries", lambda n: str(size(n, "non_system_libraries")))
     row("`--version` wall, median / p90 (ms)", lambda n: stat_pair(report[n], "version", "wall_ms"))
     row("`--version` CPU, median / p90 (ms)", lambda n: stat_pair(report[n], "version", "cpu_ms"))
-    row("Idle session RSS, process tree (MB)", lambda n: field(report[n], "idle", "rss_kib", 1024))
+    row("Idle session RSS, process tree (MiB)", lambda n: field(report[n], "idle", "rss_kib", 1024))
     row("Idle session CPU over 10 s (ms)", lambda n: field(report[n], "idle", "idle_cpu_ms"))
     row("Idle processes counted", lambda n: field(report[n], "idle", "process_count"))
     row("Time to first screen (ms)", lambda n: field(report[n], "idle", "first_screen_ms"))
     row("Headless turn CPU (ms)", lambda n: field(report[n], "headless", "cpu_ms"))
-    row("Headless turn peak RSS (MB)", lambda n: field(report[n], "headless", "peak_rss_kib", 1024))
+    row(
+        "Headless turn peak RSS (MiB)", lambda n: field(report[n], "headless", "peak_rss_kib", 1024)
+    )
     row("Headless turn wall (ms), model-bound", lambda n: field(report[n], "headless", "wall_ms"))
     header = "| Metric | " + " | ".join(names) + " |\n|---|" + "---|" * len(names)
     return header + "\n" + "\n".join(rows)
@@ -539,18 +542,19 @@ DISPLAY_NAMES = {"uagent": "µAgent", "claude": "Claude Code", "codex": "Codex C
 CHART_STYLE = """
   .bg { fill: #ffffff; }
   text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1f2328; }
+  .headline { font-size: 23px; font-weight: 700; }
   .title { font-size: 13px; font-weight: 600; }
   .name { font-size: 12px; }
   .value { font-size: 12px; font-variant-numeric: tabular-nums; }
   .note { font-size: 10px; fill: #656d76; }
   .bar { fill: #b4bac1; }
-  .bar.uagent { fill: #0a69da; }
+  .bar.uagent { fill: #111111; }
   @media (prefers-color-scheme: dark) {
     .bg { fill: #0d1117; }
     text { fill: #e6edf3; }
     .note { fill: #8b949e; }
     .bar { fill: #4a525c; }
-    .bar.uagent { fill: #4493f8; }
+    .bar.uagent { fill: #eeeeee; }
   }
 """
 
@@ -568,27 +572,22 @@ def panel_values(tools, report, metric, key, divisor):
 
 def chart_svg(tools, report):
     panels = (
-        ("Install on disk, MB", panel_values(tools, report, "size", "install_bytes", 1e6), 1),
-        ("Idle session memory, MB", panel_values(tools, report, "idle", "rss_kib", 1024), 1),
+        ("Idle session memory, MiB", panel_values(tools, report, "idle", "rss_kib", 1024), 1),
         ("CPU per headless turn, ms", panel_values(tools, report, "headless", "cpu_ms", 1), 0),
-        (
-            "Peak memory per headless turn, MB",
-            panel_values(tools, report, "headless", "peak_rss_kib", 1024),
-            1,
-        ),
     )
     panel_width, panel_height = 380, 30 + 28 * len(tools)
-    width, height = 800, 2 * panel_height + 60
-    label_width, bar_width = 84, 220
+    width, height = 800, panel_height + 140
+    label_width, bar_width = 88, 220
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
         f'width="{width}" height="{height}" role="img" aria-label="Footprint of the agents">',
         f"<style>{CHART_STYLE}</style>",
         f'<rect class="bg" width="{width}" height="{height}"/>',
+        '<text class="headline" x="20" y="42">Memory and CPU usage</text>',
     ]
     for index, (title, values, places) in enumerate(panels):
         left = 20 + (index % 2) * (panel_width + 20)
-        top = 20 + (index // 2) * (panel_height + 15)
+        top = 80
         out.append(f'<text class="title" x="{left}" y="{top + 12}">{title}</text>')
         peak = max([v for v in values.values() if v is not None] or [1]) or 1
         for row, tool in enumerate(tools):
@@ -603,7 +602,7 @@ def chart_svg(tools, report):
             css = "bar uagent" if name == "uagent" else "bar"
             out.append(
                 f'<rect class="{css}" x="{left + label_width}" y="{y}" '
-                f'width="{length:.1f}" height="18" rx="2"/>'
+                f'width="{length:.1f}" height="18"/>'
             )
             out.append(
                 f'<text class="value" x="{left + label_width + length + 6:.1f}" y="{y + 13}">'
@@ -611,8 +610,12 @@ def chart_svg(tools, report):
             )
     machine = report["_machine"]
     out.append(
-        f'<text class="note" x="20" y="{height - 8}">medians, {machine["chip"]}, '
-        f"{machine['date']}; see benchmarks/README.md</text>"
+        f'<text class="note" x="20" y="{height - 24}">{html.escape(machine["date"])} · '
+        f"medians of {machine['runs']['session']} runs · {html.escape(machine['chip'])}</text>"
+    )
+    out.append(
+        f'<text class="note" x="20" y="{height - 8}">Same model endpoint · lower is better · '
+        "CPU time excludes model/network waiting · versions and method: benchmarks/README.md</text>"
     )
     out.append("</svg>")
     return "\n".join(out) + "\n"
@@ -654,8 +657,18 @@ def main():
     parser.add_argument("--session-runs", type=int, default=5, help="idle and headless runs")
     parser.add_argument("--skip", action="append", default=[], choices=["idle", "headless"])
     parser.add_argument("--chart", type=pathlib.Path, help="also write an SVG bar chart here")
+    parser.add_argument(
+        "--from-report", type=pathlib.Path, help="render saved measurements without running tools"
+    )
     parser.add_argument("--output", type=pathlib.Path, default=pathlib.Path("footprint.json"))
     args = parser.parse_args()
+    if args.from_report:
+        report = json.loads(args.from_report.read_text())
+        tools = [{"name": name} for name in DISPLAY_NAMES if name in report]
+        print(table(tools, report))
+        if args.chart:
+            args.chart.write_text(chart_svg(tools, report))
+        return
     tools = build_tools(args)
     for tool in tools:
         tool["path"] = tool["path"].absolute()
@@ -695,11 +708,17 @@ def main():
     }
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(table(tools, report))
-    if args.chart:
-        args.chart.write_text(chart_svg(tools, report))
     for tool in tools:
         for error in report[tool["name"]]["errors"]:
             print(f"{tool['name']}: {error}", file=sys.stderr)
+    if any(
+        entry["errors"] or any(not sample["ok"] for sample in entry["headless"])
+        for name, entry in report.items()
+        if not name.startswith("_")
+    ):
+        raise SystemExit("Incomplete comparison; inspect the JSON report before publishing.")
+    if args.chart:
+        args.chart.write_text(chart_svg(tools, report))
 
 
 if __name__ == "__main__":

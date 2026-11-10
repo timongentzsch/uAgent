@@ -130,34 +130,41 @@ export default function ConversationHeader({
         </IconButton>
       )}
       <div>
-        <h1
-          title={
-            session
-              ? [titleOf(session), session.cwd].filter(Boolean).join("\n")
-              : undefined
-          }
-        >
-          {page === "library" ? (
-            "Library"
-          ) : page === "scheduled" ? (
-            "Scheduled"
-          ) : page === "folder" ? (
-            "Overview"
-          ) : page === "terminal" ? (
-            "Terminal"
-          ) : session ? (
-            titleOf(session)
-          ) : opening ? (
-            <span class="text-skeleton" aria-hidden="true">
-              Loading conversation
+        <div class="head-identity">
+          <h1
+            title={
+              session
+                ? [titleOf(session), session.cwd].filter(Boolean).join("\n")
+                : undefined
+            }
+          >
+            {page === "library" ? (
+              "Library"
+            ) : page === "scheduled" ? (
+              "Scheduled"
+            ) : page === "folder" ? (
+              "Overview"
+            ) : page === "terminal" ? (
+              "Terminal"
+            ) : session ? (
+              titleOf(session)
+            ) : opening ? (
+              <span class="text-skeleton" aria-hidden="true">
+                Loading conversation
+              </span>
+            ) : (
+              "µAgent"
+            )}
+          </h1>
+          {page === "chat" && session && (
+            <span
+              class="execution-host small muted truncate"
+              title="Execution host"
+            >
+              {executionHost}
             </span>
-          ) : (
-            "µAgent"
           )}
-        </h1>
-        {page === "chat" && session && (
-          <p class="head-subtitle small muted">{executionHost}</p>
-        )}
+        </div>
         {/* An agent leads back to the conversation that started it. */}
         {page === "chat" && parent && (
           <p class="head-subtitle small">

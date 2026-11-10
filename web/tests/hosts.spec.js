@@ -229,3 +229,37 @@ test("host details show measured main-to-host latency without a switch action", 
   ).toHaveCount(0);
   await expect(dialog.getByLabel("Folder path")).toHaveCount(0);
 });
+
+test("late home loading preserves path entry and its caret", async ({
+  page,
+  host,
+}) => {
+  let release;
+  const home = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/folders?*", async (route) => {
+    await home;
+    await route.fulfill({
+      json: { path: host.home, parent: "/", entries: [], more: false },
+    });
+  });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "New conversation", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "New conversation",
+    exact: true,
+  });
+  const path = dialog.getByRole("textbox", { name: "Folder on the host" });
+  await path.focus();
+  release();
+  await expect(dialog.locator(".folder-picker-path")).toHaveText(host.home);
+  await expect(path).toHaveValue("");
+  await path.fill(host.project);
+  await dialog
+    .getByRole("button", { name: "Start conversation", exact: true })
+    .click();
+  await expect(page.getByLabel("Message or guidance")).toBeVisible();
+});

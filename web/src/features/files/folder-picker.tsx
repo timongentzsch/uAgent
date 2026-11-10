@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "preact/hooks";
+import { useCallback, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Home } from "lucide-preact";
 import { useApi } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
@@ -31,6 +31,7 @@ export default function FolderPicker({
   const { api, routes, host } = useApi();
   const [root, setRoot] = useState("~");
   const [expanded, setExpanded] = useState(new Set<string>());
+  const editing = useRef(false);
   const list = useCallback(
     (path: string, signal: AbortSignal) =>
       api<Folders>(routes.folders(path), undefined, { signal }),
@@ -41,10 +42,13 @@ export default function FolderPicker({
     [list, root, online],
   );
   const listing = resource.value;
-  useEffect(() => {
-    if (listing && (!value || value === root)) change(listing.path);
+  // Loading home must not replace the value or caret once path entry starts.
+  useLayoutEffect(() => {
+    if (listing && !editing.current && (!value || value === root))
+      change(listing.path);
   }, [listing, root, value, change]);
   const navigate = (path: string) => {
+    editing.current = false;
     setRoot(path);
     setExpanded(new Set());
     change(path);
@@ -57,7 +61,13 @@ export default function FolderPicker({
         Folder on the host
         <Input
           value={value}
-          onInput={(event) => change(event.currentTarget.value)}
+          onFocus={() => {
+            editing.current = true;
+          }}
+          onInput={(event) => {
+            editing.current = true;
+            change(event.currentTarget.value);
+          }}
           placeholder="Choose a folder below, or enter a path"
           disabled={!online}
         />

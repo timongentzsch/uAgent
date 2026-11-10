@@ -1,5 +1,18 @@
-/* One line under the title: a link that is cut short, never pushed under
-   the buttons. */
+/* Host context shares the title line so loading does not change its height. */
+.head-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.head-identity h1 {
+  flex: 1;
+  min-width: 0;
+}
+.execution-host {
+  max-width: 40%;
+}
+/* A link below the title is cut short before it can push the buttons. */
 .head-subtitle {
   display: flex;
   margin: 0;

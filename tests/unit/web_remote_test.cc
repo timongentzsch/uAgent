@@ -14,9 +14,9 @@
 namespace uagent {
 TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
   TestWorkspace workspace("remote-proxy");
-  const std::string socket = RuntimeDir() + "/proxy-test.sock";
+  const std::string socket_path = RuntimeDir() + "/proxy-test.sock";
   CHECK(EnsurePrivateDirectory(RuntimeDir()));
-  unlink(socket.c_str());
+  unlink(socket_path.c_str());
   httplib::Server upstream, gateway;
   upstream.set_address_family(AF_UNIX);
   upstream.set_pre_routing_handler(
@@ -65,8 +65,8 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
       }
     }
   });
-  CHECK(upstream.bind_to_port(socket, 80));
-  const web::RemoteEndpoint endpoint{"http://localhost", socket,
+  CHECK(upstream.bind_to_port(socket_path, 80));
+  const web::RemoteEndpoint endpoint{"http://localhost", socket_path,
                                      "remote=private"};
   auto relay = [&](const auto& request, auto& response) {
     web::ProxyHttp(endpoint, "/api/hosts/owner", request.target, request,
@@ -137,6 +137,6 @@ TEST_CASE(TestRemoteProxyStreamsAndKeepsCredentialsHostOwned) {
   upstream.stop();
   serving.join();
   remote.join();
-  unlink(socket.c_str());
+  unlink(socket_path.c_str());
 }
 }  // namespace uagent

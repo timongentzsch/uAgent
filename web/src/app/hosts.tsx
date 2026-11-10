@@ -170,7 +170,7 @@ export default function HostsShell({
       {
         id: "",
         name: "Local",
-        address: "This host",
+        address: location.host,
         phase: states[""]?.connection || "connecting",
         error: "",
         state: states[""],

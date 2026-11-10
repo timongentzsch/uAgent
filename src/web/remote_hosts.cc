@@ -565,7 +565,6 @@ json RemoteHosts::Change(const json& action, std::string& error) {
     host->disconnect = true;
     host->requested = false;
   } else if (kind == "connect" || kind == "reconnect" || kind == "add") {
-    if (kind == "reconnect" && host->endpoint) host->failed = true;
     if (!host->endpoint) {
       host->retry = 0;
       if (!host->attempting) host->requested = true;

@@ -194,7 +194,7 @@ export function useHost(
   // disk: at start, when the stream lost its cursor, or when asked. A
   // reconnect reads the catalogue the host keeps, whose changes still
   // follow on the stream.
-  const rescan = useRef(false);
+  const rescan = useRef(true);
   const resuming = useRef(false);
   // epoch:cursor of the last event applied, where a reconnect picks up.
   const resume = useRef("");

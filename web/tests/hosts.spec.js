@@ -1,6 +1,12 @@
-import { test, expect, savedConversation } from "./fixtures.js";
+import {
+  test,
+  expect,
+  savedConversation,
+  withoutServiceWorker,
+} from "./fixtures.js";
 const remote = "b".repeat(32);
 async function offlineHost(page) {
+  await withoutServiceWorker(page);
   let reads = 0;
   const actions = [];
   await page.route("**/api/hosts", async (route) => {

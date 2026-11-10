@@ -19,7 +19,8 @@ struct LaunchPaths {
 };
 
 // The session file `name`.json in the history of folder `cwd`.
-std::string HistoryPath(const std::string& cwd, const std::string& name);
+std::string HistoryPath(const std::string& cwd, const std::string& name,
+                        const std::string& host = {});
 
 // `worktree` runs in a fresh detached worktree under ~/.uagent/worktrees/<id>,
 // otherwise in `project` itself. The file is

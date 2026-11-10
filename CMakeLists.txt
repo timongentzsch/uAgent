@@ -151,6 +151,7 @@ add_library(
   src/core/events.cc
   src/core/file_watch.cc
   src/core/fs.cc
+  src/core/workspace.cc
   src/core/library.cc
   src/core/mailbox.cc
   src/core/platform_posix.cc
@@ -246,6 +247,11 @@ target_link_libraries(uagent_tools PUBLIC uagent_agent)
 
 add_library(
   uagent_app
+  src/app/terminal.cc
+  src/app/workspace_files.cc
+  src/app/execution_wire.cc
+  src/app/execution.cc
+  src/app/execution_client.cc
   src/app/application.cc
   src/app/session_command.cc
   src/app/outcome_store.cc
@@ -313,13 +319,13 @@ add_executable(uagent src/main.cc)
 # shown over noVNC) the web host runs.
 option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
 include(cmake/embed_web.cmake)
-add_library(uagent_web src/web/master.cc src/web/remote_start.cc
-                      src/web/remote_hosts.cc src/web/master_remote.cc src/web/master_auth.cc
-                       src/web/remote_proxy.cc
+add_library(uagent_web src/web/master.cc
+                      src/web/remote_hosts.cc src/web/master_remote.cc
+                      src/web/master_remote_terminal.cc src/web/master_auth.cc
                        src/web/master_command.cc src/web/master_files.cc
                        src/web/master_library.cc
                        src/web/master_stream.cc src/web/master_terminal.cc
-                       src/web/terminal.cc src/web/browser_viewer.cc
+                       src/web/browser_viewer.cc
                        src/web/rfb_filter.cc "${_web_generated}")
 find_package(ZLIB REQUIRED)  # libcurl's own dependency: it inflates assets
 target_link_libraries(uagent_web PUBLIC uagent_app ZLIB::ZLIB)

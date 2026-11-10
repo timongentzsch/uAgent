@@ -24,6 +24,7 @@
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 namespace {
@@ -121,6 +122,7 @@ json HeaderJson(const SessionMetadata& metadata) {
                  {kSessionHeaderParent, metadata.parent_session_id},
                  {kSessionHeaderForkTurn, metadata.forked_at_turn},
                  {kSessionHeaderForkTime, metadata.forked_at_time}};
+  if (!metadata.host.empty()) header["host"] = metadata.host;
   if (!metadata.agent.empty()) header[kSessionHeaderAgent] = metadata.agent;
   if (!metadata.memory) header["memory"] = false;
   return header;
@@ -223,7 +225,15 @@ SessionLoadResult SessionStore::Load(const std::string& path,
                                      const std::string& expected_cwd) {
   SessionLoadResult result = Inspect(path);
   if (!result.record) return result;
-  const auto saved = CanonicalAccessPath(result.record->metadata.cwd);
+  const auto& metadata = result.record->metadata;
+  if (!metadata.host.empty() || Workspace().Remote()) {
+    if (metadata.host == Workspace().host && metadata.cwd == expected_cwd)
+      return result;
+    return {Error(SessionStoreError::kWrongWorkspace,
+                  "session belongs to another execution host or folder"),
+            std::nullopt};
+  }
+  const auto saved = CanonicalAccessPath(metadata.cwd);
   const auto expected = CanonicalAccessPath(expected_cwd);
   if (saved != expected) {
     return {Error(SessionStoreError::kWrongWorkspace,
@@ -278,6 +288,7 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
 
   SessionRecord record;
   record.metadata.cwd = header[kSessionHeaderCwd].get<std::string>();
+  record.metadata.host = JsonValue(header, "host", "");
   record.metadata.model = header[kSessionHeaderModel].get<std::string>();
   record.metadata.session_id =
       header[kSessionHeaderSessionId].get<std::string>();
@@ -364,12 +375,12 @@ std::vector<SessionInfo> ListSessions(SessionScope scope) {
 
 std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   namespace fs = std::filesystem;
-  const std::string current = CanonicalCwd();
+  const std::string current = Workspace().path;
   const fs::path base = fs::path(GlobalBase()) / kHistoryDir;
   std::vector<fs::path> directories{base};
   std::error_code ec;
   if (scope != SessionScope::kAll) {
-    directories.push_back(base / WorkspaceId(current));
+    directories.push_back(base / WorkspaceId(current, Workspace().host));
   } else {
     for (const auto& entry : fs::directory_iterator(base, ec)) {
       if (directories.size() >= kMaxCatalogueEntries) break;
@@ -380,7 +391,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   }
   const auto listed = [&](const SessionInfo& info) {
     return scope == SessionScope::kAll ||
-           (info.cwd == current && info.parent.empty());
+           (info.cwd == current && info.host == Workspace().host &&
+            info.parent.empty());
   };
   std::vector<SessionInfo> out;
   std::map<std::string, Entry> next;
@@ -411,6 +423,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.error = "invalid or oversized session header";
       } else {
         item.cwd = JsonValue(header, kSessionHeaderCwd, "");
+        item.host = JsonValue(header, "host", "");
         item.title = JsonValue(header, kSessionHeaderTitle, "(untitled)");
         item.model = JsonValue(header, kSessionHeaderModel, "");
         item.custom_title = JsonValue(header, "custom_title", false);

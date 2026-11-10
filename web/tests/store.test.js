@@ -495,7 +495,7 @@ test("receipts retain queued guidance until the transcript consumes it", async (
   }
 });
 
-test("host clients keep equal request IDs and delayed commands isolated", async () => {
+test("host clients share the main receipt stream without retargeting delayed commands", async () => {
   const original = globalThis.fetch;
   const paths = [];
   globalThis.fetch = async (path) => {
@@ -517,15 +517,15 @@ test("host clients keep equal request IDs and delayed commands isolated", async 
     const second = b.command(
       "rename",
       { id: "same", generation: "g" },
-      { title: "B", request_id: "same-request" },
+      { title: "B", request_id: "second-request" },
     );
     assert.equal(
-      b.receiveOutcome({ request_id: "same-request", accepted: true }),
+      a.receiveOutcome({ request_id: "second-request", accepted: true }),
       true,
     );
     await second;
     assert.equal(
-      a.receiveOutcome({ request_id: "same-request", accepted: true }),
+      b.receiveOutcome({ request_id: "same-request", accepted: true }),
       true,
     );
     await first;
@@ -537,11 +537,7 @@ test("host clients keep equal request IDs and delayed commands isolated", async 
     );
     a.receiveOutcome({ request_id: "later", accepted: true });
     await delayed;
-    assert.deepEqual(paths, [
-      "/api/hosts/a/api/command",
-      "/api/hosts/b/api/command",
-      "/api/hosts/a/api/command",
-    ]);
+    assert.deepEqual(paths, ["/api/command", "/api/command", "/api/command"]);
   } finally {
     globalThis.fetch = original;
   }

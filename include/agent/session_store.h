@@ -59,6 +59,7 @@ struct SessionInfo {
   std::string error;
   std::string parent;  // the session id of whoever started it, for an agent
   bool memory = true;
+  std::string host = {};
 };
 
 // Every valid conversation saved in the directory of `path`, it included,
@@ -107,6 +108,7 @@ enum class SessionStoreError {
 
 struct SessionMetadata {
   std::string cwd;
+  std::string host = {};
   std::string model;
   std::string session_id;
   int64_t turns = 0;

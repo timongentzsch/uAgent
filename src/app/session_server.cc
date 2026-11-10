@@ -102,6 +102,8 @@ Options OptionsFromLaunch(const json& launch) {
   options.debug_path = JsonValue(launch, "debug_path", "");
   options.trust_project = JsonValue(launch, "trust_project", false);
   options.preview = JsonValue(launch, "preview", "");
+  options.host = JsonValue(launch, "host", "");
+  options.execution = launch.value("execution", json());
   if (const json* overrides = JsonObject(launch, "overrides")) {
     for (auto it = overrides->begin(); it != overrides->end(); ++it) {
       if (it.value().is_string()) {
@@ -117,7 +119,8 @@ Connection Open(const std::string& executable, const std::string& cwd,
                 const Options& options, std::string& error) {
   auto connected = Connect(path);
   if (connected.socket) return connected;
-  if (std::error_code missing; !std::filesystem::is_directory(cwd, missing)) {
+  if (std::error_code missing;
+      options.host.empty() && !std::filesystem::is_directory(cwd, missing)) {
     error = "this conversation's folder no longer exists: " + cwd;
     return {};
   }
@@ -135,7 +138,9 @@ Connection Open(const std::string& executable, const std::string& cwd,
                  {"debug_path", options.debug_path},
                  {"trust_project", options.trust_project},
                  {"session", options.session},
-                 {"preview", options.preview}};
+                 {"preview", options.preview},
+                 {"host", options.host},
+                 {"execution", options.execution}};
   const auto deadline = std::chrono::steady_clock::now() + kRuntimeStartTimeout;
   for (;;) {
     const std::string launch =

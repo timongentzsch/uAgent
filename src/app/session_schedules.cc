@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "include/agent/transcript.h"
+#include "include/app/execution.h"
 #include "include/app/launch.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
@@ -64,7 +65,8 @@ std::shared_ptr<HostSession> SessionHost::StartScheduledRun(
   const std::string id = JsonValue(run, "id", "");
   std::string error;
   auto session = CreateSession(cwd, JsonValue(run, "session_path", ""),
-                               JsonValue(run, "title", "Scheduled run"), error);
+                               JsonValue(run, "title", "Scheduled run"), error,
+                               JsonValue(run, "host", ""));
   if (!session) {
     RecordRun({id, "failed", error});
     return {};
@@ -228,19 +230,40 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
       const json* queued = FindRun(before, id);
       const bool starting =
           queued && JsonValue(*queued, "status", "") == "starting";
-      const std::string failure =
+      std::string failure =
           starting &&
                   JsonValue(definition, "environment", "local") == "worktree"
-              ? CreateWorktree(JsonValue(definition, "cwd", ""),
-                               JsonValue(run, "cwd", ""))
+              ? (!JsonValue(run, "host", "").empty()
+                     ? "Remote worktrees are unavailable."
+                     : CreateWorktree(JsonValue(definition, "cwd", ""),
+                                      JsonValue(run, "cwd", "")))
               : "";
       // A check decides, before any model is asked, whether this run has
       // anything to do.
       const std::string check = JsonValue(definition, "check", "");
-      const json checked =
-          starting && failure.empty() && !check.empty()
-              ? RunScheduleCheck(JsonValue(run, "cwd", ""), check)
-              : json{{"exit", 0}};
+      json checked = {{"exit", 0}};
+      const std::string host = JsonValue(run, "host", "");
+      if (starting && failure.empty() && !host.empty()) {
+        const json target =
+            remote_target_ ? remote_target_(host, JsonValue(run, "cwd", ""),
+                                            JsonValue(run, "session_id", ""))
+                           : json();
+        if (target.is_null())
+          failure =
+              "Remote host is disconnected. Reconnect before running this "
+              "task.";
+        else {
+          execution::Client remote(execution::TargetFromJson(target));
+          if (!remote.Open(failure)) {
+            if (failure.empty()) failure = "Remote execution could not start.";
+          } else if (!check.empty())
+            checked = remote.Call(
+                {{"op", "schedule_check"},
+                 {"command", check},
+                 {"mode", JsonValue(definition, "permissions", "ask")}});
+        }
+      } else if (starting && failure.empty() && !check.empty())
+        checked = RunScheduleCheck(JsonValue(run, "cwd", ""), check);
       const json current = starting ? ReadSchedules() : before;
       lock.lock();
       if (stopping_) return wait;

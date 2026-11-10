@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "include/app/asset_store.h"
+#include "include/app/workspace_files.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -50,11 +51,11 @@ void AddDesigns(const fs::path& root, json& items) {
   };
   std::map<std::string, Folder> folders;
   bool more = false;
-  for (const std::string& path : Candidates(root, more)) {
+  for (const std::string& path : workspace_files::Candidates(root, more)) {
     const fs::path relative(path);
     const bool tokens = relative.filename() == "tokens.css";
     if ((!tokens && relative.extension() != ".html") ||
-        !Shown(root / relative)) {
+        !workspace_files::Shown(root / relative)) {
       continue;
     }
     Folder& folder = folders[relative.parent_path().string()];
@@ -164,6 +165,10 @@ void Master::Library(const Request&, Response& response) {
     const std::string cwd = JsonValue(session, "cwd", "");
     const std::string id = JsonValue(session, "id", "");
     if (cwd.empty()) continue;
+    if (!JsonValue(session, "host", "").empty()) {
+      AddShared(id, host_.AssetPath(id), cwd, items);
+      continue;
+    }
     json& place = places[cwd];
     if (place.is_null()) {
       place = {{"path", cwd},
@@ -217,7 +222,8 @@ void Master::LibraryDelete(const Request& request, Response& response) {
   const json catalogue = host_.Catalogue();
   const auto names = [&](const char* list, const char* field) {
     return std::ranges::any_of(catalogue[list], [&](const json& each) {
-      return JsonValue(each, field, "") == place;
+      return JsonValue(each, "host", "").empty() &&
+             JsonValue(each, field, "") == place;
     });
   };
   json listed = json::array();

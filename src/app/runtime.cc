@@ -8,6 +8,7 @@
 
 #include "include/agent/activity.h"
 #include "include/core/runtime_config.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 
@@ -27,6 +28,7 @@ void AppRuntime::Shutdown() {
   if (shutdown_) return;
   shutdown_ = true;
   mcp.ShutdownAll();
+  if (processes.RemoteWorkspace()) WorkspaceRequest({{"op", "shutdown"}});
   ActivityShutdownAll(processes);
 }
 

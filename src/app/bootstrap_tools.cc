@@ -13,6 +13,7 @@
 #include "include/app/artifact.h"
 #include "include/app/asset_store.h"
 #include "include/app/config_proposal.h"
+#include "include/app/execution.h"
 #include "include/app/session.h"
 #include "include/app/uagent_tool.h"
 #include "include/browser/browser.h"
@@ -21,6 +22,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/sandbox.h"
+#include "include/core/workspace.h"
 #include "include/mcp/discover.h"
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
@@ -42,7 +44,15 @@ session::AssetStoreResult StoreSessionFile(const std::string& session_path,
                                            bool tool_copy, bool shared) {
   session::AssetStoreResult stored;
   std::string bytes;
-  if (!ReadRegularFile(path, session::kUploadBytes, bytes, stored.error)) {
+  if (Workspace().Remote()) {
+    const json remote = WorkspaceRequest({{"op", "bytes"}, {"path", path}});
+    if (!HexDecode(JsonValue(remote, "data", ""), bytes,
+                   session::kUploadBytes)) {
+      stored.error = JsonValue(remote, "error", "Cannot read remote file.");
+      return stored;
+    }
+  } else if (!ReadRegularFile(path, session::kUploadBytes, bytes,
+                              stored.error)) {
     return stored;
   }
   return session::SessionAssets().Store(
@@ -83,6 +93,13 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
   std::vector<Tool> tools =
       BuiltinTools(runtime.processes, workspace, root_password);
+  if (auto remote = execution::CurrentClient()) {
+    std::erase_if(tools, [](const Tool& tool) {
+      return !tool.memory_store && tool.name != "todo";
+    });
+    auto forwarded = remote->Tools(session_path);
+    for (auto& tool : forwarded) tools.push_back(std::move(tool));
+  }
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
   }
@@ -150,7 +167,7 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
   // The web host runs the browser; any top-level session that reaches it may
   // use it, one at a time. A one-shot run has no session file to be named by.
-  if (!browser::DataDirectory().empty() &&
+  if (!Workspace().Remote() && !browser::DataDirectory().empty() &&
       browser::Request({{"op", "ping"}}, 3000).value("ok", false)) {
     context.browser_lease =
         session_path.empty() ? RandomToken(16) : SessionIdFor(session_path);
@@ -170,7 +187,9 @@ std::vector<Tool> BuildTools(AppContext& context,
   // An agent's MCP servers are its first ancestor's: each agent starting
   // its own fleet would multiply them.
   if (AgentDepth() == 0) {
-    error = McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
+    error =
+        McpRegister(tools, runtime.mcp, runtime.config,
+                    Workspace().Remote() ? json(nullptr) : trusted_snapshot);
     if (!error.empty()) return {};
   }
   AddAgentTools(tools, api, [app = &context] {

@@ -26,6 +26,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/workspace.h"
 #include "include/ui/presentation.h"
 #include "src/app/bootstrap_internal.h"
 
@@ -311,7 +312,7 @@ Agent::Approver MakeApprover(AppContext* app) {
     static std::atomic<uint64_t> sequence{0};
     ApprovalClass required = RequiredApproval(tool, arguments);
     bool mandatory = required == ApprovalClass::kMandatoryHuman;
-    const std::string root = CanonicalCwd();
+    const std::string root = Workspace().path;
     // The rule that allows it, if one does; else the one a person is
     // offered. A command's prefix holds only where the sandbox holds it.
     const bool confined = !(WrapsCommands(tool) &&
@@ -355,7 +356,10 @@ Agent::Approver MakeApprover(AppContext* app) {
     // The model judges only what the sandbox contains: a call that names a
     // path outside the folder, or a command with no enforced sandbox around
     // it, goes to the person, as a mandatory one does.
-    const bool contained = !PathOutsideFolder(arguments, root) && confined;
+    const bool contained = !(Workspace().Remote() && tool.needs_approval
+                                 ? tool.needs_approval(arguments)
+                                 : PathOutsideFolder(arguments, root)) &&
+                           confined;
     if (!automatic && !mandatory &&
         CurrentApprovalMode() == ApprovalMode::kAuto && contained) {
       if (auto decided = ReviewAutomatically(app, *memo, tool, raw_payload,

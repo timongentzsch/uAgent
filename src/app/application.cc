@@ -26,6 +26,7 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
+#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 #include "include/providers/providers.h"
 #include "include/tools/tool.h"
@@ -295,7 +296,8 @@ void Application::SaveSession(bool force) {
 void Application::EnsureSessionPath() {
   if (persist_ && session_file_.empty()) {
     session_file_ = HistoryPath(
-        CanonicalCwd(), UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId());
+        Workspace().path, UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId(),
+        Workspace().host);
   }
   // Peer sessions address this process by its session file; exporting it
   // here covers the constructor path, resume, and first save alike.

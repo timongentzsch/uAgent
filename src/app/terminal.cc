@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/web/terminal.h"
+#include "include/app/terminal.h"
 
 #include <fcntl.h>
 #include <poll.h>
@@ -34,7 +34,7 @@
 #include "include/core/strings.h"
 #include "include/core/time.h"
 
-namespace uagent::web {
+namespace uagent {
 namespace {
 using Clock = std::chrono::steady_clock;
 
@@ -483,4 +483,4 @@ void Terminals::Loop() {
   }
 }
 
-}  // namespace uagent::web
+}  // namespace uagent

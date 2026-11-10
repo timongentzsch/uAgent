@@ -29,17 +29,9 @@ export interface HostAppProps {
   bindResult: (handler: ResultHandler) => () => void;
   reading: (value: boolean) => void;
 }
-function Controller({
-  source,
-  active,
-  enabled,
-  publish,
+export default function HostsShell({
   App,
 }: {
-  source: Source;
-  active: boolean;
-  enabled: boolean;
-  publish: (id: string, state: HostState) => void;
   App: ComponentType<HostAppProps>;
 }) {
   const result = useRef<ResultHandler>(() => {});
@@ -48,65 +40,36 @@ function Controller({
     [],
   );
   const [reading, setReading] = useState(true);
-  const state = useHost(deliver, active && reading, enabled, active);
+  // One main-owned catalogue and stream, including offline remote history.
+  const state = useHost(deliver, reading);
   const bindResult = useCallback((handler: ResultHandler) => {
     result.current = handler;
     return () => {
       result.current = () => {};
     };
   }, []);
-  // Cross-host shortcuts need names, folders and ordering, not each runtime
-  // caption. Publishing those frames would render the active shell twice.
-  const navigation = JSON.stringify({
-    sessions: state.listed.map(
-      ({ id, generation, title, cwd, parent, updated }) => ({
-        id,
-        generation,
-        title,
-        cwd,
-        parent,
-        updated,
-      }),
-    ),
-    spaces: state.catalogue.spaces,
-    pins: state.catalogue.pins,
-    terminals: state.catalogue.terminals,
-  });
-  // Publish sidebar metadata only; streamed transcript frames stay inside
-  // this host's snapshot store and never enter another host's event log.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: publish metadata only; snapshot frames and the transient return object are not sidebar state.
-  useEffect(
-    () => publish(source.id, state),
-    [
-      source.id,
-      publish,
-      navigation,
-      state.online,
-      state.connection,
-      state.unread,
-      state.authenticated,
-    ],
-  );
-  return active ? (
-    <App host={state} bindResult={bindResult} reading={setReading} />
-  ) : null;
-}
-export default function HostsShell({
-  App,
-}: {
-  App: ComponentType<HostAppProps>;
-}) {
   const [hosts, setHosts] = useStored(saved);
-  const [states, setStates] = useState<Record<string, HostState>>({});
   const [active, setActive] = useState(hostFromURL);
   const [destination, setDestination] = useState<HostDestination | null>(null);
-  const publish = useCallback(
-    (id: string, state: HostState) =>
-      setStates((prior) => ({ ...prior, [id]: state })),
-    [],
+  const gatewayOnline = state.online;
+  const scoped = useCallback(
+    (id: string): HostState => ({
+      ...state,
+      listed: state.listed.filter((session) => (session.host || "") === id),
+      catalogue: {
+        ...state.catalogue,
+        sessions: state.catalogue.sessions.filter(
+          (session) => (session.host || "") === id,
+        ),
+        spaces: id ? [] : state.catalogue.spaces,
+        pins: state.catalogue.pins?.filter((pin) => (pin.host || "") === id),
+        terminals: state.catalogue.terminals?.filter(
+          (terminal) => ((terminal as { host?: string }).host || "") === id,
+        ),
+      },
+    }),
+    [state],
   );
-  const gatewayOnline = !!states[""]?.online;
-  const gatewayPairing = states[""]?.authenticated === false;
   useEffect(() => {
     const changed = () => {
       setDestination(null);
@@ -170,7 +133,7 @@ export default function HostsShell({
       view: { terminal?: string; settings?: string } = {},
     ) => {
       if (id && hosts.find((host) => host.id === id)?.phase === "disconnected")
-        void action("connect", id).catch((error) => states[""]?.report(error));
+        void action("connect", id).catch((error) => state.report(error));
       writeSelection(session, false, id);
       if (place) {
         const params = new URLSearchParams(location.hash.slice(1));
@@ -180,7 +143,7 @@ export default function HostsShell({
       setDestination({ id, session, place, ...view });
       setActive(id);
     },
-    [hosts, action, states],
+    [hosts, action, state.report],
   );
   const sources = useMemo<Source[]>(
     () => [
@@ -188,13 +151,13 @@ export default function HostsShell({
         id: "",
         name: "Local",
         address: location.host,
-        phase: states[""]?.connection || "connecting",
+        phase: state.connection,
         error: "",
-        state: states[""],
+        state: scoped(""),
       },
-      ...hosts.map((host) => ({ ...host, state: states[host.id] })),
+      ...hosts.map((host) => ({ ...host, state: scoped(host.id) })),
     ],
-    [hosts, states],
+    [hosts, state, scoped],
   );
   const context = useMemo(
     () => ({ sources, active, gatewayOnline, open, action, destination }),
@@ -203,19 +166,13 @@ export default function HostsShell({
   const selected = sources.some((source) => source.id === active) ? active : "";
   return (
     <HostsContext.Provider value={context}>
-      {sources.map((source) => (
-        <ApiContext.Provider key={source.id} value={hostApi(source.id)}>
-          <Controller
-            source={source}
-            App={App}
-            publish={publish}
-            active={gatewayPairing ? !source.id : source.id === selected}
-            enabled={
-              !source.id || (gatewayOnline && source.phase === "connected")
-            }
-          />
-        </ApiContext.Provider>
-      ))}
+      <ApiContext.Provider value={hostApi(selected)}>
+        <App
+          host={scoped(selected)}
+          bindResult={bindResult}
+          reading={setReading}
+        />
+      </ApiContext.Provider>
     </HostsContext.Provider>
   );
 }

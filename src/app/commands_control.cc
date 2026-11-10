@@ -22,6 +22,7 @@
 #include "include/core/runtime_config.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
 #include "src/app/commands_internal.h"
@@ -123,7 +124,8 @@ json ForkOrShare(AppSession& session, const json& request) {
   const std::string kind = JsonValue(request, "kind", "");
   if (session.session_file.empty()) {
     if (kind != "fork") return {{"error", "session has no file yet"}};
-    session.session_file = HistoryPath(CanonicalCwd(), MakeSessionId());
+    session.session_file =
+        HistoryPath(Workspace().path, MakeSessionId(), Workspace().host);
   }
   std::string error;
   if (!session.Save(error)) return {{"error", error}};
@@ -233,6 +235,8 @@ json SessionControl(AppSession& session, const json& request) {
 }
 
 json ActivityControl(ActivitySupervisor& processes, const json& request) {
+  if (processes.RemoteWorkspace())
+    return WorkspaceRequest({{"op", "activity_control"}, {"request", request}});
   std::string operation = JsonValue(request, "operation", "list");
   if (operation == "background") {
     return processes.RequestForegroundBackground()

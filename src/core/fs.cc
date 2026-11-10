@@ -34,6 +34,7 @@
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 // The throwing overload aborts under -fno-exceptions on a lookup error
@@ -69,6 +70,7 @@ std::string Tilde(const std::string& path) {
 // ~/.uagent. Falls back to a per-uid temp directory when the account has no
 // home, never to a folder-controlled location.
 std::string GlobalBase() {
+  if (!ExecutionStateDirectory().empty()) return ExecutionStateDirectory();
   std::string home = UserHome();
   return home.empty()
              ? "/tmp/uagent-" + std::to_string(getuid()) + "/" + kWorkspaceDir
@@ -553,7 +555,9 @@ std::string CanonicalCwd() {
       std::filesystem::weakly_canonical(std::filesystem::current_path(), ec);
   return ec ? std::filesystem::current_path().string() : path.string();
 }
-std::string WorkspaceId(const std::string& root) { return HashHex(root); }
+std::string WorkspaceId(const std::string& root, const std::string& host) {
+  return HashHex(WorkspaceIdentity{host, root}.Key());
+}
 std::string ReadFileTail(const std::string& path, int64_t bytes,
                          int64_t* start) {
   if (start) *start = 0;

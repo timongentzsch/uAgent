@@ -32,11 +32,7 @@ import { snapshotStore } from "./snapshot-store.ts";
 import { waitingToSend } from "../shared/message-view.ts";
 import { wentBack } from "../shared/dismiss.ts";
 import { slide } from "../shared/motion.ts";
-import {
-  selectedFromURL,
-  hostFromURL,
-  writeSelection,
-} from "../shared/navigation.ts";
+import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import { refreshUserStyle } from "../shared/user-style.ts";
 import {
   catalogueSaveDelayMs,
@@ -178,9 +174,7 @@ export function useHost(
     devices: [],
   }));
   const [snapshots] = useState(snapshotStore);
-  const [selected, setSelected] = useState(() =>
-    hostFromURL() === hostId ? selectedFromURL() : "",
-  );
+  const [selected, setSelected] = useState(() => selectedFromURL());
   // Unsent drafts survive an evicted or reloaded app; logout clears them.
   const [drafts, setDrafts] = useStored(kept.drafts);
   const [error, setError] = useState("");
@@ -649,7 +643,7 @@ export function useHost(
     // fires, and hashchange follows popstate.
     let drawn = false;
     const hash = (event: Event) => {
-      if (!visible.current || hostFromURL() !== hostId) return;
+      if (!visible.current) return;
       drawn ||= !!(event as PopStateEvent & { hasUAVisualTransition?: boolean })
         .hasUAVisualTransition;
       clearTimeout(navigation);
@@ -782,7 +776,13 @@ export function useHost(
   const select = useCallback(
     (id: string) => {
       selection.current = id;
-      if (visible.current) writeSelection(id, false, hostId);
+      if (visible.current)
+        writeSelection(
+          id,
+          false,
+          catalogueRef.current?.sessions.find((session) => session.id === id)
+            ?.host || "",
+        );
       // Following is owned solely by the transcript history controller:
       // a switch resumes the saved position
       // (or pins a fresh surface), which notifies through onFollow.

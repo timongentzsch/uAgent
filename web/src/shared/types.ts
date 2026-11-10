@@ -371,6 +371,7 @@ type SessionStatus =
   | "updating"
   | "deleting";
 export interface Session {
+  host?: string;
   task_id?: string;
   id: string;
   generation?: string;
@@ -483,6 +484,7 @@ export interface Space {
 // A conversation (by id), a folder (by path) or a folder's terminal (by id)
 // kept at the top of the list.
 export interface Pin {
+  host?: string;
   kind: "session" | "folder" | "terminal";
   id: string;
 }
@@ -1028,6 +1030,7 @@ export interface ScheduleRule {
   timezone?: string;
 }
 export interface ScheduledTask {
+  host?: string;
   id: string;
   revision: string;
   name: string;
@@ -1087,6 +1090,7 @@ export type InspectorTarget =
 // its view). A folder's shell has a name and a start time; the page's own
 // has neither.
 export interface TerminalInfo {
+  host?: string;
   id: string;
   cwd: string;
   folder: string;

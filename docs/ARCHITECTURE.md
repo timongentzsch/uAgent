@@ -5,6 +5,23 @@ the provider adapters, the tool executor and, optionally, the web assets.
 There is no server-side language runtime and no dynamically loaded plugin
 layer.
 
+## Remote execution
+
+The main owns the agent loop, providers, settings and persistent conversation
+state for both Local and remote workspaces. Provider HTTP runs on the main.
+`WorkspaceIdentity` pairs a host id with a logical folder; Local history ids stay
+unchanged. Remote session workers use a private local cwd and forward filesystem,
+Git and process operations through `execution::Client`.
+
+`--execution-start` and `--execution-worker` enter before application bootstrap.
+One immutable installed executable serves independent main clients through
+isolated per-runtime processes. Authenticated RPC runs over OpenSSH Unix-socket
+forwarding. Startup supplies the execution credential and sandbox preset through
+stdin; no provider configuration crosses that boundary. Results include bounded
+binary attachments and cached mutation receipts. Shared PTY shells live in `app/terminal.cc`. The gateway owns no application
+configuration, history or scheduler. See [Remote hosts](REMOTE_HOSTS.md) for
+recovery boundaries and current feature limits.
+
 ## Boundaries
 
 | Path | Owns |
@@ -26,7 +43,7 @@ layer.
 | `src/media/` | Attachment encoding and display projections |
 | `src/transport/` | Session frames and SSE framing |
 | `src/ui/` | Terminal input and presentation; the Markdown renderer is `markdown.cc` with `markdown_math.cc` and `markdown_table.cc` |
-| `src/web/` | Authenticated HTTP/SSE adapter (`master*.cc`), embedded assets, the browser viewer (`browser_viewer.cc`, `rfb_filter.cc`), the terminal's shells (`terminal.cc`) and optional push (`push.cc`; `no_push.cc` when `UAGENT_WEB_PUSH=OFF`) |
+| `src/web/` | Authenticated HTTP/SSE adapter (`master*.cc`), embedded assets, the browser viewer (`browser_viewer.cc`, `rfb_filter.cc`), terminal WebSocket adapters (`master_terminal.cc`, `master_remote_terminal.cc`) and optional push (`push.cc`; `no_push.cc` when `UAGENT_WEB_PUSH=OFF`) |
 | `web/src/` | Browser event projection and presentation: `app/` shell and its hooks, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting |
 | `tests/`, `benchmarks/` | Behavioral contracts and measurement |
 

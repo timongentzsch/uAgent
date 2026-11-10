@@ -15,6 +15,7 @@ struct CapturedProcess {
 // Short native helpers, with argv (no shell), bounded output and lifetime.
 CapturedProcess CaptureProcess(const std::vector<std::string>& arguments,
                                int timeout_seconds = 10,
-                               const std::string& input = "");
+                               const std::string& input = "",
+                               char* const* environment = nullptr);
 }  // namespace uagent
 #endif

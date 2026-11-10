@@ -217,7 +217,7 @@ std::string MakeSessionId();
 // OS randomness for credentials and opaque identities. Empty on failure.
 std::string RandomToken(size_t bytes = 24);
 
-std::string WorkspaceId(const std::string& root);
+std::string WorkspaceId(const std::string& root, const std::string& host = {});
 
 bool LockFileExclusive(int fd);
 

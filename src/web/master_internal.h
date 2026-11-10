@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "include/app/session_host.h"
+#include "include/app/terminal.h"
 #include "include/browser/browser.h"
 #include "include/core/file_watch.h"
 #include "include/core/settings_store.h"
@@ -40,7 +41,6 @@
 #include "include/web/protocol.h"
 #include "include/web/push.h"
 #include "include/web/remote_hosts.h"
-#include "include/web/terminal.h"
 
 // The web host's private names live in uagent::web::master, so the helpers
 // below (Reply, Error, ...) cannot clash with any other symbol in the binary.
@@ -62,14 +62,6 @@ bool EqualSecret(std::string_view a, std::string_view b);
 // shown in the browser when `inline_view`, else saved as `name`.
 void ServeFile(Response& response, std::string bytes, const std::string& mime,
                const std::string& name, bool inline_view);
-
-// Whether the Files pane and the Library may show `path`: what the file tools
-// may read, nothing hidden from them and none of µAgent's own configuration.
-bool Shown(const std::filesystem::path& path);
-// The files under `root`, by path from it, unchecked by Shown; `more` when
-// the list is cut.
-std::vector<std::string> Candidates(const std::filesystem::path& root,
-                                    bool& more);
 
 // Browser instances "0" to "4", each watched by at most one viewer.
 inline constexpr size_t kViewerInstances = 5;
@@ -200,6 +192,10 @@ class Master {
   void RestartHost(CommandCall& call);
   void ConfigCommand(CommandCall& call);
   void TerminalCommand(CommandCall& call);
+  bool RemoteTerminalCommand(CommandCall& call);
+  bool RemoteTerminalSocket(const std::string& id,
+                            httplib::ws::WebSocket& socket);
+  void LoadRemoteTerminals();
   void SessionCommand(CommandCall& call);
   json BrowserControl(const json& command, const std::string& device,
                       const std::string& request_id, std::string& error);
@@ -215,6 +211,9 @@ class Master {
   // Null while web.terminal is off.
   std::unique_ptr<Terminals> terminals_;
   std::atomic<size_t> terminal_sockets_{0};
+  mutable std::mutex remote_terminals_mutex_;
+  json remote_terminals_ UAGENT_GUARDED_BY(remote_terminals_mutex_) =
+      json::array();
 };
 
 }  // namespace uagent::web::master

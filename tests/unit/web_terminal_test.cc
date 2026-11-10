@@ -6,20 +6,20 @@
 #include <string>
 #include <thread>
 
-#include "include/web/terminal.h"
+#include "include/app/terminal.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
 namespace {
 
 // Reads `viewer` until its output holds `marker` or it ends; all it read.
-std::string ReadUntil(web::TerminalViewer& viewer, const std::string& marker,
-                      web::TerminalOutput* last = nullptr) {
+std::string ReadUntil(TerminalViewer& viewer, const std::string& marker,
+                      TerminalOutput* last = nullptr) {
   std::string seen;
   const auto deadline = std::chrono::steady_clock::now() +
                         std::chrono::milliseconds(BudgetMs(10000));
   while (std::chrono::steady_clock::now() < deadline) {
-    web::TerminalOutput out = viewer.Read(std::chrono::milliseconds(100));
+    TerminalOutput out = viewer.Read(std::chrono::milliseconds(100));
     seen += out.bytes;
     if (last) *last = out;
     if (seen.find(marker) != std::string::npos || out.ended || out.replaced) {
@@ -38,7 +38,7 @@ TEST_CASE(TestWebTerminal) {
   ScopedEnv secret("OPENROUTER_API_KEY", "planted-openrouter");
   ScopedEnv setting("UAGENT_INTERNAL_API_KEY", "planted-uagent");
   ScopedEnv agent("SSH_AUTH_SOCK", "/tmp/agent.sock");
-  web::Terminals terminals(2, std::chrono::minutes(1));
+  Terminals terminals(2, std::chrono::minutes(1));
   std::string error;
   const std::string folder = workspace.workspace.string();
   CHECK(terminals.Open("relative", folder, error).empty() && !error.empty());
@@ -72,7 +72,7 @@ TEST_CASE(TestWebTerminal) {
   // A second device takes the shell over and is shown what it printed; the
   // first learns it was replaced and can no longer type.
   auto second = terminals.Attach(id);
-  web::TerminalOutput last;
+  TerminalOutput last;
   ReadUntil(*viewer, "never printed", &last);
   CHECK(last.replaced);
   CHECK(!viewer->Write("echo stale\n"));
@@ -99,7 +99,7 @@ TEST_CASE(TestWebTerminal) {
 
   // With no device attached and nothing printed for the idle time, a shell
   // ends; one a device holds stays until it lets go.
-  web::Terminals idle(2, std::chrono::milliseconds(200));
+  Terminals idle(2, std::chrono::milliseconds(200));
   const std::string unattended = idle.Open("", folder, error);
   const std::string held = idle.Open("", folder, error);
   auto holder = idle.Attach(held);
@@ -115,7 +115,7 @@ TEST_CASE(TestWebTerminal) {
   // The page's own shell, of no folder, is never listed, has one viewer
   // ever and ends when it leaves; the list's listener hears each change.
   std::atomic<int> changes = 0;
-  web::Terminals page(2, std::chrono::minutes(1), [&] { ++changes; });
+  Terminals page(2, std::chrono::minutes(1), [&] { ++changes; });
   const std::string own = page.Open("", "", error);
   CHECK(!own.empty() && page.List().empty() && changes == 1);
   auto only = page.Attach(own);

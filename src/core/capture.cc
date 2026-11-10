@@ -18,7 +18,8 @@
 #include "include/core/time.h"
 namespace uagent {
 CapturedProcess CaptureProcess(const std::vector<std::string>& arguments,
-                               int timeout_seconds, const std::string& body) {
+                               int timeout_seconds, const std::string& body,
+                               char* const* environment) {
   CapturedProcess result;
   if (arguments.empty()) {
     result.error = "empty helper command";
@@ -41,6 +42,7 @@ CapturedProcess CaptureProcess(const std::vector<std::string>& arguments,
   fcntl(output.Get(), F_SETFL, fcntl(output.Get(), F_GETFL) & ~O_NONBLOCK);
   pid_t child = -1;
   const int spawned = SpawnProcess({.argv = arguments,
+                                    .environment = environment,
                                     .group = SpawnSpec::Group::kOwn,
                                     .fds = {{STDOUT_FILENO, output.Get()},
                                             {STDERR_FILENO, output.Get()},

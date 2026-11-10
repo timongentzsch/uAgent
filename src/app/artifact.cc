@@ -12,6 +12,7 @@
 #include "include/app/asset_store.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 #include "src/app/bootstrap_internal.h"
 
 namespace uagent {
@@ -59,7 +60,33 @@ Tool ArtifactTool(const std::string& session_path) {
     return PathApprovalClass(JsonValue(args, "path", ""), PathAccess::kRead);
   };
   tool.validate = RefuseHidden;
-  tool.run = RefusingHidden(std::move(tool.run));
+  if (Workspace().Remote()) {
+    auto check = [](const json& args) {
+      return WorkspaceRequest(
+          {{"op", "check"}, {"tool", "read_path"}, {"args", args}});
+    };
+    tool.needs_approval = [check](const json& args) {
+      return JsonValue(check(args), "approval", 2) != 0;
+    };
+    tool.approval_class = [check](const json& args) {
+      return JsonValue(check(args), "approval", 2) == 2
+                 ? ApprovalClass::kMandatoryHuman
+                 : ApprovalClass::kNone;
+    };
+    tool.validate =
+        [check](const json& args) -> std::optional<ToolArgumentIssue> {
+      const json value = check(args);
+      if (value.contains("error"))
+        return ArgumentIssue("remote.unavailable",
+                             JsonValue(value, "error", "Remote unavailable"));
+      if (const json* issue = JsonObject(value, "issue"))
+        return ArgumentIssue(
+            JsonValue(*issue, "code", "remote.invalid"),
+            JsonValue(*issue, "message", "Invalid remote path"));
+      return std::nullopt;
+    };
+  } else
+    tool.run = RefusingHidden(std::move(tool.run));
   tool.capabilities = Capability(ToolCapability::kInspect);
   tool.parallel_safe = true;
   return tool;
@@ -101,10 +128,43 @@ void CopyAttachments(std::vector<Tool>& tools,
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "from names no file attached to this conversation");
     }
-    copy["content"] = std::move(data);
+    copy[Workspace().Remote() ? "content_hex" : "content"] =
+        Workspace().Remote() ? HexEncode(data) : std::move(data);
     copy.erase("from");
     return run(copy, context);
   };
+  if (Workspace().Remote()) {
+    auto prepare = [](json args) {
+      if (args.contains("from")) {
+        args.erase("from");
+        args["content"] = "";
+      }
+      return args;
+    };
+    write->validate = [validate = std::move(write->validate), prepare](
+                          const json& args) { return validate(prepare(args)); };
+    write->canonicalize = [canonicalize = std::move(write->canonicalize),
+                           prepare](json& args) {
+      json checked = prepare(args);
+      canonicalize(checked);
+      if (args.contains("from")) checked["from"] = args["from"];
+      args = std::move(checked);
+    };
+    write->mutates = [mutates = std::move(write->mutates), prepare](
+                         const json& args) { return mutates(prepare(args)); };
+    write->needs_approval = [needs = std::move(write->needs_approval),
+                             prepare](const json& args) {
+      return needs(prepare(args));
+    };
+    write->approval_class = [classify = std::move(write->approval_class),
+                             prepare](const json& args) {
+      return classify(prepare(args));
+    };
+    write->approval_subject = [subject = std::move(write->approval_subject),
+                               prepare](const json& args) {
+      return subject(prepare(args));
+    };
+  }
   write->approval_preview = [preview = std::move(write->approval_preview)](
                                 const json& args) {
     return args.contains("from") ? "a copy of " + JsonValue(args, "from", "")

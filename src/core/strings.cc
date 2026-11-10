@@ -502,6 +502,37 @@ std::string Hex64(uint64_t value) {
 
 }  // namespace
 
+std::string HexEncode(std::string_view data) {
+  constexpr char digits[] = "0123456789abcdef";
+  std::string result;
+  result.reserve(data.size() * 2);
+  for (char value : data) {
+    const auto byte = static_cast<unsigned char>(value);
+    result += digits[byte >> 4];
+    result += digits[byte & 15];
+  }
+  return result;
+}
+bool HexDecode(std::string_view data, std::string& bytes, size_t limit) {
+  if (data.size() % 2 || data.size() / 2 > limit) return false;
+  auto digit = [](char ch) {
+    return ch >= '0' && ch <= '9'   ? ch - '0'
+           : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10
+                                    : -1;
+  };
+  bytes.clear();
+  bytes.reserve(data.size() / 2);
+  for (size_t i = 0; i < data.size(); i += 2) {
+    int high = digit(data[i]), low = digit(data[i + 1]);
+    if (high < 0 || low < 0) {
+      bytes.clear();
+      return false;
+    }
+    bytes += static_cast<char>((high << 4) | low);
+  }
+  return true;
+}
+
 std::string HashHex(const std::string& data) {
   return Hex64(Fnv1aUpdate(kFnv1aOffsetBasis, data.data(), data.size()));
 }

@@ -22,6 +22,20 @@ std::string SessionHost::Folder(const std::string& id) const {
   return found->second->cwd;
 }
 
+WorkspaceIdentity SessionHost::WorkspaceOf(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  const auto found = sessions_.find(id);
+  return found == sessions_.end()
+             ? WorkspaceIdentity{}
+             : WorkspaceIdentity{found->second->host, found->second->cwd};
+}
+json SessionHost::Execution(const std::string& id) const {
+  const auto workspace = WorkspaceOf(id);
+  return workspace.Remote() && remote_target_
+             ? remote_target_(workspace.host, workspace.path, id)
+             : json();
+}
+
 AssetStoreResult SessionHost::StoreAsset(const std::string& session_id,
                                          const std::string& bytes,
                                          std::string name) {

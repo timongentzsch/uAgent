@@ -30,27 +30,21 @@ async function offlineHost(page) {
       });
     }
   });
-  await page.route(`**/api/hosts/${remote}/**`, (route) =>
-    route.fulfill({ status: 503, json: { error: "Host is disconnected" } }),
-  );
-  await page.addInitScript(
-    (id) =>
-      localStorage.setItem(
-        `uagent-catalogue:host:${id}`,
-        JSON.stringify([
-          {
-            id: "a".repeat(32),
-            title: "GPU conversation",
-            cwd: "/srv/project",
-            updated: Date.now(),
-            turns: 1,
-            status: "idle",
-            generation: "",
-          },
-        ]),
-      ),
-    remote,
-  );
+  await page.route(/\/api\/sessions(?:\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const catalogue = await response.json();
+    catalogue.sessions.push({
+      id: "a".repeat(32),
+      host: remote,
+      title: "GPU conversation",
+      cwd: "/srv/project",
+      updated: Date.now(),
+      turns: 1,
+      status: "saved",
+      generation: "",
+    });
+    await route.fulfill({ json: catalogue });
+  });
   return { actions, reads: () => reads };
 }
 test("restored hosts stay disconnected; Recent explicitly opens the owning host", async ({

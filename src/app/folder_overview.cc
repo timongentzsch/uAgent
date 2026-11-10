@@ -20,6 +20,7 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/thread_annotations.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 namespace {
@@ -35,8 +36,9 @@ std::time_t StampTime(const std::string& stamp) {
 std::string Day(std::time_t at) { return LocalTime(at, "%Y-%m-%d"); }
 
 // The folder's conversations, its own and the agents saved beside them.
-std::vector<SessionInfo> Conversations(const std::string& folder) {
-  return SessionsBeside(HistoryPath(folder, "overview"));
+std::vector<SessionInfo> Conversations(const std::string& folder,
+                                       const std::string& host = "") {
+  return SessionsBeside(HistoryPath(folder, "overview", host));
 }
 
 // Spend and changes from the turn summaries of the conversations saved in
@@ -94,7 +96,14 @@ void AddGit(const std::string& folder, json& facts) {
 }
 }  // namespace
 
-json FolderFacts(const std::string& folder) {
+json FolderGitFacts(const std::string& folder) {
+  json facts = json::object();
+  AddGit(folder, facts);
+  return facts;
+}
+
+json FolderFacts(const std::string& folder, const std::string& host) {
+  const std::string key = WorkspaceIdentity{host, folder}.Key();
   struct Held {
     std::chrono::steady_clock::time_point at;
     json facts;
@@ -103,17 +112,17 @@ json FolderFacts(const std::string& folder) {
   static std::map<std::string, Held> held UAGENT_GUARDED_BY(mutex);
   {
     std::lock_guard lock(mutex);
-    const auto found = held.find(folder);
+    const auto found = held.find(key);
     if (found != held.end() &&
         std::chrono::steady_clock::now() - found->second.at < kFresh) {
       return found->second.facts;
     }
   }
   json facts = json::object();
-  AddTurns(Conversations(folder), facts);
-  AddGit(folder, facts);
+  AddTurns(Conversations(folder, host), facts);
+  if (host.empty()) AddGit(folder, facts);
   std::lock_guard lock(mutex);
-  held[folder] = {std::chrono::steady_clock::now(), facts};
+  held[key] = {std::chrono::steady_clock::now(), facts};
   return facts;
 }
 

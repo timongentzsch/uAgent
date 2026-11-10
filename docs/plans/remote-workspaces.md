@@ -1,457 +1,219 @@
-# Remote workspaces over SSH
+# Remote workspaces: shared stateless gateway
 
-Implementation: [PR #336](https://github.com/timongentzsch/uAgent/pull/336),
-2026-11-10, following the Fable 5.2 review. The checklist below remains the
-acceptance contract; the PR records current validation and deployment evidence.
-Local checks, four native CI payloads, dev installation and GPU validation
-are separate gates.
-See [Remote hosts](../REMOTE_HOSTS.md) for the implemented connection flow.
+Revised 2026-11-10. This replaces the stateful remote backend design in
+[PR #336](https://github.com/timongentzsch/uAgent/pull/336). Implementation follows the Opus 5.5 source review. Preserve the completed sidebar/mobile work, SSH bootstrap, verified
+four-platform packaging and CI improvements.
 
-The first update gate is deliberately conservative: an attached runtime,
-even when idle, prevents automatic host replacement until it closes or retires.
-The small executable embeds the required preview helper, without the web app.
+## Contract
 
-## Objective and scope
+Each main uAgent owns its configuration, provider credentials, model selection,
+agent loop, conversations, history, memory, usage, approvals and schedules.
+**Provider calls go directly from that main instance to its configured provider.**
+Selecting a remote workspace changes where files and commands are accessed;
+it does not change providers, route provider traffic through the remote machine,
+or create remote settings. Provider localhost URLs continue to mean the main
+host. Main instances belonging to different users have independent settings.
 
-Open remote folders from the normal uAgent web interface using `user@machine`
-or an SSH alias. Bootstrap automatically, remember the host and reuse its
-conversations. Execution and files remain remote; desktop and phone clients
-use the same interface.
+The remote executable is a shared execution gateway. It handles filesystem/Git
+operations, commands and terminals. Project MCP, browser file transfers and
+remote worktrees are explicitly unavailable in the first version. Remote project skill discovery, sudo password prompts and automatic memory extraction are also deferred; global skills and explicit memory tools remain on the main. It does not
+start an agent, read provider settings, persist conversations, maintain a model
+catalogue or run a scheduler. Never copy provider credentials or the settings
+file to it, including through environment variables or tool launch arguments.
 
-- Linux/macOS on x86_64/ARM64: four native payloads from one codebase. The
-  main install carries all four, ready to copy. No connect-time release
-  downloads, compilation, sudo or replacement of the remote user's CLI.
-- Configured SSH keys and system OpenSSH, respecting aliases, ports, identity
-  selection and jump hosts. Provide actionable key/trust guidance.
-- One web host and authoritative state directory per remote OS user, shared
-  across folders, runtimes and clients. Different users retain separate state.
-- Preserve existing chat, files, Git, terminals, approvals, browser uploads/
-  downloads and static folder previews on the selected execution host.
-- Work survives client/SSH disconnection. Logout/reboot persistence are
-  separate, unpromised capabilities; remote browser dependencies are optional.
+Stateless means no durable application state. Open connections, process/terminal
+handles and bounded execution buffers are temporary state. Installed versioned
+binaries are installation artifacts; workspace files are the user's real work.
 
-## Lean implementation rules
-
-- Reuse the existing HTTP/SSE/WebSocket API through an authenticated host
-  proxy. Do not invent another workspace RPC or framed stdio protocol.
-- One SSH manager per saved host in the serving uAgent process. Folders and
-  UI clients share it; concurrent connect/bootstrap requests join one operation.
-- Each execution host owns its catalogue, pins, receipts and event log.
-  Aggregate only display projections. Never republish remote events into
-  Local's replay log or add an authoritative transcript store on the gateway.
-- Reuse sidebar rows, pin actions, folding, selection, menus, status controls
-  and shared styles. UI components do not own SSH retry timers.
-- Start with the existing executable built without embedded web assets.
-  Measure before splitting libraries or introducing a separate backend target.
-- Remove replaced paths as consumers move. Avoid generic networking
-  frameworks, cross-version adapters and unrelated refactors.
-
-## Source baseline and proof limits
-
-The review and follow-up source inspection establish these reuse points:
-
-| Existing owner | Consequence |
-| --- | --- |
-| `src/web/master*.cc`, `web/src/state/api.ts` | The existing web API covers files, library, terminals, receipts, previews and sessions; `SessionHost` alone does not. |
-| `MasterMain` in `src/web/master.cc` | `~/.uagent/web/master.lock` and authenticated `discovery.json` identify one running web host; do not create alternate state. |
-| `session_supervisor.cc`, `session_worker.cc` | Binary replacement can currently recycle a busy worker through `close`; atomic installation alone cannot make upgrades safe. |
-| `use-host.ts`, `snapshot-store.ts` | Persistent device metadata and in-memory snapshots exist; persistent offline transcripts do not. |
-| `sidebar.tsx`, `pins.tsx`, `folding.ts`, `app.tsx` | Grouping, keyboard order, whole-list pin writes, folding and one desktop/drawer sidebar already exist. |
-| `install.sh`, `CMakeLists.txt`, CI packaging | Three platform builds exist; Intel macOS and the complete remote bundle need release work. Current minimums include glibc 2.38 and macOS 15. |
-
-At this source baseline, streaming proxy behavior, process survival, payload
-sizes and platform compatibility had no runtime proof. The stages below are
-the implementation contract; the PR records the resulting checks and limits.
-
-## User experience
-
-### First connection
-
-1. **Hosts +** and **Open workspace → Remote machine** enter one shared flow.
-2. Enter `user@machine` or select an SSH alias.
-3. Verify access and host identity. Unknown keys require explicit trust;
-   changed keys stop the flow with an actionable explanation.
-4. Probe platform and authenticated web-host discovery. Reuse a matching
-   running host; do not bypass an occupied lock with another state directory.
-5. If no host runs, copy only its verified payload, install at the fixed
-   managed path and start detached from SSH.
-6. Check exact runtime build/API identity and attach through the existing
-   authenticated API. A matching installation skips transfer.
-7. Reuse remote provider settings or open Settings targeting that host.
-8. Browse its directories, choose a folder and open the normal workspace.
-
-Connecting, Checking installation, Installing, Starting and Syncing are progress
-details within Connecting, not a second persistent bootstrap state machine.
-
-For missing key access, suggest `ssh-copy-id user@machine` and verification
-with `ssh user@machine`, preserving actual alias/port configuration. Distinguish
-network, authentication, trust, platform, transfer, version and startup errors.
-Support interactive encrypted-key unlocking; batch failure does not prove keys
-are missing. Never collect private keys in the UI.
-
-### Sidebar and pinning
-
-```text
-Pinned                         collapsible
-  Conversation                 workspace · host when needed
-Recent                         collapsible, initially closed
-  Conversation shortcut        workspace · host
-Local                          collapsible host group
-  Workspace or folder
-    Conversation
-devbox
-  atlas                        workspace icon
-    Conversation
-  logs                         folder icon
-build-mac
-  releases
-─────────────────────────────
-Hosts                       +
-  Local             Connected
-  devbox            Connected
-  build-mac      Disconnected
-─────────────────────────────
-Refresh / Settings             existing footer or selection actions
+```mermaid
+flowchart LR
+  A[Alice: main uAgent on device 1] --> P[Alice's configured provider]
+  B[Bob: main uAgent on device 2] --> Q[Bob's configured provider]
+  A -->|SSH: file and process operations| G[Device 3: shared gateway executable]
+  B -->|SSH: file and process operations| G
+  G --> F[Remote workspaces and processes]
 ```
 
-- Group host → workspace/folder → conversations, without per-place host
-  badges. Keep existing icons and place actions.
-- Preserve conversation, folder and terminal pins. Run `livePins` and pin
-  mutations against each host's own catalogue/list. Never send aggregated
-  pins to a whole-list replacement command. Combine only for rendering, in
-  stable host order and each host's pin order.
-- Pinned conversations appear once in the main list, as today. Missing offline
-  catalogues are not deletion: retain pins and disable unavailable writes
-  rather than invent an offline mutation queue.
-- Recent derives ten newest unpinned top-level conversations from catalogue
-  timestamps, without visit tracking. Its rows are navigation shortcuts,
-  outside range selection and Alt+↑/↓ order; native Tab/Enter still works.
-  They have no bulk-selection checkbox. Their source rows remain under the
-  host. No deduplication algorithm is needed.
-- Extend the existing collapsed set with host-qualified keys. Reuse the same
-  `remembered` helper with an opened set for default-closed Recent. Preserve
-  explicit folds; mark a folded active place instead of forcing it open.
-- Hosts is its own bottom region above the footer/selection bar. Show every
-  saved host and Local with square marks and explicit Connected, Connecting,
-  Reconnecting or Disconnected text. Keep it collapsible and cap list height
-  on phones, reusing existing scrolling so navigation/actions stay reachable.
-- Host details show address, status/error and Connect/Reconnect, Disconnect
-  and Open folder as appropriate. Refresh remains a current-host catalogue
-  refresh; it is not an implicit SSH connection or recovery action.
+## Multiple users and main instances
 
-### Non-sidebar pages
+- Install/reuse one remote executable, not a copy per main client, conversation
+  or folder. Multiple mains can attach concurrently, including from different
+  machines and with different settings, models and credentials.
+- Share the executable and installation, with an isolated execution process per
+  conversation/runtime and terminal. Existing handlers rely on process-local
+  cwd, sandbox and cancellation. Different OS accounts use distinct processes
+  and normal OS permissions; shared SSH accounts do not isolate user files.
+- Each main stores a random client secret per host privately. Process sockets
+  and handles are scoped to that client/runtime. A reconnect replaces the old
+  connection, checks the outcome of an uncertain call by its id, and never
+  blindly repeats a mutation. One client cannot cancel another client's work.
+- Execution processes outlive transport drops while children remain active.
+  They exit after the conversation ends, or an idle grace period without a
+  connection or live children. Detached jobs die when their execution process
+  exits; remote restart reports interruption rather than recreating state.
+- Install into build-keyed directories so different main versions coexist.
+  Never replace a running worker or use a shared mutable current-build symlink.
+  Check an admin-owned shared installation first, then the per-account cache;
+  never write an admin-owned installation or create world-writable code.
 
-One current-host reference follows the selected conversation/place and defaults
-to Local. Preserve it in host-qualified navigation across reload/back. Library,
-Scheduled, Search, folder overview and execution Settings use it and show the
-host in their headers. A small host selector reuses the saved-host list; do
-not aggregate these pages across machines.
+## Main-side execution context
 
-Appearance, device pairing and serving-host connection management keep their
-existing ownership. Providers, tools, schedules and workspace policy target
-the execution host. Unavailable targets show Reconnect, never Local results.
+Add one explicit workspace identity: execution host plus canonical folder.
+Persist it with the conversation, workspace and schedule on the main host.
+Use the existing hosts.json id (empty for Local) in history, drafts, session
+headers, schedules, trust, folder settings and memory. Hash the host into
+WorkspaceId only for remote folders, preserving Local IDs. Disable borrowed
+Claude memories for remote folders. Session identity and caches include the host; equal paths/IDs on
+separate machines must not collide. Host switching in the UI does not retarget
+outstanding work.
 
-### Connect and recovery
+Expose one Workspace value (host, path). Run the main remote-conversation
+worker in an empty private local runtime folder and register no local execution
+tools for it. Separate the logical remote folder from the runtime's actual local cwd/state
+folder. Remote paths are resolved by the gateway, never validated or opened on
+the main filesystem. All required file access follows the execution context:
+agent file tools, project instructions, Git, editor/file APIs, previews,
+attachments and workspace lifecycle. No local-execution fallback when offline.
+Global prompts/configuration are read on the main host; remote project content
+is read remotely, with host-qualified trust decisions stored on the main host.
 
-Only an explicit connect request starts a disconnected SSH connection: initial
-onboarding, a deliberate conversation/place click, or Connect/Reconnect.
-Clicking a saved remote conversation issues that request automatically; no
-separate Connect step is needed. URL restoration, snapshot reads, catalogue
-refresh, group expansion and UI-stream resume never issue it.
+Keep stateful coordination on the main: to-do, memory, delegation, approvals,
+activity records, schedules, command receipts and agent/provider streaming.
+Only execution-bearing operations cross SSH. Preserve the existing sandbox and
+approval semantics: the remote process supplies tool descriptions and performs
+filesystem-dependent validation, approval classification, previews and subject
+calculation; the main decides and records approval, then sends the approved
+scope. Send explicit sandbox preset, approval mode and timeouts, never main
+extra writable roots or the main environment.
+Provider calls, including discovery, titles, review and image requests, keep
+using the existing main-side provider implementation without a new proxy path.
 
-The manager owns one retry policy: initially five jittered retries around
-1, 2, 4, 8 and 15 seconds after unexpected loss. Bound attempts and use OpenSSH
-connect timeout and server-alive options to detect dead connections. Keep
-limits centralized; do not add a custom heartbeat loop.
+## Gateway and transport
 
-| Situation | Behavior |
-| --- | --- |
-| Unexpected SSH loss | Reconnecting, retained available output, bounded retries. |
-| Between attempts | Retry now in the host menu and active conversation resets the budget. |
-| Attempt in flight | Disable duplicate retry controls; concurrent callers join the operation. |
-| Budget exhausted | Disconnected, useful reason and Reconnect; no background retry loop. |
-| Intentional Disconnect | Cancel timers/attempts and detach this gateway's transport. Persist intent across UI reloads; remote work continues. |
-| Trust/authentication/platform/version failure | Stop retries and offer the specific corrective action. |
-| Reconnect on a healthy host | Check/reuse the transport without restarting remote work. |
+Reuse the SSH connection manager, native bundle checks and existing streaming/
+request framing primitives. The gateway exposes only the execution operations
+needed by existing file/process handlers, not a remote application web API.
+Use a private per-user runtime endpoint reached through authenticated SSH;
+there is no public listener, browser pairing/device store or remote settings API.
+Bound request/output sizes and keep cancellation/control usable during streams.
 
-After intentional Disconnect or budget exhaustion, a new explicit user request
-is required. Browser online/resume events retain existing UI-hop recovery;
-they never replenish SSH retry budgets. One waking phone cannot re-arm retries
-forever. Bootstrap/retry requests share the same connection owner.
+Main-host stores remain authoritative. Remote execution events enter their
+existing event/replay log; clients read one application history. Preserve the
+current HTTP/SSE/WebSocket browser interface where useful, but answer host-scoped
+catalogues/settings on the main rather than proxying another SessionHost.
+Use one main event stream, with host on sessions, workspaces, pins and
+terminals. Remove remote_start.cc, remote_proxy.cc, the relay in
+master_remote.cc, --remote-host, per-host controllers, hostApi prefixes,
+pairing and cookies. Reuse SSH and newline-JSON framing, with bounded byte
+chunks rather than a new HTTP execution API.
 
-Derive availability from both hops: a remote action requires the browser's
-serving-host connection and that remote host to be ready. During a UI-hop
-outage, remote rows show that outage with last remote state in details, not a
-misleading live Connected. SSH failure affects that host; UI/gateway failure
-makes every remote action unavailable on that device.
+Remote tools see only the specific arguments, approved scope and explicitly
+needed execution environment. Provider keys/configuration must not enter gateway
+RPC, remote files, process environments, command arguments or logs. Direct model
+calls keep that data out of the gateway; remote files/commands remain visible to
+the remote account/admin. If a configured provider itself runs on device 3, it
+is a separate trusted endpoint and necessarily receives its own requests.
 
-Recover host-specific receipts/cursors/checkpoints before enabling writes.
-Never replay tool execution or uncertain submissions. Retain drafts and show
-unresolved outcomes honestly. Use a short banner grace period for transient
-loss without hiding host state. Disconnect details explain its scope: every
-place/client using this gateway's transport detaches; sessions are not stopped.
+Reuse current tool/file/process handlers instead of reimplementing their policy,
+conflict detection or formats. Do not add a generic RPC/plugin framework, a
+filesystem mount, configuration replication, custom crypto or a remote database.
 
-### Offline and mobile
+Remote mode never uses the real ~/.uagent: GlobalBase points at a private
+per-process RuntimeDir folder, removed on exit. Sandbox protections still hide
+the actual account configuration. Installed binaries and real workspace edits
+are the only durable remote artifacts.
 
-- Namespace today's persisted catalogue, spaces, drafts, read/unread and
-  outgoing metadata by host. Do not introduce disk transcript/file caches.
-  Keep in-memory snapshots visible during a live disconnect.
-- After offline reload, show saved rows, draft, host status and Reconnect.
-  Only show a transcript already held in memory; do not promise cached output
-  after reload or infer a task's current state from old output.
-- Reuse the existing drawer/model/actions. Conversation selection closes the
-  drawer. Pin/menu/host controls work by tap with roughly 44px targets.
-- SSH runs on the reachable serving host, not the phone. Local means that
-  machine; show its actual name/address in details.
-- Keep square controls/status marks and responsive rules in shared styling.
-  Retain compact user messages with timestamp/menu in a separate footer line.
+Attachment stores stay on the main. Resolve write_file from= there and send
+bytes; refuse main attachment paths in remote read/run. Fetch shared files and
+ask images remotely. Refuse browser upload/download, project MCP (including
+main-environment expansion), remote worktree delegation/schedules and named
+remote spaces in this version, with actionable notices. Global MCP remains an
+explicit main-side service without remote roots. Remote schedule checks run
+remotely and fail visibly when offline. Remote folders remain supported.
 
-## Architecture and state ownership
+## UI and recovery
 
-```text
-Desktop / phone web UI
-       |
-Serving uAgent: authentication, saved hosts, routing
-       |                              |
-Existing Local API             /api/hosts/<id>/... proxy
-                                      |
-                              one OpenSSH transport
-                                      |
-                         existing remote web-host API
-                                      |
-                           SessionHost and runtimes
-```
+Keep host-grouped folders/workspaces/conversations, pins, initially collapsed
+Recent, bottom Hosts status, square selection controls and compact mobile rows.
+Settings/providers/models are main-owned global surfaces. Switching host changes
+execution context only. Main history/settings stay available while a host is
+unavailable; remote execution controls explain the missing connection.
 
-### Existing API over SSH
+Retain automatic platform detection/bootstrap, strict SSH identity checks,
+actionable key guidance, bounded automatic retry and manual Reconnect. Connects
+join an existing attempt; explicit Disconnect stays down.
 
-Prefix routes centrally in `web/src/state/api.ts` with the host reference;
-keep Local's existing route. The serving host authenticates the browser and
-authorizes the selected saved host. Forward HTTP, SSE and WebSockets through
-one SSH forward with existing remote pairing/device authorization. Keep remote
-credentials on the gateway; never expose them or discovery secrets to browsers,
-files/previews or substitute Local cookies for remote authorization.
+A provider stream can continue during a remote transport outage because it is
+main-side. Pending remote operations follow existing failure/approval semantics;
+never silently replay a shell command or file mutation after an uncertain drop.
+Cancellation affects only the owning operation/client. Preserve terminal handles
+across SSH transport loss while the gateway lives. A gateway restart loses
+volatile handles and reports interruption; no remote history or durable job
+store is introduced to conceal that boundary.
 
-Prefer a private Unix-socket API listener for a new managed backend. For an
-existing web host, reuse its discovered authenticated loopback endpoint, with
-the same handlers. Prove the current OpenSSH/cpp-httplib path supports these
-listeners and streaming before expanding it. Do not invent stdio framing.
+## Implementation order
 
-Preserve SSE flushing/cancellation, WebSocket upgrades/close, upload/download
-streaming, preview links and origin checks. Rewrite only necessary host URL
-and cookie scope; this is not an arbitrary URL proxy. Reuse existing request,
-stream and body limits. Verify bulk traffic does not starve controls before
-adding extra scheduling, multiplexing or SSH transports.
+1. Introduce host-qualified workspace/state identity and main-side remote
+   conversation launch. Preserve ordinary Local behavior.
+2. Add isolated execution-process mode and the client handshake. Wire remote file,
+   process and project-context operations through the execution boundary;
+   keep the agent, approvals, activity coordination and providers on the main.
+3. Route host-scoped browser operations to main-owned state plus gateway
+   execution. Make settings global, preserve the sidebar, remove obsolete
+   remote application/pairing/catalogue paths and update packaging/docs.
+4. Validate the integrated behavior, assemble the four verified native payloads,
+   install on dev and exercise GPU. Preserve all existing Local/user data and
+   old remote CLI data; do not silently migrate/delete it.
 
-Maintain one browser catalogue, snapshot store and event cursor per connected
-host through existing reducers/recovery logic. Remote events keep their origin
-epoch/cursor and never enter Local's replay log. Route browser viewers,
-terminals, assets, settings and relative links through the same API context.
+Source seams include `session_server.cc`, `session_supervisor.cc`, SessionHost
+storage/router/snapshot code, project prompt loading, tool/file/process dispatch,
+`remote_hosts.cc`, `master_remote.cc`, `web/src/state/api.ts` and `app/hosts.tsx`.
+Provider transport should require no remote-specific request execution.
 
-### Identity and storage
+## Required proof
 
-- Workspace identity is verified host ID plus remotely canonicalized path.
-  Host-qualify sessions, terminals, requests, links and device caches so equal
-  IDs or paths on different hosts never collide.
-- Save destinations, verified host identity and explicit disconnect intent
-  in private `~/.uagent/web/hosts.json`, using existing private atomic file
-  helpers. Live transport/retry state belongs only to the connection manager.
-- Alias changes retain verified identity. A new backend ID is a new host;
-  do not auto-merge old references or build a reconciliation service.
-  Changed SSH keys still require explicit trust resolution.
-- Pins stay on their execution host. Folding stays device-local. Provider
-  settings and sandbox/workspace policy stay execution-host-owned.
-- Files stay remote; browser uploads/downloads use the existing API. No
-  filesystem mount, background sync or new machine-to-machine transfer layer.
+- Clean remote HOME works without provider/settings setup. No durable uAgent
+  configuration, credentials, conversations, pins or schedules are created there.
+- Main-configured discovery and streamed model calls work for remote workspaces.
+  A provider mock observes a main-host source; canary provider keys/model
+  configuration never appear in gateway requests, remote state, logs or children.
+- Shared setting changes and conversation model choices work on Local/GPU with
+  existing reload/restart semantics and no remote configuration copies.
+- Main history, pins, workspaces and schedules survive restart. Remote gateway
+  restart needs no application-state reconstruction and reports lost handles.
+- Remote file reads/writes, conflict checks, Git, project instructions, commands,
+  approvals, cancellation, attachments, previews and terminals work, with no
+  accidental main-host file/process execution.
+- Two independent mains share the executable with isolated execution processes and use different settings and
+  folders concurrently without mixing outputs/handles. Disconnect/cancel client
+  A while B keeps working; reconnect A. Simultaneous bootstrap reuses the same build; different builds coexist and
+  leave attached clients and work untouched.
+- For separate remote SSH accounts, the same installed executable runs under
+  distinct worker identities with normal file permissions. State clearly which
+  multi-user scenario was actually tested.
+- Existing Local sessions and unrelated remote CLI state remain intact. Keep
+  local tests, four-platform CI, installation and live GPU proof distinct.
 
-### Existing hosts and process lifetime
+- A canary at the same path on the main remains untouched. Remote tool schemas
+  reflect the remote sandbox. A remote MCP ${SECRET} never expands on the main.
+  Attachment copying works while main attachment paths are refused. Main
+  restart reattaches surviving terminals by the stored client/runtime identity.
 
-The backend is the remote user's one web host using `~/.uagent/web` and its
-lock. Authenticate discovery and reuse a matching build. An incompatible or
-unverifiable lock owner yields a useful error, never another port/state tree.
+## Review incorporated
 
-If no host runs, start the managed executable detached from SSH with private
-logs and existing worker lifetime handling. This is the only new survival
-mechanism in v1: do not generate remote systemd/launchd units. Existing
-user-managed services retain ownership. Test SSH/network-disconnect survival
-on Linux/macOS, including child work. Detachment is not proof of survival;
-report logout restrictions and do not silently alter system policy. Reboot
-startup is deferred.
+Claude Code reviewed this plan and the source with `claude-opus-5-5`, high
+reasoning, on 2026-11-10. Its initial verdict was not ready: cwd/process-global
+policy, remote approval preflight, identity coverage, temporary filesystem
+state, attachment/MCP boundaries, reconnect and versioned installs needed
+concrete rules. The changes above incorporate those findings. The old dev/GPU
+remote web processes must be stopped deliberately during rollout without
+removing their existing data. A leaner payload and old-build cleanup can wait.
 
-### Exact builds and safe updates
 
-Require exact runtime build identity between gateway and backend, independent
-of payload flavor, plus existing API/session protocol checks. Record it in
-manifest/discovery: the same public version string alone does not identify
-an unpublished build. Do not introduce cross-version negotiation/adapters.
-
-Use one managed path, `~/.uagent/remote/uagent`, replaced by verified atomic
-rename. Before replacing/re-execing a running managed host, prove it is idle
-through a supported API: no active turn, pending approval, supervised work or
-terminal that would be interrupted. Otherwise show **Update pending; remote
-work continues**. If an old API cannot establish safety, or another build is
-user-managed, show manual-update guidance without stopping it or replacing its
-service binary. No side-by-side remote version manager or cleanup service.
-The idle decision and update admission must be serialized on the remote host:
-block new work until re-exec or failed-update recovery releases the gate.
-A read-only idle check followed by an unrelated SSH replacement is insufficient.
-
-For same-protocol replacement, fix the shared stale-worker recycle gate to
-defer while busy and reuse restart-pending state. Idle includes the end of
-approvals and supervised work, not merely an absence of streamed text. Prove
-reattachment/re-exec preserves work; this is an actual required lifecycle fix.
-
-If the session protocol changed, refuse attachment to old busy workers. Show
-version mismatch/update pending and retain drafts; offer the matching installed
-client or retry after work finishes. No automatic stop or pretend compatible
-live view. A newer client may temporarily lose attachment, never terminate work.
-Repair/update actions remain separate from deleting conversations or files.
-
-## Build, bundle and installation
-
-### Small shared build
-
-Build the existing executable with an empty web-asset table and a headless
-web-host entry path. Preserve Master, terminals and required runtime services;
-do not first split `uagent_app` just to remove linked UI classes. Measure
-compressed/installed bytes, idle memory/CPU and startup before further
-extraction. Browser executables stay optional.
-
-Audit skills, certificates, notices and defaults. Reuse resource lookup;
-embed small mandatory resources or include them in the native payload archive.
-Removing frontend assets must not remove required runtime resources. Bootstrap
-must not download dependencies on the remote host.
-
-### Compatibility policy
-
-Retain current declared floors for v1: glibc 2.38 on Linux and macOS 15.
-Do not turn this feature into a musl/toolchain migration. Build each native
-CPU target against those floors; bundle/link pinned non-system dependencies
-where required instead of relying on Homebrew or newer-host libraries.
-Verify DNS, TLS, subprocess, PTY and sandbox behavior on clean minimum systems.
-If the floors cannot be met, fix artifacts or revise the advertised minimum
-before release, never silently raise it. Older systems get an unsupported
-platform result. Native Intel macOS proof is required; Rosetta is supplementary.
-
-### Complete four-target bundle
-
-```text
-<prefix>/bin/uagent
-<prefix>/share/uagent/remote/<build-id>/
-    manifest.json
-    linux-x86_64.tar.gz
-    linux-arm64.tar.gz
-    macos-x86_64.tar.gz
-    macos-arm64.tar.gz
-```
-
-Each archive contains its executable and only mandatory runtime resources.
-The manifest records exact runtime build ID, target/minimums, contents, sizes
-and hashes. No protocol-compatibility range is promised. Copy/extract only the
-selected target and keep the remaining payloads compressed locally.
-
-- Release installation obtains the main application and one matching complete
-  bundle using existing verified release delivery. Switch bundles only after
-  complete integrity checks; interrupted installation preserves the old one.
-- Source installation obtains an exact-build published bundle or an explicitly
-  supplied complete CI/developer bundle. Do not require local cross-compilation.
-  With no complete matching bundle, fail remote-ready installation clearly;
-  a local-only developer build cannot report remote support ready.
-- `./install.sh` in a checkout still delivers all four payloads for a finished
-  install. The review's own-target-only fallback is not adopted because it
-  contradicts the required ready-to-copy bundle.
-- CI waits for four native target artifacts. Extend package-content tests,
-  release artifact counts, custom-prefix and container checks.
-- Serialize bootstrap, stage/extract privately, verify target/hash/resources,
-  test startup and atomically publish. Do not edit shell startup, provider
-  settings or the remote user's CLI.
-
-Container installation must include OpenSSH and the complete bundle. Document
-explicit read-only SSH configuration/key mounts or an agent socket, writable
-private known-hosts storage and ownership. Do not assume the desktop's SSH
-agent is available or automatically forward it to the remote host.
-
-## Credentials and optional capabilities
-
-- Remote provider credentials keep work independent of the client. Never
-  silently copy local keys, browser profiles, MCP secrets or full config.
-- Preserve remote sandbox and authoritative approval checks. Missing remote
-  Git/browser/MCP capabilities report their state and never execute locally.
-- Keep sockets/state private and authenticate loopback reuse; forwarding
-  does not authorize arbitrary users of the gateway machine.
-- Remote approvals arrive through the proxied event stream. Preserve existing
-  Local push; remote push aggregation is deferred, not advertised as v1 support.
-
-## Implementation stages
-
-### 1. Prove the shared API and lifecycle path
-
-Prototype authenticated proxying to an existing host: ordinary requests, SSE,
-terminal WebSocket, upload/download and static previews, including cancellation,
-URLs and origin checks. Prove Unix-socket/discovered-loopback forwarding,
-exact-build discovery, detach survival and the idle/recycle gate. Measure the
-asset-free build on the declared floors. Resolve failed feasibility gates
-before expanding routing; do not add another protocol as a default fallback.
-
-### 2. Add host routing and SSH lifecycle
-
-Implement the private host registry, explicit connect commands, joined
-bootstrap, existing-host reuse and bounded retry/manual recovery. Namespace
-API calls, caches, cursors, links and current-host navigation. Route existing
-features, execution Settings and per-host pin writes. Preserve Local behavior
-and derive both-hop availability without falling back to Local.
-
-### 3. Apply the shared sidebar and mobile behavior
-
-Extend existing grouping/folding/rows for Pinned, Recent shortcuts and host
-groups. Add the bottom Hosts region and shared connection flow/menus. Keep
-selection, Refresh and Settings reachable; remove replaced single-host paths.
-Use one model/component set for desktop and the mobile drawer.
-
-### 4. Package and verify the full release
-
-Build all four targets, assemble the exact-build bundle and update release,
-source/container installation and package tests. Run the checks below and
-record real size/latency/platform results. Local tests, native platform proof,
-hosted CI, published artifacts and deployed proof are separate claims.
-
-## Acceptance checks
-
-- Four clean native target installs, minimum systems, cross-OS connections,
-  prefixes and container credentials. Bootstrap works with release-download
-  access disabled; model-endpoint access is a separate requirement. Check
-  copied artifacts' library/resource lookup and applicable signing/startup.
-- Reuse an existing matching host with its pins/drafts/state, without a second
-  state tree. Reject mismatches/unverifiable discovery without affecting work.
-- Concurrent opens, two clients and rapid retries share one operation per
-  host. Disconnect survives reload, URL restoration and another device.
-  Exhausted retry/auth budgets never re-arm from browser online/resume.
-- Drops before send, after send/before receipt, during output/approval: recover
-  per-host cursors/gaps and receipts without replaying uncertain execution.
-- Busy binary/protocol upgrades never cancel work. Exercise idle restart,
-  pending approval, terminal/child work and independent versus managed hosts.
-- Every existing feature, relative asset URL and execution setting targets
-  the selected host; equal paths/IDs across hosts do not collide.
-- Whole-list pin writes never contain another host's pins; offline pins survive.
-  Recent shortcuts do not enter range/Alt order. Persisted folds win.
-- Desktop and 320/390px Chromium/WebKit journeys: touch/keyboard, footer during
-  selection, many-host scrolling, error/retry states and compact messages.
-  Offline reload does not pretend a disk transcript exists.
-- SSH/network loss and laptop sleep preserve remote work. Separately report
-  logout/reboot restrictions. Bulk/noisy traffic must not stall other hosts;
-  respect existing request/stream/queue bounds.
-- Measure compressed/installed size, idle memory/CPU, bootstrap/warm reconnect
-  and event latency. No per-operation SSH startup or directory polling loop.
-
-Use focused ownership/projection/recovery regressions and a small real browser
-journey, not duplicate desktop/mobile logic or markup snapshots. Remove replaced
-paths and measure costs/LoC rather than promise speculative reductions.
-
-## Deferred scope
-
-CLI `--remote`, dev-server port forwarding/phone proxy, direct host-to-host
-transfers, persistent offline transcripts/files, cross-host search/library/
-schedule aggregation, cross-host pin reordering, remote push aggregation,
-backend-identity reconciliation, remote service installation, reboot startup,
-password/key provisioning, Windows/32-bit, filesystem mounts/sync, cross-host
-delegation, local credential relay, local-browser fallback, older-libc support
-and automatic migration of complete local configuration.
+The implementation review also requires authenticated RPC with an in-memory
+remote credential supplied over stdin, explicit SSH forward cancellation before
+rebinding, sandbox-preset-qualified execution identities, remote containment
+checks in approval decisions, deadline-bounded receipt recovery and folder
+resolution outside the main catalogue lock. Reuse one bounded preflight result
+per tool dispatch and avoid idle SSH ping traffic. Terminal close failures must
+remain actionable without silently claiming a disconnected process was stopped.

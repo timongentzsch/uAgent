@@ -11,6 +11,7 @@
 #include "include/agent/transcript.h"
 #include "include/app/config_proposal.h"
 #include "include/app/control.h"
+#include "include/app/execution.h"
 #include "include/app/launch.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
@@ -25,6 +26,7 @@
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/core/usage.h"
+#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
 
@@ -145,7 +147,7 @@ json SessionHost::SpaceControl(const json& command, const std::string& device,
 }
 
 json SessionHost::SetPins(const json& command, std::string& error) {
-  const json pins = command.value("pins", json());
+  json pins = command.value("pins", json());
   if (!ValidPins(pins)) {
     error =
         "pins is a list of at most " + std::to_string(kMaxPins) +
@@ -153,6 +155,16 @@ json SessionHost::SetPins(const json& command, std::string& error) {
     return json::object();
   }
   std::lock_guard lock(mutex_);
+  if (command.contains("host")) {
+    const std::string host = JsonValue(command, "host", "");
+    for (json& pin : pins) pin["host"] = host;
+    for (const json& pin : pins_)
+      if (JsonValue(pin, "host", "") != host) pins.push_back(pin);
+    if (!ValidPins(pins)) {
+      error = "pin limit reached";
+      return json::object();
+    }
+  }
   if (!WritePrivateFile(directory_ + "/" + kPinsFile, JsonDump(pins), error)) {
     return json::object();
   }
@@ -164,9 +176,14 @@ json SessionHost::SetPins(const json& command, std::string& error) {
 // The host belongs to no folder: a request names the folder it is about,
 // and without one only what is saved for all is in reach.
 json SessionHost::Configure(const json& command) {
-  const auto folder = CanonicalDirectory(JsonValue(command, "cwd", ""));
-  auto manager =
-      ConfigManager::Capture({}, folder ? folder->string() : std::string());
+  const std::string path = JsonValue(command, "cwd", "");
+  const std::string host = JsonValue(command, "host", "");
+  const auto folder =
+      host.empty() ? CanonicalDirectory(path) : std::optional<fs::path>();
+  const std::string key =
+      host.empty() ? (folder ? folder->string() : std::string())
+                   : (path.empty() ? "" : WorkspaceIdentity{host, path}.Key());
+  auto manager = ConfigManager::Capture({}, key);
   return ConfigurationControl(command, manager);
 }
 
@@ -203,7 +220,7 @@ std::string SessionHost::DeleteSpace(const std::string& path,
   const fs::path history =
       fs::path(UagentDir(kHistoryDir)) / WorkspaceId(space->string());
   const auto belongs = [&](const HostSession& session) {
-    return session.cwd == space->string() ||
+    return (session.host.empty() && session.cwd == space->string()) ||
            fs::path(session.path).parent_path() == history;
   };
   const auto next = [&]() -> json {
@@ -246,6 +263,21 @@ std::string SessionHost::DeleteSpace(const std::string& path,
 std::optional<std::filesystem::path> SessionHost::NamedFolder(
     const json& command, std::string& error) {
   std::string folder = JsonValue(command, "cwd", "");
+  const std::string host = JsonValue(command, "host", "");
+  if (!host.empty()) {
+    if (!JsonValue(command, "space", "").empty()) {
+      error =
+          "Choose an existing remote folder; named remote workspaces are not "
+          "supported yet.";
+      return std::nullopt;
+    }
+    if (folder.empty() || folder.front() != '/') {
+      error = "Choose an accessible remote directory.";
+      return std::nullopt;
+    }
+    return fs::path(folder);
+  }
+
   if (const std::string space = Trim(JsonValue(command, "space", ""));
       !space.empty()) {
     const size_t before = Spaces().size();
@@ -263,11 +295,41 @@ std::optional<std::filesystem::path> SessionHost::NamedFolder(
 
 SessionCommandResult SessionHost::ExecuteCommand(
     json command, const std::string& device, const std::string& request_id) {
-  UniqueLock lock(mutex_);
   SessionCommandResult result;
   result.outcome = {{"request_id", request_id}, {"accepted", true}};
   const SessionCommandKind kind =
       ParseSessionCommandKind(JsonValue(command, "kind", ""));
+  if (kind == SessionCommandKind::kCreate &&
+      !JsonValue(command, "host", "").empty()) {
+    if (!JsonValue(command, "space", "").empty()) {
+      result.error =
+          "Choose an existing remote folder; named remote workspaces are not "
+          "supported yet.";
+      return result;
+    }
+    json target;
+    const std::string folder = JsonValue(command, "cwd", "");
+    {
+      std::lock_guard lock(mutex_);
+      if (remote_target_)
+        target = remote_target_(JsonValue(command, "host", ""), folder,
+                                HashHex("folder:" + folder));
+    }
+    if (target.is_null()) {
+      result.error =
+          "Remote host is disconnected. Choose Connect or Reconnect.";
+      return result;
+    }
+    execution::Client remote(execution::TargetFromJson(target));
+    const json identity = remote.Call({{"op", "ping"}});
+    if (!JsonStringRef(identity, "cwd")) {
+      result.error = JsonValue(identity, "error",
+                               "Choose an accessible remote directory.");
+      return result;
+    }
+    command["cwd"] = identity["cwd"];
+  }
+  UniqueLock lock(mutex_);
   if (kind == SessionCommandKind::kCreate) {
     // A workspace is a folder of µAgent's own, made by naming it: a
     // conversation that belongs to no folder still gets a workspace commands
@@ -275,9 +337,11 @@ SessionCommandResult SessionHost::ExecuteCommand(
     const auto resolved = NamedFolder(command, result.error);
     if (!resolved) return result;
     const std::filesystem::path& cwd = *resolved;
-    auto session = CreateSession(
-        cwd.string(), HistoryPath(cwd.string(), "web-" + RandomToken(16)), "",
-        result.error);
+    auto session =
+        CreateSession(cwd.string(),
+                      HistoryPath(cwd.string(), "web-" + RandomToken(16),
+                                  JsonValue(command, "host", "")),
+                      "", result.error, JsonValue(command, "host", ""));
     if (session) {
       result.wake = true;
       result.outcome["session"] = Metadata(*session);
@@ -299,6 +363,12 @@ SessionCommandResult SessionHost::ExecuteCommand(
   }
   if (session->LifecycleBusy()) {
     result.error = "conversation update in progress";
+    return result;
+  }
+  if (kind == SessionCommandKind::kMove &&
+      (!session->host.empty() || !JsonValue(command, "host", "").empty())) {
+    result.error =
+        "Moving remote conversations between folders is not supported yet.";
     return result;
   }
   if (kind == SessionCommandKind::kMove) {

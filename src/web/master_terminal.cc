@@ -7,8 +7,8 @@
 #include <thread>
 #include <utility>
 
+#include "include/app/terminal.h"
 #include "include/core/limits.h"
-#include "include/web/terminal.h"
 #include "src/web/master_internal.h"
 
 namespace uagent::web::master {
@@ -20,7 +20,11 @@ constexpr auto kRelayWait = std::chrono::seconds(30);
 
 json Master::TerminalList() const {
   if (!terminals_) return nullptr;
-  json list = json::array();
+  json list;
+  {
+    std::lock_guard lock(remote_terminals_mutex_);
+    list = remote_terminals_;
+  }
   for (const TerminalInfo& terminal : terminals_->List()) {
     list.push_back({{"id", terminal.id},
                     {"cwd", terminal.cwd},
@@ -55,6 +59,10 @@ void Master::TerminalSocket(const Request& request,
   if (terminal_sockets_.fetch_add(1) >= kWebTerminalSockets) {
     --terminal_sockets_;
     socket.close(httplib::ws::CloseStatus::PolicyViolation);
+    return;
+  }
+  if (RemoteTerminalSocket(request.matches[1].str(), socket)) {
+    --terminal_sockets_;
     return;
   }
   const std::unique_ptr<TerminalViewer> viewer =
@@ -119,6 +127,7 @@ void Master::TerminalCommand(CommandCall& call) {
     call.error = "the terminal is turned off (web.terminal)";
     return;
   }
+  if (RemoteTerminalCommand(call)) return;
   const std::string action = JsonValue(call.command, "action", "");
   json result;
   if (action == "open") {

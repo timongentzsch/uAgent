@@ -13,8 +13,10 @@
 #include <vector>
 
 #include "include/agent/path_policy.h"
+#include "include/app/execution.h"
 #include "include/app/launch.h"
 #include "include/app/session_host.h"
+#include "include/app/workspace_files.h"
 #include "include/core/capture.h"
 #include "include/core/env.h"
 #include "include/core/file_watch.h"
@@ -28,266 +30,8 @@
 
 namespace uagent::web::master {
 namespace fs = std::filesystem;
-
-bool Shown(const fs::path& path) {
-  return !HiddenPath(path.string()) && !SelfConfigurationPath(path.string());
-}
-
-// In a repository, the files git tracks or would add, so dependencies and
-// build output stay out as they do from the agent's grep; elsewhere the
-// folder is walked, entering neither .git nor a hidden or symlinked folder.
-std::vector<std::string> Candidates(const fs::path& root, bool& more) {
-  std::vector<std::string> paths;
-  const CapturedProcess listed =
-      HostGit(root.string(), {"ls-files", "--cached", "--others",
-                              "--exclude-standard", "-z", "--", "."});
-  // Past the capture's limit, what arrived is still a list, cut. A folder
-  // git lists nothing in (one it ignores, say) is walked instead.
-  if (!listed.output.empty() && (listed.Ok() || !listed.error.empty())) {
-    const std::string& out = listed.output;
-    for (size_t at = 0, end; (end = out.find('\0', at)) != std::string::npos;
-         at = end + 1) {
-      paths.push_back(out.substr(at, end - at));
-    }
-    more = more || !listed.error.empty();
-    return paths;
-  }
-  std::deque<fs::path> folders = {root};
-  int64_t scanned = 0;
-  while (!folders.empty()) {
-    std::error_code ec;
-    fs::directory_iterator iterator(folders.front(), ec), end;
-    folders.pop_front();
-    for (; !ec && iterator != end; iterator.increment(ec)) {
-      if (++scanned > kListDirScanEntries) {
-        more = true;
-        return paths;
-      }
-      const fs::path& path = iterator->path();
-      std::error_code type_error;
-      const fs::file_status status = iterator->symlink_status(type_error);
-      if (fs::is_directory(status)) {
-        if (path.filename() != ".git" && Shown(path)) folders.push_back(path);
-      } else if (fs::is_regular_file(status)) {
-        paths.push_back(path.lexically_relative(root).string());
-      }
-    }
-  }
-  return paths;
-}
-
+using namespace workspace_files;
 namespace {
-// `relative` resolved under `root`, when it stays inside and may be shown.
-std::optional<fs::path> Resolve(const fs::path& root,
-                                const std::string& relative) {
-  if (fs::path(relative).is_absolute()) return std::nullopt;
-  fs::path target = CanonicalAccessPath((root / relative).string());
-  if (!PathWithin(target, root) || !Shown(target)) return std::nullopt;
-  return target;
-}
-
-// A folder's entries, folders first. A symlink shows as what it points to,
-// and only when that is inside `root`.
-std::optional<json> List(const fs::path& root, const fs::path& folder) {
-  struct Entry {
-    std::string name;
-    fs::path path;
-    bool dir;
-    uintmax_t size;
-  };
-  std::vector<Entry> entries;
-  bool more = false;
-  std::error_code ec;
-  fs::directory_iterator iterator(folder, ec), end;
-  for (; !ec && iterator != end; iterator.increment(ec)) {
-    if (entries.size() == static_cast<size_t>(kListDirScanEntries)) {
-      more = true;
-      break;
-    }
-    fs::path path = iterator->path();
-    std::error_code type_error;
-    fs::file_status status = iterator->symlink_status(type_error);
-    if (fs::is_symlink(status)) {
-      path = CanonicalAccessPath(path.string());
-      if (!PathWithin(path, root)) continue;
-      status = fs::status(path, type_error);
-    }
-    const bool directory = fs::is_directory(status);
-    const uintmax_t size = directory ? 0 : fs::file_size(path, type_error);
-    if (type_error || (!directory && !fs::is_regular_file(status))) continue;
-    entries.push_back(
-        {iterator->path().filename().string(), path, directory, size});
-  }
-  if (ec) return std::nullopt;
-  std::ranges::sort(entries, [](const Entry& a, const Entry& b) {
-    return a.dir != b.dir ? a.dir : AsciiLower(a.name) < AsciiLower(b.name);
-  });
-  // Checked only for what is shown: the policy resolves every path it asks
-  // about, too slow for a whole large folder.
-  json rows = json::array();
-  for (const Entry& entry : entries) {
-    if (!Shown(entry.path)) continue;
-    if (rows.size() == static_cast<size_t>(ListDirEntries())) {
-      more = true;
-      break;
-    }
-    rows.push_back(
-        {{"name", entry.name}, {"dir", entry.dir}, {"size", entry.size}});
-  }
-  return json{{"entries", std::move(rows)}, {"more", more}};
-}
-
-// Whether `query`'s characters, spaces aside, appear in `path` in order.
-bool Matches(const std::string& query, const std::string& path) {
-  size_t at = 0;
-  for (const char ch : query) {
-    if (ch == ' ') continue;
-    at = path.find(ch, at);
-    if (at == std::string::npos) return false;
-    ++at;
-  }
-  return true;
-}
-
-// Files under `root` that match `query`, nearest first.
-json Find(const fs::path& root, const std::string& query) {
-  const std::string wanted = AsciiLower(query);
-  bool more = false;
-  std::vector<std::string> matched;
-  for (std::string& path : Candidates(root, more)) {
-    if (Matches(wanted, AsciiLower(path))) matched.push_back(std::move(path));
-  }
-  const auto depth = [](const std::string& path) {
-    return std::ranges::count(path, '/');
-  };
-  std::ranges::stable_sort(matched,
-                           [&](const std::string& a, const std::string& b) {
-                             return depth(a) < depth(b);
-                           });
-  json paths = json::array();
-  for (std::string& path : matched) {
-    std::error_code ec;
-    if (!fs::is_regular_file(fs::symlink_status(root / path, ec)) ||
-        !Shown(root / path)) {
-      continue;
-    }
-    if (paths.size() == kFileFindMatches) {
-      more = true;
-      break;
-    }
-    paths.push_back(std::move(path));
-  }
-  return {{"paths", std::move(paths)}, {"more", more}};
-}
-
-struct Change {
-  std::string path;
-  char state;
-  bool untracked;
-};
-
-// What git reports as changed inside `folder`, by path from it: a repository
-// may hold more than the folder, as a home folder's dotfiles do, and the pane
-// shows only the folder. `-z` ends each entry with NUL and follows a rename's
-// entry with its old path, and names paths from the repository's top.
-// `pathspec` narrows it, so checking one file does not read the whole tree.
-struct Changes {
-  bool repository = false;
-  std::vector<Change> list;
-  bool more = false;
-};
-
-Changes ReadChanges(const fs::path& folder, const std::string& pathspec = ".") {
-  Changes changes;
-  const CapturedProcess prefix =
-      HostGit(folder.string(), {"rev-parse", "--show-prefix"});
-  if (!prefix.Ok()) return changes;
-  const std::string from_top = Trim(prefix.output);
-  const CapturedProcess status = HostGit(
-      folder.string(),
-      {"status", "--porcelain", "-z", "--untracked-files=all", "--", pathspec});
-  // Past the capture's limit, what arrived is still a list, cut.
-  if (!status.error.empty() ? status.output.empty() : !status.Ok()) {
-    return changes;
-  }
-  changes.repository = true;
-  changes.more = !status.error.empty();
-  const std::string out =
-      status.output.substr(0, status.output.rfind('\0') + 1);
-  for (size_t at = 0; at + 3 < out.size();) {
-    const size_t end = std::min(out.find('\0', at), out.size());
-    const std::string code = out.substr(at, 2);
-    std::string path =
-        out.substr(at + 3 + from_top.size(), end - at - 3 - from_top.size());
-    at = end + 1;
-    if (code.find_first_of("RC") != std::string::npos) {
-      at = std::min(out.find('\0', at), out.size()) + 1;
-    }
-    if (!Shown(folder / path)) continue;
-    if (changes.list.size() == kFileFindMatches) {
-      changes.more = true;
-      break;
-    }
-    const char state = code.find('D') != std::string::npos             ? 'D'
-                       : code.find('R') != std::string::npos           ? 'R'
-                       : code.find_first_of("A?") != std::string::npos ? 'A'
-                                                                       : 'M';
-    changes.list.push_back({std::move(path), state, code == "??"});
-  }
-  return changes;
-}
-
-// The change to `path` as a unified diff against HEAD, or an untracked file
-// against nothing. No program the repository names is run: git would take
-// an external diff or a textconv filter from its config.
-std::optional<json> ReadDiff(const fs::path& folder, const Changes& changes,
-                             const std::string& path) {
-  const auto found = std::ranges::find(changes.list, path, &Change::path);
-  if (found == changes.list.end()) return std::nullopt;
-  std::vector<std::string> args = {"diff", "--no-ext-diff", "--no-textconv",
-                                   "--no-color"};
-  // A repository without commits has no HEAD to compare with.
-  const bool head =
-      HostGit(folder.string(), {"rev-parse", "-q", "--verify", "HEAD"}).Ok();
-  const bool whole = found->untracked || !head;
-  if (whole) {
-    args.insert(args.end(), {"--no-index", "--", "/dev/null", path});
-  } else {
-    args.insert(args.end(), {"--relative", "HEAD", "--", ":(literal)" + path});
-  }
-  CapturedProcess diff = HostGit(folder.string(), args);
-  // With --no-index, exit code 1 means the files differ. Past the capture's
-  // limit, what arrived is the diff's start.
-  const bool more = !diff.error.empty();
-  if (more ? diff.output.empty() : diff.status < 0 || diff.status > whole) {
-    return std::nullopt;
-  }
-  return json{{"text", Utf8Prefix(std::move(diff.output), kFileViewBytes)},
-              {"more", more}};
-}
-
-// What a previewed page may load, by name: its pages, stylesheets, scripts,
-// data, fonts and media. Anything else in the folder stays out of reach.
-std::string PreviewMime(const fs::path& path) {
-  const std::string ext = AsciiLower(path.extension().string());
-  for (const auto& [suffix, mime] : {std::pair{".html", "text/html"},
-                                     {".htm", "text/html"},
-                                     {".css", "text/css"},
-                                     {".js", "text/javascript"},
-                                     {".mjs", "text/javascript"},
-                                     {".json", "application/json"},
-                                     {".woff2", "font/woff2"},
-                                     {".woff", "font/woff"},
-                                     {".ttf", "font/ttf"},
-                                     {".otf", "font/otf"}}) {
-    if (ext == suffix) return mime;
-  }
-  const std::string mime = AttachmentMime(path.string());
-  return mime.starts_with("image/") || mime.starts_with("audio/") ||
-                 mime.starts_with("video/")
-             ? mime
-             : std::string();
-}
 
 // The page may reach its own folder's address and Google Fonts, nothing else:
 // no connection, image or form can carry the address, and so its token, away.
@@ -318,28 +62,6 @@ int ParamNumber(const Request& request, const char* name, int fallback, int low,
 // from the folder's file names alone, so it runs unsandboxed: each slide
 // keeps its own sandbox in its frame, and its frame-ancestors let this page
 // hold it.
-std::string DeckPage(const fs::path& folder, int width, int height) {
-  std::vector<std::string> slides;
-  std::error_code error;
-  for (const auto& entry : fs::directory_iterator(folder, error)) {
-    if (entry.is_regular_file(error) && entry.path().extension() == ".html") {
-      slides.push_back(entry.path().filename().string());
-    }
-  }
-  std::ranges::sort(slides);
-  const std::string size =
-      std::to_string(width) + "px " + std::to_string(height) + "px";
-  std::string page =
-      "<!doctype html><meta charset=\"utf-8\"><style>@page{size:" + size +
-      ";margin:0}html,body{margin:0}iframe{display:block;border:0;width:" +
-      std::to_string(width) + "px;height:" + std::to_string(height) +
-      "px;break-after:page}</style>";
-  for (const std::string& slide : slides) {
-    page += "<iframe src=\"" + PercentEncode(slide) + "\"></iframe>";
-  }
-  return page;
-}
-
 // `script` inlined first in the page: after its doctype, so the page keeps
 // standards mode, and the parser puts it first in <head>.
 std::string WithScript(std::string html, const std::string& script) {
@@ -371,6 +93,47 @@ void Master::Files(const Request& request, Response& response) {
   if (modes != 1) {
     Error(response,
           "name one of list, read, raw, find, changes, diff, png or pdf");
+    return;
+  }
+  const std::string id = request.matches[1].str();
+  if (host_.WorkspaceOf(id).Remote()) {
+    const json target = host_.Execution(id);
+    if (target.is_null()) {
+      Error(response, "Host is disconnected. Choose Reconnect.", 503);
+      return;
+    }
+    execution::Client remote(execution::TargetFromJson(target));
+    json operation = {{"op", "files"}};
+    for (const char* mode :
+         {"list", "read", "raw", "find", "changes", "diff", "png", "pdf"}) {
+      if (!request.has_param(mode)) continue;
+      if (std::string_view(mode) == "png" || std::string_view(mode) == "pdf") {
+        Picture(request, response, fs::path(folder));
+        return;
+      }
+      operation["mode"] = mode;
+      operation["path"] = request.get_param_value(mode);
+    }
+    const json result = remote.Call(operation);
+    if (result.contains("error")) {
+      Error(response, JsonValue(result, "error", "Remote file unavailable"),
+            JsonValue(result, "status", 503));
+      return;
+    }
+    if (JsonValue(operation, "mode", "") == "raw") {
+      std::string bytes;
+      if (!HexDecode(JsonValue(result, "data", ""), bytes, kUploadBytes)) {
+        Error(response, "Invalid remote file", 502);
+        return;
+      }
+      std::string mime = RasterMime(bytes);
+      if (mime.empty()) mime = SvgMime(bytes);
+      const bool image = !mime.empty();
+      ServeFile(response, std::move(bytes), image ? mime : kOctetStreamMime,
+                JsonValue(result, "name", "file"),
+                image && !request.has_param("download"));
+    } else
+      Reply(response, result);
     return;
   }
   std::optional<fs::path> root = CanonicalDirectory(folder);
@@ -469,6 +232,29 @@ void Master::FileWrite(const Request& request, Response& response) {
   const json body = request.body.size() > kFileViewBytes + KiB(64)
                         ? json()
                         : json::parse(request.body, nullptr, false);
+  const std::string id = request.matches[1].str();
+  if (host_.WorkspaceOf(id).Remote()) {
+    if (!body.is_object()) {
+      Error(response, "invalid request", 400);
+      return;
+    }
+    const json target = host_.Execution(id);
+    if (target.is_null()) {
+      Error(response, "Host is disconnected. Choose Reconnect.", 503);
+      return;
+    }
+    execution::Client remote(execution::TargetFromJson(target));
+    json operation = body;
+    operation["op"] = "files";
+    operation["mode"] = "write";
+    const json result = remote.Call(operation);
+    if (result.contains("error"))
+      Error(response, JsonValue(result, "error", "Remote write failed"),
+            JsonValue(result, "status", 503));
+    else
+      Reply(response, result);
+    return;
+  }
   const std::optional<fs::path> root =
       folder.empty() ? std::nullopt : CanonicalDirectory(folder);
   if (!root || !body.is_object()) {
@@ -531,6 +317,48 @@ void Master::Preview(const Request& request, Response& response) {
     }
   }
   const std::string folder = session.empty() ? "" : host_.Folder(session);
+  if (!session.empty() && host_.WorkspaceOf(session).Remote()) {
+    const json target = host_.Execution(session);
+    const std::string* origin = ExpectedOrigin(request);
+    if (target.is_null() || !origin) {
+      Error(response, "Host is disconnected", 503);
+      return;
+    }
+    execution::Client remote(execution::TargetFromJson(target));
+    const bool deck = request.has_param("deck");
+    const json result =
+        remote.Call({{"op", "files"},
+                     {"mode", deck ? "deck" : "preview"},
+                     {"path", relative},
+                     {"width", ParamNumber(request, "w", 1920, 1, 8000)},
+                     {"height", ParamNumber(request, "h", 1080, 1, 8000)}});
+    std::string bytes;
+    if (result.contains("error") ||
+        (!deck &&
+         !HexDecode(JsonValue(result, "data", ""), bytes, kUploadBytes))) {
+      Error(response, JsonValue(result, "error", "not found"),
+            JsonValue(result, "status", 404));
+      return;
+    }
+    std::string mime = JsonValue(result, "mime", "text/html");
+    if (deck)
+      bytes = JsonValue(result, "text", "");
+    else if (mime == "text/html")
+      bytes = WithScript(std::move(bytes), design_helper_);
+    response.headers.erase("Content-Security-Policy");
+    response.headers.erase("Cross-Origin-Resource-Policy");
+    response.set_header(
+        "Content-Security-Policy",
+        deck ? "default-src " + *origin + "/preview/" + token +
+                   "/; style-src 'unsafe-inline'; frame-ancestors 'none'"
+             : PreviewPolicy(*origin, "/preview/" + token + "/"));
+    response.set_header("Cross-Origin-Resource-Policy", "cross-origin");
+    response.set_header("Access-Control-Allow-Origin", "*");
+    response.set_content(std::move(bytes), mime == "text/html"
+                                               ? "text/html; charset=utf-8"
+                                               : mime);
+    return;
+  }
   std::optional<fs::path> root =
       folder.empty() ? std::nullopt : CanonicalDirectory(folder);
   std::optional<fs::path> target =
@@ -577,10 +405,27 @@ void Master::Picture(const Request& request, Response& response,
                      const fs::path& root) {
   const bool pdf = request.has_param("pdf");
   const std::string path = request.get_param_value(pdf ? "pdf" : "png");
-  const std::optional<fs::path> target = Resolve(root, path);
+  std::optional<fs::path> target;
+  bool directory = false, regular = false;
+  const std::string session = request.matches[1].str();
+  if (host_.WorkspaceOf(session).Remote()) {
+    const json value = host_.Execution(session);
+    if (!value.is_null()) {
+      execution::Client remote(execution::TargetFromJson(value));
+      const json stat =
+          remote.Call({{"op", "files"}, {"mode", "stat"}, {"path", path}});
+      directory = JsonValue(stat, "directory", false);
+      regular = JsonValue(stat, "regular", false);
+      if (directory || regular) target = root / fs::path(path);
+    }
+  } else {
+    target = Resolve(root, path);
+    directory = target && fs::is_directory(*target);
+    regular = target && fs::is_regular_file(*target);
+  }
   const std::string base = PreviewBase(request.matches[1].str());
-  const bool deck = pdf && target && fs::is_directory(*target);
-  if (!target || !(deck || fs::is_regular_file(*target)) || base.empty()) {
+  const bool deck = pdf && directory;
+  if (!target || !(deck || regular) || base.empty()) {
     Error(response, "not found", 404);
     return;
   }

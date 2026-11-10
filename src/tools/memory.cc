@@ -34,6 +34,7 @@
 #include "include/core/runtime_config.h"
 #include "include/core/skills.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 #include "include/tools/files.h"
 
 namespace uagent {
@@ -66,6 +67,7 @@ struct RepositoryPaths {
 };
 
 RepositoryPaths Repository(const std::filesystem::path& cwd) {
+  if (Workspace().Remote()) return {Workspace().path, Workspace().path};
   std::filesystem::path identity = RepositoryIdentity(cwd);
   std::filesystem::path label =
       identity.filename() == ".git" ? identity.parent_path() : ProjectRoot(cwd);
@@ -87,7 +89,7 @@ std::filesystem::path MemoryDirectory(const std::string& scope,
   fs::path base = fs::path(GlobalBase()) / kMemoryDir;
   if (scope == "global") return base / "global";
   std::string name = SafeFileComponent(repo.label.filename().string()) + "-" +
-                     WorkspaceId(repo.identity.string());
+                     WorkspaceId(repo.identity.string(), Workspace().host);
   return base / "projects" / name;
 }
 
@@ -121,6 +123,7 @@ std::filesystem::path ClaudeMemoryDirectory(const RepositoryPaths& repo) {
 }
 
 std::optional<std::filesystem::path> CurrentWorkspace(std::string& error) {
+  if (Workspace().Remote()) return std::filesystem::path(Workspace().path);
   std::error_code code;
   std::filesystem::path cwd = std::filesystem::current_path(code);
   if (!code) return cwd;
@@ -585,7 +588,7 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
     AddMarkdownMemories(entries, fs::path(home) / ".codex" / "memories",
                         "codex", limit);
   }
-  if (!home.empty() && ReadsAgent("claude")) {
+  if (!Workspace().Remote() && !home.empty() && ReadsAgent("claude")) {
     AddMarkdownMemories(entries, ClaudeMemoryDirectory(repo), "claude", limit);
   }
   std::sort(entries.begin(), entries.end(),

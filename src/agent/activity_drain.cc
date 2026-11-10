@@ -29,6 +29,7 @@
 #include "include/core/output_buffer.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 #include "include/tools/tool.h"
 
@@ -302,6 +303,28 @@ bool Agent::DrainActivities(bool start_turn) {
   // after the memory-only pass, bypassing its receipt and audit handling.
   std::vector<ActivityCompletion> completions =
       ActivityTakeCompletedDetails(processes_);
+  if (processes_.RemoteWorkspace()) {
+    const json result = WorkspaceRequest({{"op", "completions"}});
+    if (const json* rows = JsonArray(result, "completions"))
+      for (const json& c : *rows) {
+        ActivityCompletion completion;
+        completion.activity_id = JsonValue(c, "activity_id", int64_t{0});
+        completion.status = JsonValue(c, "status", 0);
+        completion.command = JsonValue(c, "command", "");
+        completion.output = JsonValue(c, "output", "");
+        completion.hint = JsonValue(c, "hint", "");
+        completion.display_label = JsonValue(c, "display_label", "");
+        completion.started_ms = JsonValue(c, "started_ms", int64_t{0});
+        completions.push_back(std::move(completion));
+      }
+    const json* stopped = JsonObject(result, "stopped");
+    if (const json* rows = stopped ? JsonArray(*stopped, "ended") : nullptr)
+      for (const auto& e : *rows)
+        processes_.Stopped(
+            {JsonValue(e, "activity_id", int64_t{0}), JsonValue(e, "status", 0),
+             JsonValue(e, "output", ""), JsonValue(e, "duration_ms", 0.0),
+             JsonValue(e, "stopped", false)});
+  }
   for (ActivityCompletion& completion : completions) {
     if (completion.kind == ActivityKind::kMemory) {
       ReportMemoryCompletion(completion);
@@ -357,9 +380,10 @@ bool Agent::DrainAttachments() {
     for (const Attachment& attachment : sourced) {
       call_ids.push_back(attachment.source_call_id);
       // The tool's row shows the file, so a client needs its own copy.
-      json kept = keep_tool_file_
-                      ? keep_tool_file_(attachment.path, attachment.name)
-                      : json(nullptr);
+      json kept =
+          !attachment.asset_id.empty() ? AttachmentDisplayJson(attachment)
+          : keep_tool_file_ ? keep_tool_file_(attachment.path, attachment.name)
+                            : json(nullptr);
       if (kept.is_object()) {
         kept["image"] = attachment.image;
         files.push_back(std::move(kept));

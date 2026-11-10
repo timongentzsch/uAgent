@@ -11,6 +11,7 @@
 #include "include/agent/path_policy.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 
 namespace uagent {
@@ -34,6 +35,15 @@ bool ImageFile(const std::string& path) {
 std::optional<std::string> OptionImageIssue(const std::string& path) {
   if (!ImageFile(path)) {
     return "an option's image must be a .png, .jpg, .gif, .webp or .svg file";
+  }
+  if (Workspace().Remote()) {
+    const json checked = WorkspaceRequest(
+        {{"op", "check"}, {"tool", "read_path"}, {"args", {{"path", path}}}});
+    if (checked.contains("error") || checked.contains("issue") ||
+        JsonValue(checked, "approval", 2) != 0)
+      return "an option's image must be a readable file you made in the remote "
+             "folder";
+    return std::nullopt;
   }
   if (PathApprovalRequired(path, CanonicalCwd()) || HiddenPath(path) ||
       PathApprovalClass(path, PathAccess::kRead) != ApprovalClass::kNone) {

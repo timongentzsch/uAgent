@@ -70,17 +70,15 @@ export const requestId = () =>
     .map((value) => value.toString(16).padStart(2, "0"))
     .join("");
 
+// All views share the main's command receipts and event stream.
+const receipts = new Map<string, (outcome: Outcome) => void>();
 export function createApi(host = "") {
-  const prefix = host ? `/api/hosts/${host}` : "";
-  const routes = Object.fromEntries(
-    Object.entries(localRoutes).map(([key, value]) => [
-      key,
-      typeof value === "string"
-        ? prefix + value
-        : (...args: unknown[]) =>
-            prefix + (value as (...args: unknown[]) => string)(...args),
-    ]),
-  ) as typeof localRoutes;
+  const routes = {
+    ...localRoutes,
+    folder: (path: string) =>
+      localRoutes.folder(path) +
+      (host ? `&host=${encodeURIComponent(host)}` : ""),
+  };
   // A request to the host: a GET, or a POST of `body` as JSON. Resolves to the
   // parsed answer. A failure throws with `status` set when the host answered,
   // `network` when nothing did, and `rejected` when it refused a command.
@@ -89,17 +87,7 @@ export function createApi(host = "") {
     body?: unknown,
     options: RequestInit = {},
   ): Promise<T> {
-    if (
-      prefix &&
-      path.startsWith("/api/hosts/") &&
-      !path.startsWith(`${prefix}/`)
-    )
-      throw new Error("This resource belongs to another host.");
-    const target =
-      prefix && path.startsWith("/api/") && !path.startsWith(`${prefix}/`)
-        ? prefix + path
-        : path;
-    const response = await fetch(target, {
+    const response = await fetch(path, {
       credentials: "same-origin",
       cache: "no-store",
       ...(body === undefined
@@ -172,8 +160,6 @@ export function createApi(host = "") {
     return { ...page, text: parts.join("") };
   }
 
-  const receipts = new Map<string, (outcome: Outcome) => void>();
-
   // True when a command from this page waits on it: its caller shows the
   // outcome, so nothing else needs to.
   function receiveOutcome(outcome: Outcome) {
@@ -205,6 +191,15 @@ export function createApi(host = "") {
           v: protocol,
           request_id,
           kind,
+          ...([
+            "create",
+            "pins",
+            "terminal",
+            "config",
+            "restart_conversations",
+          ].includes(kind)
+            ? { host }
+            : {}),
           ...(session
             ? { session_id: session.id, generation: session.generation }
             : {}),

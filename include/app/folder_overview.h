@@ -14,7 +14,8 @@ namespace uagent {
 // days and the files those of today changed; `git` only where the folder is
 // a repository. Read from disk and git, never the network, and kept for a
 // few seconds.
-json FolderFacts(const std::string& folder);
+json FolderFacts(const std::string& folder, const std::string& host = "");
+json FolderGitFacts(const std::string& folder);
 // The same, with how many conversations there are, work and need you, and
 // which need you, as lines of text.
 std::string FolderOverviewText(const std::string& folder);

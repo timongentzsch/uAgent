@@ -223,7 +223,8 @@ void Master::PinsCommand(CommandCall& call) {
 void Master::RestartConversations(CommandCall& call) {
   call.outcome["result"] =
       host_.RestartRunning(JsonValue(call.command, "cwd", std::string()),
-                           JsonValue(call.command, "target_id", std::string()));
+                           JsonValue(call.command, "target_id", std::string()),
+                           JsonValue(call.command, "host", ""));
 }
 
 // The stop loop lets this reply go out before it stops the server.

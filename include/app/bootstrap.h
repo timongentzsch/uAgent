@@ -107,6 +107,7 @@ struct AppContext {
   std::map<std::string, std::shared_ptr<std::string>> root_passwords;
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
+  std::jthread remote_watch;
 };
 
 struct BootstrapResult {

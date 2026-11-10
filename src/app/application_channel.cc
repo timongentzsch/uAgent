@@ -16,6 +16,7 @@
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/workspace.h"
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
 #include "include/tools/memory.h"
@@ -36,8 +37,8 @@ int Application::RunChannel() {
   }
   SaveSession(true);
   used_before_ = UsageTotals();
-  if (AgentDepth() == 0 && api_.config.memory_enabled &&
-      api_.config.memory_generate) {
+  if (!Workspace().Remote() && AgentDepth() == 0 &&
+      api_.config.memory_enabled && api_.config.memory_generate) {
     std::string error = StartMemoryExtractor(
         runtime_.processes, api_, CanonicalAccessPath(CanonicalCwd()),
         session_file_);

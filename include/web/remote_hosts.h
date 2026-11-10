@@ -5,8 +5,8 @@
 #include <optional>
 #include <string>
 
+#include "include/app/execution.h"
 #include "include/core/json.h"
-#include "include/web/remote_proxy.h"
 namespace uagent::web {
 bool CheckRemoteBundle(const std::string& directory, std::string& error);
 
@@ -17,7 +17,8 @@ class RemoteHosts {
   ~RemoteHosts();
   json List() const;
   json Change(const json& action, std::string& error);
-  std::optional<RemoteEndpoint> Endpoint(const std::string& id) const;
+  json Target(const std::string& id, const std::string& cwd,
+              const std::string& runtime) const;
 
  private:
   struct Impl;

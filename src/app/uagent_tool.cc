@@ -16,6 +16,7 @@
 #include "include/core/lease.h"
 #include "include/core/project.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 namespace {
@@ -107,7 +108,8 @@ ToolResult Schedule(const json& arguments, const std::string& model) {
     if (action == "save") {
       // A new task runs where and on what this conversation does, in the
       // folder itself: a check's state and scripts are there.
-      json task = key.empty() ? json{{"cwd", CanonicalCwd()},
+      json task = key.empty() ? json{{"cwd", Workspace().path},
+                                     {"host", Workspace().host},
                                      {"model", model},
                                      {"environment", "local"}}
                               : current;
@@ -222,7 +224,7 @@ Tool UagentTool(SelfDescriptionProvider describe) {
       [describe = std::move(describe)](const json& arguments,
                                        const ToolContext&) -> ToolResult {
         if (JsonValue(arguments, "topic", "") == "instructions") {
-          return ToolSuccess(JsonDump(InstructionFiles(CanonicalCwd()), 2));
+          return ToolSuccess(JsonDump(InstructionFiles(Workspace().path), 2));
         }
         if (JsonValue(arguments, "topic", "") == "style") {
           return ToolSuccess(JsonDump(
@@ -388,7 +390,7 @@ bool InProject(const json& arguments) {
 std::filesystem::path EditedPath(const json& arguments) {
   return IsStyle(arguments)
              ? UserStylePath()
-             : InstructionPath(InProject(arguments), CanonicalCwd());
+             : InstructionPath(InProject(arguments), Workspace().path);
 }
 
 std::string EditedText(const json& arguments) {
@@ -435,7 +437,7 @@ Tool UagentFileTool() {
         const std::string error =
             IsStyle(arguments)
                 ? WriteUserStyle(text, base)
-                : WriteInstructionFile(InProject(arguments), CanonicalCwd(),
+                : WriteInstructionFile(InProject(arguments), Workspace().path,
                                        text, base);
         return error.empty()
                    ? ToolSuccess(std::string("saved. ") +

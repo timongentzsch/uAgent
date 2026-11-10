@@ -1,4 +1,3 @@
-import { HostScope } from "../../shared/host-scope.tsx";
 import { useEffect, useState } from "preact/hooks";
 import type { FunctionComponent } from "preact";
 import {
@@ -376,7 +375,6 @@ export default function Library({
   return (
     <div class="management library">
       <div class="management-toolbar">
-        <HostScope />
         <Input
           aria-label="Search library"
           type="search"

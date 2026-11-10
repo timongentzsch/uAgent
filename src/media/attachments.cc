@@ -910,6 +910,11 @@ ToolResult AttachmentQueue::Add(const std::string& path,
   if (!InspectAttachment(path, attachment, error)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments, error);
   }
+  attachment.source_call_id = std::move(source_call_id);
+  return Add(std::move(attachment));
+}
+
+ToolResult AttachmentQueue::Add(Attachment attachment) {
   std::string result =
       "attached " + attachment.name + "; queued for the next request";
   std::lock_guard<std::mutex> lock(mutex_);
@@ -920,7 +925,6 @@ ToolResult AttachmentQueue::Add(const std::string& path,
                        "too many attachments pending for one step (" +
                            std::to_string(MaxPendingAttachments()) + ")");
   }
-  attachment.source_call_id = std::move(source_call_id);
   pending_.push_back(std::move(attachment));
   return ToolSuccess(std::move(result));
 }
@@ -928,6 +932,20 @@ ToolResult AttachmentQueue::Add(const std::string& path,
 std::vector<Attachment> AttachmentQueue::Take() {
   std::lock_guard<std::mutex> lock(mutex_);
   return std::exchange(pending_, {});
+}
+
+std::vector<Attachment> AttachmentQueue::TakeForCall(
+    const std::string& call_id) {
+  std::lock_guard lock(mutex_);
+  std::vector<Attachment> result;
+  for (auto it = pending_.begin(); it != pending_.end();) {
+    if (it->source_call_id == call_id) {
+      result.push_back(std::move(*it));
+      it = pending_.erase(it);
+    } else
+      ++it;
+  }
+  return result;
 }
 
 AttachmentQueue& Attachments() {

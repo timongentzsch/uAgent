@@ -22,6 +22,7 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
+#include "include/core/workspace.h"
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
 #include "include/ui/display.h"
@@ -237,7 +238,7 @@ void HandleInstructions(const std::string& argument, CommandReply& reply) {
   std::istringstream words(argument);
   std::string action, scope;
   words >> action >> scope;
-  const std::string cwd = CanonicalCwd();
+  const std::string cwd = Workspace().path;
   if (action == "edit") {
     bool project = false;
     if (!ParseInstructionScope(scope, project)) {

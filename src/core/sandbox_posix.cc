@@ -39,6 +39,7 @@
 #include "include/core/skills.h"
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
+#include "include/core/workspace.h"
 
 // Everything that has to ask the host what it can enforce, and the Linux
 // trampoline that enforces it. The platform split lives inside this file so
@@ -600,6 +601,39 @@ const char* MechanismName() {
 }  // namespace
 
 const SandboxStatus& SandboxRuntime() {
+  if (Workspace().Remote()) {
+    // Immutable once per mode, exactly like the local policy cache. Failure
+    // refuses rather than describing the main's unrelated sandbox.
+    auto remote = [] {
+      SandboxStatus status;
+      status.mode = SandboxMode::kRefused;
+      status.reason = "Remote sandbox is unavailable.";
+      const json answer = WorkspaceRequest({{"op", "sandbox"}});
+      const json value =
+          json::parse(JsonValue(answer, "inheritance", ""), nullptr, false);
+      const int mode = JsonValue(value, "mode", -1);
+      if (mode >= 0 && mode <= 3 &&
+          SandboxPolicyFromJson(value.value("policy", json()),
+                                &status.policy)) {
+        status.mode = static_cast<SandboxMode>(mode);
+        status.reason = JsonValue(value, "reason", "");
+        status.preset = JsonValue(value, "preset", "");
+      }
+      return status;
+    };
+    static std::mutex mutex;
+    static std::map<ApprovalMode, SandboxStatus> cache;
+    std::lock_guard lock(mutex);
+    const auto mode = CurrentApprovalMode();
+    if (const auto found = cache.find(mode); found != cache.end())
+      return found->second;
+    SandboxStatus answer = remote();
+    if (answer.reason != "Remote sandbox is unavailable.")
+      return cache.emplace(mode, std::move(answer)).first->second;
+    static thread_local SandboxStatus refused;
+    refused = std::move(answer);
+    return refused;
+  }
   static const ConfiguredSandbox kConfigured = BuildStatus();
   // Each composed on first use, once and thread-safely, like the one above.
   switch (CurrentApprovalMode()) {
@@ -625,6 +659,9 @@ std::string SandboxInheritance() {
 }
 
 json SandboxDiagnosticJson() {
+  if (Workspace().Remote())
+    return WorkspaceRequest({{"op", "sandbox"}})
+        .value("diagnostic", json::object());
   const SandboxStatus& status = SandboxRuntime();
   switch (status.mode) {
     case SandboxMode::kOff:
@@ -751,6 +788,13 @@ std::vector<std::string> CandidateHiddenPaths() {
   // settings hold the API keys.
   std::vector<std::string> candidates = {browser, GlobalBase() + "/web",
                                          GlobalBase() + "/" + kConfigDir};
+  if (!ExecutionStateDirectory().empty()) {
+    candidates.push_back(std::filesystem::path(ExecutionStateDirectory())
+                             .parent_path()
+                             .parent_path()
+                             .string());
+    if (!home.empty()) candidates.push_back(home + "/" + kWorkspaceDir);
+  }
   if (!home.empty()) {
     for (std::string_view store : kHiddenCredentialStores) {
       candidates.push_back(home + "/" + std::string(store));

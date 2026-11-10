@@ -27,6 +27,7 @@
 #include "include/core/sandbox.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 #include "include/providers/providers.h"
 
@@ -750,7 +751,7 @@ void Agent::RefreshSystemMessage(bool force) {
 
 std::string Agent::RuntimeContextText() const {
   std::string content =
-      EnvironmentContext(LocalDay(), CanonicalCwd(),
+      EnvironmentContext(LocalDay(), Workspace().path,
                          ApprovalModeName(CurrentApprovalMode()),
                          SandboxWorkspaceRefusal()) +
       ModelImageInputInstruction(api_.capabilities.image_input,
@@ -818,7 +819,7 @@ void Agent::EnsureRuntimeContext() {
 }
 
 std::string Agent::ProjectInstructionText() const {
-  return "# AGENTS.md instructions for " + CanonicalCwd() +
+  return "# AGENTS.md instructions for " + Workspace().path +
          "\n\n<INSTRUCTIONS>\n" + project_instructions_.text +
          "\n</INSTRUCTIONS>";
 }

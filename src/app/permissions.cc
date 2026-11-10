@@ -19,6 +19,7 @@
 #include "include/core/runtime_config.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 namespace {
@@ -230,6 +231,11 @@ std::string RuleLabel(const PermissionRule& rule) {
 
 bool PathOutsideFolder(const json& arguments, const std::string& root) {
   const std::string path = JsonValue(arguments, "path", "");
+  if (Workspace().Remote() && !path.empty()) {
+    const json checked = WorkspaceRequest(
+        {{"op", "check"}, {"tool", "read_path"}, {"args", {{"path", path}}}});
+    return JsonValue(checked.value("scope", json::object()), "outside", true);
+  }
   return !path.empty() && !WithinWorkArea(path, root);
 }
 
@@ -264,7 +270,8 @@ bool RepositoryRuleAllows(const std::string& root, const Tool& tool,
   for (const json& held : file.Rules()) {
     PermissionRule rule{JsonValue(held, "tool", ""),
                         JsonValue(held, "match", "")};
-    if (JsonValue(held, "root", "") == root &&
+    if (JsonValue(held, "root", "") ==
+            WorkspaceIdentity{Workspace().host, root}.Key() &&
         RuleCovers(rule, tool, arguments, root, confined)) {
       if (matched) *matched = std::move(rule);
       return true;
@@ -278,8 +285,9 @@ bool RememberRepositoryRule(const std::string& root, const PermissionRule& rule,
   RulesFile file(error);
   if (!file.Usable()) return false;
   json& rules = file.Rules();
-  if (std::none_of(rules.begin(), rules.end(), RuleOf(root, &rule))) {
-    rules.push_back({{"root", root},
+  const std::string identity = WorkspaceIdentity{Workspace().host, root}.Key();
+  if (std::none_of(rules.begin(), rules.end(), RuleOf(identity, &rule))) {
+    rules.push_back({{"root", identity},
                      {"tool", rule.tool},
                      {"match", rule.match},
                      {"created", NowSeconds()}});
@@ -288,7 +296,7 @@ bool RememberRepositoryRule(const std::string& root, const PermissionRule& rule,
 }
 
 json PermissionRulesControl(const json& request) {
-  const std::string root = CanonicalCwd();
+  const std::string root = Workspace().Key();
   const std::string action = JsonValue(request, "action", "list");
   std::string error;
   RulesFile file(error);
@@ -446,7 +454,7 @@ AutoPermissionReview ReviewPermission(Api& api, const RouteResolution& route,
       {"state",
        {{"tool", call.tool.name},
         {"provider", call.tool.provider},
-        {"working_directory", CanonicalCwd()},
+        {"working_directory", Workspace().path},
         {"user_request", Utf8Prefix(call.user_request, kReviewerPreviewBytes)},
         {"action", Utf8Prefix(call.preview, kReviewerPreviewBytes)},
         {"action_truncated", call.preview.size() > kReviewerPreviewBytes}}},

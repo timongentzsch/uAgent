@@ -44,6 +44,8 @@ struct Options {
   // From the runtime launch, where the web host serves this session's
   // folder: the address its browser opens a page of the folder at.
   std::string preview;
+  uagent::json execution = nullptr;
+  std::string host;
   // UAGENT_* values named on the command line; they outrank the environment
   // and both config files. --budget and --no-memory land here too.
   // Setting names to values, as RuntimeConfig::Values spells it.

@@ -1,6 +1,7 @@
 """A local SSH stand-in: commands use another HOME; forwarding owns sockets."""
 
 import os
+import pathlib
 import signal
 import socket
 import subprocess
@@ -10,16 +11,20 @@ import time
 
 args = sys.argv[1:]
 control = args[args.index("-S") + 1]
-if "-O" in args:
+if "-O" in args and args[args.index("-O") + 1] == "check":
+    sys.exit(0 if os.path.exists(control) else 255)
+elif "-O" in args:
     with socket.socket(socket.AF_UNIX) as command:
         command.connect(control)
-        command.sendall(args[args.index("-L") + 1].encode())
+        command.sendall((args[args.index("-O")+1]+" "+args[args.index("-L") + 1]).encode())
         assert command.recv(2) == b"ok"
 elif "-M" not in args:
-    env = dict(os.environ, HOME=os.environ["UAGENT_TEST_SSH_HOME"])
+    env = {key:value for key,value in os.environ.items() if key in {"PATH","SHELL","LANG","TERM"} or key.startswith("LC_")}
+    env["HOME"] = (pathlib.Path(os.environ["HOME"]) / "ssh-fixture-home").read_text().strip()
     sys.exit(subprocess.call(["sh", "-c", args[-1]], env=env))
 else:
     peers = []
+    forwards = {}
 
     def stop(_signal, _frame):
         for peer in peers[:]:
@@ -37,12 +42,19 @@ else:
                 target.sendall(data)
         except OSError:
             pass
+        finally:
+            try: target.shutdown(socket.SHUT_WR)
+            except OSError: pass
 
     def forward(listener, target):
         while True:
-            source, _ = listener.accept()
+            try: source, _ = listener.accept()
+            except OSError: return
             destination = socket.socket(socket.AF_UNIX)
-            destination.connect(target)
+            try: destination.connect(target)
+            except OSError:
+                source.close(); destination.close()
+                continue
             peers.extend((source, destination))
             for first, second in ((source, destination), (destination, source)):
                 threading.Thread(target=copy, args=(first, second), daemon=True).start()
@@ -54,9 +66,17 @@ else:
         while True:
             command, _ = commands.accept()
             with command:
-                local, remote = command.recv(4096).decode().split(":", 1)
-                listener = socket.socket(socket.AF_UNIX)
-                listener.bind(local)
-                listener.listen()
-                threading.Thread(target=forward, args=(listener, remote), daemon=True).start()
+                action, spec = command.recv(4096).decode().split(" ",1)
+                local, remote = spec.split(":",1)
+                if action == "cancel":
+                    listener = forwards.pop(spec,None)
+                    if listener: listener.close()
+                    try: os.unlink(local)
+                    except FileNotFoundError: pass
+                elif spec not in forwards:
+                    listener = socket.socket(socket.AF_UNIX)
+                    listener.bind(local)
+                    listener.listen()
+                    forwards[spec] = listener
+                    threading.Thread(target=forward, args=(listener, remote), daemon=True).start()
                 command.sendall(b"ok")

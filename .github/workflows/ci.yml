@@ -140,7 +140,7 @@ jobs:
           # Same runtime and resources, with only the preview helper embedded.
           cmake -S . -B build -DUAGENT_EMBED_WEB=OFF
           cmake --build build --target uagent --parallel 4
-          python3 tests/integration.py build/uagent --group web -k remote_start -j 1
+          python3 tests/integration.py build/uagent --group web -k execution_start -j 1
           python3 .github/remote_bundle.py payload --prefix "$prefix" --binary build/uagent --target "${{ matrix.target }}" --out payloads
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

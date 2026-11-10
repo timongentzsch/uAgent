@@ -1,4 +1,4 @@
-import { HostScope } from "../../shared/host-scope.tsx";
+import { useHosts } from "../../app/hosts.tsx";
 import { useAction } from "../../shared/use-action.ts";
 import { usePushDirection } from "../../shared/motion.ts";
 import { tabDrafts, useStored } from "../../shared/storage.ts";
@@ -41,7 +41,8 @@ import { capitalize, permissionLabels } from "../../shared/display.ts";
 // The Scheduled page: tasks that run on a timetable or once, their next runs
 // and results, and the editor for one task.
 
-const blank = (cwd: string): ScheduledTask => ({
+const blank = (cwd: string, host = ""): ScheduledTask => ({
+  host,
   id: "",
   revision: "",
   name: "",
@@ -50,7 +51,7 @@ const blank = (cwd: string): ScheduledTask => ({
   cwd,
   model: "",
   permissions: "ask",
-  environment: "worktree",
+  environment: host ? "local" : "worktree",
   enabled: true,
   schedule: {
     type: "weekly",
@@ -105,6 +106,12 @@ export default function Scheduled({
     [host],
   );
   const [task, setTask] = useState(drafts.open.read);
+  const hosts = useHosts();
+  const taskProjects =
+    hosts?.sources
+      .find((source) => source.id === (task?.host || ""))
+      ?.state?.catalogue.sessions.map((session) => session.cwd || "")
+      .filter(Boolean) || projects;
   const moved = usePushDirection(!!task);
   const [prefs] = useStored(devicePrefs.time);
   // A run's moment by the viewer's time preferences, in its task's zone.
@@ -125,6 +132,7 @@ export default function Scheduled({
           value.prompt,
           value.check,
           value.cwd,
+          value.host,
           value.model,
           value.permissions,
           value.environment,
@@ -202,7 +210,6 @@ export default function Scheduled({
   return (
     <div class="management">
       <div class="management-toolbar">
-        <HostScope />
         <p class="muted">
           Runs while the uAgent host is open. Your browser can close.
         </p>
@@ -210,7 +217,7 @@ export default function Scheduled({
           variant="primary"
           disabled={!online || busy}
           onClick={() => {
-            chooseTask(blank(cwd || projects[0] || ""));
+            chooseTask(blank(cwd || projects[0] || "", host));
           }}
         >
           <Plus />
@@ -305,9 +312,27 @@ export default function Scheduled({
                         }
                       />
                     </Field>
+                    <Field label="Execution host">
+                      <Select
+                        value={task.host || ""}
+                        onChange={(event) =>
+                          edit({
+                            host: event.currentTarget.value,
+                            cwd: "",
+                            environment: "local",
+                          })
+                        }
+                      >
+                        {hosts?.sources.map((source) => (
+                          <option value={source.id} key={source.id}>
+                            {source.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
                     <ProjectField
                       value={task.cwd}
-                      projects={projects}
+                      projects={taskProjects}
                       change={(cwd) => edit({ cwd })}
                     />
                   </div>
@@ -465,7 +490,9 @@ export default function Scheduled({
                           })
                         }
                       >
-                        <option value="worktree">Git worktree</option>
+                        <option value="worktree" disabled={!!task.host}>
+                          Git worktree
+                        </option>
                         <option value="local">Local folder</option>
                       </Select>
                     </Field>

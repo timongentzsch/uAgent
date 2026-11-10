@@ -55,7 +55,9 @@ bool IsVideoMime(const std::string& mime);
 class AttachmentQueue {
  public:
   ToolResult Add(const std::string& path, std::string source_call_id = {});
+  ToolResult Add(Attachment attachment);
   std::vector<Attachment> Take();
+  std::vector<Attachment> TakeForCall(const std::string& call_id);
 
  private:
   std::mutex mutex_;

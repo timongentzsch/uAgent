@@ -22,6 +22,7 @@
 #include "include/api/client.h"
 #include "include/app/asset_store.h"
 #include "include/app/commands.h"
+#include "include/app/execution.h"
 #include "include/app/self_description.h"
 #include "include/app/session.h"
 #include "include/cli/cli.h"
@@ -41,6 +42,7 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
+#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 #include "include/providers/providers.h"
 #include "include/tools/memory.h"
@@ -272,7 +274,7 @@ void LogReady(const AppContext& context) {
       {"effective_config", context.config_manager.DiagnosticJson(config)}};
   ready.update(behavior);
   Emit(Event{EventId::kSessionReady, std::move(ready)});
-  ReportSandbox();
+  if (!Workspace().Remote()) ReportSandbox();
 }
 
 }  // namespace
@@ -310,6 +312,10 @@ AppContext::AppContext(RuntimeConfig config, ConfigManager manager,
       options(std::move(parsed_options)) {}
 
 AppContext::~AppContext() {
+  if (remote_watch.joinable()) {
+    remote_watch.request_stop();
+    remote_watch.join();
+  }
   if (channel) SetInteractiveReadHandler({});
 }
 
@@ -330,7 +336,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (options.show_system_prompt) {
     trusted = ProjectConfigTrusted(&trusted_snapshot);
   }
-  if (!options.show_system_prompt && !memory_child &&
+  if (!Workspace().Remote() && !options.show_system_prompt && !memory_child &&
       !ResolveProjectTrust(options, trusted, trusted_snapshot, error,
                            exit_code)) {
     return Failure(std::move(error), exit_code);
@@ -338,6 +344,12 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
   ConfigManager config_manager = ConfigManager::Capture(options.overrides);
   RuntimeConfig config = config_manager.Initialize();
+  auto remote = execution::CurrentClient();
+  if (remote && !remote->Open(error)) return Failure(error);
+  if (remote)
+    PrintWarning(
+        "Remote project MCP and browser file transfers are unavailable; "
+        "providers and global settings run on the main host.");
   PrintWarning(config_manager.Problem());
   if (headless && !config_manager.Problem().empty()) {
     fprintf(stderr, "uagent: %s\n", config_manager.Problem().c_str());
@@ -358,6 +370,24 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       std::make_unique<AppContext>(std::move(config), std::move(config_manager),
                                    std::move(options), observability, channel);
   channel_input.Transfer();
+  if (remote) {
+    context->runtime.processes.RemoteWorkspace(true);
+    context->remote_watch =
+        std::jthread([remote, supervisor = &context->runtime.processes](
+                         std::stop_token stop) {
+          uint64_t generation = 0;
+          while (!stop.stop_requested()) {
+            const json state = remote->Call({{"op", "activities"}});
+            const uint64_t next = JsonValue(state, "generation", uint64_t{0});
+            if (next != generation) {
+              generation = next;
+              supervisor->Wake();
+            }
+            for (int i = 0; i < 60 && !stop.stop_requested(); ++i)
+              std::this_thread::sleep_for(std::chrono::milliseconds(50));
+          }
+        });
+  }
   if ((!context->options.prompt.empty() || channel) &&
       !context->output.Silence()) {
     return Failure("cannot redirect headless output");

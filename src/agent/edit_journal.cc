@@ -14,6 +14,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 namespace {
@@ -110,7 +111,7 @@ json EditJournal::Files(int64_t turn) {
       ReadRegularFile(Blob(turn, entry.path), kUndoFileBytes, before, error);
     }
     if (!entry.after_hash.empty()) {
-      ReadRegularFile(entry.path, EditFileBytes(), after, error);
+      ReadWorkspaceFile(entry.path, EditFileBytes(), after, error);
     }
     const auto old_lines = DiffLines(before);
     const auto new_lines = DiffLines(after);
@@ -139,6 +140,21 @@ json EditJournal::Revert(int64_t turn, const std::string& path) {
     std::string reason, error;
     if (!entry.undoable) {
       reason = "not kept (binary or too large)";
+    } else if (Workspace().Remote()) {
+      std::string before;
+      if (entry.existed && !ReadRegularFile(Blob(turn, entry.path),
+                                            kUndoFileBytes, before, error))
+        reason = error;
+      else {
+        const json result = WorkspaceRequest(
+            {{"op", "undo"},
+             {"path", entry.path},
+             {"hash", entry.after_hash},
+             {"existed", entry.existed},
+             {"before", HexEncode(before)},
+             {"mode", entry.before_mode.value_or(kPrivateFileMode)}});
+        reason = JsonValue(result, "error", "");
+      }
     } else if (!Holds(entry.path, entry.after_hash)) {
       reason = "changed since";
     } else if (!entry.existed) {

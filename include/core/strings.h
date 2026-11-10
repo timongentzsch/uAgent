@@ -162,6 +162,8 @@ size_t TerminalWidth(int64_t reserved = 0);
 
 // Stable short digest for session and folder identity.
 std::string HashHex(const std::string& data);
+std::string HexEncode(std::string_view data);
+bool HexDecode(std::string_view data, std::string& bytes, size_t limit);
 
 // The one list of key stems that name a secret. Redaction policies differ by
 // input -- prose, config lines, URLs -- but they must agree on what a secret

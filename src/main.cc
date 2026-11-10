@@ -25,6 +25,7 @@ extern char** environ;
 #include "include/app/bootstrap.h"
 #include "include/app/config_proposal.h"
 #include "include/app/control.h"
+#include "include/app/execution.h"
 #include "include/app/session.h"
 #include "include/app/setup.h"
 #include "include/browser/browser.h"
@@ -256,19 +257,15 @@ int Main(int argc, char** argv) {
   }
   InitializeProcess();
   SetExecutablePath(argv[0]);
+  if (argc > 1 && (std::string_view(argv[1]) == "--execution-start" ||
+                   std::string_view(argv[1]) == "--execution-worker")) {
+    return execution::Main(argc, argv);
+  }
   if (argc == 3 && std::string_view(argv[1]) == "--check-remote-bundle") {
     std::string error;
     if (web::CheckRemoteBundle(argv[2], error)) return 0;
     fprintf(stderr, "%s\n", error.c_str());
     return 2;
-  }
-  if (argc == 2 && (std::string_view(argv[1]) == "--remote-start" ||
-                    std::string_view(argv[1]) == "--remote-stop-if-idle")) {
-    return web::RemoteStart(std::string_view(argv[1]) ==
-                            "--remote-stop-if-idle");
-  }
-  if (argc == 2 && std::string_view(argv[1]) == "--remote-host") {
-    return WebMain(Options{}, argv, RuntimeDir() + "/web.sock");
   }
   if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
     return session::WorkerMain(argc, argv);

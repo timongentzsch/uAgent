@@ -1,9 +1,6 @@
 // Copyright 2026 Timon Gentzsch
-#define CPPHTTPLIB_NO_EXCEPTIONS
-#define CPPHTTPLIB_NO_DEFAULT_USER_AGENT
 #include "include/web/remote_hosts.h"
 
-#include <httplib.h>
 #include <sys/socket.h>
 
 #include <algorithm>
@@ -20,6 +17,7 @@
 
 #include "include/core/build.h"
 #include "include/core/capture.h"
+#include "include/core/child_env.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/private_store.h"
@@ -30,7 +28,7 @@ namespace uagent::web {
 namespace {
 using Clock = std::chrono::steady_clock;
 struct Host {
-  std::string id, address, name, control, socket, log, cookie;
+  std::string id, address, name, control, socket, log, client, executable, auth;
   uint64_t generation = 0;
   mutable std::mutex mutex;
   std::condition_variable wake;
@@ -40,7 +38,7 @@ struct Host {
        failed = false;
   int retry = 0;
   pid_t pid = -1;
-  std::optional<RemoteEndpoint> endpoint;
+  bool endpoint = false;
 };
 bool Address(const std::string& address) {
   return !address.empty() && address.size() <= 255 && address[0] != '-' &&
@@ -62,6 +60,8 @@ std::vector<std::string> Ssh(const Host& host) {
           "-o",
           "ForwardAgent=no",
           "-o",
+          "SendEnv=-*",
+          "-o",
           "ControlMaster=no",
           host.address};
 }
@@ -69,7 +69,8 @@ CapturedProcess Run(const Host& host, const std::string& command,
                     const std::string& input = "") {
   auto argv = Ssh(host);
   argv.push_back(command);
-  return CaptureProcess(argv, 30, input);
+  ChildEnvironment environment({}, ChildEnvironmentPolicy::kUserShell);
+  return CaptureProcess(argv, 30, input, environment.Data());
 }
 void Close(Host& host) {
   if (host.pid > 0) StopProcess(host.pid, true, std::chrono::milliseconds(500));
@@ -147,30 +148,30 @@ bool Install(const Host& host, const std::string& executable,
     error = "Cannot read remote payload: " + read_error;
     return false;
   }
-  // A private staging directory and a remote lock serialize first install.
-  // The staged new executable asks the old host's authenticated admission
-  // gate to stop only when idle. Old hosts without that capability refuse.
+  // Immutable build directories let different mains coexist without stopping
+  // another user's execution process or replacing its resources.
   const std::string build(BuildIdentity());
   const std::string command =
-      "set -eu; umask 077; mkdir -p \"$HOME/.uagent/remote\"; "
-      "cd \"$HOME/.uagent/remote\"; mkdir install.lock || exit 73; "
-      "stage=$(mktemp -d \"$PWD/stage.XXXXXXXX\"); trap 'rm -rf \"$stage\"; "
-      "rmdir install.lock' EXIT; "
+      "set -eu; umask 077; mkdir -p \"$HOME/.uagent/remote/builds\"; "
+      "cd \"$HOME/.uagent/remote\"; "
+      "stage=$(mktemp -d \"$PWD/stage.XXXXXXXX\"); trap 'rm -rf \"$stage\"' "
+      "EXIT; "
       "cat > \"$stage/payload.tar.gz\"; cd \"$stage\"; " +
       std::string(mac ? "actual=$(shasum -a 256 payload.tar.gz)"
                       : "actual=$(sha256sum payload.tar.gz)") +
       "; test \"${actual%% *}\" = " + ShellQuote(hash) +
       "; tar -xzf payload.tar.gz; test \"$(./uagent --build-id)\" = " +
       ShellQuote(build) +
-      "; if test -x ../uagent && test \"$(../uagent --build-id)\" != " +
-      ShellQuote(build) +
-      "; then ./uagent --remote-stop-if-idle; fi; cd ..; "
-      "mkdir -p builds; rm \"$stage/payload.tar.gz\"; "
+      "; rm payload.tar.gz; cd ..; "
+      "if mkdir install.lock 2>/dev/null; then "
+      "trap 'rm -rf \"$stage\"; rmdir install.lock' EXIT; "
       "if test ! -d builds/" +
       build + "; then mv \"$stage\" builds/" + build +
       "; fi; "
-      "ln -s builds/" +
-      build + "/uagent uagent.new; mv -f uagent.new uagent";
+      "else for n in 1 2 3 4 5; do test ! -d install.lock && break; sleep 1; "
+      "done; "
+      "test -x builds/" +
+      build + "/uagent; fi";
   const auto installed = Run(host, command, bytes);
   if (!installed.Ok()) {
     const json detail = json::parse(installed.output, nullptr, false);
@@ -181,8 +182,8 @@ bool Install(const Host& host, const std::string& executable,
   }
   return true;
 }
-bool Connect(Host& host, const std::string& executable,
-             RemoteEndpoint& endpoint, std::string& error, bool& retryable) {
+bool Connect(Host& host, const std::string& executable, bool& endpoint,
+             std::string& error, bool& retryable) {
   retryable = false;
   Close(host);
   SpawnSpec spec;
@@ -205,7 +206,11 @@ bool Connect(Host& host, const std::string& executable,
                "ServerAliveCountMax=3",
                "-o",
                "ForwardAgent=no",
+               "-o",
+               "SendEnv=-*",
                host.address};
+  ChildEnvironment environment({}, ChildEnvironmentPolicy::kUserShell);
+  spec.environment = environment.Data();
   spec.group = SpawnSpec::Group::kOwn;
   Fd log(
       open(host.log.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600));
@@ -258,86 +263,26 @@ bool Connect(Host& host, const std::string& executable,
     error += " Details: " + host.log;
     return false;
   }
-  auto present = Run(host,
-                     "test -x \"$HOME/.uagent/remote/uagent\" && "
-                     "\"$HOME/.uagent/remote/uagent\" --build-id");
-  if ((!present.Ok() || Trim(present.output) != BuildIdentity()) &&
-      !Install(host, executable, error)) {
-    return false;
+  const std::string build(BuildIdentity());
+  // Administrators can share one read-only installation across OS accounts.
+  const std::string shared =
+      "/usr/local/lib/uagent/remote/" + build + "/uagent";
+  auto present = Run(host, "test -x " + ShellQuote(shared) + " && " +
+                               ShellQuote(shared) + " --build-id");
+  if (present.Ok() && Trim(present.output) == build) {
+    host.executable = ShellQuote(shared);
+  } else {
+    host.executable = "\"$HOME/.uagent/remote/builds/" + build + "/uagent\"";
+    present = Run(host, "test -x " + host.executable + " && " +
+                            host.executable + " --build-id");
+    if ((!present.Ok() || Trim(present.output) != build) &&
+        !Install(host, executable, error))
+      return false;
   }
-  auto startup = Run(host, "\"$HOME/.uagent/remote/uagent\" --remote-start");
-  const json identity = json::parse(startup.output, nullptr, false);
-  if (!startup.Ok() || JsonValue(identity, "build", "") != BuildIdentity()) {
-    error = JsonValue(identity, "error",
-                      "Remote build differs or startup failed. Update the "
-                      "remote host explicitly; active work was left running.");
-    return false;
-  }
-  endpoint.origin = JsonValue(identity, "origin", "");
-  const std::string remote_socket = JsonValue(identity, "socket", "");
-  const std::string code = JsonValue(identity, "pairing_code", "");
-  if ((!endpoint.origin.starts_with("http://127.0.0.1:") &&
-       endpoint.origin != "http://localhost") ||
-      (!remote_socket.empty() &&
-       (remote_socket[0] != '/' ||
-        remote_socket.find_first_of(":\n\r") != std::string::npos))) {
-    error = "Remote discovery returned an invalid endpoint.";
-    return false;
-  }
-  auto forwarding = Ssh(host);
-  forwarding.insert(
-      forwarding.begin() + 1,
-      {"-O", "forward", "-L",
-       host.socket + ":" +
-           (remote_socket.empty() ? "127.0.0.1:" + endpoint.origin.substr(17)
-                                  : remote_socket)});
-  auto forward = CaptureProcess(forwarding, 10);
-  if (!forward.Ok()) {
-    retryable = true;
-    error = "SSH could not forward the private remote API.";
-    return false;
-  }
-  chmod(host.socket.c_str(), 0600);
-  httplib::Client client(endpoint.origin);
-  client.set_address_family(AF_UNIX);
-  client.set_hostname_addr_map({{client.host(), host.socket}});
-  client.set_connection_timeout(5);
-  client.set_read_timeout(5);
-  if (!host.cookie.empty()) {
-    auto authorized = client.Get(
-        "/api/sessions",
-        httplib::Headers{{"Cookie", host.cookie}, {"Origin", endpoint.origin}});
-    if (authorized && authorized->status == 200) {
-      endpoint.cookie = host.cookie;
-      endpoint.socket = host.socket;
-      return true;
-    }
-  }
-  auto paired = client.Post(
-      "/api/auth", {{"Origin", endpoint.origin}},
-      JsonDump({{"code", code}, {"name", "Remote workspace gateway"}}),
-      "application/json");
-  if (!paired || paired->status != 200) {
-    retryable = !paired;
-    error = "Remote API authentication failed.";
-    return false;
-  }
-  const std::string cookie = paired->get_header_value("Set-Cookie");
-  endpoint.cookie = cookie.substr(0, cookie.find(';'));
-  endpoint.socket = host.socket;
-  host.cookie = endpoint.cookie;
-  std::string save_error;
-  if (!WritePrivateFile(GlobalBase() + "/web/remote-" + host.id + ".json",
-                        JsonDump({{"cookie", host.cookie}}), save_error)) {
-    error = "Cannot save the private remote credential: " + save_error;
-    return false;
-  }
-  if (endpoint.cookie.empty()) {
-    error = "Remote API did not issue a device credential.";
-    return false;
-  }
+  endpoint = true;
   return true;
 }
+
 void Work(Host& host, const std::string& executable, std::stop_token stop) {
   std::unique_lock lock(host.mutex);
   auto due = Clock::time_point::max();
@@ -347,7 +292,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       host.failed = false;
       // Invalidate in-flight streams before closing their SSH transport.
       // Their failures must not turn an explicit disconnect into a retry.
-      host.endpoint.reset();
+      host.endpoint = false;
       host.phase = "disconnected";
       host.error.clear();
       due = Clock::time_point::max();
@@ -360,7 +305,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       lock.unlock();
       Close(host);
       lock.lock();
-      host.endpoint.reset();
+      host.endpoint = false;
       host.retry = 0;
       host.phase = "reconnecting";
       due = Clock::now() + std::chrono::seconds(1);
@@ -369,7 +314,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       int status = 0;
       if (WaitPid(host.pid, &status, WNOHANG) == host.pid) {
         host.pid = -1;
-        host.endpoint.reset();
+        host.endpoint = false;
         host.retry = 0;
         host.phase = "reconnecting";
         due = Clock::now() + std::chrono::seconds(1);
@@ -381,7 +326,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
       host.attempting = true;
       ++host.generation;
       lock.unlock();
-      RemoteEndpoint endpoint;
+      bool endpoint = false;
       std::string error;
       bool retryable = false;
       const bool connected =
@@ -397,7 +342,7 @@ void Work(Host& host, const std::string& executable, std::stop_token stop) {
         due = Clock::time_point::max();
       } else {
         host.error = std::move(error);
-        host.endpoint.reset();
+        host.endpoint = false;
         constexpr int kDelays[] = {1, 2, 4, 8, 15};
         if (retryable && host.retry < 5) {
           host.phase = "reconnecting";
@@ -466,9 +411,21 @@ struct RemoteHosts::Impl {
   std::shared_ptr<Host> Add(const std::string& id, const std::string& address,
                             const std::string& name) {
     auto host = std::make_shared<Host>();
-    host->cookie = JsonValue(
-        ReadJsonFile(GlobalBase() + "/web/remote-" + id + ".json", KiB(4)),
-        "cookie", "");
+    const std::string private_path =
+        GlobalBase() + "/web/client-" + id + ".json";
+    const json private_identity = ReadJsonFile(private_path, KiB(4));
+    host->client = JsonValue(private_identity, "client", "");
+    host->auth = JsonValue(private_identity, "auth", "");
+    if (!OpaqueId(host->client) || !OpaqueId(host->auth)) {
+      host->client = RandomToken(16);
+      host->auth = RandomToken(32);
+      std::string error;
+      if (!WritePrivateFile(
+              private_path,
+              JsonDump({{"client", host->client}, {"auth", host->auth}}),
+              error))
+        return {};
+    }
     host->id = id;
     host->address = address;
     host->name = name;
@@ -578,27 +535,20 @@ json RemoteHosts::Change(const json& action, std::string& error) {
   host->wake.notify_all();
   return {{"id", host->id}};
 }
-std::optional<RemoteEndpoint> RemoteHosts::Endpoint(
-    const std::string& id) const {
+json RemoteHosts::Target(const std::string& id, const std::string& cwd,
+                         const std::string& runtime) const {
   std::lock_guard lock(impl_->mutex);
   const auto found = impl_->hosts.find(id);
-  if (found == impl_->hosts.end()) return {};
+  if (found == impl_->hosts.end()) return json();
   std::lock_guard state(found->second->mutex);
-  auto endpoint = found->second->endpoint;
-  if (endpoint) {
-    std::weak_ptr<Host> owner = found->second;
-    const uint64_t generation = found->second->generation;
-    endpoint->unavailable = [owner, generation] {
-      if (auto host = owner.lock()) {
-        std::lock_guard endpoint_lock(host->mutex);
-        if (host->endpoint && host->generation == generation &&
-            !host->disconnect) {
-          host->failed = true;
-          host->wake.notify_all();
-        }
-      }
-    };
-  }
-  return endpoint;
+  const Host& host = *found->second;
+  if (!host.endpoint || host.disconnect) return json();
+  return {{"address", host.address},
+          {"control", host.control},
+          {"executable", host.executable},
+          {"client", host.client},
+          {"auth", host.auth},
+          {"runtime", runtime},
+          {"cwd", cwd}};
 }
 }  // namespace uagent::web

@@ -34,6 +34,7 @@
 #include "include/core/file_watch.h"
 #include "include/core/json.h"
 #include "include/core/thread_annotations.h"
+#include "include/core/workspace.h"
 
 namespace uagent::session {
 
@@ -89,6 +90,7 @@ struct HostSession {
   std::string run_id, task_id, launch_prompt, run_result;
   bool run_checkpoint = false, stop_sent = false;
   json launch = json::object();
+  std::string host;
   std::string id, path, cwd, title, draft_title, generation, error, binary;
   SessionStatus status = SessionStatus::kSaved;
   // `parent` names the session that started an agent; `model` is the one
@@ -212,7 +214,8 @@ class SessionHost {
   // Marks running runtimes (all, those in `cwd`, or the one named `only`)
   // for a fresh start that keeps their history: idle ones now, busy ones
   // when their turn ends.
-  json RestartRunning(const std::string& cwd, const std::string& only = "");
+  json RestartRunning(const std::string& cwd, const std::string& only = "",
+                      const std::string& host = "");
   json CommandOutcome(const std::string& worker_request,
                       const std::string& client_request) const {
     return outcomes_.CommandOutcome(worker_request, client_request);
@@ -244,6 +247,13 @@ class SessionHost {
   std::string AssetPath(const std::string& id) const;
   // The folder a conversation works in.
   std::string Folder(const std::string& id) const;
+  WorkspaceIdentity WorkspaceOf(const std::string& id) const;
+  json Execution(const std::string& id) const;
+  using RemoteTarget = std::function<json(
+      const std::string&, const std::string&, const std::string&)>;
+  void SetRemoteTarget(RemoteTarget target) {
+    remote_target_ = std::move(target);
+  }
   AssetStoreResult StoreAsset(const std::string& session_id,
                               const std::string& bytes, std::string name);
   // Deletes a file the agent shared in a conversation, its record and its
@@ -332,11 +342,10 @@ class SessionHost {
   void Record(const std::string& session, const std::string& generation,
               json value, bool run_owned);
   bool PublishMetadata(const std::string& id, HostSession& session);
-  std::shared_ptr<HostSession> CreateSession(const std::string& cwd,
-                                             const std::string& path,
-                                             const std::string& title,
-                                             std::string& error)
-      UAGENT_REQUIRES(mutex_);
+  std::shared_ptr<HostSession> CreateSession(
+      const std::string& cwd, const std::string& path, const std::string& title,
+      std::string& error, const std::string& host = {}) UAGENT_REQUIRES(mutex_);
+  RemoteTarget remote_target_;
   Connection OpenRuntime(const HostSession& session, bool create,
                          std::string& error) const;
   // False when the frame changed nothing a browser shows.

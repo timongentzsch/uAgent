@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "include/app/bootstrap.h"
+#include "include/app/execution.h"
 #include "include/app/folder_overview.h"
 #include "include/app/self_description.h"
 #include "include/app/session_host.h"
@@ -342,6 +343,7 @@ bool Master::Initialize(std::string& error) {
   }
   remotes_ = std::make_unique<RemoteHosts>(executable_);
   RegisterRemoteRoutes();
+  LoadRemoteTerminals();
   RegisterApiRoutes();
   RegisterTerminalRoutes();
   if (!browser::DataDirectory().empty()) RegisterBrowserRoutes();
@@ -630,7 +632,28 @@ void Master::RegisterApiRoutes() {
                 Search(request, response);
               });
   // A folder at a glance, for its overview: spend, changes and git.
-  server_.Get("/api/folder", [](const Request& request, Response& response) {
+  server_.Get("/api/folder", [this](const Request& request,
+                                    Response& response) {
+    const std::string host = request.get_param_value("host");
+    if (!host.empty()) {
+      const std::string path = request.get_param_value("path");
+      const json target =
+          remotes_->Target(host, path, HashHex("folder:" + path));
+      if (target.is_null()) {
+        Error(response, "Host is disconnected. Choose Connect or Reconnect.",
+              503);
+        return;
+      }
+      execution::Client remote(execution::TargetFromJson(target));
+      json facts = remote.Call({{"op", "folder"}});
+      if (facts.contains("error")) {
+        Error(response, JsonValue(facts, "error", "Remote unavailable"), 503);
+        return;
+      }
+      facts.update(FolderFacts(path, host));
+      Reply(response, facts);
+      return;
+    }
     const std::optional<std::filesystem::path> folder =
         CanonicalDirectory(request.get_param_value("path"));
     if (!folder) {

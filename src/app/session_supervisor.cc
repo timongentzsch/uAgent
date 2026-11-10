@@ -97,7 +97,7 @@ std::string SessionHost::RunResultFor(const std::string& outcome) {
 
 std::shared_ptr<HostSession> SessionHost::CreateSession(
     const std::string& cwd, const std::string& path, const std::string& title,
-    std::string& error) {
+    std::string& error, const std::string& host) {
   if (sessions_.size() >= kMaxSessions) {
     error = "session catalogue limit reached";
     return {};
@@ -110,6 +110,7 @@ std::shared_ptr<HostSession> SessionHost::CreateSession(
   }
   auto session = std::make_shared<HostSession>();
   session->cwd = cwd;
+  session->host = host;
   session->path = path;
   session->id = SessionIdFor(path);
   session->title = title.empty() ? "New conversation" : title;
@@ -130,6 +131,7 @@ bool SessionHost::WriteDraft(const HostSession& session,
   return WritePrivateFile(
       directory_ + "/" + kDraftsDir + "/" + session.id + ".json",
       JsonDump({{"cwd", session.cwd},
+                {"host", session.host},
                 {"path", session.path},
                 {"id", session.id},
                 {"title", title},
@@ -156,6 +158,16 @@ Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
     if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
     options.overrides["UAGENT_APPROVAL"] =
         JsonValue(session.launch, "permissions", "ask");
+  }
+  options.host = session.host;
+  if (!session.host.empty()) {
+    options.execution =
+        remote_target_ ? remote_target_(session.host, session.cwd, session.id)
+                       : json();
+    if (options.execution.is_null()) {
+      error = "Remote host is disconnected. Choose Connect or Reconnect.";
+      return {};
+    }
   }
   if (preview_) options.preview = preview_(session.id);
   Connection connection = create ? Open(executable_, session.cwd, session.path,

@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
-#ifndef UAGENT_INCLUDE_WEB_TERMINAL_H_
-#define UAGENT_INCLUDE_WEB_TERMINAL_H_
+#ifndef UAGENT_INCLUDE_APP_TERMINAL_H_
+#define UAGENT_INCLUDE_APP_TERMINAL_H_
 // The web host's terminals: login shells of the user's on a PTY, unsandboxed.
 // A folder's shell keeps its recent output so any device can attach again; a
 // shell of no folder (the page's own) ends with its viewer. The agent never
@@ -21,7 +21,7 @@
 #include "include/core/fd.h"
 #include "include/core/thread_annotations.h"
 
-namespace uagent::web {
+namespace uagent {
 
 struct TerminalShell;
 
@@ -117,6 +117,6 @@ class Terminals {
   std::thread loop_;
 };
 
-}  // namespace uagent::web
+}  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_WEB_TERMINAL_H_
+#endif  // UAGENT_INCLUDE_APP_TERMINAL_H_

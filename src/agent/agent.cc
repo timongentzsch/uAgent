@@ -31,6 +31,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
+#include "include/core/workspace.h"
 #include "include/providers/providers.h"
 
 namespace uagent {
@@ -405,7 +406,8 @@ SessionRecord Agent::Snapshot() const {
   // Named, not positional: fifteen fields across the two structs, several of
   // them adjacent same-typed strings and integers, so a field inserted in the
   // header would silently reassign the rest of the save.
-  record.metadata = {.cwd = CanonicalCwd(),
+  record.metadata = {.cwd = Workspace().path,
+                     .host = Workspace().host,
                      .model = api_.model,
                      .session_id = session_id_,
                      .turns = UserTurns(),

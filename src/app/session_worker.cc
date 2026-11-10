@@ -21,6 +21,7 @@
 #include "include/app/agent_link.h"
 #include "include/app/asset_store.h"
 #include "include/app/bootstrap.h"
+#include "include/app/execution.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/app/session_command.h"
@@ -35,6 +36,7 @@
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/core/turn_status.h"
+#include "include/core/workspace.h"
 
 namespace uagent::session {
 namespace {
@@ -829,8 +831,17 @@ int WorkerMain(int argc, char** argv) {
   json launch = json::parse(bytes, nullptr, false);
   if (!launch.is_object()) return kWorkerBadLaunch;
   // Before anyone can connect: a runtime that cannot work never answers.
-  if (chdir(argv[2]) != 0) return kWorkerNoWorkspace;
   Options options = OptionsFromLaunch(launch);
+  if (options.host.empty()) {
+    if (chdir(argv[2]) != 0) return kWorkerNoWorkspace;
+  } else {
+    const std::string local = RuntimeDir() + "/remote-cwd/" + argv[4];
+    if (!EnsurePrivateDirectory(local) || chdir(local.c_str()) != 0)
+      return kWorkerNoWorkspace;
+    SetWorkspace({options.host, argv[2]});
+    execution::SetClient(std::make_shared<execution::Client>(
+        execution::TargetFromJson(options.execution)));
+  }
   // An agent's role is fixed at its start and afterwards read back from its
   // own header.
   json agent = AgentOf(SessionHeader(argv[3]));

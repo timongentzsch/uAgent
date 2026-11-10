@@ -46,6 +46,5 @@ struct WebOptions {
 // argv is the host's own command line: a restart from the settings re-execs
 // it after a clean shutdown.
 int MasterMain(const WebOptions& options, char** argv);
-int RemoteStart(bool stop = false);
 }  // namespace uagent::web
 #endif

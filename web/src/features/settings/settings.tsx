@@ -1,4 +1,3 @@
-import { HostScope } from "../../shared/host-scope.tsx";
 import { useHosts } from "../../state/sources.ts";
 import { nameOf } from "../../shared/file-types.ts";
 import "./settings.css";
@@ -117,10 +116,6 @@ export default function Settings(props: SettingsProps) {
           class={moved && "push"}
         />
         <div ref={body} class={moved ? "settings-pane push" : "settings-pane"}>
-          <HostScope
-            settings={current}
-            device={current === "host" || current === "browser"}
-          />
           {!phone && <h3 class="settings-pane-title">{title}</h3>}
           <p class="settings-scope">{describe(session?.cwd)}</p>
           {pages[current]}

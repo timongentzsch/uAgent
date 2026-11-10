@@ -23,6 +23,7 @@
 #include "include/agent/session_store.h"
 #include "include/agent/transcript.h"
 #include "include/app/agent_link.h"
+#include "include/app/execution.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/core/config_registry.h"
@@ -33,6 +34,7 @@
 #include "include/core/project.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 namespace {
@@ -130,7 +132,7 @@ std::string Start(const std::string& own, const Launch& launch,
     if (!PathExists(path)) child.path = path;
   }
   if (child.path.empty()) return "no free agent id";
-  std::string cwd = CanonicalCwd();
+  std::string cwd = Workspace().path;
   if (launch.edits == "worktree") {
     cwd = UagentDir(kWorktreesDir) + "/" +
           std::filesystem::path(child.path).stem().string();
@@ -140,6 +142,18 @@ std::string Start(const std::string& own, const Launch& launch,
     }
   }
   Options options;
+  if (auto remote = execution::CurrentClient()) {
+    const auto target = remote->ChildTarget(SessionIdFor(child.path));
+    options.host = Workspace().host;
+    options.execution = {{"address", target.address},
+                         {"control", target.control},
+                         {"executable", target.executable},
+                         {"client", target.client},
+                         {"auth", target.auth},
+                         {"sandbox", target.sandbox},
+                         {"runtime", target.runtime},
+                         {"cwd", target.cwd}};
+  }
   options.session = {{"agent",
                       {{"parent", SessionIdFor(own)},
                        {"edits", launch.edits},
@@ -266,6 +280,10 @@ ToolResult StartAgents(const Api& api,
   }
   // Plan mode only reads, and so do the agents it starts.
   if (CurrentApprovalMode() == ApprovalMode::kPlan) launch.edits = "none";
+  if (launch.edits == "worktree" && Workspace().Remote())
+    return ToolFailure(
+        ToolErrorCode::kUnavailable,
+        "Remote worktree agents are unavailable; use edits folder or none.");
   if (launch.edits == "worktree" && !InGitRepository(CanonicalCwd())) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "this folder is not in git, so there is no worktree; "
@@ -460,6 +478,20 @@ ToolResult Report(const SessionInfo& info) {
 
 // What it changed, from the host's git, never a model-run shell.
 ToolResult Diff(const SessionInfo& info) {
+  if (!info.host.empty()) {
+    if (info.host != Workspace().host || info.cwd != Workspace().path)
+      return Unavailable("Open the remote conversation to inspect its files.");
+    const ToolResult result = execution::DecodeResult(WorkspaceRequest(
+        {{"op", "run"},
+         {"tool", "run"},
+         {"args",
+          {{"command",
+            "git -c core.hooksPath=/dev/null -c core.fsmonitor=false diff "
+            "--no-ext-diff --no-textconv --stat --patch HEAD"},
+           {"description", "Inspect changes"},
+           {"yield_ms", 10000}}}}));
+    return result;
+  }
   auto diff = HostGit(info.cwd, {"diff", "--no-ext-diff", "--no-textconv",
                                  "--stat", "--patch", "HEAD"});
   if (!diff.Ok()) {
@@ -481,7 +513,8 @@ ToolResult Delete(const SessionInfo& info) {
 std::string Row(const SessionInfo& info) {
   return SessionIdFor(info.path) + " " + RuntimeStatus(info.path) + " · " +
          OneLine(info.title) +
-         (LaunchWorktree(info.cwd) ? " · " + info.cwd : "");
+         (info.host.empty() && LaunchWorktree(info.cwd) ? " · " + info.cwd
+                                                        : "");
 }
 
 ToolResult Agents(const json& a) {

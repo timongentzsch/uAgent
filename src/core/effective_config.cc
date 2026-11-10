@@ -16,6 +16,7 @@
 #include "include/core/runtime_config.h"
 #include "include/core/settings_store.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 
 extern char** environ;
 
@@ -65,7 +66,7 @@ ConfigManager ConfigManager::Capture(RuntimeConfig::Values cli,
     process[value.substr(0, equal)] = value.substr(equal + 1);
   }
   return ConfigManager(std::move(process), std::move(cli),
-                       folder ? std::move(*folder) : CanonicalCwd());
+                       folder ? std::move(*folder) : Workspace().Key());
 }
 
 ConfigManager::ConfigManager(RuntimeConfig::Values process,

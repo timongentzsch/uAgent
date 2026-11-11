@@ -2,12 +2,11 @@
 
 #ifndef UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
 #define UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
-// The uagent tools: the model inspects this build, proposes (never applies)
-// a change to its settings, instructions or stylesheet, and manages
-// scheduled tasks.
+// The uagent tool: the model inspects this build and proposes (never
+// applies) a change to its settings or to a file that shapes it. And the
+// schedule tool, which manages scheduled tasks.
 
 #include <functional>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -24,19 +23,16 @@ using ConfigProposalFactory = std::function<ConfigProposal(
 
 using SelfDescriptionProvider =
     std::function<json(SelfTopic, const std::string&)>;
-using ConfigApprovals = ApprovedProposals<ConfigProposal>;
 
-// Inspects this build; offered everywhere.
-Tool UagentTool(SelfDescriptionProvider describe);
-
-// The two writing tools, offered only where a person can approve. Each
-// prepares and previews; the mandatory-human approval lane decides, and only
-// what was approved is written. There is deliberately no commit argument the
-// model can set.
-Tool UagentConfigureTool(const ConfigProposalFactory& prepare,
-                         const std::shared_ptr<ConfigApprovals>& store);
-// Replaces an instructions file or the web UI's stylesheet.
-Tool UagentFileTool();
+// One tool, by `action`. show inspects and is offered everywhere. set (the
+// settings) and write (an instructions file, the stylesheet, the system
+// message's changes, the folder's .mcp.json, a skill) prepare and preview;
+// the mandatory-human approval lane decides, and only what was approved is
+// written. There is deliberately no commit argument the model can set.
+// Without `prepare`, where nobody can approve or the policy forbids changes,
+// the tool only shows and its schema offers nothing else.
+Tool UagentTool(SelfDescriptionProvider describe,
+                ConfigProposalFactory prepare = nullptr);
 
 // Scheduled tasks for this folder, approved like any other change: a task
 // runs on `model` (the conversation's, read at each call) with no more

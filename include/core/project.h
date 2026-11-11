@@ -78,24 +78,29 @@ ProjectInstructions LoadProjectInstructions(const std::filesystem::path& cwd,
 // file the loader picks up there (nested AGENTS.md, CLAUDE.md fallbacks).
 json InstructionFiles(const std::filesystem::path& cwd);
 
-// Replaces one instruction file; returns the error, or empty. With `base`,
-// the text the editor started from, a file changed since then is kept: two
-// editors never silently overwrite each other.
+// Replaces a file a person edits, given its text now (`current`); returns
+// the error, or empty. With `base`, the text the editor started from, a file
+// changed since then is kept: two editors never silently overwrite each
+// other. A `shared` file is a folder's, which others read; any other is
+// created private.
+std::string WriteEditedFile(const std::filesystem::path& path,
+                            const std::string& current, const std::string& text,
+                            const std::optional<std::string>& base,
+                            bool shared);
+
+// Replaces one instruction file, as WriteEditedFile does.
 std::string WriteInstructionFile(bool project, const std::filesystem::path& cwd,
                                  const std::string& text,
                                  const std::optional<std::string>& base = {});
 
 // The stylesheet a person keeps for the web UI, in µAgent's private config
 // folder. It overrides the app's design tokens: the web host serves it at
-// /api/user.css, and the app adds it after its own sheets.
+// /api/user.css, and the app adds it after its own sheets. An empty one is
+// the default look.
 std::filesystem::path UserStylePath();
 inline constexpr size_t kUserStyleBytes = size_t{64} * 1024;
 // Its text, empty when there is none.
 std::string ReadUserStyle();
-// Replaces it, as WriteInstructionFile does an instruction file; empty text
-// resets the look.
-std::string WriteUserStyle(const std::string& text,
-                           const std::optional<std::string>& base = {});
 
 // The sections of the system message a person changed, in µAgent's private
 // config folder: {"replace": {"## Scratch": "..."}, "append": "..."}.

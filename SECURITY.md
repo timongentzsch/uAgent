@@ -46,7 +46,7 @@ In every mode:
     the instruction files, which hold no credential;
   - reading, through the file tools, one of your folders that the sandbox
     closes to commands (see **Reads** below);
-  - the `uagent_configure` and `uagent_file` tools;
+  - the `uagent` tool's `set` and `write`;
   - `run(sandbox=false)`, and `run(root=true)`.
 
 An **agent**, a conversation another one started, acts for you unattended.
@@ -364,7 +364,8 @@ unconfined, and a changed entry asks again like any other change to the file.
 
 **Not confined by the sandbox:** the built-in file tools (approval and path
 checks govern them; they reach `.mcp.json`, and the `uagent` tool reaches the
-saved settings, with mandatory human approval for each change), an MCP
+saved settings, `.mcp.json`, your stylesheet, system message, instructions
+and skills, with mandatory human approval for each change), an MCP
 server that opts out, and the µAgent process of a memory extraction (its
 commands are confined).
 

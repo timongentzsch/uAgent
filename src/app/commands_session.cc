@@ -233,7 +233,7 @@ void HandleStatus(const AppSession& session, CommandReply& reply) {
 }
 
 // The person edits instruction files directly here, so no approval stands
-// between them and the file; an agent asks through uagent_file.
+// between them and the file; an agent asks through uagent.
 void HandleInstructions(const std::string& argument, CommandReply& reply) {
   std::istringstream words(argument);
   std::string action, scope;
@@ -517,8 +517,12 @@ void HandleTools(AppSession& session, const std::string& argument,
 }
 
 SelfDescriptionInputs DescriptionInputs(const AppSession& session) {
-  return {session.context.config_manager, session.Runtime().config,
-          session.ApiClient(), session.context.tools, &session.ActiveAgent()};
+  return {session.context.config_manager,
+          session.Runtime().config,
+          session.ApiClient(),
+          session.context.tools,
+          session.Runtime().mcp,
+          &session.ActiveAgent()};
 }
 
 }  // namespace uagent

@@ -192,10 +192,6 @@ json InstructionFiles(const std::filesystem::path& cwd) {
   return {{"files", std::move(files)}, {"also_loaded", std::move(also)}};
 }
 
-namespace {
-// Replaces a file a person edits, given its text as they saw it (`current`).
-// With `base`, a file changed since the editor opened it is kept: two
-// editors never silently overwrite each other.
 std::string WriteEditedFile(const std::filesystem::path& path,
                             const std::string& current, const std::string& text,
                             const std::optional<std::string>& base,
@@ -216,8 +212,6 @@ std::string WriteEditedFile(const std::filesystem::path& path,
                   shared ? kSharedFileMode : kPrivateFileMode, true, error);
   return error;
 }
-
-}  // namespace
 
 std::string WriteInstructionFile(bool project, const std::filesystem::path& cwd,
                                  const std::string& text,
@@ -242,16 +236,6 @@ std::filesystem::path UserStylePath() {
 
 std::string ReadUserStyle() {
   return ReadFile(UserStylePath().string(), kUserStyleBytes).value_or("");
-}
-
-std::string WriteUserStyle(const std::string& text,
-                           const std::optional<std::string>& base) {
-  if (text.size() > kUserStyleBytes) {
-    return "the stylesheet is at most " +
-           std::to_string(kUserStyleBytes / 1024) + " KiB";
-  }
-  return WriteEditedFile(UserStylePath(), ReadUserStyle(), text, base,
-                         /*shared=*/false);
 }
 
 std::filesystem::path SavedPromptPath() {

@@ -3,7 +3,6 @@
 #include "include/app/self_description.h"
 
 #include <algorithm>
-#include <memory>
 #include <string>
 #include <utility>
 #include <variant>
@@ -24,6 +23,7 @@
 #include "include/core/env.h"
 #include "include/core/sandbox.h"
 #include "include/core/strings.h"
+#include "include/mcp/register.h"
 #include "include/providers/providers.h"
 #include "include/tools/browser.h"
 #include "include/tools/registry.h"
@@ -44,7 +44,7 @@ constexpr TopicName kTopics[] = {
     {SelfTopic::kStatus, "status"},     {SelfTopic::kCli, "cli"},
     {SelfTopic::kCommands, "commands"}, {SelfTopic::kConfig, "config"},
     {SelfTopic::kPrompt, "prompt"},     {SelfTopic::kTools, "tools"},
-    {SelfTopic::kRoutes, "routes"},
+    {SelfTopic::kRoutes, "routes"},     {SelfTopic::kMcp, "mcp"},
 };
 
 json DescriptorJson(const ConfigDescriptor& descriptor) {
@@ -312,9 +312,18 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
           "A named model route resolves by its own name; any other id is "
           "provider/model. Ids a provider serves are not enumerated here — "
           "only what this build is configured to reach; change providers with "
-          "uagent_configure.";
+          "uagent set.";
       break;
     }
+    case SelfTopic::kMcp:
+      // Not a server's command line or its log: either can carry a
+      // credential.
+      out["servers"] = json::array();
+      for (const json& server : McpStatus(inputs.mcp, inputs.tools)) {
+        out["servers"].push_back(
+            JsonPick(server, {"name", "scope", "file", "state", "tools"}));
+      }
+      break;
     case SelfTopic::kPrompt: {
       if (inputs.agent) return inputs.agent->PromptPreview();
       out.update(
@@ -391,17 +400,11 @@ json ToolSurfaceJson() {
   std::vector<Tool> tools = BuiltinTools(supervisor, workspace);
   std::vector<std::pair<Tool, const char*>> conditional;
   conditional.emplace_back(
-      UagentTool([](SelfTopic, const std::string&) { return json::object(); }),
-      "uagent-config skill open");
-  conditional.emplace_back(
-      UagentConfigureTool(
-          [](ConfigProposalScope, const std::vector<ConfigChange>&) {
-            return ConfigProposal{};
-          },
-          std::make_shared<ConfigApprovals>()),
-      "uagent-config skill open, interactive approval");
-  conditional.emplace_back(UagentFileTool(),
-                           "uagent-config skill open, interactive approval");
+      UagentTool([](SelfTopic, const std::string&) { return json::object(); },
+                 [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+                   return ConfigProposal{};
+                 }),
+      "uagent-config skill open; set and write where a person can approve");
   conditional.emplace_back(WebSearchTool(api, usage, {}), "search route");
   conditional.emplace_back(WebFetchTool(api), "always");
   std::vector<Tool> agent_tools;

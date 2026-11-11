@@ -7,28 +7,32 @@ description: "µAgent itself: its look (colours, fonts), AGENTS.md, models, sett
 
 Answer from the running binary, never from memory: it is the installed
 release, and it knows more than any copy of its documentation. Opening this
-skill adds the tools named below (`uagent`, `uagent_configure`,
-`uagent_file`) to the conversation.
+skill adds the `uagent` tool to the conversation. Its `action` is `show` (read
+a `topic`), `set` (change settings) or `write` (replace one whole file); below,
+`show` `config` means action `show` with topic `config`.
 
 ## Route the question
 
 | Question | Source |
 | --- | --- |
-| What is active right now, and why? | `uagent`, topic `status` or `config` |
-| What does this setting default to, and when does a change apply? | `uagent`, topic `config`, `name` set to its key or environment name |
-| Which settings exist? | `uagent`, topic `config`, no `name`: every setting with its key, environment name, type, default, purpose and where it is set |
-| Which flags exist? | `uagent --help`, or `uagent` topic `cli` |
-| Which slash commands exist? | `uagent` topic `commands`, or `/help` |
+| What is active right now, and why? | `show` `status` or `config` |
+| What does this setting default to, and when does a change apply? | `show` `config`, `name` set to its key or environment name |
+| Which settings exist? | `show` `config`, no `name`: every setting with its key, environment name, type, default, purpose and where it is set |
+| Which flags exist? | `uagent --help`, or `show` `cli` |
+| Which slash commands exist? | `show` `commands`, or `/help` |
 | What is in the system prompt? | `uagent --show-system-prompt` (`--json` adds the sources); how instructions layer onto it: `docs/INSTRUCTIONS.md` in a source checkout |
-| Which prompt is this session actually running? | `uagent` topic `prompt` (base digest, active sections, overlay) |
-| Which built-in tools and arguments exist? | `uagent` topic `tools` |
-| Which model routes are configured, and is a credential set? | `uagent` topic `routes` |
+| Which prompt is this session actually running? | `show` `prompt` (base digest, active sections, and `saved`, the person's changes) |
+| Which built-in tools and arguments exist? | `show` `tools` |
+| Which model routes are configured, and is a credential set? | `show` `routes` |
+| Which MCP servers are configured, and do they run? | `show` `mcp`: each server's file, state and tool count. `/mcp` shows the person why one failed |
+| Which approvals are remembered for this folder? | `show` `permissions` |
+| Which skills are installed, and which are on? | `show` `skills` |
 | How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/ARCHITECTURE.md` in a source checkout |
 | Limits, recovery or failure triage | `docs/OPERATIONS.md` in a source checkout |
-| Change a setting persistently | `references/self-configuration.md` |
-| What instructions do sessions read? | `uagent` topic `instructions` |
-| Change instructions | `uagent_file` with `file` `instructions`, `scope` (user or project) and the whole `text`; the user approves the exact diff. The user can also run `/instructions edit` |
-| Change the look of the web UI | `uagent` topic `style` for the current sheet, then `uagent_file` with `file` `style` and the whole new `text`; see "Change the look" |
+| Change a setting persistently | `set`; see `references/self-configuration.md` |
+| What instructions do sessions read? | `show` `instructions` |
+| Change instructions, the system message, MCP servers or a skill | `write`; see "Change a file" |
+| Change the look of the web UI | `show` `style` for the current sheet, then `write` `style`; see "Change the look" |
 
 Do not load every reference; pick the one the question needs. Only
 `self-configuration.md` and `architecture.md` are written by hand; every other
@@ -39,9 +43,9 @@ fact comes from the binary.
 1. Establish scope: one run (a flag or an exported variable), all
    conversations (`user`), the conversations in this folder
    (`project`), or this conversation only (model and approval mode).
-2. Read the live value before proposing a change; `uagent` reports the
+2. Read the live value before proposing a change; `show` reports the
    source of each active setting and whether a restart is required.
-3. Persist a setting with `uagent_configure`, which changes only the
+3. Persist a setting with `set`, which changes only the
    named settings in the saved document and shows the user the exact diff.
    Never print secret values; report only whether they are set.
 4. Prefer scope `user` for persistent settings. Use `project` only when
@@ -54,9 +58,22 @@ fact comes from the binary.
 5. Change only the settings needed for the requested outcome. Keep limits at
    defaults unless there is a measured reason to raise them.
 6. Validate without a billable model call: `uagent --help`, `uagent --version`,
-   and the `uagent` tool. Inspect `.mcp.json` as JSON when it
-   changed. Explain that a real prompt is the end-to-end check and may incur
-   provider usage.
+   and `show`. Explain that a real prompt is the end-to-end check and may
+   incur provider usage.
+
+## Change a file
+
+`write` takes `file` and `text`, the whole new file: read what is there
+first and keep what should stay. The user approves the exact diff, and the
+write is refused when the file changed while they read it.
+
+| `file` | What it is | Read it with | Applies |
+| --- | --- | --- | --- |
+| `instructions` | AGENTS.md for all conversations (`scope` `user`) or this folder (`project`) | `show` `instructions` | new and restarted sessions |
+| `style` | the web UI's stylesheet; empty `text` resets the look | `show` `style` | open pages, when the turn ends |
+| `prompt` | the person's changes to the system message, as JSON `{"replace": {"## Scratch": "..."}, "append": "..."}`: `replace` gives a section of the base new text (Evidence, Tools, Scratch, Changes, Delegation, Answer), `append` adds text after the last. Empty `text` restores the built-in message | `show` `prompt`, field `saved` | new and restarted sessions |
+| `mcp` | this folder's `.mcp.json`, a JSON object with `mcpServers` | `read_path` on `.mcp.json`; the user approves the read, since the file can hold credentials | new and restarted sessions in this folder, once the user trusts the changed file |
+| `skill` | the `SKILL.md` of one of the person's own skills, `~/.uagent/skills/NAME/SKILL.md`, with `name` its folder (letters, digits, `-`, `_`). It starts with YAML front matter that has a `description` | `show` `skills` for its path, then `read_path` | new and restarted sessions |
 
 ## Change the look
 
@@ -64,7 +81,7 @@ The web UI draws everything from design tokens, and the person's stylesheet
 (`~/.uagent/config/style.css`, private to µAgent) overrides them. Only the
 tokens are a stable surface; class names change between releases.
 
-1. Read the current sheet with `uagent` topic `style`, and the tokens from
+1. Read the current sheet with `show` `style`, and the tokens from
    `references/tokens.css` when installed (else
    `web/src/shared/styles/tokens.css` in a source checkout): the first
    `:root` block holds the scales (spacing, type, sizes, motion), then come
@@ -76,7 +93,7 @@ tokens are a stable surface; class names change between releases.
    inverse surface too (the person's own messages), copy that palette's whole
    selector list from the reference. Keep text readable: at least 4.5:1
    against its background.
-3. `uagent_file` with `file` `style` and the whole sheet; the person
+3. `write` with `file` `style` and the whole sheet; the person
    approves the diff. Open web pages apply it when the turn ends. Empty text
    resets the look.
 
@@ -87,9 +104,9 @@ tokens are a stable surface; class names change between releases.
   then what is saved for the folder, then what is saved for all
   conversations, then built-in defaults.
 - Treat provider keys (in `UAGENT_PROVIDERS` or the variables they name),
-  web-search keys, and MCP credentials as secrets. `uagent` reports them as
+  web-search keys, and MCP credentials as secrets. `show` reports them as
   set or unset and never shows the value. A provider added through
-  `uagent_configure` names its key as `$VARIABLE`; the person sets the value
+  `set` names its key as `$VARIABLE`; the person sets the value
   in Settings or with `uagent setup`.
 - Do not add secrets to a repository. Saved settings live in µAgent's own
   private `~/.uagent/config/settings.json`, never in a folder.
@@ -99,11 +116,12 @@ tokens are a stable surface; class names change between releases.
 - Do not enable `--yolo`, `UAGENT_APPROVAL=yolo`, folder trust, credential
   forwarding, or broader tool capabilities without making the authority change
   explicit.
-- Do not invent settings. `uagent` enumerates every registered setting; if
-  a requested behavior is absent from it, say so rather than guessing.
+- Do not invent settings. `show` `config` enumerates every registered
+  setting; if a requested behavior is absent from it, say so rather than
+  guessing.
 - Never write the saved settings with the file tools; µAgent's config folder
-  is closed to them. `uagent_configure` and `uagent_file` are offered only
+  is closed to them. `set` and `write` are offered only
   in a session where a person can approve (a terminal or the web UI, not a
-  headless run). When they are absent, give the user the
+  headless run). When the tool offers only `show`, give the user the
   `/config user KEY=VALUE` (or `project`) command to run themselves; do not
   make the change on their behalf.

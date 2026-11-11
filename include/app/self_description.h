@@ -18,6 +18,7 @@ class Agent;
 
 class Api;
 class ConfigManager;
+class McpRuntime;
 struct RuntimeConfig;
 struct EffectiveConfigSnapshot;
 struct Tool;
@@ -30,6 +31,7 @@ enum class SelfTopic {
   kTools,
   kPrompt,
   kRoutes,
+  kMcp,
 };
 
 // The live state a description needs; held by reference for one call only.
@@ -38,6 +40,7 @@ struct SelfDescriptionInputs {
   const RuntimeConfig& active;
   const Api& api;
   const std::vector<Tool>& tools;
+  const McpRuntime& mcp;
   Agent* agent = nullptr;
 };
 

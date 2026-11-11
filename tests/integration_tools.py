@@ -7,7 +7,6 @@ import subprocess
 import time
 
 from integration_support import (
-    CONFIG_TOOLS,
     SMALL_PNG,
     Server,
     assert_true,
@@ -17,6 +16,7 @@ from integration_support import (
     detached_pid,
     event,
     function_names,
+    function_tools,
     has_message,
     json_sentinel_command,
     large_json_command,
@@ -31,6 +31,8 @@ from integration_support import (
     tool_call,
     tool_calls,
     tool_results,
+    uagent_set,
+    uagent_show,
     wait_until,
 )
 
@@ -941,13 +943,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
     )
 
     def request_change(_, __):
-        return tool_call(
-            "uagent_configure",
-            {
-                "scope": "user",
-                "changes": [{"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}],
-            },
-        )
+        return uagent_set("UAGENT_PROVIDERS", proposed)
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]
@@ -972,7 +968,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
             root,
             env,
             [
-                (b"configure providers\n", b"Allow uagent_configure?"),
+                (b"configure providers\n", b"Allow uagent?"),
                 (b"y\n", b"composite-config-ok"),
                 b"/quit\n",
             ],
@@ -981,7 +977,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
             binary=binary,
         )
         assert_true(status == 0, output)
-        assert_true(b"Allow uagent_configure?" in output, output)
+        assert_true(b"Allow uagent?" in output, output)
         assert_true(b"$CODEX_LOCAL_PROXY_API_KEY" in output, output)
         assert_true(b"adjacent-integration-secret" not in output, output)
         # Status redraws may insert cursor controls before the colored line.
@@ -1012,13 +1008,7 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
     )
 
     def request_change(_, __):
-        return tool_call(
-            "uagent_configure",
-            {
-                "scope": "user",
-                "changes": [{"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}],
-            },
-        )
+        return uagent_set("UAGENT_PROVIDERS", proposed)
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]
@@ -1039,32 +1029,38 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
             binary=binary,
         )
         assert_true(status == 0, output)
-        assert_true(b"Allow uagent_configure?" not in output, output)
+        assert_true(b"Allow uagent?" not in output, output)
         assert_true(literal.encode() not in output, output)
         assert_true(not saved_settings(home), saved_settings(home))
 
 
 def test_self_configuration_requires_a_person(root, home, *, binary):
-    """With nobody to ask, the tools are not offered and nothing saved changes.
+    """With nobody to ask, uagent only shows and nothing saved changes.
 
     The approver denies a mandatory-human call whenever no interactive
-    terminal is attached, so advertising the schema to a piped run would spend
-    a kilobyte on every request to buy a guaranteed refusal. Withholding it is
-    the same policy stated earlier: registration and approval share one
-    predicate.
+    terminal is attached, so advertising set and write to a piped run would
+    spend a kilobyte on every request to buy a guaranteed refusal. Withholding
+    them is the same policy stated earlier: registration and approval share
+    one predicate.
     """
     save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=40)
 
-    def refuse(_, body):
-        names = function_names(body)
-        assert_true("uagent" in names, names)
-        assert_true(not {"uagent_configure", "uagent_file"} & names, names)
+    def change_anyway(_, body):
+        uagent = next(tool for tool in function_tools(body) if tool["name"] == "uagent")
+        properties = uagent["parameters"]["properties"]
+        assert_true(properties["action"]["enum"] == ["show"], properties)
+        assert_true(set(properties) == {"action", "topic", "name"}, properties)
         # The escape hatch is closed too: writing the saved settings directly
         # stays a mandatory-human mutation.
-        assert_true("write_file" in names, names)
+        assert_true("write_file" in function_names(body), function_names(body))
+        return uagent_set("UAGENT_MAX_TOOL_CALLS", "120")
+
+    def refused(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("invalid tool argument" in result, result)
         return event({"content": "configure-absent"})
 
-    with Server([open_config_skill, refuse]) as server:
+    with Server([open_config_skill, change_anyway, refused]) as server:
         result = run(
             root,
             config_skill_env(base_env(home, server.url)),
@@ -1078,13 +1074,13 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
         assert_true(saved_settings(home) == {"limits.maxToolCalls": 40}, saved_settings(home))
 
 
-def test_config_tools_come_with_their_skill(root, home, *, binary):
-    """A conversation carries the tools that inspect µAgent only once it opens
+def test_config_tool_comes_with_its_skill(root, home, *, binary):
+    """A conversation carries the tool that inspects µAgent only once it opens
     uagent-config; a call before that is refused with the way in."""
 
     def call_locked(_, body):
-        assert_true(not CONFIG_TOOLS & function_names(body), function_names(body))
-        return tool_call("uagent", {"topic": "style"})
+        assert_true("uagent" not in function_names(body), function_names(body))
+        return uagent_show("style")
 
     def open_skill(_, body):
         refused = tool_results(body["messages"])[-1]
@@ -1093,7 +1089,7 @@ def test_config_tools_come_with_their_skill(root, home, *, binary):
 
     def inspect_style(_, body):
         assert_true("uagent" in function_names(body), function_names(body))
-        return tool_call("uagent", {"topic": "style"}, call_id="call-style")
+        return uagent_show("style", "call-style")
 
     def finish(_, body):
         described = json.loads(tool_results(body["messages"])[-1])
@@ -1114,37 +1110,53 @@ def test_config_tools_come_with_their_skill(root, home, *, binary):
         assert_true(result.stdout.strip().endswith("skill-tools-ok"), result.stdout)
 
 
-def test_stylesheet_is_saved_after_approval(root, home, *, binary):
-    """The web UI's stylesheet is replaced only with the exact text a person
-    approved, in µAgent's private config folder."""
-    sheet = ":root { --accent: #3b82f6; }\n"
+def test_files_are_saved_after_approval(root, home, *, binary):
+    """Each file uagent writes is replaced only with the exact text a person
+    approved, even under --yolo: the stylesheet, the system message's changes
+    and a skill in µAgent's private folders, the server file in this folder."""
+    skill = "---\ndescription: Release notes\n---\nKeep them short.\n"
+    config = home / ".uagent" / "config"
+    files = [
+        ({"file": "style", "text": ":root { --accent: #3b82f6; }\n"}, config / "style.css"),
+        ({"file": "prompt", "text": '{"append":"Answer in one line."}'}, config / "prompt.json"),
+        ({"file": "mcp", "text": '{"mcpServers":{}}\n'}, root / ".mcp.json"),
+        ({"file": "skill", "name": "notes", "text": skill}, home / ".uagent/skills/notes/SKILL.md"),
+    ]
+    effects = ["apply it when this turn ends", "sessions read it", "ask to trust it"]
 
-    def write_style(_, __):
-        return tool_call("uagent_file", {"file": "style", "text": sheet})
+    def write_files(_, __):
+        calls = enumerate(arguments for arguments, _ in files)
+        return tool_calls([(f"call-{n}", "uagent", {"action": "write", **a}) for n, a in calls])
 
     def finish(_, body):
-        result = tool_results(body["messages"])[-1]
-        assert_true("apply it when this turn ends" in result, result)
-        return event({"content": "style-ok"})
+        results = tool_results(body["messages"])[-len(files) :]
+        for effect, result in zip([*effects, effects[1]], results, strict=True):
+            assert_true(result.startswith("saved. ") and effect in result, results)
+        return event({"content": "files-ok"})
 
-    with Server([open_config_skill, write_style, finish]) as server:
+    with Server([open_config_skill, write_files, finish]) as server:
+        env = config_skill_env(base_env(home, server.url))
+        # The person's own skills stay on the search path, as they are
+        # without the override that finds this checkout's.
+        env["UAGENT_SKILL_PATH"] += f"{os.pathsep}{home}/.uagent/skills"
         status, output = run_pty(
             root,
-            config_skill_env(base_env(home, server.url)),
+            env,
             [
-                (b"make the accent blue\n", b"Allow uagent_file?"),
-                (b"y\n", b"style-ok"),
+                (b"set it all up\n", b"Allow uagent?"),
+                *[(b"y\n", b"Allow uagent?")] * (len(files) - 1),
+                (b"y\n", b"files-ok"),
                 b"/quit\n",
             ],
             args=("--yolo",),
-            timeout=20,
+            timeout=25,
             binary=binary,
         )
         assert_true(status == 0, output)
         assert_true(b"--accent: #3b82f6" in output, output)
-        path = home / ".uagent" / "config" / "style.css"
-        assert_true(path.read_text() == sheet, path.read_text())
-        assert_true(path.stat().st_mode & 0o077 == 0, oct(path.stat().st_mode))
+        for arguments, path in files:
+            assert_true(path.read_text() == arguments["text"], path.read_text())
+            assert_true(path.stat().st_mode & 0o077 == 0, oct(path.stat().st_mode))
 
 
 def test_self_configuration_commits_after_approval(root, home, *, binary):
@@ -1153,13 +1165,7 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
     save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=40, UNKNOWN_KEY="kept")
 
     def request_change(_, __):
-        return tool_call(
-            "uagent_configure",
-            {
-                "scope": "user",
-                "changes": [{"key": "UAGENT_MAX_TOOL_CALLS", "operation": "set", "value": "120"}],
-            },
-        )
+        return uagent_set("UAGENT_MAX_TOOL_CALLS", "120")
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]
@@ -1176,7 +1182,7 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
             root,
             env,
             [
-                (b"raise the limit\n", b"Allow uagent_configure?"),
+                (b"raise the limit\n", b"Allow uagent?"),
                 (b"y\n", b"configure-ok"),
                 b"/quit\n",
             ],

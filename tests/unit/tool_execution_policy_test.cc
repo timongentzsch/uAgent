@@ -8,7 +8,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -386,6 +385,11 @@ TEST_CASE(TestActionRequiresDeclarations) {
   tools.push_back(BrowserTool("cccccccccccccccccccccccccccccccc",
                               [](const std::string&, const std::string&,
                                  bool*) { return std::string(); }));
+  tools.push_back(
+      UagentTool([](SelfTopic, const std::string&) { return json::object(); },
+                 [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+                   return ConfigProposal{};
+                 }));
   std::vector<std::string> declared;
   for (const Tool& tool : tools) {
     const ActionRequires& table = tool.action_requires;
@@ -407,7 +411,7 @@ TEST_CASE(TestActionRequiresDeclarations) {
     }
   }
   std::vector<std::string> multi_action = {"activity", "agents", "decide",
-                                           "memory"};
+                                           "memory", "uagent"};
   multi_action.emplace_back("browser");
   std::ranges::sort(declared);
   std::ranges::sort(multi_action);
@@ -420,17 +424,8 @@ TEST_CASE(TestPayloadToolsRequireTheirPayload) {
   std::vector<Tool> tools;
   const Api api(RuntimeConfig{});
   AddAgentTools(tools, api, [] { return std::string(); });
-  tools.push_back(UagentConfigureTool(
-      [](ConfigProposalScope, const std::vector<ConfigChange>&) {
-        return ConfigProposal{};
-      },
-      std::make_shared<ConfigApprovals>()));
-  tools.push_back(UagentFileTool());
   const std::vector<std::pair<std::string, std::string>> expected = {
-      {"agent_start", R"(["brief"])"},
-      {"agent_send", R"(["id","text"])"},
-      {"uagent_configure", R"(["scope","changes"])"},
-      {"uagent_file", R"(["file","text"])"}};
+      {"agent_start", R"(["brief"])"}, {"agent_send", R"(["id","text"])"}};
   for (const auto& [name, required] : expected) {
     const Tool* tool = FindTool(tools, name);
     CHECK(tool && tool->parameters["required"] == json::parse(required));

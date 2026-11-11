@@ -35,8 +35,7 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `run` | run a supervised shell command, optionally with a PTY or detached; its required `description` is what the row shows | always |
 | `activity` | list, poll, wait for, write to, resize or stop activities | always |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
-| `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions, the web stylesheet) | once the `uagent-config` skill is open |
-| `uagent_configure`, `uagent_file` | change settings, or replace an instructions file or the web UI's stylesheet, by an exact diff a person approves | once the `uagent-config` skill is open, where a person can approve |
+| `uagent` | `show` this build (status, flags, commands, config, tools, prompt, routes, instructions, the web stylesheet, MCP servers, permission rules, skills); `set` settings, or `write` an instructions file, the web UI's stylesheet, the system message's changes, the folder's `.mcp.json` or a skill, by an exact diff a person approves | once the `uagent-config` skill is open; `set` and `write` only where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
 | `schedule` | list, save, pause, resume, delete or run scheduled tasks; a task runs in this folder on this conversation's model, with no wider approval mode than this conversation's; see [Management](MANAGEMENT.md#scheduled-tasks) | a session with a client |
 | `present` | hand the user what was made, as a card in the conversation: a document, deck, design or design system (its folder or page, as its pages say what they are) opens in Files from the folder and stays live; any other file is snapshotted into the session's assets to open or download (HTML runs sandboxed, PDFs and images open inline) | a session with a client |

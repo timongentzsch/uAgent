@@ -108,23 +108,25 @@ std::vector<Tool> BuildTools(AppContext& context,
     return tools;
   }
   if (toolset == "none") return {};
-  tools.push_back(UagentTool([app = &context](SelfTopic topic,
-                                              const std::string& name) {
-    return DescribeSelf(
-        topic, name,
-        SelfDescriptionInputs{app->config_manager, app->runtime.config,
-                              app->runtime.api, app->tools, app->agent.get()});
-  }));
+  // Where nobody can approve, or the policy forbids changes, uagent only
+  // shows.
+  ConfigProposalFactory prepare;
   if (InteractiveApprovalAvailable() &&
       (context.tool_policy.allowed & Capability(ToolCapability::kMutate))) {
-    tools.push_back(UagentConfigureTool(
-        [app = &context](ConfigProposalScope scope,
-                         const std::vector<ConfigChange>& changes) {
-          return PrepareConfigProposal(scope, changes, app->config_manager);
-        },
-        std::make_shared<ConfigApprovals>()));
-    tools.push_back(UagentFileTool());
+    prepare = [app = &context](ConfigProposalScope scope,
+                               const std::vector<ConfigChange>& changes) {
+      return PrepareConfigProposal(scope, changes, app->config_manager);
+    };
   }
+  tools.push_back(UagentTool(
+      [app = &context](SelfTopic topic, const std::string& name) {
+        return DescribeSelf(
+            topic, name,
+            SelfDescriptionInputs{app->config_manager, app->runtime.config,
+                                  app->runtime.api, app->tools,
+                                  app->runtime.mcp, app->agent.get()});
+      },
+      std::move(prepare)));
   if (OffersWebSearch(api, context.provider.providers)) {
     tools.push_back(
         WebSearchTool(api, runtime.side_usage, context.provider.providers));

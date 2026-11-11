@@ -7,6 +7,7 @@
 
 #include <concepts>
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -104,6 +105,17 @@ inline const json* JsonArray(const json& object, const char* key) {
   if (!object.is_object()) return nullptr;
   auto value = object.find(key);
   return value != object.end() && value->is_array() ? &*value : nullptr;
+}
+
+// The named fields `row` has, and no other: what a reader needs of a longer
+// one, or may see of it.
+inline json JsonPick(const json& row,
+                     std::initializer_list<const char*> fields) {
+  json picked = json::object();
+  for (const char* field : fields) {
+    if (row.contains(field)) picked[field] = row[field];
+  }
+  return picked;
 }
 
 // OpenAI-compatible APIs use either {"error":"..."} or

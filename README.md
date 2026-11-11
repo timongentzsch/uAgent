@@ -58,7 +58,8 @@ required to run µAgent. Chrome starts when browser work needs it.
 The same small task, model endpoint and container limits. Five-run medians,
 measured 2026-11-10: **26.4 MiB idle memory** and **17 ms CPU per headless turn**
 for µAgent. This measures agent overhead, not model quality or response speed.
-The Linux ARM64 complete installation is **19.6 MB**, including remote gateways.
+The Linux ARM64 complete installation is **22.6 MB**, including remote gateways
+and the sheet engine.
 [Versions, raw results and method](benchmarks/README.md#footprint-comparison).
 
 ## Get started

@@ -26,20 +26,20 @@ the other options.
 
 ## Current measurements
 
-Snapshot: **2026-11-10**, production commit `015ce3a1`, runtime build
-`9bcf08dc…55a976c`. [Raw results](results/2026-11-10.json) retain package
+Snapshot: **2026-11-12**, production commit `f3489142`, runtime build
+`4d62d764…9c9dd52`. [Raw results](results/2026-11-12.json) retain package
 hashes, five native benchmark samples per case, the hermetic summary and web
 asset sizes. These are dated measurements, not floating claims about a later
-checkout. [CI artifacts](https://github.com/timongentzsch/uAgent/actions/runs/42872865321)
+checkout. [CI artifacts](https://github.com/timongentzsch/uAgent/actions/runs/43114586678)
 supply all four native installations; local CPU measurements use an Apple M1
 Pro, macOS 27.0.1 and Apple clang 21.0.0, Release `-O3`, Web Push enabled.
 
 | Target | Main binary | Complete installation | Remote binary | Remote transfer with resources |
 | --- | ---: | ---: | ---: | ---: |
-| Linux x86_64 | 7.35 MB | 20.52 MB | 4.82 MB | 2.31 MB |
-| Linux ARM64 | 6.43 MB | 19.60 MB | 3.94 MB | 2.10 MB |
-| macOS x86_64 | 11.62 MB | 24.79 MB | 9.11 MB | 3.94 MB |
-| macOS ARM64 | 10.64 MB | 23.81 MB | 8.10 MB | 4.24 MB |
+| Linux x86_64 | 7.35 MB | 23.48 MB | 4.82 MB | 2.31 MB |
+| Linux ARM64 | 6.50 MB | 22.62 MB | 3.94 MB | 2.10 MB |
+| macOS x86_64 | 11.64 MB | 27.76 MB | 9.12 MB | 3.95 MB |
+| macOS ARM64 | 10.66 MB | 26.79 MB | 8.12 MB | 4.25 MB |
 
 MB is 1,000,000 bytes. Complete installation sums unpacked regular-file sizes,
 including documentation, skills and **all four compressed gateway payloads**.
@@ -50,8 +50,8 @@ is implied by these size measurements.
 
 The fresh hermetic evaluation passes **13 scenarios, 16 variants and 110
 checks**, including the baseline and variant comparisons. A separate fresh-HOME
-mock-provider probe advertises **14 tools / 11,437 schema bytes**, with a
-2,574-character system message. It is the observed request, not every optional
+mock-provider probe advertises **13 tools / 10,413 schema bytes**, with a
+2,922-character system message. It is the observed request, not every optional
 tool or a count of billed provider tokens. The audit reads captured schemas
 directly; no generated tool-reference file or personal profile is required.
 
@@ -59,8 +59,9 @@ directly; no generated tool-reference file or personal profile is required.
 
 The chart measures local payload serialization, not model or network latency.
 All five core runs use the same built-in workload without a personal session.
-The web bundle's first JS/CSS fetch is **192,908 compressed bytes**; all shipped
-web assets total **2,289,382 compressed bytes**, including optional renderers.
+The web bundle's first JS/CSS fetch is **158,588 compressed bytes**; all shipped
+web assets total **2,299,152 compressed bytes**, including optional renderers.
+The sheet engine is installed beside the app and counted with the installation.
 
 Reproduce the local measurements and charts from the repository root:
 
@@ -72,7 +73,7 @@ python3 benchmarks/eval.py build/bench/uagent --check --report /tmp/eval.json
 python3 benchmarks/audit.py build/bench/uagent --json /tmp/audit.json
 for run in 1 2 3 4 5; do build/bench/uagent_bench > "/tmp/core-$run.txt"; done
 (cd web && npm run size)
-python3 benchmarks/plot.py benchmarks/results/2026-11-10.json
+python3 benchmarks/plot.py benchmarks/results/2026-11-12.json
 ```
 
 Build `web/dist` first as described in [Testing](../docs/TESTING.md#common-cases).

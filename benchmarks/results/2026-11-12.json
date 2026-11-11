@@ -1,0 +1,364 @@
+{
+  "date": "2026-11-12",
+  "measured_commit": "f3489142f7e6516cd74848bc720fb16f7d4c3242",
+  "runtime_build": "4d62d7646287e6d1b60a4155889c422721aac28b8590c9832f60906889c9dd52",
+  "ci_run": "https://github.com/timongentzsch/uAgent/actions/runs/43114586678",
+  "packages": [
+    {
+      "target": "linux-x86_64",
+      "main_binary_bytes": 7352560,
+      "complete_install_bytes": 23477649,
+      "remote_binary_bytes": 4821232,
+      "remote_install_bytes": 5176486,
+      "remote_transfer_bytes": 2309601,
+      "main_binary_sha256": "254bfce25a1333d68d6963ab992a412594fdd90c71105cd3b1b229d4d97e1fdb"
+    },
+    {
+      "target": "linux-arm64",
+      "main_binary_bytes": 6495264,
+      "complete_install_bytes": 22620353,
+      "remote_binary_bytes": 3939360,
+      "remote_install_bytes": 4294614,
+      "remote_transfer_bytes": 2100666,
+      "main_binary_sha256": "d4c264e06dd62e8e87704be3d34bda9c930241418b8988b918f2411b4fb107cc"
+    },
+    {
+      "target": "macos-x86_64",
+      "main_binary_bytes": 11636616,
+      "complete_install_bytes": 27761705,
+      "remote_binary_bytes": 9121568,
+      "remote_install_bytes": 9476822,
+      "remote_transfer_bytes": 3947320,
+      "main_binary_sha256": "5ecb3649b67574f66aaac2677b88dc16c9cfff623d21814d7e716fb0eb533869"
+    },
+    {
+      "target": "macos-arm64",
+      "main_binary_bytes": 10660648,
+      "complete_install_bytes": 26785737,
+      "remote_binary_bytes": 8117720,
+      "remote_install_bytes": 8472974,
+      "remote_transfer_bytes": 4254027,
+      "main_binary_sha256": "21ac62e01343cb02503b74e72b93a4cdae22bc1dfa5b8c09ec18e23697ef1023"
+    }
+  ],
+  "local": {
+    "machine": "Apple M1 Pro",
+    "os": "macOS 27.0.1",
+    "compiler": "Apple clang 21.0.0",
+    "build": "Release, -O3, Web Push enabled",
+    "core_runs": 5,
+    "core": {
+      "terminal sanitization": {
+        "samples_ms": [
+          8.64,
+          1.98,
+          2.0,
+          1.99,
+          1.96
+        ],
+        "median_ms": 1.99
+      },
+      "tool-result cap": {
+        "samples_ms": [
+          16.96,
+          10.33,
+          10.38,
+          10.01,
+          10.8
+        ],
+        "median_ms": 10.38
+      },
+      "SSE + headless": {
+        "samples_ms": [
+          18.75,
+          15.68,
+          15.77,
+          15.81,
+          15.8
+        ],
+        "median_ms": 15.8
+      },
+      "3 sessions baseline": {
+        "samples_ms": [
+          22.69,
+          15.96,
+          15.65,
+          15.97,
+          16.06
+        ],
+        "median_ms": 15.97
+      },
+      "3 sessions + captions": {
+        "samples_ms": [
+          18.07,
+          16.31,
+          16.34,
+          16.61,
+          16.04
+        ],
+        "median_ms": 16.34
+      },
+      "1 MB answer, 12 ms batches": {
+        "samples_ms": [
+          22.52,
+          22.21,
+          21.93,
+          22.03,
+          21.72
+        ],
+        "median_ms": 22.03
+      },
+      "1 GB command output": {
+        "samples_ms": [
+          48.4,
+          46.82,
+          47.54,
+          48.89,
+          47.52
+        ],
+        "median_ms": 47.54
+      },
+      "64-node checkpoint merge": {
+        "samples_ms": [
+          10.36,
+          10.15,
+          10.29,
+          10.34,
+          10.3
+        ],
+        "median_ms": 10.3
+      },
+      "replay read, 2048 held": {
+        "samples_ms": [
+          0.22,
+          0.22,
+          0.22,
+          0.24,
+          0.22
+        ],
+        "median_ms": 0.22
+      },
+      "4 MB PDF, 20 model calls": {
+        "samples_ms": [
+          16.9,
+          16.55,
+          16.86,
+          16.79,
+          16.88
+        ],
+        "median_ms": 16.86
+      },
+      "paint, plain": {
+        "samples_ms": [
+          82.12,
+          80.5,
+          80.92,
+          81.74,
+          80.8
+        ],
+        "median_ms": 80.92
+      },
+      "paint, code spans": {
+        "samples_ms": [
+          96.69,
+          97.47,
+          96.2,
+          96.21,
+          96.44
+        ],
+        "median_ms": 96.44
+      },
+      "frame buffer, 1 MiB": {
+        "samples_ms": [
+          77.38,
+          77.04,
+          77.39,
+          76.65,
+          76.32
+        ],
+        "median_ms": 77.04
+      },
+      "long conversation request": {
+        "samples_ms": [
+          23.62,
+          23.65,
+          23.7,
+          23.6,
+          23.5
+        ],
+        "median_ms": 23.62
+      },
+      "long conversation save": {
+        "samples_ms": [
+          24.51,
+          24.32,
+          24.76,
+          24.59,
+          25.3
+        ],
+        "median_ms": 24.59
+      },
+      "long conversation view": {
+        "samples_ms": [
+          2.89,
+          3.06,
+          2.96,
+          2.97,
+          2.99
+        ],
+        "median_ms": 2.97
+      },
+      "encode Chat Completions": {
+        "samples_ms": [
+          129.14,
+          129.95,
+          130.51,
+          129.93,
+          129.72
+        ],
+        "median_ms": 129.93
+      },
+      "encode Responses": {
+        "samples_ms": [
+          242.18,
+          242.48,
+          243.56,
+          242.29,
+          242.04
+        ],
+        "median_ms": 242.29
+      },
+      "encode Anthropic Messages": {
+        "samples_ms": [
+          214.81,
+          213.97,
+          216.25,
+          216.7,
+          212.84
+        ],
+        "median_ms": 214.81
+      },
+      "chat_completions full payload": {
+        "samples_ms": [
+          169.27,
+          168.2,
+          170.13,
+          169.72,
+          169.25
+        ],
+        "median_ms": 169.27
+      },
+      "chat_completions cached payload": {
+        "samples_ms": [
+          24.32,
+          24.19,
+          25.01,
+          25.26,
+          24.62
+        ],
+        "median_ms": 24.62
+      },
+      "responses full payload": {
+        "samples_ms": [
+          281.05,
+          281.37,
+          287.41,
+          286.03,
+          282.68
+        ],
+        "median_ms": 282.68
+      },
+      "responses cached payload": {
+        "samples_ms": [
+          35.43,
+          35.55,
+          36.42,
+          36.26,
+          35.64
+        ],
+        "median_ms": 35.64
+      },
+      "anthropic_messages full payload": {
+        "samples_ms": [
+          252.17,
+          252.9,
+          256.05,
+          257.1,
+          252.62
+        ],
+        "median_ms": 252.9
+      },
+      "anthropic_messages cached payload": {
+        "samples_ms": [
+          51.66,
+          51.72,
+          52.89,
+          52.55,
+          51.8
+        ],
+        "median_ms": 51.8
+      }
+    },
+    "request_probe": {
+      "hardware": {
+        "binary_bytes": 9446872,
+        "peak_rss_bytes": 13746176
+      },
+      "token": {
+        "system_chars": 2922,
+        "schema_bytes": 10413,
+        "advertised_tools": 13,
+        "largest_schemas": {
+          "run": 1340,
+          "activity": 1245,
+          "decide": 1051,
+          "agent_start": 894,
+          "agents": 761
+        }
+      }
+    },
+    "evaluation": {
+      "scenarios": 13,
+      "variants": 16,
+      "checks": 110,
+      "passed": 16,
+      "comparisons_passed": true
+    }
+  },
+  "web": {
+    "bytes": {
+      "diagrams": {
+        "raw": 3375646,
+        "gzip": 939235
+      },
+      "app": {
+        "raw": 2647699,
+        "gzip": 1359917
+      },
+      "initial_js": {
+        "raw": 377349,
+        "gzip": 138460
+      },
+      "initial_css": {
+        "raw": 89544,
+        "gzip": 20128
+      },
+      "lazy_and_shell": {
+        "raw": 5556452,
+        "gzip": 2140564
+      },
+      "optional_runtime": {
+        "raw": 5368783,
+        "gzip": 2067467
+      },
+      "precache": {
+        "raw": 602533,
+        "gzip": 213515
+      },
+      "total": {
+        "raw": 6023345,
+        "gzip": 2299152
+      }
+    }
+  }
+}

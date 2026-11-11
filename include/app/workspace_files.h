@@ -4,14 +4,13 @@
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <vector>
 
 #include "include/core/json.h"
 namespace uagent::workspace_files {
-bool Shown(const std::filesystem::path& path);
 json Folders(const std::string& path);
-std::vector<std::string> Candidates(const std::filesystem::path& root,
-                                    bool& more);
+// The decks, designs, documents and design systems under `root`, newest
+// first: {kind, key, name, path, place, count, pages, modified} each.
+json Designs(const std::filesystem::path& root);
 std::optional<std::filesystem::path> Resolve(const std::filesystem::path& root,
                                              const std::string& relative);
 // Only filesystem operations. The main retains HTTP authentication, preview

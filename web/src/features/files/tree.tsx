@@ -12,13 +12,15 @@ import { useApi } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { Button, LoadError } from "../../shared/ui.tsx";
 import { HTML, IMAGE, MARKDOWN } from "../../shared/file-types.ts";
+import { join, type Listing as Pages } from "./boards.ts";
+import { folderView } from "./flow.ts";
 
 // The conversation's folder as a tree, as VS Code's Explorer draws one: a
 // folder opens in place, rows are dense with indent guides, an icon says a
-// file's type. A folder of two pages or more offers its canvas on its row.
+// file's type. A folder that is a deck, a design or a design system offers
+// Open on its row.
 
-export interface Listing {
-  entries: { name: string; dir: boolean }[];
+export interface Listing extends Pages {
   more: boolean;
 }
 export interface TreeProps {
@@ -31,12 +33,10 @@ export interface TreeProps {
   file: string;
   toggle: (path: string) => void;
   open: (path: string) => void;
-  canvas: (dir: string) => void;
+  openFolder: (dir: string) => void;
   list?: (path: string, signal: AbortSignal) => Promise<Listing>;
 }
 
-const join = (dir: string, name: string) =>
-  dir ? `${dir.replace(/\/$/, "")}/${name}` : name;
 const CODE = /\.(css|js|mjs|ts|tsx|json)$/i;
 const icon = (name: string) =>
   HTML.test(name) || CODE.test(name) ? (
@@ -141,9 +141,9 @@ function FolderNode({
         : undefined,
     [props.session, path, open, props.version, props.list],
   );
-  const pages = (listing.value?.entries ?? []).filter(
-    (entry) => !entry.dir && HTML.test(entry.name),
-  ).length;
+  // What the folder opens as; a folder that is nothing but holds one page
+  // has that page as a row and needs no Open.
+  const opens = listing.value && folderView(path, listing.value);
   return (
     <li>
       <div class="tree-folder">
@@ -161,14 +161,14 @@ function FolderNode({
           {open ? <FolderOpen /> : <Folder />}
           <span class="files-name truncate">{name}</span>
         </Button>
-        {open && pages > 1 && (
+        {open && opens && (listing.value?.kind || opens.kind === "canvas") && (
           <Button
             variant="quiet"
             size="compact"
             class="tree-action"
-            onClick={() => props.canvas(path)}
+            onClick={() => props.openFolder(path)}
           >
-            Canvas
+            Open
           </Button>
         )}
       </div>

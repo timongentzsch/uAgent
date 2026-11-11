@@ -9,6 +9,15 @@ export interface Presenting {
   at: string;
 }
 
+// What a key steps a deck by, in either window.
+export const STEPS: Record<string, number | undefined> = {
+  ArrowRight: 1,
+  PageDown: 1,
+  " ": 1,
+  ArrowLeft: -1,
+  PageUp: -1,
+};
+
 const HASH = "#presenter=";
 export const presentChannel = () => new BroadcastChannel("uagent-present");
 

@@ -13,6 +13,7 @@ import {
   Download,
   File,
   Pencil,
+  TriangleAlert,
   X,
 } from "lucide-preact";
 import { usePushDirection } from "../../shared/motion.ts";
@@ -45,7 +46,15 @@ import { HTML, IMAGE, MARKDOWN, nameOf } from "../../shared/file-types.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import type { Node } from "../../shared/types.ts";
-import Canvas, { rows } from "./canvas.tsx";
+import {
+  boardsOf,
+  failures,
+  hear,
+  kindOf,
+  rewritten,
+  type SeenPages,
+} from "./boards.ts";
+import Plane from "./plane.tsx";
 import {
   backLabel,
   cite,
@@ -53,27 +62,29 @@ import {
   type Flow,
   follow,
   folderOfView,
+  fromList,
   type Lines,
   lineRange,
+  opened,
   pop,
   push,
   resolve,
   swap,
   type View,
 } from "./flow.ts";
-import FileTree from "./tree.tsx";
-import { pageAddress, usePreviewBase } from "../../shared/page-frame.tsx";
-import OpenPage from "./page.tsx";
+import FileTree, { type Listing } from "./tree.tsx";
+import {
+  type PageMessage,
+  pageAddress,
+  usePreviewBase,
+} from "../../shared/page-frame.tsx";
+import Sequence from "./sequence.tsx";
 import { openPresenter } from "./present.ts";
 import { applyEdit } from "./doc-edit.ts";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
 
-interface Listing {
-  entries: { name: string; dir: boolean; size: number }[];
-  more: boolean;
-}
 interface Found {
   paths: string[];
   more: boolean;
@@ -97,9 +108,9 @@ interface FileText {
 // A folder as it is drawn before its entries arrive (see <Placeholder>).
 const SAMPLE_LISTING: Listing = {
   entries: [
-    { name: "src", dir: true, size: 0 },
-    { name: "tests", dir: true, size: 0 },
-    { name: "README.md", dir: false, size: 0 },
+    { name: "src", dir: true },
+    { name: "tests", dir: true },
+    { name: "README.md", dir: false },
   ],
   more: false,
 };
@@ -117,7 +128,6 @@ const ancestors = (dir: string) =>
     : [];
 // Typing pauses this long before the folder is searched.
 const SEARCH_DELAY_MS = 150;
-const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 
 const WRITES = new Set(["Wrote", "Edited", "Deleted"]);
 // The last file write that finished, as "<node>\n<path written>".
@@ -133,7 +143,8 @@ function lastWrite(nodes: readonly Node[] = []) {
 }
 
 // The conversation's folder, read only: a list with search beside a viewer
-// for text and code, rendered markdown and images, pages and their canvas.
+// for text and code, rendered markdown and images, pages in their sequence
+// and a design's canvas.
 // Where it is lives with the app (`flow`, see flow.ts), so it stays put
 // while closed or moved between the sheet and the docked pane. A turn that
 // ends may have changed the folder, so what is open is read again then.
@@ -167,29 +178,16 @@ export default function Files({
   const { view, back } = flow;
   // The folder the view shows or sits in, and what it has open.
   const dir = folderOfView(view);
-  const file = view.kind === "file" || view.kind === "page" ? view.path : "";
+  const file =
+    view.kind === "file" || view.kind === "sequence" ? view.path : "";
   const changing = view.kind === "file" && !!view.diff;
   const source = view.kind === "file" && !!view.source;
   const marked = view.kind === "file" ? view.lines : undefined;
   // From the tree, search or changes (the list itself): Back is the list.
-  const fromList = (next: View) =>
-    setFlow(() => ({
-      view: next,
-      back: [{ kind: "list", dir: folderOfView(next) }],
-    }));
+  const show = (next: View) => setFlow(() => fromList(next));
   // A path clicked in a file or on a canvas: looked up, Back to here.
   const go = (path: string, lines?: Lines) =>
     setFlow((current) => follow(current, path, lines));
-  // What a path from the list opens: a page across the pane, else the file.
-  const opened = (path: string, lines?: Lines): View =>
-    HTML.test(path) && !lines
-      ? { kind: "page", path }
-      : {
-          kind: "file",
-          path,
-          lines,
-          source: !!lines && (MARKDOWN.test(path) || HTML.test(path)),
-        };
   const [expanded, setExpanded] = useState(() => {
     const saved = kept.read()[folderOf(session)];
     return new Set([...(Array.isArray(saved) ? saved : []), ...ancestors(dir)]);
@@ -269,8 +267,8 @@ export default function Files({
   const deleted =
     changing && changes.some((c) => c.path === file && c.state === "D");
   const image = view.kind === "file" && IMAGE.test(file) && !changing;
-  const page = view.kind === "page";
-  // The canvas, or one page, across the whole pane.
+  const page = view.kind === "sequence";
+  // The canvas, or one page in its sequence, across the whole pane.
   const stage = view.kind === "canvas" || page;
   const content = useResource(
     () =>
@@ -401,7 +399,7 @@ export default function Files({
   // A folder or page that went away (deleted, moved) leaves its view.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed or changed listing
   useEffect(() => {
-    if (view.kind === "list" && dir && listing.error)
+    if ((view.kind === "list" || stage) && dir && listing.error)
       if (failure(listing.error).status === 404)
         setFlow((current) =>
           swap(current, {
@@ -433,9 +431,20 @@ export default function Files({
           : current,
       );
   }, [diff.error]);
-  const pages = (here?.entries ?? [])
-    .filter((entry) => !entry.dir && HTML.test(entry.name))
-    .map((entry) => entry.name);
+  // What the folder's pages said they are, and from that the boards the
+  // view shows: a design's on its canvas, or what the open page is part of.
+  const [seen, setSeen] = useState<SeenPages>({});
+  const heard = (path: string) => (message: PageMessage) =>
+    setSeen((all) => hear(all, path, message));
+  const kind = here && page ? kindOf(here, nameOf(file)) : "design";
+  const boards = useMemo(
+    () =>
+      here && stage
+        ? boardsOf(dir, here, seen, page ? nameOf(file) : undefined)
+        : [],
+    [here, stage, page, dir, seen, file],
+  );
+  const failed = failures(boards, seen);
   // A write reloads the page it changed.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
   useEffect(() => {
@@ -445,7 +454,9 @@ export default function Files({
     const path = cited.kind === "resolve" ? cited.path : "";
     // A page, or what pages share (a stylesheet, an image): all reload.
     const key = path && HTML.test(path) ? path : "";
-    if (path) setVersions((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
+    if (!path) return;
+    setVersions((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
+    setSeen((all) => rewritten(all, key));
   }, [written]);
   const titled =
     view.kind === "canvas"
@@ -460,7 +471,14 @@ export default function Files({
   const above = back[back.length - 1];
 
   return (
-    <section class="files" aria-label="Files" data-showing={side}>
+    <section
+      class="files"
+      aria-label="Files"
+      data-showing={side}
+      // A click in the pane leaves focus in it (Safari focuses no button),
+      // so the keys of what it shows are its own.
+      tabIndex={-1}
+    >
       <header class="files-head">
         {above && (
           <IconButton
@@ -509,7 +527,7 @@ export default function Files({
                   page
                     ? { kind: "file", path: file, source: true }
                     : source && HTML.test(file)
-                      ? { kind: "page", path: file }
+                      ? { kind: "sequence", path: file }
                       : { kind: "file", path: file, source: !source },
                 ),
               )
@@ -563,21 +581,46 @@ export default function Files({
       </header>
       {stage && (
         <div class="files-stage">
+          {failed.count > 0 && (
+            <p class="page-notice">
+              <TriangleAlert />
+              <span>
+                {failed.count === 1
+                  ? "1 page failed to run"
+                  : `${failed.count} pages failed to run`}
+              </span>
+              {addToChat && (
+                <Button
+                  variant="secondary"
+                  onClick={() => addToChat(failed.text)}
+                >
+                  Ask agent to fix
+                </Button>
+              )}
+            </p>
+          )}
           {!preview.value ? (
             preview.error ? (
               <LoadError error={preview.error} retry={preview.retry} />
             ) : (
               <Spinner label="Opening the pages…" />
             )
+          ) : !here ? (
+            // What a page is part of is its folder's to say.
+            listing.error ? (
+              <LoadError error={listing.error} retry={listing.retry} />
+            ) : (
+              <Spinner label="Opening the pages…" />
+            )
           ) : page ? (
-            <OpenPage
+            <Sequence
               path={file}
-              src={pageUrl(file)!}
-              siblings={rows(pages).flatMap(([, names]) =>
-                names.map((name) => join(dir, name)),
-              )}
+              kind={kind}
+              boards={boards}
+              page={(path) => pageUrl(path)!}
+              heard={heard}
               go={(path) =>
-                setFlow((current) => swap(current, { kind: "page", path }))
+                setFlow((current) => swap(current, { kind: "sequence", path }))
               }
               addToChat={addToChat}
               base={preview.value.base}
@@ -588,6 +631,12 @@ export default function Files({
                   : undefined
               }
               pdf={pictures ? routes.files(id, "pdf", file) : undefined}
+              deckPdf={
+                pictures && kind === "deck"
+                  ? (w, h) =>
+                      `${routes.files(id, "pdf", `${dir}/`)}&w=${w}&h=${h}`
+                  : undefined
+              }
               presenter={(slides, at) =>
                 openPresenter({ session: id, slides, at })
               }
@@ -606,14 +655,6 @@ export default function Files({
                   revision: read.revision,
                 });
               }}
-              presentAtOpen={view.kind === "page" && !!view.present}
-              presented={() =>
-                setFlow((current) =>
-                  current.view.kind === "page"
-                    ? swap(current, { ...current.view, present: false })
-                    : current,
-                )
-              }
               view={viewer}
               read={(path) =>
                 api<FileText>(routes.files(id, "read", path)).then(
@@ -621,26 +662,14 @@ export default function Files({
                 )
               }
             />
-          ) : !here ? (
-            <Spinner label="Opening the pages…" />
           ) : (
-            <Canvas
+            <Plane
               dir={dir}
-              names={pages}
+              boards={boards}
+              sized={boards.every((board) => seen[board.path]?.info)}
               page={(path) => pageUrl(path)!}
+              heard={heard}
               open={(path) => setFlow((current) => push(current, opened(path)))}
-              addToChat={addToChat}
-              present={(path) =>
-                setFlow((current) =>
-                  push(current, { kind: "page", path, present: true }),
-                )
-              }
-              deckPdf={
-                pictures
-                  ? (w, h) =>
-                      `${routes.files(id, "pdf", `${dir}/`)}&w=${w}&h=${h}`
-                  : undefined
-              }
             />
           )}
         </div>
@@ -704,7 +733,7 @@ export default function Files({
                 )
                   setIndex(nextIndex(index, event.key, results.length));
                 else if (event.key === "Enter" && results[index])
-                  fromList(opened(results[index]));
+                  show(opened(results[index]));
                 else return;
                 event.preventDefault();
                 event.stopPropagation();
@@ -761,7 +790,7 @@ export default function Files({
                 prefix="files-result"
                 items={results}
                 index={index}
-                pick={(path) => fromList(opened(path))}
+                pick={(path) => show(opened(path))}
                 keyOf={(path) => path}
               >
                 {(path) => (
@@ -795,7 +824,7 @@ export default function Files({
                         class="entry tree-row"
                         aria-current={change.path === file ? "true" : undefined}
                         onClick={() =>
-                          fromList({
+                          show({
                             kind: "file",
                             path: change.path,
                             diff: true,
@@ -833,12 +862,11 @@ export default function Files({
                     dir={dir}
                     file={file}
                     toggle={toggle}
-                    open={(path) => fromList(opened(path))}
-                    canvas={(path) =>
-                      setFlow(() => ({
-                        view: { kind: "canvas", dir: path },
-                        back: [{ kind: "list", dir: path }],
-                      }))
+                    open={(path) => show(opened(path))}
+                    openFolder={(path) =>
+                      setFlow(() =>
+                        cite({ path: `${path}/` }, folderOf(session)),
+                      )
                     }
                   />
                 </Placeholder>

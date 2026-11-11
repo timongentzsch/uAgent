@@ -1,8 +1,7 @@
-import { ChevronDown, ChevronUp, X } from "lucide-preact";
 import type { RefObject } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Node, View } from "../../shared/types.ts";
-import { IconButton, Input } from "../../shared/ui.tsx";
+import { FindField } from "../../shared/find-field.tsx";
 import { highlights, occurrences, rangesIn } from "../../shared/find.ts";
 import { useApi } from "../../state/api.ts";
 import { useLatest } from "../../shared/use-latest.ts";
@@ -76,19 +75,7 @@ export function FindBar({
   const moves = useRef(0);
   const revealed = useRef(-1);
   const holdUntil = useRef(0);
-  const bar = useRef<HTMLDivElement>(null);
   const query = words.trim();
-
-  // A frame later: a menu that opened the bar gives focus back to its
-  // button as it closes.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      const field = bar.current?.querySelector("input");
-      field?.focus({ preventScroll: true });
-      field?.select();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [request.at]);
 
   // The host reads the saved conversation once typing pauses.
   useEffect(() => {
@@ -210,51 +197,17 @@ export function FindBar({
   };
 
   return (
-    <div
-      class="find-bar"
-      role="search"
-      aria-label="Find in this conversation"
-      ref={bar}
-    >
-      <Input
-        type="search"
-        aria-label="Find in this conversation"
-        placeholder="Find in this conversation…"
-        value={words}
-        onInput={(event) => setWords(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.isComposing) return;
-          if (event.key === "Enter") step(event.shiftKey ? -1 : 1);
-          else if (event.key === "Escape") close();
-          else return;
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      />
-      <span class="find-count small" aria-live="polite">
-        {spots.length
-          ? `${Math.max(current, 0) + 1} of ${spots.length}`
-          : query.length >= 2 && saved.words === query
-            ? "No matches"
-            : ""}
-      </span>
-      <IconButton
-        label="Previous match"
-        disabled={!spots.length}
-        onClick={() => step(-1)}
-      >
-        <ChevronUp />
-      </IconButton>
-      <IconButton
-        label="Next match"
-        disabled={!spots.length}
-        onClick={() => step(1)}
-      >
-        <ChevronDown />
-      </IconButton>
-      <IconButton label="Close find" onClick={close}>
-        <X />
-      </IconButton>
-    </div>
+    <FindField
+      label="Find in this conversation"
+      words={words}
+      setWords={setWords}
+      count={
+        spots.length ||
+        (query.length >= 2 && saved.words === query ? 0 : undefined)
+      }
+      current={Math.max(current, 0)}
+      step={step}
+      close={close}
+    />
   );
 }

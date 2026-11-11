@@ -410,6 +410,47 @@
     background: var(--raised);
     color: var(--text);
   }
+  /* A button laid over what it opens or picks (a board's picture): the
+     whole tile takes the press and shows the focus, and the button draws
+     nothing of its own. */
+  button.cover,
+  button.cover:enabled:is(:hover, :active) {
+    position: absolute;
+    inset: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  button.cover:is(:hover, :focus-visible) {
+    outline: var(--focus-ring);
+  }
+  .float-toolbar output {
+    min-width: 5ch;
+    text-align: center;
+    font-size: var(--font-small);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* A find field over what it searches (find-field.tsx): one line, the
+     field taking the width the count and the buttons leave. */
+  .find-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: var(--border);
+    background: var(--surface);
+  }
+  .find-bar > :first-child {
+    flex: 1;
+    min-width: 0;
+  }
+  .find-count {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
   /* Entries a hairline divides. */
   .divided > :not(:first-child) {
     border-top: var(--border);

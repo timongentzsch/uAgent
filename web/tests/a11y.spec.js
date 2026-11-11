@@ -13,7 +13,7 @@ import {
   SAMPLE_ASK,
 } from "./fixtures.js";
 import { createRequire } from "node:module";
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const AXE = createRequire(import.meta.url).resolve("axe-core/axe.min.js");
@@ -199,6 +199,39 @@ for (const width of [390, 1280])
     await confirm.getByRole("button", { name: "Cancel" }).click();
     await expect(settings).toBeVisible();
   });
+
+test("a deck in its viewer, with its legend and find, has no violations", async ({
+  page,
+  session,
+  host,
+}) => {
+  const dir = join(host.project, "decks", "talk");
+  await mkdir(dir, { recursive: true });
+  for (const title of ["Cover", "Plan"])
+    await writeFile(
+      join(dir, `${title}.html`),
+      `<!doctype html><html lang="en"><head><title>${title}</title><meta name="artboard" content="1920x1080 slide"></head><body><h1>${title}</h1><aside>Notes.</aside></body></html>`,
+    );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Files");
+  const files = page.getByRole("region", { name: "Files" });
+  await files.getByRole("button", { name: "decks", exact: true }).click();
+  await files.getByRole("button", { name: "talk", exact: true }).click();
+  await files.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(
+    files.getByRole("option", { name: "Slide 2: Plan" }),
+  ).toBeVisible();
+  await files.getByRole("button", { name: "Find" }).click();
+  await files.getByRole("searchbox").fill("plan");
+  await expect(files.getByRole("search")).toContainText("1 of 1");
+  // The slide it found, drawn.
+  await expect(
+    files.frameLocator(".page-stage iframe").getByRole("heading"),
+  ).toHaveText("Plan");
+  await expect(files.getByRole("group", { name: "Zoom" })).toBeVisible();
+  expect(await violations(page, ".files")).toEqual([]);
+});
 
 test.describe("phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });

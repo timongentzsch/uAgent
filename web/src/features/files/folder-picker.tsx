@@ -136,7 +136,7 @@ export default function FolderPicker({
               });
             }}
             open={() => {}}
-            canvas={() => {}}
+            openFolder={() => {}}
           />
           {!listing.entries.length && (
             <p class="small muted">No subfolders. You can use this folder.</p>

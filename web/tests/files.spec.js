@@ -585,7 +585,7 @@ async function decks(project) {
   }
 }
 
-test("a cited name two files share asks which, even over another deck's canvas", async ({
+test("a cited name two files share asks which, even over another deck", async ({
   page,
   host,
   request,
@@ -600,11 +600,18 @@ test("a cited name two files share asks which, even over another deck's canvas",
   await page.goto(`/#session=${cited.id}`);
   const transcript = page.locator(".transcript");
   const pane = page.getByRole("region", { name: "Files" });
+  // A cited deck opens at its first slide, its slides in the legend.
+  const slide = pane.frameLocator(".page-stage iframe");
   await transcript.locator(".file-ref", { hasText: "decks/a/" }).click();
-  await expect(pane.locator(".canvas-page")).toHaveCount(2);
+  await expect(
+    slide.getByRole("heading", { name: "a 01-cover.html" }),
+  ).toBeVisible();
+  await expect(
+    pane.getByRole("listbox", { name: "Slides" }).getByRole("option"),
+  ).toHaveCount(2);
   await transcript.locator(".file-ref", { hasText: "01-cover.html" }).click();
-  // The matches, never a canvas or a blank page.
-  await expect(pane.locator(".canvas-page")).toHaveCount(0);
+  // The matches, never the deck or a blank page.
+  await expect(pane.locator(".page-stage")).toHaveCount(0);
   await expect(
     pane.getByText("2 files are named 01-cover.html."),
   ).toBeVisible();
@@ -612,16 +619,14 @@ test("a cited name two files share asks which, even over another deck's canvas",
   await expect(matches.getByRole("option")).toHaveCount(2);
   await matches.getByRole("option", { name: /decks\/b/ }).click();
   await expect(
-    pane
-      .frameLocator("iframe")
-      .getByRole("heading", { name: "b 01-cover.html" }),
+    slide.getByRole("heading", { name: "b 01-cover.html" }),
   ).toBeVisible();
   // Back returns to the matches.
   await pane.getByRole("button", { name: "Back to the matches" }).click();
   await expect(matches.getByRole("option")).toHaveCount(2);
 });
 
-test("the tree's Canvas shows that folder's pages, never the last one's", async ({
+test("the tree's Open shows that folder's deck, never the last one's", async ({
   page,
   session,
   host,
@@ -633,19 +638,24 @@ test("the tree's Canvas shows that folder's pages, never the last one's", async 
   const pane = page.getByRole("region", { name: "Files" });
   const list = pane.getByRole("navigation", { name: "Folder" });
   await list.getByRole("button", { name: "decks", exact: true }).click();
-  // Each deck's own canvas, its own slides.
+  // Each deck's own slides, from its first; Back is the deck's list.
   for (const deck of ["a", "b"]) {
     if (deck === "b")
       await pane.getByRole("button", { name: "Back to the list" }).click();
     await list.getByRole("button", { name: deck, exact: true }).click();
     await list
       .locator(`.tree-folder:has([data-path="decks/${deck}"])`)
-      .getByRole("button", { name: "Canvas" })
+      .getByRole("button", { name: "Open", exact: true })
       .click();
-    await expect(pane.locator(".canvas-name")).toHaveText([
-      `01 · ${deck} 01-cover.html`,
-      `02 · ${deck} ${deck === "a" ? "02-plan" : "02-end"}.html`,
+    await expect(pane.locator(".page-legend-name")).toHaveText([
+      `1 · ${deck} 01-cover.html`,
+      `2 · ${deck} ${deck === "a" ? "02-plan" : "02-end"}.html`,
     ]);
+    await expect(
+      pane
+        .frameLocator(".page-stage iframe")
+        .getByRole("heading", { name: `${deck} 01-cover.html` }),
+    ).toBeVisible();
   }
 });
 
@@ -663,16 +673,21 @@ test("closed and opened again, Files is where it was left", async ({
     .click();
   const pane = page.getByRole("region", { name: "Files" });
   const slide = pane
-    .frameLocator("iframe")
+    .frameLocator(".page-stage iframe")
     .getByRole("heading", { name: "a 02-plan.html" });
   await expect(slide).toBeVisible();
   await pane.getByRole("button", { name: "Close files" }).click();
   await expect(pane).toHaveCount(0);
   await headerAction(page, "Files");
   await expect(slide).toBeVisible();
-  // Its way back is kept too: up to its deck's canvas.
-  await pane.getByRole("button", { name: "Back to the canvas" }).click();
-  await expect(pane.locator(".canvas-page")).toHaveCount(2);
+  await expect(
+    pane.getByRole("option", { name: "Slide 2: a 02-plan.html" }),
+  ).toHaveAttribute("aria-selected", "true");
+  // Its way back is kept too: to its deck's list, a deck having no canvas.
+  await pane.getByRole("button", { name: "Back to the list" }).click();
+  await expect(
+    pane.getByRole("button", { name: "01-cover.html", exact: true }),
+  ).toBeVisible();
 });
 
 test("a cited folder that is not there says so, on the folder's top", async ({
@@ -694,7 +709,7 @@ test("a cited folder that is not there says so, on the folder's top", async ({
   await expect(pane.locator(".canvas-page")).toHaveCount(0);
 });
 
-test("a canvas stays open when the window narrows to a phone's sheet", async ({
+test("a deck stays open when the window narrows to a phone's sheet", async ({
   page,
   host,
   request,
@@ -704,8 +719,14 @@ test("a canvas stays open when the window narrows to a phone's sheet", async ({
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#session=${cited.id}`);
   await page.locator(".transcript .file-ref", { hasText: "decks/a/" }).click();
-  await expect(page.locator(".canvas-page")).toHaveCount(2);
+  const slides = page.getByRole("listbox", { name: "Slides" });
+  await expect(slides.getByRole("option")).toHaveCount(2);
   await page.setViewportSize({ width: 390, height: 844 });
   const sheet = page.getByRole("dialog", { name: "Files" });
-  await expect(sheet.locator(".canvas-page")).toHaveCount(2);
+  await expect(sheet.getByRole("option")).toHaveCount(2);
+  await expect(
+    sheet
+      .frameLocator(".page-stage iframe")
+      .getByRole("heading", { name: "a 01-cover.html" }),
+  ).toBeVisible();
 });

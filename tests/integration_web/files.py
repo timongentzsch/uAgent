@@ -106,6 +106,64 @@ def test_web_files_list_read_serve_and_find(root, home, *, binary):
             assert_true(answer()[0] == 400, "no mode answered")
 
 
+def test_web_files_listing_says_what_a_folder_s_pages_are(root, home, *, binary):
+    project = root / "kinds"
+    slide = '<meta name="artboard" content="1920x1080 slide">'
+    screen = '<meta name="artboard" content="1440x900">'
+    paper = '<meta name="print" content="flow a4">'
+    pages = {
+        "decks/q3/01-cover.html": slide,
+        "decks/q3/02-plan.html": slide,
+        "decks/q3/style.css": "",
+        "design/onboarding/01-welcome.html": screen,
+        "design/onboarding/notes.html": "<p>plain</p>",
+        "design/system/tokens.css": ":root{}",
+        "design/system/book.html": paper,
+        "docs/memo.html": paper,
+        "docs/slide.html": slide,
+        "plain/a.html": "<p>a</p>",
+    }
+    for name, head in pages.items():
+        (project / name).parent.mkdir(parents=True, exist_ok=True)
+        (project / name).write_text(head)
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project, activate=False)
+
+            def listed(folder):
+                status, body, _ = client.request(
+                    f"/api/sessions/{session['id']}/files?{urlencode({'list': folder})}"
+                )
+                value = json.loads(body)
+                assert_true(status == 200, value)
+                kinds = {
+                    entry["name"]: entry["kind"] for entry in value["entries"] if "kind" in entry
+                }
+                return value["kind"], kinds
+
+            assert_true(
+                listed("decks/q3") == ("deck", {"01-cover.html": "slide", "02-plan.html": "slide"}),
+                listed("decks/q3"),
+            )
+            # One page with an artboard makes a design; other HTML is its page too.
+            assert_true(
+                listed("design/onboarding") == ("design", {"01-welcome.html": "page"}),
+                listed("design/onboarding"),
+            )
+            assert_true(
+                listed("design/system") == ("system", {"book.html": "doc"}),
+                listed("design/system"),
+            )
+            # A document is its own; the slide beside it is a deck of one.
+            assert_true(
+                listed("docs") == ("deck", {"memo.html": "doc", "slide.html": "slide"}),
+                listed("docs"),
+            )
+            assert_true(listed("plain") == ("", {}), listed("plain"))
+            assert_true(listed("") == ("", {}), listed(""))
+
+
 def test_web_files_stay_inside_the_folder(root, home, *, binary):
     project = root / "files"
     project.mkdir()

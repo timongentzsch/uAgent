@@ -118,13 +118,15 @@ export default function LibraryArtifact({
               })
             }
           >
-            {kind === "design" || kind === "deck"
+            {kind === "design"
               ? "Open canvas"
-              : kind === "doc"
-                ? "Open document"
-                : book
-                  ? "Open its brand book"
-                  : "Open its folder"}
+              : kind === "deck"
+                ? "Open deck"
+                : kind === "doc"
+                  ? "Open document"
+                  : book
+                    ? "Open its brand book"
+                    : "Open its folder"}
           </Button>
         )}
       </div>

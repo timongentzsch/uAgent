@@ -1,5 +1,6 @@
-// A folder of HTML files opens as a canvas in the Files pane: each page live
-// in a sandboxed frame that reaches neither the app nor the host's API.
+// A design's pages open as a canvas in the Files pane, a deck's slides and a
+// document's pages in a viewer with a legend: each page live in a sandboxed
+// frame that reaches neither the app nor the host's API.
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test, expect, headerAction, selectProbeModel } from "./fixtures.js";
@@ -31,7 +32,7 @@ async function openCanvas(app) {
   await headerAction(app, "Files");
   const files = app.getByRole("region", { name: "Files" });
   await files.getByRole("button", { name: "design", exact: true }).click();
-  await files.getByRole("button", { name: "Canvas" }).click();
+  await files.getByRole("button", { name: "Open", exact: true }).click();
   return files;
 }
 
@@ -154,7 +155,7 @@ async function phoneCanvas(app, session) {
   await headerAction(app, "Files");
   const files = app.getByRole("dialog", { name: "Files" });
   await files.getByRole("button", { name: "design", exact: true }).click();
-  await files.getByRole("button", { name: "Canvas" }).click();
+  await files.getByRole("button", { name: "Open", exact: true }).click();
   await expect(
     app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
   ).toBeVisible();
@@ -283,11 +284,12 @@ test("a page opened: select and comment, tweaks, print", async ({
   await headerAction(app, "Files");
   const files = app.getByRole("region", { name: "Files" });
   await files.getByRole("button", { name: "design", exact: true }).click();
-  // A folder of one page has no canvas: its page is a row.
-  await expect(files.getByRole("button", { name: "Canvas" })).toHaveCount(0);
-  await files.getByRole("button", { name: "hero-a.html", exact: true }).click();
+  // A design of one page has no canvas: Open shows the page, with no legend.
+  await files.getByRole("button", { name: "Open", exact: true }).click();
   const frame = app.frameLocator('iframe[title="Hero A"]');
   await expect(frame.getByText("Alpha headline")).toBeVisible();
+  await expect(files.locator(".canvas-page")).toHaveCount(0);
+  await expect(files.getByRole("listbox")).toHaveCount(0);
 
   // Select picks an element; the comment goes into the draft, pane open.
   await files.getByRole("button", { name: "Select" }).click();
@@ -326,7 +328,7 @@ test("a page opened: select and comment, tweaks, print", async ({
   await alone.close();
 });
 
-test("a design system's brand book is a page, and its themes are under Tweaks", async ({
+test("a design system opens on its brand book, and its themes are under Tweaks", async ({
   page: app,
   session,
   host,
@@ -363,8 +365,8 @@ test("a design system's brand book is a page, and its themes are under Tweaks", 
   const files = app.getByRole("region", { name: "Files" });
   await files.getByRole("button", { name: "design", exact: true }).click();
   await files.getByRole("button", { name: "system", exact: true }).click();
-  // Its one page is a row, not a canvas.
-  await files.getByRole("button", { name: "book.html", exact: true }).click();
+  // Open on a design system is its book, never a canvas.
+  await files.getByRole("button", { name: "Open", exact: true }).click();
   await expect(
     app
       .frameLocator('iframe[title="Brand book"]')
@@ -461,7 +463,7 @@ test("Back closes the open page and shows the view it was opened from", async ({
   ).toBeVisible();
   await expect(files.locator(".canvas-page")).toHaveCount(0);
   // From the canvas: back to the canvas.
-  await files.getByRole("button", { name: "Canvas" }).click();
+  await files.getByRole("button", { name: "Open", exact: true }).click();
   await files.getByRole("button", { name: "Open Hero B" }).click();
   await files.getByRole("button", { name: "Back to the canvas" }).click();
   await expect(files.locator(".canvas-page")).toHaveCount(3);
@@ -470,6 +472,32 @@ test("Back closes the open page and shows the view it was opened from", async ({
   await expect(
     files.getByRole("button", { name: "cover.html", exact: true }),
   ).toBeVisible();
+});
+
+test("a page as tall as it reads keeps its size on the canvas once it was opened", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const dir = join(host.project, "design");
+  await mkdir(dir);
+  await writeFile(join(dir, "home.html"), page("Home", "<p>Short</p>", "1440"));
+  await writeFile(join(dir, "hero.html"), page("Hero", "<h1>Hero</h1>"));
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  const files = await openCanvas(app);
+  const tile = files
+    .locator(".canvas-page", { has: app.locator('iframe[title="Home"]') })
+    .locator(".page-frame");
+  await expect(tile).toBeVisible();
+  const height = await tile.evaluate((frame) => frame.style.height);
+  // On the stage its frame is the stage's height, which is not the page's.
+  await files.getByRole("button", { name: "Open Home" }).click();
+  await expect(files.locator(".page-body .zoom-controls")).toBeVisible();
+  await files.getByRole("button", { name: "Back to the canvas" }).click();
+  await expect(files.locator(".zoom-controls output")).toBeVisible();
+  await expect(tile).toBeVisible();
+  expect(await tile.evaluate((frame) => frame.style.height)).toBe(height);
 });
 
 test("an opened page zooms as the canvas does, from the controls and over the page", async ({
@@ -569,7 +597,7 @@ test("a page that runs past its size or misses a file says so", async ({
   const files = app.getByRole("region", { name: "Files" });
   await files.getByRole("button", { name: "design", exact: true }).click();
   await files.getByRole("button", { name: "book", exact: true }).click();
-  await files.getByRole("button", { name: "Canvas" }).click();
+  await files.getByRole("button", { name: "Open", exact: true }).click();
   await expect(files.getByText("1 page failed to run")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   await expect(app.locator("#prompt")).toHaveValue(
@@ -607,53 +635,86 @@ test("a slide with text over text and a document block taller than a page say so
   const files = app.getByRole("region", { name: "Files" });
   await files.getByRole("button", { name: "design", exact: true }).click();
   await files.getByRole("button", { name: "checks", exact: true }).click();
-  await files.getByRole("button", { name: "Canvas" }).click();
-  await expect(files.getByText("2 pages failed to run")).toBeVisible();
+  // The one slide is a deck; the document beside it is its own.
+  await files.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(files.getByText("1 page failed to run")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   const draft = app.locator("#prompt");
   await expect(draft).toHaveValue(
     /`design\/checks\/01-slide\.html` threw: “Cut off” runs past the slide's 1920x1080 edge.*“Revenue grew” overlaps “Footer note”/,
   );
+  await files.getByRole("button", { name: "Back to the list" }).click();
+  await files.getByRole("button", { name: "memo.html", exact: true }).click();
+  await expect(
+    files.frameLocator(".page-stage iframe").getByText("tall"),
+  ).toBeVisible();
+  await expect(files.getByText("1 page failed to run")).toBeVisible();
+  await files.getByRole("button", { name: "Ask agent to fix" }).click();
   await expect(draft).toHaveValue(
     /`design\/checks\/memo\.html` threw: a figure is 1000px tall, more than a page \(794px\)/,
   );
 });
 
-test("a deck lies in slide order, presents with its notes, and the presenter's window follows", async ({
+// A slide of a deck: its title as its heading, its notes in its last aside.
+const slide = (title, notes, body = "") =>
+  page(
+    title,
+    `<h1>${title}</h1>${body}${notes ? `<aside>${notes}</aside>` : ""}`,
+    "1920x1080 slide",
+  );
+
+// A deck in decks/talk, opened from the tree: the pane, its legend, the
+// stage's page and the counter.
+async function openDeck(app, session, project, slides) {
+  const dir = join(project, "decks", "talk");
+  await mkdir(dir, { recursive: true });
+  for (const [name, html] of Object.entries(slides))
+    await writeFile(join(dir, name), html);
+  await app.goto(`/#session=${session.id}`);
+  await headerAction(app, "Files");
+  const files = app.getByRole(
+    app.viewportSize().width < 600 ? "dialog" : "region",
+    { name: "Files" },
+  );
+  await files.getByRole("button", { name: "decks", exact: true }).click();
+  await files.getByRole("button", { name: "talk", exact: true }).click();
+  await files.getByRole("button", { name: "Open", exact: true }).click();
+  return {
+    files,
+    legend: files.getByRole("listbox", { name: "Slides" }),
+    stage: files.frameLocator(".page-stage iframe"),
+    count: files.getByRole("group", { name: "Step" }).locator("output"),
+  };
+}
+
+test("a deck opens in slide order, presents with its notes, and the presenter's window follows", async ({
   page: app,
   session,
   host,
 }) => {
-  const dir = join(host.project, "decks", "talk");
-  await mkdir(dir, { recursive: true });
-  const slide = (title, notes) =>
-    page(
-      title,
-      `<h1>${title}</h1>${notes ? `<aside>${notes}</aside>` : ""}`,
-      "1920x1080 slide",
-    );
-  await writeFile(join(dir, "01-cover.html"), slide("Cover", "Say hello."));
-  await writeFile(join(dir, "02-plan.html"), slide("Plan", "Three steps."));
-  await writeFile(join(dir, "10-end.html"), slide("End"));
   await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  await headerAction(app, "Files");
-  const files = app.getByRole("region", { name: "Files" });
-  await files.getByRole("button", { name: "decks", exact: true }).click();
-  await files.getByRole("button", { name: "talk", exact: true }).click();
-  await files.getByRole("button", { name: "Canvas" }).click();
-  await expect(files.getByText("3 slides")).toBeVisible();
-  await expect(files.locator(".canvas-name")).toHaveText([
-    "01 · Cover",
-    "02 · Plan",
-    "03 · End",
+  const { files, legend, count } = await openDeck(app, session, host.project, {
+    "01-cover.html": slide("Cover", "Say hello."),
+    "02-plan.html": slide("Plan", "Three steps."),
+    "10-end.html": slide("End"),
+  });
+  // No canvas: the first slide on the stage, the deck in its legend.
+  await expect(files.locator(".canvas-page")).toHaveCount(0);
+  await expect(count).toHaveText("1 / 3");
+  await expect(legend.locator(".page-legend-name")).toHaveText([
+    "1 · Cover",
+    "2 · Plan",
+    "3 · End",
   ]);
+  // A slide's notes are under the stage, never drawn on the slide.
+  await expect(files.locator(".page-main > .page-notes")).toContainText(
+    "Say hello.",
+  );
 
   await files.getByRole("button", { name: "Present" }).click();
   const stage = files.locator(".page-stage[data-presenting]");
   await expect(stage).toBeVisible();
   await expect(stage.getByText("1 / 3")).toBeVisible();
-  // The notes are the presenter's, never drawn on the slide.
   const slideFrame = stage.frameLocator("iframe");
   await expect(
     slideFrame.getByRole("heading", { name: "Cover" }),
@@ -664,6 +725,13 @@ test("a deck lies in slide order, presents with its notes, and the presenter's w
   await app.keyboard.press("ArrowRight");
   await expect(stage.getByText("2 / 3")).toBeVisible();
   await expect(stage.locator(".page-notes")).toHaveText("Three steps.");
+  // Space on the focused Next presses it: one slide on, not a second for
+  // the key.
+  await app.keyboard.press("ArrowLeft");
+  await expect(stage.getByText("1 / 3")).toBeVisible();
+  await stage.getByRole("button", { name: "Next slide" }).focus();
+  await app.keyboard.press("Space");
+  await expect(stage.getByText("2 / 3")).toBeVisible();
 
   // The presenter's window: now, next and the notes; its keys move the deck.
   const [presenter] = await Promise.all([
@@ -677,42 +745,503 @@ test("a deck lies in slide order, presents with its notes, and the presenter's w
   await expect(view.getByText("Slide 3 of 3")).toBeVisible();
   await expect(view.getByText("End of the deck")).toBeVisible();
   await expect(stage.getByText("3 / 3")).toBeVisible();
-  await stage.getByRole("button", { name: "Back" }).click();
+  await stage.getByRole("button", { name: "Previous slide" }).click();
   await expect(view.getByText("Slide 2 of 3")).toBeVisible();
   await presenter.close();
 
+  // Ended, the deck is on the slide it was presenting, in the viewer.
   await stage.getByRole("button", { name: "End" }).click();
   await expect(files.locator(".page-stage[data-presenting]")).toHaveCount(0);
-  // An opened slide steps with the arrow keys and the buttons over its edges.
-  const slideNow = files.locator(".page-stage").frameLocator("iframe");
-  await expect(slideNow.getByRole("heading", { name: "Plan" })).toBeVisible();
-  await app.keyboard.press("ArrowRight");
-  await expect(slideNow.getByRole("heading", { name: "End" })).toBeVisible();
-  await files.getByRole("button", { name: "Previous slide" }).click();
-  await expect(slideNow.getByRole("heading", { name: "Plan" })).toBeVisible();
-  await files.getByRole("button", { name: "Next slide" }).click();
-  await expect(slideNow.getByRole("heading", { name: "End" })).toBeVisible();
+  await expect(count).toHaveText("2 / 3");
+  await expect(
+    legend.getByRole("option", { name: "Slide 2: Plan" }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    files.getByRole("button", { name: "Back to the list" }),
+  ).toBeVisible();
 });
 
-test("a document is edited in place, saved to its file, and exports Markdown", async ({
+test("a deck's legend, counter and keys step through its slides", async ({
   page: app,
   session,
   host,
 }) => {
-  const dir = join(host.project, "docs");
+  await app.setViewportSize({ width: 1440, height: 900 });
+  const { files, legend, stage, count } = await openDeck(
+    app,
+    session,
+    host.project,
+    {
+      "01-cover.html": slide("Cover"),
+      "02-plan.html": slide("Plan"),
+      "03-numbers.html": slide("Numbers"),
+      "04-end.html": slide("End"),
+    },
+  );
+  const shows = async (title, at) => {
+    await expect(stage.getByRole("heading", { name: title })).toBeVisible();
+    await expect(count).toHaveText(`${at} / 4`);
+    await expect(
+      legend.getByRole("option", { name: `Slide ${at}: ${title}` }),
+    ).toHaveAttribute("aria-selected", "true");
+  };
+  await expect(legend.getByRole("option")).toHaveCount(4);
+  await shows("Cover", 1);
+  // A click in the legend goes there, and Back is still the list.
+  await legend.getByRole("option", { name: "Slide 3: Numbers" }).click();
+  await shows("Numbers", 3);
+  // The keys: arrows and the Page keys step, round the ends; Home and End
+  // go to them; Up and Down walk the legend as a list.
+  for (const [key, title, at] of [
+    ["ArrowRight", "End", 4],
+    ["ArrowRight", "Cover", 1],
+    ["End", "End", 4],
+    ["Home", "Cover", 1],
+    ["PageDown", "Plan", 2],
+    ["ArrowDown", "Numbers", 3],
+    ["ArrowUp", "Plan", 2],
+    ["PageUp", "Cover", 1],
+    ["ArrowLeft", "End", 4],
+  ]) {
+    await app.keyboard.press(key);
+    await shows(title, at);
+  }
+  // The counter's own buttons.
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await shows("Numbers", 3);
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await shows("End", 4);
+  // With the slide itself in focus its keys still step, Space too, and a
+  // swipe across it steps as an arrow does.
+  await stage.getByRole("heading", { name: "End" }).click();
+  await app.keyboard.press("Home");
+  await shows("Cover", 1);
+  await stage.getByRole("heading", { name: "Cover" }).click();
+  await app.keyboard.press("Space");
+  await shows("Plan", 2);
+  await stage.locator("html").evaluate(() => {
+    const touch = (type, x) =>
+      dispatchEvent(
+        Object.assign(new Event(type), {
+          touches: [{ clientX: x, clientY: 500 }],
+          changedTouches: [{ clientX: x, clientY: 500 }],
+        }),
+      );
+    touch("touchstart", 1500);
+    touch("touchend", 600);
+  });
+  await shows("Numbers", 3);
+  // Never while a field has the keys. From the conversation the arrows
+  // step, and the paging keys stay the transcript's.
+  await app.locator("#prompt").focus();
+  await app.keyboard.press("ArrowRight");
+  await app.keyboard.press("PageDown");
+  await shows("Numbers", 3);
+  await app.locator("#conversation").focus();
+  await app.keyboard.press("PageUp");
+  await shows("Numbers", 3);
+  await app.keyboard.press("ArrowRight");
+  await shows("End", 4);
+  // A key another control took is that control's: the pane's edge moves
+  // with the arrows, and the slide stays.
+  const edge = app.getByRole("separator", { name: "Resize the files" });
+  const width = async () => (await files.boundingBox()).width;
+  const before = await width();
+  await edge.focus();
+  await app.keyboard.press("ArrowRight");
+  await expect.poll(width).not.toBe(before);
+  await shows("End", 4);
+  // The legend hides and shows; the counter stays.
+  await files.getByRole("button", { name: "Legend" }).click();
+  await expect(legend).toHaveCount(0);
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await expect(count).toHaveText("3 / 4");
+  await files.getByRole("button", { name: "Legend" }).click();
+  await shows("Numbers", 3);
+  // Every step replaced the slide: Back is one step, to the list.
+  await files.getByRole("button", { name: "Back to the list" }).click();
+  await expect(
+    files.getByRole("button", { name: "03-numbers.html", exact: true }),
+  ).toBeVisible();
+});
+
+test("a long deck's legend draws only the slides near its view, and keeps the current one in it", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await app.setViewportSize({ width: 1440, height: 900 });
+  const names = Array.from({ length: 40 }, (_, at) =>
+    String(at + 1).padStart(2, "0"),
+  );
+  const { legend, count } = await openDeck(
+    app,
+    session,
+    host.project,
+    Object.fromEntries(
+      names.map((name) => [`${name}.html`, slide(`S${name}`)]),
+    ),
+  );
+  await expect(legend.getByRole("option")).toHaveCount(40);
+  const first = legend.locator('iframe[title="Slide 1: S01"]');
+  const last = legend.locator('iframe[title="Slide 40: S40"]');
+  await expect(first).toHaveCount(1);
+  await expect(last).toHaveCount(0);
+  // Some of them, from the first on; the rest are their boxes only.
+  const drawn = await legend.locator("iframe").count();
+  expect(drawn).toBeGreaterThan(0);
+  expect(drawn).toBeLessThan(40);
+  await expect(legend.locator(".page-frame")).toHaveCount(40);
+  // The last slide: the legend scrolls to it, and draws that end instead.
+  await app.keyboard.press("End");
+  await expect(count).toHaveText("40 / 40");
+  await expect(
+    legend.getByRole("option", { name: "Slide 40: S40" }),
+  ).toBeInViewport();
+  await expect(last).toHaveCount(1);
+  await expect(first).toHaveCount(0);
+});
+
+test("on a phone a deck's legend is a filmstrip under the stage", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await app.setViewportSize({ width: 390, height: 844 });
+  const { files, legend, stage, count } = await openDeck(
+    app,
+    session,
+    host.project,
+    Object.fromEntries(
+      [
+        "Cover",
+        "Plan",
+        "Numbers with a name too long for its picture",
+        "Risks",
+        "End",
+      ].map((title, at) => [`0${at + 1}.html`, slide(title)]),
+    ),
+  );
+  await expect(stage.getByRole("heading", { name: "Cover" })).toBeVisible();
+  await expect(legend.getByRole("option")).toHaveCount(5);
+  // One row under the stage, scrolling sideways.
+  const strip = await legend.evaluate((list) => ({
+    under:
+      list.getBoundingClientRect().top >=
+      list
+        .closest(".page-body")
+        .querySelector(".page-stage")
+        .getBoundingClientRect().bottom,
+    tops: new Set(
+      [...list.children].map((item) => item.getBoundingClientRect().top),
+    ).size,
+    scrolls: list.scrollWidth > list.clientWidth,
+    // A slide's name is as wide as its picture, however long.
+    widths: new Set([...list.children].map((item) => item.offsetWidth)).size,
+  }));
+  expect(strip).toEqual({ under: true, tops: 1, scrolls: true, widths: 1 });
+  // A tap goes there, and the strip brings the current one into view.
+  await legend.getByRole("option", { name: "Slide 5: End" }).click();
+  await expect(stage.getByRole("heading", { name: "End" })).toBeVisible();
+  await expect(count).toHaveText("5 / 5");
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await expect(
+    legend.getByRole("option", { name: "Slide 1: Cover" }),
+  ).toBeInViewport();
+});
+
+test("a slide that fails is marked in the legend, and its errors go to the agent once", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await app.setViewportSize({ width: 1440, height: 900 });
+  const { files, legend, stage } = await openDeck(app, session, host.project, {
+    "01-cover.html": slide("Cover"),
+    "02-broken.html": slide(
+      "Broken",
+      "",
+      '<script>dispatchEvent(new ErrorEvent("error", { message: "ReferenceError: missing is not defined", lineno: 3 }))</script>',
+    ),
+  });
+  const broken = legend.getByRole("option", {
+    name: "Slide 2: Broken, failed to run",
+  });
+  await expect(broken).toBeVisible();
+  await expect(
+    legend.getByRole("option", { name: "Slide 1: Cover", exact: true }),
+  ).toBeVisible();
+  await expect(files.getByText("1 page failed to run")).toBeVisible();
+  // On the stage too it says the same error, which is kept once.
+  await broken.click();
+  await expect(stage.getByRole("heading", { name: "Broken" })).toBeVisible();
+  await files.getByRole("button", { name: "Ask agent to fix" }).click();
+  await expect(app.locator("#prompt")).toHaveValue(
+    "`decks/talk/02-broken.html` threw: ReferenceError: missing is not defined (line 3)",
+  );
+});
+
+test("find in a deck steps across its slides and marks what it found", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await app.setViewportSize({ width: 1440, height: 900 });
+  const { files, stage, count } = await openDeck(app, session, host.project, {
+    "01-cover.html": slide(
+      "Cover",
+      "Revenue is in the notes.",
+      "<p>Revenue up</p>",
+    ),
+    "02-plan.html": slide("Plan", "", "<p>Nothing here</p>"),
+    "03-numbers.html": slide(
+      "Numbers",
+      "",
+      "<p>Revenue per quarter</p><p>All REVENUE, no costs</p><script>/* revenue */</script>",
+    ),
+  });
+  const marks = (name) =>
+    stage
+      .locator("html")
+      .evaluate((_, name) => CSS.highlights.get(name)?.size ?? 0, name);
+  await files.getByRole("button", { name: "Find" }).click();
+  const bar = files.getByRole("search", { name: "Find in this deck" });
+  const field = bar.getByRole("searchbox");
+  await expect(field).toBeFocused();
+  // What a slide draws is counted: not its notes, nor its scripts.
+  await field.fill("revenue");
+  await expect(bar).toContainText("1 of 3");
+  await expect.poll(() => marks("uagent-find")).toBe(1);
+  await expect.poll(() => marks("uagent-found")).toBe(1);
+  // The next one is two slides on; the slide between has none.
+  await field.press("Enter");
+  await expect(bar).toContainText("2 of 3");
+  await expect(count).toHaveText("3 / 3");
+  await expect(stage.getByRole("heading", { name: "Numbers" })).toBeVisible();
+  await expect.poll(() => marks("uagent-find")).toBe(2);
+  await field.press("Enter");
+  await expect(bar).toContainText("3 of 3");
+  await expect(count).toHaveText("3 / 3");
+  // Round the end to the first, and back with Shift.
+  await field.press("Enter");
+  await expect(bar).toContainText("1 of 3");
+  await expect(count).toHaveText("1 / 3");
+  await field.press("Shift+Enter");
+  await expect(bar).toContainText("3 of 3");
+  await expect(count).toHaveText("3 / 3");
+  await expect(stage.getByRole("heading", { name: "Numbers" })).toBeVisible();
+  await field.fill("wombat");
+  await expect(bar).toContainText("No matches");
+  await expect.poll(() => marks("uagent-find")).toBe(0);
+  // Closed, nothing stays marked.
+  await field.fill("revenue");
+  await expect.poll(() => marks("uagent-find")).toBe(2);
+  await field.press("Escape");
+  await expect(bar).toHaveCount(0);
+  await expect.poll(() => marks("uagent-find")).toBe(0);
+});
+
+test("what a slide says as it is left is never taken for the next slide's", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await app.setViewportSize({ width: 1440, height: 900 });
+  const { files, legend, stage } = await openDeck(app, session, host.project, {
+    "01-cover.html": slide(
+      "Cover",
+      "",
+      '<script>addEventListener("beforeunload", () => dispatchEvent(new ErrorEvent("error", { message: "late from the cover" })))</script>',
+    ),
+    "02-plan.html": slide("Plan"),
+  });
+  await expect(stage.getByRole("heading", { name: "Cover" })).toBeVisible();
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await expect(stage.getByRole("heading", { name: "Plan" })).toBeVisible();
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await expect(stage.getByRole("heading", { name: "Cover" })).toBeVisible();
+  await expect(
+    legend.getByRole("option", { name: "Slide 2: Plan", exact: true }),
+  ).toBeVisible();
+  await expect(files.getByText(/failed to run/)).toHaveCount(0);
+});
+
+test("a design's page opens among its pages; a document beside them is its own, and skipped", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const dir = join(host.project, "design");
+  await mkdir(dir);
+  for (const [name, title] of [
+    ["01-home", "Home"],
+    ["02-pricing", "Pricing"],
+    ["03-about", "About"],
+  ])
+    await writeFile(
+      join(dir, `${name}.html`),
+      page(title, `<h1>${title}</h1>`),
+    );
+  await writeFile(
+    join(dir, "terms.html"),
+    '<!doctype html><html><head><title>Terms</title><meta name="print" content="flow a4"></head><body><h1>Terms</h1></body></html>',
+  );
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  const files = await openCanvas(app);
+  // The canvas shows all four.
+  await expect(files.locator(".canvas-page")).toHaveCount(4);
+  await files.getByRole("button", { name: "Open Pricing" }).click();
+  const legend = files.getByRole("listbox", { name: "Pages" });
+  const stage = files.frameLocator(".page-stage iframe");
+  const count = files.getByRole("group", { name: "Step" }).locator("output");
+  await expect(legend.locator(".page-legend-name")).toHaveText([
+    "1 · Home",
+    "2 · Pricing",
+    "3 · About",
+  ]);
+  const shows = async (title, at) => {
+    await expect(stage.getByRole("heading", { name: title })).toBeVisible();
+    await expect(count).toHaveText(`${at} / 3`);
+    await expect(
+      legend.getByRole("option", { name: `Page ${at}: ${title}` }),
+    ).toHaveAttribute("aria-selected", "true");
+  };
+  await shows("Pricing", 2);
+  // Round the three by key, counter and legend, never onto the document.
+  await app.keyboard.press("ArrowRight");
+  await shows("About", 3);
+  await files.getByRole("button", { name: "Next page" }).click();
+  await shows("Home", 1);
+  await files.getByRole("button", { name: "Previous page" }).click();
+  await shows("About", 3);
+  await legend.getByRole("option", { name: "Page 2: Pricing" }).click();
+  await shows("Pricing", 2);
+  await files.getByRole("button", { name: "Back to the canvas" }).click();
+  // The document opens as itself, with no pages of the design beside it.
+  await files.getByRole("button", { name: "Open Terms" }).click();
+  await expect(stage.getByRole("heading", { name: "Terms" })).toBeVisible();
+  await expect(files.getByRole("listbox")).toHaveCount(0);
+});
+
+test("find follows what the agent rewrites while it is open", async ({
+  page: app,
+  session,
+  host,
+  command,
+}) => {
+  await design(host.project);
+  await app.setViewportSize({ width: 1440, height: 900 });
+  await app.goto(`/#session=${session.id}`);
+  const files = await openCanvas(app);
+  await files.getByRole("button", { name: "Open Hero B" }).click();
+  await files.getByRole("button", { name: "Find" }).click();
+  const bar = files.getByRole("search", { name: "Find in this design" });
+  await bar.getByRole("searchbox").fill("rewritten");
+  await expect(bar).toContainText("No matches");
+  await selectProbeModel(command, session, { yolo: true });
+  await app.locator("#prompt").fill("Design probe");
+  await app.locator("#prompt").press("Enter");
+  // The page it rewrote is read again, and holds the words now.
+  await expect(bar).toContainText("1 of 1");
+  await expect(
+    files
+      .frameLocator(".page-stage iframe")
+      .getByRole("heading", { name: "Rewritten" }),
+  ).toBeVisible();
+});
+
+// docs/ends.html: three pages, the first nearly a full one and the other
+// two short, so the last two lie together in the document's last view.
+for (const [where, width, height] of [
+  ["a phone, where the counter is the only stepper", 390, 844],
+  ["a wide pane, by the legend too", 1440, 900],
+])
+  test(`a document's last pages are stepped to though it cannot scroll to them: on ${where}`, async ({
+    page: app,
+    session,
+    host,
+  }) => {
+    const dir = join(host.project, "docs");
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, "ends.html"),
+      '<!doctype html><html><head><title>Ends</title><meta name="print" content="flow a5"><style>*{margin:0}</style></head>' +
+        '<body><p style="height:780px">One</p>' +
+        '<h2 style="break-before:page;height:40px">Two</h2><p style="height:400px">second</p>' +
+        '<h2 style="break-before:page;height:40px">Three</h2><p style="height:100px">third</p></body></html>',
+    );
+    await app.setViewportSize({ width, height });
+    await app.goto(`/#session=${session.id}`);
+    await headerAction(app, "Files");
+    const phone = width < 600;
+    const files = app.getByRole(phone ? "dialog" : "region", { name: "Files" });
+    await files.getByRole("button", { name: "docs", exact: true }).click();
+    await files.getByRole("button", { name: "ends.html", exact: true }).click();
+    const count = files.getByRole("group", { name: "Step" }).locator("output");
+    const page = files.frameLocator(".page-stage iframe").locator("html");
+    const next = files.getByRole("button", { name: "Next page" });
+    const previous = files.getByRole("button", { name: "Previous page" });
+    const legend = files.getByRole("listbox", { name: "Pages" });
+    await expect(count).toHaveText("Page 1 / 3");
+    await expect(legend).toBeVisible({ visible: !phone });
+    // Page 2 starts past where the document can scroll: it goes to its end.
+    await next.click();
+    await expect(count).toHaveText("Page 2 / 3");
+    await expect
+      .poll(() => page.evaluate(() => scrollY + innerHeight))
+      .toBeGreaterThan(1358);
+    // Scrolled by hand the choice is forgotten: the page at the top counts,
+    // and at the end the last.
+    await page.evaluate(() => scrollTo(0, 10));
+    await expect(count).toHaveText("Page 1 / 3");
+    await page.evaluate(() => scrollTo(0, 2000));
+    await expect(count).toHaveText("Page 3 / 3");
+    await expect(next).toBeDisabled();
+    // From there Previous and Next need no scroll at all.
+    await previous.click();
+    await expect(count).toHaveText("Page 2 / 3");
+    await next.click();
+    await expect(count).toHaveText("Page 3 / 3");
+    if (!phone) {
+      await legend.getByRole("option", { name: "Page 2" }).click();
+      await expect(count).toHaveText("Page 2 / 3");
+      await expect(
+        legend.getByRole("option", { name: "Page 2" }),
+      ).toHaveAttribute("aria-selected", "true");
+      await legend.getByRole("option", { name: "Page 3" }).click();
+      await expect(count).toHaveText("Page 3 / 3");
+    }
+    await previous.click();
+    await expect(count).toHaveText("Page 2 / 3");
+    await previous.click();
+    await expect(count).toHaveText("Page 1 / 3");
+    await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+  });
+
+// docs/memo.html, opened from the tree: an A5 document of ten parts, each
+// starting a page and shorter than one, so it has ten pages at any width.
+const MEMO_PAGES = 10;
+async function openMemo(app, session, project) {
+  const dir = join(project, "docs");
   await mkdir(dir, { recursive: true });
   const memo = join(dir, "memo.html");
-  const filler = Array.from(
-    { length: 40 },
-    (_, at) =>
-      `<p>Paragraph ${at + 1} of the memo, long enough to fill some of a page.</p>`,
-  ).join("");
+  const parts = Array.from({ length: MEMO_PAGES }, (_, part) =>
+    Array.from(
+      { length: 12 },
+      (_, at) =>
+        `<p>Paragraph ${part * 12 + at + 1} of the memo, long enough to fill some of a page.</p>`,
+    ).join(""),
+  ).join('<h2 style="break-before:page">Next part</h2>');
   await writeFile(
     memo,
     '<!doctype html>\n<html><head><title>Memo</title><meta name="print" content="flow a5"></head>' +
       "<body><h1>Q3 memo</h1><p>Revenue grew.</p><ul><li>One</li><li>Two</li></ul>" +
       "<table><tr><th>Ask</th><th>When</th></tr><tr><td>Hire</td><td>Nov</td></tr></table>" +
-      `${filler}</body></html>`,
+      `${parts}</body></html>`,
   );
   await app.setViewportSize({ width: 1440, height: 900 });
   await app.goto(`/#session=${session.id}`);
@@ -720,8 +1249,116 @@ test("a document is edited in place, saved to its file, and exports Markdown", a
   const files = app.getByRole("region", { name: "Files" });
   await files.getByRole("button", { name: "docs", exact: true }).click();
   await files.getByRole("button", { name: "memo.html", exact: true }).click();
-  // Its pages: breaks marked where print puts them.
+  return { files, memo, page: files.frameLocator(".page-stage iframe") };
+}
+
+test("a document's legend is its pages on one picture; a click, the Page keys and its own scroll move through them", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, page } = await openMemo(app, session, host.project);
+  const legend = files.getByRole("listbox", { name: "Pages" });
+  const count = files.getByRole("group", { name: "Step" }).locator("output");
+  const pages = MEMO_PAGES;
+  await expect(count).toHaveText(`Page 1 / ${pages}`);
+  // One frame of the whole document, a numbered area a page.
+  await expect(legend.getByRole("option")).toHaveCount(pages);
+  await expect(legend.locator("iframe")).toHaveCount(1);
+  const shows = async (at) => {
+    await expect(count).toHaveText(`Page ${at} / ${pages}`);
+    await expect(
+      legend.getByRole("option", { name: `Page ${at}`, exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+  };
+  const scrolled = () => page.locator("html").evaluate(() => scrollY);
+  await shows(1);
+  await expect(
+    files.getByRole("button", { name: "Previous page" }),
+  ).toBeDisabled();
+  // A click on a page scrolls the document to it, inside its frame.
+  await legend.getByRole("option", { name: "Page 2", exact: true }).click();
+  await shows(2);
+  await expect.poll(scrolled).toBeGreaterThan(0);
+  // The keys move by page, to the ends too; the last page is the end.
+  for (const [key, at] of [
+    ["PageDown", 3],
+    ["PageUp", 2],
+    ["ArrowLeft", 1],
+    ["End", pages],
+    ["Home", 1],
+    ["ArrowDown", 2],
+  ]) {
+    await app.keyboard.press(key);
+    await shows(at);
+  }
+  await files.getByRole("button", { name: "Next page" }).click();
+  await shows(3);
+  await expect(page.getByText("Paragraph 13 of the memo")).not.toBeInViewport();
+  // Scrolled by hand from there, the document says where it is, and the
+  // next page's start is marked on the stage.
+  await page.locator("html").evaluate(() => scrollTo(0, 0));
+  await shows(1);
   await expect(files.locator(".page-break").first()).toHaveText("Page 2");
+});
+
+test("find in a document counts in the page itself and scrolls to what it found", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, page } = await openMemo(app, session, host.project);
+  const count = files.getByRole("group", { name: "Step" }).locator("output");
+  const pages = MEMO_PAGES;
+  await expect(count).toHaveText(`Page 1 / ${pages}`);
+  // What the page is asked to find, each as "words index".
+  await page.locator("html").evaluate(() => {
+    window.asked = [];
+    addEventListener(
+      "message",
+      (event) =>
+        event.data?.type === "find" &&
+        window.asked.push(`${event.data.text} ${event.data.index}`),
+    );
+  });
+  await files.getByRole("button", { name: "Find" }).click();
+  const bar = files.getByRole("search", { name: "Find in this document" });
+  const field = bar.getByRole("searchbox");
+  await field.fill("OF THE MEMO");
+  await expect(bar).toContainText("1 of 120");
+  await expect(count).toHaveText(`Page 1 / ${pages}`);
+  const marks = (name) =>
+    page
+      .locator("html")
+      .evaluate((_, name) => CSS.highlights.get(name)?.size ?? 0, name);
+  await expect.poll(() => marks("uagent-find")).toBe(120);
+  // The one before the first is the last, on the last page.
+  await field.press("Shift+Enter");
+  await expect(bar).toContainText("120 of 120");
+  await expect(count).toHaveText(`Page ${pages} / ${pages}`);
+  await expect(page.getByText("Paragraph 120 of the memo")).toBeInViewport();
+  // New words start at their first occurrence, and are asked for once.
+  await field.fill("revenue grew");
+  await expect(bar).toContainText("1 of 1");
+  await expect(count).toHaveText(`Page 1 / ${pages}`);
+  expect(await page.locator("html").evaluate(() => window.asked)).toEqual([
+    "OF THE MEMO 0",
+    "OF THE MEMO 119",
+    "revenue grew 0",
+  ]);
+  await field.fill("wombat");
+  await expect(bar).toContainText("No matches");
+  await bar.getByRole("button", { name: "Close find" }).click();
+  await expect.poll(() => marks("uagent-find")).toBe(0);
+});
+
+test("a document is edited in place, saved to its file, and exports Markdown", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, memo, page } = await openMemo(app, session, host.project);
+  await expect(page.getByRole("heading", { name: "Q3 memo" })).toBeVisible();
 
   // Markdown, from the page itself.
   const [download] = await Promise.all([
@@ -739,7 +1376,6 @@ test("a document is edited in place, saved to its file, and exports Markdown", a
 
   // Edit: a block typed in place is saved to the file, nothing else changes.
   await files.getByRole("button", { name: "Edit" }).click();
-  const page = files.frameLocator("iframe");
   const paragraph = page.getByText("Revenue grew.");
   await paragraph.click();
   await app.keyboard.press("End");

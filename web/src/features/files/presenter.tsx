@@ -3,11 +3,11 @@ import { Button } from "../../shared/ui.tsx";
 import Frame, {
   type PageInfo,
   pageAddress,
-  pageSize,
   usePreviewBase,
 } from "../../shared/page-frame.tsx";
+import { pageSize } from "../../shared/page-size.ts";
 import { useLatest } from "../../shared/use-latest.ts";
-import { type Presenting, presentChannel } from "./present.ts";
+import { type Presenting, presentChannel, STEPS } from "./present.ts";
 import "./files.css";
 
 // The presenter's own window: the slide now and the next, the speaker notes
@@ -87,8 +87,8 @@ export default function Presenter({ deck }: { deck: Presenting }) {
   });
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
-      if (["ArrowRight", " ", "PageDown"].includes(event.key)) go.current(1);
-      if (["ArrowLeft", "PageUp"].includes(event.key)) go.current(-1);
+      const by = STEPS[event.key];
+      if (by) go.current(by);
     };
     addEventListener("keydown", keys);
     return () => removeEventListener("keydown", keys);

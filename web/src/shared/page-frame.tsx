@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { useApi } from "../state/api.ts";
 import { useLatest } from "./use-latest.ts";
 import { useResource } from "./use-resource.ts";
+import { pageSize } from "./page-size.ts";
 import "./page-frame.css";
 
 // One page of the folder, live in a sandboxed frame. It runs in an opaque
@@ -14,8 +15,6 @@ export interface PageInfo {
   // A fixed artboard's size; 0 × 0 for a page, which is as tall as it is. A
   // document is its paper's width.
   artboard: { w: number; h: number; slide?: boolean };
-  // A slide of a deck, a document on paper, or any other design.
-  kind?: "slide" | "doc" | "design";
   // A slide's speaker notes.
   notes?: string;
   tweaks: Record<string, unknown> | null;
@@ -43,36 +42,30 @@ export type PageMessage =
   | ({ type: "pick" } & Pick)
   | { type: "key"; key: string }
   | { type: "zoom"; by: number; x: number; y: number }
-  // A document's page breaks, its edited block, its text as Markdown.
+  // A document's page breaks, its edited block, its text as Markdown, and
+  // where it is scrolled to (`end`: as far as it goes; `after`: the last
+  // goto it was told).
   | { type: "pages"; breaks: number[] }
   | { type: "edit"; index: number; before: string; html: string }
-  | { type: "markdown"; text: string };
+  | { type: "markdown"; text: string }
+  | { type: "at"; top: number; end: boolean; after: number }
+  // How many occurrences a find marked.
+  | { type: "find"; count: number };
 
-// Tells a page what to do: select on or off, or set a tweak.
+// Tells a page what to do: select on or off, set a tweak, scroll a document
+// to an offset (its `n`th goto, counted from 1 for each document loaded), or
+// mark the words found and bring the `index`th into view.
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
     | { type: "select"; on: boolean }
     | { type: "edit"; on: boolean }
     | { type: "markdown" }
-    | { type: "tweak"; name: string; value: unknown },
+    | { type: "tweak"; name: string; value: unknown }
+    | { type: "goto"; top: number; n: number }
+    | { type: "find"; text: string; index: number },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 
-// A page is drawn this wide when it names no size.
-const PAGE_WIDTH = 1440;
-// How tall a page's frame may grow on the canvas.
-const PAGE_HEIGHT_MAX = 4000;
-
-// The size a page is drawn at: its artboard, or as wide as it says (else
-// PAGE_WIDTH) and as tall as it measured, up to `most`.
-export function pageSize(info?: PageInfo, most = PAGE_HEIGHT_MAX) {
-  const fixed = !!info?.artboard.w && !!info.artboard.h;
-  return {
-    fixed,
-    w: info?.artboard.w || PAGE_WIDTH,
-    h: fixed ? info!.artboard.h : Math.min(most, info?.height || 900),
-  };
-}
 // A file of the folder at its preview address.
 export const pageAddress = (base: string, path: string) =>
   base + path.split("/").map(encodeURIComponent).join("/");
@@ -116,6 +109,8 @@ export default function Frame({
     <div
       class="page-frame"
       data-live={live || undefined}
+      // A picture stands beside what names and opens it.
+      aria-hidden={!live || undefined}
       style={
         sized
           ? { width: `${width * scale}px`, height: `${height * scale}px` }
@@ -151,6 +146,44 @@ export function usePreviewBase(session: string) {
   );
 }
 
+// One board as a picture: its page drawn `w` by `h` at a scale. While `far`
+// (out of a legend's view) only its box is there, so a long deck runs the
+// few pages near the view and no more.
+export function BoardFrame({
+  src,
+  title,
+  w,
+  h,
+  scale = 1,
+  far,
+  onMessage,
+}: {
+  src: string;
+  title: string;
+  w: number;
+  h: number;
+  scale?: number;
+  far?: boolean;
+  onMessage?: (message: PageMessage) => void;
+}) {
+  return far ? (
+    <div
+      class="page-frame"
+      style={{ width: `${w * scale}px`, height: `${h * scale}px` }}
+    />
+  ) : (
+    <Frame
+      src={src}
+      title={title}
+      width={w}
+      height={h}
+      scale={scale}
+      live={false}
+      onMessage={onMessage}
+    />
+  );
+}
+
 // How tall every page thumbnail is, in chat and the Library alike.
 const THUMB_HEIGHT = 160;
 
@@ -161,13 +194,12 @@ export function PageThumb({ base, path }: { base: string; path: string }) {
   const { w, h } = pageSize(info, 900);
   return (
     <div class="page-thumb">
-      <Frame
+      <BoardFrame
         src={pageAddress(base, path)}
         title={info?.title || path}
-        width={w}
-        height={h}
+        w={w}
+        h={h}
         scale={THUMB_HEIGHT / h}
-        live={false}
         onMessage={(message) => message.type === "ready" && setInfo(message)}
       />
     </div>

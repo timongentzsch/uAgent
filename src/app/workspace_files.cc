@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <deque>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -27,6 +28,7 @@
 
 namespace uagent::workspace_files {
 namespace fs = std::filesystem;
+namespace {
 bool Shown(const fs::path& path) {
   return !HiddenPath(path.string()) && !SelfConfigurationPath(path.string());
 }
@@ -74,6 +76,8 @@ std::vector<std::string> Candidates(const fs::path& root, bool& more) {
   return paths;
 }
 
+}  // namespace
+
 // `relative` resolved under `root`, when it stays inside and may be shown.
 std::optional<fs::path> Resolve(const fs::path& root,
                                 const std::string& relative) {
@@ -81,6 +85,135 @@ std::optional<fs::path> Resolve(const fs::path& root,
   fs::path target = CanonicalAccessPath((root / relative).string());
   if (!PathWithin(target, root) || !Shown(target)) return std::nullopt;
   return target;
+}
+
+namespace {
+// At most this many designs a place lists, the newest.
+constexpr size_t kPlaceDesigns = 50;
+
+// The meta tag named `name` in a page's head, as written; empty when none.
+std::string MetaTag(const std::string& head, const std::string& name) {
+  const size_t at = head.find("name=\"" + name + "\"");
+  const size_t open = at == std::string::npos ? at : head.rfind('<', at);
+  const size_t close = at == std::string::npos ? at : head.find('>', at);
+  return open == std::string::npos || close == std::string::npos
+             ? std::string()
+             : head.substr(open, close - open);
+}
+
+// What an HTML page's head says it is: a "doc" on paper (print flow), a
+// "slide", a "page" with an artboard, or nothing.
+std::string PageKind(const fs::path& page) {
+  const std::string head = ReadFile(page.string(), KiB(4)).value_or("");
+  if (MetaTag(head, "print").find("\"flow") != std::string::npos) return "doc";
+  const std::string artboard = MetaTag(head, "artboard");
+  if (artboard.empty()) return "";
+  return artboard.find(" slide\"") == std::string::npos ? "page" : "slide";
+}
+
+// What a folder's files make it: a design "system" with a tokens.css, a
+// "deck" when every page that is not a document is a slide, a "design" when
+// a page declares an artboard, or nothing.
+struct FolderPages {
+  size_t pages = 0, slides = 0;
+  bool artboard = false, system = false;
+  void Add(const std::string& kind) {
+    ++pages;
+    slides += kind == "slide";
+    artboard = artboard || !kind.empty();
+  }
+  const char* Kind() const {
+    return system            ? "system"
+           : !artboard       ? ""
+           : slides == pages ? "deck"
+                             : "design";
+  }
+};
+}  // namespace
+
+// The designs in `root` (see the artifact skill): decks and designs, a
+// folder each; documents, each its own; and design systems, whose own pages
+// are theirs. Each names up to four of its pages, for thumbnails.
+json Designs(const fs::path& root) {
+  struct Folder {
+    std::vector<std::string> pages, docs;
+    int64_t modified = 0;
+    FolderPages kind;
+  };
+  const auto modified = [&](const fs::path& relative) {
+    return SnapshotFile((root / relative).string()).modified_seconds * 1000;
+  };
+  std::map<std::string, Folder> folders;
+  bool more = false;
+  for (const std::string& path : Candidates(root, more)) {
+    const fs::path relative(path);
+    const bool tokens = relative.filename() == "tokens.css";
+    if ((!tokens && relative.extension() != ".html") ||
+        !Shown(root / relative)) {
+      continue;
+    }
+    Folder& folder = folders[relative.parent_path().string()];
+    folder.modified = std::max(folder.modified, modified(relative));
+    if (tokens) {
+      folder.kind.system = true;
+      continue;
+    }
+    const std::string kind = PageKind(root / relative);
+    if (kind == "doc") {
+      folder.docs.push_back(path);
+      continue;
+    }
+    folder.pages.push_back(path);
+    folder.kind.Add(kind);
+  }
+  struct Found {
+    int64_t modified;
+    json item;
+  };
+  std::vector<Found> found;
+  const auto item = [&](const std::string& kind, const std::string& dir,
+                        std::vector<std::string> pages, int64_t changed) {
+    std::ranges::sort(pages);
+    const size_t count = pages.size();
+    pages.resize(std::min<size_t>(count, 4));
+    return Found{changed,
+                 {{"kind", kind},
+                  {"key", root.string() + "/" + dir},
+                  {"name", dir.empty() ? root.filename().string() : dir},
+                  {"path", dir},
+                  {"place", root.string()},
+                  {"count", count},
+                  {"pages", std::move(pages)},
+                  {"modified", changed}}};
+  };
+  for (auto& [dir, folder] : folders) {
+    // A system's component previews and book are its own, not designs.
+    const bool inside = std::ranges::any_of(folders, [&](const auto& other) {
+      return other.second.kind.system && other.first != dir &&
+             (other.first.empty() || dir.starts_with(other.first + "/"));
+    });
+    if (folder.kind.system) {
+      folder.pages.insert(folder.pages.end(), folder.docs.begin(),
+                          folder.docs.end());
+      found.push_back(item("system", dir, folder.pages, folder.modified));
+      continue;
+    }
+    if (inside) continue;
+    if (folder.kind.artboard) {
+      found.push_back(
+          item(folder.kind.Kind(), dir, folder.pages, folder.modified));
+    }
+    for (const std::string& doc : folder.docs) {
+      found.push_back(item("doc", doc, {doc}, modified(doc)));
+    }
+  }
+  std::ranges::sort(found, [](const Found& a, const Found& b) {
+    return a.modified > b.modified;
+  });
+  if (found.size() > kPlaceDesigns) found.resize(kPlaceDesigns);
+  json items = json::array();
+  for (Found& entry : found) items.push_back(std::move(entry.item));
+  return items;
 }
 
 namespace {
@@ -349,8 +482,22 @@ json Request(const fs::path& root, const json& request) {
   const auto target = Resolve(root, path);
   if (!target) return {{"error", "not found"}, {"status", 404}};
   if (mode == "list") {
-    return List(root, *target)
-        .value_or(json{{"error", "not found"}, {"status", 404}});
+    auto listed = List(root, *target);
+    if (!listed) return {{"error", "not found"}, {"status", 404}};
+    // What the folder's pages say they are, so a viewer knows a deck from a
+    // design and a document from a page.
+    FolderPages folder;
+    for (json& entry : (*listed)["entries"]) {
+      const fs::path name(JsonValue(entry, "name", ""));
+      if (JsonValue(entry, "dir", false)) continue;
+      folder.system = folder.system || name == "tokens.css";
+      if (name.extension() != ".html") continue;
+      const std::string kind = PageKind(*target / name);
+      if (!kind.empty()) entry["kind"] = kind;
+      if (kind != "doc") folder.Add(kind);
+    }
+    (*listed)["kind"] = folder.Kind();
+    return *listed;
   }
   if (mode == "deck") {
     std::error_code error;

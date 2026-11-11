@@ -39,7 +39,6 @@
       slide: !!slide,
     };
   };
-  const kind = () => (artboard().slide ? "slide" : paper() ? "doc" : "design");
   const tweaks = () => {
     try {
       return JSON.parse(
@@ -370,6 +369,55 @@
 
   const send = (type, data) =>
     parent.postMessage({ uagentDesign: 1, type, ...data }, "*");
+  // Find: every occurrence of the words marked, the `index`th as the
+  // current one and, in a document, brought into view; answers how many
+  // there are. Letters fold as the app's find folds them (A-Z only), and a
+  // slide's notes, which are not drawn, are not searched.
+  const fold = (text) => text.replace(/[A-Z]/g, (c) => c.toLowerCase());
+  const find = (text, index) => {
+    const needle = fold(text);
+    const ranges = [];
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (needle && walk.nextNode()) {
+      const node = walk.currentNode;
+      if (
+        node.parentElement.closest("script, style, template") ||
+        notes()?.contains(node)
+      )
+        continue;
+      const folded = fold(node.textContent);
+      for (
+        let at = folded.indexOf(needle);
+        at >= 0;
+        at = folded.indexOf(needle, at + needle.length)
+      ) {
+        const range = document.createRange();
+        range.setStart(node, at);
+        range.setEnd(node, at + needle.length);
+        ranges.push(range);
+      }
+    }
+    const current = ranges[index];
+    // Without the Highlight API a document still scrolls to each one.
+    if (CSS.highlights) {
+      CSS.highlights.set("uagent-find", new Highlight(...ranges));
+      CSS.highlights.set(
+        "uagent-found",
+        new Highlight(...(current ? [current] : [])),
+      );
+    }
+    if (current && paper())
+      current.startContainer.parentElement.scrollIntoView({ block: "center" });
+    send("find", { count: ranges.length });
+  };
+  // Marked in the system's own colours for it: the page's are unknown.
+  addEventListener("DOMContentLoaded", () => {
+    const marks = document.createElement("style");
+    marks.textContent =
+      "::highlight(uagent-find){background:Mark;color:MarkText}" +
+      "::highlight(uagent-found){background:Highlight;color:HighlightText}";
+    document.head.append(marks);
+  });
   const height = () => root.scrollHeight;
   checked((problem) => send("error", { message: problem, line: 0 }));
   const failed = (message, line) =>
@@ -385,7 +433,6 @@
     send("ready", {
       title: document.title,
       artboard: artboard(),
-      kind: kind(),
       notes: notes()?.textContent.trim() || "",
       tweaks: tweaks(),
       height: height(),
@@ -485,18 +532,68 @@
       if (event.type === "gesturechange") zoom(event.scale / pinch, event);
       pinch = event.type === "gesturestart" ? 1 : event.scale;
     });
+  // The keys the pane steps with, unless a field has them: a slide, which
+  // has nothing to scroll, gives up the paging keys too (Space only where
+  // it presses nothing).
   addEventListener("keydown", (event) => {
-    const field = event.target.closest?.(
-      "input, textarea, select, [contenteditable]",
-    );
-    if (!field && ["Escape", "ArrowLeft", "ArrowRight"].includes(event.key))
+    const within = (selector) => event.target.closest?.(selector);
+    if (within("input, textarea, select, [contenteditable]")) return;
+    const paging =
+      artboard().slide &&
+      ["Home", "End", "PageUp", "PageDown", " "].includes(event.key) &&
+      !(event.key === " " && within("button, a, summary"));
+    if (paging || ["Escape", "ArrowLeft", "ArrowRight"].includes(event.key))
       send("key", { key: event.key });
   });
+  // A swipe across a slide steps as the arrow keys do.
+  let swipe = null;
+  addEventListener(
+    "touchstart",
+    (event) => {
+      swipe = event.touches.length === 1 ? event.touches[0] : null;
+    },
+    { passive: true },
+  );
+  addEventListener("touchend", (event) => {
+    const from = swipe;
+    swipe = null;
+    if (!from || !artboard().slide) return;
+    const dx = event.changedTouches[0].clientX - from.clientX;
+    const dy = event.changedTouches[0].clientY - from.clientY;
+    if (Math.abs(dx) > innerWidth / 8 && Math.abs(dx) > 2 * Math.abs(dy))
+      send("key", { key: dx < 0 ? "ArrowRight" : "ArrowLeft" });
+  });
+  // A document says where it is scrolled to, once a frame at most, whether
+  // that is its end, and after which goto: what it said before the app's
+  // latest one is of a place it has left.
+  let told = 0;
+  let went = 0;
+  addEventListener(
+    "scroll",
+    () => {
+      if (!paper()) return;
+      cancelAnimationFrame(told);
+      told = requestAnimationFrame(() =>
+        send("at", {
+          top: scrollY,
+          end: scrollY + innerHeight >= root.scrollHeight - 1,
+          after: went,
+        }),
+      );
+    },
+    { passive: true },
+  );
   addEventListener("message", (event) => {
     if (event.source !== parent || event.data?.uagentDesign !== 1) return;
     if (event.data.type === "select") select(!!event.data.on);
     if (event.data.type === "edit" && paper()) edit(!!event.data.on);
     if (event.data.type === "markdown") send("markdown", { text: markdown() });
+    if (event.data.type === "goto") {
+      went = event.data.n;
+      scrollTo(0, Number(event.data.top) || 0);
+    }
+    if (event.data.type === "find")
+      find(String(event.data.text), Number(event.data.index));
     if (event.data.type === "tweak")
       tweak(String(event.data.name), event.data.value);
   });

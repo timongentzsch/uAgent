@@ -246,8 +246,8 @@
   }
 }
 
-/* Pages of the folder: the canvas and one page opened, both across the
-   whole pane. */
+/* Pages of the folder: a design's canvas, or one page opened with the
+   legend of what it is part of, both across the whole pane. */
 .files-stage {
   position: relative;
   flex: 1;
@@ -280,6 +280,76 @@
   flex: 1;
   min-height: 0;
   display: flex;
+}
+/* The sequence small beside the stage: each board numbered under its
+   picture, the current one ringed. */
+.page-legend {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  overflow: auto;
+  border-right: var(--border);
+  background: var(--bg);
+}
+/* As wide as its picture: the name under it takes that width, no more. */
+.page-legend-item {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: fit-content;
+}
+.page-legend-item > .page-frame,
+.page-legend-doc {
+  outline: var(--border);
+}
+.page-legend-item[data-failed] > .page-frame {
+  outline-color: var(--removed);
+}
+.page-legend-item:has([aria-selected="true"]) > .page-frame,
+.page-legend-page[aria-selected="true"] {
+  outline: var(--focus-ring);
+}
+.page-legend-name {
+  width: 0;
+  min-width: 100%;
+  color: var(--muted);
+}
+.page-legend-name > .lucide {
+  margin-right: var(--space-1);
+  color: var(--removed);
+}
+.page-legend-item:has([aria-selected="true"]) > .page-legend-name {
+  color: var(--text);
+  font-weight: var(--weight-strong);
+}
+/* A document is one picture, its pages marked where print starts them. */
+.page-legend-doc {
+  position: relative;
+  flex: none;
+}
+.page-legend-page {
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: var(--space-1);
+  border-top: var(--border);
+}
+/* Its number, on a ground of its own: the page's text runs under it. */
+.page-legend-page > span {
+  padding: 0 var(--space-1);
+  background: var(--raised);
+  color: var(--text);
+}
+/* The stage, and a slide's notes under it. */
+.page-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .page-stage {
   position: relative;
@@ -321,19 +391,11 @@
   width: 100%;
   height: 100%;
 }
-/* An opened slide's way to the deck's previous and next, over its edges. */
-.page-step {
-  position: absolute;
-  top: 50%;
-  translate: 0 -50%;
-  background: var(--bg);
-  border: var(--border);
-}
-.page-step-back {
+/* Which board of how many, with the previous and the next: over the
+   stage's corner, as the zoom is over the other. */
+.page-count {
   left: var(--space-4);
-}
-.page-step-next {
-  right: var(--space-4);
+  bottom: var(--space-4);
 }
 /* Where print will start a document's next page: a hairline across it. */
 .page-break {
@@ -425,15 +487,30 @@
   font-size: var(--font-title);
   white-space: pre-line;
 }
+/* Under the stage while not presenting: a line or two to read along. */
+.page-main > .page-notes {
+  display: flex;
+  gap: var(--space-4);
+  max-height: var(--scroll-s);
+  padding: var(--space-4);
+  background: var(--bg);
+  font-size: var(--font-small);
+}
 .page-present-bar {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   border-top: var(--border);
 }
-.page-present-bar > :first-child {
+/* The counter leads the bar here instead of floating over the slide. */
+.page-present-bar > .page-count {
+  position: static;
   flex: 1;
+  padding: 0;
+  border: 0;
+  background: none;
 }
 
 /* The presenter's window: now, then next and the notes beside it. */
@@ -503,27 +580,28 @@
   flex: 0 0 30%;
   margin: 0;
 }
+/* A narrow pane stacks them: the legend a filmstrip under the stage. A
+   document's one tall picture has no strip, so its counter stands alone. */
 @container files (max-width: 40rem) {
   .page-body {
     flex-direction: column;
   }
+  .page-legend {
+    order: 1;
+    flex-direction: row;
+    border-right: 0;
+    border-top: var(--border);
+  }
+  .page-legend[data-doc] {
+    display: none;
+  }
   .page-tweaks {
+    order: 2;
     width: auto;
     max-height: 50%;
     border-left: 0;
     border-top: var(--border);
   }
-}
-/* A deck's own tools over its canvas. */
-.canvas-deck-tools {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: var(--border);
-}
-.canvas-deck-tools > :first-child {
-  flex: 1;
 }
 .canvas {
   position: relative;
@@ -532,7 +610,8 @@
   display: flex;
   flex-direction: column;
 }
-.canvas-notice {
+/* Pages that failed to run, over the canvas or the sequence they are in. */
+.page-notice {
   display: flex;
   align-items: center;
   gap: var(--space-4);
@@ -541,7 +620,7 @@
   border-bottom: var(--border);
   background: var(--bg);
 }
-.canvas-notice > span {
+.page-notice > span {
   flex: 1;
 }
 .canvas > .zoom-surface {
@@ -565,16 +644,4 @@
   white-space: nowrap;
   color: var(--muted);
   pointer-events: none;
-}
-.canvas-open {
-  position: absolute;
-  inset: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-.canvas-open:hover,
-.canvas-open:focus-visible {
-  outline: var(--focus-ring);
 }

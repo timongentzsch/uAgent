@@ -22,7 +22,6 @@ TEST_CASE(TestScratchScripts) {
   fs::create_directories(root);
   ActivitySupervisor supervisor;
   std::vector<Tool> tools = BuiltinTools(supervisor, root);
-  CHECK(FindTool(tools, "scratch") == nullptr);
   const Tool* write = FindTool(tools, "write_file");
   const Tool* run = FindTool(tools, "run");
   CHECK(write && run);

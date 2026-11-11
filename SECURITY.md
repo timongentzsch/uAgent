@@ -56,7 +56,7 @@ control); the saved setting does not reach it. One started with `edits` none
 runs at the `readonly` level with no tool that edits, whatever its settings
 say, and so do the agents it starts. Any other runs at the `default` level,
 or `relaxed` while it is in yolo. While that sandbox is enforced and it is
-in auto, its `run` and `scratch` commands and its file changes inside the
+in auto, its `run` commands and its file changes inside the
 folder run without review; everything else goes through its approval mode.
 What would ask a person goes to its parent first, which decides or passes it
 to you, and to you after five minutes. Once you write to the agent yourself,
@@ -108,7 +108,7 @@ never goes to the parent.
   receive a centralized secret-deny environment; only class-specific
   credentials are re-added. Approved `run` commands can opt in exact
   variables with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to MCP
-  servers, delegated agents or `scratch`. `UAGENT_SANDBOX_HIDE_ENV` adds
+  servers or delegated agents. `UAGENT_SANDBOX_HIDE_ENV` adds
   names that no child inherits, whatever the allowlist says.
 - A `run(tty=true)` activity keeps a writable PTY for the harness lifetime.
   `activity(operation=write, chars=...)` sends raw bytes with the original
@@ -179,7 +179,7 @@ cookies.
 
 ## Sandboxing
 
-The OS confines the commands the agent runs (`run`, `scratch`) and the stdio
+The OS confines the commands the agent runs (`run`) and the stdio
 MCP servers it starts: `sandbox-exec` (Seatbelt) on macOS, Landlock on
 Linux. The sandbox is on by default, in every approval mode.
 

@@ -269,6 +269,7 @@ if [ "$mode" = source ]; then
   cmake --install "$build" --prefix "$prefix" --strip
   # How this was installed, for the About page: the installer's own build of
   # a release, or a checkout.
+  mkdir -p "$prefix/share/uagent"
   if [ "$root" = "$data/src" ]; then echo source; else echo checkout; fi \
     >"$prefix/share/uagent/install"
   policy_source=$root/deploy/chrome-policy.json

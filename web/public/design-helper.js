@@ -569,16 +569,7 @@
       artboard().slide &&
       ["Home", "End", "PageUp", "PageDown", " "].includes(event.key) &&
       !(event.key === " " && within("button, a, summary"));
-    // With ⌘ or Ctrl the paging keys change a sheet's tab, which the pane
-    // keeps.
-    const held = event.ctrlKey || event.metaKey;
-    if (held && meta("sheet") && ["PageUp", "PageDown"].includes(event.key)) {
-      event.preventDefault();
-      send("key", { key: event.key, held });
-    } else if (
-      paging ||
-      ["Escape", "ArrowLeft", "ArrowRight"].includes(event.key)
-    )
+    if (paging || ["Escape", "ArrowLeft", "ArrowRight"].includes(event.key))
       send("key", { key: event.key });
   });
   // A swipe across a slide steps as the arrow keys do.

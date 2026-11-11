@@ -234,7 +234,7 @@ test("a sheet in its viewer, with its tabs, formula bar and cells in error, has 
   const files = await openFiles(page, session, "plan.html");
   await expect(files.getByText("2 cells in error")).toBeVisible();
   await viewerOf(files)
-    .stage.getByRole("cell", { name: "Done" })
+    .stage.getByRole("gridcell", { name: "Done" })
     .first()
     .click();
   await expect(files.getByRole("group", { name: "Formula bar" })).toContainText(

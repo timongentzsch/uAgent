@@ -1,30 +1,8 @@
 // A sheet opens in the viewer as its own grid: the page calculates and draws
 // its tables in its sandboxed frame; the pane adds the tabs under it, the
 // clicked cell above it and the cells in error.
-import {
-  test,
-  expect,
-  openFiles,
-  sheet,
-  viewerOf,
-  writeFiles,
-  SAMPLE_SHEET,
-} from "./fixtures.js";
+import { test, expect, openSheet, sheet, SAMPLE_SHEET } from "./fixtures.js";
 
-const opened = async (app, session, project, page = SAMPLE_SHEET, options) => {
-  await writeFiles(project, { "sheets/plan.html": page });
-  const files = await openFiles(app, session, "sheets/plan.html", options);
-  const { stage } = viewerOf(files);
-  return {
-    files,
-    stage,
-    tabs: files.getByRole("tablist", { name: "Tabs" }).getByRole("tab"),
-    bar: files.getByRole("group", { name: "Formula bar" }),
-    // A cell of a tab, by where it is.
-    cell: (tab, ref) =>
-      stage.locator(`table[data-sheet="${tab}"] [data-ref="${ref}"]`),
-  };
-};
 const selected = (tabs) =>
   tabs.and(tabs.page().locator('[aria-selected="true"]'));
 
@@ -33,10 +11,11 @@ test("a sheet is calculated and drawn as a grid, with its tabs, its clicked cell
   session,
   host,
 }) => {
-  const { files, stage, tabs, bar, cell } = await opened(
+  const { files, stage, tabs, bar, field, cell } = await openSheet(
     app,
     session,
     host.project,
+    SAMPLE_SHEET,
   );
   await expect(tabs).toHaveText(["Tasks", "Inputs", "Notes"]);
   await expect(selected(tabs)).toHaveText("Tasks");
@@ -77,17 +56,18 @@ test("a sheet is calculated and drawn as a grid, with its tabs, its clicked cell
     await expect(files.getByRole("button", { name })).toHaveCount(0);
   await expect(files.getByRole("group", { name: "Step" })).toHaveCount(0);
 
-  // The bar is empty until a cell is clicked: then where it is and what was
-  // typed in it.
-  await expect(bar).toHaveText("");
+  // The bar says where the active cell is and what was typed in it.
+  await expect(bar.locator("output")).toHaveText("Tasks!A1");
+  await expect(field).toHaveValue("Done");
   await cell("Tasks", "B1").click();
   await expect(bar.locator("output")).toHaveText("Tasks!B1");
-  await expect(bar).toContainText("=COUNTIF(B4:B6,A1)");
+  await expect(field).toHaveValue("=COUNTIF(B4:B6,A1)");
 
   // The arrows and the paging keys are the grid's, in it and in the pane:
   // the tab stays. With Ctrl a paging key shows the next tab, once.
   await app.keyboard.press("ArrowRight");
-  await bar.click();
+  await expect(bar.locator("output")).toHaveText("Tasks!C1");
+  await field.click();
   for (const key of ["ArrowRight", "ArrowDown", "PageDown", "End"])
     await app.keyboard.press(key);
   await expect(selected(tabs)).toHaveText("Tasks");
@@ -158,7 +138,12 @@ test("a sheet shows nothing as written while its engine loads, and is drawn with
       }
     };
   });
-  const { files, stage, cell } = await opened(app, session, host.project);
+  const { files, stage, cell } = await openSheet(
+    app,
+    session,
+    host.project,
+    SAMPLE_SHEET,
+  );
   await expect(stage.locator("table[data-sheet]").first()).toHaveCSS(
     "visibility",
     "hidden",
@@ -176,7 +161,7 @@ test("on a phone a sheet's tabs scroll sideways and its formula bar stays one li
   host,
 }) => {
   const long = `=${Array(30).fill("A1").join("+")}`;
-  const { files, tabs, bar, cell } = await opened(
+  const { files, tabs, bar, field, cell } = await openSheet(
     app,
     session,
     host.project,
@@ -203,19 +188,20 @@ test("on a phone a sheet's tabs scroll sideways and its formula bar stays one li
   expect(await list.evaluate((box) => box.clientHeight)).toBeLessThan(2 * row);
   // The last tab is out of view until it is shown: the row follows.
   await expect(tabs.last()).not.toBeInViewport();
-  await files.getByRole("group", { name: "Formula bar" }).click();
+  await field.click();
   for (let at = 1; at < 12; at++) await app.keyboard.press("Control+PageDown");
   await expect(selected(tabs)).toHaveText("Month 12");
   await expect(tabs.last()).toBeInViewport();
 
   // A long formula is cut short after its cell's name, which stays whole.
-  const empty = await bar.evaluate((box) => box.offsetHeight);
+  const short = await bar.evaluate((box) => box.offsetHeight);
   await cell("Month 12", "B1").click();
   await expect(bar.locator("output")).toHaveText("Month 12!B1");
-  expect(await bar.evaluate((box) => box.offsetHeight)).toBe(empty);
+  expect(await bar.evaluate((box) => box.offsetHeight)).toBe(short);
   expect(
     await bar.evaluate((box) => {
-      const [ref, text] = box.children;
+      const ref = box.querySelector("output");
+      const text = box.querySelector("input");
       return [
         ref.scrollWidth <= ref.clientWidth,
         text.scrollWidth > text.clientWidth,

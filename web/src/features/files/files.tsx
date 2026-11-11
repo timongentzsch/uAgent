@@ -93,6 +93,7 @@ import {
 import Sequence from "./sequence.tsx";
 import { openPresenter } from "./present.ts";
 import { applyEdit } from "./doc-edit.ts";
+import { tableSaver } from "./sheet-edit.ts";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
@@ -236,12 +237,13 @@ export default function Files({
   const written = useSnapshots(store, (all) =>
     lastWrite(all[id]?.state?.view?.nodes),
   );
-  // Each page's version: a write to it reloads its frame.
+  // Each page's version: a write to it reloads its frame, and so does one
+  // to a file pages share, unless the page has none (`shared` false).
   const [versions, setVersions] = useState<Record<string, number>>({});
   const preview = usePreviewBase(id);
-  const pageUrl = (path: string) =>
+  const pageUrl = (path: string, shared = true) =>
     preview.value &&
-    `${pageAddress(preview.value.base, path)}?v=${versions[path] ?? 0}.${versions[""] ?? 0}`;
+    `${pageAddress(preview.value.base, path)}?v=${versions[path] ?? 0}${shared ? `.${versions[""] ?? 0}` : ""}`;
   const url = (path: string) => routes.files(id, "raw", path);
   const list = (dir: string) => api<Listing>(routes.files(id, "list", dir));
   const readFile = (path: string) =>
@@ -496,6 +498,26 @@ export default function Files({
     });
   // biome-ignore lint/correctness/useExhaustiveDependencies: said of the folder it happened in
   useEffect(() => arranging.setError(null), [dir]);
+  // A sheet's edits saved into its file. One that is not (the agent wrote
+  // the file meanwhile) draws the sheet again from the file, and the pane
+  // says why.
+  const [unsaved, setUnsaved] = useState<unknown>();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
+  const tables = useMemo(
+    () =>
+      tableSaver({
+        read: readFile,
+        write: (held) => api<{ revision: string }>(routes.fileWrite(id), held),
+        failed(error, path) {
+          setUnsaved(error);
+          setSeen((all) => rewritten(all, path));
+          setVersions((all) => ({ ...all, [path]: (all[path] ?? 0) + 1 }));
+        },
+      }),
+    [],
+  );
+  // Said of the file it happened in.
+  useEffect(() => setUnsaved(undefined), [file]);
   // A write reloads the page it changed.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
   useEffect(() => {
@@ -507,7 +529,14 @@ export default function Files({
     const key = path && HTML.test(path) ? path : "";
     if (!path) return;
     setVersions((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
-    setSeen((all) => rewritten(all, key));
+    // An open sheet is drawn anew only by a write to itself: it has no
+    // styles or scripts of its own, and a reload ends its undo.
+    const alone = kind === "sheet" && key !== file;
+    setSeen((all) => ({
+      ...rewritten(all, key),
+      ...(alone && all[file] && { [file]: all[file] }),
+    }));
+    if (kind === "sheet" && key === file) tables.renew();
   }, [written]);
   const titled =
     view.kind === "canvas"
@@ -669,6 +698,16 @@ export default function Files({
               </span>
             </p>
           )}
+          {unsaved != null && (
+            <p class="page-notice" role="status">
+              <TriangleAlert />
+              <span>
+                {failure(unsaved).status === 409
+                  ? "The last change was not saved: the file changed meanwhile. The sheet is shown as the file is now."
+                  : `The last change was not saved: ${failure(unsaved).message}`}
+              </span>
+            </p>
+          )}
           {failed.count > 0 && (
             <p class="page-notice">
               <TriangleAlert />
@@ -700,7 +739,7 @@ export default function Files({
               path={file}
               kind={kind}
               boards={boards}
-              page={(path) => pageUrl(path)!}
+              page={(path) => pageUrl(path, kind !== "sheet")!}
               heard={heard}
               go={(path) =>
                 setFlow((current) => swap(current, { kind: "sequence", path }))
@@ -714,6 +753,10 @@ export default function Files({
                 openPresenter({ session: id, slides, at })
               }
               save={async (edit) => {
+                if ("table" in edit) {
+                  await tables.save(file, edit);
+                  return setUnsaved(undefined);
+                }
                 const read = await readFile(file);
                 const text = read.revision ? applyEdit(read.text, edit) : null;
                 if (text === null)

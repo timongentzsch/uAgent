@@ -284,24 +284,45 @@
 :is(.page-tools, .sheet-tabs) > * {
   flex: none;
 }
-/* A sheet's tabs lie under its grid; over it the clicked cell, one line:
-   where it is, then what was typed in it, cut short. */
-.sheet-tabs {
-  border-bottom: 0;
-  border-top: var(--border);
-}
+/* Under a sheet's grid its tabs, which scroll, and beside them what acts
+   on the sheet; over it the active cell, one line: where it is, then what
+   was typed in it, to type over. */
+.sheet-bar,
 .sheet-formula {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  min-height: var(--row);
+  gap: var(--space-2);
   padding: 0 var(--space-4);
-  border-bottom: var(--border);
+  border-top: var(--border);
   background: var(--bg);
 }
-.sheet-formula > output {
+.sheet-formula {
+  padding-block: var(--space-2);
+  border-top: 0;
+  border-bottom: var(--border);
+}
+.sheet-tabs {
+  flex: 1;
+  min-width: 0;
+  padding-inline: 0;
+  border: 0;
+}
+:is(.sheet-bar, .sheet-formula) > :not(.sheet-tabs, .text-control) {
   flex: none;
+}
+.sheet-formula > output {
   color: var(--muted);
+}
+.sheet-formula > .text-control {
+  flex: 1;
+  min-width: 0;
+}
+.sheet-bar > .sheet-note {
+  flex: 0 1 auto;
+}
+/* Edit cell is a phone's way to the keyboard. */
+.sheet-edit-cell {
+  display: none;
 }
 .page-body {
   flex: 1;
@@ -618,6 +639,12 @@
     border-top: var(--border);
   }
   .page-legend[data-doc] {
+    display: none;
+  }
+  .sheet-edit-cell {
+    display: inline-flex;
+  }
+  .sheet-note {
     display: none;
   }
   .page-legend-item[data-drop]::before {

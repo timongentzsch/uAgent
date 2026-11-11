@@ -43,7 +43,8 @@ import {
   sum,
 } from "./boards.ts";
 import Legend from "./legend.tsx";
-import { type Cell, FormulaBar, SheetTabs } from "./sheet.tsx";
+import { FormulaBar, SheetBar } from "./sheet.tsx";
+import { type Cell, cellOf, type TableEdit } from "./sheet-edit.ts";
 import SlideActions from "./slide-actions.tsx";
 import Tweaks, { type Tweak } from "./tweaks.tsx";
 import { dirOf } from "./flow.ts";
@@ -76,8 +77,11 @@ const ZOOM_STEP = 1.25;
 // its tabs under it and the clicked cell above (sheet.tsx).
 
 // The lines it adds to the draft, which the artifact skill reads.
-const commentLine = (path: string, pick: Pick, comment: string) =>
-  `\`${path}\` \`${pick.selector}\`${pick.text ? ` “${pick.text}”` : ""} — ${comment}`;
+const commentLine = (path: string, where: string, comment: string) =>
+  `\`${path}\` ${where} — ${comment}`;
+// A picked element as those lines name it, and as the pane does.
+const named = (pick: Pick, name: string) =>
+  `${name}${pick.text ? ` “${pick.text}”` : ""}`;
 
 // What a page's source draws as text, a text node each, as the page's own
 // find walks them: no script or style, and not a slide's notes.
@@ -127,8 +131,8 @@ export default function Sequence({
   drawn?: (as: "png" | "pdf", path: string) => string;
   // Opens the presenter's view of a deck at a slide, in a window.
   presenter?: (slides: string[], at: string) => void;
-  // A document's edited block saved to its file.
-  save?: (edit: BlockEdit) => Promise<void>;
+  // A document's edited block, or a sheet's edited tab, saved to its file.
+  save?: (edit: BlockEdit | TableEdit) => Promise<void>;
   // A deck's slides renamed, copied or deleted as `moves` say, after which
   // the slide named `show` is the one shown; `arranging` while that runs.
   arrange?: (moves: Move[], show: string) => void;
@@ -178,6 +182,8 @@ export default function Sequence({
     setSaved("");
     setZoom(1);
     setCell(undefined);
+    setRanged(undefined);
+    setTold({ hidden: 0, undo: false, redo: false });
   }, [src]);
   // Presenting: over the app, full screen where the browser allows, the
   // notes shown on a phone held upright or with N. Leaving full screen (a
@@ -217,9 +223,13 @@ export default function Sequence({
     end: boolean;
     chosen?: number;
   }>({ top: 0, end: false });
-  // A sheet's tab, which is the pane's to say, and the cell clicked in it.
+  // A sheet's tab, which is the pane's to say; its selection; the range a
+  // comment is being written on; and what the sheet last said of itself.
   const [tab, setTab] = useState(0);
   const [cell, setCell] = useState<Cell>();
+  const [ranged, setRanged] = useState<string>();
+  const [told, setTold] = useState({ hidden: 0, undo: false, redo: false });
+  const formula = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setWhere({ top: 0, end: false });
     setTab(0);
@@ -302,11 +312,11 @@ export default function Sequence({
     const here = target === document.body || target.closest?.(".files");
     const held = event.metaKey || event.ctrlKey;
     if (presenting) presentKey(event.key);
-    else if (target.closest?.("input, textarea, select, [contenteditable]"))
-      return;
     else if (sheet) {
       if (here && held && tabKey(event.key)) event.preventDefault();
-    } else if (
+    } else if (target.closest?.("input, textarea, select, [contenteditable]"))
+      return;
+    else if (
       boards.length > 1 &&
       !event.altKey &&
       !held &&
@@ -322,7 +332,7 @@ export default function Sequence({
   }, [keys]);
   // A document's block typed in place is saved as it is left.
   const [saved, setSaved] = useState("");
-  const keep = async (change: BlockEdit) => {
+  const keep = async (change: BlockEdit | TableEdit) => {
     setSaved("Saving…");
     try {
       await save?.(change);
@@ -506,6 +516,17 @@ export default function Sequence({
       }}
     />
   );
+  // What a comment is on: the element picked on a page, or a sheet's range.
+  const about = picked
+    ? {
+        label: named(picked, picked.tag),
+        where: named(picked, `\`${picked.selector}\``),
+      }
+    : ranged && { label: ranged, where: `\`${ranged}\`` };
+  const closeComment = () => {
+    setPicked(undefined);
+    setRanged(undefined);
+  };
   const [legend, setLegend] = useState(true);
   // A tool that is on or off: named, or `bare` its icon alone.
   const toggle = (
@@ -690,7 +711,13 @@ export default function Sequence({
           />
         )}
         <div class="page-main">
-          {sheet && <FormulaBar cell={cell} />}
+          {sheet && (
+            <FormulaBar
+              cell={cell}
+              field={formula}
+              write={(value) => tell(frame.current, { type: "input", value })}
+            />
+          )}
           <div
             class="page-stage"
             ref={stage}
@@ -770,8 +797,13 @@ export default function Sequence({
                     } else if (message.type === "find") {
                       // A slide's are counted in its source, not here.
                       if (doc) setFound(message.count);
-                    } else if (message.type === "edit") void keep(message);
-                    else if (message.type === "markdown")
+                    } else if (message.type === "edit") {
+                      if ("table" in message) {
+                        const [undo, redo] = [!!message.undo, !!message.redo];
+                        setTold((was) => ({ ...was, undo, redo }));
+                      }
+                      void keep(message);
+                    } else if (message.type === "markdown")
                       downloadBlob(
                         new Blob([message.text], { type: "text/markdown" }),
                         `${stem}.md`,
@@ -782,10 +814,15 @@ export default function Sequence({
                       setPicked((was) => was && { ...was, rect: message.rect });
                     else if (message.type === "sheet") {
                       // Drawn again (rewritten), it shows the tab it showed.
-                      const kept = Math.min(tab, message.tabs.length - 1);
+                      const kept = Math.min(tab, boards.length - 1);
                       if (message.active !== kept)
                         tell(frame.current, { type: "tab", index: kept });
-                    } else if (message.type === "cell") setCell(message);
+                      const hidden = Number(message.hidden) || 0;
+                      setTold((was) => ({ ...was, hidden }));
+                    } else if (message.type === "cell")
+                      setCell(cellOf(message));
+                    else if (message.type === "refused")
+                      setSaved(String(message.message).slice(0, 300));
                     else if (message.type === "key") {
                       // A sheet's other keys are its own.
                       if (sheet) {
@@ -867,7 +904,18 @@ export default function Sequence({
               {info.notes}
             </p>
           )}
-          {sheet && <SheetTabs boards={boards} index={index} to={to} />}
+          {sheet && (
+            <SheetBar
+              boards={boards}
+              index={index}
+              to={to}
+              cell={cell}
+              {...told}
+              act={(command) => tell(frame.current, { type: "do", command })}
+              edit={() => formula.current?.focus()}
+              comment={addToChat && (() => setRanged(cell?.range))}
+            />
+          )}
         </div>
         <Tweaks
           key={src}
@@ -883,20 +931,18 @@ export default function Sequence({
           addToChat={addToChat}
         />
       </div>
-      {picked && addToChat && (
+      {about && addToChat && (
         <form
           class="page-comment"
           onSubmit={(event) => {
             event.preventDefault();
             if (!comment.trim()) return;
-            addToChat(commentLine(path, picked, comment.trim()), true);
+            addToChat(commentLine(path, about.where, comment.trim()), true);
             setComment("");
-            setPicked(undefined);
+            closeComment();
           }}
         >
-          <span class="small muted">
-            {`Comment on ${picked.tag}${picked.text ? ` “${picked.text}”` : ""}`}
-          </span>
+          <span class="small muted">{`Comment on ${about.label}`}</span>
           <Textarea
             aria-label="Comment"
             rows={2}
@@ -904,11 +950,7 @@ export default function Sequence({
             onInput={(event) => setComment(event.currentTarget.value)}
           />
           <Actions>
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => setPicked(undefined)}
-            >
+            <Button variant="secondary" type="button" onClick={closeComment}>
               Cancel
             </Button>
             <Button type="submit" disabled={!comment.trim()}>

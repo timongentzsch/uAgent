@@ -50,19 +50,40 @@ export type PageMessage =
   // goto it was told).
   | { type: "pages"; breaks: number[] }
   | { type: "edit"; index: number; before: string; html: string }
+  // A sheet's changed tab, its place among how many, as the table its file
+  // keeps; whether the sheet can undo and redo; its cells in error.
+  | {
+      type: "edit";
+      tab: number;
+      tabs: number;
+      table: string;
+      undo: boolean;
+      redo: boolean;
+      errors: string[];
+    }
   | { type: "markdown"; text: string }
   | { type: "at"; top: number; end: boolean; after: number }
   // How many occurrences a find marked.
   | { type: "find"; count: number }
-  // A sheet's tabs with the one it shows, and the cell clicked in it: where
-  // it is ("Costs!B2"), what was typed in it and what it shows.
-  | { type: "sheet"; tabs: string[]; active: number }
-  | { type: "cell"; ref: string; raw: string; shown: string };
+  // A sheet's tabs, the one shown and how many rows a filter hides; and its
+  // selection: the active cell ("Costs!B2") and what was typed in it, the
+  // range ("Costs!B2:C6") and what two numbers or more in it come to.
+  | { type: "sheet"; tabs: string[]; active: number; hidden: number }
+  // Why a sheet did not make a change that was asked for.
+  | { type: "refused"; message: string }
+  | {
+      type: "cell";
+      ref: string;
+      raw: string;
+      range: string;
+      summary?: { count: number; sum: number; average: number };
+    };
 
 // Tells a page what to do: select on or off, set a tweak, scroll a document
 // to an offset (its `n`th goto, counted from 1 for each document loaded),
-// mark the words found and bring the `index`th into view, or show a sheet's
-// tab.
+// mark the words found and bring the `index`th into view; a sheet: show a
+// tab, write a value into its active cell, or do a command on its
+// selection.
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
@@ -72,7 +93,9 @@ export const tell = (
     | { type: "tweak"; name: string; value: unknown }
     | { type: "goto"; top: number; n: number }
     | { type: "find"; text: string; index: number }
-    | { type: "tab"; index: number },
+    | { type: "tab"; index: number }
+    | { type: "input"; value: string }
+    | { type: "do"; command: string },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 
 // What a sheet's grid takes from the app, as the variables of its own

@@ -67,6 +67,12 @@ export type SeenPages = Record<string, Seen>;
 // What one message may carry of the pages' errors.
 const ERRORS_MAX = 1800;
 
+// A page is untrusted: a list it says is taken as short strings, or empty.
+const strings = (said: unknown) =>
+  Array.isArray(said)
+    ? said.slice(0, 100).map((item) => String(item).slice(0, 300))
+    : [];
+
 // What is known of the pages once the one at `path` said `message`. A page
 // is drawn more than once (on the stage and in the legend), so an error is
 // kept once and a repeat changes nothing.
@@ -85,8 +91,10 @@ export function hear(
     if (String(was.breaks) !== String(message.breaks))
       next = { ...was, breaks: message.breaks };
   } else if (message.type === "sheet") {
-    if (was.tabs?.join("\n") !== message.tabs.join("\n"))
-      next = { ...was, tabs: message.tabs };
+    const tabs = strings(message.tabs);
+    if (was.tabs?.join("\n") !== tabs.join("\n")) next = { ...was, tabs };
+  } else if (message.type === "edit") {
+    if ("errors" in message) next = { ...was, errors: strings(message.errors) };
   } else if (message.type === "error") {
     const error = `${message.message}${message.line ? ` (line ${message.line})` : ""}`;
     if (!was.errors.includes(error))

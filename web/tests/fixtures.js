@@ -25,13 +25,15 @@ export const paper = (title, body, sheet = "a5", head = "") =>
   `<meta name="print" content="flow ${sheet}">${head}</head><body>${body}</body></html>`;
 
 export const sheet = (title, tabs) =>
-  `<!doctype html><meta charset="utf-8"><meta name="sheet" content="1">` +
-  `<title>${title}</title>${Object.entries(tabs)
+  `<!doctype html>\n<meta charset="utf-8">\n<meta name="sheet" content="1">\n` +
+  `<title>${title}</title>\n${Object.entries(tabs)
     .map(
       ([name, rows]) =>
-        `<table data-sheet="${name}">${rows.map((row) => `<tr>${row}`).join("")}</table>`,
+        // A row is its cells; one that is a tag itself (its <col>s, a <tr>
+        // with a class) is written whole.
+        `<table data-sheet="${name}">\n${rows.map((row) => (/^<(col|tr)\b/.test(row) ? row : `<tr>${row}`)).join("\n")}\n</table>`,
     )
-    .join("")}`;
+    .join("\n")}\n`;
 // A plan of three tabs: counts and a total over its tasks, a header band
 // under the summary, a value read from another tab, and two cells in error.
 export const SAMPLE_SHEET = sheet("Launch plan", {
@@ -86,6 +88,32 @@ export async function openFiles(page, session, path = "", options = {}) {
       .getByRole("button", { name: "Open", exact: true })
       .click();
   return files;
+}
+
+// A sheet written as sheets/plan.html and opened in the pane: its page, its
+// tabs, its formula bar with the field to type in, a cell of a tab by its
+// name ("B2"), and the file as it is on disk.
+export async function openSheet(page, session, project, source, options) {
+  await writeFiles(project, { "sheets/plan.html": source });
+  const files = await openFiles(page, session, "sheets/plan.html", options);
+  const { stage } = viewerOf(files);
+  const bar = files.getByRole("group", { name: "Formula bar" });
+  const columnOf = (name) =>
+    [...name].reduce((n, letter) => n * 26 + letter.charCodeAt(0) - 64, 0);
+  return {
+    files,
+    stage,
+    bar,
+    field: bar.getByRole("textbox", { name: "Cell contents" }),
+    tabs: files.getByRole("tablist", { name: "Tabs" }).getByRole("tab"),
+    cell: (tab, ref) => {
+      const [, name, row] = /^([A-Z]+)(\d+)$/.exec(ref);
+      return stage.locator(
+        `table[data-sheet="${tab}"] [data-row="${row}"][data-column="${columnOf(name)}"]`,
+      );
+    },
+    saved: () => readFile(join(project, "sheets/plan.html"), "utf8"),
+  };
 }
 
 // The viewer's stage (its page) and its counter, in the pane.

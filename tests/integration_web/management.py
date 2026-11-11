@@ -395,8 +395,12 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
             return tool_call("read_path", {"path": "large.txt"}, call_id="full-read")
         return event({"content": "Foreground done"})
 
+    # The file is large so that its exchange is paged. The window is larger
+    # still: in the default one the read sat at the edge of compacting, which
+    # drops the results this model counts and starts the command again.
+    window = {"UAGENT_CONTEXT": "65536"}
     with Server([answer]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+        with web_host(binary, root, home, provider.url, extra_env=window) as (client, code, _, _):
             client.pair(code)
             session = client.create(project)
             client.command("submit", session, text="/yolo")

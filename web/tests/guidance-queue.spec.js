@@ -118,29 +118,38 @@ for (const width of [320, 390, 1280]) {
   });
 }
 
-test("a queued message whose answer is lost stays queued across a reload", async ({
-  page,
-  session,
-}) => {
-  const prompt = await start(page, session);
-  // The host takes the command; its answer never reaches the page.
-  await page.route("**/api/command", async (route) => {
-    await route.fetch();
-    await route.abort();
+// The host takes the command, and its answer never reaches the page whole.
+for (const [how, lose] of [
+  ["dropped", (route) => route.abort()],
+  ["cut short", (route) => route.fulfill({ status: 200, body: "" })],
+])
+  test(`a queued message whose answer is ${how} stays queued across a reload`, async ({
+    page,
+    session,
+  }) => {
+    const prompt = await start(page, session);
+    await page.route("**/api/command", async (route) => {
+      await route.fetch();
+      await lose(route);
+    });
+    const text = "Queued as the connection drops.";
+    await prompt.fill(text);
+    const lost = page.waitForEvent("requestfinished", (request) =>
+      request.url().endsWith("/api/command"),
+    );
+    const failed = page.waitForEvent("requestfailed");
+    await page.getByRole("button", { name: "Queue next" }).click();
+    await Promise.race([lost, failed]);
+    await page.unroute("**/api/command");
+    const tray = page.getByRole("region", { name: "Queued messages" });
+    await expect(tray).toContainText(text);
+    await page.reload();
+    await online(page);
+    await expect(tray).toContainText(text);
+    await expect(page.locator(".message.user", { hasText: text })).toHaveCount(
+      0,
+    );
   });
-  const text = "Queued as the connection drops.";
-  await prompt.fill(text);
-  const lost = page.waitForEvent("requestfailed");
-  await page.getByRole("button", { name: "Queue next" }).click();
-  await lost;
-  await page.unroute("**/api/command");
-  const tray = page.getByRole("region", { name: "Queued messages" });
-  await expect(tray).toContainText(text);
-  await page.reload();
-  await online(page);
-  await expect(tray).toContainText(text);
-  await expect(page.locator(".message.user", { hasText: text })).toHaveCount(0);
-});
 
 test("queued guidance can be edited with its attachments without replacing a draft", async ({
   page,

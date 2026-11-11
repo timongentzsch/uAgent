@@ -310,9 +310,10 @@ export function useCommands({
     } catch (error) {
       const issue = failure(error);
       if (!visible) report(issue);
-      // No answer leaves queued guidance queued: the host may hold it, and
+      // Only the host's own no unqueues guidance. An answer that never
+      // came, or was cut short, leaves it queued: the host may hold it, and
       // its receipt settles the row once the host is reached again.
-      else if (!(queued && issue.network))
+      else if (!queued || issue.rejected || (issue.status ?? 0) >= 400)
         patchOutgoing(request_id, {
           status: issue.rejected
             ? outgoingStatus.refused

@@ -69,22 +69,6 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                                    const ToolContext& context,
                                    ShellCommand command);
 
-bool PythonScriptHasDependencies(const std::string& source);
-// argv as the receipt and the call row show it: quoted only where a shell
-// would need it, because neither is re-executed.
-std::string ScratchArgvLabel(const json& args);
-// The script a scratch path names, confined to <workspace>/.uagent/scratch.
-// The prefix is optional: "x.py" and ".uagent/scratch/x.py" are one file.
-std::optional<std::filesystem::path> ScratchScriptPath(
-    const std::filesystem::path& workspace, const std::string& relative_path,
-    std::string& error);
-// Runs a script the agent wrote there with the file tools: .py under uv (its
-// PEP 723 header names the dependencies), .sh under sh.
-ToolResult ToolRunScratch(ActivitySupervisor& supervisor,
-                          const std::filesystem::path& workspace,
-                          const std::string& relative_path,
-                          const json& args = {},
-                          const ToolContext& context = {});
 struct GrepOptions {
   std::string glob{};
   int64_t context_lines = 0;

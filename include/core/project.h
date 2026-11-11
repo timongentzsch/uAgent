@@ -97,6 +97,16 @@ std::string ReadUserStyle();
 std::string WriteUserStyle(const std::string& text,
                            const std::optional<std::string>& base = {});
 
+// The sections of the system message a person changed, in µAgent's private
+// config folder: {"replace": {"## Scratch": "..."}, "append": "..."}.
+// Sessions read it when they start.
+std::filesystem::path SavedPromptPath();
+inline constexpr size_t kSavedPromptBytes = size_t{64} * 1024;
+std::string ReadSavedPrompt();
+// Replaces it; empty text restores the built-in message.
+std::string WriteSavedPrompt(const std::string& text,
+                             const std::optional<std::string>& base = {});
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_PROJECT_H_

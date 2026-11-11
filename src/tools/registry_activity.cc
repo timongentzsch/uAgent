@@ -117,8 +117,8 @@ void RegisterActivityTool(std::vector<Tool>& tools,
   // exists to stop a command from running away, and applying it here truncated
   // the caller's own wait_ms — the schema offers five minutes and the default
   // budget granted thirty seconds, so a long activity cost a round every half
-  // minute. `run` and `scratch`, which do occupy a process, are already exempt
-  // for the same reason. The turn deadline still bounds this, and Escape and
+  // minute. `run`, which does occupy a process, is already exempt for the
+  // same reason. The turn deadline still bounds this, and Escape and
   // queued steering still return immediately.
   activity.timeout_s = 0;
   activity.parallel_safe = true;

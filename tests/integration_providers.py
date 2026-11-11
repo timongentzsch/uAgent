@@ -438,20 +438,16 @@ def test_auto_permission_never_reviews_commands_without_a_sandbox(root, home, *,
     def must_not_be_asked(*_):
         raise AssertionError("the reviewer was asked about a command with no sandbox")
 
-    for name, arguments in [
-        ("run", {"command": "echo hi"}),
-        ("scratch", {"path": "t.py", "code": "print(1)"}),
-    ]:
-        _, tool, requests = auto_review_run(
-            root,
-            home,
-            binary,
-            [tool_call(name, arguments)],
-            must_not_be_asked,
-            environment={"UAGENT_SANDBOX": "off"},
-        )
-        assert_true(requests == [], (name, requests))
-        assert_true("not approved" in tool, (name, tool))
+    _, tool, requests = auto_review_run(
+        root,
+        home,
+        binary,
+        [tool_call("run", {"command": "echo hi"})],
+        must_not_be_asked,
+        environment={"UAGENT_SANDBOX": "off"},
+    )
+    assert_true(requests == [], requests)
+    assert_true("not approved" in tool, tool)
 
 
 def test_auto_permission_without_decision_endpoint_asks(root, home, *, binary):

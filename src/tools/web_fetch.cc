@@ -264,8 +264,7 @@ ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
         "web_fetch cannot read " +
             (page.content_type.empty() ? "this content type"
                                        : page.content_type) +
-            "; download it and extract its text locally with run or "
-            "scratch");
+            "; download it and extract its text locally with run");
   }
   // Non-markup arrives readable; reflowing it would only destroy the
   // indentation that carries meaning in JSON, XML and plain text.

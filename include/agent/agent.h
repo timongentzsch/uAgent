@@ -456,6 +456,10 @@ class Agent {
   ToolRefresher refresh_tools_;
   ProjectInstructions project_instructions_;
   std::vector<Skill> skills_;
+  // What a person changed in the system message, read once: a later edit
+  // must not rewrite a running conversation's cached prefix.
+  std::string prompt_overlay_digest_;
+  json prompt_overlay_;
   mutable std::string prompt_error_;
   std::string last_sent_prompt_;
   Conversation conversation_;

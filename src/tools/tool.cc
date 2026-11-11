@@ -295,9 +295,7 @@ std::string ToolCategory(const Tool& tool) {
   if (tool.provider.starts_with("mcp:")) return "mcp";
   if (tool.name == "web_search" || tool.name == "web_fetch") return "web";
   if (tool.name == "memory" || tool.name == "skill") return "memory";
-  if (tool.name == "run" || tool.name == "scratch" || tool.name == "activity") {
-    return "execute";
-  }
+  if (tool.name == "run" || tool.name == "activity") return "execute";
   return "workspace";
 }
 

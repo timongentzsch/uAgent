@@ -61,8 +61,9 @@ A new day, a changed approval mode or any other harness note does not: the
 note is appended as a new message and the earlier ones stay in place. That
 holds on every wire; on Anthropic it is true because only leading system
 messages are lifted into the top-level `system` block. Instruction
-files and memory are read once at start, so editing one, or saving a memory,
-costs nothing until a new or restarted session.
+files, your changes to the system message and memory are read once at start,
+so editing one, or saving a memory, costs nothing until a new or restarted
+session.
 
 µAgent sends no keepalive requests to hold a cache warm, also not between
 `fusion` skill handoffs: they cost a model call and cannot guarantee a hit.

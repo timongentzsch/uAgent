@@ -33,7 +33,6 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `edit_file` | apply ordered exact replacements atomically | full toolset |
 | `delete_file` | delete a regular file and show the removed content | full toolset |
 | `run` | run a supervised shell command, optionally with a PTY or detached; its required `description` is what the row shows | always |
-| `scratch` | write and run a one-off script in `.uagent/scratch`: `.py` under uv (or `python3` when it declares no dependencies), `.sh` under `sh`, `.js`/`.mjs` under `node`; writing the script needs no approval, running it does and shows the script; it runs in the workspace, and the result names what it left in the workspace root | `uv`, `python3`, `node` or `sh` on `PATH` |
 | `activity` | list, poll, wait for, write to, resize or stop activities | always |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
 | `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions, the web stylesheet) | once the `uagent-config` skill is open |
@@ -101,10 +100,15 @@ theirs.
 - `grep` defaults to regex content matches. `literal=true` searches exact
   text, `mode=files` matches file names and `mode=matching_files` returns the
   paths whose contents match; both path modes ignore `context`.
+- `.uagent/scratch` in the folder holds the agent's own one-off scripts.
+  Writing one needs no approval and the folder ignores itself in git; the
+  system message's [Scratch section](INSTRUCTIONS.md#the-system-message)
+  says how they are run, and the approval of the `run` that starts one shows
+  the script.
 - `/changes` lists the files the last turn's `write_file`, `edit_file` and
   `delete_file` calls changed, and `/undo [FILE]` puts them back. Changes
   made by shell commands are not tracked.
-- `run`, `scratch` and `grep` run inside the OS sandbox: writes are limited
+- `run` and `grep` run inside the OS sandbox: writes are limited
   to the folder, temporary directories and package caches, and the hidden
   stores (the browser profile, µAgent's settings and other tools' credential
   stores) cannot be read; the file tools refuse them too.

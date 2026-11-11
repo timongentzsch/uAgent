@@ -254,6 +254,24 @@ std::string WriteUserStyle(const std::string& text,
                          /*shared=*/false);
 }
 
+std::filesystem::path SavedPromptPath() {
+  return std::filesystem::path(UagentDir(kConfigDir)) / "prompt.json";
+}
+
+std::string ReadSavedPrompt() {
+  return ReadFile(SavedPromptPath().string(), kSavedPromptBytes).value_or("");
+}
+
+std::string WriteSavedPrompt(const std::string& text,
+                             const std::optional<std::string>& base) {
+  if (text.size() > kSavedPromptBytes) {
+    return "the system message file is at most " +
+           std::to_string(kSavedPromptBytes / 1024) + " KiB";
+  }
+  return WriteEditedFile(SavedPromptPath(), ReadSavedPrompt(), text, base,
+                         /*shared=*/false);
+}
+
 namespace {
 std::string TrimLine(std::string_view text) {
   return Trim(std::string(text.substr(0, text.find_first_of("\r\n"))));

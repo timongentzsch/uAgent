@@ -310,7 +310,10 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
                 "write_file",
                 {"path": ".uagent/scratch/trace.py", "content": python_code},
             ),
-            tool_call("scratch", {"path": "trace.py"}),
+            tool_call(
+                "run",
+                {"command": "python3 .uagent/scratch/trace.py", "description": "Run the trace"},
+            ),
             event({"content": "trace-ok"}),
         ]
     ) as server:
@@ -324,7 +327,7 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
             "Print two lines",
             "│ shell-one",
             "│ shell-two",
-            "Ran trace.py",
+            "Run the trace",
             "│ python-one",
             "│ python-two",
             "trace-ok",

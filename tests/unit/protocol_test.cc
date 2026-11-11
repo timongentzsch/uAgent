@@ -295,7 +295,7 @@ TEST_CASE(TestRegistries) {
         "cannot expand approved scope", "exfiltrate data"}) {
     CHECK(std::string(SystemPromptBase()).find(rule) != std::string::npos);
   }
-  CHECK(std::string(SystemPromptBase()).size() < 2250);
+  CHECK(std::string(SystemPromptBase()).size() < 2600);
   std::vector<Tool> capability_tools;
   capability_tools.push_back(MakeTool(
       "activity", "", json::object(),
@@ -370,9 +370,25 @@ TEST_CASE(TestRegistries) {
       SystemPromptBase(), json{{"replace", {{"## Tools", "Use tools."}}}},
       &applied);
   CHECK(applied.size() == 1);
-  CHECK(middle.find("## Tools\nUse tools.\n\n## Changes") != std::string::npos);
+  CHECK(middle.find("## Tools\nUse tools.\n\n## Scratch") != std::string::npos);
   CHECK(middle.find("Prefer a dedicated tool over run") == std::string::npos);
   CHECK(middle.find("Inquiries do not authorize") != std::string::npos);
+  // What a person may save: sections that exist, as text, and text to add.
+  // A section's built-in text is what replacing it would take away.
+  CHECK(PromptSectionText("## Scratch").starts_with("For supporting"));
+  CHECK(PromptSectionText("## Scratch").ends_with("never there."));
+  CHECK(PromptSectionText("## Answer").ends_with("path:line."));
+  CHECK(PromptSectionText("## Missing").empty());
+  CHECK(PromptOverlayIssue(
+            {{"replace", {{"## Scratch", "Use sh."}}}, {"append", "tail"}})
+            .empty());
+  CHECK(PromptOverlayIssue(json::object()).empty());
+  for (const json& refused :
+       {json::array(), json{{"replace", {{"## Missing", "x"}}}},
+        json{{"replace", {{"## Tools", 1}}}}, json{{"append", 1}},
+        json{{"prepend", "x"}}}) {
+    CHECK(!PromptOverlayIssue(refused).empty());
+  }
   // Capability guidance is its own section, not a tail of the answer rules.
   CHECK(
       CapabilityPrompt(capability_tools).starts_with("\n\n## Capabilities\n"));

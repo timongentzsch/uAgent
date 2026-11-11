@@ -402,9 +402,9 @@ if(BUILD_TESTING)
     tests/unit/presentation_test.cc
     tests/unit/protocol_test.cc
     tests/unit/prompt_test.cc
-    tests/unit/python_tool_test.cc
     tests/unit/runtime_test.cc
     tests/unit/sandbox_test.cc
+    tests/unit/scratch_test.cc
     tests/unit/session_command_test.cc
     tests/unit/session_server_test.cc
     tests/unit/settings_store_test.cc

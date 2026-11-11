@@ -527,16 +527,12 @@ int RunBenchmarks(const std::string& session) {
     std::erase_if(tools, [&](const Tool& tool) { return tool.name == name; });
     return tools;
   };
-  auto no_scratch_tools = without(lean_tools, "scratch");
   auto no_edit_tools = without(lean_tools, "edit_file");
-  auto base_tools = without(no_scratch_tools, "grep");
-  size_t base_schema = ToolSchemas(base_tools).dump().size();
-  size_t grep_schema = ToolSchemas(no_scratch_tools).dump().size();
+  size_t base_schema = ToolSchemas(without(lean_tools, "grep")).dump().size();
   size_t no_edit_schema = ToolSchemas(no_edit_tools).dump().size();
   size_t lean_schema = ToolSchemas(lean_tools).dump().size();
   std::cout << "built-in schema              " << lean_schema
-            << " bytes; grep adds " << grep_schema - base_schema
-            << " bytes; scratch adds " << lean_schema - grep_schema
+            << " bytes; grep adds " << lean_schema - base_schema
             << " bytes; edit adds " << lean_schema - no_edit_schema
             << " bytes\n";
   for (const Tool& tool : lean_tools) {

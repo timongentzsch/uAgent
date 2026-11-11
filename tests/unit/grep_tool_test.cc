@@ -200,13 +200,6 @@ TEST_CASE(TestGrepTool) {
   auto full_tools = BuiltinTools(supervisor, root);
   const Tool* write = FindTool(full_tools, "write_file");
   CHECK(write && write->needs_approval({{"path", spilled}}));
-  const Tool* python = FindTool(lean_tools, "scratch");
-  CHECK(python != nullptr);
-  CHECK(python && ToolDescription(*python).find(
-                      "never code the user asked for") != std::string::npos);
-  CHECK(python &&
-        python->parameters.value("additionalProperties", true) == false);
-  CHECK(python && python->parameters["required"] == json::array({"path"}));
   const Tool* memory = FindTool(lean_tools, "memory");
   CHECK(memory != nullptr);
   if (memory) {
@@ -221,7 +214,6 @@ TEST_CASE(TestGrepTool) {
                       {{"action", "forget"}, {"key", "project/lesson"}}));
     CHECK(memory->parameters["required"] == json::array({"action"}));
   }
-  CHECK(python && python->timeout_s == 0);
   CHECK(FindTool(lean_tools, "wait_background") == nullptr);
   const Tool* activity = FindTool(lean_tools, "activity");
   CHECK(activity != nullptr);

@@ -64,10 +64,6 @@ def test_sandbox_keeps_spawning_after_binary_replacement(root, home, *, binary):
     with Server(
         [
             upgrade,
-            tool_call(
-                "scratch",
-                {"path": "upgrade.py", "code": "open('scratch-ran', 'w').write('ok')"},
-            ),
             event({"content": "done"}),
         ]
     ) as server:
@@ -82,7 +78,6 @@ def test_sandbox_keeps_spawning_after_binary_replacement(root, home, *, binary):
         )
     assert_true(result.returncode == 0, result.stderr)
     assert_true((workspace(root) / "shell-ran").exists(), result.stdout)
-    assert_true((workspace(root) / "scratch-ran").exists(), result.stdout)
     assert_true(not outside.exists(), "sandbox was bypassed after replacement")
 
 
@@ -215,65 +210,56 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
     sudo = executables / "sudo"
     sudo.write_text('#!/bin/sh\nprintf "SUDO_FIXTURE\\n"\nexec "$@"\n')
     sudo.chmod(0o755)
-    for tool in ("run", "scratch"):
-        for mode in ("yolo", "confined", "approved", "denied"):
-            if mode == "approved" and tool == "scratch":
-                continue  # scratch has no per-command escape hatch
-            if mode in ("yolo", "confined", "approved") and not enforced:
-                continue
-            outside = root / f"{tool}-{mode}.txt"
-            command = "sudo sh -c " + shlex.quote(f"echo written > {shlex.quote(str(outside))}")
-            if tool == "scratch":
-                script = ws / ".uagent" / "scratch" / f"{mode}.sh"
-                script.parent.mkdir(parents=True, exist_ok=True)
-                script.write_text(command + "\n")
-            arguments = {"command": command} if tool == "run" else {"path": f"{mode}.sh"}
-            if mode == "approved":
-                arguments["sandbox"] = False
-            seen = []
+    for mode in ("yolo", "confined", "approved", "denied"):
+        if mode in ("yolo", "confined", "approved") and not enforced:
+            continue
+        outside = root / f"run-{mode}.txt"
+        command = "sudo sh -c " + shlex.quote(f"echo written > {shlex.quote(str(outside))}")
+        arguments = {"command": command}
+        if mode == "approved":
+            arguments["sandbox"] = False
+        seen = []
 
-            def finish(_, body, seen=seen):
-                seen.extend(
-                    str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"
-                )
-                return event({"content": "policy-ok"})
-
-            with Server([tool_call(tool, arguments), finish]) as server:
-                env = sandbox_env(home, server.url)
-                env["PATH"] = str(executables) + ":" + env["PATH"]
-                flags = ("--yolo",) if mode == "yolo" else ()
-                if mode == "approved":
-                    # A person is there, so root=true is offered and the
-                    # command's own sudo points at it instead of running.
-                    code, transcript = run_pty(
-                        ws,
-                        env,
-                        [(b"go\n", b"Allow run?  [y] Allow"), (b"y\n", b"policy-ok"), b"", b"/q\n"],
-                        timeout=30,
-                        binary=binary,
-                    )
-                    assert_true(code == 0, transcript)
-                else:
-                    result = run_dialog(
-                        ws,
-                        env,
-                        "n\n" if mode == "denied" else "y\n",
-                        *flags,
-                        "-p",
-                        "run the fixture",
-                        timeout=30,
-                        binary=binary,
-                    )
-                    assert_true(result.returncode == 0, (tool, mode, result.stdout, result.stderr))
-            output = "\n".join(seen)
-            assert_true("privileged commands are unavailable" not in output, output)
-            ran = mode not in ("denied", "approved")
-            assert_true(("SUDO_FIXTURE" in output) == ran, (tool, mode, output))
-            assert_true(
-                ("use run root=true" in output) == (mode == "approved"), (tool, mode, output)
+        def finish(_, body, seen=seen):
+            seen.extend(
+                str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"
             )
-            # Yolo spares the question, not the confinement.
-            assert_true(not outside.exists(), (tool, mode, output))
+            return event({"content": "policy-ok"})
+
+        with Server([tool_call("run", arguments), finish]) as server:
+            env = sandbox_env(home, server.url)
+            env["PATH"] = str(executables) + ":" + env["PATH"]
+            flags = ("--yolo",) if mode == "yolo" else ()
+            if mode == "approved":
+                # A person is there, so root=true is offered and the
+                # command's own sudo points at it instead of running.
+                code, transcript = run_pty(
+                    ws,
+                    env,
+                    [(b"go\n", b"Allow run?  [y] Allow"), (b"y\n", b"policy-ok"), b"", b"/q\n"],
+                    timeout=30,
+                    binary=binary,
+                )
+                assert_true(code == 0, transcript)
+            else:
+                result = run_dialog(
+                    ws,
+                    env,
+                    "n\n" if mode == "denied" else "y\n",
+                    *flags,
+                    "-p",
+                    "run the fixture",
+                    timeout=30,
+                    binary=binary,
+                )
+                assert_true(result.returncode == 0, (mode, result.stdout, result.stderr))
+        output = "\n".join(seen)
+        assert_true("privileged commands are unavailable" not in output, output)
+        ran = mode not in ("denied", "approved")
+        assert_true(("SUDO_FIXTURE" in output) == ran, (mode, output))
+        assert_true(("use run root=true" in output) == (mode == "approved"), (mode, output))
+        # Yolo spares the question, not the confinement.
+        assert_true(not outside.exists(), (mode, output))
 
 
 def test_yolo_toggle_raises_the_level_from_the_next_command(root, home, *, binary):

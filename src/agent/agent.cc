@@ -13,6 +13,7 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/node.h"
+#include "include/agent/prompt.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
 #include "include/agent/trace.h"
@@ -48,7 +49,8 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ActivitySupervisor& processes,
       approve_(std::move(approve)),
       refresh_tools_(std::move(refresh_tools)),
       project_instructions_(std::move(project_instructions)),
-      skills_(std::move(skills)) {
+      skills_(std::move(skills)),
+      prompt_overlay_(PromptOverlay(&prompt_overlay_digest_)) {
   schema_bytes_ = JsonDump(schemas_).size();
   if (Debug().Enabled()) {
     json names = json::array();

@@ -708,7 +708,9 @@ export interface InstructionFile {
 export interface InstructionStack {
   files: InstructionFile[];
   also_loaded: string[];
-  base: string;
+  // The system message: its sections' built-in text, and the file of a
+  // person's changes as it is saved ("" when there is none).
+  prompt: { sections: { name: string; text: string }[]; saved: string };
 }
 export interface CommandResults {
   browser: {

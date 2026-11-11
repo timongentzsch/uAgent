@@ -90,7 +90,7 @@ session limit.
 | turn generated tokens / reported cost | unlimited | `UAGENT_MAX_TURN_TOKENS`, `UAGENT_MAX_TURN_COST` |
 | identical consecutive tool calls that end a turn | 12 (the model is warned at 3 and 6) | `UAGENT_REPEATED_CALL_STOP` (at least 7) |
 | session generated tokens / reported cost | unlimited | `UAGENT_SESSION_TOKEN_BUDGET` (`--token-budget`), `UAGENT_SESSION_BUDGET` (`--budget`) |
-| one tool call | 30 s; `run`, `scratch`, `activity` and `agent_start` are bounded by the turn | `UAGENT_TOOL_TIMEOUT` |
+| one tool call | 30 s; `run`, `activity` and `agent_start` are bounded by the turn | `UAGENT_TOOL_TIMEOUT` |
 | tool result / parallel batch | 8,000 / 16,000 characters | `UAGENT_TOOL_RESULT_CHARS` (batch is twice the result cap) |
 | `read_path` | 1,000 lines, at most 10,000 lines or 32 KiB | `UAGENT_READ_FILE_LINES` (default only), `UAGENT_READ_FILE_KB` |
 | `edit_file` / diff | files up to 10 MiB | `UAGENT_EDIT_FILE_MB` |

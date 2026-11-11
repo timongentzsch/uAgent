@@ -11,6 +11,49 @@ import {
 } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
+test("the system message is edited by section and reset to the built-in text", async ({
+  page,
+  host: fixture,
+}) => {
+  await page.goto("/");
+  await expect(connected(page)).toBeVisible();
+  await startInFolder(page, fixture.project);
+  const composer = page.getByLabel("Message or guidance");
+  await composer.fill("/instructions");
+  await composer.press("Enter");
+  const dialog = page.getByRole("dialog", {
+    name: "Instructions",
+    exact: true,
+  });
+  const message = dialog.locator("details");
+  await message.locator("summary").click();
+  const scratch = message.getByLabel("Scratch", { exact: true });
+  const builtIn = await scratch.inputValue();
+  expect(builtIn).toContain(".uagent/scratch");
+  const card = message.locator(".instruction-card", {
+    has: page.getByLabel("Scratch", { exact: true }),
+  });
+  await expect(card.locator("small")).toHaveText("Built-in");
+  // A changed section is kept in the file, alone.
+  await scratch.fill("Run one-off scripts with bun.");
+  await card.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(card.locator("small")).toHaveText("Changed");
+  await expect(message.locator("summary")).toHaveText(
+    "System message · 1 changed",
+  );
+  const file = `${fixture.home}/.uagent/config/prompt.json`;
+  expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+    replace: { "## Scratch": "Run one-off scripts with bun." },
+  });
+  // Reset brings the built-in text back, and with nothing changed the file
+  // holds nothing.
+  await card.getByRole("button", { name: "Reset", exact: true }).click();
+  await expect(scratch).toHaveValue(builtIn);
+  await expect(card.locator("small")).toHaveText("Built-in");
+  await expect(message.locator("summary")).toHaveText("System message");
+  expect(await readFile(file, "utf8")).toBe("");
+});
+
 test("instructions are one stack, edited in place, in a stable dialog", async ({
   page,
   host: fixture,
@@ -33,7 +76,14 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     )
     .allTextContents();
   expect(headings).toEqual([
-    "Built-in base",
+    "System message",
+    "Evidence",
+    "Tools",
+    "Scratch",
+    "Changes",
+    "Delegation",
+    "Answer",
+    "After the last section",
     "Yours · every conversation",
     "Folder · every conversation",
   ]);

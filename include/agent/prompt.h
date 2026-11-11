@@ -22,20 +22,27 @@ namespace uagent {
 // behind its shape live in prompt.cc.
 const char* SystemPromptBase();
 
-// The base sections an overlay may replace, in prompt order.
+// The base sections an overlay may replace, in prompt order, and the
+// built-in text of one.
 std::vector<std::string_view> PromptSections();
+std::string_view PromptSectionText(std::string_view name);
 
-// Replace or extend base-prompt sections from a declarative overlay so a
-// prompt variant can be measured without rebuilding the binary. This changes
-// prompt text only: tools, approvals, capabilities and limits stay host-owned,
-// and the sections below the base are not reachable. `applied` collects the
-// section names an overlay actually changed.
+// Why `overlay` cannot be saved as the system message's changes; empty when
+// it can.
+std::string PromptOverlayIssue(const json& overlay);
+
+// Replace or extend base-prompt sections from a declarative overlay: what a
+// person saved, or a variant measured without rebuilding the binary. This
+// changes prompt text only: tools, approvals, capabilities and limits stay
+// host-owned, and the sections below the base are not reachable. `applied`
+// collects the section names an overlay actually changed.
 std::string ApplyPromptOverlay(std::string prompt, const json& overlay,
                                std::vector<std::string>* applied);
 
-// The overlay named by UAGENT_INTERNAL_PROMPT_OVERLAY, or an empty object when
-// unset, unreadable or malformed: an experiment must not be able to break a
-// session. `digest` receives a short content hash when a file was read.
+// The overlay a person saved (SavedPromptPath), or the one an experiment
+// names in UAGENT_INTERNAL_PROMPT_OVERLAY; an empty object when there is
+// none or it is unreadable or malformed, so neither can break a session.
+// `digest` receives a short content hash when a file was read.
 json PromptOverlay(std::string* digest);
 
 // Optional workflow rules, kept out of the cacheable base unless the matching

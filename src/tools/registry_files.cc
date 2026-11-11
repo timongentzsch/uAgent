@@ -50,8 +50,9 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
     return AddTool(tools, std::move(tool));
   };
   // Scripts under .uagent/scratch are the agent's own working files: writing
-  // one changes nothing a person relies on. Running it is what asks, and the
-  // scratch approval shows the script.
+  // one changes nothing a person relies on, and the folder ignores itself so
+  // they stay out of a repository. Running one is what asks, and that
+  // approval shows the script.
   auto outside_scratch = [workspace](const json& args) {
     return !PathWithin(CanonicalAccessPath(JsonValue(args, "path", "")),
                        CanonicalAccessPath(ScratchDir(workspace).string()));
@@ -114,12 +115,23 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                   "content":{"type":"string"},
                   "overwrite":{"type":"boolean"}},
                   "required":["path","content"]})json"),
-      [](const json& a, const ToolContext&) {
+      [workspace, outside_scratch](const json& a, const ToolContext&) {
         static const std::string kNone;
         const std::string* content = JsonStringRef(a, "content");
-        return ToolWriteFileWithDisplay(JsonValue(a, "path", ""),
-                                        content ? *content : kNone,
-                                        JsonValue(a, "overwrite", false));
+        // Its own scripts are rewritten as freely as they are written.
+        ToolResult result = ToolWriteFileWithDisplay(
+            JsonValue(a, "path", ""), content ? *content : kNone,
+            JsonValue(a, "overwrite", false) || !outside_scratch(a));
+        const std::filesystem::path ignore =
+            ScratchDir(workspace) / ".gitignore";
+        std::error_code ec;
+        std::string error;
+        if (result.Ok() && !outside_scratch(a) &&
+            !std::filesystem::exists(ignore, ec)) {
+          AtomicWriteFile(ignore.string(), "*\n", kSharedFileMode,
+                          /*preserve_mode=*/false, error);
+        }
+        return result;
       }));
   write.mutates = outside_scratch;
   write.capabilities = Capability(ToolCapability::kMutate);

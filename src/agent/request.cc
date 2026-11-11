@@ -156,9 +156,9 @@ void Agent::DebugModelRequest(int64_t request, int64_t step,
                  {"include_usage", api_.capabilities.stream_usage_option}};
   // An experiment that changed the prompt has to be visible in the same
   // record as the request it shaped, or a report cannot be attributed.
-  std::string overlay_digest;
-  PromptOverlay(&overlay_digest);
-  if (!overlay_digest.empty()) record["prompt_overlay"] = overlay_digest;
+  if (!prompt_overlay_digest_.empty()) {
+    record["prompt_overlay"] = prompt_overlay_digest_;
+  }
   if (request_messages || projected) {
     record["messages"] = messages;
     record["message_bytes"] = message_bytes;
@@ -692,8 +692,7 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
 }
 
 std::string Agent::PromptBase() const {
-  return ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
-                            nullptr) +
+  return ApplyPromptOverlay(SystemPromptBase(), prompt_overlay_, nullptr) +
          CapabilityPrompt(tools_, &tool_selection_);
 }
 

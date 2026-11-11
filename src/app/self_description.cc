@@ -14,8 +14,8 @@
 #include "include/agent/prompt.h"
 #include "include/api/client.h"
 #include "include/app/agent_tools.h"
-#include "include/app/artifact.h"
 #include "include/app/config_proposal.h"
+#include "include/app/present.h"
 #include "include/app/uagent_tool.h"
 #include "include/cli/cli.h"
 #include "include/cli/options.h"
@@ -410,7 +410,7 @@ json ToolSurfaceJson() {
     const char* when = tool.name == "agent_start" ? "agent depth" : "always";
     conditional.emplace_back(std::move(tool), when);
   }
-  conditional.emplace_back(ArtifactTool(""), "a session with a client");
+  conditional.emplace_back(PresentTool(""), "a session with a client");
   conditional.emplace_back(ScheduleTool([] { return std::string(); }),
                            "a session with a client");
   conditional.emplace_back(

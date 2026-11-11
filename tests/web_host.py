@@ -128,16 +128,21 @@ def answer(handler, body):
         message.get("tool_call_id") == "image-read" for message in body["messages"]
     ):
         return tool_call("read_path", {"path": "shot.png"}, call_id="image-read")
-    if "Artifact probe" in prompt:
-        done = {message.get("tool_call_id") for message in body["messages"]}
-        if "artifact-write" not in done:
+    done = {message.get("tool_call_id") for message in body["messages"]}
+    if "Report probe" in prompt:
+        if "report-write" not in done:
             return tool_call(
                 "write_file",
-                {"path": "report.html", "content": "<h1>ARTIFACT_REPORT</h1>"},
-                call_id="artifact-write",
+                {"path": "report.html", "content": "<h1>PRESENTED_REPORT</h1>"},
+                call_id="report-write",
             )
-        if "artifact-share" not in done:
-            return tool_call("artifact", {"path": "report.html"}, call_id="artifact-share")
+        if "report-present" not in done:
+            return tool_call("present", {"path": "report.html"}, call_id="report-present")
+    if "Present probe " in prompt:
+        # Every path it names, one call each.
+        for path in prompt.split("Present probe ", 1)[1].split():
+            if f"present-{path}" not in done:
+                return tool_call("present", {"path": path}, call_id=f"present-{path}")
     if "Design probe" in prompt and not any(
         message.get("tool_call_id") == "design-write" for message in body["messages"]
     ):

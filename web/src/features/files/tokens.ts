@@ -22,7 +22,7 @@ export function readTokens(css: string): Tokens {
   const plain = css.replace(/@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "");
   for (const [, head, body] of plain.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selector = head.replace(/\/\*[\s\S]*?\*\//g, "").trim();
-    // A theme block, as the design skill writes them; anything fancier
+    // A theme block, as the artifact skill writes them; anything fancier
     // (:not(), media queries) is not one.
     if (selector.includes(":not(")) continue;
     const theme = /\[data-theme="?([\w-]+)"?\]/.exec(selector)?.[1];

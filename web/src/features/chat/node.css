@@ -164,11 +164,9 @@ div.node-row > .row-chevron {
   border: var(--border);
   background: var(--surface);
 }
-/* A design a reply names: its first page small, as a button that opens it. */
-.design-card {
-  margin-top: var(--space-4);
-}
-.design-card-cover {
+/* An artifact the agent presented: its cover small, as a button that opens
+   it. */
+.artifact-card-cover {
   justify-self: start;
   min-height: 0;
   padding: 0;

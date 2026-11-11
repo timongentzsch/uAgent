@@ -90,7 +90,7 @@ from the last commit, with its count, and opens each as a diff; it is read
 only too. What is open is read again when a turn ends.
 
 A folder of two pages or more offers **Canvas** on its row: its pages side by side,
-each live, the way the `design` skill writes a design. Pages named
+each live, the way the `artifact` skill writes a design. Pages named
 `NN-screen[--state].html` form a row per step `NN` (`02-sign-in.html` and
 `02-sign-in--error.html` share row 02); pages without a step form the first. The canvas is a plane: drag or scroll to
 pan; pinch, a trackpad pinch or ⌘/Ctrl with the wheel zooms at the pointer;
@@ -116,9 +116,10 @@ is larger than the pane. A page that fails says so, and **Ask agent to fix** put
 your message. A page the agent writes reloads as the write finishes. A folder
 of one page opens that page; a page that names only its width (an A4
 document, such as a design system's book) fits across the pane and scrolls
-inside, as a PDF does. A design a reply names (`design/landing/`, or a page)
-shows under the reply as a card with its first page live and small; **Open**
-shows it in the pane.
+inside, as a PDF does. What the agent hands over with `present` (a document,
+a deck, a design or a design system) shows under its reply as a card with its
+cover live and small, what it is and how much it holds; **Open** shows it in
+the pane.
 
 A **deck** is a folder of slides, pages declared with
 `<meta name="artboard" content="1920x1080 slide">` (16:9 unless you ask for

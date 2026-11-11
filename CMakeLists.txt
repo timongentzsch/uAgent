@@ -279,7 +279,7 @@ add_library(
   src/cli/options.cc
   src/app/runtime.cc
   src/app/self_description.cc
-  src/app/artifact.cc
+  src/app/present.cc
   src/app/asset_store.cc
   src/app/session_assets.cc
   src/app/session_host.cc

@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "include/agent/activity.h"
-#include "include/app/artifact.h"
+#include "include/app/present.h"
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"

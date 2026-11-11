@@ -1,4 +1,4 @@
-import DesignCards from "./design-card.tsx";
+import { ArtifactCard } from "./artifact-card.tsx";
 import "../../shared/attachments.css";
 import "./message.css";
 import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
@@ -206,12 +206,7 @@ function Message({
         {name}
       </h3>
       {reply ? (
-        <>
-          {words}
-          {openFile && !node.streaming && text && (
-            <DesignCards session={session.id} text={text} open={openFile} />
-          )}
-        </>
+        words
       ) : (
         <div class="message-line">
           <div class="message-text">
@@ -276,12 +271,22 @@ function Message({
       {online && !!node.files?.length && (
         <AttachmentList files={node.files} href={(id) => `${assets}${id}`} />
       )}
-      {/* Files the agent handed you, previewed where that is safe. */}
-      {node.parts?.map(
-        (part, index) =>
-          part.kind === "file" && (
-            <SharedFile key={index} file={part} href={`${assets}${part.id}`} />
-          ),
+      {/* What the agent handed you: a file, previewed where that is safe,
+          or an artifact in the folder. */}
+      {node.parts?.map((part, index) =>
+        part.kind === "file" ? (
+          <SharedFile key={index} file={part} href={`${assets}${part.id}`} />
+        ) : (
+          part.kind === "artifact" &&
+          openFile && (
+            <ArtifactCard
+              key={index}
+              session={session.id}
+              part={part}
+              open={openFile}
+            />
+          )
+        ),
       )}
       {truncated && (
         <Button disabled={expanding} onClick={() => setWantFull(full === null)}>

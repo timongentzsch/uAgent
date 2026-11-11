@@ -403,11 +403,14 @@ std::string ToolSummary(const Tool& t, const json& args);
 //   {"kind": "code", "text", "language", "label"} a body: script, JSON, prose
 //   {"kind": "fields", "rows": [[label, value]]}  small scalar arguments
 //   {"kind": "file", "id", "name", "mime", "bytes"} a file the user can open
+//   {"kind": "artifact", "type", "path", "cover", "count"} pages in the folder:
+//    a "doc", "deck", "design" or "system", opened in Files
 //   {"kind": "link", "to": "agent"|"activity"|"memory"|"browser", "id",
 //    "label"}
-// File and link parts come from ToolResult.parts and stay visible on the row.
-// The result itself is the tool message (or its diff), so it is not repeated
-// here. `tool` may be null for a call whose tool is gone: the generic view.
+// File, artifact and link parts come from ToolResult.parts and stay visible on
+// the row. The result itself is the tool message (or its diff), so it is not
+// repeated here. `tool` may be null for a call whose tool is gone: the generic
+// view.
 json ToolView(const Tool* tool, const json& args);
 json CommandPart(std::string text);
 json CodePart(std::string text, std::string language, std::string label = "");

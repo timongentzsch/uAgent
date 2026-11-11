@@ -1,17 +1,15 @@
 # A slide deck
 
-A deck is a folder of slides, `decks/<name>/` (in a workspace, any folder):
-one HTML file per slide, shown on the canvas in name order and presented
-from it. A new deck is a new folder: change an existing deck, or a file that
-looks like one, only when the person asks to change it.
+A deck is a folder of slides, `decks/<name>/`: one HTML file per slide.
+Files shows the slide beside a legend of all of them, in name order, and
+presents from there; the person can reorder, duplicate and delete slides.
 
 ## Files
 
 - Name slides `NN-name.html`: `01-cover.html`, `02-agenda.html`,
   `03-revenue.html`. `NN` is the order; to insert a slide, renumber the
   files after it. The `<title>` is the slide's readable name.
-- Each slide is a complete HTML document with
-  `<meta name="artboard" content="1920x1080 slide">`: 16:9 unless the person
+- Each slide has `<meta name="artboard" content="1920x1080 slide">`: 16:9 unless the person
   asks for another format (4:3 `1440x1080`, square `1080x1080`, vertical
   `1080x1920`, or the size they give). Every slide of a deck has the same size.
 - Slides share one `style.css` in the folder, which links the design system
@@ -23,7 +21,7 @@ looks like one, only when the person asks to change it.
   1920px-wide slide, in proportion on others).
 - Speaker notes: one `<aside>` as the last element of `<body>`, plain text,
   what the presenter says. It never shows on the slide.
-- No scripts, no animation; the canvas fades between slides when presenting.
+- No scripts, no animation; Files fades between slides when presenting.
 
 ## Designing the deck
 
@@ -48,18 +46,6 @@ You are a presentation designer, not a web designer.
 - Fit before you write: 824px of height inside the margins. A heading takes
   about size × lines × 1.1; a body line about size × 1.4. Too much? Split
   the slide; never shrink the type.
-- Colours, type and space from the design system's tokens. Without one: a
-  dark and a light ground, one or two accents, toned whites and blacks.
-- Charts and diagrams are inline SVG drawn in the markup, labelled with
-  their values; images are files in the folder, `object-fit: cover`.
-- No invented numbers or quotes: a missing fact is a visible placeholder
-  such as [ARR] that you list in your reply.
-
-## Checking
-
-Open every slide you wrote with the `browser` tool's `open` and its `path`;
-fix every listed problem (larger than its artboard, text running into other
-text, into the footer or past the slide's edge, a missing file) and open it
-again. Make no PDF or
-images yourself: the canvas exports them. Then name the folder in your reply,
-`decks/<name>/`, which opens the deck.
+- Without a design system: a dark and a light ground, one or two accents,
+  toned whites and blacks.
+- Images are `object-fit: cover`.

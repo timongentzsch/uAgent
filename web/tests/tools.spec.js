@@ -38,7 +38,7 @@ test("tool catalogue shows its schema size and persists selection", async ({
   await expect(enabled).not.toBeChecked();
 });
 
-test("a shared file previews inline in the conversation, sandboxed", async ({
+test("a presented file previews inline in the conversation, sandboxed", async ({
   page,
   session,
   command,
@@ -47,16 +47,16 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
   await page.goto(`/#session=${session.id}`);
   await online(page);
   const prompt = page.getByLabel("Message or guidance");
-  await prompt.fill("Artifact probe");
+  await prompt.fill("Report probe");
   await prompt.press("Enter");
-  // At full every call is open: the write shows its diff and the share its
+  // At full every call is open: the write shows its diff and the file its
   // preview.
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
   await chooseDetail(page, "Full");
   await expect(page.locator(".node .diff").first()).toContainText(
-    "ARTIFACT_REPORT",
+    "PRESENTED_REPORT",
   );
   const file = page.locator(".transcript .node-file");
   await expect(file).toContainText("report.html");
@@ -66,7 +66,7 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
     "allow-scripts allow-forms allow-popups",
   );
   await expect(
-    page.frameLocator(".node-file iframe").getByText("ARTIFACT_REPORT"),
+    page.frameLocator(".node-file iframe").getByText("PRESENTED_REPORT"),
   ).toBeVisible();
   // An opaque origin: the file's scripts can never read this device's session.
   const preview = page.frames().find((item) => item.url().includes("/assets/"));

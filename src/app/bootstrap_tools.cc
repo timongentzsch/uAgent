@@ -10,10 +10,10 @@
 
 #include "include/agent/session_store.h"
 #include "include/app/agent_tools.h"
-#include "include/app/artifact.h"
 #include "include/app/asset_store.h"
 #include "include/app/config_proposal.h"
 #include "include/app/execution.h"
+#include "include/app/present.h"
 #include "include/app/session.h"
 #include "include/app/uagent_tool.h"
 #include "include/browser/browser.h"
@@ -133,9 +133,9 @@ std::vector<Tool> BuildTools(AppContext& context,
   // availability.
   tools.push_back(WebFetchTool(api));
   if (!session_path.empty()) {
-    tools.push_back(ArtifactTool(
-        session_path,
-        RemoteWorkspace() ? FindTool(tools, "read_path") : nullptr));
+    tools.push_back(PresentTool(session_path, RemoteWorkspace()
+                                                  ? FindTool(tools, "read_path")
+                                                  : nullptr));
     CopyAttachments(tools, session_path);
   }
   if (context.channel) {

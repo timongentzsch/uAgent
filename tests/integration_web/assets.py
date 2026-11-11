@@ -342,16 +342,16 @@ def test_web_side_conversation_keeps_its_conversations_tools(root, home, *, bina
                 ),
             )
             assert_true(
-                {"decide", "agents", "artifact"} <= offered[0] and "agent_send" not in offered[0],
+                {"decide", "agents", "present"} <= offered[0] and "agent_send" not in offered[0],
                 offered,
             )
 
 
-def test_web_conversation_shares_an_artifact(root, home, *, binary):
+def test_web_conversation_presents_a_file(root, home, *, binary):
     report = b"<html><body>REPORT</body></html>"
     (root / "report.html").write_bytes(report)
     with Server(
-        [tool_call("artifact", {"path": "report.html"}), event({"content": "REPORT-SHARED"})]
+        [tool_call("present", {"path": "report.html"}), event({"content": "REPORT-SHARED"})]
     ) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
@@ -366,7 +366,7 @@ def test_web_conversation_shares_an_artifact(root, home, *, binary):
                 ),
             )
             names = {tool["function"]["name"] for tool in provider.requests[0][1].get("tools", [])}
-            assert_true("artifact" in names, names)
+            assert_true("present" in names, names)
             files = [
                 part
                 for node in value["state"]["view"]["nodes"]
@@ -380,7 +380,93 @@ def test_web_conversation_shares_an_artifact(root, home, *, binary):
             assert_true('filename="report.html"' in headers.get("Content-Disposition", ""), headers)
 
 
-def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary):
+def test_web_presented_artifact_stays_in_the_folder(root, home, *, binary):
+    slide = '<meta name="artboard" content="1920x1080 slide">'
+    screen = '<meta name="artboard" content="1440x900">'
+    paper = '<meta name="print" content="flow a4">'
+    pages = {
+        "decks/q3/01-cover.html": slide,
+        "decks/q3/02-plan.html": slide,
+        "design/onboarding/01-welcome.html": screen,
+        "design/onboarding/02-done.html": screen,
+        "design/system/tokens.css": ":root{}",
+        "design/system/book.html": paper,
+        "design/system/buttons.html": screen,
+        "docs/memo.html": paper,
+        "plain/a.html": "<p>a</p>",
+    }
+    for name, head in pages.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(head)
+    presented = [
+        "decks/q3",
+        "decks/q3/02-plan.html",
+        "design/onboarding/",
+        "design/system",
+        "docs/memo.html",
+        str(root / "docs/memo.html"),
+        "plain/a.html",
+        "plain",
+    ]
+
+    def responder(_, body):
+        done = sum(message.get("role") == "tool" for message in body["messages"])
+        if done == len(presented):
+            return event({"content": "presented"})
+        return tool_call("present", {"path": presented[done]}, call_id=f"present-{done}")
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            client.command("permissions", session, mode="yolo")
+            client.command("submit", session, text="Present them")
+            value = client.until(
+                session,
+                lambda value: (
+                    '"presented"' in json.dumps(value) and not value["metadata"]["turn_active"]
+                ),
+            )
+            parts = [
+                part
+                for node in value["state"]["view"]["nodes"]
+                if node["kind"] == "message"
+                for part in node.get("parts") or []
+                if part["kind"] in ("artifact", "file")
+            ]
+
+            def artifact(kind, path, cover, count):
+                return {
+                    "kind": "artifact",
+                    "type": kind,
+                    "path": path,
+                    "cover": cover,
+                    "count": count,
+                }
+
+            expected = [
+                artifact("deck", "decks/q3/", "decks/q3/01-cover.html", 2),
+                artifact("deck", "decks/q3/02-plan.html", "decks/q3/02-plan.html", 2),
+                artifact("design", "design/onboarding/", "design/onboarding/01-welcome.html", 2),
+                artifact("system", "design/system/", "design/system/book.html", 2),
+                artifact("doc", "docs/memo.html", "docs/memo.html", 1),
+                artifact("doc", "docs/memo.html", "docs/memo.html", 1),
+            ]
+            assert_true(parts[:6] == expected, parts)
+            # A page that says nothing of itself is a file like any other; a
+            # folder of them is nothing to present.
+            assert_true(
+                [part.get("name") for part in parts[6:]] == ["a.html"] and len(parts) == 7, parts
+            )
+            failed = [
+                node["body"]["text"]
+                for node in value["state"]["view"]["nodes"]
+                if node.get("state") == "failed"
+            ]
+            assert_true(len(failed) == 1 and "nothing to present in plain" in failed[0], failed)
+
+
+def test_web_presented_file_is_sandboxed_and_downloadable(root, home, *, binary):
     (root / "report.html").write_text("<script>document.title='x'</script>REPORT")
     (root / "picture.svg").write_text(
         '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
@@ -391,7 +477,7 @@ def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary
         if shared == 2:
             return event({"content": "shared"})
         path = ["report.html", "picture.svg"][shared]
-        return tool_call("artifact", {"path": path}, call_id=f"share-{shared}")
+        return tool_call("present", {"path": path}, call_id=f"share-{shared}")
 
     with Server([responder]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):

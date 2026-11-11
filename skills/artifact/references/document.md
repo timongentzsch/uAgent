@@ -1,17 +1,16 @@
 # A document
 
-A document is one HTML file in `docs/` (in a workspace, any folder):
-`docs/q3-board-memo.html`. It is laid out on paper: the canvas shows it as
-pages, people edit its text in place, and it exports to PDF and Markdown.
+A document is one HTML file, `docs/q3-board-memo.html`, laid out on paper.
+Files shows it beside a legend of its pages; people edit its text in place
+and export it to PDF and Markdown.
 
 ## The file
 
 - Head: `<meta name="print" content="flow a4">`. A4 unless the person asks
   for another paper: `letter`, `legal`, `a3`, `a5`, `landscape` after the
   paper (`flow a4 landscape`), or a size in millimetres (`flow 152x229mm`).
-  The canvas shows the document as wide as its paper; it needs no artboard.
-- Link the design system's `tokens.css` and keep the document's own styles in
-  one `<style>` in the head.
+  It is shown as wide as its paper and needs no artboard.
+- Keep the document's own styles in one `<style>` in the head.
 - `@page { size: A4; margin: 20mm 18mm; }` (the paper you chose), with the
   page number in a margin box:
   `@page { @bottom-right { content: counter(page) " / " counter(pages); } }`.
@@ -44,17 +43,8 @@ pages, people edit its text in place, and it exports to PDF and Markdown.
   characters; headings from the design system's text styles.
 - Print-safe colour: text on white, tinted rules and table stripes, one
   accent. Backgrounds print, but only use them for small blocks.
-- Charts are inline SVG drawn in the markup with labelled axes and values;
-  no chart scripts.
+- Charts have labelled axes; no chart scripts.
 - Lead with the point. Short paragraphs; a table for any comparison of more
   than two things; a list only for parallel items.
-- No invented facts or numbers: a missing fact is a visible placeholder such
-  as [ARR] that you list in your reply.
-
-## Checking
-
-Open the document with the `browser` tool's `open` and its `path`; fix every
-listed problem and open it again, then look at it once: a heading alone at
-the foot of a page, a figure cut by a break, a table wider than the paper.
-Name the file in your reply, `docs/<name>.html`, which opens it. Make no
-PDF yourself: the canvas exports it.
+- When you look at it, look for a heading alone at the foot of a page, a
+  figure cut by a break and a table wider than the paper.

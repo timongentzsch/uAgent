@@ -73,7 +73,7 @@ interface Tweak {
   unit?: string;
 }
 
-// The lines it adds to the draft, which the design skill reads.
+// The lines it adds to the draft, which the artifact skill reads.
 const commentLine = (path: string, pick: Pick, comment: string) =>
   `\`${path}\` \`${pick.selector}\`${pick.text ? ` “${pick.text}”` : ""} — ${comment}`;
 const pairs = (values: Record<string, unknown>) =>

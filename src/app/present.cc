@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/app/artifact.h"
+#include "include/app/present.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -10,6 +10,7 @@
 
 #include "include/agent/path_policy.h"
 #include "include/app/asset_store.h"
+#include "include/app/workspace_files.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/workspace.h"
@@ -17,19 +18,90 @@
 
 namespace uagent {
 
-Tool ArtifactTool(const std::string& session_path, const Tool* remote_read) {
+namespace {
+namespace fs = std::filesystem;
+
+// The artifact at `path`, as its folder's pages say what they are
+// (workspace_files' listing): a deck, design or design system for a folder
+// or one of its pages, a document for its own page. Null for any other
+// file, and an error for a folder that is none of these.
+json ArtifactPart(const std::string& path) {
+  const auto list = [](const fs::path& dir) {
+    const json request = {
+        {"op", "files"}, {"mode", "list"}, {"path", dir.string()}};
+    return RemoteWorkspace()
+               ? WorkspaceRequest(request)
+               : workspace_files::Request(CanonicalCwd(), request);
+  };
+  // The listing takes a path inside the folder; one outside is a file.
+  fs::path target = fs::path(path).lexically_normal();
+  if (target.is_absolute() && !RemoteWorkspace()) {
+    target =
+        fs::path(CanonicalAccessPath(path)).lexically_relative(CanonicalCwd());
+  }
+  if (!target.has_filename()) target = target.parent_path();
+  json listing = list(target);
+  const bool folder = listing.contains("entries");
+  if (!folder) listing = list(target.parent_path());
+  const std::string page = folder ? "" : target.filename().string();
+  const fs::path dir = folder ? target : target.parent_path();
+  std::string type = JsonValue(listing, "kind", ""), of;
+  std::vector<std::string> pages;
+  for (const json& entry : JsonValue(listing, "entries", json::array())) {
+    const std::string name = JsonValue(entry, "name", ""),
+                      kind = JsonValue(entry, "kind", "");
+    if (name == page) of = kind;
+    // A document beside a deck or a design is its own; a system's is its book.
+    if (name.ends_with(".html") && (kind != "doc" || type == "system")) {
+      pages.push_back(name);
+    }
+  }
+  if (of == "doc" && type != "system") type = "doc";
+  if (folder && (type.empty() || pages.empty())) {
+    return {{"error", "nothing to present in " + path +
+                          ": name a file, or a folder whose pages are a deck, "
+                          "a design or a design system"}};
+  }
+  if (type.empty() || (!folder && of.empty())) return nullptr;
+  const bool book =
+      type == "system" && std::ranges::find(pages, "book.html") != pages.end();
+  return {{"kind", "artifact"},
+          {"type", type},
+          {"path", folder ? target.string() + "/" : target.string()},
+          {"cover",
+           (dir / (folder ? book ? "book.html" : pages[0] : page)).string()},
+          {"count", type == "doc" ? 1 : pages.size()}};
+}
+
+}  // namespace
+
+Tool PresentTool(const std::string& session_path, const Tool* remote_read) {
   Tool tool = MakeTool(
-      "artifact",
-      "Hand the user a file you made (HTML report, PDF, image, archive, "
-      "data) to open or download from the conversation. Snapshots the file "
-      "as it is now; share again after changing it.",
+      "present",
+      "Hand the user what you made, shown in the conversation: an "
+      "artifact's folder or page (document, deck, design, design system) "
+      "opens in Files and stays live; any other file (PDF, image, archive, "
+      "data) is snapshotted to open or download, so present it again after "
+      "changing it.",
       json::parse(R"json({"type":"object","additionalProperties":false,
         "properties":{"path":{"type":"string","minLength":1}},
         "required":["path"]})json"),
       [session_path](const json& args, const ToolContext&) {
+        const std::string path = JsonValue(args, "path", "");
+        if (json part = ArtifactPart(path); part.contains("error")) {
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             JsonValue(part, "error", ""));
+        } else if (!part.is_null()) {
+          ToolResult result = ToolSuccess(
+              "presented the " + JsonValue(part, "type", "") + " " +
+              JsonValue(part, "path", "") +
+              "; it is shown in the conversation, where the user can open it");
+          result.parts = json::array({std::move(part)});
+          return result;
+        }
         session::AssetStoreResult stored =
-            StoreSessionFile(session_path, JsonValue(args, "path", ""), "",
-                             /*tool_copy=*/false, /*shared=*/true);
+            StoreSessionFile(session_path, path, "", /*tool_copy=*/false,
+                             /*shared=*/true);
         // A file that cannot be read is the call's mistake; one the store
         // refuses (status set) is not.
         if (!stored.error.empty()) {
@@ -38,20 +110,20 @@ Tool ArtifactTool(const std::string& session_path, const Tool* remote_read) {
                                  : ToolErrorCode::kInternal,
                              stored.error);
         }
-        ToolResult result =
-            ToolSuccess("shared " + JsonValue(stored.value, "name", "") + " (" +
-                        FmtCount(JsonValue(stored.value, "bytes", int64_t{0})) +
-                        " bytes); it is shown in the conversation, where the "
-                        "user can open or download it");
+        ToolResult result = ToolSuccess(
+            "presented " + JsonValue(stored.value, "name", "") + " (" +
+            FmtCount(JsonValue(stored.value, "bytes", int64_t{0})) +
+            " bytes); it is shown in the conversation, where the "
+            "user can open or download it");
         stored.value["kind"] = "file";
         result.parts = json::array({std::move(stored.value)});
         return result;
       });
   tool.headline = [](const json& args) {
-    return Headline{"Sharing", "Shared", JsonValue(args, "path", "")};
+    return Headline{"Presenting", "Presented", JsonValue(args, "path", "")};
   };
-  // Sharing reads the file out to the person's devices: the same path policy
-  // as read_path, so a file outside the folder or µAgent's own
+  // Presenting reads the file out to the person's devices: the same path
+  // policy as read_path, so a file outside the folder or µAgent's own
   // configuration never leaves without approval.
   tool.needs_approval = [](const json& args) {
     return PathApprovalRequired(JsonValue(args, "path", ""), CanonicalCwd());

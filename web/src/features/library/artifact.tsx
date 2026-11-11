@@ -8,18 +8,13 @@ import type {
 } from "../../shared/types.ts";
 import { Button, LoadError, Spinner, Time } from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
+import { ARTIFACT, artifactSize } from "../../shared/artifact.ts";
 import { PageThumb, usePreviewBase } from "../../shared/page-frame.tsx";
 
-// A design, a design system or a shared file, as the Library shows one: its
-// pages small, and the way to where it is worked on.
+// An artifact or a shared file, as the Library shows one: its pages
+// small, and the way to where it is worked on.
 
-const KIND = {
-  design: "Design",
-  deck: "Deck",
-  doc: "Doc",
-  system: "Design system",
-  file: "Shared file",
-};
+const KIND = { ...ARTIFACT, file: "Shared file" };
 
 function Thumbnails({ session, pages }: { session: string; pages: string[] }) {
   const preview = usePreviewBase(session);
@@ -54,8 +49,8 @@ export default function LibraryArtifact({
 }) {
   const { routes } = useApi();
   const kind = item.kind as keyof typeof KIND;
-  const unit = kind === "deck" ? "slide" : "page";
   const file = kind === "file";
+  const size = !file && item.count ? artifactSize(kind, item.count) : "";
   // A design system's book, which the agent writes beside its tokens.
   const book =
     kind === "system"
@@ -74,9 +69,7 @@ export default function LibraryArtifact({
       </div>
       <p class="muted">
         {KIND[kind]} · {place?.name ?? item.place}
-        {item.count && kind !== "doc"
-          ? ` · ${item.count} ${unit}${item.count === 1 ? "" : "s"}`
-          : ""}
+        {size && ` · ${size}`}
         {file && item.bytes !== undefined ? ` · ${bytes(item.bytes)}` : ""}
         {item.modified ? (
           <>

@@ -23,7 +23,7 @@ the task. The web's Library lists and edits the same skills; see
 | `uagent-config` | Configuration precedence and the complete runtime, install and integration reference, loaded only for configuration work. It answers from the running binary; `references/` holds the hand-written `self-configuration.md`, and installs add `architecture.md` from `docs/ARCHITECTURE.md` and the web UI's `tokens.css`. Opening it adds the `uagent`, `uagent_configure` and `uagent_file` tools to the conversation. |
 | `fusion` | Invoked explicitly with `$fusion`: coordinates one sidekick agent on a scoped implementation while the lead keeps decisions, review and the final answer. |
 | `import` | Invoked explicitly with `$import`: condenses Codex's memory summary into global memories. |
-| `design` | Pages, screens, decks and design systems as HTML in the folder, which the web's Files pane shows live as a canvas: the format, tweaks, the craft rules and making a design system from a codebase. |
+| `artifact` | Documents, slide decks, designs and design systems as HTML in the folder, which the web's Files pane shows live: what the four types are and what they share, with one reference each for the format and its craft rules. The agent hands the result over with `present`. |
 
 All four are MIT-licensed as part of this repository.
 

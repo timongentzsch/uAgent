@@ -10,6 +10,7 @@ import {
   headerAction,
   saveHistory,
   savedConversation,
+  selectProbeModel,
 } from "./fixtures.js";
 
 async function folder(project) {
@@ -395,10 +396,11 @@ test("lines selected in a file go to the chat as a reference", async ({
   );
 });
 
-test("a design a reply names shows as a card that opens its canvas", async ({
+test("what the agent presents shows as a card that opens it in Files", async ({
   page,
   host,
-  request,
+  session,
+  command,
 }) => {
   const dir = join(host.project, "design", "landing");
   await mkdir(dir, { recursive: true });
@@ -407,27 +409,40 @@ test("a design a reply names shows as a card that opens its canvas", async ({
       join(dir, `${name}.html`),
       `<!doctype html><title>${name}</title><meta name="artboard" content="1440x900"><h1>${name}</h1>`,
     );
-  const cited = await citing(
-    host,
-    request,
-    "The landing page is in `design/landing/`; the plan is `notes.md`.",
-  );
+  const deck = join(host.project, "decks", "talk");
+  await mkdir(deck, { recursive: true });
+  for (const name of ["01-cover", "02-plan", "03-end"])
+    await writeFile(
+      join(deck, `${name}.html`),
+      `<!doctype html><title>${name}</title><meta name="artboard" content="1920x1080 slide"><h1>${name}</h1>`,
+    );
+  await selectProbeModel(command, session, { yolo: true });
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`/#session=${cited.id}`);
-  // One card, for the design only, its first page live and small.
-  const card = page.locator(".transcript .design-card");
-  await expect(card).toHaveCount(1);
-  await expect(card).toContainText("design/landing/");
-  await expect(card).toContainText("2 pages");
+  await page.goto(`/#session=${session.id}`);
+  const prompt = page.getByLabel("Message or guidance");
+  const cards = page.locator(".transcript .artifact-card");
+  await prompt.fill("Present probe design/landing decks/talk");
+  await prompt.press("Enter");
+  await expect(cards).toHaveCount(2);
+  // A design: its first page live and small, and what it holds.
+  await expect(cards.first()).toContainText("landing");
+  await expect(cards.first()).toContainText("Design · 2 pages");
   await expect(
-    page
-      .frameLocator('.design-card iframe[title="hero-a"]')
-      .getByText("hero-a"),
+    cards.first().frameLocator('iframe[title="hero-a"]').getByText("hero-a"),
   ).toBeVisible();
-  await card.getByRole("button", { name: "Open design/landing/" }).click();
-  await expect(
-    page.getByRole("region", { name: "Files" }).locator(".canvas-page"),
-  ).toHaveCount(2);
+  await cards
+    .first()
+    .getByRole("button", { name: "Open design/landing/" })
+    .click();
+  const pane = page.getByRole("region", { name: "Files" });
+  await expect(pane.locator(".canvas-page")).toHaveCount(2);
+  // A deck opens in the viewer, on its first slide.
+  await expect(cards.last()).toContainText("Deck · 3 slides");
+  await cards.last().getByRole("button", { name: "Open", exact: true }).click();
+  await expect(pane.getByRole("listbox", { name: "Slides" })).toBeVisible();
+  await expect(pane.getByRole("heading")).toHaveText(
+    "decks/talk/01-cover.html",
+  );
 });
 
 test("a page a reply names opens over its design's canvas", async ({
@@ -461,7 +476,7 @@ test("a page a reply names opens over its design's canvas", async ({
   await expect(pane.locator(".canvas-page")).toHaveCount(2);
 });
 
-test("a page a reply names loosely gets no card and no blank frame", async ({
+test("a page a reply names loosely opens by its name, never a blank frame", async ({
   page,
   host,
   request,
@@ -483,7 +498,6 @@ test("a page a reply names loosely gets no card and no blank frame", async ({
   await expect(
     transcript.getByRole("button", { name: "preview.html", exact: true }),
   ).toBeVisible();
-  await expect(transcript.locator(".design-card")).toHaveCount(0);
   await transcript
     .getByRole("button", { name: "preview.html", exact: true })
     .click();

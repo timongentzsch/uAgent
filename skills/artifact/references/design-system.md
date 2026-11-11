@@ -17,7 +17,7 @@ A design system is a folder, e.g. `design/system/`, that pages link:
   states. `<Name>` is the component's name as code uses it (`Button`,
   `ListRow`).
 - `fonts/` and `assets/<Group>/` (logos, icons): copied files, never redrawn.
-- `book.html`: the brand book (below), which the canvas shows and prints.
+- `book.html`: the brand book (below), which Files shows and prints.
 - Pages use it with `<link rel="stylesheet" href="../system/tokens.css">` (and
   `bundle.css`) and `data-theme` on `<html>`.
 

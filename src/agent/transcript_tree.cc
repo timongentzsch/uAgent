@@ -99,7 +99,11 @@ const json* ResultRecord(const json& facts, uint64_t sequence,
   return FindToolFacts(facts, id, call_id);
 }
 
-bool IsFile(const json& part) { return JsonValue(part, "kind", "") == "file"; }
+// What a call handed the person: a file, or an artifact in the folder.
+bool IsHandedOver(const json& part) {
+  const std::string kind = JsonValue(part, "kind", "");
+  return kind == "file" || kind == "artifact";
+}
 
 }  // namespace
 
@@ -173,11 +177,11 @@ json CallNode(const json& record, std::string_view work) {
   if (const json* input = JsonArray(view, "input"); input && !input->empty()) {
     node["input"] = *input;
   }
-  // Files it handed over are a node of their own (FilesNode).
+  // What it handed over is a node of its own (FilesNode).
   if (const json* parts = JsonArray(record, "parts")) {
     json kept = json::array();
     for (const json& part : *parts) {
-      if (!IsFile(part)) kept.push_back(part);
+      if (!IsHandedOver(part)) kept.push_back(part);
     }
     if (!kept.empty()) node["parts"] = std::move(kept);
   }
@@ -190,7 +194,7 @@ json FilesNode(const json& record, std::string_view turn) {
   if (!parts) return nullptr;
   json files = json::array();
   for (const json& part : *parts) {
-    if (IsFile(part)) files.push_back(part);
+    if (IsHandedOver(part)) files.push_back(part);
   }
   if (files.empty()) return nullptr;
   return MakeNode(JsonValue(record, "detail_id", "") + ":files", turn,

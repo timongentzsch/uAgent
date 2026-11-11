@@ -88,19 +88,23 @@ std::string Row(const std::string& head, const json& node, size_t level,
       style);
 }
 
-// A node's parts, one row each at `pad`: a file handed over, a link.
+// A node's parts, one row each at `pad`: a file or an artifact handed over,
+// a link.
 std::string Parts(const json& node, const std::string& pad, const char* style) {
   std::string rows;
   if (const json* parts = JsonArray(node, "parts")) {
     for (const json& part : *parts) {
       const json id = part.value("id", json());
+      const std::string_view kind = Field(part, "kind");
       const std::string line =
-          Field(part, "kind") == "file"
+          kind == "file"
               ? JoinDot({JsonValue(part, "name", ""),
                          FmtBytes(JsonValue(part, "bytes", int64_t{0}))})
-              : JoinDot(
-                    {JsonValue(part, "label", ""),
-                     id.is_string() ? id.get<std::string>() : JsonDump(id)});
+          : kind == "artifact" ? JoinDot({JsonValue(part, "path", ""),
+                                          JsonValue(part, "type", "")})
+                               : JoinDot({JsonValue(part, "label", ""),
+                                          id.is_string() ? id.get<std::string>()
+                                                         : JsonDump(id)});
       rows += StyledBlock(pad + AsciiGlyphs("↳ " + TerminalSafe(line)), style);
     }
   }

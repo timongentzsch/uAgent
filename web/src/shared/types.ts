@@ -1,5 +1,7 @@
 // The native host owns this versioned wire contract. Unknown JSON stays at the
 // HTTP boundary; components share these projections instead of redefining them.
+import type { ArtifactType } from "./artifact.ts";
+
 export type JSONValue =
   | null
   | boolean
@@ -107,7 +109,17 @@ export type ToolPart =
   | { kind: "code"; text: string; language?: string; label?: string }
   | { kind: "fields"; rows: [string, string][] }
   | FilePart
+  | ArtifactPart
   | LinkPart;
+// Pages in the folder the agent presented: opened in Files, never copied.
+export interface ArtifactPart {
+  kind: "artifact";
+  type: ArtifactType;
+  // Its folder (`decks/q3/`) or its page; `cover` is the page shown small.
+  path: string;
+  cover: string;
+  count: number;
+}
 export interface FilePart {
   kind: "file";
   id: string;

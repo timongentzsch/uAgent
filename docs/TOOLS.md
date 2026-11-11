@@ -39,7 +39,7 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `uagent_configure`, `uagent_file` | change settings, or replace an instructions file or the web UI's stylesheet, by an exact diff a person approves | once the `uagent-config` skill is open, where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
 | `schedule` | list, save, pause, resume, delete or run scheduled tasks; a task runs in this folder on this conversation's model, with no wider approval mode than this conversation's; see [Management](MANAGEMENT.md#scheduled-tasks) | a session with a client |
-| `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
+| `present` | hand the user what was made, as a card in the conversation: a document, deck, design or design system (its folder or page, as its pages say what they are) opens in Files from the folder and stays live; any other file is snapshotted into the session's assets to open or download (HTML runs sandboxed, PDFs and images open inline) | a session with a client |
 | `web_search` | cited web search through a search an endpoint runs | a search can run on the conversation's route (see below) |
 | `todo` | replace the conversation's to-do list (up to 24 items, each pending or done; the first not done is the current step); it is kept with the conversation and carried on every request while it has items | always |
 | `agent_start` | start agents, each a conversation of its own on a brief; see [Agents](#agents) | unless this agent is `agents.depth` levels deep |

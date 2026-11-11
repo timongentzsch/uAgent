@@ -421,49 +421,55 @@ TEST_CASE(TestGoldenFailedCalls) {
 TEST_CASE(TestGoldenFileHandedOver) {
   Recorder turn;
   turn.Say("make a report");
-  turn.Reply("r-1-1-1", "", "", {{"s", "share"}});
+  turn.Reply("r-1-1-1", "", "", {{"s", "present"}});
   const json file = {{"kind", "file"},
                      {"id", "0123456789abcdef"},
                      {"name", "report.html"},
                      {"mime", "text/html"},
                      {"bytes", 2048}};
+  const json deck = {{"kind", "artifact"},
+                     {"type", "deck"},
+                     {"path", "decks/q3/"},
+                     {"cover", "decks/q3/01-cover.html"},
+                     {"count", 12}};
   const json link = {
       {"kind", "link"}, {"to", "activity"}, {"id", 7}, {"label", "Open"}};
-  const std::string s =
-      turn.Call("r-1-1-1", "s", "share",
-                {{"verb", {"Sharing", "Shared"}}, {"target", "report.html"}},
-                "ok", {}, "", json::array({file, link}));
+  const std::string s = turn.Call(
+      "r-1-1-1", "s", "present",
+      {{"verb", {"Presenting", "Presented"}}, {"target", "report.html"}}, "ok",
+      {}, "", json::array({file, deck, link}));
   turn.Result("s", s);
   turn.Step({{"items", 1}, {"errors", 0}, {"edited", 0}});
   turn.Reply("r-1-2-1", "Here it is.");
   turn.Footer(2000, "complete");
   const json view = ConversationView(turn.History());
   const auto page = Lines(view["nodes"]);
-  // The file is the turn's, so it shows at every depth; the call keeps its
-  // other parts.
+  // What was handed over is the turn's, so it shows at every depth; the
+  // call keeps its other parts.
   CHECK((page == std::vector<std::string>{
                      "turn m-2 < - \"make a report\"",
                      "work w-m-2 < m-2 [ok] Worked 1 step · 2.0s",
-                     "call " + s + " < w-m-2 [ok] Shared report.html · 5ms",
+                     "call " + s + " < w-m-2 [ok] Presented report.html · 5ms",
                      "message " + s + ":files < m-2",
                      "message r-1-2-1 < m-2 \"Here it is.\"",
                      "footer m-6 < m-2",
                  }));
   CHECK(Lines(turn.Live()) == page);
   CHECK(view["nodes"][2]["parts"] == json::array({link}));
-  CHECK(view["nodes"][3]["parts"] == json::array({file}));
-  // The terminal lists the file under the turn at every depth; an open call
-  // adds the parts it kept.
+  CHECK(view["nodes"][3]["parts"] == json::array({file, deck}));
+  // The terminal lists them under the turn at every depth; an open call adds
+  // the parts it kept.
   const std::string work = "> make a report\n  · Worked 1 step · 2.0s\n";
-  const std::string call = "    · Shared report.html · 5ms\n";
+  const std::string call = "    · Presented report.html · 5ms\n";
+  const std::string handed = "  ↳ report.html · 2 kB\n  ↳ decks/q3/ · deck\n";
   const std::string rest =
-      "  ↳ report.html · 2 kB\nuagent\nHere it is.\n0 in · 0 out · 2.0s\n";
+      handed + "uagent\nHere it is.\n0 in · 0 out · 2.0s\n";
   CHECK((Drawings(view["nodes"]) ==
          std::vector<std::string>{work + rest, work + call + rest,
                                   work + call + "      ↳ Open · 7\n" + rest}));
   CHECK(turn.Watched() ==
-        "> make a report\n" + call +
-            "  ↳ report.html · 2 kB\nuagent\nHere it is.\n"
+        "> make a report\n" + call + handed +
+            "uagent\nHere it is.\n"
             "  · Worked 1 step · 2.0s\n0 in · 0 out · 2.0s\n");
 }
 

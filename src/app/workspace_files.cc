@@ -473,7 +473,7 @@ json Move(const fs::path& folder, const json& moves) {
            name.find_first_of(std::string_view("/\\\0", 3)) ==
                std::string::npos;
   };
-  const json invalid = {{"error", "invalid request"}, {"status", 400}};
+  json invalid = {{"error", "invalid request"}, {"status", 400}};
   if (!moves.is_array() || moves.empty() || moves.size() > kMoves) {
     return invalid;
   }

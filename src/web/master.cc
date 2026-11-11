@@ -267,7 +267,7 @@ bool Master::Initialize(std::string& error) {
        {"Content-Security-Policy",
         "default-src 'none'; script-src 'self'; style-src 'self' "
         "'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; "
-        "connect-src "
+        "media-src 'self'; connect-src "
         "'self'; manifest-src 'self'; worker-src 'self'; frame-src 'self'; "
         "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"}});
   server_.set_pre_routing_handler([this](const Request& request,

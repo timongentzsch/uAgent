@@ -42,7 +42,13 @@ import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
 import { stored } from "../../shared/storage.ts";
 import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
-import { HTML, IMAGE, MARKDOWN, nameOf } from "../../shared/file-types.ts";
+import {
+  HTML,
+  IMAGE,
+  MARKDOWN,
+  nameOf,
+  VIDEO,
+} from "../../shared/file-types.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import type { Node } from "../../shared/types.ts";
@@ -50,8 +56,10 @@ import {
   boardsOf,
   failures,
   hear,
+  join,
   kindOf,
   rewritten,
+  settled,
   type SeenPages,
 } from "./boards.ts";
 import Plane from "./plane.tsx";
@@ -267,12 +275,13 @@ export default function Files({
   const deleted =
     changing && changes.some((c) => c.path === file && c.state === "D");
   const image = view.kind === "file" && IMAGE.test(file) && !changing;
+  const video = view.kind === "file" && VIDEO.test(file) && !changing;
   const page = view.kind === "sequence";
   // The canvas, or one page in its sequence, across the whole pane.
   const stage = view.kind === "canvas" || page;
   const content = useResource(
     () =>
-      view.kind === "file" && !image && !changing
+      view.kind === "file" && !image && !video && !changing
         ? api<FileText>(routes.files(id, "read", file)).then((value) => ({
             ...value,
             path: file,
@@ -437,12 +446,37 @@ export default function Files({
   const heard = (path: string) => (message: PageMessage) =>
     setSeen((all) => hear(all, path, message));
   const kind = here && page ? kindOf(here, nameOf(file)) : "design";
+  // A design's folders may be decks lying on its canvas: read with the
+  // canvas, a dozen at most, and tagged with the folder they are of.
+  const canvas = view.kind === "canvas";
+  const folders = useResource(
+    () =>
+      canvas && here
+        ? Promise.all(
+            here.entries
+              .filter((entry) => entry.dir)
+              .slice(0, 12)
+              .map(({ name }) =>
+                api<Listing>(routes.files(id, "list", join(dir, name))).then(
+                  (inner) => [name, inner] as const,
+                ),
+              ),
+          ).then((inner) => ({ dir, inner: Object.fromEntries(inner) }))
+        : undefined,
+    [id, canvas, here],
+  );
   const boards = useMemo(
     () =>
       here && stage
-        ? boardsOf(dir, here, seen, page ? nameOf(file) : undefined)
+        ? boardsOf(
+            dir,
+            here,
+            seen,
+            page ? nameOf(file) : undefined,
+            folders.value?.dir === dir ? folders.value.inner : undefined,
+          )
         : [],
-    [here, stage, page, dir, seen, file],
+    [here, stage, page, dir, seen, file, folders.value],
   );
   const failed = failures(boards, seen);
   // A write reloads the page it changed.
@@ -666,7 +700,7 @@ export default function Files({
             <Plane
               dir={dir}
               boards={boards}
-              sized={boards.every((board) => seen[board.path]?.info)}
+              sized={boards.every((board) => settled(board, seen))}
               page={(path) => pageUrl(path)!}
               heard={heard}
               open={(path) => setFlow((current) => push(current, opened(path)))}
@@ -920,6 +954,11 @@ export default function Files({
           ) : image ? (
             <div class="files-image">
               <ZoomImage key={url(file)} src={url(file)} name={nameOf(file)} />
+            </div>
+          ) : video ? (
+            // From the preview address: the file route only downloads one.
+            <div class="files-image">
+              <video controls src={pageUrl(file)} />
             </div>
           ) : fileError ? (
             fileError.status === 415 ? (

@@ -18,6 +18,7 @@ def test_web_files_list_read_serve_and_find(root, home, *, binary):
     (project / "big.txt").write_text("x" + "é" * 600_000)
     (project / "blob.bin").write_bytes(b"\x00\x01binary")
     (project / "pixel.png").write_bytes(SMALL_PNG)
+    (project / "shot.avif").write_bytes(b"\0\0\0\x1cftypavif" + bytes(16))
     (project / "draw.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
     (project / "page.html").write_text("<script>alert(1)</script>")
     (project / ".mcp.json").write_text("{}")
@@ -53,6 +54,7 @@ def test_web_files_list_read_serve_and_find(root, home, *, binary):
                         "draw.svg",
                         "page.html",
                         "pixel.png",
+                        "shot.avif",
                     )
                 ],
                 value,
@@ -85,6 +87,16 @@ def test_web_files_list_read_serve_and_find(root, home, *, binary):
             assert_true("Content-Disposition" not in headers, headers)
             assert_true(
                 headers["Content-Security-Policy"].startswith("default-src 'none'"), headers
+            )
+            # The app itself may play the folder's video, from its own address only.
+            policy = client.request("/")[2]["Content-Security-Policy"]
+            assert_true(
+                policy.startswith("default-src 'none'") and "media-src 'self';" in policy, policy
+            )
+            status, _, headers = files(raw="shot.avif")
+            assert_true(
+                headers["Content-Type"] == "image/avif" and "Content-Disposition" not in headers,
+                headers,
             )
             status, _, headers = files(raw="draw.svg")
             assert_true(headers["Content-Security-Policy"].startswith("sandbox;"), headers)

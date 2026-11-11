@@ -128,6 +128,11 @@ void Master::Files(const Request& request, Response& response) {
   // Only an image opens in the browser; HTML and other files download.
   std::string mime = RasterMime(bytes);
   if (mime.empty()) mime = SvgMime(bytes);
+  // Shown here, never attached: models do not read AVIF.
+  if (mime.empty() &&
+      std::string_view(bytes).substr(0, 12).ends_with("ftypavif")) {
+    mime = "image/avif";
+  }
   const bool image = !mime.empty();
   ServeFile(response, std::move(bytes), image ? mime : kOctetStreamMime, name,
             image && !request.has_param("download"));

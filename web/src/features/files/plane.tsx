@@ -1,14 +1,18 @@
 import { useMemo, useState } from "preact/hooks";
 import { Button } from "../../shared/ui.tsx";
+import { ARTIFACT } from "../../shared/artifact.ts";
+import { plural } from "../../shared/quantities.ts";
 import { ZoomSurface } from "../../shared/zoom-surface.tsx";
 import type { ZoomView } from "../../shared/zoom.ts";
 import { BoardFrame, type PageMessage } from "../../shared/page-frame.tsx";
-import type { Board } from "./boards.ts";
+import { type Board, still } from "./boards.ts";
+import { dirOf } from "./flow.ts";
 
-// A design's boards on a plane you pan and zoom (ZoomSurface's plane), each
-// a live page as the agent wrote it. The boards of a step (`02-` in
-// `02-pricing--annual.html`) share a row; those without one form the first.
-// A click opens a board.
+// A design's boards on a plane you pan and zoom (ZoomSurface's plane): each
+// page live as the agent wrote it, its pictures and films as they are, and
+// a document or a deck that lies in it as a stack, its first page with how
+// many there are. The boards of a step (`02-` in `02-pricing--annual.html`)
+// share a row; those without one form the first. A click opens a board.
 
 // The plane: artboards at their real size, 80 px apart in a row and 240
 // between rows (room for a name at any zoom), as Claude's canvas spaces them.
@@ -59,6 +63,19 @@ export default function Plane({
     return { x: (width - w * scale) / 2, y: 48, scale };
   };
   const { x, y, scale: s } = view;
+  // A stack is a document, which lies in the design's folder, or a deck,
+  // which is a folder of it: its count with its noun, and what it is called.
+  const typeOf = (item: Board) => (dirOf(item.path) === dir ? "doc" : "deck");
+  const counted = (item: Board) =>
+    item.count
+      ? plural(item.count, typeOf(item) === "doc" ? "page" : "slide")
+      : "";
+  const named = (item: Board) =>
+    item.media === "stack"
+      ? `${ARTIFACT[typeOf(item)].toLowerCase()} ${item.title}${item.count ? `, ${counted(item)}` : ""}`
+      : item.title;
+  // A picture or a film that did not load: why, after its name.
+  const lost = (item: Board) => (still(item) ? item.failed : "");
   return (
     <div class="canvas">
       <ZoomSurface
@@ -84,6 +101,8 @@ export default function Plane({
           >
             {item.x === 0 && item.row ? `${item.row} · ` : ""}
             {item.title}
+            {lost(item) && ` ${lost(item)}`}
+            {item.count && <span class="canvas-count">{counted(item)}</span>}
           </span>
         ))}
       >
@@ -91,6 +110,7 @@ export default function Plane({
           <div
             key={item.path}
             class="canvas-page"
+            data-media={item.media}
             data-failed={item.failed || undefined}
             style={{ left: `${item.x}px`, top: `${item.y}px` }}
           >
@@ -99,12 +119,15 @@ export default function Plane({
               title={item.title}
               w={item.w}
               h={item.h}
+              media={item.media}
+              // What did not load is its box, never a broken picture.
+              far={!!lost(item)}
               onMessage={heard(item.path)}
             />
             <Button
               variant="quiet"
               class="cover"
-              aria-label={`Open ${item.title}`}
+              aria-label={`Open ${named(item)}`}
               onClick={() => open(item.path)}
             />
           </div>

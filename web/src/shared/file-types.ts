@@ -1,5 +1,5 @@
 // What a file is by its name: the language it is highlighted in, whether it
-// is an image or Markdown, and whether a name is a file at all. Small and
+// is an image, a video or Markdown, and whether a name is a file at all. Small and
 // eager, so the renderer can tell a cited path without the highlighter.
 
 const NAMED: Record<string, string> = {
@@ -39,7 +39,8 @@ const EXTENSIONS: Record<string, string> = {
   yml: "yaml",
   zsh: "bash",
 };
-export const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
+export const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
+export const VIDEO = /\.(mp4|webm|mov)$/i;
 export const MARKDOWN = /\.(md|markdown)$/i;
 export const HTML = /\.html?$/i;
 // Files with no language that are still plainly files.
@@ -63,4 +64,4 @@ export function languageFor(path: string) {
 // or `1.2.3` is not.
 export const knownFile = (path: string) =>
   !!languageFor(path) ||
-  [IMAGE, MARKDOWN, PLAIN].some((kind) => kind.test(nameOf(path)));
+  [IMAGE, VIDEO, MARKDOWN, PLAIN].some((kind) => kind.test(nameOf(path)));

@@ -90,8 +90,7 @@ const sequence = (path) => ({ kind: "sequence", path });
 
 // The route table, a test a row ("Every way in" on the design's canvas).
 // Rows 5 and 6 (a card for an image or another file) never reach the pane,
-// 8 (a stack on the canvas) comes with mixed media, and 14 (a phone) is the
-// same views, checked in the browser.
+// and 14 (a phone) is the same views, checked in the browser.
 
 test("1: a card or Library entry for a deck opens its first slide, Back to the deck's list", async () => {
   for (const from of before)
@@ -126,12 +125,37 @@ test("4: one for a design system opens its brand book, Back to the system's list
       });
 });
 
-test("7: a board on the canvas opens in its sequence, Back to the canvas", () => {
+test("7: a board on the canvas opens in its sequence, a picture or a film as its file, Back to the canvas", () => {
   const canvas = before[1];
   const board = push(canvas, opened("design/landing/02-pricing.html"));
   assert.deepEqual(board.view, sequence("design/landing/02-pricing.html"));
   assert.deepEqual(pop(board), canvas);
   assert.deepEqual(pop(pop(board)), { view: list("design/landing"), back: [] });
+  for (const path of ["design/landing/hero.png", "design/landing/clip.mp4"]) {
+    const still = push(canvas, opened(path));
+    assert.deepEqual(still.view, {
+      kind: "file",
+      path,
+      lines: undefined,
+      source: false,
+    });
+    assert.deepEqual(pop(still), canvas);
+  }
+});
+
+test("8: a stack on the canvas opens its document, or its deck at the first slide, Back to the canvas", () => {
+  const canvas = before[1];
+  // A stack's path is the page it opens at: the document, or a deck's first
+  // slide in its folder of the design.
+  for (const path of [
+    "design/landing/memo.html",
+    "design/landing/talk/01-cover.html",
+  ]) {
+    const stack = push(canvas, opened(path));
+    assert.deepEqual(stack.view, sequence(path));
+    // Stepping through it replaces; Back is still the canvas.
+    assert.deepEqual(pop(swap(stack, sequence(`${path}x`))), canvas);
+  }
 });
 
 test("9: a step shows another board of the sequence and leaves Back as it was", async () => {

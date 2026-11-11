@@ -423,6 +423,10 @@ std::string PreviewMime(const fs::path& path) {
                                      {".js", "text/javascript"},
                                      {".mjs", "text/javascript"},
                                      {".json", "application/json"},
+                                     {".avif", "image/avif"},
+                                     {".mp4", "video/mp4"},
+                                     {".webm", "video/webm"},
+                                     {".mov", "video/quicktime"},
                                      {".woff2", "font/woff2"},
                                      {".woff", "font/woff"},
                                      {".ttf", "font/ttf"},
@@ -430,10 +434,7 @@ std::string PreviewMime(const fs::path& path) {
     if (ext == suffix) return mime;
   }
   const std::string mime = AttachmentMime(path.string());
-  return mime.starts_with("image/") || mime.starts_with("audio/") ||
-                 mime.starts_with("video/")
-             ? mime
-             : std::string();
+  return mime.starts_with("image/") ? mime : std::string();
 }
 
 std::string DeckPage(const fs::path& folder, int width, int height) {

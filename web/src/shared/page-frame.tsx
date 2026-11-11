@@ -77,6 +77,8 @@ export default function Frame({
   height,
   scale = 1,
   live = true,
+  far,
+  media,
   onMessage,
   frameRef,
 }: {
@@ -88,6 +90,13 @@ export default function Frame({
   scale?: number;
   // On the canvas a frame is a picture: the canvas takes the pointer.
   live?: boolean;
+  // Only its box, with nothing in it. The box itself stays whatever it
+  // holds: a legend whose boxes came and went with their pages lost its
+  // place as they were swapped.
+  far?: boolean;
+  // An "image" or a "video" of the folder is drawn as itself: it says its
+  // size as a page does once it has loaded, or that it did not.
+  media?: string;
   onMessage?: (message: PageMessage) => void;
   // The frame itself, to tell the page things.
   frameRef?: { current: HTMLIFrameElement | null };
@@ -105,6 +114,16 @@ export default function Frame({
     return () => removeEventListener("message", heard);
   }, []);
   const sized = width !== undefined && height !== undefined;
+  const said = (w: number, h: number) =>
+    onMessage?.({
+      type: "ready",
+      title: "",
+      artboard: { w, h },
+      tweaks: null,
+      height: h,
+    });
+  const lost = () =>
+    onMessage?.({ type: "error", message: "did not load", line: 0 });
   return (
     <div
       class="page-frame"
@@ -117,22 +136,43 @@ export default function Frame({
           : undefined
       }
     >
-      <iframe
-        ref={frame}
-        src={src}
-        title={title}
-        sandbox="allow-scripts allow-forms"
-        tabIndex={live ? undefined : -1}
-        style={
-          sized
-            ? {
-                width: `${width}px`,
-                height: `${height}px`,
-                transform: `scale(${scale})`,
-              }
-            : undefined
-        }
-      />
+      {far ? null : media === "image" ? (
+        <img
+          src={src}
+          alt=""
+          onLoad={({ currentTarget: image }) =>
+            said(image.naturalWidth, image.naturalHeight)
+          }
+          onError={lost}
+        />
+      ) : media === "video" ? (
+        <video
+          src={src}
+          controls
+          preload="metadata"
+          onLoadedMetadata={({ currentTarget: film }) =>
+            said(film.videoWidth, film.videoHeight)
+          }
+          onError={lost}
+        />
+      ) : (
+        <iframe
+          ref={frame}
+          src={src}
+          title={title}
+          sandbox="allow-scripts allow-forms"
+          tabIndex={live ? undefined : -1}
+          style={
+            sized
+              ? {
+                  width: `${width}px`,
+                  height: `${height}px`,
+                  transform: `scale(${scale})`,
+                }
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }
@@ -146,16 +186,17 @@ export function usePreviewBase(session: string) {
   );
 }
 
-// One board as a picture: its page drawn `w` by `h` at a scale. While `far`
-// (out of a legend's view) only its box is there, so a long deck runs the
-// few pages near the view and no more.
+// One board as a picture: its page, or an image or a video of the folder,
+// drawn `w` by `h` at a scale. While `far` (out of a legend's view) only its box is
+// there, so a long deck runs the few pages near the view and no more.
 export function BoardFrame({
   src,
   title,
   w,
   h,
-  scale = 1,
+  scale,
   far,
+  media,
   onMessage,
 }: {
   src: string;
@@ -164,14 +205,10 @@ export function BoardFrame({
   h: number;
   scale?: number;
   far?: boolean;
+  media?: string;
   onMessage?: (message: PageMessage) => void;
 }) {
-  return far ? (
-    <div
-      class="page-frame"
-      style={{ width: `${w * scale}px`, height: `${h * scale}px` }}
-    />
-  ) : (
+  return (
     <Frame
       src={src}
       title={title}
@@ -179,6 +216,8 @@ export function BoardFrame({
       height={h}
       scale={scale}
       live={false}
+      far={far}
+      media={media}
       onMessage={onMessage}
     />
   );

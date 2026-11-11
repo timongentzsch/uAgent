@@ -13,6 +13,8 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
     )
     (project / "design/style.css").write_text("body{color:red}")
     (project / "design/pixel.png").write_bytes(SMALL_PNG)
+    (project / "design/shot.avif").write_bytes(b"\0\0\0\x1cftypavif" + bytes(16))
+    (project / "design/clip.mp4").write_bytes(b"\0\0\0\x18ftypisom" + bytes(16))
     (project / "design/notes.md").write_text("# not served")
     (project / ".mcp.json").write_text("{}")
     (root / "outside.html").write_text("<p>outside</p>")
@@ -54,8 +56,14 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
 
             status, css, headers = page("design/style.css")
             assert_true(status == 200 and headers["Content-Type"] == "text/css", headers)
-            status, png, headers = page("design/pixel.png", origin=None)
-            assert_true(status == 200 and headers["Content-Type"] == "image/png", headers)
+            # Pictures and video, which the app itself draws on a canvas.
+            for name, kind in (
+                ("pixel.png", "image/png"),
+                ("shot.avif", "image/avif"),
+                ("clip.mp4", "video/mp4"),
+            ):
+                status, _, headers = page(f"design/{name}", origin=None)
+                assert_true(status == 200 and headers["Content-Type"] == kind, (name, headers))
 
             for refused in (
                 "design/notes.md",

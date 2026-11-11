@@ -9,6 +9,7 @@ import {
   kindOf,
   pageAt,
   rewritten,
+  settled,
   spotAt,
 } from "../src/features/files/boards.ts";
 
@@ -72,22 +73,112 @@ test("a design's pages lie in rows by step, numbers in number order, the steples
     ["cover.html"],
     ["memo.html", "doc"],
     ["notes.md"],
+    ["shot.png"],
   );
-  const rows = [
-    ["", "cover.html"],
-    ["2", "2-pricing--annual.html"],
-    ["2", "2-pricing.html"],
-    ["10", "10-end.html"],
-  ];
-  const placed = (boards) => boards.map(({ path, row }) => [row, path]);
-  // On the canvas a document lies among them; beside an opened page it is
-  // left out, being a sequence of its own.
-  assert.deepEqual(placed(boardsOf("", design, {})), [
-    rows[0],
-    ["", "memo.html"],
-    ...rows.slice(1),
+  // Beside an opened page lie the folder's pages, and nothing else: a
+  // document is a sequence of its own.
+  assert.deepEqual(
+    boardsOf("", design, {}, "cover.html").map(({ path, row, media }) => [
+      row,
+      path,
+      media,
+    ]),
+    [
+      ["", "cover.html", "page"],
+      ["2", "2-pricing--annual.html", "page"],
+      ["2", "2-pricing.html", "page"],
+      ["10", "10-end.html", "page"],
+    ],
+  );
+});
+
+test("a design's canvas holds its pages, pictures and films, and a stack for a document or a deck in it", () => {
+  const design = {
+    kind: "design",
+    entries: [
+      { name: "talk", dir: true },
+      { name: "02-talk", dir: true },
+      { name: "src", dir: true },
+      ...[
+        ["02-pricing.html", "page"],
+        ["02-chart.svg"],
+        ["01-hero.html", "page"],
+        ["hero.png"],
+        ["torn.gif"],
+        ["clip.mp4"],
+        ["photo.avif"],
+        ["memo.html", "doc"],
+        ["cover.html"],
+        ["notes.md"],
+        ["style.css"],
+      ].map(([name, kind]) => ({ name, dir: false, kind, size: 100 })),
+      { name: "huge.jpg", dir: false, size: 9 << 20 },
+      { name: "02-raw.mov", dir: false, size: 9 << 20 },
+    ],
+  };
+  const deck = listing("deck", ["02.html", "slide"], ["01.html", "slide"]);
+  const folders = { talk: deck, "02-talk": deck, src: listing("") };
+  // A document has said its pages; a picture its size; another did not load.
+  let seen = hear({}, "d/memo.html", ready("Memo", 794, 0, 2500));
+  seen = hear(seen, "d/memo.html", { type: "pages", breaks: [1000, 2000] });
+  seen = hear(seen, "d/hero.png", ready("", 640, 480));
+  seen = hear(seen, "d/torn.gif", {
+    type: "error",
+    message: "did not load",
+    line: 0,
+  });
+  const boards = boardsOf("d", design, seen, undefined, folders);
+  // Rows by step, the stepless first; in a row the pages, then the rest.
+  assert.deepEqual(
+    boards.map(({ row, path, media, count }) => [row, path, media, count]),
+    [
+      ["", "d/cover.html", "page", undefined],
+      ["", "d/memo.html", "stack", 3],
+      ["", "d/clip.mp4", "video", undefined],
+      ["", "d/hero.png", "image", undefined],
+      ["", "d/huge.jpg", "image", undefined],
+      ["", "d/photo.avif", "image", undefined],
+      ["", "d/talk/01.html", "stack", 2],
+      ["", "d/torn.gif", "image", undefined],
+      ["01", "d/01-hero.html", "page", undefined],
+      ["02", "d/02-pricing.html", "page", undefined],
+      ["02", "d/02-chart.svg", "image", undefined],
+      ["02", "d/02-raw.mov", "video", undefined],
+      ["02", "d/02-talk/01.html", "stack", 2],
+    ],
+  );
+  const named = Object.fromEntries(boards.map((board) => [board.path, board]));
+  // A picture is as large as it said; a document's stack is its first page;
+  // a deck's is named for its folder.
+  assert.deepEqual([named["d/hero.png"].w, named["d/hero.png"].h], [640, 480]);
+  assert.deepEqual(
+    [named["d/memo.html"].title, named["d/memo.html"].h],
+    ["Memo", 1000],
+  );
+  assert.equal(named["d/talk/01.html"].title, "talk");
+  // What did not load, or is more than the preview serves, says so by its
+  // name and is not the agent's to fix.
+  assert.equal(named["d/torn.gif"].failed, "did not load");
+  for (const path of ["d/huge.jpg", "d/02-raw.mov"])
+    assert.match(named[path].failed, /^is larger than 8/);
+  assert.equal(failures(boards, seen).count, 0);
+  // Drawn at their final size: what said it, and what will not load.
+  assert.deepEqual(
+    boards.filter((board) => settled(board, seen)).map((board) => board.path),
+    ["d/memo.html", "d/hero.png", "d/huge.jpg", "d/torn.gif", "d/02-raw.mov"],
+  );
+  // Beside one of its pages opened, the pages alone.
+  assert.deepEqual(paths(boardsOf("d", design, seen, "cover.html", folders)), [
+    "d/cover.html",
+    "d/01-hero.html",
+    "d/02-pricing.html",
   ]);
-  assert.deepEqual(placed(boardsOf("", design, {}, "cover.html")), rows);
+  // Before a document has said its pages its stack has no count yet.
+  assert.equal(
+    boardsOf("d", design, {}).find((board) => board.path === "d/memo.html")
+      .count,
+    undefined,
+  );
 });
 
 test("a document's boards are its pages, from where print starts each", () => {
@@ -137,7 +228,7 @@ test("failed pages are counted once each and written as lines for the agent", ()
   const boards = boardsOf("d", design, seen);
   assert.deepEqual(
     boards.map((board) => board.failed),
-    [true, false],
+    ["one", ""],
   );
   assert.deepEqual(failures(boards, seen), {
     count: 1,

@@ -13,6 +13,7 @@ import {
   Spinner,
   Time,
 } from "../../shared/ui.tsx";
+import { Tabs } from "../../shared/tabs.tsx";
 import { useApi } from "../../state/api.ts";
 import { formatBody } from "../../shared/format.ts";
 import { servedBy } from "../../shared/display.ts";
@@ -136,38 +137,17 @@ export default function Raw({
           </p>
         )}
         {(http || tool) && (
-          <div
-            class="tabs"
-            role="tablist"
-            aria-label="Exchange"
-            onKeyDown={(event) => {
-              if (
-                !["ArrowLeft", "ArrowRight"].includes(event.key) ||
-                info?.preview
-              )
-                return;
-              event.preventDefault();
-              const next = tab === "request" ? "response" : "request";
-              setTab(next);
-              document.getElementById(`${prefix}-${next}`)?.focus();
-            }}
-          >
-            {(["request", "response"] as const).map((name) => (
-              <Button
-                type="button"
-                id={`${prefix}-${name}`}
-                role="tab"
-                aria-controls={`${prefix}-body`}
-                tabIndex={tab === name ? 0 : -1}
-                aria-selected={tab === name}
-                disabled={name === "response" && info?.preview}
-                key={name}
-                onClick={() => setTab(name)}
-              >
-                {name === "request" ? "Request" : "Response"}
-              </Button>
-            ))}
-          </div>
+          <Tabs
+            label="Exchange"
+            id={prefix}
+            panel={`${prefix}-body`}
+            value={tab}
+            to={setTab}
+            tabs={[
+              { key: "request", label: "Request" },
+              { key: "response", label: "Response", disabled: info?.preview },
+            ]}
+          />
         )}
         {info?.state === "receiving" && tab === "response" && (
           <p class="muted small">Receiving · captured so far</p>

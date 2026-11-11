@@ -14,6 +14,7 @@ import {
 } from "./ui.tsx";
 import { motionMs } from "./motion.ts";
 import { ImageTile } from "./attachments.tsx";
+import { Tabs } from "./tabs.tsx";
 import { useApi } from "../state/api.ts";
 import { bytes } from "./quantities.ts";
 import { maxUploadBytes } from "./limits.ts";
@@ -130,39 +131,27 @@ export default function Ask({
     >
       {steps.length > 1 && (
         <div class="ask-steps">
-          <div
-            class="tabs"
-            role="tablist"
-            aria-label="Questions"
-            onKeyDown={(event) => {
-              const by = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
-              const to = page + (by ?? 0);
-              if (!by || to < 0 || to > reached) return;
-              event.preventDefault();
-              go(to);
-              document.getElementById(`${id}-step-${to}`)?.focus();
-            }}
-          >
-            {steps.map((step, at) => (
-              <Button
-                size="compact"
-                id={`${id}-step-${at}`}
-                role="tab"
-                title={step}
-                aria-controls={`${id}-page`}
-                aria-selected={at === page}
-                tabIndex={at === page ? 0 : -1}
-                disabled={at > reached}
-                key={at}
-                onClick={() => go(at)}
-              >
-                {at < questions.length && complete(at) && (
-                  <Check aria-label="Answered" />
-                )}
-                {step}
-              </Button>
-            ))}
-          </div>
+          <Tabs
+            label="Questions"
+            size="compact"
+            id={`${id}-step`}
+            panel={`${id}-page`}
+            value={page}
+            to={go}
+            tabs={steps.map((step, at) => ({
+              key: at,
+              title: step,
+              disabled: at > reached,
+              label: (
+                <>
+                  {at < questions.length && complete(at) && (
+                    <Check aria-label="Answered" />
+                  )}
+                  {step}
+                </>
+              ),
+            }))}
+          />
           <small class="muted">
             {page + 1} / {steps.length}
           </small>

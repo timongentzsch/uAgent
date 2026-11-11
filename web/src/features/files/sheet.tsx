@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { Redo2, Undo2 } from "lucide-preact";
 import { Button, IconButton } from "../../shared/ui.tsx";
 import { Input } from "../../shared/form-controls.tsx";
+import { Tabs } from "../../shared/tabs.tsx";
 import { plural } from "../../shared/quantities.ts";
 import type { Board } from "./boards.ts";
 import { useCurrentInView } from "./legend.tsx";
@@ -88,31 +89,15 @@ export function SheetBar({
   ].filter(Boolean);
   return (
     <div class="sheet-bar">
-      <div
-        class="tabs sheet-tabs"
-        role="tablist"
-        aria-label="Tabs"
-        ref={list}
-        onKeyDown={(event) => {
-          const by = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
-          if (!by || !boards[index + by]) return;
-          to(index + by);
-          event.preventDefault();
-        }}
-      >
-        {boards.map((board, at) => (
-          <Button
-            key={at}
-            size="compact"
-            role="tab"
-            aria-selected={at === index}
-            tabIndex={at === index ? 0 : -1}
-            onClick={() => to(at)}
-          >
-            {board.title}
-          </Button>
-        ))}
-      </div>
+      <Tabs
+        label="Tabs"
+        size="compact"
+        class="sheet-tabs"
+        listRef={list}
+        value={index}
+        to={to}
+        tabs={boards.map((board, at) => ({ key: at, label: board.title }))}
+      />
       {note.length > 0 && (
         <span class="sheet-note small muted truncate" role="status">
           {note.join(" · ")}

@@ -87,10 +87,17 @@ test("a sheet is calculated and drawn as a grid, with its tabs, its clicked cell
   await app.keyboard.press("Control+PageUp");
   await expect(cell("Inputs", "B2")).toBeVisible();
 
-  // A click shows a tab; Left and Right walk the tabs from one of them.
+  // A click shows a tab; Left and Right walk the tabs from one of them, and
+  // Home and End go to the first and the last.
   await tabs.nth(2).click();
   await expect(stage.getByText("Nothing yet")).toBeVisible();
   await tabs.nth(2).focus();
+  await app.keyboard.press("Home");
+  await expect(selected(tabs)).toHaveText("Tasks");
+  await expect(tabs.nth(0)).toBeFocused();
+  await app.keyboard.press("End");
+  await expect(selected(tabs)).toHaveText("Notes");
+  await expect(tabs.nth(2)).toBeFocused();
   await app.keyboard.press("ArrowLeft");
   await expect(selected(tabs)).toHaveText("Inputs");
   await expect(tabs.nth(1)).toBeFocused();

@@ -1129,15 +1129,18 @@ test("a design's page opens among its pages; a document beside them is its own, 
   await expect(files.getByRole("listbox")).toHaveCount(0);
 });
 
-// A picture and a short film drawn in the page, as the bytes of their files:
-// each browser records the kind of film it plays.
-const drawnMedia = (app) =>
-  app.evaluate(async () => {
+// A picture and, with `film`, a short film drawn in the page, as the bytes
+// of their files: each browser records the kind of film it plays.
+const drawnMedia = (app, film) =>
+  app.evaluate(async (film) => {
     const canvas = Object.assign(document.createElement("canvas"), {
       width: 320,
       height: 180,
     });
     const pen = canvas.getContext("2d");
+    pen.fillRect(0, 0, 320, 180);
+    const png = canvas.toDataURL("image/png").split(",")[1];
+    if (!film) return { png };
     const recorder = new MediaRecorder(canvas.captureStream());
     const parts = [];
     recorder.ondataavailable = (event) => parts.push(event.data);
@@ -1152,17 +1155,17 @@ const drawnMedia = (app) =>
     }
     recorder.stop();
     await stopped;
-    const film = new Uint8Array(
+    const bytes = new Uint8Array(
       await new Blob(parts, { type: recorder.mimeType }).arrayBuffer(),
     );
     return {
-      png: canvas.toDataURL("image/png").split(",")[1],
+      png,
       film: btoa(
-        Array.from(film, (byte) => String.fromCharCode(byte)).join(""),
+        Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""),
       ),
       type: recorder.mimeType,
     };
-  });
+  }, film);
 // A 32 by 16 AVIF, which no canvas writes.
 const AVIF =
   "AAAAIGZ0eXBhdmlmAAAAAE1pUHJhdmlmbWlhZm1pZjEAAAEhbWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAAAAAAAkZGluZgAAABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAAOcGl0bQAAAAAAAQAAACNpaW5mAAAAAAABAAAAFWluZmUCAAAAAAEAAGF2MDEAAAAAgWlwcnAAAABgaXBjbwAAABNjb2xybmNseAACAAIABoAAAAAMY2xsaQDLAEAAAAAUaXNwZQAAAAAAAAAgAAAAEAAAAAlpcm90AAAAABBwaXhpAAAAAAMICAgAAAAMYXYxQ4EADAAAAAAZaXBtYQAAAAAAAAABAAEGgQIDBYaEAAAAHmlsb2MAAAAARAAAAQABAAAAAQAAAVEAAAAoAAAAAW1kYXQAAAAAAAAAOBIACg0AAAACH/z/+BAgIGhAMhUQAZIACCCCILUTJz7o2Nek8W4tctY=";
@@ -1171,19 +1174,25 @@ test("a design's canvas shows its pictures and films, and a document or a deck i
   page: app,
   session,
   host,
+  browserName,
 }) => {
   await app.setViewportSize({ width: 1440, height: 900 });
   await app.goto(`/#session=${session.id}`);
-  const media = await drawnMedia(app);
-  const clip = media.type.includes("webm") ? "clip.webm" : "clip.mp4";
+  // A film and an AVIF are checked in Chromium, which records the one and
+  // reads the other on every system; WebKit on Linux does neither.
+  const rich = browserName === "chromium";
+  const media = await drawnMedia(app, rich);
+  const clip = media.type?.includes("webm") ? "clip.webm" : "clip.mp4";
   const dir = join(host.project, "design");
   await mkdir(join(dir, "talk"), { recursive: true });
   for (const [name, content] of Object.entries({
     "01-home.html": page("Home", "<h1>Home</h1>"),
     "02-pricing.html": page("Pricing", "<h1>Pricing</h1>"),
     "hero.png": Buffer.from(media.png, "base64"),
-    "photo.avif": Buffer.from(AVIF, "base64"),
-    [clip]: Buffer.from(media.film, "base64"),
+    ...(rich && {
+      "photo.avif": Buffer.from(AVIF, "base64"),
+      [clip]: Buffer.from(media.film, "base64"),
+    }),
     "mark.svg":
       '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100"/></svg>',
     "broken.png": "not a picture",
@@ -1203,8 +1212,7 @@ test("a design's canvas shows its pictures and films, and a document or a deck i
     "Open Pricing",
     "Open hero.png",
     "Open mark.svg",
-    "Open photo.avif",
-    `Open ${clip}`,
+    ...(rich ? ["Open photo.avif", `Open ${clip}`] : []),
     "Open broken.png",
     "Open document Memo, 2 pages",
     "Open deck talk, 3 slides",
@@ -1212,7 +1220,7 @@ test("a design's canvas shows its pictures and films, and a document or a deck i
     await expect(
       files.getByRole("button", { name, exact: true }),
     ).toBeVisible();
-  await expect(files.locator(".canvas-page")).toHaveCount(9);
+  await expect(files.locator(".canvas-page")).toHaveCount(rich ? 9 : 7);
   // A picture and a film are drawn as themselves, at their own size.
   const sizeOf = (media) =>
     files
@@ -1221,8 +1229,12 @@ test("a design's canvas shows its pictures and films, and a document or a deck i
   for (const [media, size] of [
     ['img[src*="hero.png"]', ["320px", "180px"]],
     ['img[src*="mark.svg"]', ["200px", "100px"]],
-    ['img[src*="photo.avif"]', ["32px", "16px"]],
-    [`video[controls][src*="${clip}"]`, ["320px", "180px"]],
+    ...(rich
+      ? [
+          ['img[src*="photo.avif"]', ["32px", "16px"]],
+          [`video[controls][src*="${clip}"]`, ["320px", "180px"]],
+        ]
+      : []),
   ])
     await expect.poll(() => sizeOf(media)).toEqual(size);
   // What is no picture is marked and says so by its name, as its box and
@@ -1242,23 +1254,27 @@ test("a design's canvas shows its pictures and films, and a document or a deck i
   await files.getByRole("button", { name: "Open hero.png" }).click();
   await expect(files.locator(".files-image img")).toBeVisible();
   await back.click();
-  await files.getByRole("button", { name: "Open photo.avif" }).click();
-  await expect
-    .poll(() =>
-      files.locator(".files-image img").evaluate((image) => image.naturalWidth),
-    )
-    .toBe(32);
-  await back.click();
-  // A film opens as its file, to play.
-  await files.getByRole("button", { name: `Open ${clip}` }).click();
-  await expect
-    .poll(() =>
-      files
-        .locator(".files-image video[controls]")
-        .evaluate((film) => film.videoWidth),
-    )
-    .toBe(320);
-  await back.click();
+  if (rich) {
+    await files.getByRole("button", { name: "Open photo.avif" }).click();
+    await expect
+      .poll(() =>
+        files
+          .locator(".files-image img")
+          .evaluate((image) => image.naturalWidth),
+      )
+      .toBe(32);
+    await back.click();
+    // A film opens as its file, to play.
+    await files.getByRole("button", { name: `Open ${clip}` }).click();
+    await expect
+      .poll(() =>
+        files
+          .locator(".files-image video[controls]")
+          .evaluate((film) => film.videoWidth),
+      )
+      .toBe(320);
+    await back.click();
+  }
   // A deck's stack opens the deck at its first slide, with its own legend.
   const stage = files.frameLocator(".page-stage iframe");
   await files.getByRole("button", { name: "Open deck talk, 3 slides" }).click();

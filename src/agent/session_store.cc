@@ -41,7 +41,6 @@ bool ArtifactPath(const std::string& text,
          CanonicalAccessPath(file.parent_path()) == artifacts;
 }
 
-// Visits every string leaf of a JSON value, depth first.
 template <typename Json, typename Visit>
 void ForEachString(Json& value, const Visit& visit) {
   if (value.is_object() || value.is_array()) {
@@ -527,8 +526,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
                                .string();
   std::error_code ec;
   std::map<std::string, std::string> copies;
-  // Owned assets are immutable; independent directory entries make deletion
-  // independent without a reference-count database. Metadata is copied.
+  // Owned assets are immutable: each fork gets its own copies, so deleting a
+  // session needs no reference count.
   if (std::filesystem::is_symlink(
           std::filesystem::symlink_status(source + kSessionAssetsSuffix, ec))) {
     return {{"error", "unsafe source attachment directory"}};
@@ -585,8 +584,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
             }
             copied += static_cast<size_t>(count);
           }
-          // Kept even when partial: the previous hand-rolled cleanup
-          // removed only rejected inputs, not short copies.
+          // Released even when partial: a failed fork unlinks every copy.
           it->second = copy.Release();
         }
       }

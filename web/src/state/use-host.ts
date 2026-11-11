@@ -45,9 +45,8 @@ import {
 } from "../shared/limits.ts";
 import { needsYou } from "./attention.ts";
 
-// What this device keeps of the host's state. A draft is saved once typing
-// pauses, not per key; an upload still in flight when the page went away
-// never finishes, and its chip would have no id the host knows.
+// A draft is saved once typing pauses, not per key; an upload still in
+// flight when the page went away never finishes, and its chip has no id.
 const kept = {
   pins: stored<NonNullable<Catalogue["pins"]>>(storageKeys.pins, []),
   // Streamed events change the list many times a second; it is kept once
@@ -105,7 +104,6 @@ function listedSessions({
   return sessions.filter((item) => !item.task_id && !runs.has(item.id));
 }
 
-// A stream message's event, or nothing when its envelope is not one.
 function envelope(data: string): HostEvent | undefined {
   try {
     const event = JSON.parse(data);
@@ -164,10 +162,9 @@ export function useHost(
   const stream = useRef<EventSource | undefined>(undefined);
   const reconnecting = useRef(false);
   const refreshAgain = useRef(false);
-  // Whether the next catalogue read has the host rescan its sessions on
-  // disk: at start, when the stream lost its cursor, or when asked. A
-  // reconnect reads the catalogue the host keeps, whose changes still
-  // follow on the stream.
+  // Whether the next catalogue read has the host rescan its sessions on disk:
+  // at start, when the stream lost its cursor, or when asked. A reconnect
+  // reads the catalogue the host keeps.
   const rescan = useRef(true);
   const resuming = useRef(false);
   // epoch:cursor of the last event applied, where a reconnect picks up.
@@ -192,9 +189,8 @@ export function useHost(
   reading.current =
     readingConversation && following && document.visibilityState === "visible";
   // A failed request means offline only when the event stream agrees; with
-  // the stream open it was one request, reported like any other failure.
-  // An inline report is shown where it happened (a message, a decision);
-  // it only tells whether the host is gone.
+  // the stream open it was one request. An inline report is shown where it
+  // happened; here it only tells whether the host is gone.
   const report = useCallback((error: unknown, scope?: "inline") => {
     const issue = failure(error);
     if (issue.network && stream.current?.readyState !== EventSource.OPEN)
@@ -203,7 +199,6 @@ export function useHost(
   }, []);
   const patchSession = (id: string, change: (item: Session) => Session) =>
     setCatalogue((prior) => patchCatalogue(prior, id, change));
-  // The level a device starts at, as the host last stated it.
   const setDetail = useCallback(
     (level: string) =>
       setCatalogue((prior) =>
@@ -245,7 +240,6 @@ export function useHost(
     stream.current = undefined;
     setOnline(false);
   }, []);
-  // What this device drops when the host no longer knows it.
   const signedOut = useCallback(() => {
     revoked.current = true;
     catalogueRef.current = undefined;
@@ -331,9 +325,8 @@ export function useHost(
         delete next[id];
         return next;
       });
-      // A queued message for a deleted session can never send (load() has
-      // no session to reconcile it against): drop it with the session
-      // instead of orphaning it in storage.
+      // A queued message for a deleted session can never send: drop it with the
+      // session instead of orphaning it in storage.
       setOutgoing((prior) =>
         movedTo
           ? prior.map((item) =>
@@ -677,7 +670,6 @@ export function useHost(
   useEffect(() => {
     if (selected && authenticated) load(selected).catch(() => {});
   }, [selected, authenticated, load]);
-  // Only what the sidebar lists: scheduled runs and their tasks stay out.
   const listed = useMemo(
     () =>
       listedSessions({
@@ -741,13 +733,9 @@ export function useHost(
     ) => {
       selection.current = id;
       writeSelection(id, false, host);
-      // Following is owned solely by the transcript history controller:
-      // a switch resumes the saved position
-      // (or pins a fresh surface), which notifies through onFollow.
-      // Clearing it here diverged React state (false) from the stick
-      // ref (still true), so the pin became a no-op notification
-      // and following stayed false forever: the Jump button lingered,
-      // unread badges never cleared, and read marking stopped.
+      // Following is owned solely by the transcript history controller: a
+      // switch resumes the saved position or pins a fresh surface, and it
+      // notifies through onFollow. Clearing it here would diverge from it.
       if (live.current[id])
         snapshots.set((prior) =>
           prior[id] === live.current[id]

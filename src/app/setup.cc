@@ -28,9 +28,8 @@ namespace {
 constexpr char kProviders[] = "UAGENT_PROVIDERS";
 constexpr char kModel[] = "UAGENT_MODEL";
 
-// The endpoints setup knows, in the order a default model is chosen
-// from. OpenRouter's key is a setting of its own; the others are variables a
-// provider of that name refers to.
+// The endpoints setup knows, in the order a default model is chosen from.
+// OpenRouter's key is a setting of its own; the others are variables.
 struct Known {
   const char* name;
   const char* label;

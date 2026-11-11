@@ -63,8 +63,7 @@ std::optional<Terminal::Command> Terminal::SessionCommand(
       return Leave(target, "switching sessions");
     }
     case SlashCommandId::kRestart:
-      // A fresh runtime for this conversation, e.g. after a setting that
-      // needs a restart; its history is kept.
+      // A fresh runtime for this conversation; its history is kept.
       return Leave("/restart", "restarting");
     case SlashCommandId::kReset:
       return Leave("/reset", "switching sessions");
@@ -91,8 +90,8 @@ Terminal::Command Terminal::ConversationCommand(
   const std::string& argument = slash.argument;
   switch (slash.spec->id) {
     case SlashCommandId::kAttach: {
-      // Bare /attach lists them (host). Terminals quote dropped paths
-      // containing spaces; strip one surrounding pair so a drop Just Works.
+      // Bare /attach lists them (host). Terminals quote dropped paths that
+      // contain spaces: one surrounding pair is stripped.
       if (argument.empty()) return Command::kPass;
       const std::string file = Unquote(argument);
       if (file == "clear") {
@@ -166,8 +165,6 @@ Terminal::Command Terminal::SetDetail(const std::string& argument) {
   return Command::kDone;
 }
 
-// An agent belongs to the folder its first ancestor works in, wherever it
-// works itself.
 std::string Terminal::Folder() const {
   std::string path = path_;
   for (std::string parent;

@@ -41,8 +41,7 @@ std::vector<SessionInfo> Conversations(const std::string& folder,
   return SessionsBeside(HistoryPath(folder, "overview", host));
 }
 
-// Spend and changes from the turn summaries of the conversations saved in
-// the last week.
+// Spend and changes from the turn summaries of the last week.
 void AddTurns(const std::vector<SessionInfo>& sessions, json& facts) {
   const std::time_t now = std::time(nullptr);
   const std::string today = Day(now);
@@ -79,8 +78,7 @@ void AddTurns(const std::vector<SessionInfo>& sessions, json& facts) {
       {"files", files.size()}, {"added", added}, {"removed", removed}};
 }
 
-// The branch and how many files differ from it, where the folder is a
-// repository: "## main...origin/main" heads the porcelain status.
+// "## main...origin/main" heads the porcelain status.
 void AddGit(const std::string& folder, json& facts) {
   const CapturedProcess status =
       HostGit(folder, {"status", "--porcelain", "--branch"});

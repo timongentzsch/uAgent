@@ -20,14 +20,11 @@
 namespace uagent {
 namespace {
 
-// An overlay is a small declarative document, not a second prompt source: it is
-// bounded, parsed strictly, and ignored when absent or malformed.
+// An overlay is bounded, and ignored when absent or malformed.
 constexpr size_t kPromptOverlayBytes = kSavedPromptBytes;
 
-// Lean base prompt — tool semantics live in the tool schemas, which are sent
-// anyway. Sectioned because a constraint buried mid-paragraph is the one a
-// model drops; each rule carries its reason, because a model generalizes
-// from the reason and not from a bare rule.
+// Tool semantics live in the tool schemas. Sectioned, and each rule carries
+// its reason: a model generalizes from the reason, not from a bare rule.
 constexpr const char kBase[] =
     "You are a coding agent working in this folder for the user. Every "
     "model round costs them time and money, so finish in as few rounds as "
@@ -149,9 +146,8 @@ json PromptOverlay(std::string* digest) {
   return parsed.is_object() ? parsed : json::object();
 }
 
-// Only what the tool's own schema does not already say. A sentence that
-// appears in both is charged twice on every request and read where the tool
-// is not being chosen; the schema sits next to the call and wins.
+// Only what the tool's own schema does not already say: a sentence in both
+// is charged twice on every request.
 std::string CapabilityPrompt(const std::vector<Tool>& tools,
                              const ToolSelection* selection) {
   std::string prompt;
@@ -189,9 +185,8 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools,
   return prompt.empty() ? prompt : "\n\n## Capabilities\n" + prompt;
 }
 
-// Whether a mutation needs the user's consent changes how much a turn should
-// attempt on its own, so the approval mode is a host fact the model reads here,
-// at the tail, where a change is appended rather than rewriting the prefix.
+// The approval mode changes how much a turn should attempt on its own. It is
+// read at the tail, where a change is appended instead of rewriting the prefix.
 std::string EnvironmentContext(const std::string& date, const std::string& cwd,
                                const std::string& approval,
                                const std::string& sandbox) {

@@ -54,9 +54,8 @@ std::optional<std::string> OptionImageIssue(const std::string& path) {
   return std::nullopt;
 }
 
-// The questions as clients see them: each option image a stored asset
-// (with its path, for a terminal), or dropped with a note when it cannot be
-// read. Previews and alt text travel as the model wrote them.
+// The questions as clients see them: each option image a stored asset, or
+// dropped with a note when it cannot be read.
 json ShownQuestions(json questions, const AskImage& image, std::string& notes) {
   for (json& question : questions) {
     for (json& option : question["options"]) {

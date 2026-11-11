@@ -3,13 +3,7 @@
 #ifndef UAGENT_INCLUDE_CORE_CONFIG_REGISTRY_H_
 #define UAGENT_INCLUDE_CORE_CONFIG_REGISTRY_H_
 // The authoritative description of every UAGENT_* setting: default, bounds,
-// when a change takes effect, and whether the value may be shown. Runtime
-// getters, RuntimeConfig and the self-description tool all read these
-// descriptors, so a documented default cannot drift from the one the binary
-// applies.
-//
-// `environment` and `field` hold string literals, so `.data()` is
-// null-terminated and safe to hand to getenv.
+// when a change takes effect, and whether the value may be shown.
 
 #include <cstdint>
 #include <limits>
@@ -30,10 +24,8 @@ inline constexpr int64_t kConfigMaxMegabytes = static_cast<int64_t>(
 
 enum class ConfigType { kInt, kDouble, kBool, kString };
 
-// Where a committed change becomes visible. Config files are exported into the
-// process environment once at startup, and only RuntimeConfig is re-read at a
-// user-turn boundary, so a setting reached through a live getenv getter needs a
-// restart even though nothing freezes its value.
+// Where a committed change becomes visible. Only RuntimeConfig is re-read at a
+// user-turn boundary; a setting read through a live getter needs a restart.
 enum class ReloadPolicy { kNextUserTurn, kRestartRequired };
 
 enum class Sensitivity { kPublic, kCompositeSecret };
@@ -46,9 +38,7 @@ enum ConfigScope : unsigned {
   kScopeConversation = 1u << 2,
 };
 
-// Every scope a value can come from, lowest first, by the name a snapshot's
-// sources use and the name people read. A flag or the environment decides
-// for one process; the three persisted scopes are where a value is saved.
+// Every scope a value can come from, lowest first.
 struct ConfigScopeName {
   std::string_view source;
   std::string_view label;
@@ -61,8 +51,7 @@ inline constexpr ConfigScopeName kConfigScopes[] = {
     {"cli", "Command line", 0},
     {"conversation", "This conversation", kScopeConversation},
 };
-// The groups settings are listed in, in the order and under the names people
-// read: the settings screen and `uagent inspect` both follow it.
+// The groups settings are listed in, in the order and under the names shown.
 struct ConfigCategory {
   std::string_view id;
   std::string_view label;
@@ -94,6 +83,7 @@ constexpr std::string_view ConfigScopeLabel(std::string_view source) {
 using ConfigDefault = std::variant<int64_t, double, bool, std::string_view>;
 
 struct ConfigDescriptor {
+  // `environment` holds a string literal, so `.data()` is null-terminated.
   const char* EnvName() const {
     return environment
         .data();  // NOLINT(bugprone-suspicious-stringview-data-usage)
@@ -110,14 +100,11 @@ struct ConfigDescriptor {
   unsigned scopes = kScopeUser | kScopeProject;
   std::string_view category;
   std::string_view description;
-  // Accepted spellings of a fixed-choice string; empty means free text. An
-  // empty value always means the default.
+  // Accepted spellings of a fixed-choice string; empty means free text.
   std::span<const std::string_view> choices = {};
-  // What applies while the value is empty, when the default cannot say it:
-  // another setting's name, or a short phrase.
+  // What applies while the value is empty: a setting's name or a short phrase.
   std::string_view fallback = {};
-  // A person's name for the setting and what it is for, in a sentence; the
-  // web and the CLI show these instead of the variable name where set.
+  // A person's name for the setting and what it is for, in a sentence.
   std::string_view label = {};
   std::string_view purpose = {};
   bool terminal = false;
@@ -149,16 +136,13 @@ inline constexpr char kPlaceholderApiKey[] = "sk-noop";
 
 namespace registry {
 
-// Every row names its setting twice: as the settings file spells it, and as
-// the environment does.
+// `key` is the row's name in the settings file.
 consteval ConfigDescriptor Keyed(std::string_view key,
                                  ConfigDescriptor descriptor) {
   descriptor.key = key;
   return descriptor;
 }
 
-// Shorthand keeps one row on one line so the table stays readable; every field
-// after the bounds is spelled out at the call site.
 consteval ConfigDescriptor Int(std::string_view key, std::string_view env,
                                std::string_view field, int64_t value,
                                int64_t minimum, int64_t maximum,
@@ -310,7 +294,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Terminal idle minutes",
         "How long a terminal nobody has open may print nothing before it "
         "ends"),
-    // Route selection.
     registry::PerConversation(registry::Named(
         registry::Fallback(
             registry::Str(
@@ -352,7 +335,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "maximum response tokens; -1 omits the optional cap"),
         "Response length"),
 
-    // Request transport.
     registry::Named(
         registry::Int(
             "request.streamTimeout", "UAGENT_STREAM_TIMEOUT",
@@ -368,7 +350,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "total seconds allowed for one model request"),
         "Request timeout"),
 
-    // Turn budgets.
     registry::Named(
         registry::Int("limits.maxSteps", "UAGENT_MAX_STEPS", "max_steps", 0, 0,
                       kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
@@ -428,7 +409,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "context percentage that triggers compaction"),
         "Compact at"),
 
-    // Tool results and trace retention.
     registry::Named(
         registry::Int("tools.resultChars", "UAGENT_TOOL_RESULT_CHARS", {}, 8000,
                       kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
@@ -476,9 +456,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "largest log in mebibytes kept per command"),
         "Command log size"),
 
-    // OS sandbox for agent-run commands. Restart-required because the policy is
-    // built once and every spawn is wrapped with it; a mid-session change would
-    // leave already-running commands under the old confinement.
+    // Restart-required: the sandbox policy is built once and wraps every spawn.
     registry::Named(
         registry::Choice(
             registry::Str("sandbox.level", "UAGENT_SANDBOX", {}, "default",
@@ -532,7 +510,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "may read, colon-separated"),
         "Sandbox revealed paths"),
 
-    // Agents.
     registry::Named(
         registry::Int("agents.max", "UAGENT_AGENTS_MAX", {}, 8, 1, 64,
                       ReloadPolicy::kNextUserTurn, "delegation",
@@ -545,7 +522,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "how deep agents may start agents of their own"),
         "Agent depth"),
 
-    // Web search.
     registry::Named(
         registry::Choice(
             registry::Str("webSearch.backend", "UAGENT_WEB_SEARCH_BACKEND",
@@ -583,7 +559,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "seconds one search request may take"),
         "Search timeout"),
 
-    // Memory.
     registry::Named(
         registry::Bul("memory.enabled", "UAGENT_MEMORY", "memory_enabled", true,
                       ReloadPolicy::kRestartRequired, "memory",
@@ -624,7 +599,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "are extracted from it"),
         "Memory extraction delay"),
 
-    // Skills.
     registry::Terminal(registry::Named(
         registry::Str("skills.path", "UAGENT_SKILL_PATH", {}, "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
@@ -654,7 +628,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "kibibytes of folder instructions loaded or written"),
         "Instructions size"),
 
-    // MCP.
     registry::Named(
         registry::Int("mcp.timeout", "UAGENT_MCP_TIMEOUT", "mcp_timeout_s", 60,
                       1, kConfigAnyMax, ReloadPolicy::kRestartRequired, "mcp",
@@ -670,7 +643,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                                   "mcp", "tools one MCP server may list"),
                     "MCP tools per server"),
 
-    // Attachments and terminal media.
     registry::Named(
         registry::Fallback(
             registry::Str(
@@ -701,7 +673,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "longest image side in pixels; larger images are "
                       "scaled down"),
         "Image size"),
-    // Session and artifact retention.
     registry::Named(
         registry::Int("history.days", "UAGENT_HISTORY_DAYS", {}, 30,
                       kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
@@ -722,7 +693,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "most files kept per log folder"),
         "Log files kept"),
 
-    // Behaviour switches.
     registry::PerConversation(registry::Named(
         registry::Choice(
             registry::Str("approval.mode", "UAGENT_APPROVAL", "approval", "ask",
@@ -802,8 +772,7 @@ const ConfigDescriptor* FindConfigKey(std::string_view key);
 // unregistered setting therefore fails to compile at the call site.
 void UnregisteredConfigSetting();
 
-// Compile-time descriptor lookup: a getter naming an unregistered setting
-// fails to compile rather than inventing a default.
+// Compile-time descriptor lookup.
 consteval const ConfigDescriptor& Cfg(std::string_view environment) {
   for (const ConfigDescriptor& descriptor : kConfigRegistry) {
     if (descriptor.environment == environment) return descriptor;
@@ -812,30 +781,24 @@ consteval const ConfigDescriptor& Cfg(std::string_view environment) {
   return kConfigRegistry[0];
 }
 
-// A session's settings, apart from environ, which is never rewritten after
-// startup. Lookup order: override, published configuration, the route in
-// use, environ.
+// A session's settings; environ is never rewritten after startup. Lookup
+// order: override, published configuration, the route in use, environ.
 using SettingValues = std::map<std::string, std::string>;
 void PublishSettings(SettingValues values);
-// The route in use, below what is configured: what a command started from
-// here is told where the configuration names nothing. It is no part of this
-// process's environment, which the runtimes it starts inherit as it was.
+// The route in use, read where the configuration names nothing.
 void PublishRoute(SettingValues values);
 void OverrideSetting(std::string_view environment, std::string value);
 void ClearSettings();
 SettingValues CurrentSettings();
 std::string SettingText(const ConfigDescriptor& descriptor);
-// The same by name, for the few names that are no registered setting (a
-// provider's own variables). What is saved is not in the environment: it is
-// read here.
+// The same by name, for names that are no registered setting.
 std::string SettingText(const std::string& name);
 
 int64_t LongSetting(const ConfigDescriptor& descriptor);
 bool BoolSetting(const ConfigDescriptor& descriptor);
 std::string StringSetting(const ConfigDescriptor& descriptor);
 
-// Whether a setting takes `value`, and why not, naming the setting as
-// `called` (its environment name when empty).
+// Whether a setting takes `value`; `error` names it as `called` when given.
 bool ValidSettingValue(const ConfigDescriptor& descriptor, std::string& value,
                        std::string& error, std::string_view called = {});
 

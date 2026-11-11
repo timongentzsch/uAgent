@@ -266,18 +266,15 @@ void AppendAnthropicMessage(json& messages, std::string role, json blocks) {
       {{"role", std::move(role)}, {"content", std::move(blocks)}});
 }
 
-// Whether a message is part of the conversation proper, ending the run of
-// leading system messages.
+// Whether a message ends the run of leading system messages.
 bool IsConversationRole(const json& message) {
   const std::string role = JsonValue(message, "role", "");
   return role == "user" || role == "assistant" || role == "tool";
 }
 
 // Only the system messages that open the conversation become the top-level
-// `system`; Anthropic caches tools, system, then messages in that order, so a
-// note added later must not rewrite it. A later one stays in place as marked
-// user text. `leading` says whether no conversation message precedes
-// `canonical`.
+// `system`: Anthropic caches tools, system, then messages, so a later note
+// stays in place as marked user text.
 json AnthropicMessages(const json& canonical, std::string& system,
                        bool leading = true) {
   if (!canonical.is_array()) return canonical;
@@ -366,9 +363,8 @@ json RequestTools(WireApi wire_api, const WireRequest& request) {
     }
     return tools;
   }
-  // Tools the endpoint runs itself join only a request that offers the
-  // agent's own; one that offers none (a title, a summary) leaves them out,
-  // or a model with an effort may search instead of answering.
+  // Hosted tools join only a request that offers the agent's own; without
+  // them (a title, a summary) a model may search instead of answering.
   if (!request.tool_schemas.is_array() || request.tool_schemas.empty()) {
     return tools;
   }
@@ -430,8 +426,8 @@ json RequestEnvelope(WireApi wire_api, const WireRequest& request, json tools) {
           body["thinking"]["display"] = "summarized";
         }
       }
-      // Effort is an explicit user setting; pass it through even when the
-      // route has not advertised adaptive thinking, rather than ignore it.
+      // Effort is an explicit user setting, passed even when the route has not
+      // advertised adaptive thinking.
       body["output_config"] = {{"effort", request.reasoning_effort}};
     }
   }
@@ -579,7 +575,6 @@ std::string WireRequestCache::Serialize(const json& body) const {
   return payload;
 }
 
-// Whether any message carries a content part of `type`.
 bool HasContentPart(const json& messages, std::string_view type) {
   if (!messages.is_array()) return false;
   for (const json& message : messages) {
@@ -616,10 +611,8 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
   json body = cache ? cache->Encode(wire_api, request)
                     : EncodeWireRequest(wire_api, request);
   if (wire_api != WireApi::kChatCompletions) {
-    // The Responses API caches matching prefixes automatically. A stable,
-    // session-scoped routing key improves the chance that later turns reach
-    // the same cache without exposing the session identifier itself; a
-    // proxy in front of it passes the key on.
+    // Responses caches matching prefixes by itself; a session-scoped routing
+    // key helps later turns reach the same cache without exposing the id.
     if (wire_api == WireApi::kResponses && !session_id.empty()) {
       body["prompt_cache_key"] = HashHex(session_id);
     }
@@ -631,9 +624,8 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
     body["plugins"] = json::array(
         {{{"id", "file-parser"}, {"pdf", {{"engine", Option("pdf_engine")}}}}});
   }
-  // Some providers cache matching prefixes by themselves; others cache only
-  // when asked, and the top-level form moves the breakpoint along as the
-  // conversation grows.
+  // Some providers cache only when asked; the top-level form moves the
+  // breakpoint along as the conversation grows.
   if (features.Has(Feature::kPromptCacheControl)) {
     body["cache_control"] = {{"type", "ephemeral"}};
   }

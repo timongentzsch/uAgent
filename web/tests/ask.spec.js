@@ -1,6 +1,5 @@
-// The ask decision: a pending question set from the model, answered in the
-// conversation. The snapshot is served with the question in it and the
-// reply is recorded, so the page is the real one and no model is needed.
+// The ask decision, answered in the conversation: the snapshot is served
+// with the question in it and the reply recorded, so no model is needed.
 import { test, expect, servePending, SAMPLE_ASK } from "./fixtures.js";
 
 const ASSET_ID = "0123456789abcdef0123456789abcdef";
@@ -25,11 +24,9 @@ for (const width of [1440, 900, 390]) {
     const commands = await servePending(page, request, session, SAMPLE_ASK);
     await page.goto(`/#session=${session.id}`);
     const ask = page.getByRole("region", { name: "Pending decision" });
-    // Routed to the parent, the form still answers: the first wins.
     await expect(
       ask.getByRole("heading", { name: "The parent agent is deciding" }),
     ).toBeVisible();
-    // One question to a page: Next until the review, which holds Submit.
     const submit = ask.getByRole("button", { name: "Submit" });
     const next = ask.getByRole("button", { name: "Next" });
     const step = (name) => ask.getByRole("tab", { name });
@@ -44,7 +41,6 @@ for (const width of [1440, 900, 390]) {
     await expect(submit).toHaveCount(0);
     await expect(next).toBeDisabled();
     await expect(step(/Storage/)).toHaveAttribute("aria-selected", "true");
-    // The steps lead back, never ahead of what has been seen.
     await expect(step(/Platforms/)).toBeDisabled();
     await expect(ask.getByRole("group", { name: /Platforms/i })).toHaveCount(0);
 
@@ -55,7 +51,6 @@ for (const width of [1440, 900, 390]) {
         { kind: "reply", interaction_id: "ask-sample", cancelled: true },
       ]);
 
-    // Single choice: a tap answers and moves on; Back keeps the answer.
     const storage = ask.getByRole("group", { name: /Storage/i });
     const memory = storage.getByRole("radio", { name: /^Memory/ });
     // A click, not check(): the page has moved on before it could re-read.
@@ -65,8 +60,6 @@ for (const width of [1440, 900, 390]) {
     await expect(step(/Storage/)).toHaveAccessibleName(/Answered/);
     await ask.getByRole("button", { name: "Back" }).click();
     await expect(memory).toBeChecked();
-    // Arrow keys move the choice and stay on the page; Other excludes the
-    // options and needs its text.
     // Safari does not focus a clicked radio.
     await memory.focus();
     await page.keyboard.press("ArrowDown");
@@ -80,10 +73,8 @@ for (const width of [1440, 900, 390]) {
       name: "Other answer: Storage",
     });
     await other.fill("SQLite");
-    // Enter goes on, as Next does.
     await other.press("Enter");
 
-    // Multiple choice, with an image: waits for Next.
     await platforms.getByRole("checkbox", { name: /^macOS/ }).check();
     await platforms.getByRole("checkbox", { name: /^Linux/ }).check();
     await platforms.getByLabel("Attach image: Platforms").setInputFiles({
@@ -98,8 +89,6 @@ for (const width of [1440, 900, 390]) {
     expect(await contained()).toBe(true);
     await next.click();
 
-    // Options the agent showed come with its image and preview; the image's
-    // alt text is the option's description.
     const layout = ask.getByRole("group", { name: /Layout/i });
     await expect(
       layout.getByRole("img", {
@@ -110,7 +99,6 @@ for (const width of [1440, 900, 390]) {
     expect(await contained()).toBe(true);
     await layout.getByRole("radio", { name: /^Tabs/ }).click();
 
-    // The review lists every answer; a row leads back to its question.
     await expect(step("Review")).toHaveAttribute("aria-selected", "true");
     await expect(submit).toBeEnabled();
     await ask.getByRole("button", { name: /^Storage.*SQLite/ }).click();
@@ -120,7 +108,6 @@ for (const width of [1440, 900, 390]) {
       ask.getByRole("button", { name: /^Platforms.*macOS, Linux, shot\.png/ }),
     ).toBeVisible();
 
-    // Nothing spills sideways at this width.
     expect(await contained()).toBe(true);
 
     await submit.click();

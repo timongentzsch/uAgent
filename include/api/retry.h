@@ -19,8 +19,7 @@
 namespace uagent {
 
 inline constexpr int kChatAttempts = 3;
-// An overloaded provider refuses in bursts of a second or two, so the first
-// wait has to outlast one: about two seconds, then four.
+// The first wait outlasts a provider's one-to-two-second overload burst.
 inline constexpr int64_t kRetryInitialMs = 2'000;
 inline constexpr int64_t kRetryMaximumMs = 8'000;
 inline constexpr int64_t kRetryJitterMinimumPerMille = 750;
@@ -86,10 +85,8 @@ inline bool RemoteMessageCode(std::string_view message, std::string_view code) {
   return false;
 }
 
-// Condensed port of opencode's isContextOverflow() matcher
-// (packages/llm/src/provider-error.ts): one distinctive substring per
-// provider message shape, with opencode's throttling exclusions applied
-// first. HTTP 413 is already mapped in client.cc.
+// One distinctive substring per provider message shape, after opencode's
+// isContextOverflow(); the throttling exclusions below apply first.
 inline constexpr std::array<std::string_view, 25> kContextOverflowPhrases = {
     "prompt is too long",
     "request_too_large",
@@ -186,8 +183,7 @@ inline std::string RemoteErrorCode(const json& error) {
   return "";
 }
 
-// Record a provider error's type/code on the result and say whether it is
-// worth another attempt. Used for both HTTP error bodies and stream frames.
+// Records the error's type and code; true when another attempt is worth it.
 inline bool ApplyRemoteError(const json& error, ChatResult& result) {
   result.remote_error_type = RemoteErrorType(error);
   result.remote_error_code = RemoteErrorCode(error);
@@ -217,12 +213,8 @@ inline bool SafeContextRecovery(const ChatResult& result) {
          (result.usage.is_null() || result.usage.empty());
 }
 
-// A stream that failed before producing anything usable. Providers must
-// inject mid-stream failures in-band once HTTP 200 is committed, and those
-// frames carry provider-specific types no classifier can enumerate; treating a
-// barren one as retryable costs a replay of a request that produced no visible
-// answer, no executable call and no billed usage, where the alternative is
-// discarding a whole turn's work.
+// A stream that failed before producing anything usable. In-band failure
+// frames carry types no classifier can enumerate, so a barren one is retried.
 inline bool BarrenStreamError(const ChatResult& result) {
   return result.content.empty() && result.tool_calls.empty() &&
          result.annotations.empty() && result.usage.is_null();
@@ -239,11 +231,8 @@ inline bool SafeToRetry(const ChatResult& result) {
          (!result.semantic_progress || !result.reasoning.empty());
 }
 
-// Side requests (web search, and any other non-streaming JSON call) get the
-// same bounded recovery as the conversation, minus the replay concerns: a
-// JSON call either landed or it did not, so there is no partial output to
-// protect. A transport failure leaves no status behind; an aborted deadline is
-// the caller's business, not this predicate's.
+// A JSON call either landed or it did not: no partial output to protect.
+// A transport failure leaves no status behind.
 inline bool SafeToRetry(const JsonResponse& response) {
   if (response.error.empty()) return false;
   if (response.http_status == 0) return true;  // connection reset or timeout
@@ -251,8 +240,7 @@ inline bool SafeToRetry(const JsonResponse& response) {
          RetryableRemoteMessage(response.error);
 }
 
-// The clock is the only entropy this needs: two attempts never coincide, and
-// nothing here has to be reproducible.
+// The clock is entropy enough: nothing here has to be reproducible.
 inline uint64_t JitterSeed() {
   return static_cast<uint64_t>(
       std::chrono::steady_clock::now().time_since_epoch().count());

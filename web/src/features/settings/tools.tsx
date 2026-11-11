@@ -19,9 +19,6 @@ import { capitalize } from "../../shared/display.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { matches } from "../../shared/fuzzy.ts";
 
-// The Tools dialog: which tools a conversation may call, by profile or one
-// by one, and what they cost in schema bytes.
-
 const labels: Record<string, string> = {
   workspace: "Files",
   execute: "Execute",
@@ -34,7 +31,6 @@ const labels: Record<string, string> = {
 
 const categoryOrder = Object.keys(labels);
 
-// What the list draws while the catalogue loads (see <Placeholder>).
 const SAMPLE: ToolCatalogue = {
   profile: "default",
   base_profile: "default",

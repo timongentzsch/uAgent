@@ -1,6 +1,5 @@
-// Development only: nothing in the product imports this. A
-// browser test imports it into the Vite-served app, where it shares the
-// app's Preact instance, and reads how often each component rendered.
+// Development only: nothing in the product imports this. A browser test
+// imports it into the Vite-served app and reads each component's renders.
 import { options, type VNode } from "preact";
 
 type Hooked = typeof options & { __r?: (vnode: VNode) => void };

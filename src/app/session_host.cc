@@ -302,9 +302,7 @@ bool SessionHost::Contains(const std::string& id) const {
 }
 
 json SessionHost::Metadata(const HostSession& session) const {
-  // Waiting on a person: a decision routed to an agent's parent is not.
-  // What it waits on is named from the decision in memory, for the inbox
-  // row.
+  // A decision routed to an agent's parent does not wait on a person.
   const bool waits = WaitsOnPerson(session.pending);
   return {
       {"id", session.id},

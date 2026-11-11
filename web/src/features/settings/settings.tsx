@@ -15,7 +15,6 @@ import { PermissionsPane } from "./panes/permissions.tsx";
 import { SettingsNav } from "./settings-nav.tsx";
 import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 
-// The shell: which scope is open, the list of scopes, and its page.
 export default function Settings(props: SettingsProps) {
   const { session, online, catalogue, mcp: servers } = props;
   // Null until a scope is picked: a phone shows the list first, and a

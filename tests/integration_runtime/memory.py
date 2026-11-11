@@ -42,11 +42,9 @@ def test_memory_reaches_context_by_scope(root, home, *, binary):
     marker = "[memory index; non-authoritative metadata]"
 
     def memory_context(body):
-        # Memory rides with the runtime context, never in message zero: that
-        # message is the prefix a provider caches and the place authority
-        # lives, and memory is both untrusted and different in every session.
-        # A global shown whole is not listed again, so a workspace without
-        # project memories may carry only the always-on block.
+        # Memory rides with the runtime context, never in message zero, which
+        # is the cached prefix. A workspace without project memories may carry
+        # only the always-on block.
         messages = body["messages"]
         for message in messages[1:]:
             content = str(message.get("content", ""))
@@ -207,12 +205,9 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
         saved = [path.read_text() for path in (home / ".uagent/history").rglob("*.json")]
         assert_true(not any("memory extraction" in text for text in saved), saved)
 
-        # A completed source is not processed again. Disabling generation also
-        # prevents a changed source from becoming eligible.
-        # The runtime outlives its client and decides about extraction before
-        # it first reports a state, which is what "Ready" waits for: a client
-        # that left sooner would let a late claim slip past these checks, or
-        # past the ageing below.
+        # A completed source is not processed again, and disabling generation
+        # keeps a changed one ineligible. The runtime decides about extraction
+        # before it first reports a state, which is what "Ready" waits for.
         def states():
             return [
                 marker.read_text(encoding="utf-8").strip()
@@ -304,12 +299,8 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
         assert_true(not list((no_write_home / ".uagent/memory").rglob("*.md")), no_write_home)
 
     def overfill_globals(case_home):
-        """More global memory than the always-on slice can carry.
-
-        The extractor child then warns about truncation at startup, which is
-        what makes the preview assertion below discriminate: without it the
-        child prints nothing before the real error and any policy passes.
-        """
+        """More global memory than the always-on slice can carry, so the
+        extractor child prints a truncation warning before the real error."""
         globals_dir = global_memory_dir(case_home)
         globals_dir.mkdir(parents=True, exist_ok=True)
         for index in range(8):
@@ -358,12 +349,8 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
             if name != "terminated":
                 assert_true(completion_logged(), f"{name} extractor did not complete")
                 wait_until(lambda: not markers(case_home), f"{name} claim survived shutdown")
-                # A failure preview is read to find out why, and the globals
-                # planted above guarantee the child prints a truncation warning
-                # before it reaches whatever actually stopped it. Recording the
-                # head of its output made that warning the cause; the tail does
-                # not, so the reader is not sent to consolidate memories over a
-                # failure that had nothing to do with them.
+                # The planted globals make the child print a truncation warning
+                # first: a failure preview shows the tail, where the cause is.
                 journal = case_home / ".uagent/memory/events.jsonl"
                 previews = [
                     json.loads(line).get("preview", "")
@@ -378,17 +365,9 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
                     )
                 return server.requests
 
-            # Shutdown gives a background group 500ms before SIGKILL
-            # (ActivityShutdownAll in activity.cc), and the extractor releases its claim
-            # as it exits -- so a child too slow to unwind loses the race and
-            # the claim outlives it. That is
-            # a liveness cost the stale-claim sweep reclaims after 15 minutes,
-            # not a correctness one, and it is reproducible under TSan.
-            #
-            # The invariant that has to hold either way is what a surviving
-            # claim *says*. `processing` is reclaimable; `done` is not, and a
-            # killed extractor claiming completion would skip that session for
-            # good.
+            # Shutdown gives a background group 500ms before SIGKILL, so a slow
+            # child can leave its claim behind. A surviving claim must say
+            # `processing`, which is reclaimable: `done` would skip the session.
             try:
                 wait_until(lambda: not markers(case_home), "claim released", timeout=10)
                 released = True
@@ -397,10 +376,8 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
             for marker in markers(case_home):
                 state = marker.read_text(encoding="utf-8").strip()
                 assert_true(state == "processing", f"killed extractor claimed {state!r}")
-            # On a plain build the child always wins, so a survivor there is a
-            # real regression rather than the documented race. A sanitizer
-            # leg is known by the options its preset sets, not by how far the
-            # deadlines are stretched: every CI leg stretches them.
+            # On a plain build the child always wins. A sanitizer leg is known
+            # by the options its preset sets: every CI leg stretches deadlines.
             sanitized = any(name in os.environ for name in ("ASAN_OPTIONS", "TSAN_OPTIONS"))
             assert_true(released or sanitized, "claim survived shutdown")
             return server.requests
@@ -458,9 +435,8 @@ def test_no_memory_hides_index_and_tool(root, home, *, binary):
 
 
 def test_memory_index_goes_where_the_tool_goes(root, home, *, binary):
-    """An agent that may not edit has no memory tool, so it gets no index
-    telling it to call one; and globals too large for the always-on slice
-    stay in the index without a truncation warning, since nothing is lost."""
+    """An agent that may not edit has no memory tool and gets no index; globals
+    too large for the always-on slice stay in the index without a warning."""
     workspace = root / "index-workspace"
     workspace.mkdir()
     project_dir = project_memory_dir(home, workspace)

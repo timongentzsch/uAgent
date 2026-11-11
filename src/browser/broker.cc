@@ -285,9 +285,8 @@ json Broker::Execute(const json& command) {
         return {{"error", "unknown browser instance"}};
       }
       if (op == "viewer") {
-        // Viewer heartbeats must not occupy service threads behind a slow
-        // page operation. During a control transition, gate input closed
-        // until the new snapshot has been published.
+        // Answered from the summary: a viewer heartbeat must not wait behind
+        // a slow page operation. Input stays gated during a control change.
         const auto& slot = *s.slots[static_cast<size_t>(index)];
         json result = s.Summary(index);
         if (!JsonValue(result, "running", false)) {
@@ -331,8 +330,8 @@ json Broker::Execute(const json& command) {
                   1;
     previous = std::exchange(slot.previous, "");
     if (index > 0 && slot.runtime_token != token) {
-      // A research grant gets a fresh profile, never the previous thread's
-      // cookies, tabs or login state. Shutdown runs outside the broker lock.
+      // A research grant gets a fresh profile, never the previous holder's
+      // cookies, tabs or login state.
       previous.clear();
     }
   }

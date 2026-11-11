@@ -43,8 +43,6 @@ void Merge(json& view, const json& node) {
 
 }  // namespace
 
-// Search finds what a reader sees, archived rows included, and nothing the
-// view hides.
 TEST_CASE(TestTranscriptSearch) {
   Conversation conversation;
   conversation.Reset(
@@ -84,7 +82,6 @@ TEST_CASE(TestTranscriptSearch) {
   CHECK(hits[0]["snippet"] == "Where is the Needle?");
   CHECK(hits[1]["kind"] == "message");
   CHECK(hits[1]["count"] == 3);
-  // A hit names the node it is drawn in, which detail takes.
   CHECK(hits[2]["kind"] == "call");
   CHECK(hits[2]["id"] == "t-c2");
   CHECK(hits[2]["count"] == 1);
@@ -94,8 +91,7 @@ TEST_CASE(TestTranscriptSearch) {
   const std::string snippet = hits[2]["snippet"];
   CHECK(snippet.starts_with("…é"));
   CHECK(snippet.ends_with("éneedle"));
-  // It starts close before the match, so one line of it shows the match,
-  // and on a word where it can.
+  // It starts close before the match, so one line of it shows the match.
   CHECK(snippet.find("needle") < 50);
   CHECK(hits[3]["snippet"] == "…Ordinary words go on for a while. a needle");
   CHECK(TranscriptView(conversation).Search("needle", 2).size() == 2);
@@ -277,7 +273,6 @@ TEST_CASE(TestConversation) {
   CHECK(restored.Archive().size() == 1);
   CHECK(restored.Archive()[0]["turn"] == 7);
   CHECK(restored.DroppedSegments() == 6);
-  // A save writes the kept segment texts, byte for byte the archive's dump.
   CHECK(restored.ArchiveText() == JsonDump(restored.Archive()));
   CHECK(bounded.ArchiveText() == JsonDump(bounded.Archive()));
   CHECK(Conversation{}.ArchiveText() == "[]");
@@ -395,13 +390,10 @@ TEST_CASE(TestConversation) {
                              {{"role", "user"}, {"content", "continue"}}}),
                 {MessageKind::kSystem, MessageKind::kUser});
   resumed.RefreshBaseline({{"role", "system"}, {"content", "new system"}});
-  // No silent drops: the baseline refresh rewrites message zero and keeps
-  // the rest verbatim.
   CHECK(resumed.Size() == 2);
   CHECK(resumed.At(0).value("content", "") == "new system");
   CHECK(resumed.At(1).value("content", "") == "continue");
 
-  // A conversation built from bare messages has no display metadata.
   Conversation built;
   CHECK(built.Restore(resumed.Messages(), resumed.Kinds(), json::array(), 0));
 
@@ -585,8 +577,7 @@ TEST_CASE(TestSavedTranscriptIndex) {
   CHECK(SnapshotFile(borrowed) == saved);
 }
 
-// A save of the bytes already written, to a file nobody touched, writes
-// nothing; a changed record or a file someone else rewrote is written.
+// A changed record, or a file someone else rewrote, is written.
 TEST_CASE(TestSaveSkipsUnchangedFile) {
   TestWorkspace workspace("save-unchanged");
   const std::string path = (workspace.workspace / "session.json").string();
@@ -703,7 +694,6 @@ TEST_CASE(TestCompactionKeepsDisplayIdentity) {
   CHECK(reconciled["body"]["text"] == "\ncomplete streamed body");
   CHECK(!reconciled["body"].contains("truncated"));
   CHECK(reconciled["usage"]["input"] == 1);
-  // A saved node has finished streaming.
   CHECK(!reconciled.contains("streaming"));
 
   // Each call is its own node. A live call and its saved result join on the
@@ -759,10 +749,8 @@ TEST_CASE(TestCompactionKeepsDisplayIdentity) {
   CHECK(preview[0]["id"] == "r-8-2-1:thinking");
   CHECK(preview[1]["id"] == "r-8-2-1");
 
-  // Deltas without a response id belong to no started node. Providers that
-  // omit response ids must not append one turn's streamed text onto an
-  // earlier turn's completed node; the whole node still arrives via
-  // message.changed.
+  // Deltas without a response id belong to no started node: a provider that
+  // omits ids must not append one turn's text onto an earlier turn's node.
   json live = {{"view", {{"nodes", json::array()}}}};
   Merge(live["view"],
         {{"id", "m-1"},
@@ -947,12 +935,10 @@ TEST_CASE(TestAttachmentDeliveryAnnouncements) {
   CHECK(degraded != first);
   conversation.RecordAnnouncedDeliveries(id, degraded);
   CHECK(conversation.AnnouncedDeliveries(id) == degraded);
-  // Empty ids and non-arrays never record.
   conversation.RecordAnnouncedDeliveries("", first);
   conversation.RecordAnnouncedDeliveries("m-1", json::object());
   CHECK(conversation.AnnouncedDeliveries("") == json::array());
   CHECK(conversation.AnnouncedDeliveries("m-1") == json::array());
-  // The receipt survives a session save/restore round-trip.
   Conversation reloaded;
   CHECK(reloaded.Restore(conversation.Messages(), conversation.Kinds(),
                          conversation.Archive(), conversation.DroppedSegments(),
@@ -973,10 +959,8 @@ TEST_CASE(TestAttachmentDeliveryAnnouncements) {
   CHECK(reloaded.AnnouncedDeliveries("m-bulk-1099") == first);
 }
 
-// Under display-fact pressure the eviction used to delete the oldest keys
-// first -- exactly where attachment delivery receipts live -- which made the
-// request path re-print their notice after every tool result. Largest-first
-// eviction drops fat tool rows instead and keeps tiny control receipts.
+// Display-fact eviction drops the largest facts first: oldest-first would
+// delete the attachment delivery receipts and print their notice again.
 TEST_CASE(TestDisplayFactEvictionKeepsSmallReceipts) {
   Conversation conversation;
   conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
@@ -1034,10 +1018,9 @@ TEST_CASE(TestDisplayFactEvictionKeepsSmallReceipts) {
                   "chosen", json::object()) == chosen);
 }
 
-// CLI history shows the prompt without the stored "Attached:" path trailer
-// plus one gallery row per recorded delivery -- the web rendering contract.
-// A user literally typing the trailer without an attachment keeps it
-// verbatim.
+// History shows the prompt without the stored "Attached:" path trailer and
+// one gallery row per recorded delivery; a trailer typed without an
+// attachment stays verbatim.
 TEST_CASE(TestAttachmentHistoryRendering) {
   CHECK(StripAttachedTrailer("plain prompt") == "plain prompt");
   CHECK(StripAttachedTrailer("look\n\nAttached:\n- path \"/tmp/a.png\"") ==
@@ -1103,8 +1086,8 @@ TEST_CASE(TestAttachmentHistoryRendering) {
   CHECK(drawn.find("image.png \u00b7 Image") != std::string::npos);
 }
 
-// P1: fork-at-turn truncates message-exclusively at the Nth user turn and
-// stamps lineage; whole-session forks keep the legacy "Fork of" title.
+// Fork-at-turn truncates message-exclusively at the Nth user turn and stamps
+// lineage; whole-session forks keep the "Fork of" title.
 TEST_CASE(TestForkAtTurnAndLineage) {
   TestWorkspace workspace("fork-at-turn");
   SessionRecord record;
@@ -1145,14 +1128,12 @@ TEST_CASE(TestForkAtTurnAndLineage) {
   CHECK(reloaded.record->metadata.agent.empty());
   CHECK(reloaded.record->metadata.forked_at_turn == 2);
   CHECK(!reloaded.record->metadata.forked_at_time.empty());
-  // The source still has everything.
   auto kept = SessionStore::Inspect(source);
   CHECK(kept.record->state.messages.size() == 5);
   CHECK(kept.record->metadata.parent_session_id.empty());
-  // Out of range stays an error, never an empty fork.
   json missed = SessionStore::Fork(source, "", true, 9);
   CHECK(missed.contains("error"));
-  // Whole-session forks keep the legacy title and record parent turns.
+  // Whole-session forks keep the "Fork of" title and record parent turns.
   json whole = SessionStore::Fork(source, "", true);
   CHECK(!whole.contains("error"));
   auto rewhole = SessionStore::Inspect(whole.value("path", ""));
@@ -1179,10 +1160,9 @@ TEST_CASE(TestForkAtTurnAndLineage) {
   CHECK(!relived.record->metadata.forked_at_time.empty());
 }
 
-// P2: files attached on request mid-turn share the user role and kind but
-// are not user messages: numbering, /share and forking before a message all
-// count only what the person wrote. /share never leaks system or internal
-// messages.
+// Files attached on request mid-turn share the user role and kind but are
+// not user messages: numbering, /share and forking count only what the
+// person wrote. /share never leaks system or internal messages.
 TEST_CASE(TestForkAtMessageAndShare) {
   TestWorkspace workspace("fork-share");
   SessionRecord record;
@@ -1256,7 +1236,6 @@ TEST_CASE(TestForkAtMessageAndShare) {
     CHECK(SessionStore::Fork(source, "", false, turn).contains("error"));
   }
 
-  // The file export lands next to the session and renders its title.
   json shared = SessionStore::Share(source);
   CHECK(!shared.contains("error"));
   const std::string sibling = shared.value("path", "");
@@ -1266,8 +1245,6 @@ TEST_CASE(TestForkAtMessageAndShare) {
   CHECK(exported.find("# live title") != std::string::npos);
 }
 
-// P5: prefix switching resolves unique file-name/title matches and refuses
-// to guess on ambiguity, absence, or empty input.
 TEST_CASE(TestSessionPrefixMatch) {
   TestWorkspace workspace("session-prefix");
   const std::string dir =
@@ -1305,9 +1282,8 @@ TEST_CASE(TestSessionPrefixMatch) {
   CHECK(MatchSessionPrefix("   ").empty());
 }
 
-// A turn larger than the live view keeps the message that started it over
-// its latest steps, so a compact view never shows a turn without its prompt;
-// older rows continue from the first step held.
+// A compact view never shows a turn without its prompt: the message that
+// started it stays over its latest steps.
 TEST_CASE(TestViewKeepsTheHeadOfALargeTurn) {
   json nodes =
       json::array({{{"id", "t-1"}, {"kind", "turn"}, {"sequence", 1}}});

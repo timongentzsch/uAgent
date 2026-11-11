@@ -11,8 +11,6 @@
 namespace uagent {
 
 TEST_CASE(TestSetupSavesKeys) {
-  // Each key becomes a provider that refers to its variable; OpenRouter is
-  // one like the others.
   SettingValues scope;
   ApplySetupKeys({.openrouter = "sk-or"}, scope);
   CHECK(scope.at("OPENROUTER_API_KEY") == "sk-or");
@@ -32,7 +30,6 @@ TEST_CASE(TestSetupSavesKeys) {
   CHECK(providers["openai"]["api_key"] == "$OPENAI_API_KEY");
   CHECK(providers["openai"]["wire_api"] == "responses");
 
-  // Other providers and what a saved one of the same name says stay.
   scope = {{"UAGENT_PROVIDERS",
             R"({"local":{"base_url":"http://localhost:8080/v1"},)"
             R"("anthropic":{"base_url":"https://proxy.example/v1",)"
@@ -45,12 +42,10 @@ TEST_CASE(TestSetupSavesKeys) {
   CHECK(providers["anthropic"]["api_key"] == "$ANTHROPIC_API_KEY");
   CHECK(!providers.contains("openai"));
 
-  // Providers set from a variable are left to that variable.
   scope = {{"UAGENT_PROVIDERS", "$MY_PROVIDERS"}};
   ApplySetupKeys({.openai = "sk-oa"}, scope);
   CHECK(scope.at("UAGENT_PROVIDERS") == "$MY_PROVIDERS");
 
-  // No key, no change.
   scope.clear();
   ApplySetupKeys({}, scope);
   CHECK(scope.empty());

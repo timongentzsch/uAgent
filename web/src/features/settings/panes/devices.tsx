@@ -20,8 +20,6 @@ const ios =
   /iPhone|iPad/.test(navigator.userAgent) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
-// This device and the others paired with the host: updating and installing
-// the app, notifications, and who may connect.
 export function DevicesPane() {
   const {
     update,
@@ -33,7 +31,6 @@ export function DevicesPane() {
     logout,
   } = useSettings();
   const action = useAction();
-  // What is being confirmed: a device to revoke, or logging this one out.
   const [confirm, setConfirm] = useState<
     { id: string; name: string } | "logout" | null
   >(null);

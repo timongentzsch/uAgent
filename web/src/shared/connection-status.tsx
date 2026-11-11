@@ -1,5 +1,4 @@
 import type { ConnectionPhase } from "./types.ts";
-// The status LED and the connection line in the sidebar.
 
 type LedState = "idle" | "active" | "running" | "failed";
 
@@ -7,7 +6,6 @@ export function StatusLed({ state }: { state: LedState }) {
   return <span class={`status-led ${state}`} aria-hidden="true" />;
 }
 
-// One name per connection phase, for the serving host and a remote one.
 export const connectionLabels = {
   connected: "Connected",
   connecting: "Connecting…",
@@ -25,7 +23,6 @@ export function ConnectionStatus({
   const busy = phase === "connecting" || phase === "reconnecting";
   return (
     <span
-      // Anything but connected stands out as a chip.
       class={`turn-status${phase === "connected" ? "" : " chip chip-outline"} ${className}`}
       role="status"
       aria-live="polite"

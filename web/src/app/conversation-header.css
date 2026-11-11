@@ -12,7 +12,6 @@
 .execution-host {
   max-width: 40%;
 }
-/* A link below the title is cut short before it can push the buttons. */
 .head-subtitle {
   display: flex;
   margin: 0;
@@ -29,7 +28,6 @@
 .head-totals button {
   text-decoration: none;
 }
-/* A corner dot on an icon button, e.g. the agent using the browser. */
 .browser-toggle {
   position: relative;
 }

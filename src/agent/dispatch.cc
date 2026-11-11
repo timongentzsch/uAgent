@@ -32,9 +32,7 @@ int64_t ResultCharLimit(const CallTask& task) {
   return task.tool ? task.tool->result_chars : -1;
 }
 
-// Keep the hints at the tail even when a result must be shortened: the
-// artifact itself stays out of context; only its small locator rides with the
-// result.
+// The hints stay at the tail even when the result is shortened.
 std::string ModelResultText(const ToolResult& result, int64_t cap) {
   std::string output = result.output;
   if (cap < 0) cap = ToolResultCap();
@@ -48,16 +46,12 @@ std::string ModelResultText(const ToolResult& result, int64_t cap) {
          hint;
 }
 
-// Preserve small results and divide the remaining model-facing budget evenly
-// across larger siblings. The original per-tool-capped strings remain intact
-// for diagnostics and terminal output.
 std::vector<std::string> ModelFacingToolResults(
     const std::vector<CallTask>& tasks, int64_t budget) {
   if (budget < 0) {
     budget = ToolBatchResultCap();
-    // A tool or per-call result with a larger window also raises the batch
-    // window to that amount. Parallel reads therefore share one read-sized
-    // budget instead of each being forced back to the smaller generic cap.
+    // A larger per-tool window raises the batch window too, so parallel reads
+    // share one read-sized budget.
     if (budget > 0) {
       for (const CallTask& task : tasks) {
         budget = std::max(budget, ResultCharLimit(task));

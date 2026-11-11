@@ -83,9 +83,8 @@ json Application::ReportUsage(const std::string& ledger) {
 int Application::FinishHeadless(std::string answer, std::string error,
                                 int exit_code) {
   Teardown(exit_code == 0 ? "headless_complete" : "headless_error");
-  // What this run spent, after teardown has taken in what its own children
-  // spent: the envelope reports it, and a child writes it for its parent on
-  // every way out.
+  // Reported after teardown has taken in what its own children spent; a
+  // child writes it for its parent on every way out.
   const json used = ReportUsage(EnvStr("UAGENT_INTERNAL_USAGE_FILE"));
   if (context_.options.json_stream || context_.options.json) {
     json stop = agent_.LastStop();
@@ -166,9 +165,8 @@ int Application::RunHeadless() {
   };
   answer_mail();
   PublishChannelState();
-  // The agents it started are part of its answer: it waits while they owe
-  // it a report, and takes each up as a turn. One waiting on a person is
-  // not waited for.
+  // A run waits while the agents it started owe it a report, and takes each
+  // up as a turn. One waiting on a person is not waited for.
   while (!stopping() && AgentsOwe(session_file_)) {
     pollfd wake{AbortWakeFd(), POLLIN, 0};
     poll(&wake, 1, kAgentPollMs);

@@ -1,12 +1,11 @@
-// What this browser keeps, by the key it is kept under: each key is named
-// once, here. The values never change, or what is already kept would be
-// lost; public/theme.js, which runs before any module, repeats theme, zoom
-// and panes.
+// Each key is named once, here. The values never change, or what is already
+// kept would be lost; public/theme.js, which runs before any module, repeats
+// theme, zoom and panes.
 export const storageKeys = {
   catalogue: "uagent-catalogue",
   spaces: "uagent-spaces",
   pins: "uagent-pins",
-  // The remote hosts last listed, painted disconnected until the host answers.
+  // The remote hosts last listed, shown disconnected until the host answers.
   hosts: "uagent-hosts",
   page: "uagent-page",
   drafts: "uagent-drafts",

@@ -27,7 +27,6 @@ export function livePins(
   );
 }
 
-// Keeps a conversation, a folder or a terminal at the top of the list, on every device.
 export function PinItem({ pin }: { pin: Pin }) {
   const { command } = useApi();
   const { online, pins, report } = useHostContext();

@@ -1,8 +1,5 @@
-// The providers are a list of their own, one row each, and a provider is
-// edited in a sheet: a name, an address, a key, the API it speaks and the
-// tools it runs itself. A new one may start from a preset such as OpenRouter.
-// A key is never shown, and one that is not retyped is kept, under a new name
-// too. The whole file can be read beside the form.
+// Providers are a list, each edited in a sheet. A key is never shown, and
+// one that is not retyped is kept, under a new name too.
 import { test, expect } from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
@@ -28,7 +25,6 @@ test("a provider is added, edited, renamed and removed in its sheet", async ({
 
   await form.getByRole("button", { name: "Add a provider" }).click();
   const adding = page.getByRole("dialog", { name: "Add a provider" });
-  // A preset fills the fields, which stay editable.
   await adding.getByRole("button", { name: "OpenRouter", exact: true }).click();
   await expect(adding.getByLabel(/^Name/)).toHaveValue("openrouter");
   await expect(adding.getByLabel(/^Address/)).toHaveValue(
@@ -43,8 +39,6 @@ test("a provider is added, edited, renamed and removed in its sheet", async ({
   await expect(row).toContainText("Chat completions");
   await expect(row).toContainText("key set");
 
-  // The key is taken and never shown again; it is kept as other fields
-  // change, and a tool the endpoint runs is defined as its API takes it.
   await form.getByRole("button", { name: "Edit lab", exact: true }).click();
   const sheet = page.getByRole("dialog", { name: "Edit provider" });
   const key = sheet.getByLabel(/^Key/);
@@ -75,7 +69,6 @@ test("a provider is added, edited, renamed and removed in its sheet", async ({
       hosted_tools: ["web_search", tool],
     });
 
-  // The file as it stands, with the key hidden.
   await page.getByRole("button", { name: "Show the file" }).click();
   const file = form.locator(".configuration-file");
   await expect(file).toContainText('"base_url": "https://lab.example/v1"');
@@ -93,7 +86,6 @@ test("a provider is added, edited, renamed and removed in its sheet", async ({
     });
   }
 
-  // Renamed, it keeps its hidden key.
   await form.getByRole("button", { name: "Edit lab", exact: true }).click();
   await sheet.getByLabel(/^Name/).fill("lab2");
   await sheet.getByRole("button", { name: "Save" }).click();

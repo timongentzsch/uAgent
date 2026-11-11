@@ -67,13 +67,9 @@ export function safeStorage(get: () => Storage | undefined): Storage {
 const storage = safeStorage(() => globalThis.localStorage);
 export const tabStorage = safeStorage(() => globalThis.sessionStorage);
 
-// A value this browser keeps under `key`: read, written and watched in one
-// place. A missing, corrupt or invalid value reads as `fallback` (by default,
-// one of another shape is invalid), and writing the fallback forgets the key.
-// `valid` makes the value of what was kept, and `kept` what is kept of a
-// value; text is kept as itself, so public/theme.js reads the theme as
-// written. With a `delay`, a write waits for changes to pause, and is made
-// before the page may go away.
+// A missing, corrupt or invalid value reads as `fallback`, and writing the
+// fallback forgets the key. Text is kept as itself, so public/theme.js reads
+// the theme as written. With a `delay`, a write waits for changes to pause.
 export function stored<T>(
   key: string,
   fallback: T,
@@ -139,10 +135,8 @@ export function stored<T>(
 }
 export type Stored<T> = ReturnType<typeof stored<T>>;
 
-// State kept in `store`: it starts from what is kept, is written whenever it
-// changes, and follows writes made elsewhere on the page. What was read is
-// not written again, so a page that changed nothing leaves what another tab
-// kept alone.
+// What was read is not written again, so a page that changed nothing leaves
+// what another tab kept alone.
 export function useStored<T>(store: Stored<T>) {
   const [value, setValue] = useState(store.read);
   const kept = useRef(value);

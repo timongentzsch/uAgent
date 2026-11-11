@@ -92,12 +92,9 @@ void MdStream::Pc(char c) {
   Put(c);
 }
 
-// Emission is collected here and written as one tail frame per chunk instead
-// of once per character, which is where a third of the render cost sat: stdio
-// takes its lock — needed, because TerminalSpinner writes stdout from its own
-// thread when no composer is mounted (core/term.h) — on every call. Every
-// public entry point drains the buffer before returning, so nothing an
-// outside writer can observe has moved.
+// Emission is collected here and written once per chunk, not per
+// character: stdio takes its lock on every call. Every public entry point
+// drains the buffer before returning.
 void MdStream::Put(char value) {
   outbuf += value;
   TrackRendered(std::string_view(&value, 1));
@@ -111,8 +108,7 @@ void MdStream::Put(std::string_view text) {
 // Colour changes cost no columns, and neither does the closing newline. An
 // escape is always written whole: the model's text has none left.
 void MdStream::TrackRendered(std::string_view text) {
-  // Whole runs of plain text are the common case, so they are measured in
-  // one append rather than a byte at a time.
+  // Fast path: a run of plain text is appended whole.
   if (text.find_first_of("\x1b\n\r") == std::string_view::npos) {
     if (cur_rendered.size() < kMdLineBytes) cur_rendered.append(text);
     return;
@@ -212,9 +208,8 @@ void MdStream::Step(char c) {
     if (c == '\n') {
       linestart = true;
       ForgetPreviousLine();
-      // The persistent composer inserts a reset-styled status row after a
-      // complete line. Queue the fence color at the start of the next line so
-      // streamed code blocks do not lose their styling after line one.
+      // The composer inserts a reset-styled status row after a complete line,
+      // so the fence colour is queued at the start of the next one.
       Put(CodeBlk());
     }
     return;
@@ -493,11 +488,8 @@ void MdStream::EndLine() {  // inline styles never span lines
     Put(RST());
     bold = ital = code = heading = false;
   }
-  // Nothing visible reached this line, so hold its newline rather than print
-  // it: ReleaseBlanks emits one if text follows, and Flush drops the rest.
-  // One width pass over the raw line replaces per-character bookkeeping that
-  // counted every leading UTF-8 byte as a column, so CJK, emoji and combining
-  // marks used to give prev_rows (and thus RetroTable) the wrong row count.
+  // Nothing visible reached this line, so its newline is held: ReleaseBlanks
+  // emits one if text follows, and Flush drops the rest.
   size_t vis_line = DisplayWidth(cur_raw);
   if (vis_line == 0) {
     ++blank_held;

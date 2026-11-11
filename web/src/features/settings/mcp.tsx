@@ -6,9 +6,6 @@ import { useApi } from "../../state/api.ts";
 import { useAction } from "../../shared/use-action.ts";
 import { plural } from "../../shared/quantities.ts";
 
-// MCP servers of the open conversation, grouped by the file that defines
-// them, with a switch each.
-
 const SUMMARY: Record<McpServer["state"], string> = {
   ready: "Ready",
   starting: "Starting…",
@@ -16,9 +13,7 @@ const SUMMARY: Record<McpServer["state"], string> = {
   failed: "Failed",
 };
 
-// The open conversation's servers that one file defines: the one for all
-// conversations or its folder's, so a switch edits the file its section
-// names.
+// The servers one file defines, so a switch edits the file its section names.
 export function McpServers({
   scope,
   session,

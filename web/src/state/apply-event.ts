@@ -23,9 +23,6 @@ import {
 
 type Ref<T> = { current: T };
 
-// What applying the stream's events reads and changes: the event stream
-// owner's state and refs, handed over as they are, so what one event does
-// can be followed, and tested, apart from it.
 interface EventHost {
   live: Ref<Record<string, Snapshot>>;
   snapshots: SnapshotStore;
@@ -48,8 +45,6 @@ interface EventHost {
   onResult: (value: JSONValue, inspect: boolean) => void;
 }
 
-// One event of the stream, applied in order to the catalogue, the outgoing
-// rows and its session's snapshot.
 export function applyEvent(event: HostEvent, host: EventHost) {
   const {
     live,
@@ -79,7 +74,6 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     setManagementVersion((version) => version + 1);
     return;
   }
-  // Something saved changed: the detail level, and whatever shows settings.
   if (event.kind === "settings.changed") {
     setDetail(event.level);
     setManagementVersion((version) => version + 1);

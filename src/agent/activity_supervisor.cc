@@ -139,10 +139,7 @@ bool TransitionActivityLocked(ActivitySession& session, ActivityState next) {
 
 ActivityReservation::~ActivityReservation() { Reset(); }
 
-// Every member moves: the supervisor alone told the destination which counter
-// to give back and, since the reservation names the log, which id to commit
-// under. ReserveActivity hands its result through an optional, so this runs on
-// the way out of every reservation.
+// Only the destination gives the counter back.
 ActivityReservation::ActivityReservation(ActivityReservation&& other) noexcept
     : supervisor_(std::exchange(other.supervisor_, nullptr)), id_(other.id_) {}
 
@@ -425,10 +422,8 @@ json ActivitySupervisor::ActivityViews() const {
     row["label"] = job.display_label.empty()
                        ? Utf8Trunc(FirstLine(job.cmd), kStatusLabelBytes)
                        : job.display_label;
-    // The modal shows the full command scrollable on top. Rows only carry
-    // the 160-char label, and inspect fails once a finished activity leaves the
-    // retained set, so the command travels here (bounded like transcript
-    // nodes) instead of degrading to the abbreviated label.
+    // The full command travels here (bounded): rows carry only a label, and
+    // inspect fails once a finished activity leaves the retained set.
     if (!job.cmd.empty()) {
       row["command"] = Utf8Trunc(job.cmd, kActivityCommandBytes);
     }

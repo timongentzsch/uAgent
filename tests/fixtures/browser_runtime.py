@@ -175,7 +175,6 @@ while chunk := os.read(3, 4096):
             os.write(4, json.dumps({"id": withheld, "result": {}}).encode() + b"\0")
             continue
         if method == "Page.navigate":
-            # The document, a script it loads and a request that fails.
             session = command.get("sessionId")
             for request_id, kind, url in (
                 ("d", "Document", command["params"]["url"]),

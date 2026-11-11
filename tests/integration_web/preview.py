@@ -89,8 +89,7 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
             )
             assert_true(status == 403, (status, body))
             # A deck prints through a page made from the folder's file names:
-            # each slide framed, one sheet each, the slides keeping their own
-            # sandbox; the page itself runs none of the folder's content.
+            # the slides keep their own sandbox, the page runs none of them.
             (project / 'design/02 "b".html').write_text("<p>b</p>")
             status, deck, headers = page("design/?deck&w=1440&h=99999")
             assert_true(status == 200, (status, deck))

@@ -55,7 +55,6 @@ enum class SlashCommandId {
   kOpen,
 };
 
-// What a command is beyond its name, as flags a registry row can read aloud.
 enum SlashCommandFlag : unsigned {
   // Its reply is a receipt, not a result worth opening in a viewer.
   kNoViewer = 1U << 0,
@@ -82,11 +81,9 @@ struct ParsedSlashCommand {
 };
 
 ParsedSlashCommand ParseSlashCommand(const std::string& input);
-// The command a mistyped "/word" most likely meant: the nearest name within
-// two edits, else empty.
+// The nearest command name within two edits of a mistyped one, else empty.
 std::string NearestSlashCommand(const std::string& input);
-// "/fork [TITLE] [@TURN]": a trailing @N (or a bare number) forks at user
-// turn N, otherwise the whole session. Shared by every client.
+// "/fork [TITLE] [@TURN]": a trailing @N or bare number forks at user turn N.
 struct ForkArgument {
   std::string title;
   int64_t turn = 0;
@@ -94,8 +91,7 @@ struct ForkArgument {
 ForkArgument ParseForkArgument(const std::string& argument);
 // The turn a prompt command stands for; empty for a local action.
 std::string SlashCommandPrompt(const ParsedSlashCommand& command);
-// The same rows the parser and help output use; an alias carries an empty
-// description and is hidden from listings.
+// An alias carries an empty description and is hidden from listings.
 std::span<const SlashCommandSpec> SlashCommandRegistry();
 
 enum class InteractiveInputKind { kNone, kLine, kEscape, kBackground, kEof };
@@ -124,14 +120,11 @@ void SetInteractiveReadHandler(InteractiveReadHandler handler);
 bool InteractiveReadAvailable();
 
 std::string InputPrompt();
-// One echoed user turn, banded to the right edge. `text` is already display-
-// ready: callers differ in how they sanitize it, and the composer's mapping of
-// newlines to a glyph is what keeps the echo on the rows it drew.
+// One echoed user turn, banded to the right edge; `text` is display-ready.
 std::string UserEchoRow(const std::string& prompt, const std::string& text);
 std::string ReadInteraction(InteractionRequest request, bool* eof);
-// The question with its one-keystroke answers, "[y] Allow once  [n] Deny",
-// the way every terminal renders a decision. Numbered lists are printed by
-// the command that asks, so only letter-keyed options become hints.
+// The question with its one-keystroke answers, "[y] Allow once  [n] Deny".
+// Only letter-keyed options become hints.
 std::string DecisionPrompt(const std::string& prompt, const json& options);
 std::string ReadChoiceLine(InteractionRequest request, bool& cancelled,
                            bool& eof);

@@ -35,6 +35,5 @@ export function rangesIn(root: Node, query: string) {
   return ranges;
 }
 
-// The CSS Highlight API, where the browser has it.
 export const highlights =
   typeof CSS !== "undefined" && "highlights" in CSS ? CSS.highlights : null;

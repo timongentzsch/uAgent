@@ -55,7 +55,6 @@ test("a conversation is pinned from its menu and unpinned, live in another brows
   await folders.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
   await expect(pinned.locator(".session")).toHaveCount(1);
-  // It leaves its place rather than showing twice.
   await expect(folders.locator(".session")).toHaveCount(0);
   await expect(lists(other).pinned.locator(".session")).toHaveCount(1);
 

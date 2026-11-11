@@ -50,14 +50,11 @@
 
 namespace uagent::web {
 namespace {
-// Browser-service policies live together here. They are operational limits,
-// not inferred model or billing data.
 constexpr size_t kOriginChars = 255;
 constexpr size_t kSubscriptionRequestBytes = KiB(8);
 constexpr size_t kDiscoveryBytes = KiB(4);
-// Four workers wait while idle. Busy, the pool grows to one per event stream,
-// viewer and terminal socket, which each hold theirs as long as they stay
-// open, plus twelve for requests, so those connections cannot starve the API.
+// Four workers wait while idle. Busy, the pool grows to one per open stream,
+// viewer and terminal socket plus twelve for requests, which cannot starve.
 constexpr size_t kIdleWorkerThreads = 4;
 constexpr size_t kRequestWorkerThreads = 12;
 constexpr size_t kWorkerQueue = 24;
@@ -128,7 +125,6 @@ bool Gunzip(const Asset& asset, std::string& plain) {
   return status == Z_STREAM_END && stream.total_out == asset.plain_size;
 }
 
-// The gzip of `body`; false on any fault.
 bool Gzip(const std::string& body, std::string& packed) {
   if (body.size() > UINT_MAX) {
     return false;
@@ -155,9 +151,6 @@ bool Gzip(const std::string& body, std::string& packed) {
 
 namespace master {
 
-// Read by the signal handler and by the delayed restart thread, written by
-// Run(): a lock-free atomic is safe in both, where sig_atomic_t is not
-// across threads.
 std::atomic<int> shutdown_fd{-1};
 static_assert(std::atomic<int>::is_always_lock_free);
 
@@ -451,7 +444,6 @@ int Master::Run() {
   return served ? 0 : 1;
 }
 
-// The API: pairing, conversations, commands, events and their files.
 void Master::RegisterApiRoutes() {
   server_.Post("/api/instance", [this](const Request& request,
                                        Response& response) {
@@ -572,7 +564,6 @@ void Master::RegisterApiRoutes() {
     return RemoteCall(remotes_->Target(host, "~", HashHex("folder-browser")),
                       {{"op", op}, {"path", path}});
   };
-  // Browse directories before a conversation has been created.
   server_.Get(
       "/api/folders", [browse](const Request& request, Response& response) {
         const std::string host = request.get_param_value("host");
@@ -609,10 +600,8 @@ void Master::RegisterApiRoutes() {
     }
     Reply(response, FolderFacts(folder->string()));
   });
-  // The person's own stylesheet, which the app adds after its own so it
-  // overrides the design tokens. Revalidated on every look: an edit applies
-  // without a new bundle. Empty when there is none. Like the rest of /api/,
-  // only a paired device reads it.
+  // The person's own stylesheet, added after the app's so it overrides the
+  // design tokens. Revalidated on every look: an edit needs no new bundle.
   server_.Get("/api/user.css", [](const Request& request, Response& response) {
     const std::string css = ReadUserStyle();
     const std::string etag = "\"" + HashHex(css) + "\"";
@@ -656,7 +645,6 @@ void Master::RegisterApiRoutes() {
               });
 }
 
-// The shared browser's status and its live viewer.
 void Master::RegisterBrowserRoutes() {
   server_.Get("/api/browser/status", [this](const Request& request,
                                             Response& response) {
@@ -699,11 +687,9 @@ void Master::RegisterBrowserRoutes() {
       });
 }
 
-// The app itself: the embedded bundle, or a test's build of it.
 bool Master::RegisterAssetRoutes(std::string& error) {
-  // Browser tests serve the bundle they just built, so a web edit needs no
-  // rebuild of this binary: that folder alone answers, never a mix of it
-  // and the embedded bundle. Never set outside a test run.
+  // Browser tests serve the bundle they just built: that folder alone answers,
+  // never a mix of it and the embedded bundle. Never set outside a test run.
   const char* dist = getenv("UAGENT_INTERNAL_WEB_DIST");
   std::string ignored;
   if (dist) {

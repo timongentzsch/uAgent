@@ -44,9 +44,8 @@ json ApprovalState(const EffectiveConfigSnapshot& configured, bool agent) {
       JsonValue(configured.sources, kApprovalKey, "") == "conversation";
   ApprovalMode effective = parsed(configured.Get(kApprovalKey));
   ApprovalMode inherited = parsed(configured.Inherited(kApprovalKey));
-  // An agent works unattended for its parent: it reviews (Auto) unless a
-  // mode is chosen for its own conversation, as its start does for a
-  // parent that asks; the saved setting does not reach it.
+  // An agent reviews (Auto) unless a mode is chosen for its own conversation;
+  // the saved setting does not reach it.
   if (agent) {
     inherited = ApprovalMode::kAuto;
     if (!chosen) effective = inherited;
@@ -119,7 +118,6 @@ static std::string ChooseForConversation(AppSession& session,
 }
 
 namespace {
-// Forks the conversation, or shares it.
 json ForkOrShare(AppSession& session, const json& request) {
   const std::string kind = JsonValue(request, "kind", "");
   if (session.session_file.empty()) {
@@ -136,7 +134,6 @@ json ForkOrShare(AppSession& session, const json& request) {
                             JsonValue(request, "message_id", ""));
 }
 
-// Configuration changes; the conversation's own scope is applied here.
 json ConfigureSession(AppSession& session, const json& request) {
   ConfigManager& manager = session.context.config_manager;
   json effects = json::array();
@@ -164,8 +161,6 @@ json ConfigureSession(AppSession& session, const json& request) {
   return reply;
 }
 
-// The model chosen in the interface becomes the session's, and maybe the
-// default.
 json SelectModelControl(AppSession& session, const json& request) {
   std::string value = JsonValue(request, "model", "");
   ModelSelection selection = ParseModelSelection(value);

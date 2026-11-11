@@ -2,11 +2,8 @@
 
 #ifndef UAGENT_SRC_APP_SESSION_TERMINAL_INTERNAL_H_
 #define UAGENT_SRC_APP_SESSION_TERMINAL_INTERNAL_H_
-// One terminal attached to a session runtime. TerminalMain and the input loop
-// live in session_terminal.cc, the frames to and from the runtime in
-// session_terminal_link.cc, the client's own slash commands in
-// session_terminal_commands.cc and the live region in
-// session_terminal_screen.cc.
+// One terminal attached to a session runtime, implemented across the
+// session_terminal*.cc files.
 
 #include <atomic>
 #include <chrono>
@@ -36,7 +33,6 @@ const DetailLevel& ConfiguredDetail(const RuntimeConfig::Values& overrides);
 
 class Terminal {
  public:
-  // `draft` starts the composer, e.g. the message a rewind forked before.
   // `pinned`: --detail set this terminal's level, so it follows no other.
   // `keys`: what was typed and not yet read, kept from one attach to the next.
   Terminal(Connection connection, std::string path, const DetailLevel& detail,
@@ -66,7 +62,6 @@ class Terminal {
   // runtime), all of it, or ended this session's input loop.
   enum class Command { kPass, kDone, kLeave };
 
-  // The input loop (session_terminal.cc).
   // Starts the reader and, on a terminal, raw input; false when it cannot.
   bool Attach();
   // Waits for a key, a frame, a signal or the next tick; `keyed` says
@@ -79,7 +74,6 @@ class Terminal {
   bool Interrupted();
   // What was typed; empty when stdin closed.
   std::optional<InteractiveInputEvent> ReadInput(std::string& cooked);
-  // Acts on one input: a key, a reply to `decision` or a message.
   Command Handle(const InteractiveInputEvent& input, const json& pending,
                  const std::string& decision, bool running,
                  std::vector<std::string>& files);
@@ -87,9 +81,8 @@ class Terminal {
   // finish and gives the terminal back.
   int Detach(const std::vector<std::string>& files, int exit_code);
 
-  // The client's own slash commands (session_terminal_commands.cc).
-  // The slash commands this client performs itself. Leaving the session
-  // works while a decision is pending; the rest is then the reply's text.
+  // Leaving the session works while a decision is pending; the rest is then
+  // the reply's text.
   Command HandleCommand(const ParsedSlashCommand& slash, bool deciding,
                         std::vector<std::string>& files);
   // Those that leave or redraw the session; empty for the rest.
@@ -110,7 +103,6 @@ class Terminal {
   // tree it holds anew once the runtime answers a refresh.
   void Restyle(const DetailLevel& detail);
 
-  // Frames to and from the runtime (session_terminal_link.cc).
   // Answers the decision `id`; `extra` adds fields such as "cancelled".
   void Reply(const std::string& id, json text,
              const json& extra = json::object());
@@ -121,7 +113,6 @@ class Terminal {
   bool ReceiveEvent(const json& frame);
   bool ReceiveOutcome(const json& frame);
 
-  // The live region (session_terminal_screen.cc).
   // Shows a decision that just arrived, or gives the composer back once it
   // is gone. True when it was settled here and the loop starts over.
   bool PresentDecision(const json& pending, const std::string& decision);

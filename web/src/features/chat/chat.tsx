@@ -21,12 +21,8 @@ import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
 import "./chat.css";
 
-// The transcript: the conversation's rows, older history and the placeholder
-// shown before the snapshot. Used by the chat page.
-
 export { prepareHistoryNodes } from "./message.tsx";
 
-// A request and its reply, the shape a conversation opens with.
 const SAMPLE: Node[] = [
   {
     id: "placeholder-request",
@@ -51,7 +47,6 @@ const SAMPLE: Node[] = [
   },
 ];
 
-// The transcript before its snapshot: its own rows, drawn from sample text.
 function TranscriptPlaceholder({ session }: { session: SessionRef }) {
   return (
     <Placeholder label="Loading conversation…">
@@ -86,8 +81,7 @@ function Chat({
   const { online, load: loadSnapshot, report } = useHostContext();
   const { openFile } = useContext(MessageActions);
   const olderPage = useAction({ concurrent: true });
-  // Prepares the history once its snapshot arrives, not on every streamed
-  // frame.
+  // Prepared once per snapshot, not on every streamed frame.
   const { value: preparedKey } = useResource(
     () =>
       snapshot
@@ -109,7 +103,6 @@ function Chat({
         (!snapshot && !loadError) || (snapshot && !prepared) || undefined
       }
       ref={attachScroller}
-      // Delegated: a file a message cites opens in the Files pane.
       onClick={(event) => {
         const cited = (event.target as Element).closest<HTMLElement>(
           ".file-ref",

@@ -30,24 +30,20 @@ struct FileStamp {
 FileStamp SnapshotFile(const std::string& path);
 std::string DocumentRevision(const std::string& path, const std::string& body);
 
-// Wait for a detached log owned by another process. macOS and Linux use native
-// file notifications; unsupported POSIX targets retain a bounded fallback.
+// Native notifications on macOS and Linux; a bounded fallback elsewhere.
 FileWaitResult WaitForFileChange(
     const std::string& path, const FileStamp& observed,
     std::chrono::steady_clock::time_point deadline);
 
-// Host coordination waits on several files/directories and its own shutdown
-// pipe. Native targets use one kqueue/inotify instance; other POSIX targets use
-// the same bounded fallback as the single-file API. Callers processing state
-// before waiting can pass the stamps they read, closing that notification gap.
+// Also returns when `wake_fd` is readable. `prior` holds the stamps the caller
+// read before waiting, so a change in between is not missed.
 FileWaitResult WaitForAnyFileChange(
     const std::vector<std::string>& paths,
     std::chrono::steady_clock::time_point deadline, int wake_fd = -1,
     const std::map<std::string, FileStamp>& prior = {});
 
 // One kqueue/inotify instance watching paths and readable wake descriptors.
-// Default-constructed it watches nothing and Get() is -1; unsupported
-// platforms never get further.
+// Default-constructed it watches nothing and Get() is -1.
 class NativeWatch {
  public:
   // A file's own changes; a directory's entries coming and going as well; or

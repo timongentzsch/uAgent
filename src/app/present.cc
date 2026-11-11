@@ -21,10 +21,10 @@ namespace uagent {
 namespace {
 namespace fs = std::filesystem;
 
-// The artifact at `path`, as its folder's pages say what they are
-// (workspace_files' listing): a deck, design or design system for a folder
-// or one of its pages, a document or a sheet for its own page. Null for any
-// other file, and an error for a folder that is none of these.
+// The artifact at `path` as workspace_files' listing names it: a deck,
+// design or design system for a folder or one of its pages, a document or a
+// sheet for its own page. Null for another file, an error for a folder that
+// is none.
 json ArtifactPart(const std::string& path) {
   const auto list = [](const fs::path& dir) {
     const json request = {
@@ -131,9 +131,8 @@ Tool PresentTool(const std::string& session_path, const Tool* remote_read) {
   tool.headline = [](const json& args) {
     return Headline{"Presenting", "Presented", JsonValue(args, "path", "")};
   };
-  // Presenting reads the file out to the person's devices: the same path
-  // policy as read_path, so a file outside the folder or µAgent's own
-  // configuration never leaves without approval.
+  // The same path policy as read_path: a file outside the folder or µAgent's
+  // own configuration never leaves without approval.
   tool.needs_approval = [](const json& args) {
     return PathApprovalRequired(JsonValue(args, "path", ""), CanonicalCwd());
   };

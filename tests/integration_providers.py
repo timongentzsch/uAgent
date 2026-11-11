@@ -132,9 +132,8 @@ def decision_answers(allow, deny=0.0, **reasons):
 def auto_review_run(
     root, home, binary, calls, reviewer, *, finish=None, environment=None, **provider
 ):
-    """Runs one headless turn in Auto mode whose tool calls the mock reviewer
-    judges; returns the envelope, the model's last view of a tool result and
-    the reviewer's requests."""
+    """One headless turn in Auto mode judged by the mock reviewer: the envelope,
+    the model's last view of a tool result and the reviewer's requests."""
     seen = {}
 
     def last(_, body):
@@ -807,8 +806,7 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
     try:
         env = provider_env(home, first.url, providers, "test/active-live")
         # A raw startup route may accept an explicit effort. A later catalog
-        # route with no advertised effort support must replace, not inherit,
-        # that state.
+        # route with no advertised effort support replaces that state.
         env["UAGENT_REASONING_EFFORT"] = "high"
         catalog_result = run_dialog(root, env, "/model live\n\x1b\nprobe\n/q\n", binary=binary)
         assert_true(catalog_result.returncode == 0, catalog_result.stderr)
@@ -838,9 +836,8 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
         assert_true(restarted.stdout.strip() == "dynamic-route-ok", restarted.stdout)
         assert_true(len(first.requests) == 1, first.requests)
 
-        # Direct /model must discover the same window as the catalog picker.
-        # Changing only the effort keeps it without another catalog request,
-        # and the picker's queries left a catalogue that serves the first.
+        # Direct /model discovers the same window as the catalog picker.
+        # Changing only the effort keeps it without another catalog request.
         providers["second"].pop("context")
         direct_env = provider_env(home, first.url, providers, "test/active-live")
         probes = len(second.get_requests)
@@ -955,9 +952,8 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
 
 
 def test_an_overloaded_provider_is_tried_again(root, home, *, binary):
-    """A proxy reports its upstream's overload inside the stream, after the
-    response was opened. Nothing was said yet, so the request is repeated and
-    the turn goes on."""
+    """A proxy reports its upstream's overload inside the stream. Nothing was
+    said yet, so the request is repeated and the turn goes on."""
     overloaded = (
         "Codex response failed: {'type': 'service_unavailable_error', 'code': "
         "'server_is_overloaded', 'headers': {'x-retry-metadata': 'NO_MORE_RETRY'}, "
@@ -1170,12 +1166,8 @@ def test_escape_during_a_web_search_stops_the_turn(root, home, *, binary):
 
 
 def test_web_search_is_a_tool_call_on_either_route(root, home, *, binary):
-    """A search reads as one call, and its answer stays in the conversation.
-
-    A search hosted inside the conversation's own response left the model
-    with no record of it on the next request, so it took real results for
-    figures it had made up.
-    """
+    """A search reads as one call and its answer stays in the conversation, so
+    the next request still has a record of it."""
 
     def responses_call(handler, body):
         assert_true(all(tool.get("type") == "function" for tool in body["tools"]), body["tools"])
@@ -1644,8 +1636,7 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
 
     def ask_routes(_, body):
         # A model that cannot read the route table guesses a selection, and a
-        # guess resolving to the wrong endpoint fails as an auth error rather
-        # than as the typo it is.
+        # wrong guess fails as an auth error, not as the typo it is.
         described = json.loads(tool_results(body["messages"])[-1])
         named = {route["name"]: route for route in described["models"]}
         route = named.get("fixture-provider/fixture-route")
@@ -1745,7 +1736,6 @@ def test_effort_is_part_of_the_conversations_model_choice(root, home, *, binary)
             and all("conversation" in line for line in chosen),
             session.stdout,
         )
-        # Nothing outside the conversation remembers it.
         assert_true(not saved_settings(home), "effort left the conversation")
 
 
@@ -2083,8 +2073,7 @@ def test_search_goes_to_an_endpoint_that_offers_it_and_otherwise_is_off(root, ho
             assert_true(len(search_server.requests) == 1, search_server.requests)
 
         # The endpoint's model names are not the conversation's to lend: with
-        # none named for it, no search can run, so the model is not offered
-        # it and the person is told once what to set.
+        # none named for search, the tool is not offered and the person is told.
         with Server([event({"content": "first"}), event({"content": "second"})]) as plain:
             env = base_env(home, plain.url)
             env["UAGENT_PROVIDERS"] = json.dumps({"test": {"base_url": plain.url}, **providers})

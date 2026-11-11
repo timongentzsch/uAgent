@@ -2,8 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_CORE_TURN_STATUS_H_
 #define UAGENT_INCLUDE_CORE_TURN_STATUS_H_
-// The status line shown while a turn runs, derived from its events. Used by
-// the session runtime and both clients.
+// The status line shown while a turn runs, derived from its events.
 
 #include <cstdint>
 #include <map>
@@ -17,11 +16,9 @@ namespace uagent {
 
 enum class EventId : uint16_t;
 
-// What a session with nothing running says.
 inline constexpr const char* kIdleStatus = "Ready";
 
-// Presentation policies only: these values never enter model history or
-// authorize execution. Work is proportional to new text, with bounded storage.
+// Presentation only: never enters model history or authorizes execution.
 std::string StatusLabel(std::string_view text);
 
 class TurnStatus {

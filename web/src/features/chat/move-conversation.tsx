@@ -25,9 +25,6 @@ function familyOf(sessions: Session[], item: Session) {
   return family;
 }
 
-// The dialog body that moves conversations (one, or the sidebar's
-// selection) to another folder or workspace: a place picked from the list
-// or typed as a path.
 export default function MoveConversation({
   moving,
   sessions,
@@ -35,7 +32,6 @@ export default function MoveConversation({
   online,
   close,
 }: {
-  // As the catalogue holds them now, so the dialog follows what runs.
   moving: Session[];
   sessions: Session[];
   spaces: Space[];
@@ -46,7 +42,6 @@ export default function MoveConversation({
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState("");
   const { run, busy, error } = useAction();
-  // The place they all are in, if one.
   const places = new Set(moving.map(folderOf));
   const current = places.size === 1 ? [...places][0] : "";
   const family = moving.flatMap((item) => familyOf(sessions, item));

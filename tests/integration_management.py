@@ -450,7 +450,6 @@ def test_scheduled_run_completes_beside_a_detached_server(root, home, *, binary)
 
             try:
                 wait_until(completed, lambda: client.command("schedule", action="list"), timeout=20)
-                # The run completed beside its server, not after it.
                 assert_true(live_process_states([server["pid"]]), "the server was stopped")
             finally:
                 signal_process_group(server.get("pid"), signal.SIGKILL)

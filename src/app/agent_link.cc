@@ -31,12 +31,9 @@ bool Reach(const std::string& path) {
 }
 
 namespace {
-// Mails the parent and starts its runtime if none runs: a starting runtime
-// delivers its pending mail. The mail is written before this returns, so an
-// agent never shows idle with its report still unsent; false when it was
-// refused. The start is off the caller's thread, which may hold its
-// session's lock, and is counted in `reaching` while it runs; `unreachable`
-// runs when the mail cannot be sent or the parent not started.
+// Writes the mail before returning, so an agent never shows idle with its
+// report unsent; false when refused. The parent starts on another thread:
+// the caller may hold its session's lock.
 bool Deliver(const SessionMail& mail,
              const std::shared_ptr<std::atomic<int>>& reaching,
              std::function<void()> unreachable) {
@@ -107,8 +104,7 @@ void AgentLink::Report(const std::string& reason, const std::string& title,
       .state = reason,
       .agent = {
           {"session", id_}, {"title", OneLine(title)}, {"outcome", reason}}};
-  // The latest report is the one that matters: an earlier one still unsent
-  // is replaced.
+  // An earlier report still unsent is replaced by the latest.
   unsent_.reset();
   if (!Deliver(report, reaching_, [] {})) unsent_ = std::move(report);
 }

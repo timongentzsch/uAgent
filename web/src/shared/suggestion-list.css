@@ -9,7 +9,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A group's label, never an option. */
 .suggestion-group {
   padding: var(--space-3) var(--space-4) var(--space-1);
 }

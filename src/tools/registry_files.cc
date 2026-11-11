@@ -19,8 +19,7 @@
 namespace uagent {
 namespace {
 
-// The preview and the edit itself read the same arguments; parsing them twice
-// is how the two drifted apart in the first place.
+// One parse for the preview and the edit itself, so the two cannot differ.
 std::vector<FileEdit> RequestedEdits(const json& arguments) {
   std::vector<FileEdit> edits;
   for (const json& item : arguments["edits"]) {
@@ -34,9 +33,8 @@ std::vector<FileEdit> RequestedEdits(const json& arguments) {
 
 void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace) {
-  // "." is what a path-less read_path or grep operates on, so the hooks judge
-  // the path the call actually reaches. Access is assumed to be the stricter
-  // half, so a tool added later escalates until someone marks it read-only.
+  // "." is what a path-less read_path or grep operates on. Access defaults to
+  // write, so a tool added later escalates until it is marked read-only.
   auto path_tool = [&](Tool tool) -> Tool& {
     tool.needs_approval = [workspace](const json& args) {
       return PathApprovalRequired(JsonValue(args, "path", "."), workspace);
@@ -50,16 +48,13 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
     return AddTool(tools, std::move(tool));
   };
   // Scripts under .uagent/scratch are the agent's own working files: writing
-  // one changes nothing a person relies on, and the folder ignores itself so
-  // they stay out of a repository. Running one is what asks, and that
-  // approval shows the script.
+  // one needs no approval; running one asks, and that approval shows it.
   auto outside_scratch = [workspace](const json& args) {
     return !PathWithin(CanonicalAccessPath(JsonValue(args, "path", "")),
                        CanonicalAccessPath(ScratchDir(workspace).string()));
   };
-  // What uAgent wrote for the model to read, such as output a result spilled
-  // to a file, is read where that result says without asking: a command
-  // reads it freely, so asking only blocks the recovery the result offers.
+  // What uAgent wrote for the model to read, such as a spilled result, is
+  // read without asking: a command reads it freely anyway.
   auto reads_only = [workspace](Tool& tool) {
     tool.needs_approval = [workspace](const json& args) {
       const std::string path = JsonValue(args, "path", ".");
@@ -72,8 +67,6 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
     };
   };
 
-  // Reading a file and listing a directory are the same act — show me what is
-  // at this path — and took the same three arguments as separate tools.
   Tool& read = path_tool(MakeTool(
       "read_path",
       "Read text/ranges, list directories, or add images/documents to model "
@@ -100,9 +93,8 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   read.parallel_safe = true;
   read.capabilities = Capability(ToolCapability::kInspect);
   read.dedupe_output = true;
-  // Reads get a larger, contiguous window than logs and remote output. This
-  // avoids paying another model round merely to continue an ordinary source
-  // file while keeping every other tool on the global result cap.
+  // Reads get a larger window than other tools, so an ordinary source file
+  // does not cost another model round to continue.
   read.result_chars = ReadFileResultChars();
   read.headline = Verbs("Reading", "Read");
 
@@ -231,9 +223,8 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   };
   grep.parallel_safe = true;  // read-only, like read_path
   grep.capabilities = Capability(ToolCapability::kInspect);
-  // Same contract as read_path: only a byte-identical repeat of a result still
-  // in recent context collapses to a receipt, so a search that found anything
-  // new is always resent in full.
+  // As for read_path: only a byte-identical repeat of a result still in
+  // recent context collapses to a receipt.
   grep.dedupe_output = true;
   grep.headline = [](const json& a) {
     const bool files = JsonValue(a, "mode", "content") == "files";

@@ -245,9 +245,8 @@ def test_web_conversation_starts_in_a_space_by_name(root, home, *, binary):
 
 
 def test_web_space_is_renamed_and_deleted(root, home, *, binary):
-    """A space goes by the name it was given, in several words if it likes.
-    Renaming it changes that name and nothing else; deleting it removes its
-    conversations and its folder, and never a folder that is not a workspace."""
+    """Renaming a space changes its name and nothing else; deleting it removes
+    its conversations and its folder, never a folder that is no workspace."""
     with Server([event({"content": "ok"})]) as provider:
         with web_host(binary, root, home, provider.url) as (web, code, _, _env):
             web.pair(code)

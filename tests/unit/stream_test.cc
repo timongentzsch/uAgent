@@ -250,8 +250,7 @@ TEST_CASE(TestSseChunkPartitions) {
       empty_alias, no_calls);
   CHECK(details_fallback.reasoning == "details only");
 
-  // Display normalization for the reasoning ticker: decoration and line
-  // structure collapse, but text that only looks like markup is preserved.
+  // Decoration collapses; text that only looks like markup is preserved.
   CHECK(StatusLabel("first line\nlatest line\n") == "first line latest line");
   CHECK(StatusLabel("  padded latest  ") == "padded latest");
   CHECK(StatusLabel(
@@ -413,9 +412,8 @@ TEST_CASE(TestSseChunkPartitions) {
   CHECK(string_error.remote_error_kind ==
         RemoteErrorKind::kContextLengthExceeded);
 
-  // A proxy's overload arrives after the stream opened, as a failed
-  // response whose message quotes the upstream error: nothing was said yet,
-  // so it is retried.
+  // A proxy's overload arrives after the stream opened, quoting the upstream
+  // error: nothing was said yet, so it is retried.
   const char* overloaded =
       "Codex response failed: {'type': 'service_unavailable_error', 'code': "
       "'server_is_overloaded', 'headers': {'x-retry-metadata': "

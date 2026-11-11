@@ -1,6 +1,5 @@
-// The transcript as the host sends it: a list of nodes that name their
-// parent, drawn as one tree. A detail level is only how deep the tree starts
-// open; nothing here knows a tool, a provider or a model.
+// The transcript as the host sends it: nodes that name their parent, drawn
+// as one tree. Nothing here knows a tool, a provider or a model.
 import type { NodePatch, Node } from "./types.ts";
 
 // A node and the nodes under it, oldest first.
@@ -37,10 +36,9 @@ export function currentStep(branch: Branch): string | undefined {
   return step && headlineOf(step.node);
 }
 
-// Where each node of a list is drawn, in order: a row with what opens under
-// it, any other node followed by the nodes under it, at its own level. A
-// footer carries its turn's answer, whose time and menu it shows; a running
-// row counts from the time of what it is under.
+// Where each node of a list is drawn, in order. A footer carries its turn's
+// answer, whose time and menu it shows; a running row counts from the time
+// of what it is under.
 export interface Item {
   branch: Branch;
   answer?: Node;
@@ -69,8 +67,7 @@ export function layout(
     );
 }
 
-// A long list of rows: the earlier ones folded into one line, and the
-// latest `max` shown.
+// The earlier rows folded away, and the latest `max` shown.
 export function fold(kids: Branch[], max: number): [Branch[], Branch[]] {
   const earlier = Math.max(0, kids.length - max);
   return [kids.slice(0, earlier), kids.slice(earlier)];
@@ -110,10 +107,9 @@ export function grow(nodes: Node[]): Branch[] {
   return roots.map(branch);
 }
 
-// One patch applied to the held nodes. A new node goes before the first
-// node under it, else in sequence order (a late saved node never strands
-// older content after newer), else last: the host's own rule
-// (view_reducer.cc), so both hold the same order.
+// A new node goes before the first node under it, else in sequence order,
+// else last: the host's own rule (view_reducer.cc), so both hold the same
+// order.
 export function placeNode(nodes: Node[], patch: NodePatch): Node[] {
   const id = patch.node?.id ?? patch.id;
   // Streaming patches the newest nodes: search from the end.

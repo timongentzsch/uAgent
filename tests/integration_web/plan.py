@@ -44,9 +44,7 @@ def settled(marker, count=1):
 
 def test_plan_mode_reads_then_puts_its_plan_to_the_person(root, home, *, binary):
     """In plan mode only reads and the plan file are allowed; each turn ends
-    with the plan shared and three choices: keep planning starts a planning
-    turn with the feedback, either approval leaves plan mode in that mode and
-    starts the work. A turn that writes no plan ends with a notice."""
+    with the plan shared and three choices, or a notice when it wrote none."""
     project = root / "plan-project"
     project.mkdir()
     kept = project / "keep.txt"

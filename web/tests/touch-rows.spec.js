@@ -12,7 +12,6 @@ test.beforeEach(({ browserName }) =>
   test.skip(browserName !== "chromium", "Chromium touch input"),
 );
 
-// Two conversations in the drawer: the open one and another.
 async function twoRows(page, host, session) {
   await savedConversation(host, page.request, "Other row");
   await page.clock.install();
@@ -62,7 +61,6 @@ test("a long press opens the row's menu and releasing does not open the conversa
   await page.clock.runFor(LONG_PRESS_MS + 50);
   const menu = page.getByRole("menu", { name: "Conversation menu" });
   await expect(menu).toHaveCount(0);
-  // The row says it is held, so the person knows to lift.
   await expect(row("Other row")).toHaveAttribute("data-held", "");
   await touch("touchEnd");
   await expect(menu).toBeVisible();

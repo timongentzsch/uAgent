@@ -3,7 +3,7 @@
 #ifndef UAGENT_INCLUDE_AGENT_PATH_POLICY_H_
 #define UAGENT_INCLUDE_AGENT_PATH_POLICY_H_
 // Which paths a tool may read, write or delete, and how a refused one is
-// reported. Used by the file tools and approvals.
+// reported.
 
 #include <algorithm>
 #include <filesystem>
@@ -39,18 +39,16 @@ inline bool InstructionFileName(const std::filesystem::path& path) {
          std::end(kInstructionNames);
 }
 
-// µAgent's own configuration and trust state. Editing these changes what the
-// agent is allowed to do next launch, so they are never auto-approved. This
-// covers the built-in file tools; the OS sandbox is what stops an approved
-// shell command from reaching the same paths behind them.
+// µAgent's own configuration and trust state: editing it changes what the
+// agent may do next launch, so it is never auto-approved. Covers the file
+// tools only; the OS sandbox keeps shell commands from the same paths.
 inline bool SelfConfigurationPath(const std::string& path) {
   if (path.empty()) return false;
   std::filesystem::path candidate = CanonicalAccessPath(path);
   auto matches = [&](const std::string& target) {
     return !target.empty() && CanonicalAccessPath(target) == candidate;
   };
-  // Your instructions steer every session; a folder's are
-  // ordinary repository files, like the rest of its code.
+  // Global instructions steer every session; a folder's are ordinary files.
   if (InstructionFileName(candidate) &&
       candidate.parent_path() == CanonicalAccessPath(GlobalBase())) {
     return true;
@@ -60,16 +58,14 @@ inline bool SelfConfigurationPath(const std::string& path) {
       matches(UagentDir(kConfigDir) + "/" + kPermissionStoreFile)) {
     return true;
   }
-  // A folder's .mcp.json decides which servers are spawned. Preserve the
-  // basename rule for nested folders while recognizing either spelling of
-  // a symlink.
+  // A folder's .mcp.json decides which servers are spawned: matched by
+  // basename in any folder, under either spelling of a symlink.
   return std::filesystem::path(path).filename() == kMcpConfigFile ||
          candidate.filename() == kMcpConfigFile;
 }
 
-// HiddenPaths -- the browser profile, uAgent's settings, credential stores:
-// the file tools refuse them outright rather than asking, and the OS sandbox
-// hides them from commands.
+// The browser profile, uAgent's settings, credential stores: the file tools
+// refuse them outright, and the OS sandbox hides them from commands.
 inline bool HiddenPath(const std::string& path) {
   if (path.empty()) return false;
   const std::filesystem::path candidate = CanonicalAccessPath(path);
@@ -99,9 +95,8 @@ inline Tool::Run RefusingHidden(Tool::Run run) {
   };
 }
 
-// A path in one of the person's own folders that this session's commands may
-// not read (SandboxReadable): the file tools ask a person for it, as for
-// uAgent's own configuration, so no automatic approval reads it either.
+// A path this session's commands may not read (SandboxReadable): the file
+// tools ask a person for it, so no automatic approval reads it either.
 inline bool UnreadablePath(const std::string& path) {
   const SandboxStatus& status = SandboxRuntime();
   return !path.empty() && status.mode == SandboxMode::kEnforced &&
@@ -110,12 +105,9 @@ inline bool UnreadablePath(const std::string& path) {
 
 enum class PathAccess { kRead, kWrite };
 
-// Reads escalate as well as writes: the user and folder config files and a
-// folder .mcp.json carry provider keys and server credentials, so pulling
-// one into context is itself the harm. The trust store and instruction files
-// are the exceptions -- they hold no secret, so only writing them changes
-// what the agent may do next launch. A closed folder asks for either: a write
-// can hand back what it holds, as an edit that fails to match does.
+// Reads escalate too: config files and .mcp.json carry keys and credentials.
+// The trust store and instruction files hold no secret, so only writing them
+// escalates. A closed folder asks for either.
 inline ApprovalClass PathApprovalClass(const std::string& path,
                                        PathAccess access) {
   if (UnreadablePath(path)) return ApprovalClass::kMandatoryHuman;
@@ -128,11 +120,8 @@ inline ApprovalClass PathApprovalClass(const std::string& path,
   return ApprovalClass::kMandatoryHuman;
 }
 
-// The folder, and every root this session's sandboxed commands may write
-// ($TMPDIR, /tmp, the package caches, sandbox.write): what a command could
-// do there unasked, a file tool may do too, so asking for it only adds
-// friction. Hidden stores, closed folders and uAgent's own configuration are
-// never writable roots and keep their own checks.
+// The folder and every root sandboxed commands may write: what a command
+// could do there unasked, a file tool may do too.
 inline bool WithinWorkArea(const std::string& path,
                            const std::filesystem::path& workspace) {
   const std::filesystem::path canonical = CanonicalAccessPath(path);

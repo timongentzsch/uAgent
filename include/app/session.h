@@ -14,15 +14,11 @@
 #include "include/core/env.h"
 #include "include/transport/session.h"
 namespace uagent::session {
-// State only checkpoints carry. Between them clients keep the last
-// checkpoint's and apply node events to its view, so these large fields
-// never cross the wire on every phase or usage change.
+// State only checkpoints carry; clients keep it from the last one.
 inline constexpr const char* kCheckpointFields[] = {"view", "http",
                                                     "system_prompt", "answer"};
 
-// Whether an activity row is work its session still waits on. A detached
-// process (a server left running) outlives its session by design, so it
-// never counts.
+// A detached process outlives its session by design and never counts.
 inline bool ActivityRuns(const json& activity) {
   const std::string state =
       JsonValue(activity, "status", JsonValue(activity, "state", ""));
@@ -30,8 +26,7 @@ inline bool ActivityRuns(const json& activity) {
          (state == "running" || state == "starting" || state == "stopping" ||
           state == "finishing");
 }
-// What the status row counts among running activities: commands the turn
-// waits on, and commands running behind it (backgrounded or detached).
+// Running commands the turn waits on, and those running behind it.
 struct ActivityCounts {
   size_t background = 0, foreground = 0;
 };
@@ -49,8 +44,7 @@ inline ActivityCounts CountActivities(const json& state) {
   }
   return counts;
 }
-// A session with nothing to do for this long stops its runtime; whatever
-// reaches it next starts it again. Tests shorten it.
+// An idle session stops its runtime after this long. Tests shorten it.
 inline std::chrono::seconds IdlePeriod() {
   return std::chrono::seconds(std::max<int64_t>(
       1, EnvLong("UAGENT_INTERNAL_IDLE_S", IdleMinutes() * 60)));
@@ -68,9 +62,7 @@ inline json LightState(const json& state) {
   return light;
 }
 
-// A fresh id for a request the host or a client sends a runtime.
 inline std::string NewRequestId() { return RandomToken(16); }
-// A command that carries nothing but its kind, under a fresh request id.
 inline json ControlFrame(const char* kind) {
   return {{"kind", kind}, {"request_id", NewRequestId()}};
 }
@@ -82,8 +74,7 @@ struct Connection {
   int pid = -1;
   // FileIdentity of the executable the worker started from, from its hello.
   std::string binary;
-  // What the runtime said it was doing when it answered: "needs you",
-  // "working" or "idle"; empty before its first state.
+  // "needs you", "working" or "idle"; empty before its first state.
   std::string status;
 };
 Connection Connect(const std::string& path);
@@ -93,8 +84,7 @@ Options OptionsFromLaunch(const json& launch);
 Connection Open(const std::string& executable, const std::string& cwd,
                 const std::string& path, const std::string& title,
                 const Options& options, std::string& error);
-// Starts the saved session at `path` as it is, from this binary, or
-// connects to the runtime it already has.
+// Starts the saved session at `path`, or connects to the runtime it has.
 Connection Wake(const std::string& cwd, const std::string& path,
                 std::string& error);
 // One poll thread owns all sockets. Publishing never blocks the model thread.

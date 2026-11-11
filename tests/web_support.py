@@ -14,7 +14,6 @@ from session_support import close_sessions, remove_runtime, stop_sessions
 
 
 def session_workers(host_pid):
-    """The session workers a web host has started."""
     rows = subprocess.check_output(["ps", "-axo", "pid=,ppid=,args="], text=True)
     fields = (row.split(maxsplit=2) for row in rows.splitlines())
     return [
@@ -25,9 +24,8 @@ def session_workers(host_pid):
 
 
 def stop_workers(pids, home):
-    """Close workers until they are gone. One started as the host stopped has
-    no socket yet for the first pass to find, and goes on writing under `home`
-    while the test's folder is removed."""
+    """Close workers until they are gone: one started as the host stopped
+    has no socket yet for the first pass to find."""
     deadline = time.monotonic() + budget(5)
     while live_process_states(pids) and time.monotonic() < deadline:
         close_sessions(home)
@@ -143,9 +141,8 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
     with log.open("w+") as output:
         process = None
         try:
-            # A port chosen here can be taken before the host binds it (other
-            # tests run beside this one): a host that ended on that is given
-            # another. Every attempt is under the cleanup below.
+            # A port chosen here can be taken before the host binds it: a
+            # host that ended on that is given another.
             for attempt in range(3):
                 chosen = port or available_port()
                 process = subprocess.Popen(

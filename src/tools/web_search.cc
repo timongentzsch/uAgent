@@ -42,9 +42,8 @@ std::optional<Route> SelectWebSearchRoute(
   const RuntimeConfig& config = api.config;
   if (config.web_search_backend == "off") return std::nullopt;
 
-  // UAGENT_WEB_SEARCH_MODEL follows the shared selection schema. A provider
-  // scope makes it a route of its own; a bare id only renames the model on
-  // whichever candidate wins, which is how it behaved before the schema.
+  // UAGENT_WEB_SEARCH_MODEL: a provider scope makes it a route of its own, a
+  // bare id only renames the model on whichever candidate wins.
   ModelSelection selection = ParseModelSelection(config.web_search_model);
   const auto usable = [&](Route route) -> std::optional<Route> {
     route.reasoning_effort = selection.effort;
@@ -59,8 +58,7 @@ std::optional<Route> SelectWebSearchRoute(
     if (std::optional<Route> route = ResolveModelRoute(
             catalog.models, catalog.providers, selection.base)) {
       // An explicit selection is authoritative: an endpoint that declares no
-      // search disables it rather than silently redirecting the request to a
-      // different endpoint.
+      // search disables it rather than redirecting the request elsewhere.
       if (!route->features.Has(Feature::kHostedSearch)) return std::nullopt;
       if (route->api_key.empty()) route->api_key = kPlaceholderApiKey;
       return usable(std::move(*route));
@@ -72,8 +70,7 @@ std::optional<Route> SelectWebSearchRoute(
   };
 
   // The conversation's own route, then the first configured endpoint that
-  // offers search. Another endpoint has no model of the conversation's to
-  // borrow: it searches with the one UAGENT_WEB_SEARCH_MODEL names.
+  // offers search, with the model UAGENT_WEB_SEARCH_MODEL names.
   if (api.features.Has(Feature::kHostedSearch)) {
     if (std::optional<Route> route = named(api)) return route;
   }

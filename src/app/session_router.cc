@@ -56,9 +56,8 @@ bool ValidSpaceName(const std::string& name) {
          name.find('/') == std::string::npos;
 }
 
-// `path` as a workspace's folder, or nothing when it is not one. The folder
-// that holds the workspaces is µAgent's own: one that is a link leads to
-// directories that are not workspaces, and holds none.
+// `path` as a workspace's folder, if it is one. A workspaces folder that is a
+// link leads to directories that are not workspaces, and holds none.
 std::optional<fs::path> SpaceAt(const std::string& path) {
   std::error_code error;
   if (fs::is_symlink(UagentDir(kSpacesDir), error)) return std::nullopt;
@@ -107,7 +106,6 @@ std::string SpaceFolder(const std::string& name, std::string& error) {
       return JsonValue(space, "path", "");
     }
   }
-  // A folder of its own: the name made safe, numbered when that is taken.
   const std::string safe = SafeFileComponent(name);
   std::string folder = UagentDir(kSpacesDir) + "/" + safe;
   for (int n = 2; PathExists(folder); ++n) {
@@ -215,9 +213,7 @@ std::string SessionHost::DeleteSpace(const std::string& path,
                                      const std::string& device) {
   const auto space = SpaceAt(path);
   if (!space) return "no such workspace";
-  // Its conversations go the way one goes: closed when it runs, then
-  // removed. Agents that work elsewhere belong to it by where they are
-  // saved.
+  // Agents that work elsewhere belong to it by where they are saved.
   const fs::path history =
       fs::path(UagentDir(kHistoryDir)) / WorkspaceId(space->string());
   const auto belongs = [&](const HostSession& session) {
@@ -271,7 +267,6 @@ std::optional<std::filesystem::path> SessionHost::NamedFolder(
     const size_t before = Spaces().size();
     folder = SpaceFolder(space, error);
     if (folder.empty()) return std::nullopt;
-    // A new one is listed wherever the workspaces are.
     if (const json spaces = Spaces(); spaces.size() != before) {
       Record("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}}, false);
     }
@@ -319,9 +314,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
   }
   UniqueLock lock(mutex_);
   if (kind == SessionCommandKind::kCreate) {
-    // A workspace is a folder of µAgent's own, made by naming it: a
-    // conversation that belongs to no folder still gets a workspace commands
-    // can write.
+    // A conversation that belongs to no folder still gets a workspace
+    // commands can write.
     const auto resolved = NamedFolder(command, result.error);
     if (!resolved) return result;
     const std::filesystem::path& cwd = *resolved;
@@ -449,9 +443,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     return result;
   }
-  // A command that names no runtime is for the conversation, whichever
-  // runtime serves it: a saved one's is started (it stopped for having
-  // nothing to do), and one that started meanwhile is used as it is.
+  // A command that names no runtime is for the conversation: a saved one's
+  // runtime is started, and one that started meanwhile is used as it is.
   if (ForwardsToWorker(kind) && JsonValue(command, "generation", "").empty()) {
     if (!ActivateLocked(session, result.error, lock, true)) return result;
     command["generation"] = session->generation;

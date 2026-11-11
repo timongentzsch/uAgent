@@ -1,8 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_CORE_CAPTURE_H_
 #define UAGENT_INCLUDE_CORE_CAPTURE_H_
-// Running a short helper process and capturing its output. Used wherever
-// µAgent shells out to a native tool.
+// Running a short helper process and capturing its output.
 
 #include <string>
 #include <vector>

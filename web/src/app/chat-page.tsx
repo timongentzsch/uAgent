@@ -33,8 +33,7 @@ import SideAnswer from "../features/chat/side-answer.tsx";
 const NO_ACTIVITIES: Activity[] = [];
 const NO_COMMANDS: SlashCommand[] = [];
 
-// The transcript's nodes: the host's view, then this device's messages the
-// host has not confirmed yet.
+// The host's view, then this device's messages it has not confirmed yet.
 export function transcriptNodes(
   view: View | undefined,
   outgoing: Outgoing[],
@@ -50,7 +49,6 @@ export function transcriptNodes(
   ];
 }
 
-// The conversation's agent is using the browser: a running call links to it.
 export const isBrowsing = (snapshot?: Snapshot) =>
   !!snapshot?.state?.view?.nodes.some(
     (node) =>
@@ -60,10 +58,8 @@ export const isBrowsing = (snapshot?: Snapshot) =>
       ),
   );
 
-// The one surface that reads the selected conversation's snapshot, so a
-// streamed frame re-renders the transcript and composer, not the shell.
-// It stays mounted on the other pages: the transcript history keeps its
-// place under a page key and resumes when the conversation returns.
+// The one surface that reads the selected conversation's snapshot. It stays
+// mounted on the other pages, so the transcript history keeps its place.
 export default function ChatPage({
   active,
   historyKey,
@@ -92,7 +88,6 @@ export default function ChatPage({
   catalogue: Catalogue;
   outgoing: Outgoing[];
   loadError: unknown;
-  // Asks for a workspace's name or a folder's path, to start a conversation.
   newPlace: (place: "conversation" | "workspace" | "folder") => void;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
   choose: (id: string) => Promise<void>;
@@ -100,9 +95,7 @@ export default function ChatPage({
   closeSide: () => void;
   actions: MessageActions;
   setInspector: (target: InspectorTarget | null) => void;
-  // The files pane, when it is open beside the chat.
   files?: ComponentChildren;
-  // The find bar's request, for whichever conversation it was opened in.
   find: FindRequest | null;
   closeFind: () => void;
 }) {
@@ -115,8 +108,7 @@ export default function ChatPage({
     () => transcriptNodes(view, outgoing, selected),
     [view, outgoing, selected],
   );
-  // This device's guidance waiting on the turn: beside the composer, not in
-  // the transcript, and unchanged by the frames streamed meanwhile.
+  // Queued guidance shows beside the composer, not in the transcript.
   const queued = useMemo(
     () =>
       outgoing.filter(
@@ -131,9 +123,7 @@ export default function ChatPage({
         : allNodes,
     [allNodes, queued],
   );
-  // Session-scoped surfaces: switching conversations resumes the saved
-  // scroll position (or pins a fresh one); the hook owns this, so there
-  // is no pin-on-select here to clobber the restore.
+  // The hook owns scroll restore per session: no pin-on-select here.
   const {
     scroller: transcript,
     attachScroller,
@@ -143,8 +133,7 @@ export default function ChatPage({
     reveal,
     unseen,
   } = useTranscriptHistory(setFollowing, historyKey, nodes);
-  // The shared transcript controller retains the visible node through
-  // this bounded page update; this loader only owns data and cursors.
+  // The transcript hook keeps the visible node in place; this only loads data.
   const more = view?.more;
   const before = view?.before;
   const older = useCallback(async () => {
@@ -176,14 +165,12 @@ export default function ChatPage({
       };
     });
   }, [more, before, selected, updateView, transcript, routes.session, api]);
-  // What the composer is given keeps its identity across streamed frames.
   const send = useCallback(
     (event: Event, queue?: boolean) => submit(event, jumpToLatest, queue),
     [submit, jumpToLatest],
   );
-  // Optimistic: pin to the end synchronously (<1 frame), refresh the
-  // snapshot in the background. jumpToLatest is idempotent and load()
-  // dedupes in flight, so rapid presses stay a single pin + a single fetch.
+  // jumpToLatest is idempotent and load() dedupes in flight, so rapid presses
+  // cost one pin and one fetch.
   const jump = useCallback(() => {
     jumpToLatest();
     load(selected).catch(report);
@@ -196,7 +183,6 @@ export default function ChatPage({
     () => setModal({ type: "browser", handoff: true }),
     [setModal],
   );
-  // The agents it started that are working, for the status control.
   const sessions = catalogue.sessions;
   const agents = useMemo(
     () =>
@@ -208,8 +194,6 @@ export default function ChatPage({
   const open = useCallback((id: string) => void choose(id), [choose]);
   if (!active) return null;
 
-  // The last turn stopped short, and nothing new has been sent since: the
-  // status control says so and offers Continue.
   const stop = snapshot?.state?.stop;
   const stopped =
     stop &&
@@ -219,9 +203,7 @@ export default function ChatPage({
     !nodes.at(-1)?.id.startsWith("outgoing-")
       ? stop.reason
       : undefined;
-  // A conversation opened by its link before the list names it is drawn the
-  // same way: its transcript from samples until it loads, its composer inert
-  // until the page is online.
+  // A linked conversation the list does not name yet is drawn as a placeholder.
   const shown =
     session ?? (opening ? { id: selected, generation: "placeholder" } : null);
   const composerFor = (item: Session) => (
@@ -268,10 +250,8 @@ export default function ChatPage({
           close={closeFind}
         />
       )}
-      {/* Remount the transcript per session: a stale surface's
-        node detaches, so queued scrolls from it can never
-        rewrite the live one, and each surface keeps its own
-        DOM state (expansion, disclosure, scroll). */}
+      {/* Remounted per session: a stale surface's queued scrolls can never
+        rewrite the live one. */}
       <LiveActivities.Provider
         value={snapshot?.state?.activities || NO_ACTIVITIES}
       >

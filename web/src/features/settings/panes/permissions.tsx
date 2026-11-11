@@ -12,7 +12,6 @@ import { useResource } from "../../../shared/use-resource.ts";
 import { useApi } from "../../../state/api.ts";
 import { useSettings } from "../context.ts";
 
-// The rules kept for the open conversation's repository.
 export function PermissionsPane() {
   const { manage } = useApi();
   const { session, online } = useSettings();

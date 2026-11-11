@@ -98,7 +98,7 @@ std::vector<std::filesystem::path> SkillSearchPath(
   for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
     path.push_back(*it / ".agents" / "skills");
   }
-  // Tool-specific locations remain folder-local compatibility roots.
+  // Tool-specific locations are read from the folder only.
   for (const std::string& vendor : vendors) {
     path.push_back(cwd / vendor / "skills");
   }
@@ -165,9 +165,8 @@ std::vector<Skill> DiscoverSkills(const std::filesystem::path& cwd) {
   };
   std::vector<fs::path> seen;
   for (const fs::path& base : SkillSearchPath(cwd)) {
-    // The folder can be the home directory, and a vendor path can repeat;
-    // scanning one twice would only cost time, but it would also let a skill
-    // shadow itself and read as a precedence bug.
+    // The folder can be the home directory, and a vendor path can repeat:
+    // scanning one twice would let a skill shadow itself.
     if (std::find(seen.begin(), seen.end(), base) != seen.end()) continue;
     seen.push_back(base);
     scan(base);

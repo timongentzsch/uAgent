@@ -5,8 +5,6 @@ import { slashCompletion, slashMatches } from "./slash.ts";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 
-// What picking a command puts in the composer: a space follows when it
-// takes an argument.
 const completionOf = (entry: SlashCommand) =>
   entry.command + (entry.argument ? " " : "");
 

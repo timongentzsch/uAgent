@@ -42,7 +42,6 @@ for (const [name, viewport] of [
     await page.unroute(entry);
     await page.reload();
     await expect(page.getByLabel("Message or guidance")).toBeVisible();
-    // The app replaced the frame rather than drawing beside it.
     await expect(page.locator(".boot-frame")).toHaveCount(0);
     await expect(page.locator(".shell")).toHaveCount(1);
     expect(

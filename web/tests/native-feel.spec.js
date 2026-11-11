@@ -1,6 +1,5 @@
 // What makes the installed app feel native: a press fills at once, switches
-// are the platform's, a file goes to the share sheet on a touch device, and
-// the screen stays on while a turn runs.
+// are the platform's, files go to the share sheet, the screen stays on.
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -59,7 +58,6 @@ test("a press fills a shared control at once and fades on release", async ({
   await page.mouse.up();
   await expect.poll(() => background(quiet)).toBe(rest);
 
-  // The primary control has its own colour; the composer's Send is one.
   await page.getByLabel("Message or guidance").fill("a draft");
   const send = page.getByRole("button", { name: "Send", exact: true });
   await expect(send).toBeEnabled();
@@ -99,7 +97,6 @@ test("a switch is a native switch with a name, a click and a key", async ({
   const before = await memory.isChecked();
   await memory.click();
   await expect(memory).toBeChecked({ checked: !before });
-  // Either way the knob sits inside the track, the same gap from each end.
   for (const checked of [true, false]) {
     await memory.setChecked(checked);
     await expect
@@ -118,7 +115,6 @@ test("a switch is a native switch with a name, a click and a key", async ({
   await memory.focus();
   await page.keyboard.press("Space");
   await expect(memory).toBeChecked({ checked: before });
-  // A forced palette still draws the knob apart from its track.
   await page.emulateMedia({ forcedColors: "active" });
   const switches = settings.locator('.switch input[role="switch"]');
   for (const index of [0, (await switches.count()) - 1]) {

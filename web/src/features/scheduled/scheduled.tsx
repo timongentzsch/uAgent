@@ -43,8 +43,6 @@ import {
   projectsOf,
 } from "../../shared/display.ts";
 
-// The Scheduled page: tasks that run on a timetable or once, their next runs
-// and results, and the editor for one task.
 const drafts = tabDrafts<ScheduledTask>(storageKeys.scheduledDraft);
 
 const blank = (cwd: string, host = ""): ScheduledTask => ({
@@ -111,7 +109,6 @@ export default function Scheduled({
   const taskProjects = taskSessions ? projectsOf(taskSessions) : projects;
   const moved = usePushDirection(!!task);
   const [prefs] = useStored(devicePrefs.time);
-  // A run's moment by the viewer's time preferences, in its task's zone.
   const moment = (seconds?: number, zone?: string) =>
     seconds
       ? formatMoment(new Date(seconds * 1000), prefs, undefined, zone)
@@ -199,7 +196,6 @@ export default function Scheduled({
       }
       await refresh();
     });
-  // Until the tasks arrive, the list is drawn from these (see <Placeholder>).
   const shown = scheduled ?? SAMPLE_SCHEDULE;
   const runs = [...(scheduled?.runs || [])]
     .reverse()

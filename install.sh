@@ -1,21 +1,7 @@
 #!/bin/sh
-# Installs µAgent the most capable way this machine allows: it says what it
-# found, recommends, and asks once. Piped from the web it installs the latest
-# release:
-#
-#   curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | sh
-#
-# and run from a checkout it builds that checkout. In a container µAgent runs
-# its web interface, browser and terminal isolated from this machine;
-# installed here it has the terminal, the web interface, and the browser on
-# Linux with Chrome and TigerVNC. Then it asks for your API keys and a default
-# model (uagent setup), and offers to keep the web interface running.
-#
-# UAGENT_INSTALL=container|here chooses without asking; UAGENT_VERSION picks a
-# release; UAGENT_PREFIX (~/.local) is where it installs here. Without a
-# terminal, or with UAGENT_NONINTERACTIVE=1, nothing is asked: it installs
-# here and leaves keys and services alone. Nothing runs with sudo unless you
-# agree.
+# Installs µAgent: the latest release when piped to sh, the checkout when run
+# from one. Environment: UAGENT_INSTALL=container|here, UAGENT_VERSION,
+# UAGENT_PREFIX (~/.local), UAGENT_NONINTERACTIVE=1 (asks nothing).
 set -eu
 repo=timongentzsch/uAgent
 prefix=${UAGENT_PREFIX:-"$HOME/.local"}
@@ -99,7 +85,7 @@ build_from_source() {
     mkdir -p "$data"
     git clone --depth 1 --branch "v$version" --quiet "https://github.com/$repo.git" "$data/src"
   fi
-  # The container question is behind us: what follows installs here.
+  # The container question is answered: the checkout's installer installs here.
   UAGENT_INSTALL=here exec sh "$data/src/install.sh"
 }
 
@@ -197,8 +183,7 @@ if [ "$choice" = container ]; then
     sleep 1
   done
   echo
-  # Keys and the model live on the container's data volume, so they outlast
-  # updates.
+  # Keys and the model live on the container's data volume and outlast updates.
   if [ "$interactive" = yes ]; then
     if compose exec -T uagent uagent --control '{"kind":"provider"}' 2>/dev/null |
        grep -q '"configured":true'; then
@@ -224,8 +209,7 @@ fi
 
 if [ "$mode" = release ] && [ -n "$unsupported" ]; then build_from_source "$unsupported"; fi
 
-# The agent's browser needs Chrome and TigerVNC on Linux; offer the packages
-# the container image installs.
+# The same packages the container image installs.
 if [ "$os" = Linux ] && [ "$browser" = no ] && has apt-get &&
    ask "Install Chrome and TigerVNC for the agent's browser, with sudo?"; then
   deb=$tmp/chrome.deb
@@ -342,7 +326,6 @@ fi
   exit 0
 }
 
-# Where the shell looks for it.
 case :$PATH: in
   *:"$prefix/bin":*) ;;
   *)
@@ -373,7 +356,6 @@ if "$bin" --help 2>/dev/null | grep -q '^uagent setup'; then
   fi
 fi
 
-# The web interface as a service of this user, started at login.
 service=
 if "$bin" --help 2>/dev/null | grep -q -- '--web'; then
   if [ "$os" = Linux ] && has systemctl && systemctl --user show-environment >/dev/null 2>&1; then

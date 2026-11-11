@@ -342,9 +342,8 @@ def test_partial_usage_reconciles_without_double_counting(root, home, *, binary)
         handler.wfile.flush()
 
     with Server([stream]) as provider:
-        # This stream deliberately pauses twice while the client observes
-        # intermediate state. Its transport deadline must exceed both scaled
-        # gates under coverage and thread instrumentation.
+        # The stream pauses twice while the client observes intermediate
+        # state: its transport deadline must exceed both scaled gates.
         with web_host(
             binary,
             root,
@@ -479,9 +478,8 @@ def test_worker_batches_fast_deltas_without_delaying_a_quiet_tail(root, home, *,
 
 
 def test_checkpoints_reach_browsers_as_changed_rows(root, home, *, binary):
-    """After the view a browser loaded, a checkpoint sends the rows that
-    changed and its state without the view; applying them in order gives
-    the view a fresh load returns."""
+    """After the view a browser loaded, a checkpoint sends only the changed
+    rows; applying them in order gives the view a fresh load returns."""
 
     with Server([lambda _, _body: event({"content": "row " * 500})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):

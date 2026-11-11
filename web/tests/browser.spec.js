@@ -24,7 +24,6 @@ const openBrowser = async (page, session) => {
   await headerAction(page, "Open browser");
   return page.getByRole("dialog", { name: "Browser", exact: true });
 };
-// Opens the browser dialog on a served framebuffer, the user in control.
 const openControlled = async (page, session) => {
   const { serveFramebuffer } = await import("./rfb-fixture.js");
   const remote = await serveFramebuffer(page);
@@ -125,9 +124,6 @@ test.describe("phone browser sheet", () => {
     hasTouch: true,
   });
 
-  // The screen and the bar keep one geometry from loading to hand-back: no
-  // state inserts anything into the flow, and control changes reuse the one
-  // viewer connection.
   test("keeps one geometry and one connection through every state", async ({
     page,
     session,
@@ -147,7 +143,6 @@ test.describe("phone browser sheet", () => {
     const bar = dialog.locator(".browser-bar");
     const primary = dialog.locator(".browser-primary");
     await expect(dialog.locator(".browser-rfb canvas")).toBeVisible();
-    // Full screen on a phone.
     expect(await rect(dialog)).toEqual([0, 0, 390, 844]);
     const geometry = async () => [
       await rect(screen),
@@ -164,7 +159,6 @@ test.describe("phone browser sheet", () => {
     await expect(dialog.getByRole("button", { name: "Paste" })).toBeEnabled();
     expect(await geometry()).toEqual(resting);
 
-    // The keyboard's special keys replace the bar's contents, same height.
     await dialog.getByRole("button", { name: "Keyboard" }).click();
     await expect(dialog.getByLabel("Special keys")).toBeVisible();
     expect(await rect(bar)).toEqual(resting[1]);
@@ -214,7 +208,6 @@ test.describe("phone browser sheet", () => {
     });
     const masks = () => remote.pointers.splice(0).map((p) => p.buttons);
 
-    // Tap: one click exactly where the finger landed.
     const tap = at(0.25, 0.5);
     await touch(viewport, "pointerdown", 1, tap.x, tap.y);
     await touch(viewport, "pointerup", 1, tap.x, tap.y);
@@ -323,7 +316,6 @@ test.describe("phone browser sheet", () => {
     expect(remote.pointers.at(-1).y).toBe(remote.height - 1);
     remote.pointers.length = 0;
 
-    // A tap off the letterboxed screen sends nothing.
     const view = await viewport.boundingBox();
     const outside = [view.x + view.width / 2, view.y + view.height - 4];
     if (outside[1] > box.y + box.height) {
@@ -350,8 +342,7 @@ test.describe("phone browser sheet", () => {
     await expect.poll(width).toBeCloseTo(before, 0);
     remote.pointers.length = 0;
     await view.getByRole("button", { name: "Scroll down" }).click();
-    // Three wheel-down notches (button 5, mask 16), each pressed and
-    // released.
+    // Three wheel-down notches (button 5, mask 16), each pressed and released.
     await expect
       .poll(() => remote.pointers.map((p) => p.buttons))
       .toEqual([16, 0, 16, 0, 16, 0]);
@@ -372,7 +363,6 @@ test.describe("phone browser sheet", () => {
     await page.keyboard.insertText("Hé");
     await page.keyboard.press("Escape");
     await expect.poll(pressed).toEqual([0x48, 0xe9, 0xff1b]);
-    // Special-key buttons keep the keyboard open; Ctrl applies once.
     await dialog.getByRole("button", { name: "Ctrl" }).click();
     await expect(dialog.getByLabel("Type into Chrome")).toBeFocused();
     await page.keyboard.insertText("a");
@@ -404,8 +394,7 @@ test("watches an active agent without taking control", async ({
     "cursor",
     "default",
   );
-  // The viewer leaves the page's viewport alone, open and after it closes:
-  // the reader may still zoom the page (WCAG 1.4.4).
+  // The reader may still zoom the page (WCAG 1.4.4).
   const meta = page.locator('meta[name="viewport"]');
   const viewport = await meta.getAttribute("content");
   expect(viewport).not.toMatch(/user-scalable=no|maximum-scale/);
@@ -477,7 +466,6 @@ test("creates and selects a persistent Chrome profile", async ({
     });
   });
   const dialog = await openBrowser(page, session);
-  // Status, page and profiles share the one menu on the status pill.
   await dialog
     .getByRole("button", { name: /Browser status and profiles/ })
     .click();
@@ -488,7 +476,6 @@ test("creates and selects a persistent Chrome profile", async ({
     dialog.getByLabel("Chrome profile", { exact: true }),
   ).toHaveValue("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   expect(actions).toEqual(["create_profile", "select_profile"]);
-  // A named profile shows on the pill.
   await expect(dialog.locator(".browser-status")).toContainText("Work");
 });
 

@@ -31,8 +31,6 @@ test("appearance and configuration remain usable at large scales", async ({
   await expect(
     page.locator('meta[name="theme-color"][media*="light"]'),
   ).toHaveAttribute("content", "#fff");
-  // The system theme leaves each scheme its own colour; a chosen theme
-  // sets both.
   const darkBar = page.locator('meta[name="theme-color"][media*="dark"]');
   await expect(darkBar).toHaveAttribute("content", "#000");
   await page.getByLabel("Appearance").selectOption("light");
@@ -85,8 +83,6 @@ test("appearance and configuration remain usable at large scales", async ({
   expect(smallControl.padding).toBeLessThan(normalControl.padding * 0.7);
   await page.getByLabel("Zoom", { exact: true }).selectOption("110");
   await expect(page.locator("html")).toHaveCSS("--zoom", "1.1");
-  // One dial moves type and spacing together: conversation and chrome
-  // type both grow, unlike the composer staying put before.
   await expect(composer).not.toHaveCSS("font-size", originalText);
   await expect(page.locator(".conversation-head h1")).not.toHaveCSS(
     "font-size",
@@ -107,21 +103,16 @@ test("appearance and configuration remain usable at large scales", async ({
     .locator(".settings-nav")
     .getByRole("button", { name: "All conversations", exact: true })
     .click();
-  // Every setting is listed under its group; the box narrows them by plain
-  // name or by variable.
   const form = page.locator(".configuration");
   await expect(
     form.getByRole("region", { name: "Models and connection" }),
   ).toBeVisible();
   const find = page.getByLabel("Find a setting");
-  // A setting only a terminal uses is listed too, and says who reads it.
   await find.fill("UAGENT_PLAIN");
   await expect(form).toContainText("read by the terminal");
   await find.fill("no such setting");
   await expect(form).toContainText("No setting matches.");
   await find.fill("UAGENT_MAX_STEPS");
-  // It is edited where it is listed, and saved on Enter or on leaving the
-  // field: nothing half-typed is.
   const steps = form.getByRole("spinbutton", { name: "Steps per turn" });
   const reset = form.getByRole("button", { name: "Reset Steps per turn" });
   await expect(reset).toHaveCount(0);
@@ -130,20 +121,16 @@ test("appearance and configuration remain usable at large scales", async ({
   await steps.fill("23");
   await steps.press("Enter");
   await expect(reset).toBeVisible();
-  // What the host refuses stays in the field, with why.
   await steps.fill("-4");
   await steps.press("Enter");
   await expect(form.getByRole("alert")).toContainText("UAGENT_MAX_STEPS");
   await expect(steps).toHaveValue("-4");
-  // Escape takes back what was typed.
   await steps.press("Escape");
   await expect(steps).toHaveValue("23");
-  // Putting it back is its own action.
   await reset.click();
   await expect(reset).toHaveCount(0);
   await expect(steps).toHaveValue("");
 
-  // Reset all asks first, then returns every change to its default.
   await steps.fill("24");
   await steps.blur();
   await expect(reset).toBeVisible();
@@ -162,7 +149,6 @@ test("appearance and configuration remain usable at large scales", async ({
   await page.getByLabel("Appearance").selectOption("light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  // Animations follow the device until Settings turns them off.
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await expect(page.locator("html")).toHaveAttribute("data-motion", "on");
   await page.getByLabel("Animations").selectOption("off");
@@ -258,8 +244,6 @@ test("unread completions, background activity and conversation lifecycle", async
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".decision")).toContainText("BROWSER_ACTIVITY");
   await page.getByRole("button", { name: "Allow once", exact: true }).click();
-  // The status control counts the running command; its sheet lists it, and
-  // its row opens the inspector sheet.
   const now = page.locator(".composer .activity-button");
   await expect(now).toContainText("1 command");
   await now.click();
@@ -276,8 +260,6 @@ test("unread completions, background activity and conversation lifecycle", async
     .click();
   await now.click();
   await activity.getByRole("button", { name: /^Stop / }).click();
-  // Nothing runs any more, so the status control goes; the stopped
-  // command's own row ends.
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await expect(
     page.locator(".node:not(.running) > .node-row", {
@@ -324,7 +306,6 @@ test("unread completions, background activity and conversation lifecycle", async
   );
   await conversationMenu.click();
   await openMore(page);
-  // Live sessions delete directly now: the dialog closes the worker first.
   await expect(
     page
       .locator(".conversation-head")
@@ -340,8 +321,7 @@ test("unread completions, background activity and conversation lifecycle", async
   await page
     .getByRole("button", { name: "Delete permanently", exact: true })
     .click();
-  // Close-then-delete chains a worker shutdown: the dialog stays up
-  // until the worker exits and the record is gone.
+  // The dialog stays up until the worker exits and the record is gone.
   await expect(
     page.getByRole("dialog", { name: "Delete conversation?" }),
   ).toBeHidden({ timeout: 20000 });
@@ -380,7 +360,7 @@ test("retained history stays bounded and merges overlapping pages once", async (
     testInfo.outputPath("history-metrics.json"),
     JSON.stringify({ messages: 2000, visible: 64, open_ms: openMs }),
   );
-  // Resolve two reads of the same older page in reverse order. It is merged once.
+  // Two reads of the same older page resolve in reverse order.
   const { promise: pageGate, resolve: releasePage } = Promise.withResolvers();
   const { promise: pageDone, resolve: pageFinished } = Promise.withResolvers();
   let pageRequests = 0;
@@ -441,7 +421,6 @@ test("retained history stays bounded and merges overlapping pages once", async (
     );
   }
   expect(await page.locator(".message").count()).toBeLessThanOrEqual(256);
-  // Older pages are history, not arrivals: nothing reads as new.
   await expect(page.locator(".jump")).not.toContainText("new");
   await page
     .getByRole("button", { name: "Jump to latest", exact: true })
@@ -520,8 +499,6 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
         ),
     )
     .toBeGreaterThan(100);
-  // Still reading history: not pinned to the bottom, the same first
-  // message stays under the reader, and the newest tail survived.
   const gap = await page
     .locator(".transcript")
     .evaluate(
@@ -544,10 +521,8 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
         : null;
     }, firstId);
   expect(held?.id).toBe(firstId);
-  // The prepended page lands above the anchor: the previously first row
-  // (plus part of its older neighbour) is visible, so "first visible"
-  // cannot stay identical. What must hold is the anchor row itself staying
-  // at the same offset under the reader.
+  // The prepended page changes which row is first visible; the anchor row
+  // itself must keep its offset.
   expect(Math.abs((held?.drift || 0) - firstOffset)).toBeLessThan(4);
   await expect(page.locator(".message").last()).toHaveAttribute(
     "data-message-id",
@@ -556,9 +531,6 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
   await page.unroute("**/api/sessions/*?before=*", olderRoute);
 });
 
-// Each kind of control saves in its own way, a project's value overrides
-// what is saved for all, and what is being typed survives everyone else's
-// saves.
 test("a project overrides a setting; a draft survives other saves", async ({
   page,
   session,
@@ -570,19 +542,14 @@ test("a project overrides a setting; a draft survives other saves", async ({
   const field = (name) => form.locator(`[data-setting="${name}"]`);
   await nav.getByRole("button", { name: /^This folder/ }).click();
   await expect(form).toContainText("Remove all overrides");
-  // A number is saved on leaving its field.
   const steps = form.getByRole("spinbutton", { name: "Steps per turn" });
   await steps.fill("5");
   await steps.blur();
   await expect(field("UAGENT_MAX_STEPS")).toContainText(
     "Overrides 0 from all conversations",
   );
-  // A choice applies as it is chosen, and something typed elsewhere but not
-  // yet saved is still there after it.
   const calls = form.getByRole("spinbutton", { name: "Tool calls per turn" });
   await calls.fill("77");
-  // A mode is named as it is everywhere else, and an effort is chosen, not
-  // typed.
   const approval = form.getByRole("combobox", { name: "Approval mode" });
   await expect(
     approval.getByRole("option", { name: "Auto review" }),
@@ -602,12 +569,10 @@ test("a project overrides a setting; a draft survives other saves", async ({
   ).toHaveCount(0);
   await calls.press("Escape");
 
-  // What is saved for all shows that this project decides instead.
   await nav.getByRole("button", { name: "All conversations" }).click();
   await expect(field("UAGENT_MAX_STEPS")).toContainText(
     "Overridden in this folder",
   );
-  // A switch applies as it flips; putting it back is the reset beside it.
   const memory = form.getByRole("switch", { name: "Memory", exact: true });
   await expect(memory).toBeChecked();
   await memory.uncheck();
@@ -616,7 +581,6 @@ test("a project overrides a setting; a draft survives other saves", async ({
   await expect(memory).toBeChecked();
   await expect(restore).toHaveCount(0);
 
-  // Removing the project's overrides leaves what is saved for all.
   await nav.getByRole("button", { name: /^This folder/ }).click();
   await form.getByRole("button", { name: /Remove all overrides/ }).click();
   await page
@@ -628,8 +592,6 @@ test("a project overrides a setting; a draft survives other saves", async ({
   ).toHaveCount(0);
 });
 
-// A value set by the environment is shown locked; a saved change that needs
-// a restart offers to restart the running conversations.
 test("locked settings and restart to apply", async ({ page, session }) => {
   await page.goto(`/#session=${session.id}`);
   await headerAction(page, "Settings");
@@ -637,7 +599,6 @@ test("locked settings and restart to apply", async ({ page, session }) => {
     .locator(".settings-nav")
     .getByRole("button", { name: "All conversations", exact: true })
     .click();
-  // A locked setting is listed, with its value and no way to edit it.
   const form = page.locator(".configuration");
   const locked = form.locator('[data-setting="UAGENT_CONTEXT"]');
   await expect(locked).toContainText(
@@ -645,7 +606,6 @@ test("locked settings and restart to apply", async ({ page, session }) => {
   );
   await expect(locked.getByRole("spinbutton")).toHaveCount(0);
 
-  // A setting that needs a restart offers one, once, for what is running.
   const timeout = form.getByRole("spinbutton", { name: "MCP call timeout" });
   await timeout.fill("90");
   await timeout.press("Enter");
@@ -657,8 +617,6 @@ test("locked settings and restart to apply", async ({ page, session }) => {
   await expect(notice).toContainText("Restarted 1 conversation");
 });
 
-// What the terminal does with /share and /restart, from the conversation
-// menu; /quit detaches a terminal and so closes nothing here.
 test("the conversation menu exports and restarts; /quit closes nothing", async ({
   page,
   session,

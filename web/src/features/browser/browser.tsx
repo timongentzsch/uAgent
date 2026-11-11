@@ -28,10 +28,6 @@ import { BrowserFrame, BrowserTools } from "./frame.tsx";
 import { useLatest } from "../../shared/use-latest.ts";
 import { KeyBar, keepFocus } from "../../shared/key-bar.tsx";
 
-// The agent's browser as a dialog: a live noVNC view of the host's Chrome,
-// who holds control, profiles, clipboard and keys. Loaded on first open,
-// and only when the host reports a browser.
-
 const VIEWER_RECONNECT_DELAY_MS = 1_000;
 const CLIPBOARD_PASTE_DELAY_MS = 150;
 const CLIPBOARD_COPY_TIMEOUT_MS = 1_500;
@@ -99,8 +95,7 @@ const SPECIAL_KEYS: Record<string, [string, number]> = {
   ArrowRight: ["→", X11_KEYSYM.right],
 };
 
-// The remote display for one Chrome launch. Control changes only toggle
-// input on the same connection; a new display remounts this.
+// Control changes toggle input on the same connection; a new display remounts.
 function Screen({
   instance,
   viewer,
@@ -353,7 +348,6 @@ export default function BrowserPanel({
   };
   const control = (action: "takeover" | "stop" | "setup_profile") =>
     run(() => send(action));
-  // Done answers the agent's request; the sheet then returns to the chat.
   const done = async () => {
     const answered = status.waiting;
     keyboard.current?.blur();
@@ -365,8 +359,6 @@ export default function BrowserPanel({
     setCard(null);
     keyboard.current?.blur();
   }, [live]);
-  // Opening the browser for the agent's request takes control in the same
-  // tap, once.
   // biome-ignore lint/correctness/useExhaustiveDependencies: takes over once (tookOver), whichever render's control runs
   useEffect(() => {
     if (
@@ -442,9 +434,8 @@ export default function BrowserPanel({
     rfb.addEventListener("clipboard", copied);
     return () => rfb.removeEventListener("clipboard", copied);
   }, [connection]);
-  // Copy in Chrome, then hand the text to this device. The promise keeps the
-  // tap's user activation alive while the remote clipboard arrives; without
-  // clipboard access the card shows the text, selected, for the system menu.
+  // The promise keeps the tap's user activation alive while the remote
+  // clipboard arrives; without clipboard access the card shows the text.
   const copy = async (letter: "c" | "x" | null = "c") => {
     if (!live) return;
     const copied = nextRemoteCopy();
@@ -483,15 +474,11 @@ export default function BrowserPanel({
   };
   const actions = useLatest({ copy, paste, chord });
 
-  // Desktop shortcuts inside the viewer: paste carries this device's
-  // clipboard to Chrome first, copy brings Chrome's clipboard back, and on
-  // Apple keyboards Command stands in for Ctrl.
   useEffect(() => {
     const element = screen.current;
     if (!element || !driving) return;
     const handle = (event: KeyboardEvent) => {
-      // Local overlay fields keep native editing. Only the hidden remote
-      // keyboard input participates in forwarding shortcuts to Chrome.
+      // Overlay fields keep native editing; only the hidden input forwards.
       if (isTextEntry(event.target) && event.target !== keyboard.current)
         return;
       if (APPLE && event.key === "Meta") {
@@ -524,8 +511,8 @@ export default function BrowserPanel({
     };
   }, [driving, viewing]);
 
-  // Live typing from the on-screen keyboard. Hardware keys arrive as keydown;
-  // soft keyboards report text through beforeinput or a finished composition.
+  // Hardware keys arrive as keydown; soft keyboards report text through
+  // beforeinput or a finished composition.
   const keyboardInput = (event: InputEvent) => {
     if (event.isComposing || event.inputType === "insertCompositionText")
       return;
@@ -576,7 +563,6 @@ export default function BrowserPanel({
       }
     });
   };
-  // Status, page, profiles and stopping share one menu on the status pill.
   const statusMenu = (
     <SheetButton
       label={`${detail}. Browser status and profiles`}
@@ -753,7 +739,6 @@ export default function BrowserPanel({
     </SheetButton>
   );
 
-  // One message at most sits on the screen's top edge.
   const banner =
     status.error ||
     (driving && status.profile_setup

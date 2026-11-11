@@ -24,8 +24,7 @@ namespace uagent {
 namespace {
 
 // One saved scope laid over what is below it. A value may refer to another
-// name in its own scope or in the environment as $NAME; only names the
-// registry knows become settings.
+// name in its own scope or in the environment as $NAME.
 void MergeScope(const SettingValues& saved, const char* source,
                 const RuntimeConfig::Values& process,
                 EffectiveConfigSnapshot& snapshot) {

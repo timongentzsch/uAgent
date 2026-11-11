@@ -2,10 +2,7 @@ import { ChevronDown, ChevronUp, X } from "lucide-preact";
 import { useEffect, useRef } from "preact/hooks";
 import { IconButton, Input } from "./ui.tsx";
 
-// A find field as a PDF viewer has one: the words, which occurrence of how
-// many is the current one, previous and next, and Close. Enter and
-// Shift+Enter step, Escape closes. What is searched, and how an occurrence
-// is shown, is the caller's.
+// What is searched, and how an occurrence is shown, is the caller's.
 export function FindField({
   label,
   words,

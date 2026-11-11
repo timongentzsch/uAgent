@@ -30,15 +30,12 @@ import { useApi } from "../state/api.ts";
 import { useAction } from "./use-action.ts";
 import { useElapsed } from "./time.ts";
 import { focusDecision, revealLiveRow } from "./navigation.ts";
-// The one control below the input for the turn and the work behind it.
 
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
 
-// Whether the turn works, waits on you or stopped short, for how long, and
-// what still runs behind it: "Working · 4m 02s · 1 command · 2 agents". It
-// never names a step, which its own row shows, and is absent while nothing
-// runs and nothing needs saying.
+// Reads like "Working · 4m 02s · 1 command · 2 agents". It never names a
+// step, which its own row shows, and is absent while nothing needs saying.
 function ActivityButtonView({
   items,
   agents,
@@ -55,17 +52,13 @@ function ActivityButtonView({
   choose,
 }: {
   items: Activity[];
-  // The agents this conversation started that are working.
   agents: Session[];
   session: SessionRef;
   online: boolean;
   connection?: ConnectionPhase;
   running: boolean;
-  // When the running turn started: its time so far.
   started?: number;
-  // A decision the turn waits on.
   pending: boolean;
-  // Why the last turn stopped short, until something new is sent.
   stopped?: string;
   resume?: () => void;
   report: Report;
@@ -194,8 +187,6 @@ function ActivityButtonView({
 // it shows changes.
 export const ActivityButton = updateChecked(ActivityButtonView);
 
-// What a running activity can be told: Stop, and for a command the turn
-// still waits on, Move to background.
 export function ActivityControls({
   item,
   name,
@@ -286,8 +277,6 @@ function ActivityRow({
   );
 }
 
-// An agent this conversation started: it opens as its conversation, and
-// Stop interrupts its turn.
 function AgentRow({
   agent,
   online,

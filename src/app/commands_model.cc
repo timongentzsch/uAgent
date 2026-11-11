@@ -64,9 +64,8 @@ std::string SaveSelectedModel(AppSession& session, const std::string& selected,
   return reply.output;
 }
 
-// The interactive catalog picker: lists the matches with its question, so a
-// client shows them above the prompt while the command is still running.
-// Its only caller is /model, so it stays here rather than in a header.
+// Lists the matches with its question, so a client shows them above the
+// prompt while the command still runs.
 std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
                                         const std::vector<Endpoint>& providers,
                                         CommandReply& reply) {
@@ -155,7 +154,6 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
   return std::move(search.matches[static_cast<size_t>(selected - 1)]);
 }
 
-// Searches every provider's catalog for `query` and applies the user's pick.
 void PickFromCatalog(AppSession& session, const std::string& query,
                      bool as_default, CommandReply& reply) {
   std::string suffix = query == "all" ? "" : " for " + TerminalSafe(query);
@@ -171,9 +169,8 @@ void PickFromCatalog(AppSession& session, const std::string& query,
     return;
   }
   if (search.matches.empty()) {
-    // A dead sidecar (e.g. an unreachable local proxy) must not disguise a
-    // plain non-match as an outage: only blame the catalogs when every
-    // queried one failed.
+    // The catalogs are blamed only when every queried one failed: one dead
+    // sidecar must not turn a plain non-match into an outage.
     const bool catalogs_down =
         search.queried > 0 && search.unavailable.size() >= search.queried;
     Emit(NoticeEvent(PresentationStatus::kFailed,

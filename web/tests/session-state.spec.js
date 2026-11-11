@@ -198,27 +198,22 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  // The turn's work opens on its calls, as a terminal shows them.
   const rows = page.locator(".transcript .node-row");
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  // The reply's thinking is a step of the work too.
   await expect(rows).toHaveText([
     /^Worked.*2 steps/,
     /^Read \./,
     /^Read \./,
     /^Thinking/,
   ]);
-  // The conversation menu sets how deep the tree opens: every call at full,
-  // the whole turn's work as one line at minimal.
   await chooseDetail(page, "Full");
   await expect(rows).toHaveCount(4);
   await chooseDetail(page, "Minimal");
   await expect(rows).toHaveText([/^Worked.*2 steps/]);
   await chooseDetail(page, "Default");
   await expect(rows).toHaveCount(4);
-  // Tables keep their layout and scroll instead of squeezing a column.
   const table = page.locator(".message .table-scroll > table");
   await expect(table).toHaveCount(1);
   await expect(table).toHaveCSS("display", "table");
@@ -245,10 +240,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   // The turn ends first: a reply arriving moves the row under a click on it.
   await expect(page.locator(".turn-footer")).toHaveCount(2);
   await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
-  // The receipt opens to a link to the memory.
   await openRow(page, "Saved memory project/browser-proof");
-  // Its detail reads top-down: key, one caption, then the memory itself
-  // directly below (not floated to the middle of the sheet).
   await page.getByRole("button", { name: "Open memory" }).first().click();
   const memory = page.getByRole("dialog", { name: "Memory" });
   await expect(memory).toBeVisible();
@@ -268,8 +260,6 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
   await page.reload();
-  // Retained history replays through the live pipeline: the same calls and
-  // the receipt, none still running, and the row opened here stays open.
   await expect(
     page.locator(".node-row", { hasText: /^Read \./ }).first(),
   ).toBeVisible();
@@ -338,8 +328,6 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   await prompt.press("Enter");
   await expect(page.locator(".composer .status-led.running")).toBeVisible();
 
-  // The reply's thinking is a row of the turn's work; a never-opened row
-  // draws no body.
   const thinkingRow = page.locator(".node-row", { hasText: "Thinking" });
   await expect(thinkingRow).toBeVisible();
   const thinking = thinkingRow.locator("..");
@@ -366,10 +354,8 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
     window.__stableCopyControl = node;
   });
   await stableTable.evaluate((node) => {
-    // How much of the answer shows: all of it, or only its settled blocks.
-    // The block still streaming can show raw syntax for a moment (a
-    // reference before its definition, a half-written marker), so only the
-    // blocks before it are held to the end. A reference counts as its label.
+    // The block still streaming can show raw syntax for a moment, so `settled`
+    // counts only the blocks before it. A reference counts as its label.
     window.__answerLength = (settled = false) => {
       const blocks = [
         ...(document.querySelector(".message.response > .markdown")?.children ||
@@ -478,7 +464,6 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
         table:
           window.__stableMarkdownTable ===
           document.querySelector(".message.response table"),
-        // Nothing that settled while streaming is gone at the end.
         kept: window.__answerLength() >= window.__maximumAnswerLength,
         removals: window.__stableRemovalCount,
       })),
@@ -527,8 +512,6 @@ test("compaction never opens an unsolicited viewer", async ({
     .click();
   await composer.fill("Background activity probe");
   await composer.press("Enter");
-  // A command left running in the background keeps its own row, which
-  // takes the result when the command ends: one row, after a reload too.
   const row = page.locator(".node.ok > .node-row", {
     hasText: "BROWSER_ACTIVITY",
   });

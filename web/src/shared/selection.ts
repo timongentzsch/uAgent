@@ -1,11 +1,8 @@
 import { useMemo, useState } from "preact/hooks";
 
-// Rows picked to act on together, as a desktop file list picks them: ⌘ or
-// Ctrl and a click adds or removes one, Shift and a click adds the run from
-// the last one picked, in the order the list shows; the row's checkbox is
-// ⌘-click. In select mode (a phone's, started from a row's menu) a tap
-// picks too. Esc, Clear or Done end it. The sidebar and the Library each
-// keep one; the design is the multi-select canvas.
+// Rows picked as a desktop file list picks them: ⌘/Ctrl-click adds or
+// removes one, Shift-click adds the run from the last one picked. In select
+// mode (a phone's, started from a row's menu) a tap picks too.
 
 export interface Selection {
   ids: ReadonlySet<string>;
@@ -61,7 +58,6 @@ export function useSelection() {
       start: (id: string) =>
         setState({ ids: new Set([id]), anchor: id, mode: true }),
       clear: () => setState(NONE),
-      // Keeps only rows still in `there`.
       keep: (there: readonly string[]) => setState((was) => kept(was, there)),
       // A click that picks instead of opening; true when it picked.
       click: (id: string, event: MouseEvent, order: readonly string[]) => {

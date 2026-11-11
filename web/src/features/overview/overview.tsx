@@ -33,10 +33,6 @@ import {
 } from "../../shared/ui.tsx";
 import "./overview.css";
 
-// A folder or workspace at a glance, in the conversation's place: where it
-// stands, a field that starts a conversation in it, what it spent and
-// changed, what waits on you, and its conversations as cards or a list.
-
 const WORDS: Record<SessionState, string> = {
   working: "Working",
   waiting: "Needs you",
@@ -44,7 +40,7 @@ const WORDS: Record<SessionState, string> = {
   idle: "Idle",
 };
 const DAY = 24 * 60 * 60 * 1000;
-// Grid or list, chosen on this device; unset follows the screen.
+// Chosen on this device; unset follows the screen.
 const layoutKept = stored<"" | "grid" | "list">(storageKeys.overview, "");
 
 export default function FolderOverview({
@@ -61,10 +57,7 @@ export default function FolderOverview({
   space?: Space;
   sessions: Session[];
   choose: (id: string) => void;
-  // A new conversation in the folder, with its first message.
   start: (folder: string, text: string) => Promise<unknown>;
-  // The folders' terminals, and opening one; a new one while the host
-  // offers them.
   terminals?: TerminalInfo[] | null;
   showTerminal: (terminal: TerminalInfo) => void;
   newTerminal?: (folder: string) => void;
@@ -252,8 +245,6 @@ function Stat({
   );
 }
 
-// One conversation: its state, the step it is on (the host's label), how
-// far its to-do list is, its agents, when it last changed and its cost.
 function Card({
   item,
   state,

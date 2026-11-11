@@ -13,10 +13,6 @@ import type {
 import { commandReceiptWaitMs } from "../shared/limits.ts";
 import { failure } from "../shared/types.ts";
 
-// Every call the page makes to the host: the route table, `api` for plain
-// requests, `command` for the host's command protocol with its receipts, and
-// uploads and paged reads.
-
 export const protocol = 2;
 
 // Every host path the page calls, so a path is written once.
@@ -27,7 +23,6 @@ const localRoutes = {
   browserStatus: "/api/browser/status",
   browserViewer: "/api/browser/viewer",
   command: "/api/command",
-  // A terminal's socket.
   terminal: (id: string) => `/api/terminals/${id}`,
   pushSubscriptions: "/api/push/subscriptions",
   // A folder at a glance: its spend, changes and git.
@@ -46,9 +41,7 @@ const localRoutes = {
     `/api/sessions/${session}/assets/${id}`,
   attachments: (session: string, name: string) =>
     `/api/sessions/${session}/attachments?name=${encodeURIComponent(name)}`,
-  // Everything the Library lists, from every place.
   library: "/api/library",
-  // Deletes one of its designs, decks, docs, design systems or shared files.
   libraryDelete: "/api/library/delete",
   // Rows that contain q, in every conversation or, with a session, in one.
   search: (q: string, session?: string) =>

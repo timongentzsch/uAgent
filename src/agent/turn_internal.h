@@ -77,9 +77,7 @@ inline const char* TurnStopReasonName(TurnStopReason reason) {
   return "";
 }
 
-// A turn's limits are the configured budgets as they stood when it started,
-// so this is the config's own budget block rather than a second declaration of
-// it. Named separately because a turn reads limits, never settings.
+// The configured budgets as they stood when the turn started.
 using TurnLimits = TurnBudgets;
 
 struct TurnMetrics {
@@ -107,14 +105,12 @@ struct Agent::TurnExecution {
   TurnStop stop;
   int64_t model_calls_before = 0;
   bool complete = false;
-  // Stopped at a limit and answered all the same: the stop names the limit,
-  // and the turn is not reported as a failure.
+  // Stopped at a limit and answered all the same: not reported as a failure.
   bool answered_at_limit = false;
 };
 
-// A mistake the model makes in a response or a round of calls. It never ends
-// a turn outright: each is counted, the model is told what to do instead, and
-// only a model that keeps ignoring that is stopped.
+// A model's mistake never ends a turn outright: it is counted and advised,
+// and only a model that keeps ignoring the advice is stopped.
 enum class Fault {
   kEmpty,
   kMarkup,
@@ -242,8 +238,7 @@ inline std::string FaultText(std::string text, int64_t strike,
 // Mutable loop counters and strategy. Safety and tool budgets span the turn;
 // only `recovery` starts over when steering changes the question.
 struct Agent::StepState {
-  // How this line of responses has been going: repetitions, failures and the
-  // advisories already sent about them.
+  // Repetitions, failures and the advisories already sent about them.
   struct Recovery {
     std::unordered_map<std::string, int64_t> rejection_rounds;
     std::unordered_map<std::string, int64_t> edit_failures;
@@ -258,9 +253,8 @@ struct Agent::StepState {
   int64_t provider_continuations = 0;
   bool context_overflow_recovery_attempted = false;
   bool midturn_compaction_enabled = true;
-  // What the harness has to tell the model about this step. It goes out as
-  // the last message of the next request and is erased once answered, so a
-  // nudge never accumulates in history.
+  // Sent as the last message of the next request and erased once answered,
+  // so a nudge never accumulates in history.
   std::string note;
 };
 

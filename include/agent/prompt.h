@@ -2,11 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_PROMPT_H_
 #define UAGENT_INCLUDE_AGENT_PROMPT_H_
-// System prompt authoring: the immutable base, the capability sections that
-// depend on which tools are registered, the experiment overlay, and the
-// runtime context line. The text itself lives in prompt.cc, so rewording the
-// prompt rebuilds one translation unit instead of every consumer of the
-// tool-call protocol.
+// System prompt authoring: the base, the capability sections that depend on
+// the registered tools, the overlay, and the runtime context line.
 
 #include <cstdint>
 #include <string>
@@ -18,46 +15,31 @@
 
 namespace uagent {
 
-// The immutable base every session starts from; the text and the reasoning
-// behind its shape live in prompt.cc.
 const char* SystemPromptBase();
 
-// The base sections an overlay may replace, in prompt order, and the
-// built-in text of one.
+// The base sections an overlay may replace, in prompt order.
 std::vector<std::string_view> PromptSections();
 std::string_view PromptSectionText(std::string_view name);
 
-// Why `overlay` cannot be saved as the system message's changes; empty when
-// it can.
+// Why `overlay` cannot be saved; empty when it can.
 std::string PromptOverlayIssue(const json& overlay);
 
-// Replace or extend base-prompt sections from a declarative overlay: what a
-// person saved, or a variant measured without rebuilding the binary. This
-// changes prompt text only: tools, approvals, capabilities and limits stay
-// host-owned, and the sections below the base are not reachable. `applied`
-// collects the section names an overlay actually changed.
+// Changes base-prompt text only; `applied` collects the sections it changed.
 std::string ApplyPromptOverlay(std::string prompt, const json& overlay,
                                std::vector<std::string>* applied);
 
-// The overlay a person saved (SavedPromptPath), or the one an experiment
-// names in UAGENT_INTERNAL_PROMPT_OVERLAY; an empty object when there is
-// none or it is unreadable or malformed, so neither can break a session.
-// `digest` receives a short content hash when a file was read.
+// The saved or the experiment's overlay; {} when missing or malformed.
 json PromptOverlay(std::string* digest);
 
-// Optional workflow rules, kept out of the cacheable base unless the matching
-// tools are actually registered. Tool schemas still own argument-level detail.
+// Workflow rules for the registered tools only, kept out of the cacheable base.
 std::string CapabilityPrompt(const std::vector<Tool>& tools,
                              const ToolSelection* selection = nullptr);
 
-// What the model reads as its system message: the base, then the context
-// layers (instructions), with each source kept for inspection. {effective,
-// sources, digest, bytes}, or {error} past 64 KiB.
+// {effective, sources, digest, bytes}, or {error} past 64 KiB.
 json ResolvePrompt(const std::string& base,
                    const json& context = json::array());
 
-// `sandbox` is SandboxWorkspaceRefusal(): said only when commands cannot write
-// the folder, the one sandbox fact a turn has to plan around from its start.
+// `sandbox` is SandboxWorkspaceRefusal(): set when commands cannot write here.
 std::string EnvironmentContext(const std::string& date, const std::string& cwd,
                                const std::string& approval,
                                const std::string& sandbox = "");

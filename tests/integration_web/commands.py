@@ -35,10 +35,9 @@ def offered_actions(body):
 
 @contextlib.contextmanager
 def conversation(binary, root, home, turns):
-    """A conversation on the web host with the config skill in reach. Its
-    model answers a turn with that turn's steps in `turns`, keyed by words of
-    the message that started it; a step is a response or a function of the
-    request, and each but the last makes one tool call."""
+    """A conversation on the web host with the config skill in reach. `turns`
+    maps words of a turn's first message to its steps: responses or functions
+    of the request, each but the last making one tool call."""
 
     def route(handler, body):
         words, results = last_prompt(body["messages"], turns)
@@ -71,9 +70,7 @@ def journal(home):
 
 def test_an_approved_command_runs_when_the_turn_ends(root, home, *, binary):
     """The person approves the exact line, in every approval mode; the model
-    is told only that it is queued, and the mode it asked for holds once the
-    turn is over. A line the host does not run is refused before anyone is
-    asked, and a refused approval runs nothing."""
+    is told only that it is queued. A refused approval runs nothing."""
     seen = {}
 
     def tell(_, body):

@@ -2,8 +2,6 @@ import { Circle, CircleCheck, CircleDot } from "lucide-preact";
 import type { TodoItem } from "../../shared/types.ts";
 import { cleanText } from "../../shared/ui.tsx";
 
-// The conversation's to-do list while it has items: the first item not done
-// is the current step and stands out, done ones are struck through.
 export default function TodoList({ items }: { items?: TodoItem[] }) {
   if (!items?.length) return null;
   const done = items.filter((item) => item.status === "done").length;

@@ -1,8 +1,3 @@
-/* Settings is a sheet: one header, a grouped list of sections and the
-   chosen section beside it. On a phone the list is the first screen and a
-   section pushes in over it, with Back in the header. Rows, groups and
-   captions come from the shared primitives; this file only lays them out. */
-/* A setting's value in its row: muted while it is the default. */
 .setting-summary {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -34,7 +29,6 @@
 .settings-nav .group {
   margin-bottom: var(--pad);
 }
-/* Beside the pane the list selects rather than drills in: no chevrons. */
 /* The section list is structured by its groups' gaps alone. */
 .settings-nav .group-rows > :not(:first-child) {
   border-top: 0;
@@ -44,32 +38,25 @@
     display: none;
   }
 }
-/* The pane's title and intro start where its rows' text does. */
 .settings-pane-title {
   margin: 0 0 var(--space-4);
   padding-inline: var(--inset-x);
   font-size: var(--font-display);
 }
-/* What the section's scope affects and where it is saved. */
 .settings-scope {
   margin: 0 0 var(--pad);
   padding-inline: var(--inset-x);
   color: var(--muted);
 }
-/* Content inside a group that is not a row (a slider, an error), inset as
-   a row's text is. */
 .group-block {
   padding: var(--space-6) var(--inset-x);
 }
-/* A setting edited in its row. What is typed gets a field as wide as a
-   value needs; a switch, a choice and a reset take only their own width. */
 .setting-field .row-value {
   gap: var(--space-3);
 }
 .setting-field .row-value > .text-control:not(.select) {
   width: var(--pane);
 }
-/* A model's name is cut short rather than pushed out of its row. */
 .setting-field .sheet-control {
   display: flex;
   min-width: 0;
@@ -80,8 +67,7 @@
 .setting-field .sheet-control .setting-summary {
   display: block;
 }
-/* A provider's sheet: Remove leads its actions, apart from Cancel and Save.
-   A hosted tool's definition opens in its list as a block of its own. */
+/* Remove leads the actions, apart from Cancel and Save. */
 .provider-form .dialog-actions > .destructive {
   margin-right: auto;
 }

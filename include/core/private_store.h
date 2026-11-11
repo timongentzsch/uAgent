@@ -13,19 +13,16 @@
 
 namespace uagent {
 
-// A private JSON file as it parses, or a discarded value when it is missing,
-// is no regular file, exceeds `byte_limit` or is not JSON: for a reader that
-// treats all of those as "nothing there".
+// The parsed file, or a discarded value when it is missing, no regular file,
+// over `byte_limit` or not JSON.
 json ReadJsonFile(const std::string& path, size_t byte_limit);
 
-// One page, from `offset`, of a body kept whole outside the transcript: a
-// retained artifact, or a diff kept with a session's edits. Any other path
-// answers an error.
+// One page, from `offset`, of a retained artifact or a session's kept diff;
+// any other path answers an error.
 json ReadPrivateArtifact(const std::string& path, size_t offset);
 
-// A small owner-only JSON document guarded across worker processes. Callers
-// validate their own schema; this class owns only locking, parsing and atomic
-// replacement.
+// A small owner-only JSON document, locked across worker processes and
+// replaced atomically. Callers validate their own schema.
 class PrivateJsonStore {
  public:
   PrivateJsonStore(const std::string& filename, json empty, size_t byte_limit,

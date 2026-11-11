@@ -130,8 +130,7 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
     }
     out += row + "\n";
   }
-  // The focused option as the agent showed it: its image, by path, and its
-  // preview, each line made safe and cut to the terminal.
+  // The focused option's image, by path, and its preview.
   if (cursor < options.size()) {
     const json& focused = options[cursor];
     const std::string shown =

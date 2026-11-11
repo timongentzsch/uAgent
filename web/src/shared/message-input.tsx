@@ -7,7 +7,6 @@ import "./message-input.css";
 // Ctrl/Cmd+Enter from a hardware keyboard on a tablet.
 const softKeyboard = matchMedia("(pointer: coarse) and (hover: none)");
 
-// Main and child composers share growth, IME handling and submit semantics.
 export default function MessageInput({
   inputRef,
   submit,

@@ -4,9 +4,7 @@ import { Button, IconButton } from "../../shared/ui.tsx";
 import { coarsePointer } from "../../shared/layout.ts";
 import "./browser.css";
 
-// The browser's fixed geometry, shared by its loading state and the live
-// panel: the remote screen takes all the space, one bar sits below. State
-// changes only change what fills these slots, never their size.
+// State changes only change what fills these slots, never their size.
 export function BrowserFrame({
   screen,
   bar,
@@ -37,8 +35,7 @@ export function BrowserTools({
   const keepFocus = (event: Event) => event.preventDefault();
   return (
     <>
-      {/* Touch devices type through the on-screen keyboard; a mouse and
-          keyboard reach Chrome directly. */}
+      {/* A mouse and keyboard reach Chrome directly. */}
       {coarsePointer() && (
         <IconButton
           label="Keyboard"

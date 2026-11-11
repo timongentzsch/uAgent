@@ -175,8 +175,6 @@ json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
         JsonValue(configured.sources, key.c_str(), "default");
     entry["source"] = source;
     entry["locked"] = source == "environment" || source == "cli";
-    // Where it is set, scope by scope: what a change here would override,
-    // and what overrides it.
     for (const auto& [scope, held] : configured.layers) {
       if (auto own = held.find(key);
           own != held.end() && !own->second.empty()) {
@@ -276,9 +274,8 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       break;
     }
     case SelfTopic::kRoutes: {
-      // Which routes exist, never their credentials. A model that cannot read
-      // this guesses a selection, and a guess that resolves to the wrong
-      // endpoint fails as an authentication error rather than as a typo.
+      // Which routes exist, never their credentials. Without it a model
+      // guesses, and a wrong guess fails as an authentication error.
       ProviderCatalog catalog = LoadProviderCatalog();
       json models = json::array();
       for (const Route& route : catalog.models) {
@@ -356,10 +353,8 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
 }
 
 json PromptSurfaceJson() {
-  // Capability fragments are conditional on a registered tool, so each one is
-  // rendered against a probe registry naming just its trigger. Nothing here
-  // reads the environment or a live session: the emitted surface has to be a
-  // function of the source alone for the CI diff to mean anything.
+  // Each capability fragment renders against a probe registry naming just its
+  // trigger: the surface is a function of the source alone, for the CI diff.
   auto probe = [](const char* name) {
     return MakeTool(
         name, "", json::object(),
@@ -387,12 +382,8 @@ json PromptSurfaceJson() {
 }
 
 json ToolSurfaceJson() {
-  // Every schema the model can be charged for, not just the built-in ones.
-  // The conditionally registered tools are the largest schemas in the surface,
-  // so leaving them out left most of the token cost outside the drift gate.
-  // Each factory is constructed with empty dependencies: the emitted text is
-  // the template, and the route- and catalogue-dependent parts a live session
-  // splices in are reported by `/context` instead.
+  // Every schema the model can be charged for, conditional tools included.
+  // Factories get empty dependencies: the emitted text is the template.
   ActivitySupervisor supervisor;
   Api api;
   UsageAccumulator usage;

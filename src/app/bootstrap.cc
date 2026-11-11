@@ -112,8 +112,8 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
       exit_code = 2;
       return false;
     }
-    // Said where it is approved: a server that opts out of the sandbox is the
-    // part of this file that can reach what the sandbox keeps from commands.
+    // A server that opts out of the sandbox can reach what the sandbox keeps
+    // from commands, so the prompt names it.
     std::string unconfined;
     json file;
     std::string unread;
@@ -159,9 +159,8 @@ ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
     instructions = LoadProjectInstructions(workspace, ProjectDocBytes());
   }
   if (config.memory_enabled) {
-    // A delegated child's brief is standalone: re-inlining every always-on
-    // memory there only duplicates the parent's context. What the slice
-    // leaves out stays in the index, so only a cut index loses anything.
+    // A delegated child's brief is standalone: inlining always-on memory
+    // there only duplicates the parent's context.
     MemoryIndex always;
     if (AgentDepth() == 0) {
       always = LoadAlwaysOnMemory(workspace, MemoryAlwaysBytes());
@@ -197,8 +196,7 @@ void ReportSandbox() {
         NoticeEvent(PresentationStatus::kWarned,
                     "sandbox: " + status.reason + "; commands run unconfined"));
   }
-  // The folder is said in full: "not granted" alone does not tell a person
-  // that every command in this conversation is about to fail to save its work.
+  // A folder that is not writable gets a notice of its own, said in full.
   const std::string workspace = CanonicalCwd();
   // At the readonly level the folder is not writable on purpose.
   if (std::string refusal = SandboxWorkspaceRefusal();
@@ -238,8 +236,6 @@ void LogReady(const AppContext& context) {
   provenance["sandbox"] = SandboxDiagnosticJson();
   provenance["active_schema_digest"] =
       HashHex(JsonDump(ToolSchemas(context.tools)));
-  // The behavior switches are recorded in the provenance and repeated at the
-  // top level of the event.
   const json behavior = {
       {"reasoning_effort", api.reasoning_effort},
       {"context_window", api.ctx_window},
@@ -448,9 +444,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
   ProbeModel(api);
   ActivateRoute(api);
-  // A flag for a conversation's setting sets it for that conversation, and
-  // is kept with it: a run started with a model and a mode (a scheduled
-  // task's) still has them when its runtime starts again without the flag.
+  // A flag for a conversation's setting is kept with the conversation, so a
+  // runtime that starts again without the flag still has it.
   for (const ConfigDescriptor& setting : ConfigRegistry()) {
     const auto flag =
         context->options.overrides.find(std::string(setting.environment));

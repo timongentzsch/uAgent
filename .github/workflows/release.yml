@@ -1,11 +1,7 @@
 name: Release
 
-# A tag is pushed after its commit has passed CI on master, so the release
-# promotes what that run already built and tested instead of building again.
-# Every file published here comes from the master run of ci.yml for the same
-# commit SHA (the release-complete and web-dist artifacts, kept 7 days); the
-# attestation is made over exactly those files. When the commit has no such
-# run, or its artifacts expired, ci.yml is run in full for the tag instead.
+# A tag's commit has passed CI on master, so the release promotes the files
+# that run built; without a live run, ci.yml runs in full for the tag.
 on:
   push:
     tags: ["v*"]
@@ -32,8 +28,7 @@ jobs:
             --commit "$GITHUB_SHA" --status success --limit 1 \
             --json databaseId --jq '.[0].databaseId // empty')
           if [ -n "$run_id" ]; then
-            # Two live artifacts: the complete releases and the web UI. A
-            # run that skipped the native jobs or whose artifacts expired
+            # A run that skipped the native jobs or whose artifacts expired
             # does not count.
             live=$(gh api "repos/$GH_REPO/actions/runs/$run_id/artifacts" --paginate \
               --jq '[.artifacts[] | select(.expired | not) | select(.name | test("^(release-complete|web-dist)$"))] | length' \
@@ -126,9 +121,8 @@ jobs:
             gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
           gh release upload "$GITHUB_REF_NAME" dist/* --clobber
 
-  # The container the installer runs: one image per architecture, built on
-  # native runners (an emulated C++ build outlives any timeout), then one
-  # manifest under the version and latest.
+  # One image per architecture on native runners: an emulated C++ build
+  # outlives any timeout.
   image:
     needs: release
     # Without this, promoting (build skipped) skips every job after release.

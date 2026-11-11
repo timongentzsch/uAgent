@@ -1,6 +1,5 @@
-// Markup on an image to steer the agent: freehand strokes and numbered pins
-// with a note each, baked into a copy that is attached like any upload.
-// One Pointer Events path serves mouse, trackpad, finger and pencil.
+// Markup on an image: strokes and numbered pins baked into a copy attached
+// like any upload. One Pointer Events path serves mouse, finger and pencil.
 import {
   useCallback,
   useEffect,
@@ -56,7 +55,6 @@ function outline(stroke: Stroke, size: number, last: boolean) {
 const pinNumber = (items: Item[], index: number) =>
   items.slice(0, index + 1).filter((item) => item.kind === "pin").length;
 
-// The mark colour and the colour of text on it, from the theme tokens.
 function colors() {
   const style = getComputedStyle(document.documentElement);
   return {
@@ -65,7 +63,6 @@ function colors() {
   };
 }
 
-// Wrapped lines of `text` no wider than `width`.
 function wrap(ctx: CanvasRenderingContext2D, text: string, width: number) {
   const lines: string[] = [];
   let line = "";
@@ -80,9 +77,8 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, width: number) {
   return lines;
 }
 
-// Everything drawn in image coordinates: the screen canvas scales the
-// context, the export draws at natural size. `skip` is the pin whose note
-// is being edited in its bubble.
+// Drawn in image coordinates: the screen canvas scales the context, the
+// export draws at natural size. `skip` is the pin whose note is being edited.
 function paint(
   ctx: CanvasRenderingContext2D,
   image: ImageBitmap,
@@ -173,19 +169,16 @@ export default function Annotator({
   // The fit: image pixels to stage pixels at zoom 1, and the stage's size.
   const [scale, setScale] = useState(0);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
-  // The zoom over that fit (see ZoomSurface).
   const [view, setView] = useState<ZoomView>({ scale: 1, x: 0, y: 0 });
   // A failed export keeps the markup on screen, unlike a failed load.
   const save = useAction();
   const live = useRef<Stroke | null>(null);
   const press = useRef<{ id: number; x: number; y: number } | null>(null);
-  // The keyboard's crosshair, in image pixels: shown while the canvas has
-  // keyboard focus, where Enter places a pin.
+  // The keyboard's crosshair, in image pixels.
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [aiming, setAiming] = useState(false);
   const hint = useId();
 
-  // Fit the image to the stage; the backing store follows the pixel ratio.
   useLayoutEffect(() => {
     const element = stage.current;
     if (!image || !element) return;
@@ -472,7 +465,6 @@ export default function Annotator({
                       event.preventDefault();
                       event.stopPropagation();
                       setEditing(null);
-                      // Back to the image, where the keyboard placed it.
                       canvas.current?.focus({ preventScroll: true });
                     }}
                   />

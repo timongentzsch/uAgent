@@ -20,8 +20,7 @@ enum class RemoteErrorKind : uint8_t {
   kContextLengthExceeded,
 };
 
-// Provider-specific stop spellings collapse into one turn policy while the
-// raw reason and details remain available for diagnostics.
+// Provider-specific stop spellings collapse into one turn policy.
 enum class ResponseStopCause : uint8_t {
   kNone,
   kComplete,
@@ -80,8 +79,6 @@ inline const char* ResponseStopCauseName(ResponseStopCause cause) {
   return "other";
 }
 
-// A non-streaming JSON call: the parsed body, the HTTP status, and a
-// transport- or provider-level error message when the call did not land.
 struct JsonResponse {
   json body = json(json::value_t::discarded);
   int64_t http_status = 0;
@@ -89,8 +86,7 @@ struct JsonResponse {
   std::string error;
 };
 
-// A retrieved web resource: the bytes as received and the type the origin
-// declared. Nothing in the client interprets either.
+// A retrieved web resource: bytes and declared type, both uninterpreted.
 struct WebResponse {
   std::string body;
   std::string content_type;
@@ -113,16 +109,14 @@ struct ToolCall {
 
 struct ChatResult {
   std::string response_id;
-  // The provider's own name for the response and, through a router such as
-  // OpenRouter, the upstream that served it; empty when the stream omits them.
+  // The provider's response name and, through a router, the serving upstream.
   std::string generation_id{};
   std::string served_by{};
   int64_t attempt = 0;
   std::string content;
   std::string reasoning;
   bool reasoning_field = false;
-  // True when the route emitted the `reasoning_content` extension. Routes
-  // that require continuation replay receive the same observed field.
+  // The route emitted `reasoning_content`; replay sends the same field back.
   bool reasoning_content_field = false;
   json reasoning_details = json::array();
   bool reasoning_details_field = false;

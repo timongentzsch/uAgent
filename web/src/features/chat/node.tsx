@@ -26,7 +26,6 @@ import type { Node, SessionRef } from "../../shared/types.ts";
 import { NodeBody } from "./bodies.tsx";
 import { MessageView } from "./message.tsx";
 
-// The detail level transcripts start at on this device.
 export const DetailContext = createContext("default");
 
 // Rows a person opened or closed here, kept by conversation and node id.
@@ -56,12 +55,8 @@ interface Scope {
   session: SessionRef;
 }
 
-// The transcript: the host's nodes as one tree, open to the level's depth.
-// Each node is drawn by its own component, which renders again only when its
-// node, or for a row what is under it, changed: a streamed frame renders the
-// one node it touched. Keys hold the conversation and level: a new level
-// draws every row from its own start, and a reused element never carries
-// another conversation's state for the same id.
+// Keys hold the conversation and level: a new level draws every row afresh,
+// and a reused element never carries another conversation's state.
 export function Transcript({
   nodes,
   online,
@@ -86,9 +81,8 @@ export function Transcript({
   );
 }
 
-// A message you sent keeps one row from the moment you send it: the row this
-// device shows at once and the host's that replaces it share a key, so the
-// row is updated in place rather than rebuilt.
+// The row this device shows at once and the host's that replaces it share
+// a key, so the row is updated in place rather than rebuilt.
 const rowKey = (node: Node) =>
   !node.parent && node.request_id ? `request:${node.request_id}` : node.id;
 
@@ -148,8 +142,7 @@ class NodeView extends Component<NodeProps> {
   }
 }
 
-// A row: one line that opens to its body and the rows under it. It starts
-// open when it is less deep than the level, unless this device remembers
+// Starts open when less deep than the level, unless this device remembers
 // the person opening or closing it.
 function RowNode({
   branch,
@@ -215,8 +208,7 @@ function RowNode({
   );
 }
 
-// The rows under an open row. A long list shows its latest rows and one
-// line that opens the earlier ones.
+// A long list shows its latest rows and one line that opens the earlier ones.
 function Kids({
   kids,
   since,
@@ -278,9 +270,6 @@ function arrows(
   if (target instanceof HTMLElement) target.focus();
 }
 
-// A row's one line: its headline, then its result word. A failed row reads
-// red, a running one pulses, a running call counts its time (a turn's time is
-// the status line's), and a closed running row says what it is doing now.
 class NodeRow extends Component<{
   node: Node;
   open: boolean;

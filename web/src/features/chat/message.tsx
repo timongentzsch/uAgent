@@ -27,10 +27,8 @@ import { isRow } from "../../shared/tree.ts";
 import { TurnFooter } from "./turn-footer.tsx";
 import { SharedFile } from "./bodies.tsx";
 
-// Inline @-mention reference. Resolves against the message's own files so
-// a renamed file shows its current name; a removed one degrades to muted
-// text instead of a broken image. No files (replies echoing the syntax):
-// the splitter never emits mentions, so this stays unreachable.
+// Resolves against the message's own files: a renamed file shows its
+// current name, a removed one degrades to muted text.
 function MentionFile({
   id,
   alt,
@@ -56,8 +54,7 @@ function MentionFile({
   );
 }
 
-// Who wrote a message and when, e.g. "You, 10:32": its accessible name and
-// its menu's. Smart and absolute styles only, so it needs no ticking.
+// Smart and absolute time styles only, so it needs no ticking.
 function useRowName(who: string, time?: string) {
   const [prefs] = useStored(devicePrefs.time);
   const date = time ? new Date(time) : null;
@@ -66,7 +63,6 @@ function useRowName(who: string, time?: string) {
   return `${who}, ${formatMoment(date, { ...prefs, style })}`;
 }
 
-// Who wrote a message in your place, for its accessible name.
 const AUTHORS: Record<string, string> = {
   agent: "Agent report",
   activity: "Background result",
@@ -77,10 +73,6 @@ const AUTHORS: Record<string, string> = {
 // the file itself (a reference, a vision-model description).
 const AS_SENT = new Set(["Image", "Document", "Text", "Audio", "Video"]);
 
-// A node drawn whole rather than as a row: your message, with its time and
-// menu on its first line; a reply or the files the agent handed you, which
-// have no header line (an answer's time and menu sit at the end of its
-// turn's footer); files a call brought into context; and a turn's footer.
 export function MessageView({
   node,
   answer,
@@ -101,7 +93,6 @@ export function MessageView({
   );
 }
 
-// Files a call's result brought into context, under that call.
 function BroughtFiles({
   node,
   online,
@@ -141,11 +132,9 @@ function Message({
     open,
     openFile,
   } = useContext(MessageActions);
-  // The whole text loads when asked for by Show full message.
   const [wantFull, setWantFull] = useState(false);
   const reply = node.role === "assistant";
-  // What woke the conversation in your place has your message's line, not
-  // its bubble.
+  // A message with an origin (what woke the conversation) has no bubble.
   const chrome = reply ? "response" : node.origin ? "mail" : "user inverse";
   const load = useNodeReader(session, read);
   const truncated = node.body?.truncated;
@@ -271,8 +260,6 @@ function Message({
       {online && !!node.files?.length && (
         <AttachmentList files={node.files} href={(id) => `${assets}${id}`} />
       )}
-      {/* What the agent handed you: a file, previewed where that is safe,
-          or an artifact in the folder. */}
       {node.parts?.map((part, index) =>
         part.kind === "file" ? (
           <SharedFile key={index} file={part} href={`${assets}${part.id}`} />
@@ -321,9 +308,8 @@ function Message({
   );
 }
 
-// Prepare only the bounded completed page about to be mounted. The same
-// parser cache is read synchronously by Markdown on its first render; a
-// conversation's messages cite files, so they render with references.
+// Prepares only the page about to be mounted; Markdown reads the same
+// parser cache synchronously on its first render.
 export async function prepareHistoryNodes(nodes: Node[]) {
   const texts = new Set<string>();
   for (const node of nodes) {

@@ -254,10 +254,9 @@ std::string AssetStore::Claim(const std::string& session_path, const json& ids,
   }
   std::vector<std::pair<std::string, json>> claims;
   for (const json& claim : ids) {
-    // Claims are bare asset IDs, or {id, name} objects carrying the
-    // composer's display name (deduped/renamed labels). The display
-    // name is stored on the record before commit, so the history echo
-    // and the model payload agree with what the sender saw.
+    // A claim is a bare asset id or {id, name}. The display name is stored
+    // on the record before commit, so history and the model payload agree
+    // with what the sender saw.
     std::string asset_id = claim.is_string() ? claim.get<std::string>()
                                              : JsonValue(claim, "id", "");
     std::string display = claim.is_object() ? JsonValue(claim, "name", "") : "";

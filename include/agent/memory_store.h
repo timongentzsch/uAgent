@@ -2,11 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_MEMORY_STORE_H_
 #define UAGENT_INCLUDE_AGENT_MEMORY_STORE_H_
-// Durable memory audit records and secret redaction. The memory tool, the
-// background extractor and the agent loop share this store: events are the
-// append-only audit trail, receipts prove a background write, and redaction
-// is the last line of defense before any memory text reaches a prompt.
-// Bodies live in src/agent/memory_store.cc.
+// Memory's append-only audit events, the receipts that prove a background
+// write, and secret redaction before memory text reaches a prompt.
 
 #include <string>
 #include <vector>
@@ -24,8 +21,7 @@ struct MemoryEvent {
   std::string action;
   std::string key;
   std::string preview;
-  // What an overwrite replaced. A set on an existing key is the one path that
-  // destroys memory without a forget, so the audit record keeps a preview.
+  // A preview of what an overwrite replaced.
   std::string previous;
   std::string source_session;
   std::string workspace;
@@ -45,7 +41,6 @@ bool ReadMemoryReceipt(const std::string& path, MemoryEvent& event,
 bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
                       std::string& error);
 
-// Deterministic last line of defense for explicit writes.
 std::string RedactMemorySecrets(std::string text);
 
 }  // namespace uagent

@@ -18,9 +18,6 @@ import { useApi } from "../state/api.ts";
 import { bytes } from "./quantities.ts";
 import { maxUploadBytes } from "./limits.ts";
 
-// The ask decision: the model's questions, one to a page, with options,
-// Other, an image each, and a review before they are sent.
-
 interface Answer {
   choices: string[];
   // "Other" is chosen; its text counts only then.
@@ -34,9 +31,7 @@ const blank = (): Answer => ({ choices: [], other: false, text: "" });
 const answered = (answer: Answer) =>
   answer.choices.length > 0 || (answer.other && !!answer.text.trim());
 
-// The model's questions, one page each: the options, a free-text Other and
-// an optional image. Steps above the page show where you are and lead back;
-// three or more questions end on a review. Submit sends every answer at
+// Three or more questions end on a review. Submit sends every answer at
 // once, in question order.
 export default function Ask({
   id,
@@ -93,7 +88,6 @@ export default function Ask({
   };
   const ready =
     answers.every(answered) && !answers.some((answer) => answer.uploading);
-  // The review is a page of its own, after the last question.
   const review = questions.length >= 3;
   const last = questions.length - (review ? 0 : 1);
   const [page, setPage] = useState(0);
@@ -101,7 +95,6 @@ export default function Ask({
   const [reached, setReached] = useState(0);
   const panel = useRef<HTMLDivElement>(null);
   const advance = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // A page pushes in from the end, or from the start going back.
   const [back, setBack] = useState(false);
   const go = (to: number) => {
     clearTimeout(advance.current);
@@ -246,7 +239,6 @@ export default function Ask({
   );
 }
 
-// The answers so far; each leads back to its question.
 function ReviewPage({
   questions,
   answers,
@@ -297,7 +289,6 @@ function QuestionPage({
   answer: Answer;
   session: string;
   online: boolean;
-  // The only question, so no step names it.
   alone: boolean;
   update: (change: Partial<Answer>) => void;
   attach: (file?: File) => Promise<void>;
@@ -308,7 +299,6 @@ function QuestionPage({
   const multiple = !!item.multi_select;
   const type = multiple ? "checkbox" : "radio";
   const heading = cleanText(item.header);
-  // Options the agent showed read as cards wide enough to judge.
   const visual = item.options.some(
     (option) => option.image?.id || option.preview,
   );

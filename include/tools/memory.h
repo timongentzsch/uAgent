@@ -22,28 +22,24 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
                             const std::optional<std::string>& content);
 json MemoryControl(const json& request, const std::filesystem::path& workspace);
 
-// Native writable memories plus read-only Codex/Claude memory files drive
-// startup discovery, the tool, and /memory.
+// Native writable memories plus read-only Codex and Claude memory files.
 std::vector<MemoryEntry> ListMemories();
 std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
                                       size_t limit = 0);
 // Where Claude Code keeps the memories of the folder `cwd` belongs to.
 std::filesystem::path ClaudeMemoryPath(const std::filesystem::path& cwd);
-// One line per memory within `max_bytes`, leaving out the files `inlined`
-// already shows whole.
+// One line per memory within `max_bytes`, without the files in `inlined`.
 MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
                             const std::vector<std::string>& inlined = {});
-// Behavioral always-on slice: full content of global-scope memories, capped.
+// The full content of global-scope memories, capped at `max_bytes`.
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
                                size_t max_bytes);
 
-// One bounded idle-session extraction pass; the child reads only the source and
-// receives only the memory tool.
+// One bounded extraction pass over an idle session, by a child agent.
 std::string StartMemoryExtractor(ActivitySupervisor& processes, const Api& api,
                                  const std::filesystem::path& cwd,
                                  const std::string& current_session);
-// Called by that child as it ends: the session it read is marked done, or
-// released to be tried again.
+// Called by that child as it ends: marks its session done, or releases it.
 void SettleMemoryClaim(bool extracted);
 bool BuildMemoryExtractionPrompt(const std::string& source,
                                  const std::filesystem::path& cwd,

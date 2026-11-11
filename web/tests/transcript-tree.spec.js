@@ -6,10 +6,8 @@ import {
 } from "./fixtures.js";
 import { agents, arrivals, conversation } from "./golden-turns.js";
 
-// The transcript tree on the Vite-served app with a mocked host: a saved
-// conversation of calls, a failure, guidance and an answer, at each
-// detail level, on a phone and a desktop. Set UAGENT_SHOTS to a folder to
-// keep a screenshot of each.
+// The transcript tree on the dev page with a mocked host, at each detail
+// level. Set UAGENT_SHOTS to a folder to keep a screenshot of each.
 test.use({ serviceWorkers: "block" });
 
 const ID = "a".repeat(32);
@@ -112,7 +110,6 @@ for (const [device, viewport] of [
       const measured = await gaps(page);
       expect(measured.length).toBeGreaterThan(0);
       expect(new Set(measured).size, JSON.stringify(measured)).toBe(1);
-      // Every row is one line of the same height.
       const heights = await shown.evaluateAll((items) =>
         items.map((row) => Math.round(row.getBoundingClientRect().height)),
       );
@@ -141,7 +138,6 @@ test("a long result word gives way to the headline on a phone", async ({
       })),
     ),
   );
-  // The headline reads whole and is the wider; the word is the one cut.
   expect(headline.cut).toBe(false);
   expect(headline.width).toBeGreaterThan(word.width);
   expect(word.cut).toBe(true);
@@ -149,7 +145,6 @@ test("a long result word gives way to the headline on a phone", async ({
     "text-overflow",
     "ellipsis",
   );
-  // Opened, the row says the whole of why.
   await row.click();
   await expect(rejected.locator(".node-body")).toContainText(
     "path is outside the folder: /etc is not inside /project",
@@ -164,7 +159,6 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await work.focus();
   await page.keyboard.press("ArrowRight");
   await expect(work).toHaveAttribute("aria-expanded", "true");
-  // → again moves to the first row under it; ← closes it from there back.
   await page.keyboard.press("ArrowRight");
   const first = page.locator('[data-message-id="t-f"] > .node-row');
   await expect(first).toBeFocused();
@@ -173,7 +167,6 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await page.keyboard.press("Space");
   await expect(work).toHaveAttribute("aria-expanded", "false");
   await page.keyboard.press("Enter");
-  // The row stays open after a reload; choosing a level forgets it.
   await page.reload();
   await expect(work).toHaveAttribute("aria-expanded", "true");
   await expect(

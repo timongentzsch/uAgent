@@ -49,10 +49,8 @@ def test_first_event_timeout(root, home, *, binary):
         assert_true(result.returncode == 1, result.returncode)
         assert_true("no event within 1s" in result.stderr, result.stderr)
         assert_true(len(server.requests) == 3, server.requests)
-        # The lower bound is the behaviour -- three attempts each waiting out a
-        # 1s first-event timeout -- so it is absolute. The upper bound only
-        # says the retries ended, which is a wall-clock claim about the host
-        # and scales with an instrumented build like every other deadline.
+        # The lower bound is the behaviour: three attempts each waiting out a
+        # 1s first-event timeout. The upper bound scales like every deadline.
         assert_true(3.0 < elapsed < budget(12), elapsed)
 
 
@@ -200,9 +198,8 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home, *, binary):
 
 
 def test_context_fill_follows_reported_prompt_tokens(root, home, *, binary):
-    """The provider's reported prompt counts tokens a byte estimate cannot see
-    (its own tool-use prompt), so a small conversation the provider reports as
-    nearly full is compacted instead of overflowing the window."""
+    """The provider's reported prompt counts tokens a byte estimate cannot see,
+    so a conversation it reports as nearly full is compacted in time."""
 
     def requests(reported):
         first = tool_call(
@@ -476,8 +473,8 @@ def test_image_fallback_reaches_another_provider(root, home, *, binary):
         assert_true("image_url" not in serialized, serialized[:200])
         assert_true("described, not seen" in serialized, serialized[:400])
         assert_true("stack trace" in serialized, serialized[:400])
-        # The conversation model is never told which way images arrived. The
-        # check spans every role: runtime context is a user turn now.
+        # The conversation model is never told which way images arrived, in
+        # any role: runtime context is a user turn.
         system = "\n".join(str(message.get("content", "")) for message in body["messages"])
         assert_true("vision model" not in system, system)
         assert_true("Image input unavailable" not in system, system)

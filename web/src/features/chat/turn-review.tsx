@@ -6,9 +6,8 @@ import { useAction } from "../../shared/use-action.ts";
 import { useApi } from "../../state/api.ts";
 import { formatStat } from "../../shared/display.ts";
 
-// A turn's changed files, each with its Undo, and each opening its diff
-// in the Files pane where there is one. The host puts a file back only
-// while it still holds what the turn left; otherwise it says why.
+// The host puts a file back only while it still holds what the turn left;
+// otherwise it says why.
 export default function TurnReview({
   files,
   turn,

@@ -2,25 +2,16 @@
 
 #ifndef UAGENT_INCLUDE_CORE_DEFAULTS_H_
 #define UAGENT_INCLUDE_CORE_DEFAULTS_H_
-// Opinionated built-in names and lists: the strings and string lists uAgent
-// ships a view on. The convention across the three constant homes:
-//   - names and lists live here;
-//   - numbers live in include/core/limits.h;
-//   - settings a user can change live in include/core/config_registry.h.
-// A list a user can extend names the setting that extends it, next to the
-// list. Keep this header dependency free -- it is included widely.
+// Built-in names and lists; numbers live in limits.h, user settings in
+// config_registry.h. Keep this header dependency free: it is included widely.
 
 #include <string_view>
 
 namespace uagent {
 
-// Credential stores that sandboxed commands cannot read and the file tools
-// refuse, relative to the home folder (see HiddenPaths()). A path that does
-// not exist is skipped. `sandbox.reveal` takes entries out of this list and
-// `sandbox.hide` adds your own, e.g. sandbox.hide=~/.config/mycloud.
-//
-// Deliberately not listed: ~/.ssh and ~/.config/gh. Git over ssh and the
-// GitHub CLI are expected agent work, and both need their login.
+// Credential stores under the home folder that sandboxed commands cannot read
+// and the file tools refuse; `sandbox.reveal` and `sandbox.hide` adjust them.
+// ~/.ssh and ~/.config/gh stay out: git over ssh and gh need their login.
 inline constexpr std::string_view kHiddenCredentialStores[] = {
     ".aws",                // AWS CLI and SDK credentials and config
     ".config/gcloud",      // Google Cloud CLI credentials and tokens
@@ -32,11 +23,8 @@ inline constexpr std::string_view kHiddenCredentialStores[] = {
     ".docker/config.json"  // Docker registry logins
 };
 
-// Package-manager caches sandboxed commands and MCP servers may write,
-// relative to the home folder. They are per-user, so they sit outside every
-// other root; a missing one is created so the tool can fill it. Of the data
-// directory only uv's part: the rest holds keyrings, autostart entries and
-// other programs' state. Another cache is granted with `sandbox.write`.
+// Package-manager caches under the home folder that sandboxed commands may
+// write. Of the data directory only uv's part: the rest holds keyrings.
 inline constexpr std::string_view kPackageCaches[] = {
     ".cache",           // XDG cache: pip, uv, Go, Playwright and most others
     ".local/share/uv",  // uv's tools and Python installs
@@ -44,8 +32,7 @@ inline constexpr std::string_view kPackageCaches[] = {
 };
 // On macOS, the native cache folder as well (uv keeps using ~/.cache there).
 inline constexpr std::string_view kMacPackageCaches[] = {"Library/Caches"};
-// Folders of the home folder's visible entries that commands still read at a
-// level that confines reads: macOS's caches and its developer tools' state.
+// Home-folder entries commands still read at a level that confines reads.
 inline constexpr std::string_view kReadableHomePaths[] = {
     "Library/Caches", "Library/Developer", "Library/Python"};
 
@@ -58,12 +45,8 @@ inline constexpr char kCapturedLogMarker[] = "\n[captured log: ";
 inline constexpr char kSkillMarker[] = "[skill ";
 inline constexpr char kExplicitSkillMarker[] = "[explicit skill instructions";
 
-// Environment variables that never reach a child process: shell commands,
-// MCP servers and delegated agents (see ChildEnvironment). Names are matched
-// without regard to case, and a variable whose name holds a marker, or looks
-// like a credential (CredentialLikeKey), is held back as well. A shell may
-// keep one by name with `shell.envAllow`; `sandbox.hideEnv` adds your own
-// names, e.g. sandbox.hideEnv=MYCLOUD_SESSION,INTERNAL_URL.
+// Variables that never reach a child process, matched without regard to
+// case; so is a name that holds a marker or looks like a credential.
 inline constexpr std::string_view kHiddenEnvNames[] = {
     "uagent_providers", "uagent_session_budget", "uagent_internal_usage_file",
     "ssh_auth_sock",  // the agent that holds your ssh keys
@@ -71,7 +54,6 @@ inline constexpr std::string_view kHiddenEnvNames[] = {
 inline constexpr std::string_view kHiddenEnvMarkers[] = {
     "_access_key", "_private_key", "_cookie"};
 
-// File names uAgent reads or writes in more than one place.
 inline constexpr char kSkillFile[] = "SKILL.md";
 inline constexpr char kMcpConfigFile[] = ".mcp.json";
 

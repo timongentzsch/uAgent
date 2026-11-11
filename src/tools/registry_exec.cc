@@ -23,7 +23,6 @@ namespace uagent {
 void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace,
                        const RootPassword& root_password) {
-  // The limits in the schemas are filled in from their constants.
   json run_schema = json::parse(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "description":{"type":"string",
@@ -92,9 +91,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
               // only the remote end is root.
               if (host.empty()) spec.sandbox = false;
             } else if (root_password) {
-              // Its own sudo, wherever bash meets it (a pipe, $(…), a bash
-              // script), says what to use instead of waiting on a prompt
-              // nobody answers: no reading of the command text.
+              // A bash function named sudo says what to use, wherever bash
+              // meets it, instead of waiting on a prompt nobody answers.
               spec.environment.emplace_back(
                   "BASH_FUNC_sudo%%",
                   "() { echo 'use run root=true (host=user@machine for "
@@ -112,20 +110,17 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
         {"type", "string"},
         {"description", "with root: user@machine to run it on over ssh"}};
   }
-  // The hatch exists only where there is something to escape. Advertising it
-  // unconditionally would spend schema tokens on an argument that does nothing,
-  // and invite the model to reach for it on a host that never confined
-  // anything. `grep` gets none: it has no use for one.
+  // Offered only where there is a sandbox to leave: elsewhere the argument
+  // would do nothing.
   if (SandboxRuntime().mode != SandboxMode::kOff) {
     run.parameters["properties"]["sandbox"] =
         json{{"type", "boolean"},
              {"description",
               "false runs outside the OS sandbox; always asks a person"}};
   }
-  // Mandatory rather than mutating: an approval a person did not give is an
-  // approval this must not have. Yolo, remembered grants and headless
-  // sessions all fall to a denial, so a delegated child cannot unconfine
-  // itself, or become root, no matter what it was launched with.
+  // Mandatory, not mutating: yolo, remembered grants and headless sessions
+  // all end in a denial, so a delegated child cannot unconfine itself or
+  // become root.
   run.approval_class = [confined = SandboxRuntime().mode !=
                                    SandboxMode::kOff](const json& a) {
     return JsonValue(a, "root", false) ||
@@ -133,8 +128,6 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                ? ApprovalClass::kMandatoryHuman
                : ApprovalClass::kNone;
   };
-  // What that means, said where it is approved: the sandbox is all that
-  // keeps a command from these.
   run.mandatory_reason = [](const json& a) -> std::string {
     if (!JsonValue(a, "root", false)) {
       return "runs without the OS sandbox: it can reach saved logins, "

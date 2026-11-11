@@ -1,4 +1,5 @@
-// Human-facing quantities only. Wire data, config values and raw captures stay exact.
+// Human-facing quantities only: wire data, config values and raw captures
+// stay exact.
 import type { Usage } from "./types.ts";
 
 function scaled(value: number, units: string[], separator = "") {
@@ -20,7 +21,6 @@ export const promptTokens = (usage: Usage) =>
   (usage.input || 0) + (usage.cache_read || 0) + (usage.cache_write || 0);
 export const generatedTokens = (usage: Usage) =>
   (usage.output || 0) + (usage.reasoning || 0);
-// Every token a call processed.
 export const tokens = (usage: Usage) =>
   promptTokens(usage) + generatedTokens(usage);
 // The share of input read from the cache, cut to a whole percent as the

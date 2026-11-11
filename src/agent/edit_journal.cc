@@ -24,8 +24,7 @@ constexpr size_t kUndoFileBytes = MiB(2);
 constexpr uint64_t kUndoSessionBytes = MiB(64);
 constexpr size_t kSummaryFiles = 50;
 
-// Whether `path` still holds what a turn left: bytes hashing to `hash`, or
-// nothing at all for an empty hash.
+// An empty hash means the turn left no file.
 bool Holds(const std::string& path, const std::string& hash) {
   std::error_code ec;
   if (hash.empty()) {

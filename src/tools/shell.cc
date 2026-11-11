@@ -40,11 +40,8 @@
 namespace uagent {
 namespace {
 
-// The shell that `bash` means on this host. Only needed under a sandbox
-// wrapper: there the spawn resolves the wrapper, so a missing shell surfaces
-// as the wrapper's own failure rather than as an errno the retry below could
-// read. Resolving in the parent keeps the same Bash candidates in the same
-// order.
+// The shell `bash` means on this host. Needed under a sandbox wrapper only:
+// there a missing shell fails as the wrapper, not as an errno to retry on.
 std::string ResolveShellExecutable(const std::string& shell) {
   if (shell != "bash") return shell;
   for (const char* candidate : {"/bin/bash"}) {
@@ -54,8 +51,7 @@ std::string ResolveShellExecutable(const std::string& shell) {
 }
 
 // `program` is the argv to run: `shell -c command`, or a program run directly.
-// It gets its own process group (or session), the default signal dispositions
-// and `fds`. Returns the posix_spawnp errno; `pid` is set on 0.
+// Returns the posix_spawnp errno; `pid` is set on 0.
 int SpawnShellWithFallback(const std::vector<std::string>& program,
                            const std::vector<std::string>& wrapper,
                            std::vector<SpawnFd> fds, bool session,
@@ -67,17 +63,15 @@ int SpawnShellWithFallback(const std::vector<std::string>& program,
       .fds = std::move(fds)};
   const std::string& shell = program.front();
   auto spawn = [&](const std::string& executable) {
-    // The program is the wrapper when there is one; the shell is then just its
-    // first argument, and the rest stays unwrapped either way.
+    // With a wrapper, the wrapper is the program and the shell its argument.
     spec.argv = wrapper;
     spec.argv.push_back(executable);
     spec.argv.insert(spec.argv.end(), program.begin() + 1, program.end());
     return SpawnProcess(spec, pid);
   };
   int error = spawn(wrapper.empty() ? shell : ResolveShellExecutable(shell));
-  // `bash` is the documented default, so fall back to the usual absolute
-  // path before giving up on a PATH that does not have it. Do not silently
-  // downgrade to sh: its pipelines may mask failures.
+  // `bash` falls back to its usual absolute path when PATH lacks it, never to
+  // sh: its pipelines may mask failures.
   const bool fallback = wrapper.empty() && shell == "bash";
   if (error != 0 && fallback) error = spawn("/bin/bash");
   return error;
@@ -101,7 +95,6 @@ int SpawnPtyShell(const std::vector<std::string>& program,
                   const std::vector<std::string>& wrapper,
                   char* const* environment, pid_t& pid, int& master_fd) {
   master_fd = -1;
-  // Owned here until the child is running; every failure below closes it.
   Fd master;
   std::string slave_path;
   if (const int error = OpenPty(master, slave_path, 24, 80); error != 0) {
@@ -117,8 +110,7 @@ int SpawnPtyShell(const std::vector<std::string>& program,
 }
 
 // How long a command stopped at its deadline or by an interrupt has to clean
-// up after itself (a browser removing its temporary profile) before it is
-// killed.
+// up before it is killed.
 constexpr auto kStopGrace = std::chrono::seconds(1);
 
 void SignalShellGroup(pid_t pid, int signal_number) {
@@ -145,10 +137,8 @@ ToolResult ActivityLimitError() {
       "activity limit reached (" + std::to_string(MaxActivities()) + ")");
 }
 
-// Resolves the wrapper argv for one spawn, or reports why this command cannot
-// run. Both failures are the same rule: a session that was told to confine and
-// cannot must not spawn anyway. That would be a silent unsandboxed command --
-// the one outcome the sandbox exists to rule out, arriving without a word.
+// The wrapper argv for one spawn, or why the command cannot run: a session
+// told to confine that cannot must not spawn unconfined.
 std::string SandboxWrapperFor(const ShellCommand& spec,
                               const SandboxStatus& status,
                               std::vector<std::string>* wrapper) {
@@ -190,9 +180,8 @@ ToolResult LinkResult(std::string hint, json link) {
   return result;
 }
 
-// A detached terminal outlives the turn that starts it: its output goes to a
-// rotating log through a pump child, it has no session, no pipe and no
-// deadline, and an identical live command is reused rather than started twice.
+// A detached terminal outlives its turn: its output goes to a rotating log
+// through a pump child, and an identical live command is reused.
 ShellCommandResult StartDetachedShell(
     ActivitySupervisor& supervisor, ShellCommand& spec,
     const std::vector<std::string>& wrapper,
@@ -268,7 +257,8 @@ ShellCommandResult StartDetachedShell(
 std::string RootCommand(const std::string& command, const std::string& host,
                         bool tty, const std::string& nonce) {
   // Without a terminal only sudo reads the password pipe; the command's stdin
-  // is /dev/null, as any command's is, also when sudo asks for nothing.
+  // is /dev/null. -k makes sudo prompt even with cached credentials, so the
+  // password line never reaches the command.
   std::string sudo =
       (nonce.empty() ? std::string("sudo -n") : "sudo -k -S -p " + nonce) +
       " -- bash -o pipefail -c " +
@@ -315,7 +305,6 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   std::shared_ptr<const SandboxWatch> watch = WatchUnenforced(sandbox, wrapper);
   if (spec.detach) return StartDetachedShell(supervisor, spec, wrapper, watch);
 
-  // Everything below is the supervised foreground lifecycle.
   std::optional<ActivityReservation> reservation =
       supervisor.ReserveActivity(MaxActivities());
   if (!reservation) return {ActivityLimitError()};
@@ -338,8 +327,6 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
     return {ToolFailure(ToolErrorCode::kInternal,
                         "cannot create process output pipe")};
   }
-  // Owned from here: every early return closes them, and only the hand-off to
-  // the supervisor releases them.
   Fd pipe_read(pipe_fds[0]), pipe_write(pipe_fds[1]);
   // A root command without a terminal reads sudo's password from a pipe the
   // activity answers on, as a terminal's input is answered.
@@ -376,18 +363,15 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
         ToolErrorCode::kUnavailable,
         "cannot spawn shell: " + std::string(strerror(spawn_error)))};
   }
-  // Named after the pid and the activity id: a pid alone is reused within one
-  // run and a rename onto a completed activity's uncollected log would destroy
-  // it, while an activity id alone counts from the same base in every process
-  // -- and a child agent shares this directory with its parent.
+  // Named after the pid and the activity id: a pid alone is reused within a
+  // run, and an activity id alone repeats in a child agent sharing the folder.
   std::string named = UagentDir(kActivityDir) + "/" + std::to_string(getpid()) +
                       "-" + std::to_string(reservation->Id()) + ".log";
   if (rename(pending.Path().c_str(), named.c_str()) == 0) {
     log = named;  // child's fd stays valid
   }
-  // The supervisor owns the log from here; `log` already holds whichever
-  // path won above. ReleaseFd keeps the file and hands over the descriptor;
-  // Release would close it while the supervisor still needs to tail it.
+  // ReleaseFd, not Release: the supervisor still tails the file through this
+  // descriptor.
   int log_fd = pending.ReleaseFd();
 
   Fd input(tty ? dup(master.Get()) : stdin_write.Release());
@@ -527,9 +511,8 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                         "foreground activity ownership was lost"),
             std::nullopt, /*launched=*/true};
   }
-  // An interrupt that arrived while a command being waited for was handed
-  // over stops it all the same: nothing else would, once it is in the
-  // background.
+  // An interrupt that arrived during the handover stops the command all the
+  // same: nothing else would, once it is in the background.
   if (!spec.immediate && AbortRequested()) {
     (void)ToolActivityStop(supervisor, activity_id);
     return {ToolCancelled("error: command cancelled by user"), std::nullopt,
@@ -576,11 +559,8 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
   int64_t max_results = GrepResults();
   int64_t bytes = ToolResultCap() > 0 ? ToolResultCap() : 1024;
   bool ripgrep = ExecutableOnPath("rg");
-  // Ripgrep searches files in parallel and reports them in completion order, so
-  // two identical searches can disagree. That is not cosmetic here: results are
-  // truncated at a cap, so an unordered search returns an arbitrary subset, and
-  // a repeated search looks changed when nothing changed. Path order costs
-  // ripgrep's parallelism and buys a result the agent can compare and reuse.
+  // Ripgrep reports files in completion order and results are cut at a cap:
+  // unsorted, a repeated search would return another arbitrary subset.
   const char* sorted = " --sort path";
   std::string command;
   if (files_only) {
@@ -615,8 +595,7 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
     command += " -- " + ShellQuote(pattern) + " " + ShellQuote(target);
   }
   // PIPESTATUS[0], not pipefail: head closing the pipe makes the whole
-  // pipeline exit 141, which would read as "truncated" and swallow a producer
-  // error. The producer's own 141 still means head cut it short.
+  // pipeline exit 141, which would swallow a producer error.
   command += " 2>&1 | head -n " + std::to_string(max_results + 1) +
              " | head -c " + std::to_string(bytes) + "; exit ${PIPESTATUS[0]}";
   ShellCommandResult execution =

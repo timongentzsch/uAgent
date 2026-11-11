@@ -47,7 +47,6 @@ int Reach(ApprovalMode mode) {
   return 0;
 }
 
-// A task as the model needs it: enough to check it and name it again.
 json TaskBrief(const json& task) {
   return JsonPick(task, {"id", "name", "schedule", "check", "permissions",
                          "model", "cwd", "enabled", "upcoming", "error"});
@@ -227,9 +226,8 @@ ToolResult Show(const json& arguments,
       // The file `write` replaces.
       value["saved"] = ReadSavedPrompt();
     }
-    // The whole catalogue answers "which settings exist", so it is
-    // returned complete but one line shorter per setting; a name asks
-    // for the full facts of one.
+    // The whole catalogue is returned complete but shorter per setting; a
+    // name asks for the full facts of one.
     const bool catalogue = topic == SelfTopic::kConfig && name.empty();
     if (catalogue) {
       for (json& setting : value["settings"]) {
@@ -347,7 +345,6 @@ ToolResult CommitSettings(const ConfigProposal& approved) {
   return ToolSuccess(report);
 }
 
-// The line as the host reads it, typed or queued.
 std::string CommandLine(const json& arguments) {
   return Trim(JsonValue(arguments, "line", ""));
 }
@@ -376,9 +373,8 @@ Headline UagentHeadline(const json& arguments) {
   return {"Configuring", "Configured", target};
 }
 
-// Why the host does not run `line` for the agent, or nothing: it runs one
-// slash command, but not a client's own navigation, nor a command that only
-// starts a turn.
+// Why the host does not run `line` for the agent, or nothing. It runs one
+// slash command, not a client's navigation or one that only starts a turn.
 std::string CommandIssue(const std::string& line) {
   const ParsedSlashCommand command = ParseSlashCommand(line);
   const char* why = line.find('\n') != std::string::npos ? "takes one line"
@@ -414,10 +410,9 @@ std::string CommandPreview(const std::string& line) {
          " what the agent may do without asking.";
 }
 
-// set and write, added where a person can approve them, and command where
-// `queue` takes one. Each prepares and previews; the mandatory-human
-// approval lane decides, and what then runs is what the approved preview
-// recorded.
+// Adds set and write, and command where `queue` takes one. Each prepares and
+// previews; the mandatory-human approval decides, and what runs is what the
+// approved preview recorded.
 void OfferChanges(Tool& tool, ConfigProposalFactory prepare,
                   CommandQueue queue) {
   tool.description +=
@@ -471,8 +466,7 @@ void OfferChanges(Tool& tool, ConfigProposalFactory prepare,
     return mutates(arguments) ? ApprovalClass::kMandatoryHuman
                               : ApprovalClass::kNone;
   };
-  // The proposal these arguments ask for. The schema has already held scope
-  // to user or project.
+  // The schema has already held scope to user or project.
   const auto propose = [prepare = std::move(prepare)](const json& arguments) {
     ConfigProposalScope scope = ConfigProposalScope::kUser;
     ParseConfigScope(JsonValue(arguments, "scope", ""), scope);

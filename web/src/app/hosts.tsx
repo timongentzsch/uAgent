@@ -57,7 +57,6 @@ export default function HostsShell({
   const [active, setActive] = useState(hostFromURL);
   const [destination, setDestination] = useState<HostDestination | null>(null);
   const gatewayOnline = state.online;
-  // A device that signed out forgets the hosts it listed.
   useEffect(() => {
     if (state.authenticated === false) setHosts([]);
   }, [state.authenticated]);
@@ -134,7 +133,6 @@ export default function HostsShell({
     },
     [hosts, action, state.report, state.setSelected, gatewayOnline],
   );
-  // Keep filtered catalogue arrays stable while the composer changes its draft.
   const sources = useMemo<Source[]>(() => {
     const scope = (id: string) => ({
       listed: state.listed.filter((session) => (session.host || "") === id),

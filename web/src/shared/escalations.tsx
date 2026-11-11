@@ -10,10 +10,8 @@ import SessionName from "./session-name.tsx";
 import { folderName } from "./folder-label.tsx";
 import "./escalations.css";
 
-// Decisions sessions are waiting on: a folder's conversations in its
-// overview, or every folder's in the sidebar's inbox. Each is the session's
-// own pending decision, answered in the session, so answering here or there
-// is the same act and the first answer wins.
+// Each is the session's own pending decision, answered in the session, so
+// answering here or there is the same act and the first answer wins.
 export default function WaitingList({
   sessions,
   folder,

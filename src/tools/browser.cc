@@ -117,9 +117,8 @@ std::string DownloadLines(const json& answer) {
   return lines;
 }
 
-// A grant fences every operation, including probes and human handback. A
-// download may end long after the action that started it, so any answer
-// can tell of one: what they told is gathered in `news` for the result.
+// A grant fences every operation, including probes and human handback. Any
+// answer can tell of a finished download, gathered in `news` for the result.
 struct BrowserAccess {
   std::string session_id, lease;
   mutable std::string news;
@@ -248,10 +247,9 @@ struct Seen {
   PageMemory page;
 };
 
-// What a remembered approval of a call covers: the action on the site of the
-// page last seen. A tab is approved one by one, and an action on a page that
-// is no web site (one written from a file) for the look it came from, or for
-// itself alone when no look stands behind it.
+// What a remembered approval covers: the action on the site of the page last
+// seen; a tab one by one; on a page that is no web site, the look it came
+// from, or the call alone.
 json Subject(const json& args, Seen& seen) {
   const std::string action = JsonValue(args, "action", "");
   if (action == "tabs") return args;
@@ -384,7 +382,6 @@ std::string Preview(const json& args, Seen& seen) {
                              " on " + site + ".");
 }
 
-// One request to the browser on behalf of this conversation.
 json Ask(const BrowserAccess& access, json command, const std::string& op) {
   command["op"] = op;
   command["session_id"] = access.session_id;
@@ -423,9 +420,8 @@ ToolResult Reading(const json& read, const json& args, const std::string& done,
                      seen.page.Show(url, body, /*diff=*/false));
 }
 
-// The current tab as text: what can be acted on, numbered, the page's text
-// and bot-wall evidence; with `look`, the screenshot too. `lead` states what
-// already happened, so a failed look never hides a done action.
+// The current tab as text, with the screenshot when `look`. `lead` states
+// what already happened, so a failed look never hides a done action.
 ToolResult Observation(const BrowserAccess& access, const std::string& lead,
                        const ToolContext& context, bool look, Seen& seen) {
   const std::string done = lead.empty() ? "" : lead + "\n";
@@ -513,10 +509,8 @@ ToolResult Observation(const BrowserAccess& access, const std::string& lead,
   return attached;
 }
 
-// Waits for the page an action changed to settle: loaded, and the same
-// document and content on two probes in a row. Each probe is a short request,
-// so the human's viewer and takeover are never blocked behind the wait.
-// Returns what the wait learned about tabs and time, as lines for the model.
+// Waits for the page an action changed to settle, in short probes so the
+// human's viewer is never blocked. Returns what it learned, as lines.
 std::string Settle(const BrowserAccess& access, const ToolContext& context) {
   const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(kSettleMs);
@@ -570,10 +564,8 @@ std::string Settle(const BrowserAccess& access, const ToolContext& context) {
   return notes;
 }
 
-// open with a path shows a page the model wrote. Where the web host serves
-// this conversation's folder, the page opens there, so its stylesheets,
-// images and fonts load as on the canvas; elsewhere its markup replaces path
-// and url. Returns what is wrong with the file, if anything.
+// open with a path: a page of this conversation's folder is served by the
+// web host, any other inlined as markup. Returns what is wrong with the file.
 std::string InlinePageFile(json& args) {
   const std::string path = JsonValue(args, "path", "");
   const std::string kind = std::filesystem::path(path).extension().string();
@@ -639,18 +631,16 @@ ToolResult Query(const BrowserAccess& access, const json& args,
                           : ToolSuccess(JsonDump(answer));
 }
 
-// What came of an action's ops: a line for each one done and what it left
-// (a file chooser held back), the op that failed and why, and whether one
-// opened a dialog.
+// What came of an action's ops: a line for each one done, the op that failed
+// and why, and whether one opened a dialog.
 struct Performed {
   std::string done, notes, op, error;
   bool dialog = false;
 };
 
-// type may click its field first and press a key after: one action, in that
-// order, stopping at the first op that fails or opens a dialog, which must
-// not take what was meant for the page. Once anything is done (`begun`, or an
-// op of this action), an interruption stops what is left.
+// type may click its field first and press a key after, stopping at the first
+// op that fails or opens a dialog. Once anything is done (`begun`, or an op
+// of this action), an interruption stops what is left.
 Performed Perform(const BrowserAccess& access, const json& args,
                   const std::string& action, const ToolContext& context,
                   bool begun) {
@@ -687,8 +677,7 @@ Performed Perform(const BrowserAccess& access, const json& args,
 }
 
 // batch: each step done as its own action would be, the page settling after
-// each, stopping at the first that fails or opens a dialog; then the page,
-// once.
+// each, stopping at the first that fails or opens a dialog.
 ToolResult Batch(const BrowserAccess& access, const json& args,
                  const ToolContext& context, Seen& seen) {
   const std::vector<json> steps = Steps(args);
@@ -719,8 +708,7 @@ ToolResult Batch(const BrowserAccess& access, const json& args,
   return Observation(access, done, context, /*look=*/false, seen);
 }
 
-// The actions that change the page: do them, wait for the page to settle, and
-// return it.
+// The actions that change the page: done, then the settled page is returned.
 ToolResult Act(const BrowserAccess& access, const json& args,
                const std::string& action, const ToolContext& context,
                Seen& seen) {
@@ -855,9 +843,8 @@ json BrowserParameters() {
   return parameters;
 }
 
-// What the schema cannot say. open takes one address, a URL or a file, never
-// the profile this browser itself runs on; a batch's steps are the actions
-// that act on a look, each with what `needs` says its own call requires.
+// What the schema cannot say: open takes one address, a URL or a file, and a
+// batch's steps each need what `needs` says their own call requires.
 std::optional<ToolArgumentIssue> Validate(const json& args,
                                           const ActionRequires& needs) {
   const std::string action = JsonValue(args, "action", "");
@@ -942,8 +929,7 @@ void AppendHunk(std::string& out, const std::vector<std::string_view>& removed,
 }
 
 // The changed lines between two texts, by a longest common subsequence of
-// their lines, each ending in a newline; empty when the texts are too large
-// to compare.
+// their lines; not `comparable` when the texts are too large.
 std::string ChangedLines(std::string_view before, std::string_view after,
                          bool& comparable) {
   const std::vector<std::string_view> a = SplitLines(before);

@@ -3,8 +3,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
 const optionalAssets = new Set();
 const outDir = process.env.UAGENT_WEB_OUT_DIR || "dist";
-// Mermaid's ELK renderer is deliberately lazy. Raising the warning boundary
-// to its measured upper bound keeps the build warning focused on eager chunks.
+// Mermaid's lazy renderer stays under this; the warning is for eager chunks.
 const lazyRendererWarningKilobytes = 1600;
 const rendererManifest = () => ({
   name: "renderer-assets",
@@ -78,9 +77,8 @@ export default defineConfig({
   plugins: [
     rendererManifest(),
     {
-      // elkjs is 1.4 MB for an alternative layout of the same diagrams.
-      // Mermaid lays an unregistered algorithm out with dagre, so no
-      // diagram type is lost, only the ELK arrangement of a few.
+      // elkjs is large and only an alternative layout: Mermaid lays an
+      // unregistered algorithm out with dagre, so no diagram type is lost.
       name: "mermaid-without-elk",
       enforce: "pre",
       transform(code, id) {
@@ -94,8 +92,7 @@ export default defineConfig({
       enforce: "pre",
       transform(code, id) {
         if (!id.endsWith("/katex.min.css")) return;
-        // Every supported browser reads WOFF2; embedding TTF and WOFF copies
-        // adds native binary bytes without adding a supported device.
+        // Every supported browser reads WOFF2: the TTF and WOFF copies go.
         return code.replace(
           /src:([^;}]+)([;}])/g,
           (declaration, sources, end) => {

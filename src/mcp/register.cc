@@ -62,10 +62,8 @@ bool McpStartConfigured(McpServer& server, int64_t& discovery_id,
       return false;
     }
   }
-  // Confined like a command, unless the entry says `"sandbox": false`. The
-  // same refusal applies: a session told to confine that cannot does not spawn.
-  // Its reads stay open: you configured the server, and it lives wherever you
-  // keep it. It keeps the sandbox of the approval mode it was started in.
+  // Confined like a command unless the entry says `"sandbox": false`, except
+  // that reads stay open: the server lives wherever the person keeps it.
   std::vector<std::string> wrapper;
   SandboxStatus sandbox = SandboxRuntime();
   sandbox.policy.unreadable.clear();
@@ -107,8 +105,8 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
     bool required;
   };
   std::vector<Boot> boots;
-  // config and server replies are untrusted JSON: a wrong type anywhere
-  // must skip that server, never take the agent down
+  // Config and server replies are untrusted JSON: a wrong type anywhere
+  // skips that server and never takes the agent down.
   int64_t spawned = 0;
   for (auto& [name, conf] : cfg.items()) {
     auto srv = std::make_unique<McpServer>();
@@ -155,7 +153,7 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
       }
       continue;
     }
-    // Queue the handshake now (the pipe buffers it); reap replies below.
+    // The pipe buffers the handshake already sent; its reply is read below.
     boots.push_back({srv.get(), required});
     srv->discovery_id = id;
     if (!required) srv->startup = McpStartupState::kDiscovering;
@@ -166,8 +164,8 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
   for (auto& b : boots) {
     if (!b.required) continue;
     McpServer& s = *b.s;
-    // Per server, like McpRefreshTools: a slow neighbour must not consume the
-    // handshake window of a server whose reply is already buffered.
+    // A deadline per server: a slow neighbour must not use up the window of
+    // one whose reply is already buffered.
     auto startup_deadline = DeadlineAfter(timeout);
     int64_t remaining = SecondsUntil(startup_deadline);
     if (remaining <= 0) {
@@ -223,8 +221,6 @@ std::string ConfigDir(const McpServer& server) {
 }
 
 // Drops the server's tools and starts a fresh process under the same config.
-// Discovery gets the optional servers' startup window, then finishes at the
-// next turn boundary.
 void Restart(std::vector<Tool>& tools, McpRuntime& runtime,
              const McpServer& old, const RuntimeConfig& config) {
   const std::string provider = "mcp:" + old.name;
@@ -308,7 +304,6 @@ bool WriteDisabled(const McpServer& server, bool disabled, std::string& error) {
   return !project || WriteTrustRecord(dir, {{"mcp", std::move(file)}}, error);
 }
 
-// The end of the server's own stderr usually says why it stopped.
 std::string LogTail(const std::string& name) {
   return ReadFileTail(McpLogPath(name), 1000);
 }

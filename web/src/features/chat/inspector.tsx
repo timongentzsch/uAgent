@@ -22,9 +22,7 @@ import { active, ActivityControls } from "../../shared/turn-status.tsx";
 import Raw from "./raw.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 
-// Pure fetch half of an activity inspect: memory content or the
-// activity's output. State (version guards, loading, errors) stays with the
-// caller.
+// Fetch only: version guards, loading and errors stay with the caller.
 async function fetchActivityDetail(
   { manage, command }: ApiClient,
   session: SessionRef,
@@ -60,8 +58,6 @@ async function fetchActivityDetail(
   return { ...item, ...response.result };
 }
 
-// One inspector for what the agent started: a command, a memory or a
-// tool's input/output, in a side sheet.
 export default function Inspector({
   target,
   items,
@@ -137,8 +133,8 @@ export default function Inspector({
     }
   }
 
-  // A transcript row carries the command it ran (bounded 8k) and its text, so
-  // an activity the supervisor no longer retains still opens with its record.
+  // A transcript row carries its command and text, so an activity the
+  // supervisor no longer retains still opens with its record.
   // biome-ignore lint/correctness/useExhaustiveDependencies: opens the record when the target changes, not when rows stream in
   useEffect(() => {
     if ("raw" in target) {
@@ -170,9 +166,8 @@ export default function Inspector({
     }
   }, [target]);
 
-  // The parent stream already reports activity progress. Refresh an open
-  // one only when that authoritative state changes instead of running a
-  // second polling clock beside SSE.
+  // The parent stream already reports progress: refresh when that state
+  // changes, not on a second polling clock.
   const rowsVersion = items
     .map((item) =>
       [item.id, item.status, item.progress, item.duration_ms].join(":"),
@@ -264,8 +259,6 @@ function DetailBody({
         !detail.memory && <p class="detail-label">{detail.label}</p>
       )}
 
-      {/* Each section holds its place from the first frame: content
-          replaces the skeleton instead of pushing the layout around. */}
       {detail.memory ? (
         <section class="activity-result" aria-label="Memory">
           <p class="detail-label">{detail.memory.key}</p>

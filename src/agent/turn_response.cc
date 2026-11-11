@@ -56,9 +56,8 @@ void Agent::RecordModelResponse(
                      "enforceable"));
     DebugLog("cost_unavailable", {{"route", ActiveRoute()}});
   }
-  // Tokens are routinely generated before the first visible event (hidden
-  // thinking, tool-call deliberation) and providers do not always report them
-  // as reasoning, so only the full call duration cannot overstate the rate.
+  // Hidden thinking generates tokens before the first visible event, so only
+  // the full call duration cannot overstate the rate.
   if (response.duration_ms > 0 && response_usage.GeneratedTokens() > 0) {
     state.metrics.model_generation_ms += response.duration_ms;
     state.metrics.model_generated_tokens = SaturatingNonnegativeAdd(
@@ -147,9 +146,8 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
   return StepFlow::kEndTurn;
 }
 
-// A provider stop is separate from transport success. Salvage complete calls
-// only for truncation; otherwise one bounded continuation prevents a partial
-// prose response or an unfamiliar stop reason from being accepted as final.
+// Complete calls are salvaged only from a truncation; otherwise one bounded
+// continuation keeps a partial response from being accepted as final.
 Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
                                           size_t tool_call_count,
                                           TurnExecution& state,
@@ -172,10 +170,9 @@ Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
     return StepFlow::kProceed;
   }
 
-  // Unknown provider reasons get one retry even when they accompanied calls.
-  // Do not execute those calls: a future policy stop must fail closed, while
-  // the retry gives a harmless new spelling a chance to complete normally. A
-  // response cut off by its length continues too, with whatever it had.
+  // An unknown stop reason gets one retry even with calls, which are not
+  // executed: a future policy stop must fail closed. A response cut off by
+  // its length continues too.
   const std::string reason = response.finish_reason.empty()
                                  ? ResponseStopCauseName(cause)
                                  : response.finish_reason;
@@ -194,7 +191,6 @@ Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
   return StepFlow::kNextStep;
 }
 
-// Worth a trace record long before it is worth stopping the turn.
 void Agent::PushAssistantMessage(ChatResult& response,
                                  const std::vector<ToolCall>& calls) {
   json message = {{"role", "assistant"}, {"content", response.content}};
@@ -211,16 +207,14 @@ void Agent::PushAssistantMessage(ChatResult& response,
     // (e.g. Anthropic) don't reject an empty text block on replay.
     if (response.content.empty()) message["content"] = nullptr;
   }
-  // Preserve the replay fields the active route actually emitted while the
-  // turn continues; completed prose does not burden later turns, unless it
-  // holds what a tool the provider ran did, which later turns build on.
+  // Replay fields are kept while the turn continues; completed prose drops
+  // them unless it holds what a provider-run tool did.
   if (!calls.empty() || response.stop_cause == ResponseStopCause::kPause ||
       ReplayHoldsHostedTool(response.replay)) {
     api_.PreserveAssistantReasoning(message, response);
   }
   conversation_.Push(std::move(message), MessageKind::kAssistant);
-  // Readable thinking is display data even when the provider needs no replay
-  // field on a completed prose message. It never enters model requests.
+  // Readable thinking is display data; it never enters model requests.
   Usage usage;
   usage.Add(response.usage);
   json facts = {

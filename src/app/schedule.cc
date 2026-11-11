@@ -37,7 +37,6 @@ constexpr size_t kSchedulePromptChars = KiB(8);
 constexpr size_t kScheduleCheckChars = KiB(2);
 // What a check prints reaches the run's prompt; its end says the most.
 constexpr size_t kCheckOutputChars = KiB(4);
-// How long a task's check may run before its run fails.
 constexpr int kCheckSeconds = 50;
 constexpr size_t kTimezoneNameChars = 100;
 constexpr int kUpcomingScheduleTimes = 3;
@@ -58,9 +57,8 @@ json Public(json store) {
 }
 json Mutate(const std::function<json(json&)>& change) {
   std::string error;
-  // Wait for the lock: the host claims runs the moment a CLI write lands,
-  // while that writer may still hold it; failing fast stranded the run. The
-  // wait is bounded so a writer stopped with Ctrl+Z cannot block the host.
+  // The host claims runs the moment a CLI write lands, while that writer may
+  // still hold the lock: wait, bounded so a stopped writer cannot block it.
   Fd lock(open((UagentDir("scheduled") + "/" + kWriteLockFile).c_str(),
                O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, kPrivateFileMode));
   const auto give_up =

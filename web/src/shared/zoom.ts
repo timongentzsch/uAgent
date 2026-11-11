@@ -1,7 +1,6 @@
-// A zoomable view of a surface: scale around a point and pan. Media and the
-// remote browser screen are never smaller than the surface nor past its
-// edges; a plane with no edges, such as the design canvas, zooms in a range
-// of its own.
+// Scale around a point and pan. Media and the remote browser screen are
+// never smaller than the surface nor past its edges; a plane with no edges,
+// such as the design canvas, zooms in a range of its own.
 export interface ZoomView {
   scale: number;
   x: number;

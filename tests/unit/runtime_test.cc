@@ -76,9 +76,7 @@ TEST_CASE(TestEarlyTurnInterruption) {
   }
 }
 
-// A side question's thread has its own stop: the main turn's abort does not
-// reach it, clearing its stop leaves the main turn's intact, and its flag
-// alone cancels it.
+// A side question's thread has its own stop, apart from the main turn's.
 TEST_CASE(TestLocalAbortIsolation) {
   ClearAbort();
   RequestAbort();
@@ -294,7 +292,6 @@ TEST_CASE(TestRuntimeConfigAndRequests) {
       via_open_router.BuildRequestBody(documented, json::array(), "");
   CHECK(plugged["plugins"][0]["id"] == "file-parser");
   CHECK(plugged["plugins"][0]["pdf"]["engine"] == "cloudflare-ai");
-  // A request without a document does not carry it.
   CHECK(!via_open_router
              .BuildRequestBody(
                  json::array({{{"role", "user"}, {"content", "plain"}}}),
@@ -387,8 +384,7 @@ TEST_CASE(TestRuntimeConfigAndRequests) {
   rejected.http_status = 400;
   rejected.remote_error_code.clear();
   // Native tool calls are not a negotiable capability: a route that rejects
-  // them has no fallback to degrade to, so this stays an ordinary error and
-  // the turn reports the provider's own message.
+  // them has no fallback, so this stays an ordinary error.
   Api summary_api(config);
   UseEndpoint(summary_api, "https://api.openai.com/v1", WireApi::kResponses);
   auto summaries = summary_api.capabilities;
@@ -506,7 +502,6 @@ TEST_CASE(TestPermissionPolicy) {
   CHECK(!covers("git status", "git status --short"));
   CHECK(RuleLabel({"run", "npm test *"}) == "run npm test *");
   CHECK(RuleLabel({"mcp_x", "*"}) == "every mcp_x call");
-  // An MCP tool's rule is the tool.
   Tool remote;
   remote.name = "mcp_x";
   remote.provider = "mcp:x";
@@ -653,9 +648,8 @@ TEST_CASE(TestAttributedUsageAccumulator) {
   CHECK(extreme_statistics["calls"] == std::numeric_limits<int64_t>::max());
 }
 
-// Empty UAGENT_IMAGE_MODEL no longer disables vision: an explicit model
-// wins, a vision-capable main route is inherited, otherwise a vision model of
-// the same endpoint's catalogue backs the analysis side call.
+// An explicit image model wins, a vision-capable main route is inherited,
+// otherwise a vision model of the same endpoint's catalogue is used.
 TEST_CASE(TestEffectiveImageModel) {
   Api api(RuntimeConfig{});
   std::vector<Tool> tools;
@@ -675,10 +669,6 @@ TEST_CASE(TestEffectiveImageModel) {
   CHECK(agent.EffectiveImageModel().empty());
 }
 
-// Mail that wakes a session is its to lose until the turn it starts has the
-// text: a runtime killed between the save and that turn receives it again.
-// A harness note is labelled as not the user's, and a worktree's .git
-// file counts as a repository.
 TEST_CASE(TestHarnessNoteAndRepository) {
   CHECK(HarnessNote("chat", "Nobody is typing now.") ==
         "[chat, not a user message] Nobody is typing now.");
@@ -751,9 +741,8 @@ TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
   CHECK(!SteeringState().TakeNextAutoStart().has_value());
 }
 
-// Where a message came from travels with it, not with its words: the person
-// typing what a queued mail says keeps their own message, and the mail its
-// origin.
+// Where a message came from travels with it, not with its words: a person
+// typing what a queued mail says keeps their own message.
 TEST_CASE(TestMailKeepsItsOriginBesideTheSameWords) {
   Api api(RuntimeConfig{});
   api.model = "test";
@@ -795,14 +784,13 @@ TEST_CASE(TestAgentConfigAllowlist) {
   fs::create_directories(root / ".uagent");
   ScopedEnv scoped_home("HOME", root.c_str());
   ScopedEnv scoped_model("UAGENT_MEMORY_MODEL");
-  // A value may refer to another by name.
   CHECK(
       SaveSettings({{"secret", "test-key"}, {"UAGENT_MEMORY_MODEL", "$secret"}})
           .empty());
   ConfigManager loaded = ConfigManager::Capture({});
   (void)loaded.Initialize();
   CHECK(SettingText("UAGENT_MEMORY_MODEL") == "test-key");
-  // So may one in the environment, where a $ that names nothing stays.
+  // A value in the environment may refer to another; a $ naming nothing stays.
   {
     ScopedEnv providers(
         "UAGENT_PROVIDERS",
@@ -938,8 +926,7 @@ TEST_CASE(TestKnownEndpoints) {
   CHECK(unknown.features == FeatureSet{});
 
   // OpenRouter is a provider like any other: there only when an entry names
-  // it, whatever key the environment holds, and its host's features come
-  // with it under any name.
+  // it, and its host's features come with it under any name.
   ScopedEnv no_providers("UAGENT_PROVIDERS");
   ScopedEnv scoped_key("OPENROUTER_API_KEY", "test-key");
   CHECK(LoadProviderCatalog().providers.empty());
@@ -1028,9 +1015,8 @@ TEST_CASE(TestNamedProviders) {
     }
   }
 
-  // Startup consumes the same selection grammar as interactive and side
-  // routes. Suffixes configure policy and never leak into the provider model
-  // identifier.
+  // Startup takes the same selection grammar as interactive and side routes:
+  // suffixes configure policy and never leak into the provider's model id.
   setenv("UAGENT_MODEL", "codex-local/gpt-5.6-luna:low", 1);
   setenv("UAGENT_INTERNAL_WIRE_API", "invalid-direct-wire", 1);
   setenv("UAGENT_INTERNAL_FEATURES", "invalid-direct-feature", 1);

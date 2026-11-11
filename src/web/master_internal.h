@@ -2,13 +2,7 @@
 
 #ifndef UAGENT_SRC_WEB_MASTER_INTERNAL_H_
 #define UAGENT_SRC_WEB_MASTER_INTERNAL_H_
-// Module-private split of the web host. The Master class is declared here and
-// defined across master.cc (startup, routes, settings), master_auth.cc
-// (pairing and devices), master_command.cc (commands and receipts),
-// master_stream.cc (snapshots, events, uploads, assets), master_files.cc
-// (the files in a conversation's folder), master_library.cc (the Library's
-// listing), master_terminal.cc (terminals), master_remote.cc (remote hosts)
-// and master_remote_terminal.cc (their terminals).
+// The web host's Master class, defined across the master*.cc files.
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #define CPPHTTPLIB_NO_DEFAULT_USER_AGENT
@@ -50,9 +44,8 @@ using Clock = std::chrono::steady_clock;
 using Request = httplib::Request;
 using Response = httplib::Response;
 
-// Read by the signal handler and by the delayed restart thread, written by
-// Run(): a lock-free atomic is safe in both, where sig_atomic_t is not
-// across threads.
+// Read by the signal handler and the delayed restart thread, written by
+// Run(): a lock-free atomic is safe in both, sig_atomic_t not across threads.
 extern std::atomic<int> shutdown_fd;
 
 void Reply(Response& response, const json& value, int status = 200);
@@ -150,10 +143,8 @@ class Master {
       SnapshotFile(SettingsPath());
   Pipe host_wake_;
   std::vector<Device> devices_ UAGENT_GUARDED_BY(mutex_);
-  // Preview tokens by session id; they last until the host stops or a
-  // device is revoked.
-  // The preview grants, by session, under their own lock: the host asks
-  // for one while starting a runtime, outside any lock of ours.
+  // Preview tokens by session id, lasting until the host stops or a device
+  // is revoked. Their own lock: the host asks for one while starting a runtime.
   std::mutex previews_mutex_;
   std::map<std::string, std::string> previews_
       UAGENT_GUARDED_BY(previews_mutex_);

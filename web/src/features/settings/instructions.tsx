@@ -17,10 +17,6 @@ import {
 import { ProjectField } from "../../shared/project-field.tsx";
 import "./instructions.css";
 
-// What a conversation reads at start, in reading order and edited in place:
-// the system message's sections, then the instruction files (yours and the
-// folder's).
-
 // What the saved system message file holds: the sections replaced and the
 // text added after the last (docs/INSTRUCTIONS.md).
 interface PromptChanges {
@@ -33,9 +29,8 @@ const TITLES: Record<string, string> = {
   project: "Folder · every conversation",
 };
 
-// Everything a session reads before your first message, top to bottom in the
-// order it reads it. Files only add to the system message; edits reach new
-// and restarted sessions, so the running ones keep their cached prefix.
+// Files only add to the system message; edits reach new and restarted
+// sessions, so the running ones keep their cached prefix.
 export default function Instructions({
   session,
   projects,
@@ -138,9 +133,6 @@ export default function Instructions({
   );
 }
 
-// The system message's sections, each with its built-in text or yours. A
-// changed one says so, and Reset brings the built-in text back; what you add
-// after the last section is yours alone.
 function SystemMessage({
   prompt,
   online,
@@ -206,7 +198,6 @@ function SystemMessage({
   );
 }
 
-// One text of the stack with its title: edited in place, saved or discarded.
 function EditCard({
   title,
   note,
@@ -216,7 +207,6 @@ function EditCard({
   reset,
 }: {
   title: string;
-  // Beside the title: the file's path, or whether a section is changed.
   note: string;
   text: string;
   online: boolean;
@@ -224,10 +214,8 @@ function EditCard({
   save: (text: string, base: string) => Promise<boolean>;
   reset?: () => Promise<boolean>;
 }) {
-  // Null until edited: the field shows the text as it is, including a newer
-  // version loaded meanwhile, and an edit in progress is never replaced. An
-  // edit remembers the text it started from, so saving over a file changed
-  // meanwhile (another tab, the agent) is refused rather than lost.
+  // Null until edited, so a newer loaded version shows. An edit remembers the
+  // text it started from: saving over a file changed meanwhile is refused.
   const [draft, setDraft] = useState<{ text: string; base: string } | null>(
     null,
   );

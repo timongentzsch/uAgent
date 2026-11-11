@@ -1,8 +1,5 @@
 import { test, expect, online, selectProbeModel } from "./fixtures.js";
 
-// Composer autogrow: wraps bigger on input and returns to one row on
-// send or delete. Regression: the measure-then-guard read scrollHeight
-// with the tall height still applied, so shrink was unobservable.
 test("composer grows on wrap and shrinks back on send or delete", async ({
   page,
   session,
@@ -28,8 +25,6 @@ test("composer grows on wrap and shrinks back on send or delete", async ({
   await expect.poll(height).toBeLessThanOrEqual(single + 1);
 });
 
-// A one-line draft shares its row with the controls where there is room;
-// a wrapped one puts them below it, and a phone always does.
 test("composer controls join a one-line draft's row on wide screens", async ({
   page,
   session,

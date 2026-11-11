@@ -78,8 +78,7 @@ std::string Listed(const std::vector<std::string>& names) {
 }
 
 // "`a` and `b` are required for spawn; this call carried only `c`": every
-// field that is missing and what did arrive, so the next attempt is not a
-// guess at what got lost.
+// field that is missing and what did arrive.
 ToolArgumentIssue MissingFields(const std::vector<std::string>& missing,
                                 const json& value, const std::string& holder,
                                 const std::string& when = "") {
@@ -204,9 +203,7 @@ std::optional<ToolArgumentIssue> InvalidSchemaValue(const json& schema,
 
   if (value.is_number()) {
     const double number = value.get<double>();
-    // A rejected bound is only actionable if the caller can see both numbers:
-    // the value it sent and the limit it crossed. Without them the next
-    // attempt is a guess, and the guess is what the history is full of.
+    // A rejected bound names both numbers: the value sent and the limit.
     auto minimum = schema.find("minimum");
     if (minimum != schema.end() && minimum->is_number() &&
         number < minimum->get<double>()) {
@@ -252,11 +249,8 @@ std::optional<ToolArgumentIssue> InvalidSchemaValue(const json& schema,
 
 namespace {
 
-// Resolve a clamp target, which may name a field one object deep as `a.b`.
-// Grouping several pacing hints under one object property is how a tool keeps
-// its schema small; they are still pacing hints, so they still clamp. One
-// level is deliberate — nothing needs two, and a general path resolver here
-// would be machinery without a caller.
+// A clamp target may name a field one object deep, as `a.b`. One level is
+// deliberate: nothing needs two.
 bool ResolveClampTarget(json& args, const json& properties,
                         const std::string& name, json*& value,
                         const json*& schema) {

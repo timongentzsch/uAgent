@@ -2,8 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_CORE_TIME_H_
 #define UAGENT_INCLUDE_CORE_TIME_H_
-// Clock helpers: deadlines that cannot overflow, poll timeouts, and
-// wall-clock seconds and milliseconds.
+// Clock helpers: overflow-safe deadlines, poll timeouts and wall-clock time.
 
 #include <algorithm>
 #include <chrono>
@@ -27,16 +26,14 @@ inline std::chrono::steady_clock::time_point DeadlineAfter(int64_t seconds) {
   return DeadlineAfter(std::chrono::steady_clock::now(), seconds);
 }
 
-// Positive whole-second timeout for a deadline. Round up so a sub-second
-// remainder remains usable by APIs whose timeout unit is seconds.
+// Whole seconds until `deadline`, rounded up so a sub-second remainder counts.
 inline int64_t SecondsUntil(std::chrono::steady_clock::time_point deadline) {
   auto now = std::chrono::steady_clock::now();
   if (deadline <= now) return 0;
   return std::chrono::ceil<std::chrono::seconds>(deadline - now).count();
 }
 
-// poll(2) timeout for a steady-clock deadline, rounded up so a sub-millisecond
-// remainder does not become a premature timeout.
+// poll(2) timeout for `deadline`, rounded up so it never fires early.
 inline int PollTimeoutMs(std::chrono::steady_clock::time_point deadline) {
   auto now = std::chrono::steady_clock::now();
   if (deadline <= now) return 0;
@@ -46,8 +43,7 @@ inline int PollTimeoutMs(std::chrono::steady_clock::time_point deadline) {
       std::min<int64_t>(remaining, std::numeric_limits<int>::max()));
 }
 
-// Wall-clock time for persisted timestamps. Prefer these over hand-rolled
-// duration_cast chains so every clock read looks the same.
+// Wall-clock time, for persisted timestamps.
 inline int64_t NowSeconds() {
   return std::chrono::duration_cast<std::chrono::seconds>(
              std::chrono::system_clock::now().time_since_epoch())

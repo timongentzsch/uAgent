@@ -42,9 +42,7 @@ TEST_CASE(TestExecutionResultKeepsUndoAndActivityFacts) {
   CHECK(execution::DecodeResult({{"error", "Disconnected"}}).error ==
         ToolErrorCode::kUnavailable);
 }
-// The gateway is opened with the sandbox preset in effect when the client is
-// made. Bootstrap makes it after the settings, so an agent that may not edit
-// (readonly, session_worker.cc) only reads there too, whoever started it.
+// An agent that may not edit only reads through the gateway too.
 TEST_CASE(TestExecutionClientOpensWithTheEffectivePreset) {
   TestWorkspace workspace("execution-preset");
   OverrideSetting("UAGENT_SANDBOX", "readonly");

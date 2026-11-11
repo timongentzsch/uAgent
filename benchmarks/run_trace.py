@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """Measure one µAgent run: a timed command and privacy-safe trace aggregates.
-
-Shared by `eval.py` and `audit.py`. A caller always names the executable it
-measures; nothing here resolves a binary by itself.
-"""
+The caller always names the executable; nothing here resolves a binary."""
 
 from __future__ import annotations
 
@@ -56,11 +53,7 @@ def trace_metrics(
     cohort_fn: Callable[[Any], Any] | None = None,
 ) -> dict[str, Any]:
     """Reconstruct per-request context and privacy-safe trajectory aggregates.
-
-    `provenance_fn`/`cohort_fn` stay injectable because provenance redaction
-    lives with the session-journal reader in `benchmarks/`, which an installed
-    skill cannot import.
-    """
+    The caller injects the provenance redaction of its journal reader."""
     events: collections.Counter[str] = collections.Counter()
     batches: list[int] = []
     calls: list[dict[str, Any]] = []

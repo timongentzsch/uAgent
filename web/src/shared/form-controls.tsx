@@ -10,14 +10,14 @@ import { ChevronDown } from "lucide-preact";
 import { coarsePointer, observeResize, zoomChanged } from "./layout.ts";
 import { focusFontFloor } from "./limits.ts";
 
-// Input, Textarea and Select: the native controls with the app's shared
-// wrapper and sizing. Screens use these, not raw elements.
+// The native controls in the app's shared wrapper; screens use these, not
+// raw elements.
 
 type ControlElement =
   | HTMLInputElement
   | HTMLTextAreaElement
   | HTMLSelectElement;
-// Preact 11 types a textarea role as "textbox" only; the composer is a combobox.
+// Preact 11 types a textarea role as "textbox"; the composer is a combobox.
 export type TextareaProps = Omit<
   TextareaHTMLAttributes<HTMLTextAreaElement>,
   "role"
@@ -82,7 +82,7 @@ function Control({
           width = element.clientWidth;
           fit();
         } else {
-          // Native textarea resizing and keyboard height changes keep their size.
+          // Native textarea resizing and keyboard height changes keep the size.
           if (element.getClientRects().length)
             element.parentElement!.style.height = `${element.getBoundingClientRect().height}px`;
         }

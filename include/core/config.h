@@ -2,8 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_CORE_CONFIG_H_
 #define UAGENT_INCLUDE_CORE_CONFIG_H_
-// The KEY=value text format (.env files, and the config files of earlier
-// versions) and folder trust.
+// $NAME references in setting values, and folder trust.
 
 #include <istream>
 #include <map>
@@ -17,9 +16,8 @@ namespace uagent {
 
 using EnvValues = std::map<std::string, std::string>;
 
-// The value of `key` in `values`, each $NAME or ${NAME} in it replaced by
-// what that name resolves to, and $$ by $. A name defined nowhere resolves
-// to nothing, or with `keep_unknown` stays as written.
+// `key`'s value with $NAME and ${NAME} resolved and $$ read as $. An unknown
+// name resolves to nothing, or with `keep_unknown` stays as written.
 std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
                             std::set<std::string>& resolving,
                             bool process_fallback = true,
@@ -33,9 +31,8 @@ bool ProjectMcpPresent();
 
 bool ProjectMcpSnapshot(json& snapshot, std::string& error);
 
-// Trust covers what the folder can change: the servers .mcp.json spawns.
-// It is stored parsed, so a reformat keeps trust while any value change
-// revokes it.
+// Trust covers the servers .mcp.json spawns. It is stored parsed, so a
+// reformat keeps trust while any value change revokes it.
 bool ProjectTrustSnapshot(json& snapshot, std::string& error);
 
 inline constexpr char kTrustStoreFile[] = "trusted-projects.json";
@@ -44,19 +41,16 @@ inline constexpr int kTrustRecordFormat = 3;
 
 std::string TrustStorePath();
 
-// Records one folder under the store's cross-process lock, so trusting two
-// workspaces at once cannot drop either record.
+// Records one folder under the store's cross-process lock.
 bool WriteTrustRecord(const std::string& root, json record, std::string& error);
 
 json ReadTrustStore();
 
-// A record of another format simply stops matching, so that folder is
-// asked once more.
+// A record of another format never matches, so that folder is asked again.
 bool TrustRecordMatches(const json& record, const json& snapshot);
 
-// The out-parameter carries the approved .mcp.json alone: MCP registration
-// consumes it directly, so a file swap after approval cannot change which
-// commands are spawned.
+// `trusted_mcp` receives the approved .mcp.json: registering from it means a
+// file swap after approval cannot change which commands are spawned.
 bool ProjectConfigTrusted(json* trusted_mcp = nullptr);
 
 bool TrustProjectConfig(std::string& error, json* trusted_mcp = nullptr);

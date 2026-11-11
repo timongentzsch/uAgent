@@ -47,7 +47,6 @@ test("rendering escapes HTML and never loads remote images", async () => {
   assert.ok(!html.includes("<img"));
   assert.ok(!html.includes('href="javascript:'));
   assert.ok(html.includes("&lt;img"));
-  // A blocked image keeps its alt text as a readable placeholder.
   assert.ok(html.includes("[image: private]"));
   for (const url of [
     "javascript:x",
@@ -224,7 +223,6 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
   assert.equal(next.state.view.nodes.length, 401);
   assert.equal(next.state.view.nodes[0], nodes[0]);
   assert.equal(next.state.view.nodes.at(-1).body.text, "new");
-  // A checkpoint replaces the host's window and keeps the loaded pages.
   const reply = (text) => ({
     id: "m-400",
     parent: null,
@@ -241,9 +239,6 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
   assert.equal(checkpoint.state.view.nodes.at(-1).body.text, "x");
 });
 
-// The browser applies the host's nodes and never re-derives them: a whole
-// node, streamed appends, set fields, a parent placed before the nodes under
-// it and a late retained node in sequence position.
 test("node patches rebuild the host's view", () => {
   const patch = (value) => ({ kind: "node", ...value });
   const reply = { id: "r", parent: "m-1", kind: "message", role: "assistant" };
@@ -335,7 +330,6 @@ test("a view that shows the host's row removes the outgoing one, and only that",
     s: { state: { view: { nodes: [{ request_id: "r1" }, {}] } } },
   };
   assert.deepEqual(confirmOutgoing(outgoing, views), outgoing.slice(1));
-  // A view without them, or none at all, confirms nothing.
   assert.equal(confirmOutgoing(outgoing, {}), outgoing);
 });
 
@@ -385,7 +379,6 @@ test("a state frame without the view keeps the last view, HTTP log and prompt", 
     turns: 2,
     phase: "model",
   });
-  // A checkpoint frame still replaces all three.
   const next = { nodes: [] };
   const checkpoint = stateFrame(
     prior,
@@ -397,8 +390,7 @@ test("a state frame without the view keeps the last view, HTTP log and prompt", 
   assert.equal(checkpoint.system_prompt, "NEW");
 });
 
-// The stream's events, applied without a browser: a host whose state is
-// plain values the setters update.
+// A host without a browser: its state is plain values the setters update.
 async function eventHost(snapshot) {
   const { snapshotStore } = await import("../src/state/snapshot-store.ts");
   const { applyEvent } = await import("../src/state/apply-event.ts");

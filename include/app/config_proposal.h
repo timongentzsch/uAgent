@@ -2,14 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_CONFIG_PROPOSAL_H_
 #define UAGENT_INCLUDE_APP_CONFIG_PROPOSAL_H_
-// Preparing, previewing and committing a change to µAgent's own configuration.
-//
-// The model may only describe a typed change against registered settings. It
-// receives a redacted preview and never the decision: the host approval lane
-// owns that, and commit is reachable only with a proposal the human was shown.
-// A proposal is single-use, expires, and is bound to the entries the preview
-// showed, so a change made to them in between is rejected rather than
-// silently overwritten.
+// A change to µAgent's own configuration. The model proposes and sees a
+// redacted preview; only a proposal the person was shown can be committed.
 
 #include <chrono>
 #include <map>
@@ -66,21 +60,18 @@ const char* ConfigEffectName(ConfigEffect effect);
 // The same, as the token clients switch on: next_turn, restart, shadowed.
 const char* ConfigEffectToken(ConfigEffect effect);
 
-// What stands where a secret would: in a providers value shown to a person
-// or a model, and sent back by a person for a key they did not change.
+// Stands where a secret would; a person sends it back for an unchanged key.
 inline constexpr const char* kRedactedValue = "<redacted>";
 // A providers value with every key that is no $NAME reference hidden.
 std::string SanitizeCompositeValue(const std::string& value);
 
-// Validates against the registry and records what the scope holds now.
-// Saves nothing.
+// Validates against the registry, records what the scope holds, saves nothing.
 ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
                                      const std::vector<ConfigChange>& changes,
                                      const ConfigManager& manager,
                                      bool direct_user = false);
 
-// The same for putting back every public setting the scope holds, as of one
-// read; not ok and without an error when it holds none.
+// The same for resetting the scope; not ok, without error, when none is set.
 ConfigProposal PrepareConfigReset(ConfigProposalScope scope,
                                   const ConfigManager& manager);
 
@@ -88,14 +79,12 @@ ConfigProposal PrepareConfigReset(ConfigProposalScope scope,
 json ConfigurationControl(const json& request, const ConfigManager& manager);
 
 bool ParseConfigScope(std::string_view name, ConfigProposalScope& scope);
-// The change list the settings screen, --control and the uagent tool send:
-// each entry is {key, value}, {key, unset: true} or
+// Each entry is {key, value}, {key, unset: true} or
 // {key, operation: set|unset, value}. Bounded by kConfigurationChangeLimit.
 bool ParseConfigChanges(const json& request, std::vector<ConfigChange>& changes,
                         std::string& error);
 
-// Saves the change in one step, and refuses when an entry it replaces is no
-// longer what the preview showed.
+// Refuses when an entry it replaces is no longer what the preview showed.
 bool CommitConfigProposal(const ConfigProposal& proposal, std::string& error);
 
 }  // namespace uagent

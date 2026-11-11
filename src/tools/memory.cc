@@ -572,8 +572,7 @@ std::vector<MemoryEntry> ListMemories() {
   return ListMemories(*cwd);
 }
 
-// Everything on disk: the 32-per-scope limit governs writes, and the agent
-// sees the same store as the Library.
+// Everything on disk: the per-scope limit governs writes only.
 std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
                                       size_t limit) {
   if (limit == 0) limit = kMaxCatalogueEntries;
@@ -598,11 +597,8 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
   return entries;
 }
 
-// One line per memory, and for ours, enough of it to judge whether it is
-// worth fetching: a bare key says something exists and not what, and live a
-// model missed a project memory whose key did not share the question's words.
-// The index lists only this repository's project memories, so their hooks
-// cost at most one line each.
+// One line per memory, and for ours enough of it to judge whether it is
+// worth fetching: a bare key says something exists and not what.
 constexpr size_t kMemoryHookChars = 96;
 
 std::string MemoryHook(const std::filesystem::path& path) {
@@ -652,17 +648,9 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
   return index;
 }
 
-// Behavioral "always-on" slice: global memories are injected whole into the
-// startup context alongside the index, capped by MemoryAlwaysBytes().
-// Global scope is the applies-everywhere bucket, so these are exactly the
-// standing preferences the agent should not have to go look up.
-//
-// Smallest first, and every entry is admitted whole or skipped: a lesson cut
-// mid-sentence is worse than an absent one. Size order fits more -- seven
-// standing preferences instead of four on the store this was measured against
-// -- and is stable, where mtime is rewritten by a consolidation pass, a
-// checkout or an editor save, any of which would silently reshuffle which
-// preferences are live.
+// Global memories go whole into the startup context, up to `max_bytes`.
+// Smallest first, each whole or skipped: size order fits more and is stable,
+// where mtime is rewritten by a checkout or an editor save.
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
                                size_t max_bytes) {
   namespace fs = std::filesystem;
@@ -671,8 +659,8 @@ MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
     if (!memory.key.starts_with("global/")) continue;
     std::error_code error;
     uintmax_t bytes = fs::file_size(memory.path, error);
-    // Unreadable size sorts last rather than first: it is the one entry whose
-    // cost is unknown, so it must not displace one that is known to fit.
+    // An unreadable size sorts last: its cost is unknown, so it must not
+    // displace one that is known to fit.
     globals.emplace_back(error ? UINTMAX_MAX : bytes, memory);
   }
   std::stable_sort(globals.begin(), globals.end(),

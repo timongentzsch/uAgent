@@ -378,9 +378,7 @@ TEST_CASE(TestWorkspaceScopedSession) {
   CHECK(std::string(std::istreambuf_iterator<char>(preserved),
                     std::istreambuf_iterator<char>()) == corrupt);
 
-  // Format 2 is no longer inferred from ambiguous roles. Old sessions remain
-  // on disk, but callers get an explicit compatibility error instead of a
-  // transcript whose harness/user distinctions were guessed.
+  // A format 2 session is refused with a compatibility error, never guessed at.
   json legacy_header = {{"format", 2},     {"cwd", CanonicalCwd()},
                         {"model", "test"}, {"session_id", "legacy"},
                         {"turns", 1},      {"title", "legacy"}};
@@ -532,8 +530,6 @@ TEST_CASE(TestScopedBaseAndMemory) {
   }
   CHECK(UagentDir("history") == (home / ".uagent/history").string());
 
-  // Keys are scoped and flat, oversize content is refused, an existing key is
-  // replaced, and forget is explicit.
   CHECK(ToolMemoryAction("set", "project/../escape", std::string("x"))
             .output.starts_with("error:"));
   CHECK(ToolMemoryAction("set", "global/", std::string("x"))
@@ -599,14 +595,11 @@ TEST_CASE(TestScopedBaseAndMemory) {
   CHECK(loaded.text.find("workspace rules") != std::string::npos);
   CHECK(loaded.text.find("## memory: prefers-tabs") == std::string::npos);
   CHECK(loaded.memory_index.find("global/prefers-tabs") != std::string::npos);
-  // A global's opening clause rides in the index so the model can tell whether
-  // it is worth fetching; its body is already eligible for every request
-  // through the always-on slice, so this discloses nothing new.
+  // A global's opening clause rides in the index; its body is already eligible
+  // for every request, so this discloses nothing new.
   CHECK(loaded.memory_index.find(
             "global/prefers-tabs: The user prefers tabs") != std::string::npos);
-  // A project memory gets its hook too: the index lists only this
-  // repository's, and a bare key was missed live when the question did not
-  // share its words.
+  // A project memory gets its hook too; the index lists only this repository's.
   CHECK(loaded.memory_index.find(
             "project/build-uses-ninja: This repo builds with ninja") !=
         std::string::npos);
@@ -681,8 +674,6 @@ TEST_CASE(TestScopedBaseAndMemory) {
             .output.starts_with("forgot "));
   fs::current_path(workspace);
 
-  // A project's setting wins key by key; what is saved for all fills the
-  // rest.
   CHECK(SaveSettings({{"UAGENT_MODEL", "global/model"},
                       {"UAGENT_MEMORY_MODEL", "global/memory"}})
             .empty());

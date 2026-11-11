@@ -30,7 +30,6 @@ export default function Statistics({
   held?: Snapshot;
   loadSnapshot: (id: string) => Promise<Snapshot>;
   online: boolean;
-  // Opens the raw context, for the conversation open on the page.
   showContext?: () => void;
 }) {
   const {
@@ -133,7 +132,6 @@ function StatisticsContent({
       : [
           [
             "Context",
-            // The value opens what it summarises.
             showContext ? (
               <Button
                 variant="quiet"

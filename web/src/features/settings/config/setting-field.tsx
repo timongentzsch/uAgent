@@ -23,10 +23,8 @@ import {
 import { ProvidersField } from "./providers-field.tsx";
 import { useLatest } from "../../../shared/use-latest.ts";
 
-// One setting, edited where it is listed. A switch and a choice apply as
-// they change; text and numbers keep a draft and are saved on leaving the
-// field or Enter, so nothing half-typed is ever saved. Putting it back to
-// what applies without it is its own action.
+// A switch and a choice apply as they change; text and numbers keep a draft
+// saved on leaving the field or Enter, so nothing half-typed is saved.
 export function SettingField({
   setting,
   scope,
@@ -42,9 +40,7 @@ export function SettingField({
   scope: SavedScope;
   folder?: string;
   find: (name: string) => ConfigSetting | undefined;
-  // Who decides instead, what it overrides, or that a restart is due.
   note?: string;
-  // Why its last save was refused.
   error?: string;
   disabled: boolean;
   online: boolean;
@@ -83,7 +79,6 @@ export function SettingField({
     await set(value);
     if (mine === picks.current) setPicked(undefined);
   };
-  // Saved, the draft is settled, unless more was typed meanwhile.
   const settle = async (value: string) => {
     if ((await set(value)) && typed.current.trim() === value) setEdited(false);
   };
@@ -189,7 +184,6 @@ export function SettingField({
   ) : (
     note || setting.purpose || setting.description
   );
-  // A list of items is edited as a list of its own.
   if (itemized(setting))
     return (
       <ProvidersField
@@ -212,7 +206,6 @@ export function SettingField({
       }
     >
       <Row label={setting.label} detail={detail}>
-        {/* Putting it back stands just before what it puts back. */}
         {!setting.locked && own !== undefined && (
           <IconButton
             label={`Reset ${setting.label}`}

@@ -137,8 +137,7 @@ bool ExecutableReplaced() {
   const std::string& startup = StartupExecutableIdentity();
   if (startup.empty()) return false;
   std::string current = FileIdentity(ExecutablePath());
-  // A missing file is a move in flight, not a finished install; saying nothing
-  // is better than telling someone to restart into a binary that is not there.
+  // A missing file is a move in flight, not a finished install.
   if (current.empty() || current == startup) return false;
   StartupExecutableIdentity() = current;
   return true;
@@ -329,8 +328,8 @@ void ContHandler(int) {
       WriteToTerminal(kBracketedPasteOn, sizeof(kBracketedPasteOn) - 1);
     }
   }
-  // The terminal may have been resized while we were stopped, and the repaint
-  // path is the same either way.
+  // The terminal may have been resized while stopped, and the repaint path is
+  // the same either way.
   g_terminal_resized = 1;
   WakeDescriptor(g_terminal_wake_write);
 }

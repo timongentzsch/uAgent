@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """Compare the footprint of coding-agent CLIs the same way for each.
 
-Measures, for every tool given: size on disk, `--version` start-up, an idle
-interactive session in a pseudo-terminal, and one tiny headless turn. Runs are
-interleaved round-robin across tools so background load affects all of them.
-Processes are attributed by PID only: the started process, its descendants, and new detached
-(parent PID 1) processes started from the tool's executable path. The headless turn calls the
-tool's real model provider with a one-word prompt. Claude Code and Codex CLI run without MCP
-servers, plugins, hooks or helpers from the machine's configuration (see BARE_FLAGS).
+Measures size on disk, `--version` start-up, an idle interactive session in a
+pseudo-terminal, and one tiny headless turn against the tool's real provider.
 """
 
 import argparse
@@ -38,10 +33,9 @@ SETTLE_LIMIT = 20
 HEADLESS_TIMEOUT = 180
 FIRST_SCREEN_QUIET = 0.5
 SYSTEM_PREFIXES = ("/usr/lib/", "/System/", "/lib/", "/lib64/", "/usr/lib64/")
-# Flags that keep each tool's own processes only: no MCP servers, plugins, hooks or helpers
-# from the machine's configuration. They apply to the idle and the headless measurement.
-# Codex has no such flag for its interactive UI, so these apply there; its headless turn uses
-# `exec --ignore-user-config` (auth is kept) because `-c mcp_servers={}` does not drop them.
+# Flags that keep each tool's own processes only: no MCP servers, plugins,
+# hooks or helpers from the machine's configuration. Codex's headless turn uses
+# `exec --ignore-user-config`: `-c mcp_servers={}` does not drop them there.
 BARE_FLAGS = {
     "uagent": [],
     "claude": [
@@ -72,7 +66,6 @@ BARE_FLAGS = {
     ],
     "omp": ["--no-extensions", "--no-skills", "--no-rules", "--no-lsp", "--no-title"],
 }
-# Keys that ask each tool's interactive UI to quit.
 QUIT_KEYS = {"uagent": b"/quit\r", "claude": b"/exit\r", "codex": b"/exit\r", "omp": b"/exit\r"}
 
 
@@ -103,12 +96,8 @@ def process_table():
 
 
 class Attribution:
-    """The PIDs one launch is responsible for, found by comparing process tables.
-
-    Every started process is tracked so it can be stopped, but only those running the tool's
-    own executables (command line starting with a marker) are measured: an MCP server or plugin
-    helper the machine's configuration makes the tool spawn is not the tool.
-    """
+    """The PIDs one launch is responsible for. All are tracked to be stopped;
+    only those running the tool's own executables are measured."""
 
     def __init__(self, root_pid, markers):
         self.root = root_pid
@@ -385,7 +374,7 @@ def measure_headless(tool, project):
         process.stdout.close()
         left = kill_recorded(sorted(attribution.pids))
     reaped = (usage.ru_utime + usage.ru_stime) * 1000
-    # Detached helpers are not in the reaped usage; add the CPU time last seen for them.
+    # Detached helpers are not in the reaped usage: add their last CPU time.
     detached = sum(c for pid, c in attribution.last.items() if pid not in attribution.descendants)
     return {
         "wall_ms": wall * 1000,

@@ -69,8 +69,6 @@ TEST_CASE(TestWebTerminal) {
         std::string::npos);
   CHECK(seen.find("planted") == std::string::npos);
 
-  // A second device takes the shell over and is shown what it printed; the
-  // first learns it was replaced and can no longer type.
   auto second = terminals.Attach(id);
   TerminalOutput last;
   ReadUntil(*viewer, "never printed", &last);
@@ -80,7 +78,6 @@ TEST_CASE(TestWebTerminal) {
         std::string::npos);
   viewer.reset();
 
-  // At most two shells; closing one ends it for its viewer.
   const std::string other = terminals.Open("", folder, error);
   CHECK(!other.empty());
   CHECK(terminals.Open("", folder, error).empty() &&
@@ -90,15 +87,12 @@ TEST_CASE(TestWebTerminal) {
   ReadUntil(*second, "never printed", &last);
   CHECK(last.ended);
 
-  // A shell that exits ends with its code.
   auto exiting = terminals.Attach(other);
   CHECK(exiting->Write("exit 3\n"));
   ReadUntil(*exiting, "never printed", &last);
   CHECK(last.ended && last.code == 3);
   CHECK(WaitUntil([&] { return terminals.List().empty(); }, BudgetMs(5000)));
 
-  // With no device attached and nothing printed for the idle time, a shell
-  // ends; one a device holds stays until it lets go.
   Terminals idle(2, std::chrono::milliseconds(200));
   const std::string unattended = idle.Open("", folder, error);
   const std::string held = idle.Open("", folder, error);
@@ -112,8 +106,7 @@ TEST_CASE(TestWebTerminal) {
   CHECK(WaitUntil([&] { return idle.List().empty(); }, BudgetMs(5000)));
   CHECK(!unattended.empty());
 
-  // The page's own shell, of no folder, is never listed, has one viewer
-  // ever and ends when it leaves; the list's listener hears each change.
+  // The page's own shell has no folder: never listed, one viewer ever.
   std::atomic<int> changes = 0;
   Terminals page(2, std::chrono::minutes(1), [&] { ++changes; });
   const std::string own = page.Open("", "", error);

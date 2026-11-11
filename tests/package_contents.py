@@ -22,10 +22,8 @@ def main():
     expected_skills = set()
     for path in (source / "skills").rglob("*"):
         relative = path.relative_to(source / "skills")
-        # The same two exclusions the install rule applies (CMakeLists.txt):
-        # dotfiles, and the bytecode a developer leaves behind by running a
-        # skill's script. Expecting a .pyc the archive deliberately omits fails
-        # this check on a working tree and never in CI, which checks out clean.
+        # The two exclusions of the install rule (CMakeLists.txt): dotfiles
+        # and the bytecode a skill's script leaves in a working tree.
         if not path.is_file() or any(
             part.startswith(".") or part == "__pycache__" for part in relative.parts
         ):

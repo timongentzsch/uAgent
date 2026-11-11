@@ -139,7 +139,6 @@ def answer(handler, body):
         if "report-present" not in done:
             return tool_call("present", {"path": "report.html"}, call_id="report-present")
     if "Present probe " in prompt:
-        # Every path it names, one call each.
         for path in prompt.split("Present probe ", 1)[1].split():
             if f"present-{path}" not in done:
                 return tool_call("present", {"path": path}, call_id=f"present-{path}")

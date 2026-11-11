@@ -1,10 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-// SessionCommand parse table: every worker kind maps to its enumerator with
-// its fields extracted, and envelope-identity failures drop silently.
-// ReceiptLog: first sight processes, identical retry replays, same id with
-// different content rejects, and a full log of pending commands backpressures.
-
 #include "include/app/session_command.h"
 
 #include <sys/socket.h>
@@ -216,7 +211,6 @@ TEST_CASE(TestSessionCommandFields) {
   CHECK(parsed.title == "New title");
   CHECK(parsed.operation == "followup");
   CHECK(parsed.cancelled);
-  // Absent fields read as empty.
   session::SessionCommand bare;
   REQUIRE(session::ParseSessionCommand(CommandEnvelope("submit"), kSession,
                                        kGeneration, bare));
@@ -242,8 +236,6 @@ TEST_CASE(TestSessionCommandRejects) {
   }
 }
 
-// A reader catching up takes the backlog a batch at a time: Read stops at
-// its byte budget and the next call continues from where the reader got to.
 TEST_CASE(TestReplayLogReadsInBatches) {
   session::ReplayLog log(MiB(1), 1024);
   for (int index = 0; index < 10; ++index) {
@@ -338,7 +330,6 @@ TEST_CASE(TestReceiptLog) {
   json previous;
   CHECK(log.Check(command, kRequest, previous) ==
         session::ReceiptVerdict::kNew);
-  // Identical retry replays the stored outcome.
   log.Record({{"kind", "outcome"},
               {"request_id", kRequest},
               {"accepted", true},
@@ -374,7 +365,6 @@ TEST_CASE(TestReceiptLogBackpressure) {
   json previous;
   CHECK(log.Check(overflow, "ffffffffffffffff", previous) ==
         session::ReceiptVerdict::kReject);
-  // Completing one receipt makes room again.
   log.Record({{"kind", "outcome"},
               {"request_id", "abcdef01234567800"},
               {"accepted", true},
@@ -485,9 +475,8 @@ TEST_CASE(TestCommandReplies) {
         }).empty());
 }
 
-// /cost reads each route from its full usage. It once copied input, output
-// and cache reads only, so a route's hit rate left cache writes out of the
-// denominator: live, one route said "cache 99%" while the total said 42%.
+// /cost reads each route from its full usage: a hit rate that leaves cache
+// writes out of the denominator overstates it.
 TEST_CASE(TestCostRoutesCountCacheWrites) {
   TestWorkspace workspace("cost-routes");
   Observability observability;

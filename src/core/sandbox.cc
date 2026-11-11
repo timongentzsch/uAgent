@@ -14,18 +14,15 @@
 namespace uagent {
 namespace {
 
-// Every candidate root, in the order a rejection notice should list them.
-// /dev earns its place on both platforms, not just Linux: under a blanket
-// file-write deny even `2>/dev/null` fails, which is most shell commands. One
-// entry covers /dev/shm too, since the nested fold below absorbs it.
+// Every candidate root, in the order a rejection notice lists them. /dev is
+// needed on both platforms: under a write deny even `2>/dev/null` fails.
 constexpr std::string_view kFixedRoots[] = {"/tmp", "/var/tmp", "/dev"};
 
 bool Acceptable(std::string_view root, std::string_view global_base) {
   if (root.empty() || root.front() != '/') return false;
   if (root == "/") return false;
-  // An ancestor of ~/.uagent would hand over the saved settings and the trust
-  // store by inheritance, and so would the folder that holds them. Any other
-  // descendant is fine and is how terminals/logs gets in.
+  // An ancestor of ~/.uagent, or the folder that holds its settings and trust
+  // store, would hand them over; any other descendant is fine.
   return !SandboxPathWithin(global_base, root) &&
          !SandboxPathWithin(root, std::string(global_base) + "/config");
 }
@@ -41,9 +38,8 @@ void Offer(std::string_view root, const SandboxInputs& inputs,
   accepted->emplace_back(root);
 }
 
-// Sorting first puts a parent immediately before everything nested inside it,
-// so one pass folds the whole tree away and the duplicates with it. A root
-// inside a withheld path stays: folding it into the parent would lose it.
+// Sorting puts a parent immediately before everything nested inside it, so one
+// pass folds them and the duplicates. A root inside a withheld path stays.
 void FoldNested(std::vector<std::string>* roots,
                 const std::vector<std::string>& withheld) {
   std::sort(roots->begin(), roots->end());
@@ -86,9 +82,8 @@ std::string DenyUnlinkAbove(const std::string& path) {
   return out + ")\n";
 }
 
-// The home folder's visible entries are closed to reads, except the folders
-// inside them commands need: the folder, the writable roots and the read
-// roots. An entry inside one of those stays open whole.
+// The home folder's visible entries are closed to reads, except the folder,
+// the writable roots and the read roots; an entry inside one stays open whole.
 void ConfineReads(const SandboxInputs& inputs, SandboxPolicy* policy) {
   std::vector<std::string> open = inputs.read_roots;
   open.push_back(inputs.workspace);
@@ -261,13 +256,9 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   }
   FoldNested(&accepted, result.policy.withheld);
   result.policy.writable_roots = std::move(accepted);
-  // A trusted folder's .mcp.json carries authority over the session
-  // running in it, and a repository's config and hooks run
-  // commands in your own git later; all sit inside the folder, which is
-  // writable by design. Carving them back out is the folder-scoped twin of
-  // the ancestor screen above -- with the same aim and, on Linux, no way to
-  // say it: Landlock has no deny form, so expressing this there would mean not
-  // granting the folder at all.
+  // A trusted folder's .mcp.json carries authority over the session, and a
+  // repository's config and hooks run commands in git later. All sit inside
+  // the writable folder, so they are carved back out (seatbelt only).
   if (!inputs.workspace.empty()) {
     result.policy.denied_writes = {inputs.workspace + "/" + kMcpConfigFile};
     if (inputs.git_repository) {

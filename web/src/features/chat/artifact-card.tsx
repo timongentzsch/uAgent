@@ -4,9 +4,7 @@ import { nameOf } from "../../shared/file-types.ts";
 import { ARTIFACT, artifactSize } from "../../shared/artifact.ts";
 import { PageThumb, usePreviewBase } from "../../shared/page-frame.tsx";
 
-// An artifact the agent presented, under its reply as a shared file is: its
-// cover live and small, what it is, and Open, which shows it in the Files
-// pane. It is drawn from the folder, so it follows what the agent writes.
+// Drawn from the folder, so it follows what the agent writes.
 export function ArtifactCard({
   session,
   part,

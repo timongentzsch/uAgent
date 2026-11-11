@@ -2,9 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_UI_SESSIONS_H_
 #define UAGENT_INCLUDE_UI_SESSIONS_H_
-// The saved-session picker. One file per conversation under
-// ~/.uagent/history, written by Agent::save as two lines: a cheap
-// header, read here for the listing, and the full payload.
+// The saved-session picker.
 
 #include <algorithm>
 #include <cstdint>
@@ -30,8 +28,7 @@
 
 namespace uagent {
 
-// The path of the one session `matches` accepts. Empty when none or several
-// do, so callers fall back to the picker or say so instead of guessing.
+// The path of the one session `matches` accepts; empty for none or several.
 template <class Matches>
 std::string UniqueSession(const std::vector<SessionInfo>& sessions,
                           const Matches& matches) {
@@ -44,9 +41,8 @@ std::string UniqueSession(const std::vector<SessionInfo>& sessions,
   return match;
 }
 
-// Unique prefix match over saved sessions: an exact path wins, otherwise the
-// single session whose file name or title contains the argument
-// (case-insensitive).
+// An exact path wins; otherwise the single session whose file name or title
+// contains the argument, case-insensitively.
 inline std::string MatchSessionPrefix(const std::string& prefix) {
   const std::string arg = AsciiLower(Trim(prefix));
   if (arg.empty()) return "";
@@ -62,7 +58,7 @@ inline std::string MatchSessionPrefix(const std::string& prefix) {
   });
 }
 
-// print a numbered list and read a choice; returns the chosen path or "".
+// Prints a numbered list and reads a choice; the chosen path or "".
 inline std::string PickSession() {
   std::vector<SessionInfo> sessions = ListSessions();
   if (sessions.empty()) {
@@ -107,8 +103,8 @@ inline std::string PickSession() {
   return "";
 }
 
-// load `path` into the agent; on success the session continues in that file.
-// Nothing is printed: the caller reports `error` where its output goes.
+// On success the session continues in that file. Nothing is printed: the
+// caller reports `error`.
 inline bool ResumeInto(Agent& agent, const std::string& path,
                        std::string& session_file, std::string& error) {
   if (path.empty()) return false;

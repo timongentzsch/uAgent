@@ -9,7 +9,6 @@ import { detailLevels } from "./tree.ts";
 // (the terminal's height) is kept in rem, so it follows the text size.
 export type Pane = "sidebar" | "files" | "files-list" | "terminal";
 
-// This browser's preferences.
 export const devicePrefs = {
   theme: stored(storageKeys.theme, "system"),
   motion: stored(storageKeys.motion, "system"),
@@ -18,20 +17,16 @@ export const devicePrefs = {
   ),
   time: stored(storageKeys.time, defaultTimePrefs, normalizeTimePrefs),
   panes: stored<Partial<Record<Pane, number>>>(storageKeys.panes, {}),
-  // How deep transcripts start open here; empty until this device chooses,
-  // so it starts at the host's level.
+  // Empty until this device chooses, so it starts at the host's level.
   detail: stored<string>(
     storageKeys.detail,
     "",
     (value) => detailLevels.find((level) => level === value) ?? "",
   ),
-  // Rows opened or closed here, by conversation and node id; choosing a
-  // level forgets them.
+  // By conversation and node id; choosing a level forgets them.
   toggles: stored<Record<string, boolean>>(storageKeys.toggles, {}),
 };
 
-// Applies the display preferences to the document now and whenever one
-// changes, wherever it is changed.
 export function applyDevicePrefs() {
   const follow = <T>(store: Stored<T>, apply: (value: T) => unknown) => {
     let undo = apply(store.read());

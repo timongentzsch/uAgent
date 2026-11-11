@@ -454,10 +454,8 @@ bool ToolMutates(const Tool& tool, const json& arguments) {
   return tool.mutating || (tool.mutates && tool.mutates(arguments));
 }
 
-// Repeat-guard exemption for Agent::ToolCallsWithinLimits: a call that
-// deliberately blocks — activity wait_ms or run yield_ms — is waiting for
-// something to finish, not stuck in a tight identical-call loop, so it
-// resets the counter instead of tripping it.
+// A call that deliberately blocks (wait_ms, yield_ms) is waiting, not stuck
+// in a loop of identical calls: it resets the repeat guard.
 bool ToolCallBlocks(const Tool& tool, const json& arguments) {
   if (tool.blocking_wait_default_ms >= 0 &&
       JsonValue(arguments, "wait_ms", tool.blocking_wait_default_ms) > 0) {
@@ -466,8 +464,6 @@ bool ToolCallBlocks(const Tool& tool, const json& arguments) {
   return JsonValue(arguments, "yield_ms", int64_t{0}) > 0;
 }
 
-// The authority a call needs. A tool may escalate specific arguments; nothing
-// can de-escalate below what the tool itself declares.
 ApprovalClass RequiredApproval(const Tool& tool, const json& arguments) {
   if (tool.approval_class) {
     ApprovalClass escalated = tool.approval_class(arguments);
@@ -636,7 +632,6 @@ json ToolSchema(const Tool& tool) {
             {"parameters", ToolParameters(tool)}}}};
 }
 
-// registry -> the `tools` array for a chat request
 json ToolSchemas(const std::vector<Tool>& tools) {
   json out = json::array();
   for (const Tool& tool : tools) {

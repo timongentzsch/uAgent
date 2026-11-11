@@ -1,6 +1,3 @@
-/* Search: its field on top, then the results, and on a wide screen the
-   rows around the selected hit beside them. As tall as its results, up to
-   the dialog's limit, past which the results scroll. */
 .spotlight {
   display: flex;
   flex-direction: column;
@@ -32,8 +29,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A hit sits under its conversation: two lines of the words around it, so
-   its mark always shows. */
 .spotlight-snippet,
 .spotlight-more {
   flex: 1;

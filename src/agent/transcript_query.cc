@@ -114,9 +114,8 @@ json TranscriptView::Page(uint64_t before) const {
       if (page.back()["kind"] == "turn") whole = page.size();
     }
   }
-  // The page ends on a whole turn. A turn larger than a page keeps its head,
-  // the message that started it, as the live view does (view_reducer.cc):
-  // its steps are drawn under it.
+  // The page ends on a whole turn; a turn larger than a page keeps its head,
+  // the message that started it, as the live view does (view_reducer.cc).
   bool head = false;
   if (more && whole) {
     page.resize(whole);

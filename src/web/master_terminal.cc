@@ -35,7 +35,6 @@ json Master::TerminalList() const {
   return list;
 }
 
-// One socket for each shell a paired device may open.
 void Master::RegisterTerminalRoutes() {
   server_.WebSocket(
       R"(/api/terminals/([a-f0-9]{16,64}))",
@@ -86,9 +85,8 @@ void Master::TerminalSocket(const Request& request,
 }
 
 // Binary frames carry the shell's output out and the device's input in; a
-// text frame is a control message, a resize in or an end out. A newer
-// socket for the same shell replaces this one. `read` has nothing when its
-// shell is out of reach, `wake` ends a `read` that waits.
+// text frame is a control message. A newer socket for the same shell replaces
+// this one; `wake` ends a `read` that waits.
 TerminalOutput RelayTerminal(
     httplib::ws::WebSocket& socket,
     const std::function<std::optional<TerminalOutput>()>& read,

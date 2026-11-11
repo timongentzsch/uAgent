@@ -17,21 +17,17 @@
 
 namespace uagent {
 namespace {
-// What a well-known host declares, as data, for any provider whose address
-// is on it. This table and the provider entries are the only places a vendor
-// is named.
+// What a well-known host declares for any provider on it. This table and
+// the provider entries are the only places a vendor is named.
 struct KnownEndpoint {
   const char* host;
   FeatureSet features;
   const char* options;
 };
 
-// The decision models the endpoint serves: the address, the model used when
-// none is chosen, and for each model the probabilities that decide a review
-// (see tests/reviewer_eval, which finds them): allow needs P(allow) at least
-// `allow`, deny needs P(deny) at least `deny`, and any reason question at or
-// above `veto` asks instead of allowing. A model with no row here gets the
-// strict bars of permissions.cc.
+// The decision models the endpoint serves. Per model: allow needs P(allow)
+// at least `allow`, deny needs P(deny) at least `deny`, and a reason question
+// at or above `veto` asks instead. A model with no row gets the strict bars.
 constexpr char kOpenRouterOptions[] = R"({
   "pdf_engine": "cloudflare-ai",
   "decisions_url": "https://openrouter.ai/api/alpha/decisions",
@@ -69,8 +65,8 @@ std::string CataloguePath(const std::string& identity) {
   return UagentDir(kModelsDir) + "/" + HashHex(identity) + ".json";
 }
 
-// OpenRouter's free variants are explicit catalogue entries. Missing prices
-// or capabilities never qualify; no model names are pinned in setup.
+// OpenRouter's free variants are explicit catalogue entries; missing
+// prices or capabilities never qualify.
 bool FreeCodingModel(const json& model) {
   const json* pricing = JsonObject(model, "pricing");
   const json* parameters = JsonArray(model, "supported_parameters");
@@ -320,9 +316,8 @@ std::optional<std::vector<ModelInfo>> CachedModels(const Api& api) {
   return models;
 }
 
-// A start reads the catalogue from CachedModels instead of waiting on the
-// provider, and what is learned from it (context window, modalities) changes
-// rarely; every answer that is usable keeps that copy current.
+// Every usable answer keeps the copy CachedModels reads current, so a
+// start does not wait on the provider.
 std::optional<std::vector<ModelInfo>> QueryModels(Api& api, bool abortable,
                                                   int64_t timeout_s) {
   JsonResponse response = api.Get("/models", abortable, timeout_s);

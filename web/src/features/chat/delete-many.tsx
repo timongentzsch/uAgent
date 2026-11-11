@@ -6,8 +6,7 @@ import { plural } from "../../shared/quantities.ts";
 import DeleteMany from "../../shared/delete-many.tsx";
 import { deleteConversation } from "./conversation-actions.tsx";
 
-// The sidebar's selection to the one delete confirmation: workspaces first,
-// each taking its conversations, then the conversations outside them.
+// Workspaces go first, each taking its conversations, then the rest.
 
 export default function DeleteConversations({
   sessions,

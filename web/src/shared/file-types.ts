@@ -1,6 +1,5 @@
-// What a file is by its name: the language it is highlighted in, whether it
-// is an image, a video or Markdown, and whether a name is a file at all. Small and
-// eager, so the renderer can tell a cited path without the highlighter.
+// Small and eager, so the renderer can tell a cited path without the
+// highlighter.
 
 const NAMED: Record<string, string> = {
   "CMakeLists.txt": "cmake",
@@ -46,10 +45,8 @@ export const HTML = /\.html?$/i;
 // Files with no language that are still plainly files.
 const PLAIN = /\.(txt|csv|log|lock|pdf)$/i;
 
-// A path's last part: the file or folder it names.
 export const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
-// A file's language, by its name or else its extension.
 export function languageFor(path: string) {
   const name = nameOf(path);
   const dot = name.lastIndexOf(".");

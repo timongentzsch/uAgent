@@ -10,12 +10,9 @@ import {
   maxDiagramSvgChars,
 } from "./limits.ts";
 
-// Serialize Mermaid's global renderer and bound retained SVGs. SVG is displayed
-// as an image, so diagram content never creates active elements in the app DOM.
-// Dimensions come from the SVG viewBox so the <img> reserves its exact box
-// before decode: an unsized image first lays out at intrinsic size, then
-// collapses under max-width, and that grow/shrink pair nets to a phantom
-// scroll gesture on engines without native scroll anchoring (WebKit).
+// Mermaid's global renderer is serialized. The SVG shows as an image, so
+// diagram content never creates active elements in the app DOM; its size
+// comes from the viewBox, so the <img> reserves its box before decode.
 type RenderedDiagram = { svg: string; width: number; height: number };
 const cache = new Map<string, RenderedDiagram>();
 let queue = Promise.resolve();
@@ -43,7 +40,6 @@ function diagram(source: string, dark: boolean): Promise<RenderedDiagram> {
   if (cache.has(key)) return Promise.resolve(cache.get(key)!);
   const result = queue.then(async () => {
     if (cache.has(key)) return cache.get(key)!;
-    // Drawn in the palette's tokens, as the terminal is.
     const style = getComputedStyle(document.documentElement);
     const token = (name: string) => style.getPropertyValue(`--${name}`).trim();
     mermaid.initialize({
@@ -132,9 +128,8 @@ export default function Diagram({ source }: { source: string }) {
           </p>
         )}
       </div>
-      {/* Never flip open on resolve: closing the disclosure at the same
-          commit the image lands shrinks the box it just grew, another
-          phantom-gesture pair. Source stays one click away either way. */}
+      {/* Never open by default: closing it as the image lands would shrink the
+          box it just grew. */}
       <details>
         <summary class="small">Show source</summary>
         <div class="code-block">

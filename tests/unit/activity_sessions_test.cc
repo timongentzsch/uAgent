@@ -48,10 +48,8 @@
 
 namespace uagent {
 namespace {
-// A background command's first output belongs to whichever call reads it
-// first, and on a loaded host that is the call that started it. A command
-// held here prints nothing until Open(), so what it prints is still to come
-// when the start has returned.
+// A command held here prints nothing until Open(), so its first output is
+// still to come when the call that started it has returned.
 class Gate {
  public:
   ~Gate() { unlink(path_.c_str()); }
@@ -187,8 +185,6 @@ TEST_CASE(TestSignalAndFileWatch) {
           queued[1].text == "second");
     CHECK(SteeringState().QueuedCount() == 0);
 
-    // The next auto-start message is taken alone; the rest keep their order
-    // and payloads, deferred ones included.
     SteeringState().Queue("deferred", "", false);
     SteeringState().Queue("auto", "first-id");
     SteeringState().Queue("later", "second-id", true, json::array({"a"}));
@@ -200,8 +196,7 @@ TEST_CASE(TestSignalAndFileWatch) {
           rest[1].attachments.size() == 1);
     CHECK(!SteeringState().TakeNextAutoStart());
 
-    // "Queue next" waits out the running turn: the turn's steps take only
-    // the steer beside it and nothing yields to it; the turn's end starts it.
+    // "Queue next" waits out the running turn; the turn's end starts it.
     SteeringState().Queue(
         {.text = "next", .request_id = "", .after_turn = true});
     SteeringState().Queue("steer");
@@ -211,8 +206,7 @@ TEST_CASE(TestSignalAndFileWatch) {
     CHECK(SteeringState().QueuedCount() == 1 && !SteeringYieldRequested());
     next = SteeringState().TakeNextAutoStart();
     CHECK(next && next->text == "next");
-    // Insert promotes the same payload, preserving identity, files and the
-    // other after-turn entry. A stale click cannot interrupt another step.
+    // Insert promotes the same payload; a stale click cannot interrupt a step.
     SteeringState().Queue(
         {.text = "held", .request_id = "held-id", .after_turn = true});
     SteeringState().Queue({.text = "insert",
@@ -234,9 +228,8 @@ TEST_CASE(TestSignalAndFileWatch) {
     unlink(watched_path);
   }
 
-  // A catalogue change wakes the host so it can register a newly introduced
-  // project path; the following external prompt edit is then notification
-  // driven even though the file did not exist during the first wait.
+  // A catalogue change wakes the host so it can watch a newly introduced
+  // project path, whose file did not exist during the first wait.
   char project_root[] = "/tmp/uagent-watch-project-XXXXXX";
   REQUIRE(mkdtemp(project_root) != nullptr);
   int catalogue_wake[2] = {-1, -1};
@@ -341,7 +334,6 @@ TEST_CASE(TestActivityBufferAndAdmission) {
   }
   CHECK(amortised.Snapshot().find("16 bytes omitted") != std::string::npos);
 
-  // A cut never splits a codepoint.
   HeadTailBuffer multibyte(9);
   multibyte.Push("ééééééééé");
   CHECK(multibyte.Snapshot().find("\xc3\n") == std::string::npos);
@@ -396,8 +388,6 @@ TEST_CASE(TestActivityBufferAndAdmission) {
   }
   CHECK(delegating.ActivityViews()[0]["status"] == "finishing");
 
-  // The status row counts what the turn waits on apart from what runs behind
-  // it, backgrounded or detached.
   ActivitySupervisor counted;
   CHECK(counted.TryAdd({.pid = 899970, .cmd = "backgrounded"}, 8));
   CHECK(counted.TryAdd(
@@ -550,7 +540,6 @@ TEST_CASE(TestRootCommands) {
         context);
     CHECK(ran.Ok() && ran.output.find("ran") != std::string::npos);
   }
-  // A wrong password ends the command, at its terminal too.
   typed = "wrong";
   for (bool tty : {false, true}) {
     ToolResult refused = run->run({{"command", "echo ran"},
@@ -629,9 +618,8 @@ TEST_CASE(TestActivityStateGraph) {
   CHECK(supervisor.Find(id).has_value());
   CHECK(supervisor.ActivityViews()[0]["status"] == "stopped");
   CHECK(CompletionNotes(supervisor).empty());
-  // Rows carry the full command (bounded) beside the 160-char label, so the
-  // activity popup never degrades to the abbreviated label once inspect can
-  // no longer reach a finished job.
+  // Rows carry the full command (bounded) beside the 160-char label, for the
+  // activity popup once inspect can no longer reach a finished job.
   const std::string long_command(300, 'x');
   CHECK(supervisor.TryAdd(
       {.pid = 899991, .cmd = long_command, .session = stopped}, 4));
@@ -751,9 +739,7 @@ TEST_CASE(TestActivitySessions) {
   }
 
   // A persisted PID must never authorize signalling a different process that
-  // later acquired the same numeric id. Corrupt the recorded start identity,
-  // drop in-memory ownership, and prove stop cleans metadata without killing
-  // the still-live process group.
+  // later acquired the same id: stop cleans the metadata without killing it.
   CHECK(!ProcessIdentity(getpid()).empty());
   CHECK(ProcessIdentity(pid_t{99999999}).empty());
   TestWorkspace detached_workspace("detached-identity");
@@ -768,9 +754,8 @@ TEST_CASE(TestActivitySessions) {
     pid_t pid = detached_jobs.front().pid;
     std::optional<Activity> released = detached_launcher.Take(pid);
     CHECK(released.has_value());
-    // The log lives under the records directory, not in it: Phase C makes the
-    // log subdirectory writable by sandboxed commands, and a record beside it
-    // would be forgeable.
+    // The log lives under the records directory, not in it: sandboxed commands
+    // may write the log subdirectory, and a record there would be forgeable.
     CHECK(std::filesystem::path(detached_jobs.front().log).parent_path() ==
           std::filesystem::path(UagentDir(kTerminalLogsDir)));
     std::string record_path = DetachedRecordPath(pid);
@@ -803,9 +788,8 @@ TEST_CASE(TestActivityDescriptorAndInputPolicy) {
   ToolContext context{std::chrono::steady_clock::now() +
                       std::chrono::seconds(10)};
 
-  // Descriptor ownership is a type, but only a count proves it. A PTY run and
-  // a pipe run each take a log, an output end and (for a PTY) an input end;
-  // if any of those outlive their activity, this grows per iteration.
+  // Descriptor ownership is a type, but only a count proves it: if a log, an
+  // output end or a PTY's input end outlives its activity, this grows.
   {
     ActivitySupervisor leak_check;
     auto open_descriptors = [] {
@@ -832,10 +816,8 @@ TEST_CASE(TestActivityDescriptorAndInputPolicy) {
                   .result.Ok());
       }
     }
-    // Retained activities keep their transcript, never their descriptors.
-    // The supervisor closes them as it reaps, which an instrumented build can
-    // lag a few milliseconds behind, so the count is given time to come back
-    // down. A real leak never does, and still fails here.
+    // Retained activities keep their transcript, never their descriptors. The
+    // supervisor closes them as it reaps, so the count is given time to settle.
     CHECK(WaitUntil([&] { return open_descriptors() <= settled + 2; },
                     BudgetMs(5000)));
   }
@@ -872,11 +854,9 @@ TEST_CASE(TestActivityWaitAndDelivery) {
   ToolContext context{std::chrono::steady_clock::now() +
                       std::chrono::seconds(10)};
 
-  // A wait the turn deadline cuts short has to say so. Reporting only that it
-  // timed out reads as though the requested wait elapsed, which invites the
-  // caller to conclude the activity is stuck and stop waiting on it. The
-  // per-call budget no longer truncates a wait at all — the tool declares
-  // timeout_s 0 — so an explicit WithTimeout stands in for the turn's.
+  // A wait the turn deadline cuts short has to say so, or it reads as though
+  // the requested wait elapsed. The tool declares timeout_s 0, so an explicit
+  // WithTimeout stands in for the turn's deadline.
   ActivitySupervisor capped_wait;
   CHECK(RunShellCommand(
             capped_wait, context,
@@ -1221,10 +1201,9 @@ TEST_CASE(TestDetachedActivityOwnership) {
                       std::chrono::seconds(10)};
   TestWorkspace workspace("detached-ownership");
 
-  // A detached leader may already have been reaped by another lifecycle
-  // owner when automatic completion observes it. ECHILD plus a dead process
-  // group is still a completed activity, not one that remains supervised
-  // forever.
+  // A detached leader may already have been reaped by another lifecycle owner
+  // when completion observes it: ECHILD plus a dead process group is still a
+  // completed activity.
   ActivitySupervisor reaped_completion;
   ShellCommandResult detached = RunShellCommand(
       reaped_completion, context,
@@ -1277,10 +1256,9 @@ TEST_CASE(TestDetachedActivityOwnership) {
   // reported as failed when the last of it is gone, not as the success a
   // process with no child left to ask would pass for.
   ActivitySupervisor detached_failure;
-  // Its output is piped to this executable as the log pump, and the pipe's
-  // last failure is the command's: a stand-in that succeeds lets the
-  // command's own status through. A copy: SetExecutablePath replaces the
-  // string ExecutablePath refers to.
+  // The log pump is this executable, and the pipe's last failure is the
+  // command's: a stand-in that succeeds lets its status through. A copy:
+  // SetExecutablePath replaces the string ExecutablePath refers to.
   // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
   const std::string executable = ExecutablePath();
   SetExecutablePath("/usr/bin/true");
@@ -1330,7 +1308,6 @@ TEST_CASE(TestDetachedActivityOwnership) {
     RemoveLog(sentinel_log);
   }
 
-  // Commands and detached terminals share one pool.
   {
     // Detached terminals outlive the session, so the pool bounds them too.
     ActivitySupervisor detached_pool;
@@ -1373,11 +1350,9 @@ TEST_CASE(TestDetachedActivityOwnership) {
   }
 }
 
-// A delegated child is an ordinary session file whose header names its role.
-// It must never surface as a session of its own, and its parent must find it.
-// A killed command's grandchildren become zombies of whoever adopts them, and
-// an adopter that reaps late (a container's init, a CI agent) must not make
-// the stop of that command fail: nothing in such a group can run any more.
+// A killed command's grandchildren become zombies of whoever adopts them. An
+// adopter that reaps late (a container's init, a CI agent) must not make the
+// stop fail: nothing in such a group can run any more.
 TEST_CASE(TestAGroupOfOnlyZombiesIsFinished) {
   // A process name may hold parentheses and newlines; the fields follow the
   // last ')'. A record that does not fit says nothing.
@@ -1466,7 +1441,6 @@ TEST_CASE(TestThreadWorktreesGoOnlyWhenNothingIsLost) {
   CHECK(!std::filesystem::exists(tree));
 }
 
-// /overview: the folder, its conversations and what needs you, as text.
 TEST_CASE(TestFolderOverviewText) {
   TestWorkspace workspace("folder-overview");
   const std::string folder = CanonicalCwd();
@@ -1507,7 +1481,6 @@ TEST_CASE(TestChildSessionsStayOutOfTheCatalogue) {
   auto all = ids(SessionScope::kAll);
   std::ranges::sort(all);
   CHECK(all == (std::vector<std::string>{"agent-aaaa1111", "ordinary"}));
-  // An agent is found beside its parent, which it names by its id.
   const std::string parent = (dir / "ordinary.json").string();
   const std::vector<SessionInfo> beside = SessionsBeside(parent);
   CHECK(beside.size() == 2);
@@ -1538,7 +1511,6 @@ TEST_CASE(TestMailbox) {
   };
   auto all = [](const Mail&) { return true; };
 
-  // A pending message wakes a watcher, and takes come in the order sent.
   MailboxWatch watch("recipient");
   CHECK(watch.Get() >= 0);
   CHECK(SendMail(note("a", "first")).empty());
@@ -1558,18 +1530,16 @@ TEST_CASE(TestMailbox) {
   RecoverMail("recipient");
   CHECK(PendingMail("recipient").empty());
 
-  // A message the recipient does not accept yet stays pending.
   CHECK(SendMail(note("b", "later")).empty());
   CHECK(TakeMail("recipient", [](const Mail&) { return false; }).empty());
   CHECK(PendingMail("recipient").size() == 1);
   TakeMail("recipient", all);
 
-  // A waiting duplicate is dropped.
   CHECK(SendMail(note("c", "same")).empty());
   CHECK(SendMail(note("c", "same")).empty());
   CHECK(texts(TakeMail("recipient", all)) ==
         std::vector<std::string>({"same"}));
-  // So is a named mail sent again. Another mail that happens to say the
+  // A named mail sent again is dropped. Another mail that happens to say the
   // same is a message of its own: a thread that reports twice is heard twice.
   Mail named = note("c", "done");
   named.id = "first-report";
@@ -1581,7 +1551,6 @@ TEST_CASE(TestMailbox) {
   CHECK(texts(TakeMail("recipient", all)) ==
         std::vector<std::string>({"done", "done"}));
 
-  // Loops, floods and oversized messages are refused with a reason.
   Mail looping = note("d", "again");
   looping.hops = kMailMaxHops + 1;
   CHECK(!SendMail(looping).empty());
@@ -1595,7 +1564,6 @@ TEST_CASE(TestMailbox) {
   CHECK(!SendMail(note("f", std::string(kMailBytes, 'x'))).empty());
   TakeMail("recipient", all);
 
-  // Expired and unreadable messages are never delivered.
   Mail stale = note("g", "stale");
   stale.expires_ms = 1;
   CHECK(SendMail(stale).empty());
@@ -1619,8 +1587,6 @@ TEST_CASE(TestSessionMail) {
   namespace fs = std::filesystem;
   TestWorkspace workspace("session-mail");
   const fs::path dir = workspace.workspace;
-  // A saved session: a header naming its folder and, for an agent, its
-  // parent.
   auto save = [&](const fs::path& file, const std::string& parent = "") {
     json header = {{"format", kSessionFormat},
                    {"cwd", CanonicalCwd()},
@@ -1658,8 +1624,7 @@ TEST_CASE(TestSessionMail) {
   }
   SetApprovalMode(before);
 
-  // Sending: the same rule, and the label says who wrote, from how the
-  // sender stands to the recipient. A runtime's report names itself.
+  // The label says who wrote, from how the sender stands to the recipient.
   auto received = [](const SessionMail& mail) {
     CHECK(SendSessionMail(mail).empty());
     const std::vector<Mail> taken =

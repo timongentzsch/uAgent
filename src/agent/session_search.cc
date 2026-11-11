@@ -14,11 +14,9 @@
 namespace uagent {
 namespace {
 
-// Parsing a session costs far more than reading it, so a file whose bytes
-// cannot hold the query is skipped unparsed. Saved text is JSON-escaped only
-// for quotes, backslashes and control characters; a query with one of those
-// reads every file. A query split across two text parts of one message is
-// not found this way.
+// Parsing costs far more than reading, so a file whose bytes cannot hold the
+// query is skipped unparsed. Saved text escapes only quotes, backslashes and
+// control characters; a query with one of those reads every file.
 bool MayContain(const std::string& path, const std::string& needle) {
   if (std::ranges::any_of(needle, [](unsigned char c) {
         return c == '"' || c == '\\' || c < 0x20;

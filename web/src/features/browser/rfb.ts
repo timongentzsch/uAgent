@@ -1,8 +1,7 @@
 import RFB from "@novnc/novnc";
 
-// The noVNC internals the viewer relies on, in one place. noVNC 1.7 has no
-// public API for either; if an upgrade removes them, these fail closed and
-// the browser tests fail.
+// noVNC 1.7 has no public API for these internals; if an upgrade removes
+// them, these fail closed and the browser tests fail.
 interface RfbInternals {
   _cursor?: { _canvas?: HTMLCanvasElement };
   _sock?: unknown;

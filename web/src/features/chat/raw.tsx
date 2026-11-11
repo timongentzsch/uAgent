@@ -18,9 +18,6 @@ import { formatBody } from "../../shared/format.ts";
 import { servedBy } from "../../shared/display.ts";
 import { formatEventStream } from "./raw-capture.ts";
 
-// The full body of a tool call, a context or an HTTP exchange, read from the
-// host in pages. Opened from a row's menu and from the inspector.
-
 export default function Raw({
   session,
   id,

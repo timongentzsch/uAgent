@@ -26,17 +26,15 @@ struct ShellCommandResult {
 
 struct ShellCommand {
   std::string command;
-  // Run this program directly, through no shell; `command` then only names
-  // the activity.
+  // Run directly, through no shell; `command` then only names the activity.
   std::vector<std::string> argv = {};
   std::string shell = "bash";
   bool background = false;
   bool detach = false;
   bool immediate = false;
   bool tty = false;
-  // Confined by the OS sandbox when the session enforces one. Default-on so
-  // that a call site added later is confined without anyone remembering to ask
-  // for it; the two harness spawns that run uagent itself opt out explicitly.
+  // Confined by the OS sandbox when the session enforces one. On by default,
+  // so a new call site is confined unless it opts out.
   bool sandbox = true;
   int64_t yield_ms = 0;
   int64_t max_output_chars = 0;
@@ -47,22 +45,16 @@ struct ShellCommand {
   EnvironmentOverrides environment = {};
   ChildEnvironmentPolicy environment_policy =
       ChildEnvironmentPolicy::kSanitized;
-  // A command from RootCommand: the activity answers `nonce`, sudo's prompt,
-  // with `secret` (see ActivitySession).
+  // From RootCommand: the activity answers sudo's prompt `nonce` with `secret`.
   std::string nonce = {};
   std::shared_ptr<std::string> secret = nullptr;
 };
 
-// `command` as root through `sudo -S -p nonce`, on `host` over ssh when one
-// is named. -k makes sudo prompt even with cached credentials, so the prompt
-// always comes and the password line never reaches the command. Without a
-// nonce it is `sudo -n`, for a user sudo lets in without a password: it
-// fails rather than prompting if one is needed after all.
+// `command` under sudo, over ssh when `host` is named; `sudo -n` with no nonce.
 std::string RootCommand(const std::string& command, const std::string& host,
                         bool tty, const std::string& nonce);
 
-// True when sudo, on `host` over ssh when one is named, needs no password
-// from this user (NOPASSWD, or credentials it still holds).
+// Whether sudo, on `host` over ssh when named, asks this user for no password.
 bool PasswordlessSudo(const std::string& host);
 
 ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,

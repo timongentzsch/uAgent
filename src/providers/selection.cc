@@ -25,8 +25,7 @@
 namespace uagent {
 namespace {
 
-// Catalog model features with configured route or provider features on top:
-// what an operator declared wins over what a catalog reports.
+// What an operator declared wins over what a catalog reports.
 json MergeFeatures(const json& catalog, const json& configured) {
   if (!configured.is_object()) return catalog;
   json merged = catalog.is_object() ? catalog : json::object();
@@ -107,8 +106,8 @@ bool ProbeModel(Api& api, bool discover_efforts) {
         api.capabilities.model_features.is_null())) {
     return true;
   }
-  // Discover effort support on demand, without delaying a configured startup
-  // for optional metadata. Unavailable metadata leaves the route usable.
+  // Effort support is discovered on demand; unavailable metadata leaves the
+  // route usable.
   auto started = std::chrono::steady_clock::now();
   // The catalogue lists an id without the routing suffixes (`:nitro`) an
   // endpoint takes on any id: the exact id wins, else the id without them.
@@ -136,8 +135,7 @@ bool ProbeModel(Api& api, bool discover_efforts) {
       api.supported_reasoning_efforts = info->efforts;
       api.capabilities.SetInputModalities(info->input_modalities, api.wire_api);
       api.capabilities.SetModelFeatures(info->features);
-      // No effort chosen: the one the catalogue declares as the model's
-      // default, as a route picked from the catalogue gets. Omitted, some
+      // No effort chosen: the catalogue's default for the model. Omitted, some
       // endpoints think longer than the default they list.
       if (api.reasoning_effort.empty()) {
         api.reasoning_effort = info->default_effort;
@@ -208,10 +206,8 @@ std::string NormalizeModelQuery(std::string query) {
   return query;
 }
 
-// Users type display names with spaces ("Muse Spark") while ids use hyphens
-// ("muse-spark"). Unify separators before the fallback comparison so both
-// spellings match; the exact substring check above runs first and is
-// unchanged for id-style queries.
+// Display names use spaces ("Muse Spark") where ids use hyphens
+// ("muse-spark"); separators are unified so both spellings match.
 std::string SearchKey(std::string text) {
   for (char& c : text) {
     if (c == ' ' || c == '_' || c == '-') c = '-';

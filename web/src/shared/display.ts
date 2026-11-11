@@ -1,16 +1,13 @@
-// Shared display helpers: single owner for time, text, status.
-// Pure functions only — no hooks, no JSX. TS-only imports so node --test
+// Pure functions only, no hooks or JSX, and TS-only imports, so node --test
 // can load this module directly.
 import { plural } from "./quantities.ts";
 import type { Session, Statistics } from "./types.ts";
 
-// The folder a session belongs to: its working directory.
 export const folderOf = (item: Session) => item.cwd || "";
 export const projectsOf = (sessions: readonly Session[]) => [
   ...new Set(sessions.map(folderOf).filter(Boolean)),
 ];
 
-// One name per approval mode, wherever a mode is shown or chosen.
 export const permissionLabels = {
   ask: "Ask",
   auto: "Auto review",
@@ -25,7 +22,6 @@ export const permissionLabel = (mode?: string) =>
       : "ask"
   ];
 
-// A word as a label starts it: "saved" reads "Saved".
 export const capitalize = (text: string) =>
   text.charAt(0).toUpperCase() + text.slice(1);
 

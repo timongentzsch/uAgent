@@ -42,24 +42,20 @@ bool Confirm(InteractionRequest request) {
          (answer == "y" || answer == "Y" || answer == "yes");
 }
 
-// A mandatory-human decision needs a real person on the other end: a
-// terminal or a runtime's clients. Headless runs and piped input cannot
-// supply one.
+// A mandatory-human decision needs a person: a terminal or a runtime's
+// clients. Headless runs and piped input cannot supply one.
 bool InteractiveApprovalAvailable() {
   return isatty(STDIN_FILENO) || InteractiveReadAvailable();
 }
 
 namespace {
-// What a person may answer an ordinary approval with: the option each client
-// offers and every spelling the terminal accepts for it. An answer outside
-// the table is guidance: denied, and queued as steering.
+// What a person may answer an ordinary approval with. An answer outside the
+// table is guidance: denied, and queued as steering.
 enum class ApprovalAnswer { kOnce, kSession, kRepository, kDeny, kGuidance };
 
 struct ApprovalChoice {
   ApprovalAnswer answer;
   std::string_view value;
-  // Always names the rule it keeps, and the conversation's the same one; the
-  // short answers fit one row of buttons.
   std::string_view label;
   std::array<std::string_view, 3> aliases;
 };
@@ -99,16 +95,11 @@ ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
   return ApprovalAnswer::kGuidance;
 }
 
-// An agent in Auto that may edit acts inside its folder without review
-// while the sandbox holds it there: the commands the sandbox wraps (run,
-// which may also write the sandbox's other roots: temporary files and tool
-// caches), and file changes at a path its own check
-// finds inside the folder. Stopping a process is not one of them: a
-// detached one may belong to another folder.
-// Without an enforced sandbox, or for anything else, it is reviewed like
-// any Auto session; one that asks, asks.
 bool WrapsCommands(const Tool& tool) { return tool.name == "run"; }
 
+// An agent in Auto that may edit acts in its folder without review while
+// the enforced sandbox holds it there: wrapped commands and file changes
+// inside the folder, not stopping a process, which may be another folder's.
 bool ReviewedByPolicy(const AppContext* app, const Tool& tool,
                       const json& arguments) {
   const json agent = app->options.AgentRole();
@@ -138,33 +129,29 @@ bool PlanModeAllows(const Tool& tool, const json& arguments, bool mandatory) {
              CanonicalAccessPath(plan);
 }
 
-// The outcome of an approval. A refusal says what was not approved, not who
-// refused it: a person may have declined, or a client with nobody behind it
-// declined for them.
+// A refusal says what was not approved, not who refused it: a client with
+// nobody behind it may have declined.
 struct Verdict {
   bool granted = true;
   std::string refusal = "this action was not approved";
 };
 
-// What the review made of each action in the turn being run, so the same
-// action asked again in that turn is not paid for again. A new turn starts
-// afresh.
+// The review of each action in the turn being run, so the same action asked
+// again in that turn is not paid for again.
 struct ReviewMemo {
   std::mutex mutex;
   int64_t turn = -1;
   std::unordered_map<std::string, AutoPermissionReview> reviews;
 };
 
-// The automatic permission review's verdict, or nothing when it asks for a
-// person to decide. Records what it saw in review.
+// Nothing when the review asks for a person to decide.
 std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
                                            const Tool& tool,
                                            const std::string& raw_payload,
                                            int64_t turn, json& review) {
   Verdict verdict;
-  // The latest message, then what the session was asked first: an agent's
-  // brief still authorizes what a later note from its parent adds. A cut for
-  // length takes the brief's end, never the latest word.
+  // The latest message, then the first: an agent's brief still authorizes
+  // what a later note from its parent adds.
   const Conversation& history = app->agent->History();
   std::string request = history.UserMessageText(history.UserTurns());
   if (const std::string first = history.UserMessageText(1); first != request) {
@@ -217,15 +204,13 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
   return verdict;
 }
 
-// Puts the call to a person, and remembers an answer they ask to keep.
 Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
                   const std::string& raw_payload, const std::string& request_id,
                   const std::string& root, const PermissionRule& rule,
                   bool mandatory, const json& review) {
   Verdict verdict;
-  // A tool escalates by its path for reaching µAgent's own configuration or
-  // one of the person's folders; a tool that escalates for its own reason
-  // names it.
+  // A tool that escalates for its own reason names it; otherwise its path
+  // did, by reaching µAgent's configuration or one of the person's folders.
   std::string reason =
       tool.mandatory_reason ? tool.mandatory_reason(arguments) : "";
   if (reason.empty()) {
@@ -234,9 +219,7 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
                    "opens one"
                  : "changes \u00b5Agent's own configuration";
   }
-  // What the automatic review made of it, when it was asked: its reasons
-  // join the risks, and in words which bar it fell on, or why it could not
-  // decide.
+  // The review's reasons join the risks; its note names the bar it fell on.
   json risks = ApprovalRisks(tool, arguments, root);
   for (const json& caution : JsonValue(review, "reasons", json::array())) {
     risks.push_back(caution);
@@ -244,9 +227,7 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
   std::string verdict_line = JsonValue(review, "error", "");
   verdict_line = verdict_line.empty() ? JsonValue(review, "note", "")
                                       : "could not decide: " + verdict_line;
-  // The request carries the full command/payload, so long commands are
-  // never truncated. A tool with more to show than its one-line label
-  // supplies its own preview.
+  // The preview is the whole payload: a long command is never truncated.
   Emit(Event{
       EventId::kApprovalRequested,
       {{"id", request_id},
@@ -298,12 +279,9 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
 
 }  // namespace
 
-// Approval policy in one place, so the prompt and the yolo shortcut cannot
-// drift apart from the debug record of what was granted. A mandatory-human
-// call ignores every automatic-approval switch and denies when no human can
-// answer. That is defense in depth for the built-in file tools, not a
-// boundary: until commands are sandboxed an approved shell reaches the same
-// paths with none of these checks in front of it.
+// A mandatory-human call ignores every automatic-approval switch and denies
+// when no human can answer. Defense in depth for the file tools, not a
+// boundary: an approved shell outside the sandbox reaches the same paths.
 Agent::Approver MakeApprover(AppContext* app) {
   auto memo = std::make_shared<ReviewMemo>();
   return [app, memo](const Tool& tool, const json& arguments, int64_t turn) {

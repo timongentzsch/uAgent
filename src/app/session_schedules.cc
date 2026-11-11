@@ -211,9 +211,8 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
     if (stopping_) return wait;
     std::vector<std::shared_ptr<HostSession>> recovery;
     if (!recovered) recovered = RecoverSchedules(recovery);
-    // External writers (CLI schedule save/run) change the store under us:
-    // refresh before the tick so their runs are claimed this iteration,
-    // and announce the change like the invalidation path does.
+    // External writers (the CLI) change the store: refresh before the tick
+    // so their runs are claimed in this iteration.
     if (RefreshScheduleCacheLocked()) {
       Record("", "",
              {{"kind", "scheduled.changed"}, {"scheduled", scheduled_view_}},
@@ -238,8 +237,7 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
                      : CreateWorktree(JsonValue(definition, "cwd", ""),
                                       JsonValue(run, "cwd", "")))
               : "";
-      // A check decides, before any model is asked, whether this run has
-      // anything to do.
+      // A check decides, before any model is asked, whether the run has work.
       const std::string check = JsonValue(definition, "check", "");
       json checked = {{"exit", 0}};
       const std::string host = JsonValue(run, "host", "");
@@ -272,9 +270,8 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
       lock.lock();
       if (stopping_) return wait;
       const json* latest = FindRun(current, id);
-      // Stop/forget may land while Git runs. A stopped preparation must never
-      // launch a runtime or overwrite the interruption with a preparation
-      // error.
+      // Stop or forget may land while Git runs: a stopped preparation never
+      // launches a runtime or overwrites the interruption with an error.
       if (!latest || JsonValue(*latest, "status", "") != "starting") {
         if (latest && JsonValue(*latest, "status", "") == "stopping") {
           RecordRun({id, "interrupted", "Stopped before the session started."});
@@ -346,8 +343,7 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
     std::lock_guard lock(mutex_);
     for (json event : RefreshInvalidationsLocked(projects)) {
       if (JsonValue(event, "kind", "") == "scheduled.changed") {
-        // A write landed during the tick above: re-loop immediately so the
-        // fresh cache is claimed instead of sleeping through it.
+        // A write landed during the tick: loop again at once to claim it.
         wait.deadline =
             std::min(wait.deadline, std::chrono::steady_clock::now());
       }

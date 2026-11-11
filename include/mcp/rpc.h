@@ -2,8 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_MCP_RPC_H_
 #define UAGENT_INCLUDE_MCP_RPC_H_
-// Newline-delimited JSON-RPC framing. Writes drain the server's stdout
-// while blocked, so a chatty server can never deadlock a large write.
+// Newline-delimited JSON-RPC framing over a server's stdio.
 
 #include <chrono>
 #include <cstdint>
@@ -18,13 +17,12 @@ inline constexpr char kMcpModernProtocolVersion[] = "2026-07-28";
 
 json McpRequestMeta();
 
-// write a full message; drains the server's stdout while blocked so a chatty
-// server can never deadlock a large write (both pipes full = classic hang)
+// Drains the server's stdout while blocked: with both pipes full it would hang.
 bool McpWrite(McpServer& s, const std::string& data,
               std::chrono::steady_clock::time_point deadline =
                   std::chrono::steady_clock::now() + std::chrono::seconds(10));
 
-// read one newline-terminated message; cancellable waits also stop on Ctrl+C
+// One newline-terminated message; a cancellable wait also stops on Ctrl+C.
 bool McpReadLine(McpServer& s, std::string& line,
                  std::chrono::steady_clock::time_point deadline,
                  bool cancellable);
@@ -39,24 +37,18 @@ bool McpHandleMessage(McpServer& s, const json& message);
 
 void McpFillAvailable(McpServer& s);
 
-// Consume notifications that arrived while no request was outstanding. This
-// is called at model-request boundaries so an idle server can change its tool
-// list without first receiving a tools/call.
+// Consumes notifications that arrived while no request was outstanding.
 void McpDrainInbound(McpServer& s);
 
 void McpDrainInbound(McpRuntime& runtime);
 
-// Notifications are handled separately; stale responses are discarded.
 json McpErrorReply(std::string message);
 
 enum class McpResponseState : uint8_t { kPending, kReady, kClosed };
 
 bool McpResponseMatches(const json& message, int64_t id);
 
-// Consume only bytes already available. Deferred startup calls this at turn
-// boundaries, so a slow optional server can become ready without adding a
-// timeout to every model step. Notifications and server requests ahead of the
-// target reply are handled before returning pending.
+// Never blocks: consumes only bytes already available, handling other messages.
 McpResponseState McpTryResponse(McpServer& s, int64_t id, json& response);
 
 json McpAwait(McpServer& s, int64_t id, int64_t timeout_s, bool cancellable,

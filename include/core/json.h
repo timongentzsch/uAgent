@@ -82,18 +82,15 @@ inline const std::string* JsonStringRef(const json& object, const char* key) {
              : nullptr;
 }
 
-// A nested object or array, or nullptr when absent or the wrong shape. One
-// lookup, and no operator[] that could insert into a mutable parent.
+// A nested object, or nullptr when absent or of another type.
 inline const json* JsonObject(const json& object, const char* key) {
   if (!object.is_object()) return nullptr;
   auto value = object.find(key);
   return value != object.end() && value->is_object() ? &*value : nullptr;
 }
 
-// The mutable sibling of JsonObject: a nested object to write into, replacing
-// a missing or wrongly-typed child (and parent) with a fresh one. Provider
-// values reach these chains, and operator[] on a scalar aborts under
-// -fno-exceptions.
+// A nested object to write into, replacing a missing or wrongly-typed child
+// (and parent): operator[] on a scalar aborts under -fno-exceptions.
 inline json& EnsureObject(json& object, const char* key) {
   if (!object.is_object()) object = json::object();
   json& nested = object[key];
@@ -107,8 +104,7 @@ inline const json* JsonArray(const json& object, const char* key) {
   return value != object.end() && value->is_array() ? &*value : nullptr;
 }
 
-// The named fields `row` has, and no other: what a reader needs of a longer
-// one, or may see of it.
+// The named fields `row` has, and no other.
 inline json JsonPick(const json& row,
                      std::initializer_list<const char*> fields) {
   json picked = json::object();

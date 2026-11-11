@@ -2,8 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_CORE_FD_H_
 #define UAGENT_INCLUDE_CORE_FD_H_
-// An owned file descriptor: ownership is a type rather than a close(2) on
-// every early return, so an error path cannot forget one.
+// An owned file descriptor, so an error path cannot forget a close(2).
 
 #include <fcntl.h>
 #include <poll.h>
@@ -54,8 +53,7 @@ class Fd {
     return fd >= 0 ? close(fd) : 0;
   }
 
-  // An independent descriptor for a caller with its own lifetime, such as a
-  // writer racing the owning thread's close.
+  // An independent descriptor for a caller with its own lifetime.
   [[nodiscard]] Fd Duplicate() const {
     return Fd(fd_ >= 0 ? fcntl(fd_, F_DUPFD_CLOEXEC, 0) : -1);
   }

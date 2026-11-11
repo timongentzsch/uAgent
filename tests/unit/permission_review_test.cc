@@ -13,8 +13,7 @@
 namespace uagent {
 namespace {
 
-// The answers a decisions request returns: P(allow), P(deny) and one
-// probability for each of the four reason questions.
+// The answers a decisions request returns, as probabilities.
 json Answers(double allow, double deny, double destructive = 0,
              double beyond = 0, double sends = 0, double secrets = 0) {
   auto noul = [](double probability) {
@@ -61,8 +60,6 @@ TEST_CASE(TestPermissionReview) {
     CHECK(json::parse(text.str()) == ReviewQuestions());
   }
 
-  // The bars decide at their edges: allow at or above, deny at or above, and
-  // a reason at or above its bar asks.
   const ReviewBars bars{0.6, 0.95, 0.7};
   using Decision = AutoPermissionDecision;
   CHECK(JudgeAnswers(Answers(0.6, 0), bars).decision == Decision::kAllow);
@@ -75,28 +72,22 @@ TEST_CASE(TestPermissionReview) {
   CHECK(vetoed.decision == Decision::kAsk);
   CHECK(vetoed.error.empty());
   CHECK(vetoed.probabilities["allow"] == 0.99);
-  // The reason that forced the question is on the card, by name and
-  // probability, with the bar it reached.
   CHECK(vetoed.reasons.size() == 1);
   CHECK(vetoed.reasons[0]["id"] == "sends_data_off_machine");
   CHECK(vetoed.reasons[0]["label"] == "sends data off this machine 70%");
   CHECK(vetoed.note.find("reaches the 70% that asks") != std::string::npos);
-  // A likely reason below the veto is shown but does not decide.
   AutoPermissionReview shown = JudgeAnswers(Answers(0.9, 0, 0.5), bars);
   CHECK(shown.decision == Decision::kAllow);
   CHECK(shown.reasons.size() == 1);
   CHECK(JudgeAnswers(Answers(0.9, 0, 0.49), bars).reasons.empty());
-  // The most likely vetoing reason is the one named.
   CHECK(JudgeAnswers(Answers(0.99, 0, 0.8, 0.95), bars)
             .note.starts_with("beyond what you asked 95%"));
-  // A reviewer that does not answer every question has not reviewed.
   json missing = Answers(0.99, 0);
   missing.erase("touches_secrets");
   AutoPermissionReview unanswered = JudgeAnswers(missing, bars);
   CHECK(unanswered.decision == Decision::kAsk);
   CHECK(unanswered.error.find("touches_secrets") != std::string::npos);
   CHECK(!JudgeAnswers(json::object(), bars).error.empty());
-  // Probabilities that are none, or that are not all given, never allow.
   for (const double wrong : {2.0, -1.0}) {
     CHECK(JudgeAnswers(Answers(wrong, 0), bars).decision == Decision::kAsk);
     CHECK(!JudgeAnswers(Answers(wrong, 0), bars).error.empty());
@@ -106,7 +97,6 @@ TEST_CASE(TestPermissionReview) {
   no_deny["permission"]["probabilities"].erase("deny");
   CHECK(JudgeAnswers(no_deny, bars).decision == Decision::kAsk);
   CHECK(!JudgeAnswers(no_deny, bars).error.empty());
-  // A veto bar of zero vetoes whatever is answered.
   CHECK(JudgeAnswers(Answers(0.99, 0), {0.6, 0.95, 0}).decision ==
         Decision::kAsk);
   json argmax_only = Answers(0, 0);
@@ -115,7 +105,6 @@ TEST_CASE(TestPermissionReview) {
   CHECK(undecided.decision == Decision::kAsk);
   CHECK(!undecided.error.empty());
 
-  // A model's bars are its row of the endpoint's table.
   const Endpoint openrouter = OpenRouterEndpoint();
   ReviewBars jev = ReviewBarsFor(openrouter, "~typesafe/jev-latest");
   CHECK(jev.allow == 0.85 && jev.deny == 0.95 && jev.veto == 0.9);
@@ -124,14 +113,11 @@ TEST_CASE(TestPermissionReview) {
   // A model nobody calibrated is held to the strict bars.
   ReviewBars unknown = ReviewBarsFor(openrouter, "other/model");
   CHECK(unknown.allow == 0.9 && unknown.deny == 0.95 && unknown.veto == 0.3);
-  // A row that is no probability keeps the strict bar.
   Endpoint careless = openrouter;
   careless.options["decision_bars"]["careless"] = {{"allow", -1}, {"veto", 2}};
   ReviewBars kept = ReviewBarsFor(careless, "careless");
   CHECK(kept.allow == 0.9 && kept.veto == 0.3);
 
-  // The review asks an endpoint that serves decision models, and says so when
-  // there is none: nothing else stands in.
   Api api(RuntimeConfig{});
   const Endpoint first = Serving("first", "k1");
   const Endpoint second = Serving("second", "k2");
@@ -162,8 +148,7 @@ TEST_CASE(TestPermissionReview) {
   CHECK(!PathOutsideFolder({{"command", "ls"}}, root));
   CHECK(!PathOutsideFolder({{"path", "a.txt"}}, root));
   CHECK(PathOutsideFolder({{"path", "/etc/hosts"}}, root));
-  // Where the sandbox lets commands write, such as the temporary folder, a
-  // file tool is as free: it is the session's work area too.
+  // Where the sandbox lets commands write, a file tool is as free.
   const SandboxStatus& sandbox = SandboxRuntime();
   if (sandbox.mode == SandboxMode::kEnforced) {
     for (const std::string& writable : sandbox.policy.writable_roots) {
@@ -188,7 +173,6 @@ TEST_CASE(TestRemotePathToolRemembersItsFolder) {
   CHECK(rule.match == "./src/");
   CHECK(RuleCovers(rule, tool, {{"path", "src/b.cc"}}, root, true));
   CHECK(!RuleCovers(rule, tool, {{"path", "docs/b.md"}}, root, true));
-  // A subject that names no path stays the exact thing approved.
   tool.approval_subject = [](const json&) { return json{{"origin", "x"}}; };
   CHECK(SuggestRule(tool, {{"path", "src/a.cc"}}, root, true).match ==
         R"({"origin":"x"})");

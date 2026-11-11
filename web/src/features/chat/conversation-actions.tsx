@@ -9,13 +9,9 @@ import {
 } from "../../shared/limits.ts";
 import { plural } from "../../shared/quantities.ts";
 import { Actions, Button, LoadError, Input } from "../../shared/ui.tsx";
-// The dialog body that renames or deletes a conversation or a workspace, or
-// renames a terminal.
 
-// Deletes a conversation as its menu does. A live one closes first: close
-// stops a running turn gracefully, then delete removes the record. A
-// closing worker can retire while that spreads, so delete retries until the
-// host has let go of it.
+// A live one closes first. A closing worker can retire while that spreads,
+// so delete retries until the host has let go of it.
 export async function deleteConversation(
   session: Session,
   command: ApiClient["command"],
@@ -74,8 +70,7 @@ export default function ConversationActions({
             return;
           }
           if (modal.space) {
-            // The host does the whole of it: a workspace's conversations close
-            // and go with it.
+            // The host closes and removes a workspace's conversations with it.
             await manage("space", {
               action: modal.type,
               cwd: modal.space.path,

@@ -68,8 +68,8 @@ void Terminate(pid_t& pid) {
   pid = -1;
 }
 constexpr auto kLeaseQuiet = std::chrono::minutes(3);
-// The first X display no server holds, as ":N": other browser services on this
-// machine run their own, and a second server on a held number fails to start.
+// The first X display no server holds, as ":N": a second server on a held
+// number fails to start.
 std::string FreeDisplay() {
   for (int number = 99;; ++number) {
     const std::string name = std::to_string(number);
@@ -294,9 +294,8 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     profile_lock_.Reset();
     return false;
   }
-  // Docker recreates the container with a new hostname. Chrome's singleton
-  // symlinks retain the old hostname and reject the otherwise valid profile.
-  // Only the lock holder may clear them, after its own Chrome has exited.
+  // A recreated container has a new hostname, and Chrome's singleton symlinks
+  // with the old one reject the profile. Only the lock holder may clear them.
   for (const char* name :
        {"SingletonLock", "SingletonCookie", "SingletonSocket"}) {
     unlink((profile + "/" + name).c_str());
@@ -358,33 +357,27 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     Stop(true);
     return false;
   }
-  // Manual profile setup uses ordinary Chrome, without a debugging endpoint.
-  // Both modes own the same profile exclusively and restore its saved tabs.
-  // Also no pages kept alive for Back (a renderer each, ~150 MB, measured
-  // on dev) and no casting devices looked for on the network.
+  // Off: pages kept alive for Back (a renderer each) and the search for
+  // casting devices on the network.
   const std::string disabled_features =
       "--disable-features=OptimizationGuideModelDownloading,"
       "OptimizationHintsFetching,BackForwardCache,MediaRouter";
   std::vector<std::string> chrome = {
       "google-chrome-stable", "--user-data-dir=" + profile, "--no-first-run",
       "--no-default-browser-check",
-      // Cover the whole 1280x800 display. With no window manager Chrome
-      // restores its saved placement unless pinned, and it shrinks a window
-      // that would exactly fill the screen by one pixel (1279x799), leaving
-      // a black line; one pixel past the edge is kept as asked.
+      // With no window manager Chrome restores its saved placement unless
+      // pinned, and shrinks a window that exactly fills the screen by a pixel.
       "--window-position=0,0", "--window-size=1281,801", "--ozone-platform=x11",
       "--password-store=basic", "--restore-last-session",
       // A restart of the host stops Chrome without a goodbye; its offer to
       // restore would cover the page.
       "--hide-crash-restore-bubble",
-      // Keep the profile small: no downloaded components or on-device
-      // models (most of a 258 MB profile), and a bounded page cache.
+      // Keeps the profile small: no downloaded components or on-device
+      // models, and a bounded page cache.
       "--disable-component-update", disabled_features,
       "--disk-cache-size=67108864",
-      // A person's browser, not a test runner: the debugging pipe would
-      // mark every page navigator.webdriver, and with no GPU Chrome offers
-      // pages no WebGL. Sites read both as a bot and refuse the user's
-      // own errands (searches, bookings).
+      // The debugging pipe would mark every page navigator.webdriver, and
+      // with no GPU Chrome offers no WebGL: sites read both as a bot.
       "--disable-blink-features=AutomationControlled",
       "--enable-unsafe-swiftshader"};
   if (profile_setup) {
@@ -426,7 +419,8 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     Stop(true);
     return false;
   }
-  // Chrome's sandbox stays enabled. This is a private profile.
+  // Manual profile setup, above, runs without this debugging endpoint.
+  // Chrome's sandbox stays enabled.
   chrome.emplace_back("--remote-debugging-pipe");
   chrome_pid_ = Launch(chrome,
                        {{3, child_read.Get()},
@@ -493,8 +487,7 @@ json Runtime::Call(const std::string& method, const json& parameters,
       cdp_buffer_.erase(0, end + 1);
       if (JsonValue(response, "id", int64_t{-1}) == id) return response;
       // Events have no reply id. Only the main frame's loading state is
-      // kept: it spans a click's pending request, before the old document
-      // is replaced. A page's main frame id is its target id.
+      // kept; a page's main frame id is its target id.
       const std::string event = JsonValue(response, "method", "");
       const json* params = JsonObject(response, "params");
       if (params && JsonValue(*params, "frameId", "") == target_) {
@@ -516,8 +509,7 @@ json Runtime::Call(const std::string& method, const json& parameters,
       }
       const std::string from = JsonValue(response, "sessionId", "");
       if (params && event == "Page.javascriptDialogOpening") {
-        // The page's plea to stay while the agent leaves it is answered at
-        // once; its reply is dropped like any other not waited for.
+        // The page's plea to stay while the agent leaves it is accepted.
         if (leaving_ && from == page_session_ &&
             JsonValue(*params, "type", "") == "beforeunload") {
           Send("Page.handleJavaScriptDialog", {{"accept", true}}, from);
@@ -703,9 +695,8 @@ bool Runtime::Agent(const json& command, std::string& error) {
     error = kHumanControls;
     return false;
   }
-  // A holder that has asked nothing of the browser for a while has ended
-  // without giving it back, or waits on something else: it is the next
-  // conversation's.
+  // A holder that asked nothing of the browser for a while has ended or
+  // waits elsewhere: the next conversation may take it.
   const auto now = std::chrono::steady_clock::now();
   if (!agent_session_.empty() && agent_session_ != session &&
       now - agent_used_ < kLeaseQuiet) {
@@ -790,9 +781,8 @@ json Runtime::Execute(const json& command) {
   if (!Start(error)) return {{"error", error}};
   if (op == "capture") return Capture(command);
   if (!Agent(command, error)) return {{"error", error}};
-  // Chrome's word that the attached tab is gone (closed by hand, or
-  // replaced) is read with the next reply: ask for the tabs, then attach a
-  // page again if none is.
+  // Chrome's word that the attached tab is gone is read with the next reply:
+  // ask for the tabs, then attach a page again if none is.
   Targets();
   if (page_session_.empty()) {
     target_.clear();
@@ -819,9 +809,8 @@ json Runtime::Execute(const json& command) {
   }
   // A dialog that is open, or opens meanwhile, is what there is to report.
   if (OpenDialog() && op != "tabs") return Dialog(op, command);
-  // Whatever failed meanwhile failed because the page could not answer.
-  // A download that ended is told with whatever answer comes next, since it
-  // may end long after the action that started it.
+  // What failed while a dialog is open failed because of it. A download that
+  // ended is told with the next answer: it may end long after its action.
   const auto reported = [&](json result) {
     if (const json* open = OpenDialog()) {
       result.erase("error");
@@ -835,8 +824,7 @@ json Runtime::Execute(const json& command) {
   };
   if (op == "probe") return reported(Probe());
   // Whoever takes the browser after someone else starts from the page as it
-  // is, not as it remembers it: keys and text go nowhere before that.
-  // Only a look or an open that worked counts.
+  // is: nothing acts before a look or an open that worked.
   if (moved_ && op != "observe" && op != "read" && op != "tabs" &&
       op != "open" && op != "console" && op != "network") {
     return {{"error",

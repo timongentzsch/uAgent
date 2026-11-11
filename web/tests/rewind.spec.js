@@ -35,7 +35,6 @@ test("edit from a message continues in a fork with the message to edit", async (
   await expect(transcript).toContainText("First answer");
   await expect(transcript).not.toContainText("Second answer");
   await expect(page.locator(".conversation-head h1")).toContainText("Fork of");
-  // The original conversation is untouched and still listed.
   await expect(
     page.getByRole("button", { name: /^Rewind source/ }),
   ).toBeVisible();

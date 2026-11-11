@@ -28,8 +28,7 @@ inline bool SkillMatches(const Skill& skill, std::string_view query) {
          AsciiLower(skill.description).find(needle) != std::string::npos;
 }
 
-// Names rather than tools, so the same rule can be applied later by a rescan
-// that has no access to the registry.
+// Names, not tools: a later rescan without the registry applies the same rule.
 inline std::vector<std::string> ToolNames(const std::vector<Tool>& tools) {
   std::vector<std::string> names;
   names.reserve(tools.size());
@@ -81,9 +80,7 @@ inline std::string SkillCatalogue(const std::vector<Skill>& skills,
 }
 
 inline std::string SkillToolDescription(const std::vector<Skill>& skills) {
-  // Codex caps its initial skill catalogue at 8,000 characters. Keep the same
-  // hard ceiling here while retaining every name whenever normal filesystem
-  // limits allow it; descriptions are the first thing shortened.
+  // A hard ceiling for the catalogue: descriptions shorten before names drop.
   constexpr size_t kMaxChars = 8000;
   constexpr std::string_view kIntro =
       "Load an installed skill when the user's task matches its description. "
@@ -160,18 +157,14 @@ inline Tool SkillTool(std::vector<Skill> skills,
           for (const Skill& skill : skills) {
             if (skill.name == want) return OpenSkill(skill, arguments);
           }
-          // A skill written during this session is absent from the catalogue
-          // the request advertises, which is fixed for the whole process to
-          // keep the prompt prefix cacheable. Look again on disk before
-          // refusing a name, so authoring a skill and using it does not need
-          // a restart.
+          // The advertised catalogue is fixed per process to keep the prompt
+          // prefix cacheable, so a skill written this session is only on disk.
           std::vector<Skill> current = LoadSkills(CanonicalCwd());
           KeepSupportedSkills(current, tool_names);
           for (const Skill& skill : current) {
             if (skill.name == want) return OpenSkill(skill, arguments);
           }
-          // The advertised names are what the model actually saw, so they
-          // make the better suggestion when both lists have a near match.
+          // The advertised names are what the model saw: suggest those first.
           std::string suggestion = SkillNameSuggestion(skills, want);
           if (suggestion.empty()) {
             suggestion = SkillNameSuggestion(current, want);
@@ -204,8 +197,7 @@ inline Tool SkillTool(std::vector<Skill> skills,
         }
         return ToolSuccess(std::move(catalogue));
       });
-  // Reading a procedure changes nothing; whatever the skill then asks for goes
-  // through the tools that do require approval.
+  // Reading a skill changes nothing; what it asks for needs its own approval.
   t.parallel_safe = true;
   t.capabilities = Capability(ToolCapability::kInspect);
   t.retain_output = true;

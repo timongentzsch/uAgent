@@ -19,11 +19,9 @@
 
 namespace uagent::session {
 
-// A worker's events on their way to its clients. Streamed text is held
-// back up to kStreamBatchInterval or kStreamBatchBytes and usage up to
-// kUsagePublishInterval, so a fast model costs one frame per batch; the
-// first of each in a turn, and every other event, goes at once, after
-// whatever is held back.
+// Streamed text is held back up to kStreamBatchInterval or kStreamBatchBytes
+// and usage up to kUsagePublishInterval. The first of each in a turn, and
+// every other event, goes at once, after whatever is held back.
 class TransientBatcher {
  public:
   explicit TransientBatcher(std::function<void(const AppEvent&)> deliver);

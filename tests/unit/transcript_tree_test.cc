@@ -295,8 +295,6 @@ TEST_CASE(TestGoldenChainOfCalls) {
   turn.Reply("r-1-2-1", "Fixed.");
   turn.Footer(124000, "complete");
   const auto page = Lines(ConversationView(turn.History())["nodes"]);
-  // The work folds what the turn did; the answer and the footer close the
-  // turn.
   CHECK((
       page ==
       std::vector<std::string>{
@@ -394,7 +392,6 @@ TEST_CASE(TestGoldenFailedCalls) {
              "footer m-9 < m-2",
          }));
   CHECK(Lines(turn.Live()) == page);
-  // Each call's state marks its row, and the host's words say why.
   const std::string calls =
       "    ✗ Read a.txt · failed · 5ms\n"
       "    · Ran make · cancelled · 5ms\n"
@@ -457,8 +454,6 @@ TEST_CASE(TestGoldenFileHandedOver) {
   CHECK(Lines(turn.Live()) == page);
   CHECK(view["nodes"][2]["parts"] == json::array({link}));
   CHECK(view["nodes"][3]["parts"] == json::array({file, deck}));
-  // The terminal lists them under the turn at every depth; an open call adds
-  // the parts it kept.
   const std::string work = "> make a report\n  · Worked 1 step · 2.0s\n";
   const std::string call = "    · Presented report.html · 5ms\n";
   const std::string handed = "  ↳ report.html · 2 kB\n  ↳ decks/q3/ · deck\n";
@@ -478,8 +473,7 @@ TEST_CASE(TestGoldenBlankReplyAndMcpCall) {
   turn.Say("look it up");
   // A reply that holds only blank text is no node, live or saved.
   turn.Reply("r-1-1-1", " \n", "", {{"m", "mcp__docs__search"}});
-  // A tool without a headline of its own reports no facts: it reads as
-  // "Called <title>", with its state and how long it took.
+  // A tool without a headline of its own reads as "Called <title>".
   const std::string m =
       turn.Call("r-1-1-1", "m", "mcp__docs__search",
                 {{"verb", {"Calling Search", "Called Search"}}}, "ok", {}, "");
@@ -495,7 +489,6 @@ TEST_CASE(TestGoldenBlankReplyAndMcpCall) {
                      "footer m-6 < m-2",
                  }));
   CHECK(Lines(turn.Live()) == page);
-  // Blank replies draw nothing, live or saved; the call reads as its title.
   const std::string work = "  · Worked 1 step · 1.5s\n";
   const std::string call = "    · Called Search · 5ms\n";
   const std::string footer = "0 in · 0 out · 1.5s\n";
@@ -621,8 +614,7 @@ TEST_CASE(TestGoldenPagesEndOnWholeTurns) {
   CHECK(seen == 180);
 }
 
-// A turn larger than a page keeps its head on the first page, so its steps
-// have a turn to sit under, and older pages continue after the head.
+// Its steps need a turn to sit under; older pages continue after the head.
 TEST_CASE(TestGoldenPageOfOneLongTurnKeepsItsHead) {
   Recorder turns;
   turns.Say("one long task");
@@ -642,7 +634,6 @@ TEST_CASE(TestGoldenPageOfOneLongTurnKeepsItsHead) {
   CHECK(older["nodes"].front()["id"] == nodes.front()["id"]);
 }
 
-// A compaction says what it kept and how long it took.
 TEST_CASE(TestCompactionNoticeSaysWhatWent) {
   const json node = EntryNode({{"kind", "compaction"},
                                {"id", "a-1"},

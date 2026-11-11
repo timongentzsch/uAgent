@@ -21,8 +21,6 @@ import { useSnapshots } from "../state/snapshot-store.ts";
 import { isBrowsing } from "./chat-page.tsx";
 import type { Page } from "./app.tsx";
 
-// What a narrow column's header says under the title: the composer's totals,
-// which it leaves out.
 function Totals({
   session,
   outgoing,
@@ -46,10 +44,6 @@ function Totals({
   );
 }
 
-// The page's title and what acts on the open conversation: the browser, its
-// files, Settings on a small screen and the conversation's menu. A narrow
-// column keeps the title with the totals and the menu, which takes the rest; the
-// browser stays while the agent uses it.
 export default function ConversationHeader({
   page,
   selected,
@@ -70,12 +64,10 @@ export default function ConversationHeader({
   page: Page;
   selected: string;
   session?: Session;
-  // The conversation that started this one, when listed.
   parent?: Session;
   opening: boolean;
   booting: boolean;
   browserAvailable: boolean;
-  // Present while the host offers terminals.
   terminal?: { open: boolean; toggle: () => void };
   filesOpen: boolean;
   setFilesOpen: (open: boolean) => void;
@@ -97,11 +89,9 @@ export default function ConversationHeader({
     "Local";
   const compact = useCompact();
   const narrow = useNarrowColumn();
-  // The browser icon shows when this conversation's agent is using it.
   const browsing = useSnapshots(store, (all) => isBrowsing(all[selected]));
   const openBrowser = () => setModal({ type: "browser" });
-  // In a narrow column the conversation's menu holds the header's other actions;
-  // without a conversation there is no menu, and Settings keeps its button.
+  // A narrow column's conversation menu holds the header's other actions.
   const inMenu = narrow && page === "chat" && !!(session || opening);
   const titleOf = (item: Session) => item.title || "Conversation";
   const phoneItems = inMenu && {
@@ -166,7 +156,6 @@ export default function ConversationHeader({
             </span>
           )}
         </div>
-        {/* An agent leads back to the conversation that started it. */}
         {page === "chat" && parent && (
           <p class="head-subtitle small">
             <Button variant="quiet" onClick={() => choose(parent.id)}>
@@ -196,7 +185,6 @@ export default function ConversationHeader({
           <Terminal />
         </IconButton>
       )}
-      {/* Held in place while the session loads, inert. */}
       {!inMenu && page === "chat" && (session || opening) && (
         <IconButton
           label="Files"
@@ -218,7 +206,6 @@ export default function ConversationHeader({
         (session ? (
           menu(session, true, phoneItems || undefined)
         ) : opening ? (
-          // Inert until the session is known.
           <IconButton label="Conversation menu" disabled>
             <Ellipsis />
           </IconButton>

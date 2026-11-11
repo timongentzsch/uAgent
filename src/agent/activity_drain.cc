@@ -37,8 +37,7 @@ namespace uagent {
 namespace {
 
 // A row for work that ended outside a tool call, in the same shape as a
-// call's: its headline, how it ended and its output. The caller adds what
-// links it to the work.
+// call's. The caller adds what links it to the work.
 json Receipt(const Headline& headline, std::string_view state,
              const ResultFacts& facts, std::string text,
              std::string_view body_kind, json parts) {
@@ -89,12 +88,8 @@ void Agent::ReportMemoryCompletion(ActivityCompletion& completion) {
     event.timestamp = UtcStamp();
     event.automatic = true;
     if (!success) {
-      // The last line, not the first. A child that failed has usually printed
-      // a startup warning before it got anywhere -- an over-full memory slice
-      // prints one every time -- and taking the head recorded that warning as
-      // the cause, which is how eight failures came to be labelled with a
-      // condition that did not fail anything. `HeadTail` keeps the
-      // same convention: errors live at the end.
+      // The last line, not the first: a failed child has usually printed a
+      // startup warning before its error, and errors live at the end.
       std::string output = RedactMemorySecrets(completion.output);
       std::string_view tail(output);
       while (!tail.empty()) {
@@ -223,9 +218,8 @@ void Agent::DeliverActivityCompletions(
           json::array(
               {LinkPart("activity", completion.activity_id, "Open activity")}));
       node["activity_id"] = completion.activity_id;
-      // The full command travels with the record (bounded): rows and titles
-      // abbreviate, but the popup and history must not lose it when the
-      // supervisor no longer retains the activity.
+      // The full command travels with the record (bounded): the popup and
+      // history need it once the supervisor no longer retains the activity.
       node["command"] = Utf8Trunc(completion.command, kActivityCommandBytes);
       node["turn_root"] = turn_root_;
       node = conversation_.RecordEntry(std::move(node));
@@ -298,9 +292,8 @@ bool Agent::FinishCommandRow(const EndedCommand& ended) {
 
 bool Agent::DrainActivities(bool start_turn) {
   bool changed = false;
-  // Take one snapshot. A memory child can become drainable at any instant; two
-  // separate takes let the generic pass steal a child that completed just
-  // after the memory-only pass, bypassing its receipt and audit handling.
+  // One snapshot: with two takes, the generic pass could steal a memory child
+  // that completed in between, bypassing its receipt and audit handling.
   std::vector<ActivityCompletion> completions =
       ActivityTakeCompletedDetails(processes_);
   if (RemoteWorkspace()) {
@@ -367,10 +360,9 @@ bool Agent::DrainAttachments() {
         .push_back(std::move(attachment));
   }
   if (!user.empty()) PushAttachments(user);
-  // The message kind stays kAttachment on purpose: the request pipeline keys
-  // its encoded-parts guard and its turn-boundary strip on it, so re-kinding
-  // would feed base64 to the summarizer. Only the attribution differs, carried
-  // as a display fact the view projects as agent-side.
+  // The kind stays kAttachment: the request pipeline keys its encoded-parts
+  // guard and its turn-boundary strip on it. Only the attribution differs,
+  // carried as a display fact.
   if (!sourced.empty() && PushAttachments(sourced)) {
     json call_ids = json::array();
     json files = json::array();

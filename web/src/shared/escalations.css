@@ -1,7 +1,6 @@
 .escalation-where {
   color: var(--muted);
 }
-/* Decisions waiting on the user, one under the other. */
 .escalations {
   display: grid;
   gap: var(--gap);

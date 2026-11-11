@@ -11,7 +11,6 @@ input.row-check[type="checkbox"] {
     min-height: var(--touch);
   }
 }
-/* The count and Clear, then the actions, on one line when there is room. */
 .selection-bar {
   display: flex;
   flex-wrap: wrap;

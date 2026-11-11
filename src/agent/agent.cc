@@ -145,9 +145,8 @@ std::vector<std::string> ListedEfforts(const Api& parent,
 }
 
 // A title needs no thinking: the lowest effort the model lists, unless the
-// title model's selection named one. A model the catalogue does not know
-// keeps the route's effort, since an effort it rejects would fail the title.
-// The short output cap holds only when nothing can think into it.
+// title model's selection named one. An unknown model keeps the route's
+// effort. The short output cap holds only when nothing can think into it.
 void LimitTitleThinking(Api& api, bool effort_chosen,
                         const std::vector<std::string>& listed) {
   if (!effort_chosen) {
@@ -209,7 +208,7 @@ void Agent::StartTitle(const std::string& user_input) {
     side_usage_.Add(RouteKey(api.base_url, "session_title", api.model,
                              api.reasoning_effort),
                     usage, 0, {{"model_calls", 1}});
-    // Models still wrap titles in quotes or markdown; keep only the words.
+    // Models wrap titles in quotes or markdown; only the words are kept.
     std::string title = FirstLine(Trim(result.content));
     const size_t first = title.find_first_not_of(" \t\"'`*#");
     const size_t last = title.find_last_not_of(" \t\"'`*#.");
@@ -405,9 +404,8 @@ json Agent::Revert(int64_t turn, const std::string& path) {
 
 SessionRecord Agent::Snapshot() const {
   SessionRecord record;
-  // Named, not positional: fifteen fields across the two structs, several of
-  // them adjacent same-typed strings and integers, so a field inserted in the
-  // header would silently reassign the rest of the save.
+  // Named, not positional: a field inserted in the header would silently
+  // reassign adjacent same-typed fields.
   record.metadata = {.cwd = Workspace().path,
                      .host = Workspace().host,
                      .model = api_.model,
@@ -505,9 +503,8 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   session_id_ = std::move(record.metadata.session_id);
   if (session_id_.empty()) session_id_ = MakeSessionId();
   total_user_turns_ = record.metadata.turns;
-  // turn_id_ feeds response ids ("r-<turn>-<request>-<attempt>"), which live
-  // views match on across worker generations. A resumed runtime must continue
-  // the persisted numbering or its live nodes collide with earlier turns'.
+  // turn_id_ feeds response ids ("r-<turn>-<request>-<attempt>"): a resumed
+  // runtime continues the saved numbering or its live nodes collide.
   turn_id_ = record.metadata.turns;
   title_thread_ = {};
   {

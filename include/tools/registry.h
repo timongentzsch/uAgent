@@ -2,10 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_TOOLS_REGISTRY_H_
 #define UAGENT_INCLUDE_TOOLS_REGISTRY_H_
-// Declarations for the built-in tool registry. Family wiring lives in
-// src/tools/registry_{files,exec,activity,memory,todo}.cc (shared only via
-// src/tools/registry_internal.h); registry.cc only orders the families, so
-// consumers do not compile every tool body.
+// The built-in tools; each family is wired in its src/tools/registry_*.cc.
 
 #include <filesystem>
 #include <functional>
@@ -19,8 +16,7 @@
 
 namespace uagent {
 
-// The sudo password for a host ("" for this machine), asked of the person at
-// most once per turn; null when they decline. Without it, run offers no root.
+// The sudo password for a host ("" for this machine); null when declined.
 using RootPassword =
     std::function<std::shared_ptr<std::string>(const std::string& host)>;
 

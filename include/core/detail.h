@@ -11,9 +11,7 @@
 
 namespace uagent {
 
-// The setting that names the level.
 inline constexpr std::string_view kDetailSetting = "UAGENT_DETAIL";
-// A depth that opens every level of a turn's tree.
 inline constexpr int kDepthAll = std::numeric_limits<int>::max();
 
 // A level is only a depth: 0 shows each turn's work as one line, 1 opens the

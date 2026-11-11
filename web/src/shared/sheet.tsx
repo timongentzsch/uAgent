@@ -2,8 +2,6 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { Button, Modal, useDialogClose } from "./ui.tsx";
 
-// A button whose content opens in a sheet.
-
 type Content = ComponentChildren | ((close: () => void) => ComponentChildren);
 
 // Hands content the close of the sheet it is drawn in.
@@ -12,10 +10,8 @@ function SheetContent({ children }: { children: Content }) {
   return <>{typeof children === "function" ? children(close) : children}</>;
 }
 
-// A control whose content opens in a sheet: from the right edge, or from
-// below on a phone. Panels are sheets, so focus, Escape and the back gesture
-// behave as in every dialog; only a row's ⋯ actions drop down (menu.tsx).
-// `children` may take the sheet's close, which plays its exit.
+// Panels are sheets, so focus, Escape and the back gesture behave as in
+// every dialog. `children` may take the sheet's close, which plays its exit.
 export function SheetButton({
   label,
   title = label,
@@ -37,7 +33,6 @@ export function SheetButton({
   children: Content;
   className?: string;
   buttonClass?: string;
-  // "icon" when the trigger is an icon alone.
   size?: "default" | "icon";
   sheetClass?: string;
   disabled?: boolean;

@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import type { InstallPrompt, Report } from "../shared/types.ts";
 import { stored } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
-// Prefetch helpers live next to the renderer so marker regexes stay in one
-// place.
 import { prefetchMarkdown } from "../shared/markdown-view.tsx";
 import { focusDecision, followDecisionLink } from "../shared/navigation.ts";
 import { trackViewport } from "../shared/layout.ts";
@@ -11,15 +9,11 @@ import { useLatest } from "../shared/use-latest.ts";
 import { useResource } from "../shared/use-resource.ts";
 import { useApi } from "../state/api.ts";
 
-// Remembered per device, so the header's browser slot is right from the
-// first frame instead of appearing once the host answers.
+// Kept per device, so the header's browser slot is right from the first frame.
 const browserKept = stored(storageKeys.browser, false, (value) => value === 1, {
   kept: Number,
 });
 
-// What the shell does once it starts, apart from any conversation: warms the
-// markdown renderer, follows the viewport, takes files dropped on the page,
-// hears from the service worker, and learns whether the host has a browser.
 export function useBoot({
   upload,
   page,
@@ -51,17 +45,12 @@ export function useBoot({
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
   useEffect(() => {
-    // The core renderer chunk is needed for every assistant message, so
-    // fetch it immediately at boot (not idle: on mobile the idle callback
-    // can fire after the first snapshot already mounted, which spreads
-    // the plain-to-markdown height wave across the first seconds and
-    // fights the bottom pin). Marker-based chunks warm per text below.
+    // Not on idle: on mobile that can fire after the first snapshot mounted,
+    // and the plain-to-markdown height change then fights the bottom pin.
     prefetchMarkdown();
   }, []);
   useEffect(trackViewport, []);
-  // Files dropped anywhere attach to the open conversation; unhandled, the
-  // browser would open the file in place of the app. File inputs and
-  // dialogs keep their own drops.
+  // Unhandled, a dropped file would open in place of the app.
   const drops = useLatest({ upload, page });
   const attach = useCallback(
     (files: File[]) => drops.current.upload(files),
@@ -107,7 +96,6 @@ export function useBoot({
         if (event.data.decision !== undefined) focusDecision();
       }
     };
-    // A notification's link opened this window at a decision.
     followDecisionLink();
     addEventListener("hashchange", followDecisionLink);
     navigator.serviceWorker?.addEventListener("message", openSession);

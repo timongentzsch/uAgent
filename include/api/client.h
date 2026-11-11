@@ -2,8 +2,6 @@
 
 #ifndef UAGENT_INCLUDE_API_CLIENT_H_
 #define UAGENT_INCLUDE_API_CLIENT_H_
-// Provider-neutral API client declaration. Wire encoders and stream decoders
-// live under include/api and src/api.
 
 #include <sys/socket.h>
 
@@ -27,17 +25,13 @@ using CURLM = void;
 
 namespace uagent {
 
-// Whether a socket address is an ordinary public destination: not loopback,
-// private, link-local, shared, documentation, multicast or reserved space,
-// and for IPv6 only allocated global unicast. The model transport and web push
-// both refuse to connect anywhere else.
+// False for loopback, private, link-local, multicast and reserved space.
 bool PublicSocketAddress(const sockaddr* address, socklen_t length);
 
 struct StreamCtx;
 class HttpExchange;
 
-// Copyable request settings; transport handles and accumulated usage stay
-// with the single-owner client. Side requests snapshot this exact route.
+// Copyable request settings; side requests snapshot this exact route.
 struct ApiSettings : Route {
   ProviderCapabilities capabilities;
   RuntimeConfig config;
@@ -55,12 +49,9 @@ class Api : public ApiSettings {
   Api& operator=(const Api&) = delete;
 
   bool capture_http = false;
-  // Per-client overrides for side requests: a positive output cap replaces
-  // UAGENT_MAX_TOKENS, `forbid_tool_calls` keeps the offered tools in the
-  // request (the cached prefix) while the model is told not to call them, and
-  // `native_web_search` makes this a search: the endpoint's own and no other.
-  // A request inside a tool sets `keep_abort`: the turn's tool loop reads and
-  // clears the abort it stops on, so a cancelled request leaves it set.
+  // Overrides for side requests. A positive cap replaces UAGENT_MAX_TOKENS;
+  // forbidden tools stay in the request so the cached prefix holds; a request
+  // inside a tool keeps the abort set for the turn's tool loop to read.
   int64_t max_output_tokens = 0;
   bool forbid_tool_calls = false;
   bool native_web_search = false;
@@ -79,19 +70,15 @@ class Api : public ApiSettings {
   ChatResult Chat(const json& messages, const json& tool_schemas,
                   int64_t timeout_s = 0, const std::string& session_id = "",
                   size_t estimated_bytes = 0);
-  // timeout_s bounds one attempt; deadline bounds the complete operation.
-  // attempts>1 adds the same bounded backoff
-  // the conversation gets, for transport failures and transient statuses.
+  // timeout_s bounds one attempt, deadline the whole operation with retries.
   JsonResponse Post(const std::string& path, const json& body,
                     int64_t timeout_s = 120, int attempts = 1,
                     std::chrono::steady_clock::time_point deadline =
                         std::chrono::steady_clock::time_point::max());
   JsonResponse Get(const std::string& path, bool abortable = false,
                    int64_t timeout_s = 15);
-  // A direct GET of an absolute public URL: no credentials or environment
-  // proxy, and every resolved address across redirects must be public. For
-  // content this client does not interpret, so the bytes come back as they
-  // arrived.
+  // GET of an absolute public URL: no credentials, no environment proxy, and
+  // every address resolved across redirects must be public.
   WebResponse GetUrl(const std::string& url, int64_t timeout_s, size_t cap);
 
  private:

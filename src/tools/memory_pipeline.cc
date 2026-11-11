@@ -61,8 +61,8 @@ bool Claim(const std::string& source, const std::filesystem::path& cwd,
     std::error_code marker_error, source_error;
     auto marker_time = fs::last_write_time(marker, marker_error);
     auto source_time = fs::last_write_time(source, source_error);
-    // A marker we cannot compare stays untouched: clearing it would re-extract
-    // a session that has already been processed.
+    // A marker that cannot be compared stays: clearing it would re-extract a
+    // session that has already been processed.
     if (marker_error || source_error) return false;
     bool done = Trim(state) == "done";
     if (done && marker_time >= source_time) return false;
@@ -96,10 +96,8 @@ void ReleaseClaim(const std::string& source, const std::filesystem::path& cwd) {
   std::filesystem::remove(MarkerPath(source, cwd), ignored);
 }
 
-// A receipt is the parent's channel for reporting one extraction; it is
-// deleted as soon as the parent reads it. Anything older than a claim can
-// possibly be live belongs to a parent that exited first, and its audit event
-// is already in events.jsonl, so it is safe to drop.
+// A receipt is the parent's channel for one extraction, deleted once read.
+// One older than any live claim belongs to a parent that exited first.
 void SweepOrphanedReceipts(const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   std::string workspace = MakePrivateDir(
@@ -216,9 +214,8 @@ std::string StartMemoryExtractor(ActivitySupervisor& processes, const Api& api,
   std::filesystem::remove(receipt, ignored);
   std::string source_id = WorkspaceId(source);
   environment.emplace_back("UAGENT_INTERNAL_MEMORY_RECEIPT", receipt);
-  // The child settles its own claim when it ends (SettleMemoryClaim). One
-  // that is killed first leaves it, which is why a claim is also reclaimed by
-  // age.
+  // The child settles its own claim when it ends (SettleMemoryClaim); one
+  // killed first leaves it, so a claim is also reclaimed by age.
   environment.emplace_back("UAGENT_INTERNAL_MEMORY_CLAIM", marker);
   ToolResult started =
       RunShellCommand(
@@ -227,9 +224,8 @@ std::string StartMemoryExtractor(ActivitySupervisor& processes, const Api& api,
            .argv = {ExecutablePath(), "--yolo", "-p", "memory-extract"},
            .background = true,
            .immediate = true,
-           // Runs uagent itself, which writes ~/.uagent state a
-           // confined child could not. Its own commands run under
-           // this session's sandbox.
+           // Runs uagent itself, which writes ~/.uagent state a confined
+           // child could not; its commands run under this session's sandbox.
            .sandbox = false,
            .activity_kind = ActivityKind::kMemory,
            .activity_label = "extracting from " + source_id,

@@ -24,8 +24,6 @@ import {
   maxHighlightCacheEntries,
   maxHighlightChars,
 } from "./limits.ts";
-// Code highlighting, loaded only when a reply or file has code: the grammars
-// the app ships, a cache of highlighted blocks, and per-line output for files.
 
 for (const [name, grammar] of Object.entries({
   javascript,
@@ -68,9 +66,8 @@ export function install(markdown: InstanceType<typeof MarkdownIt>) {
       : "";
 }
 
-// A file as lines of HTML, highlighted by its name. A span a line break
-// cuts through (a block comment, a template string) is closed at the end
-// of the line and opened again on the next, so each line stands alone.
+// A span a line break cuts through (a block comment, a template string) is
+// closed at the end of the line and reopened on the next.
 export function highlightLines(text: string, path: string) {
   const language = languageFor(path);
   const html =

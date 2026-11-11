@@ -28,12 +28,10 @@ TEST_CASE(TestSettingsStore) {
   TestWorkspace test("settings-store");
   const std::string folder = test.workspace.string();
 
-  // Nothing saved: no document is made by reading.
   CHECK(ReadSettings(folder).all.empty());
   CHECK(!PathExists(SettingsPath()));
 
-  // One scope changes at a time; the other folder and the rest stay. A name
-  // that is no setting is what a value refers to as $NAME.
+  // A name that is no setting is what a value refers to as $NAME.
   CHECK(Set("", "MY_KEY", "secret").empty());
   CHECK(Set("", "UAGENT_TITLE_MODEL", "off").empty());
   CHECK(Set("", "UAGENT_MODEL", "m2").empty());
@@ -44,8 +42,6 @@ TEST_CASE(TestSettingsStore) {
   CHECK(saved.project == (SettingValues{{"UAGENT_MAX_STEPS", "7"}}));
   CHECK(ReadSettings("/other").project.at("UAGENT_MODEL") == "m3");
 
-  // The document names a setting as people do and holds its value in its
-  // own type; what a value refers to is kept apart under "variables".
   CHECK(Set("", "UAGENT_MAX_STEPS", "12").empty());
   CHECK(Set("", "UAGENT_SANDBOX", "relaxed").empty());
   CHECK(Set("", "UAGENT_MEMORY_MODEL", "$MY_KEY").empty());
@@ -69,7 +65,6 @@ TEST_CASE(TestSettingsStore) {
             return std::string();
           }).empty());
   }
-  // The schema an editor reads is written beside the document it names.
   CHECK(document()["$schema"] == "./settings.schema.json");
   const json schema = json::parse(
       ReadFile(test.home.string() + "/.uagent/config/settings.schema.json",
@@ -78,16 +73,12 @@ TEST_CASE(TestSettingsStore) {
   CHECK(
       schema["definitions"]["scope"]["properties"].contains("limits.maxSteps"));
 
-  // A change that reports an error leaves everything as it was.
   CHECK(ChangeSettings("", [](SettingValues& scope) {
           scope.clear();
           return std::string("refused");
         }) == "refused");
   CHECK(ReadSettings(folder).all.size() == 3);
 
-  // A document edited by hand: what is no setting, and a value its setting
-  // does not take, are named and left out; the rest applies, and a later
-  // save keeps what the author wrote.
   {
     TestWorkspace edited("settings-store-edited");
     WriteFile(SettingsPath(),
@@ -121,8 +112,7 @@ TEST_CASE(TestSettingsStore) {
     CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "many");
   }
 
-  // An editor takes no lock. What it saves while a change is being made is
-  // kept, and the change is refused for another try.
+  // An editor takes no lock: its save mid-change wins, the change is refused.
   {
     TestWorkspace raced("settings-store-raced");
     CHECK(Set("", "UAGENT_MODEL", "first").empty());
@@ -140,9 +130,6 @@ TEST_CASE(TestSettingsStore) {
                                                  {"UAGENT_MODEL", "by hand"}}));
   }
 
-  // A value that refers to another is judged by what that one holds: the
-  // same problem as if it stood there itself. What it refers to may be
-  // defined nowhere, and then nothing is set.
   {
     TestWorkspace referring("settings-store-referring");
     WriteFile(
@@ -161,8 +148,7 @@ TEST_CASE(TestSettingsStore) {
     CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "$COUNT");
   }
 
-  // A document that cannot be read is reported and never saved over; one an
-  // earlier release wrote in format 2 is one of them.
+  // Format 2, which an earlier release wrote, is unreadable like the others.
   for (const char* broken :
        {"{\"format\": 1, \"all\": [", "null",
         "{\"format\": 2, \"all\": {}, \"projects\": {}}"}) {

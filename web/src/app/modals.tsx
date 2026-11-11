@@ -38,10 +38,8 @@ import { useConversation, useHostContext } from "../state/host-context.ts";
 import { sessionById } from "../state/attention.ts";
 import type { Places } from "./use-places.tsx";
 
-// Only a host with a browser opens this dialog, so its code is fetched then.
 const browserDialog = () => import("../features/browser/browser.tsx");
 
-// What Settings shows and changes of the shell's own state.
 type Preferences = Pick<
   ComponentProps<typeof Settings>,
   | "install"
@@ -53,12 +51,9 @@ type Preferences = Pick<
   | "notifications"
   | "logout"
 >;
-// Provided by the shell, read only by Settings.
 export const PreferencesContext = createContext<Preferences | null>(null);
 
-// The app's dialogs over the shell. Each selects from the snapshots only
-// what it shows, while it is open, so a streamed frame re-renders none of
-// them unless that changed.
+// Each dialog selects from the snapshots only what it shows, while open.
 export default function Modals({
   modal,
   inspector,
@@ -84,7 +79,6 @@ export default function Modals({
   catalogue: Catalogue;
   compact: boolean;
   managementVersion: number;
-  // The places to start in, and the New dialog's fields.
   places: Pick<
     Places,
     | "projects"
@@ -126,8 +120,7 @@ export default function Modals({
   const activities = useSnapshots(store, (all) =>
     inspector ? all[selected]?.state?.activities : undefined,
   );
-  // What the page holds of the conversation, older pages included: a turn
-  // the person loaded is in it, and fetching again would drop those pages.
+  // What the page holds, older pages included: fetching again would drop them.
   const held = useSnapshots(store, (all) =>
     modal?.type === "statistics" ? all[modal.session_id] : undefined,
   );

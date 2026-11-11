@@ -57,8 +57,7 @@ import GuidanceQueue from "./guidance-queue.tsx";
 import TodoList from "./todo-list.tsx";
 import { focusComposer } from "../../shared/navigation.ts";
 import "./composer.css";
-// Prompts sent from this page per session, oldest first: Up and Down recall
-// them the way the terminal composer does.
+// Prompts sent from this page per session, oldest first, for Up/Down recall.
 const sentPrompts = new Map<string, string[]>();
 const NONE: [] = [];
 
@@ -89,7 +88,6 @@ function Composer({
   insert?: (node: Node) => Promise<void>;
   commands: SlashCommand[];
   state?: State;
-  // A decision the turn waits on.
   pending?: Pending | null;
   draft: Draft;
   setDraft: (draft: Draft) => void;
@@ -99,11 +97,8 @@ function Composer({
   openInspector: (target: InspectorTarget) => void;
   showStatistics: () => void;
   openBrowser: () => void;
-  // Why the last turn stopped short, while nothing has been sent since.
   stopped?: string;
-  // Continues that stopped turn.
   resume?: () => void;
-  // The agents it started that are working, and opening one.
   agents: Session[];
   choose: (id: string) => void;
 }) {
@@ -117,8 +112,7 @@ function Composer({
   // finger: a second tap that soon is the first one repeated, not a stop.
   const lastSent = useRef(0);
   const [renaming, setRenaming] = useState<string | null>(null);
-  // @-mention over attached files: caret-driven, independent of the
-  // slash menu (slash only matches a lone leading /command).
+  // @-mention is caret-driven and independent of the slash menu.
   const [caret, setCaret] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(-1);
   const [mentionClosed, setMentionClosed] = useState(false);
@@ -200,7 +194,6 @@ function Composer({
     ? mentionCandidates.length
     : suggestions.count;
   const send = (event: Event, queue = false) => {
-    // A pending decision holds the draft until it is answered.
     if (pending) {
       event.preventDefault();
       return;
@@ -248,8 +241,6 @@ function Composer({
     setDraft({ ...draft, text: next < 0 ? "" : past[next] });
     return true;
   };
-  // Reconnecting keeps the last known request and activities on screen,
-  // inert (their controls follow `online`), so resuming never reflows.
   // Focus left with the decision card returns to the input below it.
   const decided = useRef(!!pending);
   useEffect(() => {
@@ -262,8 +253,6 @@ function Composer({
     !following && !pending,
   );
   const empty = !draft.text.trim() && !draft.files.length;
-  // The one primary control: Stop while a turn runs and there is nothing
-  // to send, Send otherwise. Its icons cross-fade in place.
   const stopping = running && empty;
   const unsendable =
     (!online && !holdable(draft)) || busy || uploading || empty || !!pending;
@@ -274,8 +263,6 @@ function Composer({
       : stopped === "error"
         ? "Stopped by an error"
         : `Stopped: ${stopped.replaceAll("_", " ")}`;
-  // Queue next shows while a turn runs with a draft, by opacity, never by
-  // reflow.
   const queueing = running && !pending && !empty;
   const continuing = !running && !pending && !!stopLabel && !!resume;
   const permission = state?.permissions;
@@ -382,7 +369,6 @@ function Composer({
           }}
           onKeyDown={(event) => {
             if (mentionOpen && mentionKeyDown(event)) return;
-            // Alt+Enter holds the message until the turn ends.
             if (queueing && event.key === "Enter" && event.altKey) {
               event.preventDefault();
               if (!event.repeat) send(event, true);
@@ -481,9 +467,6 @@ function Composer({
             ))}
           </div>
         )}
-        {/* Fixed slots: Attach, Model (the only one that flexes),
-              Permissions, then the primary. A pending decision dims all but
-              Permissions, which can still settle it for the conversation. */}
         <div class="composer-actions" data-held={!!pending || undefined}>
           <label class="file-button icon-button" title="Attach files">
             <Paperclip />
@@ -508,7 +491,6 @@ function Composer({
           <SheetButton
             label="Approval"
             title={`${effectiveLabel}${permission?.mode === "default" ? " · the default" : " · chosen for this conversation"}`}
-            // YOLO runs everything unasked: it says so loudly.
             className={`permission-control${effective === "yolo" ? " yolo" : ""}`}
             disabled={!online}
             trigger={

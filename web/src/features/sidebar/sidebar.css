@@ -11,7 +11,6 @@
   gap: var(--gap);
   min-height: var(--control-l);
 }
-/* The mark at the left; search and New together at the right. */
 .sidebar-head .brand {
   margin-right: auto;
 }
@@ -23,15 +22,12 @@
   flex: 1;
   min-height: 0;
 }
-/* Places stand apart by the space between them, and by their bold header. */
 .sidebar nav section + section {
   margin-top: var(--space-6);
 }
 .list-group + .list-group {
   margin-top: var(--space-6);
 }
-/* A place's header: fold it, its name (which opens its overview), start a
-   conversation in it, its menu. */
 .place-head {
   display: flex;
   align-items: center;
@@ -44,7 +40,6 @@
   font-size: var(--font-small);
   font-weight: var(--weight-strong);
 }
-/* The name's text lines up with the conversations' under it. */
 .sidebar h2 button {
   width: 100%;
   justify-content: flex-start;
@@ -65,7 +60,6 @@
   width: var(--indent);
   min-width: var(--indent);
 }
-/* What a folded place holds: how many, or how many need you. */
 .place-count {
   font-weight: var(--weight-regular);
   color: var(--muted);
@@ -76,9 +70,6 @@
 .place-body {
   padding-left: var(--indent);
 }
-/* A conversation's agents at work, beneath it on a thin line: little
-   indent, so their titles keep their width, and no agent mark, since the
-   line already says whose they are. */
 .place-agents {
   margin-left: var(--space-6);
   padding-left: var(--space-2);
@@ -88,7 +79,6 @@
 .place-agents .thread-mark {
   display: none;
 }
-/* Every folder's waiting decisions, above the list. */
 .needs-you > button {
   width: 100%;
   justify-content: flex-start;
@@ -113,8 +103,6 @@
     background: none;
   }
 }
-/* One line to a row: the title and its state. The time and the menu show
-   while the row is pointed at or focused; touch keeps the menu visible. */
 .sidebar .session {
   flex: 1;
   font-size: var(--font-small);
@@ -142,8 +130,7 @@
     opacity: 1;
   }
 }
-/* Touch has no hover: show each conversation's menu so Select is discoverable.
-   A long press remains a shortcut. Workspace menus keep their compact layout. */
+/* Touch has no hover: the menus show, so Select is discoverable. */
 @media (pointer: coarse) {
   .session-row,
   .place-head {
@@ -167,7 +154,6 @@
     pointer-events: none;
   }
 }
-/* A folder's terminal, marked by its icon. */
 .session .row-icon {
   width: var(--icon-s);
   height: var(--icon-s);
@@ -217,19 +203,15 @@
 .connection .status-led {
   margin-right: var(--space-3);
 }
-/* The drawer opens on the list; the mark stays in the header. */
 .drawer .sidebar-head .brand {
   display: none;
 }
 
-/* Picked to act on with others: the row's checkbox and a fill. The open
-   conversation keeps its stripe, so the two never look alike. */
+/* The open conversation keeps its stripe, so the two never look alike. */
 .session-row[data-picked]:not(:has([aria-current])),
 .place-head[data-picked] {
   box-shadow: none;
 }
-/* While something is picked the footer is its bar, its actions under the
-   count, each as wide. */
 .sidebar footer > .selection-bar {
   flex: 1;
   flex-direction: column;

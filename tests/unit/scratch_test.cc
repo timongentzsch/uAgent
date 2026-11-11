@@ -13,8 +13,6 @@
 
 namespace uagent {
 
-// The agent's own scripts: written without asking, kept out of git, and
-// shown to the person who approves the command that runs one.
 TEST_CASE(TestScratchScripts) {
   namespace fs = std::filesystem;
   const fs::path root = fs::temp_directory_path() /
@@ -33,8 +31,6 @@ TEST_CASE(TestScratchScripts) {
   CHECK(ToolMutates(*write, {{"path", (root / "sum.py").string()}}));
   CHECK(write->run(wrote, {}).Ok());
   CHECK(ReadFile((root / ".uagent/scratch/.gitignore").string(), 16) == "*\n");
-  // Its own script is rewritten without saying so; a file of the folder's
-  // is not.
   CHECK(write->run(wrote, {}).Ok());
   const json kept = {{"path", (root / "kept.txt").string()}, {"content", "a"}};
   CHECK(write->run(kept, {}).Ok());
@@ -46,8 +42,6 @@ TEST_CASE(TestScratchScripts) {
   CHECK(preview("uv run --script .uagent/scratch/sum.py 4") ==
         "uv run --script .uagent/scratch/sum.py 4\n\nsum.py:\nprint(1 + 2)\n");
   CHECK(preview("sh '" + script + "'").ends_with("sum.py:\nprint(1 + 2)\n"));
-  // Nothing to show for a plain command, a script that is not there, one
-  // outside the folder, or two at once.
   for (const char* command :
        {"ls -la", "sh .uagent/scratch/missing.sh",
         "sh ../.uagent/scratch/sum.py",

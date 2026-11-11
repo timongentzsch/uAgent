@@ -31,7 +31,6 @@
 namespace uagent {
 namespace {
 
-// A dim label and its value, the value in one column for every such row.
 std::string KeyValueRow(std::string_view label, std::string_view value,
                         size_t indent = kRowIndent) {
   constexpr size_t kLabelColumns = 16;
@@ -45,8 +44,6 @@ std::string KeyValueRow(std::string_view label, std::string_view value,
   return row + '\n';
 }
 
-// The mark before a server or a tool: ● green when ready, yellow while
-// starting, red when failed, ○ dim when disabled.
 std::string StatusMark(std::string_view status) {
   const char* color = status == "ready"      ? GREEN()
                       : status == "failed"   ? RED()
@@ -129,8 +126,7 @@ void HandleCost(const AppSession& session, CommandReply& reply) {
     return;
   }
   for (const auto& [route, usage] : routes.items()) {
-    // Tokens beside the cost say *why* a route is expensive — a large
-    // evidence block reads very differently from many small turns.
+    // Tokens beside the cost say why a route is expensive.
     const Usage spent = UsageFromJson(usage);
     reply.Note(
         Tone::kNeutral,
@@ -159,8 +155,6 @@ void HandleCost(const AppSession& session, CommandReply& reply) {
              JoinDot({"total", TokenSplit(spent), CacheSummary(spent), cost}));
 }
 
-// What the session actually resolved to: the effective configuration with the
-// source of each setting, then the request the model would see.
 void HandleContext(AppSession& session, CommandReply& reply) {
   reply.result = {
       {"effective_config",
@@ -171,8 +165,7 @@ void HandleContext(AppSession& session, CommandReply& reply) {
       {"model_request", session.ActiveAgent().ModelRequest()}};
   json effective = reply.result["effective_config"];
   effective["capabilities"] = reply.result["capabilities"];
-  // The writable roots are the whole of what the sandbox permits, so the deep
-  // view is the one place they are printed in full.
+  // The one place the sandbox's writable roots are printed in full.
   effective["sandbox"] = SandboxDiagnosticJson();
   const json& sources = effective["sources"];
   auto source = [&](const char* key, const std::string& fallback = "runtime") {
@@ -192,8 +185,6 @@ void HandleContext(AppSession& session, CommandReply& reply) {
               TerminalSafe(JsonDump(reply.result["model_request"], 2)).c_str());
 }
 
-// /context is the deep live-context view. /status answers the everyday
-// questions in one screen and /config KEY explains provenance.
 void HandleStatus(const AppSession& session, CommandReply& reply) {
   reply.result =
       DescribeSelf(SelfTopic::kStatus, "", DescriptionInputs(session));
@@ -282,8 +273,6 @@ void HandleInstructions(const std::string& argument, CommandReply& reply) {
 
 namespace {
 
-// One setting's provenance: where it is set, scope by scope, which of those
-// wins, and whether a change waits for a restart.
 void ShowSetting(const AppSession& session, const std::string& name,
                  CommandReply& reply) {
   reply.result =
@@ -325,8 +314,6 @@ void ShowSetting(const AppSession& session, const std::string& name,
 
 }  // namespace
 
-// The settings a layer changes, as text: what differs from its default and
-// where it comes from, then how a change takes effect.
 void HandleConfig(AppSession& session, const std::string& argument,
                   CommandReply& reply) {
   json request = {{"kind", "config"}};
@@ -394,8 +381,7 @@ void HandleConfig(AppSession& session, const std::string& argument,
              "KEY=VALUE, unset KEY, or reset (keeps secrets)");
 }
 
-// This repository's rules, numbered so one can be forgotten,
-// as in the web settings.
+// The rules are numbered so one can be forgotten.
 void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
   json listed = PermissionRulesControl({{"action", "list"}});
   if (argument != "rules" && !listed.contains("error")) {
@@ -428,8 +414,6 @@ void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
   }
 }
 
-// The same overview as the web settings: each server by scope, its state,
-// and why it is not running; retry, on and off act on one server.
 void HandleMcp(AppSession& session, const std::string& argument,
                CommandReply& reply) {
   AppContext& app = session.context;

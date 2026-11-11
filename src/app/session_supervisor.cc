@@ -25,7 +25,6 @@
 
 namespace uagent::session {
 namespace {
-// The status a connected worker reports through its latest state/activity.
 SessionStatus LiveStatus(const HostSession& session) {
   return session.closing                    ? SessionStatus::kClosing
          : !session.pending.is_null()       ? SessionStatus::kWaiting
@@ -35,11 +34,8 @@ SessionStatus LiveStatus(const HostSession& session) {
                                             : SessionStatus::kIdle;
 }
 
-// Sets next["view"]: the held view merged with what the worker sent.
-// Returns the patches of the nodes that changed, or null when a browser
-// holding the view must take all of it: the first view, or a field of the
-// view that changed other than by rows bounded out (a browser keeps those as
-// older pages).
+// Sets next["view"]: the held view merged with what the worker sent. Returns
+// the changed nodes' patches, or null when a browser must take the whole view.
 json MergeView(HostSession& session, json& next) {
   json view = json::object();
   auto held = session.state.find("view");
@@ -260,7 +256,6 @@ bool SessionHost::RecycleStaleWorkerLocked(
     session->restart = true;
     return false;
   }
-  // Close an idle stale worker, then let the caller attach a fresh one.
   DebugLog("worker_binary_recycle", {{"session", session->id}});
   // Claimed now, so no other pass starts a second recycle while this one
   // waits; restored if the worker keeps running.
@@ -348,8 +343,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       if (IsCurrentLocked(session)) {
         outcomes_.FailPending(*session);
         // Only a runtime that ends in the middle of work was interrupted;
-        // one that ends with nothing under way (closed by any client, or
-        // idle) is simply saved.
+        // one that ends with nothing under way is simply saved.
         const bool working = session->turn_active || session->command_busy;
         session->turn_active = false;
         session->pending = nullptr;
@@ -364,9 +358,8 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       session->exited = true;
       changed_.notify_all();
     });
-    // Adopted a live worker through Connect: it may predate the executable
-    // (host restarted over it). Recycle through the same gate, then spawn.
-    // A fresh spawn reports the executable on disk and skips this.
+    // A worker adopted through Connect may predate the executable: it is
+    // recycled through the same gate, then spawned.
     if (RecycleStaleWorkerLocked(session, lock)) {
       if (attempt > 0) {
         error = "worker binary changed during activation";
@@ -398,11 +391,9 @@ void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
     }
   }
   session.state = std::move(next);
-  // Browsers hold the host's view, never the worker's partial one, and
-  // apply node patches to it between checkpoints. A checkpoint reaches
-  // them the same way: the rows that changed, then its state without the
-  // view and with only the checkpoint fields that changed. The whole view
-  // goes only when they could not follow it row by row.
+  // Browsers hold the host's view and apply node patches to it. A checkpoint
+  // goes as changed rows plus light state; the whole view only when they
+  // could not follow it row by row.
   const bool checkpoint = JsonValue(frame, "checkpoint", false);
   const bool whole = checkpoint && rows.is_null();
   frame["state"] = whole ? session.state : session::LightState(session.state);
@@ -442,7 +433,6 @@ void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
   frame["updated"] = session.updated;
 }
 
-// What a run learns from the events of its turns.
 void SessionHost::RecordRunEvent(HostSession& session, const std::string& type,
                                  json& frame) {
   if (!session.run_id.empty()) {

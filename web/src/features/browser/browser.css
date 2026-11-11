@@ -1,8 +1,4 @@
-/* The browser has one geometry: the remote screen takes all the space and
-   one bar sits below it. Status, notices and the clipboard card overlay the
-   screen; nothing is ever inserted into this flow, so no state moves it. */
-/* On a compact screen the browser takes the whole display, landscape too.
-   Clip, not hidden: focusing an overlay field must never scroll the body. */
+/* Clip, not hidden: focusing an overlay field must never scroll the body. */
 dialog.browser-view[data-layout="sheet"] {
   --dialog-width: var(--content-width);
   border-width: 0;
@@ -44,8 +40,6 @@ dialog.browser-view[data-layout="sheet"] {
   cursor: default !important;
 }
 
-/* Overlays on the screen: a centred message, a top banner, a bottom toast
-   and the clipboard card. None of them take layout space. */
 .browser-overlay {
   position: absolute;
   inset: 0;
@@ -81,7 +75,6 @@ dialog.browser-view[data-layout="sheet"] {
   width: fit-content;
   margin-inline: auto;
 }
-/* Zoom and scroll without gestures, in the screen's top corner. */
 .browser-view-controls {
   top: var(--gap);
   right: var(--gap);
@@ -104,7 +97,6 @@ dialog.browser-view[data-layout="sheet"] {
   gap: var(--gap);
 }
 
-/* Where a touch landed; it stays while a hold drags. */
 .browser-touch {
   position: absolute;
   top: 0;
@@ -119,8 +111,7 @@ dialog.browser-view[data-layout="sheet"] {
   pointer-events: none;
 }
 
-/* The bar: status and profiles on the left, tools, then the one action. It
-   keeps its height while typing, when the special keys take its place. */
+/* Keeps its height while the special keys take its place. */
 .browser-bar {
   display: flex;
   align-items: center;

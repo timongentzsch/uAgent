@@ -2,8 +2,7 @@ import { useHosts } from "../state/sources.ts";
 import { connectionLabels } from "./connection-status.tsx";
 import { Field, Select } from "./ui.tsx";
 
-// Execution is chosen with the action, rather than as an application mode;
-// with no remote host there is nothing to choose.
+// With no remote host there is nothing to choose.
 export default function HostField({
   label = "Host",
   value,

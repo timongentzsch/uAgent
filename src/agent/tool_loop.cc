@@ -145,8 +145,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
 }
 
 // Validates one call, publishes its activity row and asks for approval. A
-// call that may run leaves with task.execute set; any other already has its
-// result.
+// call that may run leaves with task.execute set; any other has its result.
 void Agent::PrepareCall(const ToolCall& call, CallTask& task,
                         TurnExecution& state, StepState& loop) {
   int64_t& tool_count = state.metrics.tool_count;
@@ -219,10 +218,9 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
            "call_limit", issue);
     valid = false;
   }
-  // A call reads as what it would have done ("Ran cd …"), even when it was
-  // refused; the error says why. One that names no tool, or sends no object,
-  // reads as "Called <name>" with its first short string argument, never as
-  // the JSON it sent.
+  // A call reads as what it would have done ("Ran cd …"), even when refused.
+  // One that names no tool, or sends no object, reads as "Called <name>",
+  // never as the JSON it sent.
   Tool named;
   named.name = call.name;
   task.label =
@@ -359,9 +357,8 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                                  {"parallel", parallel},
                                  {"concurrency_limit", width}});
   }
-  // A long diff is kept with the session's edits, where it lasts as long as
-  // the conversation; a run without a session file keeps it with the
-  // retained exchanges.
+  // A long diff is kept with the session's edits, or, without a session
+  // file, with the retained exchanges.
   const std::string diffs = edits_.Directory().empty()
                                 ? UagentDir(kArtifactsDir) + "/exchange-XXXXXX"
                                 : edits_.Directory() + "/diff-XXXXXX";

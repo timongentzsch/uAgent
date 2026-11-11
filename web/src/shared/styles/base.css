@@ -57,14 +57,12 @@
     border: 1px solid transparent;
     background: var(--raised);
   }
-  /* A field's edge is the only thing marking it on its own surface. */
   input,
   select,
   textarea {
     border-color: var(--field-border);
   }
-  /* Every button: its content centred in a --control-tall box, padded only
-     at the sides, so a label never sits off-centre in its fill. */
+  /* Padded only at the sides, so a label never sits off-centre in its fill. */
   button {
     transition: background var(--motion-fast) var(--ease-standard);
     display: inline-flex;
@@ -145,12 +143,9 @@
   small {
     color: var(--muted);
   }
-  /* Secondary text (a detail, a time, a count) is the one size below body
-     text; a caption also names a section in small capitals. */
   small {
     font-size: var(--font-small);
   }
-  /* A key, named in a hairline box. */
   kbd {
     min-width: 1.6em;
     padding: 0 var(--space-1);
@@ -159,8 +154,6 @@
     font-weight: var(--weight-regular);
     text-align: center;
   }
-  /* Every disclosure reads like a row that opens: a chevron that turns as it
-     opens. */
   details > summary::before {
     content: "";
     flex-shrink: 0;
@@ -172,7 +165,6 @@
       center / contain no-repeat;
   }
 
-  /* Modal header and close button stay outside the scrolling body. */
   dialog {
     --dialog-width: var(--dialog-m);
     position: fixed;
@@ -225,8 +217,6 @@
     margin: var(--pad) 0;
   }
 
-  /* Every dialog shares the same optical and interactive close-button
-     geometry. */
   dialog > header h2 {
     min-width: 0;
     margin: 0;
@@ -241,11 +231,9 @@
   details > summary::-webkit-details-marker {
     display: none;
   }
-  /* Every chevron turns down as what it heads opens. */
   details > summary::before {
     transition: rotate var(--motion-fast) var(--ease-standard);
   }
-  /* Words a find bar found (shared/find.ts), and the one it is on. */
   ::highlight(find),
   mark {
     background-color: var(--find);

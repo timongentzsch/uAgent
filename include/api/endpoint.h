@@ -21,14 +21,11 @@ struct Endpoint {
   // The window the endpoint states where its catalogue reports none.
   int64_t context = 0;
   FeatureSet features = {};
-  // Request extras the features read: `provider` (the upstream a
-  // provider_routing endpoint is pinned to) and `pdf_engine`.
+  // Request extras the features read: `provider` and `pdf_engine`.
   json options = nullptr;
-  // What the configuration declares of the models there; the catalogue's are
-  // merged into the capabilities when a route is applied.
+  // Model features the configuration declares; a route adds the catalogue's.
   json model_features = nullptr;
-  // Tools the endpoint runs itself, defined as its API takes them (the
-  // objects of `hosted_tools`); an agent's requests there carry them.
+  // Tools the endpoint runs itself, each as its API takes it.
   json hosted_tools = json::array();
 
   // A free-only OpenRouter preset never enables billable hosted extras.
@@ -39,11 +36,9 @@ struct Endpoint {
   }
 };
 
-// An endpoint, the model asked there and how hard it thinks.
 struct Route : Endpoint {
   std::string model, reasoning_effort;
-  // The selection a catalogue route was chosen by and the model it named,
-  // so the choice can be written down as it was made (an alias stays one).
+  // The selection the route was chosen by and the model it named.
   std::string route_name, route_model;
   std::vector<std::string> supported_reasoning_efforts;
   int64_t ctx_window = 0;

@@ -21,11 +21,8 @@ TEST_CASE(TestMathTransliteration) {
   CHECK(TransliterateMath("x^2") == "x²");
   CHECK(TransliterateMath("a_1") == "a₁");
   CHECK(TransliterateMath("x^{10}") == "x¹⁰");
-  // A script that has no Unicode form stays readable instead of being dropped.
   CHECK(TransliterateMath("x^{ab}") == "x^(ab)");
-  // \quad is a wide space, so it widens the gap rather than collapsing into
-  // the surrounding one. Delimiters disappear; unknown commands survive
-  // verbatim so nothing is silently lost.
+  // \quad is a wide space: it widens the gap instead of collapsing into it.
   CHECK(TransliterateMath("a \\quad b") == "a  b");
   CHECK(TransliterateMath("\\left(x\\right)") == "(x)");
   CHECK(TransliterateMath("\\unknown") == "\\unknown");

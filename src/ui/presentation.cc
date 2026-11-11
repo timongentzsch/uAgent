@@ -32,8 +32,7 @@ std::string AttachmentDeliveryRows(const json& deliveries) {
     if (name.empty() && kind.empty()) continue;
     if (name.empty()) name = "attachment";
     if (kind.empty()) kind = "attached";
-    // Chrome downgrades on non-UTF-8 terminals; the file name is user
-    // content and stays byte-preserved.
+    // The file name is user content and stays byte-preserved.
     rows += std::string(DIM()) + "  " + TerminalSafe(name) +
             AsciiGlyphs(" · ") + TerminalSafe(kind) + RST() + "\n";
   }

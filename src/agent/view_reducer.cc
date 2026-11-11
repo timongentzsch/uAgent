@@ -28,8 +28,7 @@ json::iterator Find(json& nodes, std::string_view id) {
 
 // Upserts one node without bounding the view; true when it is new or
 // different. A new node goes before the first node under it, else in
-// sequence position (a late saved node never strands older content after
-// newer), else last, as a client holding the view places it too.
+// sequence position, else last, as a client holding the view places it.
 bool Upsert(json& nodes, const json& node) {
   const std::string_view id = Field(node, "id");
   auto found = Find(nodes, id);
@@ -63,10 +62,9 @@ bool Upsert(json& nodes, const json& node) {
   return changed;
 }
 
-// Drops the oldest nodes past the view's bounds, in one walk of the view,
-// and then up to the next turn, so the view starts where one does; returns
-// how many went. A newest turn larger than the view keeps its head, the
-// message that started it, over its latest steps.
+// Drops the oldest nodes past the view's bounds, then up to the next turn;
+// returns how many went. A newest turn larger than the view keeps its head,
+// the message that started it, over its latest steps.
 size_t BoundView(json& view) {
   json& nodes = view["nodes"];
   size_t bytes = JsonEstimatedBytes(nodes);

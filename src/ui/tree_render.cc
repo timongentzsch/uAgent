@@ -1,8 +1,6 @@
 // Copyright 2026 Timon Gentzsch
-// The transcript as the terminal draws it: the host's tree of nodes
-// (include/agent/node.h), open to the level's depth below each turn. A
-// closed node is one line, its headline and the host's result word; an open
-// one adds its body's tail. Every word comes from the node.
+// The transcript as the terminal draws it: the host's tree of nodes, open
+// to the level's depth below each turn. Every word comes from the node.
 
 #include <cstdio>
 #include <map>
@@ -88,8 +86,7 @@ std::string Row(const std::string& head, const json& node, size_t level,
       style);
 }
 
-// A node's parts, one row each at `pad`: a file or an artifact handed over,
-// a link.
+// A node's parts, one row each at `pad`.
 std::string Parts(const json& node, const std::string& pad, const char* style) {
   std::string rows;
   if (const json* parts = JsonArray(node, "parts")) {
@@ -139,9 +136,8 @@ std::string Opened(const json& node, size_t level, const char* style) {
   return rows + Parts(node, pad, style);
 }
 
-// One node's own rows. Your messages and the replies are shown whole, an
-// interim reply indented under the work it is a step of; a footer as the
-// turn's statistics; every other node as its row and, open, what it holds.
+// One node's own rows: messages and replies whole, a footer as the turn's
+// statistics, every other node as its row and, open, what it holds.
 void DrawRows(const json& node, size_t level, bool open) {
   const std::string_view kind = Field(node, "kind");
   const std::string pad(kRowIndent * level, ' ');
@@ -192,10 +188,9 @@ void DrawRows(const json& node, size_t level, bool open) {
 }  // namespace
 
 void PrintMessageHeader() {
-  // Assistant header is the binary name in ASCII, identical on live turns
-  // and --resume replay. Never the bare unicode mark: it renders as a
-  // random glyph on dumb PTYs and mismatches the spinner labels. Plain mode
-  // names the speaker as it names every other row.
+  // The header is the binary name in ASCII, the same live and on replay: the
+  // unicode mark renders as a random glyph on dumb PTYs. Plain mode names the
+  // speaker as it names every other row.
   if (g_plain) printf("uagent:\n");
   if (!g_tty) return;
   printf("%suagent%s\n", BOLD(), RST());
@@ -225,10 +220,9 @@ void TerminalPresenter::DrawTree(const json& view, bool live) {
     children[Field(node, "parent")].push_back(&node);
   }
   const int depth = detail_->depth;
-  // `level` is how far below a root a node sits: a turn is 0, its work 1,
-  // the work's steps 2, and the work replying to a message of yours sits at
-  // that message's level, as the web draws it. A node is open while its
-  // level is within the depth.
+  // `level` is how far below a root a node sits; the work replying to a
+  // message sits at that message's level. A node is open while its level is
+  // within the depth.
   const auto draw = [&](const auto& self, const json& node,
                         size_t level) -> void {
     const std::string_view kind = Field(node, "kind");

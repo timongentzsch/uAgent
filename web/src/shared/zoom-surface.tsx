@@ -19,30 +19,15 @@ import {
 import "./zoom-surface.css";
 import { useLatest } from "./use-latest.ts";
 
-// Zoom and pan by pointer, touch, trackpad and keyboard. Used by the image
-// viewer, image markup, an image opened in Files and the design canvas.
-
 const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_ZOOM = 2.5;
 // One press of − or +, or of ⌘/Ctrl with − or +.
 const ZOOM_STEP = 1.25;
 const FITTED: ZoomView = { scale: 1, x: 0, y: 0 };
 
-// Media that zooms like a native viewer: pinch, double-tap or double-click
-// to a point, ⌘/Ctrl+wheel or a trackpad pinch, the − and + controls or
-// ⌘/Ctrl with −, + and 0, and drag or scroll to pan once zoomed. Fit shows
-// the whole content. A tap on the empty surface around the content
-// dismisses.
-//
-// `draw` hands single pointers to the content (a pen, a pin): two fingers
-// still pinch and scroll still pans, but nothing pans on one pointer or
-// dismisses. `natural` is the content's natural width, so the level reads
-// as a percentage of its real size; `onView` follows every change.
-//
-// With `range` the content is a plane with no edges: its scale stays in that
-// range, one pointer pans at any scale, a press that moved clicks nothing,
-// and Fit shows the view `fit` gives for the surface's size (asked again
-// whenever `fitKey` changes). `over` is drawn above the plane, unscaled.
+// `draw` hands single pointers to the content: two fingers still pinch, but
+// nothing pans on one pointer or dismisses. With `range` the content is a
+// plane with no edges: one pointer pans at any scale and Fit shows `fit`.
 export function ZoomSurface({
   label,
   dismiss,
@@ -123,7 +108,6 @@ export function ZoomSurface({
     const at = local(point);
     apply(pinchView(view.current, width, height, at, at, ratio, range), glide);
   };
-  // − and + zoom around the middle of what is on screen.
   const step = (ratio: number) => {
     const { left, top, width, height } = bounds();
     zoomAt({ x: left + width / 2, y: top + height / 2 }, ratio, true);
@@ -312,7 +296,6 @@ export function ZoomSurface({
   );
 }
 
-// The zoom level with − and +, and Fit; an action left out is disabled.
 // Presses here are the controls', never the surface's gestures.
 export function ZoomControls({
   percent,

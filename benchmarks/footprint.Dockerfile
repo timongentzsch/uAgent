@@ -1,6 +1,5 @@
 # The footprint comparison in a container: µAgent built from this checkout
-# beside Claude Code, Codex CLI and omp. Record actual versions; see the
-# "In a container" part of benchmarks/README.md for the build and run lines.
+# beside Claude Code, Codex CLI and omp. Build and run: benchmarks/README.md.
 FROM node:24-bookworm-slim AS frontend
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./

@@ -1,7 +1,5 @@
 import { test, expect, headerAction, savedConversation } from "./fixtures.js";
 
-// The system back gesture closes the topmost layer, as in a native app, and
-// layers closed from the interface leave no entry for back to reopen.
 test.describe("back closes what is open", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -18,7 +16,6 @@ test.describe("back closes what is open", () => {
     await page.goto(`/#session=${session.id}`);
     await expect(page.getByLabel("Message or guidance")).toBeVisible();
 
-    // A dialog: back closes it and stays in the conversation.
     await headerAction(page, "Settings");
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings).toBeVisible();
@@ -28,17 +25,13 @@ test.describe("back closes what is open", () => {
     await expect(page).toHaveURL(new RegExp(session.id));
     expect(await layerDepth(page)).toBe(0);
 
-    // Closing from the interface removes its entry: back does not reopen it
-    // and does not leave the conversation either.
     await headerAction(page, "Settings");
     await settings.getByRole("button", { name: "Close settings" }).click();
     await expect(settings).toHaveCount(0);
     await expect.poll(() => layerDepth(page)).toBe(0);
-    // Forward never reopens a closed layer.
     await page.goForward();
     await expect(settings).toHaveCount(0);
 
-    // The drawer, then a page opened from it: back unwinds page by page.
     await page
       .getByRole("button", { name: "Open conversations", exact: true })
       .tap();
@@ -101,11 +94,9 @@ test.describe("back closes what is open", () => {
       .tap();
     const prompt = page.getByRole("dialog", { name: "Instructions" });
     await expect(prompt).toBeVisible();
-    // One back closes the swapped-in dialog and reaches the conversation.
     await page.goBack();
     await expect(prompt).toHaveCount(0);
     await expect.poll(() => layerDepth(page)).toBe(0);
-    // Closing from the interface leaves history where it started.
     await headerAction(page, "Settings");
     await settings.getByRole("button", { name: "Close settings" }).click();
     await expect.poll(() => layerDepth(page)).toBe(0);
@@ -125,8 +116,6 @@ test.describe("back closes what is open", () => {
     await expect(page.getByLabel("Message or guidance")).toBeVisible();
     await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);
     expect(await layerDepth(page)).toBe(0);
-    // Back leaves the layer's entry for the conversation, still with nothing
-    // open, and does not leave the app.
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(`#session=${session.id}$`));
     await expect(page.getByLabel("Message or guidance")).toBeVisible();
@@ -153,8 +142,6 @@ test("dialogs play their exit before they leave", async ({ page, session }) => {
   expect(await page.evaluate(() => window.__left)).toBe(true);
 });
 
-// Every dialog is one primitive, so every one closes on a tap outside it:
-// a centred dialog and the phone drawer as much as a sheet.
 test("a tap on the scrim closes a centred dialog", async ({
   page,
   session,

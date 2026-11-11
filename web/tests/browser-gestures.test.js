@@ -102,7 +102,6 @@ test("finger travel becomes natural-scroll wheel notches", () => {
   });
   // Finger down and left: scroll up (button 4) and right (button 7).
   assert.deepEqual(wheelNotches({ x: -step, y: step }).masks, [1 << 3, 1 << 6]);
-  // Under one step nothing is sent and the travel carries over.
   assert.deepEqual(wheelNotches({ x: 3, y: -5 }), {
     masks: [],
     rest: { x: 3, y: -5 },

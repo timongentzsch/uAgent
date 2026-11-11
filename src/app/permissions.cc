@@ -70,8 +70,7 @@ bool ValidStore(const json& store, std::string& error) {
 }
 
 // The rules file, locked for its lifetime. Usable() is false, with `error`
-// set, when it cannot be read or fails validation. Rules of an earlier
-// version, remembered as exact calls, are dropped.
+// set, when it cannot be read or fails validation.
 class RulesFile : public PrivateJsonStore {
  public:
   explicit RulesFile(std::string& error)

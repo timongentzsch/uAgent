@@ -1,6 +1,5 @@
-// What needs you, across folders: the sidebar's inbox answers any folder's
-// decision, the tab title counts them, a notification's link lands on the
-// decision itself, and a conversation's agents sit beneath it.
+// What needs you, across folders: the sidebar's inbox, the tab title's count,
+// a notification's link to the decision, and a conversation's agents.
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test, expect, selectProbeModel } from "./fixtures.js";
@@ -38,21 +37,18 @@ test("a decision in another folder is answered from the inbox", async ({
   await page.goto(`/#session=${session.id}`);
   const inbox = page.getByRole("button", { name: "1 needs you" });
   await expect(inbox).toBeVisible();
-  // The tab title carries the same count.
   await expect(page).toHaveTitle("(1) µAgent");
   await inbox.click();
   const sheet = page.getByRole("dialog", { name: "Needs you" });
   const waiting = sheet.getByRole("region", {
     name: "Decisions waiting on you",
   });
-  // Named with its folder and what it asks.
   await expect(waiting).toContainText("elsewhere");
   if (other.pending_prompt)
     await expect(waiting).toContainText(other.pending_prompt);
   await waiting.getByRole("button", { name: "Allow once" }).click();
   await expect(inbox).toHaveCount(0);
   await expect(page).toHaveTitle("µAgent");
-  // The conversation open before stays open.
   expect(new URL(page.url()).hash).toBe(`#session=${session.id}`);
 });
 
@@ -81,7 +77,6 @@ test("a notification's link opens the session at its decision", async ({
   const other = await waitingElsewhere(host, command, request);
   await page.goto(`/#session=${other.id}&decision=attention-1`);
   await expect(page.locator(".conversation .decision h2")).toBeFocused();
-  // The address keeps only the session.
   await expect
     .poll(() => new URL(page.url()).hash)
     .toBe(`#session=${other.id}`);

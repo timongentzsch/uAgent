@@ -7,9 +7,6 @@ import { Field, Select, LoadError } from "./ui.tsx";
 import { SearchSelect } from "./search-select.tsx";
 import { ModelLoading, ModelActions, ModelDefaults } from "./loading.tsx";
 
-// Choosing a conversation's model and reasoning effort, or the defaults for
-// new ones, from the host's catalogue.
-
 export default function ModelPicker({
   session,
   state,
@@ -32,7 +29,6 @@ export default function ModelPicker({
   const { command } = useApi();
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState(state?.effort || "default");
-  // The choice is this conversation's; saving it for all is asked for.
   // The first choice is for every conversation to come.
   const [forAll, setForAll] = useState(!save && state?.route === "");
   const action = useAction();

@@ -21,8 +21,8 @@ def test_plain_turn(root, home, *, binary):
 
 
 def test_the_offered_tools_hold_while_background_work_starts(root, home, *, binary):
-    """The tool array is part of the cached prompt: starting background work
-    once added `activity` mid-turn and rewrote the cache (9.6k tokens live)."""
+    """The tool array is part of the cached prompt, so starting background
+    work adds no tool mid-turn."""
     offered = []
 
     def route(_, body):
@@ -222,11 +222,8 @@ def test_foreign_tool_markup_recovers_as_prose(root, home, *, binary):
         assert_true("repeatedly returned invalid tool markup" in result.stderr, result.stderr)
         assert_true(len(repeated.requests) == 2, len(repeated.requests))
 
-    # A bracketed marker followed by JSON is call syntax this harness does not
-    # execute -- there is no parser for it at all. It is recognized only so the
-    # turn can ask for a real call instead of printing the markup as an answer,
-    # and the arguments here would be valid and auto-approved if anything ran
-    # them.
+    # A bracketed marker followed by JSON is call syntax this harness never
+    # executes. It is recognized only so the turn can ask for a real call.
     marker = home / "bracket-markup-must-not-run"
     own_markup = (
         "[uagent_tool_call]"

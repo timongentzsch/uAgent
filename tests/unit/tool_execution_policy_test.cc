@@ -55,14 +55,11 @@ TEST_CASE(TestToolExecutionPolicy) {
       {"items", {{"type", "integer"}, {"minimum", 1}}}};
   CHECK(InvalidToolArgument(tool, {{"ids", {1, "bad"}}}) ==
         "`ids[1]` must be integer");
-  // The value and the bound both appear: a caller that guessed too high can
-  // correct the next call without guessing again.
   CHECK(InvalidToolArgument(tool, {{"ids", {0}}}) ==
         "`ids[0]` is 0, below its minimum 1");
   CHECK(InvalidToolArgument(tool, {{"ids", {1, 2, 3}}}) ==
         "`ids` has 3 items, above its maximum 2");
-  // The bound real calls actually cross: a scalar maximum on a pacing hint.
-  // `grep`'s context and `run`'s yield_ms are rejected this way in history.
+  // A scalar maximum on a pacing hint, like grep's context.
   tool.parameters["properties"]["context"] = {
       {"type", "integer"}, {"minimum", 0}, {"maximum", 10}};
   CHECK(InvalidToolArgument(tool, {{"context", 40}}) ==
@@ -90,9 +87,6 @@ TEST_CASE(TestToolExecutionPolicy) {
   CHECK(ToolParameters(tool)["properties"]["timeout"] ==
         tool.parameters["properties"]["timeout"]);
 
-  // Per-action fields: every missing one is named with what the call
-  // carried, an empty string counts as not given, an unknown action is the
-  // enum's to reject, and a left-out action is the schema's default.
   Tool spawner;
   spawner.name = "spawner";
   spawner.description = "Starts things.";
@@ -185,8 +179,7 @@ TEST_CASE(TestToolExecutionPolicy) {
   CHECK(available.size() == 1);
   CHECK(available[0]["function"]["name"] == "bounded");
 
-  // A tool that comes with a skill is off in every profile until a set turns
-  // it on, and the conversation keeps that choice.
+  // A skill's tool is off in every profile until a set turns it on.
   Tool gated = unbounded;
   gated.skill = "uagent-config";
   ToolSelection skill_selection;
@@ -346,8 +339,7 @@ TEST_CASE(TestToolExecutionPolicy) {
 }
 
 TEST_CASE(TestBlockingWaitCalls) {
-  // ask: up to eight questions; a header past the aim of 12 still goes
-  // through, and one too long is refused by name.
+  // A header past the aim of 12 still goes through; one too long is refused.
   const auto question = [](const std::string& header) {
     return json{{"question", "Which?"},
                 {"header", header},
@@ -374,9 +366,6 @@ TEST_CASE(TestBlockingWaitCalls) {
   CHECK(ToolCallBlocks(activity, {{"wait_ms", 5000}}));
 }
 
-// Every multi-action tool turns an action away before it runs when it
-// carries only what the schema itself requires, naming the fields that action
-// needs and what the call carried.
 TEST_CASE(TestActionRequiresDeclarations) {
   ActivitySupervisor supervisor;
   std::vector<Tool> tools = BuiltinTools(supervisor);
@@ -419,8 +408,7 @@ TEST_CASE(TestActionRequiresDeclarations) {
   CHECK(declared == multi_action);
 }
 
-// An action with its own payload is a tool of its own, so the schema itself
-// requires that payload and a provider that enforces schemas sees it.
+// A provider that enforces schemas must see the payload as required.
 TEST_CASE(TestPayloadToolsRequireTheirPayload) {
   std::vector<Tool> tools;
   const Api api(RuntimeConfig{});
@@ -445,8 +433,6 @@ TEST_CASE(TestPayloadToolsRequireTheirPayload) {
             ApprovalClass::kMandatoryHuman);
 }
 
-// The agent's scheduled tasks: saved in this folder on this conversation's
-// approval reach at most, and listed, paused and deleted by id.
 TEST_CASE(TestScheduleTool) {
   TestWorkspace workspace("schedule-tool");
   const ApprovalMode before = CurrentApprovalMode();
@@ -473,7 +459,6 @@ TEST_CASE(TestScheduleTool) {
   CHECK(item["cwd"] == workspace.workspace.string());
   CHECK(item["upcoming"].size() == 3);
   CHECK(item["host_running"] == false);
-  // A key the model made up names no task: the answer says how to create one.
   json invented = save;
   invented["key"] = "flag-watch";
   CHECK(tool.run(invented, ToolContext{}).output.find("without key creates") !=
@@ -490,9 +475,6 @@ TEST_CASE(TestScheduleTool) {
   SetApprovalMode(before);
 }
 
-// What an agent on another host changed comes from that host's git through
-// its gateway, and reaches the model as a local diff does: quoted as data and
-// cut to size.
 TEST_CASE(TestRemoteAgentDiffIsQuotedData) {
   TestWorkspace workspace("remote-agent-diff");
   const std::string folder = "/remote/project";

@@ -75,11 +75,9 @@ test("reading a paragraph survives offsetting changes inside one message", async
     })
     .toBeLessThan(2);
 
-  // A real wheel event may coincide with a layout change. The reader's
-  // movement must survive the anchor compensation in both modes, including
-  // on WebKit, which cancels a wheel scroll when scrollTop is written early.
-  // Engines scroll different distances per notch, so a plain wheel first
-  // measures this one's; the coinciding wheel must move most of that.
+  // WebKit cancels a wheel scroll when scrollTop is written early. Engines
+  // scroll different distances per notch, so a plain wheel measures this
+  // one's; the wheel that meets a layout change must move most of that.
   const bounds = await box.boundingBox();
   await page.mouse.move(
     bounds.x + bounds.width / 2,

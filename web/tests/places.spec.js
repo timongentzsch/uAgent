@@ -1,6 +1,5 @@
-// A workspace is µAgent's own place for conversations: listed apart from the
-// folders, under a name that can be changed, and removable with what is in it.
-// A place is a header over its rows, which fold away and are remembered.
+// A workspace is µAgent's own place for conversations, listed apart from the
+// folders. A place is a header over its rows, which fold and are remembered.
 import { test, expect, online, savedConversation } from "./fixtures.js";
 
 test("a workspace is listed apart from folders, renamed and deleted", async ({
@@ -22,7 +21,6 @@ test("a workspace is listed apart from folders, renamed and deleted", async ({
   await expect(workspaces.locator(".session")).toHaveCount(1);
   await expect(folders.locator(".session")).toHaveCount(1);
 
-  // Renamed, it is the same place with the same conversation in it.
   await workspaces
     .getByRole("button", { name: "Menu for the workspace Trip to Rome" })
     .click();
@@ -32,7 +30,6 @@ test("a workspace is listed apart from folders, renamed and deleted", async ({
   await expect(workspaces.getByRole("heading")).toContainText("Rome 2027");
   await expect(workspaces.locator(".session")).toHaveCount(1);
 
-  // Deleting says what goes with it, and leaves the folder's alone.
   await workspaces
     .getByRole("button", { name: "Menu for the workspace Rome 2027" })
     .click();
@@ -61,7 +58,6 @@ test("a place folds to its header with a count, remembered, and + starts a conve
     expanded: true,
   });
   await expect(folders.locator(".session")).toHaveCount(1);
-  // A folder goes by its own name, then the directory it is in.
   const path = host.project.split("/").filter(Boolean);
   await expect(folders.locator(".folder-own")).toHaveText(path.at(-1));
   await expect(folders.locator(".folder-parent")).toHaveText(path.at(-2));
@@ -69,14 +65,12 @@ test("a place folds to its header with a count, remembered, and + starts a conve
   await header.click();
   await expect(folders.locator(".session")).toHaveCount(0);
   await expect(folders.locator(".place-count")).toHaveText("(1)");
-  // The open conversation is inside: the header is marked as its row was.
   await expect(
     folders.getByRole("button", {
       name: /^Conversations of /,
       expanded: false,
     }),
   ).toHaveAttribute("aria-current", "true");
-  // The fold is remembered.
   await page.reload();
   await expect(folders.locator(".session")).toHaveCount(0);
   // Alt+↓ steps through the rows shown, and none is.
@@ -84,7 +78,6 @@ test("a place folds to its header with a count, remembered, and + starts a conve
   await page.keyboard.press("Alt+ArrowDown");
   expect(page.url()).toBe(at);
 
-  // + opens the fold, and starts a conversation in the place.
   await folders.getByRole("button", { name: /^New in / }).click();
   await page.getByRole("menuitem", { name: "Conversation" }).click();
   await expect(folders.locator(".session")).toHaveCount(2);

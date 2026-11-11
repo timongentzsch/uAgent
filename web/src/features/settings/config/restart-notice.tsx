@@ -4,8 +4,6 @@ import { Group, LoadError, Row } from "../../../shared/ui.tsx";
 import { useAction } from "../../../shared/use-action.ts";
 import { useApi } from "../../../state/api.ts";
 
-// A saved change that only a restart applies offers that restart: the
-// running conversations, or the web host for its own settings.
 export function RestartNotice({
   keys,
   host,
@@ -15,7 +13,6 @@ export function RestartNotice({
   keys: string[];
   host: boolean;
   running: number;
-  // Only this folder's conversations need it.
   folder?: string;
 }) {
   const { manage } = useApi();

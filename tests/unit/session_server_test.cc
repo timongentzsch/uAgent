@@ -108,8 +108,7 @@ TEST_CASE(TestCloseRuntimeWaitsForTheRuntime) {
   unlink(address.c_str());
 }
 
-// A command a client sends just before it closes is taken, also when it
-// closes with frames unread, which resets the socket.
+// Closing with frames unread resets the socket; the command is taken anyway.
 TEST_CASE(TestACommandSentBeforeClosingIsTaken) {
   TestWorkspace test("send-and-close");
   const std::string path = (test.workspace / "s.json").string();
@@ -164,8 +163,6 @@ TEST_CASE(TestSessionFramePartitions) {
   }));
   CHECK(calls == 1);
 
-  // The blocking adapter drains buffered frames, obeys a wake descriptor,
-  // and terminates on a deadline without requiring a socket or provider.
   session::Pipe stream, stop;
   REQUIRE(stream.Open());
   REQUIRE(stop.Open());

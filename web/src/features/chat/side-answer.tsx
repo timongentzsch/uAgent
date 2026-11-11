@@ -13,7 +13,6 @@ import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
 
-// An ordinary conversation runtime, kept beside the parent's composer.
 export default function SideAnswer({
   side,
   choose,
@@ -49,8 +48,7 @@ export default function SideAnswer({
   if (first >= 0) started.current = true;
   // Once older turns leave the live window, every retained node is side work.
   const nodes = first >= 0 ? all.slice(first) : started.current ? all : [];
-  // Follows its end like the transcript (same hook): a reader who scrolls
-  // up stays put, and scrolling back down follows again.
+  // Follows its end as the transcript does, through the same hook.
   const historyKey = `side:${side.id || ""}`;
   const thread = useTranscriptHistory(() => {}, historyKey, nodes);
   async function send() {

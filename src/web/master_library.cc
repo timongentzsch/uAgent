@@ -45,10 +45,8 @@ void AddShared(const std::string& session, const std::string& session_path,
 
 }  // namespace
 
-// Everything the Library lists, from every place a conversation works in
-// and every workspace: memories and skills (from one control process),
-// designs and design systems in the folders, and files shared in
-// conversations. Each item names its place; "" is every place's.
+// Everything the Library lists, from every place a conversation works in and
+// every workspace. Each item names its place; "" is every place's.
 void Master::Library(const Request&, Response& response) {
   const json catalogue = host_.Catalogue();
   std::map<std::string, json> places;
@@ -102,9 +100,8 @@ void Master::Library(const Request&, Response& response) {
                    {"limits", std::move(library["limits"])}});
 }
 
-// Deletes one artifact the Library lists: a design's, deck's or design
-// system's folder, a doc's file, or a file shared in a conversation. Only
-// what the place's listing names now goes, and never a place itself.
+// Deletes one artifact the Library lists. Only what the place's listing
+// names now goes, and never a place itself.
 void Master::LibraryDelete(const Request& request, Response& response) {
   const json body = json::parse(request.body, nullptr, false);
   const std::string kind = JsonValue(body, "kind", "");

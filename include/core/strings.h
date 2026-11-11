@@ -2,8 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_CORE_STRINGS_H_
 #define UAGENT_INCLUDE_CORE_STRINGS_H_
-// String, UTF-8, and display-width helpers, plus the terminal-safe and
-// human-readable formatters shared by the REPL and the tool trace.
+// String, UTF-8 and display-width helpers, and terminal-safe formatters.
 
 #include <algorithm>
 #include <concepts>
@@ -15,8 +14,7 @@
 
 namespace uagent {
 
-// Classification and range tests are byte-wise, and `char` is signed here:
-// say so once rather than sign-extend a high byte by accident.
+// `char` is signed here: byte-wise tests go through this.
 inline unsigned char Byte(char value) {
   return static_cast<unsigned char>(value);
 }
@@ -34,9 +32,8 @@ bool ParseInt64(const char* text, int64_t& value);
 
 bool ParseFiniteDouble(const char* text, double& value);
 
-// The one spelling of a boolean switch: 1/true/yes/on and 0/false/no/off,
-// case-insensitive. Anything else leaves `value` untouched and returns false,
-// so a typo falls back to the registered default instead of reading as true.
+// 1/true/yes/on and 0/false/no/off, case-insensitive. Anything else leaves
+// `value` untouched and returns false.
 bool ParseBool(std::string_view text, bool& value);
 
 // drop one layer of matching surrounding quotes, if present
@@ -69,43 +66,34 @@ std::string PercentEncode(std::string_view text, std::string_view keep = "");
 // The same bound with an ellipsis when truncation is required.
 std::string Utf8Trunc(std::string s, size_t cap);
 
-// The bytes of the CSI escape sequence `text` starts with: ESC [, parameter
-// and intermediate bytes (0x20-0x3f), one final byte (0x40-0x7e). 0 when it
-// starts with none or an incomplete one. The one definition every parser of
-// the terminal's own output uses, so none ends a sequence elsewhere.
+// The bytes of the CSI escape sequence `text` starts with (ESC [, 0x20-0x3f
+// bytes, one final 0x40-0x7e byte); 0 for none or an incomplete one.
 size_t CsiSpan(std::string_view text);
 
-// Characters in UTF-8 text: what a person counts, and never more than the
-// UTF-16 units a browser's maxLength counts. Continuation bytes are skipped.
+// Characters in UTF-8 text; never more than a browser's maxLength counts.
 inline size_t Utf8Chars(std::string_view text) {
   return static_cast<size_t>(std::count_if(
       text.begin(), text.end(),
       [](char c) { return (static_cast<unsigned char>(c) & 0xC0) != 0x80; }));
 }
 
-// Terminal column width for valid UTF-8 in the active locale. Invalid or
-// incomplete sequences degrade to one column rather than breaking rendering.
+// Terminal columns in the active locale; an invalid sequence counts as one.
 size_t DisplayWidth(const std::string& s);
 
-// Physical rows occupied by terminal text at a fixed width. SGR sequences are
-// zero-width and horizontal tabs follow the terminal's eight-column stops.
+// Physical rows at a fixed width; SGR is zero-width, tabs stop every eight.
 size_t DisplayRows(const std::string& s, size_t columns);
 
-// The first `columns` display columns, ending in … when cut, and the last
-// `columns`. Plain text only: a cut can drop the escape that opens or closes
-// a style, so style the result, not the input (as the ask picker does).
+// The first, and the last, `columns` display columns, with … when cut. Plain
+// text only: a cut can drop a style's escape, so style the result.
 std::string DisplayTrunc(std::string s, size_t columns);
 std::string DisplayTail(std::string text, size_t columns);
 std::string StatusLabel(const std::string& label, size_t columns);
 
-// Wrap display text into rows each bounded by `columns` display columns,
-// never splitting a UTF-8 codepoint; escape sequences take no columns. Used for
-// line-wrapping terminal input/output where DisplayTrunc (ellipsis truncation)
-// is not wanted.
+// Rows each bounded by `columns` display columns, never splitting a UTF-8
+// codepoint; escape sequences take no columns.
 std::vector<std::string> WrapLines(const std::string& s, size_t columns);
 
-// Pre-request context estimate. Tokenizers vary by model; this converts an
-// approximate serialized byte count with the explicitly named 4-byte rule.
+// Tokenizers vary by model; the pre-request estimate assumes 4 bytes a token.
 inline constexpr size_t kEstimatedBytesPerToken = 4;
 int64_t EstimatedTokens(size_t bytes);
 
@@ -116,19 +104,16 @@ std::string FirstLine(const std::string& s);
 // Bounded first line for protocol/data previews, not terminal rendering.
 std::string OneLine(const std::string& s, size_t cap = 80);
 
-// Model, tool and MCP text is untrusted terminal input. Preserve normal text,
-// tabs and newlines but render control bytes visibly instead of letting them
-// execute terminal commands. Piped output is not a terminal and remains exact.
+// Model, tool and MCP text is untrusted terminal input: control bytes are
+// rendered visibly rather than executed. Piped output remains exact.
 std::string TerminalSafe(std::string_view s);
 
-// The agent's own row scaffolding in ASCII, for a terminal whose locale cannot
-// decode UTF-8. Returns the text unchanged while `g_unicode` holds.
+// The agent's own row glyphs in ASCII; unchanged while `g_unicode` holds.
 std::string AsciiGlyphs(std::string_view s);
 
 std::string FmtCount(int64_t n);
 
-// "1 file", "3 files", "2 entries", "2 matches": a count and its noun, plural
-// the regular English way.
+// A count and its noun, plural the regular English way: "2 entries".
 template <std::integral Count>
 std::string Plural(Count count, std::string_view noun) {
   std::string text = std::to_string(count) + " " + std::string(noun);
@@ -145,7 +130,6 @@ std::string Plural(Count count, std::string_view noun) {
 }
 std::string FmtCost(double cost);
 
-// Elapsed time in whatever unit keeps it readable at that magnitude:
 // "840ms", "2.4s", "41m 1s", "1h 12m", "2d 3h".
 std::string FmtDuration(double seconds);
 
@@ -156,8 +140,7 @@ std::string FmtBytes(int64_t bytes);
 std::string FmtAgo(int64_t seconds);
 int64_t TerminalColumns();
 
-// Usable columns after reserving room for a prompt, marker or trailing cell.
-// Never zero: callers pass the result straight to a width-bounded formatter.
+// Usable columns after `reserved`; never zero.
 size_t TerminalWidth(int64_t reserved = 0);
 
 // Stable short digest for session and folder identity.
@@ -165,9 +148,8 @@ std::string HashHex(const std::string& data);
 std::string HexEncode(std::string_view data);
 bool HexDecode(std::string_view data, std::string& bytes, size_t limit);
 
-// The one list of key stems that name a secret. Redaction policies differ by
-// input -- prose, config lines, URLs -- but they must agree on what a secret
-// is called, or a stem added for one leaks through the others.
+// The one list of key stems that name a secret: every redaction policy must
+// agree on it, or a stem added for one leaks through the others.
 const std::vector<std::string>& CredentialKeyStems();
 
 // True when a key name contains any stem, case-insensitively.
@@ -179,28 +161,22 @@ std::string RedactedUrl(std::string url);
 std::string RouteKey(const std::string& base_url, const std::string& provider,
                      const std::string& model, const std::string& effort);
 
-// Stable short digest helper: FNV-1a hex truncated to `chars`.
-// Centralizes the `HashHex(...).substr(0, N)` idiom so fingerprint widths
-// are chosen once, not re-typed at every call site.
+// HashHex truncated to `chars`.
 std::string TruncatedHash(std::string_view data, size_t chars);
 
 // Scope prefix of a `scope/name` key ("project" in "project/foo").
 // No '/' -> whole input; empty input -> empty.
 std::string_view ScopePrefix(std::string_view key) noexcept;
 
-// The lines two sequences share at each end, and therefore the span that
-// actually changed. Not a minimal (LCS) diff: every receipt in this codebase
-// shows a small targeted edit, where the trimmed span is the same hunk a full
-// diff would produce, without the machinery. Templated because callers hold
-// their lines as either strings or views.
+// The lines two sequences share at each end, and so the span that changed.
+// Not a minimal (LCS) diff: enough for the small targeted edits shown here.
 struct CommonLineSpan {
   size_t prefix = 0;
   size_t old_end = 0;
   size_t new_end = 0;
 };
 
-// `text` as diff lines, without their CR LF or LF. Views borrow `text`, so
-// every caller keeps the buffer alive past the diff.
+// `text` as diff lines without their line ends; the views borrow `text`.
 std::vector<std::string_view> DiffLines(std::string_view text);
 
 template <typename Lines>

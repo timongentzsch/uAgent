@@ -9,15 +9,12 @@ import type {
   Session,
 } from "../../shared/types.ts";
 
-// What Settings is opened with. Panes read what they need from here, so the
-// shell passes nothing through.
+// Panes read what they need from here, so the shell passes nothing through.
 export interface SettingsProps {
   install: InstallPrompt | null;
   setInstall: Dispatch<StateUpdater<InstallPrompt | null>>;
   update: ServiceWorker | null;
-  // Unsent drafts or a waiting decision hold the reload.
   updateBlocked: boolean;
-  // The open conversation's MCP servers.
   mcp?: McpServer[];
   catalogue: Catalogue;
   online: boolean;
@@ -29,10 +26,8 @@ export interface SettingsProps {
   session?: Session;
   logout: () => Promise<void>;
   instructions: () => void;
-  // Counts every saved change, whoever made it: what shows settings reads
-  // again.
+  // Counts every saved change, whoever made it.
   version: number;
-  // The scope to open on.
   initialSection?: string;
 }
 

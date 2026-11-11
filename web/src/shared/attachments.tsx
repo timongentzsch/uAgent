@@ -1,6 +1,3 @@
-// Files in the conversation look the same wherever they appear: an image is
-// a thumbnail that opens the in-app viewer, any other file a card naming its
-// type and size that opens or downloads it.
 import { createContext, type ComponentChildren } from "preact";
 import { useContext, useState } from "preact/hooks";
 import { FileText, Pencil } from "lucide-preact";
@@ -26,13 +23,11 @@ export interface ViewedImage {
 
 const annotator = () => import("./annotate.tsx");
 
-// Opens an image in the one viewer the app renders.
 export const ImageViewer = createContext<(image: ViewedImage) => void>(
   () => {},
 );
 
-// An image that zooms where it lies, at natural size and never upscaled,
-// its level read against its real width.
+// Zooms where it lies, at natural size and never upscaled.
 export function ZoomImage({
   src,
   name,
@@ -55,8 +50,6 @@ export function ZoomImage({
   );
 }
 
-// A full-bleed viewer of one image. Tap around it to close. With
-// `annotate`, it can switch to markup and attach the marked-up copy.
 export function ImageViewerDialog({
   image,
   close,
@@ -184,7 +177,6 @@ function FileCard({
   );
 }
 
-// A message's or tool's files, images first as tiles, then file cards.
 export function AttachmentList({
   files,
   href,

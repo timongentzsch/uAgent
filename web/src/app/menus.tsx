@@ -12,7 +12,6 @@ import { Menu, MenuItem, MenuSub } from "../shared/menu.tsx";
 import { capitalize } from "../shared/display.ts";
 import { PinItem } from "../features/sidebar/pins.tsx";
 
-// The conversation's transcript as Markdown on the host; says where.
 export async function shareTranscript(
   item: Session,
   command: ApiClient["command"],
@@ -20,7 +19,7 @@ export async function shareTranscript(
   const result = await command("share", item);
   return result.pending ? "" : `Transcript saved to ${result.result.path}`;
 }
-// A fresh runtime that keeps the history, e.g. for a setting that needs it.
+// A fresh runtime that keeps the history.
 export async function restartConversation(
   item: Session,
   manage: ApiClient["manage"],
@@ -35,7 +34,6 @@ export async function restartConversation(
       : "Nothing to restart: this conversation is not running.";
 }
 
-// What can be done to a workspace, which is µAgent's own to rename and remove.
 export function SpaceMenu({
   space,
   conversations,
@@ -65,7 +63,6 @@ export function SpaceMenu({
   );
 }
 
-// What can be done to a folder's terminal.
 export function TerminalMenu({
   terminal,
   open,
@@ -105,24 +102,16 @@ export function ConversationMenu({
 }: {
   item: Session;
   fork: (item: Session) => void;
-  // Opens the find bar, for the conversation open on the page.
   find?: () => void;
-  // Says what an action did, where the conversation shows its notices.
   notify: (text: string) => void;
   open: (modal: AppModal) => void;
-  // How much of the agent's work transcripts show on this device, and
-  // changing it, offered where a transcript is read.
   detail?: {
     levels: readonly string[];
     level: string;
     change: (level: string) => void;
   };
-  // What the conversation's header holds on a phone: first in the menu, and
-  // first under More.
   children?: ComponentChildren;
   more?: ComponentChildren;
-  // In the list: picks this row and starts picking more (a phone's way to
-  // ⌘-click).
   select?: () => void;
 }) {
   const { command, manage } = useApi();

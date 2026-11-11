@@ -15,8 +15,6 @@ permissions: {}
 jobs:
   analyze:
     # Private repositories need GitHub Advanced Security for CodeQL uploads.
-    # Skip before runner allocation on plans where this repository is private;
-    # the gate resumes automatically if it becomes public again.
     if: github.event.repository.private == false
     name: Analyze C++
     runs-on: ubuntu-24.04
@@ -34,14 +32,11 @@ jobs:
         with:
           languages: c-cpp
           build-mode: manual
-          # The trap cache is saved from master only and took 878 MB of the
-          # repository's 10 GB cache quota, which the compiler caches need.
+          # The trap cache crowds the compiler caches out of the cache quota.
           trap-caching: false
       - uses: ./.github/actions/native-setup
-      # CodeQL reads the compiler invocations, not the binary, so an unoptimised
-      # build without the release link-time optimisation is enough. The web
-      # host and the browser compile only with a web UI to embed, and one page
-      # serves: the analysis reads the C++, not the bundle.
+      # CodeQL reads the compiler invocations, so an unoptimised build is
+      # enough, and one page stands in for the web UI the host embeds.
       - name: Configure
         run: |
           mkdir -p web/dist

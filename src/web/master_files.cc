@@ -22,11 +22,10 @@ namespace fs = std::filesystem;
 using workspace_files::Resolve;
 namespace {
 
-// The page may reach its own folder's address and Google Fonts, nothing else:
-// no connection, image or form can carry the address, and so its token, away.
-// The address is written out rather than as 'self', which engines resolve
-// differently in an opaque origin. WebAssembly is allowed for the sheet
-// engine, which a sheet page loads from that address.
+// The page may reach its own folder's address and Google Fonts only, so
+// nothing can carry the address, and its token, away. The address is written
+// out: engines resolve 'self' differently in an opaque origin. WebAssembly is
+// allowed for the sheet engine.
 std::string PreviewPolicy(const std::string& origin, const std::string& base) {
   const std::string self = origin + base;
   return "sandbox allow-scripts allow-forms allow-modals; default-src " + self +
@@ -84,7 +83,6 @@ std::string WithScript(std::string html, const std::string& script) {
 
 }  // namespace
 
-// A files operation on a conversation's folder, where the folder is.
 json Master::WorkspaceFiles(const WorkspaceIdentity& workspace,
                             const std::string& session, json operation) {
   if (workspace.Remote()) {
@@ -164,9 +162,8 @@ void Master::Files(const Request& request, Response& response) {
             image && !request.has_param("download"));
 }
 
-// A person's edit of a text file in the conversation's folder, saved only if
-// the file is still as they read it, or with `moves` their reordering of a
-// folder's pages. Making files is the agent's.
+// A person's edit of a text file, saved only if the file is still as they
+// read it, or with `moves` their reordering of a folder's pages.
 void Master::FileWrite(const Request& request, Response& response) {
   const std::string id = request.matches[1].str();
   const WorkspaceIdentity workspace = host_.WorkspaceOf(id);
@@ -291,9 +288,8 @@ void Master::Preview(const Request& request, Response& response) {
                        mime == "text/html" ? "text/html; charset=utf-8" : mime);
 }
 
-// A page drawn by the agent's Chrome in a throwaway context of its own, on
-// this host's loopback: a PNG at the artboard's size, or a PDF on the page's
-// paper. A folder's PDF is its deck, every slide a sheet.
+// A page drawn by the agent's Chrome in a throwaway context on this host's
+// loopback: a PNG at the artboard's size, or a PDF (a folder's is its deck).
 void Master::Picture(const Request& request, Response& response,
                      const WorkspaceIdentity& workspace) {
   const bool pdf = request.has_param("pdf");

@@ -6,8 +6,7 @@ import { highlights, occurrences, rangesIn } from "../../shared/find.ts";
 import { useApi } from "../../state/api.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 
-// What opens the find bar: the conversation, its words, and the row to
-// start at when search opened it there. `at` makes a repeat a new request.
+// `at` makes a repeated request a new one.
 export type FindRequest = {
   session: string;
   words: string;
@@ -26,18 +25,14 @@ const rowOf = (root: Element, sequence: number) =>
   root.querySelector(`[data-sequence="${sequence}"]`) ||
   root.querySelector(`[data-sequences~="${sequence}"]`);
 
-// Whether a range or row shows inside the transcript's box.
 function inView(target: Element | Range, box: Element) {
   const shown = box.getBoundingClientRect();
   const rect = target.getBoundingClientRect();
   return rect.top >= shown.top && rect.bottom <= shown.bottom;
 }
 
-// Find in the open conversation, as a PDF viewer finds: every occurrence
-// marked, the current one stronger, Enter and Shift+Enter step down and
-// up through all of them. The host counts the rows of the whole
-// conversation; rows this page holds that the host has not saved yet are
-// counted here.
+// The host counts the rows of the whole conversation; rows this page holds
+// that the host has not saved yet are counted here.
 export function FindBar({
   request,
   view,
@@ -50,11 +45,8 @@ export function FindBar({
   request: FindRequest;
   view?: View;
   nodes: Node[];
-  // The transcript, whose text is searched and marked.
   root: RefObject<HTMLElement | null>;
-  // Loads the page of rows before the oldest one shown.
   older: () => Promise<void>;
-  // Scrolls a row or an occurrence into view.
   reveal: (target: Element | Range) => void;
   close: () => void;
 }) {
@@ -65,19 +57,15 @@ export function FindBar({
     rows: { sequence: number; count: number }[];
   }>({ words: "", rows: [] });
   const [current, setCurrent] = useState(-1);
-  // A row to land on once the counts arrive (from search), and a page of
-  // older rows on its way.
   const target = useRef(request.sequence);
   const loading = useRef(false);
-  // A move to an occurrence scrolls to it once, and keeps it in view for a
-  // moment while the transcript settles a page it loaded around it; rows
-  // streaming in later only re-mark, so they do not pull the view back.
+  // A move scrolls to its occurrence once and holds it while a loaded page
+  // settles; rows streaming in later only re-mark.
   const moves = useRef(0);
   const revealed = useRef(-1);
   const holdUntil = useRef(0);
   const query = words.trim();
 
-  // The host reads the saved conversation once typing pauses.
   useEffect(() => {
     if (query.length < 2) return;
     const controller = new AbortController();
@@ -111,9 +99,7 @@ export function FindBar({
       );
   }, [saved, nodes, query]);
 
-  // New words counted: land on the row search chose, else on the newest
-  // occurrence, which is nearest the end a conversation is read from. Rows
-  // that stream in later are added after it and do not move it.
+  // Lands on the row search chose, else on the newest occurrence.
   // biome-ignore lint/correctness/useExhaustiveDependencies: lands once per host answer; rows streaming in must not move the current occurrence
   useEffect(() => {
     if (!spots.length) return setCurrent(-1);
@@ -127,10 +113,7 @@ export function FindBar({
     setCurrent(at >= 0 ? at : spots.length - 1);
   }, [saved]);
 
-  // Marks every occurrence the transcript shows and brings the current one
-  // into view, opening a closed row or loading an older page first. The
-  // page and its loaders are read as they are now, not as a reason to
-  // look again.
+  // The page and its loaders are read as they are, not as a reason to rerun.
   const page = useLatest({ view, older, reveal });
   useEffect(() => {
     const { view, older, reveal } = page.current;

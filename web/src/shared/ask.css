@@ -1,5 +1,3 @@
-/* The model's questions, a page each: the page scrolls between the steps
-   and the actions, which stay in reach. */
 .decision form.ask {
   flex-direction: column;
   flex-wrap: nowrap;
@@ -13,8 +11,7 @@
   justify-content: space-between;
   gap: var(--gap);
 }
-/* A header runs to 24 characters and there are up to nine steps: each
-   keeps to a short tab and shows the rest in its title. */
+/* A header runs to 24 characters and there are up to nine steps. */
 .ask-steps button {
   max-width: 22ch;
   overflow: hidden;
@@ -93,9 +90,6 @@
 .ask-option strong {
   font-weight: var(--weight-strong);
 }
-/* Options the agent showed, with an image or a preview each: cards wide
-   enough to compare, the picture or preview under the label. A tap on the
-   picture opens it whole; anywhere else on the card chooses it. */
 .ask-options.visual .ask-option {
   align-content: start;
 }

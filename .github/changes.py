@@ -36,9 +36,8 @@ HEAVY_DIRS = (
 
 
 def heavy(paths):
-    """Whether a pull request also runs the legs that master always runs,
-    ThreadSanitizer and Linux ARM64: for the build, the workflows and the
-    web host and browser."""
+    """Whether a pull request also runs ThreadSanitizer and Linux ARM64,
+    the legs that master always runs."""
     return any(
         path.startswith(HEAVY_DIRS)
         or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore")
@@ -58,9 +57,8 @@ def build_matrix(with_arm):
 
 
 def tidy(paths):
-    """What clang-tidy reads on a pull request: the changed translation
-    units, or "all" when a header, the build or the rules changed, since any
-    unit may include or obey those. Master reads everything."""
+    """What clang-tidy reads on a pull request: the changed units, or "all"
+    when a header, the build or the rules changed. Master reads everything."""
     wide = any(
         path.endswith((".h", ".hpp", ".clang-tidy"))
         or path.startswith((".github/", "third_party/"))
@@ -76,10 +74,8 @@ def tidy(paths):
 
 
 def tidy_files(entries, units, shard="0/1"):
-    """The run-clang-tidy.py patterns for what tidy() chose, from the entries
-    of compile_commands.json. "all" deals the first-party units round robin
-    and keeps the `shard` ("index/count") share; a changed unit this build
-    does not compile is not in the list."""
+    """The run-clang-tidy.py patterns for what tidy() chose. "all" deals the
+    units round robin and keeps the `shard` ("index/count") share."""
     files = sorted(
         {
             entry["file"]
@@ -104,9 +100,8 @@ if __name__ == "__main__" and sys.argv[1:2] == ["--tidy-files"]:
 elif __name__ == "__main__":
     base = os.environ.get("CI_BASE_SHA")
     if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" and base:
-        # No rename detection: both the old and the new path are listed.
-        # Against the working tree, which in CI is HEAD and before a push
-        # (.github/ci-local.sh) includes what is not committed yet.
+        # No rename detection: both the old and the new path are listed. The
+        # working tree is compared, so ci-local.sh sees uncommitted changes.
         changed = subprocess.check_output(
             ["git", "diff", "--name-only", "--no-renames", "-z", base]
         )

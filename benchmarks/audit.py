@@ -2,7 +2,6 @@
 """Report request and schema sizes from a fresh HOME, plus opt-in local observations.
 
 Report only: `eval.py --check` gates schema and context growth per scenario.
-Use --profile, --history PATH or --host to add local information.
 """
 
 from __future__ import annotations
@@ -40,15 +39,8 @@ COVERAGE_FLOOR = 0.05
 
 
 def profile_copies(home: Path) -> bool:
-    """Copy the machine's memories and skills into a throwaway HOME.
-
-    The hermetic probe runs with an empty HOME and no memory, which is the
-    floor: a session on a machine someone uses carries stored memories and
-    installed skills, and both are charged on every request. Copying rather
-    than pointing at the real directories keeps the probe unable to write to
-    them, and leaves this measurement absent rather than wrong on a fresh
-    checkout.
-    """
+    """Copy the machine's memories and skills into a throwaway HOME, so the
+    probe measures what a used machine is charged and cannot write to them."""
     source = Path.home() / ".uagent"
     copied = False
     for name in ("memory", "skills"):
@@ -119,12 +111,7 @@ def probe_session(binary: Path, with_profile: bool = False) -> dict[str, Any]:
 
 
 def rebuild_fanout() -> dict[str, int]:
-    """How many translation units a header edit rebuilds, from the real depfiles.
-
-    This is the build-speed cost of a header's coupling, measured rather than
-    guessed: editing a header near the top of this list is what makes an
-    iteration slow.
-    """
+    """How many translation units a header edit rebuilds, from the depfiles."""
     counts: collections.Counter[str] = collections.Counter()
     directories = sorted((ROOT / "build").glob("*/CMakeFiles/uagent_app.dir"))
     if not directories:

@@ -108,8 +108,7 @@ std::vector<Tool> BuildTools(AppContext& context,
     return tools;
   }
   if (toolset == "none") return {};
-  // Where nobody can approve, or the policy forbids changes, uagent only
-  // shows.
+  // Where nobody can approve, or the policy forbids changes, uagent only shows.
   ConfigProposalFactory prepare;
   if (InteractiveApprovalAvailable() &&
       (context.tool_policy.allowed & Capability(ToolCapability::kMutate))) {

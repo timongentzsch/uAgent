@@ -71,10 +71,8 @@ TEST_CASE(TestFileTools) {
                              std::to_string(getpid()) + " stale-start-identity")
             .Ok());
     CHECK(!FileLease::HasLiveOwner((root / "stale.lock").string()));
-    // A holder that leaves removes its lease file, as a runtime does. The
-    // file one contender opened just before that is no lease any more, so
-    // locking it must never stand beside the lock on the file that replaced
-    // it: at no moment are there two holders.
+    // A holder that leaves removes its lease file; a contender that opened it
+    // before must not lock it beside the lock on its replacement.
     const std::string churned = (root / "churned.lock").string();
     auto* holders = static_cast<std::atomic<int>*>(
         mmap(nullptr, sizeof(std::atomic<int>) * 2, PROT_READ | PROT_WRITE,
@@ -200,7 +198,6 @@ TEST_CASE(TestFileTools) {
   ToolResult first_edit =
       ToolEditFile(file.string(), {{"two", "three", false}});
   CHECK(first_edit.output.starts_with("edited "));
-  // The counts are facts and the diff is the body, with no receipt line.
   CHECK(first_edit.facts.added == 1 && first_edit.facts.removed == 1);
   CHECK(first_edit.body_kind == "diff");
   CHECK(first_edit.diff.starts_with("@line 2"));
@@ -392,9 +389,8 @@ TEST_CASE(TestFileTools) {
                 json::array({{{"old", "b b d\n"}, {"new", "b b d\nonce\n"}}})}})
               .find("unknown argument") != std::string::npos);
 
-    // What the human approves has to be what the edit then does. The preview
-    // is checked against the diff of the file before and after the real call,
-    // so it can only pass by predicting the outcome rather than resembling it.
+    // What the human approves has to be what the edit then does: the preview is
+    // checked against the diff of the file before and after the real call.
     int previewed = 0;
     auto approves_what_it_does = [&](const std::string& body,
                                      const json& requested) {
@@ -463,20 +459,16 @@ TEST_CASE(TestFileTools) {
                    CanonicalAccessPath(root.string())));
   CHECK(!PathWithin(CanonicalAccessPath(root.parent_path().string()),
                     CanonicalAccessPath(root.string())));
-  // A target that does not exist yet still belongs to the directory it names.
+  // A target that does not exist yet still belongs to the directory it names:
   // libstdc++ answers `weakly_canonical` relatively for a missing relative
-  // path while libc++ answers absolutely, and a relative answer compares as
-  // outside every workspace: reading a typo asked for approval instead of
-  // reporting the miss, and writing a new file asked too. Both checks above
-  // pass either way because both paths exist.
+  // path, which compares as outside every workspace.
   CHECK(CanonicalAccessPath("uagent-absent-probe.txt").is_absolute());
   CHECK(PathWithin(CanonicalAccessPath("uagent-absent-probe.txt"),
                    CanonicalAccessPath(".")));
 
-  // Mandatory approval follows the same canonical spelling as workspace
-  // access checks, so a symlink cannot disguise the saved settings.
-  // The trust store holds path hashes and no secret: reading it tells the
-  // agent which projects it already trusts, writing it decides that question.
+  // Mandatory approval follows the canonical spelling, so a symlink cannot
+  // disguise the saved settings. The trust store holds no secret, but writing
+  // it decides which projects are trusted.
   {
     ScopedEnv scoped_home("HOME", root.string());
     // The saved settings hold provider keys, so reading them is the harm
@@ -576,9 +568,7 @@ TEST_CASE(TestFileTools) {
   fs::remove_all(root, ec);
   fs::remove_all(external, ec);
 
-  // Deleting: the receipt carries the removed lines, a missing file is a
-  // not-found rather than a silent success, and a directory is refused by the
-  // path policy rather than by remove().
+  // A directory is refused by the path policy, not by remove().
   fs::path doomed = root / "doomed.txt";
   CHECK(ToolWriteFile(doomed.string(), "alpha\nbeta\n").Ok());
   ToolResult deleted = ToolDeleteFileWithDisplay(doomed.string());
@@ -608,9 +598,8 @@ TEST_CASE(TestFileTools) {
   CHECK(FileIdentity(binary.string()) != first);
 }
 
-// Two changes to one file in a turn keep the bytes from before the first,
-// and the journal survives a reopen; an undo restores them only while the
-// file still holds what the turn left.
+// Two changes to one file in a turn keep the bytes from before the first; an
+// undo restores them only while the file still holds what the turn left.
 TEST_CASE(TestEditJournal) {
   auto write = [](const std::string& path, const std::string& text) {
     std::string error;
@@ -664,9 +653,8 @@ TEST_CASE(TestEditJournal) {
     CHECK((info.st_mode & 07777) == mode);
   }
 
-  // An entry whose mode could not be read has none. Keep existing permissions
-  // when possible; recreate a missing file privately instead of broadening
-  // access.
+  // An entry whose mode could not be read has none: existing permissions are
+  // kept, and a missing file is recreated privately.
   const std::string unmoded = (workspace.workspace / "unmoded.txt").string();
   journal.Record(99, {unmoded, true, "private\n", ""});
   journal.Files(99);

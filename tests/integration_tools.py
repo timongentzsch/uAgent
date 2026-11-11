@@ -119,7 +119,6 @@ def test_a_malformed_tool_call_is_answered_not_fatal(root, home, *, binary):
         return tool_call("read_path", {"path": "note.txt"})
 
     def nameless_then(_, body):
-        # A call with no function name ran nothing; the note says so.
         assert_true("without a function name" in json.dumps(body["messages"]), body)
         return event({"content": "recovered-ok"})
 
@@ -146,8 +145,7 @@ def test_a_malformed_tool_call_is_answered_not_fatal(root, home, *, binary):
 
 
 def test_a_todo_list_is_one_list_kept_with_the_conversation(root, home, *, binary):
-    """Every conversation has a to-do list: each call replaces the whole list,
-    an item is pending or done and nothing else, and the list rides on the tail
+    """Each call replaces the whole to-do list, and the list rides on the tail
     of every later request, after a resume too, kept in the session file."""
     items = [
         {"text": "Read the parser", "status": "done"},
@@ -375,11 +373,8 @@ def test_large_run_output_is_recoverable(root, home, *, binary):
 
 
 def test_delete_file_removes_and_receipts(root, home, *, binary):
-    """Deleting reports what was removed, and refuses what it must not touch.
-
-    The receipt is what a person reads before approving, so it carries the
-    removed lines rather than a count.
-    """
+    """Deleting reports the removed lines, which a person reads before
+    approving, and refuses what it must not touch."""
     workspace = root / "delete-workspace"
     workspace.mkdir(parents=True)
     doomed = workspace / "stale.txt"
@@ -436,8 +431,7 @@ def test_grep_tool_round_trip(root, home, *, binary):
 
     def final(_, body):
         # A pacing hint past its bound is clamped rather than rejected, and the
-        # model is told of the reduction instead of being left to think it got
-        # 40.
+        # model is told of the reduction.
         result = tool_results(body["messages"])[-1]
         clamped = result.endswith("[clamped context to 10 of 40 requested]")
         return event({"content": "grep-ok" if clamped else f"grep-bad {result[:120]}"})
@@ -647,9 +641,8 @@ def test_activity_wait_outlives_the_per_call_budget(root, home, *, binary):
 def test_parallel_run_overlaps(root, home, *, binary):
     """`run` is parallel_safe: independent commands must overlap, not queue."""
     count = 4
-    # Each command says when it began and when it ended, so overlap is read
-    # from the commands themselves, not from how long the run took. Whole
-    # seconds are enough beside a four-second sleep.
+    # Each command says when it began and ended, so overlap is read from the
+    # commands themselves. Whole seconds are enough beside a four-second sleep.
     stamp = "date +%s"
     batch = tool_calls(
         [
@@ -1035,14 +1028,8 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
 
 
 def test_self_configuration_requires_a_person(root, home, *, binary):
-    """With nobody to ask, uagent only shows and nothing saved changes.
-
-    The approver denies a mandatory-human call whenever no interactive
-    terminal is attached, so advertising set and write to a piped run would
-    spend a kilobyte on every request to buy a guaranteed refusal. Withholding
-    them is the same policy stated earlier: registration and approval share
-    one predicate.
-    """
+    """With nobody to ask, uagent only shows and nothing saved changes: set and
+    write are withheld where their approval would be refused anyway."""
     save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=40)
 
     def change_anyway(_, body):
@@ -1112,8 +1099,7 @@ def test_config_tool_comes_with_its_skill(root, home, *, binary):
 
 def test_files_are_saved_after_approval(root, home, *, binary):
     """Each file uagent writes is replaced only with the exact text a person
-    approved, even under --yolo: the stylesheet, the system message's changes
-    and a skill in µAgent's private folders, the server file in this folder."""
+    approved, even under --yolo."""
     skill = "---\ndescription: Release notes\n---\nKeep them short.\n"
     config = home / ".uagent" / "config"
     files = [
@@ -1175,9 +1161,8 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
 
     with Server([open_config_skill, request_change, finish]) as server:
         env = config_skill_env(base_env(home, server.url))
-        # A real terminal: piped stdin is deliberately not treated as a person.
-        # The answer is sent only once the approval prompt is on screen, so it
-        # cannot be swallowed as steering while the turn is still working.
+        # A real terminal: piped stdin is not treated as a person. The answer
+        # is sent once the prompt is on screen, or it is taken as steering.
         status, output = run_pty(
             root,
             env,
@@ -1234,9 +1219,8 @@ def test_approval_remembers_a_command_prefix_and_forwards_a_refusal(root, home, 
         )
         assert_true(status == 0, output)
         assert_true(b"[y] Allow once" in output and b"[n] Deny" in output, output)
-        # Reaching rm proves `git status *` covered the second call without
-        # consuming the refusal; rm is only ever exact, so that refusal is
-        # delivered there.
+        # Reaching rm proves `git status *` covered the second call; rm is
+        # only ever exact, so the refusal is delivered there.
         assert_true(b"rm -rf /tmp/uagent-nothing" in output, output)
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))
@@ -1283,9 +1267,8 @@ def test_root_asks_the_password_once_a_turn_and_keeps_it_out(root, home, *, bina
                 (b"go\n", b"runs as root on this machine"),
                 (b"y\n", b"sudo password for this machine"),
                 (password.encode() + b"\n", b"runs as root on this machine"),
-                # The second command of the turn asks for approval only. The
-                # next message waits for the turn to end: sent earlier, it is
-                # guidance for this turn, which keeps the password.
+                # The second command of the turn asks for approval only. A
+                # message sent before the turn ends is guidance for this turn.
                 (b"y\n", b"root-done-1", b"Ready", None),
                 (b"again\n", b"runs as root on this machine"),
                 (b"y\n", b"sudo password for this machine"),

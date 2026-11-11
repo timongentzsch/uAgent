@@ -152,9 +152,8 @@ Connection Open(const std::string& executable, const std::string& cwd,
                                   path,       SessionIdFor(path), title,
                                   launch};
 #ifdef __linux__
-    // A service restart kills its cgroup even after setsid(). Give the
-    // runtime a user scope so its lifetime belongs to the session, not the
-    // web service.
+    // A service restart kills its cgroup even after setsid(): a user scope
+    // ties the runtime's lifetime to the session, not to the web service.
     if (getenv("INVOCATION_ID")) {
       args.insert(args.begin(), {"systemd-run", "--user", "--scope", "--quiet",
                                  "--collect", "--expand-environment=no",
@@ -164,9 +163,8 @@ Connection Open(const std::string& executable, const std::string& cwd,
     }
 #endif
     pid_t pid = -1;
-    // This is the same application continuing in its session process. Keep
-    // provider credential references and user limits; tool children apply
-    // their separate, restricted environment policy when they are dispatched.
+    // The same application continuing: it keeps credential references and
+    // user limits. Tool children apply their own restricted environment.
     int status = SpawnProcess(
         {.argv = std::move(args),
          .fds = {{STDIN_FILENO}, {STDOUT_FILENO}, {STDERR_FILENO}}},
@@ -257,10 +255,8 @@ struct Server::State {
   std::deque<std::string> replay;
   size_t replay_bytes = 0;
   bool replay_gap = false;
-  // Where the replay holds a state frame. Only the latest is kept: the
-  // snapshot already says what every state frame said, and an older one
-  // replayed after it would set a joining client back, for a moment, to a
-  // question no longer pending or a turn no longer running.
+  // Where the replay holds a state frame. Only the latest is kept: an older
+  // one replayed after the snapshot would set a joining client back.
   std::optional<size_t> replay_state;
   uint64_t sequence = 0;
   std::vector<Client> clients;

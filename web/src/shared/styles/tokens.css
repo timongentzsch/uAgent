@@ -1,8 +1,6 @@
-/* The look's every value: scales, sizes, motion and the two palettes. A
-   person's own stylesheet (~/.uagent/config/style.css) overrides these, and
-   being unlayered it wins over every layer here. The layers, lowest first:
-   other packages' styles, tokens, element defaults, the app's primitives.
-   Feature sheets and a11y.css stay unlayered, above all of them. */
+/* A person's own stylesheet (~/.uagent/config/style.css) overrides these:
+   unlayered, it wins over every layer here. Feature sheets and a11y.css stay
+   unlayered too, above all of them. */
 @layer vendor, tokens, base, primitives;
 
 @layer tokens {
@@ -10,8 +8,7 @@
     /* Image markup: one colour that reads on any screenshot, in any theme. */
     --mark: #ff3b30;
     --on-mark: #fff;
-    /* The remote browser's screen: a dark desktop in either theme, its
-       overlays' ink and scrim, and where a touch landed. */
+    /* The remote browser's screen: a dark desktop in either theme. */
     --screen-bg: #171717;
     --screen-ink: #e5e5e5;
     --screen-scrim: rgb(0 0 0 / 0.78);
@@ -44,23 +41,15 @@
     --space-6: calc(12rem / 14);
     --space-12: calc(24rem / 14);
     --space-24: calc(48rem / 14);
-    /* Fixed sizes, named by what they are for and in rem so zoom scales them.
-       A width or height names one of these (or --icon, --icon-s, --control,
-       --row).
-       Controls: a compact button or hit target, a dense row, a roomy row,
-       and the 44px a touch needs. */
+    /* Fixed sizes, named by what they are for; rem, so zoom scales them. */
     --control-s: calc(24rem / 14);
     --control-m: calc(32rem / 14);
     --control-l: calc(36rem / 14);
     --touch: calc(44rem / 14);
-    /* A radio button or a switch's thumb; a logo or loading mark. */
     --icon-l: calc(20rem / 14);
     --logo: calc(48rem / 14);
     /* An attachment's thumbnail height; its width is 4:3. */
     --thumb: calc(72rem / 14);
-    /* A box in a layout: a narrow column or card and the height of a short
-       scrolling area; a menu or an inline preview; a popover or drawer; a
-       page-width sheet. */
     --pane: calc(220rem / 14);
     --sidebar: calc(260rem / 14);
     --pane-s: calc(180rem / 14);
@@ -70,19 +59,15 @@
     --sheet: calc(560rem / 14);
     --spotlight: calc(640rem / 14);
     --spotlight-wide: calc(960rem / 14);
-    /* Controls and spacing use rem throughout so zoom also changes density.
-       Fixed pixel floors made the 50–75% range mostly cosmetic. Every
-       button, field and menu item is --control tall; a row is --row tall,
-       which a .dense list shortens. Touch raises both to --touch. Only this
-       sheet sets them. */
+    /* Controls and spacing use rem throughout, so zoom also changes density.
+       Every button, field and menu item is --control tall; a row is --row tall.
+       Touch raises both to --touch. Only this sheet sets them. */
     --control: var(--control-m);
     --row: var(--control);
-    /* The line of small controls under the input (status, activity, totals):
-       short for a mouse; on touch taller, and a hit area reaches --touch. */
+    /* Controls under the input; on touch their hit area reaches --touch. */
     --control-slim: var(--control-s);
-    /* The header of a narrow column holds its title and the small line of
-       totals under it, with room to spare, so the page does not move when the
-       totals arrive or on a page that has none. */
+    /* Holds a title and the small line of totals under it, so the page does not
+       move when the totals arrive. */
     --head-narrow: calc(
       2 *
       var(--space-2) +
@@ -96,8 +81,7 @@
     /* The inline padding of every control and row, and a surface's inset
        from the edge of the screen. */
     --inset-x: var(--space-4);
-    /* The one size below body text: secondary lines, badges, timestamps.
-       12px, so no text is smaller. */
+    /* 12px, so no text is smaller. */
     --font-small: calc(12rem / 14);
     --font-code: 0.92em;
     /* 16px: a smaller field makes iOS zoom the page when it is focused. */
@@ -105,13 +89,10 @@
     --font-body: 1rem;
     --font-title: 1.1rem;
     --font-display: 1.2rem;
-    /* Weights: running text, and what stands out (a label, a heading). */
     --weight-regular: 400;
     --weight-strong: 600;
-    /* Letter spacing: a title drawn tighter, a caption's capitals wider. */
     --tracking-title: -0.025em;
     --tracking-caps: 0.04em;
-    /* Line heights: snug for labels and short rows, prose for reading text. */
     --leading: 1.5;
     --leading-snug: 1.4;
     --leading-prose: 1.5;
@@ -120,39 +101,29 @@
     --icon-s: 1rem;
     /* An inline icon sits on the text's baseline, dropped to its middle. */
     --icon-align: -0.2em;
-    /* The line of a drawn mark: a status light, a spinner. */
     --stroke: max(1px, 0.12rem);
-    /* The accent at the start of the current entry, and of a notice. */
     --stripe: 2px;
     --stripe-callout: 3px;
     /* The focus ring's distance outside its box (inside, where a box clips). */
     --focus-offset: 2px;
-    /* What cannot be used now: disabled, or held while something is decided. */
     --opacity-disabled: 0.45;
-    /* What a place's contents are set in from its header by. */
     --indent: var(--icon-l);
     /* Motion: the only durations and easings in the app. Reduced motion
        zeroes the durations below, which turns every transition off. */
     --motion-fast: 120ms;
     --motion-base: 200ms;
     --motion-slow: 280ms;
-    /* The conversation, as things arrive while you follow it: how long the
-       view takes to glide to new content, how long a new row takes to fade
-       in, and how long your sent message takes to rise from the input.
-       0ms makes any of them instant. */
+    /* How long the view glides to new content, a new row fades in, and a sent
+       message rises from the input. 0ms makes any of them instant. */
     --motion-glide: var(--motion-base);
     --motion-arrive: var(--motion-base);
     --motion-send: var(--motion-slow);
-    /* Loops that say something is alive: status lights, skeletons. */
     --motion-pulse: 1.6s;
-    /* Spinners; reduced motion slows the spinner. */
     --motion-spin: 0.8s;
     --motion-spin-reduced: 2.4s;
     --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
     --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
-    /* A small surface (toast, menu, card, page) enters with a fade and a
-       short rise from the side it comes from, and leaves the same way. */
     --rise: var(--space-4);
     --enter:
       opacity var(--motion-base) var(--ease-out),
@@ -161,21 +132,17 @@
     --push: 30%;
     /* Theme-independent: what dims the page behind a dialog. */
     --scrim: rgb(0 0 0 / 0.6);
-    /* Stacking: a popover over its form, toasts over the app, the skip link
-       over everything. */
     --z-popover: 5;
     --z-toast: 10;
     --z-present: 15; /* a page presented over the whole app */
     --z-skip-link: 20;
-    /* Dialog widths (Modal's size): a few actions, a form, a document or
-       list, the browser; and a panel's height. */
+    /* Dialog widths (Modal's size) and a panel's height. */
     --dialog-s: calc(400rem / 14);
     --dialog-m: var(--sheet);
     --dialog-l: calc(900rem / 14);
     --dialog-xl: calc(1350rem / 14);
     --dialog-height: calc(1000rem / 14);
-    /* The most a scrolling area takes of the visible height: a short list, a
-       popover's list, a card that holds a long preview. */
+    /* The most a scrolling area takes of the visible height. */
     --scroll-s: calc(var(--viewport-height) / 4);
     --scroll-m: calc(var(--viewport-height) * 0.4);
     --scroll-l: calc(var(--viewport-height) * 0.65);
@@ -204,7 +171,6 @@
     --surface: #0a0a0a;
     --raised: #171717;
     --hover: #232323;
-    /* A filled control while pressed: one step past its hover. */
     --press: #2e2e2e;
     --placeholder: #414141;
     --text: #f5f5f5;
@@ -227,7 +193,6 @@
     --accent-active: #ccc;
     --on-accent: #000;
     --knob: #a3a3a3;
-    /* Found words, as a find bar marks them; the current one stronger. */
     --find: rgba(255, 214, 10, 0.32);
     --find-current: #ffd60a;
     --on-find-current: #000;
@@ -249,8 +214,7 @@
     --terminal-bright-magenta: #d670d6;
     --terminal-bright-cyan: #29b8db;
     --terminal-bright-white: #fff;
-    /* Edges and the focus ring, made here so each palette's colours fill
-       them: a divider, a control's edge. */
+    /* Made here, so each palette's colours fill them. */
     --border: 1px solid var(--line);
     --border-field: 1px solid var(--field-border);
     --focus-ring: 2px solid var(--accent);

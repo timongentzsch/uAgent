@@ -49,13 +49,11 @@ TEST_CASE(TestConfigProposalAndCommit) {
   ConfigManager manager = ConfigManager::Capture({});
   RuntimeConfig active = manager.Initialize();
 
-  // Unknown keys are rejected before anything is read or written.
   ConfigProposal unknown =
       PrepareConfigProposal(ConfigProposalScope::kUser,
                             {{"UAGENT_NOT_A_SETTING", "1", false}}, manager);
   CHECK(!unknown.ok);
   CHECK(unknown.error.find("unknown setting") != std::string::npos);
-  // A fixed-choice setting refuses a spelling it would otherwise ignore.
   ConfigProposal choice = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_WEB_SEARCH_BACKEND", "foo", false}},
       manager);
@@ -78,7 +76,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
       /*direct_user=*/true);
   CHECK(!invalid_human_provider.ok);
 
-  // A boolean takes any documented spelling and is stored in one of them.
   ConfigProposal boolean = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_MEMORY", "off", false}}, manager);
   CHECK(boolean.ok);
@@ -159,7 +156,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
     CHECK(rejected.error.find("without credentials") != std::string::npos);
   }
 
-  // Out-of-range values are refused against the registry's own bounds.
   ConfigProposal invalid =
       PrepareConfigProposal(ConfigProposalScope::kUser,
                             {{"UAGENT_MAX_TOOL_CALLS", "-5", false}}, manager);
@@ -173,7 +169,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(proposal.effects[0].effect == ConfigEffect::kActiveNextUserTurn);
   // Preparing saves nothing.
   CHECK(ReadSettings("").all.at("UAGENT_MAX_TOOL_CALLS") == "40");
-  // A secret is no part of the preview.
   CHECK(proposal.Preview().find("adjacent-provider-secret") ==
         std::string::npos);
 
@@ -182,8 +177,7 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(saved.at("UAGENT_MAX_TOOL_CALLS") == "120");
   CHECK(saved.at("QWEN_GPU_API_KEY") == "adjacent-provider-secret");
 
-  // Replaying the same approved proposal is refused: what it replaces is no
-  // longer there.
+  // A replayed proposal is refused: what it replaces is no longer there.
   CHECK(!CommitConfigProposal(proposal, error));
   CHECK(error.find("changed after the preview") != std::string::npos);
 
@@ -208,7 +202,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(!CommitConfigProposal(racing, error));
   CHECK(ReadSettings("").all.at("UAGENT_MAX_STEPS") == "3");
 
-  // An expired proposal cannot commit.
   ConfigProposal expired = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_MAX_STEPS", "9", false}}, manager);
   CHECK(expired.ok);
@@ -216,9 +209,7 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(!CommitConfigProposal(expired, error));
   CHECK(error.find("expired") != std::string::npos);
 
-  // A value typed into the document that its setting does not take, and
-  // one spelled another way, are replaced like any other: the preview and
-  // the save compare with what the document holds.
+  // A value its setting does not take is replaced like any other.
   CHECK(ChangeSettings("", [](SettingValues& scope) {
           scope["UAGENT_MAX_STEPS"] = "many";
           scope["UAGENT_SANDBOX"] = "off";
@@ -233,9 +224,8 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(ReadSettings("").all.at("UAGENT_MAX_STEPS") == "11");
   CHECK(ReadSettings("").warning.empty());
 
-  // The screen shows providers with their keys hidden and sends back what it
-  // was shown: a key left hidden is the one held, and one with nothing
-  // behind it is asked for.
+  // The screen sends back providers with their keys hidden: a hidden key is the
+  // one held, and one with nothing behind it is asked for.
   CHECK(ChangeSettings("", [](SettingValues& scope) {
           scope["UAGENT_PROVIDERS"] =
               R"({"old":{"base_url":"https://old.example/v1",)"
@@ -277,8 +267,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(keyless.error.find("enter the key for provider new") !=
         std::string::npos);
 
-  // The store hands a proposal out once, and only for the arguments it was
-  // prepared from.
   ApprovedProposals<ConfigProposal> store;
   ConfigProposal stored = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_MAX_STEPS", "9", false}}, manager);
@@ -327,8 +315,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(issue && issue->message == "specific rejection");
 }
 
-// A write runs only as the preview a person approved, once, and never over
-// a file that changed while they read it.
 TEST_CASE(TestUagentWritesWhatWasApproved) {
   TestWorkspace test("uagent-write");
   const Tool tool = UagentTool(Describes, Proposes);
@@ -395,9 +381,6 @@ TEST_CASE(TestUagentWritesWhatWasApproved) {
   CHECK(!PathExists(test.home / ".uagent/skills/plain"));
 }
 
-// A command is queued only as the line a person approved, and once; a line
-// the host does not run is refused before anyone is asked; and without a
-// queue, as in an agent, the tool offers none.
 TEST_CASE(TestUagentQueuesTheApprovedCommand) {
   std::vector<std::string> queued;
   const Tool tool = UagentTool(
@@ -451,8 +434,7 @@ TEST_CASE(TestUagentQueuesTheApprovedCommand) {
   SetApprovalMode(before);
 }
 
-// The servers, rules and skills a person manages are shown from the same
-// controls, and what starts a server stays out: it can carry a credential.
+// What starts a server is never shown: it can carry a credential.
 TEST_CASE(TestUagentShowsServersRulesAndSkills) {
   TestWorkspace test("uagent-show");
   WriteFile(test.home / ".uagent/skills/notes/SKILL.md",
@@ -488,8 +470,6 @@ TEST_CASE(TestUagentShowsServersRulesAndSkills) {
   CHECK(show("permissions")["rules"].empty());
 }
 
-// A project's settings are saved under its folder, beside what is saved for
-// all conversations, and nowhere in the project.
 TEST_CASE(TestProjectSettingsAreSavedByFolder) {
   TestWorkspace test("config-project");
   ScopedEnv no_override("UAGENT_MAX_TOOL_CALLS");
@@ -505,8 +485,6 @@ TEST_CASE(TestProjectSettingsAreSavedByFolder) {
   CHECK(saved.project.at("UAGENT_MAX_TOOL_CALLS") == "120");
   CHECK(manager.Read().sources["UAGENT_MAX_TOOL_CALLS"] == "project");
   CHECK(!PathExists((test.workspace / ".uagent").string()));
-  // A value may refer to a name saved beside it, and each project has its
-  // own.
   CHECK(ChangeSettings(test.workspace.string(), [](SettingValues& project) {
           project["TOKEN"] = "project-token";
           project["UAGENT_PROVIDERS"] = "$TOKEN";
@@ -527,7 +505,6 @@ TEST_CASE(TestProjectSettingsAreSavedByFolder) {
         }).empty());
   CHECK(!CommitConfigProposal(reset, error));
   CHECK(ReadSettings(test.workspace.string()).project.size() == 4);
-  // Another folder is not affected.
   CHECK(ReadSettings(test.root.string()).project.empty());
   // Where no folder is named (the web host's own view) there is no project
   // to save for, and never a fall-through to all conversations.
@@ -545,8 +522,6 @@ TEST_CASE(TestProjectSettingsAreSavedByFolder) {
   CHECK(named.size() == 1 && named[0].key == "UAGENT_MAX_STEPS");
 }
 
-// Get reports what each scope holds; reset clears a scope's overrides in one
-// save but never its secrets.
 TEST_CASE(TestConfigurationResetKeepsSecrets) {
   TestWorkspace test("config-reset");
   const std::string providers =
@@ -567,8 +542,7 @@ TEST_CASE(TestConfigurationResetKeepsSecrets) {
     return json();
   };
   json got = ConfigurationControl({{"operation", "get"}}, manager);
-  // Facts, typed like the default: what the user file sets, what applies and
-  // where that comes from. A secret says only that it is set.
+  // Typed like the default; a secret says only that it is set.
   const json calls = find(got, "UAGENT_MAX_TOOL_CALLS");
   CHECK(calls["set"]["user"] == 40 && calls["effective"] == 40);
   CHECK(calls["scopes"].size() == 2 && calls["scopes"][1] == "project");
@@ -578,7 +552,6 @@ TEST_CASE(TestConfigurationResetKeepsSecrets) {
   const json steps = find(got, "UAGENT_MAX_STEPS");
   CHECK(!steps.contains("set") && steps["effective"] == steps["default"]);
   CHECK(steps["source"] == "default");
-  // A model role names the setting it follows and takes its value.
   CHECK(find(got, "UAGENT_MEMORY_MODEL")["follows"] == "UAGENT_MODEL");
 
   json reset = ConfigurationControl({{"operation", "reset"}, {"scope", "user"}},
@@ -590,7 +563,6 @@ TEST_CASE(TestConfigurationResetKeepsSecrets) {
   const SettingValues kept = ReadSettings("").all;
   CHECK(kept.size() == 1 &&
         json::parse(kept.at("UAGENT_PROVIDERS")) == json::parse(providers));
-  // Nothing left to reset is not an error and writes nothing.
   json again = ConfigurationControl({{"operation", "reset"}, {"scope", "user"}},
                                     manager);
   CHECK(!again.contains("error"));

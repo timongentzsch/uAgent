@@ -23,14 +23,8 @@ import { parseSlash } from "../features/composer/slash.ts";
 import { focusComposer } from "../shared/navigation.ts";
 import { useLatest } from "../shared/use-latest.ts";
 
-// Runs what the composer and the command palette send: the shell calls this
-// with its state and gets back submit, guidance and slash-command handlers.
-
 import type { Page } from "./app.tsx";
 
-// What the composer sends and the palette runs: a message, guidance for the
-// running turn, or a slash command, run here when it has a screen or acts
-// on this page and on the host otherwise.
 export function useCommands({
   host,
   session,
@@ -78,7 +72,6 @@ export function useCommands({
   setLibraryKind: (kind: "memory" | "skill") => void;
   compact: boolean;
   setDrawer: (open: boolean) => void;
-  // Opens search over everything.
   search: () => void;
   setNotice: (notice: string) => void;
   levels: readonly string[];
@@ -119,9 +112,7 @@ export function useCommands({
     setLibraryKind(kind);
     setPage("library");
   }
-  // A fork opens as its own conversation; the original stays as it was.
-  // Editing (a rewind) also puts the message it forked before back into
-  // the composer.
+  // A rewind also puts the message it forked before back into the composer.
   async function forkAndOpen(
     target: Session | undefined,
     fields: CommandFields<"fork"> = {},
@@ -207,12 +198,8 @@ export function useCommands({
     )
       return;
     setBusy(true);
-    // Sending always produces bottom content (optimistic message, command
-    // output, streamed answer): re-stick synchronously so the turn stays
-    // attached even if the stick was lost while reading history or the
-    // send-frame layout churn (composer shrink, optimistic append) moves
-    // scroll before the observers re-pin. Idempotent when already sticky.
-    // A message that shows as a row rises from the input into its place.
+    // Re-sticks first: the send's layout churn can move the scroll before the
+    // observers re-pin. A message shown as a row rises from the input.
     if (!draft.text.startsWith("/") || draft.files.length)
       rememberSend(document.getElementById("prompt"));
     jumpToLatest();
@@ -248,11 +235,9 @@ export function useCommands({
     }
     await deliver(id, sent, queue, request_id);
   }
-  // A message goes out as a row of its own until the host confirms it; a
-  // failed one stays there, with Retry and Return to composer. Guidance
-  // joins the running turn, or with `queue` waits for it to end. Offline,
-  // plain text waits as it is, and goes out through here once reconnected,
-  // under the request it was given.
+  // Guidance joins the running turn, or with `queue` waits for it to end.
+  // Offline, plain text waits and goes out here once reconnected, under the
+  // request id it was given.
   async function deliver(
     id: string,
     sent: Draft,
@@ -341,8 +326,6 @@ export function useCommands({
         waiting,
       );
   }, [online, busy, waiting, latest]);
-  // The context a session was last sent, its system prompt first: the open
-  // conversation's, or that of the one given.
   function showContext(item?: Session) {
     const shown = item ?? session;
     const busy = item ? item.turn_active : running;
@@ -356,8 +339,7 @@ export function useCommands({
       prepare,
     });
   }
-  // A slash command from the palette runs as if sent from the composer;
-  // one that needs an argument waits there for it.
+  // A command that needs an argument waits in the composer for it.
   async function runCommand(entry: SlashCommand) {
     try {
       if (entry.argument && !entry.argument.startsWith("[")) {

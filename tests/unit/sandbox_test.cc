@@ -54,9 +54,8 @@ TEST_CASE(TestSandboxPolicy) {
   // /dev is granted on both platforms, not just Linux: under a blanket write
   // deny, `2>/dev/null` fails, and that is most shell commands.
   CHECK(HasRoot(base.policy, "/dev"));
-  // What gives the project authority sits inside the writable workspace, so
-  // it is carved back out by path rather than by leaving the workspace
-  // ungranted.
+  // What gives the project authority sits inside the writable workspace, so it
+  // is carved back out by path.
   const std::vector<std::string> project_authority = {"/home/u/work/.mcp.json"};
   CHECK(base.policy.denied_writes == project_authority);
   // In a repository, its config and hooks are carved out too; before
@@ -104,8 +103,8 @@ TEST_CASE(TestSandboxPolicy) {
   project.hidden = hiding.hidden;
   CHECK(SandboxWritesNote(project, "/home/u/work") == note);
 
-  // The regression this whole design exists for: no root may be ~/.uagent or
-  // an ancestor of it, or the config and the trust store come along with it.
+  // No root may be ~/.uagent or an ancestor of it: the config and the trust
+  // store would come along with it.
   SandboxInputs reaching = BaseInputs();
   // Nor the folder inside it that holds the saved settings, or anything
   // under that.
@@ -181,14 +180,12 @@ TEST_CASE(TestSandboxLevels) {
   CHECK(HasRoot(opened.policy, "/home/u/.uagent/terminals/logs"));
   CHECK(opened.policy.withheld == std::vector<std::string>{"/home/u/.uagent"});
   CHECK(opened.rejected.empty());
-  // A workspace kept in ~/.uagent is granted too.
   relaxed.workspace = "/home/u/.uagent/spaces/w";
   CHECK(
       HasRoot(BuildSandboxPolicy(relaxed).policy, "/home/u/.uagent/spaces/w"));
   // The extra roots keep their screen: ~/.uagent is still not one.
   relaxed.extra_roots = {"/home/u/.uagent"};
   CHECK(Rejected(BuildSandboxPolicy(relaxed), "/home/u/.uagent"));
-  // Other levels withhold nothing.
   CHECK(BuildSandboxPolicy(BaseInputs()).policy.withheld.empty());
 
   // Readonly grants only temporary files and the terminal logs: not the
@@ -243,9 +240,6 @@ TEST_CASE(TestSandboxLevels) {
   CHECK(decoded.withheld == crowded.withheld);
 }
 
-// Yolo raises the default level to relaxed while it holds, and only that
-// level; plan mode lowers it to readonly; switching back restores the default
-// level's own status.
 TEST_CASE(TestSandboxFollowsApprovalMode) {
   CHECK(YoloSandboxPreset(SandboxPreset::kDefault) == SandboxPreset::kRelaxed);
   for (SandboxPreset kept : {SandboxPreset::kReadOnly, SandboxPreset::kRelaxed,
@@ -311,10 +305,8 @@ TEST_CASE(TestSandboxWatch) {
   WriteFile(config, "[core]\n");
   const std::string workspace = test.workspace.string();
   const SandboxWatch watch({mcp.string(), config.string(), hooks.string()});
-  // Nothing changed, nothing said.
   CHECK(watch.Restore(workspace).empty());
 
-  // A hook added, a config rewritten, a .mcp.json made that did not exist.
   WriteFile(hooks / "pre-commit", "#!/bin/sh\nevil\n");
   WriteFile(hooks / "pre-commit.sample", "changed");
   WriteFile(config, "[alias]\n");
@@ -332,7 +324,6 @@ TEST_CASE(TestSandboxWatch) {
   CHECK(ReadFile(config.string(), 100).value_or("") == "[core]\n");
   CHECK(watch.Restore(workspace).empty());
 
-  // A removed folder comes back.
   fs::remove_all(hooks);
   CHECK(watch.Restore(workspace).size() == 1);
   CHECK(ReadFile((hooks / "pre-commit.sample").string(), 100).value_or("") ==
@@ -425,7 +416,6 @@ TEST_CASE(TestSandboxReads) {
   CHECK(note.find("such as /home/u/Software (sandbox.read") !=
         std::string::npos);
 
-  // The readonly level writes no workspace, and still reads it.
   inputs.read_only = true;
   CHECK(SandboxReadable(BuildSandboxPolicy(inputs).policy,
                         "/home/u/Software/work/a.cc"));
@@ -508,10 +498,8 @@ TEST_CASE(TestSandboxTrampolineArgs) {
       {{"network", true}, {"roots", json::array()}, {"unreadable", "/h"}},
       &ignored));
 
-  // The wrapper has to name a program the spawn can actually exec. It once
-  // took argv[0], which only Bootstrap records, so every binary that links
-  // this library without running it -- this test binary included -- produced a
-  // wrapper whose argv[0] was "" and failed every sandboxed spawn with ENOENT.
+  // The wrapper has to name a program the spawn can exec, also in a binary
+  // where Bootstrap never recorded argv[0], like this one.
   const SandboxStatus& status = SandboxRuntime();
   std::vector<std::string> wrapper = SandboxWrapperArgv(status);
   if (status.mode == SandboxMode::kEnforced) {
@@ -584,10 +572,8 @@ TEST_CASE(TestSandboxHiddenPaths) {
 }
 
 TEST_CASE(TestSandboxProbe) {
-  // The probe reads the host, so what it reports is not assertable here -- what
-  // is, is that it answers at all and answers the same way twice. A probe that
-  // re-read the host per spawn would be both slower and free to change its mind
-  // mid-session, and every caller treats the level as fixed.
+  // The probe reads the host, so only this is assertable: it answers, and the
+  // same way twice. Every caller treats the level as fixed.
   const SandboxLevel level = SandboxSupported();
   CHECK(level == SandboxSupported());
   CHECK(level == SandboxLevel::kUnavailable ||
@@ -600,9 +586,8 @@ TEST_CASE(TestSandboxProbe) {
 #endif
 }
 
-// A remote gateway hides its socket and lease and the account's own uAgent,
-// never its state: a result names the output it spilled there, and the model
-// reads that back.
+// A remote gateway hides its socket, its lease and the account's own uAgent,
+// never its state: the model reads back the output a result spilled there.
 TEST_CASE(TestGatewayStateStaysReadable) {
   namespace fs = std::filesystem;
   TestWorkspace test("gateway-state");

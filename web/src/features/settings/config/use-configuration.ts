@@ -7,10 +7,8 @@ import type {
 import { useApi } from "../../../state/api.ts";
 import type { SavedScope } from "./facts.ts";
 
-// What is saved at `scope` and the two ways to change it. The host answers:
-// it holds what is saved for all conversations and, named a folder, for that
-// folder. It reads again whenever anyone saves (`version`). One instance
-// serves one folder: its owner remounts it for another.
+// Reads again whenever anyone saves (`version`). One instance serves one
+// folder: its owner remounts it for another.
 export function useConfiguration(
   scope: SavedScope,
   folder: string | undefined,
@@ -39,7 +37,6 @@ export function useConfiguration(
       (failure) => request >= shown.current && setError(failure),
     );
   }, [version, attempt]);
-  // Saves in flight, and the setting the last failure belongs to.
   const [busy, setBusy] = useState(0);
   const [failed, setFailed] = useState<{ key: string; error: unknown }>();
   // Collected while settings are open, so several saves offer one restart.

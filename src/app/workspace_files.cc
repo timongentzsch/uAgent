@@ -38,9 +38,8 @@ bool Shown(const fs::path& path) {
   return !HiddenPath(path.string()) && !SelfConfigurationPath(path.string());
 }
 
-// In a repository, the files git tracks or would add, so dependencies and
-// build output stay out as they do from the agent's grep; elsewhere the
-// folder is walked, entering neither .git nor a hidden or symlinked folder.
+// In a repository, the files git tracks or would add, as the agent's grep
+// sees them; elsewhere a walk that enters no .git, hidden or symlinked folder.
 std::vector<std::string> Candidates(const fs::path& root, bool& more) {
   std::vector<std::string> paths;
   const CapturedProcess listed =

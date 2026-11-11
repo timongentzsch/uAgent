@@ -72,9 +72,8 @@ bool IsAttachmentReference(std::string_view line) {
 }
 
 // Receipt facts live under the call's node id. A message whose id metadata
-// was never recorded still carries the call id, so scan by it before
-// admitting the receipt is gone. Message-metadata entries carry call ids too
-// but never a receipt name, so they cannot self-match.
+// was never recorded still carries the call id, so facts are scanned by it;
+// message-metadata entries hold no receipt name and cannot match.
 const json* FindToolFacts(const json& facts, std::string& id,
                           const std::string& call_id) {
   const auto direct = facts.find(id);

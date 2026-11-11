@@ -1,8 +1,7 @@
 import type { InstallPrompt, Report } from "./types.ts";
 
-// Single owner for activating a waiting service worker: wake it, then
-// reload exactly once when it takes control. Shared by the update banner
-// and Settings so the two can never drift apart.
+// Wakes a waiting service worker, then reloads exactly once when it takes
+// control. The update banner and Settings share it.
 export function applyUpdate(worker: ServiceWorker) {
   navigator.serviceWorker.addEventListener(
     "controllerchange",

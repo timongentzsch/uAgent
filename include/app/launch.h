@@ -13,7 +13,6 @@
 #include "include/core/json.h"
 
 namespace uagent {
-// Where a scheduled run runs and where its file lives.
 struct LaunchPaths {
   std::string cwd, path;
 };
@@ -22,51 +21,40 @@ struct LaunchPaths {
 std::string HistoryPath(const std::string& cwd, const std::string& name,
                         const std::string& host = {});
 
-// `worktree` runs in a fresh detached worktree under ~/.uagent/worktrees/<id>,
-// otherwise in `project` itself. The file is
-// history/<folder-hash>/<prefix><id>.
+// With `worktree`, a fresh detached worktree under ~/.uagent/worktrees/<id>,
+// else `project` itself. The file is history/<folder-hash>/<prefix><id>.
 LaunchPaths PlanLaunch(const std::string& project, bool worktree,
                        const std::string& prefix, const std::string& id);
 
-// Runs git in `dir` for the host. The directory may be one a sandboxed
-// session could write, so repository config never makes git run a command:
-// no hooks, fsmonitor, external diff or textconv.
+// Runs git in `dir` for the host with hooks, fsmonitor, external diff and
+// textconv off: a sandboxed session may have written the repository config.
 CapturedProcess HostGit(const std::string& dir, std::vector<std::string> args);
 // What `dir`'s work tree changed against HEAD, as a patch with its summary.
 CapturedProcess WorkTreeDiff(const std::string& dir);
 
-// Creates the detached worktree `cwd` at the folder's HEAD. Returns the
-// error, or empty on success.
+// Creates the detached worktree `cwd` at the folder's HEAD. Returns the error.
 std::string CreateWorktree(const std::string& project, const std::string& cwd);
 
 // Whether `cwd` is a worktree PlanLaunch made.
 bool LaunchWorktree(const std::string& cwd);
 
-// Removes the launch worktree `cwd` if nothing in it would be lost: no
-// uncommitted changes and no commits outside a branch or tag. Returns why
-// not, or empty once it is gone.
+// Removes the launch worktree `cwd` unless it holds uncommitted changes or
+// commits outside a branch or tag. Returns why not, or empty once it is gone.
 std::string RemoveWorktree(const std::string& cwd);
 
 // Sends one command to the runtime of `path` once it has published its state
-// (and, with `idle`, once no turn is running), and waits for its outcome.
-// Returns the runtime's refusal or a transport error, or empty.
+// (with `idle`: once no turn runs). Returns its refusal or a transport error.
 std::string SendWhenReady(const session::Connection& connection,
                           const std::string& path, json command, bool idle);
 // SendWhenReady to the runtime of `path`, busy or not; nullopt when none runs.
 std::optional<std::string> SendToRunning(const std::string& path, json command);
-// Closes the runtime of `path` and waits until it is gone. Returns why it
-// still runs, or empty once nothing does (also when nothing did).
+// Closes the runtime of `path` and waits. Returns why it still runs, or empty.
 std::string CloseRuntime(const std::string& path);
-// Deletes the conversation at `path`, whose runtime the caller has closed,
-// with every agent under it, deepest first: each agent is closed, then each
-// launch worktree removed and each file (`draft_path` too for the
-// conversation itself). When a worktree holds work that would be lost,
-// nothing is deleted. Returns the error, naming the conversation it is
-// about, or empty.
+// Deletes the conversation at `path` (runtime already closed) and its agents,
+// deepest first; nothing when a worktree holds work that would be lost.
 std::string DeleteConversation(const std::string& path,
                                const std::string& draft_path = "");
-// "saved" without a runtime; else what its runtime said when it answered:
-// waiting on a person ("needs you"), working a turn, or idle. A decision
+// "saved" without a runtime, else "needs you", working or idle. A decision
 // still with a parent counts as working.
 std::string RuntimeStatus(const std::string& path);
 }  // namespace uagent

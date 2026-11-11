@@ -25,8 +25,7 @@ class Runtime {
   ~Runtime();
   json Execute(const json& command);
   void Shutdown();
-  // Stops Chrome and Xvnc after `limit` without browser work, unless a human
-  // holds or is asked for the browser. The next action starts them again.
+  // Stops Chrome and Xvnc after `limit` idle, unless a human holds the browser.
   void StopIfIdle(std::chrono::minutes limit);
 
  private:
@@ -34,13 +33,12 @@ class Runtime {
   void Stop(bool preserve_lease = false);
   json Call(const std::string& method, const json& parameters = json::object(),
             const std::string& session = {});
-  // Runtime.evaluate on the attached page, in our own world (kWorld).
+  // Runtime.evaluate on the attached page, in the isolated world kWorld.
   json Evaluate(json parameters);
   // Writes a command without waiting for its reply; its id, or -1.
   int64_t Send(const std::string& method, const json& parameters,
                const std::string& session);
-  // Why an action approved for one site may not run on the page as it is
-  // now, or null.
+  // Why an action approved for one site may not run on the page now, or null.
   json Elsewhere(const json& command, std::string url);
   // What an operation does while the page shows a dialog.
   json Dialog(const std::string& op, const json& command);
@@ -60,9 +58,8 @@ class Runtime {
   json Probe();
   // The page as text, with the screenshot when `image` asks for it.
   json Observe(bool image);
-  // A page of the host's preview address drawn at a size, as a PNG or with
-  // `pdf` printed on its own paper, in a tab of a throwaway context: no
-  // profile, no cookies, no agent's tab.
+  // A page of the host's preview as a PNG or PDF, drawn in a throwaway
+  // context: no profile, no cookies, no agent's tab.
   json Capture(const json& command);
   // More of the page's text than a look carries, or the lines that match.
   json Read(const json& command);
@@ -110,17 +107,15 @@ class Runtime {
   double input_scale_ = 1;
   bool profile_setup_ = false;
   bool loading_ = false;
-  // Each tab's one attachment, so a tab returned to keeps what its session
-  // saw, and the dialog each session's page shows. A dialog stops its page:
-  // nothing there is answered until it closes, and Chrome tells of it once.
+  // Each tab's one attachment, and the dialog each session's page shows. A
+  // dialog stops its page until it closes, and Chrome tells of it once.
   std::map<std::string, std::string> sessions_;
   std::map<std::string, json> dialogs_;
   // The agent's own navigation is under way: the page's plea to stay is
   // what the agent already chose against.
   bool leaving_ = false;
-  // The file field whose chooser a click opened while choosers were held
-  // back, and the downloads Chrome told of, by id, until a probe reports
-  // them finished; with the folder they go to.
+  // The file field whose held-back chooser a click opened, the downloads by
+  // id until a probe reports them finished, and the folder they go to.
   int64_t chooser_ = 0;
   json downloads_ = json::object();
   std::string download_path_;

@@ -1,6 +1,5 @@
-# Embed the built public bundle. The frontend promotes a complete bundle
-# atomically and writes its file list last, so CMake never glob-reads a Vite
-# directory while it is being emptied and rebuilt.
+# The frontend promotes a complete bundle and writes its file list last, so
+# reading the list never sees a Vite directory that is being rebuilt.
 option(UAGENT_EMBED_WEB "Embed the browser application in the executable" ON)
 set(_web_generated "${CMAKE_CURRENT_BINARY_DIR}/web_assets.cc")
 if(NOT UAGENT_EMBED_WEB)

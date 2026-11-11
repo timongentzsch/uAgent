@@ -17,10 +17,7 @@
 
 namespace uagent {
 
-// Every model response is billed the same way: parse the provider's usage
-// block once, then charge it to the session and to a route. Work that is not
-// the conversation itself (compaction, a memory extractor's whole run) names
-// its purpose in the provider's place, as titles and searches do.
+// `purpose` names side work (compaction, extraction) in the provider's place.
 Usage Agent::AccountModelUsage(const json& reported,
                                const std::string& purpose) {
   Usage usage;

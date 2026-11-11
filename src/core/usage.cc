@@ -18,9 +18,8 @@ namespace uagent {
 void Usage::Add(const json& value) {
   if (!value.is_object()) return;
   Normalize();
-  // OpenAI-compatible endpoints spell the same counts several ways. Each
-  // field lists its spellings in order and takes the first one present,
-  // rather than growing another chain of fallbacks per field.
+  // OpenAI-compatible endpoints spell the same counts several ways: each
+  // field lists its spellings in order and takes the first one present.
   struct Alias {
     const char* parent;  // nullptr for a top-level field
     const char* field;
@@ -45,10 +44,9 @@ void Usage::Add(const json& value) {
       Nonnegative(first({{"completion_tokens_details", "reasoning_tokens"},
                          {"output_tokens_details", "reasoning_tokens"},
                          {"output_tokens_details", "thinking_tokens"}}));
-  // Chat Completions and Responses report cached tokens *inside* the prompt
-  // total, so they must be subtracted out. Anthropic-style usage reports
-  // them beside an input count that already excludes them — subtracting
-  // there would under-report the fresh tokens.
+  // Chat Completions and Responses report cached tokens inside the prompt
+  // total, so they are subtracted. Anthropic-style usage reports them beside
+  // an input count that already excludes them.
   int64_t nested_cache =
       Nonnegative(first({{"prompt_tokens_details", "cached_tokens"},
                          {"input_tokens_details", "cached_tokens"}}));

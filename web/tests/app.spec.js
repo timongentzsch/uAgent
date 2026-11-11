@@ -99,7 +99,6 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     ),
   ).toBeLessThan(2);
   await expect(page.getByRole("button", { name: /^Reply to:/ })).toHaveCount(0);
-  // An answer has no header: its time and menu end its turn's footer.
   await expect(reply.locator("header")).toHaveCount(0);
   await page
     .locator(".turn-footer")
@@ -139,7 +138,6 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(
     page.getByRole("dialog", { name: "Message statistics" }),
   ).toContainText("mock/model-b:high");
-  // A message's scope is named as such, never "Turn".
   await expect(
     page
       .getByRole("group", { name: "Statistics scope" })
@@ -197,7 +195,6 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(
     page.getByRole("heading", { name: "Needs your decision" }),
   ).toBeVisible();
-  // Waiting for a person says so under the input, without a running pulse.
   await expect(page.locator(".composer .activity-state")).toContainText(
     "Needs you",
   );
@@ -217,7 +214,6 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     )
     .toBe("approved from browser");
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
-  // Up recalls the last prompt sent from this page; Down returns to empty.
   const composerInput = page.getByLabel("Message or guidance");
   await composerInput.press("ArrowUp");
   await expect(composerInput).toHaveValue("request approval");
@@ -228,7 +224,6 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(
     page.getByText(/^Transcript saved to .*\.share\.md$/),
   ).toBeVisible();
-  // /btw answers above the composer and never joins the conversation.
   const messages = await page.locator(".transcript .message").count();
   await composerInput.fill("/btw what did we just do?");
   await page.getByRole("button", { name: "Send", exact: true }).click();

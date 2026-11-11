@@ -15,10 +15,8 @@ namespace {
 using uagent::TerminalInputToken;
 using uagent::TerminalInputTokenKind;
 
-// Where a read lands inside plain text decides only how many kText tokens
-// carry it, never which bytes arrive or what surrounds them. Coalescing
-// adjacent text is what lets the two decodings be compared by content: a
-// weaker count-only invariant passes on a sequence decoded as text.
+// Adjacent text is coalesced so two decodings compare by content: where a read
+// lands decides only how many kText tokens carry the same bytes.
 void Append(std::vector<std::pair<TerminalInputTokenKind, std::string>>& out,
             const TerminalInputToken& token) {
   if (token.kind == TerminalInputTokenKind::kText && !out.empty() &&
@@ -31,10 +29,8 @@ void Append(std::vector<std::pair<TerminalInputTokenKind, std::string>>& out,
 
 }  // namespace
 
-// The composer's byte decoder reads whatever the terminal sends: escape
-// sequences split across reads, terminal replies, unterminated payloads. Two
-// invariants have to hold for arbitrary input -- the pending deque stays
-// bounded, and feeding the same bytes in fragments decodes to the same tokens.
+// For arbitrary input the pending deque stays bounded, and the same bytes fed
+// in fragments decode to the same tokens.
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   std::string_view input(reinterpret_cast<const char*>(data), size);
 

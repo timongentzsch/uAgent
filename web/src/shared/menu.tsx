@@ -28,9 +28,6 @@ import { ChevronLeft, ChevronRight, Ellipsis } from "lucide-preact";
 import { nextIndex, typeAhead } from "./listbox-nav.ts";
 import { Button, IconButton } from "./ui.tsx";
 
-// The dropdown menu for a row's or header's actions: items, nested views and
-// the keyboard and focus behaviour shared by every menu.
-
 const navigation = ["ArrowDown", "ArrowUp", "Home", "End"];
 // Which nested view the panel shows (a MenuSub's id, "" for the items
 // themselves), and how to change it. A view inside a view has its parent's
@@ -49,12 +46,9 @@ const enabledItems = (panel: Element) => [
   ...panel.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
 ];
 
-// A touch screen has no hover, so a list's rows (those matching `rows`) open
-// their menus on a long press: the touch must hold still for a while, which
-// marks the row `data-held`, and the menu opens when it lifts, since a popover
-// opened under a finger would be light-dismissed by that finger's release. The
-// lift is the touch's last event: the click that would follow it never comes,
-// so the row is not also activated. One listener set serves every row.
+// Touch has no hover: a row opens its menu on a long press, when the touch
+// lifts, since a popover opened under a finger would be light-dismissed by
+// its release. No click follows the lift, so the row is not also activated.
 export function useLongPress(
   list: RefObject<HTMLElement | null>,
   rows: string,
@@ -119,17 +113,14 @@ export function useLongPress(
   }, [list, rows]);
 }
 
-// A row's actions, in a dropdown under its ⋯ button: a native top-layer
-// popover placed against the button, which follows it while open. Every
-// other overlay is a sheet (see sheet.tsx); a short list of actions belongs
-// beside what it acts on.
+// A native top-layer popover placed against its button, which it follows
+// while open. Every other overlay is a sheet (see sheet.tsx).
 export function Menu({
   label,
   trigger,
   children,
 }: {
   label: string;
-  // A button that says what it is, in place of the ⋯.
   trigger?: ComponentChildren;
   children: ComponentChildren;
 }) {
@@ -141,10 +132,9 @@ export function Menu({
   const anchor = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const id = useId();
-  // Hiding plays the panel's exit (CSS, allow-discrete); the panel unmounts
-  // once that has finished. Our own close unmounts without waiting for the
-  // toggle event: WebKit drops it when a menu item opens a modal dialog,
-  // which left the menu unable to reopen. Light dismiss uses the event.
+  // The panel unmounts once its exit has played. Our own close does not wait
+  // for the toggle event: WebKit drops it when a menu item opens a modal
+  // dialog, which leaves the menu unable to reopen.
   const unmount = useCallback(
     () =>
       void settled(panel.current).then(() => {
@@ -305,16 +295,14 @@ export function Menu({
   );
 }
 
-// A row that opens a nested view in place: its items replace the menu's,
-// under a row that leads back. In place rather than beside the menu, so it
-// works where there is no room for a second panel.
+// A nested view opens in place rather than beside the menu, so it works
+// where there is no room for a second panel.
 export function MenuSub({
   label,
   value,
   children,
 }: {
   label: string;
-  // What is chosen inside, shown on the row.
   value?: string;
   children: ComponentChildren;
 }) {

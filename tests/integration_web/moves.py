@@ -375,7 +375,6 @@ def test_web_move_refuses_what_it_could_not_do_safely(root, home, *, binary):
                 "a refusal changed the disk",
             )
             assert_true(not list((home / ".uagent" / "web").glob("move-*")), "a journal is left")
-            # Idle again, it moves.
             client.command("move", client.snapshot(session)["metadata"], cwd=str(beta))
             assert_whole(home, alpha, beta)
 

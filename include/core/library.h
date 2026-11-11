@@ -12,7 +12,6 @@
 #include "include/core/lease.h"
 
 namespace uagent {
-// Shared rules for the managed library of memories, skills and prompts.
 // Writers touch the change marker so watching clients reload.
 std::string LibraryChangePath();
 void LibraryChanged();
@@ -23,11 +22,8 @@ bool LibraryPath(const std::filesystem::path& root,
 bool AcquireLibraryWriteLease(FileLease& lease, std::string& error);
 // A single safe path component within the library name bound.
 bool LibraryName(const std::string& name);
-// The document at `path` as a write request last read it: read (at most
-// `cap` bytes) into `previous`, `exists` set, and checked against the
-// request's `revision`. An error reply when it cannot be read, or when it
-// changed since (`conflict`, naming the `noun`); empty when the write may go
-// ahead.
+// Reads `path` (at most `cap` bytes) into `previous` and checks it against the
+// request's `revision`. Empty when the write may go ahead, else an error reply.
 json CheckRevision(const json& request, const std::filesystem::path& path,
                    size_t cap, const std::string& noun, std::string& previous,
                    bool& exists);

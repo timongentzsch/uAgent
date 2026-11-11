@@ -1,6 +1,5 @@
-// The golden turns, as the host sends them (tests/unit/transcript_tree_test.cc
-// records the same turns and checks the nodes it makes). Each turn has ids of
-// its own, so turns can be put together into one conversation.
+// The golden turns as the host sends them; tests/unit/transcript_tree_test.cc
+// records the same. Each turn has ids of its own, so turns can be combined.
 
 const summary = (duration_ms, extra = {}) => ({
   turn: 1,
@@ -25,7 +24,6 @@ const turn = (id, sequence, text) => ({
   time: "2026-10-28T16:00:00.000Z",
   body: { kind: "text", text },
 });
-// The work replying to a message of yours sits under it.
 const work = (message, state, counts, word) => ({
   id: `w-${message}`,
   parent: message,
@@ -267,5 +265,4 @@ export const arrivals = [
 // Two pages of history: the older one is read in front of the newer.
 export const pages = [plain, chain];
 
-// A conversation with calls, a failure, guidance and an answer.
 export const conversation = [...chain, ...failed, ...steered];

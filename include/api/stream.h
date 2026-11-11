@@ -2,7 +2,6 @@
 
 #ifndef UAGENT_INCLUDE_API_STREAM_H_
 #define UAGENT_INCLUDE_API_STREAM_H_
-// Streaming transport state. Most API consumers should include api.h instead.
 
 #include <curl/curl.h>
 
@@ -28,8 +27,7 @@
 
 namespace uagent {
 
-// Incremental SSE parser; emits provider-independent reasoning and answer
-// streams.
+// Incremental SSE parser; emits provider-independent reasoning and answers.
 struct StreamCtx {
   json event_context = json::object();
   std::function<void(const json&, size_t)> observe_progress;
@@ -44,8 +42,7 @@ struct StreamCtx {
   WireStreamState wire_state;
   std::chrono::steady_clock::time_point started;
   std::chrono::steady_clock::time_point last_byte;
-  // 0 is unbounded here as everywhere else; a real request overwrites both
-  // limits; the tunable default lives in RuntimeConfig.
+  // 0 is unbounded; a real request overwrites both limits.
   int64_t stream_timeout_s = 0;
   size_t response_cap = 0;
   size_t received = 0;
@@ -59,10 +56,8 @@ struct StreamCtx {
   std::map<std::string, ReasoningSpan> reasoning_parts;
   bool tool_arguments_started = false;
 
-  // Hold leading content back while it could still be any tool protocol, so
-  // neither our fallback blocks nor malformed provider markup flashes as an
-  // answer. Classification lives beside the protocol constants and is shared
-  // with the final response validator.
+  // Leading content is held back while it could still be tool markup, so
+  // malformed provider markup never flashes as an answer.
   enum class Show { kUndecided, kPrint, kSuppress } show = Show::kUndecided;
 
   void MarkEvent() {
@@ -124,8 +119,8 @@ struct StreamCtx {
     data["reset"] = reset;
     data["part"] = fragment.part;
     data["reasoning_kind"] = fragment.kind;
-    // Captions consume new text only; a corrected final snapshot resets its
-    // bounded line reader. Transcript reconciliation never enters replay.
+    // Captions consume new text only; a corrected final snapshot resets their
+    // bounded line reader.
     const bool complete_line =
         fragment.complete && span.bytes <= kStatusLineBytes;
     data["reasoning_text"] =
@@ -160,9 +155,7 @@ struct StreamCtx {
   void HandleEvent(const SseEvent& event) {
     WireStreamDelta delta =
         DecodeWireStreamEvent(wire_api, event.data, *res, calls, wire_state);
-    // Semantic progress and rendering are independent: a hosted search feeds
-    // the timeout the same way every other event does, and additionally says
-    // what it was so a presenter need not infer it from silence.
+    // A hosted search feeds the timeout like every other event.
     if (delta.activity) MarkEvent();
     if (delta.opened && res->first_event_ms < 0) {
       res->first_event_ms = ElapsedMs(started);
@@ -233,7 +226,6 @@ struct StreamCtx {
     OutputText(res->content);
   }
 
-  // Surface a parser failure, else hand every completed event to the decoder.
   bool Drain(bool parsed) {
     if (!parsed) {
       res->error = sse.Error();
@@ -270,9 +262,8 @@ inline void CollectToolCalls(std::map<int, ToolCall>& streamed,
         streamed.erase(current);
         break;
       }
-      // A model's mistake is the model's to correct, never the turn's end:
-      // a named call is answered with an error like any other bad argument,
-      // and a nameless one, which nothing can answer, is dropped.
+      // A named call is answered with an error like any other bad argument; a
+      // nameless one, which nothing can answer, is dropped.
       DebugLog("malformed_tool_call", {{"stream_index", index},
                                        {"name", call.name},
                                        {"args_chars", call.args.size()}});

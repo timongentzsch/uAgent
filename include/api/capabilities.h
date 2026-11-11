@@ -2,8 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_API_CAPABILITIES_H_
 #define UAGENT_INCLUDE_API_CAPABILITIES_H_
-// Route behavior is declared once here instead of inferred repeatedly from a
-// provider name, model name, or response rendering shape.
+// Route behavior is declared here, not inferred from provider or model names.
 
 #include <cstdint>
 #include <initializer_list>
@@ -33,8 +32,7 @@ enum class RejectedCapability : uint8_t {
   kReasoningSummary,
 };
 
-// What an endpoint declares it does beyond the wire API it speaks. Nothing
-// else in the code asks which vendor an endpoint is.
+// What an endpoint declares beyond the wire API it speaks.
 enum class Feature : uint8_t {
   kHostedSearch,         // the endpoint runs a search for web_search
   kProviderRouting,      // options.provider pins an upstream; requests may
@@ -83,12 +81,10 @@ bool ParseFeatures(const json& names, FeatureSet& features,
 const char* WireApiName(WireApi wire_api);
 std::optional<WireApi> ParseWireApi(std::string_view wire_api);
 bool HasHostedTool(const json& hosted_tools, HostedTool tool);
-// The entries of a `hosted_tools` list that define a tool: objects with a
-// `type`, each as the endpoint's API takes it.
+// The entries of a `hosted_tools` list that are objects with a `type`.
 json HostedToolDefinitions(const json& hosted_tools);
 
-// What one route has negotiated or learned on top of what its endpoint
-// declares. Built fresh whenever the route changes.
+// What a route negotiated or learned beyond what its endpoint declares.
 struct ProviderCapabilities {
   // Request features that may be downgraded after a structured rejection.
   bool parallel_tools = true;
@@ -100,20 +96,17 @@ struct ProviderCapabilities {
   bool image_input = true;
   // Document parts, which not every route accepts even when it takes images.
   bool file_input = true;
-  // Speech and video parts, likewise negotiated per route.
   bool audio_input = true;
   bool video_input = true;
 
-  // Features observed in successful responses. They are diagnostic facts, not
-  // prerequisites and never drive the current turn.
+  // Observed in successful responses: diagnostic only, never drives a turn.
   bool reasoning_text = false;
   bool reasoning_details = false;
   bool reasoning_content = false;
   bool citations = false;
   bool reported_usage = false;
 
-  // Only the Chat Completions dialect has speech and video parts; Responses
-  // and Anthropic Messages accept text, images and files.
+  // Only Chat Completions has speech and video parts.
   void SetInputModalities(const json& modalities, WireApi wire_api);
   void SetModelFeatures(const json& features);
   void ResetNegotiated(WireApi wire_api, const FeatureSet& declared);
@@ -121,7 +114,6 @@ struct ProviderCapabilities {
   json DiagnosticJson(WireApi wire_api, const FeatureSet& declared) const;
 };
 
-// The capabilities a route starts from, given what its endpoint declares.
 ProviderCapabilities CapabilitiesForRoute(WireApi wire_api,
                                           const FeatureSet& declared);
 RejectedCapability RejectedRouteCapability(

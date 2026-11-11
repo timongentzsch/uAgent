@@ -111,7 +111,6 @@ void Agent::PushStepNote(StepState& loop, const std::string& note) {
   loop.note += note;
 }
 
-// Every interruption ends the turn the same way, whatever noticed it first.
 Agent::StepFlow Agent::InterruptTurn(TurnExecution& state) {
   state.stop.outcome = TurnOutcome::kInterrupted;
   last_error_ = TurnOutcomeName(state.stop.outcome);
@@ -134,10 +133,8 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
     for (std::string& skill : ExplicitSkillContext(input)) {
       PushSkillContext(std::move(skill));
     }
-    // Steered files join the steered message exactly like submitted ones:
-    // composed content for the model, display files for the transcript.
-    // A compose failure degrades to text (the claim validated the files
-    // seconds ago) rather than failing the running turn.
+    // Steered files join the message like submitted ones. A compose failure
+    // degrades to text rather than failing the running turn.
     if (message.attachments.is_array() && !message.attachments.empty()) {
       std::string error;
       auto [content, attachment] =
@@ -205,7 +202,6 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
   return StepFlow::kProceed;
 }
 
-// An interrupted or failed model call; kProceed means the response is usable.
 bool Agent::HandleActivityPollResults(
     const std::vector<ActivityPollResult>& polls, bool exclusive,
     TurnExecution& state, StepState& loop) {
@@ -258,9 +254,8 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
       loop.recovery.strikes[static_cast<size_t>(Fault::kFailedTools)] == 0) {
     Advise(Fault::kRepeat, loop);
   }
-  // Do not start a network request with only curl's one-second granularity
-  // left after tools. Report the owning turn budget instead of a misleading
-  // transport timeout that cannot possibly be retried.
+  // Too little is left for a network request: the turn's own budget is
+  // reported rather than a transport timeout that cannot be retried.
   if (TurnDeadlineExceeded(
           state, std::chrono::seconds(kModelRequestDeadlineReserveSeconds))) {
     return StepFlow::kEndTurn;
@@ -345,9 +340,8 @@ void Agent::Turn(const std::string& user_input, json user_content,
   for (std::string& skill : explicit_skills) PushSkillContext(std::move(skill));
   PushUserInput(attachment ? std::move(user_content) : json(user_input),
                 attachment, images, request_id, origin);
-  // Slices the budget block out of the config: a turn-boundary reload may
-  // replace api_.config mid-session, and the limits this turn is judged
-  // against are the ones it started with.
+  // A turn-boundary reload may replace api_.config: the turn is judged
+  // against the limits it started with.
   state.limits = api_.config;
   state.deadline =
       state.limits.max_turn_seconds > 0
@@ -447,9 +441,8 @@ void Agent::Turn(const std::string& user_input, json user_content,
 }
 
 // A turn stopped by its step, tool-call or time limit, or for repeating a
-// call, has done work nobody has been told about. One more round, told that
-// nothing further will run, turns it into the answer; the stop still names the
-// limit.
+// call, has done work nobody was told about: one more round, told that
+// nothing further will run, turns it into the answer.
 void Agent::AnswerAtLimit(TurnExecution& state, StepState& loop) {
   if (state.stop.reason == TurnStopReason::kNone &&
       state.limits.max_steps > 0 && loop.step >= state.limits.max_steps) {
@@ -514,9 +507,8 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
     state.answered_at_limit = false;
   }
   bool step_limited = state.stop.reason == TurnStopReason::kMaxSteps;
-  // One record of why this turn ended and what was in force, so a parent
-  // reading a child's envelope can tell "raise this ceiling and retry" from
-  // "the work is done" without parsing prose.
+  // One record of why the turn ended and what was in force, so a parent can
+  // tell "raise this ceiling and retry" from "done" without parsing prose.
   int64_t steps_used = step_limited ? state.limits.max_steps : step + 1;
   std::string reason = TurnStopReasonName(state.stop.reason);
   if (reason.empty()) {

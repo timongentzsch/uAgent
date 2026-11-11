@@ -67,8 +67,7 @@ ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
   }
   std::atomic<bool> stopped{false};
   // Input to Chrome has one filter and one writer: this device's messages
-  // while it drives, and the release that lifts whatever it still holds the
-  // moment control moves away, even if it sends nothing more.
+  // while it drives, then the release of whatever it still holds.
   std::mutex input;
   RfbInputFilter filter;
   bool driving = initial->controller;

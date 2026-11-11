@@ -61,8 +61,7 @@ void Report(const char* name, size_t iterations, double milliseconds) {
             << " ops/s\n";
 }
 
-// Streamed deltas are observation events; clients render them elsewhere, so
-// this measures decoding plus event delivery in the runtime process.
+// Decoding plus event delivery in the runtime; clients render elsewhere.
 void BenchmarkStream() {
   ChatResult result;
   StreamCtx stream;
@@ -106,9 +105,7 @@ void BenchmarkStream() {
   Report("SSE + headless", kEvents, milliseconds);
 }
 
-// Burst benchmark through actual event delivery, comparing identical main
-// and two child workloads with turn-status projection inactive/active. No wire
-// or browser/network timing is implied by this native measurement.
+// Identical main and two child workloads, turn-status projection off or on.
 void BenchmarkActivity(bool labels) {
   constexpr size_t kSessions = 3;
   constexpr size_t kTokens = 10000;
@@ -158,8 +155,7 @@ void BenchmarkActivity(bool labels) {
             << " ms\n";
 }
 
-// A 1 MB reasoning stream folded into a held view the way worker, host and
-// terminal each do it: one delta per 12 ms batch of a fast model (64 bytes).
+// A reasoning stream folded into a held view, one 64-byte delta at a time.
 void BenchmarkStreamedAnswer() {
   constexpr size_t kAnswerBytes = MiB(1);
   constexpr size_t kBatchBytes = 64;
@@ -181,8 +177,7 @@ void BenchmarkStreamedAnswer() {
          }));
 }
 
-// 1 GB of command output (a long build or test log) through the bounded
-// buffer a running command keeps, in the 8 KiB reads the process reader makes.
+// Command output through a running command's bounded buffer, in 8 KiB reads.
 void BenchmarkCommandOutput() {
   constexpr size_t kOutputBytes = MiB(1024);
   const std::string read(KiB(8), 'x');
@@ -259,11 +254,8 @@ void BenchmarkAttachedDocument() {
          }));
 }
 
-// The terminal client's paint path at 100 columns, one paint per token:
-// markdown renders the token into the stdout pipe, and the live region draws
-// the tail, the working row and a draft naming a directory, whose listing the
-// composer offers below it. One paragraph of 2,000 tokens, plain or with an
-// inline code span every third token; terminal bytes go to a file.
+// The terminal client's paint path, one paint per token: one paragraph, plain
+// or with an inline code span every third token; terminal bytes go to a file.
 void BenchmarkTerminalPaint(bool styled) {
   constexpr size_t kTokens = 2000;
   namespace fs = std::filesystem;
@@ -357,10 +349,8 @@ void BenchmarkFrameBuffer() {
          }));
 }
 
-// A saved conversation of a long working session, as each model call, each
-// save and each checkpoint handles it whole. Built unless `--session PATH`
-// names a saved one: 250 tool rounds (a call and a result of about 1 KB, one
-// round in eight 8 KB) between 30 user messages.
+// A long working session's saved conversation, handled whole as each model
+// call, save and checkpoint does. Built unless `--session PATH` names one.
 void BenchmarkLongConversation(std::string path) {
   char directory[] = "/tmp/uagent-bench-XXXXXX";
   if (!mkdtemp(directory)) {

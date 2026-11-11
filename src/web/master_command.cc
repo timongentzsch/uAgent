@@ -22,7 +22,6 @@ namespace {
 constexpr size_t kRegularCommandBytes = KiB(64);
 }  // namespace
 
-// A receipt still pending asks the host whether its worker has answered.
 void Master::RefreshReceipt(Receipt& receipt, const std::string& request_id) {
   if (!receipt.worker_request.empty() &&
       JsonValue(receipt.outcome, "pending", false)) {
@@ -208,7 +207,6 @@ void Master::ManagementCommand(CommandCall& call) {
   call.error = JsonValue(call.outcome["result"], "error", "");
 }
 
-// A workspace's own: its name, and its end with everything in it.
 void Master::SpaceCommand(CommandCall& call) {
   call.outcome["result"] =
       host_.SpaceControl(call.command, call.device, call.error);

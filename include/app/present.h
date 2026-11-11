@@ -10,15 +10,12 @@
 #include "include/tools/tool.h"
 
 namespace uagent {
-// present(path): an artifact's folder or page (document, deck, design, design
-// system) is shown from the folder, where it stays live; any other file is
-// snapshotted into the session's asset store to open or download. In a
-// remote workspace its path policy is that of the forwarded read_path,
-// `remote_read`.
+// present(path): an artifact's folder or page is shown live from the folder;
+// any other file is snapshotted into the session's asset store. `remote_read`
+// supplies the path policy in a remote workspace.
 Tool PresentTool(const std::string& session_path,
                  const Tool* remote_read = nullptr);
-// write_file's `from`: copy a file attached to this conversation, read from
-// its own store, into the folder.
+// write_file's `from`: copies a file attached to this conversation.
 void CopyAttachments(std::vector<Tool>& tools, const std::string& session_path);
 }  // namespace uagent
 

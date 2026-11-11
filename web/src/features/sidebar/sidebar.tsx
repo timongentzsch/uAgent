@@ -46,7 +46,6 @@ import { useShortcuts } from "../../shared/shortcuts.ts";
 import { RowCheck, SelectionBar } from "../../shared/selection-bar.tsx";
 import "./sidebar.css";
 
-// Before the catalogue arrives, the list draws these (see <Placeholder>).
 const SAMPLE: Session[] = [
   "A conversation title",
   "Another title about this long",
@@ -58,8 +57,6 @@ const SAMPLE: Session[] = [
   updated: Date.now(),
 }));
 
-// What a row says of its conversation, at its right edge: it waits on you,
-// it failed, or it works (the LED breathes). An idle one says nothing.
 const STATES: Partial<
   Record<SessionState, { label: string; Icon?: typeof Inbox }>
 > = {
@@ -68,14 +65,11 @@ const STATES: Partial<
   working: { label: "Working" },
 };
 
-// A conversation and its agents at work (or waiting on you), listed beneath
-// it. A finished agent leaves the list: its report in the conversation opens
-// it, and search finds it.
+// A conversation and its agents at work; a finished agent leaves the list.
 type Entry = { item: Session; agents: Entry[] };
 
-// The list's places in its order, newest first, each with its
-// conversations. An agent whose parent is not listed is an ordinary row. A
-// workspace is a place whether or not anything is in it yet.
+// Places newest first. An agent whose parent is not listed is an ordinary
+// row; a workspace is a place whether or not anything is in it yet.
 function groupSessions(
   sessions: Session[],
   spaces: Space[] = [],
@@ -106,16 +100,13 @@ function groupSessions(
   return groups;
 }
 
-// The rows a conversation shows, in order: itself, then its agents at work.
 const rowsOf = ({ item, agents }: Entry): Session[] => [
   item,
   ...agents.flatMap(rowsOf),
 ];
 
-// The pinned conversations, folders and terminals in pin order, then the
-// other places under the word for their kind, workspaces first: one is
-// µAgent's to keep and remove, the other a directory of yours. A pinned
-// conversation or folder is listed once, among the pinned.
+// Pinned rows in pin order, then the other places by kind, workspaces
+// first. A pinned conversation or folder is listed once, among the pinned.
 type Place = [string, Entry[]];
 type Pinned = { entry: Entry } | { place: Place } | { terminal: TerminalInfo };
 
@@ -193,15 +184,12 @@ type SessionRowProps = {
   online: boolean;
   choose: (id: string) => void;
   menu: (session: Session) => ComponentChildren;
-  // Picked to act on with others; while picking, its checkbox shows.
   picked: boolean;
   selecting: boolean;
   pick: (id: string, event: MouseEvent) => boolean;
   toggle: (id: string) => void;
 };
 
-// One conversation in the list, on one line: its title and its state. The
-// time and the menu show while the row is pointed at or focused.
 function SessionRow({
   item,
   selected,
@@ -256,8 +244,6 @@ function SessionRow({
   );
 }
 
-// One folder terminal in the list, as a conversation is: its name and start
-// time, and the same menu on hover or focus.
 function TerminalRow({
   terminal,
   selected,
@@ -300,14 +286,10 @@ type SidebarProps = {
   navigate: (page: "chat" | "library" | "scheduled") => void;
   scheduledUnread: boolean;
   sessions: Session[];
-  // How many of them wait on a decision.
   needsYou: number;
   spaces: Space[];
-  // The pinned conversations, folders and terminals, in order.
   pins: Pin[];
-  // What can be done to a workspace: rename it, delete it.
   spaceMenu: (space: Space, conversations: number) => ComponentChildren;
-  // Conversations and workspaces picked to act on together, and the act.
   selection: SelectionApi;
   act: (
     action: "move" | "close" | "delete",
@@ -319,23 +301,16 @@ type SidebarProps = {
   choose: (id: string) => void;
   menu: (session: Session) => ComponentChildren;
   settings: () => void;
-  // Asks for a workspace's name or a folder's path, then starts there.
   create: (place: "workspace" | "folder") => void;
-  // A new conversation in a place, and the place's overview.
   start: (cwd: string) => void;
-  // A new conversation in the Scratch workspace, with no folder chosen.
   startScratch: () => void;
   overview: (cwd: string) => void;
-  // The place whose overview is open.
   shownPlace: string;
-  // The folders' terminals, the one shown, and opening one; a new one only
-  // while the host offers them.
   terminals?: TerminalInfo[] | null;
   shownTerminal?: string;
   terminalMenu: (terminal: TerminalInfo) => ComponentChildren;
   showTerminal: (terminal: TerminalInfo) => void;
   newTerminal?: (folder: string) => void;
-  // Search over every conversation, command and setting.
   search: () => void;
 };
 
@@ -374,17 +349,14 @@ function SidebarView({
   useFolding();
   const rows = useRef<HTMLElement>(null);
   useLongPress(rows, ".session-row, .place-head");
-  // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
   const all = drawing ? SAMPLE : sessions;
-  // Grouped again only when the list, the places or the search change, not
-  // for a selection, an unread mark or a fold.
+  // Not regrouped for a selection, an unread mark or a fold.
   const { top, kinds } = useMemo(
     () => arrange(all, drawing ? [] : spaces, online, pins, terminals || []),
     [all, drawing, spaces, online, pins, terminals],
   );
-  // What can be picked, in the order the list shows it: each workspace,
-  // then the conversations of each place that is open.
+  // In list order: a workspace itself, then the rows of a place not folded.
   const pickable = ([path, entries]: Place) => [
     ...(spaces.some((space) => space.path === path) ? [path] : []),
     ...(collapsed.has(placeKey(host, path))
@@ -441,7 +413,6 @@ function SidebarView({
         }
       : {},
   );
-  // How many conversations each place holds, whatever the search shows.
   const counts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of all)
@@ -463,7 +434,6 @@ function SidebarView({
       toggle={toggle}
     />
   );
-  // A conversation's rows: itself, then its agents at work beneath it.
   const conversation = ({ item, agents }: Entry) => (
     <Fragment key={item.id}>
       {row(item)}

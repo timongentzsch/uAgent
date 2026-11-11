@@ -25,22 +25,9 @@ constexpr const char* kProbeScript =
     "'loading':document.readyState,doc:String(performance.timeOrigin),"
     "sig:t.length+':'+h+':'+document.getElementsByTagName('*').length}})()";
 
-// The page, for a look (named `look`) or for reading. Both get its address,
-// title, how long its text is, and narrow, high-signal evidence of a bot
-// wall: an error status, a challenge title, a large visible challenge frame,
-// or a short page that asks for human verification. Advisory only; the agent
-// decides.
-//
-// A look also gets what can be acted on, numbered and kept on the page under
-// the look's name, for its last eight looks (`fresh` when it held none), so
-// an action can name one by look and number: in the document, its open
-// shadow roots and the frames of its own site. A field shows the start of
-// what it holds, except a secret one (a password, a one-time code, a card),
-// which says only whether it holds text; a control says when it is disabled,
-// required, expanded or not.
-//
-// Reading gets text from `offset`, or with `find` the lines that contain it
-// (from match `offset` on) and the links that do.
+// The page for a look or for reading: address, title, text length and
+// advisory evidence of a bot wall. A look also numbers what can be acted on,
+// kept on the page under the look's name; a secret field shows no value.
 std::string PageScript() {
   const std::string chars = std::to_string(kPageTextChars);
   return std::string(R"js(((offset, find, look) => {
@@ -204,9 +191,8 @@ json Runtime::PageTargets() {
   return pages;
 }
 
-// One short look after an action: follows the single tab it opened, lists
-// any others, and snapshots the document so the caller can wait for it to
-// settle without holding the service for the whole wait.
+// One short look after an action: follows the single tab it opened and
+// snapshots the document, so the caller can wait for it to settle.
 json Runtime::Probe() {
   json pages = PageTargets();
   if (pages.contains("error")) return pages;
@@ -291,9 +277,8 @@ json Runtime::Observe(bool image) {
   if (!viewport || width < 1 || width > 10000 || height < 1 || height > 10000) {
     return {{"error", "Chrome did not report its viewport"}};
   }
-  // Capture exactly the visible CSS viewport at one image pixel per CSS
-  // pixel, so screenshot coordinates are click coordinates. The clip is in
-  // device-independent pixels relative to the document.
+  // Exactly the visible CSS viewport at one image pixel per CSS pixel, so
+  // screenshot coordinates are click coordinates.
   double zoom = JsonValue(*viewport, "zoom", 1.0);
   if (zoom <= 0) zoom = 1;
   std::string picture;
@@ -410,9 +395,8 @@ void Logged(const std::string& event, const json& params,
   lines.push_back(Utf8Prefix(std::move(line), kLineBytes));
 }
 
-// Chrome replays what the page's console holds when its Runtime events are
-// turned on, so they are on only for this read: a page can notice them,
-// and a person's browser never has them on.
+// Chrome replays the console when Runtime events are turned on, so they are
+// on only for this read: a page can notice them.
 json Runtime::Console(const json& command) {
   std::vector<std::string> lines;
   logged_ = &lines;

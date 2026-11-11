@@ -82,7 +82,6 @@ test.describe("message layout", () => {
       page.getByRole("menuitem", { name: "Edit from here", exact: true }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
-    // Resizing the same conversation restores the wider layout.
     await page.setViewportSize({ width: 1440, height: 900 });
     await expect
       .poll(() =>
@@ -142,8 +141,7 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     release();
   }
   await expect(page.getByRole("heading", { name: "µAgent" })).toBeVisible();
-  // Desktop WebKit does not expose an iPhone's system inset or status-bar paint.
-  // Exercise our safe-area layout independently of that native rendering.
+  // Desktop WebKit exposes no iPhone system inset: the safe area is set here.
   await page.evaluate(() =>
     document.documentElement.style.setProperty("--safe-top", "47px"),
   );
@@ -167,7 +165,6 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     await expect(drawer).toBeVisible();
     const drawerBox = await drawer.boundingBox();
     expect(drawerBox.y).toBe(47);
-    // The drawer runs to the bottom edge; its content stays above the inset.
     expect(drawerBox.y + drawerBox.height).toBe(844);
     const footer = await drawer
       .locator("footer")
@@ -185,10 +182,8 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
       .click();
     await expect(drawer).toHaveCount(0);
   }
-  // The drawer lives in the shell and runs past it into the bottom inset:
-  // iOS scrolled the shell to reveal it on focus, and the whole interface
-  // stayed shifted up. Nothing may scroll the app's frame, whatever
-  // overflows it.
+  // iOS scrolls the shell to reveal a focused drawer that runs past it, and
+  // the interface stays shifted: nothing may scroll the app's frame.
   expect(
     await page.evaluate(() =>
       ["#app", ".shell"].map((selector) => {
@@ -217,8 +212,6 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
       insetRight: box.right - close.right - gutter,
     };
   });
-  // A full-screen sheet on a phone: from the safe top to the bottom edge
-  // (its own surface runs under the home indicator).
   expect(Math.abs(geometry.top - 47)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.bottom - 844)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.insetTop - geometry.insetRight)).toBeLessThanOrEqual(
@@ -283,8 +276,6 @@ test("fresh conversation reload keeps one stable loading state", async ({
   try {
     await page.goto(`/#session=${session.id}`);
     await sawCatalogue;
-    // One transcript placeholder through the catalogue and the snapshot:
-    // loading never restarts.
     const loader = page.locator(".conversation .placeholder .message").first();
     const status = page.locator(".conversation [role=status]", {
       hasText: "Loading conversation…",
@@ -373,8 +364,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   };
   try {
     await page.goto(`${fixture.origin}/#session=${session.id}`);
-    // The viewport never forbids zoom (WCAG 1.4.4); the shell itself
-    // keeps its own pan-only touch action.
+    // The viewport never forbids zoom (WCAG 1.4.4).
     expect(
       await page.locator('meta[name="viewport"]').getAttribute("content"),
     ).not.toMatch(/user-scalable=no|maximum-scale/);
@@ -387,7 +377,6 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
         element.style.setProperty("--safe-bottom-resting", "34px"),
       );
     await expect(page.locator("#app")).toHaveCSS("padding-bottom", "34px");
-    // Status above the input; activity and totals have separate rows below.
     expect((await page.locator(".composer").boundingBox()).height).toBeLessThan(
       200,
     );
@@ -481,7 +470,6 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       name: "Conversations",
       exact: true,
     });
-    // Search from the drawer stays above the keyboard.
     await drawer.getByRole("button", { name: "Search", exact: true }).tap();
     const search = page.getByRole("dialog", { name: "Search" });
     await input(search.getByRole("combobox"), "");
@@ -673,7 +661,6 @@ test.describe("composer rows", () => {
         };
       });
     const idle = await rows();
-    // Nothing under the input.
     expect(idle.status).toBe(0);
     expect(idle.below).toBe(0);
     await prompt.fill("Queue controls probe");
@@ -730,10 +717,8 @@ test.describe("phone header", () => {
       };
     });
     expect(geometry.ellipsized).toBe(true);
-    // One line of title, one of totals, inside the header.
     expect(geometry.totals.top).toBeGreaterThanOrEqual(geometry.title.bottom);
     expect(geometry.totals.bottom).toBeLessThanOrEqual(geometry.head.bottom);
-    // Nothing under the composer's controls while idle.
     await expect(page.locator(".composer .metrics")).toHaveCount(0);
     expect(
       await page

@@ -1,5 +1,3 @@
-/* Zoomable media: the content fits the surface at natural size, never
-   upscaled, and scales around the gesture. */
 .zoom-surface {
   position: relative;
   width: 100%;
@@ -26,7 +24,6 @@
   place-items: center;
   transform-origin: 0 0;
 }
-/* A plane: its content lies at its own size from the corner. */
 .zoom-surface[data-free] > .zoom-content {
   position: absolute;
   inset: 0 auto auto 0;
@@ -37,7 +34,6 @@
 .zoom-content[data-glide] {
   transition: transform var(--motion-slow) var(--ease-out);
 }
-/* − level + Fit, floating over the content like a document viewer's. */
 .zoom-controls {
   right: var(--space-4);
   bottom: var(--space-4);

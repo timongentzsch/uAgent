@@ -15,8 +15,6 @@ import { scratchSpace } from "../shared/limits.ts";
 import { SpaceMenu } from "./menus.tsx";
 import { collapsed, placeKey } from "../features/sidebar/folding.ts";
 
-// The places conversations start in: workspaces by name and folders by
-// path, the New dialog that asks for one, and starting a conversation there.
 export function usePlaces({
   catalogue,
   upsertSession,
@@ -43,7 +41,6 @@ export function usePlaces({
   const [newHost, setNewHost] = useState(host);
   const [folder, setFolder] = useState("");
   const [space, setSpace] = useState("");
-  // A workspace typed into the dialog, or a folder, starts a conversation.
   async function create(event: TargetedSubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -64,7 +61,6 @@ export function usePlaces({
     }
   }
   // One start at a time: a double click must not race two activations.
-  // With `text`, its first message is sent.
   const starting = useRef(false);
   const startConversation = useCallback(
     async (folder: string, space = "", text = "", targetHost = host) => {
@@ -79,7 +75,6 @@ export function usePlaces({
         );
         if (created.pending) return "";
         upsertSession(created.session);
-        // The new conversation is not behind a fold.
         collapsed.set(placeKey(targetHost, folderOf(created.session)), false);
         // Live before it is shown, so opening never flashes the saved state;
         // shown even if activating fails, with the failure reported.
@@ -98,7 +93,6 @@ export function usePlaces({
     },
     [upsertSession, choose, load, command, host],
   );
-  // Asks for the place's name or path, which starts a conversation there.
   const newPlace = useCallback(
     (place: "conversation" | "workspace" | "folder") => {
       setNewHost(place === "workspace" ? "" : host);
@@ -146,5 +140,4 @@ export function usePlaces({
   };
 }
 
-// What the New dialog shows and changes.
 export type Places = ReturnType<typeof usePlaces>;

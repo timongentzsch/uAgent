@@ -1,7 +1,5 @@
 import { Folder, Monitor, SlidersHorizontal, Smartphone } from "lucide-preact";
 
-// What a setting affects is where it is found: the four scopes, each one
-// row, with what it reaches said once over its page.
 export const SCOPES = [
   [
     "user",

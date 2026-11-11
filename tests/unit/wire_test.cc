@@ -366,8 +366,7 @@ TEST_CASE(TestWireStreams) {
 }
 
 // A search the provider runs is visible progress, not a round this agent owes
-// a result for. Both halves matter: the lifecycle has to reach a presenter,
-// and the search must never reach the tool loop.
+// a result for: it reaches a presenter and never the tool loop.
 TEST_CASE(TestWireStreamHostedSearch) {
   ChatResult result;
   std::map<int, ToolCall> calls;
@@ -516,9 +515,8 @@ TEST_CASE(TestWireStreamHostedSearch) {
         false);
 }
 
-// A tool the provider runs, defined in `hosted_tools`, is sent as written
-// with an agent's own tools, reported while it runs, and kept for replay;
-// its streamed input is never mistaken for a call to run here.
+// A tool the provider runs, defined in `hosted_tools`, is sent as written and
+// kept for replay; its streamed input is never a call to run here.
 TEST_CASE(TestWireHostedToolDefinitions) {
   Api api(RuntimeConfig{});
   api.model = "hosted-test";
@@ -623,7 +621,6 @@ TEST_CASE(TestWireHostedToolDefinitions) {
 
 // Usage and citation payloads are provider-controlled, and under
 // -fno-exceptions an operator[] chain through a scalar aborts the process.
-// Wrong-typed fields must decode into a sane result instead.
 TEST_CASE(TestWireStreamMalformedValues) {
   ChatResult responses_result;
   std::map<int, ToolCall> responses_calls;
@@ -686,8 +683,7 @@ TEST_CASE(TestWireStreamMalformedValues) {
        {"index", 1},
        {"content_block",
         {{"type", "text"}, {"text", ""}, {"citations", "not-an-array"}}}});
-  // A wrong-typed citations field is left alone; a scalar citation is
-  // dropped.
+  // A wrong-typed citations field is left alone; a scalar citation is dropped.
   anthropic_event({{"type", "content_block_delta"},
                    {"index", 1},
                    {"delta",

@@ -292,9 +292,8 @@ ProviderSetup ConfigureProvider(Api& api) {
     if (configured_context > 0) api.ctx_window = configured_context;
     route_metadata_validated = true;
   }
-  // Command-line/config suffixes are the most specific route policy. Apply
-  // them after a named route so they override its defaults without becoming
-  // part of the model ID sent over the active wire API.
+  // A suffix overrides a named route's defaults without becoming part of
+  // the model id sent over the wire.
   ApplySelectionPolicy(api, requested);
   if (requested.effort.empty() && !configured_effort.empty() &&
       SupportsReasoningEffort(api, configured_effort)) {

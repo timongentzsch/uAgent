@@ -68,11 +68,8 @@ def test_mcp_roots_continuation_preserves_arguments(root, home, *, binary):
 
 
 def test_mcp_image_reaches_the_model(root, home, *, binary):
-    """An MCP screenshot has to end up in the model's context, not just on disk.
-
-    A tool result is text-only, so the image travels as an attachment on the
-    next request instead.
-    """
+    """A tool result is text-only, so an MCP image reaches the model as an
+    attachment on the next request."""
     workspace = root / "mcp-image"
     workspace.mkdir()
     png = base64.b64encode(SMALL_PNG).decode()
@@ -109,7 +106,6 @@ def test_mcp_image_reaches_the_model(root, home, *, binary):
         ]
         got_image = any(p.get("type") == "image_url" for p in parts)
         saved = "mcp image saved" in tool_text and "attached" in tool_text
-        # the terminal display used to happen on every call and is now gone
         quiet = "displayed inline" not in tool_text
         return event({"content": "image-ok" if (got_image and saved and quiet) else "image-bad"})
 

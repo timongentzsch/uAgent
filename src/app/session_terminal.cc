@@ -34,7 +34,6 @@
 
 namespace uagent::session {
 namespace {
-// Output is drawn at most this often, however fast it arrives.
 constexpr auto kPaintInterval = std::chrono::milliseconds(16);
 }  // namespace
 
@@ -309,8 +308,7 @@ int Terminal::Detach(const std::vector<std::string>& files, int exit_code) {
 }
 
 namespace {
-// Once per home, before the first conversation: what to try and the keys
-// that are easy to miss.
+// Once per home, before the first conversation.
 void Welcome() {
   const std::string marker = UagentDir(kConfigDir) + "/welcomed";
   if (PathExists(marker)) return;
@@ -366,7 +364,6 @@ int TerminalMain(Options options) {
     draft = terminal.Carry();
     side_question = terminal.SideQuestion();
     detail = &terminal.Detail();
-    // The same session again is drawn anew.
     const bool redrawn = terminal.Next() == path;
     options.attach_paths.clear();
     if (result || terminal.Next().empty()) return result;

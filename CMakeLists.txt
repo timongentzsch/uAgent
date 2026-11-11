@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.21)
 project(uagent VERSION 1.9.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
-# Hash runtime inputs rather than HEAD: unpublished edits must not attach to
-# an older worker that happens to carry the same release version. Frontend
-# assets are deliberately absent so the normal and remote flavors agree.
+# The build id hashes the runtime's inputs, not HEAD, so an unpublished edit
+# never attaches to an older worker. Frontend assets stay out of it: the
+# normal and the remote flavor must agree.
 file(GLOB_RECURSE _runtime_inputs CONFIGURE_DEPENDS
      RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
      "${CMAKE_CURRENT_SOURCE_DIR}/src/*"
@@ -51,8 +51,6 @@ target_link_libraries(uagent_options INTERFACE CURL::libcurl Threads::Threads)
 target_compile_features(uagent_options INTERFACE cxx_std_20)
 target_compile_definitions(uagent_options INTERFACE UAGENT_VERSION="${PROJECT_VERSION}")
 if(_IS_GCC_CLANG)
-  # Narrowing and signedness are load-bearing here: every limit in the agent is
-  # int64_t arithmetic that ends up indexing or sizing something unsigned.
   target_compile_options(
     uagent_options INTERFACE -fno-exceptions -Wall -Wextra -Wpedantic
                              -Wconversion -Wsign-conversion -Wshadow
@@ -60,7 +58,7 @@ if(_IS_GCC_CLANG)
 endif()
 if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" AND
    CMAKE_CXX_COMPILER_VERSION VERSION_LESS 20)
-  # Xcode 16 ships C++20 stop_token/jthread behind this libc++ feature gate.
+  # Xcode 16 ships stop_token and jthread behind this libc++ gate.
   target_compile_options(uagent_options INTERFACE -fexperimental-library)
 endif()
 option(UAGENT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
@@ -68,8 +66,7 @@ if(UAGENT_WARNINGS_AS_ERRORS AND _IS_GCC_CLANG)
   target_compile_options(uagent_options INTERFACE -Werror)
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  # Only libc++'s std::mutex and lock types carry capability annotations (when
-  # asked to), so the analysis runs with Clang + libc++ and is skipped elsewhere.
+  # Only libc++ annotates std::mutex, so the analysis needs Clang with it.
   include(CheckCXXSourceCompiles)
   check_cxx_source_compiles(
     "#include <version>
@@ -126,16 +123,8 @@ if(UAGENT_BUILD_FUZZERS)
   target_link_options(uagent_options INTERFACE -fsanitize=address,undefined)
 endif()
 
-# Layered static libs mirror the event-spine dependency DAG:
-#   core_base (leaf: core/transport) <- api <- toolcore (tool
-#   vocabulary, attachments + provider catalog: no agent, tool, or app
-#   dependency)
-#   <- agent (turn loop, session persistence, supervision services:
-#   process/jobs/child_agent, file writes, memory store, observation
-#   records) <- tools (tool surface + mcp adapters, consuming agent
-#   services) <- app (app/ui/cli, the consumer shell).
-# Touching agent/ headers rebuilds agent+tools+app, not toolcore/api/core;
-# touching tools/ headers rebuilds tools+app only.
+# Static libraries in layers, each depending only on those before it:
+# core_base <- api <- toolcore <- agent <- tools <- app.
 add_library(
   uagent_core_base
   "${CMAKE_CURRENT_BINARY_DIR}/build_identity.cc"
@@ -314,9 +303,7 @@ add_library(
 target_link_libraries(uagent_app PUBLIC uagent_tools)
 
 add_executable(uagent src/main.cc)
-# The web UI is built, not checked in (`npm ci && npm run build` in web/, or
-# CI's web-dist artifact), and embedded with the browser appliance (Chrome
-# shown over noVNC) the web host runs.
+# The web UI is built by `npm run build` in web/, not checked in.
 option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
 include(cmake/embed_web.cmake)
 add_library(uagent_web src/web/master.cc
@@ -346,12 +333,7 @@ else()
   target_sources(uagent_web PRIVATE src/web/no_push.cc)
 endif()
 
-# `third_party/json.hpp` is 25k lines and reaches 82 of the ~90 translation
-# units through include/core/json.h. Measured on an M-series host it costs
-# 0.75s per TU over an empty one -- roughly a third of a clean build. It is
-# vendored and never changes, so a precompiled header is stable, needs no
-# source change, and takes about 20% off every TU that rebuilds. This does not
-# reduce rebuild fanout; it reduces what each of those rebuilds costs.
+# json.hpp reaches nearly every translation unit and never changes.
 set(UAGENT_PCH
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/json.hpp"
     <algorithm>
@@ -368,8 +350,7 @@ foreach(_uagent_lib IN LISTS UAGENT_LIBRARIES)
   target_precompile_headers(${_uagent_lib} PRIVATE ${UAGENT_PCH})
 endforeach()
 
-# Link-time optimization has to cover the libraries: main.cc is a few lines
-# and every code path lives in the layered static libs behind uagent_app.
+# The code lives in the static libraries, so LTO has to cover them.
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_ok OUTPUT _)
 if(ipo_ok)
@@ -423,20 +404,17 @@ if(BUILD_TESTING)
     target_sources(uagent_tests PRIVATE tests/unit/web_push_test.cc)
   endif()
   target_link_libraries(uagent_tests PRIVATE uagent_web)
-  # Its own PCH rather than REUSE_FROM: the test binary carries an extra -D,
-  # and a reused header has to have been built with the same command line.
+  # Not REUSE_FROM: the test binary is built with an extra -D.
   target_precompile_headers(uagent_tests PRIVATE ${UAGENT_PCH})
   target_compile_definitions(
     uagent_tests PRIVATE UAGENT_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME core COMMAND uagent_tests)
-  # About 20 s on a plain build: a case that never returns fails here, not
-  # at the job's limit.
+  # A case that never returns fails here, not at the job's limit.
   set_tests_properties(core PROPERTIES TIMEOUT 600)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   set(_groups runtime tools ui providers mcp agents sandbox web management)
   foreach(group IN LISTS _groups)
-    # By far the longest group (80 s of 190 s in all), so it alone decided
-    # how long a parallel run takes: dealt to three runners, and counted as three.
+    # The longest group by far: dealt to three runners.
     set(_runners)
     if(group STREQUAL "runtime")
       set(_runners -j3)
@@ -445,25 +423,16 @@ if(BUILD_TESTING)
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py
                      $<TARGET_FILE:uagent> --group ${group} ${_runners})
-    # A backstop, not the deadline. Every case inside the runner carries its
-    # own budget, scaled by UAGENT_TEST_TIMEOUT_SCALE, and that budget is what
-    # should fail -- it prints the captured terminal session and names the
-    # case. This ceiling is not scaled, so at the sanitizer legs' scale of 6 a
-    # single 30s case reached exactly 180s and ctest killed the runner first,
-    # reporting a timeout with an empty log. Set above the slowest real group
-    # (TSan runtime, ~5min) so the runner always wins the race.
+    # A backstop above the slowest group: a case's own budget must fail
+    # first, since only that names the case and prints its output.
     set_tests_properties(integration_${group} PROPERTIES TIMEOUT 900)
   endforeach()
   set_tests_properties(integration_runtime PROPERTIES PROCESSORS 3)
-  # Behavioral scoreboard: every scenario is scored and compared against the
-  # committed baseline, so a harness change that costs rounds, batching or
-  # answer quality fails here rather than being noticed later.
+  # Scores every scenario against the committed baseline.
   add_test(NAME behavior_eval
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/eval.py
                    $<TARGET_FILE:uagent> --check --timeout 30)
-  # Each scenario enforces its own subprocess deadline. Leave enough wrapper
-  # headroom for loaded hosted macOS runners to report that diagnostic.
   set_tests_properties(behavior_eval PROPERTIES TIMEOUT 120)
 endif()
 
@@ -471,7 +440,7 @@ option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)
 if(UAGENT_BUILD_BENCHMARKS)
   add_executable(uagent_bench benchmarks/bench_core.cc)
   target_link_libraries(uagent_bench PRIVATE uagent_app)
-  # Registered so the benchmark cannot silently stop compiling or running.
+  # Registered so the benchmark keeps compiling and running.
   if(BUILD_TESTING)
     add_test(NAME benchmarks COMMAND uagent_bench)
     set_tests_properties(benchmarks PROPERTIES TIMEOUT 180)
@@ -479,8 +448,7 @@ if(UAGENT_BUILD_BENCHMARKS)
 endif()
 
 if(UAGENT_BUILD_FUZZERS)
-  # Each is built from what it fuzzes and the base library, not from the
-  # whole application: two parsers do not need 150 translation units.
+  # Each is built from what it fuzzes and the base library only.
   add_executable(uagent_fuzz_sse tests/fuzz/fuzz_sse.cc)
   add_executable(uagent_fuzz_input_decoder tests/fuzz/fuzz_input_decoder.cc
                                            src/ui/input_decoder.cc)
@@ -496,18 +464,16 @@ install(
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills
   PATTERN ".*" EXCLUDE
   PATTERN "__pycache__" EXCLUDE)
-# The sheet engine and the page code that draws a sheet (web/scripts/
-# promote-dist.js): fetched by a sheet page, so installed and not embedded.
+# A sheet page fetches the engine and its drawing code: installed, not
+# embedded.
 install(DIRECTORY web/dist/share/sheet/
         DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/sheet OPTIONAL)
-# The architecture narrative is authored once; the package carries a copy so
-# the skill can answer design questions without a source checkout.
+# The skill answers design questions from this copy.
 install(
   FILES docs/ARCHITECTURE.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/uagent-config/references
   RENAME architecture.md)
-# The web UI's design tokens, which a person's own stylesheet overrides: the
-# skill carries them to read from.
+# The web UI's design tokens, for the skill to read.
 install(
   FILES web/src/shared/styles/tokens.css
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/uagent-config/references)
@@ -515,8 +481,7 @@ install(
 file(GLOB UAGENT_GUIDES CONFIGURE_DEPENDS docs/*.md)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
-# Keep the source-relative paths used by README and CONTRIBUTING valid in an
-# installed documentation tree.
+# README and CONTRIBUTING link to docs/ by relative path.
 install(FILES ${UAGENT_GUIDES} DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs)
 install(FILES web/dist/THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
 install(FILES third_party/cpp-httplib/LICENSE

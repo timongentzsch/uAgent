@@ -1,9 +1,8 @@
 import MarkdownIt from "markdown-it";
 import { nextFence } from "./markdown-split.ts";
 import { knownFile } from "./file-types.ts";
-// The Markdown renderer: markdown-it with the app's link and heading rules,
-// split into keyed top-level blocks so a streaming reply re-renders only its
-// tail. Loaded on demand through markdown-view.tsx.
+// markdown-it with the app's link and heading rules, split into keyed
+// top-level blocks so a streaming reply re-renders only its tail.
 
 const markdown = new MarkdownIt({ html: false, linkify: false, breaks: false });
 const safeURL = (url: string) =>
@@ -23,11 +22,9 @@ interface FileEnv {
   refs?: boolean;
 }
 
-// A path a message cites and the lines it names: `src/a.ts:12`,
-// `a.ts:12-20` (or with an en dash), `a.ts:12:5` (the column is dropped),
-// `a.ts#L12-L20`, or `src/` for a folder. It has to end in a file type the
-// app knows, name a line or end in a slash, so `ledger.summary`, `1.2.3`
-// and `application/json` stay code.
+// A cited path and its lines: `src/a.ts:12`, `a.ts:12-20`, `a.ts:12:5` (the
+// column is dropped), `a.ts#L12-L20`, or `src/`. It must end in a known file
+// type, name a line or end in a slash, so `1.2.3` stays code.
 const REFERENCE =
   /^((?:~|\.{1,2})?\/?(?:[\w.@+-]+\/)*[\w.@+-]*)(?::(\d+)(?:[-–](\d+))?(?::\d+)?|#L(\d+)(?:-L?(\d+))?)?$/;
 export function fileReference(text: string) {
@@ -44,7 +41,6 @@ function referenceOpen({ path, lines }: { path: string; lines?: string }) {
   const escape = markdown.utils.escapeHtml;
   return `<button type="button" class="file-ref" data-file="${escape(path)}"${lines ? ` data-lines="${lines}"` : ""}>`;
 }
-// The reference a link to a path is, where references are made.
 function referenceLink(env: unknown, href: string) {
   if (!(env as FileEnv)?.refs || (env as FileEnv).url) return undefined;
   if (!relative(href) && !/^\/(?!\/)/.test(href)) return undefined;
@@ -199,11 +195,9 @@ function plugins(text: string) {
   return wanted;
 }
 
-// Parse the complete document so references and container boundaries retain
-// markdown-it semantics, then render top-level token ranges independently.
-// Stable source-map keys let Preact retain every unaffected DOM subtree while
-// the unfinished streaming tail changes. `line` offsets the keys when `text`
-// is a later part of a longer document.
+// The complete document is parsed, so references and container boundaries
+// keep markdown-it semantics; top-level token ranges render independently
+// under stable source-map keys. `line` offsets the keys for a later part.
 export async function renderMarkdownBlocks(
   text: string,
   line = 0,
@@ -213,10 +207,9 @@ export async function renderMarkdownBlocks(
   return markdownBlocks(text, line, env);
 }
 
-// `env` carries link references between parts parsed separately (a long
-// streaming reply appends new blocks instead of re-parsing).
-// `plain` leaves code unhighlighted: a fence still being written would be
-// highlighted again on every frame, and is once it closes.
+// `env` carries link references between parts parsed separately. `plain`
+// leaves code unhighlighted: a fence still being written would be
+// highlighted again on every frame.
 export function markdownBlocks(
   text: string,
   line = 0,
@@ -267,7 +260,6 @@ const DELIMITER = /^[\s|:]*-[\s|:-]*$/;
 // Nothing but list, heading, quote or rule markers and setext underlines.
 const MARKERS = /^\s*(?:(?:[-=*_+#>]+|\d+[.)]?)\s*)+$/;
 
-// Whether the text ends inside a code fence that has not closed.
 export function endsInFence(text: string): boolean {
   let open = "";
   for (const line of text.split("\n")) open = nextFence(open, line);
@@ -275,14 +267,8 @@ export function endsInFence(text: string): boolean {
 }
 
 // Closes what a streaming reply has left open in its last block, for display
-// only, so it renders formatted instead of as raw syntax (the rules of
-// Vercel's remend): emphasis, strikethrough and inline code close; a half
-// link shows its text; a half image waits; `$$` closes while a single `$`
-// stays literal (prices). Open code fences need nothing: markdown-it already
-// runs them to the end. What is shown only ever grows, though a line can
-// change what the lines above it are (a table row, a setext underline): a
-// table line waits for its end, a table for its delimiter row, and a line of
-// bare markers for its first word.
+// only (the rules of Vercel's remend). What is shown only ever grows, so a
+// table line, a table without its delimiter row and bare markers wait.
 export function healTail(text: string): string {
   if (endsInFence(text)) return text;
   if ((text.match(/\$\$/g) || []).length % 2) return `${text}\n$$`;

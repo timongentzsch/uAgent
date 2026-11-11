@@ -14,9 +14,6 @@ std::vector<std::string> Candidates(const std::filesystem::path& root,
                                     bool& more);
 std::optional<std::filesystem::path> Resolve(const std::filesystem::path& root,
                                              const std::string& relative);
-std::string PreviewMime(const std::filesystem::path& path);
-std::string DeckPage(const std::filesystem::path& folder, int width,
-                     int height);
 // Only filesystem operations. The main retains HTTP authentication, preview
 // capabilities, CSP and rendering; both Local and remote use these handlers.
 json Request(const std::filesystem::path& root, const json& request);

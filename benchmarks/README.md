@@ -22,7 +22,7 @@ the other options.
 | `bench_core.cc` | Source of `uagent_bench`, built with `UAGENT_BUILD_BENCHMARKS=ON`; `--session PATH` measures a saved conversation in place of the built long one |
 | `scenarios/` | One declarative JSON file per evaluation scenario |
 | `baselines/` | Committed results: `hermetic.json` gates `eval.py` |
-| `results/`, `plot.py` | Dated measurement snapshots and reproducible size/encoding charts; Matplotlib is optional reporting tooling |
+| `results/`, `plot.py` | Dated measurement snapshots and the reproducible encoding chart; `charts.py` shares SVG layout and styling |
 
 ## Current measurements
 
@@ -72,7 +72,7 @@ python3 benchmarks/eval.py build/bench/uagent --check --report /tmp/eval.json
 python3 benchmarks/audit.py build/bench/uagent --json /tmp/audit.json
 for run in 1 2 3 4 5; do build/bench/uagent_bench > "/tmp/core-$run.txt"; done
 (cd web && npm run size)
-uv run --with matplotlib python benchmarks/plot.py benchmarks/results/2026-11-10.json
+python3 benchmarks/plot.py benchmarks/results/2026-11-10.json
 ```
 
 Build `web/dist` first as described in [Testing](../docs/TESTING.md#common-cases).
@@ -121,11 +121,6 @@ python3 benchmarks/compare_agents.py \
   --chart docs/images/comparison.svg
 ```
 
-The [2026-10-28 chart](../docs/images/footprint-2026-10-28.svg) is historical:
-it measured a local-only µAgent install, Codex CLI 0.165.0, omp 18.13.2 and
-Bun 1.4.4 (the pins at `9cdbb553`). Claude Code's installer version was not
-retained. Its values are not mixed into the new comparison.
-
 ### Method
 
 `compare_agents.py` measures each tool the same way, with runs alternating
@@ -152,7 +147,7 @@ Processes are attributed by PID: the started process, its descendants, and new
 detached processes started from the tool's executable. Idle memory varies
 between runs by tens of MB for the Node-based tools. Time to first screen ends
 at the first half second without output, so a startup animation (omp's logo)
-counts in full; the historical comparison chart leaves it out.
+counts in full.
 
 ### In a container
 

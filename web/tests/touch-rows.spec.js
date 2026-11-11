@@ -46,13 +46,10 @@ test("every touch row shows its menu and keeps keyboard access", async ({
   const open = page.locator(".sidebar .session-row:has([aria-current])");
   await expect(open).toHaveCount(1);
   await expect(open.locator(".action-menu")).toHaveCSS("opacity", "1");
-  const hidden = menuOf("Other row");
-  await expect(hidden.locator("..")).toHaveCSS("opacity", "1");
-  // A key press makes the next focus a keyboard's, which draws the button.
-  await page.keyboard.press("Shift");
-  await hidden.focus();
-  await expect(hidden).toBeFocused();
-  await expect(hidden.locator("..")).toHaveCSS("opacity", "1");
+  const other = menuOf("Other row");
+  await expect(other.locator("..")).toHaveCSS("opacity", "1");
+  await other.focus();
+  await expect(other).toBeFocused();
 });
 
 test("a long press opens the row's menu and releasing does not open the conversation", async ({

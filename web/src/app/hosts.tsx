@@ -2,9 +2,9 @@ import {
   HostsContext,
   type Source,
   type HostDestination,
+  type HostView,
   type SavedHost,
 } from "../state/sources.ts";
-export { useHosts } from "../state/sources.ts";
 import { type ComponentType } from "preact";
 import {
   useCallback,
@@ -17,19 +17,17 @@ import {
 import { ApiContext, hostApi, localApi } from "../state/api.ts";
 import { useHost, type HostState } from "../state/use-host.ts";
 import type { JSONValue } from "../shared/types.ts";
-import {
-  hostFromURL,
-  selectedFromURL,
-  writeSelection,
-} from "../shared/navigation.ts";
+import { hostFromURL } from "../shared/navigation.ts";
+import { hostsPollMs } from "../shared/limits.ts";
 import { stored, useStored } from "../shared/storage.ts";
+import { storageKeys } from "../shared/storage-keys.ts";
 import { useLatest } from "../shared/use-latest.ts";
 
-const saved = stored<SavedHost[]>("uagent-hosts", [], undefined, {
+const saved = stored<SavedHost[]>(storageKeys.hosts, [], undefined, {
   kept: (hosts) =>
     hosts.map((host) => ({ ...host, phase: "disconnected", error: "" })),
 });
-export type ResultHandler = (value: JSONValue, inspect: boolean) => void;
+type ResultHandler = (value: JSONValue, inspect: boolean) => void;
 export interface HostAppProps {
   host: HostState;
   bindResult: (handler: ResultHandler) => () => void;
@@ -59,58 +57,12 @@ export default function HostsShell({
   const [active, setActive] = useState(hostFromURL);
   const [destination, setDestination] = useState<HostDestination | null>(null);
   const gatewayOnline = state.online;
-  // Keep filtered catalogue arrays stable while the composer changes its draft.
-  const scopes = useMemo(
-    () =>
-      new Map(
-        ["", ...hosts.map((host) => host.id)].map((id) => [
-          id,
-          {
-            listed: state.listed.filter(
-              (session) => (session.host || "") === id,
-            ),
-            catalogue: {
-              ...state.catalogue,
-              sessions: state.catalogue.sessions.filter(
-                (session) => (session.host || "") === id,
-              ),
-              spaces: id ? [] : state.catalogue.spaces,
-              pins: state.catalogue.pins?.filter(
-                (pin) => (pin.host || "") === id,
-              ),
-              terminals: state.catalogue.terminals?.filter(
-                (terminal) => (terminal.host || "") === id,
-              ),
-            },
-          },
-        ]),
-      ),
-    [hosts, state.listed, state.catalogue],
-  );
-  const scoped = useCallback(
-    (id: string): HostState => ({ ...state, ...scopes.get(id) }),
-    [state, scopes],
-  );
-  // Sidebar consumers need navigation metadata and stable actions, not drafts.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only publish navigation changes; the transient state object also carries composer drafts.
-  const navigation = useMemo(
-    () => state,
-    [
-      state.listed,
-      state.catalogue,
-      state.online,
-      state.connection,
-      state.unread,
-      state.authenticated,
-      state.selected,
-      state.notifications,
-    ],
-  );
+  // A device that signed out forgets the hosts it listed.
   useEffect(() => {
-    const changed = () => {
-      setDestination(null);
-      setActive(hostFromURL());
-    };
+    if (state.authenticated === false) setHosts([]);
+  }, [state.authenticated]);
+  useEffect(() => {
+    const changed = () => setActive(hostFromURL());
     addEventListener("hashchange", changed);
     addEventListener("popstate", changed);
     return () => {
@@ -138,7 +90,7 @@ export default function HostsShell({
       } catch {
         /* Local's stream owns the gateway connection status. */
       }
-      if (!abort.signal.aborted) timer = setTimeout(read, 2000);
+      if (!abort.signal.aborted) timer = setTimeout(read, hostsPollMs);
     };
     read();
     return () => {
@@ -162,16 +114,7 @@ export default function HostsShell({
     [],
   );
   const open = useCallback(
-    (
-      id: string,
-      session = "",
-      place = "",
-      view: {
-        terminal?: string;
-        settings?: string;
-        create?: "conversation" | "folder";
-      } = {},
-    ) => {
+    (id: string, session = "", place = "", view: HostView = {}) => {
       // Sessions belong to the main catalogue, including notification links
       // that carry only a session id.
       const sessionOwner = catalogue.current.find(
@@ -183,69 +126,84 @@ export default function HostsShell({
         id &&
         hosts.find((host) => host.id === id)?.phase === "disconnected"
       )
-        void action("connect", id).catch((error) => state.report(error));
-      writeSelection(session, false, id);
-      if (place) {
-        const params = new URLSearchParams(location.hash.slice(1));
-        params.set("place", place);
-        history.replaceState(history.state, "", `#${params}`);
-      }
+        void action("connect", id).catch(state.report);
+      // Selected at once: the address may be written later, under a layer.
+      state.setSelected(session, id);
       setDestination({ id, session, place, ...view });
       setActive(id);
     },
-    [hosts, action, state.report, gatewayOnline],
+    [hosts, action, state.report, state.setSelected, gatewayOnline],
   );
-  const sources = useMemo<Source[]>(
-    () => [
+  // Keep filtered catalogue arrays stable while the composer changes its draft.
+  const sources = useMemo<Source[]>(() => {
+    const scope = (id: string) => ({
+      listed: state.listed.filter((session) => (session.host || "") === id),
+      catalogue: {
+        ...state.catalogue,
+        sessions: state.catalogue.sessions.filter(
+          (session) => (session.host || "") === id,
+        ),
+        spaces: id ? [] : state.catalogue.spaces,
+        pins: state.catalogue.pins?.filter((pin) => (pin.host || "") === id),
+        terminals: state.catalogue.terminals?.filter(
+          (terminal) => (terminal.host || "") === id,
+        ),
+      },
+    });
+    return [
       {
         id: "",
         name: "Local",
         address: location.host,
-        phase: navigation.connection,
+        phase: state.connection,
         error: "",
-        state: { ...navigation, ...scopes.get("") },
+        state: scope(""),
       },
       ...hosts.map((host) => ({
         ...host,
-        state: { ...navigation, ...scopes.get(host.id) },
+        name: host.address,
+        state: scope(host.id),
       })),
-    ],
-    [hosts, navigation, scopes],
-  );
-  const linkedId = selectedFromURL();
+    ];
+  }, [hosts, state.listed, state.catalogue, state.connection]);
+  // The open conversation's host is the active one, whatever was asked for.
   const linkedSession = state.catalogue.sessions.find(
-    (session) => session.id === linkedId,
+    (session) => session.id === state.selected,
   );
   const owner = linkedSession ? linkedSession.host || "" : active;
-  const selected = sources.some((source) => source.id === owner) ? owner : "";
+  const source = sources.find((item) => item.id === owner) || sources[0];
   // Cold notification links may lack a host. Preserve their decision target
   // while correcting the URL once the main catalogue identifies the session.
   useLayoutEffect(() => {
-    if (!linkedSession || !sources.some((source) => source.id === owner))
-      return;
+    if (!linkedSession || source.id !== owner) return;
     setActive(owner);
     const params = new URLSearchParams(location.hash.slice(1));
+    // An address still being written carries its host itself.
+    if (
+      params.get("session") !== linkedSession.id ||
+      (params.get("host") || "") === owner
+    )
+      return;
     if (owner) params.set("host", owner);
     else params.delete("host");
-    if (params.toString() !== location.hash.slice(1))
-      history.replaceState(history.state, "", `#${params}`);
-  }, [linkedSession, owner, sources]);
+    history.replaceState(history.state, "", `#${params}`);
+  }, [linkedSession, owner, source.id]);
   const context = useMemo(
     () => ({
       sources,
-      active: selected,
+      active: source.id,
       gatewayOnline,
       open,
       action,
       destination,
     }),
-    [sources, selected, gatewayOnline, open, action, destination],
+    [sources, source.id, gatewayOnline, open, action, destination],
   );
   return (
     <HostsContext.Provider value={context}>
-      <ApiContext.Provider value={hostApi(selected)}>
+      <ApiContext.Provider value={hostApi(source.id)}>
         <App
-          host={scoped(selected)}
+          host={{ ...state, ...source.state }}
           bindResult={bindResult}
           reading={setReading}
         />

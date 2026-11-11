@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "include/app/bootstrap.h"
-#include "include/app/execution.h"
 #include "include/app/folder_overview.h"
 #include "include/app/self_description.h"
 #include "include/app/session_host.h"
@@ -566,25 +565,20 @@ void Master::RegisterApiRoutes() {
               [this](const Request& request, Response& response) {
                 Search(request, response);
               });
+  // A host answers for its folders, before any conversation is in one, from
+  // one execution context of its own.
+  const auto browse = [this](const std::string& host, const char* op,
+                             const std::string& path) {
+    return RemoteCall(remotes_->Target(host, "~", HashHex("folder-browser")),
+                      {{"op", op}, {"path", path}});
+  };
   // Browse directories before a conversation has been created.
   server_.Get(
-      "/api/folders", [this](const Request& request, Response& response) {
+      "/api/folders", [browse](const Request& request, Response& response) {
         const std::string host = request.get_param_value("host");
         const std::string path = request.get_param_value("path");
-        json result;
-        if (host.empty()) {
-          result = workspace_files::Folders(path);
-        } else {
-          const json target =
-              remotes_->Target(host, "~", HashHex("folder-browser"));
-          if (target.is_null()) {
-            Error(response,
-                  "Host is disconnected. Choose Connect or Reconnect.", 503);
-            return;
-          }
-          execution::Client remote(execution::TargetFromJson(target));
-          result = remote.Call({{"op", "folders"}, {"path", path}});
-        }
+        const json result = host.empty() ? workspace_files::Folders(path)
+                                         : browse(host, "folders", path);
         if (result.contains("error")) {
           Error(response, JsonValue(result, "error", "Folder unavailable"),
                 JsonValue(result, "status", 503));
@@ -593,20 +587,12 @@ void Master::RegisterApiRoutes() {
         }
       });
   // A folder at a glance, for its overview: spend, changes and git.
-  server_.Get("/api/folder", [this](const Request& request,
-                                    Response& response) {
+  server_.Get("/api/folder", [browse](const Request& request,
+                                      Response& response) {
     const std::string host = request.get_param_value("host");
     if (!host.empty()) {
       const std::string path = request.get_param_value("path");
-      const json target =
-          remotes_->Target(host, path, HashHex("folder:" + path));
-      if (target.is_null()) {
-        Error(response, "Host is disconnected. Choose Connect or Reconnect.",
-              503);
-        return;
-      }
-      execution::Client remote(execution::TargetFromJson(target));
-      json facts = remote.Call({{"op", "folder"}});
+      json facts = browse(host, "folder", path);
       if (facts.contains("error")) {
         Error(response, JsonValue(facts, "error", "Remote unavailable"), 503);
         return;
@@ -862,7 +848,7 @@ int MasterMain(const WebOptions& options, char** argv) {
           return 2;
         }
         if (port >= 1024 && port <= 65535 && OpaqueId(secret)) {
-          httplib::Client client("http://127.0.0.1:" + std::to_string(port));
+          httplib::Client client("127.0.0.1", port);
           client.set_connection_timeout(1);
           client.set_read_timeout(1);
           auto response =

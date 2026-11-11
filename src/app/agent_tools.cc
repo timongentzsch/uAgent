@@ -150,7 +150,6 @@ std::string Start(const std::string& own, const Launch& launch,
                          {"executable", target.executable},
                          {"client", target.client},
                          {"auth", target.auth},
-                         {"sandbox", target.sandbox},
                          {"runtime", target.runtime},
                          {"cwd", target.cwd}};
   }
@@ -280,7 +279,7 @@ ToolResult StartAgents(const Api& api,
   }
   // Plan mode only reads, and so do the agents it starts.
   if (CurrentApprovalMode() == ApprovalMode::kPlan) launch.edits = "none";
-  if (launch.edits == "worktree" && Workspace().Remote()) {
+  if (launch.edits == "worktree" && RemoteWorkspace()) {
     return ToolFailure(
         ToolErrorCode::kUnavailable,
         "Remote worktree agents are unavailable; use edits folder or none.");
@@ -477,25 +476,19 @@ ToolResult Report(const SessionInfo& info) {
   });
 }
 
-// What it changed, from the host's git, never a model-run shell.
+// What it changed, from the git of the host it works on, never a model-run
+// shell.
 ToolResult Diff(const SessionInfo& info) {
-  if (!info.host.empty()) {
-    if (info.host != Workspace().host || info.cwd != Workspace().path) {
-      return Unavailable("Open the remote conversation to inspect its files.");
-    }
-    const ToolResult result = execution::DecodeResult(WorkspaceRequest(
-        {{"op", "run"},
-         {"tool", "run"},
-         {"args",
-          {{"command",
-            "git -c core.hooksPath=/dev/null -c core.fsmonitor=false diff "
-            "--no-ext-diff --no-textconv --stat --patch HEAD"},
-           {"description", "Inspect changes"},
-           {"yield_ms", 10000}}}}));
-    return result;
+  CapturedProcess diff;
+  if (info.host.empty()) {
+    diff = WorkTreeDiff(info.cwd);
+  } else if (info.host != Workspace().host || info.cwd != Workspace().path) {
+    return Unavailable("Open the remote conversation to inspect its files.");
+  } else {
+    const json remote = WorkspaceRequest({{"op", "diff"}});
+    diff = {JsonValue(remote, "status", -1), JsonValue(remote, "output", ""),
+            JsonValue(remote, "error", "")};
   }
-  auto diff = HostGit(info.cwd, {"diff", "--no-ext-diff", "--no-textconv",
-                                 "--stat", "--patch", "HEAD"});
   if (!diff.Ok()) {
     return ToolFailure(ToolErrorCode::kProcessFailed,
                        Utf8Prefix(diff.error, 1024));

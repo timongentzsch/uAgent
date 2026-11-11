@@ -150,6 +150,13 @@ TEST_CASE(TestPermissionReview) {
   static_cast<Endpoint&>(api) = second;
   CHECK(ResolveReviewRoute(api, {first}, "").route.name == "second");
 
+  // A free setup never silently falls back to a paid reviewer. An explicit
+  // reviewer remains the user's choice.
+  api.options["free_only"] = true;
+  CHECK(!ResolveReviewRoute(api, {first}, "").none.empty());
+  CHECK(ResolveReviewRoute(api, {first}, "first/judge-1").route.model ==
+        "judge-1");
+
   // A path argument outside the folder is what the model never judges.
   const std::string root = CanonicalCwd();
   CHECK(!PathOutsideFolder({{"command", "ls"}}, root));
@@ -163,6 +170,28 @@ TEST_CASE(TestPermissionReview) {
       CHECK(!PathOutsideFolder({{"path", writable + "/scratch.py"}}, root));
     }
   }
+}
+
+// A remote path tool's subject names where its gateway resolved the path
+// (execution.cc), so a remembered rule still covers the file's folder.
+TEST_CASE(TestRemotePathToolRemembersItsFolder) {
+  const std::string root = "/remote/project";
+  Tool tool;
+  tool.name = "write_file";
+  tool.approval_subject = [](const json& args) {
+    return json{
+        {"path", args["path"]},
+        {"resolved", "/remote/project/" + args["path"].get<std::string>()}};
+  };
+  const PermissionRule rule =
+      SuggestRule(tool, {{"path", "src/a.cc"}}, root, true);
+  CHECK(rule.match == "./src/");
+  CHECK(RuleCovers(rule, tool, {{"path", "src/b.cc"}}, root, true));
+  CHECK(!RuleCovers(rule, tool, {{"path", "docs/b.md"}}, root, true));
+  // A subject that names no path stays the exact thing approved.
+  tool.approval_subject = [](const json&) { return json{{"origin", "x"}}; };
+  CHECK(SuggestRule(tool, {{"path", "src/a.cc"}}, root, true).match ==
+        R"({"origin":"x"})");
 }
 
 }  // namespace uagent

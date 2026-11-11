@@ -31,6 +31,9 @@ struct Endpoint {
   // objects of `hosted_tools`); an agent's requests there carry them.
   json hosted_tools = json::array();
 
+  // A free-only OpenRouter preset never enables billable hosted extras.
+  bool FreeOnly() const { return JsonValue(options, "free_only", false); }
+
   std::string Option(const char* key) const {
     return JsonValue(options, key, "");
   }

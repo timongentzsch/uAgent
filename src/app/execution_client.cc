@@ -9,7 +9,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/activity_supervisor.h"
 #include "include/agent/session_store.h"
 #include "include/app/asset_store.h"
 #include "include/app/execution.h"
@@ -24,7 +23,6 @@
 #include "include/core/strings.h"
 #include "include/core/workspace.h"
 #include "include/media/attachments.h"
-#include "include/tools/registry.h"
 #include "src/app/execution_internal.h"
 
 namespace uagent::execution {
@@ -39,37 +37,24 @@ json Unavailable() {
 }  // namespace
 struct Client::Impl {
   Target target;
-  std::string socket;
+  // The preset in effect when the client is made, an agent's own included:
+  // never one a launch names.
+  const std::string sandbox = StringSetting(Cfg("UAGENT_SANDBOX"));
+  std::string socket, remote_socket;
   std::mutex mutex;
   json opened;
   std::string completion_request, error;
   explicit Impl(Target value) : target(std::move(value)) {
-    if (target.sandbox.empty()) {
-      target.sandbox = StringSetting(Cfg("UAGENT_SANDBOX"));
-    }
     socket = RuntimeDir() + "/e-" +
-             HashHex(target.client + target.runtime + target.sandbox) + ".sock";
+             HashHex(target.client + target.runtime + sandbox) + ".sock";
   }
   std::vector<std::string> Ssh() const {
-    return {"ssh",
-            "-S",
-            target.control,
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "StrictHostKeyChecking=yes",
-            "-o",
-            "ForwardAgent=no",
-            "-o",
-            "SendEnv=-*",
-            "-o",
-            "ConnectTimeout=10",
-            "-o",
-            "ControlMaster=no",
-            target.address};
+    return SshCommand(target.control, target.address);
   }
-  json Exchange(const json& request, const ToolContext* context = nullptr) {
+  json Exchange(const json& request, const ToolContext* context = nullptr,
+                bool* unsent = nullptr) {
     Fd fd = ConnectUnix(socket);
+    if (unsent) *unsent = !fd;
     json authenticated = request;
     authenticated["auth"] = target.auth;
     if (!fd || !Send(fd.Get(), authenticated)) return json();
@@ -113,9 +98,9 @@ struct Client::Impl {
     launch.push_back(target.executable + " --execution-start " +
                      ShellQuote(target.client) + " " +
                      ShellQuote(target.runtime) + " " + ShellQuote(target.cwd));
-    const auto process = SshRun(
-        launch, 15,
-        JsonDump({{"auth", target.auth}, {"sandbox", target.sandbox}}) + "\n");
+    const auto process =
+        SshRun(launch, 15,
+               JsonDump({{"auth", target.auth}, {"sandbox", sandbox}}) + "\n");
     if (!process.Ok()) {
       error =
           JsonValue(json::parse(process.output, nullptr, false), "error", "");
@@ -128,6 +113,7 @@ struct Client::Impl {
         remote.find_first_of(":\n\r") != std::string::npos) {
       return false;
     }
+    remote_socket = remote;
     auto cancel = Ssh();
     cancel.insert(cancel.begin() + 1,
                   {"-O", "cancel", "-L", socket + ":" + remote});
@@ -143,11 +129,31 @@ Target TargetFromJson(const json& v) {
   return {JsonValue(v, "address", ""),    JsonValue(v, "control", ""),
           JsonValue(v, "executable", ""), JsonValue(v, "client", ""),
           JsonValue(v, "runtime", ""),    JsonValue(v, "cwd", ""),
-          JsonValue(v, "auth", ""),       JsonValue(v, "sandbox", "")};
+          JsonValue(v, "auth", "")};
 }
 Client::Client(Target target)
     : impl_(std::make_unique<Impl>(std::move(target))) {}
 Client::~Client() = default;
+void Client::Release() {
+  std::lock_guard lock(impl_->mutex);
+  if (impl_->remote_socket.empty()) {
+    impl_->remote_socket =
+        JsonValue(impl_->Exchange({{"op", "ping"}}), "socket", "");
+  }
+  if (!impl_->remote_socket.empty()) {
+    auto cancel = impl_->Ssh();
+    cancel.insert(
+        cancel.begin() + 1,
+        {"-O", "cancel", "-L", impl_->socket + ":" + impl_->remote_socket});
+    (void)impl_->SshRun(cancel, 5);
+  }
+  unlink(impl_->socket.c_str());
+  // Held while it goes, so no attach of another process is under way.
+  FileLease lease;
+  std::string ignored;
+  const std::string held = impl_->socket + ".lock";
+  if (lease.Acquire(held, ignored)) unlink(held.c_str());
+}
 void SetClient(std::shared_ptr<Client> value) {
   current = std::move(value);
   SetWorkspaceRequest([](const json& request) {
@@ -181,7 +187,7 @@ json Client::Call(json request, const ToolContext* context) {
       (op == "files" && JsonValue(request, "mode", "") == "write") ||
       (op == "instructions" && JsonValue(request, "action", "") == "write");
   if (run) {
-    if (!request.contains("id")) request["id"] = RandomToken(16);
+    if (!completion) request["id"] = RandomToken(16);
     if (context) {
       request["call_id"] = context->call_id;
       request["turn_id"] = context->turn_id;
@@ -189,20 +195,25 @@ json Client::Call(json request, const ToolContext* context) {
       request["timeout_s"] = context->RemainingSeconds(300);
     }
   }
-  json result;
   // A new viewer is safe to attach only after its forward is live. A stale
   // socket left by a disconnected SSH master cannot have accepted this attach.
   if (op == "terminal" && JsonValue(request, "action", "") == "attach" &&
       !impl_->Attach()) {
     return impl_->Failure();
   }
-  {
-    if (access(impl_->socket.c_str(), F_OK) != 0 &&
-        (op == "activities" || !impl_->Attach())) {
-      return impl_->Failure();
-    }
+  // The activity poll only observes: it never opens a connection itself.
+  const bool passive = op == "activities";
+  if (access(impl_->socket.c_str(), F_OK) != 0 &&
+      (passive || !impl_->Attach())) {
+    return impl_->Failure();
   }
-  result = impl_->Exchange(request, context);
+  bool unsent = false;
+  json result = impl_->Exchange(request, context, &unsent);
+  // A refused connect cannot have delivered a mutation. Once Send starts,
+  // recovery must use the receipt, even if only part of the frame was sent.
+  if (unsent && !passive && impl_->Attach()) {
+    result = impl_->Exchange(request, context);
+  }
   auto received = [&](json value) {
     if (completion) {
       std::lock_guard lock(impl_->mutex);
@@ -214,8 +225,7 @@ json Client::Call(json request, const ToolContext* context) {
     return received(std::move(result));
   }
   if (!run) {
-    if (op == "activities") return Unavailable();
-    if (!impl_->Attach()) return Unavailable();
+    if (passive || !impl_->Attach()) return Unavailable();
     const json retried = impl_->Exchange(request, context);
     return retried.is_null() ? Unavailable() : retried;
   }
@@ -238,7 +248,7 @@ json Client::Call(json request, const ToolContext* context) {
   return Unavailable();
 }
 bool Client::Open(std::string& error) {
-  impl_->opened = Call({{"op", "open"}, {"sandbox", impl_->target.sandbox}});
+  impl_->opened = Call({{"op", "open"}, {"sandbox", impl_->sandbox}});
   error = JsonValue(impl_->opened, "error", "");
   return error.empty() && JsonArray(impl_->opened, "tools");
 }
@@ -247,11 +257,10 @@ Target Client::ChildTarget(const std::string& runtime) const {
   target.runtime = runtime;
   return target;
 }
-std::vector<Tool> Client::Tools(const std::string& session_path) {
+std::vector<Tool> Client::Tools(const std::string& session_path,
+                                const std::vector<Tool>& tools) {
   // Only pure presentation hints are kept from the built-in definitions. Every
   // filesystem-dependent hook is replaced, including validation and approval.
-  static ActivitySupervisor unused;
-  std::vector<Tool> tools = BuiltinTools(unused, impl_->target.cwd, nullptr);
   const json* descriptions = JsonArray(impl_->opened, "tools");
   std::vector<Tool> forwarded;
   if (!descriptions) return forwarded;
@@ -320,7 +329,8 @@ std::vector<Tool> Client::Tools(const std::string& session_path) {
       return JsonValue(value.value("scope", json::object()), "outside", true);
     };
     tool.approval_class = [check](const json& args) {
-      return JsonValue(check(args), "approval", 2) == 2
+      const int mandatory = static_cast<int>(ApprovalClass::kMandatoryHuman);
+      return JsonValue(check(args), "approval", mandatory) == mandatory
                  ? ApprovalClass::kMandatoryHuman
                  : ApprovalClass::kNone;
     };

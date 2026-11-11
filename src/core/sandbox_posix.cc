@@ -275,7 +275,7 @@ namespace {
 
 // A configured path may start with ~/. Relative paths otherwise are the
 // caller's to refuse or resolve.
-std::string ExpandHome(std::string path) {
+std::string ExpandSandboxHome(std::string path) {
   const std::string home = UserHome();
   if (path.starts_with("~/") && !home.empty()) path = home + path.substr(1);
   return path;
@@ -319,7 +319,7 @@ void CollectReads(SandboxInputs* inputs) {
   }
   for (const std::string& raw :
        SplitPathList(StringSetting(Cfg("UAGENT_SANDBOX_READ")))) {
-    open.push_back(canonical(ExpandHome(raw)));
+    open.push_back(canonical(ExpandSandboxHome(raw)));
   }
   for (char** entry = ProcessEnvironment(); entry && *entry; ++entry) {
     const std::string_view text(*entry);
@@ -602,26 +602,15 @@ const char* MechanismName() {
 }  // namespace
 
 const SandboxStatus& SandboxRuntime() {
-  if (Workspace().Remote()) {
+  if (RemoteWorkspace()) {
     // Immutable once per mode, exactly like the local policy cache. Failure
     // refuses rather than describing the main's unrelated sandbox.
-    auto remote = [] {
+    static const SandboxStatus kUnavailable = [] {
       SandboxStatus status;
       status.mode = SandboxMode::kRefused;
       status.reason = "Remote sandbox is unavailable.";
-      const json answer = WorkspaceRequest({{"op", "sandbox"}});
-      const json value =
-          json::parse(JsonValue(answer, "inheritance", ""), nullptr, false);
-      const int mode = JsonValue(value, "mode", -1);
-      if (mode >= 0 && mode <= 3 &&
-          SandboxPolicyFromJson(value.value("policy", json()),
-                                &status.policy)) {
-        status.mode = static_cast<SandboxMode>(mode);
-        status.reason = JsonValue(value, "reason", "");
-        status.preset = JsonValue(value, "preset", "");
-      }
       return status;
-    };
+    }();
     static std::mutex mutex;
     static std::map<ApprovalMode, SandboxStatus> cache;
     std::lock_guard lock(mutex);
@@ -629,13 +618,19 @@ const SandboxStatus& SandboxRuntime() {
     if (const auto found = cache.find(mode); found != cache.end()) {
       return found->second;
     }
-    SandboxStatus answer = remote();
-    if (answer.reason != "Remote sandbox is unavailable.") {
-      return cache.emplace(mode, std::move(answer)).first->second;
+    const json value = json::parse(
+        JsonValue(WorkspaceRequest({{"op", "sandbox"}}), "inheritance", ""),
+        nullptr, false);
+    const int reported = JsonValue(value, "mode", -1);
+    SandboxStatus status;
+    if (reported < 0 || reported > static_cast<int>(SandboxMode::kRefused) ||
+        !SandboxPolicyFromJson(value.value("policy", json()), &status.policy)) {
+      return kUnavailable;
     }
-    static thread_local SandboxStatus refused;
-    refused = std::move(answer);
-    return refused;
+    status.mode = static_cast<SandboxMode>(reported);
+    status.reason = JsonValue(value, "reason", "");
+    status.preset = JsonValue(value, "preset", "");
+    return cache.emplace(mode, std::move(status)).first->second;
   }
   static const ConfiguredSandbox kConfigured = BuildStatus();
   // Each composed on first use, once and thread-safely, like the one above.
@@ -662,7 +657,7 @@ std::string SandboxInheritance() {
 }
 
 json SandboxDiagnosticJson() {
-  if (Workspace().Remote()) {
+  if (RemoteWorkspace()) {
     return WorkspaceRequest({{"op", "sandbox"}})
         .value("diagnostic", json::object());
   }
@@ -782,7 +777,7 @@ std::vector<std::string> CandidateHiddenPaths() {
   // A listed path may start with ~/. Relative paths name nothing: they would
   // resolve against whatever folder the session happens to be in.
   auto absolute = [](const std::string& raw) {
-    const std::string path = ExpandHome(raw);
+    const std::string path = ExpandSandboxHome(raw);
     return path.empty() || path.front() != '/'
                ? std::string()
                : CanonicalAccessPath(path).string();
@@ -792,11 +787,13 @@ std::vector<std::string> CandidateHiddenPaths() {
   // settings hold the API keys.
   std::vector<std::string> candidates = {browser, GlobalBase() + "/web",
                                          GlobalBase() + "/" + kConfigDir};
+  // A gateway's socket and lease, and the account's own uAgent. Its state
+  // stays readable: a result names the output it spilled there.
   if (!ExecutionStateDirectory().empty()) {
-    candidates.push_back(std::filesystem::path(ExecutionStateDirectory())
-                             .parent_path()
-                             .parent_path()
-                             .string());
+    const auto gateway =
+        std::filesystem::path(ExecutionStateDirectory()).parent_path();
+    candidates.push_back((gateway / "socket").string());
+    candidates.push_back((gateway / "owner").string());
     if (!home.empty()) candidates.push_back(home + "/" + kWorkspaceDir);
   }
   if (!home.empty()) {

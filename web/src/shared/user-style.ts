@@ -8,11 +8,11 @@ import { routes } from "../state/api.ts";
 let sheet: HTMLStyleElement | undefined;
 let revision = 0;
 
-export async function refreshUserStyle(path = routes.userStyle) {
+export async function refreshUserStyle() {
   const requested = ++revision;
   let css: string;
   try {
-    const response = await fetch(path, { cache: "no-cache" });
+    const response = await fetch(routes.userStyle, { cache: "no-cache" });
     if (!response.ok) return;
     css = await response.text();
   } catch {

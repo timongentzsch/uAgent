@@ -43,6 +43,8 @@ bool PathExists(const std::filesystem::path& path);
 std::string UserHome();
 
 std::string Tilde(const std::string& path);
+// Resolve a user-entered directory, including ~ and an empty home path.
+std::string ExpandHome(std::string path);
 
 // ~/.uagent. Falls back to a per-uid temp directory when the account has no
 // home, never to a folder-controlled location.

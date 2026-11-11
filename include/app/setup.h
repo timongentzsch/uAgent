@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_SETUP_H_
 #define UAGENT_INCLUDE_APP_SETUP_H_
-// `uagent setup`: asks for the OpenRouter, OpenAI and Anthropic keys and a
+// `uagent setup`: offers free OpenRouter models or existing provider keys and a
 // default model, and saves them for all conversations, so a first start
 // needs no environment.
 
@@ -14,7 +14,8 @@ namespace uagent {
 
 // The keys to save; an empty one leaves what is saved as it is.
 struct SetupKeys {
-  std::string openrouter = "", openai = "", anthropic = "";
+  std::string openrouter = "", openai = "", anthropic = "",
+              openrouter_free = "";
 };
 
 // Writes `keys` into one scope, each into a variable that a provider of that

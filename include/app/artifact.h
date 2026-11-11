@@ -11,8 +11,10 @@
 
 namespace uagent {
 // artifact(path): snapshot a folder file into the session's asset store so
-// the person can open or download it from the conversation.
-Tool ArtifactTool(const std::string& session_path);
+// the person can open or download it from the conversation. In a remote
+// workspace its path policy is that of the forwarded read_path, `remote_read`.
+Tool ArtifactTool(const std::string& session_path,
+                  const Tool* remote_read = nullptr);
 // write_file's `from`: copy a file attached to this conversation, read from
 // its own store, into the folder.
 void CopyAttachments(std::vector<Tool>& tools, const std::string& session_path);

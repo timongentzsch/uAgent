@@ -24,10 +24,6 @@
 namespace uagent {
 
 std::filesystem::path ProjectRoot(const std::filesystem::path& cwd) {
-  if (Workspace().Remote()) {
-    return JsonValue(WorkspaceRequest({{"op", "instructions"}}), "root",
-                     Workspace().path);
-  }
   for (auto path = cwd;; path = path.parent_path()) {
     std::error_code ec;
     if (std::filesystem::exists(path / ".git", ec)) return path;
@@ -37,9 +33,6 @@ std::filesystem::path ProjectRoot(const std::filesystem::path& cwd) {
 }
 
 bool InGitRepository(const std::filesystem::path& dir) {
-  if (Workspace().Remote()) {
-    return JsonValue(WorkspaceRequest({{"op", "instructions"}}), "git", false);
-  }
   std::error_code ec;
   return std::filesystem::exists(ProjectRoot(dir) / ".git", ec);
 }
@@ -58,7 +51,7 @@ std::filesystem::path InstructionFileIn(const std::filesystem::path& dir) {
 
 std::filesystem::path InstructionPath(bool project,
                                       const std::filesystem::path& cwd) {
-  if (project && Workspace().Remote()) {
+  if (project && RemoteWorkspace()) {
     return JsonValue(
         WorkspaceRequest({{"op", "instructions"}, {"action", "path"}}), "path",
         Workspace().path + "/AGENTS.md");
@@ -73,7 +66,7 @@ bool ParseInstructionScope(const std::string& scope, bool& project) {
 }
 
 std::string ReadInstructionFile(const std::filesystem::path& path) {
-  if (Workspace().Remote() && !SandboxPathWithin(path.string(), GlobalBase())) {
+  if (RemoteWorkspace() && !SandboxPathWithin(path.string(), GlobalBase())) {
     std::string bytes, error;
     ReadWorkspaceFile(path.string(), ProjectDocBytes(), bytes, error);
     return bytes;
@@ -86,7 +79,7 @@ ProjectInstructions LoadProjectInstructions(const std::filesystem::path& cwd,
   namespace fs = std::filesystem;
   ProjectInstructions loaded;
   if (max_bytes == 0) return loaded;
-  if (Workspace().Remote()) {
+  if (RemoteWorkspace()) {
     const auto user = InstructionPath(false, cwd);
     loaded.text = Utf8Prefix(ReadInstructionFile(user), max_bytes);
     if (!loaded.text.empty()) loaded.sources.push_back(user.string());
@@ -154,7 +147,7 @@ ProjectInstructions LoadProjectInstructions(const std::filesystem::path& cwd,
 }
 
 json InstructionFiles(const std::filesystem::path& cwd) {
-  if (Workspace().Remote()) {
+  if (RemoteWorkspace()) {
     json result =
         WorkspaceRequest({{"op", "instructions"}, {"action", "files"}});
     if (json* files = result.contains("files") && result["files"].is_array()
@@ -229,7 +222,7 @@ std::string WriteEditedFile(const std::filesystem::path& path,
 std::string WriteInstructionFile(bool project, const std::filesystem::path& cwd,
                                  const std::string& text,
                                  const std::optional<std::string>& base) {
-  if (project && Workspace().Remote()) {
+  if (project && RemoteWorkspace()) {
     json request = {
         {"op", "instructions"}, {"action", "write"}, {"text", text}};
     if (base) request["base"] = *base;

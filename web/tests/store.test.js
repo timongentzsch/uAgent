@@ -520,12 +520,12 @@ test("host clients share the main receipt stream without retargeting delayed com
       { title: "B", request_id: "second-request" },
     );
     assert.equal(
-      a.receiveOutcome({ request_id: "second-request", accepted: true }),
+      receiveOutcome({ request_id: "second-request", accepted: true }),
       true,
     );
     await second;
     assert.equal(
-      b.receiveOutcome({ request_id: "same-request", accepted: true }),
+      receiveOutcome({ request_id: "same-request", accepted: true }),
       true,
     );
     await first;
@@ -534,13 +534,13 @@ test("host clients share the main receipt stream without retargeting delayed com
       cwd: "/project",
       request_id: "later",
     });
-    a.receiveOutcome({ request_id: "later", accepted: true });
+    receiveOutcome({ request_id: "later", accepted: true });
     await delayed;
     const remote = b.command("create", null, {
       cwd: "/project",
       request_id: "remote",
     });
-    a.receiveOutcome({ request_id: "remote", accepted: true });
+    receiveOutcome({ request_id: "remote", accepted: true });
     await remote;
     assert.deepEqual(
       requests.map(({ path }) => path),

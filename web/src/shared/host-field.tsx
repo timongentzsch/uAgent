@@ -1,37 +1,41 @@
 import { useHosts } from "../state/sources.ts";
-import { Select } from "./ui.tsx";
+import { connectionLabels } from "./connection-status.tsx";
+import { Field, Select } from "./ui.tsx";
 
-// Execution is chosen with the action, rather than as an application mode.
+// Execution is chosen with the action, rather than as an application mode;
+// with no remote host there is nothing to choose.
 export default function HostField({
+  label = "Host",
   value,
   change,
   localOnly = false,
 }: {
+  label?: string;
   value: string;
   change: (host: string) => void;
   localOnly?: boolean;
 }) {
-  const hosts = useHosts();
+  const { sources } = useHosts();
+  if (sources.length < 2) return null;
   return (
-    <label>
-      Host
+    <Field label={label}>
       <Select
         value={value}
         onChange={(event) => change(event.currentTarget.value)}
       >
-        {(
-          hosts?.sources || [{ id: "", name: "Local", phase: "connected" }]
-        ).map((source) => (
+        {sources.map((source) => (
           <option
             key={source.id}
             value={source.id}
             disabled={localOnly && !!source.id}
           >
             {source.name}
-            {source.phase === "connected" ? "" : ` · ${source.phase}`}
+            {source.phase === "connected"
+              ? ""
+              : ` · ${connectionLabels[source.phase]}`}
           </option>
         ))}
       </Select>
-    </label>
+    </Field>
   );
 }

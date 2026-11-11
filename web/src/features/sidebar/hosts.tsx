@@ -1,5 +1,10 @@
 import { type ComponentChildren } from "preact";
 import { useMemo, useState } from "preact/hooks";
+import { useAction } from "../../shared/use-action.ts";
+import {
+  connectionLabels,
+  StatusLed,
+} from "../../shared/connection-status.tsx";
 import { ChevronDown, ChevronRight, Plus } from "lucide-preact";
 import { ApiContext, hostApi } from "../../state/api.ts";
 import { HostContext, useHostContext } from "../../state/host-context.ts";
@@ -50,12 +55,12 @@ export function Fold({
   );
 }
 function sourcePins(source: Source) {
-  const catalogue = source.state?.catalogue;
+  const { listed, catalogue } = source.state;
   return livePins(
-    catalogue?.pins,
-    source.state?.listed || [],
-    catalogue?.spaces,
-    catalogue?.terminals || [],
+    catalogue.pins,
+    listed,
+    catalogue.spaces,
+    catalogue.terminals || [],
   );
 }
 function SourcePin({
@@ -68,17 +73,9 @@ function SourcePin({
   pins: Pin[];
 }) {
   const current = useHostContext();
-  if (!source.state) return null;
   return (
     <ApiContext.Provider value={hostApi(source.id)}>
-      <HostContext.Provider
-        value={{
-          ...current,
-          online: source.state.online,
-          pins,
-          report: source.state.report,
-        }}
-      >
+      <HostContext.Provider value={{ ...current, pins }}>
         <Menu label={`Menu for ${pin.id}`}>
           <PinItem pin={pin} />
         </Menu>
@@ -95,7 +92,7 @@ function Shortcut({
   session: Session;
   pins?: Pin[];
 }) {
-  const hosts = useHosts()!;
+  const hosts = useHosts();
   return (
     <div class="session-row entry">
       <Button
@@ -118,12 +115,12 @@ function Shortcut({
 export function SharedShortcuts({
   activePins,
 }: {
-  activePins: ComponentChildren;
+  activePins: ComponentChildren[];
 }) {
   const hosts = useHosts();
   const sources = useMemo(
     () =>
-      (hosts?.sources || []).map((source) => {
+      hosts.sources.map((source) => {
         const pins = sourcePins(source);
         return {
           source,
@@ -133,13 +130,15 @@ export function SharedShortcuts({
           ),
         };
       }),
-    [hosts?.sources],
+    [hosts.sources],
   );
-  if (!hosts) return activePins;
-  const pinned = sources.filter(({ pins }) => pins.length);
+  // The active host's pins are the rows the list itself draws.
+  const pinned = sources.filter(({ source, pins }) =>
+    source.id === hosts.active ? activePins.length : pins.length,
+  );
   const recent = sources
     .flatMap(({ source, sessions }) =>
-      (source.state?.listed || [])
+      source.state.listed
         .filter((session) => !session.parent && !sessions.has(session.id))
         .map((session) => ({ source, session })),
     )
@@ -152,12 +151,12 @@ export function SharedShortcuts({
           {pinned.map(({ source, pins }) => (
             <div key={source.id}>
               {hosts.sources.length > 1 && (
-                <p class="source-label caption muted">{source.name}</p>
+                <p class="source-label caption">{source.name}</p>
               )}
               {source.id === hosts.active
                 ? activePins
                 : pins.map((pin) => {
-                    const session = source.state?.listed.find(
+                    const session = source.state.listed.find(
                       (item) => item.id === pin.id,
                     );
                     if (pin.kind === "session")
@@ -169,7 +168,7 @@ export function SharedShortcuts({
                           pins={pins}
                         />
                       ) : null;
-                    const terminal = source.state?.catalogue.terminals?.find(
+                    const terminal = source.state.catalogue.terminals?.find(
                       (item) => item.id === pin.id,
                     );
                     return (
@@ -204,7 +203,7 @@ export function SharedShortcuts({
             <div key={`${source.id}:${session.id}`}>
               <Shortcut source={source} session={session} />
               {hosts.sources.length > 1 && (
-                <span class="recent-source caption muted">
+                <span class="recent-source caption">
                   {source.name} · {folderName(folderOf(session))}
                 </span>
               )}
@@ -216,11 +215,10 @@ export function SharedShortcuts({
   );
 }
 export function OtherPlaces({ source }: { source: Source }) {
-  const hosts = useHosts()!;
-  const state = source.state;
-  const sessions = state?.listed || [];
-  const spaces = state?.catalogue.spaces || [];
-  const pins = state?.catalogue.pins || [];
+  const hosts = useHosts();
+  const { listed: sessions, catalogue } = source.state;
+  const spaces = catalogue.spaces || [];
+  const pins = catalogue.pins || [];
   const paths = [
     ...new Set([
       ...spaces.map((space) => space.path),
@@ -310,14 +308,10 @@ export function HostList() {
   const [detail, setDetail] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [address, setAddress] = useState("");
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
-  if (!hosts) return null;
+  const { run, busy, error, setError } = useAction();
   const source = hosts.sources.find((source) => source.id === detail);
-  const run = async (action: string, id?: string) => {
-    setBusy(true);
-    setError(null);
-    try {
+  const act = (action: string, id?: string) =>
+    run(async () => {
       const added = await hosts.action(
         action,
         id,
@@ -328,21 +322,9 @@ export function HostList() {
         setAddress("");
         setDetail(added);
       }
-    } catch (error) {
-      setError(error);
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   const status = (source: Source) =>
-    !hosts.gatewayOnline
-      ? "Unavailable"
-      : {
-          connected: "Connected",
-          connecting: "Connecting…",
-          reconnecting: "Reconnecting…",
-          disconnected: "Disconnected",
-        }[source.phase];
+    hosts.gatewayOnline ? connectionLabels[source.phase] : "Unavailable";
   return (
     <div class="host-list">
       <Fold name="$hosts" label="Remote hosts">
@@ -359,13 +341,12 @@ export function HostList() {
                   setDetail(source.id);
                 }}
               >
-                <span
-                  class="host-square"
-                  data-connected={
-                    (hosts.gatewayOnline && source.phase === "connected") ||
-                    undefined
+                <StatusLed
+                  state={
+                    hosts.gatewayOnline && source.phase === "connected"
+                      ? "active"
+                      : "idle"
                   }
-                  aria-hidden="true"
                 />
                 <span class="truncate">{source.name}</span>
                 <span class="host-phase caption">
@@ -402,7 +383,7 @@ export function HostList() {
             <form
               onSubmit={(event) => {
                 event.preventDefault();
-                void run("add");
+                void act("add");
               }}
             >
               <label>
@@ -435,19 +416,19 @@ export function HostList() {
               {!hosts.gatewayOnline && (
                 <p>The serving host is unavailable. Reconnect to it first.</p>
               )}
-              {source!.error && <p class="host-error small">{source!.error}</p>}
+              {source!.error && <p class="plain small">{source!.error}</p>}
               {source!.phase === "connected" && hosts.gatewayOnline && (
                 <HostLatency key={source!.id} id={source!.id} />
               )}
               <div class="host-actions">
                 <Button
                   disabled={
+                    busy ||
                     !hosts.gatewayOnline ||
                     source!.phase === "connected" ||
                     source!.phase === "connecting"
                   }
-                  busy={busy}
-                  onClick={() => void run("reconnect", source!.id)}
+                  onClick={() => void act("reconnect", source!.id)}
                 >
                   Reconnect
                 </Button>
@@ -457,7 +438,7 @@ export function HostList() {
                     !hosts.gatewayOnline ||
                     source!.phase === "disconnected"
                   }
-                  onClick={() => void run("disconnect", source!.id)}
+                  onClick={() => void act("disconnect", source!.id)}
                 >
                   Disconnect
                 </Button>

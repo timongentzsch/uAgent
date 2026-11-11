@@ -370,7 +370,7 @@ function SidebarView({
 }: SidebarProps) {
   const { online, connection, refresh } = useHostContext();
   const hosts = useHosts();
-  const host = hosts?.active || "";
+  const host = hosts.active;
   useFolding();
   const rows = useRef<HTMLElement>(null);
   useLongPress(rows, ".session-row, .place-head");
@@ -610,24 +610,21 @@ function SidebarView({
   );
   const list = [
     <SharedShortcuts key="shortcuts" activePins={activePins} />,
-    ...(hosts
-      ? hosts.sources.map((source) =>
-          source.id === host ? (
-            <Fold key={source.id} name={`$host:${host}`} label={source.name}>
-              {kinds.map(([kind, shown]) => group(kind, shown.map(place)))}
-              {!kinds.some(([, shown]) => shown.length) &&
-                !activePins.length && (
-                  <EmptyState>
-                    No conversations yet. New starts one in a workspace or
-                    folder on this host.
-                  </EmptyState>
-                )}
-            </Fold>
-          ) : (
-            <OtherPlaces key={source.id} source={source} />
-          ),
-        )
-      : kinds.map(([kind, shown]) => group(kind, shown.map(place)))),
+    ...hosts.sources.map((source) =>
+      source.id === host ? (
+        <Fold key={source.id} name={`$host:${host}`} label={source.name}>
+          {kinds.map(([kind, shown]) => group(kind, shown.map(place)))}
+          {!kinds.some(([, shown]) => shown.length) && !activePins.length && (
+            <EmptyState>
+              No conversations yet. New starts one in a workspace or folder on
+              this host.
+            </EmptyState>
+          )}
+        </Fold>
+      ) : (
+        <OtherPlaces key={source.id} source={source} />
+      ),
+    ),
   ];
   return (
     <>
@@ -722,14 +719,7 @@ function SidebarView({
         data-selecting={selection.selecting || undefined}
       >
         <Placeholder label="Loading conversations…" when={drawing}>
-          {list.length ? (
-            list
-          ) : (
-            <EmptyState>
-              No conversations yet. New starts one in a workspace or in a folder
-              on your host.
-            </EmptyState>
-          )}
+          {list}
         </Placeholder>
       </nav>
       <HostList />

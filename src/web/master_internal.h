@@ -7,7 +7,8 @@
 // (pairing and devices), master_command.cc (commands and receipts),
 // master_stream.cc (snapshots, events, uploads, assets), master_files.cc
 // (the files in a conversation's folder), master_library.cc (the Library's
-// listing) and master_terminal.cc (terminals).
+// listing), master_terminal.cc (terminals), master_remote.cc (remote hosts)
+// and master_remote_terminal.cc (their terminals).
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #define CPPHTTPLIB_NO_DEFAULT_USER_AGENT
@@ -20,7 +21,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <filesystem>
+#include <functional>
 #include <list>
 #include <map>
 #include <memory>
@@ -57,10 +58,24 @@ extern std::atomic<int> shutdown_fd;
 void Reply(Response& response, const json& value, int status = 200);
 void Error(Response& response, const std::string& error, int status = 400);
 bool EqualSecret(std::string_view a, std::string_view b);
+inline constexpr char kHostDisconnected[] =
+    "Host is disconnected. Choose Connect or Reconnect.";
+// `request` answered by the remote execution context `target` names, or the
+// error of a disconnected host, which has none.
+json RemoteCall(const json& target, json request);
 // A file's bytes under a policy that lets none of it act on this origin:
 // shown in the browser when `inline_view`, else saved as `name`.
 void ServeFile(Response& response, std::string bytes, const std::string& mime,
                const std::string& name, bool inline_view);
+
+// Serves one viewer of a shell over its socket until either side ends; the
+// output that ended it says whether the shell did.
+TerminalOutput RelayTerminal(
+    httplib::ws::WebSocket& socket,
+    const std::function<std::optional<TerminalOutput>()>& read,
+    const std::function<bool(const std::string&)>& write,
+    const std::function<bool(uint16_t, uint16_t)>& resize,
+    const std::function<void()>& wake);
 
 // Browser instances "0" to "4", each watched by at most one viewer.
 inline constexpr size_t kViewerInstances = 5;
@@ -104,6 +119,9 @@ class Master {
   void Events(const Request&, Response&);
   void Upload(const Request&, Response&, const httplib::ContentReader&);
   void AssetRead(const Request&, Response&);
+  // A files operation on a conversation's folder, on the host it is on.
+  json WorkspaceFiles(const WorkspaceIdentity& workspace,
+                      const std::string& session, json operation);
   void Files(const Request&, Response&);
   void FileWrite(const Request&, Response&);
   // A conversation's folder, read only, for sandboxed pages that carry no
@@ -112,7 +130,7 @@ class Master {
   // The preview address of a session's folder, minted once; empty when
   // the session is unknown.
   std::string PreviewBase(const std::string& id);
-  void Picture(const Request&, Response&, const std::filesystem::path& root);
+  void Picture(const Request&, Response&, const WorkspaceIdentity& workspace);
   void Preview(const Request&, Response&);
   void Library(const Request&, Response&);
   void LibraryDelete(const Request&, Response&);
@@ -180,10 +198,16 @@ class Master {
   void RestartHost(CommandCall& call);
   void ConfigCommand(CommandCall& call);
   void TerminalCommand(CommandCall& call);
+  // A remote host's shells; false when the command or socket names none, so
+  // it is a local one.
   bool RemoteTerminalCommand(CommandCall& call);
   bool RemoteTerminalSocket(const std::string& id,
                             httplib::ws::WebSocket& socket);
+  // The folder shells saved before a restart.
   void LoadRemoteTerminals();
+  // Ends a remote shell and drops its record, even with its host out of
+  // reach; with `unviewed`, only a page's shell no socket ever showed.
+  void ForgetRemoteTerminal(const std::string& id, bool unviewed = false);
   void SessionCommand(CommandCall& call);
   json BrowserControl(const json& command, const std::string& device,
                       const std::string& request_id, std::string& error);

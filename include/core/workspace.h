@@ -14,6 +14,8 @@ struct WorkspaceIdentity {
   std::string Key() const;
 };
 WorkspaceIdentity Workspace();
+// Whether this process works on another host; no path is resolved to ask.
+bool RemoteWorkspace();
 void SetWorkspaceRequest(std::function<json(const json&)> request);
 json WorkspaceRequest(const json& request);
 bool ReadWorkspaceFile(const std::string& path, size_t limit,

@@ -32,6 +32,8 @@ LaunchPaths PlanLaunch(const std::string& project, bool worktree,
 // session could write, so repository config never makes git run a command:
 // no hooks, fsmonitor, external diff or textconv.
 CapturedProcess HostGit(const std::string& dir, std::vector<std::string> args);
+// What `dir`'s work tree changed against HEAD, as a patch with its summary.
+CapturedProcess WorkTreeDiff(const std::string& dir);
 
 // Creates the detached worktree `cwd` at the folder's HEAD. Returns the
 // error, or empty on success.

@@ -122,14 +122,15 @@ one debug trace. Benchmarks are trend signals, not gates.
    and turn the `## Unreleased` heading in `CHANGELOG.md` into
    `## <version>`.
 2. Merge it and wait for CI on master to pass. It builds and uploads the
-   release archives and the web bundle, which are kept for 7 days.
+   release archives with their remote bundle and the web bundle, which are
+   kept for 7 days.
 3. Tag that commit and push the tag:
    `git tag v<version> && git push origin v<version>`.
 
 The `Release` workflow (`.github/workflows/release.yml`) does not rebuild. It
-finds the passing master run for the tag's commit, downloads its `release-*`
-and `web-dist` artifacts, checks that their names carry the tag's version,
-signs `SHA256SUMS` with cosign, attests the files and publishes the GitHub
-release. If the commit has no passing master run or the artifacts expired, it
-first runs the full `ci.yml` for the tag. Merge, wait and tag within 7 days to
-keep the fast path.
+finds the passing master run for the tag's commit, downloads its
+`release-complete` and `web-dist` artifacts, checks that their names carry
+the tag's version, signs `SHA256SUMS` with cosign, attests the files and
+publishes the GitHub release. If the commit has no passing master run or the
+artifacts expired, it first runs the full `ci.yml` for the tag. Merge, wait
+and tag within 7 days to keep the fast path.

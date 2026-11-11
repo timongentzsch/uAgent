@@ -19,9 +19,11 @@
 #include "include/agent/node.h"
 #include "include/agent/transcript.h"
 #include "include/app/agent_tools.h"
+#include "include/app/launch.h"
 #include "include/app/uagent_tool.h"
 #include "include/core/defaults.h"
 #include "include/core/runtime_config.h"
+#include "include/core/workspace.h"
 #include "include/tools/ask.h"
 #include "include/tools/browser.h"
 #include "include/tools/registry.h"
@@ -490,6 +492,46 @@ TEST_CASE(TestScheduleTool) {
   const json list = {{"action", "list"}};
   CHECK(json::parse(tool.run(list, ToolContext{}).output)["tasks"].empty());
   SetApprovalMode(before);
+}
+
+// What an agent on another host changed comes from that host's git through
+// its gateway, and reaches the model as a local diff does: quoted as data and
+// cut to size.
+TEST_CASE(TestRemoteAgentDiffIsQuotedData) {
+  TestWorkspace workspace("remote-agent-diff");
+  const std::string folder = "/remote/project";
+  const std::filesystem::path own = HistoryPath(folder, "parent", "host");
+  const std::filesystem::path agent = own.parent_path() / "agent-a.json";
+  ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", own.c_str());
+  std::filesystem::create_directories(own.parent_path());
+  const json header = {{"format", kSessionFormat},
+                       {"cwd", folder},
+                       {"host", "host"},
+                       {"model", ""},
+                       {"session_id", ""},
+                       {"turns", 0},
+                       {"title", "a"}};
+  std::ofstream(own) << header << "\n";
+  std::ofstream(agent) << header << "\n";
+  std::vector<Tool> tools;
+  const Api api(RuntimeConfig{});
+  AddAgentTools(tools, api, [] { return std::string(); });
+  json asked;
+  SetWorkspace({"host", folder});
+  SetWorkspaceRequest([&](const json& request) {
+    asked = request;
+    return json{{"status", 0}, {"output", std::string(KiB(64), 'x')}};
+  });
+  const ToolResult diff = FindTool(tools, "agents")
+                              ->run({{"action", "read"},
+                                     {"part", "diff"},
+                                     {"id", SessionIdFor(agent.string())}},
+                                    ToolContext{});
+  SetWorkspace({});
+  SetWorkspaceRequest({});
+  CHECK(JsonValue(asked, "op", "") == "diff");
+  CHECK(diff.Ok() && diff.output.starts_with("[data from session "));
+  CHECK(diff.output.ends_with("[truncated]") && diff.output.size() < KiB(17));
 }
 
 }  // namespace uagent

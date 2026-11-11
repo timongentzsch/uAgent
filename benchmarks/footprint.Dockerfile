@@ -36,5 +36,5 @@ RUN mkdir codex && curl -fsSL "https://github.com/openai/codex/releases/download
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
 RUN mkdir omp && cd omp && ~/.bun/bin/bun add "@oh-my-pi/pi-coding-agent@${OMP_VERSION}"
 ENV PATH=/home/bench/.local/bin:/home/bench/.bun/bin:$PATH
-COPY benchmarks/compare_agents.py benchmarks/footprint-run.sh /opt/bench/
+COPY benchmarks/compare_agents.py benchmarks/charts.py benchmarks/footprint-run.sh /opt/bench/
 ENTRYPOINT ["bash", "/opt/bench/footprint-run.sh"]

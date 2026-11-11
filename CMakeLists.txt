@@ -1,29 +1,29 @@
 cmake_minimum_required(VERSION 3.21)
-project(uagent VERSION 1.8.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
+project(uagent VERSION 1.9.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 # Hash runtime inputs rather than HEAD: unpublished edits must not attach to
 # an older worker that happens to carry the same release version. Frontend
 # assets are deliberately absent so the normal and remote flavors agree.
 file(GLOB_RECURSE _runtime_inputs CONFIGURE_DEPENDS
+     RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
      "${CMAKE_CURRENT_SOURCE_DIR}/src/*"
      "${CMAKE_CURRENT_SOURCE_DIR}/include/*"
      "${CMAKE_CURRENT_SOURCE_DIR}/third_party/*"
      "${CMAKE_CURRENT_SOURCE_DIR}/skills/*")
 list(FILTER _runtime_inputs EXCLUDE REGEX "(^|/)([.]|__pycache__)|[.]pyc$")
-list(APPEND _runtime_inputs "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_web.cmake"
-     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/build_identity.cc.in"
-     "${CMAKE_CURRENT_SOURCE_DIR}/web/public/design-helper.js"
-     "${CMAKE_CURRENT_SOURCE_DIR}/docs/ARCHITECTURE.md"
-     "${CMAKE_CURRENT_SOURCE_DIR}/web/src/shared/styles/tokens.css")
+list(APPEND _runtime_inputs "CMakeLists.txt"
+     "cmake/embed_web.cmake"
+     "cmake/build_identity.cc.in"
+     "web/public/design-helper.js"
+     "docs/ARCHITECTURE.md"
+     "web/src/shared/styles/tokens.css")
 list(SORT _runtime_inputs)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_runtime_inputs})
 set(_runtime_hashes "${PROJECT_VERSION}")
 foreach(_input IN LISTS _runtime_inputs)
-  file(SHA256 "${_input}" _hash)
-  file(RELATIVE_PATH _name "${CMAKE_CURRENT_SOURCE_DIR}" "${_input}")
-  string(APPEND _runtime_hashes "${_name}:${_hash}\n")
+  file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/${_input}" _hash)
+  string(APPEND _runtime_hashes "${_input}:${_hash}\n")
 endforeach()
 string(SHA256 UAGENT_BUILD_ID "${_runtime_hashes}")
 configure_file(cmake/build_identity.cc.in build_identity.cc @ONLY)

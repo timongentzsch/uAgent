@@ -20,6 +20,11 @@
 
 namespace uagent {
 
+// Puts `path` back as it was before an edit (`before` and `mode`, or absent),
+// while it still holds what the edit left; why not, or empty.
+std::string RestoreFile(const std::string& path, const std::string& after_hash,
+                        bool existed, const std::string& before, uint32_t mode);
+
 class EditJournal {
  public:
   // Journals nothing until a directory is set; loads what it holds.

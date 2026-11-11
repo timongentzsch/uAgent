@@ -1,8 +1,17 @@
 // Copyright 2026 Timon Gentzsch
 #include <string>
+#include <utility>
 
+#include "include/app/execution.h"
 #include "src/web/master_internal.h"
 namespace uagent::web::master {
+json RemoteCall(const json& target, json request) {
+  if (target.is_null()) {
+    return {{"error", kHostDisconnected}, {"status", 503}};
+  }
+  return execution::Client(execution::TargetFromJson(target))
+      .Call(std::move(request));
+}
 void Master::RegisterRemoteRoutes() {
   server_.Get("/api/hosts/([0-9a-f]{32})/ping", [this](const Request& request,
                                                        Response& response) {

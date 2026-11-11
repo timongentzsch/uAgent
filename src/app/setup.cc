@@ -28,7 +28,7 @@ namespace {
 constexpr char kProviders[] = "UAGENT_PROVIDERS";
 constexpr char kModel[] = "UAGENT_MODEL";
 
-// The three endpoints setup knows, in the order a default model is chosen
+// The endpoints setup knows, in the order a default model is chosen
 // from. OpenRouter's key is a setting of its own; the others are variables a
 // provider of that name refers to.
 struct Known {
@@ -37,6 +37,7 @@ struct Known {
   const char* variable;
   const char* base_url;
   WireApi wire;
+  bool free_only = false;
 };
 constexpr Known kKnown[] = {
     {"anthropic", "Anthropic", "ANTHROPIC_API_KEY",
@@ -45,10 +46,13 @@ constexpr Known kKnown[] = {
      WireApi::kResponses},
     {"openrouter", "OpenRouter", "OPENROUTER_API_KEY",
      "https://openrouter.ai/api/v1", WireApi::kChatCompletions},
+    {"openrouter-free", "OpenRouter Free", "OPENROUTER_FREE_API_KEY",
+     "https://openrouter.ai/api/v1", WireApi::kChatCompletions, true},
 };
 
 template <typename Keys>
 auto& KeyOf(Keys& keys, std::string_view name) {
+  if (name == "openrouter-free") return keys.openrouter_free;
   if (name == "anthropic") return keys.anthropic;
   if (name == "openai") return keys.openai;
   return keys.openrouter;
@@ -114,16 +118,35 @@ KeyCheck CheckKey(const Known& known, const std::string& key) {
   api.base_url = known.base_url;
   api.api_key = key;
   api.wire_api = known.wire;
+  DeclareHost(api);
+  if (known.free_only) api.options["free_only"] = true;
   KeyCheck check;
   // OpenRouter lists its models to anyone; its key endpoint is what refuses
   // a wrong key.
-  if (std::string_view(known.name) == "openrouter") {
+  if (std::string_view(known.name) == "openrouter" || known.free_only) {
     JsonResponse response = api.Get("/key", false, 10);
     if (response.http_status == 401 || response.http_status == 403) {
       check.accepted = false;
       check.reason = "rejected (" + std::to_string(response.http_status) + ")";
       return check;
     }
+    if (!response.error.empty() || response.http_status != 200) {
+      check.reason =
+          response.error.empty() ? "key check unavailable" : response.error;
+      return check;
+    }
+  }
+  if (known.free_only) {
+    auto models = CachedModels(api);
+    if (!models) models = QueryModels(api, /*abortable=*/false, 15);
+    if (!models) {
+      check.reason =
+          "could not fetch the free-model catalogue; try setup again";
+      return check;
+    }
+    check.accepted = true;
+    for (const ModelInfo& info : *models) check.models.push_back(info.id);
+    return check;
   }
   JsonResponse response =
       api.Get(std::string_view(known.name) == "anthropic" ? "/models?limit=1000"
@@ -223,7 +246,7 @@ std::string ChooseModel(const std::vector<std::string>& ids,
 
 void ApplySetupKeys(const SetupKeys& keys, SettingValues& scope) {
   if (keys.openrouter.empty() && keys.openai.empty() &&
-      keys.anthropic.empty()) {
+      keys.anthropic.empty() && keys.openrouter_free.empty()) {
     return;
   }
   json providers = json::object();
@@ -243,6 +266,7 @@ void ApplySetupKeys(const SetupKeys& keys, SettingValues& scope) {
       provider["wire_api"] = WireApiName(known.wire);
     }
     provider["api_key"] = std::string("$") + known.variable;
+    if (known.free_only) EnsureObject(provider, "options")["free_only"] = true;
   }
   scope[kProviders] = JsonDump(providers);
 }
@@ -299,10 +323,22 @@ int RunSetup() {
       "Press Enter to skip one. What you type is hidden.\n",
       SettingsPath().c_str());
 
+  const bool free_only = Confirm(
+      "Set the default to a free OpenRouter model (account/API key required)?",
+      held(kModel).empty());
+  if (free_only) {
+    printf(
+        "Create a key: https://openrouter.ai/keys\n"
+        "Free models have usage limits and provider-specific data policies.\n"
+        "Review them at https://openrouter.ai/collections/free-models\n"
+        "Paid models, hosted search and PDF parsing are excluded from this "
+        "provider.\n");
+  }
   SetupKeys keys;
   // The key each endpoint will use, new or kept, and what it lists.
   std::vector<std::pair<const Known*, KeyCheck>> usable;
   for (const Known& known : kKnown) {
+    if (known.free_only != free_only) continue;
     const std::string existing = held(known.variable);
     const char* exported = std::getenv(known.variable);
     std::string hint;
@@ -318,6 +354,13 @@ int RunSetup() {
     const std::string effective = key.empty() ? existing : key;
     if (effective.empty()) continue;
     KeyCheck check = CheckKey(known, effective);
+    if (free_only && (check.accepted != true || check.models.empty())) {
+      printf(
+          "  No usable free coding models: %s. Saved settings are unchanged.\n",
+          check.reason.empty() ? "none listed with tools and 64K context"
+                               : check.reason.c_str());
+      return 1;
+    }
     if (check.accepted == false) {
       printf("  ✗ %s\n", check.reason.c_str());
       if (key.empty() || !Confirm("  Keep it anyway?", false)) continue;
@@ -330,7 +373,7 @@ int RunSetup() {
     usable.emplace_back(&known, std::move(check));
   }
   if (!keys.openrouter.empty() || !keys.openai.empty() ||
-      !keys.anthropic.empty()) {
+      !keys.anthropic.empty() || !keys.openrouter_free.empty()) {
     const std::string error = ChangeSettings("", [&](SettingValues& scope) {
       ApplySetupKeys(keys, scope);
       return std::string();
@@ -352,6 +395,12 @@ int RunSetup() {
   const auto& [known, check] = usable.front();
   const std::string prefix = std::string(known->name) + "/";
   std::string current = held(kModel);
+  if (free_only &&
+      std::ranges::none_of(check.models, [&](const std::string& id) {
+        return current == prefix + id;
+      })) {
+    current.clear();
+  }
   printf("\nDefault model, from %s:\n", known->label);
   std::string chosen = ChooseModel(
       check.models, SuggestModel(known->name, check.models), current);

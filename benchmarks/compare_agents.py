@@ -13,7 +13,6 @@ servers, plugins, hooks or helpers from the machine's configuration (see BARE_FL
 import argparse
 import contextlib
 import fcntl
-import html
 import json
 import os
 import pathlib
@@ -29,6 +28,8 @@ import sys
 import tempfile
 import termios
 import time
+
+from charts import bars
 
 PROMPT = "Reply with the single word: ok"
 IDLE_SECONDS = 10
@@ -539,86 +540,42 @@ def table(tools, report):
 
 
 DISPLAY_NAMES = {"uagent": "µAgent", "claude": "Claude Code", "codex": "Codex CLI", "omp": "omp"}
-CHART_STYLE = """
-  .bg { fill: #ffffff; }
-  text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1f2328; }
-  .headline { font-size: 23px; font-weight: 700; }
-  .title { font-size: 13px; font-weight: 600; }
-  .name { font-size: 12px; }
-  .value { font-size: 12px; font-variant-numeric: tabular-nums; }
-  .note { font-size: 10px; fill: #656d76; }
-  .bar { fill: #b4bac1; }
-  .bar.uagent { fill: #111111; }
-  @media (prefers-color-scheme: dark) {
-    .bg { fill: #0d1117; }
-    text { fill: #e6edf3; }
-    .note { fill: #8b949e; }
-    .bar { fill: #4a525c; }
-    .bar.uagent { fill: #eeeeee; }
-  }
-"""
 
 
 def panel_values(tools, report, metric, key, divisor):
     """One median per tool, or None where the tool could not be measured."""
     values = {}
     for tool in tools:
-        entry = report[tool["name"]]
-        samples = [entry["size"][key]] if metric == "size" else [s.get(key) for s in entry[metric]]
-        value = median(samples)
+        value = median([s.get(key) for s in report[tool["name"]][metric]])
         values[tool["name"]] = None if value is None else value / divisor
     return values
 
 
 def chart_svg(tools, report):
-    panels = (
-        ("Idle session memory, MiB", panel_values(tools, report, "idle", "rss_kib", 1024), 1),
-        ("CPU per headless turn, ms", panel_values(tools, report, "headless", "cpu_ms", 1), 0),
-    )
-    panel_width, panel_height = 380, 30 + 28 * len(tools)
-    width, height = 800, panel_height + 140
-    label_width, bar_width = 88, 220
-    out = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
-        f'width="{width}" height="{height}" role="img" aria-label="Footprint of the agents">',
-        f"<style>{CHART_STYLE}</style>",
-        f'<rect class="bg" width="{width}" height="{height}"/>',
-        '<text class="headline" x="20" y="42">Memory and CPU usage</text>',
+    panels = [
+        (
+            title,
+            [
+                (DISPLAY_NAMES[name], value, name == "uagent")
+                for name, value in panel_values(tools, report, metric, key, divisor).items()
+            ],
+            places,
+        )
+        for title, metric, key, divisor, places in (
+            ("Idle session memory, MiB", "idle", "rss_kib", 1024, 1),
+            ("CPU per headless turn, ms", "headless", "cpu_ms", 1, 0),
+        )
     ]
-    for index, (title, values, places) in enumerate(panels):
-        left = 20 + (index % 2) * (panel_width + 20)
-        top = 80
-        out.append(f'<text class="title" x="{left}" y="{top + 12}">{title}</text>')
-        peak = max([v for v in values.values() if v is not None] or [1]) or 1
-        for row, tool in enumerate(tools):
-            name = tool["name"]
-            y = top + 26 + row * 28
-            out.append(f'<text class="name" x="{left}" y="{y + 13}">{DISPLAY_NAMES[name]}</text>')
-            value = values[name]
-            if value is None:
-                out.append(f'<text class="value" x="{left + label_width}" y="{y + 13}">n/a</text>')
-                continue
-            length = max(1, value / peak * bar_width)
-            css = "bar uagent" if name == "uagent" else "bar"
-            out.append(
-                f'<rect class="{css}" x="{left + label_width}" y="{y}" '
-                f'width="{length:.1f}" height="18"/>'
-            )
-            out.append(
-                f'<text class="value" x="{left + label_width + length + 6:.1f}" y="{y + 13}">'
-                f"{value:.{places}f}</text>"
-            )
     machine = report["_machine"]
-    out.append(
-        f'<text class="note" x="20" y="{height - 24}">{html.escape(machine["date"])} · '
-        f"medians of {machine['runs']['session']} runs · {html.escape(machine['chip'])}</text>"
+    return bars(
+        "Memory and CPU usage",
+        panels,
+        [
+            f"{machine['date']} · medians of {machine['runs']['session']} runs · {machine['chip']}",
+            "Same model endpoint · CPU excludes model/network waiting · lower is better",
+            "Versions, workload and limitations: benchmarks/README.md",
+        ],
     )
-    out.append(
-        f'<text class="note" x="20" y="{height - 8}">Same model endpoint · lower is better · '
-        "CPU time excludes model/network waiting · versions and method: benchmarks/README.md</text>"
-    )
-    out.append("</svg>")
-    return "\n".join(out) + "\n"
 
 
 def stat_pair(entry, metric, key):

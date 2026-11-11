@@ -21,7 +21,6 @@
 #include "include/app/agent_link.h"
 #include "include/app/asset_store.h"
 #include "include/app/bootstrap.h"
-#include "include/app/execution.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/app/session_command.h"
@@ -847,8 +846,6 @@ int WorkerMain(int argc, char** argv) {
       return kWorkerNoWorkspace;
     }
     SetWorkspace({options.host, argv[2]});
-    execution::SetClient(std::make_shared<execution::Client>(
-        execution::TargetFromJson(options.execution)));
   }
   // An agent's role is fixed at its start and afterwards read back from its
   // own header.

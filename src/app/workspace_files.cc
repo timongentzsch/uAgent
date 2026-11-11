@@ -15,7 +15,6 @@
 #include "include/agent/path_policy.h"
 #include "include/app/asset_store.h"
 #include "include/app/launch.h"
-#include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/env.h"
 #include "include/core/file_watch.h"
@@ -23,7 +22,6 @@
 #include "include/core/library.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
-#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
 
@@ -140,13 +138,7 @@ std::optional<json> List(const fs::path& root, const fs::path& folder) {
 }  // namespace
 
 json Folders(const std::string& path) {
-  std::string requested = path;
-  if (requested.empty() || requested == "~") {
-    requested = UserHome();
-  } else if (requested.starts_with("~/")) {
-    requested = UserHome() + requested.substr(1);
-  }
-  const auto folder = CanonicalDirectory(requested);
+  const auto folder = CanonicalDirectory(ExpandHome(path));
   if (!folder || !Shown(*folder)) {
     return {{"error", "Choose an accessible folder."}, {"status", 404}};
   }
@@ -289,6 +281,7 @@ std::optional<json> ReadDiff(const fs::path& folder, const Changes& changes,
 
 // What a previewed page may load, by name: its pages, stylesheets, scripts,
 // data, fonts and media. Anything else in the folder stays out of reach.
+namespace {
 std::string PreviewMime(const fs::path& path) {
   const std::string ext = AsciiLower(path.extension().string());
   for (const auto& [suffix, mime] : {std::pair{".html", "text/html"},
@@ -332,6 +325,7 @@ std::string DeckPage(const fs::path& folder, int width, int height) {
   return page;
 }
 
+}  // namespace
 json Request(const fs::path& root, const json& request) {
   const std::string mode = JsonValue(request, "mode", "");
   const std::string path = JsonValue(request, "path", "");
@@ -359,6 +353,10 @@ json Request(const fs::path& root, const json& request) {
         .value_or(json{{"error", "not found"}, {"status", 404}});
   }
   if (mode == "deck") {
+    std::error_code error;
+    if (!fs::is_directory(*target, error)) {
+      return {{"error", "not found"}, {"status", 404}};
+    }
     return {{"text", DeckPage(*target, JsonValue(request, "width", 1920),
                               JsonValue(request, "height", 1080))}};
   }

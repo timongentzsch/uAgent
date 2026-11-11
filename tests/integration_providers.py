@@ -1983,6 +1983,54 @@ def test_images_go_to_a_vision_model_of_the_same_endpoint(root, home, *, binary)
         assert_true(len(server.requests) == 1, server.requests)
 
 
+def test_free_provider_filters_live_and_cached_image_fallback(root, home, *, binary):
+    picture = root / "shot.png"
+    picture.write_bytes(SMALL_PNG)
+    metadata = {
+        "context_length": 65536,
+        "supported_parameters": ["tools"],
+        "pricing": {"prompt": "0", "completion": "0"},
+    }
+    models = {
+        "data": [
+            {"id": "paid-vision", "input_modalities": ["text", "image"]},
+            {**metadata, "id": "text:free", "input_modalities": ["text"]},
+            {**metadata, "id": "vision:free", "input_modalities": ["text", "image"]},
+        ]
+    }
+
+    def reply(_, body):
+        assert_true(body["model"] in ("text:free", "vision:free"), body)
+        assert_true(
+            body.get("provider", {}).get("max_price")
+            == {"prompt": 0, "completion": 0, "request": 0, "image": 0},
+            body,
+        )
+        assert_true("plugins" not in body, body)
+        return event({"content": "free-ok"})
+
+    with Server([reply] * 4, get_response=models) as server:
+        provider = {
+            "base_url": server.url,
+            "api_key": "test-key",
+            "supports": OPENROUTER_SUPPORTS,
+            "options": {"free_only": True},
+        }
+        env = provider_env(home, server.url, {"free": provider}, "free/text:free")
+        del env["UAGENT_CONTEXT"]
+        for _ in range(2):  # The second run uses the same cached catalogue.
+            result = run(
+                root, env, "--yolo", "--attach", str(picture), "-p", "describe", binary=binary
+            )
+            assert_true(result.returncode == 0, result.stderr)
+            assert_true(result.stdout.strip() == "free-ok", result.stdout)
+        assert_true(
+            [body["model"] for _, body in server.requests] == ["vision:free", "text:free"] * 2,
+            server.requests,
+        )
+        assert_true(len(server.get_requests) == 1, server.get_requests)
+
+
 def test_an_image_the_vision_model_cannot_read_is_tried_once_per_turn(root, home, *, binary):
     picture = root / "shot.png"
     picture.write_bytes(SMALL_PNG)

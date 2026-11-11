@@ -9,11 +9,11 @@ import type {
   Space,
 } from "../shared/types.ts";
 import { hostApi, useApi } from "../state/api.ts";
-import { useHosts, useMultipleHosts } from "../state/sources.ts";
+import { useMultipleHosts } from "../state/sources.ts";
 import { folderOf, projectsOf } from "../shared/display.ts";
 import { scratchSpace } from "../shared/limits.ts";
 import { SpaceMenu } from "./menus.tsx";
-import { collapsed } from "../features/sidebar/folding.ts";
+import { collapsed, placeKey } from "../features/sidebar/folding.ts";
 
 // The places conversations start in: workspaces by name and folders by
 // path, the New dialog that asks for one, and starting a conversation there.
@@ -30,7 +30,7 @@ export function usePlaces({
 }: {
   catalogue: Catalogue;
   upsertSession: (session: Session) => void;
-  choose: (id: string) => Promise<void>;
+  choose: (id: string, host?: string) => Promise<void>;
   load: (id: string) => Promise<Snapshot>;
   report: Report;
   open: (modal: AppModal) => void;
@@ -39,7 +39,6 @@ export function usePlaces({
   setBusy: (busy: boolean) => void;
 }) {
   const { command, host } = useApi();
-  const hosts = useHosts();
   const multipleHosts = useMultipleHosts();
   const [newHost, setNewHost] = useState(host);
   const [folder, setFolder] = useState("");
@@ -81,7 +80,7 @@ export function usePlaces({
         if (created.pending) return "";
         upsertSession(created.session);
         // The new conversation is not behind a fold.
-        collapsed.set(folderOf(created.session), false);
+        collapsed.set(placeKey(targetHost, folderOf(created.session)), false);
         // Live before it is shown, so opening never flashes the saved state;
         // shown even if activating fails, with the failure reported.
         try {
@@ -89,16 +88,15 @@ export function usePlaces({
             await command("activate", created.session);
           if (text) await command("submit", created.session, { text });
         } finally {
-          await choose(created.session.id);
+          await choose(created.session.id, targetHost);
         }
         await load(created.session.id);
-        if (targetHost !== host) hosts?.open(targetHost, created.session.id);
         return created.session.id;
       } finally {
         starting.current = false;
       }
     },
-    [upsertSession, choose, load, command, host, hosts?.open],
+    [upsertSession, choose, load, command, host],
   );
   // Asks for the place's name or path, which starts a conversation there.
   const newPlace = useCallback(

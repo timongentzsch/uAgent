@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "include/agent/activity.h"
+#include "include/app/execution.h"
 #include "include/core/runtime_config.h"
 #include "include/core/workspace.h"
 
@@ -28,7 +29,10 @@ void AppRuntime::Shutdown() {
   if (shutdown_) return;
   shutdown_ = true;
   mcp.ShutdownAll();
-  if (processes.RemoteWorkspace()) WorkspaceRequest({{"op", "shutdown"}});
+  if (auto remote = execution::CurrentClient()) {
+    remote->Call({{"op", "shutdown"}});
+    remote->Release();
+  }
   ActivityShutdownAll(processes);
 }
 

@@ -26,6 +26,10 @@ export const maxShownSteps = 30;
 // Rows whose opening or closing a device remembers.
 export const maxRememberedToggles = 500;
 export const reconnectMaxDelayMs = 30_000;
+// How often the remote hosts' states are read, and an open host's round trip
+// is measured.
+export const hostsPollMs = 2_000;
+export const hostLatencyPollMs = 5_000;
 // A reconnect shorter than this (a resumed app) shows no status change.
 export const reconnectGraceMs = 1_000;
 export const maxTranscriptBookmarks = 20;

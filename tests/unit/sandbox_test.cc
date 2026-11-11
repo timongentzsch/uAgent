@@ -15,6 +15,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/sandbox_watch.h"
+#include "include/core/workspace.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -597,6 +598,31 @@ TEST_CASE(TestSandboxProbe) {
   // report unavailable is one where it has been removed.
   CHECK(level == SandboxLevel::kFilesystemAndNetwork);
 #endif
+}
+
+// A remote gateway hides its socket and lease and the account's own uAgent,
+// never its state: a result names the output it spilled there, and the model
+// reads that back.
+TEST_CASE(TestGatewayStateStaysReadable) {
+  namespace fs = std::filesystem;
+  TestWorkspace test("gateway-state");
+  const fs::path gateway = fs::canonical(test.root) / "exec" / "gateway";
+  const fs::path account = fs::canonical(test.home) / kWorkspaceDir;
+  fs::create_directories(gateway / "state");
+  fs::create_directories(account);
+  WriteFile(gateway / "socket", "");
+  WriteFile(gateway / "owner", "");
+  SetExecutionStateDirectory((gateway / "state").string());
+  const std::string spilled = UagentDir(kArtifactsDir) + "/output-1";
+  const std::vector<std::string> hidden = HiddenPaths();
+  SetExecutionStateDirectory("");
+  CHECK(spilled.starts_with((gateway / "state").string()));
+  CHECK(hidden == (std::vector<std::string>{(gateway / "socket").string(),
+                                            (gateway / "owner").string(),
+                                            account.string()}));
+  CHECK(std::ranges::none_of(hidden, [&](const std::string& path) {
+    return PathWithin(spilled, path);
+  }));
 }
 
 }  // namespace uagent

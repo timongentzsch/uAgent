@@ -27,7 +27,7 @@ import { ConversationContext, HostContext } from "../state/host-context.ts";
 import { Modal, ErrorBoundary, Deferred, Spinner } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
-import { useDismiss } from "../shared/dismiss.ts";
+import { settled, useDismiss } from "../shared/dismiss.ts";
 import { slide } from "../shared/motion.ts";
 import { useEdgeSwipe } from "../shared/swipe.ts";
 import Sidebar, { sessionOrder } from "../features/sidebar/sidebar.tsx";
@@ -43,7 +43,8 @@ import { useLatest } from "../shared/use-latest.ts";
 import { stored, tabStorage } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
 
-import HostsShell, { type HostAppProps, useHosts } from "./hosts.tsx";
+import HostsShell, { type HostAppProps } from "./hosts.tsx";
+import { useHosts } from "../state/sources.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { DetailContext } from "../features/chat/node.tsx";
 import { detailLevels } from "../shared/tree.ts";
@@ -105,24 +106,13 @@ const keptPage = stored<Page>(
 
 function App({ host, bindResult, reading }: HostAppProps) {
   const hosts = useHosts();
-  const activeHost = hosts?.active;
-  const hostPhase = hosts?.sources.find(
-    (source) => source.id === activeHost,
-  )?.phase;
-  const hostAction = hosts?.action;
   const { command, manage } = useApi();
-  const [page, setPage] = useState<Page>(() =>
-    new URLSearchParams(location.hash.slice(1)).has("place")
-      ? "folder"
-      : keptPage.read(),
-  );
+  const [page, setPage] = useState<Page>(keptPage.read);
   useEffect(() => reading(page === "chat"), [page, reading]);
   useEffect(() => keptPage.write(page), [page]);
   // The folder or workspace whose overview the folder page shows, and the
   // folder terminal the terminal page shows.
-  const [place, setPlace] = useState(
-    () => new URLSearchParams(location.hash.slice(1)).get("place") || "",
-  );
+  const [place, setPlace] = useState("");
   const [shell, setShell] = useState<TerminalInfo | null>(null);
   // Which Library tab /memory or /skills asked for.
   const [libraryKind, setLibraryKind] = useState<LibraryKind | "">("");
@@ -304,19 +294,20 @@ function App({ host, bindResult, reading }: HostAppProps) {
     [online, session, correlate, command],
   );
   const choose = useCallback(
-    async (id: string) => {
-      if (online && activeHost && hostPhase === "disconnected")
-        void hostAction?.("connect", activeHost).catch(report);
+    async (id: string, owner = hosts.active) => {
       setNotice("");
       setPage("chat");
       const change = () => {
-        setSelected(id);
+        // A conversation opens on its own host, which connects when needed;
+        // `owner` names it while the list does not hold a new one yet.
+        if (id) hosts.open(owner, id);
+        else setSelected("", owner);
         setDrawer(false);
       };
       if (id === selected) change();
       else slide(false, id, change);
     },
-    [selected, setSelected, activeHost, hostPhase, hostAction, report, online],
+    [selected, setSelected, hosts.open, hosts.active],
   );
   const { browserAvailable, install, setInstall, update, attach } = useBoot({
     upload,
@@ -421,7 +412,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
       await (await registration?.pushManager?.getSubscription())?.unsubscribe();
       await localApi.command("logout");
       clearSides();
-      (hosts?.sources.find((source) => !source.id)?.state?.reset || reset)();
+      reset();
       setModal(null);
     } catch (failure) {
       report(failure);
@@ -499,7 +490,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
       catalogue.spaces,
       online,
       pins,
-      hosts?.active,
+      hosts.active,
     );
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
@@ -511,45 +502,32 @@ function App({ host, bindResult, reading }: HostAppProps) {
     setPage("terminal");
     setDrawer(false);
   }, []);
-  const destination = hosts?.destination;
+  const { destination } = hosts;
   const followedDestination = useRef<typeof destination>(null);
   useEffect(() => {
     if (
       !destination ||
-      destination.id !== hosts?.active ||
+      destination.id !== hosts.active ||
       followedDestination.current === destination
     )
       return;
-    if (
-      destination.terminal &&
-      !catalogue.terminals?.some((item) => item.id === destination.terminal)
-    )
-      return;
+    const terminal = catalogue.terminals?.find(
+      (item) => item.id === destination.terminal,
+    );
+    if (destination.terminal && !terminal) return;
     followedDestination.current = destination;
-    setDrawer(false);
-    if (destination.create) newPlace(destination.create);
-    else if (destination.settings)
-      setModal({ type: "settings", section: destination.settings });
-    else if (destination.terminal) {
-      const terminal = catalogue.terminals?.find(
-        (item) => item.id === destination.terminal,
-      );
-      if (terminal) showTerminal(terminal);
-    } else if (destination.place) {
-      setPlace(destination.place);
-      setPage("folder");
-    } else if (destination.session) {
-      setSelected(destination.session);
-      setPage("chat");
-    }
-  }, [
-    destination,
-    hosts?.active,
-    setSelected,
-    showTerminal,
-    catalogue.terminals,
-    newPlace,
-  ]);
+    // After a step back still under way (out of the drawer it was picked
+    // in), so a page or dialog this opens gets an entry of its own.
+    settled(() => {
+      setDrawer(false);
+      if (destination.create) newPlace(destination.create);
+      else if (terminal) showTerminal(terminal);
+      else if (destination.place) {
+        setPlace(destination.place);
+        setPage("folder");
+      } else if (destination.session) setPage("chat");
+    });
+  }, [destination, hosts.active, showTerminal, catalogue.terminals, newPlace]);
   // A folder's new terminal, shown at once.
   const newTerminal = useCallback(
     (folder: string) =>
@@ -829,7 +807,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                     )}
                     {page === "folder" && (
                       <FolderOverview
-                        key={place}
+                        key={`${hosts.active}:${place}`}
                         folder={place}
                         space={catalogue.spaces?.find(
                           (item) => item.path === place,
@@ -930,7 +908,10 @@ function App({ host, bindResult, reading }: HostAppProps) {
               >
                 {overlay === "search" ? (
                   <Spotlight
-                    sessions={listed}
+                    // Every host's conversations: search spans the main.
+                    sessions={hosts.sources.flatMap(
+                      (source) => source.state.listed,
+                    )}
                     commands={catalogue.commands || []}
                     place={session && folderOf(session)}
                     choose={choose}

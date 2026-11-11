@@ -93,8 +93,8 @@ export default function ConversationHeader({
   const hosts = useHosts();
   const multipleHosts = useMultipleHosts();
   const executionHost =
-    hosts?.sources.find((source) => source.id === (session?.host || ""))
-      ?.name || "Local";
+    hosts.sources.find((source) => source.id === (session?.host || ""))?.name ||
+    "Local";
   const compact = useCompact();
   const narrow = useNarrowColumn();
   // The browser icon shows when this conversation's agent is using it.

@@ -226,7 +226,7 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   SessionLoadResult result = Inspect(path);
   if (!result.record) return result;
   const auto& metadata = result.record->metadata;
-  if (!metadata.host.empty() || Workspace().Remote()) {
+  if (!metadata.host.empty() || RemoteWorkspace()) {
     if (metadata.host == Workspace().host && metadata.cwd == expected_cwd) {
       return result;
     }
@@ -376,12 +376,12 @@ std::vector<SessionInfo> ListSessions(SessionScope scope) {
 
 std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   namespace fs = std::filesystem;
-  const std::string current = Workspace().path;
+  const WorkspaceIdentity current = Workspace();
   const fs::path base = fs::path(GlobalBase()) / kHistoryDir;
   std::vector<fs::path> directories{base};
   std::error_code ec;
   if (scope != SessionScope::kAll) {
-    directories.push_back(base / WorkspaceId(current, Workspace().host));
+    directories.push_back(base / WorkspaceId(current.path, current.host));
   } else {
     for (const auto& entry : fs::directory_iterator(base, ec)) {
       if (directories.size() >= kMaxCatalogueEntries) break;
@@ -392,7 +392,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   }
   const auto listed = [&](const SessionInfo& info) {
     return scope == SessionScope::kAll ||
-           (info.cwd == current && info.host == Workspace().host &&
+           (info.cwd == current.path && info.host == current.host &&
             info.parent.empty());
   };
   std::vector<SessionInfo> out;

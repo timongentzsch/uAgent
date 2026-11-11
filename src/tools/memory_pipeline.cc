@@ -30,7 +30,6 @@
 #include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
-#include "include/core/workspace.h"
 #include "include/providers/providers.h"
 #include "include/tools/memory.h"
 #include "include/tools/shell.h"
@@ -45,11 +44,8 @@ std::string MarkerPath(const std::string& source,
                        const std::filesystem::path& cwd) {
   std::string processed = MakePrivateDir(UagentDir(kMemoryDir), ".processed");
   std::string workspace = MakePrivateDir(
-      processed, WorkspaceId(Workspace().Remote()
-                                 ? Workspace().path
-                                 : CanonicalAccessPath(cwd.string()).string(),
-                             Workspace().host)
-                     .c_str());
+      processed,
+      WorkspaceId(CanonicalAccessPath(cwd.string()).string()).c_str());
   return workspace + "/" + WorkspaceId(source) + ".state";
 }
 
@@ -108,11 +104,7 @@ void SweepOrphanedReceipts(const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   std::string workspace = MakePrivateDir(
       MakePrivateDir(UagentDir(kMemoryDir), ".processed"),
-      WorkspaceId(Workspace().Remote()
-                      ? Workspace().path
-                      : CanonicalAccessPath(cwd.string()).string(),
-                  Workspace().host)
-          .c_str());
+      WorkspaceId(CanonicalAccessPath(cwd.string()).string()).c_str());
   std::error_code code;
   auto now = fs::file_time_type::clock::now();
   for (fs::directory_iterator it(workspace, code), end; it != end && !code;

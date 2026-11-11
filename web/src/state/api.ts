@@ -74,7 +74,14 @@ export const requestId = () =>
 
 // All views share the main's command receipts and event stream.
 const receipts = new Map<string, (outcome: Outcome) => void>();
-export function createApi(host = "") {
+// True when a command from this page waits on it: its caller shows the
+// outcome, so nothing else needs to.
+export function receiveOutcome(outcome: Outcome) {
+  const waiting = receipts.get(outcome.request_id);
+  if (!outcome.pending) waiting?.(outcome);
+  return !!waiting;
+}
+function createApi(host = "") {
   const routes = {
     ...localRoutes,
     folder: (path: string) =>
@@ -165,14 +172,6 @@ export function createApi(host = "") {
     return { ...page, text: parts.join("") };
   }
 
-  // True when a command from this page waits on it: its caller shows the
-  // outcome, so nothing else needs to.
-  function receiveOutcome(outcome: Outcome) {
-    const waiting = receipts.get(outcome.request_id);
-    if (!outcome.pending) waiting?.(outcome);
-    return !!waiting;
-  }
-
   async function command<K extends CommandKind>(
     kind: K,
     session?: SessionRef | null,
@@ -254,21 +253,12 @@ export function createApi(host = "") {
     manage,
     readPages,
     uploadAttachment,
-    receiveOutcome,
   };
 }
 
 export type ApiClient = ReturnType<typeof createApi>;
 export const localApi = createApi();
-export const {
-  routes,
-  api,
-  command,
-  manage,
-  readPages,
-  uploadAttachment,
-  receiveOutcome,
-} = localApi;
+export const { routes, api, command, manage } = localApi;
 const clients = new Map<string, ApiClient>([["", localApi]]);
 export function hostApi(id: string) {
   if (!clients.has(id)) clients.set(id, createApi(id));

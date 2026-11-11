@@ -274,7 +274,7 @@ void LogReady(const AppContext& context) {
       {"effective_config", context.config_manager.DiagnosticJson(config)}};
   ready.update(behavior);
   Emit(Event{EventId::kSessionReady, std::move(ready)});
-  if (!Workspace().Remote()) ReportSandbox();
+  if (!RemoteWorkspace()) ReportSandbox();
 }
 
 }  // namespace
@@ -312,10 +312,6 @@ AppContext::AppContext(RuntimeConfig config, ConfigManager manager,
       options(std::move(parsed_options)) {}
 
 AppContext::~AppContext() {
-  if (remote_watch.joinable()) {
-    remote_watch.request_stop();
-    remote_watch.join();
-  }
   if (channel) SetInteractiveReadHandler({});
 }
 
@@ -336,7 +332,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (options.show_system_prompt) {
     trusted = ProjectConfigTrusted(&trusted_snapshot);
   }
-  if (!Workspace().Remote() && !options.show_system_prompt && !memory_child &&
+  if (!RemoteWorkspace() && !options.show_system_prompt && !memory_child &&
       !ResolveProjectTrust(options, trusted, trusted_snapshot, error,
                            exit_code)) {
     return Failure(std::move(error), exit_code);
@@ -344,9 +340,14 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
   ConfigManager config_manager = ConfigManager::Capture(options.overrides);
   RuntimeConfig config = config_manager.Initialize();
-  auto remote = execution::CurrentClient();
-  if (remote && !remote->Open(error)) return Failure(error);
-  if (remote) {
+  // Made once the settings are in effect, so the gateway's sandbox preset is
+  // this conversation's own: an agent that may not edit only reads there too.
+  std::shared_ptr<execution::Client> remote;
+  if (RemoteWorkspace()) {
+    remote = std::make_shared<execution::Client>(
+        execution::TargetFromJson(options.execution));
+    execution::SetClient(remote);
+    if (!remote->Open(error)) return Failure(error);
     PrintWarning(
         "Remote project MCP and browser file transfers are unavailable; "
         "providers and global settings run on the main host.");
@@ -372,7 +373,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
                                    std::move(options), observability, channel);
   channel_input.Transfer();
   if (remote) {
-    context->runtime.processes.RemoteWorkspace(true);
     context->remote_watch =
         std::jthread([remote, supervisor = &context->runtime.processes](
                          const std::stop_token& stop) {

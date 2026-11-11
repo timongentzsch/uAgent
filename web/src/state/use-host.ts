@@ -27,7 +27,7 @@ import {
   patchCatalogue,
 } from "./store.ts";
 import { applyEvent as applyHostEvent } from "./apply-event.ts";
-import { protocol, localApi } from "./api.ts";
+import { api, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
 import { waitingToSend } from "../shared/message-view.ts";
 import { wentBack } from "../shared/dismiss.ts";
@@ -49,7 +49,7 @@ import { needsYou } from "./attention.ts";
 // pauses, not per key; an upload still in flight when the page went away
 // never finishes, and its chip would have no id the host knows.
 const kept = {
-  pins: stored<NonNullable<Catalogue["pins"]>>("uagent-pins", []),
+  pins: stored<NonNullable<Catalogue["pins"]>>(storageKeys.pins, []),
   // Streamed events change the list many times a second; it is kept once
   // they pause, and when the page hides.
   catalogue: stored<Catalogue["sessions"]>(
@@ -130,7 +130,6 @@ export function useHost(
   onResult: (value: JSONValue, inspect: boolean) => void,
   readingConversation = true,
 ) {
-  const { api, routes, receiveOutcome } = localApi;
   const [managementVersion, setManagementVersion] = useState(0);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [online, setOnline] = useState(false);
@@ -155,7 +154,7 @@ export function useHost(
     devices: [],
   }));
   const [snapshots] = useState(snapshotStore);
-  const [selected, setSelected] = useState(() => selectedFromURL());
+  const [selected, setSelected] = useState(selectedFromURL);
   // Unsent drafts survive an evicted or reloaded app; logout clears them.
   const [drafts, setDrafts] = useStored(kept.drafts);
   const [error, setError] = useState("");
@@ -253,12 +252,13 @@ export function useHost(
     setCatalogue({ sessions: [], devices: [], capabilities: {} });
     kept.catalogue.write([]);
     kept.spaces.write([]);
+    kept.pins.write([]);
     setDrafts({});
     setOutgoing([]);
     setAuthenticated(false);
     live.current = {};
     snapshots.set({});
-  }, [snapshots, kept.spaces.write, kept.catalogue.write]);
+  }, [snapshots]);
   const load = useCallback(
     (id: string) => {
       if (loads.current.has(id)) return loads.current.get(id)!;
@@ -305,7 +305,7 @@ export function useHost(
       loads.current.set(id, request);
       return request;
     },
-    [snapshots, routes.session, api],
+    [snapshots],
   );
   // With `movedTo`, the conversation lives on under that id: what this device
   // holds of it (its draft, its unread mark, messages not yet sent) goes
@@ -356,7 +356,7 @@ export function useHost(
         setSelected(movedTo || "");
       }
     },
-    [snapshots, kept.read.write],
+    [snapshots],
   );
   // A command's outcome, from its receipt or the stream, settles the
   // outgoing row that sent it. True when a row or a waiting caller shows
@@ -375,7 +375,7 @@ export function useHost(
         )
       );
     },
-    [patchOutgoing, receiveOutcome],
+    [patchOutgoing],
   );
   // Jittered exponential backoff; a successful catalogue read resets it.
   const retryLater = () => {
@@ -473,7 +473,7 @@ export function useHost(
         connectedOnce.current = true;
         setOnline(true);
         setConnecting(false);
-        refreshUserStyle(routes.userStyle);
+        refreshUserStyle();
       });
       events.addEventListener("resync", () => {
         if (stream.current === events && !signal.aborted) refresh();
@@ -498,7 +498,7 @@ export function useHost(
           return;
         }
         applyEvent(event);
-        if (event.kind === "turn_status") refreshUserStyle(routes.userStyle);
+        if (event.kind === "turn_status") refreshUserStyle();
         resume.current = message.lastEventId || resume.current;
       });
     };
@@ -673,7 +673,7 @@ export function useHost(
   }, [reconnect]);
   useEffect(() => {
     if (authenticated && catalogue.pins) kept.pins.write(catalogue.pins);
-  }, [authenticated, catalogue.pins, kept.pins.write]);
+  }, [authenticated, catalogue.pins]);
   useEffect(() => {
     if (selected && authenticated) load(selected).catch(() => {});
   }, [selected, authenticated, load]);
@@ -688,10 +688,10 @@ export function useHost(
   );
   useEffect(() => {
     if (authenticated) kept.catalogue.write(listed);
-  }, [authenticated, listed, kept.catalogue.write]);
+  }, [authenticated, listed]);
   useEffect(() => {
     if (authenticated && catalogue.spaces) kept.spaces.write(catalogue.spaces);
-  }, [authenticated, catalogue.spaces, kept.spaces.write]);
+  }, [authenticated, catalogue.spaces]);
   // The tab title and the installed app's badge count what needs you;
   // written only when that count changes.
   const attention = needsYou(listed);
@@ -723,7 +723,7 @@ export function useHost(
     };
     read();
     return snapshots.subscribe(read);
-  }, [selected, following, readingConversation, snapshots, kept.read.write]);
+  }, [selected, following, readingConversation, snapshots]);
   const updateView = useCallback(
     (id: string, update: (snapshot: Snapshot) => Snapshot) => {
       if (!live.current[id]) return;
@@ -732,15 +732,15 @@ export function useHost(
     },
     [snapshots],
   );
+  // The address names the conversation's execution host, or the given one.
   const select = useCallback(
-    (id: string) => {
+    (
+      id: string,
+      host = catalogueRef.current?.sessions.find((session) => session.id === id)
+        ?.host || "",
+    ) => {
       selection.current = id;
-      writeSelection(
-        id,
-        false,
-        catalogueRef.current?.sessions.find((session) => session.id === id)
-          ?.host || "",
-      );
+      writeSelection(id, false, host);
       // Following is owned solely by the transcript history controller:
       // a switch resumes the saved position
       // (or pins a fresh surface), which notifies through onFollow.

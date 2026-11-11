@@ -1,8 +1,9 @@
 # Operations
 
-Settings, limits, budgets, recovery and failure triage. µAgent is a local,
-single-user CLI for macOS and Linux; [Security](../SECURITY.md) describes
-what it confines.
+Settings, limits, budgets, recovery and failure triage. A main µAgent instance
+on macOS or Linux owns one user's state and serves terminal and paired web
+clients. Projects can execute locally or over SSH; [Security](../SECURITY.md)
+describes what it confines.
 
 Remote folders use the main's same settings, providers, models and keys.
 The gateway owns execution only; it needs no remote application setup.

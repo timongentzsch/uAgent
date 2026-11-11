@@ -22,6 +22,7 @@ WorkspaceIdentity Workspace() {
   return workspace.path.empty() ? WorkspaceIdentity{"", CanonicalCwd()}
                                 : workspace;
 }
+bool RemoteWorkspace() { return !workspace.host.empty(); }
 void SetWorkspaceRequest(std::function<json(const json&)> request) {
   workspace_request = std::move(request);
 }
@@ -32,7 +33,7 @@ json WorkspaceRequest(const json& request) {
 }
 bool ReadWorkspaceFile(const std::string& path, size_t limit,
                        std::string& bytes, std::string& error) {
-  if (!Workspace().Remote()) return ReadRegularFile(path, limit, bytes, error);
+  if (!RemoteWorkspace()) return ReadRegularFile(path, limit, bytes, error);
   const json result = WorkspaceRequest({{"op", "bytes"}, {"path", path}});
   if (HexDecode(JsonValue(result, "data", ""), bytes, limit) &&
       result.contains("data")) {

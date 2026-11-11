@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "include/app/execution.h"
+#include "include/core/strings.h"
 namespace uagent::execution {
 json EncodeResult(const ToolResult& r) {
   json v = {{"status", static_cast<int>(r.status)},
@@ -44,16 +45,10 @@ json EncodeResult(const ToolResult& r) {
     const auto& e = *r.effect;
     v["effect"] = {
         {"path", e.path}, {"existed", e.existed}, {"after_hash", e.after_hash}};
-    if (e.before) v["effect"]["before"] = *e.before;
+    if (e.before) v["effect"]["before_hex"] = HexEncode(*e.before);
     if (e.before_mode) v["effect"]["before_mode"] = *e.before_mode;
   }
-  for (const auto& e : r.ended) {
-    v["ended"].push_back({{"activity_id", e.activity_id},
-                          {"status", e.status},
-                          {"output", e.output},
-                          {"duration_ms", e.duration_ms},
-                          {"stopped", e.stopped}});
-  }
+  for (const auto& e : r.ended) v["ended"].push_back(EndedJson(e));
   return v;
 }
 ToolResult DecodeResult(const json& v) {
@@ -63,10 +58,12 @@ ToolResult DecodeResult(const json& v) {
         JsonValue(v, "error", "Remote execution is unavailable."));
   }
   ToolResult r;
-  const int status = JsonValue(v, "status", 1),
-            error = JsonValue(v, "error", 6);
-  r.status = status >= 0 && status <= 3 ? static_cast<CompletionStatus>(status)
-                                        : CompletionStatus::kFailed;
+  const int status = JsonValue(v, "status", -1),
+            error = JsonValue(v, "error", -1);
+  r.status =
+      status >= 0 && status <= static_cast<int>(CompletionStatus::kTimedOut)
+          ? static_cast<CompletionStatus>(status)
+          : CompletionStatus::kFailed;
   r.error = error >= 0 && error <= static_cast<int>(ToolErrorCode::kInternal)
                 ? static_cast<ToolErrorCode>(error)
                 : ToolErrorCode::kRemoteError;
@@ -109,19 +106,19 @@ ToolResult DecodeResult(const json& v) {
     FileEffect effect{JsonValue(*e, "path", ""),
                       JsonValue(*e, "existed", false), std::nullopt,
                       JsonValue(*e, "after_hash", "")};
-    if (const std::string* b = JsonStringRef(*e, "before")) effect.before = *b;
+    if (const std::string* b = JsonStringRef(*e, "before_hex")) {
+      std::string before;
+      if (HexDecode(*b, before, b->size() / 2)) {
+        effect.before = std::move(before);
+      }
+    }
     if (e->contains("before_mode")) {
       effect.before_mode = JsonValue(*e, "before_mode", uint32_t{0});
     }
     r.effect = std::move(effect);
   }
   if (const json* ended = JsonArray(v, "ended")) {
-    for (const auto& e : *ended) {
-      r.ended.push_back({JsonValue(e, "activity_id", int64_t{0}),
-                         JsonValue(e, "status", 0), JsonValue(e, "output", ""),
-                         JsonValue(e, "duration_ms", 0.0),
-                         JsonValue(e, "stopped", false)});
-    }
+    for (const auto& e : *ended) r.ended.push_back(EndedFromJson(e));
   }
   return r;
 }

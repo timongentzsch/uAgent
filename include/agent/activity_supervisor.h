@@ -147,8 +147,6 @@ class ActivityReservation {
 class ActivitySupervisor {
  public:
   ActivitySupervisor();
-  void RemoteWorkspace(bool remote) { remote_workspace_ = remote; }
-  bool RemoteWorkspace() const { return remote_workspace_; }
   ~ActivitySupervisor();
   ActivitySupervisor(const ActivitySupervisor&) = delete;
   ActivitySupervisor& operator=(const ActivitySupervisor&) = delete;
@@ -209,7 +207,6 @@ class ActivitySupervisor {
   void NotifyLocked(bool wake_io = true) UAGENT_REQUIRES(mutex_);
   void PruneRetainedLocked() UAGENT_REQUIRES(mutex_);
 
-  bool remote_workspace_ = false;
   mutable std::mutex mutex_;
   mutable std::condition_variable event_;
   std::vector<Activity> activities_ UAGENT_GUARDED_BY(mutex_);

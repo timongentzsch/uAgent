@@ -11,7 +11,7 @@ Scheduled), the terminal (`/memory`, `/skills`, `/schedule`) or a script
 | remove or move one | `/memory forget KEY`, `/memory rename KEY TARGET`, `/memory copy KEY TARGET` |
 | see installed skills | `/skills` |
 | add a skill | `/skills set global/NAME @SKILL.md` |
-| take over what Claude Code and Codex keep | `/skills import [NAME\|all]`, `/memory import [NAME\|all]` |
+| import skills and memories from Claude Code or Codex | `/skills import [NAME\|all]`, `/memory import [NAME\|all]` |
 | switch a skill off or on | `/skills disable ID`, `/skills enable ID` |
 | list scheduled tasks and runs | `/schedule` |
 | run, pause or resume a task | `/schedule run ID`, `/schedule pause ID`, `/schedule resume ID` |

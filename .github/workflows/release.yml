@@ -3,7 +3,7 @@ name: Release
 # A tag is pushed after its commit has passed CI on master, so the release
 # promotes what that run already built and tested instead of building again.
 # Every file published here comes from the master run of ci.yml for the same
-# commit SHA (the release-* and web-dist artifacts, kept 7 days); the
+# commit SHA (the release-complete and web-dist artifacts, kept 7 days); the
 # attestation is made over exactly those files. When the commit has no such
 # run, or its artifacts expired, ci.yml is run in full for the tag instead.
 on:

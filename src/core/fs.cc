@@ -136,6 +136,12 @@ bool ReadBounded(std::istream& input, size_t cap, std::string& out) {
   return more;
 }
 
+std::string ExpandHome(std::string path) {
+  if (path.empty() || path == "~") return UserHome();
+  if (path.starts_with("~/")) return UserHome() + path.substr(1);
+  return path;
+}
+
 std::optional<std::filesystem::path> CanonicalDirectory(
     const std::filesystem::path& path) {
   std::error_code ec;

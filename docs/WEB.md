@@ -270,9 +270,11 @@ shells at once:
   the list and is shown its recent output; one device at a time types into
   it, and the one it moved from offers **Use here**. It ends when you close
   it, when it exits, or when no device has had it open and it printed
-  nothing for `UAGENT_WEB_TERMINAL_IDLE_MINUTES`. Stopping the web host ends
-  its Local shells; nothing is written to disk. Remote shells live in the
-  execution gateway and can survive SSH loss or a same-build main restart.
+  nothing for `UAGENT_WEB_TERMINAL_IDLE_MINUTES` (Local) or 24 hours (remote).
+  Stopping the web host ends
+  its Local shells; no shell output is written to disk. Remote shells live in
+  the execution gateway; the main saves only their identities, so they can
+  survive SSH loss or a same-build main restart.
   Reconnect to reattach; a remote restart or build upgrade loses their handles.
 - **Turn it off** with `/config user UAGENT_WEB_TERMINAL=off`, or in
   Settings → All conversations; it applies when the web host restarts. The

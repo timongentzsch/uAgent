@@ -1,8 +1,7 @@
-import { useHosts } from "../state/sources.ts";
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import type { InstallPrompt, Report } from "../shared/types.ts";
 import { stored } from "../shared/storage.ts";
-import { storageKeys, hostStorageKey } from "../shared/storage-keys.ts";
+import { storageKeys } from "../shared/storage-keys.ts";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place.
 import { prefetchMarkdown } from "../shared/markdown-view.tsx";
@@ -14,15 +13,9 @@ import { useApi } from "../state/api.ts";
 
 // Remembered per device, so the header's browser slot is right from the
 // first frame instead of appearing once the host answers.
-const browserStore = (host: string) =>
-  stored(
-    hostStorageKey(storageKeys.browser, host),
-    false,
-    (value) => value === 1,
-    {
-      kept: Number,
-    },
-  );
+const browserKept = stored(storageKeys.browser, false, (value) => value === 1, {
+  kept: Number,
+});
 
 // What the shell does once it starts, apart from any conversation: warms the
 // markdown renderer, follows the viewport, takes files dropped on the page,
@@ -42,9 +35,7 @@ export function useBoot({
   authenticated: boolean | null;
   online: boolean;
 }) {
-  const { api, routes, host } = useApi();
-  const hosts = useHosts();
-  const browserKept = useMemo(() => browserStore(host), [host]);
+  const { api, routes } = useApi();
   const browserAvailable = !!useResource(
     (signal) =>
       authenticated === true && online
@@ -56,10 +47,7 @@ export function useBoot({
     [authenticated, online],
     browserKept.read,
   ).value;
-  useEffect(
-    () => browserKept.write(browserAvailable),
-    [browserAvailable, browserKept],
-  );
+  useEffect(() => browserKept.write(browserAvailable), [browserAvailable]);
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
   useEffect(() => {
@@ -115,8 +103,7 @@ export function useBoot({
         event.data?.type === "OPEN_SESSION" &&
         /^[a-f0-9]{16,64}$/.test(event.data.id || "")
       ) {
-        if (hosts) hosts.open("", event.data.id);
-        else choose(event.data.id);
+        choose(event.data.id);
         if (event.data.decision !== undefined) focusDecision();
       }
     };
@@ -128,6 +115,6 @@ export function useBoot({
       navigator.serviceWorker?.removeEventListener("message", openSession);
       removeEventListener("hashchange", followDecisionLink);
     };
-  }, [choose, hosts]);
+  }, [choose]);
   return { browserAvailable, install, setInstall, update, attach };
 }

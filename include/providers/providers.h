@@ -133,7 +133,7 @@ std::string RouteSelection(const Route& route,
 // only, so a session handed this selection resolves the same route.
 std::string ChosenSelection(const Api& api,
                             const std::vector<Endpoint>& providers);
-std::string ProviderScope(const std::string& base_url,
+std::string ProviderScope(const Endpoint& endpoint,
                           const std::vector<Endpoint>& providers);
 std::string ComposeSelection(const std::string& scope, const std::string& model,
                              const std::string& effort);
@@ -149,7 +149,8 @@ std::string SelectModel(Api& api, const std::vector<Route>& routes,
                         const std::vector<Endpoint>& providers,
                         const std::string& name);
 int64_t CatalogContextLength(const json& model);
-std::optional<std::vector<ModelInfo>> ParseModels(const json& response);
+std::optional<std::vector<ModelInfo>> ParseModels(const json& response,
+                                                  bool free_only = false);
 // The catalogue the last successful query left for this endpoint, while it is
 // a day old at most; a query refreshes it.
 std::optional<std::vector<ModelInfo>> CachedModels(const Api& api);

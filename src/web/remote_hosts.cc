@@ -17,7 +17,6 @@
 #include "include/core/build.h"
 #include "include/core/capture.h"
 #include "include/core/child_env.h"
-#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/private_store.h"
 #include "include/core/strings.h"
@@ -27,7 +26,7 @@ namespace uagent::web {
 namespace {
 using Clock = std::chrono::steady_clock;
 struct Host {
-  std::string id, address, name, control, log, client, executable, auth;
+  std::string id, address, control, log, client, executable, auth;
   mutable std::mutex mutex;
   std::condition_variable wake;
   std::jthread worker;
@@ -46,22 +45,7 @@ bool Address(const std::string& address) {
          });
 }
 std::vector<std::string> Ssh(const Host& host) {
-  return {"ssh",
-          "-S",
-          host.control,
-          "-o",
-          "BatchMode=yes",
-          "-o",
-          "StrictHostKeyChecking=yes",
-          "-o",
-          "ConnectTimeout=10",
-          "-o",
-          "ForwardAgent=no",
-          "-o",
-          "SendEnv=-*",
-          "-o",
-          "ControlMaster=no",
-          host.address};
+  return SshCommand(host.control, host.address);
 }
 CapturedProcess Run(const Host& host, const std::string& command,
                     const std::string& input = "") {
@@ -88,10 +72,7 @@ void Close(Host& host) {
   unlink(host.control.c_str());
 }
 bool Install(const Host& host, const std::string& bundle, std::string& error) {
-  auto probe = Run(host,
-                   "printf 'uagent-platform='; uname -s; uname -m; if test "
-                   "\"$(uname -s)\" = Darwin; then sw_vers -productVersion; "
-                   "else getconf GNU_LIBC_VERSION; fi");
+  auto probe = Run(host, "printf 'uagent-platform='; uname -s; uname -m");
   if (!probe.Ok()) {
     error = "Cannot inspect the remote platform.";
     return false;
@@ -154,43 +135,20 @@ bool Install(const Host& host, const std::string& bundle, std::string& error) {
       "done; "
       "test -x builds/" +
       build + "/uagent; fi";
-  const auto installed = Run(host, command, bytes);
-  if (!installed.Ok()) {
-    const json detail = json::parse(installed.output, nullptr, false);
-    error = JsonValue(detail, "error",
-                      "Remote payload installation failed. Check the platform "
-                      "minimum and ~/.uagent/remote/install.lock.");
+  if (!Run(host, command, bytes).Ok()) {
+    error =
+        "Remote payload installation failed. Check the platform minimum and "
+        "~/.uagent/remote/install.lock.";
     return false;
   }
   return true;
 }
-bool Connect(Host& host, const std::string& bundle, bool& endpoint,
-             std::string& error, bool& retryable) {
+bool Connect(Host& host, const std::string& bundle, std::string& error,
+             bool& retryable, const std::stop_token& stop) {
   retryable = false;
   Close(host);
   SpawnSpec spec;
-  spec.argv = {"ssh",
-               "-M",
-               "-N",
-               "-S",
-               host.control,
-               "-o",
-               "ControlPersist=no",
-               "-o",
-               "BatchMode=yes",
-               "-o",
-               "StrictHostKeyChecking=yes",
-               "-o",
-               "ConnectTimeout=10",
-               "-o",
-               "ServerAliveInterval=10",
-               "-o",
-               "ServerAliveCountMax=3",
-               "-o",
-               "ForwardAgent=no",
-               "-o",
-               "SendEnv=-*",
-               host.address};
+  spec.argv = SshCommand(host.control, host.address, true);
   ChildEnvironment environment({}, ChildEnvironmentPolicy::kUserShell);
   spec.environment = environment.Data();
   spec.group = SpawnSpec::Group::kOwn;
@@ -206,7 +164,7 @@ bool Connect(Host& host, const std::string& bundle, bool& endpoint,
     return false;
   }
   bool ready = false;
-  for (int attempt = 0; attempt < 100; ++attempt) {
+  for (int attempt = 0; attempt < 300 && !stop.stop_requested(); ++attempt) {
     int status = 0;
     if (WaitPid(host.pid, &status, WNOHANG) == host.pid) {
       host.pid = -1;
@@ -262,7 +220,6 @@ bool Connect(Host& host, const std::string& bundle, bool& endpoint,
       return false;
     }
   }
-  endpoint = true;
   return true;
 }
 
@@ -300,15 +257,14 @@ void Work(Host& host, const std::string& bundle, std::stop_token stop) {
       host.round_trip_ms.reset();
       host.attempting = true;
       lock.unlock();
-      bool endpoint = false;
       std::string error;
       bool retryable = false;
-      const bool connected = Connect(host, bundle, endpoint, error, retryable);
+      const bool connected = Connect(host, bundle, error, retryable, stop);
       if (!connected) Close(host);
       lock.lock();
       host.attempting = false;
       if (connected) {
-        host.endpoint = endpoint;
+        host.endpoint = true;
         host.phase = "connected";
         sample_due = Clock::time_point::min();
         host.error.clear();
@@ -389,8 +345,7 @@ struct RemoteHosts::Impl {
   mutable std::mutex mutex;
   std::map<std::string, std::shared_ptr<Host>> hosts;
   explicit Impl(std::string path) : bundle(std::move(path)) {}
-  std::shared_ptr<Host> Add(const std::string& id, const std::string& address,
-                            const std::string& name) {
+  std::shared_ptr<Host> Add(const std::string& id, const std::string& address) {
     auto host = std::make_shared<Host>();
     const std::string private_path =
         GlobalBase() + "/web/client-" + id + ".json";
@@ -410,7 +365,6 @@ struct RemoteHosts::Impl {
     }
     host->id = id;
     host->address = address;
-    host->name = name;
     const std::string directory = RuntimeDir() + "/remote";
     if (!EnsurePrivateDirectory(directory)) return {};
     const std::string base = directory + "/" + id.substr(0, 12);
@@ -437,7 +391,7 @@ RemoteHosts::RemoteHosts(const std::string& executable,
       const std::string id = JsonValue(row, "id", ""),
                         address = JsonValue(row, "address", "");
       if (OpaqueId(id) && Address(address) && impl_->hosts.size() < 16) {
-        impl_->Add(id, address, JsonValue(row, "name", address));
+        impl_->Add(id, address);
       }
     }
   }
@@ -455,7 +409,6 @@ json RemoteHosts::List() const {
   for (const auto& [id, host] : impl_->hosts) {
     std::lock_guard state(host->mutex);
     rows.push_back({{"id", id},
-                    {"name", host->name},
                     {"address", host->address},
                     {"phase", host->phase},
                     {"error", host->error},
@@ -504,16 +457,14 @@ json RemoteHosts::Change(const json& action, std::string& error) {
         return nullptr;
       }
     }
-    host = impl_->Add(RandomToken(16), address,
-                      JsonValue(action, "name", address).substr(0, 80));
+    host = impl_->Add(RandomToken(16), address);
     if (!host) {
       error = "Cannot create the private SSH runtime directory.";
       return nullptr;
     }
     json saved = json::array();
     for (const auto& [key, item] : impl_->hosts) {
-      saved.push_back(
-          {{"id", key}, {"name", item->name}, {"address", item->address}});
+      saved.push_back({{"id", key}, {"address", item->address}});
     }
     if (!WritePrivateFile(GlobalBase() + "/web/hosts.json", JsonDump(saved),
                           error)) {

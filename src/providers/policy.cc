@@ -170,6 +170,11 @@ RouteResolution ResolveReviewRoute(const Api& api,
     }
   }
   RouteResolution resolved;
+  if (api.FreeOnly() && setting.empty()) {
+    resolved.none =
+        "free-only provider has no automatic paid approval reviewer";
+    return resolved;
+  }
   if (!chosen) {
     resolved.none =
         "no provider serves decision models; one at openrouter.ai does";
@@ -196,7 +201,7 @@ std::string ComposeSelection(const std::string& scope, const std::string& model,
 std::string RouteSelection(const Route& route,
                            const std::vector<Endpoint>& providers) {
   if (route.model.empty()) return {};
-  return ComposeSelection(ProviderScope(route.base_url, providers), route.model,
+  return ComposeSelection(ProviderScope(route, providers), route.model,
                           route.reasoning_effort);
 }
 

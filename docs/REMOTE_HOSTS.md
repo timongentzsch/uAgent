@@ -46,6 +46,10 @@ support x86_64 and ARM64. Linux also needs the standard C++ runtime, libcurl,
 OpenSSL 3 and zlib. Remote setup needs no compiler, sudo or network download.
 Managed executables and resources live in immutable build directories under
 `~/.uagent/remote/builds/`. The user's normal uAgent CLI stays in place.
+Administrators can instead install a read-only remote payload at
+`/usr/local/lib/uagent/remote/BUILD_ID/`, with its executable named `uagent`.
+The connector probes that location first and uses it only when `--build-id`
+matches the main; otherwise it uses the per-account installation.
 
 ## Ownership and isolation
 
@@ -90,8 +94,10 @@ queries request receipts instead of replaying uncertain mutations. A restarted
 remote process reports lost handles as interrupted. Closing a conversation stops
 its owned jobs; an unused execution process exits after a grace period.
 
-Terminal identities are saved on the main so the same build can reattach after a
-main restart. Remote restart or a main build upgrade interrupts access to old
+Folder terminal identities are saved on the main so the same build can reattach
+after a main restart. Panel terminals without a folder end with their viewer and
+are not saved. An unattached remote folder shell expires after 24 hours without
+output; the main's Local-terminal idle setting does not change that limit. Remote restart or a main build upgrade interrupts access to old
 terminal handles; it cannot reconstruct terminal output from durable history.
 Keep terminal work in a remote terminal multiplexer when it must survive those
 boundaries.
@@ -105,12 +111,19 @@ main; automatic memory extraction and interactive remote sudo prompts are deferr
 Settings, providers, model selection, Library assets and Scheduled are main-owned.
 Remote previews are served through the main's authenticated preview capability.
 
+The host list currently holds up to 16 entries and has no remove action.
+Remote file paths must use UTF-8 names; file contents and undo preimages are
+transported as bytes.
+
 ## Installers and containers
 
 A remote-ready installation contains a manifest and four verified payloads in
 `share/uagent/remote/BUILD_ID/`. Native CI assembles all four from identical
 runtime inputs and includes the complete bundle in each release archive.
 The remote executable omits the web app and carries its bundled resources.
+
+A release install that falls back to compilation checks out the selected release
+tag, so its runtime identity matches the published payloads.
 
 A source install looks for an installed matching bundle, an explicit
 `UAGENT_REMOTE_BUNDLE` directory, or the exact published bundle for that build.

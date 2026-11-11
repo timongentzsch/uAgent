@@ -36,11 +36,12 @@ std::optional<std::string> OptionImageIssue(const std::string& path) {
   if (!ImageFile(path)) {
     return "an option's image must be a .png, .jpg, .gif, .webp or .svg file";
   }
-  if (Workspace().Remote()) {
+  if (RemoteWorkspace()) {
     const json checked = WorkspaceRequest(
         {{"op", "check"}, {"tool", "read_path"}, {"args", {{"path", path}}}});
     if (checked.contains("error") || checked.contains("issue") ||
-        JsonValue(checked, "approval", 2) != 0) {
+        JsonValue(checked, "approval", -1) !=
+            static_cast<int>(ApprovalClass::kNone)) {
       return "an option's image must be a readable file you made in the remote "
              "folder";
     }

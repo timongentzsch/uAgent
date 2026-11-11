@@ -262,6 +262,8 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
                  {"command", check},
                  {"mode", JsonValue(definition, "permissions", "ask")}});
           }
+          // A quiet or failed check has no session runtime to own the forward.
+          remote.Release();
         }
       } else if (starting && failure.empty() && !check.empty()) {
         checked = RunScheduleCheck(JsonValue(run, "cwd", ""), check);

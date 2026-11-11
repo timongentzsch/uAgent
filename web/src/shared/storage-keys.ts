@@ -5,6 +5,9 @@
 export const storageKeys = {
   catalogue: "uagent-catalogue",
   spaces: "uagent-spaces",
+  pins: "uagent-pins",
+  // The remote hosts last listed, painted disconnected until the host answers.
+  hosts: "uagent-hosts",
   page: "uagent-page",
   drafts: "uagent-drafts",
   outgoing: "uagent-outgoing",

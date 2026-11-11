@@ -1,5 +1,6 @@
 """A local SSH stand-in: commands use another HOME; forwarding owns sockets."""
 
+import json
 import os
 import pathlib
 import signal
@@ -92,4 +93,8 @@ else:
                     listener.listen()
                     forwards[spec] = listener
                     threading.Thread(target=forward, args=(listener, remote), daemon=True).start()
+                snapshot = pathlib.Path(os.environ["HOME"]) / "ssh-fixture-forwards.json"
+                pending = snapshot.with_suffix(".tmp")
+                pending.write_text(json.dumps(sorted(forwards)))
+                pending.replace(snapshot)
                 command.sendall(b"ok")

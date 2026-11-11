@@ -1,57 +1,53 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 715" width="1000" height="715" role="img" aria-label="Main-local and remote trust boundaries: provider keys and provider HTTP stay on the main. Authenticated SSH carries execution requests and an RPC credential via stdin. Remote commands use the remote OS sandbox, terminals use the SSH account, and shared accounts do not isolate files. The gateway receives no provider configuration or conversation history.">
 <style>
-.bg { fill: #ffffff; }
-text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 13px; fill: #1f2328; }
-.t { font-weight: 600; }
-.m { font-size: 11.5px; fill: #59636e; }
-.c { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; fill: #59636e; }
-.no { font-size: 11.5px; font-weight: 600; fill: #cf222e; }
-.box { fill: #f6f8fa; stroke: #d1d9e0; }
-.key { fill: #ddf4ff; stroke: #0969da; }
-.web { fill: #fff8c5; stroke: #d4a72c; }
-.zone { fill: none; stroke: #818b98; stroke-dasharray: 4 3; }
-.ln { fill: none; stroke: #818b98; stroke-width: 1.5; }
-.cut { fill: none; stroke: #cf222e; stroke-width: 1.5; stroke-dasharray: 5 4; }
-.hd { fill: #818b98; }
-.hd-no { fill: #cf222e; }
-.lbl { paint-order: stroke; stroke: #ffffff; stroke-width: 4px; stroke-linejoin: round; }
-@media (prefers-color-scheme: dark) {
-  .bg { fill: #0d1117; }
-  text { fill: #f0f6fc; }
-  .m, .c { fill: #9198a1; }
-  .no { fill: #f85149; }
-  .box { fill: #151b23; stroke: #3d444d; }
-  .key { fill: #0d2a4d; stroke: #4493f8; }
-  .web { fill: #2e2a12; stroke: #9e7b1a; }
-  .zone, .ln { stroke: #656c76; }
-  .cut { stroke: #f85149; }
-  .hd { fill: #656c76; }
-  .hd-no { fill: #f85149; }
-  .lbl { stroke: #0d1117; }
-}
-</style>
+  :root { --bg:#fff; --text:#111; --muted:#555; --line:#ccc; --bar:#767676; }
+  @media (prefers-color-scheme:dark) {
+    :root { --bg:#000; --text:#f5f5f5; --muted:#a3a3a3; --line:#404040; --bar:#8a8a8a; }
+  }
+  .bg { fill:var(--bg); }
+  text { fill:var(--text); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:13px; font-variant-numeric:tabular-nums; }
+  .headline { font-size:22px; font-weight:700; }
+  .title { font-size:14px; font-weight:700; }
+  .note { font-size:11px; fill:var(--muted); }
+  .bar { fill:var(--bar); }
+  .bar.primary { fill:var(--text); }
+  .rule { stroke:var(--line); }
+
+    .t { font-weight:700; }
+    .m, .c { font-size:11px; fill:var(--muted); }
+    .no { font-size:11px; font-weight:700; }
+    .box, .web { fill:var(--bg); stroke:var(--line); }
+    .key { fill:var(--bg); stroke:var(--text); stroke-width:1.5; }
+    .sand, .zone { fill:none; stroke:var(--bar); stroke-dasharray:4 4; }
+    .ln { fill:none; stroke:var(--bar); stroke-width:1.5; }
+    .hd, .hd-no { fill:var(--bar); }
+    .cut { fill:none; stroke:var(--text); stroke-width:1.5; stroke-dasharray:5 4; }
+    .lbl { paint-order:stroke; stroke:var(--bg); stroke-width:4px; }
+    .bar.uagent { fill:var(--text); }
+    </style>
 <defs>
 <marker id="a" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="hd" d="M0 0L8 4L0 8z"/></marker>
 <marker id="n" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="hd-no" d="M0 0L8 4L0 8z"/></marker>
 </defs>
 <rect class="bg" width="1000" height="715"/>
-<rect class="zone" x="200" y="20" width="600" height="425" rx="8"/>
+<rect class="zone" x="200" y="20" width="600" height="425"/>
 <text class="m" x="212" y="40">Main machine or container</text>
-<rect class="box" x="20" y="60" width="150" height="70" rx="6"/>
+<rect class="box" x="20" y="60" width="150" height="70"/>
 <text class="t" x="32" y="84">Your devices</text>
-<text class="m" x="32" y="104">phone, laptop, tablet</text>
+<text class="m" x="32" y="104">phone or computer</text>
 <text class="m" x="32" y="120">once paired</text>
-<rect class="key" x="830" y="60" width="150" height="86" rx="6"/>
+<rect class="key" x="830" y="60" width="150" height="86"/>
 <text class="t" x="842" y="84">Model endpoint</text>
 <text class="m" x="842" y="104">sees prompts, files</text>
 <text class="m" x="842" y="120">read, tool results</text>
 <text class="m" x="842" y="136">trusted by you</text>
-<rect class="box" x="230" y="60" width="220" height="86" rx="6"/>
+<rect class="box" x="230" y="60" width="220" height="86"/>
 <text class="t" x="242" y="84">Web host</text>
 <text class="m" x="242" y="104">paired devices only</text>
 <text class="m" x="242" y="120">Origin checked on changes</text>
 <text class="c" x="242" y="136">~/.uagent/web</text>
-<rect class="box" x="520" y="60" width="250" height="86" rx="6"/>
+<rect class="box" x="520" y="60" width="250" height="86"/>
 <text class="t" x="532" y="84">Session runtime</text>
 <text class="m" x="532" y="104">approval and path policy</text>
 <text class="m" x="532" y="120">holds the model API key</text>
@@ -59,12 +55,12 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size:
 <path class="ln" d="M170 95H230" marker-end="url(#a)"/>
 <text class="m lbl" x="200" y="88" text-anchor="middle">HTTPS, SSE</text>
 <path class="ln" d="M450 103H520" marker-end="url(#a)"/>
-<text class="m lbl" x="485" y="96" text-anchor="middle">Unix socket</text>
+<text class="m lbl" x="485" y="96" text-anchor="middle">socket</text>
 <path class="ln" d="M770 95H830" marker-end="url(#a)"/>
 <text class="m lbl" x="800" y="88" text-anchor="middle">HTTPS</text>
-<rect class="zone" x="520" y="200" width="250" height="230" rx="8"/>
+<rect class="zone" x="520" y="200" width="250" height="230"/>
 <text class="m" x="540" y="422">OS sandbox · Seatbelt / Landlock</text>
-<rect class="key" x="540" y="236" width="210" height="52" rx="6"/>
+<rect class="key" x="540" y="236" width="210" height="52"/>
 <text class="t" x="552" y="258">Local commands, MCP</text>
 <text class="m" x="552" y="277">write: folder, tmp, caches</text>
 <text class="no" x="540" y="316">cannot read or reach</text>
@@ -74,7 +70,7 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size:
 <text class="m" x="540" y="394">secrets in the environment</text>
 <path class="ln" d="M645 146V236" marker-end="url(#a)"/>
 <text class="m lbl" x="653" y="180">spawns them</text>
-<rect class="web" x="230" y="300" width="220" height="130" rx="6"/>
+<rect class="web" x="230" y="300" width="220" height="130"/>
 <text class="t" x="242" y="322">Browser service</text>
 <text class="m" x="242" y="342">Chrome and Xvnc</text>
 <text class="m" x="242" y="360">profile: saved logins, cookies</text>
@@ -89,14 +85,14 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size:
 <path class="ln" d="M760 146V172H790V557H770" marker-end="url(#a)"/>
 <text class="m lbl" x="805" y="472">RPC over SSH</text>
 <text class="m lbl" x="805" y="490">credential via stdin</text>
-<rect class="zone" x="200" y="480" width="600" height="215" rx="8"/>
+<rect class="zone" x="200" y="480" width="600" height="215"/>
 <text class="t" x="214" y="504">Remote SSH account</text>
-<rect class="box" x="230" y="530" width="220" height="104" rx="6"/>
-<text class="t" x="244" y="552">Remote files and processes</text>
+<rect class="box" x="230" y="530" width="220" height="104"/>
+<text class="t" x="244" y="552">Remote files / processes</text>
 <text class="m" x="244" y="574">Commands: remote OS sandbox</text>
 <text class="m" x="244" y="596">Terminals: your shell</text>
-<text class="m" x="244" y="618">Normal account permissions apply</text>
-<rect class="key" x="520" y="530" width="250" height="104" rx="6"/>
+<text class="m" x="244" y="618">OS account permissions apply</text>
+<rect class="key" x="520" y="530" width="250" height="104"/>
 <text class="t" x="534" y="552">Execution process</text>
 <text class="m" x="534" y="574">per main / runtime, authenticated</text>
 <text class="m" x="534" y="596">No model keys, settings or history</text>

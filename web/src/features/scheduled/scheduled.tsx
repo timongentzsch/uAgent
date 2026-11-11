@@ -1,4 +1,5 @@
-import { useHosts, useMultipleHosts } from "../../state/sources.ts";
+import { useHosts } from "../../state/sources.ts";
+import HostField from "../../shared/host-field.tsx";
 import { useAction } from "../../shared/use-action.ts";
 import { usePushDirection } from "../../shared/motion.ts";
 import { tabDrafts, useStored } from "../../shared/storage.ts";
@@ -104,11 +105,9 @@ export default function Scheduled({
 }) {
   const { manage, host } = useApi();
   const [task, setTask] = useState(drafts.open.read);
-  const hosts = useHosts();
-  const multipleHosts = useMultipleHosts();
-  const taskSessions = hosts?.sources.find(
+  const taskSessions = useHosts().sources.find(
     (source) => source.id === (task?.host || ""),
-  )?.state?.catalogue.sessions;
+  )?.state.catalogue.sessions;
   const taskProjects = taskSessions ? projectsOf(taskSessions) : projects;
   const moved = usePushDirection(!!task);
   const [prefs] = useStored(devicePrefs.time);
@@ -310,26 +309,13 @@ export default function Scheduled({
                         }
                       />
                     </Field>
-                    {multipleHosts && (
-                      <Field label="Execution host">
-                        <Select
-                          value={task.host || ""}
-                          onChange={(event) =>
-                            edit({
-                              host: event.currentTarget.value,
-                              cwd: "",
-                              environment: "local",
-                            })
-                          }
-                        >
-                          {hosts?.sources.map((source) => (
-                            <option value={source.id} key={source.id}>
-                              {source.name}
-                            </option>
-                          ))}
-                        </Select>
-                      </Field>
-                    )}
+                    <HostField
+                      label="Execution host"
+                      value={task.host || ""}
+                      change={(host) =>
+                        edit({ host, cwd: "", environment: "local" })
+                      }
+                    />
                     <ProjectField
                       value={task.cwd}
                       projects={taskProjects}

@@ -1,10 +1,10 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_TERMINAL_H_
 #define UAGENT_INCLUDE_APP_TERMINAL_H_
-// The web host's terminals: login shells of the user's on a PTY, unsandboxed.
-// A folder's shell keeps its recent output so any device can attach again; a
-// shell of no folder (the page's own) ends with its viewer. The agent never
-// reads them.
+// The web host's and a remote gateway's terminals: login shells of the user's
+// on a PTY, unsandboxed. A folder's shell keeps its recent output so any
+// device can attach again; a shell of no folder (the page's own) ends with
+// its viewer. The agent never reads them.
 
 #include <atomic>
 #include <chrono>
@@ -23,6 +23,8 @@
 
 namespace uagent {
 
+// Unattached panel shells and their main-side records share this grace period.
+inline constexpr std::chrono::seconds kTerminalFirstViewerWait{30};
 struct TerminalShell;
 
 // A shell as the page lists it, under the folder it belongs to.

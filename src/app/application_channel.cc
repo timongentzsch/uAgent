@@ -37,8 +37,8 @@ int Application::RunChannel() {
   }
   SaveSession(true);
   used_before_ = UsageTotals();
-  if (!Workspace().Remote() && AgentDepth() == 0 &&
-      api_.config.memory_enabled && api_.config.memory_generate) {
+  if (!RemoteWorkspace() && AgentDepth() == 0 && api_.config.memory_enabled &&
+      api_.config.memory_generate) {
     std::string error = StartMemoryExtractor(
         runtime_.processes, api_, CanonicalAccessPath(CanonicalCwd()),
         session_file_);

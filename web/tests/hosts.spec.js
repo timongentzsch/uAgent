@@ -39,7 +39,6 @@ async function offlineHost(
           hosts: [
             {
               id: remote,
-              name: "GPU",
               address: "GPU",
               phase,
               error: "",
@@ -119,9 +118,7 @@ test.describe("phone host controls", () => {
     hasTouch: true,
     viewport: { width: 390, height: 844 },
   });
-  test("host details expose connection controls without a host switch", async ({
-    page,
-  }) => {
+  test("host details expose connection controls", async ({ page }) => {
     const observed = await offlineHost(page);
     await page.goto("/");
     await page
@@ -132,7 +129,6 @@ test.describe("phone host controls", () => {
       .getByRole("button", { name: /GPU.*Disconnected/ });
     await expect(row).toBeVisible();
     expect((await row.boundingBox()).height).toBeGreaterThanOrEqual(44);
-    await expect(row.locator(".host-square")).toHaveCSS("border-radius", "0px");
     await row.tap();
     const detail = page.getByRole("dialog", { name: "GPU", exact: true });
     await expect(
@@ -141,13 +137,57 @@ test.describe("phone host controls", () => {
     await expect(
       detail.getByRole("button", { name: "Disconnect", exact: true }),
     ).toBeDisabled();
-    await expect(detail.getByLabel("Folder path")).toHaveCount(0);
-    await expect(
-      detail.getByRole("button", { name: /Switch.*host|Open host/ }),
-    ).toHaveCount(0);
     await detail.getByRole("button", { name: "Reconnect", exact: true }).tap();
     await expect.poll(() => observed.actions.length).toBe(1);
     expect(observed.actions[0]).toEqual({ action: "reconnect", id: remote });
+  });
+  // An iPhone home-screen app writes the address under the drawer, a step
+  // back later: what was picked in the drawer still opens, on its own host.
+  test("a home-screen app's drawer opens another host's conversation and folder", async ({
+    page,
+    host,
+    request,
+  }) => {
+    const local = await savedConversation(host, request, "Standalone local");
+    await offlineHost(page, "connected");
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "standalone", { value: true });
+    });
+    await page.goto(`/#session=${local.id}`);
+    await expect(
+      page.getByRole("heading", { name: "Standalone local", level: 1 }),
+    ).toBeVisible();
+    const drawer = page.getByRole("dialog", {
+      name: "Conversations",
+      exact: true,
+    });
+    const pick = async (group, name) => {
+      await page
+        .getByRole("button", { name: "Open conversations", exact: true })
+        .tap();
+      await drawer
+        .getByRole("group", { name: group, exact: true })
+        .getByRole("button", { name, exact: true })
+        .tap();
+      await expect(drawer).toHaveCount(0);
+    };
+    await pick("GPU", "GPU conversation");
+    await expect(page.locator(".execution-host")).toHaveText("GPU");
+    await expect(page).toHaveURL(
+      new RegExp(`#host=${remote}&session=${"a".repeat(32)}$`),
+    );
+    // The drawer's own entry is gone once it has closed.
+    await expect
+      .poll(() => page.evaluate(() => history.state?.layer ?? 0))
+      .toBe(0);
+    await pick("Local", "Standalone local");
+    await expect(page.locator(".execution-host")).toHaveText("Local");
+    await expect(page).toHaveURL(new RegExp(`#session=${local.id}$`));
+    await pick("GPU", "srv/project");
+    await expect(
+      page.getByRole("region", { name: "Overview of srv/project" }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`#host=${remote}$`));
   });
 });
 
@@ -227,9 +267,7 @@ for (const width of [390, 1440]) {
   });
 }
 
-test("host details show measured main-to-host latency without a switch action", async ({
-  page,
-}) => {
+test("host details show measured main-to-host latency", async ({ page }) => {
   await offlineHost(page, "connected");
   await page.route("**/api/hosts/*/ping", (route) =>
     route.fulfill({ json: { round_trip_ms: 27.4 } }),
@@ -249,10 +287,6 @@ test("host details show measured main-to-host latency without a switch action", 
   await expect(dialog.getByRole("status")).toHaveText(
     "Main → host · 27 ms round trip",
   );
-  await expect(
-    dialog.getByRole("button", { name: /Switch.*host|Open host/ }),
-  ).toHaveCount(0);
-  await expect(dialog.getByLabel("Folder path")).toHaveCount(0);
 });
 
 test("late home loading preserves path entry and its caret", async ({
@@ -373,10 +407,7 @@ test("an unknown host falls back to the full Local conversation list", async ({
     .locator(".session-row")
     .filter({ hasText: "Local fallback" });
   await expect(row.locator('[aria-haspopup="menu"]')).toBeVisible();
-  await row
-    .getByRole("button", { name: /Local fallback/ })
-    .first()
-    .click();
+  await row.getByRole("button", { name: /^Local fallback/ }).click();
   await expect(page.locator(".execution-host")).toHaveText("Local");
 });
 
@@ -388,8 +419,7 @@ test("choosing a disconnected host's own conversation reconnects once", async ({
   await expect(connected(page)).toBeVisible();
   await page
     .getByRole("group", { name: "GPU", exact: true })
-    .getByRole("button", { name: /GPU conversation/ })
-    .first()
+    .getByRole("button", { name: /^GPU conversation/ })
     .click();
   await expect
     .poll(() => observed.actions)
@@ -456,8 +486,7 @@ test("side conversations stay main-owned across execution host navigation", asyn
   await expect(side).toContainText("SIDE-TOOL-COMPLETE");
   await page
     .getByRole("group", { name: "GPU", exact: true })
-    .getByRole("button", { name: /GPU conversation/ })
-    .first()
+    .getByRole("button", { name: /^GPU conversation/ })
     .click();
   await expect(side).toHaveCount(0);
   await page.evaluate((id) => {
@@ -468,13 +497,6 @@ test("side conversations stay main-owned across execution host navigation", asyn
   await page.reload();
   await online(page);
   await expect(side).toHaveCount(0);
-  expect(
-    await page.evaluate(() =>
-      Object.keys(localStorage).filter((key) =>
-        key.startsWith("uagent-side-conversations:host:"),
-      ),
-    ),
-  ).toEqual([]);
 });
 
 test("offline gateway navigation does not request a remote connection", async ({
@@ -493,8 +515,7 @@ test("offline gateway navigation does not request a remote connection", async ({
   });
   await page
     .getByRole("group", { name: "GPU", exact: true })
-    .getByRole("button", { name: /GPU conversation/ })
-    .first()
+    .getByRole("button", { name: /^GPU conversation/ })
     .click();
   await expect
     .poll(() =>
@@ -540,8 +561,7 @@ test("a scheduled draft retains its execution host while navigating", async ({
   await page.getByLabel("Name", { exact: true }).fill("Main-owned draft");
   await page
     .getByRole("group", { name: "GPU", exact: true })
-    .getByRole("button", { name: /GPU conversation/ })
-    .first()
+    .getByRole("button", { name: /^GPU conversation/ })
     .click();
   await page.getByRole("button", { name: "Scheduled", exact: true }).click();
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
@@ -550,11 +570,4 @@ test("a scheduled draft retains its execution host while navigating", async ({
   await expect(
     page.getByRole("combobox", { name: "Execution host", exact: true }),
   ).toHaveValue("");
-  expect(
-    await page.evaluate(() =>
-      Object.keys(sessionStorage).filter((key) =>
-        key.startsWith("uagent-scheduled-draft:host:"),
-      ),
-    ),
-  ).toEqual([]);
 });

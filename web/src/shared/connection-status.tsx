@@ -7,6 +7,14 @@ export function StatusLed({ state }: { state: LedState }) {
   return <span class={`status-led ${state}`} aria-hidden="true" />;
 }
 
+// One name per connection phase, for the serving host and a remote one.
+export const connectionLabels = {
+  connected: "Connected",
+  connecting: "Connecting…",
+  reconnecting: "Reconnecting…",
+  disconnected: "Disconnected",
+};
+
 export function ConnectionStatus({
   phase,
   className = "",
@@ -15,12 +23,6 @@ export function ConnectionStatus({
   className?: string;
 }) {
   const busy = phase === "connecting" || phase === "reconnecting";
-  const label = {
-    connected: "Connected",
-    connecting: "Connecting…",
-    reconnecting: "Reconnecting…",
-    disconnected: "Disconnected",
-  }[phase];
   return (
     <span
       // Anything but connected stands out as a chip.
@@ -34,7 +36,7 @@ export function ConnectionStatus({
       ) : (
         <StatusLed state={phase === "connected" ? "active" : "idle"} />
       )}
-      {label}
+      {connectionLabels[phase]}
     </span>
   );
 }

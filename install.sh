@@ -91,11 +91,13 @@ build_from_source() {
   echo "Building µAgent from source: $1."
   echo "That needs git, CMake 3.21+, a C++20 compiler, libcurl and zlib (Node.js adds the web interface)."
   has git || { echo "git is missing" >&2; exit 1; }
+  release_version
   if [ -d "$data/src/.git" ]; then
-    git -C "$data/src" pull --ff-only --quiet
+    git -C "$data/src" fetch --depth 1 --quiet origin "refs/tags/v$version"
+    git -C "$data/src" checkout --quiet --detach FETCH_HEAD
   else
     mkdir -p "$data"
-    git clone --depth 1 --quiet "https://github.com/$repo.git" "$data/src"
+    git clone --depth 1 --branch "v$version" --quiet "https://github.com/$repo.git" "$data/src"
   fi
   # The container question is behind us: what follows installs here.
   UAGENT_INSTALL=here exec sh "$data/src/install.sh"
@@ -266,7 +268,9 @@ if [ "$mode" = source ]; then
         [ "$expected" = "$actual" ] || { echo "remote bundle checksum differs; nothing was installed" >&2; exit 1; }
         # Only the manifest and four compressed payloads belong at this level.
         tar -tzf "$tmp/$bundle_name" | while IFS= read -r member; do
-          case $member in manifest.json|linux-x86_64.tar.gz|linux-arm64.tar.gz|macos-x86_64.tar.gz|macos-arm64.tar.gz) ;; *) exit 1 ;; esac
+          case $member in manifest.json|linux-x86_64.tar.gz|linux-arm64.tar.gz|macos-x86_64.tar.gz|macos-arm64.tar.gz) ;;
+            *) echo "remote bundle holds an unexpected file: $member; nothing was installed" >&2; exit 1 ;;
+          esac
         done
         bundle=$tmp/remote-bundle
         mkdir "$bundle"

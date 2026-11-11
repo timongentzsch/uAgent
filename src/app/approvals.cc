@@ -356,10 +356,7 @@ Agent::Approver MakeApprover(AppContext* app) {
     // The model judges only what the sandbox contains: a call that names a
     // path outside the folder, or a command with no enforced sandbox around
     // it, goes to the person, as a mandatory one does.
-    const bool contained = !(Workspace().Remote() && tool.needs_approval
-                                 ? tool.needs_approval(arguments)
-                                 : PathOutsideFolder(arguments, root)) &&
-                           confined;
+    const bool contained = !PathOutsideFolder(arguments, root) && confined;
     if (!automatic && !mandatory &&
         CurrentApprovalMode() == ApprovalMode::kAuto && contained) {
       if (auto decided = ReviewAutomatically(app, *memo, tool, raw_payload,

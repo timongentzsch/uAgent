@@ -1,5 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { localApi } from "../../state/api.ts";
+import { hostLatencyPollMs } from "../../shared/limits.ts";
 
 export default function HostLatency({ id }: { id: string }) {
   const [latency, setLatency] = useState<number | null>();
@@ -17,7 +18,7 @@ export default function HostLatency({ id }: { id: string }) {
       } catch {
         if (!abort.signal.aborted) setLatency(null);
       }
-      if (!abort.signal.aborted) timer = setTimeout(measure, 5000);
+      if (!abort.signal.aborted) timer = setTimeout(measure, hostLatencyPollMs);
     };
     void measure();
     return () => {

@@ -44,7 +44,7 @@ session::AssetStoreResult StoreSessionFile(const std::string& session_path,
                                            bool tool_copy, bool shared) {
   session::AssetStoreResult stored;
   std::string bytes;
-  if (Workspace().Remote()) {
+  if (RemoteWorkspace()) {
     const json remote = WorkspaceRequest({{"op", "bytes"}, {"path", path}});
     if (!HexDecode(JsonValue(remote, "data", ""), bytes,
                    session::kUploadBytes)) {
@@ -94,10 +94,10 @@ std::vector<Tool> BuildTools(AppContext& context,
   std::vector<Tool> tools =
       BuiltinTools(runtime.processes, workspace, root_password);
   if (auto remote = execution::CurrentClient()) {
+    auto forwarded = remote->Tools(session_path, tools);
     std::erase_if(tools, [](const Tool& tool) {
       return !tool.memory_store && tool.name != "todo";
     });
-    auto forwarded = remote->Tools(session_path);
     for (auto& tool : forwarded) tools.push_back(std::move(tool));
   }
   if (!runtime.config.memory_enabled) {
@@ -133,7 +133,9 @@ std::vector<Tool> BuildTools(AppContext& context,
   // availability.
   tools.push_back(WebFetchTool(api));
   if (!session_path.empty()) {
-    tools.push_back(ArtifactTool(session_path));
+    tools.push_back(ArtifactTool(
+        session_path,
+        RemoteWorkspace() ? FindTool(tools, "read_path") : nullptr));
     CopyAttachments(tools, session_path);
   }
   if (context.channel) {
@@ -167,7 +169,7 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
   // The web host runs the browser; any top-level session that reaches it may
   // use it, one at a time. A one-shot run has no session file to be named by.
-  if (!Workspace().Remote() && !browser::DataDirectory().empty() &&
+  if (!RemoteWorkspace() && !browser::DataDirectory().empty() &&
       browser::Request({{"op", "ping"}}, 3000).value("ok", false)) {
     context.browser_lease =
         session_path.empty() ? RandomToken(16) : SessionIdFor(session_path);
@@ -187,9 +189,8 @@ std::vector<Tool> BuildTools(AppContext& context,
   // An agent's MCP servers are its first ancestor's: each agent starting
   // its own fleet would multiply them.
   if (AgentDepth() == 0) {
-    error =
-        McpRegister(tools, runtime.mcp, runtime.config,
-                    Workspace().Remote() ? json(nullptr) : trusted_snapshot);
+    error = McpRegister(tools, runtime.mcp, runtime.config,
+                        RemoteWorkspace() ? json(nullptr) : trusted_snapshot);
     if (!error.empty()) return {};
   }
   AddAgentTools(tools, api, [app = &context] {

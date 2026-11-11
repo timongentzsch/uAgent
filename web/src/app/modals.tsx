@@ -109,8 +109,9 @@ export default function Modals({
     setNewHost,
   } = places;
   const hosts = useHosts();
-  const newSource = hosts?.sources.find((source) => source.id === newHost);
-  const executionOnline = !newHost || newSource?.phase === "connected";
+  const newSource =
+    hosts.sources.find((source) => source.id === newHost) || hosts.sources[0];
+  const executionOnline = !newHost || newSource.phase === "connected";
   const {
     store,
     online,
@@ -304,19 +305,17 @@ export default function Modals({
                 type="button"
                 disabled={!online}
                 busy={
-                  newSource?.phase === "connecting" ||
-                  newSource?.phase === "reconnecting"
+                  newSource.phase === "connecting" ||
+                  newSource.phase === "reconnecting"
                 }
                 onClick={() =>
-                  void hosts?.action("connect", newHost).catch(report)
+                  void hosts.action("connect", newHost).catch(report)
                 }
               >
-                Connect to {newSource?.name || "host"}
+                Connect to {newSource.name}
               </Button>
             )}
-            {newSource?.error && (
-              <p class="host-error small">{newSource.error}</p>
-            )}
+            {newSource.error && <p class="plain small">{newSource.error}</p>}
             {modal.place === "workspace" ? (
               <>
                 <label>
@@ -333,7 +332,7 @@ export default function Modals({
                   />
                 </label>
                 <datalist id="new-conversation-spaces">
-                  {(catalogue.spaces || []).map((item) => (
+                  {(newSource.state.catalogue.spaces || []).map((item) => (
                     <option key={item.path} value={item.name} />
                   ))}
                 </datalist>
@@ -349,11 +348,7 @@ export default function Modals({
                   value={folder}
                   change={setFolder}
                   online={online && executionOnline}
-                  projects={
-                    newSource?.state
-                      ? projectsOf(newSource.state.catalogue.sessions)
-                      : projects
-                  }
+                  projects={projectsOf(newSource.state.catalogue.sessions)}
                 />
               </ApiContext.Provider>
             )}

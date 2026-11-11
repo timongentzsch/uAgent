@@ -7,7 +7,6 @@
 #include <string>
 #include <utility>
 
-#include "include/app/execution.h"
 #include "include/app/workspace_files.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -17,8 +16,6 @@
 
 namespace uagent::web::master {
 namespace fs = std::filesystem;
-using workspace_files::DeckPage;
-using workspace_files::PreviewMime;
 using workspace_files::Resolve;
 namespace {
 
@@ -47,10 +44,6 @@ int ParamNumber(const Request& request, const char* name, int fallback, int low,
   return std::clamp(value, low, high);
 }
 
-// A deck's slides, one sheet each, for printing to one PDF. It is made here
-// from the folder's file names alone, so it runs unsandboxed: each slide
-// keeps its own sandbox in its frame, and its frame-ancestors let this page
-// hold it.
 // `script` inlined first in the page: after its doctype, so the page keeps
 // standards mode, and the parser puts it first in <head>.
 std::string WithScript(std::string html, const std::string& script) {
@@ -65,14 +58,22 @@ std::string WithScript(std::string html, const std::string& script) {
 
 }  // namespace
 
+// A files operation on a conversation's folder, where the folder is.
+json Master::WorkspaceFiles(const WorkspaceIdentity& workspace,
+                            const std::string& session, json operation) {
+  if (workspace.Remote()) {
+    operation["op"] = "files";
+    return RemoteCall(host_.Execution(session), std::move(operation));
+  }
+  const auto root = CanonicalDirectory(workspace.path);
+  return root ? workspace_files::Request(*root, operation)
+              : json{{"error", "not found"}, {"status", 404}};
+}
+
 void Master::Files(const Request& request, Response& response) {
   const std::string id = request.matches[1].str();
-  std::string folder;
-  {
-    std::lock_guard lock(mutex_);
-    folder = host_.Folder(id);
-  }
-  if (folder.empty()) {
+  const WorkspaceIdentity workspace = host_.WorkspaceOf(id);
+  if (workspace.path.empty()) {
     Error(response, "unknown session", 404);
     return;
   }
@@ -90,35 +91,17 @@ void Master::Files(const Request& request, Response& response) {
           "name one of list, read, raw, find, changes, diff, png or pdf");
     return;
   }
-  const bool remote = host_.WorkspaceOf(id).Remote();
-  const std::optional<fs::path> root =
-      remote ? fs::path(folder) : CanonicalDirectory(folder);
-  if (!root) {
-    Error(response, "not found", 404);
-    return;
-  }
-  const json execution_target = remote ? host_.Execution(id) : json();
-  if (remote && execution_target.is_null()) {
-    Error(response, "Host is disconnected. Choose Reconnect.", 503);
-    return;
-  }
   if (mode == "png" || mode == "pdf") {
-    Picture(request, response, *root);
+    Picture(request, response, workspace);
     return;
   }
   std::string bytes, name;
-  if (remote || mode != "raw") {
-    const json operation = {{"op", "files"}, {"mode", mode}, {"path", path}};
-    json result;
-    if (remote) {
-      execution::Client client(execution::TargetFromJson(execution_target));
-      result = client.Call(operation);
-    } else {
-      result = workspace_files::Request(*root, operation);
-    }
+  if (workspace.Remote() || mode != "raw") {
+    const json result =
+        WorkspaceFiles(workspace, id, {{"mode", mode}, {"path", path}});
     if (result.contains("error")) {
       Error(response, JsonValue(result, "error", "File unavailable"),
-            JsonValue(result, "status", remote ? 503 : 404));
+            JsonValue(result, "status", workspace.Remote() ? 503 : 404));
       return;
     }
     if (mode != "raw") {
@@ -132,7 +115,8 @@ void Master::Files(const Request& request, Response& response) {
     name = JsonValue(result, "name", "file");
   } else {
     // Local downloads keep their direct byte path, without RPC encoding.
-    const auto target = Resolve(*root, path);
+    const auto root = CanonicalDirectory(workspace.path);
+    const auto target = root ? Resolve(*root, path) : std::nullopt;
     std::string error;
     if (!target ||
         !ReadRegularFile(target->string(), kUploadBytes, bytes, error)) {
@@ -152,52 +136,26 @@ void Master::Files(const Request& request, Response& response) {
 // A person's edit of a text file in the conversation's folder, saved only if
 // the file is still as they read it. Making files is the agent's.
 void Master::FileWrite(const Request& request, Response& response) {
-  std::string folder;
-  {
-    std::lock_guard lock(mutex_);
-    folder = host_.Folder(request.matches[1].str());
-  }
+  const std::string id = request.matches[1].str();
+  const WorkspaceIdentity workspace = host_.WorkspaceOf(id);
   const json body = request.body.size() > kFileViewBytes + KiB(64)
                         ? json()
                         : json::parse(request.body, nullptr, false);
-  const std::string id = request.matches[1].str();
-  if (host_.WorkspaceOf(id).Remote()) {
-    if (!body.is_object()) {
-      Error(response, "invalid request", 400);
-      return;
-    }
-    const json target = host_.Execution(id);
-    if (target.is_null()) {
-      Error(response, "Host is disconnected. Choose Reconnect.", 503);
-      return;
-    }
-    execution::Client remote(execution::TargetFromJson(target));
-    const json operation = {{"op", "files"},
-                            {"mode", "write"},
-                            {"path", JsonValue(body, "path", "")},
-                            {"text", JsonValue(body, "text", "")},
-                            {"revision", JsonValue(body, "revision", "")}};
-    const json result = remote.Call(operation);
-    if (result.contains("error")) {
-      Error(response, JsonValue(result, "error", "Remote write failed"),
-            JsonValue(result, "status", 503));
-    } else {
-      Reply(response, result);
-    }
+  if (workspace.path.empty() || !body.is_object()) {
+    Error(response,
+          workspace.path.empty() ? "unknown session" : "invalid request", 400);
     return;
   }
-  const std::optional<fs::path> root =
-      folder.empty() ? std::nullopt : CanonicalDirectory(folder);
-  if (!root || !body.is_object()) {
-    Error(response, root ? "invalid request" : "unknown session", 400);
-    return;
-  }
-  json operation = body;
-  operation["mode"] = "write";
-  const json result = workspace_files::Request(*root, operation);
+  // Only these fields travel: a browser never names a request's identity.
+  const json result =
+      WorkspaceFiles(workspace, id,
+                     {{"mode", "write"},
+                      {"path", JsonValue(body, "path", "")},
+                      {"text", JsonValue(body, "text", "")},
+                      {"revision", JsonValue(body, "revision", "")}});
   if (result.contains("error")) {
     Error(response, JsonValue(result, "error", "cannot save"),
-          JsonValue(result, "status", 500));
+          JsonValue(result, "status", 503));
   } else {
     Reply(response, result);
   }
@@ -231,85 +189,47 @@ void Master::Preview(const Request& request, Response& response) {
       if (EqualSecret(token, granted)) session = id;
     }
   }
-  const std::string folder = session.empty() ? "" : host_.Folder(session);
-  if (!session.empty() && host_.WorkspaceOf(session).Remote()) {
-    const json target = host_.Execution(session);
-    const std::string* origin = ExpectedOrigin(request);
-    if (target.is_null() || !origin) {
-      Error(response, "Host is disconnected", 503);
-      return;
-    }
-    execution::Client remote(execution::TargetFromJson(target));
-    const bool deck = request.has_param("deck");
-    const json result =
-        remote.Call({{"op", "files"},
-                     {"mode", deck ? "deck" : "preview"},
-                     {"path", relative},
-                     {"width", ParamNumber(request, "w", 1920, 1, 8000)},
-                     {"height", ParamNumber(request, "h", 1080, 1, 8000)}});
-    std::string bytes;
-    if (result.contains("error") ||
-        (!deck &&
-         !HexDecode(JsonValue(result, "data", ""), bytes, kUploadBytes))) {
-      Error(response, JsonValue(result, "error", "not found"),
-            JsonValue(result, "status", 404));
-      return;
-    }
-    std::string mime = JsonValue(result, "mime", "text/html");
-    if (deck) {
-      bytes = JsonValue(result, "text", "");
-    } else if (mime == "text/html") {
-      bytes = WithScript(std::move(bytes), design_helper_);
-    }
-    response.headers.erase("Content-Security-Policy");
-    response.headers.erase("Cross-Origin-Resource-Policy");
-    response.set_header(
-        "Content-Security-Policy",
-        deck ? "default-src " + *origin + "/preview/" + token +
-                   "/; style-src 'unsafe-inline'; frame-ancestors 'none'"
-             : PreviewPolicy(*origin, "/preview/" + token + "/"));
-    response.set_header("Cross-Origin-Resource-Policy", "cross-origin");
-    response.set_header("Access-Control-Allow-Origin", "*");
-    response.set_content(std::move(bytes), mime == "text/html"
-                                               ? "text/html; charset=utf-8"
-                                               : mime);
-    return;
-  }
-  std::optional<fs::path> root =
-      folder.empty() ? std::nullopt : CanonicalDirectory(folder);
-  std::optional<fs::path> target =
-      !root || relative.find('\0') != std::string::npos
-          ? std::nullopt
-          : Resolve(*root, relative);
+  const WorkspaceIdentity workspace = host_.WorkspaceOf(session);
   const std::string* origin = ExpectedOrigin(request);
-  if (target && origin && request.has_param("deck") &&
-      fs::is_directory(*target)) {
-    response.headers.erase("Content-Security-Policy");
-    response.set_header("Content-Security-Policy",
-                        "default-src " + *origin + "/preview/" + token +
-                            "/; style-src 'unsafe-inline'; frame-ancestors "
-                            "'none'");
-    response.set_content(
-        DeckPage(*target, ParamNumber(request, "w", 1920, 1, 8000),
-                 ParamNumber(request, "h", 1080, 1, 8000)),
-        "text/html; charset=utf-8");
-    return;
-  }
-  const std::string mime = target ? PreviewMime(*target) : std::string();
-  std::string bytes, error;
-  if (!target || mime.empty() || !origin ||
-      !ReadRegularFile(target->string(), kUploadBytes, bytes, error)) {
+  if (workspace.path.empty() || !origin ||
+      relative.find('\0') != std::string::npos) {
     Error(response, "not found", 404);
     return;
   }
-  if (mime == "text/html") bytes = WithScript(std::move(bytes), design_helper_);
+  const bool deck = request.has_param("deck");
+  const json result =
+      WorkspaceFiles(workspace, session,
+                     {{"mode", deck ? "deck" : "preview"},
+                      {"path", relative},
+                      {"width", ParamNumber(request, "w", 1920, 1, 8000)},
+                      {"height", ParamNumber(request, "h", 1080, 1, 8000)}});
+  std::string bytes;
+  if (result.contains("error") ||
+      (!deck &&
+       !HexDecode(JsonValue(result, "data", ""), bytes, kUploadBytes))) {
+    Error(response, JsonValue(result, "error", "not found"),
+          JsonValue(result, "status", 404));
+    return;
+  }
+  const std::string mime = JsonValue(result, "mime", "text/html");
+  if (deck) {
+    bytes = JsonValue(result, "text", "");
+  } else if (mime == "text/html") {
+    bytes = WithScript(std::move(bytes), design_helper_);
+  }
   response.headers.erase("Content-Security-Policy");
-  response.headers.erase("Cross-Origin-Resource-Policy");
-  response.set_header("Content-Security-Policy",
-                      PreviewPolicy(*origin, "/preview/" + token + "/"));
-  // The page's own origin is opaque: its loads are cross-origin.
-  response.set_header("Cross-Origin-Resource-Policy", "cross-origin");
-  response.set_header("Access-Control-Allow-Origin", "*");
+  response.set_header(
+      "Content-Security-Policy",
+      deck ? "default-src " + *origin + "/preview/" + token +
+                 "/; script-src 'none'; style-src 'unsafe-inline'; "
+                 "form-action 'none'; frame-ancestors 'none'"
+           : PreviewPolicy(*origin, "/preview/" + token + "/"));
+  if (!deck) {
+    // The page's own origin is opaque: its loads are cross-origin.
+    response.headers.erase("Cross-Origin-Resource-Policy");
+    response.set_header("Cross-Origin-Resource-Policy", "cross-origin");
+    response.set_header("Access-Control-Allow-Origin", "*");
+  }
   response.set_content(std::move(bytes),
                        mime == "text/html" ? "text/html; charset=utf-8" : mime);
 }
@@ -318,28 +238,29 @@ void Master::Preview(const Request& request, Response& response) {
 // this host's loopback: a PNG at the artboard's size, or a PDF on the page's
 // paper. A folder's PDF is its deck, every slide a sheet.
 void Master::Picture(const Request& request, Response& response,
-                     const fs::path& root) {
+                     const WorkspaceIdentity& workspace) {
   const bool pdf = request.has_param("pdf");
   const std::string path = request.get_param_value(pdf ? "pdf" : "png");
   std::optional<fs::path> target;
   bool directory = false, regular = false;
   const std::string session = request.matches[1].str();
-  if (host_.WorkspaceOf(session).Remote()) {
-    const json value = host_.Execution(session);
-    if (!value.is_null()) {
-      execution::Client remote(execution::TargetFromJson(value));
-      const json stat =
-          remote.Call({{"op", "files"}, {"mode", "stat"}, {"path", path}});
-      directory = JsonValue(stat, "directory", false);
-      regular = JsonValue(stat, "regular", false);
-      if (directory || regular) target = root / fs::path(path);
+  if (workspace.Remote()) {
+    const json stat =
+        WorkspaceFiles(workspace, session, {{"mode", "stat"}, {"path", path}});
+    if (stat.contains("error")) {
+      Error(response, JsonValue(stat, "error", "not found"),
+            JsonValue(stat, "status", 503));
+      return;
     }
-  } else {
-    target = Resolve(root, path);
+    directory = JsonValue(stat, "directory", false);
+    regular = JsonValue(stat, "regular", false);
+    target = fs::path(workspace.path) / path;
+  } else if (const auto root = CanonicalDirectory(workspace.path)) {
+    target = Resolve(*root, path);
     directory = target && fs::is_directory(*target);
     regular = target && fs::is_regular_file(*target);
   }
-  const std::string base = PreviewBase(request.matches[1].str());
+  const std::string base = PreviewBase(session);
   const bool deck = pdf && directory;
   if (!target || !(deck || regular) || base.empty()) {
     Error(response, "not found", 404);

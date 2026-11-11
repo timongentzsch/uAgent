@@ -1,50 +1,51 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 282" width="800" height="282" role="img" aria-label="Footprint of the agents">
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="316" viewBox="0 0 920 316" role="img">
+<title>Memory and CPU usage</title>
+<desc>2026-11-10 · medians of 5 runs · Apple M1 Pro, Linux ARM64 Docker, 2 CPU / 4 GiB · Same model endpoint · CPU excludes model/network waiting · lower is better · Versions, workload and limitations: benchmarks/README.md</desc>
 <style>
-  .bg { fill: #ffffff; }
-  text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1f2328; }
-  .headline { font-size: 23px; font-weight: 700; }
-  .title { font-size: 13px; font-weight: 600; }
-  .name { font-size: 12px; }
-  .value { font-size: 12px; font-variant-numeric: tabular-nums; }
-  .note { font-size: 10px; fill: #656d76; }
-  .bar { fill: #b4bac1; }
-  .bar.uagent { fill: #111111; }
-  @media (prefers-color-scheme: dark) {
-    .bg { fill: #0d1117; }
-    text { fill: #e6edf3; }
-    .note { fill: #8b949e; }
-    .bar { fill: #4a525c; }
-    .bar.uagent { fill: #eeeeee; }
+  :root { --bg:#fff; --text:#111; --muted:#555; --line:#ccc; --bar:#767676; }
+  @media (prefers-color-scheme:dark) {
+    :root { --bg:#000; --text:#f5f5f5; --muted:#a3a3a3; --line:#404040; --bar:#8a8a8a; }
   }
+  .bg { fill:var(--bg); }
+  text { fill:var(--text); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:13px; font-variant-numeric:tabular-nums; }
+  .headline { font-size:22px; font-weight:700; }
+  .title { font-size:14px; font-weight:700; }
+  .note { font-size:11px; fill:var(--muted); }
+  .bar { fill:var(--bar); }
+  .bar.primary { fill:var(--text); }
+  .rule { stroke:var(--line); }
 </style>
-<rect class="bg" width="800" height="282"/>
-<text class="headline" x="20" y="42">Memory and CPU usage</text>
-<text class="title" x="20" y="92">Idle session memory, MiB</text>
-<text class="name" x="20" y="119">µAgent</text>
-<rect class="bar uagent" x="108" y="106" width="18.0" height="18"/>
-<text class="value" x="132.0" y="119">26.4</text>
-<text class="name" x="20" y="147">Claude Code</text>
-<rect class="bar" x="108" y="134" width="102.6" height="18"/>
-<text class="value" x="216.6" y="147">150.7</text>
-<text class="name" x="20" y="175">Codex CLI</text>
-<rect class="bar" x="108" y="162" width="110.3" height="18"/>
-<text class="value" x="224.3" y="175">161.9</text>
-<text class="name" x="20" y="203">omp</text>
-<rect class="bar" x="108" y="190" width="220.0" height="18"/>
-<text class="value" x="334.0" y="203">322.9</text>
-<text class="title" x="420" y="92">CPU per headless turn, ms</text>
-<text class="name" x="420" y="119">µAgent</text>
-<rect class="bar uagent" x="508" y="106" width="2.0" height="18"/>
-<text class="value" x="516.0" y="119">17</text>
-<text class="name" x="420" y="147">Claude Code</text>
-<rect class="bar" x="508" y="134" width="67.3" height="18"/>
-<text class="value" x="581.3" y="147">573</text>
-<text class="name" x="420" y="175">Codex CLI</text>
-<rect class="bar" x="508" y="162" width="18.4" height="18"/>
-<text class="value" x="532.4" y="175">156</text>
-<text class="name" x="420" y="203">omp</text>
-<rect class="bar" x="508" y="190" width="220.0" height="18"/>
-<text class="value" x="734.0" y="203">1872</text>
-<text class="note" x="20" y="258">2026-11-10 · medians of 5 runs · Apple M1 Pro, Linux ARM64 Docker, 2 CPU / 4 GiB</text>
-<text class="note" x="20" y="274">Same model endpoint · lower is better · CPU time excludes model/network waiting · versions and method: benchmarks/README.md</text>
+<rect class="bg" width="920" height="316"/>
+<text x="24" y="40" class="headline" text-anchor="start">Memory and CPU usage</text>
+<path class="rule" d="M24 58H896"/>
+<text x="24" y="88" class="title" text-anchor="start">Idle session memory, MiB</text>
+<text x="24" y="124" class="" text-anchor="start">µAgent</text>
+<rect class="bar primary" x="134" y="110" width="20.47" height="20"/>
+<text x="162.47" y="124" class="" text-anchor="start">26.4</text>
+<text x="24" y="156" class="" text-anchor="start">Claude Code</text>
+<rect class="bar" x="134" y="142" width="116.63" height="20"/>
+<text x="258.63" y="156" class="" text-anchor="start">150.7</text>
+<text x="24" y="188" class="" text-anchor="start">Codex CLI</text>
+<rect class="bar" x="134" y="174" width="125.36" height="20"/>
+<text x="267.36" y="188" class="" text-anchor="start">161.9</text>
+<text x="24" y="220" class="" text-anchor="start">omp</text>
+<rect class="bar" x="134" y="206" width="250.00" height="20"/>
+<text x="392.00" y="220" class="" text-anchor="start">322.9</text>
+<text x="476" y="88" class="title" text-anchor="start">CPU per headless turn, ms</text>
+<text x="476" y="124" class="" text-anchor="start">µAgent</text>
+<rect class="bar primary" x="586" y="110" width="2.28" height="20"/>
+<text x="596.28" y="124" class="" text-anchor="start">17</text>
+<text x="476" y="156" class="" text-anchor="start">Claude Code</text>
+<rect class="bar" x="586" y="142" width="76.47" height="20"/>
+<text x="670.47" y="156" class="" text-anchor="start">573</text>
+<text x="476" y="188" class="" text-anchor="start">Codex CLI</text>
+<rect class="bar" x="586" y="174" width="20.88" height="20"/>
+<text x="614.88" y="188" class="" text-anchor="start">156</text>
+<text x="476" y="220" class="" text-anchor="start">omp</text>
+<rect class="bar" x="586" y="206" width="250.00" height="20"/>
+<text x="844.00" y="220" class="" text-anchor="start">1872</text>
+<text x="24" y="298" class="note" text-anchor="start">Versions, workload and limitations: benchmarks/README.md</text>
+<text x="24" y="280" class="note" text-anchor="start">Same model endpoint · CPU excludes model/network waiting · lower is better</text>
+<text x="24" y="262" class="note" text-anchor="start">2026-11-10 · medians of 5 runs · Apple M1 Pro, Linux ARM64 Docker, 2 CPU / 4 GiB</text>
 </svg>

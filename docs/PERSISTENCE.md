@@ -30,7 +30,7 @@ Paths are under `~/.uagent` unless shown otherwise.
 | worktrees of scheduled runs and agents | `worktrees/<id>` |
 | session links | `links/*` |
 | web host discovery, devices and push keys, pinned conversations and folders | `web/*` (`web/pins.json`) |
-| saved SSH hosts and each main's private remote client identity | `web/hosts.json`, `web/client-<host-id>.json` |
+| saved SSH hosts, each main's private remote client identity and each host's latest SSH connection log | `web/hosts.json`, `web/client-<host-id>.json`, `web/ssh-<host-id>.log` |
 | remote terminal identities, for same-build reattachment | `web/remote-terminals.json` |
 | installed remote executables, resources and bundle manifest | `remote/builds/<build-id>/*` on the remote; `share/uagent/remote/<build-id>/*` beside the main installation |
 | settings, for all conversations and per folder | `config/settings.json` (and its `.lock`) |

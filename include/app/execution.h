@@ -6,13 +6,12 @@
 #include <vector>
 
 #include "include/core/json.h"
-#include "include/core/project.h"
 #include "include/tools/tool.h"
 
 namespace uagent::execution {
 // SSH/control details are private main-side launch data, never provider config.
 struct Target {
-  std::string address, control, executable, client, runtime, cwd, auth, sandbox;
+  std::string address, control, executable, client, runtime, cwd, auth;
 };
 Target TargetFromJson(const json& value);
 class Client {
@@ -21,7 +20,11 @@ class Client {
   ~Client();
   json Call(json request, const ToolContext* context = nullptr);
   bool Open(std::string& error);
-  std::vector<Tool> Tools(const std::string& session_path);
+  // Release the SSH listener when its owning runtime or terminal ends.
+  void Release();
+  // The gateway's tools, each with the presentation of its like in `tools`.
+  std::vector<Tool> Tools(const std::string& session_path,
+                          const std::vector<Tool>& tools);
   Target ChildTarget(const std::string& runtime) const;
 
  private:

@@ -42,6 +42,11 @@ CapturedProcess HostGit(const std::string& dir, std::vector<std::string> args) {
   return CaptureProcess(argv, 30);
 }
 
+CapturedProcess WorkTreeDiff(const std::string& dir) {
+  return HostGit(dir, {"diff", "--no-ext-diff", "--no-textconv", "--stat",
+                       "--patch", "HEAD"});
+}
+
 std::string CreateWorktree(const std::string& project, const std::string& cwd) {
   auto created = HostGit(project, {"worktree", "add", "--detach", cwd, "HEAD"});
   if (created.Ok()) return "";

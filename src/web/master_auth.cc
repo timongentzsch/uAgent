@@ -125,8 +125,8 @@ void Master::Authenticate(const Request& request, Response& response) {
     Error(response, "pairing rate limit; retry in a minute", 429);
     return;
   }
-  const std::string code = JsonValue(input, "code", "");
-  if (now > pair_deadline_ || !EqualSecret(code, pair_)) {
+  if (now > pair_deadline_ ||
+      !EqualSecret(JsonValue(input, "code", ""), pair_)) {
     Error(response, "invalid or expired pairing code", 403);
     return;
   }

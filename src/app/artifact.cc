@@ -17,7 +17,7 @@
 
 namespace uagent {
 
-Tool ArtifactTool(const std::string& session_path) {
+Tool ArtifactTool(const std::string& session_path, const Tool* remote_read) {
   Tool tool = MakeTool(
       "artifact",
       "Hand the user a file you made (HTML report, PDF, image, archive, "
@@ -60,34 +60,12 @@ Tool ArtifactTool(const std::string& session_path) {
     return PathApprovalClass(JsonValue(args, "path", ""), PathAccess::kRead);
   };
   tool.validate = RefuseHidden;
-  if (Workspace().Remote()) {
-    auto check = [](const json& args) {
-      return WorkspaceRequest(
-          {{"op", "check"}, {"tool", "read_path"}, {"args", args}});
-    };
-    tool.needs_approval = [check](const json& args) {
-      return JsonValue(check(args).value("scope", json::object()), "outside",
-                       true);
-    };
-    tool.approval_class = [check](const json& args) {
-      return JsonValue(check(args), "approval", 2) == 2
-                 ? ApprovalClass::kMandatoryHuman
-                 : ApprovalClass::kNone;
-    };
-    tool.validate =
-        [check](const json& args) -> std::optional<ToolArgumentIssue> {
-      const json value = check(args);
-      if (value.contains("error")) {
-        return ArgumentIssue("remote.unavailable",
-                             JsonValue(value, "error", "Remote unavailable"));
-      }
-      if (const json* issue = JsonObject(value, "issue")) {
-        return ArgumentIssue(
-            JsonValue(*issue, "code", "remote.invalid"),
-            JsonValue(*issue, "message", "Invalid remote path"));
-      }
-      return std::nullopt;
-    };
+  if (remote_read) {
+    // The gateway judges the path where the file is (execution_client.cc).
+    tool.needs_approval = remote_read->needs_approval;
+    tool.approval_class = remote_read->approval_class;
+    tool.approval_subject = remote_read->approval_subject;
+    tool.validate = remote_read->validate;
   } else {
     tool.run = RefusingHidden(std::move(tool.run));
   }
@@ -132,12 +110,12 @@ void CopyAttachments(std::vector<Tool>& tools,
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "from names no file attached to this conversation");
     }
-    copy[Workspace().Remote() ? "content_hex" : "content"] =
-        Workspace().Remote() ? HexEncode(data) : std::move(data);
+    copy[RemoteWorkspace() ? "content_hex" : "content"] =
+        RemoteWorkspace() ? HexEncode(data) : std::move(data);
     copy.erase("from");
     return run(copy, context);
   };
-  if (Workspace().Remote()) {
+  if (RemoteWorkspace()) {
     auto prepare = [](json args) {
       if (args.contains("from")) {
         args.erase("from");

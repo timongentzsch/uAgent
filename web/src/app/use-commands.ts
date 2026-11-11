@@ -309,14 +309,16 @@ export function useCommands({
       });
     } catch (error) {
       const issue = failure(error);
-      if (visible)
+      if (!visible) report(issue);
+      // No answer leaves queued guidance queued: the host may hold it, and
+      // its receipt settles the row once the host is reached again.
+      else if (!(queued && issue.network))
         patchOutgoing(request_id, {
           status: issue.rejected
             ? outgoingStatus.refused
             : outgoingStatus.unconfirmed,
           error: issue.message,
         });
-      else report(issue);
     } finally {
       setBusy(false);
     }

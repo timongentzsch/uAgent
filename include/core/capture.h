@@ -7,6 +7,10 @@
 #include <string>
 #include <vector>
 namespace uagent {
+// Shared noninteractive SSH policy; a master owns the multiplexed transport.
+std::vector<std::string> SshCommand(const std::string& control,
+                                    const std::string& address,
+                                    bool master = false);
 struct CapturedProcess {
   int status = -1;
   std::string output, error;

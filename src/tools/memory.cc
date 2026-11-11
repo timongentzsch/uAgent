@@ -67,7 +67,7 @@ struct RepositoryPaths {
 };
 
 RepositoryPaths Repository(const std::filesystem::path& cwd) {
-  if (Workspace().Remote()) return {Workspace().path, Workspace().path};
+  if (RemoteWorkspace()) return {Workspace().path, Workspace().path};
   std::filesystem::path identity = RepositoryIdentity(cwd);
   std::filesystem::path label =
       identity.filename() == ".git" ? identity.parent_path() : ProjectRoot(cwd);
@@ -123,7 +123,7 @@ std::filesystem::path ClaudeMemoryDirectory(const RepositoryPaths& repo) {
 }
 
 std::optional<std::filesystem::path> CurrentWorkspace(std::string& error) {
-  if (Workspace().Remote()) return std::filesystem::path(Workspace().path);
+  if (RemoteWorkspace()) return std::filesystem::path(Workspace().path);
   std::error_code code;
   std::filesystem::path cwd = std::filesystem::current_path(code);
   if (!code) return cwd;
@@ -588,7 +588,7 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
     AddMarkdownMemories(entries, fs::path(home) / ".codex" / "memories",
                         "codex", limit);
   }
-  if (!Workspace().Remote() && !home.empty() && ReadsAgent("claude")) {
+  if (!RemoteWorkspace() && !home.empty() && ReadsAgent("claude")) {
     AddMarkdownMemories(entries, ClaudeMemoryDirectory(repo), "claude", limit);
   }
   std::sort(entries.begin(), entries.end(),

@@ -264,21 +264,8 @@ std::string SessionHost::DeleteSpace(const std::string& path,
 std::optional<std::filesystem::path> SessionHost::NamedFolder(
     const json& command, std::string& error) {
   std::string folder = JsonValue(command, "cwd", "");
-  const std::string host = JsonValue(command, "host", "");
-  if (!host.empty()) {
-    if (!JsonValue(command, "space", "").empty()) {
-      error =
-          "Choose an existing remote folder; named remote workspaces are not "
-          "supported yet.";
-      return std::nullopt;
-    }
-    if (folder.empty() || folder.front() != '/') {
-      error = "Choose an accessible remote directory.";
-      return std::nullopt;
-    }
-    return fs::path(folder);
-  }
-
+  // A remote folder is one its gateway resolved (ExecuteCommand).
+  if (!JsonValue(command, "host", "").empty()) return fs::path(folder);
   if (const std::string space = Trim(JsonValue(command, "space", ""));
       !space.empty()) {
     const size_t before = Spaces().size();
@@ -300,8 +287,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
   result.outcome = {{"request_id", request_id}, {"accepted", true}};
   const SessionCommandKind kind =
       ParseSessionCommandKind(JsonValue(command, "kind", ""));
-  if (kind == SessionCommandKind::kCreate &&
-      !JsonValue(command, "host", "").empty()) {
+  const std::string host = JsonValue(command, "host", "");
+  if (kind == SessionCommandKind::kCreate && !host.empty()) {
     if (!JsonValue(command, "space", "").empty()) {
       result.error =
           "Choose an existing remote folder; named remote workspaces are not "
@@ -313,8 +300,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     {
       std::lock_guard lock(mutex_);
       if (remote_target_) {
-        target = remote_target_(JsonValue(command, "host", ""), folder,
-                                HashHex("folder:" + folder));
+        target = remote_target_(host, "~", HashHex("folder-browser"));
       }
     }
     if (target.is_null()) {
@@ -323,7 +309,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
       return result;
     }
     execution::Client remote(execution::TargetFromJson(target));
-    const json identity = remote.Call({{"op", "ping"}});
+    const json identity = remote.Call({{"op", "folder"}, {"path", folder}});
     if (!JsonStringRef(identity, "cwd")) {
       result.error = JsonValue(identity, "error",
                                "Choose an accessible remote directory.");
@@ -339,11 +325,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
     const auto resolved = NamedFolder(command, result.error);
     if (!resolved) return result;
     const std::filesystem::path& cwd = *resolved;
-    auto session =
-        CreateSession(cwd.string(),
-                      HistoryPath(cwd.string(), "web-" + RandomToken(16),
-                                  JsonValue(command, "host", "")),
-                      "", result.error, JsonValue(command, "host", ""));
+    auto session = CreateSession(
+        cwd.string(), HistoryPath(cwd.string(), "web-" + RandomToken(16), host),
+        "", result.error, host);
     if (session) {
       result.wake = true;
       result.outcome["session"] = Metadata(*session);
@@ -368,7 +352,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     return result;
   }
   if (kind == SessionCommandKind::kMove &&
-      (!session->host.empty() || !JsonValue(command, "host", "").empty())) {
+      (!session->host.empty() || !host.empty())) {
     result.error =
         "Moving remote conversations between folders is not supported yet.";
     return result;

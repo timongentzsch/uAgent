@@ -330,7 +330,9 @@ json ModelCatalogue(Api& api, const std::vector<Route>& routes,
   ModelSearch search = SearchModels(api, routes, providers, query);
   json models = json::array();
   for (const ModelCandidate& candidate : search.matches) {
-    bool active = candidate.route.base_url == api.base_url &&
+    bool active = ProviderScope(candidate.route, providers) ==
+                      ProviderScope(api, providers) &&
+                  candidate.route.base_url == api.base_url &&
                   candidate.route.model == api.model;
     if (active) {
       api.supported_reasoning_efforts = candidate.info.efforts;
@@ -340,9 +342,8 @@ json ModelCatalogue(Api& api, const std::vector<Route>& routes,
     }
     models.push_back(
         {{"value", candidate.route.route_name},
-         {"label",
-          ComposeSelection(ProviderScope(candidate.route.base_url, providers),
-                           candidate.route.model, "")},
+         {"label", ComposeSelection(ProviderScope(candidate.route, providers),
+                                    candidate.route.model, "")},
          {"name", candidate.info.name},
          {"efforts", candidate.info.efforts},
          {"input_modalities", candidate.info.input_modalities},

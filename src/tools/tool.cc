@@ -50,6 +50,21 @@ ToolArgumentIssue ArgumentIssue(std::string code, std::string message,
   return {std::move(code), std::move(message), std::move(field)};
 }
 
+json EndedJson(const EndedCommand& ended) {
+  return {{"activity_id", ended.activity_id},
+          {"status", ended.status},
+          {"output", ended.output},
+          {"duration_ms", ended.duration_ms},
+          {"stopped", ended.stopped}};
+}
+
+EndedCommand EndedFromJson(const json& value) {
+  return {JsonValue(value, "activity_id", int64_t{0}),
+          JsonValue(value, "status", 0), JsonValue(value, "output", ""),
+          JsonValue(value, "duration_ms", 0.0),
+          JsonValue(value, "stopped", false)};
+}
+
 std::string ArtifactHint(const ToolArtifact& artifact) {
   return kCapturedLogMarker + artifact.path + " (" +
          std::to_string(artifact.bytes) +

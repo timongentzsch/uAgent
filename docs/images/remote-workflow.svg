@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="944" height="574" viewBox="0 0 944 574" role="img">
+<title>Remote projects without a µAgent account</title>
+<desc>Pair devices with your main; choose an SSH host when opening a project. · Independent mains can reuse the gateway binary with separate authenticated processes. · Pairing and SSH authenticate access. Your chosen provider may require an account. · The main must be reachable from your devices; no µAgent relay is required.</desc>
+<style>
+  :root { --bg:#fff; --text:#111; --muted:#555; --line:#ccc; --bar:#767676; }
+  @media (prefers-color-scheme:dark) {
+    :root { --bg:#000; --text:#f5f5f5; --muted:#a3a3a3; --line:#404040; --bar:#8a8a8a; }
+  }
+  .bg { fill:var(--bg); }
+  text { fill:var(--text); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:13px; font-variant-numeric:tabular-nums; }
+  .headline { font-size:22px; font-weight:700; }
+  .title { font-size:14px; font-weight:700; }
+  .note { font-size:11px; fill:var(--muted); }
+  .bar { fill:var(--bar); }
+  .bar.primary { fill:var(--text); }
+  .rule { stroke:var(--line); }
+</style>
+<rect class="bg" width="944" height="574"/>
+<text x="24" y="40" class="headline" text-anchor="start">Remote projects without a µAgent account</text>
+<path class="rule" d="M24 58H920"/>
+<defs><marker id="arrow" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path fill="var(--muted)" d="M0 0L8 4L0 8z"/></marker></defs>
+<style>.node {fill:var(--bg);stroke:var(--text)} .arrow {fill:none;stroke:var(--muted);stroke-width:1.5}</style>
+<rect class="node" x="24" y="120" width="190" height="150"/>
+<text x="40" y="148" class="title" text-anchor="start">Your devices</text>
+<text x="40" y="178" class="" text-anchor="start">Terminal</text>
+<text x="40" y="202" class="" text-anchor="start">Browser / phone</text>
+<text x="40" y="226" class="" text-anchor="start">Paired web access</text>
+<rect class="node" x="300" y="120" width="300" height="200"/>
+<text x="316" y="148" class="title" text-anchor="start">Your main instance</text>
+<text x="316" y="178" class="" text-anchor="start">Agent loop and approvals</text>
+<text x="316" y="202" class="" text-anchor="start">Conversations and history</text>
+<text x="316" y="226" class="" text-anchor="start">Provider settings and keys</text>
+<text x="316" y="250" class="" text-anchor="start">Local or remote projects</text>
+<rect class="node" x="686" y="120" width="234" height="200"/>
+<text x="702" y="148" class="title" text-anchor="start">Remote SSH host</text>
+<text x="702" y="178" class="" text-anchor="start">Files, Git and commands</text>
+<text x="702" y="202" class="" text-anchor="start">Shells and project edits</text>
+<text x="702" y="226" class="" text-anchor="start">Shared gateway binary</text>
+<text x="702" y="250" class="" text-anchor="start">No provider keys</text>
+<rect class="node" x="300" y="390" width="300" height="88"/>
+<text x="316" y="418" class="title" text-anchor="start">Model endpoint</text>
+<text x="316" y="448" class="" text-anchor="start">Local or hosted provider</text>
+<path class="arrow" d="M214 185H300" marker-end="url(#arrow)"/>
+<path class="arrow" d="M600 185H686" marker-end="url(#arrow)"/>
+<path class="arrow" d="M450 320V390" marker-end="url(#arrow)"/>
+<text x="257" y="172" class="note" text-anchor="middle">Connect</text>
+<text x="643" y="172" class="note" text-anchor="middle">SSH</text>
+<text x="466" y="360" class="note" text-anchor="start">Model requests</text>
+<text x="24" y="556" class="note" text-anchor="start">The main must be reachable from your devices; no µAgent relay is required.</text>
+<text x="24" y="538" class="note" text-anchor="start">Pairing and SSH authenticate access. Your chosen provider may require an account.</text>
+<text x="24" y="520" class="note" text-anchor="start">Independent mains can reuse the gateway binary with separate authenticated processes.</text>
+<text x="24" y="502" class="note" text-anchor="start">Pair devices with your main; choose an SSH host when opening a project.</text>
+</svg>

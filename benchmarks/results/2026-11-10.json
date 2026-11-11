@@ -1,7 +1,6 @@
 {
   "date": "2026-11-10",
   "measured_commit": "015ce3a119c9dcc72b0e3a3779bc3eeab119b741",
-  "base_commit": "9cdbb553916e31c74f4ca52048ca7a37c627c974",
   "runtime_build": "9bcf08dc0074ce23c126c55d4e3c60954545c929c80e5760d25e7d6f055a976c",
   "ci_run": "https://github.com/timongentzsch/uAgent/actions/runs/42872865321",
   "packages": [
@@ -42,36 +41,6 @@
       "main_binary_sha256": "62773debbea6a7abd37de5374f98d48f4aa760b378c5e4e59e7ad360cf4ce10c"
     }
   ],
-  "pr_physical_lines": {
-    "build_ci": {
-      "added": 399,
-      "deleted": 35
-    },
-    "documentation": {
-      "added": 372,
-      "deleted": 2
-    },
-    "native": {
-      "added": 3827,
-      "deleted": 432
-    },
-    "tests": {
-      "added": 1313,
-      "deleted": 51
-    },
-    "vendor": {
-      "added": 46,
-      "deleted": 14
-    },
-    "other": {
-      "added": 1,
-      "deleted": 1
-    },
-    "web": {
-      "added": 2031,
-      "deleted": 440
-    }
-  },
   "local": {
     "machine": "Apple M1 Pro",
     "os": "macOS 27.0.1",

@@ -659,6 +659,10 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
     body["provider"] = {{"order", json::array({Option("provider")})},
                         {"allow_fallbacks", false}};
   }
+  if (FreeOnly() && features.Has(Feature::kProviderRouting)) {
+    body["provider"]["max_price"] = {
+        {"prompt", 0}, {"completion", 0}, {"request", 0}, {"image", 0}};
+  }
   return body;
 }
 

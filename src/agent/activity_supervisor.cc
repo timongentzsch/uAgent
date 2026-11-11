@@ -372,19 +372,15 @@ size_t ActivitySupervisor::RetainedIndexOfLocked(int64_t id) const {
 }
 
 size_t ActivitySupervisor::PendingCount() const {
-  const size_t remote =
-      remote_workspace_ ? JsonValue(WorkspaceRequest({{"op", "activities"}}),
-                                    "pending", size_t{0})
-                        : 0;
   std::lock_guard<std::mutex> lock(mutex_);
-  return remote + static_cast<size_t>(std::count_if(
-                      activities_.begin(), activities_.end(),
-                      [](const Activity& job) { return !job.Detached(); }));
+  return static_cast<size_t>(
+      std::count_if(activities_.begin(), activities_.end(),
+                    [](const Activity& job) { return !job.Detached(); }));
 }
 
 size_t ActivitySupervisor::Count() const {
   const size_t remote =
-      remote_workspace_ ? JsonValue(WorkspaceRequest({{"op", "activities"}}),
+      RemoteWorkspace() ? JsonValue(WorkspaceRequest({{"op", "activities"}}),
                                     "count", size_t{0})
                         : 0;
   std::lock_guard<std::mutex> lock(mutex_);
@@ -415,7 +411,7 @@ json ActivitySupervisor::ActivityViews() const {
     jobs.insert(jobs.end(), foreground_.begin(), foreground_.end());
     jobs.insert(jobs.end(), retained_.begin(), retained_.end());
   }
-  json rows = remote_workspace_ ? WorkspaceRequest({{"op", "activities"}})
+  json rows = RemoteWorkspace() ? WorkspaceRequest({{"op", "activities"}})
                                       .value("views", json::array())
                                 : json::array();
   for (size_t index = 0; index < jobs.size(); ++index) {

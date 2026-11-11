@@ -303,7 +303,7 @@ bool Agent::DrainActivities(bool start_turn) {
   // after the memory-only pass, bypassing its receipt and audit handling.
   std::vector<ActivityCompletion> completions =
       ActivityTakeCompletedDetails(processes_);
-  if (processes_.RemoteWorkspace()) {
+  if (RemoteWorkspace()) {
     const json result = WorkspaceRequest({{"op", "completions"}});
     if (const json* rows = JsonArray(result, "completions")) {
       for (const json& c : *rows) {
@@ -318,14 +318,8 @@ bool Agent::DrainActivities(bool start_turn) {
         completions.push_back(std::move(completion));
       }
     }
-    const json* stopped = JsonObject(result, "stopped");
-    if (const json* rows = stopped ? JsonArray(*stopped, "ended") : nullptr) {
-      for (const auto& e : *rows) {
-        processes_.Stopped(
-            {JsonValue(e, "activity_id", int64_t{0}), JsonValue(e, "status", 0),
-             JsonValue(e, "output", ""), JsonValue(e, "duration_ms", 0.0),
-             JsonValue(e, "stopped", false)});
-      }
+    if (const json* rows = JsonArray(result, "stopped")) {
+      for (const json& e : *rows) processes_.Stopped(EndedFromJson(e));
     }
   }
   for (ActivityCompletion& completion : completions) {

@@ -8,6 +8,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <deque>
 #include <filesystem>
 #include <iostream>
 #include <map>
@@ -20,10 +21,11 @@
 
 #include "include/agent/activity.h"
 #include "include/agent/activity_supervisor.h"
-#include "include/agent/file_services.h"
+#include "include/agent/edit_journal.h"
 #include "include/agent/path_policy.h"
 #include "include/app/commands.h"
 #include "include/app/folder_overview.h"
+#include "include/app/launch.h"
 #include "include/app/schedule.h"
 #include "include/app/terminal.h"
 #include "include/app/workspace_files.h"
@@ -32,6 +34,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
+#include "include/core/project.h"
 #include "include/core/sandbox.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -50,12 +53,12 @@ struct CallState {
 };
 class Worker {
  public:
-  ~Worker() {
-    for (const json& record : DetachedRecords()) {
-      ToolActivityStop(processes_, JsonValue(record, "pid", int64_t{0}));
-    }
-    ActivityShutdownAll(processes_);
+  Worker() {
+    RegisterFileTools(tools_, processes_, CanonicalCwd());
+    RegisterExecTools(tools_, processes_, CanonicalCwd(), nullptr);
+    RegisterActivityTool(tools_, processes_);
   }
+  ~Worker() { StopAll(); }
   void CancelAll() {
     std::lock_guard lock(mutex_);
     for (const auto& [id, call] : calls_) call->cancel = true;
@@ -96,15 +99,17 @@ class Worker {
       }
       if (calls_.size() >= session::kReceiptEntries) {
         auto old =
-            std::find_if(calls_.begin(), calls_.end(),
-                         [](const auto& entry) { return entry.second->done; });
-        if (old == calls_.end()) {
+            std::find_if(receipts_.begin(), receipts_.end(),
+                         [&](const auto& key) { return calls_.at(key)->done; });
+        if (old == receipts_.end()) {
           return {{"error", "Remote execution is busy."}};
         }
-        calls_.erase(old);
+        calls_.erase(*old);
+        receipts_.erase(old);
       }
       call = std::make_shared<CallState>();
       calls_[id] = call;
+      receipts_.push_back(id);
     }
     LocalAbort abort(call->cancel);
     json result = Execute(request);
@@ -117,6 +122,12 @@ class Worker {
   }
 
  private:
+  void StopAll() {
+    for (const json& record : DetachedRecords()) {
+      ToolActivityStop(processes_, JsonValue(record, "pid", int64_t{0}));
+    }
+    ActivityShutdownAll(processes_);
+  }
   json Scope(const Tool& tool, const json& args) {
     json subject = tool.approval_subject ? tool.approval_subject(args) : args;
     if (const auto* path = JsonStringRef(args, "path")) {
@@ -137,8 +148,8 @@ class Worker {
           terminals_ = std::make_unique<Terminals>(16, std::chrono::hours(24));
         }
         std::string error;
-        const std::string id =
-            terminals_->Open(CanonicalCwd(), CanonicalCwd(), error);
+        const std::string id = terminals_->Open(
+            CanonicalCwd(), JsonValue(request, "folder", ""), error);
         return error.empty() ? json{{"terminal", id}} : json{{"error", error}};
       }
       std::shared_ptr<TerminalViewer> viewer;
@@ -207,15 +218,11 @@ class Worker {
                              request.value("request", json::object()));
     }
     if (operation == "shutdown") {
-      for (const json& record : DetachedRecords()) {
-        ToolActivityStop(processes_, JsonValue(record, "pid", int64_t{0}));
-      }
-      ActivityShutdownAll(processes_);
+      StopAll();
       return json::object();
     }
     if (operation == "activities") {
       return {{"views", processes_.ActivityViews()},
-              {"pending", processes_.PendingCount()},
               {"count", processes_.Count()},
               {"generation", processes_.Generation()}};
     }
@@ -230,12 +237,19 @@ class Worker {
                         {"display_label", c.display_label},
                         {"started_ms", c.started_ms}});
       }
-      ToolResult stopped;
-      stopped.ended = processes_.TakeStopped();
-      return {{"completions", rows}, {"stopped", EncodeResult(stopped)}};
+      json stopped = json::array();
+      for (const EndedCommand& ended : processes_.TakeStopped()) {
+        stopped.push_back(EndedJson(ended));
+      }
+      return {{"completions", rows}, {"stopped", stopped}};
     }
     if (operation == "ping") {
-      return {{"build", BuildIdentity()}, {"cwd", CanonicalCwd()}};
+      return {{"build", BuildIdentity()},
+              {"cwd", CanonicalCwd()},
+              {"socket", std::filesystem::path(ExecutionStateDirectory())
+                                 .parent_path()
+                                 .string() +
+                             "/socket"}};
     }
     if (operation == "instructions") {
       const std::string action = JsonValue(request, "action", "load");
@@ -254,11 +268,16 @@ class Worker {
           LoadProjectInstructions(CanonicalCwd(), ProjectDocBytes());
       return {{"text", instructions.text},
               {"sources", instructions.sources},
-              {"truncated", instructions.truncated},
-              {"root", ProjectRoot(CanonicalCwd()).string()},
-              {"git", InGitRepository(CanonicalCwd())}};
+              {"truncated", instructions.truncated}};
     }
-    if (operation == "folder") return FolderGitFacts(CanonicalCwd());
+    if (operation == "folder") {
+      const auto folder =
+          CanonicalDirectory(ExpandHome(JsonValue(request, "path", "~")));
+      if (!folder) return {{"error", "Choose an accessible remote directory."}};
+      json facts = FolderGitFacts(folder->string());
+      facts["cwd"] = folder->string();
+      return facts;
+    }
     if (operation == "schedule_check") {
       ApprovalMode mode;
       if (!ParseApprovalMode(JsonValue(request, "mode", "ask"), mode)) {
@@ -266,6 +285,12 @@ class Worker {
       }
       SetApprovalMode(mode);
       return ScheduleCheck(request);
+    }
+    if (operation == "diff") {
+      const CapturedProcess diff = WorkTreeDiff(CanonicalCwd());
+      return {{"status", diff.status},
+              {"output", diff.output},
+              {"error", diff.error}};
     }
     if (operation == "files") {
       return workspace_files::Request(CanonicalCwd(), request);
@@ -285,27 +310,15 @@ class Worker {
     if (operation == "undo") {
       const std::string path = JsonValue(request, "path", "");
       if (HiddenPath(path)) return {{"error", "Protected remote path."}};
-      std::string current, error;
-      const std::string hash = JsonValue(request, "hash", "");
-      if (hash.empty()
-              ? PathExists(path)
-              : !ReadRegularFile(path, EditFileBytes(), current, error) ||
-                    HashHex(current) != hash) {
-        return {{"error", "changed since"}};
-      }
-      if (!JsonValue(request, "existed", false)) {
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-        return ec ? json{{"error", ec.message()}} : json::object();
-      }
       std::string before;
       if (!HexDecode(JsonValue(request, "before", ""), before, MiB(2))) {
         return {{"error", "Invalid undo bytes."}};
       }
-      auto written = ToolAtomicWrite(
-          path, before, static_cast<mode_t>(JsonValue(request, "mode", 0644)),
-          true);
-      return written.Ok() ? json::object() : json{{"error", written.output}};
+      const std::string error =
+          RestoreFile(path, JsonValue(request, "hash", ""),
+                      JsonValue(request, "existed", false), before,
+                      JsonValue(request, "mode", uint32_t{0644}));
+      return error.empty() ? json::object() : json{{"error", error}};
     }
     if (operation == "sandbox") {
       ApprovalMode mode;
@@ -316,22 +329,11 @@ class Worker {
               {"diagnostic", SandboxDiagnosticJson()}};
     }
     if (operation == "open") {
-      std::lock_guard lock(mutex_);
-      if (!opened_) {
-        // Deliberately no settings/environment capture. Only these policy
-        // inputs cross the boundary; defaults cover the execution tool limits.
-        const std::string preset = JsonValue(request, "sandbox", "default");
-        SandboxPreset parsed;
-        if (!ParseSandboxPreset(preset, &parsed)) {
-          return {{"error", "Invalid remote sandbox preset."}};
-        }
-        if (preset != StringSetting(Cfg("UAGENT_SANDBOX"))) {
-          return {{"error", "Execution sandbox changed; reopen the context."}};
-        }
-        RegisterFileTools(tools_, processes_, CanonicalCwd());
-        RegisterExecTools(tools_, processes_, CanonicalCwd(), nullptr);
-        RegisterActivityTool(tools_, processes_);
-        opened_ = true;
+      // The preset is fixed at worker startup; application settings stay on
+      // main.
+      if (JsonValue(request, "sandbox", "default") !=
+          StringSetting(Cfg("UAGENT_SANDBOX"))) {
+        return {{"error", "Execution sandbox changed; reopen the context."}};
       }
       json tools = json::array();
       for (const Tool& t : tools_) {
@@ -347,12 +349,7 @@ class Worker {
       }
       return {{"tools", tools}, {"cwd", CanonicalCwd()}};
     }
-    const Tool* tool = nullptr;
-    {
-      std::lock_guard lock(mutex_);
-      if (!opened_) return {{"error", "Execution context is not open."}};
-      tool = FindTool(tools_, JsonValue(request, "tool", ""));
-    }
+    const Tool* tool = FindTool(tools_, JsonValue(request, "tool", ""));
     if (!tool) return {{"error", "Unknown execution tool."}};
     ApprovalMode mode;
     if (!ParseApprovalMode(JsonValue(request, "approval", "ask"), mode)) {
@@ -373,18 +370,17 @@ class Worker {
       CanonicalizeToolArguments(*tool, canonical);
       auto issue = FindToolArgumentIssue(*tool, canonical);
       if (!issue && tool->validate) issue = tool->validate(canonical);
+      const json scope = Scope(*tool, canonical);
       json result = {
           {"args", canonical},
           {"mutates", ToolMutates(*tool, canonical)},
-          {"approval", static_cast<int>(RequiredApproval(*tool, canonical))},
+          {"approval", scope["approval"]},
           {"preview",
            tool->approval_preview ? tool->approval_preview(canonical) : ""},
-          {"subject", tool->approval_subject ? tool->approval_subject(canonical)
-                                             : canonical},
+          {"subject", scope["subject"]},
           {"reason",
-           tool->mandatory_reason ? tool->mandatory_reason(canonical) : ""}};
-      result["scope"] = Scope(*tool, canonical);
-      result["subject"] = result["scope"]["subject"];
+           tool->mandatory_reason ? tool->mandatory_reason(canonical) : ""},
+          {"scope", scope}};
       if (issue) {
         result["issue"] = {{"code", issue->code},
                            {"message", issue->message},
@@ -449,7 +445,7 @@ class Worker {
   std::vector<Tool> tools_;
   std::mutex mutex_;
   std::map<std::string, std::shared_ptr<CallState>> calls_;
-  bool opened_ = false;
+  std::deque<std::string> receipts_;
 };
 int Serve(const std::string& directory, const std::string& cwd,
           const std::string& auth) {
@@ -513,9 +509,8 @@ int Serve(const std::string& directory, const std::string& cwd,
   worker->CancelAll();
   for (auto& c : connections) c.thread.join();
   worker.reset();
-  unlink(path.c_str());
   std::error_code ignored;
-  std::filesystem::remove_all(GlobalBase(), ignored);
+  std::filesystem::remove_all(directory, ignored);
   return 0;
 }
 }  // namespace
@@ -540,13 +535,7 @@ int Main(int argc, char** argv) {
   }
   for (const auto& key : remove) unsetenv(key.c_str());
   PublishSettings(json{{"UAGENT_SANDBOX", preset}});
-  std::string requested = argv[4];
-  if (requested.empty() || requested == "~") {
-    requested = UserHome();
-  } else if (requested.starts_with("~/")) {
-    requested = UserHome() + requested.substr(1);
-  }
-  const auto folder = CanonicalDirectory(requested);
+  const auto folder = CanonicalDirectory(ExpandHome(argv[4]));
   if (!folder) {
     printf("%s\n",
            JsonDump(json{{"error", "Choose an accessible remote directory."}})
@@ -592,7 +581,6 @@ int Main(int argc, char** argv) {
   if (identity.is_null()) return 68;
   if (identity.contains("error")) return 68;
   if (JsonValue(identity, "cwd", "") != folder->string()) return 64;
-  identity["socket"] = path;
   printf("%s\n", JsonDump(identity).c_str());
   return 0;
 }

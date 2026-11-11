@@ -109,6 +109,9 @@ struct EndedCommand {
   double duration_ms = 0;
   bool stopped = false;  // a stop ended it, not the command itself
 };
+// As a remote gateway reports one to the main.
+json EndedJson(const EndedCommand& ended);
+EndedCommand EndedFromJson(const json& value);
 
 struct ToolResult {
   CompletionStatus status = CompletionStatus::kSuccess;

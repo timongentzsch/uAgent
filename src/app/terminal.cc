@@ -45,8 +45,6 @@ constexpr uint16_t kStartColumns = 80;
 // shell has to exit after its hangup before it is killed.
 constexpr int kInputMs = 2000;
 constexpr std::chrono::milliseconds kStopGrace{1000};
-// How long a page's own shell waits for its first viewer.
-constexpr std::chrono::seconds kFirstViewer{30};
 // What one read of a terminal takes; a wake reads at most the kept output,
 // so a shell that never stops printing cannot hold up the others.
 constexpr size_t kReadBytes = KiB(16);
@@ -144,7 +142,8 @@ std::chrono::milliseconds Patience(const TerminalShell& shell,
                                    std::chrono::milliseconds idle)
     UAGENT_REQUIRES(shell.mutex) {
   if (!shell.folder.empty()) return idle;
-  return shell.generations > 0 ? std::chrono::milliseconds(0) : kFirstViewer;
+  return shell.generations > 0 ? std::chrono::milliseconds(0)
+                               : kTerminalFirstViewerWait;
 }
 
 }  // namespace

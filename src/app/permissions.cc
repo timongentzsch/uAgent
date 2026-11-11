@@ -172,20 +172,16 @@ std::string RuleSubject(const Tool& tool, const json& arguments,
                         const std::string& root) {
   if (tool.name == "run") return Trim(JsonValue(arguments, "command", ""));
   if (tool.name == "web_fetch") return UrlHost(JsonValue(arguments, "url", ""));
-  if (tool.approval_subject) return JsonDump(tool.approval_subject(arguments));
+  const json subject =
+      tool.approval_subject ? tool.approval_subject(arguments) : json();
+  // A remote path tool's subject names where its gateway resolved the path.
+  const std::string* resolved = JsonStringRef(subject, "resolved");
+  if (!subject.is_null() && !resolved) return JsonDump(subject);
   if (const std::string* path = JsonStringRef(arguments, "path")) {
     // Inside the folder by its place there, so a rule reads as ./src/.
-    std::filesystem::path canonical;
-    if (Workspace().Remote()) {
-      const json checked = WorkspaceRequest({{"op", "check"},
-                                             {"tool", "read_path"},
-                                             {"args", {{"path", *path}}}});
-      canonical = JsonValue(checked.value("scope", json::object())
-                                .value("subject", json::object()),
-                            "resolved", *path);
-    } else {
-      canonical = CanonicalAccessPath(*path);
-    }
+    const std::filesystem::path canonical =
+        resolved ? std::filesystem::path(*resolved)
+                 : CanonicalAccessPath(*path);
     if (PathWithin(canonical, root)) {
       return "./" + canonical.lexically_relative(root).generic_string();
     }
@@ -212,8 +208,8 @@ PermissionRule SuggestRule(const Tool& tool, const json& arguments,
       const bool exact = words.size() > 2 && prefix == words[0];
       if (!exact) rule.match = prefix + " *";
     }
-  } else if (!tool.approval_subject && JsonStringRef(arguments, "path")) {
-    // The file's folder.
+  } else if (subject.starts_with("./") || subject.starts_with("/")) {
+    // A path: the file's folder.
     const size_t slash = subject.rfind('/');
     if (slash != std::string::npos) rule.match = subject.substr(0, slash + 1);
   }
@@ -241,7 +237,7 @@ std::string RuleLabel(const PermissionRule& rule) {
 
 bool PathOutsideFolder(const json& arguments, const std::string& root) {
   const std::string path = JsonValue(arguments, "path", "");
-  if (Workspace().Remote() && !path.empty()) {
+  if (RemoteWorkspace() && !path.empty()) {
     const json checked = WorkspaceRequest(
         {{"op", "check"}, {"tool", "read_path"}, {"args", {{"path", path}}}});
     return JsonValue(checked.value("scope", json::object()), "outside", true);

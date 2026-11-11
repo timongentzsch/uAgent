@@ -246,8 +246,6 @@
   width: 100%;
   justify-content: flex-start;
   gap: var(--space-2);
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .section-fold svg {
   width: 1em;
@@ -290,34 +288,16 @@
 }
 .host-phase {
   flex: none;
-  color: var(--muted);
-}
-.host-square {
-  width: var(--space-4);
-  height: var(--space-4);
-  flex: none;
-  border: 1px solid var(--muted);
-}
-.host-square[data-connected] {
-  background: var(--text);
-  border-color: var(--text);
 }
 .host-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
-.host-error {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 @media (pointer: coarse) {
   .sidebar .host-row,
   .sidebar .section-fold,
   .sidebar .source-shortcut {
     min-height: var(--touch);
-  }
-  .host-list-scroll {
-    max-height: var(--scroll-s);
   }
 }

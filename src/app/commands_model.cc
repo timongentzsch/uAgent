@@ -78,7 +78,9 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
   std::string listing;
   for (size_t i = 0; i < search.matches.size(); ++i) {
     const ModelCandidate& candidate = search.matches[i];
-    bool active = candidate.route.base_url == api.base_url &&
+    bool active = ProviderScope(candidate.route, providers) ==
+                      ProviderScope(api, providers) &&
+                  candidate.route.base_url == api.base_url &&
                   candidate.route.model == api.model;
     if (active) {
       current =
@@ -109,9 +111,8 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
     listing += supported + "\n";
     std::string route_label =
         active ? RouteSelection(api, providers)
-               : ComposeSelection(
-                     ProviderScope(candidate.route.base_url, providers),
-                     candidate.route.model, effort);
+               : ComposeSelection(ProviderScope(candidate.route, providers),
+                                  candidate.route.model, effort);
     std::string option_label = candidate.route.route_name;
     if (!candidate.info.name.empty() &&
         candidate.info.name != candidate.info.id) {

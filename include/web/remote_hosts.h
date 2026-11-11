@@ -5,7 +5,6 @@
 #include <optional>
 #include <string>
 
-#include "include/app/execution.h"
 #include "include/core/json.h"
 namespace uagent::web {
 // Return the manifest only after every payload matches this build and its hash.

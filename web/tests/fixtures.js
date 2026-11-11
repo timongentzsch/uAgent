@@ -169,19 +169,17 @@ export async function leaveEnd(box) {
   });
 }
 
-// New ▾ Folder…: asks for a path on the host, ready to start a conversation.
-export async function newFolder(page, path) {
+// New ▾ Folder…, a path on the host, Start: a conversation with its runtime.
+// The dialog stays over it until it has loaded: typing before then is lost.
+export async function startInFolder(page, path) {
   await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("menuitem", { name: "Folder…" }).click();
   await page.getByLabel("Folder on the host").fill(path);
-}
-
-// newFolder, then starts the conversation and waits for its runtime.
-export async function startInFolder(page, path) {
-  await newFolder(page, path);
-  await page
+  const dialog = page.getByRole("dialog", { name: "New folder" });
+  await dialog
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
+  await expect(dialog).toBeHidden();
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
 }
 

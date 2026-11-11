@@ -3,9 +3,9 @@ import {
   test,
   expect,
   leaveEnd,
-  newFolder,
   openMore,
   savedConversation,
+  startInFolder,
 } from "./fixtures.js";
 
 test.describe("mobile navigation and commands", () => {
@@ -204,12 +204,7 @@ test.describe("mobile navigation and commands", () => {
       .getByRole("button", { name: "Close conversations", exact: true })
       .tap();
     await page.getByRole("button", { name: "Open conversations" }).click();
-    await newFolder(page, fixture.project);
-    await page
-      .getByRole("dialog", { name: "New folder" })
-      .getByRole("button", { name: "Start conversation" })
-      .click();
-    await expect(page.locator(".composer .activity-button")).toHaveCount(0);
+    await startInFolder(page, fixture.project);
     await expect(page.locator(".message.user")).toHaveCount(0);
     await prompt.fill("Survives reload");
     // Saved after the next paint; reload once it is stored.

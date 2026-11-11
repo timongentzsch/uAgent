@@ -15,6 +15,14 @@ import { PageThumb, usePreviewBase } from "../../shared/page-frame.tsx";
 // small, and the way to where it is worked on.
 
 const KIND = { ...ARTIFACT, file: "Shared file" };
+// A document and a sheet are one file; the others are their folder.
+const OWN = new Set(["doc", "sheet"]);
+const OPEN: Record<string, string> = {
+  design: "Open canvas",
+  deck: "Open deck",
+  doc: "Open document",
+  sheet: "Open sheet",
+};
 
 function Thumbnails({ session, pages }: { session: string; pages: string[] }) {
   const preview = usePreviewBase(session);
@@ -107,19 +115,11 @@ export default function LibraryArtifact({
             variant="primary"
             onClick={() =>
               open({
-                path: book ?? (kind === "doc" ? item.path : `${item.path}/`),
+                path: book ?? (OWN.has(kind) ? item.path : `${item.path}/`),
               })
             }
           >
-            {kind === "design"
-              ? "Open canvas"
-              : kind === "deck"
-                ? "Open deck"
-                : kind === "doc"
-                  ? "Open document"
-                  : book
-                    ? "Open its brand book"
-                    : "Open its folder"}
+            {OPEN[kind] ?? (book ? "Open its brand book" : "Open its folder")}
           </Button>
         )}
       </div>

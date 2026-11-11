@@ -15,6 +15,7 @@ import {
   viewerOf,
   writeFiles,
   SAMPLE_ASK,
+  SAMPLE_SHEET,
 } from "./fixtures.js";
 import { createRequire } from "node:module";
 import { readdir, readFile } from "node:fs/promises";
@@ -221,6 +222,24 @@ test("a deck in its viewer, with its legend and find, has no violations", async 
   // The slide it found, drawn.
   await expect(viewerOf(files).stage.getByRole("heading")).toHaveText("Plan");
   await expect(files.getByRole("group", { name: "Zoom" })).toBeVisible();
+  expect(await violations(page, ".files")).toEqual([]);
+});
+
+test("a sheet in its viewer, with its tabs, formula bar and cells in error, has no violations", async ({
+  page,
+  session,
+  host,
+}) => {
+  await writeFiles(host.project, { "plan.html": SAMPLE_SHEET });
+  const files = await openFiles(page, session, "plan.html");
+  await expect(files.getByText("2 cells in error")).toBeVisible();
+  await viewerOf(files)
+    .stage.getByRole("cell", { name: "Done" })
+    .first()
+    .click();
+  await expect(files.getByRole("group", { name: "Formula bar" })).toContainText(
+    "Tasks!A1",
+  );
   expect(await violations(page, ".files")).toEqual([]);
 });
 

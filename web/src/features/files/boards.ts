@@ -3,32 +3,43 @@
 // The host says what each page and its folder is (a listing's `kind`s,
 // src/app/workspace_files.cc); a page says the rest once it is drawn.
 
+import type { ArtifactType } from "../../shared/artifact.ts";
 import { HTML, IMAGE, VIDEO } from "../../shared/file-types.ts";
 import { maxUploadBytes } from "../../shared/limits.ts";
 import type { PageInfo, PageMessage } from "../../shared/page-frame.tsx";
 import { pageSize } from "../../shared/page-size.ts";
 import { bytes } from "../../shared/quantities.ts";
 
-// A document on paper, a deck of slides, a design system, or a design: any
-// other pages.
-export type Kind = "doc" | "deck" | "system" | "design";
+// A document on paper, a sheet of tabs, a deck of slides, a design system,
+// or a design: any other pages.
+export type Kind = ArtifactType;
 
 export interface Listing {
   // What its pages make the folder: a "deck", a "design", a "system" or "".
   kind?: string;
-  // A page says "doc", "slide" or "page" when its head declares one.
-  entries: { name: string; dir: boolean; kind?: string; size?: number }[];
+  // A page says "doc", "sheet", "slide" or "page" when its head declares
+  // one; a sheet, how many tabs it has.
+  entries: {
+    name: string;
+    dir: boolean;
+    kind?: string;
+    size?: number;
+    count?: number;
+  }[];
 }
 
-// One thing drawn: a page of the folder or one page of a document; on a
-// design's canvas also a picture, a film, and as a stack (its first page,
-// with how many there are) a document or a deck that lies in the design.
+// One thing drawn: a page of the folder, one page of a document or one tab
+// of a sheet; on a design's canvas also a picture, a film, and as a stack
+// (its first page, with how many there are) a document, a sheet or a deck
+// that lies in the design.
 export interface Board {
   // What a click opens: the file, or a stack's first page.
   path: string;
   title: string;
   media: "page" | "image" | "video" | "stack";
-  // A stack's slides, or its pages once the document has said them.
+  // What a stack is, and how many slides, tabs or (once the document has
+  // said them) pages it holds.
+  type?: Kind;
   count?: number;
   w: number;
   h: number;
@@ -42,12 +53,14 @@ export interface Board {
   failed: string;
 }
 
-// What a page's frames said, by its path: what it is, what failed in it
-// and, for a document, where print starts each page after the first.
+// What a page's frames said, by its path: what it is, what failed in it,
+// for a document where print starts each page after the first, and for a
+// sheet its tabs.
 interface Seen {
   info?: PageInfo;
   errors: string[];
   breaks?: number[];
+  tabs?: string[];
 }
 export type SeenPages = Record<string, Seen>;
 
@@ -71,6 +84,9 @@ export function hear(
   } else if (message.type === "pages") {
     if (String(was.breaks) !== String(message.breaks))
       next = { ...was, breaks: message.breaks };
+  } else if (message.type === "sheet") {
+    if (was.tabs?.join("\n") !== message.tabs.join("\n"))
+      next = { ...was, tabs: message.tabs };
   } else if (message.type === "error") {
     const error = `${message.message}${message.line ? ` (line ${message.line})` : ""}`;
     if (!was.errors.includes(error))
@@ -94,10 +110,13 @@ export const join = (dir: string, name: string) =>
 export const sum = (numbers: number[]) =>
   numbers.reduce((total, number) => total + number, 0);
 
-// The folder's HTML files.
+// The folder's pages: its HTML files, less the sheets, which are no part
+// of what the folder is.
 export const pagesOf = (listing: Listing) =>
   listing.entries
-    .filter((entry) => !entry.dir && HTML.test(entry.name))
+    .filter(
+      (entry) => !entry.dir && HTML.test(entry.name) && entry.kind !== "sheet",
+    )
     .map((entry) => entry.name);
 
 // A deck's slides in the order its PDF prints them: by name, as written.
@@ -181,11 +200,15 @@ export function carried(all: SeenPages, dir: string, moves: Move[]) {
   return next;
 }
 
-// What the file `name` of a folder is shown as: a document is its own
-// whatever folder it lies in; any other page is a part of its folder.
+// A document and a sheet are each their own, whatever folder they lie in.
+export const alone = (kind?: string): kind is "doc" | "sheet" =>
+  kind === "doc" || kind === "sheet";
+
+// What the file `name` of a folder is shown as: itself when it is its own;
+// any other page is a part of its folder.
 export function kindOf(listing: Listing, name: string): Kind {
   const entry = listing.entries.find((entry) => entry.name === name);
-  if (entry?.kind === "doc") return "doc";
+  if (alone(entry?.kind)) return entry.kind;
   return listing.kind === "deck" || listing.kind === "system"
     ? listing.kind
     : "design";
@@ -210,11 +233,12 @@ function rows(names: string[]) {
 }
 
 // The boards of the folder `dir`. With the page `name` opened, what that is
-// part of: a document as its pages, a deck's slide among the slides, any
-// other page among the folder's pages in rows, less the documents, which
-// are each their own. With none, its canvas: every page in rows, a
-// document as a stack, and what else lies in the folder: its pictures and
-// films, and a stack for each of its `folders` that is a deck.
+// part of: a document as its pages, a sheet as its tabs, a deck's slide
+// among the slides, any other page among the folder's pages in rows, less
+// the documents and sheets, which are each their own. With none, its
+// canvas: every page in rows, a document or a sheet as a stack, and what
+// else lies in the folder: its pictures and films, and a stack for each of
+// its `folders` that is a deck.
 export function boardsOf(
   dir: string,
   listing: Listing,
@@ -245,6 +269,15 @@ export function boardsOf(
       h: (tops[at + 1] ?? Math.max(top, info?.height ?? 0)) - top,
     }));
   }
+  if (kind === "sheet") {
+    // Numbered until the sheet has said what its tabs are called.
+    const page = board(name!);
+    const { count = 1 } = listing.entries.find((entry) => entry.name === name)!;
+    const tabs =
+      seen[page.path]?.tabs ??
+      Array.from({ length: count }, (_, at) => `${at + 1}`);
+    return tabs.map((title) => ({ ...page, title }));
+  }
   if (kind === "deck") {
     // A slide not drawn yet is taken to be as large as one that is.
     const slides = slidesOf(listing);
@@ -258,15 +291,23 @@ export function boardsOf(
   for (const entry of listing.entries) {
     if (entry.dir) continue;
     const made = board(entry.name);
-    const { breaks } = seen[made.path] ?? {};
-    if (HTML.test(entry.name) && entry.kind !== "doc")
+    const { breaks, tabs } = seen[made.path] ?? {};
+    if (HTML.test(entry.name) && !alone(entry.kind))
       lying.set(entry.name, made);
     else if (kind) continue;
+    else if (entry.kind === "sheet")
+      lying.set(entry.name, {
+        ...made,
+        media: "stack",
+        type: "sheet",
+        count: tabs?.length ?? entry.count,
+      });
     else if (entry.kind === "doc")
       // Its first page, as tall as print makes it.
       lying.set(entry.name, {
         ...made,
         media: "stack",
+        type: "doc",
         count: breaks && breaks.length + 1,
         h: breaks?.[0] ?? made.h,
       });
@@ -288,6 +329,7 @@ export function boardsOf(
         ...board(join(folder, slides[0])),
         title: folder,
         media: "stack",
+        type: "deck",
         count: slides.length,
       });
   }
@@ -321,7 +363,8 @@ export function pageAt(boards: Board[], top: number, end: boolean) {
 
 // The boards' failed pages, and what they threw as lines for the agent. A
 // picture or a film that did not load says so on the canvas, by its name.
-export function failures(boards: Board[], seen: SeenPages) {
+// A sheet opened fails by the cell: each is counted.
+export function failures(boards: Board[], seen: SeenPages, kind?: Kind) {
   const paths = [
     ...new Set(
       boards
@@ -329,10 +372,16 @@ export function failures(boards: Board[], seen: SeenPages) {
         .map((board) => board.path),
     ),
   ];
+  const cells = kind === "sheet";
   return {
-    count: paths.length,
+    count: cells
+      ? sum(paths.map((path) => seen[path].errors.length))
+      : paths.length,
     text: paths
-      .map((path) => `\`${path}\` threw: ${seen[path].errors.join("; ")}`)
+      .map(
+        (path) =>
+          `\`${path}\` ${cells ? "has cells in error" : "threw"}: ${seen[path].errors.join("; ")}`,
+      )
       .join("\n")
       .slice(0, ERRORS_MAX),
   };

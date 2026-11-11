@@ -106,14 +106,26 @@ std::string MetaTag(const std::string& head, const std::string& name) {
              : head.substr(open, close - open);
 }
 
-// What an HTML page's head says it is: a "doc" on paper (print flow), a
-// "slide", a "page" with an artboard, or nothing.
+// What an HTML page's head says it is: a "sheet" of tables, a "doc" on paper
+// (print flow), a "slide", a "page" with an artboard, or nothing.
 std::string PageKind(const fs::path& page) {
   const std::string head = ReadFile(page.string(), KiB(4)).value_or("");
+  if (!MetaTag(head, "sheet").empty()) return "sheet";
   if (MetaTag(head, "print").find("\"flow") != std::string::npos) return "doc";
   const std::string artboard = MetaTag(head, "artboard");
   if (artboard.empty()) return "";
   return artboard.find(" slide\"") == std::string::npos ? "page" : "slide";
+}
+
+// How many tabs a sheet has: its tables.
+int64_t SheetTabs(const fs::path& page) {
+  const std::string text = ReadFile(page.string(), kFileViewBytes).value_or("");
+  int64_t tabs = 0;
+  for (size_t at = 0; (at = text.find("<table data-sheet", at)) != text.npos;
+       ++at) {
+    ++tabs;
+  }
+  return tabs;
 }
 
 // What a folder's files make it: a design "system" with a tokens.css, a
@@ -136,12 +148,12 @@ struct FolderPages {
 };
 }  // namespace
 
-// The designs in `root` (see the artifact skill): decks and designs, a
-// folder each; documents, each its own; and design systems, whose own pages
-// are theirs. Each names up to four of its pages, for thumbnails.
+// The artifacts in `root` (see the artifact skill): decks and designs, a
+// folder each; documents and sheets, each its own; and design systems, whose
+// own pages are theirs. Each names up to four of its pages, for thumbnails.
 json Designs(const fs::path& root) {
   struct Folder {
-    std::vector<std::string> pages, docs;
+    std::vector<std::string> pages, docs, sheets;
     int64_t modified = 0;
     FolderPages kind;
   };
@@ -166,6 +178,10 @@ json Designs(const fs::path& root) {
     const std::string kind = PageKind(root / relative);
     if (kind == "doc") {
       folder.docs.push_back(path);
+      continue;
+    }
+    if (kind == "sheet") {
+      folder.sheets.push_back(path);
       continue;
     }
     folder.pages.push_back(path);
@@ -210,6 +226,14 @@ json Designs(const fs::path& root) {
     }
     for (const std::string& doc : folder.docs) {
       found.push_back(item("doc", doc, {doc}, modified(doc)));
+    }
+  }
+  // A sheet is its own wherever it lies, counted by its tabs.
+  for (auto& [dir, folder] : folders) {
+    for (const std::string& sheet : folder.sheets) {
+      Found one = item("sheet", sheet, {sheet}, modified(sheet));
+      one.item["count"] = SheetTabs(root / sheet);
+      found.push_back(std::move(one));
     }
   }
   std::ranges::sort(found, [](const Found& a, const Found& b) {
@@ -568,7 +592,11 @@ json Request(const fs::path& root, const json& request) {
       if (name.extension() != ".html") continue;
       const std::string kind = PageKind(*target / name);
       if (!kind.empty()) entry["kind"] = kind;
-      if (kind != "doc") folder.Add(kind);
+      if (kind == "sheet") {
+        entry["count"] = SheetTabs(*target / name);
+      } else if (kind != "doc") {
+        folder.Add(kind);
+      }
     }
     (*listed)["kind"] = folder.Kind();
     return *listed;

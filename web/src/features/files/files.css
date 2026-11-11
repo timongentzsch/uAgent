@@ -269,8 +269,10 @@
   background: var(--surface);
 }
 /* One row: on a narrow pane it scrolls sideways rather than wrapping. */
-.page-tools {
+.page-tools,
+.sheet-tabs {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   overflow-x: auto;
   scrollbar-width: none;
@@ -279,8 +281,27 @@
   border-bottom: var(--border);
   background: var(--bg);
 }
-.page-tools > * {
+:is(.page-tools, .sheet-tabs) > * {
   flex: none;
+}
+/* A sheet's tabs lie under its grid; over it the clicked cell, one line:
+   where it is, then what was typed in it, cut short. */
+.sheet-tabs {
+  border-bottom: 0;
+  border-top: var(--border);
+}
+.sheet-formula {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: var(--row);
+  padding: 0 var(--space-4);
+  border-bottom: var(--border);
+  background: var(--bg);
+}
+.sheet-formula > output {
+  flex: none;
+  color: var(--muted);
 }
 .page-body {
   flex: 1;

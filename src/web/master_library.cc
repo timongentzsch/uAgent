@@ -143,7 +143,8 @@ void Master::LibraryDelete(const Request& request, Response& response) {
     return;
   }
   std::error_code ec;
-  if (kind == "doc") {
+  // A document and a sheet are one file; the others are their folder.
+  if (kind == "doc" || kind == "sheet") {
     fs::remove(fs::path(place) / path, ec);
   } else {
     fs::remove_all(fs::path(place) / path, ec);

@@ -1,3 +1,4 @@
+import type { RefObject } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { TriangleAlert } from "lucide-preact";
 import { Button } from "../../shared/ui.tsx";
@@ -7,6 +8,22 @@ import { type Board, sum } from "./boards.ts";
 
 // How wide a board is drawn in the legend.
 const LEGEND_WIDTH = 128;
+
+// The current one of a list stays in view, and keeps the focus the list has.
+export function useCurrentInView(
+  list: RefObject<HTMLElement | null>,
+  index: number,
+) {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: whenever another is current
+  useEffect(() => {
+    const current = list.current?.querySelector<HTMLElement>(
+      '[aria-selected="true"]',
+    );
+    current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (list.current?.contains(document.activeElement))
+      current?.focus({ preventScroll: true });
+  }, [index]);
+}
 
 // The sequence small beside the stage (under it, as a filmstrip, in a narrow
 // pane): each board numbered with its title, the current one marked and kept
@@ -59,15 +76,7 @@ export default function Legend({
       observer.observe(item);
     return () => observer.disconnect();
   }, [stamp]);
-  // The current one stays in view, and keeps the focus the legend has.
-  useEffect(() => {
-    const current = list.current?.querySelector<HTMLElement>(
-      '[aria-selected="true"]',
-    );
-    current?.scrollIntoView({ block: "nearest", inline: "nearest" });
-    if (list.current?.contains(document.activeElement))
-      current?.focus({ preventScroll: true });
-  }, [index]);
+  useCurrentInView(list, index);
   const option = (at: number, label: string) => ({
     role: "option" as const,
     "aria-selected": at === index,

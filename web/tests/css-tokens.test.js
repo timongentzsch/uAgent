@@ -17,12 +17,18 @@ function* tree(dir, extensions, base = "") {
 }
 
 // Every declaration in the stylesheets: where it is, the selector (and
-// at-rules) it sits in, its property and its value.
+// at-rules) it sits in, its property and its value. The grid a sheet page
+// is drawn as is another document's: it has its own palette, which the app
+// fills from its tokens, and none of the app's scales.
 const declarations = [];
-const sheets = [...tree("src", [".css"])].map((path) => ({
-  path,
-  css: readFileSync(join("src", path), "utf8"),
-}));
+const sheets = [
+  ...[...tree("src", [".css"])].map((path) => ({
+    path,
+    css: readFileSync(join("src", path), "utf8"),
+  })),
+  { path: "sheet/sheet.css", css: readFileSync("sheet/sheet.css", "utf8") },
+];
+const page = ({ where }) => where.startsWith("sheet/");
 for (const { path, css: raw } of sheets) {
   const css = raw.replace(/\/\*[\s\S]*?\*\//g, (comment) =>
     comment.replace(/[^\n]/g, " "),
@@ -59,16 +65,21 @@ function bare(value) {
   while (/var\([^()]*\)/.test(out)) out = out.replace(/var\([^()]*\)/g, "");
   return out;
 }
-const strays = (stray) =>
+const strays = (stray, pages = false) =>
   declarations
-    .filter((declaration) => !token(declaration) && stray(declaration))
+    .filter(
+      (declaration) =>
+        (pages || !page(declaration)) &&
+        !token(declaration) &&
+        stray(declaration),
+    )
     .map(({ where, property, value }) => `${where}: ${property}: ${value}`);
 
-test("colour literals stay in the palettes", () => {
+test("colour literals stay in the palettes, a sheet page's too", () => {
   const COLOUR =
     /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|color-mix)\(|^(?:white|black)\b/i;
   assert.deepEqual(
-    strays(({ value }) => COLOUR.test(value)),
+    strays(({ value }) => COLOUR.test(value), true),
     [],
   );
 });

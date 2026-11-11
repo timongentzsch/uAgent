@@ -8,8 +8,9 @@ export { expect };
 
 // What the Files pane's tests put into a conversation's folder: a page with
 // an artboard (a size, a width alone, or a slide's), which makes a design; a
-// slide, its title as its heading and its notes in its last aside; and a
-// document on paper.
+// slide, its title as its heading and its notes in its last aside; a
+// document on paper; and a sheet, each of its tabs a table of rows as a
+// person would type them.
 export const artboard = (title, body, size = "1440x900") =>
   `<!doctype html><html><head><title>${title}</title>` +
   `<meta name="artboard" content="${size}"></head><body>${body}</body></html>`;
@@ -22,6 +23,34 @@ export const slide = (title, notes = "", body = "") =>
 export const paper = (title, body, sheet = "a5", head = "") =>
   `<!doctype html><html><head><title>${title}</title>` +
   `<meta name="print" content="flow ${sheet}">${head}</head><body>${body}</body></html>`;
+
+export const sheet = (title, tabs) =>
+  `<!doctype html><meta charset="utf-8"><meta name="sheet" content="1">` +
+  `<title>${title}</title>${Object.entries(tabs)
+    .map(
+      ([name, rows]) =>
+        `<table data-sheet="${name}">${rows.map((row) => `<tr>${row}`).join("")}</table>`,
+    )
+    .join("")}`;
+// A plan of three tabs: counts and a total over its tasks, a header band
+// under the summary, a value read from another tab, and two cells in error.
+export const SAMPLE_SHEET = sheet("Launch plan", {
+  Tasks: [
+    "<td>Done<td>=COUNTIF(B4:B6,A1)<td>",
+    "<td><td><td>",
+    "<th>Task<th>Status<th>Cost",
+    "<td>Write the plan<td>Done<td>1200",
+    "<td>Book the venue<td>Done<td>8400.5",
+    "<td>Brief the press<td>To do<td>=1/0",
+    '<td>Total<td><td data-format="#,##0.00">=SUM(C4:C5)',
+  ],
+  Inputs: [
+    "<th>Name<th>Value",
+    "<td>Budget<td>=Tasks!C7*2",
+    "<td>Rate<td>=NOPE(1)",
+  ],
+  Notes: ["<td>Nothing yet"],
+});
 
 // Writes files into a folder by their paths in it, making its folders.
 export async function writeFiles(root, files) {

@@ -16,10 +16,13 @@ namespace uagent::browser {
 namespace {
 // One cheap snapshot of the document; equal consecutive snapshots of a
 // loaded page mean it settled. The document identity changes on navigation.
+// A page of the folder that is still drawing itself (a sheet being
+// calculated, web/public/design-helper.js) counts as loading.
 constexpr const char* kProbeScript =
     "(()=>{const t=document.body?document.body.innerText:'';let h=0;"
     "for(let i=0;i<Math.min(t.length,4096);i++)h=(h*31+t.charCodeAt(i))|0;"
-    "return {ready:document.readyState,doc:String(performance.timeOrigin),"
+    "return {ready:'uagentBusy' in document.documentElement.dataset?"
+    "'loading':document.readyState,doc:String(performance.timeOrigin),"
     "sig:t.length+':'+h+':'+document.getElementsByTagName('*').length}})()";
 
 // The page, for a look (named `look`) or for reading. Both get its address,
@@ -543,11 +546,12 @@ json Runtime::Capture(const json& command) {
           {"mobile", false}},
          session);
     Call("Page.navigate", {{"url", url}}, session);
-    // Loaded, its fonts in, or ten seconds.
+    // Loaded, its fonts in and a sheet calculated, or ten seconds.
     Call("Runtime.evaluate",
          {{"expression",
            "new Promise(done => { const go = () => document.fonts.ready.then("
-           "() => done(true)); document.readyState === 'complete' ? go() : "
+           "() => window.uagentReady).then(() => done(true), () => "
+           "done(false)); document.readyState === 'complete' ? go() : "
            "addEventListener('load', go); setTimeout(() => done(false), "
            "10000); })"},
           {"awaitPromise", true}},

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { useApi } from "../state/api.ts";
 import { useLatest } from "./use-latest.ts";
 import { useResource } from "./use-resource.ts";
@@ -21,6 +21,8 @@ export interface PageInfo {
   height: number;
   // Its stylesheets' addresses.
   sheets?: string[];
+  // A sheet: its tables drawn as a spreadsheet's grid.
+  sheet?: boolean;
 }
 export interface Rect {
   x: number;
@@ -40,7 +42,8 @@ export type PageMessage =
   | { type: "error"; message: string; line: number }
   | { type: "hover" | "picked"; rect: Rect }
   | ({ type: "pick" } & Pick)
-  | { type: "key"; key: string }
+  // A key the pane acts on; `held` with ⌘ or Ctrl.
+  | { type: "key"; key: string; held?: boolean }
   | { type: "zoom"; by: number; x: number; y: number }
   // A document's page breaks, its edited block, its text as Markdown, and
   // where it is scrolled to (`end`: as far as it goes; `after`: the last
@@ -50,11 +53,16 @@ export type PageMessage =
   | { type: "markdown"; text: string }
   | { type: "at"; top: number; end: boolean; after: number }
   // How many occurrences a find marked.
-  | { type: "find"; count: number };
+  | { type: "find"; count: number }
+  // A sheet's tabs with the one it shows, and the cell clicked in it: where
+  // it is ("Costs!B2"), what was typed in it and what it shows.
+  | { type: "sheet"; tabs: string[]; active: number }
+  | { type: "cell"; ref: string; raw: string; shown: string };
 
 // Tells a page what to do: select on or off, set a tweak, scroll a document
-// to an offset (its `n`th goto, counted from 1 for each document loaded), or
-// mark the words found and bring the `index`th into view.
+// to an offset (its `n`th goto, counted from 1 for each document loaded),
+// mark the words found and bring the `index`th into view, or show a sheet's
+// tab.
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
@@ -63,8 +71,36 @@ export const tell = (
     | { type: "markdown" }
     | { type: "tweak"; name: string; value: unknown }
     | { type: "goto"; top: number; n: number }
-    | { type: "find"; text: string; index: number },
+    | { type: "find"; text: string; index: number }
+    | { type: "tab"; index: number },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
+
+// What a sheet's grid takes from the app, as the variables of its own
+// stylesheet (web/sheet/sheet.css): the palette, a cell's fills as signal
+// colours thinned over the ground, and the type. Resolved here, since the
+// page is another document.
+const SHEET_LOOK = {
+  ground: "bg",
+  ink: "text",
+  muted: "muted",
+  line: "line",
+  edge: "surface",
+  head: "raised",
+  accent: "accent",
+  error: "removed",
+};
+const SHEET_FILLS = { good: "added", warn: "find-current", bad: "removed" };
+function tellLook(frame: HTMLIFrameElement | null) {
+  if (!frame) return;
+  const style = getComputedStyle(frame);
+  const token = (name: string) => style.getPropertyValue(`--${name}`).trim();
+  const set = (name: string, value: string) =>
+    tell(frame, { type: "tweak", name: `--sheet-${name}`, value });
+  for (const [name, from] of Object.entries(SHEET_LOOK)) set(name, token(from));
+  for (const [name, from] of Object.entries(SHEET_FILLS))
+    set(name, `color-mix(in srgb, ${token(from)} 20%, ${token("bg")})`);
+  set("font", `${style.fontSize}/${style.lineHeight} ${style.fontFamily}`);
+}
 
 // A file of the folder at its preview address.
 export const pageAddress = (base: string, path: string) =>
@@ -106,15 +142,32 @@ export default function Frame({
   const own = useRef<HTMLIFrameElement>(null);
   const frame = frameRef ?? own;
   const handle = useLatest(onMessage);
+  // A sheet takes the app's look as it loads, and again when that changes
+  // (the theme, the zoom).
+  const [sheet, setSheet] = useState(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: one listener per frame, before the page can answer
   useLayoutEffect(() => {
     const heard = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
-      if (event.data?.uagentDesign === 1) handle.current?.(event.data);
+      if (event.data?.uagentDesign !== 1) return;
+      if (event.data.type === "ready") {
+        setSheet(!!event.data.sheet);
+        if (event.data.sheet) tellLook(frame.current);
+      }
+      handle.current?.(event.data);
     };
     addEventListener("message", heard);
     return () => removeEventListener("message", heard);
   }, []);
+  useEffect(() => {
+    if (!sheet) return;
+    const restyle = new MutationObserver(() => tellLook(frame.current));
+    restyle.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "style"],
+    });
+    return () => restyle.disconnect();
+  }, [sheet, frame]);
   const sized = width !== undefined && height !== undefined;
   const said = (w: number, h: number) =>
     onMessage?.({

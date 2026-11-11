@@ -404,7 +404,7 @@ std::string ToolSummary(const Tool& t, const json& args);
 //   {"kind": "fields", "rows": [[label, value]]}  small scalar arguments
 //   {"kind": "file", "id", "name", "mime", "bytes"} a file the user can open
 //   {"kind": "artifact", "type", "path", "cover", "count"} pages in the folder:
-//    a "doc", "deck", "design" or "system", opened in Files
+//    a "doc", "deck", "design", "system" or "sheet", opened in Files
 //   {"kind": "link", "to": "agent"|"activity"|"memory"|"browser", "id",
 //    "label"}
 // File, artifact and link parts come from ToolResult.parts and stay visible on

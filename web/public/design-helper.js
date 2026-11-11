@@ -174,9 +174,12 @@
     return found;
   };
   const checked = (report) =>
-    addEventListener("load", () =>
-      document.fonts.ready.then(() => problems().forEach(report)),
-    );
+    addEventListener("load", async () => {
+      await document.fonts.ready;
+      // A sheet's cells in error, once it is calculated.
+      const cells = (await window.uagentReady) ?? [];
+      [...problems(), ...cells].forEach(report);
+    });
 
   // Its paper for printing: a fixed artboard is one sheet its size, a
   // document its paper, with its own @page margins kept.
@@ -193,12 +196,34 @@
     document.head.prepend(style);
   };
   // Printed as drawn, backgrounds too, also in a deck's frames, which a
-  // printer's own background setting does not reach.
+  // printer's own background setting does not reach. A sheet's tables are
+  // not shown as written while it is busy being drawn.
   addEventListener("DOMContentLoaded", () => {
     const colors = document.createElement("style");
     colors.textContent =
-      "html{print-color-adjust:exact;-webkit-print-color-adjust:exact}";
+      "html{print-color-adjust:exact;-webkit-print-color-adjust:exact}" +
+      "[data-uagent-busy] table[data-sheet]{visibility:hidden}";
     document.head.prepend(colors);
+  });
+
+  // A sheet is drawn and calculated by the code installed with its engine,
+  // loaded from the page's own address. Until that is done the page says it
+  // is busy, which a capture and the agent's browser wait out.
+  addEventListener("DOMContentLoaded", () => {
+    if (!meta("sheet")) return;
+    const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
+    root.dataset.uagentBusy = "";
+    window.uagentReady = import(`${base}~sheet/sheet.js`)
+      .then((sheet) => sheet.ready)
+      .catch((error) => {
+        // Without the engine the tables still read, formulas as text.
+        const note = document.createElement("p");
+        note.textContent =
+          "This sheet is shown as written: calculating it needs µAgent's sheet engine, which is not installed here.";
+        document.body.prepend(note);
+        return [`the sheet could not be calculated: ${error.message}`];
+      })
+      .finally(() => delete root.dataset.uagentBusy);
   });
 
   if (parent === window) {
@@ -440,6 +465,8 @@
       sheets: [...document.querySelectorAll('link[rel="stylesheet"]')].map(
         (link) => link.href,
       ),
+      // A sheet takes the app's look for its grid.
+      sheet: !!meta("sheet"),
     });
     let last = 0;
     new ResizeObserver(() => {
@@ -542,7 +569,16 @@
       artboard().slide &&
       ["Home", "End", "PageUp", "PageDown", " "].includes(event.key) &&
       !(event.key === " " && within("button, a, summary"));
-    if (paging || ["Escape", "ArrowLeft", "ArrowRight"].includes(event.key))
+    // With ⌘ or Ctrl the paging keys change a sheet's tab, which the pane
+    // keeps.
+    const held = event.ctrlKey || event.metaKey;
+    if (held && meta("sheet") && ["PageUp", "PageDown"].includes(event.key)) {
+      event.preventDefault();
+      send("key", { key: event.key, held });
+    } else if (
+      paging ||
+      ["Escape", "ArrowLeft", "ArrowRight"].includes(event.key)
+    )
       send("key", { key: event.key });
   });
   // A swipe across a slide steps as the arrow keys do.

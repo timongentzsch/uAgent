@@ -23,8 +23,8 @@ namespace fs = std::filesystem;
 
 // The artifact at `path`, as its folder's pages say what they are
 // (workspace_files' listing): a deck, design or design system for a folder
-// or one of its pages, a document for its own page. Null for any other
-// file, and an error for a folder that is none of these.
+// or one of its pages, a document or a sheet for its own page. Null for any
+// other file, and an error for a folder that is none of these.
 json ArtifactPart(const std::string& path) {
   const auto list = [](const fs::path& dir) {
     const json request = {
@@ -47,16 +47,22 @@ json ArtifactPart(const std::string& path) {
   const fs::path dir = folder ? target : target.parent_path();
   std::string type = JsonValue(listing, "kind", ""), of;
   std::vector<std::string> pages;
+  int64_t tabs = 0;
   for (const json& entry : JsonValue(listing, "entries", json::array())) {
     const std::string name = JsonValue(entry, "name", ""),
                       kind = JsonValue(entry, "kind", "");
-    if (name == page) of = kind;
-    // A document beside a deck or a design is its own; a system's is its book.
-    if (name.ends_with(".html") && (kind != "doc" || type == "system")) {
+    if (name == page) {
+      of = kind;
+      tabs = JsonValue(entry, "count", int64_t{0});
+    }
+    // A sheet is its own, and so is a document beside a deck or a design; a
+    // system's document is its book.
+    if (name.ends_with(".html") && kind != "sheet" &&
+        (kind != "doc" || type == "system")) {
       pages.push_back(name);
     }
   }
-  if (of == "doc" && type != "system") type = "doc";
+  if (of == "sheet" || (of == "doc" && type != "system")) type = of;
   if (folder && (type.empty() || pages.empty())) {
     return {{"error", "nothing to present in " + path +
                           ": name a file, or a folder whose pages are a deck, "
@@ -70,7 +76,9 @@ json ArtifactPart(const std::string& path) {
           {"path", folder ? target.string() + "/" : target.string()},
           {"cover",
            (dir / (folder ? book ? "book.html" : pages[0] : page)).string()},
-          {"count", type == "doc" ? 1 : pages.size()}};
+          {"count", type == "sheet" ? tabs
+                    : type == "doc" ? 1
+                                    : static_cast<int64_t>(pages.size())}};
 }
 
 }  // namespace
@@ -79,7 +87,8 @@ Tool PresentTool(const std::string& session_path, const Tool* remote_read) {
   Tool tool = MakeTool(
       "present",
       "Hand the user what you made, shown in the conversation: an "
-      "artifact's folder or page (document, deck, design, design system) "
+      "artifact's folder or page (document, deck, design, design system, "
+      "sheet) "
       "opens in Files and stays live; any other file (PDF, image, archive, "
       "data) is snapshotted to open or download, so present it again after "
       "changing it.",

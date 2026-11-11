@@ -43,6 +43,7 @@ import {
   sum,
 } from "./boards.ts";
 import Legend from "./legend.tsx";
+import { type Cell, FormulaBar, SheetTabs } from "./sheet.tsx";
 import SlideActions from "./slide-actions.tsx";
 import Tweaks, { type Tweak } from "./tweaks.tsx";
 import { dirOf } from "./flow.ts";
@@ -71,6 +72,8 @@ const ZOOM_STEP = 1.25;
 // it. Select picks an element to comment on; Tweaks tries the levers the
 // page declares; Present shows it over the whole app (full screen where the
 // browser allows) with a slide's notes; Open and PDF show it alone in a tab.
+// A sheet is its grid, which keeps the keys and scrolls in its frame, with
+// its tabs under it and the clicked cell above (sheet.tsx).
 
 // The lines it adds to the draft, which the artifact skill reads.
 const commentLine = (path: string, pick: Pick, comment: string) =>
@@ -136,6 +139,7 @@ export default function Sequence({
   addToChat?: (text: string, keep?: boolean) => void;
 }) {
   const doc = kind === "doc";
+  const sheet = kind === "sheet";
   const unit = kind === "deck" ? "Slide" : "Page";
   const src = page(path);
   // The boards' addresses with their versions, and those as one value.
@@ -173,6 +177,7 @@ export default function Sequence({
     setMode((was) => (was === "edit" ? "" : was));
     setSaved("");
     setZoom(1);
+    setCell(undefined);
   }, [src]);
   // Presenting: over the app, full screen where the browser allows, the
   // notes shown on a phone held upright or with N. Leaving full screen (a
@@ -212,7 +217,13 @@ export default function Sequence({
     end: boolean;
     chosen?: number;
   }>({ top: 0, end: false });
-  useEffect(() => setWhere({ top: 0, end: false }), [path]);
+  // A sheet's tab, which is the pane's to say, and the cell clicked in it.
+  const [tab, setTab] = useState(0);
+  const [cell, setCell] = useState<Cell>();
+  useEffect(() => {
+    setWhere({ top: 0, end: false });
+    setTab(0);
+  }, [path]);
   // Gotos are numbered, and the document says after which one it reports
   // where it is: a report from before the latest is of a place it has left,
   // and must not undo the step that sent it on.
@@ -222,15 +233,20 @@ export default function Sequence({
   const shown = boards.findIndex((board) => board.path === path);
   const index = doc
     ? (where.chosen ?? pageAt(boards, where.top, where.end))
-    : shown;
-  // A document scrolls to its page; a deck or a design shows another board,
-  // and the presenter's window with it.
+    : sheet
+      ? Math.min(tab, boards.length - 1)
+      : shown;
+  // A document scrolls to its page and a sheet shows its tab; a deck or a
+  // design shows another board, and the presenter's window with it.
   const to = (next: number) => {
     const board = boards[next];
     if (!board) return;
     if (doc) {
       setWhere((was) => ({ ...was, chosen: next }));
       goto(board.top!);
+    } else if (sheet) {
+      setTab(next);
+      tell(frame.current, { type: "tab", index: next });
     } else if (board.path !== path) {
       go(board.path);
       channel.current?.postMessage({ at: board.path });
@@ -255,6 +271,13 @@ export default function Sequence({
     else return false;
     return true;
   };
+  // With ⌘ or Ctrl the paging keys show a sheet's next tab, or the one
+  // before.
+  const tabKey = (key: string) => {
+    const by = { PageDown: 1, PageUp: -1 }[key];
+    if (by) to(index + by);
+    return !!by;
+  };
   const presentKey = (key: string) => {
     stepKey(key);
     if (key === "n" || key === "N") setNotesShown((shown) => !shown);
@@ -262,9 +285,11 @@ export default function Sequence({
   };
   // The keys step through the sequence outside presenting too, never in a
   // field. The arrows do from anywhere; the paging keys only while the pane
-  // has them (the transcript pages with the same keys). Read as they are
-  // now: a key pressed right after a step must count from where that step
-  // led, not from the render its listener was bound in.
+  // has them (the transcript pages with the same keys). A sheet's arrows
+  // and paging keys are its cells': only ⌘ or Ctrl with a paging key
+  // changes its tab. Read as they are now: a key pressed right after a step
+  // must count from where that step led, not from the render its listener
+  // was bound in.
   const keys = useLatest((event: KeyboardEvent) => {
     const target = event.target as Element;
     // Not a key another widget took, nor Space on a button, which presses
@@ -274,16 +299,18 @@ export default function Sequence({
       (event.key === " " && target.closest?.("button"))
     )
       return;
+    const here = target === document.body || target.closest?.(".files");
+    const held = event.metaKey || event.ctrlKey;
     if (presenting) presentKey(event.key);
-    else if (
+    else if (target.closest?.("input, textarea, select, [contenteditable]"))
+      return;
+    else if (sheet) {
+      if (here && held && tabKey(event.key)) event.preventDefault();
+    } else if (
       boards.length > 1 &&
       !event.altKey &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !target.closest?.("input, textarea, select, [contenteditable]") &&
-      (event.key.startsWith("Arrow") ||
-        target === document.body ||
-        target.closest?.(".files")) &&
+      !held &&
+      (event.key.startsWith("Arrow") || here) &&
       stepKey(event.key)
     )
       event.preventDefault();
@@ -401,9 +428,9 @@ export default function Sequence({
       return bindZoomWheel(box, (by, at) => wheelZoom.current(by, at.x, at.y));
   }, [wheelZoom]);
   // The design system the page links, by its tokens.css.
-  const sheet = info?.sheets?.find((href) => /\/tokens\.css(\?|$)/.test(href));
-  const system = sheet
-    ? decodeURIComponent(new URL(sheet).pathname.slice(base.length))
+  const linked = info?.sheets?.find((href) => /\/tokens\.css(\?|$)/.test(href));
+  const system = linked
+    ? decodeURIComponent(new URL(linked).pathname.slice(base.length))
     : "";
   const theme = useResource(
     () => (system ? read(system).then(readTokens) : undefined),
@@ -507,7 +534,7 @@ export default function Sequence({
     moves.length && arrange?.(moves, shownAfter(moves, names, index));
   const stepper = useRef<HTMLDivElement>(null);
   // Which board of how many, with the previous and the next.
-  const counter = (boards.length > 1 || arrange) && (
+  const counter = (boards.length > 1 || arrange) && !sheet && (
     <div
       class="float-toolbar page-count"
       role="group"
@@ -547,6 +574,7 @@ export default function Sequence({
     <div class="open-page">
       <div class="page-tools">
         {boards.length > 1 &&
+          !sheet &&
           toggle(
             "Legend",
             legend,
@@ -554,12 +582,13 @@ export default function Sequence({
             <PanelLeft />,
             true,
           )}
-        {toggle(
-          "Select",
-          mode === "select",
-          () => flip("select"),
-          <MousePointerClick />,
-        )}
+        {!sheet &&
+          toggle(
+            "Select",
+            mode === "select",
+            () => flip("select"),
+            <MousePointerClick />,
+          )}
         {save &&
           doc &&
           toggle("Edit", mode === "edit", () => flip("edit"), <Pencil />)}
@@ -575,10 +604,13 @@ export default function Sequence({
             () => setTweaking(!tweaking),
             <SlidersHorizontal />,
           )}
-        {toggle("Find", finding, () => setFinding(!finding), <Search />, true)}
-        <IconButton label="Present" onClick={() => present(true)}>
-          <Presentation />
-        </IconButton>
+        {!sheet &&
+          toggle("Find", finding, () => setFinding(!finding), <Search />, true)}
+        {!sheet && (
+          <IconButton label="Present" onClick={() => present(true)}>
+            <Presentation />
+          </IconButton>
+        )}
         {png && (
           <IconButton
             label="Draw on it"
@@ -631,7 +663,7 @@ export default function Sequence({
         />
       )}
       <div class="page-body">
-        {legend && boards.length > 1 && (
+        {legend && boards.length > 1 && !sheet && (
           <Legend
             unit={unit}
             boards={boards}
@@ -658,6 +690,7 @@ export default function Sequence({
           />
         )}
         <div class="page-main">
+          {sheet && <FormulaBar cell={cell} />}
           <div
             class="page-stage"
             ref={stage}
@@ -695,10 +728,11 @@ export default function Sequence({
                   scale={scale}
                   onMessage={(message) => {
                     // The boards hear what fails here, and all of a
-                    // document, which has no other frame that says it. Any
-                    // other page is measured by its picture: a page as
-                    // tall as it reads says the stage's height here.
-                    if (doc || message.type === "error") heard(path)(message);
+                    // document or a sheet, which has no other frame that
+                    // says it. Any other page is measured by its picture: a
+                    // page as tall as it reads says the stage's height here.
+                    if (doc || sheet || message.type === "error")
+                      heard(path)(message);
                     if (message.type === "ready") {
                       setSaid({ ...message, src });
                       if (mode) tell(frame.current, { type: mode, on: true });
@@ -746,8 +780,17 @@ export default function Sequence({
                     else if (message.type === "pick") setPicked(message);
                     else if (message.type === "picked")
                       setPicked((was) => was && { ...was, rect: message.rect });
+                    else if (message.type === "sheet") {
+                      // Drawn again (rewritten), it shows the tab it showed.
+                      const kept = Math.min(tab, message.tabs.length - 1);
+                      if (message.active !== kept)
+                        tell(frame.current, { type: "tab", index: kept });
+                    } else if (message.type === "cell") setCell(message);
                     else if (message.type === "key") {
-                      if (presenting) presentKey(message.key);
+                      // A sheet's other keys are its own.
+                      if (sheet) {
+                        if (message.held) tabKey(message.key);
+                      } else if (presenting) presentKey(message.key);
                       else if (mode !== "select") stepKey(message.key);
                       else if (message.key === "Escape") enter("");
                     }
@@ -824,6 +867,7 @@ export default function Sequence({
               {info.notes}
             </p>
           )}
+          {sheet && <SheetTabs boards={boards} index={index} to={to} />}
         </div>
         <Tweaks
           key={src}

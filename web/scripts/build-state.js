@@ -16,7 +16,8 @@ export async function buildState(root) {
       else if (entry.isFile()) inputs.push(path);
     }
   }
-  for (const directory of ["src", "public", "scripts"]) await visit(directory);
+  for (const directory of ["src", "public", "scripts", "sheet"])
+    await visit(directory);
   for (const entry of await readdir(root, { withFileTypes: true })) {
     if (entry.isFile() && /\.(?:json|js|ts|html)$/.test(entry.name))
       inputs.push(entry.name);

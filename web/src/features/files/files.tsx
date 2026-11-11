@@ -41,6 +41,7 @@ import { MarkdownFile } from "../../shared/markdown-view.tsx";
 import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
 import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
+import { plural } from "../../shared/quantities.ts";
 import { stored } from "../../shared/storage.ts";
 import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
 import {
@@ -472,7 +473,7 @@ export default function Files({
         : [],
     [here, stage, page, dir, seen, file, folders.value],
   );
-  const failed = failures(boards, seen);
+  const failed = failures(boards, seen, kind);
   // A deck's slides renamed, copied or deleted by hand. The folder is read
   // again and the view follows to the slide named `show` in one step, so
   // the slide is never taken for gone under its old name. Refused (the
@@ -672,9 +673,9 @@ export default function Files({
             <p class="page-notice">
               <TriangleAlert />
               <span>
-                {failed.count === 1
-                  ? "1 page failed to run"
-                  : `${failed.count} pages failed to run`}
+                {kind === "sheet"
+                  ? `${plural(failed.count, "cell")} in error`
+                  : `${plural(failed.count, "page")} failed to run`}
               </span>
               {addToChat && (
                 <Button
@@ -694,6 +695,8 @@ export default function Files({
             )
           ) : page ? (
             <Sequence
+              // A sheet's viewer keeps nothing of another page's.
+              key={kind}
               path={file}
               kind={kind}
               boards={boards}

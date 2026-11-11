@@ -2,14 +2,17 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "include/app/workspace_files.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/skills.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
 #include "src/web/master_internal.h"
@@ -22,17 +25,40 @@ namespace {
 // The page may reach its own folder's address and Google Fonts, nothing else:
 // no connection, image or form can carry the address, and so its token, away.
 // The address is written out rather than as 'self', which engines resolve
-// differently in an opaque origin.
+// differently in an opaque origin. WebAssembly is allowed for the sheet
+// engine, which a sheet page loads from that address.
 std::string PreviewPolicy(const std::string& origin, const std::string& base) {
   const std::string self = origin + base;
   return "sandbox allow-scripts allow-forms allow-modals; default-src " + self +
-         "; script-src " + self + " 'unsafe-inline'; style-src " + self +
+         "; script-src " + self +
+         " 'unsafe-inline' 'wasm-unsafe-eval'; style-src " + self +
          " 'unsafe-inline' https://fonts.googleapis.com; font-src " + self +
          " https://fonts.gstatic.com data:; img-src " + self +
          " data: blob:; media-src " + self +
          " data: blob:; form-action 'none'; base-uri 'none'; "
          "frame-ancestors " +
          origin;
+}
+
+// What a sheet page loads under `~sheet/` of its own address: the engine and
+// the code that draws a sheet, installed beside the skills (or in a test's
+// own web build), the same for every folder. A folder of that name at the
+// top of a workspace is not reachable from a page.
+constexpr std::string_view kSheetPrefix = "~sheet/";
+
+std::filesystem::path SheetDir() {
+  if (const char* dist = getenv("UAGENT_INTERNAL_WEB_DIST")) {
+    return std::filesystem::path(dist) / "share/sheet";
+  }
+  return InstalledSkillsPath().parent_path() / "sheet";
+}
+
+std::string SheetMime(const std::filesystem::path& file) {
+  const std::string ext = file.extension().string();
+  return ext == ".js"     ? "text/javascript"
+         : ext == ".css"  ? "text/css"
+         : ext == ".wasm" ? "application/wasm"
+                          : "";
 }
 
 // A whole-number query parameter, kept within [low, high].
@@ -203,6 +229,28 @@ void Master::Preview(const Request& request, Response& response) {
   if (workspace.path.empty() || !origin ||
       relative.find('\0') != std::string::npos) {
     Error(response, "not found", 404);
+    return;
+  }
+  if (relative.starts_with(kSheetPrefix)) {
+    const std::filesystem::path file =
+        SheetDir() / relative.substr(kSheetPrefix.size());
+    const std::string mime = SheetMime(file);
+    std::string bytes, error;
+    if (mime.empty() || relative.find("..") != std::string::npos ||
+        !ReadRegularFile(file.string(), kUploadBytes, bytes, error)) {
+      Error(response, "not found", 404);
+      return;
+    }
+    // Loaded by a page in an opaque origin, and the same until the host is
+    // updated.
+    for (const auto& [name, value] :
+         {std::pair{"Cross-Origin-Resource-Policy", "cross-origin"},
+          {"Access-Control-Allow-Origin", "*"},
+          {"Cache-Control", "private, max-age=3600"}}) {
+      response.headers.erase(name);
+      response.set_header(name, value);
+    }
+    response.set_content(std::move(bytes), mime);
     return;
   }
   const bool deck = request.has_param("deck");

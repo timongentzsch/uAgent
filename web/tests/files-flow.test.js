@@ -15,8 +15,9 @@ import {
 } from "../src/features/files/flow.ts";
 
 // A folder: decks/a and decks/b both hold 01-cover.html; design/landing has
-// two pages, design/system a brand book beside its tokens, docs a memo and
-// a picture; src/app.ts sits beside README.md at the top.
+// two pages and a sheet, design/system a brand book beside its tokens, docs
+// a memo and a picture, sheets two sheets; src/app.ts sits beside README.md
+// at the top.
 const tree = {
   "": [
     "README.md",
@@ -25,15 +26,22 @@ const tree = {
     "decks/",
     "design/",
     "docs/",
+    "sheets/",
     "src/",
   ],
   decks: ["a/", "b/"],
   "decks/a": ["01-cover.html", "02-plan.html"],
   "decks/b": ["01-cover.html"],
   design: ["landing/", "system/"],
-  "design/landing": ["01-hero.html", "02-pricing.html", "style.css"],
+  "design/landing": [
+    "01-hero.html",
+    "02-pricing.html",
+    "costs.html",
+    "style.css",
+  ],
   "design/system": ["book.html", "tokens.css"],
   docs: ["chart.png", "memo.html"],
+  sheets: ["budget.html", "plan.html"],
   src: ["app.ts", "notes.md"],
 };
 // What the host says a folder is, and each of its pages.
@@ -43,7 +51,10 @@ const kinds = {
   "design/landing": ["design", "page"],
   "design/system": ["system", "doc"],
   docs: ["", "doc"],
+  sheets: ["", "sheet"],
 };
+// A sheet that lies among another folder's pages.
+const sheets = ["design/landing/costs.html"];
 const files = Object.entries(tree).flatMap(([dir, names]) =>
   names.filter((n) => !n.endsWith("/")).map((n) => (dir ? `${dir}/${n}` : n)),
 );
@@ -55,7 +66,11 @@ const io = {
           entries: tree[dir].map((n) => ({
             name: n.replace(/\/$/, ""),
             dir: n.endsWith("/"),
-            kind: n.endsWith(".html") ? kinds[dir]?.[1] : undefined,
+            kind: sheets.includes(`${dir}/${n}`)
+              ? "sheet"
+              : n.endsWith(".html")
+                ? kinds[dir]?.[1]
+                : undefined,
           })),
         }
       : null,
@@ -224,6 +239,19 @@ test("a cited page opens over its design's canvas; a slide and a document have n
   assert.deepEqual(await cited("decks/a/02-plan.html"), {
     view: sequence("decks/a/02-plan.html"),
     back: [list("decks/a")],
+  });
+});
+
+test("a sheet opens as itself and counts for no canvas: a folder of sheets is its list", async () => {
+  assert.deepEqual(await cited("sheets/"), { view: list("sheets"), back: [] });
+  assert.deepEqual(await cited("sheets/budget.html"), {
+    view: sequence("sheets/budget.html"),
+    back: [list("sheets")],
+  });
+  // Beside a design's pages it has no canvas above it, as a document.
+  assert.deepEqual(await cited("design/landing/costs.html"), {
+    view: sequence("design/landing/costs.html"),
+    back: [list("design/landing")],
   });
 });
 

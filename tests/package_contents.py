@@ -72,6 +72,11 @@ def main():
         missing = sorted(expected_skills - packaged_skills)
         extra = sorted(packaged_skills - expected_skills)
         fail(f"skill tree differs; missing={missing}, extra={extra}")
+    # A sheet page fetches these: the engine, the code that draws a sheet with
+    # it, and the engine's licences.
+    for name in ("sheet.js", "sheet.css", "wasm.js", "wasm_bg.wasm", "THIRD-PARTY-NOTICES.md"):
+        if f"{root}/share/uagent/sheet/{name}" not in files:
+            fail(f"sheet engine file {name} is missing")
     if not args.local_only:
         manifests = [
             name

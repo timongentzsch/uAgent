@@ -20,7 +20,12 @@ import {
 
 const listing = (kind, ...entries) => ({
   kind,
-  entries: entries.map(([name, kind]) => ({ name, dir: false, kind })),
+  entries: entries.map(([name, kind, count]) => ({
+    name,
+    dir: false,
+    kind,
+    count,
+  })),
 });
 const ready = (title, w, h, height = 0) => ({
   type: "ready",
@@ -39,6 +44,44 @@ test("a document is its own in any folder; another page is part of its folder", 
   assert.equal(kindOf(system, "book.html"), "doc");
   assert.equal(kindOf(system, "parts.html"), "system");
   assert.equal(kindOf(listing("", ["a.html"]), "a.html"), "design");
+  // A sheet too.
+  const sheets = listing("deck", ["costs.html", "sheet"], ["a.html", "slide"]);
+  assert.equal(kindOf(sheets, "costs.html"), "sheet");
+});
+
+test("a sheet's boards are its tabs: numbered as many as the folder says, then as the sheet names them", () => {
+  const folder = listing("", ["budget.html", "sheet", 2], ["a.html", "page"]);
+  const tabs = (seen) =>
+    boardsOf("d", folder, seen, "budget.html").map((board) => board.title);
+  assert.deepEqual(tabs({}), ["1", "2"]);
+  const said = { type: "sheet", tabs: ["Costs", "Inputs", "Notes"], active: 0 };
+  const seen = hear({}, "d/budget.html", said);
+  assert.deepEqual(tabs(seen), ["Costs", "Inputs", "Notes"]);
+  // Said again, with another tab shown, nothing is new.
+  assert.equal(hear(seen, "d/budget.html", { ...said, active: 2 }), seen);
+  // Every tab is the one file; its cells in error are counted each.
+  const errors = ["Costs!B2 =1/0 is #DIV/0!", "Inputs!A1 =x is #NAME?"].reduce(
+    (all, message) =>
+      hear(all, "d/budget.html", { type: "error", message, line: 0 }),
+    seen,
+  );
+  const boards = boardsOf("d", folder, errors, "budget.html");
+  assert.deepEqual(paths(boards), Array(3).fill("d/budget.html"));
+  assert.deepEqual(failures(boards, errors, "sheet"), {
+    count: 2,
+    text: "`d/budget.html` has cells in error: Costs!B2 =1/0 is #DIV/0!; Inputs!A1 =x is #NAME?",
+  });
+  // On the design's canvas it is a stack of its tabs; in the legend of a
+  // page of the design it is skipped.
+  const stack = boardsOf("d", folder, seen).find(
+    (board) => board.path === "d/budget.html",
+  );
+  assert.deepEqual(
+    [stack.media, stack.type, stack.count],
+    ["stack", "sheet", 3],
+  );
+  assert.equal(boardsOf("d", folder, {})[1].count, 2);
+  assert.deepEqual(paths(boardsOf("d", folder, seen, "a.html")), ["d/a.html"]);
 });
 
 test("a deck's slides lie in name order as written, the order its PDF prints", () => {

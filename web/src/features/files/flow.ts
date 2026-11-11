@@ -8,7 +8,14 @@
 
 import type { FileTarget } from "../../shared/types.ts";
 import { HTML, MARKDOWN, nameOf } from "../../shared/file-types.ts";
-import { join, kindOf, type Listing, pagesOf, slidesOf } from "./boards.ts";
+import {
+  alone,
+  join,
+  kindOf,
+  type Listing,
+  pagesOf,
+  slidesOf,
+} from "./boards.ts";
 
 export type Lines = [number, number];
 export type View =
@@ -124,7 +131,7 @@ interface Lookup {
 
 // What a folder opens as when it is more than its list: a deck at its first
 // slide, a design system on its brand book, two pages or more on their
-// canvas, one page as itself.
+// canvas, one page as itself. Its sheets do not count: each opens as itself.
 export function folderView(dir: string, listing: Listing): View | undefined {
   const pages = pagesOf(listing);
   const at = (name: string): View => ({
@@ -148,12 +155,12 @@ function landing(
   const dir = dirOf(path);
   const list: View = { kind: "list", dir };
   if (diff) return { view: { kind: "file", path, diff: true }, up: [list] };
-  // A design's page lies on its canvas; a document and a deck's slide have
-  // none.
+  // A design's page lies on its canvas; a document, a sheet and a deck's
+  // slide have none.
   const view = opened(path, lines);
   const board =
     view.kind === "sequence" &&
-    kindOf(listing, nameOf(path)) !== "doc" &&
+    !alone(kindOf(listing, nameOf(path))) &&
     folderView(dir, listing)?.kind === "canvas";
   return { view, up: board ? [list, { kind: "canvas", dir }] : [list] };
 }

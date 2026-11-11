@@ -1,0 +1,117 @@
+/* The grid a sheet page is drawn as. The app sends its own tokens over
+   these fallbacks, so a sheet follows the look around it. */
+:root {
+  --sheet-ground: #fff;
+  --sheet-ink: #111;
+  --sheet-muted: #666;
+  --sheet-line: #d8d8d8;
+  --sheet-edge: #f3f3f3;
+  --sheet-head: #ececec;
+  --sheet-accent: #1a56db;
+  --sheet-tint: color-mix(in srgb, var(--sheet-accent) 14%, var(--sheet-ground));
+  --sheet-error: #b42318;
+  --sheet-good: #dcf5e3;
+  --sheet-warn: #fdf0c8;
+  --sheet-bad: #fbdcdc;
+  --sheet-font: 13px/1.35 system-ui, sans-serif;
+}
+body {
+  margin: 0;
+  background: var(--sheet-ground);
+  color: var(--sheet-ink);
+  font: var(--sheet-font);
+}
+figure[data-chart] {
+  margin: 0;
+}
+table[data-sheet] {
+  /* As wide as its columns: the grid scrolls, it is never squeezed. */
+  width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+table[data-sheet] :is(th, td) {
+  box-sizing: border-box;
+  height: 24px;
+  max-width: 400px;
+  padding: 2px 8px;
+  border: solid var(--sheet-line);
+  border-width: 0 1px 1px 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  background: var(--sheet-ground);
+}
+table[data-sheet] .sheet-wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+table[data-sheet] .sheet-number {
+  text-align: right;
+}
+table[data-sheet] .sheet-error {
+  color: var(--sheet-error);
+}
+/* Letters across the top and numbers down the side, held in view. */
+table[data-sheet] .sheet-edge {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 40px;
+  padding: 2px 6px;
+  background: var(--sheet-edge);
+  color: var(--sheet-muted);
+  text-align: center;
+  font-size: 11px;
+}
+table[data-sheet] .sheet-letters .sheet-edge {
+  top: 0;
+  z-index: 2;
+}
+table[data-sheet] .sheet-letters .sheet-edge:first-child {
+  z-index: 3;
+}
+/* The header band, and the rows frozen with it. */
+table[data-sheet] .sheet-head :is(th, td):not(.sheet-edge) {
+  background: var(--sheet-head);
+  font-weight: 600;
+}
+table[data-sheet] .sheet-frozen :is(th, td) {
+  position: sticky;
+  top: var(--sheet-top);
+  z-index: 1;
+}
+table[data-sheet] .sheet-frozen .sheet-edge {
+  z-index: 2;
+}
+table[data-sheet] tr.total :is(th, td):not(.sheet-edge) {
+  border-top: 1px solid var(--sheet-ink);
+  font-weight: 600;
+}
+table[data-sheet] [data-fill="accent"] {
+  background: var(--sheet-tint);
+}
+table[data-sheet] [data-fill="good"] {
+  background: var(--sheet-good);
+}
+table[data-sheet] [data-fill="warn"] {
+  background: var(--sheet-warn);
+}
+table[data-sheet] [data-fill="bad"] {
+  background: var(--sheet-bad);
+}
+table[data-sheet] [data-fill="muted"] {
+  background: var(--sheet-edge);
+  color: var(--sheet-muted);
+}
+table[data-sheet] [aria-selected="true"] {
+  outline: 2px solid var(--sheet-accent);
+  outline-offset: -2px;
+}
+table[data-sheet] input[type="checkbox"] {
+  margin: 0;
+  vertical-align: middle;
+}

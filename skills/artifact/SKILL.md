@@ -1,12 +1,12 @@
 ---
 name: artifact
-description: Make a memo, report, slide deck, presentation, screen design or design system
+description: Open before making a spreadsheet, budget, memo, report, slide deck or design
 ---
 
 # Artifacts
 
 An artifact is plain HTML in the folder, shown live and sandboxed in the
-web's Files pane, beside the chat. There are four types. Read the reference
+web's Files pane, beside the chat. There are five types. Read the reference
 of the one you make before you write a file:
 
 | Type | It is | Where | Read first |
@@ -15,13 +15,14 @@ of the one you make before you write a file:
 | Deck | a presentation or talk: a folder, one file per slide | `decks/<name>/` | `references/deck.md` |
 | Design | screens, pages, posts or a flow on a canvas: a folder of pages | `design/<name>/` | `references/design.md` |
 | Design system | tokens, components and a brand book the others link | `design/system/` | `references/design-system.md` |
+| Sheet | a budget, tracker, table or model with formulas: one file | `sheets/<name>.html` | `references/sheet.md` |
 
 In a workspace any folder serves. A new artifact is a new file or folder:
 change an existing one only when the person asks to change it.
 
 The person steps through a document's pages or a deck's slides, moves over a
-design's canvas, points at an element and comments, edits a document's text
-in place, presents and exports. Their comments come back to you as lines in
+design's canvas, reads a sheet as a calculated grid, points at an element
+and comments, edits a document's text in place, presents and exports. Their comments come back to you as lines in
 their message. You make every change by editing the files.
 
 ## Before you build
@@ -75,7 +76,7 @@ their message. You make every change by editing the files.
 3. Look at the page once and fix what reads wrong or strays from the design
    system's tokens. Pages you did not touch need no second look.
 4. Hand it over with `present`: the folder of a deck, a design or a design
-   system (`decks/q3-review/`), the file of a document
+   system (`decks/q3-review/`), the file of a document or a sheet
    (`docs/q3-board-memo.html`). The person gets a card that opens it. Make
    no PDF or images yourself: Files exports them.
 

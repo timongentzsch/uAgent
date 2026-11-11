@@ -496,6 +496,10 @@ install(
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills
   PATTERN ".*" EXCLUDE
   PATTERN "__pycache__" EXCLUDE)
+# The sheet engine and the page code that draws a sheet (web/scripts/
+# promote-dist.js): fetched by a sheet page, so installed and not embedded.
+install(DIRECTORY web/dist/share/sheet/
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/sheet OPTIONAL)
 # The architecture narrative is authored once; the package carries a copy so
 # the skill can answer design questions without a source checkout.
 install(

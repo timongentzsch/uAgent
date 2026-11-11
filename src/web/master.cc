@@ -458,6 +458,8 @@ int Master::Run() {
   stopping.join();
   scheduled.join();
   notifications.join();
+  // An update's thread wakes this loop through the pipe closed below.
+  if (updater_.joinable()) updater_.join();
   shutdown_fd = -1;
   // Browser service shutdown detaches; sessions belong to their runtimes.
   host_.Shutdown();

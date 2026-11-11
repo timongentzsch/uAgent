@@ -317,6 +317,20 @@
 .page-legend-page[aria-selected="true"] {
   outline: var(--focus-ring);
 }
+/* A slide being dragged to a new place, and the line where it would drop:
+   before a slide, or after the last. */
+.page-legend-item[data-dragging] {
+  opacity: var(--opacity-disabled);
+}
+.page-legend-item[data-drop]::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--space-2)) 0 auto;
+  border-top: var(--focus-ring);
+}
+.page-legend-item[data-drop="after"]::before {
+  inset: auto 0 calc(-1 * var(--space-2));
+}
 .page-legend-name {
   width: 0;
   min-width: 100%;
@@ -598,6 +612,14 @@
   }
   .page-legend[data-doc] {
     display: none;
+  }
+  .page-legend-item[data-drop]::before {
+    inset: 0 auto 0 calc(-1 * var(--space-2));
+    border-top: 0;
+    border-left: var(--focus-ring);
+  }
+  .page-legend-item[data-drop="after"]::before {
+    inset: 0 calc(-1 * var(--space-2)) 0 auto;
   }
   .page-tweaks {
     order: 2;

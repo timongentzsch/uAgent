@@ -21,6 +21,7 @@ import type { Session } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
 import { useApi } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
+import { useAction } from "../../shared/use-action.ts";
 import {
   Button,
   EmptyState,
@@ -54,10 +55,12 @@ import { useSnapshots } from "../../state/snapshot-store.ts";
 import type { Node } from "../../shared/types.ts";
 import {
   boardsOf,
+  carried,
   failures,
   hear,
   join,
   kindOf,
+  type Move,
   rewritten,
   settled,
   type SeenPages,
@@ -479,6 +482,29 @@ export default function Files({
     [here, stage, page, dir, seen, file, folders.value],
   );
   const failed = failures(boards, seen);
+  // A deck's slides renamed, copied or deleted by hand. The folder is read
+  // again and the view follows to the slide named `show` in one step, so
+  // the slide is never taken for gone under its old name. Refused (the
+  // agent changed the folder meanwhile), nothing was moved: the folder is
+  // read again, and the pane says so.
+  const arranging = useAction({ report: () => listing.retry() });
+  const arrange = (moves: Move[], show: string) =>
+    arranging.run(async () => {
+      await api(routes.fileWrite(id), { path: dir, moves });
+      const fresh = await api<Listing>(routes.files(id, "list", dir));
+      listing.setValue({ ...fresh, dir });
+      setSeen((all) => carried(all, dir, moves));
+      setFlow((current) =>
+        swap(
+          current,
+          show
+            ? { kind: "sequence", path: join(dir, show) }
+            : { kind: "list", dir },
+        ),
+      );
+    });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: said of the folder it happened in
+  useEffect(() => arranging.setError(null), [dir]);
   // A write reloads the page it changed.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
   useEffect(() => {
@@ -615,6 +641,16 @@ export default function Files({
       </header>
       {stage && (
         <div class="files-stage">
+          {arranging.error != null && (
+            <p class="page-notice" role="status">
+              <TriangleAlert />
+              <span>
+                {[404, 409].includes(failure(arranging.error).status ?? 0)
+                  ? "The deck's folder changed meanwhile, so nothing was moved."
+                  : failure(arranging.error).message}
+              </span>
+            </p>
+          )}
           {failed.count > 0 && (
             <p class="page-notice">
               <TriangleAlert />
@@ -689,6 +725,8 @@ export default function Files({
                   revision: read.revision,
                 });
               }}
+              arrange={kind === "deck" ? arrange : undefined}
+              arranging={arranging.busy}
               view={viewer}
               read={(path) =>
                 api<FileText>(routes.files(id, "read", path)).then(

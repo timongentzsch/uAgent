@@ -139,7 +139,8 @@ void Master::Files(const Request& request, Response& response) {
 }
 
 // A person's edit of a text file in the conversation's folder, saved only if
-// the file is still as they read it. Making files is the agent's.
+// the file is still as they read it, or with `moves` their reordering of a
+// folder's pages. Making files is the agent's.
 void Master::FileWrite(const Request& request, Response& response) {
   const std::string id = request.matches[1].str();
   const WorkspaceIdentity workspace = host_.WorkspaceOf(id);
@@ -152,12 +153,15 @@ void Master::FileWrite(const Request& request, Response& response) {
     return;
   }
   // Only these fields travel: a browser never names a request's identity.
-  const json result =
-      WorkspaceFiles(workspace, id,
-                     {{"mode", "write"},
-                      {"path", JsonValue(body, "path", "")},
-                      {"text", JsonValue(body, "text", "")},
-                      {"revision", JsonValue(body, "revision", "")}});
+  const std::string path = JsonValue(body, "path", "");
+  const json result = WorkspaceFiles(
+      workspace, id,
+      body.contains("moves")
+          ? json{{"mode", "move"}, {"path", path}, {"moves", body["moves"]}}
+          : json{{"mode", "write"},
+                 {"path", path},
+                 {"text", JsonValue(body, "text", "")},
+                 {"revision", JsonValue(body, "revision", "")}});
   if (result.contains("error")) {
     Error(response, JsonValue(result, "error", "cannot save"),
           JsonValue(result, "status", 503));

@@ -353,6 +353,16 @@ def test_file_operations_match_local_http_and_execution_gateway(root, home, *, b
                         status = result.get("status", 200)
                     assert_true(status == expected, (transport, result))
                 assert_true((project / "note.txt").read_text() == operation["text"], "edit lost")
+            # A deck's pages are moved where the folder is.
+            (project / "01-a.html").write_text("a")
+            (project / "02-b.html").write_text("b")
+            moves = [
+                {"from": "01-a.html", "to": "02-a.html"},
+                {"from": "02-b.html", "to": "01-b.html"},
+            ]
+            moved = call({"op": "files", "mode": "move", "path": "", "moves": moves})
+            pages = sorted(page.name for page in project.glob("*.html"))
+            assert_true(moved == {"moved": 2} and pages == ["01-b.html", "02-a.html"], moved)
 
 
 def test_remote_bundle_requires_all_matching_payloads(root, home, *, binary):

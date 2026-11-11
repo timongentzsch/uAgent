@@ -1,7 +1,7 @@
 // A design's pages open as a canvas in the Files pane, a deck's slides and a
 // document's pages in a viewer with a legend: each page live in a sandboxed
 // frame that reaches neither the app nor the host's API.
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test, expect, headerAction, selectProbeModel } from "./fixtures.js";
 
@@ -874,7 +874,7 @@ test("a long deck's legend draws only the slides near its view, and keeps the cu
   const names = Array.from({ length: 40 }, (_, at) =>
     String(at + 1).padStart(2, "0"),
   );
-  const { legend, count } = await openDeck(
+  const { files, legend, count } = await openDeck(
     app,
     session,
     host.project,
@@ -900,6 +900,251 @@ test("a long deck's legend draws only the slides near its view, and keeps the cu
   ).toBeInViewport();
   await expect(last).toHaveCount(1);
   await expect(first).toHaveCount(0);
+  // A slide moved there leaves the legend where it was scrolled to.
+  const scrolled = () => legend.evaluate((list) => list.scrollTop);
+  const top = await scrolled();
+  await files.getByRole("button", { name: "Slide actions" }).click();
+  await app.getByRole("menuitem", { name: "Move up" }).click();
+  await expect(count).toHaveText("39 / 40");
+  await expect(
+    legend.getByRole("option", { name: "Slide 40: S39" }),
+  ).toBeVisible();
+  expect(await scrolled()).toBe(top);
+});
+
+// The deck of four the tests rearrange, and its folder's files in order.
+const FOUR = {
+  "01-cover.html": slide("Cover"),
+  "02-plan.html": slide("Plan"),
+  "03-numbers.html": slide("Numbers"),
+  "04-end.html": slide("End"),
+};
+const slidesIn = async (project) =>
+  (await readdir(join(project, "decks", "talk"))).sort();
+
+test("a deck's slide is dragged to a new place: the legend, the counter and the files follow", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await app.setViewportSize({ width: 1440, height: 900 });
+  const { legend, stage, count } = await openDeck(
+    app,
+    session,
+    host.project,
+    FOUR,
+  );
+  const names = legend.locator(".page-legend-name");
+  await expect(names).toHaveText([
+    "1 · Cover",
+    "2 · Plan",
+    "3 · Numbers",
+    "4 · End",
+  ]);
+  // From the middle of one slide to a point in another: `part` of the way
+  // down it.
+  const drag = async (from, to, part) => {
+    const [start, end] = await Promise.all(
+      [from, to].map((at) => legend.getByRole("option").nth(at).boundingBox()),
+    );
+    await app.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+    await app.mouse.down();
+    await app.mouse.move(end.x + end.width / 2, end.y + end.height * part, {
+      steps: 6,
+    });
+  };
+  // Slide 3 over the top of slide 1: a line shows where it would drop.
+  await drag(2, 0, 0.2);
+  await expect(legend.locator("[data-drop]")).toHaveAttribute(
+    "data-path",
+    "decks/talk/01-cover.html",
+  );
+  await app.mouse.up();
+  await expect(names).toHaveText([
+    "1 · Numbers",
+    "2 · Cover",
+    "3 · Plan",
+    "4 · End",
+  ]);
+  // The stage stays with the slide it showed, under its new name.
+  await expect(count).toHaveText("2 / 4");
+  await expect(stage.getByRole("heading", { name: "Cover" })).toBeVisible();
+  expect(await slidesIn(host.project)).toEqual([
+    "01-numbers.html",
+    "02-cover.html",
+    "03-plan.html",
+    "04-end.html",
+  ]);
+  // The first past the last: the line is after it.
+  await drag(0, 3, 0.8);
+  await expect(legend.locator('[data-drop="after"]')).toHaveCount(1);
+  await app.mouse.up();
+  await expect(names).toHaveText([
+    "1 · Cover",
+    "2 · Plan",
+    "3 · End",
+    "4 · Numbers",
+  ]);
+  await expect(count).toHaveText("1 / 4");
+  expect(await slidesIn(host.project)).toEqual([
+    "01-cover.html",
+    "02-plan.html",
+    "03-end.html",
+    "04-numbers.html",
+  ]);
+  // Dropped where it lay, nothing moves, and the press opens nothing; a
+  // press that does not move opens the slide as before.
+  await drag(2, 2, 0.9);
+  await app.mouse.up();
+  await expect(count).toHaveText("1 / 4");
+  await legend.getByRole("option", { name: "Slide 3: End" }).click();
+  await expect(count).toHaveText("3 / 4");
+});
+
+test("a deck's slide is moved, duplicated and deleted from its menu, by keyboard too", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await app.setViewportSize({ width: 1440, height: 900 });
+  const { files, legend, stage, count } = await openDeck(
+    app,
+    session,
+    host.project,
+    FOUR,
+  );
+  const names = legend.locator(".page-legend-name");
+  const actions = files.getByRole("button", { name: "Slide actions" });
+  const item = (name) => app.getByRole("menuitem", { name });
+  await expect(names).toHaveCount(4);
+  // By keyboard: the first slide cannot move up, so the menu opens on Move
+  // down; the button keeps the focus for the next move.
+  await actions.focus();
+  await app.keyboard.press("Enter");
+  await expect(item("Move up")).toBeDisabled();
+  await expect(item("Move down")).toBeFocused();
+  await app.keyboard.press("Enter");
+  await expect(names).toHaveText([
+    "1 · Plan",
+    "2 · Cover",
+    "3 · Numbers",
+    "4 · End",
+  ]);
+  await expect(count).toHaveText("2 / 4");
+  await expect(actions).toBeFocused();
+  await app.keyboard.press("Enter");
+  await expect(item("Move up")).toBeFocused();
+  await app.keyboard.press("Enter");
+  await expect(count).toHaveText("1 / 4");
+  expect(await slidesIn(host.project)).toEqual(Object.keys(FOUR));
+  // A right click on a slide opens the menu for that slide.
+  await legend
+    .getByRole("option", { name: "Slide 2: Plan" })
+    .click({ button: "right" });
+  await expect(app.getByRole("menu", { name: "Slide actions" })).toBeVisible();
+  await expect(count).toHaveText("2 / 4");
+  // Duplicate: a copy right after it, named for it; the stage stays.
+  await item("Duplicate").click();
+  await expect(names).toHaveText([
+    "1 · Cover",
+    "2 · Plan",
+    "3 · Plan",
+    "4 · Numbers",
+    "5 · End",
+  ]);
+  await expect(count).toHaveText("2 / 5");
+  expect(await slidesIn(host.project)).toEqual([
+    "01-cover.html",
+    "02-plan.html",
+    "03-plan-copy.html",
+    "04-numbers.html",
+    "05-end.html",
+  ]);
+  // Delete asks first, and says it cannot be undone.
+  await actions.click();
+  await item("Delete…").click();
+  const ask = app.getByRole("dialog", { name: "Delete slide" });
+  await expect(ask).toContainText(
+    "Plan (02-plan.html) is deleted from the folder. This cannot be undone.",
+  );
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  await expect(names).toHaveCount(5);
+  // The open slide deleted, the stage shows the next; no other is renamed.
+  await actions.click();
+  await item("Delete…").click();
+  const confirm = ask.getByRole("button", {
+    name: "Delete slide",
+    exact: true,
+  });
+  await confirm.click();
+  await expect(names).toHaveText([
+    "1 · Cover",
+    "2 · Plan",
+    "3 · Numbers",
+    "4 · End",
+  ]);
+  await expect(count).toHaveText("2 / 4");
+  expect(await slidesIn(host.project)).toEqual([
+    "01-cover.html",
+    "03-plan-copy.html",
+    "04-numbers.html",
+    "05-end.html",
+  ]);
+  // The last one deleted while open, the one before it is shown.
+  await legend.getByRole("option", { name: "Slide 4: End" }).click();
+  await actions.click();
+  await item("Delete…").click();
+  await confirm.click();
+  await expect(count).toHaveText("3 / 3");
+  await expect(stage.getByRole("heading", { name: "Numbers" })).toBeVisible();
+});
+
+test("a move the folder no longer allows is refused: nothing moves, and the pane says so", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await app.setViewportSize({ width: 1440, height: 900 });
+  const { files, legend, count } = await openDeck(
+    app,
+    session,
+    host.project,
+    FOUR,
+  );
+  const names = legend.locator(".page-legend-name");
+  await expect(names).toHaveCount(4);
+  // Behind the pane's back, as the agent would.
+  const dir = join(host.project, "decks", "talk");
+  await rename(join(dir, "02-plan.html"), join(dir, "02-agenda.html"));
+  const down = async () => {
+    await files.getByRole("button", { name: "Slide actions" }).click();
+    await app.getByRole("menuitem", { name: "Move down" }).click();
+  };
+  await down();
+  const notice = files.locator(".page-notice");
+  await expect(notice).toHaveText(
+    "The deck's folder changed meanwhile, so nothing was moved.",
+  );
+  expect(await slidesIn(host.project)).toEqual([
+    "01-cover.html",
+    "02-agenda.html",
+    "03-numbers.html",
+    "04-end.html",
+  ]);
+  // The folder was read again: the same move now goes through.
+  await expect(
+    legend.locator('[data-path="decks/talk/02-agenda.html"]'),
+  ).toHaveCount(1);
+  await expect(count).toHaveText("1 / 4");
+  await down();
+  await expect(count).toHaveText("2 / 4");
+  await expect(notice).toHaveCount(0);
+  expect(await slidesIn(host.project)).toEqual([
+    "01-agenda.html",
+    "02-cover.html",
+    "03-numbers.html",
+    "04-end.html",
+  ]);
 });
 
 test("on a phone a deck's legend is a filmstrip under the stage", async ({

@@ -107,6 +107,67 @@ export const slidesOf = (listing: Listing) =>
     .map((entry) => entry.name)
     .sort();
 
+// A deck rearranged by hand, as what the host is asked (routes.fileWrite's
+// `moves`): a slide renamed, copied, or with no `to` deleted. The deck's
+// order is its names', so a slide's place is the number its name starts
+// with.
+export interface Move {
+  from: string;
+  to: string;
+  copy?: boolean;
+}
+
+// What a slide is called apart from its place.
+const rest = (name: string) => name.replace(/^\d+-/, "");
+
+// The renames that make `order` the deck's order: each slide is its place,
+// as two digits (three from a hundred slides), then its own name. Only
+// those not called so already.
+const renames = (order: string[]): Move[] =>
+  order
+    .map((from, at) => ({
+      from,
+      to: `${String(at + 1).padStart(order.length < 100 ? 2 : 3, "0")}-${rest(from)}`,
+    }))
+    .filter((move) => move.from !== move.to);
+
+// The slide at `from` taken to the place `to`.
+export function moved(slides: string[], from: number, to: number) {
+  const order = [...slides];
+  order.splice(to, 0, ...order.splice(from, 1));
+  return renames(order);
+}
+
+// A copy of the slide at `at` right after it, named for it with `-copy`
+// (and a number, while another slide is called so).
+export function duplicated(slides: string[], at: number) {
+  const stem = rest(slides[at]).replace(/\.html$/, "-copy");
+  const taken = new Set(slides.map(rest));
+  let copy = `${stem}.html`;
+  for (let n = 2; taken.has(copy); n++) copy = `${stem}-${n}.html`;
+  const order = [...slides];
+  order.splice(at + 1, 0, copy);
+  return renames(order).map((move) =>
+    move.from === copy ? { from: slides[at], to: move.to, copy: true } : move,
+  );
+}
+
+// The slide at `at` deleted; the others keep their names.
+export const removed = (slides: string[], at: number): Move[] => [
+  { from: slides[at], to: "" },
+];
+
+// What is known of the pages of `dir` once `moves` are done: a slide is
+// known under its new name as it was under its old, so the legend neither
+// forgets its title nor redraws it at another size.
+export function carried(all: SeenPages, dir: string, moves: Move[]) {
+  const next = { ...all };
+  for (const move of moves) if (!move.copy) delete next[join(dir, move.from)];
+  for (const { from, to } of moves)
+    if (to && all[join(dir, from)]) next[join(dir, to)] = all[join(dir, from)];
+  return next;
+}
+
 // What the file `name` of a folder is shown as: a document is its own
 // whatever folder it lies in; any other page is a part of its folder.
 export function kindOf(listing: Listing, name: string): Kind {

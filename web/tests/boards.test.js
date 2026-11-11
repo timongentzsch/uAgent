@@ -4,10 +4,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   boardsOf,
+  carried,
+  duplicated,
   failures,
   hear,
   kindOf,
+  moved,
   pageAt,
+  removed,
   rewritten,
   settled,
   spotAt,
@@ -256,4 +260,106 @@ test("an occurrence is found on its board by the counts before it", () => {
   assert.deepEqual(spotAt(counts, 2), { at: 2, nth: 0 });
   assert.deepEqual(spotAt(counts, 4), { at: 2, nth: 2 });
   assert.deepEqual(spotAt([], 3), { at: 0, nth: 3 });
+});
+
+const deck = [
+  "01-cover.html",
+  "02-plan.html",
+  "03-numbers.html",
+  "04-end.html",
+];
+const rename = (from, to) => ({ from, to });
+
+test("a slide moved to a new place renames those whose place changed, and no other", () => {
+  // Down, up, to the ends: each slide is its place and its own name.
+  assert.deepEqual(moved(deck, 0, 1), [
+    rename("02-plan.html", "01-plan.html"),
+    rename("01-cover.html", "02-cover.html"),
+  ]);
+  assert.deepEqual(moved(deck, 2, 0), [
+    rename("03-numbers.html", "01-numbers.html"),
+    rename("01-cover.html", "02-cover.html"),
+    rename("02-plan.html", "03-plan.html"),
+  ]);
+  assert.deepEqual(
+    moved(deck, 0, 3).map((move) => move.to),
+    ["01-plan.html", "02-numbers.html", "03-end.html", "04-cover.html"],
+  );
+  assert.deepEqual(moved(deck, 3, 3), []);
+  // Names without a number, or with another, get their place.
+  assert.deepEqual(moved(["cover.html", "plan.html", "9-end.html"], 2, 1), [
+    rename("cover.html", "01-cover.html"),
+    rename("9-end.html", "02-end.html"),
+    rename("plan.html", "03-plan.html"),
+  ]);
+});
+
+test("from a hundred slides a place is three digits", () => {
+  const hundred = Array.from(
+    { length: 100 },
+    (_, at) => `${String(at + 1).padStart(2, "0")}-s.html`,
+  );
+  const moves = moved(hundred, 99, 0);
+  assert.equal(moves.length, 100);
+  assert.deepEqual(moves[0], rename("100-s.html", "001-s.html"));
+  assert.deepEqual(moves[99], rename("99-s.html", "100-s.html"));
+  // In name order they are in the new order.
+  const names = moves.map((move) => move.to);
+  assert.deepEqual([...names].sort(), names);
+  // Ninety-nine are two.
+  assert.deepEqual(moved(hundred.slice(0, 99), 98, 0)[0].to, "01-s.html");
+});
+
+test("a duplicate is named for its source and sits right after it", () => {
+  assert.deepEqual(duplicated(deck, 1), [
+    { from: "02-plan.html", to: "03-plan-copy.html", copy: true },
+    rename("03-numbers.html", "04-numbers.html"),
+    rename("04-end.html", "05-end.html"),
+  ]);
+  // A second one of the same slide is numbered, and the first moves on.
+  const once = ["01-cover.html", "02-plan.html", "03-plan-copy.html"];
+  assert.deepEqual(duplicated(once, 1), [
+    { from: "02-plan.html", to: "03-plan-copy-2.html", copy: true },
+    rename("03-plan-copy.html", "04-plan-copy.html"),
+  ]);
+  // Its source may get its place in the same request.
+  assert.deepEqual(duplicated(["cover.html"], 0), [
+    rename("cover.html", "01-cover.html"),
+    { from: "cover.html", to: "02-cover-copy.html", copy: true },
+  ]);
+});
+
+test("a delete is one move and renames nothing", () => {
+  assert.deepEqual(removed(deck, 1), [rename("02-plan.html", "")]);
+});
+
+test("what a slide said is carried to its new name, a copy's too, and a deleted one's forgotten", () => {
+  let seen = hear({}, "d/01-a.html", ready("A", 1920, 1080));
+  seen = hear(seen, "d/02-b.html", ready("B", 1920, 1080));
+  seen = hear(seen, "other/02-b.html", ready("Other", 1440, 900));
+  const titles = (pages) =>
+    Object.fromEntries(
+      Object.entries(pages).map(([path, page]) => [path, page.info.title]),
+    );
+  // Two swap, and one is copied.
+  assert.deepEqual(
+    titles(
+      carried(seen, "d", [
+        rename("01-a.html", "02-a.html"),
+        rename("02-b.html", "01-b.html"),
+        { from: "01-a.html", to: "03-a-copy.html", copy: true },
+        rename("03-unseen.html", "04-unseen.html"),
+      ]),
+    ),
+    {
+      "d/01-b.html": "B",
+      "d/02-a.html": "A",
+      "d/03-a-copy.html": "A",
+      "other/02-b.html": "Other",
+    },
+  );
+  assert.deepEqual(titles(carried(seen, "d", removed(["02-b.html"], 0))), {
+    "d/01-a.html": "A",
+    "other/02-b.html": "Other",
+  });
 });

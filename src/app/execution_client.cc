@@ -181,10 +181,11 @@ json Client::Call(json request, const ToolContext* context) {
     }
     request["id"] = impl_->completion_request;
   }
+  const std::string mode = JsonValue(request, "mode", "");
   const bool run =
       op == "run" || op == "schedule_check" || completion || op == "undo" ||
       op == "activity_control" || op == "terminal" ||
-      (op == "files" && JsonValue(request, "mode", "") == "write") ||
+      (op == "files" && (mode == "write" || mode == "move")) ||
       (op == "instructions" && JsonValue(request, "action", "") == "write");
   if (run) {
     if (!completion) request["id"] = RandomToken(16);

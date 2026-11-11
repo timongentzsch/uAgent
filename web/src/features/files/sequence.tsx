@@ -20,7 +20,7 @@ import {
   SlidersHorizontal,
   TriangleAlert,
 } from "lucide-preact";
-import { Button, IconButton, Switch } from "../../shared/ui.tsx";
+import { Button, ConfirmModal, IconButton, Switch } from "../../shared/ui.tsx";
 import { Input, Textarea } from "../../shared/form-controls.tsx";
 import Frame, {
   BoardFrame,
@@ -33,10 +33,20 @@ import Frame, {
 import { pageSize } from "../../shared/page-size.ts";
 import { FindField } from "../../shared/find-field.tsx";
 import { occurrences } from "../../shared/find.ts";
-import { type Board, type Kind, pageAt, spotAt, sum } from "./boards.ts";
+import {
+  type Board,
+  duplicated,
+  type Kind,
+  type Move,
+  moved,
+  pageAt,
+  removed,
+  spotAt,
+  sum,
+} from "./boards.ts";
 import { dirOf } from "./flow.ts";
 import { readTokens } from "./tokens.ts";
-import { bindZoomWheel } from "../../shared/zoom.ts";
+import { bindZoomWheel, TAP_SLOP_PX } from "../../shared/zoom.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import type { ViewedImage } from "../../shared/attachments.tsx";
@@ -107,6 +117,8 @@ function Legend({
   index,
   heard,
   to,
+  move,
+  menu,
 }: {
   // "Slide" or "Page": what a board is called.
   unit: string;
@@ -118,6 +130,9 @@ function Legend({
   index: number;
   heard: (path: string) => (message: PageMessage) => void;
   to: (index: number) => void;
+  // A deck's alone: takes a slide to a new place, and opens a slide's menu.
+  move?: (from: number, to: number) => void;
+  menu?: (index: number) => void;
 }) {
   const list = useRef<HTMLDivElement>(null);
   const [near, setNear] = useState<ReadonlySet<string>>(new Set());
@@ -156,6 +171,32 @@ function Legend({
     tabIndex: at === index ? 0 : -1,
     onClick: () => to(at),
   });
+  // A slide dragged to a new place: the press, held once it has moved, and
+  // the gap it would drop into (0 is before the first). A press that moved
+  // opens nothing.
+  const press = useRef<{ from: number; x: number; y: number; moved?: true }>(
+    undefined,
+  );
+  const [drop, setDrop] = useState<{ from: number; gap: number }>();
+  const items = () => [
+    ...list.current!.querySelectorAll<HTMLElement>("[data-path]"),
+  ];
+  const itemAt = (event: Event) =>
+    items().indexOf(
+      (event.target as Element).closest<HTMLElement>("[data-path]")!,
+    );
+  // The gap under the pointer: past the middles of how many slides it is,
+  // down the legend or, in a filmstrip, across it.
+  const gapAt = ({ clientX, clientY }: PointerEvent) => {
+    const all = items();
+    const across = all[1]?.offsetLeft > all[0].offsetLeft;
+    return all.filter((item) => {
+      const box = item.getBoundingClientRect();
+      return across
+        ? clientX > box.left + box.width / 2
+        : clientY > box.top + box.height / 2;
+    }).length;
+  };
   // Only a document's pages say where in it they start.
   const doc = boards[0].top !== undefined && boards[0];
   const scale = LEGEND_WIDTH / boards[0].w;
@@ -172,6 +213,52 @@ function Legend({
         if (!by || !boards[index + by]) return;
         to(index + by);
         event.preventDefault();
+      }}
+      onPointerDown={(event) => {
+        const from = itemAt(event);
+        // A touch that drags scrolls the legend.
+        press.current =
+          move && from >= 0 && !event.button && event.pointerType !== "touch"
+            ? { from, x: event.clientX, y: event.clientY }
+            : undefined;
+      }}
+      onPointerMove={(event) => {
+        const held = press.current;
+        if (!held) return;
+        const far = Math.hypot(event.clientX - held.x, event.clientY - held.y);
+        if (!held.moved && far < TAP_SLOP_PX) return;
+        held.moved = true;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        const gap = gapAt(event);
+        setDrop((was) => (was?.gap === gap ? was : { from: held.from, gap }));
+      }}
+      onPointerUp={(event) => {
+        const held = press.current;
+        setDrop(undefined);
+        if (!held?.moved) return;
+        const gap = gapAt(event);
+        const place = gap > held.from ? gap - 1 : gap;
+        if (place !== held.from) move?.(held.from, place);
+      }}
+      onPointerCancel={() => {
+        press.current = undefined;
+        setDrop(undefined);
+      }}
+      onClickCapture={(event) => {
+        if (press.current?.moved) event.stopPropagation();
+      }}
+      onContextMenu={(event) => {
+        const at = itemAt(event);
+        if (!menu || at < 0) return;
+        event.preventDefault();
+        // Under a press (where the menu comes with the button going down)
+        // it opens once the button is up and that release is dealt with:
+        // a popover opened before is dismissed by it.
+        if (event.buttons)
+          addEventListener("pointerup", () => setTimeout(() => menu(at)), {
+            once: true,
+          });
+        else menu(at);
       }}
     >
       {doc ? (
@@ -201,10 +288,20 @@ function Legend({
       ) : (
         boards.map((board, at) => (
           <div
-            key={board.path}
+            // By its place: a slide renamed is the same item, so the legend
+            // keeps its scroll through a reorder.
+            key={at}
             class="page-legend-item"
             data-path={board.path}
             data-failed={board.failed || undefined}
+            data-dragging={drop?.from === at || undefined}
+            data-drop={
+              drop?.gap === at
+                ? "before"
+                : drop?.gap === at + 1 && at === boards.length - 1
+                  ? "after"
+                  : undefined
+            }
           >
             <BoardFrame
               src={srcs[at]}
@@ -249,6 +346,8 @@ export default function Sequence({
   deckPdf,
   presenter,
   save,
+  arrange,
+  arranging,
   view,
 }: {
   path: string;
@@ -274,6 +373,10 @@ export default function Sequence({
   presenter?: (slides: string[], at: string) => void;
   // A document's edited block saved to its file.
   save?: (edit: BlockEdit) => Promise<void>;
+  // A deck's slides renamed, copied or deleted as `moves` say, after which
+  // the slide named `show` is the one shown; `arranging` while that runs.
+  arrange?: (moves: Move[], show: string) => void;
+  arranging?: boolean;
   // Opens a picture in the image viewer, which can draw on it.
   view: (image: ViewedImage) => void;
   go: (path: string) => void;
@@ -613,9 +716,30 @@ export default function Sequence({
   );
   const [legend, setLegend] = useState(true);
   const whole = doc ? "document" : kind === "deck" ? "deck" : "design";
+  // A deck rearranged from here: the stage follows the slide it shows to
+  // its new name, or to a neighbour when that slide is the one deleted.
+  const names = boards.map((board) => nameOf(board.path));
+  const rearrange = (moves: Move[]) => {
+    const own = moves.find((move) => move.from === names[index] && !move.copy);
+    if (moves.length)
+      arrange?.(
+        moves,
+        (own ? own.to : names[index]) ||
+          names[index + 1] ||
+          names[index - 1] ||
+          "",
+      );
+  };
+  const [deleting, setDeleting] = useState(false);
+  const stepper = useRef<HTMLDivElement>(null);
   // Which board of how many, with the previous and the next.
-  const counter = boards.length > 1 && (
-    <div class="float-toolbar page-count" role="group" aria-label="Step">
+  const counter = (boards.length > 1 || arrange) && (
+    <div
+      class="float-toolbar page-count"
+      role="group"
+      aria-label="Step"
+      ref={stepper}
+    >
       <IconButton
         label={`Previous ${unit.toLowerCase()}`}
         disabled={doc && index === 0}
@@ -634,6 +758,32 @@ export default function Sequence({
       >
         <ChevronRight />
       </IconButton>
+      {/* Beside the legend, not in it: a listbox holds only its options. */}
+      {arrange && !presenting && (
+        <Menu label="Slide actions">
+          <MenuItem
+            disabled={arranging || !index}
+            onClick={() => rearrange(moved(names, index, index - 1))}
+          >
+            Move up
+          </MenuItem>
+          <MenuItem
+            disabled={arranging || index === boards.length - 1}
+            onClick={() => rearrange(moved(names, index, index + 1))}
+          >
+            Move down
+          </MenuItem>
+          <MenuItem
+            disabled={arranging}
+            onClick={() => rearrange(duplicated(names, index))}
+          >
+            Duplicate
+          </MenuItem>
+          <MenuItem disabled={arranging} onClick={() => setDeleting(true)}>
+            Delete…
+          </MenuItem>
+        </Menu>
+      )}
     </div>
   );
   return (
@@ -807,6 +957,21 @@ export default function Sequence({
             index={index}
             heard={heard}
             to={to}
+            move={
+              arrange && !arranging
+                ? (from, place) => rearrange(moved(names, from, place))
+                : undefined
+            }
+            // A right click or the menu key on a slide: its menu.
+            menu={
+              arrange &&
+              ((at) => {
+                to(at);
+                stepper.current
+                  ?.querySelector<HTMLElement>(".action-menu button")
+                  ?.click();
+              })
+            }
           />
         )}
         <div class="page-main">
@@ -1124,6 +1289,18 @@ export default function Sequence({
           </aside>
         )}
       </div>
+      {deleting && (
+        <ConfirmModal
+          title="Delete slide"
+          close={() => setDeleting(false)}
+          confirm={() => {
+            setDeleting(false);
+            rearrange(removed(names, index));
+          }}
+        >
+          {`${boards[index].title} (${names[index]}) is deleted from the folder. This cannot be undone.`}
+        </ConfirmModal>
+      )}
       {picked && addToChat && (
         <form
           class="page-comment"

@@ -8,7 +8,9 @@
 #include <filesystem>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -29,6 +31,9 @@
 namespace uagent::workspace_files {
 namespace fs = std::filesystem;
 namespace {
+// Pages one request may move: more than any deck holds.
+constexpr size_t kMoves = 1000;
+
 bool Shown(const fs::path& path) {
   return !HiddenPath(path.string()) && !SelfConfigurationPath(path.string());
 }
@@ -459,6 +464,74 @@ std::string DeckPage(const fs::path& folder, int width, int height) {
   return page;
 }
 
+// A person's reordering of a deck: pages of one folder renamed, copied
+// (`copy`) or deleted (an empty `to`). Everything is checked first and each
+// page passes through a temporary name, so two can swap.
+json Move(const fs::path& folder, const json& moves) {
+  const auto page = [](const std::string& name) {
+    return name.ends_with(".html") && name.front() != '.' &&
+           name.find_first_of(std::string_view("/\\\0", 3)) ==
+               std::string::npos;
+  };
+  const json invalid = {{"error", "invalid request"}, {"status", 400}};
+  if (!moves.is_array() || moves.empty() || moves.size() > kMoves) {
+    return invalid;
+  }
+  std::set<std::string> leaving, arriving;
+  std::error_code error;
+  for (const json& move : moves) {
+    const std::string from = JsonValue(move, "from", ""),
+                      to = JsonValue(move, "to", "");
+    const bool copy = JsonValue(move, "copy", false);
+    if (!page(from) || (to.empty() ? copy : !page(to)) ||
+        (!copy && !leaving.insert(from).second) ||
+        (!to.empty() && !arriving.insert(to).second)) {
+      return invalid;
+    }
+    if (!fs::is_regular_file(fs::symlink_status(folder / from, error))) {
+      return {{"error", "not found"}, {"status", 404}};
+    }
+  }
+  for (const std::string& name : arriving) {
+    if (!leaving.contains(name) &&
+        fs::exists(fs::symlink_status(folder / name, error))) {
+      return {{"error", name + " is already there"}, {"status", 409}};
+    }
+  }
+  const std::string stem = ".move-" + RandomToken(8) + "-";
+  const auto staged = [&](size_t index) {
+    return folder / (stem + std::to_string(index));
+  };
+  error.clear();
+  // Copies first: their page may be renamed by the same request.
+  for (const bool copies : {true, false}) {
+    for (size_t i = 0; i < moves.size() && !error; ++i) {
+      if (JsonValue(moves[i], "copy", false) != copies) continue;
+      const fs::path from = folder / JsonValue(moves[i], "from", "");
+      if (copies) {
+        fs::copy_file(from, staged(i), error);
+      } else {
+        fs::rename(from, staged(i), error);
+      }
+    }
+  }
+  for (size_t i = 0; i < moves.size(); ++i) {
+    const std::string to = JsonValue(moves[i], "to", "");
+    std::error_code step;
+    if (error && !JsonValue(moves[i], "copy", false)) {
+      // Nothing has its new name yet: what was taken goes back.
+      fs::rename(staged(i), folder / JsonValue(moves[i], "from", ""), step);
+    } else if (error || to.empty()) {
+      fs::remove(staged(i), step);
+    } else {
+      fs::rename(staged(i), folder / to, step);
+      if (step) return {{"error", step.message()}, {"status", 500}};
+    }
+  }
+  if (error) return {{"error", error.message()}, {"status", 500}};
+  return {{"moved", moves.size()}};
+}
+
 }  // namespace
 json Request(const fs::path& root, const json& request) {
   const std::string mode = JsonValue(request, "mode", "");
@@ -512,6 +585,13 @@ json Request(const fs::path& root, const json& request) {
     std::error_code error;
     return {{"directory", fs::is_directory(*target, error)},
             {"regular", fs::is_regular_file(*target, error)}};
+  }
+  if (mode == "move") {
+    std::error_code error;
+    if (!fs::is_directory(*target, error)) {
+      return {{"error", "not found"}, {"status", 404}};
+    }
+    return Move(*target, request.value("moves", json()));
   }
   if (mode == "write") {
     if (!LikelyTextFile(*target) || !fs::is_regular_file(*target)) {

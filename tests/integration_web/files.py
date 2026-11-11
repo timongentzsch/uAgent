@@ -390,6 +390,76 @@ def test_web_files_save_a_person_s_edit_against_its_revision(root, home, *, bina
             )
 
 
+def test_web_files_reorder_copy_and_delete_a_folder_s_pages(root, home, *, binary):
+    project = root / "moves"
+    deck = project / "deck"
+    deck.mkdir(parents=True)
+    for name in ("01-a.html", "02-b.html", "03-c.html"):
+        (deck / name).write_text(name[3])
+    (deck / "style.css").write_text("css")
+    (project / "outside.html").write_text("outside")
+    (deck / "link.html").symlink_to(project / "outside.html")
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project, activate=False)
+            files = f"/api/sessions/{session['id']}/files"
+
+            def move(*moves, path="deck"):
+                keys = ("from", "to", "copy")
+                return client.json(
+                    files,
+                    {"path": path, "moves": [dict(zip(keys, m, strict=False)) for m in moves]},
+                )[:2]
+
+            def pages():
+                return {p.name: p.read_text() for p in deck.glob("*.html") if not p.is_symlink()}
+
+            # Two pages swap names; a copy takes the place its page leaves.
+            status, moved = move(("01-a.html", "02-a.html"), ("02-b.html", "01-b.html"))
+            assert_true(status == 200 and moved == {"moved": 2}, (status, moved))
+            status, moved = move(
+                ("02-a.html", "03-a.html", True), ("03-c.html", "04-c.html"), ("01-b.html", "")
+            )
+            assert_true(status == 200, (status, moved))
+            before = {"02-a.html": "a", "03-a.html": "a", "04-c.html": "c"}
+            assert_true(pages() == before, pages())
+            # Refused whole: a name that is taken, a page that is not there,
+            # anything but a page of this folder, a link, another folder.
+            refused = {
+                409: [(("02-a.html", "04-c.html"),), (("02-a.html", "02-a.html", True),)],
+                404: [
+                    (("02-a.html", "05-a.html"), ("09-x.html", "06-x.html")),
+                    (("link.html", ""),),
+                ],
+                400: [
+                    (("02-a.html", "../up.html"),),
+                    (("02-a.html", "sub/up.html"),),
+                    (("../outside.html", "in.html"),),
+                    (("style.css", "02-z.html"),),
+                    (("02-a.html", "notes.txt"),),
+                    (("02-a.html", ".hidden.html"),),
+                    (("02-a.html", "x.html"), ("02-a.html", "y.html")),
+                    (("02-a.html", "x.html"), ("04-c.html", "x.html")),
+                    (("02-a.html", "", True),),
+                    (),
+                ],
+            }
+            for expected, cases in refused.items():
+                for case in cases:
+                    status, answer = move(*case)
+                    assert_true(status == expected, (case, status, answer))
+            status, answer = move(("outside.html", "in.html"), path="..")
+            assert_true(status == 404, (status, answer))
+            assert_true(pages() == before, pages())
+            assert_true(
+                sorted(p.name for p in deck.iterdir())
+                == sorted([*before, "link.html", "style.css"]),
+                list(deck.iterdir()),
+            )
+            assert_true((project / "outside.html").read_text() == "outside", "moved outside")
+
+
 def test_web_folder_picker_lists_directories_on_the_main(root, home, *, binary):
     projects = home / "Projects"
     (projects / "nested").mkdir(parents=True)

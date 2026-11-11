@@ -506,6 +506,12 @@ test("offline gateway navigation does not request a remote connection", async ({
   await offlineHost(page);
   await page.goto(`/#host=${remote}`);
   await expect(connected(page)).toBeVisible();
+  // The hosts are read after the page connects: the network goes only once
+  // the conversation is listed.
+  const conversation = page
+    .getByRole("group", { name: "GPU", exact: true })
+    .getByRole("button", { name: /^GPU conversation/ });
+  await expect(conversation).toBeVisible();
   await context.setOffline(true);
   await expect(connected(page)).toHaveCount(0);
   const posts = [];
@@ -513,10 +519,7 @@ test("offline gateway navigation does not request a remote connection", async ({
     if (request.url().endsWith("/api/hosts") && request.method() === "POST")
       posts.push(request.postDataJSON());
   });
-  await page
-    .getByRole("group", { name: "GPU", exact: true })
-    .getByRole("button", { name: /^GPU conversation/ })
-    .click();
+  await conversation.click();
   await expect
     .poll(() =>
       new URLSearchParams(new URL(page.url()).hash.slice(1)).get("session"),

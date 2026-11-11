@@ -5,5 +5,6 @@ runtime: shared runtime and streaming; auth: pairing, origins and
  steering and queued guidance; recovery: restarts, uploads and trust;
  management: conversations, controls and inspection; http: context,
  configuration, retry and titles; places: MCP, restarts, spaces and
- folder overviews. Discovered through tests/integration.py.
+ folder overviews; commands: slash commands the agent asks to run.
+ Discovered through tests/integration.py.
 """

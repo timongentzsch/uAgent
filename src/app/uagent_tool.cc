@@ -14,6 +14,7 @@
 #include "include/app/library.h"
 #include "include/app/permissions.h"
 #include "include/app/schedule.h"
+#include "include/cli/cli.h"
 #include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -346,6 +347,11 @@ ToolResult CommitSettings(const ConfigProposal& approved) {
   return ToolSuccess(report);
 }
 
+// The line as the host reads it, typed or queued.
+std::string CommandLine(const json& arguments) {
+  return Trim(JsonValue(arguments, "line", ""));
+}
+
 // A genuine one-liner: this is the call label, and it also reaches the debug
 // trace and compaction evidence, so no diff is built here.
 Headline UagentHeadline(const json& arguments) {
@@ -355,6 +361,9 @@ Headline UagentHeadline(const json& arguments) {
   if (word("action") == "show") {
     return {"Inspecting", "Inspected",
             Trim(JsonValue(arguments, "topic", "status") + " " + word("name"))};
+  }
+  if (word("action") == "command") {
+    return {"Queueing", "Queued", CommandLine(arguments)};
   }
   std::string target =
       Trim(word("scope") + " " + word("file") + " " + word("name"));
@@ -367,14 +376,56 @@ Headline UagentHeadline(const json& arguments) {
   return {"Configuring", "Configured", target};
 }
 
-// set and write, added where a person can approve them. Each prepares and
-// previews; the mandatory-human approval lane decides, and what then runs is
-// what the approved preview recorded.
-void OfferChanges(Tool& tool, ConfigProposalFactory prepare) {
+// Why the host does not run `line` for the agent, or nothing: it runs one
+// slash command, but not a client's own navigation, nor a command that only
+// starts a turn.
+std::string CommandIssue(const std::string& line) {
+  const ParsedSlashCommand command = ParseSlashCommand(line);
+  const char* why = line.find('\n') != std::string::npos ? "takes one line"
+                    : !command.spec ? "is not a slash command"
+                    : command.spec->Has(kClientOnly)
+                        ? "names a command of the person's client"
+                    : !SlashCommandPrompt(command).empty()
+                        ? "names a command that only starts a turn: do that "
+                          "work yourself"
+                        : "";
+  if (!*why) return "";
+  return std::string("line ") + why +
+         "; show topic commands lists the commands, and one that is not "
+         "client_only runs here";
+}
+
+// What a person approves: the line, and under one that moves the approval
+// mode which way it moves, when the line names the mode it moves to.
+std::string CommandPreview(const std::string& line) {
+  const ParsedSlashCommand command = ParseSlashCommand(line);
+  const SlashCommandId id = command.spec->id;
+  if (id != SlashCommandId::kYolo && id != SlashCommandId::kPlan &&
+      id != SlashCommandId::kPermissions) {
+    return line;
+  }
+  ApprovalMode asked = CurrentApprovalMode();
+  ParseApprovalMode(command.argument, asked);
+  const int wider = Reach(asked) - Reach(CurrentApprovalMode());
+  return line + "\nThis " +
+         (wider > 0   ? "widens"
+          : wider < 0 ? "narrows"
+                      : "changes") +
+         " what the agent may do without asking.";
+}
+
+// set and write, added where a person can approve them, and command where
+// `queue` takes one. Each prepares and previews; the mandatory-human
+// approval lane decides, and what then runs is what the approved preview
+// recorded.
+void OfferChanges(Tool& tool, ConfigProposalFactory prepare,
+                  CommandQueue queue) {
   tool.description +=
-      " set changes UAGENT_* settings; write replaces one whole file. The "
-      "user approves the exact diff of each, in every approval mode: show "
-      "what is there first.";
+      std::string(
+          " set changes UAGENT_* settings; write replaces one whole file") +
+      (queue ? "; command runs a slash command when this turn ends" : "") +
+      ". The user approves the exact diff of each, in every approval mode: "
+      "show what is there first.";
   tool.parameters["properties"].update(json::parse(R"json({
     "action":{"type":"string","enum":["show","set","write"]},
     "name":{"type":"string","description":
@@ -396,6 +447,20 @@ void OfferChanges(Tool& tool, ConfigProposalFactory prepare) {
   // `text` is checked below: empty is a value here, not a field left out.
   tool.action_requires = {"action",
                           {{"set", {"scope", "changes"}}, {"write", {"file"}}}};
+  if (queue) {
+    json& properties = tool.parameters["properties"];
+    properties["action"]["enum"].push_back("command");
+    properties["line"] = {
+        {"type", "string"},
+        {"description", "command: the line as typed, like /model NAME"}};
+    tool.action_requires.actions.push_back({"command", {"line"}});
+    // A command is not a change to the configuration: the prompt says so.
+    tool.mandatory_reason = [](const json& arguments) -> std::string {
+      return JsonValue(arguments, "action", "") == "command"
+                 ? "runs a slash command for you"
+                 : "";
+    };
+  }
   // A change keeps its place among the calls around it.
   tool.parallel_safe = false;
   // Every change needs a person, whatever the approval mode.
@@ -425,6 +490,11 @@ void OfferChanges(Tool& tool, ConfigProposalFactory prepare) {
       if (proposal.ok) return std::nullopt;
       return ArgumentIssue("config.rejected", proposal.error, "changes");
     }
+    if (JsonValue(arguments, "action", "") == "command") {
+      const std::string refused = CommandIssue(CommandLine(arguments));
+      if (refused.empty()) return std::nullopt;
+      return ArgumentIssue("command.rejected", refused, "line");
+    }
     if (JsonValue(arguments, "action", "") != "write") return std::nullopt;
     const Edited file = EditedFile(arguments);
     const std::string issue =
@@ -440,7 +510,8 @@ void OfferChanges(Tool& tool, ConfigProposalFactory prepare) {
       std::make_shared<ApprovedProposals<std::function<ToolResult()>>>();
   // Built only when a person is about to be asked, and recorded with what it
   // would do: the bytes shown are exactly the bytes that can be written.
-  tool.approval_preview = [propose, approved](const json& arguments) {
+  tool.approval_preview = [propose, approved,
+                           queue = std::move(queue)](const json& arguments) {
     if (JsonValue(arguments, "action", "") == "set") {
       const ConfigProposal proposal = propose(arguments);
       if (!proposal.ok) return "cannot apply: " + proposal.error;
@@ -448,6 +519,21 @@ void OfferChanges(Tool& tool, ConfigProposalFactory prepare) {
           arguments, [proposal] { return CommitSettings(proposal); },
           proposal.expires);
       return proposal.Preview();
+    }
+    if (JsonValue(arguments, "action", "") == "command") {
+      const std::string line = CommandLine(arguments);
+      const std::string refused = CommandIssue(line);
+      if (!refused.empty()) return "cannot apply: " + refused;
+      approved->Put(
+          arguments,
+          [queue, line] {
+            queue(line);
+            return ToolSuccess(
+                "queued: it runs when this turn ends, and its output goes to "
+                "the user, not to you");
+          },
+          std::chrono::steady_clock::time_point::max());
+      return CommandPreview(line);
     }
     const Edited file = EditedFile(arguments);
     if (!file.issue.empty()) return "cannot apply: " + file.issue;
@@ -475,8 +561,8 @@ void OfferChanges(Tool& tool, ConfigProposalFactory prepare) {
 }
 }  // namespace
 
-Tool UagentTool(SelfDescriptionProvider describe,
-                ConfigProposalFactory prepare) {
+Tool UagentTool(SelfDescriptionProvider describe, ConfigProposalFactory prepare,
+                CommandQueue queue) {
   Tool tool = MakeTool(
       "uagent",
       "uAgent itself: this running build and its configuration, not the code "
@@ -500,7 +586,7 @@ Tool UagentTool(SelfDescriptionProvider describe,
   tool.category = "system";
   tool.skill = kConfigSkill;
   tool.headline = UagentHeadline;
-  if (prepare) OfferChanges(tool, std::move(prepare));
+  if (prepare) OfferChanges(tool, std::move(prepare), std::move(queue));
   return tool;
 }
 

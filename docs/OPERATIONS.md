@@ -53,6 +53,14 @@ Change settings with `/config`, the web's Settings, the agent's
 An unknown name, or a value its setting does not take, is reported and
 skipped; the rest applies, and the file keeps what you wrote.
 
+The agent can also ask to run a slash command for you, such as `/model NAME`,
+`/permissions auto` or `/compact` (the `uagent` tool's `command`). You approve
+the exact line, in every approval mode, and it runs when the turn ends:
+after the messages you queued for then, before a turn that background work or
+an agent's report starts. A turn you stop, or one that fails, runs none of
+them and says so. Its output is shown to you as a typed command's is, not to
+the agent, and agents that are running keep their settings.
+
 ```text
 /config                                  what is set, and where from
 /config user limits.maxTurnCost=2        save for all conversations

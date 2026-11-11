@@ -389,7 +389,8 @@ TEST_CASE(TestActionRequiresDeclarations) {
       UagentTool([](SelfTopic, const std::string&) { return json::object(); },
                  [](ConfigProposalScope, const std::vector<ConfigChange>&) {
                    return ConfigProposal{};
-                 }));
+                 },
+                 [](const std::string&) {}));
   std::vector<std::string> declared;
   for (const Tool& tool : tools) {
     const ActionRequires& table = tool.action_requires;

@@ -52,6 +52,10 @@ class Application {
   void RunPrompt(const std::string& input);
   json InterfaceState() const;
   void ProcessInput(std::string input);
+  // Runs the slash commands a person approved for the agent, as typed ones
+  // run: after the messages they queued for after the turn, before anything
+  // else starts one. A turn that did not complete takes them with it.
+  void RunQueuedCommands();
   int RunChannel();
   void PublishChannelState(bool checkpoint = true);
   AppContext& context_;

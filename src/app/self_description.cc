@@ -403,8 +403,10 @@ json ToolSurfaceJson() {
       UagentTool([](SelfTopic, const std::string&) { return json::object(); },
                  [](ConfigProposalScope, const std::vector<ConfigChange>&) {
                    return ConfigProposal{};
-                 }),
-      "uagent-config skill open; set and write where a person can approve");
+                 },
+                 [](const std::string&) {}),
+      "uagent-config skill open; set and write where a person can approve, "
+      "command in a conversation's own session");
   conditional.emplace_back(WebSearchTool(api, usage, {}), "search route");
   conditional.emplace_back(WebFetchTool(api), "always");
   std::vector<Tool> agent_tools;

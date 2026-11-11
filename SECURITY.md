@@ -46,7 +46,9 @@ In every mode:
     the instruction files, which hold no credential;
   - reading, through the file tools, one of your folders that the sandbox
     closes to commands (see **Reads** below);
-  - the `uagent` tool's `set` and `write`;
+  - the `uagent` tool's `set`, `write` and `command`: a slash command the
+    agent asks for runs only as the exact line you approved, when the turn
+    ends, and never for an agent or a headless run;
   - `run(sandbox=false)`, and `run(root=true)`.
 
 An **agent**, a conversation another one started, acts for you unattended.

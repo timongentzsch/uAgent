@@ -105,6 +105,9 @@ struct AppContext {
   // this machine); wiped when the turn ends.
   std::mutex root_passwords_mutex;
   std::map<std::string, std::shared_ptr<std::string>> root_passwords;
+  // The slash commands a person approved for the agent (uagent's command),
+  // waiting for the turn to end.
+  std::vector<std::string> commands;
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
   std::jthread remote_watch;

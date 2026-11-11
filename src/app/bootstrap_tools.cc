@@ -118,6 +118,14 @@ std::vector<Tool> BuildTools(AppContext& context,
       return PrepareConfigProposal(scope, changes, app->config_manager);
     };
   }
+  // A slash command runs as the turn ends, in a conversation's own session
+  // only: a headless run has no such end, and an agent runs none.
+  CommandQueue queue;
+  if (prepare && context.channel && AgentDepth() == 0) {
+    queue = [app = &context](const std::string& line) {
+      app->commands.push_back(line);
+    };
+  }
   tools.push_back(UagentTool(
       [app = &context](SelfTopic topic, const std::string& name) {
         return DescribeSelf(
@@ -126,7 +134,7 @@ std::vector<Tool> BuildTools(AppContext& context,
                                   app->runtime.api, app->tools,
                                   app->runtime.mcp, app->agent.get()});
       },
-      std::move(prepare)));
+      std::move(prepare), std::move(queue)));
   if (OffersWebSearch(api, context.provider.providers)) {
     tools.push_back(
         WebSearchTool(api, runtime.side_usage, context.provider.providers));

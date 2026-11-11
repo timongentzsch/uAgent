@@ -27,6 +27,10 @@ namespace uagent {
 namespace {
 // What a uagent tool reads of the build, for a test that does not look.
 json Describes(SelfTopic, const std::string&) { return json::object(); }
+// The settings side of a tool whose test changes none.
+ConfigProposal Proposes(ConfigProposalScope, const std::vector<ConfigChange>&) {
+  return {};
+}
 }  // namespace
 
 TEST_CASE(TestConfigProposalAndCommit) {
@@ -327,10 +331,7 @@ TEST_CASE(TestConfigProposalAndCommit) {
 // a file that changed while they read it.
 TEST_CASE(TestUagentWritesWhatWasApproved) {
   TestWorkspace test("uagent-write");
-  const Tool tool = UagentTool(
-      Describes, [](ConfigProposalScope, const std::vector<ConfigChange>&) {
-        return ConfigProposal{};
-      });
+  const Tool tool = UagentTool(Describes, Proposes);
   const std::string skill = "---\ndescription: Release notes\n---\nBody\n";
   const std::filesystem::path config = test.home / ".uagent/config";
   const std::vector<std::pair<json, std::filesystem::path>> written = {
@@ -392,6 +393,62 @@ TEST_CASE(TestUagentWritesWhatWasApproved) {
   tool.approval_preview(plain);
   CHECK(!tool.run(plain, {}).Ok());
   CHECK(!PathExists(test.home / ".uagent/skills/plain"));
+}
+
+// A command is queued only as the line a person approved, and once; a line
+// the host does not run is refused before anyone is asked; and without a
+// queue, as in an agent, the tool offers none.
+TEST_CASE(TestUagentQueuesTheApprovedCommand) {
+  std::vector<std::string> queued;
+  const Tool tool = UagentTool(
+      Describes, Proposes,
+      [&queued](const std::string& line) { queued.push_back(line); });
+  const auto command = [](const std::string& line) {
+    return json{{"action", "command"}, {"line", line}};
+  };
+  const Tool agent = UagentTool(Describes, Proposes);
+  CHECK(FindToolArgumentIssue(agent, command("/compact")).has_value());
+  CHECK(!agent.parameters["properties"].contains("line"));
+  CHECK(FindToolArgumentIssue(tool, {{"action", "command"}}).has_value());
+  for (const char* line : {"/nope", "compact", "/fork later", "/quit", "/init",
+                           "/review src", "/compact\n/yolo"}) {
+    const auto issue = tool.validate(command(line));
+    CHECK(issue && issue->code == "command.rejected" && issue->field == "line");
+    CHECK(issue &&
+          issue->message.find("show topic commands") != std::string::npos);
+    // Put to a person all the same, it is not recorded as approved.
+    CHECK(tool.approval_preview(command(line)).starts_with("cannot apply: "));
+    CHECK(!tool.run(command(line), {}).Ok() && queued.empty());
+  }
+  const ApprovalMode before = CurrentApprovalMode();
+  SetApprovalMode(ApprovalMode::kAsk);
+  const std::string moves = " what the agent may do without asking.";
+  const std::vector<std::pair<std::string, std::string>> previews = {
+      {"/model sonnet", "/model sonnet"},
+      {" /compact\n", "/compact"},
+      {"/permissions yolo", "/permissions yolo\nThis widens" + moves},
+      {"/permissions plan", "/permissions plan\nThis narrows" + moves},
+      {"/yolo", "/yolo\nThis changes" + moves},
+      {"/plan", "/plan\nThis changes" + moves}};
+  for (const auto& [line, preview] : previews) {
+    const json arguments = command(line);
+    CHECK(!FindToolArgumentIssue(tool, arguments) && !tool.validate(arguments));
+    CHECK(RequiredApproval(tool, arguments) == ApprovalClass::kMandatoryHuman);
+    // Nothing is queued before a person saw the line, nor twice after.
+    CHECK(tool.run(arguments, {}).error == ToolErrorCode::kPermissionDenied);
+    CHECK(tool.approval_preview(arguments) == preview);
+    CHECK(queued.empty());
+    const ToolResult result = tool.run(arguments, {});
+    CHECK(result.Ok() && result.output.find("not to you") != std::string::npos);
+    CHECK(queued ==
+          std::vector<std::string>{preview.substr(0, preview.find('\n'))});
+    CHECK(!tool.run(arguments, {}).Ok());
+    queued.clear();
+  }
+  // What runs is the line approved, not another asked for meanwhile.
+  tool.approval_preview(command("/compact"));
+  CHECK(!tool.run(command("/yolo"), {}).Ok() && queued.empty());
+  SetApprovalMode(before);
 }
 
 // The servers, rules and skills a person manages are shown from the same

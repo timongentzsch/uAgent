@@ -96,6 +96,7 @@ int Application::RunChannel() {
         ReportUsage(UsageLedger(JsonValue(agent, "parent", "")));
       }
     }
+    RunQueuedCommands();
     SaveSession(input->title.has_value());
     if (!input->title && !input->control.is_null()) {
       channel_->CompleteControl(input->request_id, result);

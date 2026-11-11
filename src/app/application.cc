@@ -390,6 +390,23 @@ void Application::ProcessInput(std::string input) {
   RunPrompt(input);
 }
 
+void Application::RunQueuedCommands() {
+  std::vector<std::string>& commands = context_.commands;
+  if (commands.empty()) return;
+  if (JsonValue(agent_.LastStop(), "reason", "") != "completed") {
+    for (const std::string& line : std::exchange(commands, {})) {
+      Emit(NoticeEvent(PresentationStatus::kWarned,
+                       "not run, the turn did not complete: " + line));
+    }
+    return;
+  }
+  // All that is queued, less what was meant for the turn itself.
+  if (SteeringState().QueuedCount() > SteeringState().SteerCount()) return;
+  for (std::string& line : std::exchange(commands, {})) {
+    ProcessInput(std::move(line));
+  }
+}
+
 int RunApplication(AppContext& context) { return Application(context).Run(); }
 
 }  // namespace uagent

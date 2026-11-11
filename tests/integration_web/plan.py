@@ -22,13 +22,13 @@ def plan_path(messages):
     return found[-1] if found else ""
 
 
-def last_prompt(messages):
-    """The latest of PROMPTS the person sent, and the tool results since."""
+def last_prompt(messages, prompts=PROMPTS):
+    """The latest of `prompts` the person sent, and the tool results since."""
     for index in range(len(messages) - 1, -1, -1):
         if messages[index].get("role") != "user":
             continue
         text = json.dumps(messages[index].get("content"))
-        for prompt in PROMPTS:
+        for prompt in prompts:
             if prompt in text:
                 return prompt, tool_results(messages[index + 1 :])
     return "", []

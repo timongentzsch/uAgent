@@ -1,6 +1,6 @@
 ---
 name: uagent-config
-description: "µAgent itself: its look (colours, fonts), AGENTS.md, models, settings, version"
+description: "µAgent itself: colours and fonts, settings, AGENTS.md, models, mode, commands"
 ---
 
 # Configure µAgent
@@ -8,8 +8,9 @@ description: "µAgent itself: its look (colours, fonts), AGENTS.md, models, sett
 Answer from the running binary, never from memory: it is the installed
 release, and it knows more than any copy of its documentation. Opening this
 skill adds the `uagent` tool to the conversation. Its `action` is `show` (read
-a `topic`), `set` (change settings) or `write` (replace one whole file); below,
-`show` `config` means action `show` with topic `config`.
+a `topic`), `set` (change settings), `write` (replace one whole file) or
+`command` (run one slash command for the user); below, `show` `config` means
+action `show` with topic `config`.
 
 ## Route the question
 
@@ -33,6 +34,7 @@ a `topic`), `set` (change settings) or `write` (replace one whole file); below,
 | What instructions do sessions read? | `show` `instructions` |
 | Change instructions, the system message, MCP servers or a skill | `write`; see "Change a file" |
 | Change the look of the web UI | `show` `style` for the current sheet, then `write` `style`; see "Change the look" |
+| Change this conversation's model, effort, approval mode or tools, or compact it | `command`; see "Run a slash command" |
 
 Do not load every reference; pick the one the question needs. Only
 `self-configuration.md` and `architecture.md` are written by hand; every other
@@ -52,9 +54,9 @@ fact comes from the binary.
    folder-specific behavior is intended; it is saved for that folder, not
    written into the repository, and needs no folder trust. Web host
    settings (`UAGENT_WEB_*`, `UAGENT_BROWSER_DATA`) save at `user` only. Use
-   process exports for a one-off command. The tool has no conversation
-   scope: the user sets that with `/config conversation KEY=VALUE`,
-   `/model` or `/permissions`.
+   process exports for a one-off command. `set` has no conversation
+   scope: that is `/config conversation KEY=VALUE`, `/model` or
+   `/permissions`, which the user types or `command` runs for them.
 5. Change only the settings needed for the requested outcome. Keep limits at
    defaults unless there is a measured reason to raise them.
 6. Validate without a billable model call: `uagent --help`, `uagent --version`,
@@ -74,6 +76,21 @@ write is refused when the file changed while they read it.
 | `prompt` | the person's changes to the system message, as JSON `{"replace": {"## Scratch": "..."}, "append": "..."}`: `replace` gives a section of the base new text (Evidence, Tools, Scratch, Changes, Delegation, Answer), `append` adds text after the last. Empty `text` restores the built-in message | `show` `prompt`, field `saved` | new and restarted sessions |
 | `mcp` | this folder's `.mcp.json`, a JSON object with `mcpServers` | `read_path` on `.mcp.json`; the user approves the read, since the file can hold credentials | new and restarted sessions in this folder, once the user trusts the changed file |
 | `skill` | the `SKILL.md` of one of the person's own skills, `~/.uagent/skills/NAME/SKILL.md`, with `name` its folder (letters, digits, `-`, `_`). It starts with YAML front matter that has a `description` | `show` `skills` for its path, then `read_path` | new and restarted sessions |
+
+## Run a slash command
+
+`command` takes `line`, one slash command as the user would type it:
+`/model sonnet`, `/compact`, `/permissions auto`. The user approves the exact
+line, in every approval mode. It does not run inside your turn: it is queued,
+runs when the turn ends (after the messages the user queued for then), and
+its output goes to the user, not to you. So ask for it last, say what you
+asked for, and read the outcome with `show` in a later turn. A turn that is
+interrupted or fails drops what it queued.
+
+`show` `commands` lists the commands. Refused: one marked `client_only`
+(navigation such as `/fork` or `/reset`, which the user does themselves), and
+one that only starts a turn (`/init`, `/review`, `/diff`): do that work
+yourself. An agent and a headless run are not offered `command`.
 
 ## Change the look
 
@@ -115,13 +132,15 @@ tokens are a stable surface; class names change between releases.
   conversations (`UAGENT_MODEL`).
 - Do not enable `--yolo`, `UAGENT_APPROVAL=yolo`, folder trust, credential
   forwarding, or broader tool capabilities without making the authority change
-  explicit.
+  explicit. That holds for `command` with `/yolo`, `/permissions`, `/plan`
+  or `/tools`: only when the user asked for that change.
 - Do not invent settings. `show` `config` enumerates every registered
   setting; if a requested behavior is absent from it, say so rather than
   guessing.
 - Never write the saved settings with the file tools; µAgent's config folder
   is closed to them. `set` and `write` are offered only
   in a session where a person can approve (a terminal or the web UI, not a
-  headless run). When the tool offers only `show`, give the user the
+  headless run), and `command` only in the user's own conversation there.
+  When the tool offers only `show`, give the user the
   `/config user KEY=VALUE` (or `project`) command to run themselves; do not
   make the change on their behalf.

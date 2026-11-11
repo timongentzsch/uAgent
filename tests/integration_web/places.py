@@ -1,5 +1,6 @@
 import json
 import pathlib
+import shutil
 import subprocess
 import sys
 import threading
@@ -351,8 +352,6 @@ def test_web_interrupt_stops_a_command_that_ignores_being_asked(root, home, *, b
 
 
 def test_stopped_session_starts_for_several_commands_and_says_why_it_cannot(root, home, *, binary):
-    import shutil
-
     project = root / "restart-project"
     project.mkdir()
     with Server([event({"content": "unused"})]) as provider:
@@ -464,3 +463,73 @@ def test_folder_overview_counts_spend_changes_and_git(root, home, *, binary):
             )
             assert_true(listed["todo"] == {"done": 1, "total": 2, "current": "Read them"}, listed)
             assert_true(isinstance(listed["cost"], (int, float)), listed)
+
+
+def test_web_update_is_checked_installed_and_restarts_the_host(root, home, *, binary):
+    # An install as its installer leaves it, and a folder standing in for
+    # GitHub: the newest release and its installer.
+    prefix = root / "prefix"
+    (prefix / "bin").mkdir(parents=True)
+    (prefix / "share/uagent").mkdir(parents=True)
+    installed = prefix / "bin/uagent"
+    shutil.copy2(binary, installed)
+    (prefix / "share/uagent/install").write_text("release\n")
+    releases = root / "releases"
+    releases.mkdir()
+    page = "https://github.com/timongentzsch/uAgent/releases/tag/v999.0.0"
+    (releases / "latest.json").write_text(
+        json.dumps({"tag_name": "v999.0.0", "body": "- faster", "html_url": page})
+    )
+    (releases / "install.sh").write_text(
+        "#!/bin/sh\n"
+        'echo "installing $UAGENT_VERSION"\n'
+        '[ "$UAGENT_NONINTERACTIVE$UAGENT_INSTALL" = 1here ] || exit 3\n'
+        '[ "$UAGENT_VERSION" != 999.0.0 ] || echo "$UAGENT_VERSION" >"$UAGENT_PREFIX/installed"\n'
+    )
+    stand_in = {"UAGENT_INTERNAL_RELEASES": str(releases)}
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(installed, root, home, provider.url, extra_env=stand_in) as (
+            client,
+            code,
+            process,
+            _,
+        ):
+            client.pair(code)
+            shown = client.command("update")["result"]
+            assert_true(
+                (shown["install"], shown["available"], shown["apply"]) == ("release", False, False),
+                shown,
+            )
+            checked = client.command("update", action="check")["result"]
+            assert_true(
+                (checked["latest"], checked["available"], checked["apply"], checked["blocked"])
+                == ("999.0.0", True, True, ""),
+                checked,
+            )
+            assert_true((checked["notes"], checked["url"]) == ("- faster", page), checked)
+            assert_true("install.sh | sh" in checked["command"], checked)
+
+            # Only the release GitHub named is installed.
+            client.command("update", action="apply", version="998.0.0")
+            wait_until(
+                lambda: not client.command("update")["result"]["installing"],
+                "the refusal did not arrive",
+            )
+            refused = client.command("update")["result"]
+            assert_true("cannot be updated" in refused["error"], refused)
+            assert_true(not (prefix / "installed").exists(), "installed another version")
+
+            discovery = home / ".uagent/web/discovery.json"
+            epoch = json.loads(discovery.read_text())["epoch"]
+            client.command("update", action="apply", version="999.0.0")
+
+            def restarted():
+                try:
+                    current = json.loads(discovery.read_text())["epoch"]
+                    return current != epoch and client.json("/api/sessions")[0] == 200
+                except (OSError, ValueError, ConnectionError):
+                    return False
+
+            wait_until(restarted, "the host did not restart after the update", timeout=20)
+            assert_true(process.poll() is None, "host exited instead of re-exec")
+            assert_true((prefix / "installed").read_text() == "999.0.0\n", "not installed")

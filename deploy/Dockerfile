@@ -38,6 +38,7 @@ RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 instal
     && rm -rf /var/lib/apt/lists/*
 # The install, not the bare binary: the bundled skills sit beside it.
 COPY --from=installation /opt/uagent/ /usr/local/
+RUN echo container >/usr/local/share/uagent/install
 COPY deploy/chrome-policy.json /etc/opt/chrome/policies/managed/uagent.json
 RUN groupadd --gid 10001 agent && useradd --uid 10001 --gid 10001 \
     --home-dir /data/agent --shell /bin/bash agent \

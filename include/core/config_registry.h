@@ -285,6 +285,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Terminal",
         "Paired devices can open a shell of yours, as you and unsandboxed"),
     registry::Named(
+        registry::Bul("web.updateCheck", "UAGENT_WEB_UPDATE_CHECK", {}, false,
+                      ReloadPolicy::kRestartRequired, "web",
+                      "the web host asks GitHub once a day whether a newer "
+                      "release exists",
+                      kScopeUser),
+        "Check for updates daily",
+        "The web host asks GitHub for the newest release once a day; About "
+        "shows what it found"),
+    registry::Named(
         registry::Int("web.terminalIdleMinutes",
                       "UAGENT_WEB_TERMINAL_IDLE_MINUTES", {}, 60, 1, 10080,
                       ReloadPolicy::kRestartRequired, "web",

@@ -267,6 +267,10 @@ if [ "$mode" = source ]; then
     echo "Local-only developer install: a complete remote bundle was not required."
   fi
   cmake --install "$build" --prefix "$prefix" --strip
+  # How this was installed, for the About page: the installer's own build of
+  # a release, or a checkout.
+  if [ "$root" = "$data/src" ]; then echo source; else echo checkout; fi \
+    >"$prefix/share/uagent/install"
   policy_source=$root/deploy/chrome-policy.json
 else
   release_version
@@ -298,12 +302,18 @@ else
   build_id=$("$unpacked/bin/uagent" --build-id)
   "$unpacked/bin/uagent" --check-remote-bundle "$unpacked/share/uagent/remote/$build_id"
   mkdir -p "$prefix/bin" "$prefix/share/doc"
-  # What a release ships replaces what an earlier one did; a binary that is
-  # running keeps its old file until it restarts.
-  rm -rf "$prefix/share/uagent" "$prefix/share/doc/uagent"
-  cp -R "$unpacked/share/uagent" "$prefix/share/uagent"
-  cp -R "$unpacked/share/doc/uagent" "$prefix/share/doc/uagent"
+  # What a release ships replaces what an earlier one did, copied whole
+  # before anything is replaced: a copy that fails leaves the old install.
+  # A binary that is running keeps its old file until it restarts.
+  rm -rf "$prefix/share/uagent.new" "$prefix/share/doc/uagent.new"
+  cp -R "$unpacked/share/uagent" "$prefix/share/uagent.new"
+  cp -R "$unpacked/share/doc/uagent" "$prefix/share/doc/uagent.new"
+  echo release >"$prefix/share/uagent.new/install"
   cp "$unpacked/bin/uagent" "$bin.new"
+  for kept in share/uagent share/doc/uagent; do
+    rm -rf "${prefix:?}/$kept"
+    mv "$prefix/$kept.new" "$prefix/$kept"
+  done
   mv -f "$bin.new" "$bin"
   policy_source=$tmp/chrome-policy.json
   fetch "https://raw.githubusercontent.com/$repo/v$version/deploy/chrome-policy.json" "$policy_source" 2>/dev/null ||

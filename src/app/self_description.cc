@@ -16,6 +16,7 @@
 #include "include/app/config_proposal.h"
 #include "include/app/present.h"
 #include "include/app/uagent_tool.h"
+#include "include/app/update.h"
 #include "include/cli/cli.h"
 #include "include/cli/options.h"
 #include "include/core/config_registry.h"
@@ -257,6 +258,11 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       out["memory"] = inputs.active.memory_enabled;
       out["web_search"] = inputs.active.web_search_backend;
       out["sandbox"] = SandboxDiagnosticJson();
+      // A newer release, as About last read it; only a person installs it.
+      if (const json update = UpdateState(false);
+          JsonValue(update, "available", false)) {
+        out["update"] = update["latest"];
+      }
       json diagnostics = inputs.config_manager.DiagnosticJson(inputs.active);
       out["restart_required"] = diagnostics["restart_required"];
       break;

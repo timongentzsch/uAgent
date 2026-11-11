@@ -9,6 +9,7 @@ import { Button, DialogHeader, Group, Row } from "../../shared/ui.tsx";
 import { SettingsContext, type SettingsProps } from "./context.ts";
 import Configuration from "./configuration.tsx";
 import { McpServers } from "./mcp.tsx";
+import { AboutPane } from "./panes/about.tsx";
 import { DevicesPane } from "./panes/devices.tsx";
 import { DisplayPane } from "./panes/display.tsx";
 import { PermissionsPane } from "./panes/permissions.tsx";
@@ -69,6 +70,7 @@ export default function Settings(props: SettingsProps) {
     ),
     browser: <DisplayPane />,
     host: <DevicesPane />,
+    about: <AboutPane />,
   };
   return (
     <SettingsContext.Provider value={props}>

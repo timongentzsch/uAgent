@@ -11,11 +11,13 @@
 #include <cerrno>
 #include <chrono>
 #include <climits>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -26,6 +28,7 @@
 #include "include/app/folder_overview.h"
 #include "include/app/self_description.h"
 #include "include/app/session_host.h"
+#include "include/app/update.h"
 #include "include/app/workspace_files.h"
 #include "include/browser/browser.h"
 #include "include/core/detail.h"
@@ -59,6 +62,7 @@ constexpr size_t kIdleWorkerThreads = 4;
 constexpr size_t kRequestWorkerThreads = 12;
 constexpr size_t kWorkerQueue = 24;
 constexpr int kReadTimeoutSeconds = 5;
+constexpr int64_t kUpdateCheckMs = int64_t{24} * 60 * 60 * 1000;
 constexpr int kWriteTimeoutSeconds = 2;
 constexpr int kKeepAliveRequests = 50;
 constexpr int kKeepAliveTimeoutSeconds = 2;
@@ -312,6 +316,23 @@ bool Master::Initialize(std::string& error) {
     response.set_header("Content-Encoding", "gzip");
     response.set_header("Vary", "Accept-Encoding");
   });
+  if (options_.update_check) {
+    // Asked at start when the last answer is a day old, then looked at
+    // hourly: an hour offline does not cost a day.
+    update_checker_ = std::jthread([this](const std::stop_token& stop) {
+      std::mutex mutex;
+      std::condition_variable_any woken;
+      while (!stop.stop_requested()) {
+        const int64_t checked =
+            JsonValue(UpdateState(options_.terminal), "checked_ms", int64_t{0});
+        if (NowMillis() - checked >= kUpdateCheckMs) {
+          CheckForUpdate(options_.terminal);
+        }
+        std::unique_lock lock(mutex);
+        woken.wait_for(lock, stop, std::chrono::hours(1), [] { return false; });
+      }
+    });
+  }
   if (options_.terminal) {
     // Every device lists the folders' shells as they come and go.
     terminals_ = std::make_unique<Terminals>(

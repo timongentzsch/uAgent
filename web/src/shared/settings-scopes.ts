@@ -1,4 +1,10 @@
-import { Folder, Monitor, SlidersHorizontal, Smartphone } from "lucide-preact";
+import {
+  Folder,
+  Info,
+  Monitor,
+  SlidersHorizontal,
+  Smartphone,
+} from "lucide-preact";
 
 export const SCOPES = [
   [
@@ -27,5 +33,6 @@ export const SCOPES = [
     Smartphone,
     () => "This host and the browsers paired with it.",
   ],
+  ["about", "About", Info, () => "This µAgent and its updates."],
 ] as const;
 export type Scope = (typeof SCOPES)[number][0];

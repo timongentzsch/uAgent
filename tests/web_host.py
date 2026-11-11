@@ -304,6 +304,17 @@ with (
     # Saved, not exported: what the environment sets cannot be edited in
     # Settings, and the providers are edited there.
     save_settings(home, binary=args.binary, UAGENT_PROVIDERS=json.dumps(providers))
+    # GitHub's newest release, as the About page reads it.
+    (root / "releases").mkdir()
+    (root / "releases/latest.json").write_text(
+        json.dumps(
+            {
+                "tag_name": "v999.0.0",
+                "body": "## Faster\n\n- Sheets open sooner",
+                "html_url": "https://github.com/timongentzsch/uAgent/releases/tag/v999.0.0",
+            }
+        )
+    )
     with web_host(
         args.binary.resolve(),
         root,
@@ -317,6 +328,7 @@ with (
             # The terminal's shell, the same on every machine.
             "SHELL": "/bin/sh",
             "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "UAGENT_INTERNAL_RELEASES": str(root / "releases"),
             **({"UAGENT_APPROVAL": "auto"} if args.auto_review else {}),
             # Locally the host serves the bundle on disk, so a web edit needs
             # no rebuild of the binary; CI serves the embedded one.

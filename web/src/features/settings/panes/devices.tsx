@@ -6,7 +6,6 @@ import {
   LoadError,
   Row,
 } from "../../../shared/ui.tsx";
-import { applyUpdate } from "../../../shared/pwa.ts";
 import { useAction } from "../../../shared/use-action.ts";
 import { manage } from "../../../state/api.ts";
 import { useSettings } from "../context.ts";
@@ -21,15 +20,7 @@ const ios =
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
 export function DevicesPane() {
-  const {
-    update,
-    updateBlocked,
-    install,
-    setInstall,
-    catalogue,
-    refresh,
-    logout,
-  } = useSettings();
+  const { install, setInstall, catalogue, refresh, logout } = useSettings();
   const action = useAction();
   const [confirm, setConfirm] = useState<
     { id: string; name: string } | "logout" | null
@@ -37,18 +28,6 @@ export function DevicesPane() {
   return (
     <>
       {action.error != null && !confirm && <LoadError error={action.error} />}
-      {update && (
-        <Group
-          title="Update"
-          footer="Updating reloads this view. Send or copy unsent drafts first."
-        >
-          <Row
-            label="Apply update"
-            disabled={updateBlocked}
-            onClick={() => applyUpdate(update)}
-          />
-        </Group>
-      )}
       <Group title="Install">
         {installed ? (
           <Row label="Installed" detail="Running as an installed app." />

@@ -23,6 +23,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include "include/app/session_host.h"
@@ -187,6 +188,7 @@ class Master {
   void PinsCommand(CommandCall& call);
   void RestartConversations(CommandCall& call);
   void RestartHost(CommandCall& call);
+  void UpdateCommand(CommandCall& call);
   void ConfigCommand(CommandCall& call);
   void TerminalCommand(CommandCall& call);
   // A remote host's shells; false when the command or socket names none, so
@@ -213,6 +215,12 @@ class Master {
   std::array<std::atomic<bool>, kViewerInstances> viewer_active_{};
   // Null while web.terminal is off.
   std::unique_ptr<Terminals> terminals_;
+  // The update a person started: whether its installer still runs, and what
+  // the last one printed and why it failed.
+  std::mutex update_mutex_;
+  json update_ UAGENT_GUARDED_BY(update_mutex_) = json::object();
+  std::jthread updater_;
+  std::jthread update_checker_;
   std::atomic<size_t> terminal_sockets_{0};
   mutable std::mutex remote_terminals_mutex_;
   json remote_terminals_ UAGENT_GUARDED_BY(remote_terminals_mutex_) =

@@ -261,6 +261,7 @@ add_library(
   src/app/control.cc
   src/app/schedule.cc
   src/app/launch.cc
+  src/app/update.cc
   src/app/folder_overview.cc
   src/app/agent_link.cc
   src/app/agent_tools.cc

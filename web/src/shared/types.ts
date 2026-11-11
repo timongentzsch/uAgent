@@ -742,6 +742,7 @@ export interface CommandResults {
   space: { spaces: Space[] };
   pins: { pins: Pin[] };
   restart_host: { restarting: boolean };
+  update: UpdateState;
   tools: ToolCatalogue;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
@@ -834,6 +835,7 @@ export interface CommandInputs {
   space: { action: string; cwd: string; name: string };
   pins: { pins: Pin[] };
   restart_host: None;
+  update: { action: "show" | "check" | "apply"; version?: string };
   tools: {
     operation: string;
     name?: string;
@@ -1116,3 +1118,21 @@ export type TerminalControl = { type: "resize"; rows: number; cols: number };
 export type TerminalNotice =
   | { type: "exit"; code: number }
   | { type: "replaced" };
+
+// This build, the newest release last read from GitHub, and what updating
+// this install takes: `apply` when the host can run it, else `command`.
+export interface UpdateState {
+  version: string;
+  install: string;
+  latest?: string;
+  notes?: string;
+  url?: string;
+  checked_ms?: number;
+  available: boolean;
+  apply: boolean;
+  blocked: string;
+  command: string;
+  installing?: boolean;
+  output?: string;
+  error?: string;
+}

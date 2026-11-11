@@ -195,12 +195,14 @@ int WebMain(const Options& options, char** argv) {
   const ConfigDescriptor& idle = Cfg("UAGENT_WEB_TERMINAL_IDLE_MINUTES");
   int64_t idle_minutes = std::get<int64_t>(idle.default_value);
   ParseInt64(setting("UAGENT_WEB_TERMINAL_IDLE_MINUTES").c_str(), idle_minutes);
+  bool update_check = false;
+  ParseBool(setting("UAGENT_WEB_UPDATE_CHECK"), update_check);
   return web::MasterMain(
       {static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
        setting("UAGENT_WEB_PUSH_CONTACT"), notification_detail, bind,
        setting("UAGENT_BROWSER_DATA"), terminal_on,
        std::clamp(idle_minutes, idle.minimum, idle.maximum),
-       setting("UAGENT_REMOTE_BUNDLE")},
+       setting("UAGENT_REMOTE_BUNDLE"), update_check},
       argv);
 }
 

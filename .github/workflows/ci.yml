@@ -123,6 +123,8 @@ jobs:
           package_home=$(mktemp -d)
           HOME="$package_home" UAGENT_LOCAL_ONLY=1 UAGENT_BUILD_DIR="$PWD/build" UAGENT_PREFIX="$prefix" ./install.sh
           test -z "$(ls -A "$package_home")"
+          # An archive is no install: its installer says how it was installed.
+          rm "$prefix/share/uagent/install"
           "$prefix/bin/uagent" --version
           mkdir -p dist
           archive="uagent-$version-${{ matrix.target }}.tar.gz"

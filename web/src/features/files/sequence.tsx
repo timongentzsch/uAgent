@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import {
   useEffect,
   useLayoutEffect,
@@ -18,12 +19,10 @@ import {
   Presentation,
   Search,
   SlidersHorizontal,
-  TriangleAlert,
 } from "lucide-preact";
-import { Button, ConfirmModal, IconButton, Switch } from "../../shared/ui.tsx";
-import { Input, Textarea } from "../../shared/form-controls.tsx";
+import { Actions, Button, IconButton } from "../../shared/ui.tsx";
+import { Textarea } from "../../shared/form-controls.tsx";
 import Frame, {
-  BoardFrame,
   type PageInfo,
   type PageMessage,
   type Pick,
@@ -35,19 +34,22 @@ import { FindField } from "../../shared/find-field.tsx";
 import { occurrences } from "../../shared/find.ts";
 import {
   type Board,
-  duplicated,
   type Kind,
   type Move,
   moved,
   pageAt,
-  removed,
+  shownAfter,
   spotAt,
   sum,
 } from "./boards.ts";
+import Legend from "./legend.tsx";
+import SlideActions from "./slide-actions.tsx";
+import Tweaks, { type Tweak } from "./tweaks.tsx";
 import { dirOf } from "./flow.ts";
 import { readTokens } from "./tokens.ts";
-import { bindZoomWheel, TAP_SLOP_PX } from "../../shared/zoom.ts";
+import { bindZoomWheel } from "../../shared/zoom.ts";
 import { useLatest } from "../../shared/use-latest.ts";
+import { useRoom } from "../../shared/layout.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import type { ViewedImage } from "../../shared/attachments.tsx";
 import { presentChannel, STEPS } from "./present.ts";
@@ -61,8 +63,6 @@ import { useResource } from "../../shared/use-resource.ts";
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 1.25;
-// How wide a board is drawn in the legend.
-const LEGEND_WIDTH = 128;
 
 // A page opened across the pane with what it is part of beside it: a deck's
 // slides, a document's pages, a design's boards. The stage shows one: a
@@ -72,24 +72,9 @@ const LEGEND_WIDTH = 128;
 // page declares; Present shows it over the whole app (full screen where the
 // browser allows) with a slide's notes; Open and PDF show it alone in a tab.
 
-interface Tweak {
-  editor?: string;
-  default?: unknown;
-  options?: unknown[];
-  min?: number;
-  max?: number;
-  step?: number;
-  // Shown beside the value, never applied: the page's CSS gives the unit.
-  unit?: string;
-}
-
 // The lines it adds to the draft, which the artifact skill reads.
 const commentLine = (path: string, pick: Pick, comment: string) =>
   `\`${path}\` \`${pick.selector}\`${pick.text ? ` “${pick.text}”` : ""} — ${comment}`;
-const pairs = (values: Record<string, unknown>) =>
-  Object.entries(values)
-    .map(([name, value]) => `${name} ${value}`)
-    .join(", ");
 
 // What a page's source draws as text, a text node each, as the page's own
 // find walks them: no script or style, and not a slide's notes.
@@ -104,233 +89,6 @@ function drawnText(html: string, slide: boolean) {
   return texts;
 }
 
-// The sequence small beside the stage (under it, as a filmstrip, in a narrow
-// pane): each board numbered with its title, the current one marked and kept
-// in view. A document is one frame with its pages marked on it, since a
-// frame per page would each draw the whole document. Only the boards near
-// the legend's view are drawn.
-function Legend({
-  unit,
-  boards,
-  srcs,
-  stamp,
-  index,
-  heard,
-  to,
-  move,
-  menu,
-}: {
-  // "Slide" or "Page": what a board is called.
-  unit: string;
-  boards: Board[];
-  // The boards' addresses, and those as one value: other boards, or one
-  // rewritten, are another.
-  srcs: string[];
-  stamp: string;
-  index: number;
-  heard: (path: string) => (message: PageMessage) => void;
-  to: (index: number) => void;
-  // A deck's alone: takes a slide to a new place, and opens a slide's menu.
-  move?: (from: number, to: number) => void;
-  menu?: (index: number) => void;
-}) {
-  const list = useRef<HTMLDivElement>(null);
-  const [near, setNear] = useState<ReadonlySet<string>>(new Set());
-  // Watched again when the boards are others.
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) =>
-        setNear((was) => {
-          const next = new Set(was);
-          for (const entry of entries) {
-            const path = (entry.target as HTMLElement).dataset.path!;
-            if (entry.isIntersecting) next.add(path);
-            else next.delete(path);
-          }
-          return next;
-        }),
-      { root: list.current, rootMargin: "100%" },
-    );
-    for (const item of list.current!.querySelectorAll("[data-path]"))
-      observer.observe(item);
-    return () => observer.disconnect();
-  }, [stamp]);
-  // The current one stays in view, and keeps the focus the legend has.
-  useEffect(() => {
-    const current = list.current?.querySelector<HTMLElement>(
-      '[aria-selected="true"]',
-    );
-    current?.scrollIntoView({ block: "nearest", inline: "nearest" });
-    if (list.current?.contains(document.activeElement))
-      current?.focus({ preventScroll: true });
-  }, [index]);
-  const option = (at: number, label: string) => ({
-    role: "option" as const,
-    "aria-selected": at === index,
-    "aria-label": label,
-    tabIndex: at === index ? 0 : -1,
-    onClick: () => to(at),
-  });
-  // A slide dragged to a new place: the press, held once it has moved, and
-  // the gap it would drop into (0 is before the first). A press that moved
-  // opens nothing.
-  const press = useRef<{ from: number; x: number; y: number; moved?: true }>(
-    undefined,
-  );
-  const [drop, setDrop] = useState<{ from: number; gap: number }>();
-  const items = () => [
-    ...list.current!.querySelectorAll<HTMLElement>("[data-path]"),
-  ];
-  const itemAt = (event: Event) =>
-    items().indexOf(
-      (event.target as Element).closest<HTMLElement>("[data-path]")!,
-    );
-  // The gap under the pointer: past the middles of how many slides it is,
-  // down the legend or, in a filmstrip, across it.
-  const gapAt = ({ clientX, clientY }: PointerEvent) => {
-    const all = items();
-    const across = all[1]?.offsetLeft > all[0].offsetLeft;
-    return all.filter((item) => {
-      const box = item.getBoundingClientRect();
-      return across
-        ? clientX > box.left + box.width / 2
-        : clientY > box.top + box.height / 2;
-    }).length;
-  };
-  // Only a document's pages say where in it they start.
-  const doc = boards[0].top !== undefined && boards[0];
-  const scale = LEGEND_WIDTH / boards[0].w;
-  return (
-    <div
-      class="page-legend"
-      role="listbox"
-      aria-label={`${unit}s`}
-      data-doc={!!doc || undefined}
-      ref={list}
-      // Up and Down walk it as a list; the pane's keys do the rest.
-      onKeyDown={(event) => {
-        const by = { ArrowDown: 1, ArrowUp: -1 }[event.key];
-        if (!by || !boards[index + by]) return;
-        to(index + by);
-        event.preventDefault();
-      }}
-      onPointerDown={(event) => {
-        const from = itemAt(event);
-        // A touch that drags scrolls the legend.
-        press.current =
-          move && from >= 0 && !event.button && event.pointerType !== "touch"
-            ? { from, x: event.clientX, y: event.clientY }
-            : undefined;
-      }}
-      onPointerMove={(event) => {
-        const held = press.current;
-        if (!held) return;
-        const far = Math.hypot(event.clientX - held.x, event.clientY - held.y);
-        if (!held.moved && far < TAP_SLOP_PX) return;
-        held.moved = true;
-        event.currentTarget.setPointerCapture(event.pointerId);
-        const gap = gapAt(event);
-        setDrop((was) => (was?.gap === gap ? was : { from: held.from, gap }));
-      }}
-      onPointerUp={(event) => {
-        const held = press.current;
-        setDrop(undefined);
-        if (!held?.moved) return;
-        const gap = gapAt(event);
-        const place = gap > held.from ? gap - 1 : gap;
-        if (place !== held.from) move?.(held.from, place);
-      }}
-      onPointerCancel={() => {
-        press.current = undefined;
-        setDrop(undefined);
-      }}
-      onClickCapture={(event) => {
-        if (press.current?.moved) event.stopPropagation();
-      }}
-      onContextMenu={(event) => {
-        const at = itemAt(event);
-        if (!menu || at < 0) return;
-        event.preventDefault();
-        // Under a press (where the menu comes with the button going down)
-        // it opens once the button is up and that release is dealt with:
-        // a popover opened before is dismissed by it.
-        if (event.buttons)
-          addEventListener("pointerup", () => setTimeout(() => menu(at)), {
-            once: true,
-          });
-        else menu(at);
-      }}
-    >
-      {doc ? (
-        <div class="page-legend-doc">
-          <BoardFrame
-            src={srcs[0]}
-            title={`${doc.title}: pages`}
-            w={doc.w}
-            h={sum(boards.map((board) => board.h))}
-            scale={scale}
-          />
-          {boards.map((board, at) => (
-            <Button
-              key={board.top}
-              variant="quiet"
-              class="cover page-legend-page small"
-              style={{
-                top: `${board.top! * scale}px`,
-                height: `${board.h * scale}px`,
-              }}
-              {...option(at, `Page ${at + 1}`)}
-            >
-              <span>{at + 1}</span>
-            </Button>
-          ))}
-        </div>
-      ) : (
-        boards.map((board, at) => (
-          <div
-            // By its place: a slide renamed is the same item, so the legend
-            // keeps its scroll through a reorder.
-            key={at}
-            class="page-legend-item"
-            data-path={board.path}
-            data-failed={board.failed || undefined}
-            data-dragging={drop?.from === at || undefined}
-            data-drop={
-              drop?.gap === at
-                ? "before"
-                : drop?.gap === at + 1 && at === boards.length - 1
-                  ? "after"
-                  : undefined
-            }
-          >
-            <BoardFrame
-              src={srcs[at]}
-              title={`${unit} ${at + 1}: ${board.title}`}
-              w={board.w}
-              h={board.h}
-              scale={LEGEND_WIDTH / board.w}
-              far={!near.has(board.path)}
-              onMessage={heard(board.path)}
-            />
-            <span class="page-legend-name small truncate">
-              {board.failed && <TriangleAlert />}
-              {`${at + 1} · ${board.title}`}
-            </span>
-            <Button
-              variant="quiet"
-              class="cover"
-              {...option(
-                at,
-                `${unit} ${at + 1}: ${board.title}${board.failed ? ", failed to run" : ""}`,
-              )}
-            />
-          </div>
-        ))
-      )}
-    </div>
-  );
-}
-
 export default function Sequence({
   path,
   kind,
@@ -341,9 +99,7 @@ export default function Sequence({
   addToChat,
   base,
   read,
-  picture,
-  pdf,
-  deckPdf,
+  drawn,
   presenter,
   save,
   arrange,
@@ -363,12 +119,9 @@ export default function Sequence({
   // design system the page links shows under Theme.
   base: string;
   read: (path: string) => Promise<string>;
-  // The page drawn as a PNG by the agent's browser, where there is one.
-  picture?: (width: number, height: number, scale: number) => string;
-  // The page printed as a PDF on its paper by the agent's browser, and a
-  // deck's slides as one, a page each at a slide's size.
-  pdf?: string;
-  deckPdf?: (width: number, height: number) => string;
+  // The address the agent's browser draws a path at as a PNG or a PDF (a
+  // folder's PDF is its deck), where it has one.
+  drawn?: (as: "png" | "pdf", path: string) => string;
   // Opens the presenter's view of a deck at a slide, in a window.
   presenter?: (slides: string[], at: string) => void;
   // A document's edited block saved to its file.
@@ -391,30 +144,35 @@ export default function Sequence({
   const frame = useRef<HTMLIFrameElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  const [room, setRoom] = useState({ w: 0, h: 0 });
+  const room = useRoom(scroller);
   // What the page said it is, for the address it said it at.
   const [said, setSaid] = useState<PageInfo & { src: string }>();
   const info = said?.src === src ? said : undefined;
-  const [selecting, setSelecting] = useState(false);
+  // Select picks an element to comment on; Edit, a document's, lets its
+  // text be typed in place. One at a time, told to the page as each goes on
+  // or off.
+  const [mode, setMode] = useState<"" | "select" | "edit">("");
+  const enter = (next: typeof mode) => {
+    if (mode) tell(frame.current, { type: mode, on: false });
+    if (next) tell(frame.current, { type: next, on: true });
+    setMode(next);
+    setHover(undefined);
+    if (next !== "select") setPicked(undefined);
+  };
   const [hover, setHover] = useState<Rect>();
   const [picked, setPicked] = useState<Pick>();
   const [comment, setComment] = useState("");
   const [tweaking, setTweaking] = useState(false);
-  const [values, setValues] = useState<Record<string, unknown>>({});
   // Reset reloads the page: what it declares comes back.
   const [load, setLoad] = useState(0);
-  useEffect(() => {
-    const observer = new ResizeObserver(([entry]) =>
-      setRoom({ w: entry.contentRect.width, h: entry.contentRect.height }),
-    );
-    if (scroller.current) observer.observe(scroller.current);
-    return () => observer.disconnect();
-  }, []);
-  // Another page: nothing picked or tried carries over.
+  // Another page: nothing picked, typed or zoomed carries over, and Edit is
+  // off.
   useEffect(() => {
     setPicked(undefined);
     setHover(undefined);
-    setValues({});
+    setMode((was) => (was === "edit" ? "" : was));
+    setSaved("");
+    setZoom(1);
   }, [src]);
   // Presenting: over the app, full screen where the browser allows, the
   // notes shown on a phone held upright or with N. Leaving full screen (a
@@ -535,15 +293,8 @@ export default function Sequence({
     document.addEventListener("keydown", pressed);
     return () => document.removeEventListener("keydown", pressed);
   }, [keys]);
-  // A document: Edit lets its text be typed in place, each block saved as
-  // it is left; its page breaks are marked where print will put them.
-  const [editing, setEditing] = useState(false);
+  // A document's block typed in place is saved as it is left.
   const [saved, setSaved] = useState("");
-  const edit = (on: boolean) => {
-    setEditing(on);
-    if (on) select(false);
-    tell(frame.current, { type: "edit", on });
-  };
   const keep = async (change: BlockEdit) => {
     setSaved("Saving…");
     try {
@@ -553,28 +304,61 @@ export default function Sequence({
       setSaved(error instanceof Error ? error.message : "Not saved");
     }
   };
-  useEffect(() => {
-    setEditing(false);
-    setSaved("");
-  }, [src]);
   // Its exports' name: the file's, without .html.
   const stem = nameOf(path).replace(/\.html?$/i, "");
   // Its size as a picture: an artboard's, or a page's full height.
   const size = pageSize(info, 8000);
   const { fixed } = size;
+  const sized = `&w=${size.w}&h=${size.h}`;
+  const png =
+    drawn &&
+    info &&
+    ((by: number) => `${drawn("png", path)}${sized}&scale=${by}`);
+  // The page in another format: what fits its kind. Its source is Download
+  // in the pane's header.
+  const download = (address: string, name: string) =>
+    saveLink(`${address}&download=1`, name);
+  const exports: (false | undefined | [string, () => void])[] = [
+    drawn
+      ? ["PDF", () => download(drawn("pdf", path), `${stem}.pdf`)]
+      : [
+          "Print or save as PDF",
+          () => window.open(`${src}#print`, "_blank", "noopener"),
+        ],
+    drawn &&
+      kind === "deck" && [
+        "PDF, a page per slide",
+        () =>
+          download(
+            `${drawn("pdf", `${dirOf(path)}/`)}${sized}`,
+            `${nameOf(dirOf(path)) || "deck"}.pdf`,
+          ),
+      ],
+    png && ["PNG image", () => download(png(2), `${stem}.png`)],
+    png && [
+      "Copy as image",
+      () =>
+        navigator.clipboard.write([
+          new ClipboardItem({
+            "image/png": fetch(png(2)).then((response) => response.blob()),
+          }),
+        ]),
+    ],
+    doc && ["Markdown", () => tell(frame.current, { type: "markdown" })],
+  ];
   // A fixed artboard fits the stage whole; a page that names only its width
   // (an A4 document) fits it across and scrolls down inside, as a PDF does.
   const wide = !!info?.artboard.w;
-  const fit = !room.w
-    ? 1
-    : fixed
-      ? Math.min(1, room.w / info!.artboard.w, room.h / info!.artboard.h)
-      : wide
-        ? Math.min(1, room.w / info!.artboard.w)
-        : 1;
+  const fit =
+    room.w && wide
+      ? Math.min(
+          1,
+          room.w / info!.artboard.w,
+          fixed ? room.h / info!.artboard.h : 1,
+        )
+      : 1;
   // How far the person zoomed from the fit; each page opens at the fit.
   const [zoom, setZoom] = useState(1);
-  useEffect(() => setZoom(1), [src]);
   const scale = fit * zoom;
   // Scales by `by` keeping the point (x, y) of the scroller where it is.
   const anchor = useRef<{ x: number; y: number; cx: number; cy: number }>(
@@ -616,16 +400,6 @@ export default function Sequence({
     if (box)
       return bindZoomWheel(box, (by, at) => wheelZoom.current(by, at.x, at.y));
   }, [wheelZoom]);
-  const select = (on: boolean) => {
-    if (on && editing) {
-      setEditing(false);
-      tell(frame.current, { type: "edit", on: false });
-    }
-    setSelecting(on);
-    setHover(undefined);
-    if (!on) setPicked(undefined);
-    tell(frame.current, { type: "select", on });
-  };
   // The design system the page links, by its tokens.css.
   const sheet = info?.sheets?.find((href) => /\/tokens\.css(\?|$)/.test(href));
   const system = sheet
@@ -635,18 +409,9 @@ export default function Sequence({
     () => (system ? read(system).then(readTokens) : undefined),
     [system],
   );
-  const [themed, setThemed] = useState<Record<string, string>>({});
-  const tryTheme = (name: string, value: string) => {
-    setThemed((all) => ({ ...all, [name]: value }));
-    tell(frame.current, { type: "tweak", name, value });
-  };
   const declared = Object.entries(
     (info?.tweaks ?? {}) as Record<string, Tweak>,
   );
-  const set = (name: string, value: unknown) => {
-    setValues((all) => ({ ...all, [name]: value }));
-    tell(frame.current, { type: "tweak", name, value });
-  };
   // Find: a deck's or a design's occurrences are counted in the boards'
   // source, so a step reaches a board that is not drawn, and the stage marks
   // those of the one shown. A document is one board that counts its own.
@@ -715,22 +480,31 @@ export default function Sequence({
     />
   );
   const [legend, setLegend] = useState(true);
+  // A tool that is on or off: named, or `bare` its icon alone.
+  const toggle = (
+    label: string,
+    on: boolean,
+    press: () => void,
+    icon: ComponentChildren,
+    bare?: boolean,
+  ) =>
+    bare ? (
+      <IconButton label={label} aria-pressed={on} onClick={press}>
+        {icon}
+      </IconButton>
+    ) : (
+      <Button variant="secondary" aria-pressed={on} onClick={press}>
+        {icon}
+        {label}
+      </Button>
+    );
+  const flip = (to: "select" | "edit") => enter(mode === to ? "" : to);
   const whole = doc ? "document" : kind === "deck" ? "deck" : "design";
-  // A deck rearranged from here: the stage follows the slide it shows to
-  // its new name, or to a neighbour when that slide is the one deleted.
+  // A deck rearranged from here, by a drag in the legend or from the slide's
+  // menu: the stage follows its slide.
   const names = boards.map((board) => nameOf(board.path));
-  const rearrange = (moves: Move[]) => {
-    const own = moves.find((move) => move.from === names[index] && !move.copy);
-    if (moves.length)
-      arrange?.(
-        moves,
-        (own ? own.to : names[index]) ||
-          names[index + 1] ||
-          names[index - 1] ||
-          "",
-      );
-  };
-  const [deleting, setDeleting] = useState(false);
+  const rearrange = (moves: Move[]) =>
+    moves.length && arrange?.(moves, shownAfter(moves, names, index));
   const stepper = useRef<HTMLDivElement>(null);
   // Which board of how many, with the previous and the next.
   const counter = (boards.length > 1 || arrange) && (
@@ -758,105 +532,63 @@ export default function Sequence({
       >
         <ChevronRight />
       </IconButton>
-      {/* Beside the legend, not in it: a listbox holds only its options. */}
       {arrange && !presenting && (
-        <Menu label="Slide actions">
-          <MenuItem
-            disabled={arranging || !index}
-            onClick={() => rearrange(moved(names, index, index - 1))}
-          >
-            Move up
-          </MenuItem>
-          <MenuItem
-            disabled={arranging || index === boards.length - 1}
-            onClick={() => rearrange(moved(names, index, index + 1))}
-          >
-            Move down
-          </MenuItem>
-          <MenuItem
-            disabled={arranging}
-            onClick={() => rearrange(duplicated(names, index))}
-          >
-            Duplicate
-          </MenuItem>
-          <MenuItem disabled={arranging} onClick={() => setDeleting(true)}>
-            Delete…
-          </MenuItem>
-        </Menu>
+        <SlideActions
+          slides={names}
+          index={index}
+          title={boards[index]?.title}
+          busy={arranging}
+          act={rearrange}
+        />
       )}
     </div>
   );
   return (
     <div class="open-page">
       <div class="page-tools">
-        {boards.length > 1 && (
-          <IconButton
-            label="Legend"
-            aria-pressed={legend}
-            onClick={() => setLegend(!legend)}
-          >
-            <PanelLeft />
-          </IconButton>
+        {boards.length > 1 &&
+          toggle(
+            "Legend",
+            legend,
+            () => setLegend(!legend),
+            <PanelLeft />,
+            true,
+          )}
+        {toggle(
+          "Select",
+          mode === "select",
+          () => flip("select"),
+          <MousePointerClick />,
         )}
-        <Button
-          variant="secondary"
-          aria-pressed={selecting}
-          onClick={() => select(!selecting)}
-        >
-          <MousePointerClick />
-          Select
-        </Button>
-        {save && doc && (
-          <Button
-            variant="secondary"
-            aria-pressed={editing}
-            onClick={() => edit(!editing)}
-          >
-            <Pencil />
-            Edit
-          </Button>
-        )}
+        {save &&
+          doc &&
+          toggle("Edit", mode === "edit", () => flip("edit"), <Pencil />)}
         {saved && (
           <span class="small muted" role="status">
             {saved}
           </span>
         )}
-        {(declared.length > 0 || !!theme.value?.colors.length) && (
-          <Button
-            variant="secondary"
-            aria-pressed={tweaking}
-            onClick={() => setTweaking(!tweaking)}
-          >
-            <SlidersHorizontal />
-            Tweaks
-          </Button>
-        )}
-        <IconButton
-          label="Find"
-          aria-pressed={finding}
-          onClick={() => setFinding(!finding)}
-        >
-          <Search />
-        </IconButton>
+        {(declared.length > 0 || !!theme.value?.colors.length) &&
+          toggle(
+            "Tweaks",
+            tweaking,
+            () => setTweaking(!tweaking),
+            <SlidersHorizontal />,
+          )}
+        {toggle("Find", finding, () => setFinding(!finding), <Search />, true)}
         <IconButton label="Present" onClick={() => present(true)}>
           <Presentation />
         </IconButton>
-        {picture && info && (
+        {png && (
           <IconButton
             label="Draw on it"
             onClick={() =>
-              view({
-                src: picture(size.w, size.h, 1),
-                name: `${stem}.png`,
-                edit: true,
-              })
+              view({ src: png(1), name: `${stem}.png`, edit: true })
             }
           >
             <PenLine />
           </IconButton>
         )}
-        {/* The page in another format: what fits its kind. Its source is
-            Download in the pane's header. */}
         <Menu
           label="Export"
           trigger={
@@ -867,62 +599,13 @@ export default function Sequence({
             </>
           }
         >
-          {pdf ? (
-            <MenuItem
-              onClick={() => saveLink(`${pdf}&download=1`, `${stem}.pdf`)}
-            >
-              PDF
-            </MenuItem>
-          ) : (
-            <MenuItem
-              onClick={() => window.open(`${src}#print`, "_blank", "noopener")}
-            >
-              Print or save as PDF
-            </MenuItem>
-          )}
-          {deckPdf && (
-            <MenuItem
-              onClick={() =>
-                saveLink(
-                  `${deckPdf(size.w, size.h)}&download=1`,
-                  `${nameOf(dirOf(path)) || "deck"}.pdf`,
-                )
-              }
-            >
-              PDF, a page per slide
-            </MenuItem>
-          )}
-          {picture && info && (
-            <>
-              <MenuItem
-                onClick={() =>
-                  saveLink(
-                    `${picture(size.w, size.h, 2)}&download=1`,
-                    `${stem}.png`,
-                  )
-                }
-              >
-                PNG image
-              </MenuItem>
-              <MenuItem
-                onClick={() =>
-                  navigator.clipboard.write([
-                    new ClipboardItem({
-                      "image/png": fetch(picture(size.w, size.h, 2)).then(
-                        (response) => response.blob(),
-                      ),
-                    }),
-                  ])
-                }
-              >
-                Copy as image
-              </MenuItem>
-            </>
-          )}
-          {doc && (
-            <MenuItem onClick={() => tell(frame.current, { type: "markdown" })}>
-              Markdown
-            </MenuItem>
+          {exports.map(
+            (item) =>
+              item && (
+                <MenuItem key={item[0]} onClick={item[1]}>
+                  {item[0]}
+                </MenuItem>
+              ),
           )}
         </Menu>
         <a
@@ -1018,10 +701,7 @@ export default function Sequence({
                     if (doc || message.type === "error") heard(path)(message);
                     if (message.type === "ready") {
                       setSaid({ ...message, src });
-                      if (editing)
-                        tell(frame.current, { type: "edit", on: true });
-                      if (selecting)
-                        tell(frame.current, { type: "select", on: true });
+                      if (mode) tell(frame.current, { type: mode, on: true });
                       // Rewritten and drawn again, a document stays where it
                       // was read, and what was found stays marked.
                       gotos.current = 0;
@@ -1068,8 +748,8 @@ export default function Sequence({
                       setPicked((was) => was && { ...was, rect: message.rect });
                     else if (message.type === "key") {
                       if (presenting) presentKey(message.key);
-                      else if (message.key === "Escape") select(false);
-                      else if (!selecting) stepKey(message.key);
+                      else if (mode !== "select") stepKey(message.key);
+                      else if (message.key === "Escape") enter("");
                     }
                   }}
                 />
@@ -1091,7 +771,7 @@ export default function Sequence({
                       )
                     );
                   })}
-                {selecting && hover && mark(hover, "hover")}
+                {mode === "select" && hover && mark(hover, "hover")}
                 {picked && mark(picked.rect, "picked")}
               </div>
             </div>
@@ -1145,162 +825,20 @@ export default function Sequence({
             </p>
           )}
         </div>
-        {tweaking && (
-          <aside class="page-tweaks" aria-label="Tweaks">
-            {declared.map(([name, tweak]) => {
-              const value = values[name] ?? tweak.default;
-              const label = name.replace(/^--/, "");
-              return (
-                <div key={name} class="page-tweak">
-                  <span class="small">
-                    {label}
-                    {tweak.editor !== "color" && tweak.editor !== "boolean" && (
-                      <span class="muted">{` ${value ?? ""}${tweak.unit ?? ""}`}</span>
-                    )}
-                  </span>
-                  {tweak.editor === "color" ? (
-                    <div class="segmented">
-                      {(tweak.options ?? []).map((option) => (
-                        <Button
-                          key={String(option)}
-                          variant="secondary"
-                          class="page-swatch"
-                          aria-label={String(option)}
-                          aria-pressed={value === option}
-                          style={{ background: String(option) }}
-                          onClick={() => set(name, option)}
-                        />
-                      ))}
-                      <Input
-                        type="color"
-                        aria-label={`${label}, any colour`}
-                        value={String(value ?? "")}
-                        onInput={(event) =>
-                          set(name, event.currentTarget.value)
-                        }
-                      />
-                    </div>
-                  ) : tweak.editor === "enum" ? (
-                    <div class="segmented">
-                      {(tweak.options ?? []).map((option) => (
-                        <Button
-                          key={String(option)}
-                          variant="secondary"
-                          aria-pressed={value === option}
-                          onClick={() => set(name, option)}
-                        >
-                          {String(option)}
-                        </Button>
-                      ))}
-                    </div>
-                  ) : tweak.editor === "boolean" ? (
-                    <Switch
-                      label={label}
-                      checked={!!value}
-                      onChange={(checked) => set(name, checked)}
-                    />
-                  ) : (
-                    <Input
-                      type="range"
-                      aria-label={label}
-                      min={tweak.min ?? 0}
-                      max={tweak.max ?? 100}
-                      step={tweak.step ?? (tweak.editor === "int" ? 1 : 0.01)}
-                      value={Number(value ?? 0)}
-                      onInput={(event) =>
-                        set(name, Number(event.currentTarget.value))
-                      }
-                    />
-                  )}
-                </div>
-              );
-            })}
-            {theme.value && theme.value.colors.length > 0 && (
-              <section class="page-theme" aria-label="Theme">
-                <span class="small">
-                  Theme <span class="muted">{system}</span>
-                </span>
-                {theme.value.themes.length > 1 && (
-                  <div class="segmented">
-                    {theme.value.themes.map((id) => (
-                      <Button
-                        key={id}
-                        variant="secondary"
-                        aria-pressed={
-                          (themed.theme ?? theme.value!.themes[0]) === id
-                        }
-                        onClick={() => tryTheme("theme", id)}
-                      >
-                        {id}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-                {theme.value.colors
-                  .filter((color) => /^#[0-9a-f]{6}$/i.test(color.value))
-                  .map((color) => (
-                    <label key={color.name} class="page-theme-token small">
-                      <Input
-                        type="color"
-                        value={themed[`--${color.name}`] ?? color.value}
-                        onInput={(event) =>
-                          tryTheme(`--${color.name}`, event.currentTarget.value)
-                        }
-                      />
-                      {color.name}
-                    </label>
-                  ))}
-                {addToChat && Object.keys(themed).length > 0 && (
-                  <Button
-                    onClick={() => {
-                      const { theme: id, ...colors } = themed;
-                      addToChat(
-                        `\`${system}\` theme ${id ?? theme.value!.themes[0]}: ${pairs(colors)}`,
-                      );
-                    }}
-                  >
-                    Keep theme
-                  </Button>
-                )}
-              </section>
-            )}
-            <div class="page-tweak-actions">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setThemed({});
-                  setValues({});
-                  setLoad(load + 1);
-                }}
-              >
-                Reset
-              </Button>
-              {addToChat && (
-                <Button
-                  disabled={!Object.keys(values).length}
-                  onClick={() =>
-                    addToChat(`\`${path}\` tweaks: ${pairs(values)}`)
-                  }
-                >
-                  Keep
-                </Button>
-              )}
-            </div>
-          </aside>
-        )}
+        <Tweaks
+          key={src}
+          open={tweaking}
+          path={path}
+          declared={declared}
+          theme={theme.value}
+          system={system}
+          tell={(name, value) =>
+            tell(frame.current, { type: "tweak", name, value })
+          }
+          reload={() => setLoad(load + 1)}
+          addToChat={addToChat}
+        />
       </div>
-      {deleting && (
-        <ConfirmModal
-          title="Delete slide"
-          close={() => setDeleting(false)}
-          confirm={() => {
-            setDeleting(false);
-            rearrange(removed(names, index));
-          }}
-        >
-          {`${boards[index].title} (${names[index]}) is deleted from the folder. This cannot be undone.`}
-        </ConfirmModal>
-      )}
       {picked && addToChat && (
         <form
           class="page-comment"
@@ -1321,7 +859,7 @@ export default function Sequence({
             value={comment}
             onInput={(event) => setComment(event.currentTarget.value)}
           />
-          <div class="page-tweak-actions">
+          <Actions>
             <Button
               variant="secondary"
               type="button"
@@ -1332,7 +870,7 @@ export default function Sequence({
             <Button type="submit" disabled={!comment.trim()}>
               Add to chat
             </Button>
-          </div>
+          </Actions>
         </form>
       )}
     </div>

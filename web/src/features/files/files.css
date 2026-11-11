@@ -252,19 +252,21 @@
 
 /* Pages of the folder: a design's canvas, or one page opened with the
    legend of what it is part of, both across the whole pane. */
-.files-stage {
-  position: relative;
+.files-stage,
+.open-page,
+.page-main,
+.canvas {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
 }
-.open-page {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+.files-stage,
+.canvas {
+  position: relative;
+}
+.files-stage {
+  background: var(--surface);
 }
 /* One row: on a narrow pane it scrolls sideways rather than wrapping. */
 .page-tools {
@@ -363,11 +365,7 @@
 }
 /* The stage, and a slide's notes under it. */
 .page-main {
-  flex: 1;
   min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
 .page-stage {
   position: relative;
@@ -388,18 +386,21 @@
 .page-stage:is([data-fixed], [data-wide]) .page-scroll {
   padding: var(--space-6);
 }
-.page-stage:is([data-fixed], [data-wide]) .page-holder {
-  margin: auto;
-}
+/* A new page fades in once it has drawn. */
 .page-holder {
   position: relative;
   flex: 1;
   display: flex;
+  transition: opacity var(--motion-slow) var(--ease-standard);
+}
+.page-holder[data-arriving] {
+  opacity: 0;
 }
 /* A page with a size sits on the stage with a hairline edge, drawn outside
    it so the page never covers it. */
 .page-stage:is([data-fixed], [data-wide]) .page-holder {
   flex: none;
+  margin: auto;
   outline: var(--border);
 }
 .page-holder > .page-frame {
@@ -444,7 +445,9 @@
   border-left: var(--border);
   background: var(--bg);
 }
-.page-tweak {
+.page-tweak,
+.page-theme,
+.page-comment {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -453,9 +456,6 @@
   min-width: var(--control);
 }
 .page-theme {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
   padding-top: var(--space-4);
   border-top: var(--border);
 }
@@ -464,15 +464,7 @@
   align-items: center;
   gap: var(--space-4);
 }
-.page-tweak-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-}
 .page-comment {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
   padding: var(--space-4);
   border-top: var(--border);
   background: var(--bg);
@@ -489,12 +481,6 @@
 }
 .page-stage[data-presenting] .page-scroll {
   padding: 0;
-}
-.page-holder {
-  transition: opacity var(--motion-slow) var(--ease-standard);
-}
-.page-holder[data-arriving] {
-  opacity: 0;
 }
 .page-notes {
   margin: 0;
@@ -629,13 +615,6 @@
     border-top: var(--border);
   }
 }
-.canvas {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
 /* Pages that failed to run, over the canvas or the sequence they are in. */
 .page-notice {
   display: flex;
@@ -676,9 +655,6 @@
   position: absolute;
   max-width: var(--popover);
   transform: translateY(calc(-100% - var(--space-2)));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--muted);
   pointer-events: none;
 }

@@ -8,12 +8,16 @@ import {
   expect,
   headerAction,
   online,
+  openFiles,
   selectProbeModel,
   servePending,
+  slide,
+  viewerOf,
+  writeFiles,
   SAMPLE_ASK,
 } from "./fixtures.js";
 import { createRequire } from "node:module";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const AXE = createRequire(import.meta.url).resolve("axe-core/axe.min.js");
@@ -162,9 +166,7 @@ for (const scheme of ["dark", "light"])
     session,
   }) => {
     await page.emulateMedia({ colorScheme: scheme });
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`/#session=${session.id}`);
-    await headerAction(page, "Files");
+    await openFiles(page, session);
     await page.getByRole("button", { name: "shot.png" }).click();
     await expect(page.getByRole("group", { name: "shot.png" })).toBeVisible();
     await page.getByRole("combobox", { name: "Search files" }).fill("png");
@@ -205,20 +207,11 @@ test("a deck in its viewer, with its legend and find, has no violations", async 
   session,
   host,
 }) => {
-  const dir = join(host.project, "decks", "talk");
-  await mkdir(dir, { recursive: true });
-  for (const title of ["Cover", "Plan"])
-    await writeFile(
-      join(dir, `${title}.html`),
-      `<!doctype html><html lang="en"><head><title>${title}</title><meta name="artboard" content="1920x1080 slide"></head><body><h1>${title}</h1><aside>Notes.</aside></body></html>`,
-    );
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`/#session=${session.id}`);
-  await headerAction(page, "Files");
-  const files = page.getByRole("region", { name: "Files" });
-  await files.getByRole("button", { name: "decks", exact: true }).click();
-  await files.getByRole("button", { name: "talk", exact: true }).click();
-  await files.getByRole("button", { name: "Open", exact: true }).click();
+  await writeFiles(join(host.project, "decks/talk"), {
+    "Cover.html": slide("Cover", "Notes."),
+    "Plan.html": slide("Plan", "Notes."),
+  });
+  const files = await openFiles(page, session, "decks/talk/");
   await expect(
     files.getByRole("option", { name: "Slide 2: Plan" }),
   ).toBeVisible();
@@ -226,9 +219,7 @@ test("a deck in its viewer, with its legend and find, has no violations", async 
   await files.getByRole("searchbox").fill("plan");
   await expect(files.getByRole("search")).toContainText("1 of 1");
   // The slide it found, drawn.
-  await expect(
-    files.frameLocator(".page-stage iframe").getByRole("heading"),
-  ).toHaveText("Plan");
+  await expect(viewerOf(files).stage.getByRole("heading")).toHaveText("Plan");
   await expect(files.getByRole("group", { name: "Zoom" })).toBeVisible();
   expect(await violations(page, ".files")).toEqual([]);
 });

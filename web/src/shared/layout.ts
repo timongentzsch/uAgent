@@ -1,3 +1,4 @@
+import type { RefObject } from "preact";
 import { useEffect, useLayoutEffect, useState } from "preact/hooks";
 import { defaultZoom } from "./limits.ts";
 // The interface zoom in steps, as a browser offers it: choosing one rescales
@@ -5,6 +6,23 @@ import { defaultZoom } from "./limits.ts";
 export const zoomSteps = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
 const conversationMeasure = 1040;
 export const zoomChanged = "uagent:zoom";
+
+// The room inside an element: measured as it mounts, so nothing in it is
+// drawn before its room is known, and again whenever that changes.
+export function useRoom(box: RefObject<HTMLElement | null>) {
+  const [room, setRoom] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    setRoom({ w: element.clientWidth, h: element.clientHeight });
+    const observer = new ResizeObserver(([entry]) =>
+      setRoom({ w: entry.contentRect.width, h: entry.contentRect.height }),
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [box]);
+  return room;
+}
 
 // A touch screen: the on-screen keyboard, no hover.
 export const coarsePointer = () => matchMedia("(pointer: coarse)").matches;

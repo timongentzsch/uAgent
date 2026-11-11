@@ -1,40 +1,33 @@
 // A design's pages open as a canvas in the Files pane, a deck's slides and a
 // document's pages in a viewer with a legend: each page live in a sandboxed
 // frame that reaches neither the app nor the host's API.
-import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { readdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { test, expect, headerAction, selectProbeModel } from "./fixtures.js";
+import {
+  test,
+  expect,
+  artboard,
+  openFiles,
+  openSession,
+  paper,
+  selectProbeModel,
+  slide,
+  viewerOf,
+  writeFiles,
+} from "./fixtures.js";
 
-const page = (title, body, size = "1440x900") =>
-  `<!doctype html><html><head><title>${title}</title>` +
-  `<meta name="artboard" content="${size}"></head><body>${body}</body></html>`;
-
-async function design(project) {
-  const dir = join(project, "design");
-  await mkdir(dir);
-  await writeFile(
-    join(dir, "01-hero-a.html"),
-    page("Hero A", "<h1>Alpha</h1>"),
-  );
-  await writeFile(join(dir, "01-hero-b.html"), page("Hero B", "<h1>Beta</h1>"));
-  await writeFile(
-    join(dir, "cover.html"),
+// A design of three pages, one of which throws as it loads.
+const design = (project) =>
+  writeFiles(join(project, "design"), {
+    "01-hero-a.html": artboard("Hero A", "<h1>Alpha</h1>"),
+    "01-hero-b.html": artboard("Hero B", "<h1>Beta</h1>"),
     // An error as the page would raise it, without failing the test's page.
-    page(
+    "cover.html": artboard(
       "Cover",
       '<p>Cover</p><script>dispatchEvent(new ErrorEvent("error", { message: "ReferenceError: missing is not defined", lineno: 3 }))</script>',
       "390x844",
     ),
-  );
-}
-
-async function openCanvas(app) {
-  await headerAction(app, "Files");
-  const files = app.getByRole("region", { name: "Files" });
-  await files.getByRole("button", { name: "design", exact: true }).click();
-  await files.getByRole("button", { name: "Open", exact: true }).click();
-  return files;
-}
+  });
 
 test("a design folder opens as a canvas of sandboxed pages", async ({
   page: app,
@@ -42,9 +35,7 @@ test("a design folder opens as a canvas of sandboxed pages", async ({
   host,
 }) => {
   await design(host.project);
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  const files = await openCanvas(app);
+  const files = await openFiles(app, session, "design/");
   // Rows by step: the pages without a number first, then step 01.
   await expect(files.getByText("01 · Hero A")).toBeVisible();
   await expect(
@@ -95,9 +86,7 @@ test("an agent's write reloads its page on the canvas", async ({
   command,
 }) => {
   await design(host.project);
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  await openCanvas(app);
+  await openFiles(app, session, "design/");
   await expect(
     app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
   ).toBeVisible();
@@ -115,9 +104,7 @@ test("the canvas pans and zooms like a plane", async ({
   host,
 }) => {
   await design(host.project);
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  const files = await openCanvas(app);
+  const files = await openFiles(app, session, "design/");
   const level = files.locator(".zoom-controls output");
   const plane = files.locator(".canvas .zoom-content");
   await expect(
@@ -151,11 +138,7 @@ test("the canvas pans and zooms like a plane", async ({
 
 // The Files sheet's canvas, its stage, and the zoom level it shows.
 async function phoneCanvas(app, session) {
-  await app.goto(`/#session=${session.id}`);
-  await headerAction(app, "Files");
-  const files = app.getByRole("dialog", { name: "Files" });
-  await files.getByRole("button", { name: "design", exact: true }).click();
-  await files.getByRole("button", { name: "Open", exact: true }).click();
+  const files = await openFiles(app, session, "design/", { phone: true });
   await expect(
     app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
   ).toBeVisible();
@@ -234,7 +217,6 @@ test("a trackpad pinch as Safari sends it zooms the canvas", async ({
   host,
 }) => {
   await design(host.project);
-  await app.setViewportSize({ width: 390, height: 844 });
   const { stage, cx, cy, percent } = await phoneCanvas(app, session);
   const before = await percent();
   await stage.evaluate(
@@ -262,8 +244,6 @@ test("a page opened: select and comment, tweaks, print", async ({
   session,
   host,
 }) => {
-  const dir = join(host.project, "design");
-  await mkdir(dir);
   const tweaks = JSON.stringify({
     "--gap": { editor: "range", default: 8, min: 0, max: 32, unit: "px" },
     variant: {
@@ -272,20 +252,14 @@ test("a page opened: select and comment, tweaks, print", async ({
       options: ["split", "stacked"],
     },
   });
-  await writeFile(
-    join(dir, "hero-a.html"),
-    page(
+  await writeFiles(join(host.project, "design"), {
+    "hero-a.html": artboard(
       "Hero A",
       `<script type="application/json" id="tweaks">${tweaks}</script><main><h1>Alpha headline</h1></main>`,
     ),
-  );
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  await headerAction(app, "Files");
-  const files = app.getByRole("region", { name: "Files" });
-  await files.getByRole("button", { name: "design", exact: true }).click();
+  });
   // A design of one page has no canvas: Open shows the page, with no legend.
-  await files.getByRole("button", { name: "Open", exact: true }).click();
+  const files = await openFiles(app, session, "design/");
   const frame = app.frameLocator('iframe[title="Hero A"]');
   await expect(frame.getByText("Alpha headline")).toBeVisible();
   await expect(files.locator(".canvas-page")).toHaveCount(0);
@@ -333,40 +307,24 @@ test("a design system opens on its brand book, and its themes are under Tweaks",
   session,
   host,
 }) => {
-  const system = join(host.project, "design", "system");
-  await mkdir(system, { recursive: true });
-  await writeFile(
-    join(system, "tokens.css"),
-    ':root, [data-theme="light"] {\n  --page: #ffffff;\n}\n[data-theme="dark"] {\n  --page: #000000;\n}\n',
-  );
-  // The book the agent writes: A4 wide, as tall as its pages.
-  await writeFile(
-    join(system, "book.html"),
-    page(
+  const linked = (sheet) => `<link rel="stylesheet" href="${sheet}">`;
+  await writeFiles(join(host.project, "design"), {
+    "system/tokens.css":
+      ':root, [data-theme="light"] {\n  --page: #ffffff;\n}\n[data-theme="dark"] {\n  --page: #000000;\n}\n',
+    // The book the agent writes: on A4, as tall as its pages.
+    "system/book.html": paper(
       "Brand book",
       '<section style="height:297mm;background:var(--page)"><h1>Brand</h1></section>',
-      "794",
-    ).replace(
-      "</head>",
-      '<meta name="print" content="flow a4"><link rel="stylesheet" href="tokens.css"></head>',
+      "a4",
+      linked("tokens.css"),
     ),
-  );
-  await mkdir(join(host.project, "design", "landing"));
-  await writeFile(
-    join(host.project, "design", "landing", "hero-a.html"),
-    page("Hero A", "<h1>Alpha</h1>").replace(
-      "</head>",
-      '<link rel="stylesheet" href="../system/tokens.css"></head>',
+    "landing/hero-a.html": artboard(
+      "Hero A",
+      `${linked("../system/tokens.css")}<h1>Alpha</h1>`,
     ),
-  );
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  await headerAction(app, "Files");
-  const files = app.getByRole("region", { name: "Files" });
-  await files.getByRole("button", { name: "design", exact: true }).click();
-  await files.getByRole("button", { name: "system", exact: true }).click();
+  });
   // Open on a design system is its book, never a canvas.
-  await files.getByRole("button", { name: "Open", exact: true }).click();
+  const files = await openFiles(app, session, "design/system/");
   await expect(
     app
       .frameLocator('iframe[title="Brand book"]')
@@ -401,24 +359,17 @@ test("on a phone a book opens as one page: its tools one row, Back to its list",
   session,
   host,
 }) => {
-  const system = join(host.project, "design", "system");
-  await mkdir(system, { recursive: true });
-  await writeFile(join(system, "tokens.css"), ":root{--page:#fff}");
-  await writeFile(
-    join(system, "book.html"),
-    page(
+  await writeFiles(join(host.project, "design/system"), {
+    "tokens.css": ":root{--page:#fff}",
+    "book.html": artboard(
       "Brand book",
       '<section style="height:297mm"><h1>Brand</h1></section>',
       "794",
     ),
-  );
-  await app.setViewportSize({ width: 390, height: 844 });
-  await app.goto(`/#session=${session.id}`);
-  await headerAction(app, "Files");
-  const files = app.getByRole("dialog", { name: "Files" });
-  await files.getByRole("button", { name: "design", exact: true }).click();
-  await files.getByRole("button", { name: "system", exact: true }).click();
-  await files.getByRole("button", { name: "book.html", exact: true }).click();
+  });
+  const files = await openFiles(app, session, "design/system/book.html", {
+    phone: true,
+  });
   await expect(
     app
       .frameLocator('iframe[title="Brand book"]')
@@ -445,11 +396,7 @@ test("Back closes the open page and shows the view it was opened from", async ({
   host,
 }) => {
   await design(host.project);
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  await headerAction(app, "Files");
-  const files = app.getByRole("region", { name: "Files" });
-  await files.getByRole("button", { name: "design", exact: true }).click();
+  const files = await openFiles(app, session, "design");
   // From the list: back to the list, never to a canvas.
   await files
     .getByRole("button", { name: "01-hero-a.html", exact: true })
@@ -479,13 +426,11 @@ test("a page as tall as it reads keeps its size on the canvas once it was opened
   session,
   host,
 }) => {
-  const dir = join(host.project, "design");
-  await mkdir(dir);
-  await writeFile(join(dir, "home.html"), page("Home", "<p>Short</p>", "1440"));
-  await writeFile(join(dir, "hero.html"), page("Hero", "<h1>Hero</h1>"));
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  const files = await openCanvas(app);
+  await writeFiles(join(host.project, "design"), {
+    "home.html": artboard("Home", "<p>Short</p>", "1440"),
+    "hero.html": artboard("Hero", "<h1>Hero</h1>"),
+  });
+  const files = await openFiles(app, session, "design/");
   const tile = files
     .locator(".canvas-page", { has: app.locator('iframe[title="Home"]') })
     .locator(".page-frame");
@@ -500,17 +445,36 @@ test("a page as tall as it reads keeps its size on the canvas once it was opened
   expect(await tile.evaluate((frame) => frame.style.height)).toBe(height);
 });
 
+test("a page that is ready before its stage is measured opens fitted", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  // What the browser says of sizes comes late: the page is ready first.
+  await app.addInitScript(() => {
+    const Real = ResizeObserver;
+    window.ResizeObserver = class extends Real {
+      constructor(said) {
+        super((...args) => setTimeout(() => said(...args), 1000));
+      }
+    };
+  });
+  await design(host.project);
+  const files = await openFiles(app, session, "design/01-hero-a.html");
+  // The first zoom it shows is the fit, never its full size.
+  const level = files.locator(".page-body .zoom-controls output");
+  const first = Number.parseInt(await level.textContent(), 10);
+  expect(first).toBeGreaterThan(0);
+  expect(first).toBeLessThan(100);
+});
+
 test("an opened page zooms as the canvas does, from the controls and over the page", async ({
   page: app,
   session,
   host,
 }) => {
   await design(host.project);
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  await headerAction(app, "Files");
-  const files = app.getByRole("region", { name: "Files" });
-  await files.getByRole("button", { name: "design", exact: true }).click();
+  const files = await openFiles(app, session, "design");
   await files
     .getByRole("button", { name: "01-hero-a.html", exact: true })
     .click();
@@ -580,24 +544,15 @@ test("a page that runs past its size or misses a file says so", async ({
   session,
   host,
 }) => {
-  const dir = join(host.project, "design", "book");
-  await mkdir(dir, { recursive: true });
-  await writeFile(
-    join(dir, "book.html"),
-    page(
+  await writeFiles(join(host.project, "design/book"), {
+    "book.html": artboard(
       "Book",
       '<style>section{height:300px;overflow:hidden}</style><section><div style="height:500px">Long</div></section><img src="missing.png" alt="">',
       "794",
     ),
-  );
-  await writeFile(join(dir, "02-cover.html"), page("Cover", "<p>ok</p>"));
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  await headerAction(app, "Files");
-  const files = app.getByRole("region", { name: "Files" });
-  await files.getByRole("button", { name: "design", exact: true }).click();
-  await files.getByRole("button", { name: "book", exact: true }).click();
-  await files.getByRole("button", { name: "Open", exact: true }).click();
+    "02-cover.html": artboard("Cover", "<p>ok</p>"),
+  });
+  const files = await openFiles(app, session, "design/book/");
   await expect(files.getByText("1 page failed to run")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   await expect(app.locator("#prompt")).toHaveValue(
@@ -610,11 +565,8 @@ test("a slide with text over text and a document block taller than a page say so
   session,
   host,
 }) => {
-  const dir = join(host.project, "design", "checks");
-  await mkdir(dir, { recursive: true });
-  await writeFile(
-    join(dir, "01-slide.html"),
-    page(
+  await writeFiles(join(host.project, "design/checks"), {
+    "01-slide.html": artboard(
       "Slide",
       '<p style="position:absolute;top:100px;left:100px;margin:0;font-size:40px">Revenue grew</p>' +
         '<p style="position:absolute;top:110px;left:120px;margin:0;font-size:40px">Footer note</p>' +
@@ -622,21 +574,14 @@ test("a slide with text over text and a document block taller than a page say so
         "<aside>Notes stay out of the check.</aside>",
       "1920x1080 slide",
     ),
-  );
-  // A5 with no artboard: as wide as its paper, and a figure taller than it.
-  await writeFile(
-    join(dir, "memo.html"),
-    '<!doctype html><html><head><title>Memo</title><meta name="print" content="flow a5"></head>' +
-      '<body style="margin:0"><figure style="height:1000px;margin:0">tall</figure></body></html>',
-  );
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  await headerAction(app, "Files");
-  const files = app.getByRole("region", { name: "Files" });
-  await files.getByRole("button", { name: "design", exact: true }).click();
-  await files.getByRole("button", { name: "checks", exact: true }).click();
+    // A5 with no artboard: as wide as its paper, and a figure taller than it.
+    "memo.html": paper(
+      "Memo",
+      '<style>*{margin:0}</style><figure style="height:1000px">tall</figure>',
+    ),
+  });
   // The one slide is a deck; the document beside it is its own.
-  await files.getByRole("button", { name: "Open", exact: true }).click();
+  const files = await openFiles(app, session, "design/checks/");
   await expect(files.getByText("1 page failed to run")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   const draft = app.locator("#prompt");
@@ -645,9 +590,7 @@ test("a slide with text over text and a document block taller than a page say so
   );
   await files.getByRole("button", { name: "Back to the list" }).click();
   await files.getByRole("button", { name: "memo.html", exact: true }).click();
-  await expect(
-    files.frameLocator(".page-stage iframe").getByText("tall"),
-  ).toBeVisible();
+  await expect(viewerOf(files).stage.getByText("tall")).toBeVisible();
   await expect(files.getByText("1 page failed to run")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   await expect(draft).toHaveValue(
@@ -655,35 +598,15 @@ test("a slide with text over text and a document block taller than a page say so
   );
 });
 
-// A slide of a deck: its title as its heading, its notes in its last aside.
-const slide = (title, notes, body = "") =>
-  page(
-    title,
-    `<h1>${title}</h1>${body}${notes ? `<aside>${notes}</aside>` : ""}`,
-    "1920x1080 slide",
-  );
-
 // A deck in decks/talk, opened from the tree: the pane, its legend, the
 // stage's page and the counter.
-async function openDeck(app, session, project, slides) {
-  const dir = join(project, "decks", "talk");
-  await mkdir(dir, { recursive: true });
-  for (const [name, html] of Object.entries(slides))
-    await writeFile(join(dir, name), html);
-  await app.goto(`/#session=${session.id}`);
-  await headerAction(app, "Files");
-  const files = app.getByRole(
-    app.viewportSize().width < 600 ? "dialog" : "region",
-    { name: "Files" },
-  );
-  await files.getByRole("button", { name: "decks", exact: true }).click();
-  await files.getByRole("button", { name: "talk", exact: true }).click();
-  await files.getByRole("button", { name: "Open", exact: true }).click();
+async function openDeck(app, session, project, slides, options) {
+  await writeFiles(join(project, "decks/talk"), slides);
+  const files = await openFiles(app, session, "decks/talk/", options);
   return {
     files,
     legend: files.getByRole("listbox", { name: "Slides" }),
-    stage: files.frameLocator(".page-stage iframe"),
-    count: files.getByRole("group", { name: "Step" }).locator("output"),
+    ...viewerOf(files),
   };
 }
 
@@ -692,7 +615,6 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
   session,
   host,
 }) => {
-  await app.setViewportSize({ width: 1440, height: 900 });
   const { files, legend, count } = await openDeck(app, session, host.project, {
     "01-cover.html": slide("Cover", "Say hello."),
     "02-plan.html": slide("Plan", "Three steps."),
@@ -766,7 +688,6 @@ test("a deck's legend, counter and keys step through its slides", async ({
   session,
   host,
 }) => {
-  await app.setViewportSize({ width: 1440, height: 900 });
   const { files, legend, stage, count } = await openDeck(
     app,
     session,
@@ -870,7 +791,6 @@ test("a long deck's legend draws only the slides near its view, and keeps the cu
   session,
   host,
 }) => {
-  await app.setViewportSize({ width: 1440, height: 900 });
   const names = Array.from({ length: 40 }, (_, at) =>
     String(at + 1).padStart(2, "0"),
   );
@@ -927,7 +847,6 @@ test("a deck's slide is dragged to a new place: the legend, the counter and the 
   session,
   host,
 }) => {
-  await app.setViewportSize({ width: 1440, height: 900 });
   const { legend, stage, count } = await openDeck(
     app,
     session,
@@ -968,6 +887,10 @@ test("a deck's slide is dragged to a new place: the legend, the counter and the 
   ]);
   // The stage stays with the slide it showed, under its new name.
   await expect(count).toHaveText("2 / 4");
+  // The drag ended with the release: the pointer moving on drags nothing.
+  const last = await legend.getByRole("option").nth(3).boundingBox();
+  await app.mouse.move(last.x + 20, last.y + 20, { steps: 4 });
+  await expect(legend.locator("[data-drop], [data-dragging]")).toHaveCount(0);
   await expect(stage.getByRole("heading", { name: "Cover" })).toBeVisible();
   expect(await slidesIn(host.project)).toEqual([
     "01-numbers.html",
@@ -1006,7 +929,6 @@ test("a deck's slide is moved, duplicated and deleted from its menu, by keyboard
   session,
   host,
 }) => {
-  await app.setViewportSize({ width: 1440, height: 900 });
   const { files, legend, stage, count } = await openDeck(
     app,
     session,
@@ -1104,7 +1026,6 @@ test("a move the folder no longer allows is refused: nothing moves, and the pane
   session,
   host,
 }) => {
-  await app.setViewportSize({ width: 1440, height: 900 });
   const { files, legend, count } = await openDeck(
     app,
     session,
@@ -1152,7 +1073,6 @@ test("on a phone a deck's legend is a filmstrip under the stage", async ({
   session,
   host,
 }) => {
-  await app.setViewportSize({ width: 390, height: 844 });
   const { files, legend, stage, count } = await openDeck(
     app,
     session,
@@ -1166,6 +1086,7 @@ test("on a phone a deck's legend is a filmstrip under the stage", async ({
         "End",
       ].map((title, at) => [`0${at + 1}.html`, slide(title)]),
     ),
+    { phone: true },
   );
   await expect(stage.getByRole("heading", { name: "Cover" })).toBeVisible();
   await expect(legend.getByRole("option")).toHaveCount(5);
@@ -1203,7 +1124,6 @@ test("a slide that fails is marked in the legend, and its errors go to the agent
   session,
   host,
 }) => {
-  await app.setViewportSize({ width: 1440, height: 900 });
   const { files, legend, stage } = await openDeck(app, session, host.project, {
     "01-cover.html": slide("Cover"),
     "02-broken.html": slide(
@@ -1234,7 +1154,6 @@ test("find in a deck steps across its slides and marks what it found", async ({
   session,
   host,
 }) => {
-  await app.setViewportSize({ width: 1440, height: 900 });
   const { files, stage, count } = await openDeck(app, session, host.project, {
     "01-cover.html": slide(
       "Cover",
@@ -1294,7 +1213,6 @@ test("what a slide says as it is left is never taken for the next slide's", asyn
   session,
   host,
 }) => {
-  await app.setViewportSize({ width: 1440, height: 900 });
   const { files, legend, stage } = await openDeck(app, session, host.project, {
     "01-cover.html": slide(
       "Cover",
@@ -1319,30 +1237,19 @@ test("a design's page opens among its pages; a document beside them is its own, 
   session,
   host,
 }) => {
-  const dir = join(host.project, "design");
-  await mkdir(dir);
-  for (const [name, title] of [
-    ["01-home", "Home"],
-    ["02-pricing", "Pricing"],
-    ["03-about", "About"],
-  ])
-    await writeFile(
-      join(dir, `${name}.html`),
-      page(title, `<h1>${title}</h1>`),
-    );
-  await writeFile(
-    join(dir, "terms.html"),
-    '<!doctype html><html><head><title>Terms</title><meta name="print" content="flow a4"></head><body><h1>Terms</h1></body></html>',
-  );
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  const files = await openCanvas(app);
+  const titled = (title) => artboard(title, `<h1>${title}</h1>`);
+  await writeFiles(join(host.project, "design"), {
+    "01-home.html": titled("Home"),
+    "02-pricing.html": titled("Pricing"),
+    "03-about.html": titled("About"),
+    "terms.html": paper("Terms", "<h1>Terms</h1>", "a4"),
+  });
+  const files = await openFiles(app, session, "design/");
   // The canvas shows all four.
   await expect(files.locator(".canvas-page")).toHaveCount(4);
   await files.getByRole("button", { name: "Open Pricing" }).click();
   const legend = files.getByRole("listbox", { name: "Pages" });
-  const stage = files.frameLocator(".page-stage iframe");
-  const count = files.getByRole("group", { name: "Step" }).locator("output");
+  const { stage, count } = viewerOf(files);
   await expect(legend.locator(".page-legend-name")).toHaveText([
     "1 · Home",
     "2 · Pricing",
@@ -1421,18 +1328,15 @@ test("a design's canvas shows its pictures and films, and a document or a deck i
   host,
   browserName,
 }) => {
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
+  await openSession(app, session);
   // A film and an AVIF are checked in Chromium, which records the one and
   // reads the other on every system; WebKit on Linux does neither.
   const rich = browserName === "chromium";
   const media = await drawnMedia(app, rich);
   const clip = media.type?.includes("webm") ? "clip.webm" : "clip.mp4";
-  const dir = join(host.project, "design");
-  await mkdir(join(dir, "talk"), { recursive: true });
-  for (const [name, content] of Object.entries({
-    "01-home.html": page("Home", "<h1>Home</h1>"),
-    "02-pricing.html": page("Pricing", "<h1>Pricing</h1>"),
+  await writeFiles(join(host.project, "design"), {
+    "01-home.html": artboard("Home", "<h1>Home</h1>"),
+    "02-pricing.html": artboard("Pricing", "<h1>Pricing</h1>"),
     "hero.png": Buffer.from(media.png, "base64"),
     ...(rich && {
       "photo.avif": Buffer.from(AVIF, "base64"),
@@ -1441,15 +1345,15 @@ test("a design's canvas shows its pictures and films, and a document or a deck i
     "mark.svg":
       '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100"/></svg>',
     "broken.png": "not a picture",
-    "memo.html":
-      '<!doctype html><html><head><title>Memo</title><meta name="print" content="flow a5"></head>' +
-      '<body><h1>Memo</h1><h2 style="break-before:page">Two</h2></body></html>',
+    "memo.html": paper(
+      "Memo",
+      '<h1>Memo</h1><h2 style="break-before:page">Two</h2>',
+    ),
     "talk/01-cover.html": slide("Cover"),
     "talk/02-plan.html": slide("Plan"),
     "talk/03-end.html": slide("End"),
-  }))
-    await writeFile(join(dir, name), content);
-  const files = await openCanvas(app);
+  });
+  const files = await openFiles(app, session, "design/");
   // Everything the folder holds lies on the canvas, each named for what a
   // click opens.
   for (const name of [
@@ -1521,7 +1425,7 @@ test("a design's canvas shows its pictures and films, and a document or a deck i
     await back.click();
   }
   // A deck's stack opens the deck at its first slide, with its own legend.
-  const stage = files.frameLocator(".page-stage iframe");
+  const { stage, count } = viewerOf(files);
   await files.getByRole("button", { name: "Open deck talk, 3 slides" }).click();
   await expect(stage.getByRole("heading", { name: "Cover" })).toBeVisible();
   await expect(
@@ -1535,9 +1439,7 @@ test("a design's canvas shows its pictures and films, and a document or a deck i
     .getByRole("button", { name: "Open document Memo, 2 pages" })
     .click();
   await expect(stage.getByRole("heading", { name: "Memo" })).toBeVisible();
-  await expect(
-    files.getByRole("group", { name: "Step" }).locator("output"),
-  ).toHaveText("Page 1 / 2");
+  await expect(count).toHaveText("Page 1 / 2");
   await back.click();
   // A page's legend still lists the pages only.
   await files.getByRole("button", { name: "Open Home" }).click();
@@ -1553,9 +1455,7 @@ test("find follows what the agent rewrites while it is open", async ({
   command,
 }) => {
   await design(host.project);
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  const files = await openCanvas(app);
+  const files = await openFiles(app, session, "design/");
   await files.getByRole("button", { name: "Open Hero B" }).click();
   await files.getByRole("button", { name: "Find" }).click();
   const bar = files.getByRole("search", { name: "Find in this design" });
@@ -1567,41 +1467,32 @@ test("find follows what the agent rewrites while it is open", async ({
   // The page it rewrote is read again, and holds the words now.
   await expect(bar).toContainText("1 of 1");
   await expect(
-    files
-      .frameLocator(".page-stage iframe")
-      .getByRole("heading", { name: "Rewritten" }),
+    viewerOf(files).stage.getByRole("heading", { name: "Rewritten" }),
   ).toBeVisible();
 });
 
 // docs/ends.html: three pages, the first nearly a full one and the other
 // two short, so the last two lie together in the document's last view.
-for (const [where, width, height] of [
-  ["a phone, where the counter is the only stepper", 390, 844],
-  ["a wide pane, by the legend too", 1440, 900],
+for (const [where, phone] of [
+  ["a phone, where the counter is the only stepper", true],
+  ["a wide pane, by the legend too", false],
 ])
   test(`a document's last pages are stepped to though it cannot scroll to them: on ${where}`, async ({
     page: app,
     session,
     host,
   }) => {
-    const dir = join(host.project, "docs");
-    await mkdir(dir, { recursive: true });
-    await writeFile(
-      join(dir, "ends.html"),
-      '<!doctype html><html><head><title>Ends</title><meta name="print" content="flow a5"><style>*{margin:0}</style></head>' +
-        '<body><p style="height:780px">One</p>' +
-        '<h2 style="break-before:page;height:40px">Two</h2><p style="height:400px">second</p>' +
-        '<h2 style="break-before:page;height:40px">Three</h2><p style="height:100px">third</p></body></html>',
-    );
-    await app.setViewportSize({ width, height });
-    await app.goto(`/#session=${session.id}`);
-    await headerAction(app, "Files");
-    const phone = width < 600;
-    const files = app.getByRole(phone ? "dialog" : "region", { name: "Files" });
-    await files.getByRole("button", { name: "docs", exact: true }).click();
-    await files.getByRole("button", { name: "ends.html", exact: true }).click();
-    const count = files.getByRole("group", { name: "Step" }).locator("output");
-    const page = files.frameLocator(".page-stage iframe").locator("html");
+    await writeFiles(join(host.project, "docs"), {
+      "ends.html": paper(
+        "Ends",
+        '<style>*{margin:0}</style><p style="height:780px">One</p>' +
+          '<h2 style="break-before:page;height:40px">Two</h2><p style="height:400px">second</p>' +
+          '<h2 style="break-before:page;height:40px">Three</h2><p style="height:100px">third</p>',
+      ),
+    });
+    const files = await openFiles(app, session, "docs/ends.html", { phone });
+    const { stage, count } = viewerOf(files);
+    const page = stage.locator("html");
     const next = files.getByRole("button", { name: "Next page" });
     const previous = files.getByRole("button", { name: "Previous page" });
     const legend = files.getByRole("listbox", { name: "Pages" });
@@ -1645,9 +1536,7 @@ for (const [where, width, height] of [
 // starting a page and shorter than one, so it has ten pages at any width.
 const MEMO_PAGES = 10;
 async function openMemo(app, session, project) {
-  const dir = join(project, "docs");
-  await mkdir(dir, { recursive: true });
-  const memo = join(dir, "memo.html");
+  const memo = join(project, "docs/memo.html");
   const parts = Array.from({ length: MEMO_PAGES }, (_, part) =>
     Array.from(
       { length: 12 },
@@ -1655,20 +1544,17 @@ async function openMemo(app, session, project) {
         `<p>Paragraph ${part * 12 + at + 1} of the memo, long enough to fill some of a page.</p>`,
     ).join(""),
   ).join('<h2 style="break-before:page">Next part</h2>');
-  await writeFile(
-    memo,
-    '<!doctype html>\n<html><head><title>Memo</title><meta name="print" content="flow a5"></head>' +
-      "<body><h1>Q3 memo</h1><p>Revenue grew.</p><ul><li>One</li><li>Two</li></ul>" +
-      "<table><tr><th>Ask</th><th>When</th></tr><tr><td>Hire</td><td>Nov</td></tr></table>" +
-      `${parts}</body></html>`,
-  );
-  await app.setViewportSize({ width: 1440, height: 900 });
-  await app.goto(`/#session=${session.id}`);
-  await headerAction(app, "Files");
-  const files = app.getByRole("region", { name: "Files" });
-  await files.getByRole("button", { name: "docs", exact: true }).click();
-  await files.getByRole("button", { name: "memo.html", exact: true }).click();
-  return { files, memo, page: files.frameLocator(".page-stage iframe") };
+  await writeFiles(project, {
+    "docs/memo.html": paper(
+      "Memo",
+      "<h1>Q3 memo</h1><p>Revenue grew.</p><ul><li>One</li><li>Two</li></ul>" +
+        "<table><tr><th>Ask</th><th>When</th></tr><tr><td>Hire</td><td>Nov</td></tr></table>" +
+        parts,
+    ),
+  });
+  const files = await openFiles(app, session, "docs/memo.html");
+  const { stage: page, count } = viewerOf(files);
+  return { files, memo, page, count };
 }
 
 test("a document's legend is its pages on one picture; a click, the Page keys and its own scroll move through them", async ({
@@ -1676,9 +1562,8 @@ test("a document's legend is its pages on one picture; a click, the Page keys an
   session,
   host,
 }) => {
-  const { files, page } = await openMemo(app, session, host.project);
+  const { files, page, count } = await openMemo(app, session, host.project);
   const legend = files.getByRole("listbox", { name: "Pages" });
-  const count = files.getByRole("group", { name: "Step" }).locator("output");
   const pages = MEMO_PAGES;
   await expect(count).toHaveText(`Page 1 / ${pages}`);
   // One frame of the whole document, a numbered area a page.
@@ -1726,8 +1611,7 @@ test("find in a document counts in the page itself and scrolls to what it found"
   session,
   host,
 }) => {
-  const { files, page } = await openMemo(app, session, host.project);
-  const count = files.getByRole("group", { name: "Step" }).locator("output");
+  const { files, page, count } = await openMemo(app, session, host.project);
   const pages = MEMO_PAGES;
   await expect(count).toHaveText(`Page 1 / ${pages}`);
   // What the page is asked to find, each as "words index".
@@ -1807,7 +1691,7 @@ test("a document is edited in place, saved to its file, and exports Markdown", a
   expect(saved).toContain("<p>Revenue grew. Churn held flat.</p>");
   expect(saved).toContain("<td>Hire</td>");
   expect(
-    saved.startsWith("<!doctype html>\n<html><head><title>Memo</title>"),
+    saved.startsWith("<!doctype html><html><head><title>Memo</title>"),
   ).toBe(true);
 
   // The agent rewrote that block meanwhile: the edit is refused, not merged.

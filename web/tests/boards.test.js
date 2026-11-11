@@ -14,6 +14,7 @@ import {
   removed,
   rewritten,
   settled,
+  shownAfter,
   spotAt,
 } from "../src/features/files/boards.ts";
 
@@ -171,6 +172,13 @@ test("a design's canvas holds its pages, pictures and films, and a stack for a d
     boards.filter((board) => settled(board, seen)).map((board) => board.path),
     ["d/memo.html", "d/hero.png", "d/huge.jpg", "d/torn.gif", "d/02-raw.mov"],
   );
+  // A step that holds no page is still in step order.
+  const steps = listing("", ["03-b.html"], ["01-a.html"], ["02-shot.png"]);
+  assert.deepEqual(paths(boardsOf("", steps, {})), [
+    "01-a.html",
+    "02-shot.png",
+    "03-b.html",
+  ]);
   // Beside one of its pages opened, the pages alone.
   assert.deepEqual(paths(boardsOf("d", design, seen, "cover.html", folders)), [
     "d/cover.html",
@@ -362,4 +370,14 @@ test("what a slide said is carried to its new name, a copy's too, and a deleted 
     "d/01-a.html": "A",
     "other/02-b.html": "Other",
   });
+});
+
+test("the stage follows its slide to its new name, or to a neighbour when it is deleted", () => {
+  assert.equal(shownAfter(moved(deck, 0, 1), deck, 0), "02-cover.html");
+  assert.equal(shownAfter(moved(deck, 0, 1), deck, 3), "04-end.html");
+  // A copy is not the slide itself.
+  assert.equal(shownAfter(duplicated(deck, 1), deck, 1), "02-plan.html");
+  assert.equal(shownAfter(removed(deck, 1), deck, 1), "03-numbers.html");
+  assert.equal(shownAfter(removed(deck, 3), deck, 3), "03-numbers.html");
+  assert.equal(shownAfter(removed(["only.html"], 0), ["only.html"], 0), "");
 });

@@ -2,9 +2,68 @@ import { test as base, expect } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 export { expect };
+
+// What the Files pane's tests put into a conversation's folder: a page with
+// an artboard (a size, a width alone, or a slide's), which makes a design; a
+// slide, its title as its heading and its notes in its last aside; and a
+// document on paper.
+export const artboard = (title, body, size = "1440x900") =>
+  `<!doctype html><html><head><title>${title}</title>` +
+  `<meta name="artboard" content="${size}"></head><body>${body}</body></html>`;
+export const slide = (title, notes = "", body = "") =>
+  artboard(
+    title,
+    `<h1>${title}</h1>${body}${notes ? `<aside>${notes}</aside>` : ""}`,
+    "1920x1080 slide",
+  );
+export const paper = (title, body, sheet = "a5", head = "") =>
+  `<!doctype html><html><head><title>${title}</title>` +
+  `<meta name="print" content="flow ${sheet}">${head}</head><body>${body}</body></html>`;
+
+// Writes files into a folder by their paths in it, making its folders.
+export async function writeFiles(root, files) {
+  for (const [name, content] of Object.entries(files)) {
+    await mkdir(dirname(join(root, name)), { recursive: true });
+    await writeFile(join(root, name), content);
+  }
+}
+
+// The conversation in a desktop's window, or a phone's.
+export async function openSession(page, session, { phone } = {}) {
+  await page.setViewportSize(
+    phone ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+  );
+  await page.goto(`/#session=${session.id}`);
+}
+
+// The conversation with Files open (a sheet on a phone) at a place in its
+// folder: each folder of `path` opened in the tree, then its last part: a
+// file, or with a closing slash the folder's own Open (its deck, its canvas,
+// its brand book). Returns the pane.
+export async function openFiles(page, session, path = "", options = {}) {
+  await openSession(page, session, options);
+  await headerAction(page, "Files");
+  const files = page.getByRole(options.phone ? "dialog" : "region", {
+    name: "Files",
+  });
+  for (const name of path.split("/").filter(Boolean))
+    await files.getByRole("button", { name, exact: true }).click();
+  if (path.endsWith("/"))
+    await files
+      .locator(`.tree-folder:has([data-path="${path.slice(0, -1)}"])`)
+      .getByRole("button", { name: "Open", exact: true })
+      .click();
+  return files;
+}
+
+// The viewer's stage (its page) and its counter, in the pane.
+export const viewerOf = (files) => ({
+  stage: files.frameLocator(".page-stage iframe"),
+  count: files.getByRole("group", { name: "Step" }).locator("output"),
+});
 
 // The serving host connection, independent of remote-host status rows.
 export const connected = (page) =>

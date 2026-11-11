@@ -242,22 +242,18 @@ export default function Files({
     preview.value &&
     `${pageAddress(preview.value.base, path)}?v=${versions[path] ?? 0}.${versions[""] ?? 0}`;
   const url = (path: string) => routes.files(id, "raw", path);
+  const list = (dir: string) => api<Listing>(routes.files(id, "list", dir));
+  const readFile = (path: string) =>
+    api<FileText>(routes.files(id, "read", path));
   // Tagged with its folder: another folder's listing stays shown until this
   // one answers, and is never taken for it.
   const listing = useResource(
-    () =>
-      api<Listing>(routes.files(id, "list", dir)).then((value) => ({
-        ...value,
-        dir,
-      })),
+    () => list(dir).then((value) => ({ ...value, dir })),
     [id, dir, turn, written],
   );
   const here = listing.value?.dir === dir ? listing.value : undefined;
   // The tree's top, read as the folder in context is.
-  const root = useResource(
-    () => api<Listing>(routes.files(id, "list", "")),
-    [id, turn, written],
-  );
+  const root = useResource(() => list(""), [id, turn, written]);
   const search = query.trim();
   const found = useResource<Found | undefined>(
     (signal) =>
@@ -285,10 +281,7 @@ export default function Files({
   const content = useResource(
     () =>
       view.kind === "file" && !image && !video && !changing
-        ? api<FileText>(routes.files(id, "read", file)).then((value) => ({
-            ...value,
-            path: file,
-          }))
+        ? readFile(file).then((value) => ({ ...value, path: file }))
         : undefined,
     [id, file, turn, changing, view.kind],
   );
@@ -380,7 +373,7 @@ export default function Files({
     let current = true;
     void resolve(flow, view, {
       list: (dir) =>
-        api<Listing>(routes.files(id, "list", dir)).catch((error) => {
+        list(dir).catch((error) => {
           if (failure(error).status === 404) return null;
           throw error;
         }),
@@ -460,9 +453,7 @@ export default function Files({
               .filter((entry) => entry.dir)
               .slice(0, 12)
               .map(({ name }) =>
-                api<Listing>(routes.files(id, "list", join(dir, name))).then(
-                  (inner) => [name, inner] as const,
-                ),
+                list(join(dir, name)).then((inner) => [name, inner] as const),
               ),
           ).then((inner) => ({ dir, inner: Object.fromEntries(inner) }))
         : undefined,
@@ -491,8 +482,7 @@ export default function Files({
   const arrange = (moves: Move[], show: string) =>
     arranging.run(async () => {
       await api(routes.fileWrite(id), { path: dir, moves });
-      const fresh = await api<Listing>(routes.files(id, "list", dir));
-      listing.setValue({ ...fresh, dir });
+      listing.setValue({ ...(await list(dir)), dir });
       setSeen((all) => carried(all, dir, moves));
       setFlow((current) =>
         swap(
@@ -521,14 +511,43 @@ export default function Files({
   const titled =
     view.kind === "canvas"
       ? dir
-      : view.kind === "resolve" || view.kind === "pick"
-        ? view.kind === "pick"
-          ? view.name
-          : view.path
-        : file;
+      : view.kind === "pick"
+        ? view.name
+        : view.kind === "resolve"
+          ? view.path
+          : file;
   const folderName = nameOf(folderOf(session)) || "Files";
   const fileError = content.error ? failure(content.error) : undefined;
   const above = back[back.length - 1];
+  // The file itself, saved or shared.
+  const download = {
+    href: `${url(file)}&download=1`,
+    download: nameOf(file),
+    onClick: shareOrDownload,
+  };
+  // Paths to pick from, under the search field.
+  const matches = (paths: string[], pick: (path: string) => void) => (
+    <SuggestionList
+      id="files-results"
+      class="files-results"
+      label="Matching files"
+      prefix="files-result"
+      items={paths}
+      index={index}
+      pick={pick}
+      keyOf={(path) => path}
+    >
+      {(path) => (
+        <>
+          <span class="files-name truncate">{nameOf(path)}</span>
+          <span class="files-dir">{dirOf(path)}</span>
+        </>
+      )}
+    </SuggestionList>
+  );
+  // What the stage waits for: the pages' address, then the folder, which
+  // says what a page is part of.
+  const pending = !preview.value ? preview : !here ? listing : undefined;
 
   return (
     <section
@@ -624,9 +643,7 @@ export default function Files({
         {file && !deleted && (
           <a
             class="file-button quiet icon-button"
-            href={`${url(file)}&download=1`}
-            download={nameOf(file)}
-            onClick={shareOrDownload}
+            {...download}
             aria-label={`Download ${nameOf(file)}`}
             title={`Download ${nameOf(file)}`}
           >
@@ -669,16 +686,9 @@ export default function Files({
               )}
             </p>
           )}
-          {!preview.value ? (
-            preview.error ? (
-              <LoadError error={preview.error} retry={preview.retry} />
-            ) : (
-              <Spinner label="Opening the pages…" />
-            )
-          ) : !here ? (
-            // What a page is part of is its folder's to say.
-            listing.error ? (
-              <LoadError error={listing.error} retry={listing.retry} />
+          {pending ? (
+            pending.error ? (
+              <LoadError error={pending.error} retry={pending.retry} />
             ) : (
               <Spinner label="Opening the pages…" />
             )
@@ -693,27 +703,15 @@ export default function Files({
                 setFlow((current) => swap(current, { kind: "sequence", path }))
               }
               addToChat={addToChat}
-              base={preview.value.base}
-              picture={
-                pictures
-                  ? (w, h, scale) =>
-                      `${routes.files(id, "png", file)}&w=${w}&h=${h}&scale=${scale}`
-                  : undefined
-              }
-              pdf={pictures ? routes.files(id, "pdf", file) : undefined}
-              deckPdf={
-                pictures && kind === "deck"
-                  ? (w, h) =>
-                      `${routes.files(id, "pdf", `${dir}/`)}&w=${w}&h=${h}`
-                  : undefined
+              base={preview.value!.base}
+              drawn={
+                pictures ? (as, path) => routes.files(id, as, path) : undefined
               }
               presenter={(slides, at) =>
                 openPresenter({ session: id, slides, at })
               }
               save={async (edit) => {
-                const read = await api<FileText>(
-                  routes.files(id, "read", file),
-                );
+                const read = await readFile(file);
                 const text = read.revision ? applyEdit(read.text, edit) : null;
                 if (text === null)
                   throw new Error(
@@ -728,11 +726,7 @@ export default function Files({
               arrange={kind === "deck" ? arrange : undefined}
               arranging={arranging.busy}
               view={viewer}
-              read={(path) =>
-                api<FileText>(routes.files(id, "read", path)).then(
-                  (value) => value.text,
-                )
-              }
+              read={(path) => readFile(path).then((value) => value.text)}
             />
           ) : (
             <Plane
@@ -781,7 +775,6 @@ export default function Files({
           <div class="files-search-row">
             <Input
               type="search"
-              class="files-search"
               aria-label="Search files"
               placeholder="Search files…"
               role="combobox"
@@ -833,45 +826,11 @@ export default function Files({
                   ? ` Pick one to open it at line ${view.lines[0]}.`
                   : " Pick one to open it."}
               </p>
-              <SuggestionList
-                id="files-results"
-                class="files-results"
-                label="Matching files"
-                prefix="files-result"
-                items={view.paths}
-                index={index}
-                pick={(path) =>
-                  setFlow((current) => follow(current, path, view.lines))
-                }
-                keyOf={(path) => path}
-              >
-                {(path) => (
-                  <>
-                    <span class="files-name truncate">{nameOf(path)}</span>
-                    <span class="files-dir">{dirOf(path)}</span>
-                  </>
-                )}
-              </SuggestionList>
+              {matches(view.paths, (path) => go(path, view.lines))}
             </>
           ) : search ? (
             <>
-              <SuggestionList
-                id="files-results"
-                class="files-results"
-                label="Matching files"
-                prefix="files-result"
-                items={results}
-                index={index}
-                pick={(path) => show(opened(path))}
-                keyOf={(path) => path}
-              >
-                {(path) => (
-                  <>
-                    <span class="files-name truncate">{nameOf(path)}</span>
-                    <span class="files-dir">{dirOf(path)}</span>
-                  </>
-                )}
-              </SuggestionList>
+              {matches(results, (path) => show(opened(path)))}
               {found.error ? (
                 <LoadError error={found.error} retry={found.retry} />
               ) : found.value && !results.length ? (
@@ -1003,13 +962,7 @@ export default function Files({
               <div class="files-binary">
                 <File />
                 <p>{nameOf(file)} is not text, so it can't be shown here.</p>
-                <a
-                  href={`${url(file)}&download=1`}
-                  download={nameOf(file)}
-                  onClick={shareOrDownload}
-                >
-                  Download
-                </a>
+                <a {...download}>Download</a>
               </div>
             ) : (
               <LoadError error={content.error} retry={content.retry} />
@@ -1033,14 +986,7 @@ export default function Files({
               {text.more && (
                 <p class="files-note files-cut">
                   Showing the first part of this file.{" "}
-                  <a
-                    href={`${url(file)}&download=1`}
-                    download={nameOf(file)}
-                    onClick={shareOrDownload}
-                  >
-                    Download it
-                  </a>{" "}
-                  for the rest.
+                  <a {...download}>Download it</a> for the rest.
                 </p>
               )}
             </>

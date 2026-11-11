@@ -37,7 +37,7 @@ export type View =
       fresh: boolean;
     }
   | { kind: "outside"; path: string };
-export type ResolveView = Extract<View, { kind: "resolve" }>;
+type ResolveView = Extract<View, { kind: "resolve" }>;
 
 export interface Flow {
   view: View;
@@ -117,7 +117,7 @@ export const follow = (flow: Flow, path: string, lines?: Lines) =>
 
 // What a lookup reads: a folder's entries and what they are (null when
 // there is no such folder), and the folder's paths whose name matches.
-export interface Lookup {
+interface Lookup {
   list: (dir: string) => Promise<Listing | null>;
   find: (name: string) => Promise<string[]>;
 }

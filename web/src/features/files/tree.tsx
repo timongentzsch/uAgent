@@ -23,7 +23,7 @@ import { folderView } from "./flow.ts";
 export interface Listing extends Pages {
   more: boolean;
 }
-export interface TreeProps {
+interface TreeProps {
   session: string;
   // Read again when a turn starts or ends, or a file is written.
   version: string;
@@ -165,7 +165,6 @@ function FolderNode({
           <Button
             variant="quiet"
             size="compact"
-            class="tree-action"
             onClick={() => props.openFolder(path)}
           >
             Open

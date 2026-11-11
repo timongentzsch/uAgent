@@ -7,6 +7,7 @@ import Frame, {
 } from "../../shared/page-frame.tsx";
 import { pageSize } from "../../shared/page-size.ts";
 import { useLatest } from "../../shared/use-latest.ts";
+import { useRoom } from "../../shared/layout.ts";
 import { type Presenting, presentChannel, STEPS } from "./present.ts";
 import "./files.css";
 
@@ -24,15 +25,8 @@ function Slide({
   onInfo?: (info: PageInfo) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
-  const [room, setRoom] = useState({ w: 0, h: 0 });
+  const room = useRoom(box);
   const [info, setInfo] = useState<PageInfo>();
-  useEffect(() => {
-    const observer = new ResizeObserver(([entry]) =>
-      setRoom({ w: entry.contentRect.width, h: entry.contentRect.height }),
-    );
-    if (box.current) observer.observe(box.current);
-    return () => observer.disconnect();
-  }, []);
   const { w, h } = pageSize(info, 1080);
   const scale = Math.min(room.w / w, room.h / h) || 0;
   return (

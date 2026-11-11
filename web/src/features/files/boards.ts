@@ -152,6 +152,19 @@ export function duplicated(slides: string[], at: number) {
   );
 }
 
+// The slide to show once `moves` are done, of a deck showing the one at
+// `index`: that slide under its new name, or a neighbour when it is the one
+// deleted.
+export function shownAfter(moves: Move[], slides: string[], index: number) {
+  const own = moves.find((move) => move.from === slides[index] && !move.copy);
+  return (
+    (own ? own.to : slides[index]) ||
+    slides[index + 1] ||
+    slides[index - 1] ||
+    ""
+  );
+}
+
 // The slide at `at` deleted; the others keep their names.
 export const removed = (slides: string[], at: number): Move[] => [
   { from: slides[at], to: "" },
@@ -186,17 +199,14 @@ const rowOf = (name: string) => /^(\d+)-/.exec(name)?.[1] ?? "";
 // the stepless first, and in a row the pages before what else lies in it,
 // each by name.
 function rows(names: string[]) {
+  const byName = (a: string, b: string) =>
+    a.localeCompare(b, undefined, { numeric: true });
   const sorted = [...names].sort(
-    (a, b) =>
-      +!HTML.test(a) - +!HTML.test(b) ||
-      a.localeCompare(b, undefined, { numeric: true }),
+    (a, b) => +!HTML.test(a) - +!HTML.test(b) || byName(a, b),
   );
-  const groups = new Map<string, string[]>();
-  for (const name of sorted.filter((name) => !rowOf(name)))
-    groups.set("", [...(groups.get("") ?? []), name]);
-  for (const name of sorted.filter(rowOf))
-    groups.set(rowOf(name), [...(groups.get(rowOf(name)) ?? []), name]);
-  return [...groups];
+  return [...new Set(names.map(rowOf))]
+    .sort(byName)
+    .map((row) => [row, sorted.filter((name) => rowOf(name) === row)] as const);
 }
 
 // The boards of the folder `dir`. With the page `name` opened, what that is

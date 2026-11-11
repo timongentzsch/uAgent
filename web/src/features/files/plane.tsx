@@ -4,7 +4,7 @@ import { ARTIFACT } from "../../shared/artifact.ts";
 import { plural } from "../../shared/quantities.ts";
 import { ZoomSurface } from "../../shared/zoom-surface.tsx";
 import type { ZoomView } from "../../shared/zoom.ts";
-import { BoardFrame, type PageMessage } from "../../shared/page-frame.tsx";
+import Frame, { type PageMessage } from "../../shared/page-frame.tsx";
 import { type Board, still } from "./boards.ts";
 import { dirOf } from "./flow.ts";
 
@@ -87,7 +87,7 @@ export default function Plane({
         over={placed.map((item, at) => (
           <span
             key={item.path}
-            class="canvas-name small"
+            class="canvas-name small truncate"
             style={{
               left: `${x + item.x * s}px`,
               top: `${y + item.y * s}px`,
@@ -114,11 +114,12 @@ export default function Plane({
             data-failed={item.failed || undefined}
             style={{ left: `${item.x}px`, top: `${item.y}px` }}
           >
-            <BoardFrame
+            <Frame
+              live={false}
               src={page(item.path)}
               title={item.title}
-              w={item.w}
-              h={item.h}
+              width={item.w}
+              height={item.h}
               media={item.media}
               // What did not load is its box, never a broken picture.
               far={!!lost(item)}

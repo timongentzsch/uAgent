@@ -88,9 +88,11 @@ export default function Frame({
   width?: number;
   height?: number;
   scale?: number;
-  // On the canvas a frame is a picture: the canvas takes the pointer.
+  // Not live, a frame is a picture of a board (on the canvas, in a legend,
+  // as a thumbnail): what it lies on takes the pointer.
   live?: boolean;
-  // Only its box, with nothing in it. The box itself stays whatever it
+  // Only its box, with nothing in it: a long deck's legend runs the few
+  // pages near its view and no more. The box itself stays whatever it
   // holds: a legend whose boxes came and went with their pages lost its
   // place as they were swapped.
   far?: boolean;
@@ -186,43 +188,6 @@ export function usePreviewBase(session: string) {
   );
 }
 
-// One board as a picture: its page, or an image or a video of the folder,
-// drawn `w` by `h` at a scale. While `far` (out of a legend's view) only its box is
-// there, so a long deck runs the few pages near the view and no more.
-export function BoardFrame({
-  src,
-  title,
-  w,
-  h,
-  scale,
-  far,
-  media,
-  onMessage,
-}: {
-  src: string;
-  title: string;
-  w: number;
-  h: number;
-  scale?: number;
-  far?: boolean;
-  media?: string;
-  onMessage?: (message: PageMessage) => void;
-}) {
-  return (
-    <Frame
-      src={src}
-      title={title}
-      width={w}
-      height={h}
-      scale={scale}
-      live={false}
-      far={far}
-      media={media}
-      onMessage={onMessage}
-    />
-  );
-}
-
 // How tall every page thumbnail is, in chat and the Library alike.
 const THUMB_HEIGHT = 160;
 
@@ -233,11 +198,12 @@ export function PageThumb({ base, path }: { base: string; path: string }) {
   const { w, h } = pageSize(info, 900);
   return (
     <div class="page-thumb">
-      <BoardFrame
+      <Frame
+        live={false}
         src={pageAddress(base, path)}
         title={info?.title || path}
-        w={w}
-        h={h}
+        width={w}
+        height={h}
         scale={THUMB_HEIGHT / h}
         onMessage={(message) => message.type === "ready" && setInfo(message)}
       />

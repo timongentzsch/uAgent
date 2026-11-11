@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import {
   ChevronDown,
   FileOutput,
@@ -8,17 +8,8 @@ import {
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { saveLink } from "../../shared/share.ts";
 import { Button } from "../../shared/ui.tsx";
-import { ZoomControls } from "../../shared/zoom-surface.tsx";
-import {
-  bindZoomWheel,
-  capturePointer,
-  distance,
-  midpoint,
-  pinchView,
-  type Point,
-  TAP_SLOP_PX,
-  type ZoomView,
-} from "../../shared/zoom.ts";
+import { ZoomSurface } from "../../shared/zoom-surface.tsx";
+import type { ZoomView } from "../../shared/zoom.ts";
 import Frame, {
   type PageInfo,
   type PageMessage,
@@ -30,9 +21,8 @@ import Frame, {
 // `02-pricing--annual.html`) is its row; pages without one form the first.
 // A deck, a folder whose every page is a slide, lies in slide order instead,
 // numbered, and presents and prints from here.
-// Pinch, ⌘ or Ctrl and the wheel, or a
-// trackpad pinch zoom at the pointer; a drag or the wheel pans. A click opens
-// a page; a page that fails says so and offers its errors to the agent.
+// It zooms and pans as ZoomSurface's plane does. A click opens a page; a
+// page that fails says so and offers its errors to the agent.
 
 // The plane: artboards at their real size, 80 px apart in a row and 240
 // between rows (room for a name at any zoom), as Claude's canvas spaces them.
@@ -108,7 +98,6 @@ export default function Canvas({
               };
       return next ? { ...all, [name]: next } : all;
     });
-  const stage = useRef<HTMLDivElement>(null);
   const sizeOf = (name: string) => pageSize(seen[name]?.info);
   const deck =
     names.length > 0 &&
@@ -142,109 +131,17 @@ export default function Canvas({
       return items;
     });
   }, [grouped, seen, deck]);
-  const [view, setView] = useState<ZoomView>({ x: 24, y: 48, scale: 0.2 });
-  const fit = () => {
-    const box = stage.current;
-    if (!box || !placed.length) return;
+  const [view, setView] = useState<ZoomView>({ x: 0, y: 0, scale: 1 });
+  // The whole design across the surface, under its first row of names.
+  const fit = (width: number, height: number) => {
+    if (!placed.length) return undefined;
     const w = Math.max(...placed.map((item) => item.x + item.w));
     const h = Math.max(...placed.map((item) => item.y + item.h));
-    const scale = Math.min(
-      1,
-      (box.clientWidth - 48) / w,
-      (box.clientHeight - 96) / h,
-    );
-    setView({ x: (box.clientWidth - w * scale) / 2, y: 48, scale });
+    const scale = Math.min(1, (width - 48) / w, (height - 96) / h);
+    return { x: (width - w * scale) / 2, y: 48, scale };
   };
-  // Fit once the pages have said how large they are, and for a new folder.
+  // Fitted once the pages have said how large they are, and for a new folder.
   const sized = names.every((name) => seen[name]?.info);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: on arrival
-  useEffect(fit, [sized, dir]);
-  // Scale by `by`, what was under `from` moving to `to` (by default, staying).
-  const zoomAt = (by: number, from: Point, to = from) =>
-    setView((was) => pinchView(was, 0, 0, from, to, by, ZOOM));
-  const center = (by: number) => {
-    const box = stage.current;
-    if (box) zoomAt(by, { x: box.clientWidth / 2, y: box.clientHeight / 2 });
-  };
-  // One pointer pans, two pinch. A pointer that moved opens nothing.
-  const pointers = useRef(new Map<number, Point>());
-  // The wheel pans; with ⌘ or Ctrl (a trackpad pinch sends Ctrl) it zooms.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: one listener, state by updater
-  useEffect(() => {
-    const box = stage.current;
-    if (!box) return;
-    const unbindWheel = bindZoomWheel(box, zoomAt, (dx, dy) => {
-      setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
-      return true;
-    });
-    // Safari sends a trackpad pinch as gesture events, not the wheel. A
-    // touch pinch sends them too, which the pointers below already zoom.
-    let scale = 1;
-    const gesture = (event: Event) => {
-      const {
-        scale: next,
-        clientX,
-        clientY,
-      } = event as Event & {
-        scale: number;
-        clientX: number;
-        clientY: number;
-      };
-      event.preventDefault();
-      if (event.type === "gesturestart") scale = 1;
-      else if (pointers.current.size < 2) {
-        const at = box.getBoundingClientRect();
-        zoomAt(next / scale, { x: clientX - at.left, y: clientY - at.top });
-      }
-      scale = next;
-    };
-    for (const kind of ["gesturestart", "gesturechange"])
-      box.addEventListener(kind, gesture);
-    return () => {
-      unbindWheel();
-      for (const kind of ["gesturestart", "gesturechange"])
-        box.removeEventListener(kind, gesture);
-    };
-  }, []);
-  const moved = useRef(false);
-  const down = (event: PointerEvent) => {
-    pointers.current.set(event.pointerId, {
-      x: event.clientX,
-      y: event.clientY,
-    });
-    if (pointers.current.size === 1) moved.current = false;
-  };
-  const move = (event: PointerEvent) => {
-    const was = pointers.current.get(event.pointerId);
-    if (!was) return;
-    const all = [...pointers.current.values()];
-    const now = { x: event.clientX, y: event.clientY };
-    if (distance([now, was]) > TAP_SLOP_PX) moved.current = true;
-    if (!moved.current) return;
-    capturePointer(event.currentTarget as HTMLElement, event.pointerId);
-    if (all.length === 2) {
-      // What was under the fingers' midpoint stays under it, scaled by
-      // how far apart they moved.
-      const other = all.find((point) => point !== was)!;
-      const at = stage.current!.getBoundingClientRect();
-      const local = (point: Point) => ({
-        x: point.x - at.left,
-        y: point.y - at.top,
-      });
-      zoomAt(
-        distance([now, other]) / (distance([was, other]) || 1),
-        local(midpoint([was, other])),
-        local(midpoint([now, other])),
-      );
-    } else
-      setView((v) => ({
-        ...v,
-        x: v.x + now.x - was.x,
-        y: v.y + now.y - was.y,
-      }));
-    pointers.current.set(event.pointerId, now);
-  };
-  const up = (event: PointerEvent) => pointers.current.delete(event.pointerId);
   const failing = names.filter((name) => seen[name]?.errors.length);
   const { x, y, scale: s } = view;
   return (
@@ -311,46 +208,13 @@ export default function Canvas({
           )}
         </p>
       )}
-      <div
-        class="canvas-stage"
-        ref={stage}
-        onPointerDown={down}
-        onPointerMove={move}
-        onPointerUp={up}
-        onPointerCancel={up}
-      >
-        <div
-          class="canvas-plane"
-          style={{ transform: `translate(${x}px, ${y}px) scale(${s})` }}
-        >
-          {placed.map((item) => {
-            const title = seen[item.name]?.info?.title || item.name;
-            return (
-              <div
-                key={item.name}
-                class="canvas-page"
-                data-failed={seen[item.name]?.errors.length ? true : undefined}
-                style={{ left: `${item.x}px`, top: `${item.y}px` }}
-              >
-                <Frame
-                  src={page(path(item.name))}
-                  title={title}
-                  width={item.w}
-                  height={item.h}
-                  live={false}
-                  onMessage={heard(item.name)}
-                />
-                <Button
-                  variant="quiet"
-                  class="canvas-open"
-                  aria-label={`Open ${title}`}
-                  onClick={() => !moved.current && open(path(item.name))}
-                />
-              </div>
-            );
-          })}
-        </div>
-        {placed.map((item, at) => (
+      <ZoomSurface
+        label="Canvas"
+        range={ZOOM}
+        fit={fit}
+        fitKey={`${sized}:${dir}`}
+        onView={setView}
+        over={placed.map((item, at) => (
           <span
             key={item.name}
             class="canvas-name small"
@@ -369,13 +233,34 @@ export default function Canvas({
             {seen[item.name]?.info?.title || item.name}
           </span>
         ))}
-      </div>
-      <ZoomControls
-        percent={Math.round(s * 100)}
-        out={() => center(1 / 1.25)}
-        in={() => center(1.25)}
-        fit={fit}
-      />
+      >
+        {placed.map((item) => {
+          const title = seen[item.name]?.info?.title || item.name;
+          return (
+            <div
+              key={item.name}
+              class="canvas-page"
+              data-failed={seen[item.name]?.errors.length ? true : undefined}
+              style={{ left: `${item.x}px`, top: `${item.y}px` }}
+            >
+              <Frame
+                src={page(path(item.name))}
+                title={title}
+                width={item.w}
+                height={item.h}
+                live={false}
+                onMessage={heard(item.name)}
+              />
+              <Button
+                variant="quiet"
+                class="canvas-open"
+                aria-label={`Open ${title}`}
+                onClick={() => open(path(item.name))}
+              />
+            </div>
+          );
+        })}
+      </ZoomSurface>
     </div>
   );
 }

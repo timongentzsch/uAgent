@@ -7,7 +7,14 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { ChevronLeft, ChevronsDownUp, Download, File, X } from "lucide-preact";
+import {
+  ChevronLeft,
+  ChevronsDownUp,
+  Download,
+  File,
+  Pencil,
+  X,
+} from "lucide-preact";
 import { usePushDirection } from "../../shared/motion.ts";
 import type { Session } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
@@ -26,7 +33,7 @@ import { Input } from "../../shared/form-controls.tsx";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { fuzzy } from "../../shared/fuzzy.ts";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
-import { ImageViewer } from "../../shared/attachments.tsx";
+import { ImageViewer, ZoomImage } from "../../shared/attachments.tsx";
 import { ResizeHandle } from "../../shared/side-pane.tsx";
 import { MarkdownFile } from "../../shared/markdown-view.tsx";
 import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
@@ -511,6 +518,17 @@ export default function Files({
             Source
           </Button>
         )}
+        {image && (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              viewer({ src: url(file), name: nameOf(file), edit: true })
+            }
+          >
+            <Pencil />
+            Annotate
+          </Button>
+        )}
         {addToChat && chosen && file && !changing && (
           <Button
             variant="secondary"
@@ -872,14 +890,9 @@ export default function Files({
               </>
             )
           ) : image ? (
-            <Button
-              variant="quiet"
-              class="files-image"
-              aria-label={`View ${nameOf(file)}`}
-              onClick={() => viewer({ src: url(file), name: nameOf(file) })}
-            >
-              <img src={url(file)} alt={nameOf(file)} />
-            </Button>
+            <div class="files-image">
+              <ZoomImage key={url(file)} src={url(file)} name={nameOf(file)} />
+            </div>
           ) : fileError ? (
             fileError.status === 415 ? (
               <div class="files-binary">

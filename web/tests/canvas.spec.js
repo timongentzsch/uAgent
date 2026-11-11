@@ -118,13 +118,13 @@ test("the canvas pans and zooms like a plane", async ({
   await app.goto(`/#session=${session.id}`);
   const files = await openCanvas(app);
   const level = files.locator(".zoom-controls output");
-  const plane = files.locator(".canvas-plane");
+  const plane = files.locator(".canvas .zoom-content");
   await expect(
     app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
   ).toBeVisible();
   const before = await level.textContent();
   // A trackpad pinch arrives as the wheel with Ctrl.
-  const stage = files.locator(".canvas-stage");
+  const stage = files.locator(".canvas .zoom-surface");
   const box = await stage.boundingBox();
   await app.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await app.keyboard.down("Control");
@@ -159,10 +159,10 @@ async function phoneCanvas(app, session) {
     app.frameLocator('iframe[title="Hero A"]').getByText("Alpha"),
   ).toBeVisible();
   const level = files.locator(".zoom-controls output");
-  const box = await files.locator(".canvas-stage").boundingBox();
+  const box = await files.locator(".canvas .zoom-surface").boundingBox();
   return {
     files,
-    stage: files.locator(".canvas-stage"),
+    stage: files.locator(".canvas .zoom-surface"),
     cx: box.x + box.width / 2,
     cy: box.y + box.height / 2,
     percent: async () => Number.parseInt(await level.textContent(), 10),
@@ -201,7 +201,7 @@ test("one finger pans and two pinch the canvas in a phone's sheet, never pulling
               ],
       });
     // One finger dragging down pans the plane; the sheet stays put.
-    const plane = files.locator(".canvas-plane");
+    const plane = files.locator(".canvas .zoom-content");
     const placed = await plane.getAttribute("style");
     const one = (type, y) =>
       cdp.send("Input.dispatchTouchEvent", {

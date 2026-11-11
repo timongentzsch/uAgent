@@ -31,8 +31,31 @@ export const ImageViewer = createContext<(image: ViewedImage) => void>(
   () => {},
 );
 
-// A full-bleed viewer: the image at natural size, never upscaled, with its
-// own pinch, double-tap and trackpad zoom. Tap around it to close. With
+// An image that zooms where it lies, at natural size and never upscaled,
+// its level read against its real width.
+export function ZoomImage({
+  src,
+  name,
+  dismiss,
+}: {
+  src: string;
+  name: string;
+  dismiss?: () => void;
+}) {
+  const [natural, setNatural] = useState<number>();
+  return (
+    <ZoomSurface label={name} dismiss={dismiss} natural={natural}>
+      <img
+        src={src}
+        alt={name}
+        draggable={false}
+        onLoad={(event) => setNatural(event.currentTarget.naturalWidth)}
+      />
+    </ZoomSurface>
+  );
+}
+
+// A full-bleed viewer of one image. Tap around it to close. With
 // `annotate`, it can switch to markup and attach the marked-up copy.
 export function ImageViewerDialog({
   image,
@@ -44,8 +67,6 @@ export function ImageViewerDialog({
   annotate?: (file: File, draftId?: string) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(!!image.edit);
-  // The image's real width, so the zoom level reads as its actual size.
-  const [natural, setNatural] = useState<number>();
   return (
     <Modal
       title={image.name}
@@ -94,19 +115,12 @@ export function ImageViewerDialog({
           }
         />
       ) : (
-        <ZoomSurface
+        <ZoomImage
           key={image.src}
-          label={image.name}
+          src={image.src}
+          name={image.name}
           dismiss={close}
-          natural={natural}
-        >
-          <img
-            src={image.src}
-            alt={image.name}
-            draggable={false}
-            onLoad={(event) => setNatural(event.currentTarget.naturalWidth)}
-          />
-        </ZoomSurface>
+        />
       )}
     </Modal>
   );

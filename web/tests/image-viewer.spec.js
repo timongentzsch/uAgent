@@ -145,6 +145,24 @@ for (const [label, viewport, touch] of [
       await expect.poll(scaled).toBeCloseTo(1, 1);
       await page.keyboard.press("ControlOrMeta+=");
       await expect.poll(scaled).toBeCloseTo(1.25, 1);
+      // A trackpad pinch as Safari sends it zooms at the pointer too.
+      await page.keyboard.press("ControlOrMeta+0");
+      await expect.poll(scaled).toBeCloseTo(1, 1);
+      await viewer.getByRole("group", { name: "tall.png" }).evaluate((node) => {
+        const { left, top, width, height } = node.getBoundingClientRect();
+        for (const [type, scale] of [
+          ["gesturestart", 1],
+          ["gesturechange", 1.5],
+          ["gesturechange", 2],
+        ])
+          node.dispatchEvent(
+            Object.assign(
+              new Event(type, { bubbles: true, cancelable: true }),
+              { scale, clientX: left + width / 2, clientY: top + height / 2 },
+            ),
+          );
+      });
+      await expect.poll(scaled).toBeCloseTo(2, 1);
     });
   });
 }

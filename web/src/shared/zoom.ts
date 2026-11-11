@@ -1,7 +1,7 @@
-// A zoomable view of a surface: scale around a point and pan, never smaller
-// than the surface nor past its edges. Shared by the image viewer and the
-// remote browser screen; the design canvas, a plane with no edges, zooms in
-// a range of its own.
+// A zoomable view of a surface: scale around a point and pan. Media and the
+// remote browser screen are never smaller than the surface nor past its
+// edges; a plane with no edges, such as the design canvas, zooms in a range
+// of its own.
 export interface ZoomView {
   scale: number;
   x: number;
@@ -105,6 +105,7 @@ export const pinchTo = (
   points: Point[],
   width: number,
   height: number,
+  range?: [number, number],
 ) =>
   pinchView(
     start.view,
@@ -113,6 +114,7 @@ export const pinchTo = (
     start.midpoint,
     midpoint(points),
     start.distance > 0 ? distance(points) / start.distance : 1,
+    range,
   );
 
 // Modifier-wheel zooms at the pointer; ordinary wheel movement belongs to

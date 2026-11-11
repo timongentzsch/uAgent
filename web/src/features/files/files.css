@@ -203,15 +203,8 @@
 }
 
 .files-image {
-  display: grid;
-  place-items: center;
   flex: 1;
-  padding: var(--space-12);
-  cursor: zoom-in;
-}
-.files-image img {
-  max-width: 100%;
-  border: var(--border);
+  min-height: 0;
 }
 .files-binary {
   display: flex;
@@ -551,18 +544,10 @@
 .canvas-notice > span {
   flex: 1;
 }
-.canvas-stage {
-  position: relative;
+.canvas > .zoom-surface {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
-  touch-action: none;
-  cursor: grab;
-}
-.canvas-plane {
-  position: absolute;
-  inset: 0 auto auto 0;
-  transform-origin: 0 0;
+  height: auto;
 }
 .canvas-page {
   position: absolute;

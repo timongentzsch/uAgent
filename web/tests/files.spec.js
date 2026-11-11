@@ -106,11 +106,17 @@ test("files beside the chat: browse, read, search and view", async ({
   await pane.getByRole("link", { name: "the app" }).click();
   await expect(pane.getByRole("heading")).toHaveText("src/app.ts");
 
-  // An image opens in the viewer; a file that is not text offers a download.
+  // An image zooms where it lies, and Annotate opens it for markup; a file
+  // that is not text offers a download.
   await list.getByRole("button", { name: "shot.png" }).click();
-  await pane.getByRole("button", { name: "View shot.png" }).click();
-  await expect(page.getByRole("dialog", { name: "shot.png" })).toBeVisible();
+  const shot = pane.getByRole("group", { name: "shot.png" });
+  await expect(shot.getByRole("img", { name: "shot.png" })).toBeVisible();
+  await shot.getByRole("button", { name: "Zoom in" }).click();
+  await expect(shot.getByRole("button", { name: "Fit" })).toBeEnabled();
+  await pane.getByRole("button", { name: "Annotate" }).click();
+  await expect(page.locator("dialog.image-view")).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.locator("dialog.image-view")).toHaveCount(0);
   await list.getByRole("button", { name: "blob.bin" }).click();
   await expect(pane.getByText("blob.bin is not text")).toBeVisible();
 

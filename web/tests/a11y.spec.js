@@ -166,9 +166,7 @@ for (const scheme of ["dark", "light"])
     await page.goto(`/#session=${session.id}`);
     await headerAction(page, "Files");
     await page.getByRole("button", { name: "shot.png" }).click();
-    await expect(
-      page.getByRole("button", { name: "View shot.png" }),
-    ).toBeVisible();
+    await expect(page.getByRole("group", { name: "shot.png" })).toBeVisible();
     await page.getByRole("combobox", { name: "Search files" }).fill("png");
     await expect(page.getByRole("option", { name: /shot\.png/ })).toBeVisible();
     expect(await violations(page)).toEqual([]);

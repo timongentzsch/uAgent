@@ -26,6 +26,14 @@
   place-items: center;
   transform-origin: 0 0;
 }
+/* A plane: its content lies at its own size from the corner. */
+.zoom-surface[data-free] > .zoom-content {
+  position: absolute;
+  inset: 0 auto auto 0;
+  display: block;
+  width: auto;
+  height: auto;
+}
 .zoom-content[data-glide] {
   transition: transform var(--motion-slow) var(--ease-out);
 }

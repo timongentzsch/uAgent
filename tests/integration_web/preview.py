@@ -207,3 +207,20 @@ def test_web_sheet_page_loads_its_engine_from_its_own_address(root, home, *, bin
                 ],
                 parts,
             )
+
+
+def test_web_sheet_engine_is_found_beside_the_binary(root, home, *, binary):
+    project = root / "installed"
+    project.mkdir()
+    (project / "budget.html").write_text('<!doctype html><meta name="sheet" content="1">')
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project, activate=False)
+            _, body, _ = client.request(f"/api/sessions/{session['id']}/preview", {})
+            base = json.loads(body)["base"]
+            for name in ("sheet.js", "sheet.css", "wasm.js", "wasm_bg.wasm"):
+                connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=10)
+                connection.request("GET", f"{base}~sheet/{name}", headers={"Origin": "null"})
+                response = connection.getresponse()
+                assert_true(response.status == 200 and len(response.read()) > 0, name)

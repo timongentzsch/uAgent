@@ -40,16 +40,16 @@ std::string PreviewPolicy(const std::string& origin, const std::string& base) {
 }
 
 // What a sheet page loads under `~sheet/` of its own address: the engine and
-// the code that draws a sheet, installed beside the skills (or in a test's
-// own web build), the same for every folder. A folder of that name at the
-// top of a workspace is not reachable from a page.
+// the code that draws a sheet, installed with the binary or in a test's own
+// web build. A folder of that name at the top of a workspace is not
+// reachable from a page.
 constexpr std::string_view kSheetPrefix = "~sheet/";
 
 std::filesystem::path SheetDir() {
   if (const char* dist = getenv("UAGENT_INTERNAL_WEB_DIST")) {
     return std::filesystem::path(dist) / "share/sheet";
   }
-  return InstalledSkillsPath().parent_path() / "sheet";
+  return InstalledShare("sheet");
 }
 
 std::string SheetMime(const std::filesystem::path& file) {

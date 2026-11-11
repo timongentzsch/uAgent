@@ -303,6 +303,14 @@ add_library(
 target_link_libraries(uagent_app PUBLIC uagent_tools)
 
 add_executable(uagent src/main.cc)
+# A built binary finds the sheet engine beside it, as an installed one does.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/web/dist/share/sheet")
+  add_custom_command(
+    TARGET uagent POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/web/dist/share/sheet"
+            "$<TARGET_FILE_DIR:uagent>/share/uagent/sheet")
+endif()
 # The web UI is built by `npm run build` in web/, not checked in.
 option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
 include(cmake/embed_web.cmake)

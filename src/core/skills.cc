@@ -46,7 +46,7 @@ void ParseSkillFrontMatter(std::istream& input, std::string* description,
   }
 }
 
-std::filesystem::path InstalledSkillsPath() {
+std::filesystem::path InstalledShare(std::string_view name) {
   namespace fs = std::filesystem;
   fs::path executable = ExecutablePath();
   if (!executable.has_parent_path()) return {};
@@ -54,9 +54,10 @@ std::filesystem::path InstalledSkillsPath() {
   fs::path resolved = fs::canonical(executable, ec);
   if (ec) resolved = fs::absolute(executable, ec);
   if (ec || resolved.parent_path().empty()) return {};
-  auto adjacent = resolved.parent_path() / "share/uagent/skills";
+  const fs::path data = fs::path("share/uagent") / name;
+  auto adjacent = resolved.parent_path() / data;
   if (PathExists(adjacent)) return adjacent;
-  return resolved.parent_path().parent_path() / "share/uagent/skills";
+  return resolved.parent_path().parent_path() / data;
 }
 
 std::vector<std::filesystem::path> SkillSearchPath(
@@ -84,7 +85,7 @@ std::vector<std::filesystem::path> SkillSearchPath(
     }
   }
   path.push_back(fs::path(GlobalBase()) / "skills");
-  fs::path installed = InstalledSkillsPath();
+  fs::path installed = InstalledShare("skills");
   if (!installed.empty()) path.push_back(std::move(installed));
   // Vendor-neutral folder skills apply from every ancestor. Walk from the
   // filesystem root toward cwd so the nearest repository scope wins.

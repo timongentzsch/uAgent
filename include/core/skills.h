@@ -33,7 +33,9 @@ void ParseSkillFrontMatter(std::istream& input,
                            std::vector<std::string>* required_tools = nullptr,
                            std::string* argument_hint = nullptr);
 
-std::filesystem::path InstalledSkillsPath();
+// Where µAgent's own data named `name` is installed: share/uagent/<name>
+// beside the binary (a build tree) or beside its bin folder (an install).
+std::filesystem::path InstalledShare(std::string_view name);
 
 // User-level paths first, then the folder's, µAgent's own last in each group;
 // a later path wins. UAGENT_SKILL_PATH replaces the whole list.

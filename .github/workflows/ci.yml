@@ -336,6 +336,7 @@ jobs:
           name: web-host
           path: |
             build/uagent
+            build/share
             web/dist
           include-hidden-files: true
           retention-days: 1

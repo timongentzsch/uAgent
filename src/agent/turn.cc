@@ -601,7 +601,6 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   json entry = {{"kind", "turn_summary"},
                 {"turn_root", turn_root_},
                 {"summary", summary}};
-  // A turn that only passed or waited leaves no row of its own.
   json node = conversation_.RecordEntry(std::move(entry));
   Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
   Emit(Event{EventId::kTurnCompleted, std::move(summary)});

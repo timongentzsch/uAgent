@@ -180,8 +180,7 @@ void EmitToolResultObservation(CallTask& task, const ToolCall& call,
 }
 
 json ToolCallData(const ToolCall& call, int64_t turn, int64_t step) {
-  // A digest, never the arguments: the journal deliberately keeps values out,
-  // and a fingerprint is enough to see that the same call was made twice.
+  // The journal keeps the digest only, never the arguments.
   return {{"turn", turn},
           {"step", step},
           {"call_id", call.id},

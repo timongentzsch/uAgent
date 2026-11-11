@@ -170,7 +170,10 @@ std::string ModelHint(const ToolResult& result) {
 }
 
 std::string ModelText(const ToolResult& result) {
-  return result.output + ModelHint(result);
+  std::string text = result.output + ModelHint(result);
+  // A call with nothing to report still says so: some providers refuse a
+  // tool message without content.
+  return text.empty() ? "(no output)" : text;
 }
 
 const char* ResultState(CompletionStatus status) {

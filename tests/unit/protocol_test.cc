@@ -168,6 +168,14 @@ TEST_CASE(TestForeignToolMarkup) {
 }
 
 TEST_CASE(TestToolResults) {
+  // What the model reads of a result: its output, then its hint, and a
+  // word for a call that has neither, since some providers refuse a tool
+  // message without content.
+  ToolResult silent = ToolSuccess("");
+  CHECK(ModelText(silent) == "(no output)");
+  AddHint(silent, "[exit code 0]");
+  CHECK(ModelText(silent) == "[exit code 0]");
+  CHECK(ModelText(ToolSuccess("done")) == "done");
   CHECK(RetryableHttpStatus(408));
   CHECK(RetryableHttpStatus(409));
   CHECK(RetryableHttpStatus(429));

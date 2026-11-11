@@ -58,11 +58,11 @@ too; condensing it takes a model, so invoke `$import`.
 
 In the web UI, the Library lists everything kept in every folder and
 workspace a conversation works in, grouped by place: memories, skills,
-artifacts (documents, decks, designs and design systems, as their pages say
-what they are; see the `artifact` skill), and files the agent handed over
-with `present`. A rail filters by kind and place, and the search reads
-names, first lines and places. Nothing is copied: each item stays where it
-lives. A memory opens beside the list, where **Move to…** and **Copy to
+artifacts (documents, decks, designs, design systems and sheets, as their
+pages say what they are; see the `artifact` skill), and files the agent
+handed over with `present`. A rail filters by kind and place, and the search
+reads names, first lines and places. Nothing is copied: each item stays
+where it lives. A memory opens beside the list, where **Move to…** and **Copy to
 everywhere** take it to another place or to every place; an artifact opens
 in the Files pane of the place's latest conversation; a presented file
 opens, downloads or leads to its conversation. Ctrl-click (⌘-click) and

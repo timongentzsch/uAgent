@@ -16,7 +16,8 @@ curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install
 ```
 
 It installs the latest release and asks where µAgent runs. Run it again to
-update. From a checkout, `./install.sh` builds that checkout instead; an
+update, or use Settings → About in the [web interface](WEB.md#settings).
+From a checkout, `./install.sh` builds that checkout instead; an
 unpublished one needs its
 [remote bundle](REMOTE_HOSTS.md#installers-and-containers) or
 `UAGENT_LOCAL_ONLY=1`.

@@ -133,7 +133,8 @@ Which binary and bundle a browser test drives:
   `../build/debug/uagent`.
 - Locally the host serves `web/dist` from disk, so a web edit needs
   `npm run build` but no rebuild of the binary. In CI it serves the bundle
-  embedded in the binary, as a release does.
+  embedded in the binary, as a release does, and the sheet engine the build
+  copied beside the binary (`share/uagent/sheet`).
 
 How the tests are isolated:
 

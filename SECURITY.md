@@ -136,6 +136,9 @@ never goes to the parent.
   shell gets the same secret-deny environment as the agent's commands.
   The agent never reads a terminal, but output you send with "Add to chat"
   enters model context and may contain secrets read by that shell.
+- The same pairing and the same switch let a paired device start an update
+  from Settings → About: the host downloads the release GitHub names, runs
+  its installer as you and restarts. The agent cannot start one.
 
 ## Remote execution
 

@@ -40,7 +40,7 @@ const tree = {
     "style.css",
   ],
   "design/system": ["book.html", "tokens.css"],
-  docs: ["chart.png", "memo.html"],
+  docs: ["book.xlsx", "chart.png", "memo.html", "rows.csv"],
   sheets: ["budget.html", "plan.html"],
   src: ["app.ts", "notes.md"],
 };
@@ -252,6 +252,20 @@ test("a sheet opens as itself and counts for no canvas: a folder of sheets is it
   assert.deepEqual(await cited("design/landing/costs.html"), {
     view: sequence("design/landing/costs.html"),
     back: [list("design/landing")],
+  });
+});
+
+test("an Excel or CSV file opens as a sheet; cited at lines, a CSV file is its text", async () => {
+  for (const path of ["docs/book.xlsx", "docs/rows.csv"])
+    assert.deepEqual(await cited(path), {
+      view: sequence(path),
+      back: [list("docs")],
+    });
+  assert.deepEqual((await cited("docs/rows.csv", "2")).view, {
+    kind: "file",
+    path: "docs/rows.csv",
+    lines: [2, 2],
+    source: false,
   });
 });
 

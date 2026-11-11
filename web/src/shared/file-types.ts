@@ -42,6 +42,10 @@ export const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
 export const VIDEO = /\.(mp4|webm|mov)$/i;
 export const MARKDOWN = /\.(md|markdown)$/i;
 export const HTML = /\.html?$/i;
+// Excel and CSV files open as sheets, read-only.
+export const SHEET_FILE = /\.(xlsx|csv)$/i;
+// What opens as a page in the viewer, not as text.
+export const paged = (path: string) => HTML.test(path) || SHEET_FILE.test(path);
 // Files with no language that are still plainly files.
 const PLAIN = /\.(txt|csv|log|lock|pdf)$/i;
 

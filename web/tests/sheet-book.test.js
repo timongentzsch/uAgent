@@ -27,6 +27,7 @@ const tab = (name, written, columns = []) => {
     name,
     attrs: {},
     markup: [],
+    charts: [],
     columns: Array.from({ length: width }, (_, at) => columns[at] ?? {}),
     rows: rows.map(({ attrs, texts }) => ({
       attrs,
@@ -74,6 +75,43 @@ test("the engine says what cells show; what was typed stays as typed", () => {
   assert.equal(book.kind(0, 4, 3), "number");
   assert.equal(headOf(book.tabs[0]), 3);
   assert.deepEqual(book.errors(), []);
+});
+
+test("a formula shows in its own column's pattern, and without one as the cells it reads do", () => {
+  const book = openBook(engine, [
+    tab(
+      "Costs",
+      [
+        ["=B1*2", "1200", "=B1/B2", "=B1*2"],
+        ["", "2400", "", ""],
+      ],
+      [{}, { "data-format": "#,##0.00" }, { "data-format": "0%" }],
+    ),
+  ]);
+  assert.deepEqual(shown(book, 0, 1, 4), [
+    "2,400.00",
+    "1,200.00",
+    "50%",
+    "2,400.00",
+  ]);
+});
+
+test("what a typed value brings stands over its column's pattern: a percentage, a date, a currency", () => {
+  const book = openBook(engine, [
+    tab(
+      "Inputs",
+      [["4.5%", "2027-03-01", "$1,200", "1200", "=A1*2", "=D1*2"]],
+      Array.from({ length: 6 }, () => ({ "data-format": "#,##0.00" })),
+    ),
+  ]);
+  assert.deepEqual(shown(book, 0, 1, 6), [
+    "4.50%",
+    "2027-03-01",
+    "$1,200",
+    "1,200.00",
+    "0.09",
+    "2,400.00",
+  ]);
 });
 
 test("a typed cell is one step: dependents follow, undo and redo take it back and forth", () => {
@@ -220,6 +258,15 @@ test("tabs may bear the names the engine gives its own sheets", () => {
     tab("Sheet1", [["41"]]),
   ]);
   assert.equal(book.shown(0, 1, 1), "42");
+  // Nor does a tab named as the sheet the book works on is.
+  const odd = openBook(engine, [tab("⌁", [["1", "2"]])]);
+  assert.equal(odd.summary(0, { top: 1, left: 1, bottom: 1, right: 2 }).sum, 3);
+  assert.deepEqual(
+    engine.Model.fromXlsx(odd.xlsx(), "odd", "en", "UTC", "en")
+      .getWorksheetsProperties()
+      .map((sheet) => sheet.name),
+    ["⌁"],
+  );
 });
 
 test("numbers of twelve digits sort and sum exactly", () => {
@@ -303,4 +350,199 @@ test("a selection of numbers is counted and summed", () => {
     book.table(1),
     /^<table data-sheet="Inputs">\n<tr><th>Name<th>Value\n/,
   );
+});
+
+test("rules strike, fill and embolden what matches, a later rule over an earlier one; one not understood is said", () => {
+  const book = openBook(engine, [
+    {
+      ...tab(
+        "Tasks",
+        [
+          ["#Task", "#Status", "#Cost"],
+          ["a", "Done", "-5"],
+          ["b", "To do", "2000"],
+          ["c", "", "0"],
+        ],
+        [{}, {}, { "data-rule": "< 0: bad; > 1000: bold; ~ 3: warn" }],
+      ),
+      attrs: { "data-rule": "B = Done: strike muted" },
+    },
+  ]);
+  assert.deepEqual(book.look(0, 2, 1), {
+    fill: "muted",
+    bold: false,
+    strike: true,
+  });
+  // The column's own rule gives the fill; the row's strike stays.
+  assert.deepEqual(book.look(0, 2, 3), {
+    fill: "bad",
+    bold: false,
+    strike: true,
+  });
+  assert.deepEqual(book.look(0, 3, 3), {
+    fill: undefined,
+    bold: true,
+    strike: false,
+  });
+  assert.deepEqual(book.look(0, 4, 3), {
+    fill: undefined,
+    bold: false,
+    strike: false,
+  });
+  // The header is under no rule.
+  assert.equal(book.look(0, 1, 2).strike, false);
+  assert.deepEqual(book.errors(), [
+    "Tasks: rule `~ 3: warn` is not understood",
+  ]);
+  // What stops matching loses the look.
+  book.paste(0, { row: 2, column: 2 }, [["To do"]]);
+  assert.equal(book.look(0, 2, 1).strike, false);
+  book.undo();
+  // A column put in before B: the rule names its column where it lies now.
+  book.insertColumns(0, 2, 1);
+  assert.equal(book.tabs[0].attrs["data-rule"], "C = Done: strike muted");
+  assert.equal(book.look(0, 2, 1).strike, true);
+  assert.equal(book.look(0, 2, 4).fill, "bad");
+  assert.match(
+    book.table(0),
+    /^<table data-sheet="Tasks" data-rule="C = Done: strike muted">\n<col><col><col><col data-rule="< 0: bad; > 1000: bold; ~ 3: warn">\n/,
+  );
+  // A tab without rules asks nothing of the engine.
+  assert.deepEqual(plan().look(0, 4, 3), {});
+});
+
+test("a rule that names no column of the tab is reported and applied to nothing; the sheet opens", () => {
+  const book = openBook(engine, [
+    {
+      ...tab("Tasks", [
+        ["#Task", "#Status", "#Done"],
+        ["a", "Done", "TRUE"],
+        ["b", "", "FALSE"],
+      ]),
+      attrs: {
+        "data-rule":
+          "Status = Done: strike; not blank: muted; Z blank: bad; C = TRUE: bold; B <> Done: warn",
+      },
+    },
+  ]);
+  assert.deepEqual(book.errors(), [
+    "Tasks: rule `Status = Done: strike` is not understood",
+    "Tasks: rule `not blank: muted` is not understood",
+    "Tasks: rule `Z blank: bad` is not understood",
+  ]);
+  // A ticked box matches TRUE; an empty status is not "other than Done".
+  assert.deepEqual(book.look(0, 2, 1), {
+    fill: undefined,
+    bold: true,
+    strike: false,
+  });
+  assert.deepEqual(book.look(0, 3, 1), {
+    fill: undefined,
+    bold: false,
+    strike: false,
+  });
+  book.insertColumns(0, 1, 1);
+  assert.equal(
+    book.tabs[0].attrs["data-rule"],
+    "Status = Done: strike; not blank: muted; Z blank: bad; D = TRUE: bold; C <> Done: warn",
+  );
+});
+
+const charted = (range, attrs = {}) =>
+  openBook(engine, [
+    {
+      ...plan().tabs[0],
+      charts: [
+        {
+          attrs: {
+            "data-chart": "bar",
+            "data-range": range,
+            "data-at": "E4",
+            "data-size": "6x12",
+            ...attrs,
+          },
+          caption: "Costs",
+        },
+      ],
+    },
+  ]);
+
+test("a chart reads its labels and the columns that hold numbers; a blank cell is a gap, not a zero", () => {
+  const book = charted("A3:C6");
+  // The Status column is text: it is no series.
+  assert.deepEqual(book.chart(0, 0), {
+    labels: ["Write", "Book", "Brief"],
+    series: [{ name: "Cost", values: [1200, 8400.5, 120] }],
+  });
+  assert.deepEqual(book.errors(), []);
+  book.paste(0, { row: 5, column: 3 }, [[""]]);
+  assert.deepEqual(book.chart(0, 0).series[0].values, [1200, undefined, 120]);
+});
+
+test("a chart that cannot be drawn says why with the cells in error", () => {
+  const said = (...given) => charted(...given).errors();
+  assert.deepEqual(said("A3:B6"), ["Tasks: chart A3:B6 holds no numbers"]);
+  assert.deepEqual(said("A3:Z9"), [
+    "Tasks: chart A3:Z9 names cells outside the tab",
+  ]);
+  assert.deepEqual(said("the costs"), [
+    "Tasks: chart the costs names cells outside the tab",
+  ]);
+  for (const kind of ["donut", "constructor", ""])
+    assert.deepEqual(said("A3:C6", { "data-chart": kind }), [
+      "Tasks: chart A3:C6 is of no known kind",
+    ]);
+  // A pie is its first series: with nothing above zero it has no slice.
+  const pie = charted("A3:C6", { "data-chart": "pie" });
+  assert.deepEqual(pie.errors(), []);
+  pie.paste(0, { row: 4, column: 3 }, [["-1"], ["0"], ["=C4*2"]]);
+  assert.deepEqual(pie.errors().slice(0, 1), [
+    "Tasks: chart A3:C6 holds no numbers",
+  ]);
+});
+
+test("a chart follows the rows and columns it draws from, goes with them, and is a step like any other", () => {
+  const book = charted("A3:C6");
+  const attrs = () => book.tabs[0].charts.map((chart) => chart.attrs);
+  book.insertRows(0, 1, 2);
+  assert.deepEqual(
+    [attrs()[0]["data-range"], attrs()[0]["data-at"]],
+    ["A5:C8", "E6"],
+  );
+  book.insertColumns(0, 2, 1);
+  assert.deepEqual(
+    [attrs()[0]["data-range"], attrs()[0]["data-at"]],
+    ["A5:D8", "F6"],
+  );
+  assert.match(
+    book.table(0),
+    /<\/table>\n<figure data-chart="bar" data-range="A5:D8" data-at="F6" data-size="6x12"><figcaption>Costs<\/figcaption><\/figure>$/,
+  );
+  book.deleteRows(0, 6, 3);
+  assert.equal(attrs()[0]["data-range"], "A5:D5");
+  book.deleteRows(0, 5, 1);
+  assert.deepEqual(attrs(), []);
+  book.undo();
+  assert.equal(attrs().length, 1);
+  book.setCharts(0, (charts) => [
+    ...charts,
+    { ...charts[0], caption: "Again" },
+  ]);
+  assert.equal(attrs().length, 2);
+  book.undo();
+  assert.equal(attrs().length, 1);
+  // As sheet.md writes one, with no place said: its range follows all the same.
+  const plain = openBook(engine, [
+    {
+      ...plan().tabs[0],
+      charts: [
+        { attrs: { "data-chart": "bar", "data-range": "A3:C6" }, caption: "" },
+      ],
+    },
+  ]);
+  plain.insertRows(0, 1, 2);
+  assert.deepEqual(plain.tabs[0].charts[0].attrs, {
+    "data-chart": "bar",
+    "data-range": "A5:C8",
+  });
 });

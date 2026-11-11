@@ -1,6 +1,8 @@
 // A sheet's edited tab saved into its file: only that tab's table changes
 // in the source text, so what the agent wrote around it stays as it is.
 
+import { maxTextFileBytes, maxUploadBytes } from "../../shared/limits.ts";
+import { bytes } from "../../shared/quantities.ts";
 import type { PageMessage } from "../../shared/page-frame.tsx";
 
 export type Cell = Extract<PageMessage, { type: "cell" }>;
@@ -25,6 +27,29 @@ export function cellOf(said: Cell): Cell {
   };
 }
 
+// What the page hands over, taken only as the kind it names: bytes or CSV
+// to download, a sheet's text to save. A string is why it is too large.
+export function fileOf({
+  as,
+  data,
+}: {
+  as: unknown;
+  data: unknown;
+}):
+  | { as: "xlsx" | "csv"; blob: Blob }
+  | { as: "sheet"; text: string }
+  | string
+  | undefined {
+  if (as !== "xlsx" && as !== "csv" && as !== "sheet") return undefined;
+  if (as === "xlsx" ? !(data instanceof Uint8Array) : typeof data !== "string")
+    return undefined;
+  const blob = new Blob([data as BlobPart]);
+  const most = as === "sheet" ? maxTextFileBytes : maxUploadBytes;
+  if (blob.size > most)
+    return `${as === "sheet" ? "Not saved" : "Not exported"}: the file would be larger than ${bytes(most)}.`;
+  return as === "sheet" ? { as, text: data as string } : { as, blob };
+}
+
 // What the sheet's page says of a changed tab: its place among how many
 // tabs, and its table. The page is untrusted, so each is checked.
 export interface TableEdit {
@@ -36,9 +61,12 @@ export interface TableEdit {
 // A comment, or a tag with its quoted attribute values.
 const TAG =
   /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][\w-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
+// A chart right after what came before, as the page finds a table's. One
+// left open ends at no later figure's end, nor past a table.
+const CHART =
+  /\s*<figure\b[^>]*\sdata-chart(?![\w-])[^>]*>(?:(?!<table\b|<figure\b)[\s\S])*?<\/figure>/iy;
 
-// `source` with the edit's tab replaced, in the file's own line ends. Null
-// when the source does not hold the tabs the page counted: then its tables
+// Null when the source does not hold the tabs the page counted: its tables
 // are not the page's, and the place would be a guess.
 export function splice(source: string, { tab, tabs, table }: TableEdit) {
   if (!Number.isInteger(tab) || tab < 0 || typeof table !== "string")
@@ -57,10 +85,12 @@ export function splice(source: string, { tab, tabs, table }: TableEdit) {
     if (!depth) cut = [start, tag.index + tag[0].length];
   }
   if (!cut || seen !== tabs) return null;
+  let end = cut[1];
+  for (CHART.lastIndex = end; CHART.test(source); ) end = CHART.lastIndex;
   return (
     source.slice(0, cut[0]) +
     (source.includes("\r\n") ? table.replaceAll("\n", "\r\n") : table) +
-    source.slice(cut[1])
+    source.slice(end)
   );
 }
 
@@ -70,9 +100,8 @@ interface Held {
   revision: string;
 }
 
-// Saves edits in order, one write at a time, each on the revision the last
-// left. One that fails is said to `failed` once and not retried; edits made
-// before the sheet was read anew are dropped, not written over the file.
+// One write at a time, each on the revision the last left. A failure is
+// said once; edits made before the sheet was read anew are dropped.
 export function tableSaver(io: {
   read: (path: string) => Promise<{ text: string; revision?: string }>;
   write: (held: Held) => Promise<{ revision: string }>;

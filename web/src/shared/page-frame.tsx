@@ -69,6 +69,9 @@ export type PageMessage =
   // selection: the active cell ("Costs!B2") and what was typed in it, the
   // range ("Costs!B2:C6") and what two numbers or more in it come to.
   | { type: "sheet"; tabs: string[]; active: number; hidden: number }
+  // What a sheet hands over when asked: itself as a workbook's bytes, its
+  // open tab as CSV, or a read file as the text of a sheet to save.
+  | { type: "file"; as: string; data: Uint8Array | string }
   // Why a sheet did not make a change that was asked for.
   | { type: "refused"; message: string }
   | {

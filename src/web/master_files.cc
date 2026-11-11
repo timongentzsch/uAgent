@@ -163,7 +163,8 @@ void Master::Files(const Request& request, Response& response) {
 }
 
 // A person's edit of a text file, saved only if the file is still as they
-// read it, or with `moves` their reordering of a folder's pages.
+// read it; with `moves` their reordering of a folder's pages; with `create`
+// a sheet they saved from an Excel file.
 void Master::FileWrite(const Request& request, Response& response) {
   const std::string id = request.matches[1].str();
   const WorkspaceIdentity workspace = host_.WorkspaceOf(id);
@@ -184,7 +185,8 @@ void Master::FileWrite(const Request& request, Response& response) {
           : json{{"mode", "write"},
                  {"path", path},
                  {"text", JsonValue(body, "text", "")},
-                 {"revision", JsonValue(body, "revision", "")}});
+                 {"revision", JsonValue(body, "revision", "")},
+                 {"create", JsonValue(body, "create", false)}});
   if (result.contains("error")) {
     Error(response, JsonValue(result, "error", "cannot save"),
           JsonValue(result, "status", 503));
@@ -265,10 +267,21 @@ void Master::Preview(const Request& request, Response& response) {
           JsonValue(result, "status", 404));
     return;
   }
-  const std::string mime = JsonValue(result, "mime", "text/html");
+  std::string mime = JsonValue(result, "mime", "text/html");
   if (deck) {
     bytes = JsonValue(result, "text", "");
-  } else if (mime == "text/html") {
+  } else if (request.has_param("sheet") &&
+             (mime == "text/csv" || mime.ends_with("spreadsheetml.sheet"))) {
+    // An Excel or CSV file as a sheet: a page that names the file, which the
+    // sheet code then reads from this address and draws.
+    bytes =
+        "<!doctype html><meta charset=\"utf-8\"><meta name=\"sheet\" "
+        "content=\"" +
+        PercentEncode(std::filesystem::path(relative).filename().string()) +
+        "\">";
+    mime = "text/html";
+  }
+  if (!deck && mime == "text/html") {
     bytes = WithScript(std::move(bytes), design_helper_);
   }
   response.headers.erase("Content-Security-Policy");

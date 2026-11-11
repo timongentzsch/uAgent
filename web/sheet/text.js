@@ -7,7 +7,7 @@ export const letters = (column) => {
     name = String.fromCharCode(65 + ((n - 1) % 26)) + name;
   return name;
 };
-const columnOf = (name) =>
+export const columnOf = (name) =>
   [...name.toUpperCase()].reduce(
     (n, letter) => n * 26 + letter.charCodeAt(0) - 64,
     0,
@@ -24,6 +24,38 @@ export const boxName = ({ top, left, bottom, right }) => {
   const first = cellName({ row: top, column: left });
   const last = cellName({ row: bottom, column: right });
   return first === last ? first : `${first}:${last}`;
+};
+
+// A spreadsheet's last row and column: a name past them is no cell's.
+const LAST = { row: 1_048_576, column: 16_384 };
+export const boxNamed = (name = "") => {
+  const [, left, top, right = left, bottom = top] =
+    /^([A-Za-z]{1,3})(\d{1,7})(?::([A-Za-z]{1,3})(\d{1,7}))?$/.exec(
+      name.trim(),
+    ) ?? [];
+  const box =
+    left &&
+    boxOf(
+      { row: Number(top), column: columnOf(left) },
+      { row: Number(bottom), column: columnOf(right) },
+    );
+  return box?.top && box.bottom <= LAST.row && box.right <= LAST.column
+    ? box
+    : undefined;
+};
+
+// Where a row or column lies once `count` were put in before `at`; a
+// negative count takes that many out from `at` on, and one of those is gone.
+export const slid = (n, at, count) =>
+  n < at ? n : n < at - count ? undefined : n + count;
+export const slidBox = (box, across, at, count) => {
+  const [first, last] = across ? ["left", "right"] : ["top", "bottom"];
+  const next = {
+    ...box,
+    [first]: slid(box[first], at, count) ?? at,
+    [last]: slid(box[last], at, count) ?? at - 1,
+  };
+  return next[last] < next[first] ? undefined : next;
 };
 
 // `data-frozen="2 B"` holds two rows and columns A and B in view; unsaid,
@@ -52,25 +84,30 @@ export function edgeFrom(filled, size, from, by) {
 
 // As other spreadsheets copy cells: one with a tab, a line break or a
 // quote in it is quoted, its quotes doubled.
-export const toTsv = (rows) =>
+const separated = (rows, by) =>
   rows
     .map((row) =>
       row
         .map((cell) =>
-          /["\t\n\r]/.test(cell) ? `"${cell.replaceAll('"', '""')}"` : cell,
+          cell.includes(by) || /["\n\r]/.test(cell)
+            ? `"${cell.replaceAll('"', '""')}"`
+            : cell,
         )
-        .join("\t"),
+        .join(by),
     )
     .join("\n");
-export function fromTsv(text) {
+const read = (text, by) => {
   const rows = [[]];
-  const cell = /"((?:[^"]|"")*)"(?=\t|\r?\n|$)|([^\t\r\n]*)/y;
+  const cell = new RegExp(
+    `"((?:[^"]|"")*)"(?=${by}|\\r?\\n|$)|([^${by}\\r\\n]*)`,
+    "y",
+  );
   for (let at = 0; at <= text.length; ) {
     cell.lastIndex = at;
     const [all, quoted, plain] = cell.exec(text);
     rows.at(-1).push(quoted?.replaceAll('""', '"') ?? plain);
     at += all.length;
-    if (text[at] === "\t") at++;
+    if (text[at] === by) at++;
     else if (at < text.length) {
       at += text.startsWith("\r\n", at) ? 2 : 1;
       // A last line break ends the last row; it starts no empty one.
@@ -79,6 +116,19 @@ export function fromTsv(text) {
     } else break;
   }
   return rows;
+};
+export const toTsv = (rows) => separated(rows, "\t");
+export const fromTsv = (text) => read(text, "\t");
+export const toCsv = (rows) => separated(rows, ",");
+// A CSV file is separated by whichever of "," and ";" its first line has
+// more of outside quotes; a byte order mark before it is no text.
+export function fromCsv(said) {
+  const text = said.replace(/^\uFEFF/, "");
+  const first = /^(?:"(?:[^"]|"")*"|[^"\n])*/
+    .exec(text)[0]
+    .replace(/"(?:[^"]|"")*"/g, "");
+  const count = (sign) => first.split(sign).length;
+  return read(text, count(";") > count(",") ? ";" : ",");
 }
 
 // "$B2", "B2:C$4", "A:A".
@@ -151,8 +201,8 @@ export const inOrder = (a, b, descending) => {
   return descending ? -order : order;
 };
 
-// The form skills/artifact/references/sheet.md teaches: a row a line, no
-// closing tags for rows and cells, every cell written.
+// The form skills/artifact/references/sheet.md teaches. A rule's "<" stays
+// as written: an attribute's value may hold it.
 const escaped = (text) =>
   text.replace(
     /[&<>]/g,
@@ -163,10 +213,13 @@ const attributes = (attrs) =>
     .map(([name, value]) =>
       value === ""
         ? ` ${name}`
-        : ` ${name}="${escaped(value).replaceAll('"', "&quot;")}"`,
+        : ` ${name}="${value.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"`,
     )
     .join("");
-export const tableText = ({ name, attrs, columns, rows }) =>
+// A sheet's whole file, for tabs that came from another kind of file.
+export const sheetText = (title, tabs) =>
+  `<!doctype html>\n<meta charset="utf-8">\n<meta name="sheet" content="1">\n<title>${escaped(title)}</title>\n${tabs.map(tableText).join("\n")}\n`;
+export const tableText = ({ name, attrs, columns, rows, charts }) =>
   [
     `<table${attributes({ "data-sheet": name, ...attrs })}>`,
     ...(columns.some((column) => Object.keys(column).length)
@@ -182,4 +235,8 @@ export const tableText = ({ name, attrs, columns, rows }) =>
           .join("")}`,
     ),
     "</table>",
+    ...charts.map(
+      (chart) =>
+        `<figure${attributes(chart.attrs)}><figcaption>${escaped(chart.caption)}</figcaption></figure>`,
+    ),
   ].join("\n");

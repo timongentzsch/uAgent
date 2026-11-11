@@ -86,6 +86,7 @@ export function listen(sheet) {
     list.focus();
   };
   const edit = (typed) => {
+    if (sheet.locked) return rest();
     const options = inBody(active()) && columnOf()["data-options"];
     if (options) return choose(options.split("|"));
     editing = true;
@@ -122,8 +123,8 @@ export function listen(sheet) {
     const { column } = active();
     const words = sheet.filterOf(column);
     return [
-      command("Sort A to Z", "sort-up"),
-      command("Sort Z to A", "sort-down"),
+      !sheet.locked && command("Sort A to Z", "sort-up"),
+      !sheet.locked && command("Sort Z to A", "sort-down"),
       {
         field: "Filter: contains",
         value: words,
@@ -143,11 +144,19 @@ export function listen(sheet) {
   const rowItems = () => spanItems("row", sheet.high(), "above", "below");
   const columnItems = () => spanItems("column", sheet.wide(), "left", "right");
   const isHead = () => active().row === headOf(sheet.tab());
-  const menu = (at, items) => openMenu(at, items.filter(Boolean), hold);
+  // A file that is only read keeps its filter and no other command.
+  const menu = (at, items) => {
+    const shown = items.filter(Boolean);
+    if (shown.length) openMenu(at, shown, hold);
+  };
+  const changes = (items) => (sheet.locked ? [] : items);
   const cellItems = () => [
     ...(isHead() ? headItems() : []),
-    ...rowItems(),
-    ...columnItems(),
+    ...changes([
+      ...rowItems(),
+      ...columnItems(),
+      command("Insert chart", "chart"),
+    ]),
   ];
   const under = () => {
     const box = cellAt(sheet.table(), active()).getBoundingClientRect();
@@ -266,8 +275,8 @@ export function listen(sheet) {
     else if (event.target.type === "checkbox") {
       event.preventDefault();
       toggle();
-    } else if (!at.column) menu(point, rowItems());
-    else if (!at.row) menu(point, columnItems());
+    } else if (!at.column) menu(point, changes(rowItems()));
+    else if (!at.row) menu(point, changes(columnItems()));
   });
   addEventListener("dblclick", (event) => {
     const at = hit(event);
@@ -333,5 +342,5 @@ export function listen(sheet) {
     if (own?.from.cut) copied = undefined;
   });
 
-  return rest;
+  return { rest, hold };
 }

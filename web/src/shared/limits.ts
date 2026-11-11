@@ -77,6 +77,8 @@ export const downloadRevokeMs = 30_000;
 // As the host has them (kUploadCount, kUploadBytes).
 export const maxDraftFiles = 8;
 export const maxUploadBytes = 8 * 1024 * 1024;
+// The host writes no larger text file.
+export const maxTextFileBytes = 1024 * 1024;
 
 // Mobile Safari avoids focus zoom for an editable layout font of at least 16px.
 export const focusFontFloor = 16;

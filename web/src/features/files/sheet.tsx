@@ -13,10 +13,12 @@ import type { Cell } from "./sheet-edit.ts";
 // Enter writes into the cell; Escape puts back what the cell holds.
 export function FormulaBar({
   cell,
+  locked,
   write,
   field,
 }: {
   cell?: Cell;
+  locked: boolean;
   write: (value: string) => void;
   field: RefObject<HTMLInputElement | null>;
 }) {
@@ -30,6 +32,7 @@ export function FormulaBar({
         aria-label="Cell contents"
         inputRef={field}
         disabled={!cell}
+        readOnly={locked}
         value={typed ?? cell?.raw ?? ""}
         onInput={(event) => setTyped(event.currentTarget.value)}
         onKeyDown={(event) => {
@@ -56,6 +59,7 @@ export function SheetBar({
   hidden,
   undo,
   redo,
+  locked,
   act,
   edit,
   comment,
@@ -67,7 +71,9 @@ export function SheetBar({
   hidden: number;
   undo: boolean;
   redo: boolean;
-  act: (command: "undo" | "redo") => void;
+  // An Excel or CSV file: read, and saved as a sheet to change it.
+  locked: boolean;
+  act: (command: "undo" | "redo" | "chart" | "sheet") => void;
   edit: () => void;
   comment?: () => void;
 }) {
@@ -75,6 +81,7 @@ export function SheetBar({
   useCurrentInView(list, index);
   const { summary } = cell ?? {};
   const note = [
+    locked && "Read-only",
     hidden && `${plural(hidden, "row")} hidden`,
     summary &&
       `Sum ${number(summary.sum)} · Average ${number(summary.average)} · Count ${summary.count}`,
@@ -111,15 +118,26 @@ export function SheetBar({
           {note.join(" · ")}
         </span>
       )}
-      <IconButton label="Undo" disabled={!undo} onClick={() => act("undo")}>
-        <Undo2 />
-      </IconButton>
-      <IconButton label="Redo" disabled={!redo} onClick={() => act("redo")}>
-        <Redo2 />
-      </IconButton>
-      <Button variant="secondary" class="sheet-edit-cell" onClick={edit}>
-        Edit cell
-      </Button>
+      {locked ? (
+        <Button variant="secondary" onClick={() => act("sheet")}>
+          Save as sheet
+        </Button>
+      ) : (
+        <>
+          <IconButton label="Undo" disabled={!undo} onClick={() => act("undo")}>
+            <Undo2 />
+          </IconButton>
+          <IconButton label="Redo" disabled={!redo} onClick={() => act("redo")}>
+            <Redo2 />
+          </IconButton>
+          <Button variant="secondary" onClick={() => act("chart")}>
+            Chart
+          </Button>
+          <Button variant="secondary" class="sheet-edit-cell" onClick={edit}>
+            Edit cell
+          </Button>
+        </>
+      )}
       {comment && (
         <Button variant="secondary" disabled={!cell} onClick={comment}>
           Comment

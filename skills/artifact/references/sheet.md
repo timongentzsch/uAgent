@@ -30,7 +30,8 @@ with `browser` `open`, it lists every cell in error with the reason.
   per line, no closing tags for rows and cells.
 - A cell holds what a person would type: a number, a date (`2027-03-01`),
   text, or a formula starting with `=`. `4.5%` and `$1,200` set the value
-  and how it shows.
+  and how it shows. As anywhere in HTML, `<` is written `&lt;` and `&` is
+  `&amp;`: `=IF(B2&lt;C2,"under","over")`.
 - Cells are named by their place in the table: the first `<tr>` is row 1
   (the header counts), the first cell is column A. Another tab is
   `Inputs!B2`. An empty cell is still written (`<td>`), so the columns line
@@ -53,8 +54,27 @@ with `browser` `open`, it lists every cell in error with the reason.
 | `data-control="checkbox"` on a `<col>` | TRUE and FALSE as boxes to tick |
 | `data-options="To do\|In progress\|Done"` on a `<col>` | a dropdown |
 | `data-frozen="1 A"` on the table | rows and columns that stay in view |
+| `data-rule="< 0: bad"` on a `<col>` | the column's cells that meet the condition take the effect |
+| `data-rule="D = Done: strike muted"` on the table | the rows whose column D meets it take the effect |
+| `<figure data-chart="bar" data-range="A1:C4">` after the table | a chart of those cells |
 
 Nothing else: no merged cells, no fonts or borders, no `style`.
+
+## Rules and charts
+
+- A rule is `condition: effects`; several are separated by `;`. Conditions:
+  `= text`, `<> text`, `< 0`, `<= 0`, `> 0`, `>= 0`, `blank`, `not blank`,
+  `before today`, `after today`. Effects: a fill (`accent`, `good`, `warn`,
+  `bad`, `muted`), `bold`, `strike`. On the table the condition starts with
+  a column's letter: `data-rule="D = Done: strike muted; C before today: bad"`.
+  A later rule's fill lies over an earlier one's.
+- A chart is written directly after the table it draws from:
+  `<figure data-chart="bar" data-range="A1:C4" data-at="F2" data-size="6x12"><figcaption>Costs per item</figcaption></figure>`.
+  `data-chart` is `bar`, `stacked`, `line` or `pie`. The range's first row
+  names the series and its first column the labels; a pie takes the first
+  series. `data-at` is the cell its top left corner sits on, beside or
+  under the data, and `data-size` the columns and rows it covers; left out,
+  the chart sits beside the table.
 
 ## Laying it out
 

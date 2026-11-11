@@ -1,7 +1,20 @@
 // A sheet's tabs as its file keeps them. What was typed is the record: the
 // engine reads "4.5%" as 0.045, so it only calculates and moves formulas.
 
-import { boxName, inOrder, letters, moved, tableText } from "./text.js";
+import { CHARTS } from "./chart.js";
+import { FILLS, readRules, ruleInput, slidRules } from "./rules.js";
+import {
+  boxName,
+  boxNamed,
+  cellName,
+  frozenOf,
+  inOrder,
+  letters,
+  moved,
+  slid,
+  slidBox,
+  tableText,
+} from "./text.js";
 
 // An engine sheet no tab shows, for sort keys and a selection's sum.
 const SCRATCH = "⌁";
@@ -18,6 +31,55 @@ export const headOf = (tab) => tab.rows.findLastIndex(isHeader) + 1;
 // A cell with an element in it was not read as written ("<" opens a tag).
 const markupOf = (tab) =>
   tab.markup.map((ref) => `${tab.name}!${ref} holds markup: write < as &lt;`);
+
+// The engine lets the last rule added that matches a cell give its fill:
+// the table's first, so a column's lie over them.
+const rulesOf = (tab) =>
+  [
+    readRules(tab.attrs["data-rule"], tab.columns.length),
+    ...tab.columns.map((column, c) =>
+      readRules(column["data-rule"], tab.columns.length, c + 1),
+    ),
+  ].reduce((all, { rules, unread }) => ({
+    rules: [...all.rules, ...rules],
+    unread: [...all.unread, ...unread],
+  }));
+const FILLED = Object.fromEntries(
+  Object.entries(FILLS).map(([name, color]) => [color, name]),
+);
+
+// A chart goes with its rows or columns when its whole range does.
+const slidCharts = (charts, across, at, count) =>
+  charts.flatMap((chart) => {
+    const range = boxNamed(chart.attrs["data-range"]);
+    const on = boxNamed(chart.attrs["data-at"]);
+    const left = range && slidBox(range, across, at, count);
+    if (range && !left) return [];
+    const place = on && { row: on.top, column: on.left };
+    const way = across ? "column" : "row";
+    if (place) place[way] = slid(place[way], at, count) ?? at;
+    return [
+      {
+        ...chart,
+        attrs: {
+          ...chart.attrs,
+          ...(left && { "data-range": boxName(left) }),
+          ...(place && { "data-at": cellName(place) }),
+        },
+      },
+    ];
+  });
+
+// A table's rules name columns by letter: they follow their columns.
+const slidAttrs = ({ attrs, columns }, at, count) =>
+  attrs["data-rule"]
+    ? {
+        ...attrs,
+        "data-rule": slidRules(attrs["data-rule"], columns.length, (column) =>
+          slid(column, at, count),
+        ),
+      }
+    : attrs;
 
 const eachCell = (tabs, visit) =>
   tabs.forEach((tab, sheet) =>
@@ -42,47 +104,87 @@ const mapCells = (tabs, change) =>
 const withText = (cell, text) =>
   cell.text === text ? cell : { ...cell, text };
 
-export function openBook(engine, written) {
+const LOCKED = "This file is read-only: save it as a sheet to change it.";
+
+// `locked` for the tabs of an Excel or CSV file: no change is made to them.
+export function openBook(engine, written, locked) {
   let tabs = written;
   let model;
+  // Each tab's rules as the engine was built with them.
+  let ruled = [];
+  // Each chart as it was read since the last build, by "sheet index".
+  const charted = new Map();
   const past = [];
   const future = [];
 
-  const build = () => {
-    model?.free();
-    model = new engine.Model("Sheet", "en", "UTC", "en");
+  // The tabs as an engine's workbook. `scratch` adds the sheet this works
+  // on, which a workbook sent out does not carry.
+  const made = (scratch) => {
+    const model = new engine.Model("Sheet", "en", "UTC", "en");
     model.pauseEvaluation();
     // Named as it is made: a later tab may bear the next default name.
     tabs.forEach((tab, sheet) => {
       if (sheet) model.newSheet();
       model.renameSheet(sheet, tab.name);
     });
-    model.newSheet();
-    model.renameSheet(tabs.length, SCRATCH);
-    tabs.forEach((tab, sheet) => {
-      const format = (pattern, row, column, height) => {
-        if (pattern && height)
-          model.updateRangeStyle(
-            { sheet, row, column, width: 1, height },
-            "num_fmt",
-            pattern,
-          );
-      };
-      // Formats before inputs: a formula shows as the cells it reads do.
+    if (scratch) {
+      let name = SCRATCH;
+      while (tabs.some((tab) => tab.name === name)) name += SCRATCH;
+      model.newSheet();
+      model.renameSheet(tabs.length, name);
+    }
+    const format = (pattern, sheet, row, column, height = 1) => {
+      if (pattern && height)
+        model.updateRangeStyle(
+          { sheet, row, column, width: 1, height },
+          "num_fmt",
+          pattern,
+        );
+    };
+    const patternOf = (cell, sheet, column) =>
+      cell.attrs["data-format"] ??
+      tabs[sheet].columns[column - 1]["data-format"];
+    tabs.forEach((tab, sheet) =>
       tab.columns.forEach((column, c) =>
-        format(column["data-format"], 1, c + 1, tab.rows.length),
-      );
-      tab.rows.forEach((row, r) =>
-        row.cells.forEach((cell, c) =>
-          format(cell.attrs["data-format"], r + 1, c + 1, 1),
-        ),
-      );
-    });
+        format(column["data-format"], sheet, 1, c + 1, tab.rows.length),
+      ),
+    );
+    // Every pattern before any input: a formula shows as the cell it reads
+    // first does, wherever that lies.
+    eachCell(tabs, (cell, sheet, row, column) =>
+      format(cell.attrs["data-format"], sheet, row, column),
+    );
     eachCell(tabs, (cell, sheet, row, column) => {
       if (cell.text) model.setUserInput(sheet, row, column, cell.text);
     });
+    // That takes a formula's own pattern too, which is set again; what a
+    // typed value brought ("4.5%", a date) stands.
+    eachCell(tabs, (cell, sheet, row, column) => {
+      if (cell.text.startsWith("="))
+        format(patternOf(cell, sheet, column), sheet, row, column);
+    });
+    tabs.forEach((tab, sheet) => {
+      const [top, bottom] = [headOf(tab) + 1, tab.rows.length];
+      const { rules, unread } = ruled[sheet];
+      for (const rule of top > bottom ? [] : rules) {
+        const input = ruleInput(rule, top, bottom, tab.columns.length);
+        // A rule the engine refuses is said like one not understood.
+        try {
+          model.addConditionalFormatting(sheet, input.range, input.rule);
+        } catch {
+          if (!unread.includes(rule.text)) unread.push(rule.text);
+        }
+      }
+    });
     model.resumeEvaluation();
     model.evaluate();
+    return model;
+  };
+  const build = () => {
+    model?.free();
+    ruled = tabs.map(rulesOf);
+    charted.clear();
+    model = made(true);
   };
   build();
 
@@ -90,7 +192,7 @@ export function openBook(engine, written) {
   const commit = (next) => {
     const changed = next.filter((tab, at) => tab !== tabs[at]);
     if (!changed.length) return false;
-    const [refused] = changed.flatMap(markupOf);
+    const [refused] = locked ? [LOCKED] : changed.flatMap(markupOf);
     if (refused) {
       // What led here may have moved the engine's rows already.
       build();
@@ -169,6 +271,64 @@ export function openBook(engine, written) {
       : commit(next);
   };
 
+  // A chart's labels and series, or why it cannot be drawn. A blank cell is
+  // a gap, and a column without a number no series.
+  const readChart = (sheet, { attrs }) => {
+    const tab = tabs[sheet];
+    const kind = attrs["data-chart"];
+    if (!Object.hasOwn(CHARTS, kind)) return { error: "is of no known kind" };
+    const box = boxNamed(attrs["data-range"]);
+    if (!box || box.bottom > tab.rows.length || box.right > tab.columns.length)
+      return { error: "names cells outside the tab" };
+    const rows = Array.from(
+      { length: box.bottom - box.top },
+      (_, at) => box.top + 1 + at,
+    );
+    const columns = Array.from(
+      { length: box.right - box.left },
+      (_, at) => box.left + 1 + at,
+    );
+    const cells = columns.flatMap((column) =>
+      rows.map((row) => ({
+        top: row,
+        left: column,
+        bottom: row,
+        right: column,
+      })),
+    );
+    const values = worked(cells.map((cell) => `=${where(tab.name, cell)}`)).map(
+      ({ kind, value }, at) =>
+        kind === "number" &&
+        tab.rows[cells[at].top - 1].cells[cells[at].left - 1].text
+          ? value
+          : undefined,
+    );
+    const series = columns
+      .map((column, at) => ({
+        name: model.getFormattedCellValue(sheet, box.top, column),
+        values: values.slice(at * rows.length, (at + 1) * rows.length),
+      }))
+      .filter(({ values }) => values.some((value) => value !== undefined));
+    const drawn =
+      kind === "pie"
+        ? series[0]?.values.some((value) => value > 0)
+        : series.length > 0;
+    return drawn
+      ? {
+          labels: rows.map((row) =>
+            model.getFormattedCellValue(sheet, row, box.left),
+          ),
+          series,
+        }
+      : { error: "holds no numbers" };
+  };
+  const chartOf = (sheet, index) => {
+    const key = `${sheet} ${index}`;
+    if (!charted.has(key))
+      charted.set(key, readChart(sheet, tabs[sheet].charts[index]));
+    return charted.get(key);
+  };
+
   return {
     get tabs() {
       return tabs;
@@ -178,13 +338,57 @@ export function openBook(engine, written) {
     undo: () => step(past, future),
     redo: () => step(future, past),
     table: (sheet) => tableText(tabs[sheet]),
+    xlsx() {
+      const workbook = made(false);
+      try {
+        tabs.forEach((tab, sheet) => {
+          const held = frozenOf(tab.attrs["data-frozen"], headOf(tab));
+          workbook.setFrozenRowsCount(sheet, held.rows);
+          workbook.setFrozenColumnsCount(sheet, held.columns);
+          tab.columns.forEach((column, c) => {
+            const wide = Number(column["data-width"]);
+            if (wide) workbook.setColumnsWidth(sheet, c + 1, c + 1, wide);
+          });
+        });
+        return workbook.toXlsx();
+      } finally {
+        workbook.free();
+      }
+    },
     shown: (sheet, row, column) =>
       model.getFormattedCellValue(sheet, row, column),
     kind: (sheet, row, column) =>
       KINDS[model.getCellType(sheet, row, column)] ?? "text",
 
+    // What a rule that matches gives a cell. A tab without rules does not
+    // ask the engine for every cell's style.
+    look(sheet, row, column) {
+      if (!ruled[sheet].rules.length) return {};
+      const { fill, font } = model.getCellStyle(sheet, row, column).style;
+      return {
+        fill: FILLED[String(fill.color).toUpperCase()],
+        bold: !!font.b,
+        strike: !!font.strike,
+      };
+    },
+
+    chart: chartOf,
+    setCharts: (sheet, change) =>
+      commit(edit(sheet, (tab) => ({ ...tab, charts: change(tab.charts) }))),
+
     errors() {
-      const found = tabs.flatMap(markupOf);
+      const found = tabs.flatMap((tab, sheet) => [
+        ...markupOf(tab),
+        ...ruled[sheet].unread.map(
+          (rule) => `${tab.name}: rule \`${rule}\` is not understood`,
+        ),
+        ...tab.charts.flatMap((chart, at) => {
+          const { error } = chartOf(sheet, at);
+          return error
+            ? [`${tab.name}: chart ${chart.attrs["data-range"]} ${error}`]
+            : [];
+        }),
+      ]);
       eachCell(tabs, (cell, sheet, row, column) => {
         if (model.getCellType(sheet, row, column) === 16)
           found.push(
@@ -268,6 +472,7 @@ export function openBook(engine, written) {
         () => model.insertRows(sheet, at, count),
         edit(sheet, (tab) => ({
           ...tab,
+          charts: slidCharts(tab.charts, false, at, count),
           rows: tab.rows.toSpliced(
             at - 1,
             0,
@@ -284,6 +489,7 @@ export function openBook(engine, written) {
         () => model.deleteRows(sheet, at, count),
         edit(sheet, (tab) => ({
           ...tab,
+          charts: slidCharts(tab.charts, false, at, -count),
           rows: tab.rows.toSpliced(at - 1, count),
         })),
       ),
@@ -292,6 +498,8 @@ export function openBook(engine, written) {
         () => model.insertColumns(sheet, at, count),
         edit(sheet, (tab) => ({
           ...tab,
+          attrs: slidAttrs(tab, at, count),
+          charts: slidCharts(tab.charts, true, at, count),
           columns: tab.columns.toSpliced(
             at - 1,
             0,
@@ -314,6 +522,8 @@ export function openBook(engine, written) {
         () => model.deleteColumns(sheet, at, count),
         edit(sheet, (tab) => ({
           ...tab,
+          attrs: slidAttrs(tab, at, -count),
+          charts: slidCharts(tab.charts, true, at, -count),
           columns: tab.columns.toSpliced(at - 1, count),
           rows: tab.rows.map((row) => ({
             ...row,

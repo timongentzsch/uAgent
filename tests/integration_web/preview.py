@@ -1,6 +1,6 @@
 import http.client
 import json
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from integration_support import SMALL_PNG, Server, assert_true, event, tool_call
 from web_support import WebClient, web_host
@@ -124,6 +124,10 @@ def test_web_sheet_page_loads_its_engine_from_its_own_address(root, home, *, bin
         '<table data-sheet="Costs"><tr><th>Item<tr><td>=1+1</table>'
         '<table data-sheet="Inputs"><tr><td>4.5%</table>'
     )
+    (project / "sheets/book.xlsx").write_bytes(b"PK\x03\x04 workbook")
+    (project / "sheets/rows.csv").write_text("a,b\n1,2\n")
+    odd = 'Q1 100% #2 "é".csv'
+    (project / "sheets" / odd).write_text("a,b\n1,2\n")
     (project / "~sheet").mkdir()
     (project / "~sheet/sheet.js").write_text("the folder's own")
     # The engine as a web build installs it, beside the helper the host inlines.
@@ -172,11 +176,29 @@ def test_web_sheet_page_loads_its_engine_from_its_own_address(root, home, *, bin
             assert_true(page("~sheet/sheet.js")[1] == b"export const ready = 1;", "shadowed")
             for refused in ("~sheet/LICENSE-MIT", "~sheet/../secret.txt", "~sheet/", "~sheet/x.js"):
                 assert_true(page(refused)[0] == 404, refused)
+            # An Excel or CSV file is served as itself, and on request as a
+            # page the sheet code fills from it.
+            xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            for name, kind in (("book.xlsx", xlsx), ("rows.csv", "text/csv"), (odd, "text/csv")):
+                # The page names its file as an address spells it.
+                spelt = quote(name, safe="")
+                status, got, headers = page(f"sheets/{spelt}")
+                assert_true(status == 200 and headers["Content-Type"] == kind, (name, headers))
+                status, shell, headers = page(f"sheets/{spelt}?sheet")
+                assert_true(headers["Content-Type"].startswith("text/html"), headers)
+                assert_true(
+                    f'<meta name="sheet" content="{spelt}">'.encode() in shell
+                    and b"uagentDesign" in shell
+                    and b"workbook" not in shell,
+                    shell[:300],
+                )
+            assert_true(page("sheets/none.xlsx?sheet")[0] == 404, "a file that is not there")
+            assert_true(b"<table" in page("sheets/budget.html?sheet")[1], "a page stays itself")
             # A sheet is its own artifact, counted by its tabs.
             listing = client.json(
                 f"/api/sessions/{session['id']}/files?{urlencode({'list': 'sheets'})}"
             )[1]
-            entry = listing["entries"][0]
+            entry = next(e for e in listing["entries"] if e["name"] == "budget.html")
             assert_true(
                 (entry["kind"], entry["count"], listing["kind"]) == ("sheet", 2, ""), listing
             )

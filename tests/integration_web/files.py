@@ -383,6 +383,29 @@ def test_web_files_save_a_person_s_edit_against_its_revision(root, home, *, bina
                 assert_true(status == 404, (path, status, refused))
             assert_true(not (project / "docs/new.html").exists(), "made a file")
             assert_true(elsewhere.read_text() == "outside", "wrote outside")
+            # With create, a new page and its folder, never over a file, never
+            # anything but a page, never outside.
+
+            def create(path):
+                return client.json(files, {"path": path, "text": "<table>", "create": True})[:2]
+
+            status, made = create("sheets/new/budget.html")
+            assert_true(status == 200 and made["revision"], (status, made))
+            assert_true((project / "sheets/new/budget.html").read_text() == "<table>", "not made")
+            (root / "outside").mkdir()
+            (project / "linked").symlink_to(root / "outside")
+            for path, expected in (
+                ("sheets/new/budget.html", 409),
+                ("docs/memo.html", 409),
+                ("sheets/data.csv", 404),
+                ("../made.html", 404),
+                ("linked/made.html", 404),
+            ):
+                status, refused = create(path)
+                assert_true(status == expected, (path, status, refused))
+            assert_true((project / "docs/memo.html").read_text() == "<p>agent</p>", "overwrote")
+            assert_true(not (root / "made.html").exists(), "made a file outside")
+            assert_true(not list((root / "outside").iterdir()), "wrote through a link")
             assert_true(
                 WebClient(client.port).request(files, {"path": "docs/memo.html", "text": "x"})[0]
                 == 401,

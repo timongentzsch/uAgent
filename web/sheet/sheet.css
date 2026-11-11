@@ -11,6 +11,11 @@
   --sheet-tint: color-mix(in srgb, var(--sheet-accent) 14%, var(--sheet-ground));
   --sheet-error: #b42318;
   --sheet-pick: color-mix(in srgb, var(--sheet-accent) 12%, transparent);
+  --sheet-series-0: var(--sheet-accent);
+  --sheet-series-1: color-mix(in srgb, var(--sheet-accent) 55%, var(--sheet-ground));
+  --sheet-series-2: color-mix(in srgb, var(--sheet-accent) 25%, var(--sheet-ground));
+  --sheet-series-3: var(--sheet-error);
+  --sheet-series-4: color-mix(in srgb, var(--sheet-error) 45%, var(--sheet-ground));
   --sheet-good: #dcf5e3;
   --sheet-warn: #fdf0c8;
   --sheet-bad: #fbdcdc;
@@ -22,8 +27,13 @@ body {
   color: var(--sheet-ink);
   font: var(--sheet-font);
 }
+/* A chart as written is drawn anew over the grid, or it follows no table
+   and is not drawn. One left open holds tables, and shows them. */
 figure[data-chart] {
   margin: 0;
+}
+figure[data-chart]:not(:has(table)) {
+  display: none;
 }
 table[data-sheet] {
   /* As wide as its columns: the grid scrolls, it is never squeezed. */
@@ -211,4 +221,120 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
 table[data-sheet] input[type="checkbox"] {
   margin: 0;
   vertical-align: middle;
+}
+/* What a rule gives the cells it matches. */
+table[data-sheet] .sheet-bold {
+  font-weight: 600;
+}
+table[data-sheet] .sheet-strike {
+  text-decoration: line-through;
+}
+/* A chart lies over the grid, on the cell it names. */
+.sheet-chart {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--sheet-line);
+  background: var(--sheet-ground);
+  cursor: move;
+}
+.sheet-chart > figcaption {
+  min-height: 1lh;
+  padding-right: 24px;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-chart > .sheet-more {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.sheet-chart > .sheet-more::before {
+  content: "▾";
+  color: var(--sheet-muted);
+}
+/* The corner a chart is resized by. */
+.sheet-size {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+}
+.sheet-chart > svg {
+  flex: 1;
+  min-height: 0;
+}
+.sheet-chart > p {
+  margin: auto;
+  color: var(--sheet-error);
+}
+.sheet-chart line {
+  stroke: var(--sheet-line);
+}
+.sheet-chart line[data-zero="true"] {
+  stroke: var(--sheet-muted);
+}
+.sheet-chart text {
+  fill: var(--sheet-muted);
+  font-size: 11px;
+  text-anchor: middle;
+}
+.sheet-chart text[data-axis="y"] {
+  text-anchor: end;
+  dominant-baseline: middle;
+}
+.sheet-chart [data-series="0"] {
+  --series: var(--sheet-series-0);
+}
+.sheet-chart [data-series="1"] {
+  --series: var(--sheet-series-1);
+}
+.sheet-chart [data-series="2"] {
+  --series: var(--sheet-series-2);
+}
+.sheet-chart [data-series="3"] {
+  --series: var(--sheet-series-3);
+}
+.sheet-chart [data-series="4"] {
+  --series: var(--sheet-series-4);
+}
+.sheet-chart :is(rect, path) {
+  fill: var(--series);
+  stroke: var(--sheet-ground);
+}
+.sheet-chart polyline {
+  fill: none;
+  stroke: var(--series);
+  stroke-width: 2;
+}
+.sheet-chart > ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--sheet-muted);
+  font-size: 11px;
+}
+.sheet-chart li::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  background: var(--series);
 }

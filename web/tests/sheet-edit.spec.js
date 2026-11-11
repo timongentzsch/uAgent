@@ -643,3 +643,191 @@ test("on a phone the rows and columns a sheet holds stay in view, and a cell is 
   await expect.poll(saved).toContain("<td>390<td>=K40+1\n</table>");
   await expect(files.getByRole("button", { name: "Comment" })).toBeVisible();
 });
+
+test("a rule strikes, fills and emboldens what matches, until an edit ends the match; one not understood is reported", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const ruled = sheet("Plan", {
+    Tasks: [
+      '<col><col><col data-rule="< 0: bad; > 1000: bold">',
+      "<th>Task<th>Status<th>Cost",
+      "<td>Write<td>Done<td>1200",
+      '<tr data-fill="warn"><td>Book<td>To do<td>-5',
+    ],
+  }).replace(
+    'data-sheet="Tasks"',
+    'data-sheet="Tasks" data-rule="B = Done: strike muted; B = Nope: sparkle"',
+  );
+  const { files, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    ruled,
+  );
+  // The table's rule is on the whole row, the column's on its own cell.
+  for (const ref of ["A2", "C2"]) {
+    await expect(cell("Tasks", ref)).toHaveClass(/sheet-strike/);
+    await expect(cell("Tasks", ref)).toHaveAttribute("data-fill", "muted");
+  }
+  await expect(cell("Tasks", "C2")).toHaveClass(/sheet-bold/);
+  // A rule's fill lies over the row's own.
+  await expect(cell("Tasks", "A3")).toHaveAttribute("data-fill", "warn");
+  await expect(cell("Tasks", "C3")).toHaveAttribute("data-fill", "bad");
+  await expect(cell("Tasks", "A3")).not.toHaveClass(/sheet-strike/);
+  await files.getByRole("button", { name: "Ask agent to fix" }).click();
+  await expect(app.locator("#prompt")).toHaveValue(
+    /Tasks: rule `B = Nope: sparkle` is not understood/,
+  );
+
+  await cell("Tasks", "B2").click();
+  await app.keyboard.type("To do");
+  await app.keyboard.press("Enter");
+  await expect(cell("Tasks", "A2")).not.toHaveClass(/sheet-strike/);
+  await expect(cell("Tasks", "A2")).not.toHaveAttribute("data-fill");
+  await expect(cell("Tasks", "C2")).toHaveClass(/sheet-bold/);
+  // The rules are in the file as they were written.
+  await expect
+    .poll(saved)
+    .toBe(with_(ruled, { "<td>Write<td>Done<td>": "<td>Write<td>To do<td>" }));
+});
+
+test("a chart is drawn from its cells, follows an edit, is put in from a selection, and is saved with its tab", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const figure = (type, range, at, caption = "") =>
+    `<figure data-chart="${type}" data-range="${range}" data-at="${at}" data-size="6x12"><figcaption>${caption}</figcaption></figure>`;
+  const costs = figure("bar", "A1:C4", "E2", "Costs per item");
+  const charted = sheet("Plan", {
+    Costs: [
+      "<th>Item<th>Net<th>Tax",
+      "<td>Rent<td>1200<td>240",
+      "<td>Power<td>90<td>18",
+      "<td>Water<td>60<td>12",
+      costs,
+    ],
+  });
+  const { files, stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    charted,
+  );
+  const chart = stage.getByRole("img", { name: "Costs per item" });
+  const heights = () =>
+    chart
+      .locator("rect")
+      .evaluateAll((bars) => bars.map((bar) => bar.height.baseVal.value));
+  // A bar for each number, the series named beside them.
+  await expect(chart.locator("rect")).toHaveCount(6);
+  await expect(stage.locator(".sheet-chart li")).toHaveText(["Net", "Tax"]);
+  expect(Math.max(...(await heights()))).toBe((await heights())[0]);
+  await cell("Costs", "B3").click();
+  await app.keyboard.type("2400");
+  await app.keyboard.press("Enter");
+  await expect
+    .poll(async () => (await heights()).indexOf(Math.max(...(await heights()))))
+    .toBe(1);
+
+  // Its own menu changes its kind.
+  await stage.getByRole("button", { name: /^Chart menu/ }).click();
+  await stage.getByRole("menuitem", { name: "Pie" }).click();
+  await expect(chart.locator("path")).toHaveCount(3);
+  const pie = with_(charted, {
+    "<td>90<td>": "<td>2400<td>",
+    [costs]: figure("pie", "A1:C4", "E2", "Costs per item"),
+  });
+  await expect.poll(saved).toBe(pie);
+
+  // A chart of the selection, put in beside it.
+  await cell("Costs", "A1").click();
+  await cell("Costs", "B4").click({ modifiers: ["Shift"] });
+  await files.getByRole("button", { name: "Chart", exact: true }).click();
+  await expect(
+    stage.getByRole("img", { name: "Bars of A1:B4" }).locator("rect"),
+  ).toHaveCount(3);
+  const two = pie.replace(
+    "</figure>",
+    `</figure>\n${figure("bar", "A1:B4", "D1")}`,
+  );
+  await expect.poll(saved).toBe(two);
+  // Undo takes it out again.
+  await files.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(saved).toBe(pie);
+
+  // Dragged, the chart sits on the cell under its corner; by its own corner
+  // it covers more cells. Beyond the grid a cell is 96 by 24.
+  const drag = async (from, x, y) => {
+    await from.hover();
+    await app.mouse.down();
+    const box = await from.boundingBox();
+    await app.mouse.move(
+      box.x + box.width / 2 + x,
+      box.y + box.height / 2 + y,
+      { steps: 4 },
+    );
+    await app.mouse.up();
+  };
+  await drag(stage.locator(".sheet-chart figcaption"), 200, 5);
+  await expect.poll(saved).toContain('data-at="G2" data-size="6x12"');
+  await drag(stage.locator(".sheet-size"), 110, 30);
+  await expect.poll(saved).toContain('data-at="G2" data-size="7x13"');
+
+  // The file's chart is there when the sheet is read anew; deleted, it is
+  // gone from the file.
+  await stage.locator("html").evaluate(() => location.reload());
+  await expect(chart.locator("path")).toHaveCount(3);
+  await stage.getByRole("button", { name: /^Chart menu/ }).click();
+  await stage.getByRole("menuitem", { name: "Delete chart" }).click();
+  await expect(stage.locator(".sheet-chart")).toHaveCount(0);
+  await expect.poll(saved).toBe(
+    with_(pie, {
+      [`\n${figure("pie", "A1:C4", "E2", "Costs per item")}`]: "",
+    }),
+  );
+});
+
+test("a figure that does not directly follow its table is reported and left in the file; one left open loses no tab", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const open =
+    '<figure data-chart="bar" data-range="A1:B3"><figcaption>Costs</figcaption>';
+  // After the first table a comment, then a chart; then one with no end
+  // tag, which takes the second table inside it.
+  const apart = sheet("Plan", {
+    Costs: ["<th>Item<th>Net", "<td>Rent<td>1200", "<td>Power<td>90"],
+    Notes: ["<td>Keep me"],
+  }).replace(
+    "</table>\n<table",
+    `</table>\n<!-- chart -->\n${open}</figure>\n${open}\n<table`,
+  );
+  const { files, stage, tabs, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    apart,
+  );
+  await expect(tabs).toHaveText(["Costs", "Notes"]);
+  await expect(cell("Costs", "B3")).toHaveText("90");
+  await expect(stage.locator(".sheet-chart")).toHaveCount(0);
+  await files.getByRole("button", { name: "Ask agent to fix" }).click();
+  await expect(app.locator("#prompt")).toHaveValue(
+    /chart A1:B3: a chart must directly follow its table/,
+  );
+  // Each tab is saved in its place; no figure is taken, added or lost.
+  await cell("Costs", "B2").click();
+  await app.keyboard.type("1500");
+  await app.keyboard.press("Enter");
+  const first = with_(apart, { "<td>Rent<td>1200": "<td>Rent<td>1500" });
+  await expect.poll(saved).toBe(first);
+  await tabs.nth(1).click();
+  await cell("Notes", "A1").click();
+  await app.keyboard.type("Kept");
+  await app.keyboard.press("Enter");
+  await expect.poll(saved).toBe(with_(first, { "<td>Keep me": "<td>Kept" }));
+});

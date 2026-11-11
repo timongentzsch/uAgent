@@ -30,8 +30,13 @@ export const sheet = (title, tabs) =>
     .map(
       ([name, rows]) =>
         // A row is its cells; one that is a tag itself (its <col>s, a <tr>
-        // with a class) is written whole.
-        `<table data-sheet="${name}">\n${rows.map((row) => (/^<(col|tr)\b/.test(row) ? row : `<tr>${row}`)).join("\n")}\n</table>`,
+        // with a class) is written whole, and a chart after the table.
+        `<table data-sheet="${name}">\n${rows
+          .filter((row) => !row.startsWith("<figure"))
+          .map((row) => (/^<(col|tr)\b/.test(row) ? row : `<tr>${row}`))
+          .join(
+            "\n",
+          )}\n${["</table>", ...rows.filter((row) => row.startsWith("<figure"))].join("\n")}`,
     )
     .join("\n")}\n`;
 // A plan of three tabs: counts and a total over its tasks, a header band
@@ -90,12 +95,14 @@ export async function openFiles(page, session, path = "", options = {}) {
   return files;
 }
 
-// A sheet written as sheets/plan.html and opened in the pane: its page, its
-// tabs, its formula bar with the field to type in, a cell of a tab by its
-// name ("B2"), and the file as it is on disk.
+// A sheet written as sheets/plan.html (or at `options.path`, as text or as
+// a workbook's bytes) and opened in the pane: its page, its tabs, its
+// formula bar with the field to type in, a cell of a tab by its name
+// ("B2"), and the file as it is on disk.
 export async function openSheet(page, session, project, source, options) {
-  await writeFiles(project, { "sheets/plan.html": source });
-  const files = await openFiles(page, session, "sheets/plan.html", options);
+  const path = options?.path ?? "sheets/plan.html";
+  await writeFiles(project, { [path]: source });
+  const files = await openFiles(page, session, path, options);
   const { stage } = viewerOf(files);
   const bar = files.getByRole("group", { name: "Formula bar" });
   const columnOf = (name) =>
@@ -112,7 +119,7 @@ export async function openSheet(page, session, project, source, options) {
         `table[data-sheet="${tab}"] [data-row="${row}"][data-column="${columnOf(name)}"]`,
       );
     },
-    saved: () => readFile(join(project, "sheets/plan.html"), "utf8"),
+    saved: (at = path) => readFile(join(project, at), "utf8"),
   };
 }
 

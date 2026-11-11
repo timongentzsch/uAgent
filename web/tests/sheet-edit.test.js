@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   cellOf,
+  fileOf,
   splice,
   tableSaver,
 } from "../src/features/files/sheet-edit.ts";
@@ -34,6 +35,45 @@ test("a table's end is its own: not the text of a cell, an attribute's value or 
   assert.equal(put(`${head}${tricky}\n${two}`, 1), `${head}${tricky}\n${next}`);
 });
 
+test("the charts right after a table are replaced with it; a figure elsewhere stays", () => {
+  const chart = (type) =>
+    `<figure data-chart="${type}" data-range="A1:B2"><figcaption>x</figcaption></figure>`;
+  const source = `${head}${one}\n${chart("bar")}\n${chart("pie")}\n<p>text</p>\n${chart("line")}\n${two}\n<figure><img></figure>`;
+  assert.equal(
+    put(source, 0),
+    `${head}${next}\n<p>text</p>\n${chart("line")}\n${two}\n<figure><img></figure>`,
+  );
+  // The other tab has none: what follows it is no chart.
+  const charted = `${next}\n${chart("stacked")}`;
+  assert.equal(
+    splice(source, { tab: 1, tabs: 2, table: charted }),
+    `${head}${one}\n${chart("bar")}\n${chart("pie")}\n<p>text</p>\n${chart("line")}\n${charted}\n<figure><img></figure>`,
+  );
+});
+
+test("a chart belongs to a table only with white space between, and one left open takes nothing after it", () => {
+  const chart =
+    '<figure data-chart="bar" data-range="A1:B2"><figcaption>x</figcaption></figure>';
+  // A comment between: the figure is not the table's, and stays.
+  const apart = `${head}${one}\n<!-- costs -->\n${chart}\n${two}`;
+  assert.equal(
+    put(apart, 0),
+    `${head}${next}\n<!-- costs -->\n${chart}\n${two}`,
+  );
+  // No end tag: the next tab is not taken for the chart's inside.
+  const open =
+    '<figure data-chart="bar" data-range="A1:B2"><figcaption>x</figcaption>';
+  const unclosed = `${head}${one}\n${open}\n${two}\n<figure><img></figure>`;
+  assert.equal(
+    put(unclosed, 0),
+    `${head}${next}\n${open}\n${two}\n<figure><img></figure>`,
+  );
+  assert.equal(
+    put(unclosed, 1),
+    `${head}${one}\n${open}\n${next}\n<figure><img></figure>`,
+  );
+});
+
 test("a file with CRLF line ends keeps them in the new table too", () => {
   const crlf = (text) => text.replaceAll("\n", "\r\n");
   assert.equal(
@@ -53,6 +93,45 @@ test("what the page says is checked: a place that is no tab, or other tabs than 
   assert.equal(
     put(scripted, 0, 3),
     `${head}<template>${next}</template>\n${one}\n${two}`,
+  );
+});
+
+test("what the page hands over is taken as the kind it names, under what a file may be", async () => {
+  const bytes = new Uint8Array([80, 75, 3, 4]);
+  const workbook = fileOf({ as: "xlsx", data: bytes });
+  assert.deepEqual(
+    [workbook.as, new Uint8Array(await workbook.blob.arrayBuffer())],
+    ["xlsx", bytes],
+  );
+  const rows = fileOf({ as: "csv", data: "a,b" });
+  assert.deepEqual([rows.as, await rows.blob.text()], ["csv", "a,b"]);
+  assert.deepEqual(fileOf({ as: "sheet", data: "<table>" }), {
+    as: "sheet",
+    text: "<table>",
+  });
+  for (const said of [
+    { as: "xlsx", data: "PK" },
+    { as: "xlsx", data: [80, 75] },
+    { as: "sheet", data: bytes },
+    { as: "exe", data: "x" },
+    {},
+  ])
+    assert.equal(fileOf(said), undefined);
+  // Too large a file is not taken, and why is said; text counts in bytes.
+  const exported = "Not exported: the file would be larger than 8.4 MB.";
+  assert.equal(
+    fileOf({ as: "xlsx", data: new Uint8Array(8 * 1024 * 1024 + 1) }),
+    exported,
+  );
+  assert.equal(
+    fileOf({ as: "csv", data: "x".repeat(8 * 1024 * 1024 + 1) }),
+    exported,
+  );
+  const saved = "Not saved: the file would be larger than 1 MB.";
+  assert.equal(fileOf({ as: "sheet", data: "é".repeat(524_289) }), saved);
+  assert.equal(
+    typeof fileOf({ as: "sheet", data: "é".repeat(524_288) }),
+    "object",
   );
 });
 

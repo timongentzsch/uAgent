@@ -1,0 +1,234 @@
+// A tab's charts, drawn as SVG over its grid from what the engine makes of
+// the cells they name.
+
+import { CHART, CHARTS, chartShapes } from "./chart.js";
+import { make } from "./grid.js";
+import { openMenu } from "./menu.js";
+import { boxNamed, cellName } from "./text.js";
+
+// A cell beyond the grid, where a chart may sit.
+const CELL = { width: 96, height: 24 };
+// A chart covers no more cells than this, whatever its file says.
+const MOST = 200;
+// The stylesheet has this many series colours; further series start over.
+const COLOURS = 5;
+// Labels closer than this would run into each other: some are left out.
+const LABEL_ROOM = 48;
+
+const shape = (name, attrs = {}, text = "") => {
+  const element = document.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const [key, value] of Object.entries(attrs))
+    element.setAttribute(key, value);
+  element.textContent = text;
+  return element;
+};
+
+// Widths and heights are added up, since a held cell's own place moves as
+// the page scrolls; past the grid every cell is one size.
+const edges = (table) => {
+  const run = (cells, count, size, beyond) => {
+    let total = Math.max(0, count - cells.length) * beyond;
+    for (let at = 0; at < Math.min(count, cells.length); at++)
+      total += cells[at][size];
+    return total;
+  };
+  return {
+    x: (column) =>
+      table.offsetLeft +
+      run(table.tHead.rows[0].cells, column, "offsetWidth", CELL.width),
+    y: (row) =>
+      table.offsetTop +
+      table.tHead.offsetHeight +
+      run(table.tBodies[0].rows, row - 1, "offsetHeight", CELL.height),
+  };
+};
+
+const nearest = (edge, place) => {
+  let at = 1;
+  while (at < 9999 && edge(at + 1) - place < place - edge(at)) at++;
+  return at;
+};
+
+// Mouse only: a touch that drags scrolls the page.
+function drag(layer, sheet, change) {
+  layer.addEventListener("pointerdown", (event) => {
+    const figure = event.target.closest("figure");
+    if (!figure || event.button || event.pointerType !== "mouse") return;
+    if (event.target.closest(".sheet-more")) return;
+    const sizing = event.target.classList.contains("sheet-size");
+    const from = figure.getBoundingClientRect();
+    const by = (to) => [to.clientX - event.clientX, to.clientY - event.clientY];
+    const move = (to) => {
+      const [x, y] = by(to);
+      const [left, top] = sizing ? ["width", "height"] : ["left", "top"];
+      figure.style[left] =
+        `${(sizing ? from.width : from.left + scrollX) + x}px`;
+      figure.style[top] =
+        `${(sizing ? from.height : from.top + scrollY) + y}px`;
+    };
+    figure.setPointerCapture(event.pointerId);
+    figure.addEventListener("pointermove", move);
+    figure.addEventListener(
+      "pointerup",
+      (to) => {
+        figure.removeEventListener("pointermove", move);
+        if (by(to).every((moved) => Math.abs(moved) < 4)) return;
+        const { x, y } = edges(sheet.table());
+        const now = figure.getBoundingClientRect();
+        const on = {
+          column: nearest(x, now.left + scrollX),
+          row: nearest(y, now.top + scrollY),
+        };
+        const wide = nearest(x, now.right + scrollX) - on.column;
+        const high = nearest(y, now.bottom + scrollY) - on.row;
+        change([...layer.children].indexOf(figure), (chart) => [
+          {
+            ...chart,
+            attrs: {
+              ...chart.attrs,
+              "data-at": cellName(on),
+              "data-size": `${Math.max(1, wide)}x${Math.max(1, high)}`,
+            },
+          },
+        ]);
+      },
+      { once: true },
+    );
+  });
+}
+
+function drawn(type, { labels, series }, size) {
+  const { plot, ticks, bars, lines, slices, ...shapes } = chartShapes(
+    type,
+    series,
+    labels,
+    size,
+  );
+  if (slices)
+    return slices.map(({ at, path }) =>
+      shape("path", { d: path, "data-series": at % COLOURS }),
+    );
+  const every = Math.ceil(LABEL_ROOM / (plot.width / labels.length));
+  return [
+    ...ticks.flatMap(({ value, y, text }) => [
+      shape("line", {
+        x1: plot.left,
+        x2: plot.left + plot.width,
+        y1: y,
+        y2: y,
+        "data-zero": value === 0,
+      }),
+      shape("text", { x: plot.left - 6, y, "data-axis": "y" }, text),
+    ]),
+    ...shapes.labels
+      .filter((_, at) => at % every === 0)
+      .map(({ text, x }) =>
+        shape(
+          "text",
+          { x, y: plot.top + plot.height + 14, "data-axis": "x" },
+          text,
+        ),
+      ),
+    ...bars.map(({ series, ...box }) =>
+      shape("rect", { ...box, "data-series": series % COLOURS }),
+    ),
+    ...lines.map(({ series, points }) =>
+      shape("polyline", { points, "data-series": series % COLOURS }),
+    ),
+  ];
+}
+
+export function listenCharts(sheet) {
+  const layer = document.body.appendChild(
+    make("div", { className: "sheet-charts" }),
+  );
+  const change = (index, next) =>
+    sheet.did(
+      sheet.book.setCharts(sheet.at, (charts) =>
+        charts.flatMap((chart, at) => (at === index ? next(chart) : [chart])),
+      ),
+    );
+  drag(layer, sheet, change);
+  layer.addEventListener("click", (event) => {
+    const figure = event.target.closest(".sheet-more")?.closest("figure");
+    if (!figure) return;
+    const index = [...layer.children].indexOf(figure);
+    openMenu(
+      { x: event.clientX, y: event.clientY },
+      [
+        ...Object.entries(CHARTS).map(([type, label]) => ({
+          label,
+          run: () =>
+            change(index, (chart) => [
+              { ...chart, attrs: { ...chart.attrs, "data-chart": type } },
+            ]),
+        })),
+        { label: "Delete chart", run: () => change(index, () => []) },
+      ],
+      sheet.hold,
+    );
+  });
+
+  return () => {
+    const { x, y } = edges(sheet.table());
+    const figures = sheet.tab().charts.map(({ attrs, caption }, index) => {
+      // Unsaid, beside the grid.
+      const on = boxNamed(attrs["data-at"]) ?? {
+        top: 1,
+        left: sheet.size().columns + 2,
+      };
+      const [wide, high] = (attrs["data-size"] ?? CHART["data-size"])
+        .split("x")
+        .map((cells) => Math.max(1, Math.min(MOST, Number(cells) || 1)));
+      const type = attrs["data-chart"];
+      const data = sheet.book.chart(sheet.at, index);
+      const kind = Object.hasOwn(CHARTS, type) ? CHARTS[type] : "Chart";
+      const name = caption || `${kind} of ${attrs["data-range"]}`;
+      const picture = shape("svg", { role: "img", "aria-label": name });
+      picture.append(shape("title", {}, name));
+      const figure = make("figure", { className: "sheet-chart" }, [
+        make("figcaption", { textContent: caption }),
+        make("button", {
+          type: "button",
+          className: "sheet-more",
+          ariaLabel: `Chart menu: ${name}`,
+        }),
+        data.error
+          ? make("p", { textContent: `This chart ${data.error}.` })
+          : picture,
+        make("span", { className: "sheet-size" }),
+      ]);
+      Object.assign(figure.style, {
+        left: `${x(on.left)}px`,
+        top: `${y(on.top)}px`,
+        width: `${x(on.left + wide) - x(on.left)}px`,
+        height: `${y(on.top + high) - y(on.top)}px`,
+      });
+      const named =
+        type === "pie" ? data.labels : data.series?.map(({ name }) => name);
+      if (named?.length > 1)
+        figure.append(
+          make(
+            "ul",
+            {},
+            named.map((text, at) => {
+              const item = make("li", { textContent: text });
+              item.dataset.series = at % COLOURS;
+              return item;
+            }),
+          ),
+        );
+      return { figure, picture, type, data };
+    });
+    layer.replaceChildren(...figures.map(({ figure }) => figure));
+    // Drawn once laid out: the picture takes the room the figure leaves it.
+    for (const { picture, type, data } of figures)
+      if (!data.error)
+        picture.append(
+          ...drawn(type, data, {
+            width: picture.clientWidth,
+            height: picture.clientHeight,
+          }),
+        );
+  };
+}

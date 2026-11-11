@@ -4,7 +4,7 @@
 // src/app/workspace_files.cc); a page says the rest once it is drawn.
 
 import type { ArtifactType } from "../../shared/artifact.ts";
-import { HTML, IMAGE, VIDEO } from "../../shared/file-types.ts";
+import { HTML, IMAGE, SHEET_FILE, VIDEO } from "../../shared/file-types.ts";
 import { maxUploadBytes } from "../../shared/limits.ts";
 import type { PageInfo, PageMessage } from "../../shared/page-frame.tsx";
 import { pageSize } from "../../shared/page-size.ts";
@@ -217,6 +217,7 @@ export const alone = (kind?: string): kind is "doc" | "sheet" =>
 export function kindOf(listing: Listing, name: string): Kind {
   const entry = listing.entries.find((entry) => entry.name === name);
   if (alone(entry?.kind)) return entry.kind;
+  if (SHEET_FILE.test(name)) return "sheet";
   return listing.kind === "deck" || listing.kind === "system"
     ? listing.kind
     : "design";

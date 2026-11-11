@@ -3,15 +3,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   boxName,
+  boxNamed,
   boxOf,
   cellName,
   edgeFrom,
+  fromCsv,
   fromTsv,
   frozenOf,
   inOrder,
   letters,
   moved,
+  sheetText,
+  slid,
+  slidBox,
   tableText,
+  toCsv,
   toTsv,
 } from "../sheet/text.js";
 
@@ -31,6 +37,40 @@ test("cells and ranges are named as a spreadsheet names them", () => {
     boxName(boxOf({ row: 2, column: 2 }, { row: 2, column: 2 })),
     "B2",
   );
+});
+
+test("a range is read from its name, and follows rows and columns put in or taken out", () => {
+  const box = boxNamed(" b2:D5 ");
+  assert.deepEqual(box, { top: 2, left: 2, bottom: 5, right: 4 });
+  assert.deepEqual(boxNamed("F2"), { top: 2, left: 6, bottom: 2, right: 6 });
+  // Nor past a spreadsheet's last row or column.
+  for (const none of [
+    "",
+    "A",
+    "2",
+    "A1:B",
+    "Tasks!A1",
+    "A0",
+    "A99999999999",
+    "A1048577",
+    "XFE1",
+    undefined,
+  ])
+    assert.equal(boxNamed(none), undefined);
+  // Two put in before row 3; then rows 3 to 4 taken out.
+  assert.deepEqual(
+    [2, 3, 9].map((row) => slid(row, 3, 2)),
+    [2, 5, 11],
+  );
+  assert.deepEqual(
+    [2, 3, 4, 5].map((row) => slid(row, 3, -2)),
+    [2, undefined, undefined, 3],
+  );
+  assert.equal(boxName(slidBox(box, false, 3, 2)), "B2:D7");
+  assert.equal(boxName(slidBox(box, false, 1, -3)), "B1:D2");
+  assert.equal(boxName(slidBox(box, false, 5, -9)), "B2:D4");
+  assert.equal(slidBox(box, false, 2, -4), undefined);
+  assert.equal(boxName(slidBox(box, true, 1, 1)), "C2:E5");
 });
 
 test("a tab holds in view what it says, else its header rows", () => {
@@ -66,6 +106,35 @@ test("tab-separated text is written and read with its quoted cells", () => {
   ]);
   assert.deepEqual(fromTsv('5" wide'), [['5" wide']]);
   assert.deepEqual(fromTsv(""), [[""]]);
+});
+
+test("a CSV file is read by commas or semicolons, whichever its first line has, with its quoted cells", () => {
+  assert.deepEqual(
+    fromCsv(
+      '\uFEFFItem,Cost\r\n"Rent, flat",1200\r\n"say ""hi""","two\nlines"\r\n',
+    ),
+    [
+      ["Item", "Cost"],
+      ["Rent, flat", "1200"],
+      ['say "hi"', "two\nlines"],
+    ],
+  );
+  assert.deepEqual(fromCsv("Item;Cost\nRent;1,5\n"), [
+    ["Item", "Cost"],
+    ["Rent", "1,5"],
+  ]);
+  // A separator inside quotes, or on a later line, does not count.
+  assert.deepEqual(fromCsv('"a;b;c",x\n1;2;3,4\n'), [
+    ["a;b;c", "x"],
+    ["1;2;3", "4"],
+  ]);
+  assert.deepEqual(fromCsv('"a,\nb,c";x;y\n'), [["a,\nb,c", "x", "y"]]);
+  const rows = [
+    ["a,b", 'say "hi"'],
+    ["two\nlines", "plain; text"],
+  ];
+  assert.equal(toCsv(rows), '"a,b","say ""hi"""\n"two\nlines",plain; text');
+  assert.deepEqual(fromCsv(toCsv(rows)), rows);
 });
 
 // Where the references of a formula are, as the engine's tokens say.
@@ -188,7 +257,18 @@ const cell = (text, attrs = {}, th = false) => ({ th, attrs, text });
 test("a tab is written as the table the skill teaches, with every mark it lists", () => {
   const tab = {
     name: "Tasks",
-    attrs: { "data-frozen": "1 A" },
+    attrs: { "data-frozen": "1 A", "data-rule": "D < 0: bad; B <> Done: bold" },
+    charts: [
+      {
+        attrs: {
+          "data-chart": "bar",
+          "data-range": "A1:D3",
+          "data-at": "F2",
+          "data-size": "6x12",
+        },
+        caption: "Costs & <more>",
+      },
+    ],
     columns: [
       { "data-width": "240", class: "wrap" },
       { "data-options": "To do|In progress|Done" },
@@ -234,13 +314,14 @@ test("a tab is written as the table the skill teaches, with every mark it lists"
   assert.equal(
     tableText(tab),
     [
-      '<table data-sheet="Tasks" data-frozen="1 A">',
+      '<table data-sheet="Tasks" data-frozen="1 A" data-rule="D < 0: bad; B <> Done: bold">',
       '<col data-width="240" class="wrap"><col data-options="To do|In progress|Done"><col data-control="checkbox"><col data-format="#,##0.00">',
       "<tr><th>Task<th>Status<th>Done<th>Cost",
       '<tr data-fill="muted"><td>Write &lt;the&gt; plan &amp; more<td data-fill="good">Done<td>TRUE<td>1200',
       '<tr><td class="wrap">Rate<td><td><td data-format="0.0%">4.5%',
       '<tr class="total"><td>Total<td><td>=COUNTIF(C2:C3,TRUE)<td>=SUM(D2:D2)',
       "</table>",
+      '<figure data-chart="bar" data-range="A1:D3" data-at="F2" data-size="6x12"><figcaption>Costs &amp; &lt;more&gt;</figcaption></figure>',
     ].join("\n"),
   );
   // No column says anything: no line of them. A name is an attribute's text.
@@ -248,9 +329,25 @@ test("a tab is written as the table the skill teaches, with every mark it lists"
     tableText({
       name: 'A "b" & c',
       attrs: {},
+      charts: [],
       columns: [{}, {}],
       rows: [{ attrs: {}, cells: [cell("1"), cell("")] }],
     }),
     '<table data-sheet="A &quot;b&quot; &amp; c">\n<tr><td>1<td>\n</table>',
+  );
+});
+
+test("tabs from another kind of file are written as a whole sheet", () => {
+  const tab = (name) => ({
+    name,
+    attrs: {},
+    charts: [],
+    columns: [{}],
+    rows: [{ attrs: {}, cells: [cell("1")] }],
+  });
+  assert.equal(
+    sheetText("Q&A <1>", [tab("One"), tab("Two")]),
+    '<!doctype html>\n<meta charset="utf-8">\n<meta name="sheet" content="1">\n<title>Q&amp;A &lt;1&gt;</title>\n' +
+      '<table data-sheet="One">\n<tr><td>1\n</table>\n<table data-sheet="Two">\n<tr><td>1\n</table>\n',
   );
 });

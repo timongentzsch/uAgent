@@ -2,11 +2,19 @@
 // its file. The format: skills/artifact/references/sheet.md.
 
 import { headOf, isTotal, openBook } from "./book.js";
-import { cellAt, draw, paint, readTab } from "./grid.js";
+import { CHART } from "./chart.js";
+import { listenCharts } from "./figure.js";
+import { cellAt, draw, figuresOf, paint, readTab } from "./grid.js";
 import { listen } from "./input.js";
-import { boxName, boxOf, cellName } from "./text.js";
+import { boxName, boxOf, cellName, sheetText, toCsv } from "./text.js";
+import { csvTab, workbookTabs } from "./workbook.js";
 
 const tables = [...document.querySelectorAll("table[data-sheet]")];
+// The page of an Excel or CSV file holds no tables: it names the file,
+// percent-encoded, which lies beside it.
+const named = document.querySelector('meta[name="sheet"]')?.content;
+const file = tables.length || named === "1" ? "" : (named ?? "");
+const title = decodeURIComponent(file).replace(/\.[^.]+$/, "");
 const say = (message) =>
   parent.postMessage({ uagentDesign: 1, ...message }, "*");
 const here = new URL(".", import.meta.url).href;
@@ -24,7 +32,37 @@ async function open() {
   // The engine can come ready inside a ResizeObserver's report (the page
   // helper's), where a page that resizes itself raises an error.
   await new Promise((done) => setTimeout(done));
-  const book = openBook(engine, tables.map(readTab));
+  const read = async () => {
+    const answer = await fetch(`./${file}`);
+    if (!answer.ok) throw new Error(`the host answered ${answer.status}`);
+    return /\.csv$/i.test(file)
+      ? [csvTab(engine, title, await answer.text())]
+      : workbookTabs(engine, new Uint8Array(await answer.arrayBuffer()), title);
+  };
+  // A file that cannot be read is said in its page, which then draws nothing.
+  const unread = (error) => {
+    const note = document.body.appendChild(document.createElement("p"));
+    note.textContent = `${decodeURIComponent(file)} cannot be shown: ${error.message ?? error}`;
+    return note.textContent;
+  };
+  const written = file ? await read().catch(unread) : tables.map(readTab);
+  if (typeof written === "string") return [written];
+  const book = openBook(engine, written, !!file);
+  // The tabs to choose from: a workbook's hidden sheets only calculate.
+  const offered = written.flatMap((tab, at) => (tab.hidden ? [] : [at]));
+  for (const figure of tables.flatMap(figuresOf)) figure.remove();
+  // What is left follows no table: it is not drawn, and stays in the file.
+  const stray = [...document.querySelectorAll("figure[data-chart]")].map(
+    (figure) =>
+      `chart ${figure.dataset.range ?? ""}: a chart must directly follow its table`,
+  );
+  const errors = () => [...stray, ...book.errors()];
+  if (file)
+    for (const { name } of book.tabs) {
+      const table = document.body.appendChild(document.createElement("table"));
+      table.dataset.sheet = name;
+      tables.push(table);
+    }
 
   let at = 0;
   // Per tab: its selection, whose anchor is the active cell, and the words
@@ -99,6 +137,7 @@ async function open() {
   const sheet = {
     book,
     say,
+    locked: !!file,
     get at() {
       return at;
     },
@@ -140,7 +179,7 @@ async function open() {
         widths[sheet] = tab.columns.length;
       });
       show(at);
-      const errors = book.errors();
+      const found = errors();
       book.tabs.forEach((_, tab) => {
         const table = book.table(tab);
         if (table === told[tab]) return;
@@ -152,7 +191,7 @@ async function open() {
           table,
           undo: book.canUndo(),
           redo: book.canRedo(),
-          errors,
+          errors: found,
         });
       });
       return true;
@@ -168,9 +207,24 @@ async function open() {
   };
   const widths = book.tabs.map((tab) => tab.columns.length);
 
+  const out = (as, data) => say({ type: "file", as, data });
   const commands = {
     undo: book.undo,
     redo: book.redo,
+    // The open tab's cells go out as they show.
+    xlsx: () => out("xlsx", book.xlsx()),
+    // The mark before it tells Excel the text is UTF-8.
+    csv: () =>
+      out(
+        "csv",
+        "\uFEFF" +
+          toCsv(
+            tab().rows.map((row, r) =>
+              row.cells.map((_, c) => book.shown(at, r + 1, c + 1)),
+            ),
+          ),
+      ),
+    sheet: () => out("sheet", sheetText(title, book.tabs)),
     // Only what is in view is cleared.
     clear: () =>
       book.paste(
@@ -181,6 +235,24 @@ async function open() {
         ),
       ),
     "fill-down": () => book.fillDown(at, box()),
+    chart: () =>
+      high() > 1 && wide() > 1
+        ? book.setCharts(at, (charts) => [
+            ...charts,
+            {
+              attrs: {
+                "data-chart": CHART["data-chart"],
+                "data-range": boxName(box()),
+                "data-at": cellName({
+                  row: box().top,
+                  column: box().right + 2,
+                }),
+                "data-size": CHART["data-size"],
+              },
+              caption: "",
+            },
+          ])
+        : "Select the cells to chart, with their labels.",
     "sort-up": () => book.sort(at, pick().anchor.column, false),
     "sort-down": () => book.sort(at, pick().anchor.column, true),
     "row-above": () => book.insertRows(at, box().top, high()),
@@ -203,26 +275,29 @@ async function open() {
     hidden = hides();
     picks[at] = { anchor: seen(pick().anchor), focus: seen(pick().focus) };
     draw(tables[at], book, at, filters[at], hidden);
+    charts();
     paint(tables[at], box(), pick().anchor);
     rest();
     say({
       type: "sheet",
-      tabs: book.tabs.map((tab) => tab.name),
-      active: at,
+      tabs: offered.map((tab) => book.tabs[tab].name),
+      active: offered.indexOf(at),
       hidden: hidden.size,
     });
     tell();
   };
-  const rest = listen(sheet);
+  const { rest, hold } = listen(sheet);
+  sheet.hold = hold;
+  const charts = listenCharts(sheet);
   addEventListener("message", ({ source, data }) => {
     if (source !== parent || data?.uagentDesign !== 1) return;
-    if (data.type === "tab") show(data.index);
+    if (data.type === "tab") show(offered[data.index]);
     if (data.type === "do") sheet.run(data.command);
     if (data.type === "input") sheet.write(String(data.value));
   });
-  show(0);
-  return book.errors();
+  show(offered[0]);
+  return errors();
 }
 
 // Resolves to the cells in error, which the page helper reports.
-export const ready = tables.length ? open() : Promise.resolve([]);
+export const ready = tables.length || file ? open() : Promise.resolve([]);

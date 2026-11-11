@@ -49,6 +49,8 @@ import {
   IMAGE,
   MARKDOWN,
   nameOf,
+  paged,
+  SHEET_FILE,
   VIDEO,
 } from "../../shared/file-types.ts";
 import { useHostContext } from "../../state/host-context.ts";
@@ -117,6 +119,8 @@ interface FileText {
   revision?: string;
 }
 
+// A page that is text, which Source shows: not an Excel file's bytes.
+const TEXT_PAGE = /\.(html?|csv)$/i;
 // Search results shown at once; typing more narrows them.
 // A folder as it is drawn before its entries arrive (see <Placeholder>).
 const SAMPLE_LISTING: Listing = {
@@ -243,7 +247,7 @@ export default function Files({
   const preview = usePreviewBase(id);
   const pageUrl = (path: string, shared = true) =>
     preview.value &&
-    `${pageAddress(preview.value.base, path)}?v=${versions[path] ?? 0}${shared ? `.${versions[""] ?? 0}` : ""}`;
+    `${pageAddress(preview.value.base, path)}?${SHEET_FILE.test(path) ? "sheet&" : ""}v=${versions[path] ?? 0}${shared ? `.${versions[""] ?? 0}` : ""}`;
   const url = (path: string) => routes.files(id, "raw", path);
   const list = (dir: string) => api<Listing>(routes.files(id, "list", dir));
   const readFile = (path: string) =>
@@ -525,18 +529,23 @@ export default function Files({
     if (!target) return;
     const cited = cite({ path: target }, folderOf(session)).view;
     const path = cited.kind === "resolve" ? cited.path : "";
-    // A page, or what pages share (a stylesheet, an image): all reload.
-    const key = path && HTML.test(path) ? path : "";
     if (!path) return;
-    setVersions((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
+    // A page, or what pages share (a stylesheet, an image, the data a page
+    // reads): all reload. An Excel or CSV file is both.
+    const shared = !HTML.test(path);
+    const keys = [...(paged(path) ? [path] : []), ...(shared ? [""] : [])];
+    setVersions((all) => ({
+      ...all,
+      ...Object.fromEntries(keys.map((key) => [key, (all[key] ?? 0) + 1])),
+    }));
     // An open sheet is drawn anew only by a write to itself: it has no
     // styles or scripts of its own, and a reload ends its undo.
-    const alone = kind === "sheet" && key !== file;
+    const alone = kind === "sheet" && path !== file;
     setSeen((all) => ({
-      ...rewritten(all, key),
+      ...rewritten(all, shared ? "" : path),
       ...(alone && all[file] && { [file]: all[file] }),
     }));
-    if (kind === "sheet" && key === file) tables.renew();
+    if (kind === "sheet" && path === file) tables.renew();
   }, [written]);
   const titled =
     view.kind === "canvas"
@@ -625,7 +634,7 @@ export default function Files({
           <span class="files-dir small">{formatStat(counts)}</span>
         )}
 
-        {file && !changing && (MARKDOWN.test(file) || HTML.test(file)) && (
+        {file && !changing && (MARKDOWN.test(file) || TEXT_PAGE.test(file)) && (
           <Button
             variant="secondary"
             aria-pressed={source}
@@ -635,7 +644,7 @@ export default function Files({
                   current,
                   page
                     ? { kind: "file", path: file, source: true }
-                    : source && HTML.test(file)
+                    : source && paged(file)
                       ? { kind: "sequence", path: file }
                       : { kind: "file", path: file, source: !source },
                 ),
@@ -768,6 +777,15 @@ export default function Files({
                   text,
                   revision: read.revision,
                 });
+              }}
+              saveAs={async (text) => {
+                const path = join(
+                  dir,
+                  nameOf(file).replace(/\.[^.]+$/, ".html"),
+                );
+                await api(routes.fileWrite(id), { path, text, create: true });
+                listing.setValue({ ...(await list(dir)), dir });
+                setFlow((current) => push(current, { kind: "sequence", path }));
               }}
               arrange={kind === "deck" ? arrange : undefined}
               arranging={arranging.busy}

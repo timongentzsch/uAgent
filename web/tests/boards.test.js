@@ -47,6 +47,13 @@ test("a document is its own in any folder; another page is part of its folder", 
   // A sheet too.
   const sheets = listing("deck", ["costs.html", "sheet"], ["a.html", "slide"]);
   assert.equal(kindOf(sheets, "costs.html"), "sheet");
+  // An Excel or CSV file is a sheet by its name; the host says no kind.
+  const read = listing("deck", ["book.xlsx"], ["rows.csv"], ["notes.txt"]);
+  assert.deepEqual(
+    ["book.xlsx", "rows.csv"].map((name) => kindOf(read, name)),
+    ["sheet", "sheet"],
+  );
+  assert.equal(boardsOf("d", read, {}, "book.xlsx").length, 1);
 });
 
 test("a sheet's boards are its tabs: numbered as many as the folder says, then as the sheet names them", () => {

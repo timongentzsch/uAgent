@@ -44,7 +44,7 @@ import {
 } from "./boards.ts";
 import Legend from "./legend.tsx";
 import { FormulaBar, SheetBar } from "./sheet.tsx";
-import { type Cell, cellOf, type TableEdit } from "./sheet-edit.ts";
+import { type Cell, cellOf, fileOf, type TableEdit } from "./sheet-edit.ts";
 import SlideActions from "./slide-actions.tsx";
 import Tweaks, { type Tweak } from "./tweaks.tsx";
 import { dirOf } from "./flow.ts";
@@ -58,8 +58,11 @@ import { presentChannel, STEPS } from "./present.ts";
 import type { BlockEdit } from "./doc-edit.ts";
 import { downloadBlob, saveLink } from "../../shared/share.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
-import { nameOf } from "../../shared/file-types.ts";
+import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
 import { useResource } from "../../shared/use-resource.ts";
+
+// What a sheet says of itself, before it has.
+const UNTOLD = { hidden: 0, undo: false, redo: false };
 
 // The zoom of an opened page, as a scale of its real size, and one step.
 const ZOOM_MIN = 0.1;
@@ -109,6 +112,7 @@ export default function Sequence({
   drawn,
   presenter,
   save,
+  saveAs,
   arrange,
   arranging,
   view,
@@ -133,6 +137,8 @@ export default function Sequence({
   presenter?: (slides: string[], at: string) => void;
   // A document's edited block, or a sheet's edited tab, saved to its file.
   save?: (edit: BlockEdit | TableEdit) => Promise<void>;
+  // An Excel or CSV file's tabs, as a sheet's text, saved beside the file.
+  saveAs?: (text: string) => Promise<void>;
   // A deck's slides renamed, copied or deleted as `moves` say, after which
   // the slide named `show` is the one shown; `arranging` while that runs.
   arrange?: (moves: Move[], show: string) => void;
@@ -183,7 +189,7 @@ export default function Sequence({
     setZoom(1);
     setCell(undefined);
     setRanged(undefined);
-    setTold({ hidden: 0, undo: false, redo: false });
+    setTold(UNTOLD);
   }, [src]);
   // Presenting: over the app, full screen where the browser allows, the
   // notes shown on a phone held upright or with N. Leaving full screen (a
@@ -228,7 +234,7 @@ export default function Sequence({
   const [tab, setTab] = useState(0);
   const [cell, setCell] = useState<Cell>();
   const [ranged, setRanged] = useState<string>();
-  const [told, setTold] = useState({ hidden: 0, undo: false, redo: false });
+  const [told, setTold] = useState(UNTOLD);
   const formula = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setWhere({ top: 0, end: false });
@@ -332,17 +338,24 @@ export default function Sequence({
   }, [keys]);
   // A document's block typed in place is saved as it is left.
   const [saved, setSaved] = useState("");
-  const keep = async (change: BlockEdit | TableEdit) => {
+  const keep = async (saving?: Promise<void>) => {
     setSaved("Saving…");
     try {
-      await save?.(change);
+      await saving;
       setSaved("Saved");
     } catch (error) {
       setSaved(error instanceof Error ? error.message : "Not saved");
     }
   };
-  // Its exports' name: the file's, without .html.
-  const stem = nameOf(path).replace(/\.html?$/i, "");
+  const stem = nameOf(path).replace(/\.[^.]+$/, "");
+  // An Excel or CSV file is only read: its page takes no change.
+  const locked = sheet && SHEET_FILE.test(path);
+  // What the sheet was last told to do: a file comes only as its answer.
+  const asked = useRef("");
+  const act = (command: string) => {
+    asked.current = command;
+    tell(frame.current, { type: "do", command });
+  };
   // Its size as a picture: an artboard's, or a page's full height.
   const size = pageSize(info, 8000);
   const { fixed } = size;
@@ -382,6 +395,8 @@ export default function Sequence({
         ]),
     ],
     doc && ["Markdown", () => tell(frame.current, { type: "markdown" })],
+    sheet && !/\.xlsx$/i.test(path) && ["Excel workbook", () => act("xlsx")],
+    sheet && ["CSV of this tab", () => act("csv")],
   ];
   // A fixed artboard fits the stage whole; a page that names only its width
   // (an A4 document) fits it across and scrolls down inside, as a PDF does.
@@ -714,6 +729,7 @@ export default function Sequence({
           {sheet && (
             <FormulaBar
               cell={cell}
+              locked={locked}
               field={formula}
               write={(value) => tell(frame.current, { type: "input", value })}
             />
@@ -802,7 +818,20 @@ export default function Sequence({
                         const [undo, redo] = [!!message.undo, !!message.redo];
                         setTold((was) => ({ ...was, undo, redo }));
                       }
-                      void keep(message);
+                      void keep(save?.(message));
+                    } else if (message.type === "file") {
+                      // The page is untrusted: only what was asked of a
+                      // sheet is taken. Its text is asked of a read file alone.
+                      const made =
+                        sheet && message.as === asked.current
+                          ? fileOf(message)
+                          : undefined;
+                      asked.current = "";
+                      if (typeof made === "string") setSaved(made);
+                      else if (made?.as === "sheet")
+                        void keep(saveAs?.(made.text));
+                      else if (made)
+                        downloadBlob(made.blob, `${stem}.${made.as}`);
                     } else if (message.type === "markdown")
                       downloadBlob(
                         new Blob([message.text], { type: "text/markdown" }),
@@ -911,7 +940,8 @@ export default function Sequence({
               to={to}
               cell={cell}
               {...told}
-              act={(command) => tell(frame.current, { type: "do", command })}
+              locked={locked}
+              act={act}
               edit={() => formula.current?.focus()}
               comment={addToChat && (() => setRanged(cell?.range))}
             />

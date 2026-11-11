@@ -31,6 +31,8 @@
 namespace uagent::workspace_files {
 namespace fs = std::filesystem;
 namespace {
+constexpr char kXlsxMime[] =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 // Pages one request may move: more than any deck holds.
 constexpr size_t kMoves = 1000;
 
@@ -451,6 +453,8 @@ std::string PreviewMime(const fs::path& path) {
                                      {".js", "text/javascript"},
                                      {".mjs", "text/javascript"},
                                      {".json", "application/json"},
+                                     {".csv", "text/csv"},
+                                     {".xlsx", kXlsxMime},
                                      {".avif", "image/avif"},
                                      {".mp4", "video/mp4"},
                                      {".webm", "video/webm"},
@@ -621,7 +625,11 @@ json Request(const fs::path& root, const json& request) {
     return Move(*target, request.value("moves", json()));
   }
   if (mode == "write") {
-    if (!LikelyTextFile(*target) || !fs::is_regular_file(*target)) {
+    // With `create`, a page that is not there yet (a sheet saved from an
+    // Excel file); else an edit of a text file that is.
+    const bool create = JsonValue(request, "create", false);
+    if (create ? target->extension() != ".html"
+               : !LikelyTextFile(*target) || !fs::is_regular_file(*target)) {
       return {{"error", "not found"}, {"status", 404}};
     }
     const std::string text = JsonValue(request, "text", "");
@@ -630,13 +638,20 @@ json Request(const fs::path& root, const json& request) {
     }
     std::string previous, error;
     bool exists = false;
-    json refused = CheckRevision(request, *target, kFileViewBytes, "file",
-                                 previous, exists);
+    json refused = create ? json()
+                          : CheckRevision(request, *target, kFileViewBytes,
+                                          "file", previous, exists);
     if (!refused.is_null()) {
       refused["status"] = refused.contains("conflict") ? 409 : 500;
       return refused;
     }
-    if (!AtomicWriteFile(target->string(), text, 0644, true, error)) {
+    // A new file is linked into place, which a file already there refuses.
+    if (!AtomicWriteFile(target->string(), text, 0644, true, error, !create)) {
+      std::error_code ec;
+      if (create && fs::exists(fs::symlink_status(*target, ec))) {
+        return {{"error", target->filename().string() + " is already there"},
+                {"status", 409}};
+      }
       return {{"error", error}, {"status", 500}};
     }
     return {{"revision", DocumentRevision(target->string(), text)}};

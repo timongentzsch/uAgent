@@ -11,6 +11,19 @@ const attrsOf = (element, skip) =>
       .map(({ name, value }) => [name, value]),
   );
 
+// A tab's charts follow its table with nothing but white space between,
+// as the app finds them in the file. A figure left open holds the tables
+// after it: it is none.
+export function figuresOf(table) {
+  const figures = [];
+  for (let next = table.nextSibling; next; next = next.nextSibling) {
+    if (next.nodeType === Node.TEXT_NODE && !next.data.trim()) continue;
+    if (!next.matches?.("figure[data-chart]:not(:has(table))")) break;
+    figures.push(next);
+  }
+  return figures;
+}
+
 // Every row as wide as the widest; a header row is padded with header
 // cells, so it stays one.
 export function readTab(table) {
@@ -48,10 +61,14 @@ export function readTab(table) {
     ),
     columns: Array.from({ length: width }, (_, at) => said[at] ?? {}),
     rows,
+    charts: figuresOf(table).map((figure) => ({
+      attrs: attrsOf(figure),
+      caption: figure.querySelector("figcaption")?.textContent.trim() ?? "",
+    })),
   };
 }
 
-const make = (name, props = {}, children = []) => {
+export const make = (name, props = {}, children = []) => {
   const element = Object.assign(document.createElement(name), props);
   element.append(...children);
   return element;
@@ -87,6 +104,13 @@ export function draw(table, book, sheet, filters, hidden) {
       const kind = book.kind(sheet, r + 1, c + 1);
       const drawn = marked(make(cell.th ? "th" : "td"), cell.attrs);
       Object.assign(drawn.dataset, { row: r + 1, column: c + 1 });
+      // A rule's fill lies over the cell's own, and that over its row's.
+      const look = book.look(sheet, r + 1, c + 1);
+      const fill =
+        look.fill ?? cell.attrs["data-fill"] ?? row.attrs["data-fill"];
+      if (fill) drawn.dataset.fill = fill;
+      drawn.classList.toggle("sheet-bold", !!look.bold);
+      drawn.classList.toggle("sheet-strike", !!look.strike);
       drawn.classList.toggle("sheet-number", kind === "number");
       drawn.classList.toggle("sheet-error", kind === "error");
       drawn.classList.toggle("sheet-wrap", /\bwrap\b/.test(column.class ?? ""));

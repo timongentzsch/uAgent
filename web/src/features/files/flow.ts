@@ -7,7 +7,7 @@
 // the docs and decks canvas.
 
 import type { FileTarget } from "../../shared/types.ts";
-import { HTML, MARKDOWN, nameOf } from "../../shared/file-types.ts";
+import { HTML, MARKDOWN, nameOf, paged } from "../../shared/file-types.ts";
 import {
   alone,
   join,
@@ -102,7 +102,7 @@ export function cite(target: FileTarget, folder: string): Flow {
 // Rendered pages and Markdown have no lines to mark: cited at lines, they
 // open as their source.
 export const opened = (path: string, lines?: Lines): View =>
-  HTML.test(path) && !lines
+  paged(path) && !lines
     ? { kind: "sequence", path }
     : {
         kind: "file",

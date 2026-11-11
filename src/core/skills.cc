@@ -60,6 +60,31 @@ std::filesystem::path InstalledShare(std::string_view name) {
   return resolved.parent_path().parent_path() / data;
 }
 
+namespace {
+// Where Claude Code and Codex keep their skills, read when asked for.
+std::vector<std::string> Vendors() {
+  std::vector<std::string> vendors;
+  for (const char* agent : {"claude", "codex"}) {
+    if (ReadsAgent(agent)) vendors.push_back("." + std::string(agent));
+  }
+  return vendors;
+}
+}  // namespace
+
+std::vector<std::filesystem::path> UserSkillPaths() {
+  namespace fs = std::filesystem;
+  std::vector<fs::path> path;
+  // ".agents" is the vendor-neutral location.
+  if (const std::string home = UserHome(); !home.empty()) {
+    path.push_back(fs::path(home) / ".agents" / "skills");
+    for (const std::string& vendor : Vendors()) {
+      path.push_back(fs::path(home) / vendor / "skills");
+    }
+  }
+  path.push_back(fs::path(GlobalBase()) / "skills");
+  return path;
+}
+
 std::vector<std::filesystem::path> SkillSearchPath(
     const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
@@ -71,20 +96,7 @@ std::vector<std::filesystem::path> SkillSearchPath(
     }
     return path;
   }
-  // ".agents" is the vendor-neutral location; the others are where Claude Code
-  // and Codex keep theirs, read when asked for.
-  std::vector<std::string> vendors;
-  for (const char* agent : {"claude", "codex"}) {
-    if (ReadsAgent(agent)) vendors.push_back("." + std::string(agent));
-  }
-  std::string home = UserHome();
-  if (!home.empty()) {
-    path.push_back(fs::path(home) / ".agents" / "skills");
-    for (const std::string& vendor : vendors) {
-      path.push_back(fs::path(home) / vendor / "skills");
-    }
-  }
-  path.push_back(fs::path(GlobalBase()) / "skills");
+  path = UserSkillPaths();
   fs::path installed = InstalledShare("skills");
   if (!installed.empty()) path.push_back(std::move(installed));
   // Vendor-neutral folder skills apply from every ancestor. Walk from the
@@ -100,7 +112,7 @@ std::vector<std::filesystem::path> SkillSearchPath(
     path.push_back(*it / ".agents" / "skills");
   }
   // Tool-specific locations are read from the folder only.
-  for (const std::string& vendor : vendors) {
+  for (const std::string& vendor : Vendors()) {
     path.push_back(cwd / vendor / "skills");
   }
   path.push_back(ProjectBase(cwd) / "skills");

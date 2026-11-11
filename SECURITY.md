@@ -41,9 +41,11 @@ In every mode:
   in a delegated child:
   - writing µAgent's configuration through the file tools: the saved
     settings, the trust store, `~/.uagent/config/permissions.json`, your
-    instruction files in `~/.uagent`, and any `.mcp.json`;
-  - reading any of those through the file tools, except the trust store and
-    the instruction files, which hold no credential;
+    instruction files in `~/.uagent`, your own skills (`~/.uagent/skills`,
+    `~/.agents/skills` and the Claude Code and Codex folders µAgent reads),
+    and any `.mcp.json`;
+  - reading any of those through the file tools, except the trust store, the
+    instruction files and the skills, which hold no credential;
   - reading, through the file tools, one of your folders that the sandbox
     closes to commands (see **Reads** below);
   - the `uagent` tool's `set`, `write` and `command`: a slash command the

@@ -21,6 +21,7 @@
 #include "include/core/project.h"
 #include "include/core/sandbox.h"
 #include "include/core/settings_store.h"
+#include "include/core/skills.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -39,6 +40,14 @@ inline bool InstructionFileName(const std::filesystem::path& path) {
          std::end(kInstructionNames);
 }
 
+// A skill of the user's own is read in every conversation, as their
+// instructions are.
+inline bool UserSkillPath(const std::filesystem::path& candidate) {
+  return std::ranges::any_of(UserSkillPaths(), [&](const auto& skills) {
+    return PathWithin(candidate, CanonicalAccessPath(skills.string()));
+  });
+}
+
 // µAgent's own configuration and trust state: editing it changes what the
 // agent may do next launch, so it is never auto-approved. Covers the file
 // tools only; the OS sandbox keeps shell commands from the same paths.
@@ -53,6 +62,7 @@ inline bool SelfConfigurationPath(const std::string& path) {
       candidate.parent_path() == CanonicalAccessPath(GlobalBase())) {
     return true;
   }
+  if (UserSkillPath(candidate)) return true;
   if (matches(TrustStorePath()) || matches(SettingsPath()) ||
       matches(SettingsPath() + ".lock") ||
       matches(UagentDir(kConfigDir) + "/" + kPermissionStoreFile)) {
@@ -106,15 +116,16 @@ inline bool UnreadablePath(const std::string& path) {
 enum class PathAccess { kRead, kWrite };
 
 // Reads escalate too: config files and .mcp.json carry keys and credentials.
-// The trust store and instruction files hold no secret, so only writing them
-// escalates. A closed folder asks for either.
+// The trust store, instruction files and skills hold no secret, so only
+// writing them escalates. A closed folder asks for either.
 inline ApprovalClass PathApprovalClass(const std::string& path,
                                        PathAccess access) {
   if (UnreadablePath(path)) return ApprovalClass::kMandatoryHuman;
   if (!SelfConfigurationPath(path)) return ApprovalClass::kNone;
   if (access == PathAccess::kRead &&
       (CanonicalAccessPath(path) == CanonicalAccessPath(TrustStorePath()) ||
-       InstructionFileName(CanonicalAccessPath(path)))) {
+       InstructionFileName(CanonicalAccessPath(path)) ||
+       UserSkillPath(CanonicalAccessPath(path)))) {
     return ApprovalClass::kNone;
   }
   return ApprovalClass::kMandatoryHuman;

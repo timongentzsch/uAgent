@@ -37,6 +37,9 @@ void ParseSkillFrontMatter(std::istream& input,
 // beside the binary (a build tree) or beside its bin folder (an install).
 std::filesystem::path InstalledShare(std::string_view name);
 
+// The user's own skill folders, read in every conversation.
+std::vector<std::filesystem::path> UserSkillPaths();
+
 // User-level paths first, then the folder's, µAgent's own last in each group;
 // a later path wins. UAGENT_SKILL_PATH replaces the whole list.
 std::vector<std::filesystem::path> SkillSearchPath(

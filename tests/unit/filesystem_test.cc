@@ -509,6 +509,18 @@ TEST_CASE(TestFileTools) {
       CHECK(PathApprovalClass(CanonicalCwd() + name, PathAccess::kWrite) ==
             ApprovalClass::kNone);
     }
+    // A skill of yours is read in every conversation: only a person may
+    // write one, in your own folder or the one other agents share.
+    for (const std::string& skill :
+         {GlobalBase() + "/skills/notes/SKILL.md",
+          root.string() + "/.agents/skills/notes/SKILL.md"}) {
+      CHECK(PathApprovalClass(skill, PathAccess::kRead) ==
+            ApprovalClass::kNone);
+      CHECK(PathApprovalClass(skill, PathAccess::kWrite) ==
+            ApprovalClass::kMandatoryHuman);
+    }
+    CHECK(PathApprovalClass(CanonicalCwd() + "/.agents/skills/notes/SKILL.md",
+                            PathAccess::kWrite) == ApprovalClass::kNone);
     // Remembered "always allow" rules authorize future calls, so writing them
     // is never something an automatic reviewer may approve.
     const std::string rules =

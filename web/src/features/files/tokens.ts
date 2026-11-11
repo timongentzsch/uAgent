@@ -1,6 +1,5 @@
-// A design system's colours read back from its tokens.css, per theme, for
-// the Theme section under Tweaks. The file the pages load is the only
-// source; nothing is compiled from it.
+// A design system's colours read back from its tokens.css, per theme, for the
+// Theme section under Tweaks. The file the pages load is the only source.
 
 export interface Tokens {
   // In file order: the first block's (its [data-theme], else "default"),

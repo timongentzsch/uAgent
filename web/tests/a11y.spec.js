@@ -1,7 +1,5 @@
-// WCAG 2.2 AA, checked by axe-core on the surfaces a person meets: a live
-// conversation in both colour schemes, both kinds of pending decision, the
-// settings sheet and the phone drawer. axe is a test-only
-// dependency, injected into the page; the product bundle never carries it.
+// WCAG 2.2 AA, checked by axe-core on the surfaces a person meets. axe is a
+// test-only dependency, injected into the page; the bundle never carries it.
 import { test as bare } from "@playwright/test";
 import {
   test,

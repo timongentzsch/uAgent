@@ -1,6 +1,5 @@
-// The header's Files button shows the conversation's folder beside the
-// chat (a sheet on a small screen): a list with search, and the open file as
-// highlighted lines, rendered markdown or an image.
+// The header's Files button shows the conversation's folder beside the chat
+// (a sheet on a small screen): a list with search, and the open file.
 import { execFileSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -27,7 +26,6 @@ const folder = (project) =>
     "blob.bin": Buffer.from([0, 1, 2, 0, 255]),
   });
 
-// A repository whose app.ts and README.md differ from the last commit.
 // design/landing: a design of two pages, each titled and headed by its name.
 const landing = (project, names = ["hero-a", "hero-b"]) =>
   writeFiles(

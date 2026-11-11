@@ -3,9 +3,8 @@ import { Actions, Button, Switch } from "../../shared/ui.tsx";
 import { Input } from "../../shared/form-controls.tsx";
 import type { Tokens } from "./tokens.ts";
 
-// A page's Tweaks: the levers it declares, and the theme of the design
-// system it links. What is tried shows in the page at once; Keep writes it
-// into the draft for the agent, and Reset draws the page as it was written.
+// A page's Tweaks: the levers it declares and its design system's theme. What
+// is tried shows in the page at once; Keep writes it into the agent's draft.
 
 export interface Tweak {
   editor?: string;

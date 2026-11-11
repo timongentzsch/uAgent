@@ -15,10 +15,8 @@ import { HTML, IMAGE, MARKDOWN } from "../../shared/file-types.ts";
 import { join, type Listing as Pages } from "./boards.ts";
 import { folderView } from "./flow.ts";
 
-// The conversation's folder as a tree, as VS Code's Explorer draws one: a
-// folder opens in place, rows are dense with indent guides, an icon says a
-// file's type. A folder that is a deck, a design or a design system offers
-// Open on its row.
+// The conversation's folder as a tree, as VS Code's Explorer draws one. A
+// folder that is a deck, a design or a design system offers Open on its row.
 
 export interface Listing extends Pages {
   more: boolean;

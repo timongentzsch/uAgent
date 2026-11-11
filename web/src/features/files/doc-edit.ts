@@ -1,7 +1,5 @@
-// A person's edit of one text block of a document, applied to its source:
-// the block found where the page found it (its place among the text blocks,
-// the same list as web/public/design-helper.js), and only while it still
-// holds the text it had when it was shown.
+// A person's edit of one text block of a document, applied to its source. The
+// block is found by its place among those design-helper.js lists.
 
 const EDITABLE =
   "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote";

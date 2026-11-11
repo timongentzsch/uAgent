@@ -1,6 +1,5 @@
-// Presenting a deck in two windows: the slides in one, the presenter's view
-// (now, next, notes, a clock) in another. One BroadcastChannel keeps them on
-// the same slide; either moves both.
+// Presenting a deck in two windows, the slides and the presenter's view: one
+// BroadcastChannel keeps them on the same slide, and either moves both.
 
 export interface Presenting {
   session: string;
@@ -21,7 +20,6 @@ export const STEPS: Record<string, number | undefined> = {
 const HASH = "#presenter=";
 export const presentChannel = () => new BroadcastChannel("uagent-present");
 
-// Opens the presenter's view in a window of its own.
 export function openPresenter(deck: Presenting) {
   window.open(
     `${location.pathname}${HASH}${encodeURIComponent(JSON.stringify(deck))}`,

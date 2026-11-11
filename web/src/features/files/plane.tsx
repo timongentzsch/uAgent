@@ -7,11 +7,9 @@ import type { ZoomView } from "../../shared/zoom.ts";
 import Frame, { type PageMessage } from "../../shared/page-frame.tsx";
 import { type Board, still } from "./boards.ts";
 
-// A design's boards on a plane you pan and zoom (ZoomSurface's plane): each
-// page live as the agent wrote it, its pictures and films as they are, and
-// a document, a sheet or a deck that lies in it as a stack, its first page
-// with how many there are. The boards of a step (`02-` in `02-pricing--annual.html`)
-// share a row; those without one form the first. A click opens a board.
+// A design's boards on a plane you pan and zoom (ZoomSurface's plane): pages
+// live, and a document, a sheet or a deck that lies in it as a stack. The
+// boards of a step (`02-` in `02-pricing--annual.html`) share a row.
 
 // The plane: artboards at their real size, 80 px apart in a row and 240
 // between rows (room for a name at any zoom), as Claude's canvas spaces them.
@@ -36,7 +34,6 @@ export default function Plane({
   heard: (path: string) => (message: PageMessage) => void;
   open: (path: string) => void;
 }) {
-  // Every board's place on the plane.
   const placed = useMemo(() => {
     let x = 0;
     let y = 0;

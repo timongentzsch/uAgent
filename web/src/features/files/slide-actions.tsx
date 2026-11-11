@@ -3,9 +3,8 @@ import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { ConfirmModal } from "../../shared/ui.tsx";
 import { duplicated, type Move, moved, removed } from "./boards.ts";
 
-// What is done to a deck's slide from its menu: moved a place up or down,
-// duplicated, or, after a question, deleted. The menu stands beside the
-// counter, not in the legend: a listbox holds only its options.
+// A deck's slide moved, duplicated or deleted from its menu, which stands
+// beside the counter, not in the legend: a listbox holds only its options.
 export default function SlideActions({
   slides,
   index,

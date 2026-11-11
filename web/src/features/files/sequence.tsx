@@ -70,14 +70,8 @@ const ZOOM_MAX = 4;
 const ZOOM_STEP = 1.25;
 
 // A page opened across the pane with what it is part of beside it: a deck's
-// slides, a document's pages, a design's boards. The stage shows one: a
-// fixed artboard scaled to fit, a page at the pane's own width. The legend,
-// the counter and the keys step through the rest; Find looks through all of
-// it. Select picks an element to comment on; Tweaks tries the levers the
-// page declares; Present shows it over the whole app (full screen where the
-// browser allows) with a slide's notes; Open and PDF show it alone in a tab.
-// A sheet is its grid, which keeps the keys and scrolls in its frame, with
-// its tabs under it and the clicked cell above (sheet.tsx).
+// slides, a document's pages, a design's boards. A sheet is its grid, which
+// keeps the keys and scrolls in its frame (sheet.tsx).
 
 // The lines it adds to the draft, which the artifact skill reads.
 const commentLine = (path: string, where: string, comment: string) =>
@@ -133,7 +127,6 @@ export default function Sequence({
   // The address the agent's browser draws a path at as a PNG or a PDF (a
   // folder's PDF is its deck), where it has one.
   drawn?: (as: "png" | "pdf", path: string) => string;
-  // Opens the presenter's view of a deck at a slide, in a window.
   presenter?: (slides: string[], at: string) => void;
   // A document's edited block, or a sheet's edited tab, saved to its file.
   save?: (edit: BlockEdit | TableEdit) => Promise<void>;
@@ -191,10 +184,9 @@ export default function Sequence({
     setRanged(undefined);
     setTold(UNTOLD);
   }, [src]);
-  // Presenting: over the app, full screen where the browser allows, the
-  // notes shown on a phone held upright or with N. Leaving full screen (a
-  // presenter's window opening takes it away) keeps presenting; End or Esc
-  // stop.
+  // Presenting: over the app, full screen where the browser allows. Leaving
+  // full screen (a presenter's window opening takes it away) keeps presenting;
+  // End or Esc stop.
   const [presenting, setPresenting] = useState(false);
   const [notesShown, setNotesShown] = useState(false);
   const present = (on: boolean) => {
@@ -221,9 +213,8 @@ export default function Sequence({
     return () => opened.close();
   }, []);
   // Where a document is scrolled to inside its frame (`end`: as far as it
-  // goes), which says its page, unless a step chose one. The chosen page
-  // shows at once and holds while the document cannot scroll to it: its last
-  // pages may all lie in its last view.
+  // goes), which says its page, unless a step chose one. The chosen page holds
+  // while the document cannot scroll to it: its last pages may share a view.
   const [where, setWhere] = useState<{
     top: number;
     end: boolean;
@@ -299,13 +290,9 @@ export default function Sequence({
     if (key === "n" || key === "N") setNotesShown((shown) => !shown);
     if (key === "Escape") present(false);
   };
-  // The keys step through the sequence outside presenting too, never in a
-  // field. The arrows do from anywhere; the paging keys only while the pane
-  // has them (the transcript pages with the same keys). A sheet's arrows
-  // and paging keys are its cells': only ⌘ or Ctrl with a paging key
-  // changes its tab. Read as they are now: a key pressed right after a step
-  // must count from where that step led, not from the render its listener
-  // was bound in.
+  // The arrows step from anywhere but a field; the paging keys only while the
+  // pane has them (the transcript pages with the same keys). Read as they are
+  // at the press: a key right after a step counts from where that step led.
   const keys = useLatest((event: KeyboardEvent) => {
     const target = event.target as Element;
     // Not a key another widget took, nor Space on a button, which presses
@@ -503,7 +490,6 @@ export default function Sequence({
   );
   const hits = !query || !counts ? undefined : sum(counts);
   const hit = spotAt(counts ?? [], spot);
-  // The occurrence `next` becomes the current one, on its board.
   const show = (next: number) => {
     setStepped({ query, spot: next });
     const { at } = spotAt(counts ?? [], next);
@@ -569,7 +555,6 @@ export default function Sequence({
   const rearrange = (moves: Move[]) =>
     moves.length && arrange?.(moves, shownAfter(moves, names, index));
   const stepper = useRef<HTMLDivElement>(null);
-  // Which board of how many, with the previous and the next.
   const counter = (boards.length > 1 || arrange) && !sheet && (
     <div
       class="float-toolbar page-count"
@@ -770,10 +755,9 @@ export default function Sequence({
                   }
                   scale={scale}
                   onMessage={(message) => {
-                    // The boards hear what fails here, and all of a
-                    // document or a sheet, which has no other frame that
-                    // says it. Any other page is measured by its picture: a
-                    // page as tall as it reads says the stage's height here.
+                    // The boards hear what fails here, and all of a document
+                    // or a sheet, which has no other frame. Any other page is
+                    // measured by its picture: here it is as tall as the stage.
                     if (doc || sheet || message.type === "error")
                       heard(path)(message);
                     if (message.type === "ready") {
@@ -794,7 +778,8 @@ export default function Sequence({
                         page.top + message.y * scale - box.top,
                       );
                     } else if (message.type === "size")
-                      // A page that grows (its fonts, its images) is pictured whole.
+                      // A page that grows (its fonts, its images) is
+                      // pictured whole.
                       setSaid(
                         (was) => was && { ...was, height: message.height },
                       );

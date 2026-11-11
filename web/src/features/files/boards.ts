@@ -1,7 +1,5 @@
-// What a folder holds is shown as one list of boards, for the canvas a
-// design lies on and for the legend a deck or a document is stepped through.
-// The host says what each page and its folder is (a listing's `kind`s,
-// src/app/workspace_files.cc); a page says the rest once it is drawn.
+// What a folder holds, as one list of boards for the canvas and the legend.
+// The host says what each page is (a listing's `kind`s); a page says the rest.
 
 import type { ArtifactType } from "../../shared/artifact.ts";
 import { HTML, IMAGE, SHEET_FILE, VIDEO } from "../../shared/file-types.ts";
@@ -28,10 +26,9 @@ export interface Listing {
   }[];
 }
 
-// One thing drawn: a page of the folder, one page of a document or one tab
-// of a sheet; on a design's canvas also a picture, a film, and as a stack
-// (its first page, with how many there are) a document, a sheet or a deck
-// that lies in the design.
+// One thing drawn: a page, one page of a document or one tab of a sheet; on
+// a design's canvas also a picture, a film, and a document, a sheet or a deck
+// as a stack (its first page, with how many there are).
 export interface Board {
   // What a click opens: the file, or a stack's first page.
   path: string;
@@ -47,9 +44,8 @@ export interface Board {
   top?: number;
   // A design's step: its variants and states share a row.
   row?: string;
-  // Why it failed, in a few words after its name, else empty: a page
-  // threw or is not as it should be drawn (design-helper.js); a picture
-  // or a film did not load.
+  // Why it failed, in a few words, else empty: a page threw or is not as it
+  // should be drawn (design-helper.js); a picture or a film did not load.
   failed: string;
 }
 
@@ -134,10 +130,9 @@ export const slidesOf = (listing: Listing) =>
     .map((entry) => entry.name)
     .sort();
 
-// A deck rearranged by hand, as what the host is asked (routes.fileWrite's
-// `moves`): a slide renamed, copied, or with no `to` deleted. The deck's
-// order is its names', so a slide's place is the number its name starts
-// with.
+// What the host is asked to rearrange a deck (routes.fileWrite's `moves`): a
+// slide renamed, copied, or with no `to` deleted. The deck's order is its
+// names', so a slide's place is the number its name starts with.
 export interface Move {
   from: string;
   to: string;
@@ -158,7 +153,6 @@ const renames = (order: string[]): Move[] =>
     }))
     .filter((move) => move.from !== move.to);
 
-// The slide at `from` taken to the place `to`.
 export function moved(slides: string[], from: number, to: number) {
   const order = [...slides];
   order.splice(to, 0, ...order.splice(from, 1));
@@ -242,12 +236,8 @@ function rows(names: string[]) {
 }
 
 // The boards of the folder `dir`. With the page `name` opened, what that is
-// part of: a document as its pages, a sheet as its tabs, a deck's slide
-// among the slides, any other page among the folder's pages in rows, less
-// the documents and sheets, which are each their own. With none, its
-// canvas: every page in rows, a document or a sheet as a stack, and what
-// else lies in the folder: its pictures and films, and a stack for each of
-// its `folders` that is a deck.
+// part of: a document's pages, a sheet's tabs, a deck's slides, a design's
+// rows. With none, its canvas: documents, sheets and decks lie on it as stacks.
 export function boardsOf(
   dir: string,
   listing: Listing,
@@ -371,8 +361,7 @@ export function pageAt(boards: Board[], top: number, end: boolean) {
 }
 
 // The boards' failed pages, and what they threw as lines for the agent. A
-// picture or a film that did not load says so on the canvas, by its name.
-// A sheet opened fails by the cell: each is counted.
+// sheet opened fails by the cell: each is counted.
 export function failures(boards: Board[], seen: SeenPages, kind?: Kind) {
   const paths = [
     ...new Set(

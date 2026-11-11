@@ -48,10 +48,9 @@ import LibraryDocument from "./document.tsx";
 import LibraryArtifact from "./artifact.tsx";
 import "./management.css";
 
-// The Library: everything kept across every folder and workspace, in one
-// list grouped by place, as the sidebar groups conversations. A rail
-// filters it by kind and place; an item opens beside the list (over it on
-// a phone). Nothing is stored here: each item stays where it lives.
+// The Library: everything kept across every folder and workspace, in one list
+// grouped by place. A rail filters it by kind and place; an item opens beside
+// the list. Nothing is stored here: each item stays where it lives.
 
 const RAIL: [string, [LibraryKind | "", string][]][] = [
   ["", [["", "Everything"]]],

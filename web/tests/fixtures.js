@@ -7,10 +7,8 @@ import { dirname, join, resolve } from "node:path";
 export { expect };
 
 // What the Files pane's tests put into a conversation's folder: a page with
-// an artboard (a size, a width alone, or a slide's), which makes a design; a
-// slide, its title as its heading and its notes in its last aside; a
-// document on paper; and a sheet, each of its tabs a table of rows as a
-// person would type them.
+// an artboard (which makes a design), a slide with its notes in its last
+// aside, a document on paper, and a sheet, each tab a table of typed rows.
 export const artboard = (title, body, size = "1440x900") =>
   `<!doctype html><html><head><title>${title}</title>` +
   `<meta name="artboard" content="${size}"></head><body>${body}</body></html>`;
@@ -75,10 +73,9 @@ export async function openSession(page, session, { phone } = {}) {
   await page.goto(`/#session=${session.id}`);
 }
 
-// The conversation with Files open (a sheet on a phone) at a place in its
-// folder: each folder of `path` opened in the tree, then its last part: a
-// file, or with a closing slash the folder's own Open (its deck, its canvas,
-// its brand book). Returns the pane.
+// The conversation with Files open at a place in its folder: each folder of
+// `path` opened in the tree, then its last part: a file, or with a closing
+// slash the folder's own Open. Returns the pane.
 export async function openFiles(page, session, path = "", options = {}) {
   await openSession(page, session, options);
   await headerAction(page, "Files");
@@ -95,10 +92,9 @@ export async function openFiles(page, session, path = "", options = {}) {
   return files;
 }
 
-// A sheet written as sheets/plan.html (or at `options.path`, as text or as
-// a workbook's bytes) and opened in the pane: its page, its tabs, its
-// formula bar with the field to type in, a cell of a tab by its name
-// ("B2"), and the file as it is on disk.
+// A sheet written as sheets/plan.html (or at `options.path`, as text or as a
+// workbook's bytes) and opened in the pane: its page, its tabs, its formula
+// bar, a cell of a tab by its name ("B2"), and the file as it is on disk.
 export async function openSheet(page, session, project, source, options) {
   const path = options?.path ?? "sheets/plan.html";
   await writeFiles(project, { [path]: source });
@@ -283,11 +279,9 @@ export const showList = (page) =>
     ).toHaveCount(1, { timeout: 1000 });
   }).toPass();
 
-// What a wider header shows as a button beside the title (Settings, Files,
-// Open browser, Edit instructions) and a narrow column keeps in the
-// conversation's menu (Settings, in the list's footer). A button's name may
-// say more after it ("Open browser, agent working"). Without a conversation
-// there is no menu and the header keeps Settings.
+// What a wider header shows as a button beside the title and a narrow column
+// keeps in the conversation's menu. A button's name may say more after it
+// ("Open browser, agent working"). With no conversation there is no menu.
 export async function headerAction(page, name) {
   const head = page.locator(".conversation-head");
   const menu = head.getByRole("button", { name: "Conversation menu" });

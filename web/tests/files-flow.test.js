@@ -14,10 +14,7 @@ import {
   swap,
 } from "../src/features/files/flow.ts";
 
-// A folder: decks/a and decks/b both hold 01-cover.html; design/landing has
-// two pages and a sheet, design/system a brand book beside its tokens, docs
-// a memo and a picture, sheets two sheets; src/app.ts sits beside README.md
-// at the top.
+// A folder in which decks/a and decks/b both hold 01-cover.html.
 const tree = {
   "": [
     "README.md",

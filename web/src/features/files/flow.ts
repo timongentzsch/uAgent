@@ -1,10 +1,5 @@
 // Where the Files pane is: exactly one view, and the views Back returns to.
-// Every way in is one step: a path from outside the pane (a reply, a card,
-// the Library) starts a fresh history that leads up to its own folder; a
-// click inside the pane pushes; stepping through a sequence replaces its
-// board; Back pops. Data for a view is looked up by the path it names, never
-// "the current one". The design and its route table: the "Files flow" page of
-// the docs and decks canvas.
+// A view's data is looked up by the path it names, never "the current one".
 
 import type { FileTarget } from "../../shared/types.ts";
 import { HTML, MARKDOWN, nameOf, paged } from "../../shared/file-types.ts";
@@ -227,7 +222,6 @@ export function folderOfView(view: View) {
   }
 }
 
-// What Back says it returns to.
 export function backLabel(view: View) {
   switch (view.kind) {
     case "canvas":

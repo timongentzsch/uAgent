@@ -24,7 +24,7 @@ interface Folders extends Listing {
   parent: string;
 }
 
-// Uses the same folder tree as Files, with directories supplied by the chosen host.
+// The folder tree of Files, with directories supplied by the chosen host.
 export default function FolderPicker({
   value,
   change,

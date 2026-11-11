@@ -1,7 +1,5 @@
-// The look lives in the tokens of shared/styles/tokens.css: colours, the type,
-// spacing and size scales, weights, stripes and motion. Every other
-// declaration names a token, so the whole look changes in one place. Values
-// are read whole, however many lines they run over.
+// The look lives in the tokens of shared/styles/tokens.css: every other
+// declaration names a token, so the whole look changes in one place.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -17,9 +15,8 @@ function* tree(dir, extensions, base = "") {
 }
 
 // Every declaration in the stylesheets: where it is, the selector (and
-// at-rules) it sits in, its property and its value. The grid a sheet page
-// is drawn as is another document's: it has its own palette, which the app
-// fills from its tokens, and none of the app's scales.
+// at-rules) it sits in, its property and its value. A sheet page's grid is
+// another document's, with a palette of its own and none of the app's scales.
 const declarations = [];
 const sheets = [
   ...[...tree("src", [".css"])].map((path) => ({
@@ -115,10 +112,9 @@ test("edges and focus rings use their tokens", () => {
 // A length written out: px or rem, other than zero and a hairline.
 const LENGTH = /(?<![\w.-])(?!0px\b|1px\b)[\d.]+(?:px|rem)\b/;
 
-// Spacing, type and line height come from the scales, so a screen cannot
-// drift a pixel from its neighbours: no length, and no bare line-height
-// number (1 collapses an icon's box). Markdown headings scale in em with
-// the prose around them.
+// Spacing, type and line height come from the scales: no length, and no bare
+// line-height number (1 collapses an icon's box). Markdown headings scale in
+// em with the prose around them.
 test("spacing, font sizes and line heights use the scale tokens", () => {
   const SCALED =
     /^(?:padding|margin|gap|row-gap|column-gap|font-size|line-height)\b/;
@@ -137,11 +133,9 @@ test("spacing, font sizes and line heights use the scale tokens", () => {
   );
 });
 
-// Sizes, places and stripes come from the size tokens (--control-s, --pane,
-// --dialog-m, --touch, --stripe and the like), so an icon or a control is
-// the same size wherever it appears. A length in em follows the element's
-// own font size, which is the scale there, so em is not counted. A custom
-// property outside the token blocks is held to the same rule.
+// Sizes, places and stripes come from the size tokens. A length in em follows
+// the element's own font size, which is the scale there, so em is not counted.
+// A custom property outside the token blocks is held to the same rule.
 test("sizes, positions and border widths use the size tokens", () => {
   const SIZED =
     /^(?:(?:min-|max-)?(?:width|height)|grid-template-\w+|flex(?:-basis)?|top|right|bottom|left|inset(?:-[\w-]+)?|translate|border(?:-[\w-]+)?|outline|--[\w-]+)$/;
@@ -153,10 +147,9 @@ test("sizes, positions and border widths use the size tokens", () => {
   );
 });
 
-// Weights, letter spacing, the focus ring's offset, an icon's alignment and
-// dimming are tokens: --weight-*, --tracking-*, --focus-offset,
-// --icon-align and --opacity-disabled. Stacking is a token too: a literal
-// z-index is a layer one screen picked alone.
+// Weights, letter spacing, the focus ring's offset, an icon's alignment,
+// dimming and stacking are tokens: a literal z-index is a layer one screen
+// picked alone.
 test("weights, tracking, offsets, opacity and stacking use their tokens", () => {
   const WRITTEN = {
     "font-weight": /\d|bold|lighter/,

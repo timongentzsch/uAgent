@@ -1,6 +1,5 @@
-// A sheet opens in the viewer as its own grid: the page calculates and draws
-// its tables in its sandboxed frame; the pane adds the tabs under it, the
-// clicked cell above it and the cells in error.
+// A sheet opens in the viewer as its own grid, calculated and drawn by the
+// page in its sandboxed frame; the pane adds its tabs, its cell and its errors.
 import { test, expect, openSheet, sheet, SAMPLE_SHEET } from "./fixtures.js";
 
 const selected = (tabs) =>

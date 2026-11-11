@@ -143,7 +143,6 @@ const ancestors = (dir: string) =>
   dir
     ? dir.split("/").map((_, at, parts) => parts.slice(0, at + 1).join("/"))
     : [];
-// Typing pauses this long before the folder is searched.
 const SEARCH_DELAY_MS = 150;
 
 const WRITES = new Set(["Wrote", "Edited", "Deleted"]);
@@ -159,12 +158,9 @@ function lastWrite(nodes: readonly Node[] = []) {
   return "";
 }
 
-// The conversation's folder, read only: a list with search beside a viewer
-// for text and code, rendered markdown and images, pages in their sequence
-// and a design's canvas.
-// Where it is lives with the app (`flow`, see flow.ts), so it stays put
-// while closed or moved between the sheet and the docked pane. A turn that
-// ends may have changed the folder, so what is open is read again then.
+// Where it is lives with the app (`flow`, see flow.ts), so it stays put while
+// closed or moved between the sheet and the docked pane. What is open is read
+// again when a turn ends: the turn may have changed the folder.
 export default function Files({
   session,
   close,
@@ -193,7 +189,6 @@ export default function Files({
   const turn = session.turn_active;
   const viewer = useContext(ImageViewer);
   const { view, back } = flow;
-  // The folder the view shows or sits in, and what it has open.
   const dir = folderOfView(view);
   const file =
     view.kind === "file" || view.kind === "sequence" ? view.path : "";
@@ -224,7 +219,6 @@ export default function Files({
       if (!next.delete(path)) next.add(path);
       return next;
     });
-  // The list column's own modes: the tree or the changes, and a search.
   const [tab, setTab] = useState<"files" | "changes">(
     changing ? "changes" : "files",
   );
@@ -433,7 +427,7 @@ export default function Files({
         }),
       );
   }, [listing.error, here]);
-  // A cited change that is no longer one opens as the file.
+  // A cited path with no change to show opens as the file.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed diff
   useEffect(() => {
     if (changing && diff.error && failure(diff.error).status === 404)
@@ -480,11 +474,9 @@ export default function Files({
     [here, stage, page, dir, seen, file, folders.value],
   );
   const failed = failures(boards, seen, kind);
-  // A deck's slides renamed, copied or deleted by hand. The folder is read
-  // again and the view follows to the slide named `show` in one step, so
-  // the slide is never taken for gone under its old name. Refused (the
-  // agent changed the folder meanwhile), nothing was moved: the folder is
-  // read again, and the pane says so.
+  // A deck's slides renamed, copied or deleted by hand: the folder is read
+  // again and the view follows to `show` in one step, so the slide is never
+  // taken for gone. Refused (the agent changed the folder), nothing was moved.
   const arranging = useAction({ report: () => listing.retry() });
   const arrange = (moves: Move[], show: string) =>
     arranging.run(async () => {

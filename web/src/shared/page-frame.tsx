@@ -5,10 +5,9 @@ import { useResource } from "./use-resource.ts";
 import { pageSize } from "./page-size.ts";
 import "./page-frame.css";
 
-// One page of the folder, live in a sandboxed frame. It runs in an opaque
-// origin and is served from a preview address, so it can reach neither this
-// page nor the host's API; the helper the host puts first in it reports what
-// it is and what failed (web/public/design-helper.js).
+// One page of the folder, live in a sandboxed frame: in an opaque origin and
+// served from a preview address, it reaches neither this page nor the host's
+// API. The helper the host puts first in it reports what it is and what failed.
 
 export interface PageInfo {
   title: string;
@@ -83,10 +82,8 @@ export type PageMessage =
     };
 
 // Tells a page what to do: select on or off, set a tweak, scroll a document
-// to an offset (its `n`th goto, counted from 1 for each document loaded),
-// mark the words found and bring the `index`th into view; a sheet: show a
-// tab, write a value into its active cell, or do a command on its
-// selection.
+// to an offset (its `n`th goto, counted from 1 per document loaded), mark the
+// words found; a sheet: show a tab, write into its active cell, do a command.
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
@@ -101,10 +98,9 @@ export const tell = (
     | { type: "do"; command: string },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 
-// What a sheet's grid takes from the app, as the variables of its own
-// stylesheet (web/sheet/sheet.css): the palette, a cell's fills as signal
-// colours thinned over the ground, and the type. Resolved here, since the
-// page is another document.
+// What a sheet's grid takes from the app, as the variables of its stylesheet
+// (web/sheet/sheet.css): the palette, a cell's fills and the type. Resolved
+// here, since the page is another document.
 const SHEET_LOOK = {
   ground: "bg",
   ink: "text",
@@ -128,7 +124,6 @@ function tellLook(frame: HTMLIFrameElement | null) {
   set("font", `${style.fontSize}/${style.lineHeight} ${style.fontFamily}`);
 }
 
-// A file of the folder at its preview address.
 export const pageAddress = (base: string, path: string) =>
   base + path.split("/").map(encodeURIComponent).join("/");
 
@@ -154,9 +149,8 @@ export default function Frame({
   // as a thumbnail): what it lies on takes the pointer.
   live?: boolean;
   // Only its box, with nothing in it: a long deck's legend runs the few
-  // pages near its view and no more. The box itself stays whatever it
-  // holds: a legend whose boxes came and went with their pages lost its
-  // place as they were swapped.
+  // pages near its view. The box stays whatever it holds, so the legend keeps
+  // its place as pages come and go.
   far?: boolean;
   // An "image" or a "video" of the folder is drawn as itself: it says its
   // size as a page does once it has loaded, or that it did not.

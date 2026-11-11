@@ -1,12 +1,5 @@
-// Runs first in every page the Files pane previews (the host inlines it). The
-// page is sandboxed in an opaque origin; this tells the app what the page is,
-// what went wrong in it and what the person picked, by postMessage, and
-// applies the tweaks the app sends. Opened alone with #paper it takes its
-// paper size for printing; with #print it also prints.
-// Once loaded, it reports what is wrong with the page as drawn (larger than
-// its artboard, text over text on a slide, a page of a document that runs
-// past it, a file that did not load): as errors to the app, or on the
-// console of the agent's browser.
+// Runs first in every page the Files pane previews (the host inlines it): by
+// postMessage it says what the page is and what fails in it, and takes tweaks.
 (() => {
   const root = document.documentElement;
   const meta = (name) =>
@@ -394,10 +387,9 @@
 
   const send = (type, data) =>
     parent.postMessage({ uagentDesign: 1, type, ...data }, "*");
-  // Find: every occurrence of the words marked, the `index`th as the
-  // current one and, in a document, brought into view; answers how many
-  // there are. Letters fold as the app's find folds them (A-Z only), and a
-  // slide's notes, which are not drawn, are not searched.
+  // Find: every occurrence of the words marked, the `index`th as the current
+  // one; answers how many there are. Letters fold as the app's find folds
+  // them (A-Z only); a slide's notes, which are not drawn, are not searched.
   const fold = (text) => text.replace(/[A-Z]/g, (c) => c.toLowerCase());
   const find = (text, index) => {
     const needle = fold(text);

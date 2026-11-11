@@ -6,7 +6,6 @@ import Frame, { type PageMessage } from "../../shared/page-frame.tsx";
 import { TAP_SLOP_PX } from "../../shared/zoom.ts";
 import { type Board, sum } from "./boards.ts";
 
-// How wide a board is drawn in the legend.
 const LEGEND_WIDTH = 128;
 
 // The current one of a list stays in view, and keeps the focus the list has.
@@ -25,11 +24,9 @@ export function useCurrentInView(
   }, [index]);
 }
 
-// The sequence small beside the stage (under it, as a filmstrip, in a narrow
-// pane): each board numbered with its title, the current one marked and kept
-// in view. A document is one frame with its pages marked on it, since a
-// frame per page would each draw the whole document. Only the boards near
-// the legend's view are drawn.
+// The sequence small beside the stage (a filmstrip under it in a narrow pane).
+// A document is one frame with its pages marked on it: a frame per page would
+// each draw the whole document. Only boards near the legend's view are drawn.
 export default function Legend({
   unit,
   boards,

@@ -4,7 +4,6 @@
 #define UAGENT_INCLUDE_CORE_CONFIG_H_
 // $NAME references in setting values, and folder trust.
 
-#include <istream>
 #include <map>
 #include <set>
 #include <string>

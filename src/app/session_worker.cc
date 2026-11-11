@@ -449,7 +449,7 @@ class WorkerChannel final : public ApplicationChannel {
   void BeginTurn() UAGENT_REQUIRES(mutex_) {
     state_["error"] = "";
     state_.erase("stop");
-    state_["turn_status"] = "Working";
+    state_["turn_status"] = kWaitingStatus;
     state_["phase"] = "working";
     state_["turn_started_ms"] = NowMillis();
   }

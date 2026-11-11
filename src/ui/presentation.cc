@@ -229,7 +229,7 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
         if (spinner_) spinner_->Stop();
       } else {
         const std::string label =
-            TerminalSafe(JsonValue(event.data, "turn_status", "Working"));
+            TerminalSafe(JsonValue(event.data, "turn_status", kWaitingStatus));
         if (!spinner_) spinner_ = std::make_unique<TerminalSpinner>(false);
         spinner_->SetLabel(label);
         spinner_->Start();

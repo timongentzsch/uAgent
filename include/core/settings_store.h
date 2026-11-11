@@ -11,12 +11,10 @@
 #include <vector>
 
 #include "include/core/config.h"
+#include "include/core/config_registry.h"
 #include "include/core/file_watch.h"
 
 namespace uagent {
-
-// One scope in the process: a setting's environment name to its value as text.
-using SettingValues = EnvValues;
 
 inline constexpr char kSettingsFile[] = "settings.json";
 

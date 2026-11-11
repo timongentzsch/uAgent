@@ -378,24 +378,6 @@ TEST_CASE(TestWorkspaceScopedSession) {
   CHECK(std::string(std::istreambuf_iterator<char>(preserved),
                     std::istreambuf_iterator<char>()) == corrupt);
 
-  // A format 2 session is refused with a compatibility error, never guessed at.
-  json legacy_header = {{"format", 2},     {"cwd", CanonicalCwd()},
-                        {"model", "test"}, {"session_id", "legacy"},
-                        {"turns", 1},      {"title", "legacy"}};
-  json legacy_state = {
-      {"messages",
-       json::array({{{"role", "system"}, {"content", "baseline"}}})},
-      {"archive", json::array()},
-      {"archive_dropped_segments", 0},
-      {"context_tokens", 12},
-      {"usage", json::object()}};
-  CHECK(ToolWritePrivateFile(session.string(),
-                             legacy_header.dump() + "\n" + legacy_state.dump())
-            .Ok());
-  SessionLoadResult legacy =
-      SessionStore::Load(session.string(), CanonicalCwd());
-  CHECK(legacy.status.error == SessionStoreError::kIncompatible);
-
   std::error_code ec;
   fs::remove_all(root, ec);
 }

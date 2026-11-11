@@ -245,10 +245,6 @@ std::optional<ToolArgumentIssue> InvalidSchemaValue(const json& schema,
   return std::nullopt;
 }
 
-}  // namespace
-
-namespace {
-
 // A clamp target may name a field one object deep, as `a.b`. One level is
 // deliberate: nothing needs two.
 bool ResolveClampTarget(json& args, const json& properties,

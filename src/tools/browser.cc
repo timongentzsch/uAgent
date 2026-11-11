@@ -898,9 +898,6 @@ std::optional<ToolArgumentIssue> Validate(const json& args,
   }
   return RefuseHidden(args);
 }
-}  // namespace
-
-namespace {
 
 // The lines of `text`, split at newlines; the pieces point into `text`.
 std::vector<std::string_view> SplitLines(std::string_view text) {

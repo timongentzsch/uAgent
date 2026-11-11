@@ -18,6 +18,7 @@
 
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
+#include "include/core/turn_status.h"
 
 namespace uagent {
 
@@ -110,9 +111,6 @@ class TerminalStatusLabel {
  private:
   uint64_t id_;
 };
-
-// What a model round calls itself while it waits.
-inline constexpr const char* kWaitingStatus = "Working";
 
 // Braille frames, or ASCII ones where the locale cannot show them.
 inline constexpr auto kSpinnerPeriod = std::chrono::milliseconds(100);

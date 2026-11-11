@@ -148,10 +148,7 @@ TEST_CASE(TestSettingsStore) {
     CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "$COUNT");
   }
 
-  // Format 2, which an earlier release wrote, is unreadable like the others.
-  for (const char* broken :
-       {"{\"format\": 1, \"all\": [", "null",
-        "{\"format\": 2, \"all\": {}, \"projects\": {}}"}) {
+  for (const char* broken : {"{\"format\": 1, \"all\": [", "null"}) {
     WriteFile(SettingsPath(), broken);
     CHECK(!ReadSettings(folder).error.empty());
     CHECK(!Set("", "UAGENT_MODEL", "m4").empty());

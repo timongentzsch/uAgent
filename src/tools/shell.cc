@@ -44,10 +44,7 @@ namespace {
 // there a missing shell fails as the wrapper, not as an errno to retry on.
 std::string ResolveShellExecutable(const std::string& shell) {
   if (shell != "bash") return shell;
-  for (const char* candidate : {"/bin/bash"}) {
-    if (access(candidate, X_OK) == 0) return candidate;
-  }
-  return shell;
+  return access("/bin/bash", X_OK) == 0 ? "/bin/bash" : shell;
 }
 
 // `program` is the argv to run: `shell -c command`, or a program run directly.

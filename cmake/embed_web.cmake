@@ -49,7 +49,6 @@ endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_web_manifest}")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_web_assets}
                                                       ${_web_compressed})
-set(_web_generated "${CMAKE_CURRENT_BINARY_DIR}/web_assets.cc")
 file(WRITE "${_web_generated}" "#include \"include/web/assets.h\"\nnamespace uagent::web {\n")
 set(_web_rows "")
 set(_web_index 0)

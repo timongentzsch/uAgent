@@ -17,6 +17,8 @@ namespace uagent {
 enum class EventId : uint16_t;
 
 inline constexpr const char* kIdleStatus = "Ready";
+// What a model round calls itself while it waits.
+inline constexpr const char* kWaitingStatus = "Working";
 
 // Presentation only: never enters model history or authorizes execution.
 std::string StatusLabel(std::string_view text);

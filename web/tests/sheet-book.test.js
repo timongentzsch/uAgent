@@ -1247,22 +1247,13 @@ test("after any change a row or cell stands in one place of the tabs, and a copi
   }
 });
 
-test("a change the engine reads nothing of is not calculated again, and the cells it gives a look keep their values", async () => {
-  let asked = 0;
-  const book = await openBook(
-    engine,
-    [
-      tab("Costs", [
-        ["#N", "#Twice"],
-        ["5", "=A2*2"],
-      ]),
-    ],
-    false,
-    (tabs) => {
-      asked++;
-      return calculate(tabs);
-    },
-  );
+test("the cells a change gives a look keep their values while it is calculated", async () => {
+  const book = await open([
+    tab("Costs", [
+      ["#N", "#Twice"],
+      ["5", "=A2*2"],
+    ]),
+  ]);
   const box = { top: 2, left: 1, bottom: 2, right: 2 };
   const looks = [
     book.style(0, box, "bold", "bold", new Set()),
@@ -1271,12 +1262,25 @@ test("a change the engine reads nothing of is not calculated again, and the cell
   ];
   assert.deepEqual(shown(book, 0, 2, 2), ["5", "10"]);
   assert.deepEqual(await Promise.all(looks), [true, true, true]);
-  assert.equal(asked, 1);
+  assert.deepEqual(shown(book, 0, 2, 2), ["5", "10"]);
   assert.equal(book.marks(0, 2, 2).bold, true);
-  // A pattern is read: calculated, and shown in it.
-  await book.style(0, box, "format", "0.00", new Set());
-  assert.equal(asked, 2);
-  assert.deepEqual(shown(book, 0, 2, 2), ["5.00", "10.00"]);
+});
+
+test("Undo asked for behind a refused change is taken back with it: what it would undo is gone", async () => {
+  const book = await rows();
+  assert.equal(
+    await book.paste(0, { row: 2, column: 1 }, [["kept edit"]]),
+    true,
+  );
+  const asked = [
+    book.paste(0, { row: 3, column: 1 }, [["=XNPV(1,2)"]]),
+    book.undo(),
+  ];
+  const [refused, undone] = await Promise.all(asked);
+  assert.match(refused, /A change asked for after it was not made either\.$/);
+  assert.equal(undone, false);
+  assert.deepEqual(column(book), ["N", "kept edit", "r3", "r4", "r5"]);
+  assert.equal(book.canRedo(), false);
 });
 
 test("rows put in one after another are each worked out once", async () => {

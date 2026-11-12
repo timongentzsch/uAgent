@@ -478,40 +478,12 @@ export async function openBook(engine, written, locked, calculate) {
         });
       }),
     );
-  // What the engine reads of a tab: tabs that read alike are not calculated
-  // again.
-  const inputs = new WeakMap();
-  const inputOf = (tab) =>
-    inputs.get(tab) ??
-    inputs
-      .set(
-        tab,
-        JSON.stringify([
-          tab.name,
-          tab.attrs["data-rule"],
-          tab.columns.map((column) => [
-            column["data-format"],
-            column["data-rule"],
-          ]),
-          tab.rows.map((row) =>
-            row.cells.map(({ th, text, attrs }) => [
-              th,
-              text,
-              attrs["data-format"],
-            ]),
-          ),
-        ]),
-      )
-      .get(tab);
-  const alike = (a, b) =>
-    a.length === b.length &&
-    a.every((tab, at) => tab === b[at] || inputOf(tab) === inputOf(b[at]));
-
   // A change is made at once on the tabs shown, then calculated after those
   // asked for before it. Where one of those is refused, the tabs go back to
   // those calculated and those behind it are made again on them; where it
   // moved cells (`moves`), what they point at moved, and they are refused
-  // too. The app holds the tabs shown, and writes them if the page goes
+  // too, as Undo and Redo are (`moves` "step"): what they would undo is
+  // gone. The app holds the tabs shown, and writes them if the page goes
   // first.
   let pending = Promise.resolve();
   const waiting = [];
@@ -546,12 +518,10 @@ export async function openBook(engine, written, locked, calculate) {
         .then(async () => {
           try {
             if (asked.dropped) return false;
-            const read =
-              alike(asked.to.tabs, made.tabs) ||
-              (await calculate(asked.to.tabs));
+            const read = await calculate(asked.to.tabs);
             if (typeof read !== "string") {
               made = asked.to;
-              if (read !== true) learned(made.tabs, read);
+              learned(made.tabs, read);
               return true;
             }
             [tabs, past, future] = [
@@ -562,11 +532,11 @@ export async function openBook(engine, written, locked, calculate) {
             let [moved, dropped] = [asked.moves, 0];
             for (const next of waiting.slice(1)) {
               if (next.dropped) continue;
-              const again = !moved && attempt(next);
+              const again = !moved && next.moves !== "step" && attempt(next);
               if (again === true) continue;
               next.dropped = true;
               dropped++;
-              moved ||= next.moves;
+              moved ||= !!next.moves;
             }
             charted.clear();
             return dropped
@@ -760,8 +730,8 @@ export async function openBook(engine, written, locked, calculate) {
     settled: () => pending,
     canUndo: () => past.length > 0,
     canRedo: () => future.length > 0,
-    undo: moving(() => step(past, future)),
-    redo: moving(() => step(future, past)),
+    undo: queued(() => step(past, future), "step"),
+    redo: queued(() => step(future, past), "step"),
     table: (sheet) => tableText(tabs[sheet]),
     shown: (sheet, row, column) => cellAt(sheet, row, column).shown,
     kind: (sheet, row, column) => cellAt(sheet, row, column).kind,

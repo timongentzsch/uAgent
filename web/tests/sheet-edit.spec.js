@@ -693,6 +693,17 @@ test("a rule strikes, fills and emboldens what matches, until an edit ends the m
     .toBe(with_(ruled, { "<td>Write<td>Done<td>": "<td>Write<td>To do<td>" }));
 });
 
+// Presses on the middle of `from` and lets go `x` and `y` away.
+const drag = async (app, from, x, y) => {
+  await from.hover();
+  await app.mouse.down();
+  const box = await from.boundingBox();
+  await app.mouse.move(box.x + box.width / 2 + x, box.y + box.height / 2 + y, {
+    steps: 4,
+  });
+  await app.mouse.up();
+};
+
 test("a chart is drawn from its cells, follows an edit, is put in from a selection, and is saved with its tab", async ({
   page: app,
   session,
@@ -759,21 +770,10 @@ test("a chart is drawn from its cells, follows an edit, is put in from a selecti
   await expect.poll(saved).toBe(pie);
 
   // Dragged, the chart sits on the cell under its corner; by its own corner
-  // it covers more cells. Beyond the grid a cell is 96 by 24.
-  const drag = async (from, x, y) => {
-    await from.hover();
-    await app.mouse.down();
-    const box = await from.boundingBox();
-    await app.mouse.move(
-      box.x + box.width / 2 + x,
-      box.y + box.height / 2 + y,
-      { steps: 4 },
-    );
-    await app.mouse.up();
-  };
-  await drag(stage.locator(".sheet-chart figcaption"), 200, 5);
+  // it covers more, in cells of 96 by 24 wherever it lies.
+  await drag(app, stage.locator(".sheet-chart figcaption"), 200, 5);
   await expect.poll(saved).toContain('data-at="G2" data-size="6x12"');
-  await drag(stage.locator(".sheet-size"), 110, 30);
+  await drag(app, stage.locator(".sheet-size"), 110, 30);
   await expect.poll(saved).toContain('data-at="G2" data-size="7x13"');
 
   // The file's chart is there when the sheet is read anew; deleted, it is
@@ -788,6 +788,43 @@ test("a chart is drawn from its cells, follows an edit, is put in from a selecti
       [`\n${figure("pie", "A1:C4", "E2", "Costs per item")}`]: "",
     }),
   );
+});
+
+test("a chart moved from narrow columns to wide ones keeps its size, and only its place changes in the file", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const chart = (at) =>
+    `<figure data-chart="bar" data-range="A1:B3" data-at="${at}" data-size="3x8"><figcaption>Costs</figcaption></figure>`;
+  const plan = (at) =>
+    sheet("Plan", {
+      Costs: [
+        '<col><col><col><col data-width="320"><col data-width="320">',
+        "<th>Item<th>Net<th><th><th>",
+        "<td>Rent<td>1200<td><td><td>",
+        "<td>Power<td>90<td><td><td>",
+        chart(at),
+      ],
+    });
+  const { stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    plan("A5"),
+  );
+  const figure = stage.locator(".sheet-chart");
+  const size = async () => {
+    const { width, height } = await figure.boundingBox();
+    return [width, height];
+  };
+  const before = await size();
+  expect(before).toEqual([3 * 96, 8 * 24]);
+  const from = await figure.boundingBox();
+  const to = await cell("Costs", "D1").boundingBox();
+  await drag(app, figure.locator("figcaption"), to.x - from.x + 4, 0);
+  await expect.poll(saved).toBe(plan("D5"));
+  expect(await size()).toEqual(before);
 });
 
 test("a figure that does not directly follow its table is reported and left in the file; one left open loses no tab", async ({

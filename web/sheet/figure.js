@@ -6,7 +6,8 @@ import { make } from "./grid.js";
 import { openMenu } from "./menu.js";
 import { boxNamed, cellName } from "./text.js";
 
-// A cell beyond the grid, where a chart may sit.
+// The grid's cell where nothing sizes it, beyond the grid too: the unit a
+// chart's size counts in, so that a move keeps its size.
 const CELL = { width: 96, height: 24 };
 // A chart covers no more cells than this, whatever its file says.
 const MOST = 200;
@@ -48,6 +49,8 @@ const nearest = (edge, place) => {
   while (at < 9999 && edge(at + 1) - place < place - edge(at)) at++;
   return at;
 };
+const units = (length, unit) =>
+  Math.max(1, Math.min(MOST, Math.round(length / unit)));
 
 // Mouse only: a touch that drags scrolls the page.
 function drag(layer, sheet, change) {
@@ -75,21 +78,19 @@ function drag(layer, sheet, change) {
         if (by(to).every((moved) => Math.abs(moved) < 4)) return;
         const { x, y } = edges(sheet.table());
         const now = figure.getBoundingClientRect();
-        const on = {
-          column: nearest(x, now.left + scrollX),
-          row: nearest(y, now.top + scrollY),
-        };
-        const wide = nearest(x, now.right + scrollX) - on.column;
-        const high = nearest(y, now.bottom + scrollY) - on.row;
+        // A move changes where it sits, its corner how much it covers.
+        const next = sizing
+          ? {
+              "data-size": `${units(now.width, CELL.width)}x${units(now.height, CELL.height)}`,
+            }
+          : {
+              "data-at": cellName({
+                column: nearest(x, now.left + scrollX),
+                row: nearest(y, now.top + scrollY),
+              }),
+            };
         change([...layer.children].indexOf(figure), (chart) => [
-          {
-            ...chart,
-            attrs: {
-              ...chart.attrs,
-              "data-at": cellName(on),
-              "data-size": `${Math.max(1, wide)}x${Math.max(1, high)}`,
-            },
-          },
+          { ...chart, attrs: { ...chart.attrs, ...next } },
         ]);
       },
       { once: true },
@@ -179,7 +180,7 @@ export function listenCharts(sheet) {
       };
       const [wide, high] = (attrs["data-size"] ?? CHART["data-size"])
         .split("x")
-        .map((cells) => Math.max(1, Math.min(MOST, Number(cells) || 1)));
+        .map((cells) => units(Number(cells) || 1, 1));
       const type = attrs["data-chart"];
       const data = sheet.book.chart(sheet.at, index);
       const kind = Object.hasOwn(CHARTS, type) ? CHARTS[type] : "Chart";
@@ -201,8 +202,8 @@ export function listenCharts(sheet) {
       Object.assign(figure.style, {
         left: `${x(on.left)}px`,
         top: `${y(on.top)}px`,
-        width: `${x(on.left + wide) - x(on.left)}px`,
-        height: `${y(on.top + high) - y(on.top)}px`,
+        width: `${wide * CELL.width}px`,
+        height: `${high * CELL.height}px`,
       });
       const named =
         type === "pie" ? data.labels : data.series?.map(({ name }) => name);

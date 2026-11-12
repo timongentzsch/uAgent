@@ -73,8 +73,8 @@ Nothing else: no merged cells, no fonts or borders, no `style`.
   `data-chart` is `bar`, `stacked`, `line` or `pie`. The range's first row
   names the series and its first column the labels; a pie takes the first
   series. `data-at` is the cell its top left corner sits on, beside or
-  under the data, and `data-size` the columns and rows it covers; left out,
-  the chart sits beside the table.
+  under the data, and `data-size` its width and height in cells of the
+  usual size (96 by 24 pixels); left out, the chart sits beside the table.
 
 ## Laying it out
 

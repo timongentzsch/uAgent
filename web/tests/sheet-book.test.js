@@ -360,10 +360,21 @@ test("text set past the table makes it reach there, a header row staying one; bl
   const refusal = /^B100000 is too far from the table to keep/;
   assert.match(book.paste(0, { row: 100_000, column: 2 }, [["x"]]), refusal);
   assert.match(
-    book.fillDown(0, { top: 2, left: 1, bottom: 100_000, right: 2 }),
-    /^A100000 is too far/,
+    book.fillDown(0, { top: 2, left: 2, bottom: 100_000, right: 2 }),
+    /^B100000 is too far/,
   );
   assert.equal(book.paste(0, { row: 30_000, column: 2 }, [["x"]]), true);
+  book.undo();
+  // The host counts bytes: text of three bytes a character is a third as
+  // many characters.
+  const large = (text) => book.paste(0, { row: 2, column: 1 }, [[text]]);
+  assert.equal(large("a".repeat(900_000)), true);
+  assert.equal(large("語".repeat(300_000)), true);
+  assert.match(
+    book.paste(0, { row: 9_000, column: 2 }, [["x"]]),
+    /^B9000 is too far/,
+  );
+  book.undo();
   book.undo();
   // A blank row put in at its end is no change, and no step.
   const steps = () => {

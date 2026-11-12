@@ -393,5 +393,5 @@ export function listen(sheet) {
     if (own?.from.cut) copied = undefined;
   });
 
-  return { rest, hold };
+  return { rest, hold, place: () => place(list ?? editor) };
 }

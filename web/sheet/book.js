@@ -159,6 +159,7 @@ const trimmed = (tab) => {
 const LOCKED = "This file is read-only: save it as a sheet to change it.";
 // The host keeps no file over 1,024 KB: the tabs' tables may come to this.
 const TABLES = 1_000_000;
+const bytes = (text) => new TextEncoder().encode(text).length;
 
 // `locked` for the tabs of an Excel or CSV file: no change is made to them.
 export function openBook(engine, written, locked) {
@@ -281,7 +282,7 @@ export function openBook(engine, written, locked) {
   // and cell between it and the table would be written into the file.
   const sizes = new WeakMap();
   const sized = (tab) =>
-    sizes.get(tab) ?? sizes.set(tab, tableText(tab).length).get(tab);
+    sizes.get(tab) ?? sizes.set(tab, bytes(tableText(tab))).get(tab);
   const tooFar = (sheet, { row, column }) => {
     const { rows, columns } = tabs[sheet];
     const wider = Math.max(0, column - columns.length);
@@ -447,6 +448,11 @@ export function openBook(engine, written, locked) {
     kind: (sheet, row, column) =>
       KINDS[model.getCellType(sheet, row, column)] ?? "text",
 
+    // Whether a rule can make a cell of the column bold.
+    emboldens: (sheet, column) =>
+      ruled[sheet].rules.some(
+        (rule) => rule.format.font.b && (rule.row || rule.column === column),
+      ),
     // What a rule that matches gives a cell. A tab without rules does not
     // ask the engine for every cell's style.
     look(sheet, row, column) {
@@ -615,7 +621,8 @@ export function openBook(engine, written, locked) {
       const filled = source
         .slice(box.left - 1, box.right)
         .some(({ text }) => text);
-      const refused = filled && tooFar(sheet, { row: box.bottom, column: 1 });
+      const refused =
+        filled && tooFar(sheet, { row: box.bottom, column: box.left });
       if (refused) return refused;
       return placed(
         "filled",

@@ -88,16 +88,29 @@ const edge = (text, scope, data = {}) => {
   return cell;
 };
 
-// A text's width as the grid draws it, asked of a canvas once a text.
+// A text's width on a canvas, asked once a text.
 const pen = document.createElement("canvas").getContext("2d");
 const known = new Map();
-const wide = (text, font) => {
+const measured = (text, font) => {
   const key = `${font}\n${text}`;
   if (!known.has(key)) {
     pen.font = font;
     known.set(key, pen.measureText(text).width);
   }
   return known.get(key);
+};
+// As the grid draws it: every digit as wide as the widest (tabular-nums),
+// which a canvas does not do.
+const widest = new Map();
+const wide = (text, font) => {
+  if (!widest.has(font))
+    widest.set(
+      font,
+      [..."0123456789"].reduce((most, digit) =>
+        measured(digit, font) > measured(most, font) ? digit : most,
+      ),
+    );
+  return measured(text.replace(/\d/g, widest.get(font)), font);
 };
 // How many lines a text takes in a cell `room` wide, a word after another.
 const lines = (text, font, room) => {
@@ -130,9 +143,13 @@ export function sizesOf(table, book, sheet) {
   const shown = tab.rows.map((row, r) =>
     row.cells.map((_, c) => book.shown(sheet, r + 1, c + 1)),
   );
+  // The engine is asked for a cell's style only where a rule can embolden.
+  const ruled = tab.columns.map((_, c) => book.emboldens(sheet, c + 1));
   const bold = tab.rows.map(
     (row, r) => (c) =>
-      isHeader(row) || isTotal(row) || !!book.look(sheet, r + 1, c + 1).bold,
+      isHeader(row) ||
+      isTotal(row) ||
+      (ruled[c] && !!book.look(sheet, r + 1, c + 1).bold),
   );
   const widths = tab.columns.map((column, c) => {
     if (column["data-width"]) return Number(column["data-width"]) || NARROW;
@@ -172,6 +189,7 @@ export function sizesOf(table, book, sheet) {
 // Draws the rows and columns `view` names (those held first), each where
 // `view.layout` puts it. `filters` is the tab's filtered columns. Windowed,
 // the table lies at its first scrolling cell's place inside the grid's area.
+// A row is `view.row` high or as high as its wrapped text makes it.
 export function draw(table, book, sheet, filters, view) {
   const tab = book.tabs[sheet];
   const { layout, frozen } = view;
@@ -235,7 +253,7 @@ export function draw(table, book, sheet, filters, view) {
     });
     const drawn = marked(make("tr"), row?.attrs ?? {});
     drawn.classList.toggle("sheet-head", !!row && isHeader(row));
-    drawn.style.height = `${layout.y(number + 1) - layout.y(number)}px`;
+    drawn.style.height = `${view.row + (row && isTotal(row) ? 1 : 0)}px`;
     // Each held row sticks under those before it, each held column beside.
     if (number <= frozen.rows) {
       drawn.classList.add("sheet-frozen");
@@ -248,6 +266,7 @@ export function draw(table, book, sheet, filters, view) {
     edge("", "col"),
     ...view.columns.map((at) => edge(letters(at), "col", { column: at })),
   ]);
+  lettered.style.height = `${layout.y(1)}px`;
   const span = (from, to) => `${layout.x(to) - layout.x(from)}px`;
   table.replaceChildren(
     make("colgroup", {}, [

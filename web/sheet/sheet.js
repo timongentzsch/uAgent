@@ -101,6 +101,15 @@ async function open() {
   // How far each tab's grid has been scrolled: it runs a pane past that, the
   // table, the selection and the charts, up to the spreadsheet's last cell.
   const reached = tables.map(() => ({ rows: 0, columns: 0 }));
+  // Each tab's rows as high as they were drawn, while it has as many: a
+  // wrapped row is as high as the browser made it, which sizes only reckon.
+  const kept = tables.map(() => ({ rows: -1, heights: new Map() }));
+  // An element is at most this high: no row past it can be scrolled to.
+  const REACH = 33_554_432;
+  const most = () => ({
+    row: Math.min(LAST.row, layout.rowAt(REACH) - 1),
+    column: LAST.column,
+  });
   const extent = () => {
     const { anchor, focus } = picks[at];
     const charts = tab().charts.map(
@@ -111,7 +120,7 @@ async function open() {
     return {
       rows: far(
         tab().rows.length,
-        LAST.row,
+        most().row,
         Math.ceil(innerHeight / sizes.row),
         reached[at].rows,
         anchor.row,
@@ -137,19 +146,38 @@ async function open() {
   let grid = { rows: 0, columns: 0 };
   let drawn = { top: 1, bottom: 0, left: 1, right: 0 };
   let tinted;
-  // The row numbers' column is as wide as the last row's number needs.
+  // Where the page itself last put the view: a scroll that ends there is
+  // not a person's, and makes the grid no longer.
+  let led = {};
+  // The view ends where the grid does; a browser may leave it past the end
+  // of a grid made shorter.
+  const settle = (x = scrollX, y = scrollY) => {
+    const within = (at, end, room) =>
+      whole ? at : Math.max(0, Math.min(at, end - room));
+    const to = [
+      within(x, layout.x(grid.columns + 1), innerWidth),
+      within(y, layout.y(grid.rows + 1), innerHeight),
+    ];
+    if (to[0] !== scrollX || to[1] !== scrollY) scrollTo(...to);
+    led = { x: scrollX, y: scrollY };
+  };
+  // The row numbers' column is as wide as the last row's number needs:
+  // of another width, it moves every column, and nothing drawn stands.
   const fit = () => {
     grid = extent();
+    const edge = Math.max(40, 14 + 7 * `${grid.rows}`.length);
+    if (edge !== layout.x(1)) drawn = { top: 1, bottom: 0, left: 1, right: 0 };
     layout = layoutOf(
       sizes.widths,
       sizes.heights.map((height, r) => (hidden.has(r + 1) ? 0 : height)),
-      Math.max(40, 14 + 7 * `${grid.rows}`.length),
+      edge,
       sizes.row,
     );
     Object.assign(area.style, {
       width: `${layout.x(grid.columns + 1)}px`,
       height: `${layout.y(grid.rows + 1)}px`,
     });
+    settle();
   };
   // What is in view past the held rows and columns, as cells.
   const inView = () => ({
@@ -158,7 +186,42 @@ async function open() {
     left: layout.columnAt(scrollX + layout.x(frozen.columns + 1)),
     right: layout.columnAt(scrollX + innerWidth),
   });
+  // The rows drawn are as high as the browser made them: true where one
+  // was not as high as reckoned. The rows in view stay where they were.
+  const measure = () => {
+    const { top } = inView();
+    let [changed, above] = [false, 0];
+    for (const line of tables[at].tBodies[0].rows) {
+      const row = Number(line.cells[0].dataset.row);
+      const { height } = line.getBoundingClientRect();
+      const was = sizes.heights[row - 1];
+      if (was === undefined || height === was) continue;
+      if (row > frozen.rows && row < top) above += height - was;
+      sizes.heights[row - 1] = height;
+      kept[at].heights.set(row, height);
+      changed = true;
+    }
+    if (changed) fit();
+    if (above) settle(scrollX, scrollY + above);
+    return changed;
+  };
+  // Drawn again where a row's real height moved those after it, and what
+  // lies over the grid put there.
   const render = () => {
+    let moved = false;
+    lay();
+    for (let pass = 0; pass < 4 && measure(); pass++) {
+      moved = true;
+      lay();
+    }
+    tables[at].classList.toggle("sheet-window", !whole);
+    paint(tables[at], box(), pick().anchor, tinted);
+    if (moved) {
+      charts();
+      place();
+    }
+  };
+  const lay = () => {
     const view = inView();
     const span = (from, to, held, most) =>
       Array.from(
@@ -170,18 +233,20 @@ async function open() {
         },
         (_, n) => Math.max(from, held + 1) + n,
       );
+    // No further than the grid runs: grown, it is drawn again from there.
     drawn = whole
       ? { top: 1, bottom: grid.rows, left: 1, right: grid.columns }
       : {
           top: view.top - OVER.rows,
-          bottom: view.bottom + OVER.rows,
+          bottom: Math.min(view.bottom + OVER.rows, grid.rows),
           left: view.left - OVER.columns,
-          right: view.right + OVER.columns,
+          right: Math.min(view.right + OVER.columns, grid.columns),
         };
     const held = (count) => Array.from({ length: count }, (_, n) => n + 1);
     draw(tables[at], book, at, filters[at], {
       layout,
       frozen,
+      row: sizes.row,
       rows: [
         ...held(frozen.rows),
         ...span(drawn.top, drawn.bottom, frozen.rows, grid.rows),
@@ -191,8 +256,6 @@ async function open() {
         ...span(drawn.left, drawn.right, frozen.columns, grid.columns),
       ],
     });
-    tables[at].classList.toggle("sheet-window", !whole);
-    paint(tables[at], box(), pick().anchor, tinted);
   };
   // Drawn again once the view leaves what is drawn.
   const follow = () => {
@@ -216,14 +279,14 @@ async function open() {
         : at < scrolled + held
           ? at - held
           : at + size - room;
-    scrollTo(
+    settle(
       to(left, width, x, scrollX, innerWidth, cell.column <= frozen.columns),
       to(top, height, y, scrollY, innerHeight, cell.row <= frozen.rows),
     );
     follow();
   };
   const within = ({ row, column }) => ({
-    row: Math.max(1, Math.min(row, whole ? grid.rows : LAST.row)),
+    row: Math.max(1, Math.min(row, whole ? grid.rows : most().row)),
     column: Math.max(1, Math.min(column, whole ? grid.columns : LAST.column)),
   });
   // The nearest row in view, looking first the way the selection moves.
@@ -232,7 +295,7 @@ async function open() {
     for (const step of [way, -way]) {
       let { row } = cell;
       while (hidden.has(row)) row += step;
-      if (row >= 1 && row <= LAST.row) return { ...cell, row };
+      if (row >= 1 && row <= most().row) return { ...cell, row };
     }
     return cell;
   };
@@ -296,8 +359,16 @@ async function open() {
     },
     // The rows and columns the tab holds in view.
     held: () => frozen,
-    // Where a cell lies in the page, drawn or not.
-    rect: (cell) => layout.rect(cell),
+    // Where a cell lies in the page, drawn or not: one held in view does
+    // not scroll.
+    rect(cell) {
+      const box = layout.rect(cell);
+      return {
+        ...box,
+        left: box.left + (cell.column <= frozen.columns ? scrollX : 0),
+        top: box.top + (cell.row <= frozen.rows ? scrollY : 0),
+      };
+    },
     layout: () => layout,
     pick,
     box,
@@ -468,6 +539,7 @@ async function open() {
     );
     filters.splice(0, Infinity, ...all(() => new Map()));
     reached.splice(0, Infinity, ...all(() => ({ rows: 0, columns: 0 })));
+    kept.splice(0, Infinity, ...all(() => ({ rows: -1, heights: new Map() })));
     told.splice(0, Infinity, ...all((tab) => book.table(tab)));
     offered.splice(0, Infinity, ...all((tab) => tab));
   };
@@ -478,7 +550,8 @@ async function open() {
       `${rows}${columns ? ` ${letters(columns)}` : ""}`,
     );
 
-  const show = (index) => {
+  // `still` leaves a cell being typed in as it is.
+  const show = (index, still) => {
     if (!tables[index]) return;
     at = index;
     tables.forEach((table, tab) => {
@@ -488,6 +561,10 @@ async function open() {
     hidden = hides();
     picks[at] = { anchor: seen(pick().anchor), focus: seen(pick().focus) };
     sizes = sizesOf(tables[at], book, at);
+    if (kept[at].rows !== tab().rows.length)
+      kept[at] = { rows: tab().rows.length, heights: new Map() };
+    for (const [row, height] of kept[at].heights)
+      sizes.heights[row - 1] = height;
     const held = frozenOf(tab().attrs["data-frozen"], headOf(tab()));
     frozen = {
       rows: Math.min(held.rows, tab().rows.length),
@@ -496,7 +573,8 @@ async function open() {
     fit();
     render();
     charts();
-    rest();
+    if (still) place();
+    else rest();
     say({
       type: "sheet",
       tabs: offered.map((tab) => book.tabs[tab].name),
@@ -525,7 +603,8 @@ async function open() {
           root.scrollWidth,
           grid.columns,
         );
-        if (!whole && (rows || columns)) {
+        const own = scrollX === led.x && scrollY === led.y;
+        if (!whole && !own && (rows || columns)) {
           reached[at] = {
             rows: Math.max(reached[at].rows, rows),
             columns: Math.max(reached[at].columns, columns),
@@ -533,6 +612,7 @@ async function open() {
           fit();
         }
         follow();
+        place();
       });
     },
     { passive: true },
@@ -546,10 +626,11 @@ async function open() {
   new MutationObserver(() => {
     restyled ||= requestAnimationFrame(() => {
       restyled = 0;
-      show(at);
+      for (const { heights } of kept) heights.clear();
+      show(at, true);
     });
   }).observe(root, { attributes: true, attributeFilter: ["style"] });
-  const { rest, hold } = listen(sheet);
+  const { rest, hold, place } = listen(sheet);
   sheet.hold = hold;
   const charts = listenCharts(sheet);
   addEventListener("message", ({ source, data }) => {

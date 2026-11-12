@@ -146,7 +146,7 @@ export function listenCharts(sheet) {
     const index = [...layer.children].indexOf(event.target.closest("figure"));
     const tool = event.target.closest("button")?.name;
     if (index < 0) return;
-    if (tool === "delete") change(index, () => []);
+    if (tool === "delete") drop(index);
     else if (tool === "edit")
       openMenu(
         { x: event.clientX, y: event.clientY },
@@ -161,14 +161,29 @@ export function listenCharts(sheet) {
       );
     else if (index !== picked.chart) pick(index);
   });
-  // A press on a cell, or Escape, lets go of it.
+  // A press on a cell lets go of it.
   const free = () => picked.chart >= 0 && pick(-1);
   addEventListener("mousedown", (event) => {
     if (!event.target.closest?.(".sheet-chart, .sheet-menu")) free();
   });
-  addEventListener("keydown", (event) => {
-    if (event.key === "Escape") free();
-  });
+  // No chart is picked once one is taken out: the next has its place.
+  const drop = (index) => {
+    picked = { tab: -1, chart: -1 };
+    change(index, () => []);
+  };
+  // What looks picked is what a key acts on: Delete takes the chart out,
+  // before the cells hear it. Any other key lets go and is the cells'.
+  addEventListener(
+    "keydown",
+    (event) => {
+      if (picked.chart < 0 || picked.tab !== sheet.at) return;
+      if (event.key !== "Delete" && event.key !== "Backspace") return free();
+      event.preventDefault();
+      event.stopPropagation();
+      drop(picked.chart);
+    },
+    true,
+  );
 
   const show = () => {
     const { x, y } = sheet.layout();

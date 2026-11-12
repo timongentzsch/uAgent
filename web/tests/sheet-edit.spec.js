@@ -827,6 +827,155 @@ test("a table of five thousand rows is drawn a screenful at a time, wherever it 
   expect(await rows()).toBeLessThan(120);
 });
 
+test("the editor and a chart lie on their cells: under wrapped rows of long words, on a held cell scrolled, at the grid's end; numbers are not cut short", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const words = [
+    "A long-running migration of the customer-records database, with rollback",
+    "Reconciliation: accounts-receivable/accounts-payable, internationalization",
+    "https://example.com/a/very/long/path/that/does/not/break/anywhere/index.html",
+  ];
+  const wrapped = sheet("Wrapped", {
+    Work: [
+      '<col><col class="wrap" data-width="180"><col data-format="#,##0.00"><col>',
+      "<th>Task<th>Detail<th>Net<th>Id",
+      ...Array.from(
+        { length: 40 },
+        (_, row) =>
+          `<td>Task ${row + 1}<td>${row < 10 ? words[row % 3] : "Short"}<td>${row % 2 ? "1111111.11" : "711171.17"}<td>${"7".repeat(8)}`,
+      ),
+      '<figure data-chart="bar" data-range="A1:C4" data-at="F14" data-size="4x8"><figcaption>Net</figcaption></figure>',
+    ],
+  }).replace('data-sheet="Work"', 'data-sheet="Work" data-frozen="1 A"');
+  const { files, stage, bar, cell } = await openSheet(
+    app,
+    session,
+    host.project,
+    wrapped,
+  );
+  const page = stage.locator("html");
+  // The editor's box and the active cell's; a chart's corner and its cell's.
+  const boxes = (...of) =>
+    page.evaluate((_, of) => {
+      const shown = "table:not([hidden]) ";
+      return of.map((selector) => {
+        const box = document
+          .querySelector(selector.replace("^", shown))
+          .getBoundingClientRect();
+        return [box.left, box.top, box.width, box.height].map(Math.round);
+      });
+    }, of);
+  // Typed in, the editor may be wider than its cell.
+  const exact = async (sides = 4) => {
+    await expect
+      .poll(async () => {
+        const [editor, active] = await boxes(
+          "input.sheet-editor",
+          '^[aria-selected="true"]',
+        );
+        return (
+          `${editor.slice(0, sides)}` === `${active.slice(0, sides)}` || {
+            editor,
+            active,
+          }
+        );
+      })
+      .toBe(true);
+  };
+  // The letters' row is as high as a row of the app's type.
+  await expect(cell("Work", "A1")).toBeVisible();
+  const [letters, row] = await boxes("^thead tr", "^tbody tr:last-child");
+  expect(letters[3]).toBe(row[3]);
+  expect(row[3]).toBeGreaterThan(24);
+  await cell("Work", "C13").click();
+  await exact();
+  const [chart, under] = await boxes(
+    ".sheet-chart",
+    '^[data-row="14"][data-column="6"]',
+  );
+  expect(chart.slice(0, 2)).toEqual(under.slice(0, 2));
+  expect(
+    await page.evaluate(() =>
+      [...document.querySelectorAll("table:not([hidden]) td.sheet-number")]
+        .filter((drawn) => drawn.scrollWidth > drawn.clientWidth)
+        .map((drawn) => drawn.textContent),
+    ),
+  ).toEqual([]);
+
+  // A held cell does not scroll, and neither does its editor.
+  await page.evaluate(() => scrollTo(300, 250));
+  await cell("Work", "A20").click();
+  await expect(bar.getByRole("status")).toHaveText("Work!A20");
+  await exact();
+  await page.evaluate(() => scrollBy(40, 0));
+  await exact();
+  await cell("Work", "D1").click();
+  await exact();
+  await page.evaluate(() => scrollBy(0, 60));
+  await exact();
+
+  // What is typed stays through a change of the app's look.
+  await cell("Work", "D30").click();
+  await app.keyboard.type("half");
+  const ground = () =>
+    page.evaluate(() =>
+      document.documentElement.style.getPropertyValue("--sheet-ground"),
+    );
+  const light = await ground();
+  await app.emulateMedia({ colorScheme: "dark" });
+  await expect.poll(ground).not.toBe(light);
+  await expect(stage.locator("input.sheet-editor")).toHaveValue("half");
+  await exact(2);
+  await app.keyboard.press("Enter");
+  await expect(cell("Work", "D30")).toHaveText("half");
+
+  // At its end the grid grows a pane and is drawn there. The far end is
+  // reached with a key; the grid is no longer for it afterwards.
+  const high = () =>
+    page.evaluate(() => document.querySelector(".sheet-area").offsetHeight);
+  const short = await high();
+  await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(high).toBeGreaterThan(short);
+  await page.evaluate(() => scrollBy(0, 300));
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          !!document
+            .elementFromPoint(innerWidth / 2, innerHeight - 30)
+            ?.closest("td"),
+      ),
+    )
+    .toBe(true);
+  await page.evaluate(() => scrollTo(0, 0));
+  await cell("Work", "B2").click();
+  await app.keyboard.press("Control+ArrowDown");
+  await app.keyboard.press("Control+ArrowDown");
+  await expect(bar.getByRole("status")).toHaveText("Work!B1048576");
+  await exact();
+  await app.keyboard.press("Control+Home");
+  await expect(bar.getByRole("status")).toHaveText("Work!A1");
+  await expect.poll(high).toBeLessThan(short * 3);
+
+  // Alone, in the page's own type, the chart lies on its row all the same.
+  const alone = await app.context().newPage();
+  await alone.goto(
+    await files.getByRole("link", { name: "Open alone" }).getAttribute("href"),
+  );
+  await expect(alone.locator(".sheet-chart")).toBeVisible();
+  expect(
+    await alone.evaluate(() => {
+      const top = (selector) =>
+        Math.round(
+          document.querySelector(selector).getBoundingClientRect().top,
+        );
+      return top(".sheet-chart") - top("tbody tr:nth-child(14)");
+    }),
+  ).toBe(0);
+});
+
 test("opened alone a sheet is its whole table and nothing past it", async ({
   page: app,
   session,
@@ -1149,7 +1298,7 @@ test("a chart is drawn from its cells, follows an edit, is put in from a selecti
       costs,
     ],
   });
-  const { files, stage, cell, saved } = await openSheet(
+  const { files, stage, bar, cell, saved } = await openSheet(
     app,
     session,
     host.project,
@@ -1231,13 +1380,32 @@ test("a chart is drawn from its cells, follows an edit, is put in from a selecti
   await stage.locator("html").evaluate(() => location.reload());
   await expect(chart.locator("path")).toHaveCount(3);
   await box.locator("figcaption").click();
+  const sized = await saved();
+  const gone = with_(pie, {
+    [`\n${figure("pie", "A1:C4", "E2", "Costs per item")}`]: "",
+  });
   await stage.getByRole("button", { name: /^Delete chart/ }).click();
   await expect(stage.locator(".sheet-chart")).toHaveCount(0);
-  await expect.poll(saved).toBe(
-    with_(pie, {
-      [`\n${figure("pie", "A1:C4", "E2", "Costs per item")}`]: "",
-    }),
-  );
+  await expect.poll(saved).toBe(gone);
+
+  // Picked, the chart is what Delete takes out, not the cells selected
+  // under it; any other key lets go of it and is the cells'.
+  const undo = files.getByRole("button", { name: "Undo" });
+  await undo.click();
+  await expect.poll(saved).toBe(sized);
+  await cell("Costs", "A2").click();
+  await box.locator("figcaption").click();
+  await expect(box).toHaveAttribute("data-picked", "");
+  await app.keyboard.press("Delete");
+  await expect(stage.locator(".sheet-chart")).toHaveCount(0);
+  await expect.poll(saved).toBe(gone);
+  await undo.click();
+  await box.locator("figcaption").click();
+  await expect(box).toHaveAttribute("data-picked", "");
+  await app.keyboard.press("ArrowDown");
+  await expect(box).not.toHaveAttribute("data-picked");
+  await expect(bar.getByRole("status")).toHaveText("Costs!A3");
+  await expect.poll(saved).toBe(sized);
 });
 
 test("a chart moved from narrow columns to wide ones keeps its size, and only its place changes in the file", async ({

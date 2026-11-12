@@ -166,8 +166,8 @@ const filledUnder = (tab, box) => {
   return found;
 };
 // The merged ranges drawn, each as its top left cell over the others, which
-// hold nothing; and why each other is not. Of two that overlap the first is
-// drawn.
+// hold nothing; and why each other is not, said to the agent and to a change
+// that would leave it so. Of two that overlap the first is drawn.
 const mergesOf = (tab) => {
   const merges = [];
   const unread = [];
@@ -182,22 +182,81 @@ const mergesOf = (tab) => {
         : over
           ? `overlaps ${boxName(over)}`
           : under && `covers text in ${under}`;
-    if (why) unread.push(`merge \`${text}\` ${why}`);
-    else merges.push(box);
+    if (!why) merges.push(box);
+    else
+      unread.push({
+        said: `merge \`${text}\` ${why}`,
+        refused: under
+          ? `Not changed: ${under} lies under the merged cell ${boxName(box)}.`
+          : `Not changed: merge \`${text}\` ${why}.`,
+      });
   }
   return { merges, unread };
 };
+const withMerges = (attrs, list) => {
+  const { "data-merge": _, ...rest } = attrs;
+  return list.length ? { ...attrs, "data-merge": list.join(" ") } : rest;
+};
+const MOVED = "A merged cell moves whole.";
+// The merged ranges after cells moved to where `place` puts them, and the
+// first one the move would cut: its rows or columns would be apart, or its
+// top left cell not first. Within it, the cells it covers may move.
+const carriedMerges = (attrs, place) => {
+  // Where the numbers from `from` to `to` go, from the least to the most.
+  const ends = (from, to, go) => {
+    let [least, most] = [Infinity, -Infinity];
+    for (let n = from; n <= to; n++)
+      [least, most] = [Math.min(least, go(n)), Math.max(most, go(n))];
+    return [least, most];
+  };
+  let cut;
+  const list = listed(attrs).map((text) => {
+    const box = boxNamed(text);
+    if (!box) return text;
+    const [top, bottom] = ends(
+      box.top,
+      box.bottom,
+      (row) => place({ row, column: box.left }).row,
+    );
+    const [left, right] = ends(
+      box.left,
+      box.right,
+      (column) => place({ row: box.top, column }).column,
+    );
+    const first = place({ row: box.top, column: box.left });
+    if (
+      first.row !== top ||
+      first.column !== left ||
+      bottom - top !== box.bottom - box.top ||
+      right - left !== box.right - box.left
+    )
+      cut ??= text;
+    return boxName({ top, left, bottom, right });
+  });
+  return { attrs: withMerges(attrs, list), cut };
+};
 
-// A table's rules name columns by letter: they follow their columns.
-const slidAttrs = ({ attrs, columns }, at, count) =>
-  attrs["data-rule"]
+// A table's rules name columns by letter, and its merged ranges cells: they
+// follow them. A range left a cell or none is no merge.
+const slidAttrs = ({ attrs, columns }, across, at, count) => {
+  const merged = withMerges(
+    attrs,
+    listed(attrs).flatMap((text) => {
+      const box = boxNamed(text);
+      const left = box && slidBox(box, across, at, count);
+      if (!box) return [text];
+      return left && boxName(left).includes(":") ? [boxName(left)] : [];
+    }),
+  );
+  return across && attrs["data-rule"]
     ? {
-        ...attrs,
+        ...merged,
         "data-rule": slidRules(attrs["data-rule"], columns.length, (column) =>
           slid(column, at, count),
         ),
       }
-    : attrs;
+    : merged;
+};
 
 const eachCell = (tabs, visit) =>
   tabs.forEach((tab, sheet) =>
@@ -601,7 +660,18 @@ export async function openBook(engine, written, locked, calculate) {
       return tableText(cut) === tableText(tabs[at]) ? tabs[at] : cut;
     });
     const changed = next.filter((tab, at) => tab !== tabs[at]);
-    const [refused] = locked ? [LOCKED] : changed.flatMap(markupOf);
+    // No text goes under a merged cell: a change that would leave more of a
+    // tab's merged ranges undrawn is refused.
+    const covered = next.flatMap((tab, at) => {
+      const was = mergesFor(tabs[at]).unread.map(({ said }) => said);
+      const now = mergesFor(tab).unread;
+      return now.length > was.length
+        ? now.filter(({ said }) => !was.includes(said))
+        : [];
+    });
+    const [refused] = locked
+      ? [LOCKED]
+      : [...changed.flatMap(markupOf), ...covered.map((one) => one.refused)];
     if (refused || !changed.length) return changed.length ? refused : false;
     return taken(next);
   };
@@ -832,7 +902,7 @@ export async function openBook(engine, written, locked, calculate) {
         ...(unread.get(tab) ?? rulesFor(tab).unread).map(
           (rule) => `${tab.name}: rule \`${rule}\` is not understood`,
         ),
-        ...mergesFor(tab).unread.map((why) => `${tab.name}: ${why}`),
+        ...mergesFor(tab).unread.map(({ said }) => `${tab.name}: ${said}`),
         ...tab.charts.flatMap((chart, at) => {
           const { error } = chartOf(sheet, at);
           return error
@@ -1180,6 +1250,7 @@ export async function openBook(engine, written, locked, calculate) {
         (model) => model.insertRows(sheet, at, count),
         edit(sheet, (tab) => ({
           ...tab,
+          attrs: slidAttrs(tab, false, at, count),
           charts: slidCharts(tab.charts, false, at, count),
           rows: tab.rows.toSpliced(
             at - 1,
@@ -1199,6 +1270,7 @@ export async function openBook(engine, written, locked, calculate) {
           (model) => model.deleteRows(sheet, at, count),
           edit(sheet, (tab) => ({
             ...tab,
+            attrs: slidAttrs(tab, false, at, -count),
             charts: slidCharts(tab.charts, false, at, -count),
             rows: tab.rows.toSpliced(at - 1, count),
           })),
@@ -1209,7 +1281,7 @@ export async function openBook(engine, written, locked, calculate) {
         (model) => model.insertColumns(sheet, at, count),
         edit(sheet, (tab) => ({
           ...tab,
-          attrs: slidAttrs(tab, at, count),
+          attrs: slidAttrs(tab, true, at, count),
           charts: slidCharts(tab.charts, true, at, count),
           columns: tab.columns.toSpliced(
             at - 1,
@@ -1235,7 +1307,7 @@ export async function openBook(engine, written, locked, calculate) {
           (model) => model.deleteColumns(sheet, at, count),
           edit(sheet, (tab) => ({
             ...tab,
-            attrs: slidAttrs(tab, at, -count),
+            attrs: slidAttrs(tab, true, at, -count),
             charts: slidCharts(tab.charts, true, at, -count),
             columns: tab.columns.toSpliced(at - 1, count),
             rows: tab.rows.map((row) => ({
@@ -1248,8 +1320,8 @@ export async function openBook(engine, written, locked, calculate) {
 
     // Rows or columns moved `by` places among their neighbours. Every
     // formula's reference to one of their cells follows, on any tab, a
-    // chart its cells and a rule its column. A header row and a total row
-    // stay, and no row passes one.
+    // chart its cells, a rule its column and a merged cell, which moves
+    // whole. A header row and a total row stay, and no row passes one.
     moveRows: moving((sheet, at, count, by) => {
       const to = at + by;
       const [first, last] = [Math.min(at, to), Math.max(at, to) + count - 1];
@@ -1259,11 +1331,14 @@ export async function openBook(engine, written, locked, calculate) {
         return "A total row keeps its place.";
       const rows = lifting(at, count, by);
       const place = ({ row, column }) => ({ row: rows(row), column });
+      const merged = carriedMerges(tabs[sheet].attrs, place);
+      if (merged.cut) return MOVED;
       return following(
         sheet,
         place,
         edit(sheet, (tab) => ({
           ...tab,
+          attrs: merged.attrs,
           charts: carriedCharts(tab.charts, place),
           rows: lifted(tab.rows, at, count, by),
         })),
@@ -1274,6 +1349,8 @@ export async function openBook(engine, written, locked, calculate) {
       if (to < 1 || to + count - 1 > tabs[sheet].columns.length) return false;
       const place = lifting(at, count, by);
       const cell = ({ row, column }) => ({ row, column: place(column) });
+      const merged = carriedMerges(tabs[sheet].attrs, cell);
+      if (merged.cut) return MOVED;
       return following(
         sheet,
         cell,
@@ -1282,14 +1359,14 @@ export async function openBook(engine, written, locked, calculate) {
           charts: carriedCharts(tab.charts, cell),
           attrs: tab.attrs["data-rule"]
             ? {
-                ...tab.attrs,
+                ...merged.attrs,
                 "data-rule": slidRules(
                   tab.attrs["data-rule"],
                   tab.columns.length,
                   place,
                 ),
               }
-            : tab.attrs,
+            : merged.attrs,
           columns: lifted(tab.columns, at, count, by),
           rows: tab.rows.map((row) => ({
             ...row,
@@ -1331,6 +1408,14 @@ export async function openBook(engine, written, locked, calculate) {
             : { kind: "empty" },
         }))
         .sort((a, b) => inOrder(a.key, b.key, descending) || a.at - b.at);
+      // A merged cell goes with its row; one across rows would be cut.
+      const moves = new Map(places.map((to, n) => [sorted[n].at + 1, to + 1]));
+      const merged = carriedMerges(tab.attrs, ({ row, column }) => ({
+        row: moves.get(row) ?? row,
+        column,
+      }));
+      if (merged.cut)
+        return `Not sorted: ${merged.cut} is a merged cell across rows.`;
       const rows = [...tab.rows];
       places.forEach((to, n) => {
         const from = sorted[n].at;
@@ -1353,7 +1438,7 @@ export async function openBook(engine, written, locked, calculate) {
         "sorted",
         rows.every((row, at) => row === tab.rows[at])
           ? tabs
-          : edit(sheet, () => ({ ...tab, rows })),
+          : edit(sheet, () => ({ ...tab, attrs: merged.attrs, rows })),
       );
     }),
   };

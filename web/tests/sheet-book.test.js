@@ -1344,6 +1344,89 @@ test("a table's merged ranges are drawn as listed; one that names no cells, is o
   );
 });
 
+test("no text goes under a merged cell: a paste or fill there is refused; one the file holds over text stops no other change", async () => {
+  const book = await merged("A1:E1 B2:C2 D2:E2 A6:B6 B4:C4");
+  assert.equal(
+    await book.paste(0, { row: 1, column: 2 }, [["x"]]),
+    "Not changed: B1 lies under the merged cell A1:E1.",
+  );
+  assert.equal(
+    await book.fillDown(0, { top: 5, left: 2, bottom: 6, right: 2 }),
+    "Not changed: B6 lies under the merged cell A6:B6.",
+  );
+  // Its own cell takes text, and blanks may go anywhere under it.
+  assert.equal(
+    await book.paste(0, { row: 1, column: 1 }, [["Budget 2028", ""]]),
+    true,
+  );
+  assert.equal(await book.paste(0, { row: 5, column: 1 }, [["Light"]]), true);
+  assert.deepEqual(book.errors(), ["Costs: merge `B4:C4` covers text in C4"]);
+});
+
+test("merged cells follow rows and columns put in, taken out and moved, and move whole or not at all; a sort carries one along its row and refuses one across rows", async () => {
+  const book = await merged("A1:E1 B2:C2 D2:E2 A6:B6");
+  const list = () => book.tabs[0].attrs["data-merge"];
+  const step = async (change, after, answer = true) => {
+    assert.equal(await change(), answer);
+    assert.equal(list(), after);
+  };
+  // Put in within one, it grows; before it, it moves.
+  await step(() => book.insertColumns(0, 3, 1), "A1:F1 B2:D2 E2:F2 A6:B6");
+  // Taken out down to a cell, it is no merge.
+  await step(() => book.deleteColumns(0, 2, 2), "A1:D1 C2:D2");
+  await step(() => book.undo(), "A1:F1 B2:D2 E2:F2 A6:B6");
+  await step(() => book.undo(), "A1:E1 B2:C2 D2:E2 A6:B6");
+  await step(() => book.insertRows(0, 1, 1), "A2:E2 B3:C3 D3:E3 A7:B7");
+  await step(() => book.deleteRows(0, 1, 2), "B1:C1 D1:E1 A5:B5");
+  await step(() => book.undo(), "A2:E2 B3:C3 D3:E3 A7:B7");
+  await step(() => book.undo(), "A1:E1 B2:C2 D2:E2 A6:B6");
+  // A column moved out of a half, the title's first, or one of the total's
+  // label would cut it.
+  for (const [at, count, by] of [
+    [3, 1, 1],
+    [1, 1, 1],
+    [2, 2, 2],
+  ])
+    await step(
+      () => book.moveColumns(0, at, count, by),
+      "A1:E1 B2:C2 D2:E2 A6:B6",
+      "A merged cell moves whole.",
+    );
+  // Without the label the halves swap under the title, which stays.
+  await step(
+    () => book.mark(0, "data-merge", "A1:E1 B2:C2 D2:E2"),
+    "A1:E1 B2:C2 D2:E2",
+  );
+  await step(() => book.moveColumns(0, 2, 2, 2), "A1:E1 D2:E2 B2:C2");
+
+  // A sort carries a merged cell along its row, and one across rows stops it.
+  const sorted = await open([
+    {
+      ...tab("Costs", [
+        ["#Item", "#Cost", "#Note"],
+        ["Rent", "1200", ""],
+        ["Power", "10", ""],
+        ["Light", "40", "both"],
+        ["Heat", "", ""],
+      ]),
+      attrs: { "data-merge": "B3:C3" },
+    },
+  ]);
+  assert.equal(await sorted.sort(0, 2, false), true);
+  assert.deepEqual(texts(sorted, 0).slice(1), [
+    ["Power", "10", ""],
+    ["Light", "40", "both"],
+    ["Rent", "1200", ""],
+    ["Heat", "", ""],
+  ]);
+  assert.equal(sorted.tabs[0].attrs["data-merge"], "B2:C2");
+  await sorted.mark(0, "data-merge", "B2:C2 C4:C5");
+  assert.equal(
+    await sorted.sort(0, 2, true),
+    "Not sorted: C4:C5 is a merged cell across rows.",
+  );
+});
+
 // The engine as it is, which calculates where it is asked to anywhere
 // inside: a call of the page's that did would not return here, or panic.
 // Each change the page makes that reaches its engine, and its answer.

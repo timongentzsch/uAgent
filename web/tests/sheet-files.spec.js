@@ -76,7 +76,9 @@ test("an Excel file opens read-only, is saved as a sheet and edited there, and g
     workbook(),
     { path: "books/costs.xlsx" },
   );
-  const status = files.locator(".page-status .notice");
+  const status = files.locator(
+    ".page-tools .notice, .open-page > .page-notice .notice",
+  );
   await expect(tabs).toHaveText(["Costs", "Inputs"]);
   await expect(cell("Costs", "B4")).toHaveText("1,290.50");
   await expect(cell("Costs", "C2")).toHaveText("93%");
@@ -234,9 +236,9 @@ test("a file too large to save as a sheet, and one that cannot be read, say so",
   );
   await expect(cell("notes", "A1")).toHaveText("Note");
   await files.getByRole("button", { name: "Save as sheet" }).click();
-  await expect(files.locator(".page-status .notice")).toHaveText(
-    "Not saved: the file would be larger than 1 MB.",
-  );
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveText("Not saved: the file would be larger than 1 MB.");
   await expect(saved("data/notes.html")).rejects.toThrow(/ENOENT/);
 
   await files.getByRole("button", { name: "Back to the list" }).click();
@@ -274,7 +276,9 @@ test("a file a page hands over unasked is not taken", async ({
   );
   // Its selection said, the sheet's earlier words were heard too.
   await expect(bar.locator("output")).toHaveText("One!A1");
-  await expect(files.locator(".page-status .notice")).toHaveCount(0);
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveCount(0);
   await files.getByRole("button", { name: "Back to the list" }).click();
   await files.getByRole("button", { name: "pages", exact: true }).click();
   await files.getByRole("button", { name: "plain.html", exact: true }).click();

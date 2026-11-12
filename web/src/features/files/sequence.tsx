@@ -735,7 +735,7 @@ export default function Sequence({
   return (
     <div class="open-page">
       {saved?.failed && (
-        <p class="page-notice page-status">
+        <p class="page-notice">
           <Notice tone="error">{saved.text}</Notice>
         </p>
       )}

@@ -68,7 +68,9 @@ test("what is typed into a cell or the formula bar is saved to the file, and und
   // Only that cell is another in the file.
   const typed = with_(PLAN, { "<td>1200<td>": "<td>2000<td>" });
   await expect.poll(saved).toBe(typed);
-  await expect(files.locator(".page-status .notice")).toHaveText("Saved");
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveText("Saved");
 
   // The formula bar shows what is being typed in the cell, and what the
   // cell holds once that is given up.
@@ -247,9 +249,9 @@ test("rows are put in and taken out, filled down and sorted: formulas follow on 
   const written = await saved();
   await cell("Tasks", "D1").getByRole("button").click();
   await menu("Sort A to Z").click();
-  await expect(files.locator(".page-status .notice")).toHaveText(
-    "Not sorted: =SUM(D2:D3) cannot be moved with its cell.",
-  );
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveText("Not sorted: =SUM(D2:D3) cannot be moved with its cell.");
   await expect(cell("Tasks", "A2")).toHaveText("Book");
   expect(await saved()).toBe(written);
 });
@@ -400,9 +402,9 @@ test("what a filter hides is neither cleared nor deleted unseen, and a column pu
   // Its rows are not taken out while one of them is hidden.
   await app.keyboard.press("Shift+F10");
   await stage.getByRole("menuitem", { name: "Delete 3 rows" }).click();
-  await expect(files.locator(".page-status .notice")).toHaveText(
-    "Clear the filter to delete these rows.",
-  );
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveText("Clear the filter to delete these rows.");
   expect(await saved()).toBe(cleared);
   // The filter was of column B: with a column before it, it is off.
   await stage.locator('.sheet-letters [data-column="1"]').click();
@@ -589,7 +591,9 @@ test("a cell written with a bare < is reported, and its tab is not edited over i
   await cell("Tasks", "A2").click();
   await app.keyboard.type("Draft");
   await app.keyboard.press("Enter");
-  await expect(files.locator(".page-status .notice")).toHaveText(why);
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveText(why);
   await expect(cell("Tasks", "A2")).toHaveText("Write");
   // Another tab is edited as ever.
   await tabs.nth(1).click();
@@ -731,7 +735,9 @@ test("the grid runs on past the table: what is typed there joins it, and the fil
   await expect(at).toHaveText("Inputs!A1048576");
   await app.keyboard.type("too far");
   await app.keyboard.press("Enter");
-  await expect(files.locator(".page-status .notice")).toHaveText(
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveText(
     "A1048576 is too far from the table to keep: the file would hold every row between.",
   );
   expect(await saved()).toBe(reached);
@@ -1228,7 +1234,7 @@ for (const [pane, phone] of [
     await app.keyboard.press("Enter");
     const why =
       "A1048576 is too far from the table to keep: the file would hold every row between.";
-    const refusal = files.locator(".page-notice.page-status");
+    const refusal = files.locator(".open-page > .page-notice");
     await expect(refusal).toHaveText(why);
     await expect(notice).toHaveCount(0);
     const whole = await refusal
@@ -1615,9 +1621,9 @@ test("a row's number and a column's letter open what can be done to them: move, 
   await undo.click();
   await number(2).click();
   await item("Move up").click();
-  await expect(files.locator(".page-status .notice")).toHaveText(
-    "A header row keeps its place.",
-  );
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveText("A header row keeps its place.");
   expect(await saved()).toBe(PLAN);
 
   // Held up to a row or a column, and let go, from their own menus.

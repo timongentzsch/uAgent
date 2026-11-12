@@ -7,9 +7,11 @@
 #include <sys/types.h>
 
 #include <chrono>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/core/fd.h"
@@ -58,13 +60,23 @@ class Runtime {
   json Probe();
   // The page as text, with the screenshot when `image` asks for it.
   json Observe(bool image);
-  // A page of the host's preview as a PNG or PDF, drawn in a throwaway
-  // context: no profile, no cookies, no agent's tab.
+  // A page of the host's preview (`url`) drawn at a size in a throwaway
+  // context: no profile, no cookies, no agent's tab. `read` is given the
+  // tab's session, and its answer is the answer.
+  json Apart(const json& command,
+             const std::function<json(const std::string&)>& read);
+  // What `promise` comes to on a session's page once it has loaded, or null
+  // when it has not within `ms`.
+  json Awaited(const std::string& session, const std::string& promise, int ms);
+  // Such a page as a PNG or PDF.
   json Capture(const json& command);
+  // What such a page says is wrong with it, drawn at the artboard it states.
+  json Problems(const json& command);
   // More of the page's text than a look carries, or the lines that match.
   json Read(const json& command);
-  // What the page logged and threw, and what it asked of the network.
-  json Console(const json& command);
+  // What a session's page logged and threw, and what the attached one
+  // asked of the network.
+  json Console(const std::string& session, const std::string& find);
   json Network(const json& command);
   // Keeps a tab's request as Chrome tells of it.
   void Requested(const std::string& session, const std::string& event,
@@ -119,8 +131,10 @@ class Runtime {
   int64_t chooser_ = 0;
   json downloads_ = json::object();
   std::string download_path_;
-  // What the page logged, while a console read gathers it.
-  std::vector<std::string>* logged_ = nullptr;
+  // A session and what its page logged, while a console read gathers it.
+  std::pair<std::string, std::vector<std::string>>* logged_ = nullptr;
+  // The throwaway tab's session while one is open.
+  std::string apart_;
   // Each tab's requests since its document began, by session, latest last.
   std::map<std::string, std::vector<json>> requests_;
   // A drag Chrome held back from the page, to be dropped where it ends.

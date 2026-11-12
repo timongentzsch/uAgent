@@ -66,6 +66,8 @@ if not controlled:
 # them all, and those attached after are named anew.
 prefix = "attached"
 attached = set()
+# The size each tab is drawn at, where one was set.
+sized = {}
 measured = 0
 pending = b""
 # The reply a page's dialog holds back, as Chrome does, until it is answered.
@@ -212,6 +214,18 @@ while chunk := os.read(3, 4096):
                 "lineNumber": 8,
             }
             emit("Runtime.exceptionThrown", session, exceptionDetails=details)
+            # A page of the folder has said what is wrong with it as this tab
+            # draws it.
+            if (profile / "page-checked").exists():
+                said = f"uagent page: seen at {sized.get(session, 'its own size')}"
+                emit(
+                    "Runtime.consoleAPICalled",
+                    session,
+                    type="warning",
+                    args=[{"type": "string", "value": said}],
+                )
+        if method == "Emulation.setDeviceMetricsOverride":
+            sized[command["sessionId"]] = "{width}x{height}".format(**command["params"])
         if command["method"] == "Page.getNavigationHistory":
             result = {
                 "currentIndex": 1,
@@ -272,6 +286,10 @@ while chunk := os.read(3, 4096):
                 control = profile / "control-focused"
                 value = json.loads(control.read_text()) if control.exists() else None
                 result = {"result": {"value": value}}
+            elif "uagentChecked" in asked and (profile / "page-checked").exists():
+                # The window the page's artboard asks for, as the test wrote it.
+                wants = json.loads((profile / "page-checked").read_text())
+                result = {"result": {"value": wants}}
             elif "performance.timeOrigin" in asked:
                 # A page that has finished loading and stays as it is.
                 result = {"result": {"value": {"ready": "complete", "doc": "1", "sig": "1"}}}

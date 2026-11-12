@@ -1118,10 +1118,11 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       }
     }
     ToolResult result = told(Act(access, args, action, context, *seen));
-    // A page of the folder says what is wrong with it as drawn
-    // (web/public/design-helper.js).
+    // A page of the folder says what is wrong with it as drawn at its
+    // artboard's size (web/public/design-helper.js).
     if (page && result.Ok()) {
-      const json report = Ask(access, {{"find", "uagent page: "}}, "console");
+      const json report =
+          Ask(access, {{"url", JsonValue(args, "url", "")}}, "problems");
       if (JsonValue(report, "count", size_t{0})) {
         result.output += "\nProblems on this page:\n" +
                          JsonValue(report, "lines", std::string());

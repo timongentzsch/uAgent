@@ -688,6 +688,54 @@ TEST_CASE(TestBrowserCapturePngAndPdf) {
   fake.runtime.Shutdown();
 }
 
+// A page of the folder is read where it is drawn at the artboard it states:
+// in the tab that is seen if that is its size, else in a throwaway one at
+// the same address, whose dialog nobody is there to answer.
+TEST_CASE(TestBrowserPageProblems) {
+  FakeRuntime fake("problems");
+  const auto profile = fake.data / "profile";
+  const std::string page = "http://127.0.0.1:1/preview/token/decks/a/01.html";
+  const json ask = {{"op", "problems"}, {"url", page}};
+  const auto sent = [&](const std::string& method) {
+    std::vector<json> commands;
+    std::ifstream log(profile / "cdp.jsonl");
+    for (std::string line; std::getline(log, line);) {
+      json command = json::parse(line);
+      if (command.value("method", "") == method) commands.push_back(command);
+    }
+    return commands;
+  };
+  CHECK(!fake.Act({{"op", "open"}, {"url", page}}).contains("error"));
+  // A page that states nothing has nothing to say.
+  CHECK(fake.Act(ask).value("count", 1) == 0);
+  std::ofstream(profile / "page-checked") << R"({"w":800,"h":600,"fits":true})";
+  CHECK(fake.Act(ask).value("lines", "") ==
+        "warning: uagent page: seen at its own size\n");
+  CHECK(sent("Target.createBrowserContext").empty());
+
+  std::ofstream(profile / "page-checked")
+      << R"({"w":1920,"h":1080,"fits":false})";
+  std::ofstream(profile / "dialog-on-navigate") << "alert";
+  const json apart = fake.Act(ask);
+  CHECK(apart.value("lines", "") ==
+        "warning: uagent page: seen at 1920x1080\n");
+  CHECK(apart.value("count", 0) == 1);
+  CHECK(!apart.contains("dialog"));
+  const json drawn = sent("Page.navigate").back();
+  CHECK(drawn.value("sessionId", "") == "attached-new");
+  CHECK(drawn["params"].value("url", "") == page);
+  const std::vector<json> closed = sent("Page.handleJavaScriptDialog");
+  CHECK(closed.size() == 1);
+  CHECK(closed[0].value("sessionId", "") == "attached-new");
+  CHECK(!closed[0]["params"].value("accept", true));
+  CHECK(sent("Target.closeTarget").size() == 1);
+  CHECK(sent("Target.disposeBrowserContext").size() == 1);
+  // The seen tab is where it was, and still the one that is acted on.
+  CHECK(sent("Page.navigate").size() == 2);
+  CHECK(fake.Act({{"op", "console"}}).value("count", 0) == 3);
+  fake.runtime.Shutdown();
+}
+
 // Every attached page masks password fields before anything is drawn, and
 // back refuses a history entry the agent could not open by URL.
 TEST_CASE(TestBrowserSecretMaskAndBack) {
@@ -1315,6 +1363,19 @@ TEST_CASE(TestBrowserToolSteps) {
   const fs::path page = fake.workspace.root / "chart.html";
   std::ofstream(page) << "<p>CHART_MARKUP</p>";
   CHECK(tool.run({{"action", "open"}, {"path", page.string()}}, {}).Ok());
+  // In the folder the host serves it opens at its address there, and is told
+  // what is wrong with it as a window of its artboard's size draws it.
+  {
+    const ScopedEnv served("UAGENT_INTERNAL_PREVIEW",
+                           fs::canonical(fake.workspace.root).string() +
+                               "\nhttp://127.0.0.1:1/preview/token/");
+    const fs::path checked = fake.data / "profile" / "page-checked";
+    std::ofstream(checked) << R"({"w":1920,"h":1080,"fits":false})";
+    CHECK(tool.run({{"action", "open"}, {"path", page.string()}}, {})
+              .output.ends_with("\nProblems on this page:\n"
+                                "warning: uagent page: seen at 1920x1080\n"));
+    fs::remove(checked);
+  }
   CHECK(!tool.run({{"action", "open"}, {"url", "file://" + page.string()}}, {})
              .Ok());
   const fs::path notes = fake.workspace.root / "notes.txt";

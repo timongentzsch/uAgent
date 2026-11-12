@@ -606,6 +606,161 @@ test("a slide with text over text and a document block taller than a page say so
   );
 });
 
+// Slides whose verdict hangs on how they are drawn. Two follow the frame's
+// height: the texts of one meet in a frame 900 high but not on its own 1080,
+// those of the other only on its 1080. A third's meet only in its web font,
+// which is as wide again as the font it falls back to. A fourth's title is
+// fitted to the frame's width by a script whenever the frame is sized, and
+// reaches the text beside it only on its own 1920.
+const footed = (title, top) =>
+  artboard(
+    title,
+    "<style>html,body{margin:0;height:100%}p{position:absolute;left:100px;margin:0;font:40px serif}</style>" +
+      `<p style="top:${top}px">${title} text</p><p style="bottom:40px">${title} foot</p>`,
+    "1920x1080 slide",
+  );
+const DRAWN = async () => ({
+  "01-low.html": footed("Low", 800),
+  "02-high.html": footed("High", 1000),
+  "03-font.html": artboard(
+    "Font",
+    "<style>@font-face{font-family:Slow;src:url(slow.woff2)}p{position:absolute;top:100px;margin:0;font:40px Slow,serif}</style>" +
+      '<p style="left:100px">iiiiiiiiiiiiiiiiiiii</p><p style="left:420px">Second</p>',
+    "1920x1080 slide",
+  ),
+  "04-fitted.html": artboard(
+    "Fitted",
+    "<style>html,body{margin:0;height:100%;overflow:hidden}h1,p{position:absolute;top:0;margin:0;white-space:nowrap}h1{left:0;font:200px serif}p{left:1500px;font:40px serif}</style>" +
+      '<h1 id="t">A long title that is fitted to the slide</h1><p>End</p>' +
+      '<script>const t=document.getElementById("t");new ResizeObserver(()=>{t.style.fontSize="200px";t.style.fontSize=Math.floor(200*(innerWidth-40)/t.scrollWidth)+"px"}).observe(document.documentElement)</script>',
+    "1920x1080 slide",
+  ),
+  "slow.woff2": await readFile(
+    new URL(
+      "../node_modules/katex/dist/fonts/KaTeX_Typewriter-Regular.woff2",
+      import.meta.url,
+    ),
+  ),
+});
+const OVERLAP = (first, second) =>
+  `uagent page: “${first}” overlaps “${second}”: give them room, or split the slide`;
+
+const FITTED = OVERLAP("A long title that is fitted to the slide", "End");
+
+test("a slide is checked at its artboard's size with its fonts in and its script's layout done, whenever its frame is sized and drawn", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  // The font is slower than its page, and the app hears late what its pages
+  // say, so every frame has loaded before it has its slide's size.
+  let font;
+  const slow = new Promise((arrive) => {
+    font = arrive;
+  });
+  await app.route("**/slow.woff2*", async (route) => {
+    await slow;
+    await route.continue();
+  });
+  await app.addInitScript(() => {
+    const late = [];
+    window.checked = [];
+    window.hear = () => {
+      window.hear = null;
+      for (const event of late.splice(0)) dispatchEvent(event);
+    };
+    addEventListener(
+      "message",
+      (event) => {
+        if (event.data?.uagentDesign !== 1) return;
+        if (window.hear) {
+          event.stopImmediatePropagation();
+          late.push(new MessageEvent("message", event));
+          return;
+        }
+        // The stage's pages that have said all that is wrong with them.
+        const frame = [...document.querySelectorAll(".page-stage iframe")].find(
+          (stage) => stage.contentWindow === event.source,
+        );
+        if (event.data.type === "checked" && frame)
+          window.checked.push(new URL(frame.src).pathname.split("/").pop());
+      },
+      true,
+    );
+  });
+  const { files, legend, stage } = await openDeck(
+    app,
+    session,
+    host.project,
+    await DRAWN(),
+  );
+  const plain = () =>
+    app.frames().filter((frame) => /0[124]-\w+\.html/.test(frame.url()));
+  await expect.poll(() => plain().length).toBe(4);
+  for (const frame of plain()) await frame.waitForLoadState();
+  await app.evaluate(() => window.hear());
+  // Sized now: the slides whose texts meet on their artboard, and only those.
+  const failed = legend.locator("[data-failed]");
+  const said = () =>
+    failed.evaluateAll((all) => all.map((item) => item.dataset.path));
+  await expect(failed).toHaveCount(2);
+  expect(await said()).toEqual([
+    "decks/talk/02-high.html",
+    "decks/talk/04-fitted.html",
+  ]);
+  font();
+  await expect(failed).toHaveCount(3);
+  expect((await said())[1]).toBe("decks/talk/03-font.html");
+  // Drawn again on the stage, each says the same.
+  for (const name of Object.keys(await DRAWN()).slice(0, 4)) {
+    await expect.poll(() => app.evaluate(() => window.checked)).toContain(name);
+    await files.getByRole("button", { name: "Next slide" }).click();
+  }
+  await expect(stage.getByText("Low text")).toBeVisible();
+  expect(await said()).toHaveLength(3);
+});
+
+test("alone, a slide says what is wrong with it in a window of its artboard's size, and in another only which window that is", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files } = await openDeck(app, session, host.project, await DRAWN());
+  // The notice of the failed pages moves the tools under it as it comes.
+  await expect(files.getByText("3 pages failed to run")).toBeVisible();
+  const alone = await openAlone(app, files);
+  // As the agent's browser reads a page: it waits for the page's word, and
+  // where the window is another than the artboard asks for, reads one that is.
+  const says = async (name) => {
+    const said = [];
+    const hear = (message) =>
+      message.text().startsWith("uagent page:") && said.push(message.text());
+    alone.on("console", hear);
+    await alone.goto(alone.url().replace(/[^/]+\.html/, name));
+    const wants = await alone.evaluate(() => window.uagentChecked);
+    alone.off("console", hear);
+    return { said, wants };
+  };
+  const verdicts = {
+    "01-low.html": [],
+    "02-high.html": [OVERLAP("High text", "High foot")],
+    "03-font.html": [OVERLAP("iiiiiiiiiiiiiiiiiiii", "Second")],
+    "04-fitted.html": [FITTED],
+  };
+  expect(alone.viewportSize()).not.toEqual({ width: 1920, height: 1080 });
+  for (const name of Object.keys(verdicts))
+    expect(await says(name)).toEqual({
+      said: [],
+      wants: { w: 1920, h: 1080, fits: false },
+    });
+  await alone.setViewportSize({ width: 1920, height: 1080 });
+  for (const [name, said] of Object.entries(verdicts))
+    expect(await says(name)).toEqual({
+      said,
+      wants: { w: 1920, h: 1080, fits: true },
+    });
+});
+
 // A deck in decks/talk, opened from the tree: the pane, its legend, the
 // stage's page and the counter.
 async function openDeck(app, session, project, slides, options) {

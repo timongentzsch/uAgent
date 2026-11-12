@@ -59,6 +59,8 @@ export type PageMessage =
   | { type: "drawn" }
   | { type: "size"; height: number }
   | { type: "error"; message: string; line: number }
+  // What is wrong with it as drawn has all been said.
+  | { type: "checked" }
   | { type: "hover" | "picked"; rect: Rect }
   | ({ type: "pick" } & Pick)
   // A key the pane acts on; `held` with ⌘ or Ctrl.

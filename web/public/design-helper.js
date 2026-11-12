@@ -206,13 +206,33 @@
     if (paper()) found.push(...paper().wrong, ...misfits());
     return found;
   };
-  const checked = (report) =>
-    addEventListener("load", async () => {
-      await document.fonts.ready;
-      // A sheet's cells in error, once it is calculated.
-      const cells = (await window.uagentReady) ?? [];
-      [...problems(), ...cells].forEach(report);
-    });
+  // A frame of the page painted, or as long as one is waited for where the
+  // browser paints none (off screen, a hidden tab).
+  const PAINT_MS = 100;
+  const painted = () =>
+    Promise.race([
+      new Promise((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(done)),
+      ),
+      new Promise((late) => setTimeout(late, PAINT_MS)),
+    ]);
+  // What is wrong with the page as it is laid out, once its fonts are in, a
+  // sheet is calculated (its cells in error too) and a frame is painted: a
+  // script that lays the page out when it is sized has run by then.
+  const found = async () => {
+    await document.fonts.ready;
+    const cells = (await window.uagentReady) ?? [];
+    await painted();
+    return [...problems(), ...cells];
+  };
+  // Whether the window is its artboard's size, as the app's frames make it:
+  // only so is the page laid out as a person sees it. A document's sheet is
+  // its paper in any window.
+  const fits = () => {
+    const { w, h } = artboard();
+    const near = (side, wanted) => !wanted || Math.abs(side - wanted) <= 1;
+    return !!paper() || (near(innerWidth, w) && near(innerHeight, h));
+  };
 
   // A document on screen is one sheet: its body is columns the size of a
   // page's text, broken as the browser breaks pages, moved and cut to one.
@@ -350,7 +370,21 @@
   });
 
   if (parent === window) {
-    checked((problem) => console.warn(`uagent page: ${problem}`));
+    // Alone, what is wrong with it goes to the console, but only in a window
+    // of its artboard's size: laid out in another, it would give a second
+    // verdict beside the one the pane and the agent's browser give. That
+    // browser waits for this and is told the window the artboard asks for:
+    // where its own is another, it reads a tab that is that one.
+    window.uagentChecked = new Promise((said) =>
+      addEventListener("load", async () => {
+        const here = fits();
+        if (here)
+          for (const problem of await found())
+            console.warn(`uagent page: ${problem}`);
+        const { w, h } = artboard();
+        said({ w: w || innerWidth, h: h || innerHeight, fits: here });
+      }),
+    );
     // Alone, a document turns its own pages by the keys the pane steps with.
     addEventListener("keydown", (event) => {
       const by = {
@@ -616,8 +650,6 @@
 
   const send = (type, data) =>
     parent.postMessage({ uagentDesign: 1, type, ...data }, "*");
-  // How long a painted frame is waited for before a page counts as drawn.
-  const PAINT_MS = 100;
   // Find: every occurrence of the words marked, the `index`th as the current
   // one. Letters fold as the app's find does (A-Z); notes are not searched.
   const fold = (text) => text.replace(/[A-Z]/g, (c) => c.toLowerCase());
@@ -680,7 +712,17 @@
     document.head.append(marks);
   });
   const height = () => root.scrollHeight;
-  checked((problem) => send("error", { message: problem, line: 0 }));
+  // Checked once the app has given the frame its artboard's size, which it
+  // does when the page has said it: one verdict, whenever it is drawn.
+  addEventListener("load", async () => {
+    while (!fits())
+      await new Promise((sized) =>
+        addEventListener("resize", sized, { once: true }),
+      );
+    for (const problem of await found())
+      send("error", { message: problem, line: 0 });
+    send("checked");
+  });
   // What was last asked to be found: a document marks it again on the page
   // it turns to, for the turn and the asking arrive either way round.
   let counted = 0;
@@ -714,12 +756,7 @@
       new Promise((loaded) => addEventListener("load", loaded)),
     ]);
     await window.uagentReady;
-    await Promise.race([
-      new Promise((painted) =>
-        requestAnimationFrame(() => requestAnimationFrame(painted)),
-      ),
-      new Promise((late) => setTimeout(late, PAINT_MS)),
-    ]);
+    await painted();
     send("drawn");
   });
   addEventListener("DOMContentLoaded", () => {

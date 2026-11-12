@@ -509,10 +509,12 @@ json Runtime::Call(const std::string& method, const json& parameters,
       }
       const std::string from = JsonValue(response, "sessionId", "");
       if (params && event == "Page.javascriptDialogOpening") {
-        // The page's plea to stay while the agent leaves it is accepted.
-        if (leaving_ && from == page_session_ &&
-            JsonValue(*params, "type", "") == "beforeunload") {
-          Send("Page.handleJavaScriptDialog", {{"accept", true}}, from);
+        // The page's plea to stay while the agent leaves it is accepted,
+        // and a throwaway tab's dialog closed: nobody is there to answer it.
+        const bool plea = leaving_ && from == page_session_ &&
+                          JsonValue(*params, "type", "") == "beforeunload";
+        if (plea || from == apart_) {
+          Send("Page.handleJavaScriptDialog", {{"accept", plea}}, from);
         } else {
           dialogs_[from] = {{"type", JsonValue(*params, "type", "")},
                             {"message", JsonValue(*params, "message", "")},
@@ -538,8 +540,8 @@ json Runtime::Call(const std::string& method, const json& parameters,
       if (params && event.starts_with("Network.")) {
         Requested(from, event, *params);
       }
-      if (params && logged_ && from == page_session_) {
-        Logged(event, *params, *logged_);
+      if (params && logged_ && from == logged_->first) {
+        Logged(event, *params, logged_->second);
       }
       if (params && event == "Input.dragIntercepted") {
         dragged_ = JsonValue(*params, "data", json::object());
@@ -837,7 +839,10 @@ json Runtime::Execute(const json& command) {
     return reported(seen);
   }
   if (op == "read") return reported(Read(command));
-  if (op == "console") return reported(Console(command));
+  if (op == "console") {
+    return reported(Console(page_session_, JsonValue(command, "find", "")));
+  }
+  if (op == "problems") return reported(Problems(command));
   if (op == "network") return reported(Network(command));
   if (op == "tabs") {
     json pages = PageTargets();

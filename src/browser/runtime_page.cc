@@ -336,6 +336,9 @@ constexpr size_t kListedLines = 100;
 // holds.
 constexpr size_t kKeptRequests = 200;
 constexpr size_t kLineBytes = 500;
+// How long a page's own check is waited for: within the pipe's read limit,
+// so that what it states is read.
+constexpr int kCheckedMs = kCdpIoMs / 2;
 
 // The lines that contain `find`, whatever their case, the latest
 // kListedLines of them, and how many there were.
@@ -397,16 +400,16 @@ void Logged(const std::string& event, const json& params,
 
 // Chrome replays the console when Runtime events are turned on, so they are
 // on only for this read: a page can notice them.
-json Runtime::Console(const json& command) {
-  std::vector<std::string> lines;
-  logged_ = &lines;
-  json enabled = Call("Runtime.enable", json::object(), page_session_);
-  Call("Runtime.disable", json::object(), page_session_);
+json Runtime::Console(const std::string& session, const std::string& find) {
+  std::pair<std::string, std::vector<std::string>> read{session, {}};
+  logged_ = &read;
+  json enabled = Call("Runtime.enable", json::object(), session);
+  Call("Runtime.disable", json::object(), session);
   logged_ = nullptr;
   if (auto reason = CdError(enabled); !reason.empty()) {
     return {{"error", reason}};
   }
-  return Listed(lines, JsonValue(command, "find", ""));
+  return Listed(read.second, find);
 }
 
 json Runtime::Network(const json& command) {
@@ -490,7 +493,9 @@ json Runtime::Finished() {
   }
   return ended;
 }
-json Runtime::Capture(const json& command) {
+
+json Runtime::Apart(const json& command,
+                    const std::function<json(const std::string&)>& read) {
   const std::string url = JsonValue(command, "url", "");
   const int width = std::clamp(JsonValue(command, "width", 0), 1, 8000);
   const int height = std::clamp(JsonValue(command, "height", 0), 1, 8000);
@@ -519,44 +524,79 @@ json Runtime::Capture(const json& command) {
                                  {{"targetId", target}, {"flatten", true}});
   const json* attached =
       target.empty() ? nullptr : JsonObject(attach, "result");
-  const std::string session =
-      attached ? JsonValue(*attached, "sessionId", "") : "";
-  json shot;
-  if (!session.empty()) {
+  json answer = {{"error", "Chrome opened no tab: " + CdError(attach)}};
+  if (attached) {
+    apart_ = JsonValue(*attached, "sessionId", "");
+    // Its dialogs are told of, to be closed.
+    Call("Page.enable", json::object(), apart_);
     Call("Emulation.setDeviceMetricsOverride",
          {{"width", width},
           {"height", height},
           {"deviceScaleFactor", scale},
           {"mobile", false}},
-         session);
-    Call("Page.navigate", {{"url", url}}, session);
-    // Loaded, its fonts in and a sheet calculated, or ten seconds.
-    Call("Runtime.evaluate",
-         {{"expression",
-           "new Promise(done => { const go = () => document.fonts.ready.then("
-           "() => window.uagentReady).then(() => done(true), () => "
-           "done(false)); document.readyState === 'complete' ? go() : "
-           "addEventListener('load', go); setTimeout(() => done(false), "
-           "10000); })"},
-          {"awaitPromise", true}},
-         session);
-    shot = JsonValue(command, "pdf", false)
-               ? Call("Page.printToPDF",
-                      {{"printBackground", true}, {"preferCSSPageSize", true}},
-                      session)
-               : Call("Page.captureScreenshot", {{"format", "png"}}, session);
+         apart_);
+    Call("Page.navigate", {{"url", url}}, apart_);
+    answer = read(apart_);
+    apart_.clear();
   }
   if (!target.empty()) Call("Target.closeTarget", {{"targetId", target}});
   Call("Target.disposeBrowserContext", {{"browserContextId", context}});
-  const json* result = JsonObject(shot, "result");
-  const std::string data = result ? JsonValue(*result, "data", "") : "";
-  if (data.empty()) {
-    return {{"error", "Chrome drew no picture: " +
-                          (session.empty() ? "no tab, " + CdError(attach)
-                                           : CdError(shot))}};
-  }
-  return {{"ok", true},
-          {JsonValue(command, "pdf", false) ? "pdf" : "png", data}};
+  return answer;
+}
+
+json Runtime::Awaited(const std::string& session, const std::string& promise,
+                      int ms) {
+  const json reply = Call(
+      "Runtime.evaluate",
+      {{"expression",
+        "new Promise(done => { const go = () => Promise.resolve(" + promise +
+            ").then(done, () => done(null)); document.readyState === "
+            "'complete' ? go() : addEventListener('load', go); setTimeout(() "
+            "=> done(null), " +
+            std::to_string(ms) + "); })"},
+       {"awaitPromise", true},
+       {"returnByValue", true}},
+      session);
+  const json* value = RemoteValue(reply);
+  return value ? *value : json();
+}
+
+json Runtime::Capture(const json& command) {
+  const bool pdf = JsonValue(command, "pdf", false);
+  return Apart(command, [&](const std::string& session) -> json {
+    // Loaded, its fonts in and a sheet calculated, or ten seconds.
+    Awaited(session, "document.fonts.ready.then(() => window.uagentReady)",
+            10000);
+    const json shot =
+        pdf ? Call("Page.printToPDF",
+                   {{"printBackground", true}, {"preferCSSPageSize", true}},
+                   session)
+            : Call("Page.captureScreenshot", {{"format", "png"}}, session);
+    const json* result = JsonObject(shot, "result");
+    const std::string data = result ? JsonValue(*result, "data", "") : "";
+    if (data.empty()) {
+      return {{"error", "Chrome drew no picture: " + CdError(shot)}};
+    }
+    return {{"ok", true}, {pdf ? "pdf" : "png", data}};
+  });
+}
+
+// The page states, once it has checked itself, the window its artboard asks
+// for and whether its own is that (web/public/design-helper.js). Where it is
+// not, a throwaway tab that is says what is wrong, and the seen one is left
+// as it is.
+json Runtime::Problems(const json& command) {
+  constexpr const char* kChecked = "window.uagentChecked";
+  constexpr const char* kSaid = "uagent page: ";
+  const json wants = Awaited(page_session_, kChecked, kCheckedMs);
+  if (JsonValue(wants, "fits", true)) return Console(page_session_, kSaid);
+  return Apart({{"url", JsonValue(command, "url", "")},
+                {"width", JsonValue(wants, "w", 0)},
+                {"height", JsonValue(wants, "h", 0)}},
+               [&](const std::string& session) {
+                 Awaited(session, kChecked, kCheckedMs);
+                 return Console(session, kSaid);
+               });
 }
 
 }  // namespace uagent::browser

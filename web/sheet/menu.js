@@ -32,7 +32,9 @@ export function openMenu({ x, y }, items, closed) {
     return control;
   };
   // A list shown in the menu's place leads back to the one it came from.
+  let leave;
   const show = (list, back) => {
+    leave = back?.show;
     const drawn = list.map((item) => {
       if (item === "-") return document.createElement("hr");
       if (item.items)
@@ -74,7 +76,7 @@ export function openMenu({ x, y }, items, closed) {
     menu.replaceChildren(...drawn);
     menu.style.left = `${Math.max(0, Math.min(x, innerWidth - menu.offsetWidth))}px`;
     menu.style.top = `${Math.max(0, Math.min(y, innerHeight - menu.offsetHeight))}px`;
-    menu.querySelector("button, input").focus();
+    menu.querySelector("button:not(.sheet-menu-back), input").focus();
   };
   menu.addEventListener("keydown", (event) => {
     const by = { ArrowDown: 1, ArrowUp: -1 }[event.key];
@@ -83,6 +85,11 @@ export function openMenu({ x, y }, items, closed) {
       all[
         (all.indexOf(document.activeElement) + by + all.length) % all.length
       ].focus();
+    // Out of a list to the one it came from; out of the first, the menu.
+    else if (event.key === "ArrowLeft" && leave) leave();
+    else if (event.key === "ArrowRight" && document.activeElement.ariaHasPopup)
+      document.activeElement.click();
+    else if (event.key === "Escape" && leave) leave();
     else if (event.key === "Escape" || event.key === "Tab") close();
     else return;
     event.preventDefault();

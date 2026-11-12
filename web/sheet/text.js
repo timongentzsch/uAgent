@@ -195,8 +195,20 @@ export function followed(formula, spans, of, home, place) {
   const chars = [...formula];
   let out = "";
   let from = 0;
+  // "A1 : B2" comes as two references with the colon between them: one
+  // range, written without the spaces.
+  const ranges = [];
   for (const { start, end } of spans) {
-    const text = chars.slice(start, end).join("");
+    const before = ranges.at(-1);
+    if (before && /^\s*:\s*$/.test(chars.slice(before.end, start).join("")))
+      before.end = end;
+    else ranges.push({ start, end });
+  }
+  for (const { start, end } of ranges) {
+    const text = chars
+      .slice(start, end)
+      .join("")
+      .replace(/\s*:\s*/, ":");
     const cut = text.lastIndexOf("!") + 1;
     const read = ADDRESS.exec(text.slice(cut));
     const ends = [read?.slice(2, 6), read?.slice(6)].filter(
@@ -207,16 +219,11 @@ export function followed(formula, spans, of, home, place) {
       const to = place(at);
       return { row: to.row - at.row, column: to.column - at.column };
     });
-    // "A1 : B2" comes as two references with the colon between them.
-    const split =
-      /:\s*$/.test(chars.slice(0, start).join("")) ||
-      /^\s*:/.test(chars.slice(end).join(""));
     const on = cut ? tabOf(text.slice(0, cut - 1)) : home;
     out += chars.slice(from, start).join("");
     from = end;
     out +=
       !ends.length ||
-      split ||
       on.toLowerCase() !== of.toLowerCase() ||
       by.some(({ row, column }) => row !== by[0].row || column !== by[0].column)
         ? text

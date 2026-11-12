@@ -653,20 +653,23 @@ test("the table a cell being typed in would make, cut around its text, joins to 
   assert.equal(book.draft(0, { row: 900_000, column: 1 }), undefined);
 });
 
-test("rows and columns move among their neighbours: a reference follows its cell on every tab, a range where its ends moved alike, a rule its column; a header row stays", () => {
+test("rows and columns move among their neighbours: a reference follows its cell on every tab, a range where its ends moved alike, a chart its cells, a rule its column; a header row and a total row stay", () => {
+  const costs = tab(
+    "Costs",
+    [
+      ["#Item", "#Net", "#Tax", "#Sum"],
+      ["Rent", "1200", "240", "=B2+C2"],
+      ["Power", "90", "18", "=B3+C3"],
+      ["Water", "60", "12", "=SUM(B2:B4)"],
+    ],
+    [{}, { "data-format": "0.00" }, {}, {}],
+  );
+  const chart = { "data-chart": "bar", "data-range": "B1:C4", "data-at": "F3" };
   const book = openBook(engine, [
-    tab(
-      "Costs",
-      [
-        ["#Item", "#Net", "#Tax", "#Sum"],
-        ["Rent", "1200", "240", "=B2+C2"],
-        ["Power", "90", "18", "=B3+C3"],
-        ["Water", "60", "12", "=SUM(B2:B4)"],
-      ],
-      [{}, { "data-format": "0.00" }, {}, {}],
-    ),
+    { ...costs, charts: [{ attrs: chart, caption: "" }] },
     tab("Notes", [["=Costs!B2", "=SUM(Costs!B2:B3)", "=costs!$C$2"]]),
   ]);
+  const charted = () => book.tabs[0].charts[0].attrs;
   book.mark(0, "data-rule", "C > 100: bold");
   // The second row goes down one: it and what read it are a row on.
   assert.equal(book.moveRows(0, 2, 1, 1), true);
@@ -677,6 +680,9 @@ test("rows and columns move among their neighbours: a reference follows its cell
     ["Water", "60", "12", "=SUM(B2:B4)"],
   ]);
   assert.equal(book.shown(0, 3, 4), "1440.00");
+  // The chart keeps its range, which the row moved within, and lies on
+  // the cell it lay on, a row down.
+  assert.deepEqual(charted(), { ...chart, "data-at": "F2" });
   // Up again, and no further than under the header.
   assert.equal(book.moveRows(0, 3, 1, -1), true);
   assert.match(book.moveRows(0, 2, 1, -1), /header row keeps its place/);
@@ -690,6 +696,14 @@ test("rows and columns move among their neighbours: a reference follows its cell
   assert.equal(book.look(0, 2, 2).bold, true);
   assert.equal(book.moveColumns(0, 1, 1, -1), false);
   assert.deepEqual(texts(book, 0)[3], ["Water", "12", "=SUM(D2:D4)", "60"]);
+  // Its two columns moved apart: the chart keeps its range. Moved alike,
+  // the range goes along.
+  assert.equal(charted()["data-range"], "B1:C4");
+  book.undo();
+  assert.equal(book.moveColumns(0, 2, 2, 1), true);
+  assert.equal(charted()["data-range"], "C1:D4");
+  book.undo();
+  assert.equal(book.moveColumns(0, 3, 2, -1), true);
   // Another tab's formulas follow the cells they read, a range with them.
   assert.deepEqual(texts(book, 1), [
     ["=Costs!D2", "=SUM(Costs!D2:D3)", "=costs!$B$2"],
@@ -700,6 +714,11 @@ test("rows and columns move among their neighbours: a reference follows its cell
   assert.deepEqual(texts(book, 1), [
     ["=Costs!B3", "=SUM(Costs!B3:B4)", "=costs!$C$3"],
   ]);
+  // No row is moved onto a total row, nor the total row itself.
+  const tasks = plan();
+  assert.match(tasks.moveRows(0, 6, 1, 1), /total row keeps its place/);
+  assert.match(tasks.moveRows(0, 7, 1, -1), /total row keeps its place/);
+  assert.equal(tasks.moveRows(0, 5, 1, 1), true);
 });
 
 test("a column is as wide as said or as its texts; looks are taken off a box's cells, and off a whole column its own", () => {
@@ -734,6 +753,19 @@ test("a column is as wide as said or as its texts; looks are taken off a box's c
   assert.equal(book.unstyle(0, { ...box, top: 1, bottom: 7 }, none), true);
   assert.deepEqual(book.tabs[0].columns[2], {});
   assert.equal(book.shown(0, 4, 3), "1200");
+  // A row's own fill goes with all of the row, and stays with part of it.
+  const filled = tab("Costs", [
+    ["#Item", "#Cost"],
+    ["Rent", "1200"],
+  ]);
+  filled.rows[1].attrs = { "data-fill": "warn" };
+  const costs = openBook(engine, [filled]);
+  const fill = () => costs.tabs[0].rows[1].attrs["data-fill"];
+  const row = { top: 2, left: 1, bottom: 2, right: 2 };
+  assert.equal(costs.unstyle(0, { ...row, left: 2 }, none), false);
+  assert.equal(fill(), "warn");
+  assert.equal(costs.unstyle(0, row, none), true);
+  assert.equal(fill(), undefined);
 });
 
 test("a workbook sent out carries the looks written: bold, italic, the colours, where the text stands and wrap", () => {

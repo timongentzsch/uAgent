@@ -274,8 +274,12 @@ export function listen(sheet) {
       );
   };
   // A column's edge dragged between two letters is its width: a line shows
-  // where it will stand, and letting go writes it.
-  const resize = (event, column) => {
+  // where it will stand, letting go writes it, and Escape gives it up, as
+  // does a drag that is lost.
+  addEventListener("pointerdown", (event) => {
+    const edge = event.target.closest?.(".sheet-resize");
+    if (!edge || event.button || sheet.locked) return;
+    const { column } = hit(event);
     const from = sheet.rect({ row: 1, column });
     const guide = Object.assign(document.createElement("div"), {
       className: "sheet-guide",
@@ -285,22 +289,29 @@ export function listen(sheet) {
     const move = (to) => {
       guide.style.left = `${from.left - scrollX + width(to)}px`;
     };
+    const given = (key) =>
+      key.key === "Escape" && edge.releasePointerCapture(event.pointerId);
+    let up;
     document.body.append(guide);
     move(event);
-    addEventListener("mousemove", move);
-    addEventListener(
-      "mouseup",
-      (to) => {
-        removeEventListener("mousemove", move);
+    edge.setPointerCapture(event.pointerId);
+    edge.addEventListener("pointermove", move);
+    edge.addEventListener("pointerup", (to) => (up = to), { once: true });
+    addEventListener("keydown", given, true);
+    edge.addEventListener(
+      "lostpointercapture",
+      () => {
+        edge.removeEventListener("pointermove", move);
+        removeEventListener("keydown", given, true);
         guide.remove();
-        if (to.clientX !== event.clientX)
+        if (up && up.clientX !== event.clientX)
           sheet.did(
-            book.widen(sheet.at, { left: column, right: column }, width(to)),
+            book.widen(sheet.at, { left: column, right: column }, width(up)),
           );
       },
       { once: true },
     );
-  };
+  });
   let dragging = false;
   addEventListener("mousedown", (event) => {
     const at = hit(event);
@@ -308,7 +319,7 @@ export function listen(sheet) {
     // The field keeps the focus.
     event.preventDefault();
     if (editing) commit();
-    if (event.target.closest(".sheet-resize")) return resize(event, at.column);
+    if (event.target.closest(".sheet-resize")) return;
     picked(at, event.shiftKey);
     dragging = !!(at.row && at.column);
     hold();

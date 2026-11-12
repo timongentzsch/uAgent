@@ -291,6 +291,7 @@ async function open() {
     draw(tables[at], book, at, filters[at], {
       layout,
       base,
+      locked: !!file,
       frozen,
       row: sizes.row,
       rows: [
@@ -422,7 +423,7 @@ async function open() {
     },
     // Brings the active cell into view.
     see: () => reveal(pick().anchor),
-    offers: (what) => offers.has(what),
+    comments: () => commented,
     // The view at the row's start, or the grid's: a held cell is in view
     // wherever the grid is scrolled, and would lead nowhere.
     start(grid) {
@@ -515,12 +516,14 @@ async function open() {
       show(at);
     },
   };
-  const offers = new Set();
+  let commented = false;
+  // A row moved past one a filter hides would change the file unseen.
   const carried = (rows, columns) => {
-    if (
-      rows &&
-      [...hidden].some((row) => row >= box().top && row <= box().bottom)
-    )
+    const [top, bottom] = [
+      box().top + Math.min(rows, 0),
+      box().bottom + Math.max(rows, 0),
+    ];
+    if (rows && [...hidden].some((row) => row >= top && row <= bottom))
       return "Clear the filter to move these rows.";
     const changed = rows
       ? book.moveRows(at, box().top, high(), rows)
@@ -605,8 +608,8 @@ async function open() {
     "column-move-right": () => carried(0, 1),
     "column-fit": () => book.widen(at, box(), undefined),
     "clear-looks": () => book.unstyle(at, box(), hidden),
-    // What the app around the page offers to do when asked: a comment.
-    offers: (what) => void offers.add(String(what)),
+    // The app around the page takes a comment on the selection when asked.
+    comments: () => void (commented = true),
     // Held up to the active cell: its row, or its column, and those before.
     "freeze-rows": () => freeze(pick().anchor.row, frozen.columns),
     "freeze-columns": () => freeze(frozen.rows, pick().anchor.column),

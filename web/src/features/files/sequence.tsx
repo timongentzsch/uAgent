@@ -961,8 +961,7 @@ export default function Sequence({
                       if (sheet && addToChat)
                         tell(frame.current, {
                           type: "do",
-                          command: "offers",
-                          value: "comment",
+                          command: "comments",
                         });
                     } else if (message.type === "zoom") {
                       // A point of the page, where it sits in the scroller.

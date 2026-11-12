@@ -1690,10 +1690,10 @@ test("a row's number and a column's letter open what can be done to them: move, 
 
   // A row copied from its menu is pasted from a cell's, formulas and all.
   await number(2).click();
-  await expect(item("Paste")).toHaveCount(0);
+  await expect(item("Paste copied cells")).toHaveCount(0);
   await item("Copy").click();
   await cell("Tasks", "A7").click({ button: "right" });
-  await item("Paste").click();
+  await item("Paste copied cells").click();
   await expect(cell("Tasks", "A7")).toHaveText("Write");
   await expect(cell("Tasks", "E7")).toHaveText("2,400.00");
   await expect

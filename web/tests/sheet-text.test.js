@@ -369,10 +369,10 @@ test("a formula follows cells that moved: one cell wherever it is read from, a r
     after("=B2+Other!B3", "Notes", "B2", "Other!B3"),
     "=B2+Other!B3",
   );
-  // Both ends moved alike, a range goes along; else it keeps its place,
-  // as a whole column does, and a range written with spaces.
+  // Both ends moved alike, a range goes along, one written with spaces
+  // too; else it keeps its place, as a whole column does.
   assert.equal(after("=SUM(B2:C2)", "Costs", "B2:C2"), "=SUM(B3:C3)");
   assert.equal(after("=SUM(B2:B4)", "Costs", "B2:B4"), "=SUM(B2:B4)");
   assert.equal(after("=SUM(B:B)", "Costs", "B:B"), "=SUM(B:B)");
-  assert.equal(after("=SUM(B2 : C2)", "Costs", "B2", "C2"), "=SUM(B2 : C2)");
+  assert.equal(after("=SUM(B2 : C2)", "Costs", "B2", "C2"), "=SUM(B3:C3)");
 });

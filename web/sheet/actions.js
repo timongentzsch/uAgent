@@ -72,11 +72,12 @@ export const actionsOf = (sheet, clip) => (on) => {
     any && [
       ...changes([{ label: "Cut", keys: `${HELD}X`, run: clip.cut }]),
       { label: "Copy", keys: `${HELD}C`, run: clip.copy },
-      // Only what was copied here: the page cannot read the clipboard.
+      // Only what was copied here: the page cannot read the clipboard, as
+      // the key does.
       ...changes(
         clip.copied()
           ? [
-              { label: "Paste", keys: `${HELD}V`, run: clip.paste },
+              { label: "Paste copied cells", run: clip.paste },
               {
                 label: "Paste values only",
                 run: () =>
@@ -175,7 +176,7 @@ export const actionsOf = (sheet, clip) => (on) => {
         },
       ]),
       any &&
-        sheet.offers("comment") && {
+        sheet.comments() && {
           label: "Comment",
           run: () => sheet.say({ type: "comment" }),
         },

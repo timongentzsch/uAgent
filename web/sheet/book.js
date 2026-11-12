@@ -118,6 +118,42 @@ const slidCharts = (charts, across, at, count) =>
     ];
   });
 
+// Charts after cells moved, each to where `place` puts it: a chart lies on
+// its cell, and its range follows where its ends moved alike, as a
+// formula's does.
+const carriedCharts = (charts, place) =>
+  charts.map((chart) => {
+    const range = boxNamed(chart.attrs["data-range"]);
+    const on = boxNamed(chart.attrs["data-at"]);
+    const [from, to] = range
+      ? [
+          place({ row: range.top, column: range.left }),
+          place({ row: range.bottom, column: range.right }),
+        ]
+      : [];
+    const alike =
+      range &&
+      to.row - from.row === range.bottom - range.top &&
+      to.column - from.column === range.right - range.left;
+    return {
+      ...chart,
+      attrs: {
+        ...chart.attrs,
+        ...(alike && {
+          "data-range": boxName({
+            top: from.row,
+            left: from.column,
+            bottom: to.row,
+            right: to.column,
+          }),
+        }),
+        ...(on && {
+          "data-at": cellName(place({ row: on.top, column: on.left })),
+        }),
+      },
+    };
+  });
+
 // A table's rules name columns by letter: they follow their columns.
 const slidAttrs = ({ attrs, columns }, at, count) =>
   attrs["data-rule"]
@@ -833,6 +869,8 @@ export function openBook(engine, written, locked) {
       };
       const whole = box.top <= 1 && box.bottom >= tabs[sheet].rows.length;
       const within = (column) => column >= box.left && column <= box.right;
+      // A row's own fill goes where all its cells are in the box.
+      const across = (tab) => box.left <= 1 && box.right >= tab.columns.length;
       return commit(
         mapCells(
           edit(sheet, (tab) => ({
@@ -842,6 +880,14 @@ export function openBook(engine, written, locked) {
                 ? plainly(column, ["wrap"], ["data-format"])
                 : column,
             ),
+            rows: tab.rows.map((row, r) => {
+              const inside = r + 1 >= box.top && r + 1 <= box.bottom;
+              const attrs =
+                across(tab) && inside && !skip.has(r + 1)
+                  ? plainly(row.attrs, [], ["data-fill"])
+                  : row.attrs;
+              return attrs === row.attrs ? row : { ...row, attrs };
+            }),
           })),
           (cell, at, row, column) => {
             const inside = row >= box.top && row <= box.bottom;
@@ -1015,19 +1061,24 @@ export function openBook(engine, written, locked) {
       ),
 
     // Rows or columns moved `by` places among their neighbours. Every
-    // formula's reference to one of their cells follows, on any tab, and a
-    // rule its column. A header row stays.
+    // formula's reference to one of their cells follows, on any tab, a
+    // chart its cells and a rule its column. A header row and a total row
+    // stay, and no row passes one.
     moveRows(sheet, at, count, by) {
       const to = at + by;
-      if (to < 1 || to + count - 1 > tabs[sheet].rows.length) return false;
-      if (Math.min(at, to) <= headOf(tabs[sheet]))
-        return "A header row keeps its place.";
-      const place = lifting(at, count, by);
+      const [first, last] = [Math.min(at, to), Math.max(at, to) + count - 1];
+      if (to < 1 || last > tabs[sheet].rows.length) return false;
+      if (first <= headOf(tabs[sheet])) return "A header row keeps its place.";
+      if (tabs[sheet].rows.slice(first - 1, last).some(isTotal))
+        return "A total row keeps its place.";
+      const rows = lifting(at, count, by);
+      const place = ({ row, column }) => ({ row: rows(row), column });
       return following(
         sheet,
-        ({ row, column }) => ({ row: place(row), column }),
+        place,
         edit(sheet, (tab) => ({
           ...tab,
+          charts: carriedCharts(tab.charts, place),
           rows: lifted(tab.rows, at, count, by),
         })),
       );
@@ -1036,11 +1087,13 @@ export function openBook(engine, written, locked) {
       const to = at + by;
       if (to < 1 || to + count - 1 > tabs[sheet].columns.length) return false;
       const place = lifting(at, count, by);
+      const cell = ({ row, column }) => ({ row, column: place(column) });
       return following(
         sheet,
-        ({ row, column }) => ({ row, column: place(column) }),
+        cell,
         edit(sheet, (tab) => ({
           ...tab,
+          charts: carriedCharts(tab.charts, cell),
           attrs: tab.attrs["data-rule"]
             ? {
                 ...tab.attrs,

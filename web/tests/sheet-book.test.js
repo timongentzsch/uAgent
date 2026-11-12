@@ -653,6 +653,89 @@ test("the table a cell being typed in would make, cut around its text, joins to 
   assert.equal(book.draft(0, { row: 900_000, column: 1 }), undefined);
 });
 
+test("rows and columns move among their neighbours: a reference follows its cell on every tab, a range where its ends moved alike, a rule its column; a header row stays", () => {
+  const book = openBook(engine, [
+    tab(
+      "Costs",
+      [
+        ["#Item", "#Net", "#Tax", "#Sum"],
+        ["Rent", "1200", "240", "=B2+C2"],
+        ["Power", "90", "18", "=B3+C3"],
+        ["Water", "60", "12", "=SUM(B2:B4)"],
+      ],
+      [{}, { "data-format": "0.00" }, {}, {}],
+    ),
+    tab("Notes", [["=Costs!B2", "=SUM(Costs!B2:B3)", "=costs!$C$2"]]),
+  ]);
+  book.mark(0, "data-rule", "C > 100: bold");
+  // The second row goes down one: it and what read it are a row on.
+  assert.equal(book.moveRows(0, 2, 1, 1), true);
+  assert.deepEqual(texts(book, 0), [
+    ["Item", "Net", "Tax", "Sum"],
+    ["Power", "90", "18", "=B2+C2"],
+    ["Rent", "1200", "240", "=B3+C3"],
+    ["Water", "60", "12", "=SUM(B2:B4)"],
+  ]);
+  assert.equal(book.shown(0, 3, 4), "1440.00");
+  // Up again, and no further than under the header.
+  assert.equal(book.moveRows(0, 3, 1, -1), true);
+  assert.match(book.moveRows(0, 2, 1, -1), /header row keeps its place/);
+  assert.equal(book.moveRows(0, 4, 1, 1), false);
+  // Two columns go left one: the pattern goes with its column, the rule
+  // names the column where it now is.
+  assert.equal(book.moveColumns(0, 3, 2, -1), true);
+  assert.deepEqual(texts(book, 0)[1], ["Rent", "240", "=D2+B2", "1200"]);
+  assert.deepEqual(book.tabs[0].columns[3], { "data-format": "0.00" });
+  assert.equal(book.tabs[0].attrs["data-rule"], "B > 100: bold");
+  assert.equal(book.look(0, 2, 2).bold, true);
+  assert.equal(book.moveColumns(0, 1, 1, -1), false);
+  assert.deepEqual(texts(book, 0)[3], ["Water", "12", "=SUM(D2:D4)", "60"]);
+  // Another tab's formulas follow the cells they read, a range with them.
+  assert.deepEqual(texts(book, 1), [
+    ["=Costs!D2", "=SUM(Costs!D2:D3)", "=costs!$B$2"],
+  ]);
+  book.undo();
+  assert.deepEqual(texts(book, 0)[1], ["Rent", "1200", "240", "=B2+C2"]);
+  assert.equal(book.moveRows(0, 2, 2, 1), true);
+  assert.deepEqual(texts(book, 1), [
+    ["=Costs!B3", "=SUM(Costs!B3:B4)", "=costs!$C$3"],
+  ]);
+});
+
+test("a column is as wide as said or as its texts; looks are taken off a box's cells, and off a whole column its own", () => {
+  const book = plan();
+  const none = new Set();
+  assert.equal(book.widen(0, { left: 1, right: 2 }, 180), true);
+  assert.deepEqual(
+    book.tabs[0].columns.map((column) => column["data-width"]),
+    ["180", "180", undefined],
+  );
+  assert.equal(book.widen(0, { left: 2, right: 3 }), true);
+  assert.deepEqual(book.tabs[0].columns[1], {});
+  assert.equal(book.widen(0, { left: 2, right: 3 }), false);
+
+  const box = { top: 4, left: 3, bottom: 5, right: 3 };
+  for (const [name, value] of [
+    ["bold", "bold"],
+    ["align", "center"],
+    ["fill", "good"],
+    ["format", "0%"],
+  ])
+    book.style(0, box, name, value, none);
+  assert.equal(book.unstyle(0, box, new Set([5])), true);
+  const attrs = (row) => book.tabs[0].rows[row - 1].cells[2].attrs;
+  assert.deepEqual(attrs(4), {});
+  assert.equal(attrs(5)["data-fill"], "good");
+  // A box of part of the column leaves the column's pattern; all of it
+  // takes that too.
+  assert.equal(book.unstyle(0, { ...box, top: 5 }, none), true);
+  assert.equal(book.unstyle(0, { ...box, top: 5 }, none), false);
+  assert.equal(book.tabs[0].columns[2]["data-format"], "#,##0.00");
+  assert.equal(book.unstyle(0, { ...box, top: 1, bottom: 7 }, none), true);
+  assert.deepEqual(book.tabs[0].columns[2], {});
+  assert.equal(book.shown(0, 4, 3), "1200");
+});
+
 test("a workbook sent out carries the looks written: bold, italic, the colours, where the text stands and wrap", () => {
   const book = plan();
   const at = { top: 4, left: 1, bottom: 4, right: 1 };

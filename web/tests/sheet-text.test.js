@@ -12,6 +12,7 @@ import {
   frozenOf,
   inOrder,
   letters,
+  followed,
   moved,
   sheetText,
   slid,
@@ -350,4 +351,28 @@ test("tabs from another kind of file are written as a whole sheet", () => {
     '<!doctype html>\n<meta charset="utf-8">\n<meta name="sheet" content="1">\n<title>Q&amp;A &lt;1&gt;</title>\n' +
       '<table data-sheet="One">\n<tr><td>1\n</table>\n<table data-sheet="Two">\n<tr><td>1\n</table>\n',
   );
+});
+
+test("a formula follows cells that moved: one cell wherever it is read from, a range where its ends moved alike", () => {
+  // Rows 2 and 3 of Costs change places.
+  const place = ({ row, column }) => ({
+    row: { 2: 3, 3: 2 }[row] ?? row,
+    column,
+  });
+  const after = (formula, home, ...refs) =>
+    followed(formula, spans(formula, ...refs), "Costs", home, place);
+  assert.equal(after("=B2+$C$3", "Costs", "B2", "$C$3"), "=B3+$C$2");
+  assert.equal(after("=Costs!B2", "Notes", "Costs!B2"), "=Costs!B3");
+  assert.equal(after("='costs'!B2", "Notes", "'costs'!B2"), "='costs'!B3");
+  // Another tab's own cells, and a tab of another name, stay.
+  assert.equal(
+    after("=B2+Other!B3", "Notes", "B2", "Other!B3"),
+    "=B2+Other!B3",
+  );
+  // Both ends moved alike, a range goes along; else it keeps its place,
+  // as a whole column does, and a range written with spaces.
+  assert.equal(after("=SUM(B2:C2)", "Costs", "B2:C2"), "=SUM(B3:C3)");
+  assert.equal(after("=SUM(B2:B4)", "Costs", "B2:B4"), "=SUM(B2:B4)");
+  assert.equal(after("=SUM(B:B)", "Costs", "B:B"), "=SUM(B:B)");
+  assert.equal(after("=SUM(B2 : C2)", "Costs", "B2", "C2"), "=SUM(B2 : C2)");
 });

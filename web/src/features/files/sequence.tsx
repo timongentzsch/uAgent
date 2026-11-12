@@ -951,6 +951,13 @@ export default function Sequence({
                     } else if (message.type === "drawn") {
                       setSaid((was) => was && { ...was, drawn: true });
                       setArrived(wanted);
+                      // A sheet's menus offer a comment where one can be made.
+                      if (sheet && addToChat)
+                        tell(frame.current, {
+                          type: "do",
+                          command: "offers",
+                          value: "comment",
+                        });
                     } else if (message.type === "zoom") {
                       // A point of the page, where it sits in the scroller.
                       const page = frame.current!.getBoundingClientRect();
@@ -1071,7 +1078,9 @@ export default function Sequence({
                       setRuling(sheet && !locked && cell ? columnOf(cell) : "");
                     else if (message.type === "refused")
                       refused(String(message.message).slice(0, 300));
-                    else if (message.type === "key") {
+                    else if (message.type === "comment") {
+                      if (sheet && addToChat) setRanged(cell?.range);
+                    } else if (message.type === "key") {
                       // A sheet's other keys are its own.
                       if (sheet) {
                         if (message.held) tabKey(message.key);

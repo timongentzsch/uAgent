@@ -208,8 +208,9 @@ test("rows are put in and taken out, filled down and sorted: formulas follow on 
   // The menu key on a cell: its row is taken out, and all is as it was.
   await cell("Tasks", "B3").click();
   await app.keyboard.press("Shift+F10");
+  await expect(menu("Cut")).toBeFocused();
   await app.keyboard.press("ArrowDown");
-  await expect(menu("Leave out “Done”")).toBeFocused();
+  await expect(menu("Copy")).toBeFocused();
   await menu("Delete row").click();
   await expect.poll(saved).toBe(PLAN);
 
@@ -1525,6 +1526,150 @@ test("the selection's cells are made bold, coloured, filled, aligned, patterned 
     .toBe(
       with_(looked, { "<td>Write": '<td class="bold" data-fill="bad">Write' }),
     );
+});
+
+test("a row's number and a column's letter open what can be done to them: move, freeze, clear, format, copy and comment; a column's edge is dragged to its width", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage, bar, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    PLAN,
+  );
+  await expect(cell("Tasks", "A2")).toBeVisible();
+  const shown = "table:not([hidden]) ";
+  const letter = (column) =>
+    stage.locator(`${shown}.sheet-letters [data-column="${column}"]`);
+  const number = (row) =>
+    stage.locator(`${shown}tbody th.sheet-edge[data-row="${row}"]`);
+  const item = (name, role = "menuitem") =>
+    stage.getByRole(role, { name, exact: true });
+  const undo = files.getByRole("button", { name: "Undo" });
+
+  // A column moves among its neighbours with its pattern; what read its
+  // cells reads them there, a range down it and the other tab too.
+  await letter(4).click();
+  await expect(bar.getByRole("status")).toHaveText("Tasks!D1");
+  await item("Move right").click();
+  const columned = with_(PLAN, {
+    '<col data-format="#,##0.00"><col>': '<col><col data-format="#,##0.00">',
+    "<th>Cost<th>Double": "<th>Double<th>Cost",
+    "<td>1200<td>=D2*2": "<td>=E2*2<td>1200",
+    "<td>8400.5<td>=D3*2": "<td>=E3*2<td>8400.5",
+    "<td>300<td>=D4*2": "<td>=E4*2<td>300",
+    "=Tasks!D5": "=Tasks!E5",
+  });
+  await expect.poll(saved).toBe(columned);
+  await expect(bar.getByRole("status")).toHaveText("Tasks!E1");
+  await expect(cell("Tasks", "D5")).toHaveText("19,801.00");
+  await undo.click();
+  await expect.poll(saved).toBe(PLAN);
+
+  // A row moves under the header only; the same list comes by the other
+  // button of the mouse.
+  await number(3).click({ button: "right" });
+  await item("Move down").click();
+  const rowed = with_(PLAN, {
+    "<tr><td>Book<td>To do<td>FALSE<td>8400.5<td>=D3*2\n<tr><td>Brief<td>In progress<td>FALSE<td>300<td>=D4*2":
+      "<tr><td>Brief<td>In progress<td>FALSE<td>300<td>=D3*2\n<tr><td>Book<td>To do<td>FALSE<td>8400.5<td>=D4*2",
+  });
+  await expect.poll(saved).toBe(rowed);
+  await expect(bar.getByRole("status")).toHaveText("Tasks!A4");
+  await undo.click();
+  await number(2).click();
+  await item("Move up").click();
+  await expect(files.locator(".page-tools .notice")).toHaveText(
+    "A header row keeps its place.",
+  );
+  expect(await saved()).toBe(PLAN);
+
+  // Held up to a row or a column, and let go, from their own menus.
+  const frozen = (said) =>
+    PLAN.replace(
+      'data-sheet="Tasks"',
+      `data-sheet="Tasks" data-frozen="${said}"`,
+    );
+  await number(2).click();
+  await item("Freeze rows up to here").click();
+  await expect.poll(saved).toBe(frozen("2"));
+  await letter(2).click();
+  await item("Freeze columns up to here").click();
+  await expect.poll(saved).toBe(frozen("2 B"));
+  await letter(3).click();
+  await item("Unfreeze").click();
+  await expect.poll(saved).toBe(frozen("0"));
+  for (let step = 0; step < 3; step++) await undo.click();
+  await expect.poll(saved).toBe(PLAN);
+
+  // The format row's looks from the menu, ticked where the cell has one;
+  // cleared, a column selected whole gives up its own pattern too.
+  await letter(4).click();
+  await item("Formatting").click();
+  await item("Fill").click();
+  await expect(item("None", "menuitemcheckbox")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await item("Good", "menuitemcheckbox").click();
+  await expect(cell("Tasks", "D3")).toHaveAttribute("data-fill", "good");
+  await letter(4).click();
+  await item("Formatting").click();
+  await item("Bold", "menuitemcheckbox").click();
+  await expect(cell("Tasks", "D3")).toHaveClass(/sheet-bold/);
+  await letter(4).click();
+  await item("Clear formatting").click();
+  await expect(cell("Tasks", "D3")).not.toHaveAttribute("data-fill");
+  await expect(cell("Tasks", "D3")).toHaveText("8400.5");
+  await expect
+    .poll(saved)
+    .toBe(with_(PLAN, { '<col data-format="#,##0.00">': "<col>" }));
+  for (let step = 0; step < 3; step++) await undo.click();
+  await expect.poll(saved).toBe(PLAN);
+
+  // A column's edge dragged is its width in the file; fitted to its texts
+  // again from the menu, or by pressing the edge twice.
+  const edge = letter(1).locator(".sheet-resize");
+  const wide = () =>
+    letter(1).evaluate((drawn) => drawn.getBoundingClientRect().width);
+  const fitted = await wide();
+  const at = await edge.boundingBox();
+  await app.mouse.move(at.x + 3, at.y + 5);
+  await app.mouse.down();
+  await app.mouse.move(at.x + 63, at.y + 5, { steps: 3 });
+  await expect(stage.locator(".sheet-guide")).toBeVisible();
+  await app.mouse.up();
+  const sized = with_(PLAN, {
+    "<col><col data-options": `<col data-width="${fitted + 60}"><col data-options`,
+  });
+  await expect.poll(saved).toBe(sized);
+  await expect.poll(wide).toBe(fitted + 60);
+  await letter(1).click();
+  await item("Fit to content").click();
+  await expect.poll(saved).toBe(PLAN);
+  await undo.click();
+  await expect.poll(saved).toBe(sized);
+  await edge.dblclick();
+  await expect.poll(saved).toBe(PLAN);
+
+  // A row copied from its menu is pasted from a cell's, formulas and all.
+  await number(2).click();
+  await expect(item("Paste")).toHaveCount(0);
+  await item("Copy").click();
+  await cell("Tasks", "A7").click({ button: "right" });
+  await item("Paste").click();
+  await expect(cell("Tasks", "A7")).toHaveText("Write");
+  await expect(cell("Tasks", "E7")).toHaveText("2,400.00");
+  await expect
+    .poll(saved)
+    .toContain("\n<tr><td>Write<td>Done<td>TRUE<td>1200<td>=D7*2\n</table>");
+
+  // A comment on the row, from its menu.
+  await number(3).click();
+  await item("Comment").click();
+  await expect(files.getByText("Comment on Tasks!A3:E3")).toBeVisible();
 });
 
 test("a sheet with nothing in it shows a pane of cells to type in", async ({

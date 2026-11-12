@@ -120,6 +120,8 @@ export type PageMessage =
   | { type: "file"; as: string; data: Uint8Array | string }
   // Why a sheet did not make a change that was asked for.
   | { type: "refused"; message: string }
+  // A comment on a sheet's selection, asked for from its own menus.
+  | { type: "comment" }
   // What is being typed in a sheet's cell, and that text as its file would
   // hold it; once, the table its edit would make, cut around the text.
   // Bare once it is typed no more and no edit follows.

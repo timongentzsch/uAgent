@@ -3,8 +3,11 @@
 
 let open;
 
-// `items` are commands `{ label, run }` and fields `{ field, value,
-// change }`, which say what was typed on Enter; `closed` runs once it is gone.
+// `items` are commands `{ label, run }` (with `keys` to show, `checked` for
+// one that is on or off, `swatch` for a colour), lists `{ label, items }`
+// that open in the menu's place, fields `{ field, value, change }`, which
+// say what was typed on Enter, and "-" between groups. `closed` runs once
+// it is gone.
 export function openMenu({ x, y }, items, closed) {
   open?.();
   const menu = document.createElement("div");
@@ -21,10 +24,37 @@ export function openMenu({ x, y }, items, closed) {
     close();
     act();
   };
-  for (const item of items) {
-    const control = document.createElement(item.field ? "input" : "button");
-    if (item.field) {
-      Object.assign(control, {
+  const press = (label, role, act) => {
+    const control = document.createElement("button");
+    Object.assign(control, { type: "button", textContent: label });
+    control.setAttribute("role", role);
+    control.addEventListener("click", act);
+    return control;
+  };
+  // A list shown in the menu's place leads back to the one it came from.
+  const show = (list, back) => {
+    const drawn = list.map((item) => {
+      if (item === "-") return document.createElement("hr");
+      if (item.items)
+        return Object.assign(
+          press(item.label, "menuitem", () =>
+            show(item.items, {
+              label: item.label,
+              show: () => show(list, back),
+            }),
+          ),
+          { ariaHasPopup: "menu" },
+        );
+      if (!item.field) {
+        const role =
+          item.checked === undefined ? "menuitem" : "menuitemcheckbox";
+        const control = press(item.label, role, () => done(item.run));
+        if (item.checked !== undefined) control.ariaChecked = !!item.checked;
+        if (item.keys) control.dataset.keys = item.keys;
+        if (item.swatch) control.dataset.swatch = item.swatch;
+        return control;
+      }
+      const control = Object.assign(document.createElement("input"), {
         type: "search",
         placeholder: item.field,
         ariaLabel: item.field,
@@ -33,16 +63,22 @@ export function openMenu({ x, y }, items, closed) {
       control.addEventListener("keydown", (event) => {
         if (event.key === "Enter") done(() => item.change(control.value));
       });
-    } else {
-      Object.assign(control, { type: "button", textContent: item.label });
-      control.setAttribute("role", "menuitem");
-      control.addEventListener("click", () => done(item.run));
-    }
-    menu.append(control);
-  }
+      return control;
+    });
+    if (back)
+      drawn.unshift(
+        Object.assign(press(back.label, "menuitem", back.show), {
+          className: "sheet-menu-back",
+        }),
+      );
+    menu.replaceChildren(...drawn);
+    menu.style.left = `${Math.max(0, Math.min(x, innerWidth - menu.offsetWidth))}px`;
+    menu.style.top = `${Math.max(0, Math.min(y, innerHeight - menu.offsetHeight))}px`;
+    menu.querySelector("button, input").focus();
+  };
   menu.addEventListener("keydown", (event) => {
     const by = { ArrowDown: 1, ArrowUp: -1 }[event.key];
-    const all = [...menu.children];
+    const all = [...menu.querySelectorAll("button, input")];
     if (by)
       all[
         (all.indexOf(document.activeElement) + by + all.length) % all.length
@@ -52,9 +88,7 @@ export function openMenu({ x, y }, items, closed) {
     event.preventDefault();
   });
   document.body.append(menu);
-  menu.style.left = `${Math.max(0, Math.min(x, innerWidth - menu.offsetWidth))}px`;
-  menu.style.top = `${Math.max(0, Math.min(y, innerHeight - menu.offsetHeight))}px`;
   addEventListener("pointerdown", outside, true);
   open = close;
-  menu.firstElementChild.focus();
+  show(items);
 }

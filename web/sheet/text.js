@@ -187,6 +187,51 @@ export function moved(formula, spans, by, own) {
   return out + chars.slice(from).join("");
 }
 
+// A formula after cells of the tab `of` moved, each to where `place` puts
+// it: a reference follows its cell, from any tab (`home` is the formula's
+// own). A range follows where its ends moved alike, and else keeps its
+// place: what moved within it is still in it.
+export function followed(formula, spans, of, home, place) {
+  const chars = [...formula];
+  let out = "";
+  let from = 0;
+  for (const { start, end } of spans) {
+    const text = chars.slice(start, end).join("");
+    const cut = text.lastIndexOf("!") + 1;
+    const read = ADDRESS.exec(text.slice(cut));
+    const ends = [read?.slice(2, 6), read?.slice(6)].filter(
+      (said) => said?.[1] || said?.[3],
+    );
+    const by = ends.map(([, name, , digits]) => {
+      const at = { row: Number(digits) || 1, column: columnOf(name) || 1 };
+      const to = place(at);
+      return { row: to.row - at.row, column: to.column - at.column };
+    });
+    // "A1 : B2" comes as two references with the colon between them.
+    const split =
+      /:\s*$/.test(chars.slice(0, start).join("")) ||
+      /^\s*:/.test(chars.slice(end).join(""));
+    const on = cut ? tabOf(text.slice(0, cut - 1)) : home;
+    out += chars.slice(from, start).join("");
+    from = end;
+    out +=
+      !ends.length ||
+      split ||
+      on.toLowerCase() !== of.toLowerCase() ||
+      by.some(({ row, column }) => row !== by[0].row || column !== by[0].column)
+        ? text
+        : text.slice(0, cut) +
+          read[1] +
+          ends
+            .map(
+              ([fixedColumn, name, fixedRow, digits]) =>
+                `${fixedColumn}${name && letters(columnOf(name) + by[0].column)}${fixedRow}${digits && Number(digits) + by[0].row}`,
+            )
+            .join(":");
+  }
+  return out + chars.slice(from).join("");
+}
+
 // Numbers, then text, then TRUE and FALSE, then errors; what is empty comes
 // last whichever way the sort runs.
 const KINDS = { number: 0, text: 1, boolean: 2, error: 3, empty: 4 };

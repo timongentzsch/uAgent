@@ -2,6 +2,7 @@
 // and the clipboard works as in any field.
 
 import { headOf } from "./book.js";
+import { actionsOf } from "./actions.js";
 import { openMenu } from "./menu.js";
 import { suggest } from "./suggest.js";
 import { edgeFrom, escaped, fromTsv, LAST, toTsv } from "./text.js";
@@ -12,7 +13,6 @@ const ARROWS = {
   ArrowLeft: { row: 0, column: -1 },
   ArrowRight: { row: 0, column: 1 },
 };
-const count = (n, one) => (n === 1 ? one : `${n} ${one}s`);
 
 export function listen(sheet) {
   const { book } = sheet;
@@ -164,92 +164,10 @@ export function listen(sheet) {
   const isBox = (at = active()) =>
     inBody(at) && columnOf(at)["data-control"] === "checkbox";
 
-  const command = (label, name) => ({ label, run: () => sheet.run(name) });
-  const headItems = () => {
-    const { column } = active();
-    const words = sheet.filterOf(column);
-    return [
-      !sheet.locked && command("Sort A to Z", "sort-up"),
-      !sheet.locked && command("Sort Z to A", "sort-down"),
-      {
-        field: "Filter: contains",
-        value: words,
-        change: (text) => sheet.filter(column, text),
-      },
-      words && { label: "Clear filter", run: () => sheet.filter(column, "") },
-    ];
-  };
-  const spanItems = (one, many, before, after) => {
-    const what = count(many, one);
-    return [
-      command(`Insert ${what} ${before}`, `${one}-${before}`),
-      command(`Insert ${what} ${after}`, `${one}-${after}`),
-      command(`Delete ${what}`, `${one}-delete`),
-    ];
-  };
-  const rowItems = () => spanItems("row", sheet.high(), "above", "below");
-  const columnItems = () => [
-    ...spanItems("column", sheet.wide(), "left", "right"),
-    // The app's dialog, on the active cell's column.
-    {
-      label: "Conditional formatting…",
-      run: () => sheet.say({ type: "rules" }),
-    },
-  ];
   const isHead = () =>
     active().row === headOf(sheet.tab()) &&
     active().column <= sheet.tab().columns.length;
-  // A file that is only read keeps its filter and no other command.
-  const menu = (at, items) => {
-    const shown = items.filter(Boolean);
-    if (shown.length) openMenu(at, shown, hold);
-  };
-  const changes = (items) => (sheet.locked ? [] : items);
-  const cellItems = () => {
-    const at = active();
-    const { rows, columns } = sheet.tab();
-    const inTable = at.row <= rows.length && at.column <= columns.length;
-    const shown = book.shown(sheet.at, at.row, at.column);
-    const only = (label, words) => ({
-      label: `${label} “${shown}”`,
-      run: () => sheet.filter(at.column, `${words}${shown}`),
-    });
-    const held = sheet.held();
-    return [
-      ...(isHead() ? headItems() : []),
-      // One value of the column, shown alone or left out.
-      ...(inTable && inBody(at) && shown
-        ? [only("Show only", "="), only("Leave out", "<>")]
-        : []),
-      !isHead() &&
-        sheet.filterOf(at.column) && {
-          label: "Clear filter",
-          run: () => sheet.filter(at.column, ""),
-        },
-      ...changes([
-        // What was copied here, as the cells showed it: no formulas.
-        copied && {
-          label: "Paste values only",
-          run: () => sheet.did(book.paste(sheet.at, at, fromTsv(copied.text))),
-        },
-        ...rowItems(),
-        ...columnItems(),
-        command("Insert chart", "chart"),
-        inTable && command("Freeze rows up to here", "freeze-rows"),
-        inTable && command("Freeze columns up to here", "freeze-columns"),
-        held.rows + held.columns > 0 && command("Unfreeze", "unfreeze"),
-        {
-          field: "Link to an address",
-          value: "",
-          change: (address) =>
-            address.trim() &&
-            sheet.write(
-              `=HYPERLINK("${address.trim().replaceAll('"', '""')}","${(shown || address.trim()).replaceAll('"', '""')}")`,
-            ),
-        },
-      ]),
-    ];
-  };
+  const menu = (at, items) => items.length && openMenu(at, items, hold);
   const under = () => {
     const box = sheet.rect(active());
     return { x: box.left - scrollX, y: box.top + box.height - scrollY };
@@ -278,7 +196,7 @@ export function listen(sheet) {
     } else if (held && (key === "PageUp" || key === "PageDown"))
       sheet.say({ type: "key", key, held });
     else if (event.altKey && key === "ArrowDown") {
-      if (isHead()) menu(under(), headItems());
+      if (isHead()) menu(under(), actions("head"));
       else edit();
     } else if (ARROWS[key])
       sheet.select(
@@ -321,7 +239,7 @@ export function listen(sheet) {
     else if (letter === "a") sheet.select(end, { row: 1, column: 1 }, true);
     else if (key === " " && isBox()) toggle();
     else if (key === "ContextMenu" || (event.shiftKey && key === "F10"))
-      menu(under(), cellItems());
+      menu(under(), actions("cell"));
     else return;
     event.preventDefault();
   });
@@ -336,6 +254,50 @@ export function listen(sheet) {
         }
       : undefined;
   };
+  // A row's number or a column's letter selects it across the table.
+  const picked = (at, extend) => {
+    if (at.row && at.column) sheet.select(at, extend);
+    else if (at.row)
+      sheet.select(
+        { row: at.row, column: last().column },
+        { row: at.row, column: 1 },
+        true,
+      );
+    else
+      sheet.select(
+        { row: last().row, column: at.column },
+        { row: 1, column: at.column },
+        true,
+      );
+  };
+  // A column's edge dragged between two letters is its width: a line shows
+  // where it will stand, and letting go writes it.
+  const resize = (event, column) => {
+    const from = sheet.rect({ row: 1, column });
+    const guide = Object.assign(document.createElement("div"), {
+      className: "sheet-guide",
+    });
+    const width = (to) =>
+      Math.max(40, Math.round(from.width + to.clientX - event.clientX));
+    const move = (to) => {
+      guide.style.left = `${from.left - scrollX + width(to)}px`;
+    };
+    document.body.append(guide);
+    move(event);
+    addEventListener("mousemove", move);
+    addEventListener(
+      "mouseup",
+      (to) => {
+        removeEventListener("mousemove", move);
+        guide.remove();
+        if (to.clientX !== event.clientX)
+          sheet.did(
+            book.widen(sheet.at, { left: column, right: column }, width(to)),
+          );
+      },
+      { once: true },
+    );
+  };
   let dragging = false;
   addEventListener("mousedown", (event) => {
     const at = hit(event);
@@ -343,20 +305,8 @@ export function listen(sheet) {
     // The field keeps the focus.
     event.preventDefault();
     if (editing) commit();
-    // A row's number or a column's letter selects it across the table.
-    if (at.row && at.column) sheet.select(at, event.shiftKey);
-    else if (at.row)
-      sheet.select(
-        { row: at.row, column: last().column },
-        { row: at.row, column: 1 },
-        true,
-      );
-    else if (at.column)
-      sheet.select(
-        { row: last().row, column: at.column },
-        { row: 1, column: at.column },
-        true,
-      );
+    if (event.target.closest(".sheet-resize")) return resize(event, at.column);
+    picked(at, event.shiftKey);
     dragging = !!(at.row && at.column);
     hold();
   });
@@ -374,30 +324,41 @@ export function listen(sheet) {
     const at = hit(event);
     const point = { x: event.clientX, y: event.clientY };
     if (!at) return;
-    if (event.target.closest(".sheet-more")) menu(point, headItems());
+    if (event.target.closest(".sheet-more")) menu(point, actions("head"));
     else if (event.target.type === "checkbox") {
       event.preventDefault();
       toggle();
-    } else if (!at.column) menu(point, changes(rowItems()));
-    else if (!at.row) menu(point, changes(columnItems()));
+    } else if (event.target.closest(".sheet-resize")) return;
+    else if (!at.column) menu(point, actions("row"));
+    else if (!at.row) menu(point, actions("column"));
   });
+  // Twice on a column's edge fits it to its texts again.
   addEventListener("dblclick", (event) => {
     const at = hit(event);
-    if (at?.row && at.column && event.target.type !== "checkbox") edit();
+    if (event.target.closest(".sheet-resize"))
+      sheet.did(book.widen(sheet.at, { left: at.column, right: at.column }));
+    else if (at?.row && at.column && event.target.type !== "checkbox") edit();
   });
+  // On a cell, a row's number or a column's letter: what was selected
+  // stays where the press lies in it.
   addEventListener("contextmenu", (event) => {
     const at = hit(event);
-    if (!at?.row || !at.column) return;
+    if (!at) return;
     event.preventDefault();
     const { top, left, bottom, right } = sheet.box();
-    if (
-      at.row < top ||
-      at.row > bottom ||
-      at.column < left ||
-      at.column > right
-    )
-      sheet.select(at);
-    menu({ x: event.clientX, y: event.clientY }, cellItems());
+    // A row's number lies in a selection of whole rows, a letter of columns.
+    const inside =
+      (at.row
+        ? at.row >= top && at.row <= bottom
+        : top <= 1 && bottom >= last().row) &&
+      (at.column
+        ? at.column >= left && at.column <= right
+        : left <= 1 && right >= last().column);
+    if (!inside) picked(at);
+    menu(
+      { x: event.clientX, y: event.clientY },
+      actions(!at.column ? "row" : !at.row ? "column" : "cell"),
+    );
   });
 
   // Cells are copied as what they show, and pasted back here as what was
@@ -425,11 +386,7 @@ export function listen(sheet) {
         from: { sheet: sheet.at, box: sheet.box(), cut: kind === "cut" },
       };
     });
-  addEventListener("paste", (event) => {
-    if (editing || event.target !== editor) return;
-    event.preventDefault();
-    const text = event.clipboardData.getData("text/plain");
-    if (!text) return;
+  const pasted = (text) => {
     // After any change the cells copied may lie elsewhere: only text is left.
     const own =
       copied?.text === text && copied.tabs === book.tabs ? copied : undefined;
@@ -443,6 +400,20 @@ export function listen(sheet) {
       { row: top, column: left },
     );
     if (own?.from.cut) copied = undefined;
+  };
+  addEventListener("paste", (event) => {
+    if (editing || event.target !== editor) return;
+    event.preventDefault();
+    const text = event.clipboardData.getData("text/plain");
+    if (text) pasted(text);
+  });
+  // From a menu the field's own commands copy; only what was copied here
+  // can be pasted, since the page cannot read the clipboard.
+  const actions = actionsOf(sheet, {
+    copied: () => copied,
+    cut: () => document.execCommand("cut"),
+    copy: () => document.execCommand("copy"),
+    paste: () => pasted(copied.text),
   });
 
   return {

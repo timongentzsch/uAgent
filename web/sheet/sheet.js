@@ -411,6 +411,7 @@ async function open() {
     },
     // Brings the active cell into view.
     see: () => reveal(pick().anchor),
+    offers: (what) => offers.has(what),
     // The view at the row's start, or the grid's: a held cell is in view
     // wherever the grid is scrolled, and would lead nowhere.
     start(grid) {
@@ -503,6 +504,24 @@ async function open() {
       show(at);
     },
   };
+  const offers = new Set();
+  const carried = (rows, columns) => {
+    if (
+      rows &&
+      [...hidden].some((row) => row >= box().top && row <= box().bottom)
+    )
+      return "Clear the filter to move these rows.";
+    const changed = rows
+      ? book.moveRows(at, box().top, high(), rows)
+      : shifted(book.moveColumns(at, box().left, wide(), columns));
+    const on = ({ row, column }) => ({
+      row: row + rows,
+      column: column + columns,
+    });
+    if (changed === true)
+      picks[at] = { anchor: on(picks[at].anchor), focus: on(picks[at].focus) };
+    return changed;
+  };
   // A filter is of a column by its place: with a column put in or taken
   // out before it, it would be another column's.
   const shifted = (changed) => {
@@ -568,6 +587,15 @@ async function open() {
     "column-right": () =>
       shifted(book.insertColumns(at, box().right + 1, wide())),
     "column-delete": () => shifted(book.deleteColumns(at, box().left, wide())),
+    // The selected rows or columns among their neighbours, selected still.
+    "row-move-up": () => carried(-1, 0),
+    "row-move-down": () => carried(1, 0),
+    "column-move-left": () => carried(0, -1),
+    "column-move-right": () => carried(0, 1),
+    "column-fit": () => book.widen(at, box(), undefined),
+    "clear-looks": () => book.unstyle(at, box(), hidden),
+    // What the app around the page offers to do when asked: a comment.
+    offers: (what) => void offers.add(String(what)),
     // Held up to the active cell: its row, or its column, and those before.
     "freeze-rows": () => freeze(pick().anchor.row, frozen.columns),
     "freeze-columns": () => freeze(frozen.rows, pick().anchor.column),

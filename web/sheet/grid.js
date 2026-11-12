@@ -263,9 +263,15 @@ export function draw(table, book, sheet, filters, view) {
     drawn.append(edge(number, "row", { row: number }), ...cells);
     return drawn;
   });
+  // A column of the table has an edge to drag it wider or narrower by.
   const lettered = make("tr", { className: "sheet-letters" }, [
     edge("", "col"),
-    ...view.columns.map((at) => edge(letters(at), "col", { column: at })),
+    ...view.columns.map((at) => {
+      const letter = edge(letters(at), "col", { column: at });
+      if (at <= tab.columns.length)
+        letter.append(make("span", { className: "sheet-resize" }));
+      return letter;
+    }),
   ]);
   lettered.style.height = `${layout.y(1)}px`;
   const span = (from, to) => `${layout.x(to) - layout.x(from)}px`;

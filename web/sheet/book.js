@@ -14,6 +14,7 @@ import {
   boxName,
   boxNamed,
   cellName,
+  followed,
   frozenOf,
   inOrder,
   letters,
@@ -82,6 +83,18 @@ const STYLED = {
 };
 const COLOURED = { fill: FILLS, ink: INKS };
 const has = (attrs, word) => !!attrs.class?.split(/\s+/).includes(word);
+// A run of a list `by` places on, and where each place of it then lies.
+const lifted = (list, at, count, by) => {
+  const next = [...list];
+  next.splice(at - 1 + by, 0, ...next.splice(at - 1, count));
+  return next;
+};
+const lifting = (at, count, by) => (n) =>
+  n >= at && n < at + count
+    ? n + by
+    : n >= Math.min(at, at + by) && n < Math.max(at, at + by) + count
+      ? n - Math.sign(by) * count
+      : n;
 
 // A chart goes with its rows or columns when its whole range does.
 const slidCharts = (charts, across, at, count) =>
@@ -406,6 +419,25 @@ export function openBook(engine, written, locked) {
       ink: cell.attrs["data-ink"],
     };
   };
+  // The cells of a tab moved to where `place` puts them, in `next`: the
+  // formulas that read one of them read it there.
+  const following = (sheet, place, next) =>
+    commit(
+      mapCells(next, (cell, on) =>
+        cell.text.startsWith("=")
+          ? withText(
+              cell,
+              followed(
+                cell.text,
+                spans(cell.text),
+                tabs[sheet].name,
+                tabs[on].name,
+                place,
+              ),
+            )
+          : cell,
+      ),
+    );
   const where = (name, box) => `${engine.quoteName(name)}!${boxName(box)}`;
   const worked = (formulas) => {
     if (!formulas.length) return [];
@@ -979,6 +1011,65 @@ export function openBook(engine, written, locked) {
             ...row,
             cells: row.cells.toSpliced(at - 1, count),
           })),
+        })),
+      ),
+
+    // Rows or columns moved `by` places among their neighbours. Every
+    // formula's reference to one of their cells follows, on any tab, and a
+    // rule its column. A header row stays.
+    moveRows(sheet, at, count, by) {
+      const to = at + by;
+      if (to < 1 || to + count - 1 > tabs[sheet].rows.length) return false;
+      if (Math.min(at, to) <= headOf(tabs[sheet]))
+        return "A header row keeps its place.";
+      const place = lifting(at, count, by);
+      return following(
+        sheet,
+        ({ row, column }) => ({ row: place(row), column }),
+        edit(sheet, (tab) => ({
+          ...tab,
+          rows: lifted(tab.rows, at, count, by),
+        })),
+      );
+    },
+    moveColumns(sheet, at, count, by) {
+      const to = at + by;
+      if (to < 1 || to + count - 1 > tabs[sheet].columns.length) return false;
+      const place = lifting(at, count, by);
+      return following(
+        sheet,
+        ({ row, column }) => ({ row, column: place(column) }),
+        edit(sheet, (tab) => ({
+          ...tab,
+          attrs: tab.attrs["data-rule"]
+            ? {
+                ...tab.attrs,
+                "data-rule": slidRules(
+                  tab.attrs["data-rule"],
+                  tab.columns.length,
+                  place,
+                ),
+              }
+            : tab.attrs,
+          columns: lifted(tab.columns, at, count, by),
+          rows: tab.rows.map((row) => ({
+            ...row,
+            cells: lifted(row.cells, at, count, by),
+          })),
+        })),
+      );
+    },
+
+    // A column's width in pixels; without one it is as wide as its texts.
+    widen: (sheet, { left, right }, width) =>
+      commit(
+        edit(sheet, (tab) => ({
+          ...tab,
+          columns: tab.columns.map((column, c) => {
+            const { "data-width": _, ...rest } = column;
+            if (c + 1 < left || c + 1 > right) return column;
+            return width ? { ...column, "data-width": `${width}` } : rest;
+          }),
         })),
       ),
 

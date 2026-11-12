@@ -64,7 +64,7 @@
   font-weight: var(--weight-regular);
   color: var(--muted);
 }
-.place-count.attention {
+.place-head .attention {
   color: var(--accent);
 }
 .place-body {

@@ -38,6 +38,14 @@ test("a decision in another folder is answered from the inbox", async ({
   const inbox = page.getByRole("button", { name: "1 needs you" });
   await expect(inbox).toBeVisible();
   await expect(page).toHaveTitle("(1) µAgent");
+  // Folded, its folder still counts its conversations, and marks the wait.
+  await page
+    .getByRole("button", { name: /^Conversations of .*elsewhere$/ })
+    .click();
+  const folded = page.locator(".place-head").filter({ hasText: "elsewhere" });
+  const mark = folded.locator('[aria-label="1 need attention"]');
+  await expect(folded.locator(".place-count")).toHaveText("(1)");
+  await expect(mark).toBeVisible();
   await inbox.click();
   const sheet = page.getByRole("dialog", { name: "Needs you" });
   const waiting = sheet.getByRole("region", {
@@ -48,6 +56,8 @@ test("a decision in another folder is answered from the inbox", async ({
     await expect(waiting).toContainText(other.pending_prompt);
   await waiting.getByRole("button", { name: "Allow once" }).click();
   await expect(inbox).toHaveCount(0);
+  await expect(mark).toHaveCount(0);
+  await expect(folded.locator(".place-count")).toHaveText("(1)");
   await expect(page).toHaveTitle("µAgent");
   expect(new URL(page.url()).hash).toBe(`#session=${session.id}`);
 });

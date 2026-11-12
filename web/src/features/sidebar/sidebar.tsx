@@ -512,15 +512,18 @@ function SidebarView({
               </FolderLabel>
               {folded && conversations.length > 0 && (
                 <span
-                  class={`place-count${attention ? " attention" : ""}`}
-                  aria-label={
-                    attention
-                      ? `${attention} need attention`
-                      : plural(conversations.length, "conversation")
-                  }
+                  class="place-count"
+                  aria-label={plural(conversations.length, "conversation")}
                 >
-                  ({attention || conversations.length})
+                  ({conversations.length})
                 </span>
+              )}
+              {folded && attention > 0 && (
+                <span
+                  class="status-led unread attention"
+                  role="img"
+                  aria-label={`${attention} need attention`}
+                />
               )}
             </Button>
           </h2>

@@ -132,6 +132,7 @@ export default function Sequence({
   uneditable,
   settle,
   forget,
+  typing,
   saveAs,
   arrange,
   rewrite,
@@ -165,6 +166,9 @@ export default function Sequence({
   // dropped of it when its page is drawn again from the file.
   settle: () => Promise<unknown>;
   forget: () => void;
+  // A sheet's cell being typed in, as the edit it would make: written if
+  // the sheet is left before the cell is. None once it is typed no more.
+  typing: (edit?: TableEdit) => void;
   // An Excel or CSV file's tabs, as a sheet's text, saved beside the file.
   saveAs?: (text: string) => Promise<void>;
   // A deck's slides renamed, copied or deleted as `moves` say, after which
@@ -298,6 +302,8 @@ export default function Sequence({
   // A sheet's selection, the range a comment is being written on, and what
   // the sheet last said of itself.
   const [cell, setCell] = useState<Cell>();
+  // What is being typed in the page's cell, for the formula bar to show.
+  const [typed, setTyped] = useState<string>();
   const [ranged, setRanged] = useState<string>();
   const [told, setTold] = useState(UNTOLD);
   const formula = useRef<HTMLInputElement>(null);
@@ -854,6 +860,7 @@ export default function Sequence({
             <fieldset class="page-asks" disabled={!live}>
               <FormulaBar
                 cell={cell}
+                typing={typed}
                 locked={locked}
                 field={formula}
                 write={(value) => tell(frame.current, { type: "input", value })}
@@ -1015,9 +1022,22 @@ export default function Sequence({
                       const hidden = Number(message.hidden) || 0;
                       const readers = Number(message.readers) || 0;
                       setTold((was) => ({ ...was, hidden, readers }));
-                    } else if (message.type === "cell")
+                    } else if (message.type === "cell") {
+                      setTyped(undefined);
                       setCell(cellOf(message));
-                    else if (message.type === "refused")
+                    } else if (message.type === "typing") {
+                      const { text, tab, tabs, table } = message;
+                      setTyped(
+                        text === undefined
+                          ? undefined
+                          : String(text).slice(0, 8192),
+                      );
+                      typing(
+                        sheet && typeof table === "string"
+                          ? { tab: Number(tab), tabs: Number(tabs), table }
+                          : undefined,
+                      );
+                    } else if (message.type === "refused")
                       refused(String(message.message).slice(0, 300));
                     else if (message.type === "key") {
                       // A sheet's other keys are its own.

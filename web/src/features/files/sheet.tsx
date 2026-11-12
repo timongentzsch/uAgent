@@ -172,12 +172,15 @@ function Looks({ cell, act }: { cell?: Cell; act: Act }) {
 // it the cell's looks, which a narrow pane folds into one sheet.
 export function FormulaBar({
   cell,
+  typing,
   locked,
   write,
   act,
   field,
 }: {
   cell?: Cell;
+  // What is being typed in the cell itself.
+  typing?: string;
   locked: boolean;
   write: (value: string) => void;
   act: Act;
@@ -194,7 +197,7 @@ export function FormulaBar({
         inputRef={field}
         disabled={!cell}
         readOnly={locked}
-        value={typed ?? cell?.raw ?? ""}
+        value={typed ?? typing ?? cell?.raw ?? ""}
         onInput={(event) => setTyped(event.currentTarget.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter") write(event.currentTarget.value);

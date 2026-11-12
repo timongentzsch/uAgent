@@ -206,8 +206,8 @@ const saving = (file, held) => {
       return file.now;
     },
     // As the host: a write on another revision than the file's is refused.
-    write: async ({ path, text, revision }) => {
-      log.push(`write ${path} on ${revision}`);
+    write: async ({ path, text, revision }, closing) => {
+      log.push(`write ${path} on ${revision}${closing ? ", closing" : ""}`);
       await held;
       if (revision !== file.now.revision)
         throw Object.assign(new Error("conflict"), { status: 409 });
@@ -285,4 +285,46 @@ test("a sheet drawn anew while a save is on its way: that save stands, and one q
   log.length = 0;
   await saver.save("a.html", edit(1, 3));
   assert.deepEqual(log, ["read a.html", "write a.html on r1"]);
+});
+
+test("a cell being typed in is held as its edit and written when the sheet is left first; an edit, or typing no more, lets it go", async () => {
+  const file = { now: { text: `${head}${one}\n${two}`, revision: "r0" } };
+  const { saver, log } = saving(file);
+  // Nothing held: nothing is written, and all is in the file.
+  assert.equal(await saver.flush(), true);
+  saver.hold("a.html", edit(0, "ty"));
+  saver.hold("a.html", edit(0, "typed"));
+  assert.equal(await saver.flush(), true);
+  assert.deepEqual(log, ["read a.html", "write a.html on r0"]);
+  assert.equal(file.now.text, `${head}${edit(0, "typed").table}\n${two}`);
+  // Written once: it is held no more.
+  await saver.flush();
+  // Typed no more, or made an edit: the edit alone is written.
+  saver.hold("a.html", edit(0, "dropped"));
+  saver.hold("a.html");
+  await saver.flush();
+  saver.hold("a.html", edit(1, "draft"));
+  await saver.save("a.html", edit(1, "kept"));
+  await saver.flush();
+  assert.deepEqual(log.slice(2), ["write a.html on r1"]);
+  assert.equal(
+    file.now.text,
+    `${head}${edit(0, "typed").table}\n${edit(1, "kept").table}`,
+  );
+  // One that cannot be written is said, and is not all in the file.
+  file.now = { ...file.now, revision: "r9" };
+  saver.hold("a.html", edit(0, "late"));
+  assert.equal(await saver.flush(), false);
+  assert.equal(log.at(-1), "failed conflict");
+});
+
+test("a closing page writes a held cell into the file as it was read while typing, and only one small enough to send", async () => {
+  const file = { now: { text: `${head}${one}\n${two}`, revision: "r0" } };
+  const { saver, log } = saving(file);
+  saver.hold("a.html", edit(0, "typed"));
+  assert.equal(await saver.flush(true), true);
+  assert.deepEqual(log, ["read a.html", "write a.html on r0, closing"]);
+  saver.hold("a.html", edit(0, "x".repeat(50_000)));
+  assert.equal(await saver.flush(true), false);
+  assert.equal(file.now.text, `${head}${edit(0, "typed").table}\n${two}`);
 });

@@ -314,7 +314,7 @@ export function applyEdit(
 const PAUSE_MS = 1000;
 // The most a closing page's write may carry: a browser sends no larger body
 // for a page that is gone.
-const CLOSING_BYTES = 48 * 1024;
+export const CLOSING_BYTES = 48 * 1024;
 
 // What a save answers with: the place of the block the caret then belongs
 // in, and, while a block typed in before is not in the file, why not.

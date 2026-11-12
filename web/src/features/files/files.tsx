@@ -20,6 +20,7 @@ import type { Session } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
 import { useApi } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
+import { useLatest } from "../../shared/use-latest.ts";
 import { useAction } from "../../shared/use-action.ts";
 import {
   Button,
@@ -205,21 +206,28 @@ export default function Files({
       }),
     [],
   );
+  // What is typed and not yet in its file is written: a page's block, a
+  // sheet's cell. Whether all of it is.
+  const settle = (closing = false) =>
+    Promise.all([blocks.flush(closing), tables.flush(closing)]).then(
+      (written) => written.every(Boolean),
+    );
   // A page is left once that is written. Typing that could not be keeps
   // its page once, its notice read; the next time the person leaves it.
   const leave = (update: (flow: Flow) => Flow) =>
-    void blocks
-      .flush()
-      .then((written) => (written ? setFlow(update) : blocks.forget()));
+    void settle().then((written) =>
+      written ? setFlow(update) : blocks.forget(),
+    );
+  const left = useLatest(settle);
   // Left with the app itself, as far as a closing page may still write.
   useEffect(() => {
-    const closing = () => void blocks.flush(true);
+    const closing = () => void left.current(true);
     addEventListener("pagehide", closing);
     return () => {
       removeEventListener("pagehide", closing);
-      void blocks.flush();
+      void left.current();
     };
-  }, [blocks]);
+  }, [left]);
   const dir = folderOfView(view);
   const file =
     view.kind === "file" || view.kind === "sequence" ? view.path : "";
@@ -277,7 +285,7 @@ export default function Files({
   const list = (dir: string) => api<Listing>(routes.files(id, "list", dir));
   // A file is read once what was typed in it is written.
   const readFile = (path: string) =>
-    blocks.flush().then(() => api<FileText>(routes.files(id, "read", path)));
+    settle().then(() => api<FileText>(routes.files(id, "read", path)));
   // Tagged with its folder: another folder's listing stays shown until this
   // one answers, and is never taken for it.
   const listing = useResource(
@@ -516,7 +524,7 @@ export default function Files({
     add?: { name: string; text: string },
   ) =>
     arranging.run(async () => {
-      await blocks.flush();
+      await settle();
       // Room first: a slide made and then refused its place would be left.
       if (moves.length) await api(routes.fileWrite(id), { path: dir, moves });
       if (add)
@@ -560,8 +568,9 @@ export default function Files({
   const tables = useMemo(
     () =>
       tableSaver({
-        read: readFile,
-        write: (held) => api<{ revision: string }>(routes.fileWrite(id), held),
+        read: (path) => api<FileText>(routes.files(id, "read", path)),
+        write: (held, keepalive) =>
+          api<{ revision: string }>(routes.fileWrite(id), held, { keepalive }),
         failed(error, path) {
           setUnsaved(error);
           setSeen((all) => rewritten(all, path));
@@ -774,7 +783,7 @@ export default function Files({
                     <Button
                       variant="secondary"
                       onClick={() => {
-                        void blocks.flush();
+                        void settle();
                         addToChat(failed.text);
                       }}
                     >
@@ -813,7 +822,7 @@ export default function Files({
                 pictures ? (as, path) => routes.files(id, as, path) : undefined
               }
               presenter={(slides, at) =>
-                openPresenter({ session: id, slides, at }, blocks.flush())
+                openPresenter({ session: id, slides, at }, settle())
               }
               uneditable={
                 (here?.entries.find((entry) => entry.name === nameOf(file))
@@ -826,8 +835,9 @@ export default function Files({
                   ? tables.save(file, edit).then(() => setUnsaved(undefined))
                   : blocks.save(file, edit)
               }
-              settle={blocks.flush}
+              settle={settle}
               forget={blocks.forget}
+              typing={(edit) => tables.hold(file, edit)}
               saveAs={async (text) => {
                 const path = join(
                   dir,

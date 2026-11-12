@@ -109,6 +109,15 @@ export type PageMessage =
   | { type: "file"; as: string; data: Uint8Array | string }
   // Why a sheet did not make a change that was asked for.
   | { type: "refused"; message: string }
+  // What is being typed in a sheet's cell, with the edit it would make
+  // where it can be kept; bare once it is typed no more and no edit follows.
+  | {
+      type: "typing";
+      text?: string;
+      tab?: number;
+      tabs?: number;
+      table?: string;
+    }
   | {
       type: "cell";
       ref: string;

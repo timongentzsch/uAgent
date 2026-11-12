@@ -70,6 +70,14 @@ test("what is typed into a cell or the formula bar is saved to the file, and und
   await expect.poll(saved).toBe(typed);
   await expect(files.locator(".page-tools .notice")).toHaveText("Saved");
 
+  // The formula bar shows what is being typed in the cell, and what the
+  // cell holds once that is given up.
+  await app.keyboard.type("77");
+  await expect(field).toHaveValue("77");
+  await app.keyboard.press("Escape");
+  await expect(field).toHaveValue("8400.5");
+  await expect.poll(saved).toBe(typed);
+
   // The formula bar: Escape puts back what the cell holds, Enter writes.
   await field.fill("nothing");
   await field.press("Escape");
@@ -711,6 +719,51 @@ test("the grid runs on past the table: what is typed there joins it, and the fil
   await expect(cell("Inputs", "B7")).toHaveText("19,801.00");
   expect(await saved()).toBe(reached);
 });
+
+// The page is left by the press that would end the typing: what was typed
+// reaches the app as it is typed, and leaving writes it. Time is stopped,
+// so nothing else can have.
+for (const touch of [false, true])
+  for (const [leaving, name] of [
+    ["Back", /^Back to/],
+    ["Close files", "Close files"],
+  ])
+    test(`what is typed in a cell is in its file when a ${touch ? "tap" : "click"} on ${leaving} leaves the sheet at once`, async ({
+      browser,
+      storageState,
+      session,
+      host,
+    }) => {
+      const context = await browser.newContext({
+        hasTouch: touch,
+        storageState,
+      });
+      try {
+        const app = await context.newPage();
+        const { files, field, cell, saved } = await openSheet(
+          app,
+          session,
+          host.project,
+          PLAN,
+        );
+        await cell("Tasks", "A2").click();
+        await app.clock.install();
+        await app.clock.pauseAt(
+          (await app.evaluate(() => Date.now())) + 60_000,
+        );
+        await app.keyboard.type("Draft");
+        // The app has it once its formula bar shows it.
+        await expect(field).toHaveValue("Draft");
+        const leave = files.getByRole("button", { name });
+        await (touch ? leave.tap() : leave.click());
+        await app.clock.resume();
+        await expect
+          .poll(saved)
+          .toBe(with_(PLAN, { "<td>Write": "<td>Draft" }));
+      } finally {
+        await context.close();
+      }
+    });
 
 test("past the table: a row or column is selected across the table only, a spare header sorts and filters nothing, and a filter stays when the table widens", async ({
   page: app,

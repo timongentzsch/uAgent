@@ -2,6 +2,7 @@
 // in the source text, so what the agent wrote around it stays as it is.
 
 import { maxTextFileBytes, maxUploadBytes } from "../../shared/limits.ts";
+import { CLOSING_BYTES } from "./doc-edit.ts";
 import { bytes } from "../../shared/quantities.ts";
 import type { PageMessage } from "../../shared/page-frame.tsx";
 
@@ -120,35 +121,47 @@ interface Held {
 }
 
 // One write at a time, each on the revision the last left. A failure is
-// said once; edits made before the sheet was read anew are dropped.
+// said once; edits made before the sheet was read anew are dropped. A cell
+// being typed in is held as the edit it would make, and written by `flush`
+// if the sheet is left before the cell is.
 export function tableSaver(io: {
   read: (path: string) => Promise<{ text: string; revision?: string }>;
-  write: (held: Held) => Promise<{ revision: string }>;
+  write: (held: Held, closing: boolean) => Promise<{ revision: string }>;
   failed: (error: unknown, path: string) => void;
 }) {
   let held: Held | undefined;
+  let typing: { path: string; edit: TableEdit } | undefined;
   let round = 0;
   let said = -1;
   let last: Promise<void> = Promise.resolve();
   const renew = () => {
-    held = undefined;
+    held = typing = undefined;
     round++;
   };
-  const write = async (of: number, path: string, edit: TableEdit) => {
-    const current = () => {
-      if (of !== round) throw new Error("Not saved");
-    };
+  // The file in hand. A closing page cannot wait for it to be read.
+  const read = async (of: number, path: string, closing = false) => {
+    if (held?.path === path) return held;
+    if (closing) throw new Error("Not saved");
+    const { text, revision } = await io.read(path);
+    if (of !== round) throw new Error("Not saved");
+    held = { path, text, revision: revision ?? "" };
+    return held;
+  };
+  const write = async (
+    of: number,
+    path: string,
+    edit: TableEdit,
+    closing = false,
+  ) => {
     try {
-      current();
-      if (held?.path !== path) {
-        const { text, revision } = await io.read(path);
-        current();
-        held = { path, text, revision: revision ?? "" };
-      }
-      const text = splice(held.text, edit);
+      if (of !== round) throw new Error("Not saved");
+      const file = await read(of, path, closing);
+      const text = splice(file.text, edit);
       if (text === null) throw new Error("The tab is not in the file.");
-      const next = { path, text, revision: held.revision };
-      const { revision } = await io.write(next);
+      if (closing && new Blob([text]).size > CLOSING_BYTES)
+        throw new Error("Not saved");
+      const next = { path, text, revision: file.revision };
+      const { revision } = await io.write(next, closing);
       if (of === round) held = { ...next, revision };
     } catch (error) {
       if (of === round) renew();
@@ -157,11 +170,29 @@ export function tableSaver(io: {
       throw error;
     }
   };
+  const save = (path: string, edit: TableEdit, closing = false) => {
+    typing = undefined;
+    const run = write.bind(null, round, path, edit, closing);
+    last = last.then(run, run);
+    return last;
+  };
   return {
-    save(path: string, edit: TableEdit) {
-      const run = write.bind(null, round, path, edit);
-      last = last.then(run, run);
-      return last;
+    save,
+    // What is being typed in a cell, or nothing once it is typed no more.
+    // The file is read meanwhile, so a closing page can write into it.
+    hold(path: string, edit?: TableEdit) {
+      typing = edit && { path, edit };
+      const run = () => read(round, path).then(() => {});
+      if (edit && held?.path !== path)
+        last = last.then(run, run).catch(() => {});
+    },
+    // Writes what is held; whether all that was typed is in its file.
+    flush(closing = false) {
+      const mine = typing;
+      return (mine ? save(mine.path, mine.edit, closing) : last).then(
+        () => true,
+        () => !mine,
+      );
     },
     // For a sheet drawn anew from its file: edits made before are not saved.
     renew,

@@ -134,6 +134,19 @@ test("letters typed after = in a cell list the functions they name; the keys wal
   await expect(list).toBeHidden();
   await app.keyboard.press("Enter");
   await expect(cell("Costs", "E4")).toHaveText("sum");
+  // A bracket that already follows the caret is the name's; and a number's
+  // letter names no function.
+  await app.keyboard.type("=su(B2:B4)");
+  for (const _ of "(B2:B4)") await app.keyboard.press("ArrowLeft");
+  await app.keyboard.type("m");
+  await expect(picked(list)).toHaveText(/^SUM /);
+  await app.keyboard.press("Enter");
+  await expect(editor).toHaveValue("=SUM(B2:B4)");
+  await app.keyboard.press("Enter");
+  await expect(cell("Costs", "E5")).toHaveText("1330.5");
+  await app.keyboard.type("=1e");
+  await expect(list).toBeHidden();
+  await app.keyboard.press("Escape");
 });
 
 test("the formula bar lists the functions under its field and says a call's arguments; without a list Enter writes and Tab moves on", async ({

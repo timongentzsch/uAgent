@@ -240,7 +240,9 @@ export function FormulaBar({
   const take = (name: string) => {
     const input = field.current!;
     const caret = input.selectionStart ?? 0;
-    input.setRangeText(`${name}(`, caret - current!.typed!, caret, "end");
+    // A bracket that already follows the caret is the name's.
+    const to = caret + Number(input.value[caret] === "(");
+    input.setRangeText(`${name}(`, caret - current!.typed!, to, "end");
     said(input);
   };
   const keyDown = (event: TargetedKeyboardEvent<HTMLInputElement>) => {
@@ -263,8 +265,11 @@ export function FormulaBar({
       <div class="sheet-typed">
         <Input
           aria-label="Cell contents"
+          role="combobox"
+          aria-expanded={options.length > 0}
           aria-autocomplete="list"
           aria-controls={options.length ? "formula-functions" : undefined}
+          aria-describedby={hint ? "formula-arguments" : undefined}
           aria-activedescendant={
             options.length ? `formula-function-${index}` : undefined
           }
@@ -301,7 +306,11 @@ export function FormulaBar({
           </SuggestionList>
         )}
         {hint && (
-          <div class="sheet-offer popover-list" role="note">
+          <div
+            id="formula-arguments"
+            class="sheet-offer popover-list"
+            role="note"
+          >
             {hint.name}(
             {hint.args.flatMap((arg, at) => [
               at > 0 && ", ",

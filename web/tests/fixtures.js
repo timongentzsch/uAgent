@@ -107,7 +107,7 @@ export async function openSheet(page, session, project, source, options) {
     files,
     stage,
     bar,
-    field: bar.getByRole("textbox", { name: "Cell contents" }),
+    field: bar.getByRole("combobox", { name: "Cell contents" }),
     tabs: files.getByRole("tablist", { name: "Tabs" }).getByRole("tab"),
     cell: (tab, ref) => {
       const [, name, row] = /^([A-Z]+)(\d+)$/.exec(ref);

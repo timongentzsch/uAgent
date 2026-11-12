@@ -96,10 +96,11 @@ test("letters offer the functions that start with them, then those that hold the
   assert.deepEqual(at("=SUMI").typed, 4);
   assert.deepEqual(at("=VLOOK").options[0], {
     name: "VLOOKUP",
-    args: ["lookup_value", "table_array", "col_index_num", "[range_lookup]"],
     about:
       "Looks down the first column and gives the value beside, from a column",
   });
+  // One letter is too little to look inside names for.
+  assert.ok(names("=X").every((name) => name.startsWith("X")));
   // After an operator, an open bracket and a comma too.
   for (const text of ["=1+SUMI", "=A1*(SUMI", "=IF(A1,SUMI", "=-SUMI"])
     assert.deepEqual(names(text), ["SUMIF", "SUMIFS"], text);
@@ -111,8 +112,9 @@ test("nothing is offered where no function can be meant", () => {
     "SUM",
     "=",
     "=1+",
-    // A cell, a range's end, another tab's cell.
+    // A cell, a number's exponent, a range's end, another tab's cell.
     "=A1",
+    "=1e",
     "=LOG1",
     "=A1:B",
     "=Tasks!A",

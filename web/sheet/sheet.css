@@ -265,7 +265,7 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
   z-index: 8;
   box-sizing: border-box;
   max-width: min(440px, 100vw);
-  max-height: 208px;
+  max-height: min(208px, var(--sheet-room, 208px));
   overflow-y: auto;
   border: 1px solid var(--sheet-ink);
   background: var(--sheet-ground);

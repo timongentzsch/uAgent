@@ -4,7 +4,7 @@
 import { headOf } from "./book.js";
 import { actionsOf } from "./actions.js";
 import { openMenu } from "./menu.js";
-import { suggest } from "./suggest.js";
+import { composing, suggest } from "./suggest.js";
 import { edgeFrom, escaped, fromTsv, LAST, toTsv } from "./text.js";
 
 const ARROWS = {
@@ -174,6 +174,7 @@ export function listen(sheet) {
   };
 
   editor.addEventListener("keydown", (event) => {
+    if (composing(event)) return;
     const { key } = event;
     const held = event.ctrlKey || event.metaKey;
     const letter = held && key.toLowerCase();

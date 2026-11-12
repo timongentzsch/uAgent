@@ -3,8 +3,6 @@ import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
 const optionalAssets = new Set();
 const outDir = process.env.UAGENT_WEB_OUT_DIR || "dist";
-// Mermaid's lazy renderer stays under this; the warning is for eager chunks.
-const lazyRendererWarningKilobytes = 1600;
 const rendererManifest = () => ({
   name: "renderer-assets",
   generateBundle(_options, bundle) {
@@ -149,7 +147,9 @@ export default defineConfig({
   build: {
     outDir,
     manifest: true,
-    chunkSizeWarningLimit: lazyRendererWarningKilobytes,
+    // Mermaid's lazy renderer is the largest chunk; the warning is for
+    // eager ones.
+    chunkSizeWarningLimit: 700,
     target: "es2022",
     cssCodeSplit: true,
     assetsInlineLimit: 0,

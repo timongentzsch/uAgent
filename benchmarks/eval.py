@@ -36,16 +36,10 @@ from run_trace import (  # noqa: E402
     measured_command,
     peak_rss,
     read_trace,
+    trace_metrics,
 )
-from run_trace import trace_metrics as run_trace_metrics  # noqa: E402
-from session_metrics import provenance_cohort, safe_provenance  # noqa: E402
 
 # isort: on
-
-
-def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
-    """Trajectory aggregates with this harness's provenance redaction applied."""
-    return run_trace_metrics(records, provenance_fn=safe_provenance, cohort_fn=provenance_cohort)
 
 
 def validate_predicates(when: Any) -> None:

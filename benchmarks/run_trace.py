@@ -8,9 +8,10 @@ import collections
 import json
 import re
 import sys
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+from session_metrics import provenance_cohort, safe_provenance
 
 
 def measured_command(binary: Path, arguments: list[str]) -> list[str]:
@@ -46,14 +47,8 @@ def read_trace(path: Path) -> list[dict[str, Any]]:
     return records
 
 
-def trace_metrics(
-    records: list[dict[str, Any]],
-    *,
-    provenance_fn: Callable[[Any], Any] | None = None,
-    cohort_fn: Callable[[Any], Any] | None = None,
-) -> dict[str, Any]:
-    """Reconstruct per-request context and privacy-safe trajectory aggregates.
-    The caller injects the provenance redaction of its journal reader."""
+def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Reconstruct per-request context and privacy-safe trajectory aggregates."""
     events: collections.Counter[str] = collections.Counter()
     batches: list[int] = []
     calls: list[dict[str, Any]] = []
@@ -78,8 +73,7 @@ def trace_metrics(
         data = record.get("data", {}) or {}
         events[name] += 1
         if name == "session_ready":
-            raw = data.get("provenance")
-            provenance = provenance_fn(raw) if provenance_fn else None
+            provenance = safe_provenance(data.get("provenance"))
             route = str(data.get("route") or "")
         elif name == "model_request":
             first = first or data
@@ -173,6 +167,6 @@ def trace_metrics(
         "failed_call_recoveries": failed_call_recoveries,
         "unrecovered_failed_calls": sum(pending_failures.values()),
         "provenance": provenance,
-        "cohort": cohort_fn(provenance) if cohort_fn else "",
+        "cohort": provenance_cohort(provenance),
         "route": route,
     }

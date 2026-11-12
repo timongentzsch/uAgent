@@ -135,6 +135,7 @@ async function open() {
   let frozen = { rows: 0, columns: 0 };
   let grid = { rows: 0, columns: 0 };
   let drawn = { top: 1, bottom: 0, left: 1, right: 0 };
+  let tinted;
   // The row numbers' column is as wide as the last row's number needs.
   const fit = () => {
     grid = extent();
@@ -190,7 +191,7 @@ async function open() {
       ],
     });
     tables[at].classList.toggle("sheet-window", !whole);
-    paint(tables[at], box(), pick().anchor);
+    paint(tables[at], box(), pick().anchor, tinted);
   };
   // Drawn again once the view leaves what is drawn.
   const follow = () => {
@@ -282,6 +283,11 @@ async function open() {
     },
     table: () => tables[at],
     tab,
+    // The cells a picked chart reads, tinted; none without a box.
+    reads(box) {
+      tinted = box;
+      paint(tables[at], sheet.box(), pick().anchor, tinted);
+    },
     // Where a cell lies in the page, drawn or not.
     rect: (cell) => layout.rect(cell),
     layout: () => layout,
@@ -300,7 +306,7 @@ async function open() {
         focus: to,
       };
       if (!still) reveal(to);
-      paint(tables[at], box(), pick().anchor);
+      paint(tables[at], box(), pick().anchor, tinted);
       rest();
       tell();
     },

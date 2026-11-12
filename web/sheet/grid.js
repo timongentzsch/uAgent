@@ -278,9 +278,9 @@ export function draw(table, book, sheet, filters, view) {
   });
 }
 
-// The cells drawn are marked by where the selection lies: its box, and its
-// active cell.
-export function paint(table, box, active) {
+// The cells drawn are marked by where the selection lies: its box and its
+// active cell; and those in `read`, the cells a picked chart draws from.
+export function paint(table, box, active, read) {
   for (const cell of table.querySelectorAll("tbody [data-column]")) {
     const [row, column] = [
       Number(cell.dataset.row),
@@ -292,6 +292,14 @@ export function paint(table, box, active) {
       column >= box.left &&
       column <= box.right;
     cell.classList.toggle("sheet-in", inside);
+    cell.classList.toggle(
+      "sheet-read",
+      !!read &&
+        row >= read.top &&
+        row <= read.bottom &&
+        column >= read.left &&
+        column <= read.right,
+    );
     if (row === active.row && column === active.column)
       cell.setAttribute("aria-selected", "true");
     else cell.removeAttribute("aria-selected");

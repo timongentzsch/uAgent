@@ -1037,8 +1037,24 @@ test("a chart is drawn from its cells, follows an edit, is put in from a selecti
     .poll(async () => (await heights()).indexOf(Math.max(...(await heights()))))
     .toBe(1);
 
-  // Its own menu changes its kind.
-  await stage.getByRole("button", { name: /^Chart menu/ }).click();
+  // A click picks the chart: its tools and corners show, and the cells it
+  // reads are tinted. Escape, or a press on a cell, lets go of it.
+  const box = stage.locator(".sheet-chart");
+  const tools = box.getByRole("button");
+  await expect(tools).toHaveCount(0);
+  await box.locator("figcaption").click();
+  await expect(tools).toHaveText(["Edit", "Delete"]);
+  await expect(box.locator(".sheet-size")).toHaveCount(4);
+  await expect(stage.locator(".sheet-read")).toHaveCount(12);
+  await app.keyboard.press("Escape");
+  await expect(tools).toHaveCount(0);
+  await expect(stage.locator(".sheet-read")).toHaveCount(0);
+  await box.locator("figcaption").click();
+  await cell("Costs", "A2").click();
+  await expect(box.locator(".sheet-size")).toHaveCount(0);
+  // Edit changes its kind.
+  await box.locator("figcaption").click();
+  await stage.getByRole("button", { name: /^Edit chart/ }).click();
   await stage.getByRole("menuitem", { name: "Pie" }).click();
   await expect(chart.locator("path")).toHaveCount(3);
   const pie = with_(charted, {
@@ -1064,19 +1080,24 @@ test("a chart is drawn from its cells, follows an edit, is put in from a selecti
   await files.getByRole("button", { name: "Undo" }).click();
   await expect.poll(saved).toBe(pie);
 
-  // Dragged, the chart sits on the cell under its corner; by its own corner
-  // it covers more, in cells of 96 by 24 wherever it lies.
+  // Dragged, the chart sits on the cell under its corner. Picked, a corner
+  // sizes it, in cells of 96 by 24 wherever it lies: the one at its bottom
+  // right leaves its place, the one at its top left moves that too.
   await drag(app, stage.locator(".sheet-chart figcaption"), 200, 5);
   await expect.poll(saved).toContain('data-at="G2" data-size="6x12"');
-  await drag(app, stage.locator(".sheet-size"), 110, 30);
+  const corner = (name) => stage.locator(`.sheet-size[data-corner="${name}"]`);
+  await box.locator("figcaption").click();
+  await drag(app, corner("se"), 110, 30);
   await expect.poll(saved).toContain('data-at="G2" data-size="7x13"');
+  await drag(app, corner("nw"), 96, 52);
+  await expect.poll(saved).toContain('data-at="H4" data-size="6x11"');
 
   // The file's chart is there when the sheet is read anew; deleted, it is
   // gone from the file.
   await stage.locator("html").evaluate(() => location.reload());
   await expect(chart.locator("path")).toHaveCount(3);
-  await stage.getByRole("button", { name: /^Chart menu/ }).click();
-  await stage.getByRole("menuitem", { name: "Delete chart" }).click();
+  await box.locator("figcaption").click();
+  await stage.getByRole("button", { name: /^Delete chart/ }).click();
   await expect(stage.locator(".sheet-chart")).toHaveCount(0);
   await expect.poll(saved).toBe(
     with_(pie, {

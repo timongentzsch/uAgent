@@ -136,7 +136,7 @@ table[data-sheet] [data-fill="muted"] {
 }
 /* The selection: its box tinted over whatever fills the cells, its active
    cell ringed. */
-table[data-sheet] .sheet-in {
+table[data-sheet] :is(.sheet-in, .sheet-read) {
   box-shadow: inset 0 0 0 100vmax var(--sheet-pick);
 }
 table[data-sheet] [aria-selected="true"] {
@@ -262,27 +262,50 @@ table[data-sheet] .sheet-strike {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sheet-chart > .sheet-more {
+/* A chart picked: ringed, its tools at its top, a handle at each corner
+   that sizes it from there. */
+.sheet-chart[data-picked] {
+  outline: 2px solid var(--sheet-accent);
+  outline-offset: -1px;
+}
+.sheet-chart-tools {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  border: 0;
-  background: none;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 4px;
+}
+.sheet-chart-tools > button {
+  padding: 0 6px;
+  border: 1px solid var(--sheet-line);
+  background: var(--sheet-ground);
+  color: var(--sheet-ink);
   font: inherit;
   cursor: pointer;
 }
-.sheet-chart > .sheet-more::before {
-  content: "▾";
-  color: var(--sheet-muted);
-}
-/* The corner a chart is resized by. */
 .sheet-size {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 12px;
-  height: 12px;
+  width: 8px;
+  height: 8px;
+  margin: -4px;
+  border: 1px solid var(--sheet-accent);
+  background: var(--sheet-ground);
   cursor: nwse-resize;
+}
+.sheet-size:is([data-corner="nw"], [data-corner="ne"]) {
+  top: 0;
+}
+.sheet-size:is([data-corner="sw"], [data-corner="se"]) {
+  bottom: 0;
+}
+.sheet-size:is([data-corner="nw"], [data-corner="sw"]) {
+  left: 0;
+}
+.sheet-size:is([data-corner="ne"], [data-corner="se"]) {
+  right: 0;
+}
+.sheet-size:is([data-corner="ne"], [data-corner="sw"]) {
+  cursor: nesw-resize;
 }
 .sheet-chart > svg {
   flex: 1;

@@ -30,22 +30,27 @@ const nearest = (at, start, place) => {
 const units = (length, unit) =>
   Math.max(1, Math.min(MOST, Math.round(length / unit)));
 
-// Mouse only: a touch that drags scrolls the page.
+// Mouse only: a touch that drags scrolls the page. A drag on the chart moves
+// it; one on a corner (`data-corner`: "nw", "se") moves that corner.
 function drag(layer, sheet, change) {
   layer.addEventListener("pointerdown", (event) => {
     const figure = event.target.closest("figure");
     if (!figure || event.button || event.pointerType !== "mouse") return;
-    if (event.target.closest(".sheet-more")) return;
-    const sizing = event.target.classList.contains("sheet-size");
+    if (event.target.closest("button")) return;
+    const corner = event.target.dataset.corner ?? "";
+    const [north, west] = [corner.includes("n"), corner.includes("w")];
     const from = figure.getBoundingClientRect();
     const by = (to) => [to.clientX - event.clientX, to.clientY - event.clientY];
     const move = (to) => {
       const [x, y] = by(to);
-      const [left, top] = sizing ? ["width", "height"] : ["left", "top"];
-      figure.style[left] =
-        `${(sizing ? from.width : from.left + scrollX) + x}px`;
-      figure.style[top] =
-        `${(sizing ? from.height : from.top + scrollY) + y}px`;
+      const box = {
+        left: from.left + scrollX + (corner && !west ? 0 : x),
+        top: from.top + scrollY + (corner && !north ? 0 : y),
+        width: from.width + (corner ? (west ? -x : x) : 0),
+        height: from.height + (corner ? (north ? -y : y) : 0),
+      };
+      for (const [side, length] of Object.entries(box))
+        figure.style[side] = `${length}px`;
     };
     figure.setPointerCapture(event.pointerId);
     figure.addEventListener("pointermove", move);
@@ -56,17 +61,19 @@ function drag(layer, sheet, change) {
         if (by(to).every((moved) => Math.abs(moved) < 4)) return;
         const { x, y, columnAt, rowAt } = sheet.layout();
         const now = figure.getBoundingClientRect();
-        // A move changes where it sits, its corner how much it covers.
-        const next = sizing
-          ? {
-              "data-size": `${units(now.width, CELL.width)}x${units(now.height, CELL.height)}`,
-            }
-          : {
-              "data-at": cellName({
-                column: nearest(columnAt, x, now.left + scrollX),
-                row: nearest(rowAt, y, now.top + scrollY),
-              }),
-            };
+        // A move changes where it sits, a corner how much it covers; the
+        // corners at its top and left change both.
+        const next = {
+          ...(corner && {
+            "data-size": `${units(now.width, CELL.width)}x${units(now.height, CELL.height)}`,
+          }),
+          ...(corner !== "se" && {
+            "data-at": cellName({
+              column: nearest(columnAt, x, now.left + scrollX),
+              row: nearest(rowAt, y, now.top + scrollY),
+            }),
+          }),
+        };
         change([...layer.children].indexOf(figure), (chart) => [
           { ...chart, attrs: { ...chart.attrs, ...next } },
         ]);
@@ -128,28 +135,45 @@ export function listenCharts(sheet) {
       ),
     );
   drag(layer, sheet, change);
+  // The chart picked, of the tab it was picked on: it shows its corners and
+  // its tools, and the cells it reads are tinted.
+  let picked = { tab: -1, chart: -1 };
+  const pick = (chart) => {
+    picked = { tab: sheet.at, chart };
+    show();
+  };
   layer.addEventListener("click", (event) => {
-    const figure = event.target.closest(".sheet-more")?.closest("figure");
-    if (!figure) return;
-    const index = [...layer.children].indexOf(figure);
-    openMenu(
-      { x: event.clientX, y: event.clientY },
-      [
-        ...Object.entries(CHARTS).map(([type, label]) => ({
+    const index = [...layer.children].indexOf(event.target.closest("figure"));
+    const tool = event.target.closest("button")?.name;
+    if (index < 0) return;
+    if (tool === "delete") change(index, () => []);
+    else if (tool === "edit")
+      openMenu(
+        { x: event.clientX, y: event.clientY },
+        Object.entries(CHARTS).map(([type, label]) => ({
           label,
           run: () =>
             change(index, (chart) => [
               { ...chart, attrs: { ...chart.attrs, "data-chart": type } },
             ]),
         })),
-        { label: "Delete chart", run: () => change(index, () => []) },
-      ],
-      sheet.hold,
-    );
+        sheet.hold,
+      );
+    else if (index !== picked.chart) pick(index);
+  });
+  // A press on a cell, or Escape, lets go of it.
+  const free = () => picked.chart >= 0 && pick(-1);
+  addEventListener("mousedown", (event) => {
+    if (!event.target.closest?.(".sheet-chart, .sheet-menu")) free();
+  });
+  addEventListener("keydown", (event) => {
+    if (event.key === "Escape") free();
   });
 
-  return () => {
+  const show = () => {
     const { x, y } = sheet.layout();
+    const chosen = picked.tab === sheet.at ? picked.chart : -1;
+    sheet.reads(boxNamed(sheet.tab().charts[chosen]?.attrs["data-range"]));
     const figures = sheet.tab().charts.map(({ attrs, caption }, index) => {
       // Unsaid, beside the grid.
       const on = boxNamed(attrs["data-at"]) ?? {
@@ -167,16 +191,32 @@ export function listenCharts(sheet) {
       picture.append(shape("title", {}, name));
       const figure = make("figure", { className: "sheet-chart" }, [
         make("figcaption", { textContent: caption }),
-        make("button", {
-          type: "button",
-          className: "sheet-more",
-          ariaLabel: `Chart menu: ${name}`,
-        }),
         data.error
           ? make("p", { textContent: `This chart ${data.error}.` })
           : picture,
-        make("span", { className: "sheet-size" }),
       ]);
+      if (index === chosen) {
+        figure.dataset.picked = "";
+        figure.append(
+          make(
+            "span",
+            { className: "sheet-chart-tools" },
+            ["Edit", "Delete"].map((label) =>
+              make("button", {
+                type: "button",
+                name: label.toLowerCase(),
+                textContent: label,
+                ariaLabel: `${label} chart: ${name}`,
+              }),
+            ),
+          ),
+          ...["nw", "ne", "sw", "se"].map((corner) => {
+            const handle = make("span", { className: "sheet-size" });
+            handle.dataset.corner = corner;
+            return handle;
+          }),
+        );
+      }
       Object.assign(figure.style, {
         left: `${x(on.left)}px`,
         top: `${y(on.top)}px`,
@@ -210,4 +250,5 @@ export function listenCharts(sheet) {
           }),
         );
   };
+  return show;
 }

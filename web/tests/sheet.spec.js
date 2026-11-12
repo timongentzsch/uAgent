@@ -112,12 +112,11 @@ test("a sheet shows nothing as written while its engine loads, and is drawn with
   host,
 }) => {
   // The engine is held until the test hands it over, which it does inside
-  // the page's next report of its size: there, a page that resizes itself
-  // is in error.
+  // a report of the page's size: there, a page that resizes itself is in
+  // error. An observer's first report always comes.
   await app.addInitScript(() => {
     if (!location.pathname.startsWith("/preview/")) return;
     let release;
-    let handing = false;
     const instantiate = WebAssembly.instantiateStreaming;
     const held = new Promise((reached) => {
       WebAssembly.instantiateStreaming = async (...given) => {
@@ -131,17 +130,10 @@ test("a sheet shows nothing as written while its engine loads, and is drawn with
     });
     window.handOver = async () => {
       await held;
-      handing = true;
-      document.body.style.paddingBottom = "1px";
-    };
-    const Real = ResizeObserver;
-    window.ResizeObserver = class extends Real {
-      constructor(report) {
-        super((...said) => {
-          report(...said);
-          if (handing) release();
-        });
-      }
+      new ResizeObserver((_, watching) => {
+        watching.disconnect();
+        release();
+      }).observe(document.body);
     };
   });
   const { files, stage, cell } = await openSheet(

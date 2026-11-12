@@ -2,7 +2,7 @@
 // it as a spreadsheet's grid.
 
 import { headOf, isHeader, isTotal } from "./book.js";
-import { CELL, cellName, letters } from "./text.js";
+import { boxAt, CELL, cellName, letters } from "./text.js";
 
 const attrsOf = (element, skip) =>
   Object.fromEntries(
@@ -155,6 +155,10 @@ export function sizesOf(table, book, sheet) {
       };
     }),
   );
+  // A merged cell sizes neither its columns nor its rows, as in Excel.
+  for (const { top, left } of book.merges(sheet))
+    if (top <= shown.length && left <= tab.columns.length)
+      shown[top - 1][left - 1] = "";
   const widths = tab.columns.map((column, c) => {
     if (column["data-width"]) return Number(column["data-width"]) || NARROW;
     const most = shown.reduce(
@@ -198,16 +202,48 @@ export function draw(table, book, sheet, filters, view) {
   const tab = book.tabs[sheet];
   const { layout, frozen } = view;
   const head = headOf(tab);
-  const body = view.rows.map((number) => {
-    const r = number - 1;
-    const row = tab.rows[r];
-    const cells = view.columns.map((at) => {
+  // Each held column sticks beside those before it.
+  const pin = (drawn, at) => {
+    if (at > frozen.columns) return drawn;
+    drawn.classList.add("sheet-pinned");
+    drawn.style.left = `${layout.x(at)}px`;
+    return drawn;
+  };
+  // A merged range is drawn as its top left cell over those of its rows and
+  // columns drawn, in a part on each side of the held ones.
+  const merges = book.merges(sheet);
+  const spans = (merge, line, place) => {
+    const along = (drawn, from, to, held, at) =>
+      drawn.filter((n) => n >= from && n <= to && n <= held === at <= held);
+    const rows = along(view.rows, merge.top, merge.bottom, frozen.rows, line);
+    const columns = along(
+      view.columns,
+      merge.left,
+      merge.right,
+      frozen.columns,
+      place,
+    );
+    return (
+      rows[0] === line &&
+      columns[0] === place && { rowSpan: rows.length, colSpan: columns.length }
+    );
+  };
+  const body = view.rows.map((line) => {
+    const cells = view.columns.flatMap((place) => {
+      const merge = boxAt(merges, { row: line, column: place });
+      const over =
+        merge.bottom > merge.top || merge.right > merge.left
+          ? spans(merge, line, place)
+          : {};
+      if (!over) return [];
+      const [number, at] = [merge.top, merge.left];
+      const r = number - 1;
       const c = at - 1;
-      const cell = row?.cells[c];
+      const cell = tab.rows[r]?.cells[c];
       if (!cell) {
-        const blank = make("td");
+        const blank = pin(Object.assign(make("td"), over), place);
         Object.assign(blank.dataset, { row: number, column: at });
-        return blank;
+        return [blank];
       }
       const column = tab.columns[c];
       const shown = book.shown(sheet, number, at);
@@ -250,17 +286,18 @@ export function draw(table, book, sheet, filters, view) {
             ariaPressed: filters.has(at),
           }),
         );
-      return drawn;
+      return [pin(Object.assign(drawn, over), place)];
     });
+    const row = tab.rows[line - 1];
     const drawn = marked(make("tr"), row?.attrs ?? {});
     drawn.classList.toggle("sheet-head", !!row && isHeader(row));
     drawn.style.height = `${view.row + (row && isTotal(row) ? 1 : 0)}px`;
     // Each held row sticks under those before it, each held column beside.
-    if (number <= frozen.rows) {
+    if (line <= frozen.rows) {
       drawn.classList.add("sheet-frozen");
-      drawn.style.setProperty("--sheet-top", `${layout.y(number)}px`);
+      drawn.style.setProperty("--sheet-top", `${layout.y(line)}px`);
     }
-    drawn.append(edge(number, "row", { row: number }), ...cells);
+    drawn.append(edge(line, "row", { row: line }), ...cells);
     return drawn;
   });
   // A column of a table that can be changed has an edge to drag it wider
@@ -271,7 +308,7 @@ export function draw(table, book, sheet, filters, view) {
       const letter = edge(letters(at), "col", { column: at });
       if (at <= tab.columns.length && !view.locked)
         letter.append(make("span", { className: "sheet-resize" }));
-      return letter;
+      return pin(letter, at);
     }),
   ]);
   lettered.style.height = `${layout.y(1)}px`;
@@ -286,13 +323,6 @@ export function draw(table, book, sheet, filters, view) {
     make("thead", {}, [lettered]),
     make("tbody", {}, body),
   );
-  view.columns.forEach((at, place) => {
-    if (at > frozen.columns) return;
-    for (const row of [lettered, ...body]) {
-      row.cells[place + 1].classList.add("sheet-pinned");
-      row.cells[place + 1].style.left = `${layout.x(at)}px`;
-    }
-  });
   table.setAttribute("role", "grid");
   const first = (drawn, held) => drawn.find((at) => at > held) ?? held + 1;
   const [row, column] = [

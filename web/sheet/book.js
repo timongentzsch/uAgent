@@ -18,6 +18,7 @@ import {
   frozenOf,
   inOrder,
   letters,
+  meets,
   moved,
   renamed,
   slid,
@@ -147,6 +148,45 @@ const carriedCharts = (charts, place) =>
       },
     };
   });
+
+// A table's merged ranges, `data-merge="A1:D1 A5:A7"`, as written.
+const listed = (attrs) =>
+  (attrs["data-merge"] ?? "").split(/\s+/).filter(Boolean);
+// The cells of a box but its top left one that hold text, by name.
+const filledUnder = (tab, box) => {
+  const found = [];
+  const right = Math.min(box.right, tab.columns.length);
+  for (let row = box.top; row <= Math.min(box.bottom, tab.rows.length); row++)
+    for (let column = box.left; column <= right; column++)
+      if (
+        (row > box.top || column > box.left) &&
+        tab.rows[row - 1].cells[column - 1].text
+      )
+        found.push(cellName({ row, column }));
+  return found;
+};
+// The merged ranges drawn, each as its top left cell over the others, which
+// hold nothing; and why each other is not. Of two that overlap the first is
+// drawn.
+const mergesOf = (tab) => {
+  const merges = [];
+  const unread = [];
+  for (const text of listed(tab.attrs)) {
+    const box = boxNamed(text);
+    const over = box && merges.find((merge) => meets(merge, box));
+    const [under] = box && !over ? filledUnder(tab, box) : [];
+    const why = !box
+      ? "names no cells"
+      : !boxName(box).includes(":")
+        ? "is one cell"
+        : over
+          ? `overlaps ${boxName(over)}`
+          : under && `covers text in ${under}`;
+    if (why) unread.push(`merge \`${text}\` ${why}`);
+    else merges.push(box);
+  }
+  return { merges, unread };
+};
 
 // A table's rules name columns by letter: they follow their columns.
 const slidAttrs = ({ attrs, columns }, at, count) =>
@@ -417,6 +457,9 @@ export async function openBook(engine, written, locked, calculate) {
   const ruled = new WeakMap();
   const rulesFor = (tab) =>
     ruled.get(tab) ?? ruled.set(tab, rulesOf(tab)).get(tab);
+  const merged = new WeakMap();
+  const mergesFor = (tab) =>
+    merged.get(tab) ?? merged.set(tab, mergesOf(tab)).get(tab);
   // Each chart as it was read since the tabs last changed, by "sheet index".
   const charted = new Map();
   const learned = (calculated, read) => {
@@ -752,6 +795,8 @@ export async function openBook(engine, written, locked, calculate) {
     },
 
     plain: (sheet, row, column) => plainOf(tabs[sheet], row, column),
+    // The tab's merged ranges that are drawn, as boxes.
+    merges: (sheet) => mergesFor(tabs[sheet]).merges,
     // How a cell shows: what is written, and a rule's look over it.
     marks(sheet, row, column) {
       const own = this.plain(sheet, row, column);
@@ -787,6 +832,7 @@ export async function openBook(engine, written, locked, calculate) {
         ...(unread.get(tab) ?? rulesFor(tab).unread).map(
           (rule) => `${tab.name}: rule \`${rule}\` is not understood`,
         ),
+        ...mergesFor(tab).unread.map((why) => `${tab.name}: ${why}`),
         ...tab.charts.flatMap((chart, at) => {
           const { error } = chartOf(sheet, at);
           return error

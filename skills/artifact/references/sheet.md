@@ -56,11 +56,12 @@ with `browser` `open`, it lists every cell in error with the reason.
 | `data-control="checkbox"` on a `<col>` | TRUE and FALSE as boxes to tick |
 | `data-options="To do\|In progress\|Done"` on a `<col>` | a dropdown |
 | `data-frozen="1 A"` on the table | rows and columns that stay in view |
+| `data-merge="A1:D1 A5:A7"` on the table | each range as one cell showing its top-left cell; the others are written empty |
 | `data-rule="< 0: bad"` on a `<col>` | the column's cells that meet the condition take the effect |
 | `data-rule="D = Done: strike muted"` on the table | the rows whose column D meets it take the effect |
 | `<figure data-chart="bar" data-range="A1:C4">` after the table | a chart of those cells |
 
-Nothing else: no merged cells, no fonts or borders, no `style`.
+Nothing else: no fonts or borders, no `style`.
 
 ## Rules and charts
 
@@ -84,6 +85,8 @@ Nothing else: no merged cells, no fonts or borders, no `style`.
 - The pane shows about six columns: the important ones come first.
 - A summary goes in rows above its table or on a tab of its own, never
   beside the table.
+- A title or a label over several columns is merged; data cells are not: a
+  sort cannot run through a merge.
 - Long text gets `class="wrap"` and a width of 240 to 400.
 - One table per tab, its header in row 1 unless a summary sits above it.
 - Many rows from a file: write a script that turns the file into the table,

@@ -1305,6 +1305,45 @@ test("rows put in one after another are each worked out once", async () => {
   assert.equal(made, 5);
 });
 
+// A tab with merged ranges: a title over the table, the halves over their
+// quarters, a total's label over two cells.
+const merged = (merge) =>
+  open([
+    {
+      ...tab("Costs", [
+        ["#Budget", "#", "#", "#", "#"],
+        ["#", "#H1", "#", "#H2", "#"],
+        ["#Item", "#Q1", "#Q2", "#Q3", "#Q4"],
+        ["Rent", "1200", "1200", "1300", "1300"],
+        ["Power", "90", "95", "=B5", "=C5"],
+        ["{total}", "Total", "", "=SUM(C4:C5)", "=SUM(D4:D5)", "=SUM(E4:E5)"],
+      ]),
+      attrs: { "data-merge": merge },
+    },
+  ]);
+
+test("a table's merged ranges are drawn as listed; one that names no cells, is one cell, overlaps one before it or covers text is reported and not drawn", async () => {
+  const book = await merged("A1:E1 B2:C2 D2:E2 A6:B6 A1:B2 F9 B4:C4 1:2 G1:H3");
+  assert.deepEqual(book.merges(0), [
+    { top: 1, left: 1, bottom: 1, right: 5 },
+    { top: 2, left: 2, bottom: 2, right: 3 },
+    { top: 2, left: 4, bottom: 2, right: 5 },
+    { top: 6, left: 1, bottom: 6, right: 2 },
+    // Past the table its cells are blank.
+    { top: 1, left: 7, bottom: 3, right: 8 },
+  ]);
+  assert.deepEqual(book.errors(), [
+    "Costs: merge `A1:B2` overlaps A1:E1",
+    "Costs: merge `F9` is one cell",
+    "Costs: merge `B4:C4` covers text in C4",
+    "Costs: merge `1:2` names no cells",
+  ]);
+  assert.match(
+    book.table(0),
+    /^<table data-sheet="Costs" data-merge="A1:E1 B2:C2 D2:E2 A6:B6 A1:B2 F9 B4:C4 1:2 G1:H3">\n/,
+  );
+});
+
 // The engine as it is, which calculates where it is asked to anywhere
 // inside: a call of the page's that did would not return here, or panic.
 // Each change the page makes that reaches its engine, and its answer.

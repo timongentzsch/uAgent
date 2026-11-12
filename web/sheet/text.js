@@ -49,6 +49,18 @@ export const boxNamed = (name = "") => {
     : undefined;
 };
 
+// Whether two boxes share a cell.
+export const meets = (a, b) =>
+  a.top <= b.bottom &&
+  b.top <= a.bottom &&
+  a.left <= b.right &&
+  b.left <= a.right;
+// The merged box a cell lies in, or the cell's own.
+export const boxAt = (merges, { row, column }) => {
+  const own = { top: row, left: column, bottom: row, right: column };
+  return merges.find((merge) => meets(merge, own)) ?? own;
+};
+
 // Where a row or column lies once `count` were put in before `at`; a
 // negative count takes that many out from `at` on, and one of those is gone.
 export const slid = (n, at, count) =>

@@ -128,11 +128,6 @@ RouteUsage RouteUsageFromJson(const json& value);
 
 class UsageAccumulator {
  public:
-  void Add(const Usage& usage) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    unassigned_.Merge(usage);
-  }
-
   void Add(const std::string& route, const Usage& usage, int64_t turn = 0,
            const json& statistics = json::object()) {
     std::lock_guard<std::mutex> lock(mutex_);

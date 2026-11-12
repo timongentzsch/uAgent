@@ -72,9 +72,7 @@ json Application::ReportUsage(const std::string& ledger) {
   used_before_ = UsageTotals();
   if (ledger.empty()) return used;
   std::string failure;
-  json entry = used;
-  entry["parent_turn"] = EnvLong("UAGENT_INTERNAL_PARENT_TURN", int64_t{0});
-  if (!AppendPrivateLine(ledger, JsonDump(entry), failure)) {
+  if (!AppendPrivateLine(ledger, JsonDump(used), failure)) {
     fprintf(stderr, "cannot write usage ledger: %s\n", failure.c_str());
   }
   return used;

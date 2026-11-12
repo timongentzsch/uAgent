@@ -576,7 +576,7 @@ TEST_CASE(TestAttributedUsageAccumulator) {
   child.output = 5;
   child.cost = 0.25;
   child.cost_reported = true;
-  accumulator.Add(direct);
+  accumulator.Add("title", direct);
   accumulator.Add("provider/model", child, 7,
                   {{"model_calls", 2}, {"tool_calls", 4}});
 

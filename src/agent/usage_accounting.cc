@@ -58,7 +58,6 @@ void Agent::DrainChildUsage() {
     json entry = json::parse(line, nullptr, false);
     if (entry.is_object() && entry.contains("usage")) {
       Usage child = UsageFromJson(entry["usage"]);
-      const int64_t parent_turn = JsonValue(entry, "parent_turn", int64_t{0});
       const json statistics =
           SideStatistics(JsonValue(entry, "statistics", json::object()));
       bool first = true;
@@ -66,17 +65,15 @@ void Agent::DrainChildUsage() {
         for (const auto& [route, value] : routes->items()) {
           // Statistics describe the whole child and therefore belong on one
           // record, even when its usage spans several provider routes.
-          side_usage_.Add(route, UsageFromJson(value), parent_turn,
+          side_usage_.Add(route, UsageFromJson(value), 0,
                           first ? statistics : json::object());
           first = false;
         }
       }
       if (first) {
         side_usage_.Add(JsonValue(entry, "route", "delegated/unknown"), child,
-                        parent_turn, statistics);
+                        0, statistics);
       }
-    } else {
-      side_usage_.Add(UsageFromJson(entry));
     }
   }
 }

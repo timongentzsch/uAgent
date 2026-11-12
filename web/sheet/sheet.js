@@ -715,11 +715,12 @@ async function open() {
   // table: what is being typed stays through it.
   let scrolled = 0;
   // Where a scroll rests, the stretch may move under the view: one driven
-  // by a wheel, a key or a finger lifted, shortly before it began or since.
-  // A scrollbar's thumb says none of these, and held still it is no rest:
-  // the stretch would move under it.
+  // by a wheel or a finger lifted, shortly before it began or since (a key
+  // moves the view by the page's own hand). A scrollbar's thumb says none
+  // of these, and held still it is no rest: the stretch would move under
+  // it.
   let [resting, began, driven] = [0, 0, -Infinity];
-  for (const type of ["wheel", "keydown", "touchend"])
+  for (const type of ["wheel", "touchend"])
     addEventListener(type, () => (driven = performance.now()), {
       passive: true,
     });

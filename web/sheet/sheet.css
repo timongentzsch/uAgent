@@ -118,6 +118,52 @@ table[data-sheet] .sheet-letters .sheet-edge {
 table[data-sheet] .sheet-letters .sheet-edge:first-child {
   z-index: 6;
 }
+/* The groups' gutter, a lane of 16px (grid.js LANE) for each level, beside
+   the row numbers and over the letters: a line along a group, its button on
+   the row or column after it. */
+table[data-sheet] tbody .sheet-edge {
+  padding-left: calc(6px + var(--sheet-gutter-x, 0px));
+}
+table[data-sheet] .sheet-letters .sheet-edge {
+  padding-top: calc(2px + var(--sheet-gutter-y, 0px));
+}
+.sheet-lanes {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: flex;
+  align-items: center;
+}
+.sheet-letters .sheet-lanes {
+  inset: 0 0 auto;
+  flex-direction: column;
+}
+.sheet-lane {
+  flex: 0 0 16px;
+  align-self: stretch;
+}
+.sheet-along {
+  background: linear-gradient(var(--sheet-muted), var(--sheet-muted)) center /
+    1px 100% no-repeat;
+}
+.sheet-letters .sheet-along {
+  background-size: 100% 1px;
+}
+.sheet-fold {
+  flex: 0 0 14px;
+  height: 14px;
+  width: 14px;
+  margin: 1px;
+  padding: 0;
+  border: 1px solid var(--sheet-muted);
+  border-radius: 0;
+  background: var(--sheet-ground);
+  color: var(--sheet-ink);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 /* The header band, and the rows frozen with it. */
 table[data-sheet] .sheet-head :where(th, td):where(:not(.sheet-edge)) {
   background: var(--sheet-head);

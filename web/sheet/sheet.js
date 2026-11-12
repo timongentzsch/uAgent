@@ -4,7 +4,7 @@
 import { headOf, isTotal, openBook } from "./book.js";
 import { CHART } from "./chart.js";
 import { listenCharts } from "./figure.js";
-import { draw, figuresOf, paint, readTab, sizesOf } from "./grid.js";
+import { draw, figuresOf, LANE, paint, readTab, sizesOf } from "./grid.js";
 import { listen } from "./input.js";
 import { layoutOf } from "./layout.js";
 import { suggestions } from "./suggest.js";
@@ -207,6 +207,15 @@ async function open() {
   const filters = tables.map(() => new Map());
   // The rows the shown tab's filters hide: no cell of them is selected.
   let hidden = new Set();
+  // The shown tab's groups drawn, each with the line its button stands on;
+  // the lanes of its gutters, and whether a row or column is folded away.
+  let outline = { rows: [], columns: [] };
+  let lanes = { rows: 0, columns: 0 };
+  const folds = { row: () => false, column: () => false };
+  const shows = {
+    row: (row) => !hidden.has(row) && !folds.row(row),
+    column: (column) => !folds.column(column),
+  };
 
   const tab = () => book.tabs[at];
   // Alone (its own tab, a print, the agent's browser) the page is its whole
@@ -247,11 +256,14 @@ async function open() {
     const charts = tab().charts.map(
       ({ attrs }) => boxNamed(attrs["data-at"]) ?? { top: 0, left: 0 },
     );
+    // The grid reaches the line after a group: its button stands there.
     const far = (count, most, pane, ...needs) =>
       whole ? count : Math.min(most, Math.max(count, ...needs) + pane);
+    const ends = (count, groups, most) =>
+      Math.min(most, Math.max(count, ...groups.map(({ at }) => at)));
     return {
       rows: far(
-        tab().rows.length,
+        ends(tab().rows.length, outline.rows, LAST.row),
         LAST.row,
         Math.ceil(innerHeight / sizes.row),
         reached[at].rows,
@@ -260,7 +272,7 @@ async function open() {
         ...charts.map((chart) => chart.top),
       ),
       columns: far(
-        tab().columns.length,
+        ends(tab().columns.length, outline.columns, LAST.column),
         LAST.column,
         Math.ceil(innerWidth / CELL.width),
         reached[at].columns,
@@ -312,17 +324,39 @@ async function open() {
     area.style.height = `${tall}px`;
     settle(x, view - base);
   };
-  // The row numbers' column is as wide as the last row's number needs:
-  // of another width, it moves every column, and nothing drawn stands.
+  // The row numbers' column is as wide as the last row's number needs and
+  // its gutter, the letters' row as high as its gutter makes it: of another
+  // size, they move every cell, and nothing drawn stands. What is folded or
+  // filtered away takes no room.
   const fit = () => {
     grid = extent();
-    const edge = Math.max(40, 14 + 7 * `${grid.rows}`.length);
-    if (edge !== layout.x(1)) drawn = { top: 1, bottom: 0, left: 1, right: 0 };
+    const edge =
+      LANE * lanes.rows + Math.max(40, 14 + 7 * `${grid.rows}`.length);
+    const top = LANE * lanes.columns + sizes.row;
+    if (edge !== layout.x(1) || top !== layout.y(1))
+      drawn = { top: 1, bottom: 0, left: 1, right: 0 };
+    const along = (sizes, groups, unit, show) =>
+      Array.from(
+        { length: Math.max(sizes.length, ...groups.map(({ to }) => to)) },
+        (_, n) => (show(n + 1) ? (sizes[n] ?? unit) : 0),
+      );
+    const { rows, columns } = book.groups(at);
     layout = layoutOf(
-      sizes.widths,
-      sizes.heights.map((height, r) => (hidden.has(r + 1) ? 0 : height)),
+      along(
+        sizes.widths,
+        columns.filter(({ folded }) => folded),
+        CELL.width,
+        shows.column,
+      ),
+      along(
+        sizes.heights,
+        rows.filter(({ folded }) => folded),
+        sizes.row,
+        shows.row,
+      ),
       edge,
       sizes.row,
+      top,
     );
     area.style.width = `${layout.x(grid.columns + 1)}px`;
     stretch();
@@ -398,14 +432,16 @@ async function open() {
       locked: !!file,
       frozen,
       row: sizes.row,
+      outline,
+      lanes,
       rows: [
         ...held(frozen.rows),
         ...span(drawn.top, drawn.bottom, frozen.rows, grid.rows),
-      ].filter((row) => !hidden.has(row)),
+      ].filter(shows.row),
       columns: [
         ...held(frozen.columns),
         ...span(drawn.left, drawn.right, frozen.columns, grid.columns),
-      ],
+      ].filter(shows.column),
     });
   };
   // Drawn again once the view leaves what is drawn.
@@ -441,15 +477,22 @@ async function open() {
     row: Math.max(1, Math.min(row, whole ? grid.rows : LAST.row)),
     column: Math.max(1, Math.min(column, whole ? grid.columns : LAST.column)),
   });
-  // The nearest row in view, looking first the way the selection moves.
+  // The nearest row and column in view, looking first the way the
+  // selection moves.
   const seen = (cell) => {
-    const way = cell.row < picks[at].focus.row ? -1 : 1;
-    for (const step of [way, -way]) {
-      let { row } = cell;
-      while (hidden.has(row)) row += step;
-      if (row >= 1 && row <= LAST.row) return { ...cell, row };
-    }
-    return cell;
+    const near = (way, show, most) => {
+      const step = cell[way] < picks[at].focus[way] ? -1 : 1;
+      for (const by of [step, -step]) {
+        let n = cell[way];
+        while (n >= 1 && n <= most && !show(n)) n += by;
+        if (n >= 1 && n <= most) return n;
+      }
+      return cell[way];
+    };
+    return {
+      row: near("row", shows.row, LAST.row),
+      column: near("column", shows.column, LAST.column),
+    };
   };
   const pick = () => ({
     anchor: within(picks[at].anchor),
@@ -561,6 +604,7 @@ async function open() {
     high,
     wide,
     filterOf: (column) => filters[at].get(column) ?? "",
+    outline: () => outline,
 
     // `from` true keeps the anchor; a cell given is the anchor; `still`
     // leaves the view where it is.
@@ -759,6 +803,12 @@ async function open() {
         : "Not merged: another range is selected than the one asked about.";
     },
     unmerge: () => book.unmerge(at, box()),
+    // Lines named "3:6" or "B:D" made a group, or the group so named taken
+    // out, folded or opened.
+    group: (name) => book.group(at, name),
+    ungroup: (name) => book.ungroup(at, name),
+    fold: (name) => book.fold(at, name, true),
+    open: (name) => book.fold(at, name, false),
     // The app around the page takes a comment on the selection when asked.
     comments: () => void (commented = true),
     // Held up to the active cell: its row, or its column, and those before.
@@ -837,6 +887,26 @@ async function open() {
       table.dataset.sheet = book.tabs[tab].name;
     });
     hidden = hides();
+    // A group's button stands on the first line after it that shows: past
+    // what a filter hides there, and past the folded groups after it, so a
+    // folded group can always be opened. One in a folded group is not drawn.
+    const groups = book.groups(at);
+    const folded = (list) => (n) =>
+      list.some((group) => group.folded && group.from <= n && n <= group.to);
+    folds.row = folded(groups.rows);
+    folds.column = folded(groups.columns);
+    const placed = (list, show) =>
+      list.flatMap((group) => {
+        let line = group.to + 1;
+        while (!show(line)) line++;
+        return group.shut ? [] : [{ ...group, at: line }];
+      });
+    outline = {
+      rows: placed(groups.rows, shows.row),
+      columns: placed(groups.columns, shows.column),
+    };
+    const deepest = (list) => Math.max(0, ...list.map(({ depth }) => depth));
+    lanes = { rows: deepest(groups.rows), columns: deepest(groups.columns) };
     picks[at] = { anchor: seen(pick().anchor), focus: seen(pick().focus) };
     sizes = sizesOf(tables[at], book, at);
     if (kept[at].rows !== tab().rows.length)

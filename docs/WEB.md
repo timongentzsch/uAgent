@@ -213,11 +213,16 @@ the column in words and adds, changes or removes one. It also has charts:
 bars, stacked bars, lines or a pie drawn over the grid from a range, redrawn
 as its cells change. **Chart** adds one from a selection; its menu changes
 its kind or deletes it, and the mouse moves and resizes it.
+Rows or columns selected whole are grouped from their menus: a bracket
+beside the row numbers or over the letters shows each group, nested up to
+seven deep, and its button on the row or column after it folds or opens it;
+the file keeps which are folded.
 
 An `.xlsx` or `.csv` file opens in the same grid, read-only. **Save as
 sheet** writes it as a sheet beside the file, which is then edited like any
 other. Export gives a sheet as an Excel workbook, with its rules, or its
-open tab as CSV, as the cells show. From an Excel file come the cells, their
+open tab as CSV, as the cells show; a folded group's rows and columns go
+out hidden, and the groups themselves do not, nor are an Excel file's read. From an Excel file come the cells, their
 formulas, number and date patterns and column widths; merged cells, fonts,
 borders, fills and the file's own charts and conditional formats do not. A
 CSV file's cells are kept as written: only a plain number, a date or TRUE

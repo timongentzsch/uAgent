@@ -128,6 +128,31 @@ const lines = (text, font, room) => {
 const PAD = 17;
 const NARROW = 40;
 const WIDE = 400;
+// A lane of the groups' gutter, as sheet.css sets it.
+export const LANE = 16;
+// A row's or column's piece of the gutter: in each group's lane a line
+// along it, or the button of the group it follows, which lies over a line.
+const gutter = (groups, lanes, n, across) => {
+  const marks = Array.from({ length: lanes }, () =>
+    make("i", { className: "sheet-lane" }),
+  );
+  for (const group of groups)
+    if (group.at === n) {
+      const [first, last] = group.name.split(":");
+      const button = make("button", {
+        type: "button",
+        className: "sheet-fold",
+        tabIndex: -1,
+        ariaExpanded: `${!group.folded}`,
+        ariaLabel: `${across ? "Column" : "Row"}${first === last ? ` ${first}` : `s ${first} to ${last}`}`,
+        textContent: group.folded ? "+" : "−",
+      });
+      button.dataset.group = group.name;
+      marks[group.depth - 1] = button;
+    } else if (!group.folded && group.from <= n && n <= group.to)
+      marks[group.depth - 1].classList.add("sheet-along");
+  return lanes ? [make("span", { className: "sheet-lanes" }, marks)] : [];
+};
 
 // The widths of the table's columns and the heights of its rows, from what
 // the cells show: the grid is laid out from these, not by the browser, so
@@ -306,7 +331,9 @@ export function draw(table, book, sheet, filters, view) {
       drawn.classList.add("sheet-frozen");
       drawn.style.setProperty("--sheet-top", `${layout.y(line)}px`);
     }
-    drawn.append(edge(line, "row", { row: line }), ...cells);
+    const number = edge(line, "row", { row: line });
+    number.append(...gutter(view.outline.rows, view.lanes.rows, line, false));
+    drawn.append(number, ...cells);
     return drawn;
   });
   // A column of a table that can be changed has an edge to drag it wider
@@ -315,6 +342,9 @@ export function draw(table, book, sheet, filters, view) {
     edge("", "col"),
     ...view.columns.map((at) => {
       const letter = edge(letters(at), "col", { column: at });
+      letter.append(
+        ...gutter(view.outline.columns, view.lanes.columns, at, true),
+      );
       if (at <= tab.columns.length && !view.locked)
         letter.append(make("span", { className: "sheet-resize" }));
       return pin(letter, at);
@@ -333,6 +363,8 @@ export function draw(table, book, sheet, filters, view) {
     make("tbody", {}, body),
   );
   table.setAttribute("role", "grid");
+  table.style.setProperty("--sheet-gutter-x", `${LANE * view.lanes.rows}px`);
+  table.style.setProperty("--sheet-gutter-y", `${LANE * view.lanes.columns}px`);
   const first = (drawn, held) => drawn.find((at) => at > held) ?? held + 1;
   const [row, column] = [
     first(view.rows, frozen.rows),

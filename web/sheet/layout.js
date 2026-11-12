@@ -4,9 +4,10 @@
 import { CELL } from "./text.js";
 
 // `widths` and `heights` are the table's columns and rows (0 for a hidden
-// row); past them a column is CELL.width and a row `row` high, as the
-// letters' row is. `edge` is the row numbers' width.
-export function layoutOf(widths, heights, edge, row) {
+// row); past them a column is CELL.width and a row `row` high. `edge` is
+// how wide the row numbers are, `top` how high the letters (the letters'
+// row, `row` high, and the groups' gutter over it).
+export function layoutOf(widths, heights, edge, row, top = row) {
   const ends = (sizes) => {
     const all = [0];
     for (const size of sizes) all.push(all.at(-1) + size);
@@ -31,12 +32,12 @@ export function layoutOf(widths, heights, edge, row) {
   };
   const [across, down] = [ends(widths), ends(heights)];
   const x = start(across, CELL.width, edge);
-  const y = start(down, row, row);
+  const y = start(down, row, top);
   return {
     x,
     y,
     columnAt: at(across, CELL.width, edge),
-    rowAt: at(down, row, row),
+    rowAt: at(down, row, top),
     rect: ({ row, column }) => ({
       left: x(column),
       top: y(row),

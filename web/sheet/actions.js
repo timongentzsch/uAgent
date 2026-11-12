@@ -3,7 +3,7 @@
 // of it that applies there.
 
 import { headOf } from "./book.js";
-import { boxName, fromTsv, meeting } from "./text.js";
+import { boxName, fromTsv, letters, meeting } from "./text.js";
 
 const count = (n, one) => (n === 1 ? one : `${n} ${one}s`);
 const HELD = /Mac|iP/.test(navigator.platform) ? "⌘" : "Ctrl+";
@@ -70,6 +70,44 @@ export const actionsOf = (sheet, clip) => (on) => {
   const box = sheet.box();
   const merged = [...new Set(meeting(book.merges(sheet.at), box))];
   const joined = merged.length === 1 && boxName(merged[0]) === boxName(box);
+  // The selection's whole rows or columns made a group; the innermost group
+  // that holds them taken out; the innermost open one about the active cell
+  // folded, and those folded whose button it is on opened.
+  const grouping = (across) => {
+    const [kind, name, n] = across
+      ? ["column", letters, at.column]
+      : ["row", String, at.row];
+    const [from, to] = across ? [box.left, box.right] : [box.top, box.bottom];
+    const whole = across
+      ? box.top <= 1 && box.bottom >= rows.length
+      : box.left <= 1 && box.right >= columns.length;
+    const groups = sheet.outline()[`${kind}s`];
+    const said = (a, b) =>
+      a === b ? `${kind} ${name(a)}` : `${kind}s ${name(a)}–${name(b)}`;
+    const inner = (holds) =>
+      groups.filter(holds).sort((a, b) => b.depth - a.depth)[0];
+    const holding =
+      whole && inner((group) => group.from <= from && to <= group.to);
+    const open = inner(
+      (group) => !group.folded && group.from <= n && n <= group.to,
+    );
+    return [
+      whole &&
+        run(`Group ${said(from, to)}`, "group", `${name(from)}:${name(to)}`),
+      holding &&
+        run(
+          `Ungroup ${said(holding.from, holding.to)}`,
+          "ungroup",
+          holding.name,
+        ),
+      open && run(`Fold ${said(open.from, open.to)}`, "fold", open.name),
+      ...groups
+        .filter((group) => group.folded && group.at === n)
+        .map((group) =>
+          run(`Open ${said(group.from, group.to)}`, "open", group.name),
+        ),
+    ];
+  };
   // A file that is only read is copied from and filtered, nothing else.
   const changes = (items) => (sheet.locked ? [] : items);
   const groups = [
@@ -165,6 +203,10 @@ export const actionsOf = (sheet, clip) => (on) => {
           run: () => sheet.say({ type: "rules" }),
         },
       ]),
+    changes([
+      ...(row ? grouping(false) : []),
+      ...(column ? grouping(true) : []),
+    ]),
     changes([
       row && inTable && run("Freeze rows up to here", "freeze-rows"),
       column && inTable && run("Freeze columns up to here", "freeze-columns"),

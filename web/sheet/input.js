@@ -340,7 +340,7 @@ export function listen(sheet) {
     // The field keeps the focus.
     event.preventDefault();
     if (editing) commit();
-    if (event.target.closest(".sheet-resize")) return;
+    if (event.target.closest(".sheet-resize, .sheet-fold")) return;
     picked(at, event.shiftKey);
     dragging = !!(at.row && at.column);
     hold();
@@ -358,8 +358,14 @@ export function listen(sheet) {
   addEventListener("click", (event) => {
     const at = hit(event);
     const point = { x: event.clientX, y: event.clientY };
+    const fold = event.target.closest(".sheet-fold");
     if (!at) return;
-    if (event.target.closest(".sheet-more")) menu(point, actions("head"));
+    if (fold)
+      sheet.run(
+        fold.ariaExpanded === "true" ? "fold" : "open",
+        fold.dataset.group,
+      );
+    else if (event.target.closest(".sheet-more")) menu(point, actions("head"));
     else if (event.target.type === "checkbox") {
       event.preventDefault();
       toggle();

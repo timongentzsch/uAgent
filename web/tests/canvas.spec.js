@@ -1377,11 +1377,17 @@ test("a deck's slide menu adds a slide in the deck's style, and skips one: dimme
   await expect(stage.getByRole("heading", { name: "Heading" })).toBeVisible();
   await files.getByRole("button", { name: "Present" }).click();
   const presented = files.locator(".page-stage[data-presenting]");
-  await expect(presented.getByText("3 / 4")).toBeVisible();
+  // Its counter counts the slides shown, and Home and End are their ends.
+  await expect(presented.getByText("2 / 3")).toBeVisible();
   await app.keyboard.press("ArrowLeft");
-  await expect(presented.getByText("1 / 4")).toBeVisible();
+  await expect(presented.getByText("1 / 3")).toBeVisible();
   await app.keyboard.press("ArrowRight");
-  await expect(presented.getByText("3 / 4")).toBeVisible();
+  await expect(presented.getByText("2 / 3")).toBeVisible();
+  await app.keyboard.press("End");
+  await expect(presented.getByText("3 / 3")).toBeVisible();
+  await app.keyboard.press("Home");
+  await expect(presented.getByText("1 / 3")).toBeVisible();
+  await app.keyboard.press("ArrowRight");
   const [presenter] = await Promise.all([
     app.waitForEvent("popup"),
     presented.getByRole("button", { name: "Presenter view" }).click(),
@@ -1398,6 +1404,12 @@ test("a deck's slide menu adds a slide in the deck's style, and skips one: dimme
   expect(await talkFile(host.project, "02-slide.html")).not.toContain(
     'name="slide"',
   );
+  // After the last slide no other moves: the new one is made in its place.
+  await legend.getByRole("option", { name: "Slide 4" }).click();
+  await expect(count).toHaveText("4 / 4");
+  await act("Add slide after");
+  await expect(count).toHaveText("5 / 5");
+  expect((await slidesIn(host.project)).at(-1)).toBe("05-slide-2.html");
 });
 
 test("a slide's notes are typed under its stage while Edit is on, and made where it has none", async ({

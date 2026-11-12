@@ -258,7 +258,11 @@ export default function Sequence({
   const present = (on: boolean) => {
     setPresenting(on);
     setNotesShown(on && matchMedia("(orientation: portrait)").matches);
-    if (on && boards[index]?.skip) to(past(1, true));
+    // Not from a slide that is skipped: from the next one shown.
+    const shown = (from: number) =>
+      boards.findIndex((board, at) => at >= from && !board.skip);
+    if (on && boards[index]?.skip)
+      to(shown(index) >= 0 ? shown(index) : shown(0));
     if (on) stage.current?.requestFullscreen?.().catch(() => {});
     else if (document.fullscreenElement) document.exitFullscreen();
   };
@@ -302,23 +306,28 @@ export default function Sequence({
     }
     setPart(board.at ?? 0);
   };
-  // The board `by` on from the one shown. Past the last slide comes the
-  // first; a document ends at its ends; presenting passes over the slides
-  // that are skipped.
-  const past = (by: number, skipping = presenting) => {
-    if (doc) return Math.min(boards.length - 1, Math.max(0, index + by));
-    let next = index;
-    do next = (next + by + boards.length) % boards.length;
-    while (skipping && boards[next].skip && next !== index);
-    return next;
-  };
-  const step = (by: number) => index >= 0 && to(past(by));
+  // The boards stepped through and counted: all, but while presenting only
+  // the one shown and those not skipped.
+  const stops = boards.flatMap((board, at) =>
+    at === index || !(presenting && board.skip) ? [at] : [],
+  );
+  const place = stops.indexOf(index);
+  // Past the last slide comes the first; a document ends at its ends.
+  const step = (by: number) =>
+    place >= 0 &&
+    to(
+      stops[
+        doc
+          ? Math.min(stops.length - 1, Math.max(0, place + by))
+          : (place + by + stops.length) % stops.length
+      ],
+    );
   // Whether the key was one that steps; Home and End go to the ends.
   const stepKey = (key: string) => {
     const by = STEPS[key];
     if (by) step(by);
-    else if (key === "Home") to(0);
-    else if (key === "End") to(boards.length - 1);
+    else if (key === "Home") to(stops[0]);
+    else if (key === "End") to(stops[stops.length - 1]);
     else return false;
     return true;
   };
@@ -639,17 +648,17 @@ export default function Sequence({
     >
       <IconButton
         label={`Previous ${unit.toLowerCase()}`}
-        disabled={doc && index === 0}
+        disabled={doc && place === 0}
         onClick={() => step(-1)}
       >
         <ChevronLeft />
       </IconButton>
       <output>
-        {index + 1} / {boards.length}
+        {place + 1} / {stops.length}
       </output>
       <IconButton
         label={`Next ${unit.toLowerCase()}`}
-        disabled={doc && index === boards.length - 1}
+        disabled={doc && place === stops.length - 1}
         onClick={() => step(1)}
       >
         <ChevronRight />
@@ -663,11 +672,8 @@ export default function Sequence({
           busy={arranging}
           act={rearrange}
           add={async () => {
-            const { name, moves, place } = added(names, index);
-            arrange(moves, place, {
-              name,
-              text: blankSlide(await read(path)),
-            });
+            const { name, moves } = added(names, index);
+            arrange(moves, name, { name, text: blankSlide(await read(path)) });
           }}
           skip={() =>
             rewrite?.(path, (source) => skipSlide(source, !boards[index]?.skip))
@@ -1013,9 +1019,7 @@ export default function Sequence({
                     variant="secondary"
                     onClick={() =>
                       presenter(
-                        boards
-                          .filter((board) => !board.skip || board.path === path)
-                          .map((board) => board.path),
+                        stops.map((at) => boards[at].path),
                         path,
                       )
                     }

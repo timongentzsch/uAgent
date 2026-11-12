@@ -509,13 +509,14 @@ export default function Files({
   ) =>
     arranging.run(async () => {
       await blocks.flush();
+      // Room first: a slide made and then refused its place would be left.
+      if (moves.length) await api(routes.fileWrite(id), { path: dir, moves });
       if (add)
         await api(routes.fileWrite(id), {
           path: join(dir, add.name),
           text: add.text,
           create: true,
         });
-      await api(routes.fileWrite(id), { path: dir, moves });
       listing.setValue({ ...(await list(dir)), dir });
       setSeen((all) => carried(all, dir, moves));
       setFlow((current) =>

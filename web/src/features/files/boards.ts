@@ -183,14 +183,17 @@ export function duplicated(slides: string[], at: number) {
   );
 }
 
-// A new slide right after the one at `at`: the file to make, the renames
-// that give it its place, and what it is called once there.
+// A new slide right after the one at `at`: the renames that make room for
+// it, and the name of its place, under which it is then made.
 export function added(slides: string[], at: number) {
-  const name = free(slides, "slide");
+  const fresh = free(slides, "slide");
   const order = [...slides];
-  order.splice(at + 1, 0, name);
+  order.splice(at + 1, 0, fresh);
   const moves = renames(order);
-  return { name, moves, place: moves.find((move) => move.from === name)!.to };
+  return {
+    name: moves.find((move) => move.from === fresh)!.to,
+    moves: moves.filter((move) => move.from !== fresh),
+  };
 }
 
 // The slide to show once `moves` are done, of a deck showing the one at

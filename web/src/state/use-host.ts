@@ -785,7 +785,6 @@ export function useHost(
     loadErrors,
     catalogue,
     listed,
-    attention,
     upsertSession,
     snapshots,
     selected,

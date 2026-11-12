@@ -107,14 +107,6 @@
 .place-agents .thread-mark {
   display: none;
 }
-.needs-you > button {
-  width: 100%;
-  justify-content: flex-start;
-  gap: var(--gap);
-  font-size: var(--font-small);
-  font-weight: var(--weight-strong);
-  color: var(--accent);
-}
 .session-row {
   display: flex;
   align-items: center;

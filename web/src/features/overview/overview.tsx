@@ -161,7 +161,7 @@ export default function FolderOverview({
       {waiting > 0 && (
         <div class="overview-section">
           <SectionTitle>Needs you</SectionTitle>
-          <WaitingList sessions={here} folder={folder} choose={choose} />
+          <WaitingList sessions={here} choose={choose} />
         </div>
       )}
       {shells.length > 0 && (

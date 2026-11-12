@@ -1,6 +1,3 @@
-.escalation-where {
-  color: var(--muted);
-}
 .escalations {
   display: grid;
   gap: var(--gap);

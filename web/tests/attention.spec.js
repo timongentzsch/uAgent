@@ -1,5 +1,5 @@
-// What needs you, across folders: the sidebar's inbox, the tab title's count,
-// a notification's link to the decision, and a conversation's agents.
+// What needs you, across folders: the sidebar's Needs you, the tab title's
+// count, a notification's link to the decision, and a conversation's agents.
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test, expect, selectProbeModel } from "./fixtures.js";
@@ -26,7 +26,7 @@ async function waitingElsewhere(host, command, request) {
   return session;
 }
 
-test("a decision in another folder is answered from the inbox", async ({
+test("a decision in another folder waits under Needs you, listed once", async ({
   page,
   host,
   session,
@@ -34,48 +34,29 @@ test("a decision in another folder is answered from the inbox", async ({
   request,
 }) => {
   const other = await waitingElsewhere(host, command, request);
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#session=${session.id}`);
-  const inbox = page.getByRole("button", { name: "1 needs you" });
-  await expect(inbox).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "Conversations" });
+  const needs = nav.getByRole("group", { name: "Needs you" });
   await expect(page).toHaveTitle("(1) µAgent");
-  // Folded, its folder still counts its conversations, and marks the wait.
-  await page
-    .getByRole("button", { name: /^Conversations of .*elsewhere$/ })
-    .click();
-  const folded = page.locator(".place-head").filter({ hasText: "elsewhere" });
-  const mark = folded.locator('[aria-label="1 need attention"]');
-  await expect(folded.locator(".place-count")).toHaveText("(1)");
-  await expect(mark).toBeVisible();
-  await inbox.click();
-  const sheet = page.getByRole("dialog", { name: "Needs you" });
-  const waiting = sheet.getByRole("region", {
-    name: "Decisions waiting on you",
-  });
-  await expect(waiting).toContainText("elsewhere");
-  if (other.pending_prompt)
-    await expect(waiting).toContainText(other.pending_prompt);
-  await waiting.getByRole("button", { name: "Allow once" }).click();
-  await expect(inbox).toHaveCount(0);
-  await expect(mark).toHaveCount(0);
-  await expect(folded.locator(".place-count")).toHaveText("(1)");
-  await expect(page).toHaveTitle("µAgent");
-  expect(new URL(page.url()).hash).toBe(`#session=${session.id}`);
-});
+  await expect(needs.locator(".session")).toHaveCount(1);
+  await expect(
+    needs.getByRole("img", { name: "Needs your input" }),
+  ).toBeVisible();
+  await expect(nav.locator(".session")).toHaveCount(2);
+  // Its folder holds nothing else, so it has no place in the list.
+  await expect(
+    nav.getByRole("button", { name: /^Conversations of .*elsewhere$/ }),
+  ).toHaveCount(0);
 
-test("the inbox opens a waiting session", async ({
-  page,
-  host,
-  session,
-  command,
-  request,
-}) => {
-  const other = await waitingElsewhere(host, command, request);
-  await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "1 needs you" }).click();
-  const sheet = page.getByRole("dialog", { name: "Needs you" });
-  await sheet.locator(".escalation-thread").click();
-  await expect(sheet).toHaveCount(0);
-  expect(new URL(page.url()).hash).toBe(`#session=${other.id}`);
+  await needs.locator(".list-row").click();
+  await expect(page).toHaveURL(new RegExp(`#session=${other.id}$`));
+  await page.getByRole("button", { name: "Allow once" }).click();
+  await expect(needs).toHaveCount(0);
+  await expect(page).toHaveTitle("µAgent");
+  await expect(
+    nav.getByRole("button", { name: /^Conversations of .*elsewhere$/ }),
+  ).toHaveCount(1);
 });
 
 test("a notification's link opens the session at its decision", async ({

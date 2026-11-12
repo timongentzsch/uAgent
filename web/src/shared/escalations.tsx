@@ -7,32 +7,23 @@ import { Button, LoadError, Spinner } from "./ui.tsx";
 import Decision from "./decision.tsx";
 import { waiting } from "../state/attention.ts";
 import SessionName from "./session-name.tsx";
-import { folderName } from "./folder-label.tsx";
 import "./escalations.css";
 
 // Each is the session's own pending decision, answered in the session, so
 // answering here or there is the same act and the first answer wins.
 export default function WaitingList({
   sessions,
-  folder,
   choose,
 }: {
   sessions: Session[];
-  // One folder's conversations; every conversation when absent.
-  folder?: string;
   choose: (id: string) => void;
 }) {
-  const decisions = waiting(sessions, folder);
+  const decisions = waiting(sessions);
   if (!decisions.length) return null;
   return (
     <section class="escalations" aria-label="Decisions waiting on you">
       {decisions.map((item) => (
-        <Escalation
-          key={item.id}
-          item={item}
-          where={folder === undefined}
-          choose={choose}
-        />
+        <Escalation key={item.id} item={item} choose={choose} />
       ))}
     </section>
   );
@@ -58,12 +49,9 @@ function usePendingDecision(item: Session) {
 
 function Escalation({
   item,
-  where,
   choose,
 }: {
   item: Session;
-  // Name the folder and the question: the list spans folders.
-  where: boolean;
   choose: (id: string) => void;
 }) {
   const { command } = useApi();
@@ -80,13 +68,6 @@ function Escalation({
         onClick={() => choose(item.id)}
       >
         <SessionName item={item} />
-        {where && (
-          <span class="escalation-where">
-            {" "}
-            · {folderName(item.cwd)}
-            {item.pending_prompt && ` · ${item.pending_prompt}`}
-          </span>
-        )}
       </Button>
       {error ? (
         <LoadError error={error} retry={retry} />

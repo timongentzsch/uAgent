@@ -15,7 +15,6 @@ import {
   Search,
   CircleAlert,
   TriangleAlert,
-  Inbox,
   Terminal,
 } from "lucide-preact";
 import { useHostContext } from "../../state/host-context.ts";
@@ -38,9 +37,7 @@ import { Menu, MenuItem, useLongPress } from "../../shared/menu.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { plural } from "../../shared/quantities.ts";
-import { statusOf, type SessionState } from "../../state/attention.ts";
-import { SheetButton } from "../../shared/sheet.tsx";
-import WaitingList from "../../shared/escalations.tsx";
+import { statusOf, waiting, type SessionState } from "../../state/attention.ts";
 import { collapsed, placeKey, useFolding } from "./folding.ts";
 import { PinItem } from "./pins.tsx";
 import type { SelectionApi } from "../../shared/selection.ts";
@@ -61,7 +58,7 @@ const SAMPLE: Session[] = [
 }));
 
 const STATES: Partial<
-  Record<SessionState, { label: string; Icon?: typeof Inbox }>
+  Record<SessionState, { label: string; Icon?: typeof CircleAlert }>
 > = {
   waiting: { label: "Needs your input", Icon: CircleAlert },
   failed: { label: "Failed", Icon: TriangleAlert },
@@ -72,7 +69,8 @@ const STATES: Partial<
 type Entry = { item: Session; agents: Entry[] };
 
 // Places newest first. An agent whose parent is not listed is an ordinary
-// row; a workspace is a place whether or not anything is in it yet.
+// row; a workspace is a place whether or not anything is in it yet. What
+// waits on a decision is listed apart, under Needs you.
 function groupSessions(
   sessions: Session[],
   spaces: Space[] = [],
@@ -87,20 +85,26 @@ function groupSessions(
     (a, b) => (b.updated || 0) - (a.updated || 0),
   );
   const listed = new Set(sorted.map((item) => item.id));
+  const needs = new Set(waiting(sessions).map((item) => item.id));
   const entry = (item: Session): Entry => ({
     item,
     agents: sorted
       .filter(
         (agent) =>
-          agent.parent === item.id && statusOf(agent, online) !== "idle",
+          agent.parent === item.id &&
+          !needs.has(agent.id) &&
+          statusOf(agent, online) !== "idle",
       )
       .map(entry),
   });
   for (const item of sorted)
-    if (!item.parent || !listed.has(item.parent))
+    if ((!item.parent || !listed.has(item.parent)) && !needs.has(item.id))
       place(folderOf(item)).push(entry(item));
   for (const space of spaces) place(space.path);
-  return groups;
+  return {
+    groups,
+    needs: sorted.filter((item) => needs.has(item.id)).map(entry),
+  };
 }
 
 const rowsOf = ({ item, agents }: Entry): Session[] => [
@@ -120,11 +124,12 @@ function arrange(
   pins: Pin[] = [],
   terminals: TerminalInfo[] = [],
 ) {
-  const groups = [...groupSessions(sessions, spaces, online)];
+  const { groups: grouped, needs } = groupSessions(sessions, spaces, online);
+  const groups = [...grouped];
   const space = (path: string) => spaces.some((item) => item.path === path);
   const pinned = (kind: Pin["kind"], id: string) =>
     pins.some((pin) => pin.kind === kind && pin.id === id);
-  const entries = groups.flatMap(([, entries]) => entries);
+  const entries = [...needs, ...groups.flatMap(([, entries]) => entries)];
   const places = groups
     .map(
       ([path, entries]): Place => [
@@ -146,6 +151,7 @@ function arrange(
   const rest = places.filter(([path]) => !pinned("folder", path));
   return {
     top,
+    needs,
     kinds: (
       [
         ["Workspaces", rest.filter(([path]) => space(path))],
@@ -163,7 +169,7 @@ export const sessionOrder = (
   pins: Pin[] = [],
   host = "",
 ) => {
-  const { top, kinds } = arrange(sessions, spaces, online, pins);
+  const { top, needs, kinds } = arrange(sessions, spaces, online, pins);
   const rows = ([path, entries]: Place) =>
     collapsed.has(placeKey(host, path)) ? [] : entries.flatMap(rowsOf);
   return [
@@ -174,6 +180,7 @@ export const sessionOrder = (
           ? rows(pinned.place)
           : [],
     ),
+    ...needs.flatMap(rowsOf),
     ...(collapsed.has(`$host:${host}`) ? [] : kinds).flatMap(([, places]) =>
       places.flatMap(rows),
     ),
@@ -289,7 +296,6 @@ type SidebarProps = {
   navigate: (page: "chat" | "library" | "scheduled") => void;
   scheduledUnread: boolean;
   sessions: Session[];
-  needsYou: number;
   spaces: Space[];
   pins: Pin[];
   spaceMenu: (space: Space, conversations: number) => ComponentChildren;
@@ -320,7 +326,6 @@ type SidebarProps = {
 function SidebarView({
   loading,
   sessions,
-  needsYou,
   spaces,
   pins,
   spaceMenu,
@@ -355,7 +360,7 @@ function SidebarView({
   const drawing = loading && !sessions.length;
   const all = drawing ? SAMPLE : sessions;
   // Not regrouped for a selection, an unread mark or a fold.
-  const { top, kinds } = useMemo(
+  const { top, needs, kinds } = useMemo(
     () => arrange(all, drawing ? [] : spaces, online, pins, terminals || []),
     [all, drawing, spaces, online, pins, terminals],
   );
@@ -375,6 +380,7 @@ function SidebarView({
             ? pickable(pinned.place)
             : [],
       ),
+      ...needs.flatMap(rowsOf).map((item) => item.id),
       ...(collapsed.has(`$host:${host}`) ? [] : kinds).flatMap(([, places]) =>
         places.flatMap(pickable),
       ),
@@ -612,11 +618,12 @@ function SidebarView({
   );
   const list = [
     <SharedShortcuts key="shortcuts" activePins={activePins} />,
+    needs.length > 0 && group("Needs you", needs.map(conversation)),
     ...hosts.sources.map((source) =>
       source.id === host ? (
         <Fold key={source.id} name={`$host:${host}`} label={source.name}>
           {kinds.map(([kind, shown]) => group(kind, shown.map(place)))}
-          {!kinds.some(([, shown]) => shown.length) && !activePins.length && (
+          {!kinds.length && !activePins.length && !needs.length && (
             <EmptyState>
               No conversations yet. New starts one in a workspace or folder on
               this host.
@@ -665,29 +672,6 @@ function SidebarView({
           </MenuItem>
         </Menu>
       </div>
-      {needsYou > 0 && (
-        <SheetButton
-          label={`${needsYou} need${needsYou === 1 ? "s" : ""} you`}
-          heading="Needs you"
-          className="needs-you"
-          trigger={
-            <>
-              <Inbox />
-              {needsYou} need{needsYou === 1 ? "s" : ""} you
-            </>
-          }
-        >
-          {(close) => (
-            <WaitingList
-              sessions={all}
-              choose={(id) => {
-                close();
-                choose(id);
-              }}
-            />
-          )}
-        </SheetButton>
-      )}
       <div class="sidebar-sections">
         <Button
           variant="quiet"

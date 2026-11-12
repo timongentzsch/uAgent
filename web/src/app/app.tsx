@@ -158,7 +158,6 @@ function App({ host, bindResult, reading }: HostAppProps) {
     loadErrors,
     catalogue,
     listed,
-    attention,
     upsertSession,
     snapshots,
     selected,
@@ -651,7 +650,6 @@ function App({ host, bindResult, reading }: HostAppProps) {
         !!catalogue.scheduled?.runs?.some((run) => unread.has(run.session_id))
       }
       sessions={rows}
-      needsYou={attention}
       spaces={catalogue.spaces || NO_SPACES}
       pins={pins}
       spaceMenu={places.spaceMenu}

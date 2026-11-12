@@ -1,14 +1,10 @@
 import type { Session } from "../shared/types.ts";
-import { folderOf } from "../shared/display.ts";
 
-export const waiting = (sessions: Session[], folder?: string) =>
-  sessions.filter(
-    (item) =>
-      item.pending && (folder === undefined || folderOf(item) === folder),
-  );
+export const waiting = (sessions: Session[]) =>
+  sessions.filter((item) => item.pending);
 
-// How many sessions need you: the sidebar's inbox, the tab title and the
-// app badge all show this one number.
+// How many sessions need you: the tab title and the app badge show this
+// number, and the sidebar's Needs you lists them.
 export const needsYou = (sessions: Session[]) => waiting(sessions).length;
 
 export const isRunning = (item: Session, online: boolean) =>

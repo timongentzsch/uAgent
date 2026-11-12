@@ -392,8 +392,7 @@
 .sheet-offer strong {
   color: var(--text);
 }
-/* One line, cut short where the bar is; what is being saved keeps at
-   least its mark in view. */
+/* One line, cut short where the bar is. */
 .sheet-bar > .sheet-note {
   flex: 0 1 auto;
   min-width: 0;
@@ -402,10 +401,10 @@
   flex: 0 1 auto;
   min-width: var(--control);
 }
-:is(.sheet-note, .page-status) > .notice {
+:is(.sheet-note, .page-tools > .page-status) > .notice {
   white-space: nowrap;
 }
-:is(.sheet-note, .page-status) > .notice > span {
+:is(.sheet-note, .page-tools > .page-status) > .notice > span {
   overflow: hidden;
   text-overflow: ellipsis;
 }

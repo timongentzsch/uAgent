@@ -263,7 +263,7 @@ test("a formula the engine panics on is refused when entered: the sheet goes on 
   await cell("Costs", "B2").click();
   await app.keyboard.type("=XNPV(1,1)");
   await app.keyboard.press("Enter");
-  await expect(files.locator(".page-tools .notice")).toHaveText(
+  await expect(files.locator(".page-status .notice")).toHaveText(
     "Not changed: the engine cannot calculate a formula this would leave in the sheet.",
   );
   await expect(cell("Costs", "B2")).toHaveText("1200");

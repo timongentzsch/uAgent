@@ -675,10 +675,11 @@ export default function Sequence({
   const flip = (to: "select" | "edit") => enter(mode === to ? "" : to);
   // What is being saved: a block's in the row of Edit's own, anything
   // else's in the tools' row. Last there, it takes the room the tools leave,
-  // so no tool moves for it; cut short, its title says it whole.
-  const status = saved && (
-    <small class="page-status muted" title={saved.text}>
-      <Notice tone={saved.failed ? "error" : "info"}>{saved.text}</Notice>
+  // so no tool moves for it. Why something was not saved or done is said
+  // over the tools, whole: a row would cut it short.
+  const status = saved && !saved.failed && (
+    <small class="page-status muted">
+      <Notice tone="info">{saved.text}</Notice>
     </small>
   );
   const whole = doc ? "document" : kind === "deck" ? "deck" : "design";
@@ -733,6 +734,11 @@ export default function Sequence({
   );
   return (
     <div class="open-page">
+      {saved?.failed && (
+        <p class="page-notice page-status">
+          <Notice tone="error">{saved.text}</Notice>
+        </p>
+      )}
       <div class="page-tools">
         {boards.length > 1 &&
           !sheet &&

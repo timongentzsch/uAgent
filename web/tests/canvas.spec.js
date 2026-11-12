@@ -1329,7 +1329,7 @@ async function typeIn(app, files, block, press = (target) => target.click()) {
   await app.clock.install();
   await app.clock.pauseAt((await app.evaluate(() => Date.now())) + 60_000);
 }
-const saving = (files) => files.locator(".page-tools .notice");
+const saving = (files) => files.locator(".page-status .notice");
 
 for (const touch of [false, true])
   test(`what is typed in a slide is in its file when a ${touch ? "tap" : "click"} leaves the slide at once`, async ({

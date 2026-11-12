@@ -68,7 +68,7 @@ test("what is typed into a cell or the formula bar is saved to the file, and und
   // Only that cell is another in the file.
   const typed = with_(PLAN, { "<td>1200<td>": "<td>2000<td>" });
   await expect.poll(saved).toBe(typed);
-  await expect(files.locator(".page-tools .notice")).toHaveText("Saved");
+  await expect(files.locator(".page-status .notice")).toHaveText("Saved");
 
   // The formula bar shows what is being typed in the cell, and what the
   // cell holds once that is given up.
@@ -247,7 +247,7 @@ test("rows are put in and taken out, filled down and sorted: formulas follow on 
   const written = await saved();
   await cell("Tasks", "D1").getByRole("button").click();
   await menu("Sort A to Z").click();
-  await expect(files.locator(".page-tools .notice")).toHaveText(
+  await expect(files.locator(".page-status .notice")).toHaveText(
     "Not sorted: =SUM(D2:D3) cannot be moved with its cell.",
   );
   await expect(cell("Tasks", "A2")).toHaveText("Book");
@@ -400,7 +400,7 @@ test("what a filter hides is neither cleared nor deleted unseen, and a column pu
   // Its rows are not taken out while one of them is hidden.
   await app.keyboard.press("Shift+F10");
   await stage.getByRole("menuitem", { name: "Delete 3 rows" }).click();
-  await expect(files.locator(".page-tools .notice")).toHaveText(
+  await expect(files.locator(".page-status .notice")).toHaveText(
     "Clear the filter to delete these rows.",
   );
   expect(await saved()).toBe(cleared);
@@ -589,7 +589,7 @@ test("a cell written with a bare < is reported, and its tab is not edited over i
   await cell("Tasks", "A2").click();
   await app.keyboard.type("Draft");
   await app.keyboard.press("Enter");
-  await expect(files.locator(".page-tools .notice")).toHaveText(why);
+  await expect(files.locator(".page-status .notice")).toHaveText(why);
   await expect(cell("Tasks", "A2")).toHaveText("Write");
   // Another tab is edited as ever.
   await tabs.nth(1).click();
@@ -731,7 +731,7 @@ test("the grid runs on past the table: what is typed there joins it, and the fil
   await expect(at).toHaveText("Inputs!A1048576");
   await app.keyboard.type("too far");
   await app.keyboard.press("Enter");
-  await expect(files.locator(".page-tools .notice")).toHaveText(
+  await expect(files.locator(".page-status .notice")).toHaveText(
     "A1048576 is too far from the table to keep: the file would hold every row between.",
   );
   expect(await saved()).toBe(reached);
@@ -1180,7 +1180,8 @@ test("the grid reaches the spreadsheet's last row whatever a browser can scroll:
   expect(await area()).toBeLessThan(span);
 });
 
-// The notice stands last in the tools' row and takes the room they leave.
+// What is being saved stands last in the tools' row and takes the room
+// they leave; why something was not is said over them, whole.
 for (const [pane, phone] of [
   ["a docked pane", false],
   ["a phone's pane", true],
@@ -1195,12 +1196,20 @@ for (const [pane, phone] of [
     });
     const tools = files.locator(".page-tools").first();
     const notice = tools.locator(".page-status");
-    const places = () =>
-      tools.getByRole("button").evaluateAll((all) =>
-        all.map((tool) => {
-          const { left, top, width, height } = tool.getBoundingClientRect();
-          return [tool.textContent || tool.ariaLabel, left, top, width, height];
-        }),
+    const places = (line = true) =>
+      tools.getByRole("button").evaluateAll(
+        (all, line) =>
+          all.map((tool) => {
+            const { left, top, width, height } = tool.getBoundingClientRect();
+            return [
+              tool.textContent || tool.ariaLabel,
+              left,
+              line ? top : 0,
+              width,
+              height,
+            ];
+          }),
+        line,
       );
     await expect(cell("Tasks", "B2")).toBeVisible();
     await expect(notice).toHaveCount(0);
@@ -1211,19 +1220,26 @@ for (const [pane, phone] of [
     await app.keyboard.press("Enter");
     await expect(notice).toHaveText("Saved");
     expect(await places()).toEqual(bare);
-    // A refusal is longer than the row: cut short, whole in its title.
+    // A refusal is longer than the row: said over it in full, on as many
+    // lines as it needs, and the tools stand under it as they stood.
     for (let press = 0; press < 3; press++)
       await app.keyboard.press("Control+ArrowDown");
     await app.keyboard.type("x");
     await app.keyboard.press("Enter");
     const why =
       "A1048576 is too far from the table to keep: the file would hold every row between.";
-    await expect(notice).toHaveText(why);
-    await expect(notice).toHaveAttribute("title", why);
-    expect(await places()).toEqual(bare);
-    const row = await tools.boundingBox();
-    const said = await notice.boundingBox();
-    expect(said.x + said.width).toBeLessThanOrEqual(row.x + row.width);
+    const refusal = files.locator(".page-notice.page-status");
+    await expect(refusal).toHaveText(why);
+    await expect(notice).toHaveCount(0);
+    const whole = await refusal
+      .locator("span")
+      .last()
+      .evaluate((text) => text.scrollWidth <= text.clientWidth);
+    expect(whole).toBe(true);
+    await expect(refusal).toBeInViewport({ ratio: 1 });
+    const flat = (all) =>
+      all.map(([name, left, , ...size]) => [name, left, 0, ...size]);
+    expect(await places(false)).toEqual(flat(bare));
   });
 
 test("opened alone a sheet is its whole table and nothing past it", async ({
@@ -1599,7 +1615,7 @@ test("a row's number and a column's letter open what can be done to them: move, 
   await undo.click();
   await number(2).click();
   await item("Move up").click();
-  await expect(files.locator(".page-tools .notice")).toHaveText(
+  await expect(files.locator(".page-status .notice")).toHaveText(
     "A header row keeps its place.",
   );
   expect(await saved()).toBe(PLAN);

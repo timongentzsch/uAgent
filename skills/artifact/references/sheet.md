@@ -66,7 +66,8 @@ Nothing else: no merged cells, no fonts or borders, no `style`.
 
 - A rule is `condition: effects`; several are separated by `;`. Conditions:
   `= text`, `<> text`, `< 0`, `<= 0`, `> 0`, `>= 0`, `blank`, `not blank`,
-  `before today`, `after today`. Effects: a fill (`accent`, `good`, `warn`,
+  `before today`, `after today`. A value is text, a number, a percentage
+  or a date as `2027-03-01`. Effects: a fill (`accent`, `good`, `warn`,
   `bad`, `muted`), `bold`, `strike`. On the table the condition starts with
   a column's letter: `data-rule="D = Done: strike muted; C before today: bad"`.
   A later rule's fill lies over an earlier one's.

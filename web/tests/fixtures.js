@@ -550,3 +550,13 @@ export async function openRow(scope, text) {
   await expect(row).toHaveAttribute("aria-expanded", "true");
   return row.locator("..");
 }
+
+// The page opened alone from the pane, once it is at its address.
+export async function openAlone(app, files) {
+  const [alone] = await Promise.all([
+    app.waitForEvent("popup"),
+    files.getByRole("button", { name: "Open alone" }).click(),
+  ]);
+  await alone.waitForURL(/\/preview\//);
+  return alone;
+}

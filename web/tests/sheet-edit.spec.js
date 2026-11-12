@@ -9,6 +9,7 @@ import {
   selectProbeModel,
   sheet,
   writeFiles,
+  openAlone,
 } from "./fixtures.js";
 
 // Tasks with a list of statuses, a box to tick, costs and what doubles them,
@@ -960,10 +961,7 @@ test("the editor and a chart lie on their cells: under wrapped rows of long word
   await expect.poll(high).toBeLessThan(short * 3);
 
   // Alone, in the page's own type, the chart lies on its row all the same.
-  const alone = await app.context().newPage();
-  await alone.goto(
-    await files.getByRole("link", { name: "Open alone" }).getAttribute("href"),
-  );
+  const alone = await openAlone(app, files);
   await expect(alone.locator(".sheet-chart")).toBeVisible();
   expect(
     await alone.evaluate(() => {
@@ -991,10 +989,7 @@ test("opened alone a sheet is its whole table and nothing past it", async ({
       ),
     }),
   );
-  const alone = await app.context().newPage();
-  await alone.goto(
-    await files.getByRole("link", { name: "Open alone" }).getAttribute("href"),
-  );
+  const alone = await openAlone(app, files);
   await expect(alone.locator("tbody tr")).toHaveCount(300);
   await expect(alone.locator(".sheet-letters")).toHaveText("AB");
   await expect(alone.getByText("Row 300", { exact: true })).toBeVisible();

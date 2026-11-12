@@ -13,6 +13,7 @@ import {
   slide,
   viewerOf,
   writeFiles,
+  openAlone,
 } from "./fixtures.js";
 
 // A design of three pages, one of which throws as it loads.
@@ -604,16 +605,6 @@ test("a slide with text over text and a document block taller than a page say so
     /`design\/checks\/memo\.html` threw: a figure is 1000px tall, more than a page \(605px\)/,
   );
 });
-
-// The page opened alone from the pane, once it is at its address.
-async function openAlone(app, files) {
-  const [alone] = await Promise.all([
-    app.waitForEvent("popup"),
-    files.getByRole("button", { name: "Open alone" }).click(),
-  ]);
-  await alone.waitForURL(/\/preview\//);
-  return alone;
-}
 
 // A deck in decks/talk, opened from the tree: the pane, its legend, the
 // stage's page and the counter.

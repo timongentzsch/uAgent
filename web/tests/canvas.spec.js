@@ -1805,6 +1805,67 @@ test("a document's pages are the browser's: any block has its page, and a link o
   await expect.poll(() => onSheet(end)).toBe(true);
 });
 
+test("a document's forced breaks, dead links and wide lines: the pages are those it has, and a link turns to its own", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  // A5 with no margins: every page starts at the sheet's left edge.
+  const memo = join(host.project, "docs/breaks.html");
+  await writeFiles(join(host.project, "docs"), {
+    "breaks.html": paper(
+      "Breaks",
+      "<style>*{margin:0}p{height:100px}</style>" +
+        "<p>Opening.</p>" +
+        '<p style="page-break-before:always;break-after:page">Alone.</p>' +
+        '<p>Third. <a href="#nowhere">Nowhere</a> <a href="#">Top</a> <a href="#3">Digits</a></p>' +
+        `<pre>${"x".repeat(400)}</pre>` +
+        '<h2 id="3" style="break-before:left">Named three</h2>' +
+        '<blockquote><p>Quote.</p><p style="break-before:page">Second part.</p></blockquote>',
+      "a5 0mm",
+    ),
+  });
+  const files = await openFiles(app, session, "docs/breaks.html");
+  const { stage: page, count } = viewerOf(files);
+  const on = async (at, shown, cut) => {
+    await expect(count).toHaveText(`${at} / 5`);
+    await expect.poll(() => onSheet(page.getByText(shown))).toBe(true);
+    expect(await onSheet(page.getByText(cut))).toBe(false);
+  };
+  await on(1, "Opening.", "Alone.");
+  await app.keyboard.press("PageDown");
+  await on(2, "Alone.", "Third.");
+  await app.keyboard.press("PageDown");
+  await on(3, "Third.", "Named three");
+  // A link to nowhere leaves the page; one to an id of digits is no page's
+  // number; "#" is the first page.
+  await page.getByRole("link", { name: "Nowhere" }).click();
+  await on(3, "Third.", "Named three");
+  await page.getByRole("link", { name: "Digits" }).click();
+  await on(4, "Named three", "Second part.");
+  await app.keyboard.press("PageUp");
+  await on(3, "Third.", "Named three");
+  await page.getByRole("link", { name: "Top" }).click();
+  await on(1, "Opening.", "Alone.");
+
+  // A block typed in is saved as written, without what marks its breaks here.
+  await app.keyboard.press("End");
+  await on(5, "Second part.", "Quote.");
+  await app.keyboard.press("PageUp");
+  await files.getByRole("button", { name: "Edit" }).click();
+  await page.getByText("Quote.", { exact: true }).click();
+  await app.keyboard.press("End");
+  await app.keyboard.type(" More.");
+  await page.getByText("Named three").click();
+  await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
+    "Saved",
+  );
+  const { readFile } = await import("node:fs/promises");
+  expect(await readFile(memo, "utf8")).toContain(
+    '<blockquote><p>Quote. More.</p><p style="break-before:page">Second part.</p></blockquote>',
+  );
+});
+
 test("a print line that is not understood, or whose margins leave no room, says so", async ({
   page: app,
   session,
@@ -1814,6 +1875,7 @@ test("a print line that is not understood, or whose margins leave no room, says 
   await writeFiles(join(host.project, "docs"), {
     "odd.html": paper("Odd", TEXT, "a4 wide constructor 3em"),
     "card.html": paper("Card", TEXT, "90x50mm"),
+    "flat.html": paper("Flat", TEXT, "0x297mm"),
   });
   const files = await openFiles(app, session, "docs");
   const { stage: page, count } = viewerOf(files);
@@ -1828,6 +1890,11 @@ test("a print line that is not understood, or whose margins leave no room, says 
       "card.html",
       /the margins leave no room on the 90x50mm paper/,
       [90, 50, 0, 0],
+    ],
+    [
+      "flat.html",
+      /"0x297mm" in the print line is not understood/,
+      [210, 297, 25, 25],
     ],
   ]) {
     await files.getByRole("button", { name, exact: true }).click();

@@ -33,7 +33,8 @@
     for (const word of said) {
       const custom = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)mm$/.exec(word);
       const length = /^(\d+(?:\.\d+)?)(mm|cm|in|pt|px)$/.exec(word);
-      if (custom) size = [+custom[1], +custom[2]];
+      if (custom && custom[1] > 0 && custom[2] > 0)
+        size = [+custom[1], +custom[2]];
       else if (Object.hasOwn(PAPER, word)) size = PAPER[word];
       else if (word === "landscape") turned = true;
       else if (Object.hasOwn(MARGINS, word)) preset = MARGINS[word];
@@ -215,17 +216,24 @@
   const pageOf = (box) => {
     const { w, margin } = paper();
     const from = document.body.getBoundingClientRect().left;
-    return Math.floor((box.left - from) / PX_PER_MM / w + margin[3] / w);
+    const across = (box.left - from) / PX_PER_MM + margin[3];
+    return Math.floor(across / w + 0.01);
   };
-  // The page the address names: "#3", or the id of something on it.
+  // As many pages as the body's parts reach: what runs out sideways adds
+  // none. Then the page the address names ("#3", or the id of something on
+  // it); one that names nothing leaves the page shown.
   const turn = () => {
-    const { w, margin } = paper();
-    const across = document.body.scrollWidth / PX_PER_MM;
-    pages = Math.max(1, Math.round((across + margin[1] + margin[3]) / w));
+    const range = document.createRange();
+    const ends = [...document.body.childNodes].map((node) => {
+      range.selectNode(node);
+      const boxes = range.getClientRects();
+      return boxes.length ? pageOf(boxes[boxes.length - 1]) : 0;
+    });
+    pages = 1 + Math.max(0, ...ends);
     const said = decodeURIComponent(location.hash.slice(1));
     const named = /\D/.test(said) && document.getElementById(said);
     if (named) return to(named.getBoundingClientRect());
-    shown = Math.min(pages, Math.max(1, Math.floor(said) || 1)) - 1;
+    shown = Math.min(pages, Math.max(1, Math.floor(said) || shown + 1)) - 1;
     root.style.setProperty("--uagent-page", shown);
     paged?.(pages);
   };
@@ -250,15 +258,16 @@
       `margin:0!important;padding:0!important;columns:1;column-gap:${left + right}mm;column-fill:auto;` +
       `translate:calc(${move}*-1);` +
       `clip-path:inset(-${top}mm calc(${move}*-1 - ${right}mm) -${bottom}mm calc(${move} - ${left}mm))}` +
-      "[data-uagent-break=before]{break-before:column!important}[data-uagent-break=after]{break-after:column!important}}";
+      "[data-uagent-before]{break-before:column!important}[data-uagent-after]{break-after:column!important}}";
     // After the page's own, which it overrules.
     document.head.append(style);
     // A page break is a column's here, which no rule of the page's says.
+    const forced = ["page", "left", "right", "recto", "verso"];
     const breaks = () => {
       for (const part of document.body.querySelectorAll("*")) {
         const { breakBefore, breakAfter } = getComputedStyle(part);
-        if (breakBefore === "page") part.dataset.uagentBreak = "before";
-        else if (breakAfter === "page") part.dataset.uagentBreak = "after";
+        if (forced.includes(breakBefore)) part.dataset.uagentBefore = "";
+        if (forced.includes(breakAfter)) part.dataset.uagentAfter = "";
       }
       turn();
     };
@@ -268,6 +277,16 @@
     const sized = new ResizeObserver(turn);
     for (const block of document.body.children) sized.observe(block);
     addEventListener("hashchange", turn);
+    // A link to a place in the document turns to its page ("#", the first);
+    // one to nowhere does nothing.
+    addEventListener("click", (event) => {
+      const link = event.target.closest?.('a[href^="#"]');
+      if (!link || event.defaultPrevented) return;
+      event.preventDefault();
+      const name = decodeURIComponent(link.getAttribute("href").slice(1));
+      const place = name ? document.getElementById(name) : document.body;
+      if (place) to(place.getBoundingClientRect());
+    });
     // What would scroll the sheet (the caret, the focus) turns the page.
     addEventListener("scroll", () => {
       if (!scrollX && !scrollY) return;
@@ -454,10 +473,15 @@
     const was = block && before.get(block);
     if (!was || was.html === block.innerHTML) return;
     before.delete(block);
+    // Without the marks put on its parts here.
+    const clean = block.cloneNode(true);
+    for (const part of clean.querySelectorAll("*"))
+      for (const mark of ["data-uagent-before", "data-uagent-after"])
+        part.removeAttribute(mark);
     send("edit", {
       index: blocks().indexOf(block),
       before: was.text,
-      html: block.innerHTML,
+      html: clean.innerHTML,
     });
   };
   const edit = (on) => {
@@ -501,8 +525,12 @@
     }
     // A document's are counted by the page they lie on, those drawn, and
     // the current one is the `index`th of the page shown.
-    const boxes = paper() && ranges.map((range) => range.getClientRects()[0]);
-    const lies = boxes?.map((box) => (box ? pageOf(box) : -1));
+    const lies =
+      paper() &&
+      ranges.map((range) => {
+        const [box] = range.getClientRects();
+        return box ? pageOf(box) : -1;
+      });
     const current = (
       lies ? ranges.filter((_, at) => lies[at] === shown) : ranges
     )[index];

@@ -324,7 +324,7 @@ export default function Sequence({
     try {
       await saving;
       setSaved("Saved");
-      setSaves((count) => count + 1);
+      if (doc) setSaves((count) => count + 1);
     } catch (error) {
       setSaved(error instanceof Error ? error.message : "Not saved");
     }
@@ -343,7 +343,8 @@ export default function Sequence({
   const { fixed } = size;
   const sized = `&w=${size.w}&h=${size.h}`;
   // Of a file with several boards, the one shown is pictured.
-  const shownPart = boards[index]?.at === undefined ? "" : `&part=${part + 1}`;
+  const shown = boards[index]?.at;
+  const shownPart = shown === undefined ? "" : `&part=${shown + 1}`;
   const png =
     drawn &&
     info &&

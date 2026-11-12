@@ -1136,14 +1136,32 @@ test("the grid reaches the spreadsheet's last row whatever a browser can scroll:
   const [editor, active] = await boxes();
   expect(editor).toBe(active);
 
-  // Scrolled a long way up and down again, the stretch moves under the
-  // view each time a scroll rests near its end, and the view stays on its
-  // rows: each scroll moves it by just the rows scrolled.
+  // A scrollbar's thumb, which says no wheel, key or touch, rests near the
+  // stretch's end with the stretch still under it.
   const rows = 3_900;
   let row = await under();
   expect(row).toBeGreaterThan(1_048_500);
+  await page.evaluate(() => new Promise((done) => setTimeout(done, 400)));
+  await page.evaluate((_, by) => scrollBy(0, by), -10 * high);
+  row -= 10;
+  await expect.poll(under).toBe(row);
+  const held = await placed();
+  expect(held).toBeGreaterThan((span * 3) / 4);
+  await page.evaluate(() => new Promise((done) => setTimeout(done, 400)));
+  expect(await placed()).toBe(held);
+  expect(await under()).toBe(row);
+
+  // Scrolled by the wheel a long way up and down again, the stretch moves
+  // under the view each time a scroll rests near its end, and the view
+  // stays on its rows: each scroll moves it by just the rows scrolled.
   for (const way of [-1, -1, -1, -1, -1, -1, 1, 1, 1]) {
-    await page.evaluate((_, by) => scrollBy(0, by), way * rows * high);
+    await page.evaluate(
+      (_, by) => {
+        dispatchEvent(new WheelEvent("wheel"));
+        scrollBy(0, by);
+      },
+      way * rows * high,
+    );
     row += way * rows;
     await expect.poll(under).toBe(row);
     // Rested: the view is in the stretch's middle half again.

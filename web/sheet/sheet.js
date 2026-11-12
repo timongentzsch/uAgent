@@ -118,11 +118,19 @@ async function open() {
   );
   // The scroll area stands for a stretch of the grid's rows, far shorter
   // than a browser can scroll (2^24 px in some); `base` is where in the
-  // grid it starts, `tall` how far it runs. A test makes it shorter.
+  // grid it starts, `tall` how far it runs. A test makes it shorter, never
+  // shorter than a few panes.
+  const SPAN = 4_000_000;
   const long = () =>
     whole
       ? Infinity
-      : Number(root.style.getPropertyValue("--sheet-span")) || 4_000_000;
+      : Math.max(
+          3 * innerHeight,
+          Math.min(
+            SPAN,
+            Number(root.style.getPropertyValue("--sheet-span")) || SPAN,
+          ),
+        );
   let [base, tall] = [0, 0];
   // How far each tab's grid has been scrolled: it runs a pane past that, the
   // table, the selection and the charts, up to the spreadsheet's last cell.
@@ -184,13 +192,15 @@ async function open() {
     scrollTo(...to);
     led = { x: scrollX, y: scrollY };
   };
-  // The stretch lies around `view`, a place in the grid to have at the
-  // view's top: in an outer quarter of it, the stretch moves so that it is
-  // in the middle, and the scroll with it, so the view stays on its rows.
-  const stretch = (view = scrollY + base, x = scrollX) => {
+  // The stretch holds `view`, a place in the grid to have at the view's
+  // top. Asked to `centre`, with that in an outer quarter of it, the
+  // stretch moves so that it is in the middle, and the scroll with it, so
+  // the view stays on its rows: where the page itself moves the view, and
+  // where a person's scroll has come to rest, never under one going on.
+  const stretch = (view = scrollY + base, x = scrollX, centre = false) => {
     const all = layout.y(grid.rows + 1);
     const [was, at, span] = [base, view - base, long()];
-    if (at < span / 4 || at > (span * 3) / 4)
+    if (centre && (at < span / 4 || at > (span * 3) / 4))
       base = Math.round(view - span / 2);
     base = Math.max(0, Math.min(base, all - span));
     if (base !== was) drawn = { top: 1, bottom: 0, left: 1, right: 0 };
@@ -318,6 +328,7 @@ async function open() {
     stretch(
       to(top, height, y, scrollY + base, innerHeight, cell.row <= frozen.rows),
       to(left, width, x, scrollX, innerWidth, cell.column <= frozen.columns),
+      true,
     );
     follow();
   };
@@ -415,7 +426,7 @@ async function open() {
     // The view at the row's start, or the grid's: a held cell is in view
     // wherever the grid is scrolled, and would lead nowhere.
     start(grid) {
-      stretch(grid ? 0 : undefined, 0);
+      stretch(grid ? 0 : undefined, 0, true);
       follow();
     },
     // What lies over the grid is laid in it, and by its places in the page.
@@ -700,20 +711,25 @@ async function open() {
   // at the grid's end makes it a pane longer. The editor is no part of the
   // table: what is being typed stays through it.
   let scrolled = 0;
-  // Where a scroll rests in an outer quarter of the stretch, the stretch
-  // moves under the view: not while it goes on, under a scrollbar held.
-  let resting = 0;
+  // Where a scroll rests, the stretch may move under the view: one driven
+  // by a wheel, a key or a finger lifted, shortly before it began or since.
+  // A scrollbar's thumb says none of these, and held still it is no rest:
+  // the stretch would move under it.
+  let [resting, began, driven] = [0, 0, -Infinity];
+  for (const type of ["wheel", "keydown", "touchend"])
+    addEventListener(type, () => (driven = performance.now()), {
+      passive: true,
+    });
   const rested = () => {
-    const up = scrollY < long() / 4 && base > 0;
-    const down =
-      scrollY > (long() * 3) / 4 && base + tall < layout.y(grid.rows + 1);
-    if (!up && !down) return;
-    fit();
+    resting = 0;
+    if (driven < began - 300) return;
+    stretch(undefined, undefined, true);
     follow();
   };
   addEventListener(
     "scroll",
     () => {
+      if (!resting) began = performance.now();
       clearTimeout(resting);
       if (!whole) resting = setTimeout(rested, 150);
       scrolled ||= requestAnimationFrame(() => {
@@ -753,8 +769,12 @@ async function open() {
   new MutationObserver(() => {
     restyled ||= requestAnimationFrame(() => {
       restyled = 0;
+      // The view keeps its rows, which lie elsewhere at other sizes.
+      const { top } = inView();
       for (const { heights } of kept) heights.clear();
       show(at, true);
+      stretch(layout.y(top) - layout.y(frozen.rows + 1), scrollX, true);
+      follow();
     });
   }).observe(root, { attributes: true, attributeFilter: ["style"] });
   const { rest, hold, place, type, commit } = listen(sheet);

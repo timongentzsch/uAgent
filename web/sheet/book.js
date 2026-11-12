@@ -18,6 +18,7 @@ import {
   followed,
   frozenOf,
   inOrder,
+  LAST,
   letters,
   linesName,
   linesNamed,
@@ -282,15 +283,18 @@ const groupsOf = (tab) => {
           lines.from <= group.to + 1 &&
           holds(group, lines) === holds(lines, group),
       );
+    const line = lines?.across ? "column" : "row";
     const why = !lines
       ? "names no whole rows or columns"
-      : !other
-        ? undefined
-        : holds(other, lines) && holds(lines, other)
-          ? "is listed twice"
-          : lines.to < other.from || lines.from > other.to
-            ? `touches ${other.name}: leave a ${lines.across ? "column" : "row"} between`
-            : `cuts ${other.name}`;
+      : lines.to === LAST[line]
+        ? `leaves no ${line} after it for its button`
+        : !other
+          ? undefined
+          : holds(other, lines) && holds(lines, other)
+            ? "is listed twice"
+            : lines.to < other.from || lines.from > other.to
+              ? `touches ${other.name}: leave a ${line} between`
+              : `cuts ${other.name}`;
     if (why) unread.push(`group \`${text}\` ${why}`);
     else read.push({ ...lines, name: linesName(lines) });
   }

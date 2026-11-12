@@ -1677,9 +1677,9 @@ const lists = (book) => [
   book.tabs[0].attrs["data-folded"],
 ];
 
-test("a table's groups are read as listed, each as deep as those that hold it; one that names no lines, is listed twice, cuts or touches one before it, or lies too deep is reported and not drawn", async () => {
+test("a table's groups are read as listed, each as deep as those that hold it; one that names no lines, leaves no line for its button, is listed twice, cuts or touches one before it, or lies too deep is reported and not drawn", async () => {
   const book = await budget({
-    "data-group": "2:7 2:3 5:6 B:C 3:5 4:6 3:2 x A1:B2",
+    "data-group": "2:7 2:3 5:6 B:C 3:5 4:6 3:2 x A1:B2 9:1048576 E:XFD",
     "data-folded": "6:5 9:9",
   });
   assert.deepEqual(outline(book), ["2:7 1", "2:3 2", "5:6 2 folded", "B:C 1"]);
@@ -1689,6 +1689,8 @@ test("a table's groups are read as listed, each as deep as those that hold it; o
     "Costs: group `3:2` is listed twice",
     "Costs: group `x` names no whole rows or columns",
     "Costs: group `A1:B2` names no whole rows or columns",
+    "Costs: group `9:1048576` leaves no row after it for its button",
+    "Costs: group `E:XFD` leaves no column after it for its button",
     "Costs: folded `9:9` is no group",
   ]);
   const deep = await budget({
@@ -1755,6 +1757,10 @@ test("lines are grouped, ungrouped, folded and opened, each a step Undo takes ba
   assert.equal(
     await book.group(0, "4:4"),
     "Not changed: group `4:4` touches 2:3: leave a row between.",
+  );
+  assert.equal(
+    await book.group(0, "9:1048576"),
+    "Not changed: group `9:1048576` leaves no row after it for its button.",
   );
   assert.equal(await book.group(0, "B:B"), true);
   assert.deepEqual(outline(book).slice(-2), ["B:C 1", "B:B 2"]);

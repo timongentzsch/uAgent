@@ -47,4 +47,6 @@ export const ask = (request, limit = 3000, body = ANSWER) =>
     worker.on("error", () => end());
     worker.postMessage(request);
   });
-export const calculate = (tabs) => ask({ tabs });
+export const calculate = async (tabs) =>
+  (await ask({ tabs })) ??
+  "Not changed: the engine cannot calculate a formula this would leave in the sheet.";

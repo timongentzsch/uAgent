@@ -48,19 +48,24 @@ const WORKER = URL.createObjectURL(
           .then(postMessage, (error) =>
             postMessage(
               error instanceof WebAssembly.RuntimeError
-                ? undefined
-                : { error: error.message },
+                ? { panicked: true }
+                : { failed: error.message },
             ),
           );`,
     ],
     { type: "text/javascript" },
   ),
 );
-// The engine's answer (calculate.js); nothing where it panicked or did not
-// finish in time.
+// The engine's answer (calculate.js), or why there is none: it panicked,
+// did not answer in time, or failed.
 const ask = (request) =>
   new Promise((done) => {
-    const worker = new Worker(WORKER);
+    let worker;
+    try {
+      worker = new Worker(WORKER);
+    } catch (error) {
+      return done({ failed: error.message });
+    }
     let said = false;
     const shown = setTimeout(() => {
       said = true;
@@ -73,9 +78,10 @@ const ask = (request) =>
       if (said) say({ type: "calculating", on: false });
       done(answer);
     };
-    const limit = setTimeout(end, LIMIT);
+    const limit = setTimeout(() => end({ late: true }), LIMIT);
     worker.onmessage = ({ data }) => end(data);
-    worker.onerror = () => end();
+    worker.onerror = (event) =>
+      end({ failed: event.message || "the engine did not start" });
     worker.postMessage(request);
   });
 
@@ -99,7 +105,19 @@ async function open() {
   // The engine can come ready inside a ResizeObserver's report (the page
   // helper's), where a page that resizes itself raises an error.
   await new Promise((done) => setTimeout(done));
-  const CANNOT = "the engine cannot calculate it";
+  // Why the engine gave no answer, said of a change, or of the tabs opened.
+  const why = (said, opening) =>
+    said.panicked
+      ? opening
+        ? "the engine cannot calculate it"
+        : "Not changed: the engine cannot calculate a formula this would leave in the sheet."
+      : said.late
+        ? opening
+          ? `the engine has not finished calculating it after ${LIMIT / 1000} seconds`
+          : `Not changed: the engine has not finished calculating after ${LIMIT / 1000} seconds.`
+        : opening
+          ? said.failed
+          : `Not changed: the sheet could not be calculated: ${said.failed}`;
   const read = async () => {
     const answer = await fetch(`./${file}`);
     if (!answer.ok) throw new Error(`the host answered ${answer.status}`);
@@ -108,7 +126,7 @@ async function open() {
       name: title,
       csv: /\.csv$/i.test(file),
     });
-    if (!said?.tabs) throw new Error(said?.error ?? CANNOT);
+    if (!said.tabs) throw new Error(why(said, true));
     return said.tabs;
   };
   // A file that cannot be read or calculated is said in its page, which
@@ -145,15 +163,22 @@ async function open() {
             ? []
             : [{ tab: at, tabs: told.length, table }];
         });
-  const calculate = async (next) => (await ask({ tabs: next }))?.table;
-  const book = await openBook(engine, written, !!file, calculate);
-  // The app holds what the tabs will be once the changes asked for are
-  // made, and writes it if the page is left before.
+  // Before the book opens, the tabs calculated are those written.
+  let book;
+  const calculate = async (next) => {
+    const said = await ask({ tabs: next });
+    return said.table ?? why(said, !book);
+  };
+  const opened = await openBook(engine, written, !!file, calculate);
+  if (typeof opened === "string") return [unread(opened)];
+  book = opened;
+  // The app holds the tabs as the changes asked for leave them, and writes
+  // them if the page is left before they are calculated: the next open
+  // calculates them.
   const held = () => {
-    const edits = editsOf(book.ahead);
+    const edits = editsOf(book.tabs);
     say(edits.length ? { type: "held", edits } : { type: "held" });
   };
-  if (!book) return [unread(CANNOT)];
   // The tabs to choose from: a workbook's hidden sheets only calculate.
   const offered = written.flatMap((tab, at) => (tab.hidden ? [] : [at]));
   for (const figure of tables.flatMap(figuresOf)) figure.remove();
@@ -453,21 +478,27 @@ async function open() {
     return rows;
   };
 
-  // Once a frame, however fast the selection moves.
+  // Once a frame, however fast the selection moves; `now` where what the
+  // cell holds changed, before anything else is said.
   let saying = 0;
-  const tell = () => {
-    saying ||= requestAnimationFrame(() => {
-      saying = 0;
-      const { anchor } = pick();
-      say({
-        type: "cell",
-        ref: `${tab().name}!${cellName(anchor)}`,
-        raw: tab().rows[anchor.row - 1]?.cells[anchor.column - 1]?.text ?? "",
-        range: `${tab().name}!${boxName(box())}`,
-        summary: high() * wide() > 1 ? book.summary(at, box()) : undefined,
-        marks: book.state(at, anchor.row, anchor.column),
-        rules: book.rules(at, anchor.column),
-      });
+  const tell = (now) => {
+    if (now) sayCell();
+    else saying ||= requestAnimationFrame(sayCell);
+  };
+  const sayCell = () => {
+    cancelAnimationFrame(saying);
+    saying = 0;
+    const { anchor } = pick();
+    say({
+      type: "cell",
+      ref: `${tab().name}!${cellName(anchor)}`,
+      raw: tab().rows[anchor.row - 1]?.cells[anchor.column - 1]?.text ?? "",
+      // What is being typed in it goes on.
+      typing: typed(),
+      range: `${tab().name}!${boxName(box())}`,
+      summary: high() * wide() > 1 ? book.summary(at, box()) : undefined,
+      marks: book.state(at, anchor.row, anchor.column),
+      rules: book.rules(at, anchor.column),
     });
   };
   const sheet = {
@@ -534,38 +565,41 @@ async function open() {
       tell();
     },
 
-    // `asked` is what the book answers: true, false, or why not. As it is
-    // asked and once it has answered, what is held is said again, and a
-    // cell being typed in: its draft's table may be another.
+    // `asked` is what the book answers: true, false, or why not. A change
+    // shows as it is asked for, and is held; answered, what is calculated
+    // shows, or where it was refused what was before, and what is
+    // calculated goes to the file.
     async did(asked) {
-      held();
-      redraft();
-      const changed = await asked;
-      if (typeof changed === "string")
-        say({ type: "refused", message: changed });
-      if (changed === true) {
-        const edits = editsOf(book.tabs);
-        // Tabs put in or taken out (by Undo too) are a table here for each;
-        // a filter is of a column of the table.
-        if (book.tabs.length !== tables.length) retab();
-        else
-          book.tabs.forEach((tab, sheet) => {
-            for (const column of filters[sheet].keys())
-              if (column > tab.columns.length) filters[sheet].delete(column);
-          });
-        told.splice(0, Infinity, ...book.tabs.map(textOf));
-        show(Math.min(at, tables.length - 1));
-        const [undo, redo, found] = [book.canUndo(), book.canRedo(), errors()];
-        for (const edit of edits)
-          say({ type: "edit", ...edit, undo, redo, errors: found });
+      try {
+        redraw();
+        held();
+        renew();
+        const changed = await asked;
+        if (typeof changed === "string")
+          say({ type: "refused", message: changed });
+        redraw(changed === true);
+        if (changed === true) {
+          const [undo, redo, found] = [
+            book.canUndo(),
+            book.canRedo(),
+            errors(),
+          ];
+          for (const edit of editsOf(book.made))
+            say({ type: "edit", ...edit, undo, redo, errors: found });
+          told.splice(0, Infinity, ...book.made.map(textOf));
+        }
+        return changed === true;
+      } finally {
+        held();
+        renew();
       }
-      held();
-      redraft();
-      return changed === true;
     },
     run: (command, value) => sheet.did(commands[command]?.(value)),
     // The shown tab's table as text typed in the active cell would make it.
-    draft: () => book.draft(tab(), pick().anchor),
+    draft() {
+      const cut = book.draft(at, pick().anchor);
+      return cut && { tab: at, tabs: tables.length, ...cut };
+    },
     write: (text) => sheet.did(book.paste(at, pick().anchor, [[text]])),
 
     filter(column, words) {
@@ -575,32 +609,49 @@ async function open() {
     },
   };
   let commented = false;
+  // The tabs last drawn: a change shows as soon as it is made, and again
+  // with its values; tabs put in or taken out are a table here for each,
+  // and a filter is of a column of the table.
+  let shown = book.tabs;
+  const redraw = (again) => {
+    if (book.tabs === shown && !again) return;
+    shown = book.tabs;
+    if (book.tabs.length !== tables.length) retab();
+    else
+      book.tabs.forEach((tab, sheet) => {
+        for (const column of filters[sheet].keys())
+          if (column > tab.columns.length) filters[sheet].delete(column);
+      });
+    show(Math.min(at, tables.length - 1), true);
+    tell(true);
+  };
   // A row moved past one a filter hides would change the file unseen. The
   // selection goes with what it moved.
-  const carried = async (rows, columns) => {
+  const carried = (rows, columns) => {
     const [top, bottom] = [
       box().top + Math.min(rows, 0),
       box().bottom + Math.max(rows, 0),
     ];
     if (rows && [...hidden].some((row) => row >= top && row <= bottom))
       return "Clear the filter to move these rows.";
+    const was = book.tabs;
+    const changed = rows
+      ? book.moveRows(at, box().top, high(), rows)
+      : shifted(() => book.moveColumns(at, box().left, wide(), columns));
     const on = ({ row, column }) => ({
       row: row + rows,
       column: column + columns,
     });
-    const [moved, { anchor, focus }] = [tab(), picks[at]];
-    const changed = await (rows
-      ? book.moveRows(at, box().top, high(), rows)
-      : shifted(book.moveColumns(at, box().left, wide(), columns)));
-    if (changed === true)
-      picks[book.find(moved)] = { anchor: on(anchor), focus: on(focus) };
+    if (book.tabs !== was)
+      picks[at] = { anchor: on(picks[at].anchor), focus: on(picks[at].focus) };
     return changed;
   };
   // A filter is of a column by its place: with a column put in or taken
   // out before it, it would be another column's.
-  const shifted = async (asked, changing = tab()) => {
-    const changed = await asked;
-    if (changed === true) filters[book.find(changing)].clear();
+  const shifted = (change) => {
+    const was = book.tabs;
+    const changed = change();
+    if (book.tabs !== was) filters[at].clear();
     return changed;
   };
 
@@ -610,13 +661,15 @@ async function open() {
     redo: book.redo,
     // The open tab's cells go out as they show.
     xlsx: async () => {
-      const said = await ask({ tabs: book.tabs, xlsx: true });
-      return said?.xlsx
+      await book.settled();
+      const said = await ask({ tabs: book.made, xlsx: true });
+      return said.xlsx
         ? out("xlsx", said.xlsx)
-        : "Not exported: the engine cannot calculate this sheet.";
+        : `Not exported: ${why(said, true)}.`;
     },
     // The mark before it tells Excel the text is UTF-8.
-    csv: () =>
+    csv: async () => {
+      await book.settled();
       out(
         "csv",
         "\uFEFF" +
@@ -625,7 +678,8 @@ async function open() {
               row.cells.map((_, c) => book.shown(at, r + 1, c + 1)),
             ),
           ),
-      ),
+      );
+    },
     sheet: () => out("sheet", sheetText(title, book.tabs)),
     // Only what is in view is cleared.
     clear: () =>
@@ -663,10 +717,12 @@ async function open() {
       [...hidden].some((row) => row >= box().top && row <= box().bottom)
         ? "Clear the filter to delete these rows."
         : book.deleteRows(at, box().top, high()),
-    "column-left": () => shifted(book.insertColumns(at, box().left, wide())),
+    "column-left": () =>
+      shifted(() => book.insertColumns(at, box().left, wide())),
     "column-right": () =>
-      shifted(book.insertColumns(at, box().right + 1, wide())),
-    "column-delete": () => shifted(book.deleteColumns(at, box().left, wide())),
+      shifted(() => book.insertColumns(at, box().right + 1, wide())),
+    "column-delete": () =>
+      shifted(() => book.deleteColumns(at, box().left, wide())),
     // The selected rows or columns among their neighbours, selected still.
     "row-move-up": () => carried(-1, 0),
     "row-move-down": () => carried(1, 0),
@@ -848,7 +904,7 @@ async function open() {
       follow();
     });
   }).observe(root, { attributes: true, attributeFilter: ["style"] });
-  const { rest, hold, place, type, commit, redraft } = listen(sheet);
+  const { rest, hold, place, type, commit, typed, renew } = listen(sheet);
   sheet.hold = hold;
   const charts = listenCharts(sheet);
   addEventListener("message", ({ source, data }) => {

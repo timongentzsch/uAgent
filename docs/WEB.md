@@ -185,7 +185,10 @@ agent.
 **A sheet** is a workbook in one page: each table is a tab, a cell holds
 what a person would type, and the grid shows what the formulas come to. The
 engine that calculates ([IronCalc](https://www.ironcalc.com), WebAssembly)
-is installed with µAgent and loaded by the page, never by the app. The bar
+is installed with µAgent and loaded by the page, never by the app; it
+calculates in a worker of the page, so a formula it never finishes cannot
+hold the app still. A sheet it has not finished calculating in 20 seconds is
+shown as written, and a change it has not is refused, saying so. The bar
 above the grid shows what the selected cell holds; typing replaces it, and
 Enter, F2 or a double click edits it in place. A formula being typed, there
 or in the bar, is offered the functions its letters name (the arrows choose,
@@ -682,7 +685,8 @@ or a revoked device clears local UI state.
   neither the app nor the API, and its policy lets it load only from its own
   address and Google Fonts, so it cannot send its address anywhere. Under
   `~sheet/` of that address the host serves the sheet engine installed with
-  it, the same for every folder; the policy allows WebAssembly for it.
+  it, the same for every folder; the policy allows WebAssembly for it, and a
+  worker the page makes from its own blob, which keeps the page's policy.
 - The page runs under a content security policy that allows only its own
   scripts, connections and frames. Attached HTML opens sandboxed in an opaque
   origin.

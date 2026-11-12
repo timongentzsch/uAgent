@@ -327,19 +327,22 @@ test("a formula the engine never finishes is refused once its time is up; meanwh
   await app.keyboard.press("Enter");
   const status = files.locator(".page-tools .page-status");
   await expect(status).toHaveText("Calculating…");
-  // The page answers: a cell is selected, and what it shows stands.
+  // The page answers: a cell is selected; the formula, not calculated,
+  // shows blank, and what reads it as it was.
   await cell("Costs", "A2").click();
   await expect(bar.locator("output")).toHaveText("Costs!A2");
-  await expect(cell("Costs", "B2")).toHaveText("1200");
+  await expect(cell("Costs", "B2")).toHaveText("");
+  await expect(cell("Costs", "C2")).toHaveText("2400");
   expect(await stage.locator("html").evaluate(() => document.readyState)).toBe(
     "complete",
   );
   expect(await saved()).toBe(COSTS);
   await expect(files.locator(".open-page > .page-notice .notice")).toHaveText(
-    "Not changed: the engine cannot calculate a formula this would leave in the sheet.",
+    "Not changed: the engine has not finished calculating after 20 seconds.",
     { timeout: 30_000 },
   );
   await expect(status).toHaveCount(0);
+  await expect(cell("Costs", "B2")).toHaveText("1200");
   expect(await saved()).toBe(COSTS);
   // What it takes next is calculated and saved as ever.
   await cell("Costs", "B2").click();
@@ -367,9 +370,97 @@ test("a file with a formula the engine never finishes is shown as written once i
     "Calculating…",
   );
   await expect(stage.locator(".sheet-notice")).toHaveText(
-    "This sheet is shown as written: the engine cannot calculate it",
+    "This sheet is shown as written: the engine has not finished calculating it after 20 seconds",
     { timeout: 30_000 },
   );
   await expect(stage.locator("table[data-sheet] td").nth(1)).toHaveText(NEVER);
   await expect(files.locator(".page-tools .page-status")).toHaveCount(0);
+});
+
+// The engine's answers wait in the sheet's page while it is holding them,
+// and come once let go: what is typed meanwhile is typed while a change is
+// calculated, however fast the engine.
+const holdAnswers = (app) =>
+  app.addInitScript(() => {
+    if (!location.pathname.startsWith("/preview/")) return;
+    window.held = [];
+    window.Worker = class extends Worker {
+      set onmessage(take) {
+        super.onmessage = (event) =>
+          window.holding ? window.held.push(() => take(event)) : take(event);
+      }
+    };
+  });
+const holding = (stage, on) =>
+  stage.locator("html").evaluate((_, on) => {
+    window.holding = on;
+    if (!on) for (const go of window.held.splice(0)) go();
+  }, on);
+
+test("what is typed on in the formula bar while the cell written is calculated is kept, every key of it", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await holdAnswers(app);
+  const { stage, field, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    COSTS,
+  );
+  await cell("Costs", "B3").click();
+  await field.click();
+  await holding(stage, true);
+  await field.pressSequentially("=1+1");
+  await field.press("Enter");
+  // What was written stands in the bar, and what is typed on joins it.
+  await expect(field).toHaveValue("=1+1");
+  await field.pressSequentially("+2");
+  await holding(stage, false);
+  await expect(cell("Costs", "B3")).toHaveText("2");
+  await expect(field).toHaveValue("=1+1+2");
+  await field.press("Enter");
+  await expect(cell("Costs", "B3")).toHaveText("4");
+  await expect.poll(saved).toContain("=1+1+2");
+});
+
+test("what is typed on in the cells while a cell written is calculated is kept: in the next cell, and in that cell again", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await holdAnswers(app);
+  const { stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    COSTS,
+  );
+  const editor = stage.getByRole("textbox", { name: "Cell" });
+  await cell("Costs", "B3").click();
+  await holding(stage, true);
+  await app.keyboard.type("=1+1");
+  await app.keyboard.press("Enter");
+  await app.keyboard.type("7");
+  await holding(stage, false);
+  await expect(cell("Costs", "B3")).toHaveText("2");
+  await expect(editor).toHaveValue("7");
+  await app.keyboard.press("Enter");
+  await expect(cell("Costs", "B4")).toHaveText("7");
+  // Back on the cell written, F2 edits what it will hold.
+  await cell("Costs", "B3").click();
+  await holding(stage, true);
+  await app.keyboard.type("=2+2");
+  await app.keyboard.press("Enter");
+  await app.keyboard.press("ArrowUp");
+  await app.keyboard.press("F2");
+  await app.keyboard.type("+1");
+  await expect(editor).toHaveValue("=2+2+1");
+  await holding(stage, false);
+  await expect(cell("Costs", "B3")).toHaveText("4");
+  await expect(editor).toHaveValue("=2+2+1");
+  await app.keyboard.press("Enter");
+  await expect(cell("Costs", "B3")).toHaveText("5");
+  await expect.poll(saved).toContain("=2+2+1");
 });

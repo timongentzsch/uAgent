@@ -22,6 +22,8 @@ export function cellOf(said: Cell): Cell {
     type: "cell",
     ref: name(said.ref),
     raw: String(said.raw ?? "").slice(0, 8192),
+    typing:
+      typeof said.typing === "string" ? said.typing.slice(0, 8192) : undefined,
     range: name(said.range),
     summary:
       Number.isFinite(count) && Number.isFinite(sum) && Number.isFinite(average)
@@ -269,9 +271,10 @@ export function tableSaver(io: {
       last = last.then(run, run);
       return last;
     },
-    // What is being typed in a cell, or a change being calculated; nothing
-    // once it is typed no more, made or refused. The file is read meanwhile,
-    // so a closing page can write into it.
+    // What is being typed in a cell, and the changes being calculated;
+    // nothing once it is typed no more and they are made or refused. What is
+    // written so is calculated when the sheet is next opened. The file is
+    // read meanwhile, so a closing page can write into it.
     hold(path: string, edit?: () => TableEdit[]) {
       typing = edit && { path, edit };
       const run = () => read(round, path);

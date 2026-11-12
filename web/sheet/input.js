@@ -132,8 +132,8 @@ export function listen(sheet) {
     const said = drafted;
     drafted = false;
     rest();
-    // Asked for, the edit is held as a change; that draft is over, and the
-    // next has its own table.
+    // Asked for, the edit is held with the change; that draft is over, and
+    // the next has its own table.
     sheet.write(text);
     if (said) sheet.say({ type: "typing" });
     if (by) sheet.select(stepped(active(), by));
@@ -398,7 +398,7 @@ export function listen(sheet) {
         text,
         tabs: book.tabs,
         rows: cells((at) => cell(at).text),
-        from: { tab: sheet.tab(), box: sheet.box(), cut: kind === "cut" },
+        from: { sheet: sheet.at, box: sheet.box(), cut: kind === "cut" },
       };
     });
   const pasted = (text) => {
@@ -440,10 +440,16 @@ export function listen(sheet) {
     },
     type,
     commit: () => editing && commit(),
-    redraft() {
-      if (!drafted) return;
-      drafted = false;
-      draft();
+    // What is being typed, as the cell's text, or nothing.
+    typed: () => (drafted ? editor.value : undefined),
+    // Once a change is asked for or answered: a cell being typed in is said
+    // again, its table cut from the tabs as they now are; the field at rest
+    // takes what its cell now holds.
+    renew() {
+      if (editing) {
+        drafted = false;
+        draft();
+      } else if (!list) rest();
     },
   };
 }

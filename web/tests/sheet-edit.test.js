@@ -166,6 +166,7 @@ test("what the page says of its selection is taken in the shape and size expecte
     type: "cell",
     ref: "Costs!B2",
     raw: "=A2",
+    typing: "=A2+",
     range: "Costs!B2:C3",
     summary,
     marks,
@@ -179,6 +180,7 @@ test("what the page says of its selection is taken in the shape and size expecte
     cellOf({
       ref: "a`b\nc",
       raw: 7,
+      typing: 7,
       range: "x".repeat(500),
       summary: {},
       marks: { bold: "yes", fill: "a`b", format: 7, more: 1 },
@@ -189,6 +191,7 @@ test("what the page says of its selection is taken in the shape and size expecte
       type: "cell",
       ref: "abc",
       raw: "7",
+      typing: undefined,
       range: "x".repeat(80),
       summary: undefined,
       marks: {

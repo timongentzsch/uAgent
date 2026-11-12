@@ -148,6 +148,8 @@ export type PageMessage =
       type: "cell";
       ref: string;
       raw: string;
+      // What is being typed in it, which goes on.
+      typing?: string;
       range: string;
       summary?: { count: number; sum: number; average: number };
       marks?: Marks;

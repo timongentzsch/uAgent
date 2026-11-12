@@ -1079,7 +1079,7 @@ export default function Sequence({
                       setTold((was) => ({ ...was, hidden, readers }));
                     } else if (message.type === "cell") {
                       const said = cellOf(message);
-                      setTyped(undefined);
+                      setTyped(said.typing);
                       setCell(said);
                       setRuling((was) => (was === columnOf(said) ? was : ""));
                     } else if (message.type === "typing") {

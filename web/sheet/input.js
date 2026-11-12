@@ -44,9 +44,15 @@ export function listen(sheet) {
   const hold = () => editor.focus({ preventScroll: true });
   const place = (field) => {
     const box = sheet.rect(active());
+    // At rest the field keeps within the view: a browser scrolls to what
+    // holds the focus.
+    const within = (at, size, scrolled, room) =>
+      field === editor && !editing
+        ? Math.max(scrolled, Math.min(at, scrolled + room - size))
+        : at;
     Object.assign(field.style, {
-      left: `${box.left}px`,
-      top: `${box.top}px`,
+      left: `${within(box.left, box.width, scrollX, innerWidth)}px`,
+      top: `${within(box.top, box.height, scrollY, innerHeight)}px`,
       width: `${box.width}px`,
       height: `${box.height}px`,
     });

@@ -1178,6 +1178,34 @@ test("the grid reaches the spreadsheet's last row whatever a browser can scroll:
     expect(await area()).toBe(span);
   }
 
+  // Another look from the app, with higher rows, leaves the view on the
+  // row it began with.
+  const first = () =>
+    page.evaluate(() => {
+      for (let y = 0; y < innerHeight; y += 2) {
+        const row = Number(
+          document.elementFromPoint(20, y)?.closest("tr")?.cells[0].dataset.row,
+        );
+        if (row > 1) return row;
+      }
+    });
+  const began = await first();
+  await page.evaluate(() =>
+    document.documentElement.style.setProperty(
+      "--sheet-font",
+      "20px/1.6 system-ui, sans-serif",
+    ),
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.querySelector("tbody tr:nth-child(3)").offsetHeight,
+      ),
+    )
+    .toBeGreaterThan(high);
+  await page.evaluate(() => new Promise((done) => setTimeout(done, 400)));
+  expect(await first()).toBe(began);
+
   // And back to the table, where the area is as long as the grid again.
   await app.keyboard.press("Control+Home");
   await expect(bar.getByRole("status")).toHaveText("Tasks!A1");

@@ -154,7 +154,12 @@ export type PageMessage =
       summary?: { count: number; sum: number; average: number };
       marks?: Marks;
       rules?: Rule[];
+      // Whether the selection meets a merged cell.
+      merged?: boolean;
     }
+  // That merging a sheet's selection empties `count` cells that hold text,
+  // which a person is asked about first.
+  | { type: "merge"; range: string; count: number }
   // What a sheet's formula may take after `text`: the functions named by
   // its last `typed` letters, or the arguments of the call it stands in,
   // with the one reached.

@@ -17,6 +17,7 @@ import {
   frozenOf,
   LAST,
   letters,
+  meets,
   sheetText,
   spread,
   tableText,
@@ -507,6 +508,7 @@ async function open() {
       range: `${tab().name}!${boxName(box())}`,
       summary: high() * wide() > 1 ? book.summary(at, box()) : undefined,
       marks: book.state(at, anchor.row, anchor.column),
+      merged: book.merges(at).some((merge) => meets(merge, box())),
       rules: book.rules(at, anchor.column),
     });
   };
@@ -739,6 +741,18 @@ async function open() {
     "column-move-right": () => carried(0, 1),
     "column-fit": () => book.widen(at, box(), undefined),
     "clear-looks": () => book.unstyle(at, box(), hidden),
+    // The selection's cells as one. Where others than its first hold text
+    // the app asks first, and is answered with the range it asked about.
+    merge(range) {
+      const count = book.filled(at, box());
+      if (!count || range === boxName(box()))
+        return book.merge(at, box(), count);
+      if (range)
+        return "Not merged: another range is selected than the one asked about.";
+      say({ type: "merge", range: boxName(box()), count });
+      return false;
+    },
+    unmerge: () => book.unmerge(at, box()),
     // The app around the page takes a comment on the selection when asked.
     comments: () => void (commented = true),
     // Held up to the active cell: its row, or its column, and those before.

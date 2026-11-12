@@ -23,10 +23,12 @@ import {
 import {
   Actions,
   Button,
+  ConfirmModal,
   IconButton,
   Notice,
   Spinner,
 } from "../../shared/ui.tsx";
+import { plural } from "../../shared/quantities.ts";
 import { Textarea } from "../../shared/form-controls.tsx";
 import Frame, {
   type PageInfo,
@@ -277,6 +279,7 @@ export default function Sequence({
     setZoom(1);
     setCell(undefined);
     setRuling("");
+    setMerging(undefined);
     setRanged(undefined);
     setTold(UNTOLD);
   }, [src]);
@@ -324,6 +327,8 @@ export default function Sequence({
   // The column whose rules are being set: its dialog is open while the
   // active cell is in it.
   const [ruling, setRuling] = useState("");
+  // A merge that would empty cells holding text, asked about first.
+  const [merging, setMerging] = useState<{ range: string; count: number }>();
   // The table that cell's edit would make, as its page said it once, and
   // its text; and the edits of the changes the sheet is calculating. All
   // are held, to be written if the sheet is left first.
@@ -1105,6 +1110,15 @@ export default function Sequence({
                       setOffer(offerOf(message));
                     else if (message.type === "rules")
                       setRuling(sheet && !locked && cell ? columnOf(cell) : "");
+                    else if (message.type === "merge")
+                      setMerging(
+                        sheet && !locked
+                          ? {
+                              range: String(message.range).slice(0, 80),
+                              count: Number(message.count) || 0,
+                            }
+                          : undefined,
+                      );
                     else if (message.type === "refused")
                       refused(String(message.message).slice(0, 300));
                     else if (message.type === "calculating")
@@ -1221,6 +1235,19 @@ export default function Sequence({
               act={act}
               close={() => setRuling("")}
             />
+          )}
+          {merging && (
+            <ConfirmModal
+              title="Merge cells"
+              action="Merge"
+              close={() => setMerging(undefined)}
+              confirm={() => {
+                setMerging(undefined);
+                act("merge", merging.range);
+              }}
+            >
+              {`Only the top-left cell's content stays: ${plural(merging.count, "other cell")} of ${merging.range} that ${merging.count === 1 ? "holds content is" : "hold content are"} emptied. Undo brings ${merging.count === 1 ? "it" : "them"} back.`}
+            </ConfirmModal>
           )}
         </div>
         <Tweaks

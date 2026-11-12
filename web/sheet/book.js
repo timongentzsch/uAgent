@@ -197,6 +197,12 @@ const withMerges = (attrs, list) => {
   const { "data-merge": _, ...rest } = attrs;
   return list.length ? { ...attrs, "data-merge": list.join(" ") } : rest;
 };
+// The merged ranges listed but those that meet the box.
+const apart = (attrs, box) =>
+  listed(attrs).filter((text) => {
+    const merge = boxNamed(text);
+    return !merge || !meets(merge, box);
+  });
 const MOVED = "A merged cell moves whole.";
 // The merged ranges after cells moved to where `place` puts them, and the
 // first one the move would cut: its rows or columns would be apart, or its
@@ -1040,6 +1046,36 @@ export async function openBook(engine, written, locked, calculate) {
           ? commit(tabs.with(sheet, tab))
           : `Not changed: the sheet does not understand the rule ${rule.text}`)
       );
+    }),
+
+    // How many cells of the box but its top left one hold text.
+    filled: (sheet, box) => filledUnder(tabs[sheet], box).length,
+    // The box's cells as one, over the merged ranges it meets: what all but
+    // its top left cell hold is taken out, where `emptied` of them held text
+    // when the person was asked.
+    merge: queued((sheet, box, emptied) => {
+      const tab = tabs[sheet];
+      const under = new Set(filledUnder(tab, box));
+      if (!boxName(box).includes(":")) return false;
+      if (under.size !== emptied)
+        return "Not merged: its cells hold other text than when asked.";
+      const list = [...apart(tab.attrs, box), boxName(box)];
+      return commit(
+        mapCells(
+          tabs.with(sheet, { ...tab, attrs: withMerges(tab.attrs, list) }),
+          (cell, at, row, column) =>
+            at === sheet && under.has(cellName({ row, column }))
+              ? withText(cell, "")
+              : cell,
+        ),
+      );
+    }),
+    // The merged ranges the box meets, apart again: the text stays where
+    // it is.
+    unmerge: queued((sheet, box) => {
+      const tab = tabs[sheet];
+      const attrs = withMerges(tab.attrs, apart(tab.attrs, box));
+      return commit(tabs.with(sheet, { ...tab, attrs }));
     }),
 
     // A mark set on the tab's table: `data-frozen="2 B"`.

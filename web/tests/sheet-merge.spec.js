@@ -112,3 +112,51 @@ test("a merged cell is selected as one: pressed anywhere, stepped into and out o
   await expect(cell("Costs", "C3")).toHaveClass(/sheet-in/);
   await expect(cell("Costs", "B2")).not.toHaveClass(/sheet-in/);
 });
+
+test("cells are merged from the format row after a question where others hold text, unmerged from a menu, and Undo takes either back", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage, bar, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    BUDGET,
+  );
+  const merge = bar.getByRole("button", { name: "Merge cells", exact: true });
+  const undo = files.getByRole("button", { name: "Undo" });
+  const listed = (list) =>
+    BUDGET.replace(
+      'data-merge="A1:E1 B2:C2 D2:E2 A4:A203"',
+      `data-merge="${list}"`,
+    );
+  await cell("Costs", "B3").click();
+  await expect(merge).toHaveAttribute("aria-pressed", "false");
+  await app.keyboard.press("Shift+ArrowRight");
+  await merge.click();
+  const asking = app.getByRole("dialog", { name: "Merge cells" });
+  await expect(asking).toHaveText(
+    /Only the top-left cell's content stays: 1 other cell of B3:C3 that holds content is emptied\. Undo brings it back\./,
+  );
+  await asking.getByRole("button", { name: "Merge", exact: true }).click();
+  await expect(cell("Costs", "C3")).toHaveCount(0);
+  await expect(merge).toHaveAttribute("aria-pressed", "true");
+  const merged = listed("A1:E1 B2:C2 D2:E2 A4:A203 B3:C3").replace(
+    "<th>Q1<th>Q2<th>",
+    "<th>Q1<th><th>",
+  );
+  await expect.poll(saved).toBe(merged);
+  await undo.click();
+  await expect(cell("Costs", "C3")).toHaveText("Q2");
+  await expect.poll(saved).toBe(BUDGET);
+
+  // The title is unmerged from its menu: its text stays in its own cell.
+  await cell("Costs", "A1").first().click({ button: "right" });
+  await stage.getByRole("menuitem", { name: "Unmerge" }).click();
+  await expect(cell("Costs", "B1")).toHaveCount(1);
+  await expect(cell("Costs", "A1")).toHaveText("Budget 2027");
+  await expect.poll(saved).toBe(listed("B2:C2 D2:E2 A4:A203"));
+  await undo.click();
+  await expect.poll(saved).toBe(BUDGET);
+});

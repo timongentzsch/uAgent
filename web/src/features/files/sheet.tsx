@@ -14,6 +14,7 @@ import {
   PaintBucket,
   Plus,
   Redo2,
+  TableCellsMerge,
   TextAlignCenter,
   TextAlignEnd,
   TextAlignStart,
@@ -113,7 +114,8 @@ function Choice({
   );
 }
 
-// How the selection's cells look, set as the active cell shows it.
+// How the selection's cells look, set as the active cell shows it; and
+// whether they are merged, which pressed again takes apart.
 function Looks({ cell, act }: { cell?: Cell; act: Act }) {
   const { bold, italic, wrap, align, fill, ink, format } = cell?.marks ?? {};
   const Aligned = ALIGNS[align as keyof typeof ALIGNS] ?? TextAlignStart;
@@ -169,6 +171,13 @@ function Looks({ cell, act }: { cell?: Cell; act: Act }) {
         onClick={() => act("wrap")}
       >
         <TextWrap />
+      </IconButton>
+      <IconButton
+        label="Merge cells"
+        aria-pressed={!!cell?.merged}
+        onClick={() => act(cell?.merged ? "unmerge" : "merge")}
+      >
+        <TableCellsMerge />
       </IconButton>
     </>
   );

@@ -174,6 +174,7 @@ test("what the page says of its selection is taken in the shape and size expecte
       { text: "> 0: bad", row: true, condition: "> 0", effects: ["bad"] },
       { text: "glows", row: false, condition: undefined, effects: undefined },
     ],
+    merged: true,
   };
   assert.deepEqual(cellOf(said), said);
   assert.deepEqual(
@@ -185,6 +186,7 @@ test("what the page says of its selection is taken in the shape and size expecte
       summary: {},
       marks: { bold: "yes", fill: "a`b", format: 7, more: 1 },
       rules: [{ text: 7, row: 1, condition: 7, effects: "bad", more: 1 }, 0],
+      merged: 1,
       more: 1,
     }),
     {
@@ -204,6 +206,7 @@ test("what the page says of its selection is taken in the shape and size expecte
         { text: "7", row: true, condition: undefined, effects: undefined },
         { text: "", row: false, condition: undefined, effects: undefined },
       ],
+      merged: true,
     },
   );
   assert.deepEqual(cellOf({ rules: "all" }).rules, []);

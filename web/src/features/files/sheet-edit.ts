@@ -38,6 +38,7 @@ export function cellOf(said: Cell): Cell {
       ink: name(ink),
       format: name(format),
     },
+    merged: !!said.merged,
     rules: (Array.isArray(said.rules) ? said.rules : [])
       .slice(0, 100)
       .map((rule) => ({

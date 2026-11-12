@@ -3,7 +3,7 @@
 // of it that applies there.
 
 import { headOf } from "./book.js";
-import { fromTsv } from "./text.js";
+import { boxName, fromTsv, meets } from "./text.js";
 
 const count = (n, one) => (n === 1 ? one : `${n} ${one}s`);
 const HELD = /Mac|iP/.test(navigator.platform) ? "⌘" : "Ctrl+";
@@ -66,6 +66,10 @@ export const actionsOf = (sheet, clip) => (on) => {
       .map(([value, label]) => one(name, value, label, `${name}-${value}`)),
   ];
   const held = sheet.held();
+  // The merged cells the selection meets: it is merged unless it is one.
+  const box = sheet.box();
+  const merged = book.merges(sheet.at).filter((merge) => meets(merge, box));
+  const joined = merged.length === 1 && boxName(merged[0]) === boxName(box);
   // A file that is only read is copied from and filtered, nothing else.
   const changes = (items) => (sheet.locked ? [] : items);
   const groups = [
@@ -129,6 +133,10 @@ export const actionsOf = (sheet, clip) => (on) => {
       changes([
         run("Clear contents", "clear"),
         run("Clear formatting", "clear-looks"),
+        sheet.high() * sheet.wide() > 1 &&
+          !joined &&
+          run("Merge cells", "merge"),
+        merged.length > 0 && run("Unmerge", "unmerge"),
         {
           label: "Formatting",
           items: [

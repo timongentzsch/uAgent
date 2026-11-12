@@ -1427,6 +1427,61 @@ test("merged cells follow rows and columns put in, taken out and moved, and move
   );
 });
 
+test("cells are merged in one step that Undo takes back, emptying only the text the person was told of; unmerged, the text stays", async () => {
+  const book = await merged("A1:E1 B2:C2 D2:E2");
+  const list = () => book.tabs[0].attrs["data-merge"];
+  // The halves and the quarters under them, over the two merged cells.
+  const box = { top: 2, left: 2, bottom: 3, right: 5 };
+  assert.equal(book.filled(0, box), 5);
+  assert.equal(
+    await book.merge(0, box, 4),
+    "Not merged: its cells hold other text than when asked.",
+  );
+  // While it is calculated its cell shows its value, the others nothing.
+  const merging = book.merge(0, box, 5);
+  assert.deepEqual([book.shown(0, 2, 2), book.shown(0, 3, 2)], ["H1", ""]);
+  assert.equal(await merging, true);
+  assert.equal(list(), "A1:E1 B2:E3");
+  assert.deepEqual(texts(book, 0).slice(1, 3), [
+    ["", "H1", "", "", ""],
+    ["Item", "", "", "", ""],
+  ]);
+  assert.match(
+    book.table(0),
+    /^<table data-sheet="Costs" data-merge="A1:E1 B2:E3">\n/,
+  );
+  await book.copyTab(0);
+  assert.equal(book.tabs[1].attrs["data-merge"], "A1:E1 B2:E3");
+  await book.undo();
+  await book.undo();
+  assert.equal(list(), "A1:E1 B2:C2 D2:E2");
+  assert.deepEqual(texts(book, 0)[2], ["Item", "Q1", "Q2", "Q3", "Q4"]);
+  assert.equal(book.shown(0, 3, 2), "Q1");
+  // Unmerged, each cell is its own again and keeps its text.
+  assert.equal(
+    await book.unmerge(0, { top: 2, left: 3, bottom: 2, right: 4 }),
+    true,
+  );
+  assert.equal(list(), "A1:E1");
+  assert.equal(texts(book, 0)[1][1], "H1");
+  await book.unmerge(0, { top: 1, left: 1, bottom: 1, right: 1 });
+  assert.equal(book.tabs[0].attrs["data-merge"], undefined);
+
+  // Made again behind a refused change, a merge would empty other text
+  // than the person was told of: it is not made either.
+  await book.undo();
+  await book.undo();
+  const asked = [
+    book.paste(0, { row: 3, column: 2 }, [["", "=XNPV(1,2)"]]),
+    book.merge(0, box, 4),
+  ];
+  const [refused, remade] = await Promise.all(asked);
+  assert.match(refused, /A change asked for after it was not made either\.$/);
+  assert.equal(remade, false);
+  assert.equal(list(), "A1:E1 B2:C2 D2:E2");
+  assert.deepEqual(texts(book, 0)[2], ["Item", "Q1", "Q2", "Q3", "Q4"]);
+});
+
 // The engine as it is, which calculates where it is asked to anywhere
 // inside: a call of the page's that did would not return here, or panic.
 // Each change the page makes that reaches its engine, and its answer.

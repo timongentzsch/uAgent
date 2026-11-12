@@ -512,10 +512,15 @@ json Runtime::Apart(const json& command,
   if (context.empty()) {
     return {{"error", "Chrome made no context: " + CdError(reply)}};
   }
+  // A window of its own, which Chrome draws only where it is on the screen:
+  // one pixel of it is, in the screen's last corner.
   const json created =
       Call("Target.createTarget", {{"url", "about:blank"},
                                    {"browserContextId", context},
-                                   {"background", true}});
+                                   {"background", true},
+                                   {"newWindow", true},
+                                   {"left", kScreenWidth - 1},
+                                   {"top", kScreenHeight - 1}});
   const json* opened = JsonObject(created, "result");
   const std::string target = opened ? JsonValue(*opened, "targetId", "") : "";
   const json attach = target.empty()

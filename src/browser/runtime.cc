@@ -320,10 +320,12 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   const std::vector<std::string> environment = {
       "DISPLAY=" + display, "XAUTHORITY=" + authority, "HOME=" + directory_};
   unlink(RfbSocket().c_str());
+  const std::string screen =
+      std::to_string(kScreenWidth) + "x" + std::to_string(kScreenHeight);
   vnc_pid_ = Launch({"Xtigervnc",
                      display,
                      "-geometry",
-                     "1280x800",
+                     screen,
                      "-depth",
                      "24",
                      "-auth",

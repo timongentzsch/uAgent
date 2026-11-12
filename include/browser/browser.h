@@ -33,6 +33,9 @@ inline constexpr int kCdpIoMs = 10000;
 inline constexpr int kServiceStartMs = 2000;
 inline constexpr int kPingMs = 100;
 inline constexpr int kRfbSocketWaitMs = 3000;
+// The display Chrome runs on.
+inline constexpr int kScreenWidth = 1280;
+inline constexpr int kScreenHeight = 800;
 // How much of a page's text one read carries; the page script cuts there.
 inline constexpr int kPageTextChars = 12000;
 

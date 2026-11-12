@@ -203,11 +203,13 @@ changes tab), what a selection of numbers comes to, **Undo**, **Redo** and
 Cells in error are listed with **Ask agent to fix**. A grid is as large as
 its table: a new row or column is inserted, not typed past the edge.
 
-The agent can give a sheet rules, which fill, embolden or strike the cells
-or rows that meet a condition (done, overdue, below zero), and charts: bars,
-stacked bars, lines or a pie drawn over the grid from a range, redrawn as
-its cells change. **Chart** adds one from a selection; its menu changes its
-kind or deletes it, and the mouse moves and resizes it.
+A sheet has rules, which fill, embolden or strike the cells or rows that
+meet a condition (done, overdue, below zero). The agent writes them, and
+**Conditional formatting…** in a cell's or a column's menu lists those of
+the column in words and adds, changes or removes one. It also has charts:
+bars, stacked bars, lines or a pie drawn over the grid from a range, redrawn
+as its cells change. **Chart** adds one from a selection; its menu changes
+its kind or deletes it, and the mouse moves and resizes it.
 
 An `.xlsx` or `.csv` file opens in the same grid, read-only. **Save as
 sheet** writes it as a sheet beside the file, which is then edited like any

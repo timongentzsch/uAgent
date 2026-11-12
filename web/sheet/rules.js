@@ -92,10 +92,83 @@ export function readRules(said = "", width, own) {
     const test = effects !== undefined && testOf(condition.trim());
     const format = test && formatOf(effects);
     if (format)
-      rules.push({ text, column: named.column, row: !own, test, format });
+      rules.push({
+        text,
+        column: named.column,
+        row: !own,
+        test,
+        format,
+        condition: condition.trim(),
+        effects: effects.trim().split(/\s+/),
+      });
     else if (text) unread.push(text);
   }
   return { rules, unread };
+}
+
+const each = (said = "") =>
+  said
+    .split(";")
+    .map((rule) => rule.trim())
+    .filter(Boolean);
+const without = ({ "data-rule": _, ...attrs }) => attrs;
+const ruled = (attrs, rules) =>
+  rules.length ? { ...attrs, "data-rule": rules.join("; ") } : without(attrs);
+
+// A column's rules as a person sets them: the table's that test it, on the
+// row and said without its letter, then its own, on its cell. One that is
+// understood says its condition and its effects.
+export function rulesAt(tab, column) {
+  const width = tab.columns.length;
+  const said = (text, row) => {
+    const [rule] = readRules(text, width, !row && column).rules;
+    return {
+      text: row ? columnIn(text, width).rest.trim() : text,
+      row,
+      condition: rule?.condition,
+      effects: rule?.effects,
+    };
+  };
+  return [
+    ...each(tab.attrs["data-rule"])
+      .filter((text) => columnIn(text, width)?.column === column)
+      .map((text) => said(text, true)),
+    ...each(tab.columns[column - 1]?.["data-rule"]).map((text) =>
+      said(text, false),
+    ),
+  ];
+}
+
+// The tab with the rule `rulesAt` lists at `at` set to `rule`, which is
+// `{ text, row }`, or taken out without one. It keeps its place where it
+// stays on the row or on the cell; else, and past the last, it is one more.
+export function withRule(tab, column, at, rule) {
+  const width = tab.columns.length;
+  const now = rulesAt(tab, column).map((was, place) =>
+    place !== at ? was : rule?.row === was.row ? rule : undefined,
+  );
+  if (rule && !now.includes(rule)) now.push(rule);
+  const lettered = ({ text }) => `${letters(column)} ${text}`;
+  let place = 0;
+  const table = each(tab.attrs["data-rule"]).flatMap((text) => {
+    if (columnIn(text, width)?.column !== column) return [text];
+    const set = now[place++];
+    return !set ? [] : set === rule ? [lettered(set)] : [text];
+  });
+  const rest = now.slice(place).filter(Boolean);
+  const on = (row) => rest.filter((set) => set.row === row);
+  return {
+    ...tab,
+    attrs: ruled(tab.attrs, [...table, ...on(true).map(lettered)]),
+    columns: tab.columns.map((attrs, c) =>
+      c === column - 1
+        ? ruled(
+            attrs,
+            on(false).map(({ text }) => text),
+          )
+        : attrs,
+    ),
+  };
 }
 
 // The rule's formula reads the first of the rows `top` to `bottom`.

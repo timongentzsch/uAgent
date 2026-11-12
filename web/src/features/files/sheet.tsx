@@ -43,12 +43,12 @@ import type { Cell, Offer } from "./sheet-edit.ts";
 
 // A sheet's chrome around its grid, which the page draws and edits itself.
 
-type Act = (command: string, value?: string) => void;
+export type Act = (command: string, value?: string) => void;
 type Options = [string, string][];
 
 // The looks a cell may take (skills/artifact/references/sheet.md): the
 // theme's fills and text colours by name, a few number patterns.
-const COLOURS: Options = [
+export const COLOURS: Options = [
   ["Accent", "accent"],
   ["Good", "good"],
   ["Warning", "warn"],

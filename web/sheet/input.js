@@ -167,7 +167,14 @@ export function listen(sheet) {
     ];
   };
   const rowItems = () => spanItems("row", sheet.high(), "above", "below");
-  const columnItems = () => spanItems("column", sheet.wide(), "left", "right");
+  const columnItems = () => [
+    ...spanItems("column", sheet.wide(), "left", "right"),
+    // The app's dialog, on the active cell's column.
+    {
+      label: "Conditional formatting…",
+      run: () => sheet.say({ type: "rules" }),
+    },
+  ];
   const isHead = () =>
     active().row === headOf(sheet.tab()) &&
     active().column <= sheet.tab().columns.length;

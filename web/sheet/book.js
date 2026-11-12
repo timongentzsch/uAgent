@@ -2,7 +2,14 @@
 // engine reads "4.5%" as 0.045, so it only calculates and moves formulas.
 
 import { CHARTS } from "./chart.js";
-import { FILLS, readRules, ruleInput, slidRules } from "./rules.js";
+import {
+  FILLS,
+  readRules,
+  ruleInput,
+  rulesAt,
+  slidRules,
+  withRule,
+} from "./rules.js";
 import {
   boxName,
   boxNamed,
@@ -647,6 +654,32 @@ export function openBook(engine, written, locked) {
           count++;
       });
       return count;
+    },
+
+    rules: (sheet, column) => rulesAt(tabs[sheet], column),
+    // One of a column's rules set, or taken out without `rule`. For a rule
+    // of its own the table reaches the column; one that would not be
+    // understood there is not written.
+    setRule(sheet, column, at, rule) {
+      const far =
+        rule?.row === false ? { row: 1, column } : { row: 0, column: 0 };
+      const tab = withRule(
+        reaching(tabs[sheet], far.row, far.column),
+        column,
+        at,
+        rule,
+      );
+      const read =
+        !rule ||
+        rulesAt(tab, column).some(
+          ({ text, condition }) => text === rule.text && condition,
+        );
+      return (
+        tooFar(sheet, far) ??
+        (read
+          ? commit(tabs.with(sheet, tab))
+          : `The sheet does not understand the rule ${rule.text}`)
+      );
     },
 
     // A mark set on the tab's table: `data-frozen="2 B"`.

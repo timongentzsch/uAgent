@@ -58,6 +58,7 @@ import {
   offerOf,
   type TableEdit,
 } from "./sheet-edit.ts";
+import { RulesDialog } from "./sheet-rules.tsx";
 import SlideActions from "./slide-actions.tsx";
 import { type Caret, caretOf, FormatTools, LinkField } from "./format.tsx";
 import Tweaks, { type Tweak } from "./tweaks.tsx";
@@ -312,6 +313,8 @@ export default function Sequence({
   // What is being typed in the page's cell, for the formula bar to show.
   const [typed, setTyped] = useState<string>();
   const [offer, setOffer] = useState<Offer>();
+  // The rules of the active cell's column are being set.
+  const [ruling, setRuling] = useState(false);
   const [ranged, setRanged] = useState<string>();
   const [told, setTold] = useState(UNTOLD);
   const formula = useRef<HTMLInputElement>(null);
@@ -1050,6 +1053,8 @@ export default function Sequence({
                       );
                     } else if (message.type === "suggest")
                       setOffer(offerOf(message));
+                    else if (message.type === "rules")
+                      setRuling(sheet && !locked);
                     else if (message.type === "refused")
                       refused(String(message.message).slice(0, 300));
                     else if (message.type === "key") {
@@ -1145,6 +1150,9 @@ export default function Sequence({
                 comment={addToChat && (() => setRanged(cell?.range))}
               />
             </fieldset>
+          )}
+          {ruling && cell && (
+            <RulesDialog cell={cell} act={act} close={() => setRuling(false)} />
           )}
         </div>
         <Tweaks

@@ -45,6 +45,14 @@ export interface Marks {
   ink: string;
   format: string;
 }
+// A rule of a sheet's column: on the row or on the cell, and where the page
+// understands it, what it tests and what it gives.
+export interface Rule {
+  text: string;
+  row: boolean;
+  condition?: string;
+  effects?: string[];
+}
 export type PageMessage =
   | ({ type: "ready" } & PageInfo)
   // Loaded, a sheet calculated, and painted: what the frame waits for.
@@ -101,9 +109,10 @@ export type PageMessage =
   | { type: "find"; counts?: number[] }
   // A sheet's tabs and how many rows a filter hides in the one shown; and its
   // selection: the active cell ("Costs!B2"), what was typed in it and how
-  // it shows, the range ("Costs!B2:C6") and what two numbers or more in it
-  // come to.
+  // it shows, the range ("Costs!B2:C6"), what two numbers or more in it
+  // come to and its column's rules; and that their dialog is asked for.
   | { type: "sheet"; tabs: string[]; hidden: number; readers?: number }
+  | { type: "rules" }
   // What a sheet hands over when asked: itself as a workbook's bytes, its
   // open tab as CSV, or a read file as the text of a sheet to save.
   | { type: "file"; as: string; data: Uint8Array | string }
@@ -125,6 +134,7 @@ export type PageMessage =
       range: string;
       summary?: { count: number; sum: number; average: number };
       marks?: Marks;
+      rules?: Rule[];
     }
   // What a sheet's formula may take after `text`: the functions named by
   // its last `typed` letters, or the arguments of the call it stands in,

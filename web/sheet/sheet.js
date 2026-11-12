@@ -370,6 +370,7 @@ async function open() {
         range: `${tab().name}!${boxName(box())}`,
         summary: high() * wide() > 1 ? book.summary(at, box()) : undefined,
         marks: book.state(at, anchor.row, anchor.column),
+        rules: book.rules(at, anchor.column),
       });
     });
   };
@@ -571,6 +572,12 @@ async function open() {
     "tab-right": () => book.moveTab(at, 1),
     "tab-delete": () => book.dropTab(at),
     "tab-name": (name) => book.nameTab(at, String(name ?? "")),
+    // One rule of the active cell's column as the app's dialog set it, by
+    // its place among them; without a rule, that one is taken out.
+    rule(value) {
+      const { place, rule } = JSON.parse(value);
+      return book.setRule(at, pick().anchor.column, place, rule);
+    },
     // A look for the selection's cells in view; a word (Bold) is its own
     // value.
     ...Object.fromEntries(

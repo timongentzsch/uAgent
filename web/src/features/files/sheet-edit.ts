@@ -14,6 +14,7 @@ const name = (said: unknown) =>
   String(said ?? "")
     .replace(/[`\r\n]/g, "")
     .slice(0, 80);
+const line = (text: unknown) => String(text ?? "").slice(0, 200);
 export function cellOf(said: Cell): Cell {
   const { count, sum, average } = said.summary ?? {};
   const { bold, italic, wrap, align, fill, ink, format } = said.marks ?? {};
@@ -35,6 +36,19 @@ export function cellOf(said: Cell): Cell {
       ink: name(ink),
       format: name(format),
     },
+    rules: (Array.isArray(said.rules) ? said.rules : [])
+      .slice(0, 100)
+      .map((rule) => ({
+        text: line(rule?.text),
+        row: !!rule?.row,
+        condition:
+          typeof rule?.condition === "string"
+            ? line(rule.condition)
+            : undefined,
+        effects: Array.isArray(rule?.effects)
+          ? rule.effects.slice(0, 10).map(line)
+          : undefined,
+      })),
   };
 }
 
@@ -43,7 +57,6 @@ export type Offer = Extract<PageMessage, { type: "suggest" }>;
 // What the page offers a formula, each part as its kind and no longer than
 // one could be.
 export function offerOf(said: Offer): Offer {
-  const line = (text: unknown) => String(text ?? "").slice(0, 200);
   const list = (items: unknown) => (Array.isArray(items) ? items : []);
   const { name, args, at } = said.hint ?? {};
   return {

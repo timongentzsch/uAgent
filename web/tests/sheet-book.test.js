@@ -788,3 +788,46 @@ test("a chart follows the rows and columns it draws from, goes with them, and is
     "data-range": "A5:C8",
   });
 });
+
+test("a column's rule is set as one step: its cells take the look, a far column is reached for its own, and one not understood is refused", () => {
+  const book = plan();
+  const tasks = () => book.tabs[0];
+  // On the costs: one cell is over a thousand, a formula's result too.
+  assert.equal(
+    book.setRule(0, 3, 0, { text: "> 1000: bad", row: false }),
+    true,
+  );
+  assert.equal(tasks().columns[2]["data-rule"], "> 1000: bad");
+  assert.deepEqual(
+    [4, 5, 6].map((row) => book.look(0, row, 3).fill),
+    ["bad", "bad", undefined],
+  );
+  assert.deepEqual(book.rules(0, 3), [
+    { text: "> 1000: bad", row: false, condition: "> 1000", effects: ["bad"] },
+  ]);
+  // On the rows by their status, then taken out again.
+  book.setRule(0, 2, 0, { text: "= Done: strike", row: true });
+  assert.equal(tasks().attrs["data-rule"], "B = Done: strike");
+  assert.equal(book.look(0, 4, 1).strike, true);
+  book.setRule(0, 2, 0);
+  assert.equal(tasks().attrs["data-rule"], undefined);
+  for (const _ of "123") book.undo();
+  assert.equal(book.canUndo(), false);
+  assert.equal(tasks().columns[2]["data-rule"], undefined);
+  // A column past the table is reached for a rule of its own.
+  book.setRule(0, 6, 0, { text: "blank: muted", row: false });
+  assert.deepEqual(tasks().columns.slice(3), [
+    {},
+    {},
+    { "data-rule": "blank: muted" },
+  ]);
+  // Not understood, or of a column too far to test: nothing is written.
+  const before = book.table(0);
+  for (const [column, rule] of [
+    [3, { text: "> many: bad", row: false }],
+    [3, { text: "> 1: sparkle", row: true }],
+    [60, { text: "> 1: bad", row: true }],
+  ])
+    assert.match(book.setRule(0, column, 0, rule), /does not understand/);
+  assert.equal(book.table(0), before);
+});

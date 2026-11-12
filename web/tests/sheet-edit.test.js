@@ -166,6 +166,10 @@ test("what the page says of its selection is taken in the shape and size expecte
     range: "Costs!B2:C3",
     summary,
     marks,
+    rules: [
+      { text: "> 0: bad", row: true, condition: "> 0", effects: ["bad"] },
+      { text: "glows", row: false, condition: undefined, effects: undefined },
+    ],
   };
   assert.deepEqual(cellOf(said), said);
   assert.deepEqual(
@@ -175,6 +179,7 @@ test("what the page says of its selection is taken in the shape and size expecte
       range: "x".repeat(500),
       summary: {},
       marks: { bold: "yes", fill: "a`b", format: 7, more: 1 },
+      rules: [{ text: 7, row: 1, condition: 7, effects: "bad", more: 1 }, 0],
       more: 1,
     }),
     {
@@ -189,8 +194,13 @@ test("what the page says of its selection is taken in the shape and size expecte
         fill: "ab",
         format: "7",
       },
+      rules: [
+        { text: "7", row: true, condition: undefined, effects: undefined },
+        { text: "", row: false, condition: undefined, effects: undefined },
+      ],
     },
   );
+  assert.deepEqual(cellOf({ rules: "all" }).rules, []);
   assert.equal(
     cellOf({ summary: { ...summary, sum: "3" } }).summary,
     undefined,

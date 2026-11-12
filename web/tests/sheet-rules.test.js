@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readRules, ruleInput, slidRules } from "../sheet/rules.js";
+import {
+  readRules,
+  ruleInput,
+  rulesAt,
+  slidRules,
+  withRule,
+} from "../sheet/rules.js";
 
 // The formula a condition makes for the cell B2.
 const formula = (condition) =>
@@ -106,4 +112,94 @@ test("a table's rules follow their columns, and go with a column taken out", () 
     slidRules(said, 4, (column) => (column === 4 ? undefined : column)),
     "B before today: bad",
   );
+});
+
+// A tab of three columns: the table's rules, and column C's own.
+const ruled = (table, column) => ({
+  attrs: table === undefined ? {} : { "data-frozen": "1", "data-rule": table },
+  columns: [{}, {}, column === undefined ? {} : { "data-rule": column }],
+});
+
+test("a column's rules are the table's that test it, then its own, each as it is understood", () => {
+  const tab = ruled(
+    "C = Done: strike muted; B blank: warn; C glows: bad; nothing",
+    '> 1000: bold; = "a: b": good bad',
+  );
+  assert.deepEqual(rulesAt(tab, 3), [
+    {
+      text: "= Done: strike muted",
+      row: true,
+      condition: "= Done",
+      effects: ["strike", "muted"],
+    },
+    { text: "glows: bad", row: true, condition: undefined, effects: undefined },
+    {
+      text: "> 1000: bold",
+      row: false,
+      condition: "> 1000",
+      effects: ["bold"],
+    },
+    {
+      text: '= "a: b": good bad',
+      row: false,
+      condition: '= "a: b"',
+      effects: ["good", "bad"],
+    },
+  ]);
+  assert.deepEqual(
+    rulesAt(tab, 2).map(({ text }) => text),
+    ["blank: warn"],
+  );
+  // A spare column past the table has the table's rules for it, none of its own.
+  assert.deepEqual(rulesAt(ruled("E > 0: bad"), 5), [
+    { text: "> 0: bad", row: true, condition: "> 0", effects: ["bad"] },
+  ]);
+  assert.deepEqual(rulesAt(ruled(), 1), []);
+});
+
+test("one of a column's rules is set in its place, taken out, or added: the others stand as written", () => {
+  const tab = ruled(
+    "c  = Done: strike; B blank: warn; C < 0: bad",
+    "> 1: bold",
+  );
+  const set = (at, rule, of = tab) => {
+    const { attrs, columns } = withRule(of, 3, at, rule);
+    return [attrs["data-rule"], columns[2]["data-rule"]];
+  };
+  // Changed where it stood, before the other column's.
+  assert.deepEqual(set(0, { text: "= Open: good", row: true }), [
+    "C = Open: good; B blank: warn; C < 0: bad",
+    "> 1: bold",
+  ]);
+  // Taken out: the one after it stays after the other column's.
+  assert.deepEqual(set(0), ["B blank: warn; C < 0: bad", "> 1: bold"]);
+  assert.deepEqual(set(2), [
+    "c  = Done: strike; B blank: warn; C < 0: bad",
+    undefined,
+  ]);
+  // One more, on the row or on the cell, follows the last.
+  assert.deepEqual(set(3, { text: "blank: muted", row: true }), [
+    "c  = Done: strike; B blank: warn; C < 0: bad; C blank: muted",
+    "> 1: bold",
+  ]);
+  assert.deepEqual(
+    set(3, { text: "> 9: bad", row: false })[1],
+    "> 1: bold; > 9: bad",
+  );
+  // Moved from the row to the cell, and from the cell to the row.
+  assert.deepEqual(set(1, { text: "< 0: bad", row: false }), [
+    "c  = Done: strike; B blank: warn",
+    "> 1: bold; < 0: bad",
+  ]);
+  assert.deepEqual(set(2, { text: "> 1: bold", row: true }), [
+    "c  = Done: strike; B blank: warn; C < 0: bad; C > 1: bold",
+    undefined,
+  ]);
+  // With none left the attribute goes, and the others stay as they were.
+  const bare = withRule(ruled("C blank: bad"), 3, 0);
+  assert.deepEqual(bare.attrs, { "data-frozen": "1" });
+  assert.deepEqual(set(0, { text: "> 0: bad", row: true }, ruled()), [
+    "C > 0: bad",
+    undefined,
+  ]);
 });

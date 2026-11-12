@@ -107,9 +107,16 @@ std::string MetaTag(const std::string& head, const std::string& name) {
              : head.substr(open, close - open);
 }
 
-// The start of an HTML page, where its meta tags are.
+// The start of an HTML page, where its meta tags are, as they are read:
+// without its comments, and quoted one way.
 std::string Head(const fs::path& page) {
-  return ReadFile(page.string(), KiB(4)).value_or("");
+  std::string head = ReadFile(page.string(), KiB(4)).value_or("");
+  for (size_t at = 0; (at = head.find("<!--", at)) != std::string::npos;) {
+    const size_t end = head.find("-->", at);
+    head.erase(at, end == std::string::npos ? end : end - at + 3);
+  }
+  std::ranges::replace(head, '\'', '"');
+  return head;
 }
 
 // What an HTML page's head says it is: a "sheet" of tables, a "doc" on paper

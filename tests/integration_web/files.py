@@ -125,7 +125,8 @@ def test_web_files_listing_says_what_a_folder_s_pages_are(root, home, *, binary)
     paper = '<meta name="print" content="flow a4">'
     pages = {
         "decks/q3/01-cover.html": slide,
-        "decks/q3/02-plan.html": slide + '<meta name="slide" content="skip">',
+        "decks/q3/02-plan.html": slide + "<meta name='slide' content='skip'>",
+        "decks/q3/03-end.html": slide + '<!-- <meta name="slide" content="skip"> -->',
         "decks/q3/style.css": "",
         "design/onboarding/01-welcome.html": screen,
         "design/onboarding/notes.html": "<p>plain</p>",
@@ -154,14 +155,19 @@ def test_web_files_listing_says_what_a_folder_s_pages_are(root, home, *, binary)
                 }
                 return value["kind"], kinds
 
-            # A slide's head may leave it out of what is presented.
+            # A slide's head may leave it out of what is presented, quoted either
+            # way; a meta in a comment says nothing.
             status, body, _ = client.request(
                 f"/api/sessions/{session['id']}/files?{urlencode({'list': 'decks/q3'})}"
             )
             skipped = [e["name"] for e in json.loads(body)["entries"] if e.get("skip")]
             assert_true(skipped == ["02-plan.html"], body)
             assert_true(
-                listed("decks/q3") == ("deck", {"01-cover.html": "slide", "02-plan.html": "slide"}),
+                listed("decks/q3")
+                == (
+                    "deck",
+                    dict.fromkeys(("01-cover.html", "02-plan.html", "03-end.html"), "slide"),
+                ),
                 listed("decks/q3"),
             )
             # One page with an artboard makes a design; other HTML is its page too.

@@ -174,7 +174,7 @@ const filledUnder = (tab, box) => {
 const mergesOf = (tab) => {
   const merges = mergesBy();
   const unread = [];
-  for (const text of listed(tab.attrs)) {
+  for (const [place, text] of listed(tab.attrs).entries()) {
     const box = boxNamed(text);
     const over = box && meeting(merges, box).next().value;
     const [under] = box && !over ? filledUnder(tab, box) : [];
@@ -188,7 +188,7 @@ const mergesOf = (tab) => {
     if (!why) addMerge(merges, box);
     else
       unread.push({
-        name: box && boxName(box),
+        place,
         said: `merge \`${text}\` ${why}`,
         refused: under
           ? `Not changed: ${under} lies under the merged cell ${boxName(box)}.`
@@ -680,13 +680,18 @@ export async function openBook(engine, written, locked, calculate) {
       return tableText(cut) === tableText(tabs[at]) ? tabs[at] : cut;
     });
     const changed = next.filter((tab, at) => tab !== tabs[at]);
-    // No text goes under a merged cell: a change that leaves a merged range
-    // undrawn that was drawn is refused. Moved cells take their merged
-    // ranges along.
+    // No text goes under a merged cell: a change is refused where it leaves
+    // one of a tab's merged ranges as written, in its place in the list,
+    // drawn before and not after. A change that moves cells takes their
+    // ranges along, and a merge or an unmerge covers none.
     const covered = next.flatMap((tab, at) => {
-      if (tab === tabs[at]) return [];
-      const drawn = new Set(mergesFor(tabs[at]).merges.all.map(boxName));
-      return mergesFor(tab).unread.filter(({ name }) => drawn.has(name));
+      const [was, now] = [listed(tabs[at].attrs), listed(tab.attrs)];
+      const undrawn = new Set(
+        mergesFor(tabs[at]).unread.map(({ place }) => place),
+      );
+      return mergesFor(tab).unread.filter(
+        ({ place }) => was[place] === now[place] && !undrawn.has(place),
+      );
     });
     const [refused] = locked
       ? [LOCKED]

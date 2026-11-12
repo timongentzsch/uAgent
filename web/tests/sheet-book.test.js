@@ -1384,9 +1384,25 @@ test("no text goes under a merged cell: a paste or fill there is refused; one th
     await traded.paste(0, { row: 2, column: 2 }, [[""], ["Y"]]),
     "Not changed: B3 lies under the merged cell A3:B3.",
   );
-  // The one that covers text moves along with it.
+  // The one that covers text moves along with it, and may take the name
+  // the other had.
   assert.equal(await traded.insertColumns(0, 1, 1), true);
   assert.deepEqual(traded.errors(), ["Costs: merge `B2:C2` covers text in C2"]);
+  await traded.undo();
+  assert.equal(await traded.insertRows(0, 2, 1), true);
+  assert.equal(traded.tabs[0].attrs["data-merge"], "A3:B3 A4:B4");
+  // A range written twice is drawn once and stops nothing.
+  const twice = await open([
+    {
+      ...tab("Costs", [
+        ["#Item", "#Note"],
+        ["Rent", ""],
+      ]),
+      attrs: { "data-merge": "A2:B2 a2:b2" },
+    },
+  ]);
+  const box = { top: 1, left: 1, bottom: 2, right: 2 };
+  assert.equal(await twice.style(0, box, "bold", "bold", new Set()), true);
 });
 
 test("merged cells follow rows and columns put in, taken out and moved, and move whole or not at all; a sort carries one along its row and refuses one across rows", async () => {

@@ -35,6 +35,11 @@ export function listen(sheet) {
     sheet.tab().rows[row - 1]?.cells[column - 1] ?? { text: "" };
   const columnOf = (at = active()) => sheet.tab().columns[at.column - 1] ?? {};
   const inBody = (at) => at.row > headOf(sheet.tab());
+  // The table's last cell: the first, where it holds none.
+  const last = () => ({
+    row: sheet.tab().rows.length || 1,
+    column: sheet.tab().columns.length || 1,
+  });
   const hold = () => editor.focus({ preventScroll: true });
   const place = (field) => {
     const box = cellAt(sheet.table(), active())?.getBoundingClientRect();
@@ -144,7 +149,9 @@ export function listen(sheet) {
   };
   const rowItems = () => spanItems("row", sheet.high(), "above", "below");
   const columnItems = () => spanItems("column", sheet.wide(), "left", "right");
-  const isHead = () => active().row === headOf(sheet.tab());
+  const isHead = () =>
+    active().row === headOf(sheet.tab()) &&
+    active().column <= sheet.tab().columns.length;
   // A file that is only read keeps its filter and no other command.
   const menu = (at, items) => {
     const shown = items.filter(Boolean);
@@ -169,11 +176,15 @@ export function listen(sheet) {
     const held = event.ctrlKey || event.metaKey;
     const letter = held && key.toLowerCase();
     const { anchor, focus } = sheet.pick();
-    // End and all go to the table's last cell; the arrows run on past it.
-    const last = {
-      row: sheet.tab().rows.length || 1,
-      column: sheet.tab().columns.length || 1,
-    };
+    const end = last();
+    // With Ctrl an arrow stops at the table's last row or column; from
+    // there, or from outside the table, it runs to the grid's.
+    const run = (by) =>
+      focus.row <= end.row &&
+      focus.column <= end.column &&
+      (by.row > 0 ? focus.row < end.row : focus.column < end.column)
+        ? { rows: end.row, columns: end.column }
+        : sheet.size();
     const way = event.shiftKey ? -1 : 1;
     if (editing) {
       if (key === "Enter") commit({ row: way, column: 0 });
@@ -188,7 +199,12 @@ export function listen(sheet) {
     } else if (ARROWS[key])
       sheet.select(
         held
-          ? edgeFrom((at) => !!cell(at).text, sheet.size(), focus, ARROWS[key])
+          ? edgeFrom(
+              (at) => !!cell(at).text,
+              run(ARROWS[key]),
+              focus,
+              ARROWS[key],
+            )
           : stepped(focus, ARROWS[key]),
         event.shiftKey,
       );
@@ -199,7 +215,7 @@ export function listen(sheet) {
       sheet.select({ row: held ? 1 : focus.row, column: 1 }, event.shiftKey);
     else if (key === "End")
       sheet.select(
-        { row: held ? last.row : focus.row, column: last.column },
+        { row: held ? end.row : focus.row, column: end.column },
         event.shiftKey,
       );
     else if (key === "PageUp" || key === "PageDown") {
@@ -215,7 +231,7 @@ export function listen(sheet) {
     else if (letter === "z") sheet.run(event.shiftKey ? "redo" : "undo");
     else if (letter === "y") sheet.run("redo");
     else if (letter === "d") sheet.run("fill-down");
-    else if (letter === "a") sheet.select(last, { row: 1, column: 1 }, true);
+    else if (letter === "a") sheet.select(end, { row: 1, column: 1 }, true);
     else if (key === " " && isBox()) toggle();
     else if (key === "ContextMenu" || (event.shiftKey && key === "F10"))
       menu(under(), cellItems());
@@ -240,17 +256,17 @@ export function listen(sheet) {
     // The field keeps the focus.
     event.preventDefault();
     if (editing) commit();
-    const { rows, columns } = sheet.size();
+    // A row's number or a column's letter selects it across the table.
     if (at.row && at.column) sheet.select(at, event.shiftKey);
     else if (at.row)
       sheet.select(
-        { row: at.row, column: columns },
+        { row: at.row, column: last().column },
         { row: at.row, column: 1 },
         true,
       );
     else if (at.column)
       sheet.select(
-        { row: rows, column: at.column },
+        { row: last().row, column: at.column },
         { row: 1, column: at.column },
         true,
       );
@@ -342,5 +358,5 @@ export function listen(sheet) {
     if (own?.from.cut) copied = undefined;
   });
 
-  return { rest, hold };
+  return { rest, hold, typing: () => editing };
 }

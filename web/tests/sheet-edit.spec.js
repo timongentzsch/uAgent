@@ -220,6 +220,21 @@ test("the keys move and stretch the selection, Delete clears it, and a column is
     await app.keyboard.press(key);
     await expect(at).toHaveText(`Tasks!${ref}`);
   }
+  // Inside the table Ctrl and an arrow stop at its last row, stretching the
+  // selection too; from there they run on to the grid's last.
+  await cell("Tasks", "A2").click();
+  await app.keyboard.press("Control+Shift+ArrowDown");
+  await expect(stage.locator(".sheet-in")).toHaveCount(4);
+  await cell("Tasks", "A5").click();
+  const drawn = await stage
+    .locator('table[data-sheet="Tasks"] tbody tr')
+    .count();
+  expect(drawn).toBeGreaterThan(5);
+  await app.keyboard.press("Control+ArrowDown");
+  await expect(at).toHaveText(`Tasks!A${drawn}`);
+  await app.keyboard.press("Control+ArrowUp");
+  await expect(at).toHaveText("Tasks!A5");
+  await cell("Tasks", "A3").click();
   await app.keyboard.press("Shift+ArrowRight");
   await expect(stage.locator(".sheet-in")).toHaveText(["Book", "To do"]);
   await app.keyboard.press("Delete");
@@ -621,15 +636,41 @@ test("the grid runs on past the table: what is typed there joins it, and the fil
       "\n<tr><td><td>=B2*2<td><td><td>",
   });
   await expect.poll(saved).toBe(reached);
-  // Scrolled to its end the grid has more rows to show.
+  // Scrolled to its end the grid has more rows to show, but not under a
+  // cell being typed in, whose text a new grid would drop.
   const rows = () =>
     stage.locator('table[data-sheet="Inputs"] tbody tr').count();
+  const toEnd = () =>
+    stage
+      .locator("html")
+      .evaluate((root) => scrollTo(root.scrollWidth, root.scrollHeight));
   const before = await rows();
   expect(before).toBeGreaterThan(7);
-  await stage
-    .locator("html")
-    .evaluate((root) => scrollTo(0, root.scrollHeight));
+  await cell("Inputs", "A9").click();
+  await app.keyboard.type("kept");
+  await toEnd();
+  await stage.locator("html").evaluate(() => scrollTo(0, 0));
+  expect(await rows()).toBe(before);
+  await expect(stage.locator("input.sheet-editor")).toHaveValue("kept");
+  await app.keyboard.press("Escape");
+  await toEnd();
   await expect.poll(rows).toBeGreaterThan(before);
+  // It ends 200 rows and 26 columns past the table, however far it is
+  // scrolled; back at the top it is a pane again.
+  const size = async () => {
+    await toEnd();
+    return [
+      await rows(),
+      (await stage
+        .locator('table[data-sheet="Inputs"] .sheet-letters th')
+        .count()) - 1,
+    ];
+  };
+  await expect.poll(size).toEqual([7 + 200, 5 + 26]);
+  await stage.locator("html").evaluate(() => scrollTo(0, 0));
+  await tabs.nth(0).click();
+  await tabs.nth(1).click();
+  await expect.poll(rows).toBeLessThan(before + 10);
   // Cleared, what was reached is given back; Undo takes back the rest.
   const less = with_(PLAN, {
     "<tr><th>Name<th>Value\n<tr><td>Budget<td>=Tasks!D5":
@@ -653,6 +694,76 @@ test("the grid runs on past the table: what is typed there joins it, and the fil
   await expect(cell("Inputs", "E2")).toHaveText("x");
   await expect(cell("Inputs", "B7")).toHaveText("19,801.00");
   expect(await saved()).toBe(reached);
+});
+
+test("past the table: a row or column is selected across the table only, a spare header sorts and filters nothing, and a filter stays when the table widens", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    PLAN,
+  );
+  const picked = stage.locator(".sheet-in");
+  const edge = (row) =>
+    stage.locator(`table[data-sheet="Tasks"] [data-row="${row}"].sheet-edge`);
+  // Five columns and five rows, whatever the grid shows beyond them.
+  await edge(2).click();
+  await expect(picked).toHaveCount(5);
+  await app.keyboard.press("Escape");
+  await edge(9).click();
+  await expect(picked).toHaveCount(5);
+  await app.keyboard.press("Escape");
+  await stage.locator('.sheet-letters [data-column="2"]').click();
+  await expect(picked).toHaveCount(5);
+  await app.keyboard.press("Escape");
+  // The header row's spare cell is no header of a column.
+  await cell("Tasks", "G1").click({ button: "right" });
+  await expect(
+    stage.getByRole("menuitem", { name: "Insert chart" }),
+  ).toBeVisible();
+  await expect(stage.getByRole("menuitem", { name: /^Sort/ })).toHaveCount(0);
+  await expect(stage.getByRole("searchbox")).toHaveCount(0);
+  await app.keyboard.press("Escape");
+  // A filter is kept when a spare column is typed in, and when it is cut.
+  await cell("Tasks", "B1").getByRole("button").click();
+  const words = stage.getByRole("searchbox", { name: "Filter: contains" });
+  await words.fill("do");
+  await words.press("Enter");
+  await expect(files.locator(".sheet-note")).toHaveText("1 row hidden");
+  await cell("Tasks", "G2").click();
+  await app.keyboard.type("x");
+  await app.keyboard.press("Enter");
+  await expect.poll(saved).toContain("<td>=D2*2<td><td>x");
+  await expect(files.locator(".sheet-note")).toHaveText("1 row hidden");
+  await cell("Tasks", "G2").click();
+  await app.keyboard.press("Delete");
+  await expect.poll(saved).toBe(PLAN);
+  await expect(files.locator(".sheet-note")).toHaveText("1 row hidden");
+  await expect(cell("Tasks", "A4")).toBeHidden();
+});
+
+test("a chart placed far past the table is drawn at the grid's last cells, and a chart's range may reach past the table", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const far = sheet("Plan", {
+    Costs: [
+      "<th>Item<th>Net",
+      "<td>Rent<td>1200",
+      "<td>Power<td>90",
+      '<figure data-chart="bar" data-range="A1:B9" data-at="A20000" data-size="3x8"><figcaption>Costs</figcaption></figure>',
+    ],
+  });
+  const { stage, saved } = await openSheet(app, session, host.project, far);
+  const chart = stage.getByRole("img", { name: "Costs" });
+  await expect(chart.locator("rect")).toHaveCount(2);
+  expect(await stage.locator("tbody tr").count()).toBe(3 + 200);
+  expect(await saved()).toBe(far);
 });
 
 test("a sheet with nothing in it shows a pane of cells to type in", async ({

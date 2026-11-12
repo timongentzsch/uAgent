@@ -1,7 +1,7 @@
 // A tab's simple rules: `data-rule="D = Done: strike muted; < 0: bad"`,
 // read into what the engine's conditional formatting takes.
 
-import { columnOf, letters } from "./text.js";
+import { columnOf, letters, SPARE } from "./text.js";
 
 // A fill's colour in the engine and in a spreadsheet file; the grid draws
 // a fill by its name, in the theme's colours.
@@ -71,11 +71,14 @@ const formatOf = (effects) => {
   }
   return format;
 };
-// A table's rule starts with the letter of a column the tab has.
+// A table's rule starts with the letter of a column of the grid: one the
+// tab has, or a spare one past it, whose cells are blank.
 const columnIn = (rule, width) => {
   const [, name, rest] = /^\s*([A-Za-z]+)(\s.*)$/s.exec(rule) ?? [];
   const column = name ? columnOf(name) : 0;
-  return column >= 1 && column <= width ? { column, rest } : undefined;
+  return column >= 1 && column <= width + SPARE.columns
+    ? { column, rest }
+    : undefined;
 };
 
 // On a <col>, `own` is its column and a rule styles the cell it tests; on
@@ -112,7 +115,7 @@ export const ruleInput = (
 });
 
 // A table's rules after its columns moved. One that names no column of the
-// tab stays as written; one whose column is gone goes with it.
+// grid stays as written; one whose column is gone goes with it.
 export const slidRules = (said, width, slide) =>
   said
     .split(";")

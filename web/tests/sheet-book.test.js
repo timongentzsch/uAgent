@@ -461,7 +461,7 @@ test("rules strike, fill and embolden what matches, a later rule over an earlier
   assert.deepEqual(plan().look(0, 4, 3), {});
 });
 
-test("a rule that names no column of the tab is reported and applied to nothing; the sheet opens", () => {
+test("a rule that names no column of the grid is reported and applied to nothing; the sheet opens", () => {
   const book = openBook(engine, [
     {
       ...tab("Tasks", [
@@ -471,14 +471,14 @@ test("a rule that names no column of the tab is reported and applied to nothing;
       ]),
       attrs: {
         "data-rule":
-          "Status = Done: strike; not blank: muted; Z blank: bad; C = TRUE: bold; B <> Done: warn",
+          "Status = Done: strike; not blank: muted; ZZ blank: bad; C = TRUE: bold; B <> Done: warn",
       },
     },
   ]);
   assert.deepEqual(book.errors(), [
     "Tasks: rule `Status = Done: strike` is not understood",
     "Tasks: rule `not blank: muted` is not understood",
-    "Tasks: rule `Z blank: bad` is not understood",
+    "Tasks: rule `ZZ blank: bad` is not understood",
   ]);
   // A ticked box matches TRUE; an empty status is not "other than Done".
   assert.deepEqual(book.look(0, 2, 1), {
@@ -494,7 +494,7 @@ test("a rule that names no column of the tab is reported and applied to nothing;
   book.insertColumns(0, 1, 1);
   assert.equal(
     book.tabs[0].attrs["data-rule"],
-    "Status = Done: strike; not blank: muted; Z blank: bad; D = TRUE: bold; C <> Done: warn",
+    "Status = Done: strike; not blank: muted; ZZ blank: bad; D = TRUE: bold; C <> Done: warn",
   );
 });
 
@@ -529,15 +529,43 @@ test("a chart reads its labels and the columns that hold numbers; a blank cell i
   assert.deepEqual(book.chart(0, 0).series[0].values, [1200, undefined, 120]);
 });
 
+test("a chart whose range reaches past the table reads blank cells there, as when blank rows under it are cut", () => {
+  const book = openBook(engine, [
+    {
+      ...tab("Costs", [
+        ["#Item", "#Net"],
+        ["Rent", "1200"],
+        ["Power", "90"],
+        ["", ""],
+        ["", ""],
+      ]),
+      charts: [
+        {
+          attrs: { "data-chart": "bar", "data-range": "A1:B5" },
+          caption: "",
+        },
+      ],
+    },
+  ]);
+  book.paste(0, { row: 2, column: 2 }, [["1300"]]);
+  assert.equal(book.tabs[0].rows.length, 3);
+  assert.deepEqual(book.chart(0, 0).series[0].values, [
+    1300,
+    90,
+    undefined,
+    undefined,
+  ]);
+  assert.deepEqual(book.errors(), []);
+});
+
 test("a chart that cannot be drawn says why with the cells in error", () => {
   const said = (...given) => charted(...given).errors();
   assert.deepEqual(said("A3:B6"), ["Tasks: chart A3:B6 holds no numbers"]);
-  assert.deepEqual(said("A3:Z9"), [
-    "Tasks: chart A3:Z9 names cells outside the tab",
-  ]);
   assert.deepEqual(said("the costs"), [
-    "Tasks: chart the costs names cells outside the tab",
+    "Tasks: chart the costs names no cells",
   ]);
+  // Past the table a range reads blank cells: the chart is of the rest.
+  assert.deepEqual(said("A3:Z9"), []);
   for (const kind of ["donut", "constructor", ""])
     assert.deepEqual(said("A3:C6", { "data-chart": kind }), [
       "Tasks: chart A3:C6 is of no known kind",

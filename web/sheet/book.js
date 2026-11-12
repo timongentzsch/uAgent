@@ -248,16 +248,11 @@ export function openBook(engine, written, locked) {
       return tableText(cut) === tableText(tabs[at]) ? tabs[at] : cut;
     });
     const changed = next.filter((tab, at) => tab !== tabs[at]);
-    if (!changed.length) {
+    const [refused] = locked ? [LOCKED] : changed.flatMap(markupOf);
+    if (refused || !changed.length) {
       // What led here may have moved the engine's rows already.
       if (made.some((tab, at) => tab !== tabs[at])) build();
-      return false;
-    }
-    const [refused] = locked ? [LOCKED] : changed.flatMap(markupOf);
-    if (refused) {
-      // What led here may have moved the engine's rows already.
-      build();
-      return refused;
+      return changed.length ? refused : false;
     }
     past.push(tabs);
     if (past.length > STEPS) past.shift();
@@ -338,9 +333,9 @@ export function openBook(engine, written, locked) {
     const tab = tabs[sheet];
     const kind = attrs["data-chart"];
     if (!Object.hasOwn(CHARTS, kind)) return { error: "is of no known kind" };
+    // Past the table its range reads blank cells: the grid runs on there.
     const box = boxNamed(attrs["data-range"]);
-    if (!box || box.bottom > tab.rows.length || box.right > tab.columns.length)
-      return { error: "names cells outside the tab" };
+    if (!box) return { error: "names no cells" };
     const rows = Array.from(
       { length: box.bottom - box.top },
       (_, at) => box.top + 1 + at,
@@ -360,7 +355,7 @@ export function openBook(engine, written, locked) {
     const values = worked(cells.map((cell) => `=${where(tab.name, cell)}`)).map(
       ({ kind, value }, at) =>
         kind === "number" &&
-        tab.rows[cells[at].top - 1].cells[cells[at].left - 1].text
+        tab.rows[cells[at].top - 1]?.cells[cells[at].left - 1]?.text
           ? value
           : undefined,
     );
@@ -485,20 +480,16 @@ export function openBook(engine, written, locked) {
           row: at.row - from.box.top,
           column: at.column - from.box.left,
         };
-      rows.forEach((cells, r) =>
-        cells.forEach((text, c) =>
-          texts.set(
-            `${at.row + r},${at.column + c}`,
-            by ? relocated(text, by) : text,
-          ),
-        ),
-      );
+      // As far as text is set, the table reaches.
       const far = { row: 0, column: 0 };
-      for (const [place, text] of texts) {
-        const [row, column] = place.split(",").map(Number);
-        if (text) far.row = Math.max(far.row, row);
-        if (text) far.column = Math.max(far.column, column);
-      }
+      rows.forEach((cells, r) =>
+        cells.forEach((text, c) => {
+          const [row, column] = [at.row + r, at.column + c];
+          texts.set(`${row},${column}`, by ? relocated(text, by) : text);
+          if (text) far.row = Math.max(far.row, row);
+          if (text) far.column = Math.max(far.column, column);
+        }),
+      );
       return placed(
         "pasted",
         mapCells(

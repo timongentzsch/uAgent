@@ -2,7 +2,7 @@
 // it as a spreadsheet's grid.
 
 import { headOf, isHeader } from "./book.js";
-import { cellName, frozenOf, letters } from "./text.js";
+import { CELL, cellName, frozenOf, letters } from "./text.js";
 
 const attrsOf = (element, skip) =>
   Object.fromEntries(
@@ -87,10 +87,6 @@ const edge = (text, scope, data = {}) => {
   Object.assign(cell.dataset, data);
   return cell;
 };
-
-// The grid's cell where nothing sizes it: a spare column's width, every
-// row's height, and the unit a chart's size counts in.
-export const CELL = { width: 96, height: 24 };
 
 // `filters` is the tab's filtered columns, `hidden` the rows they hide, and
 // `grid` how far the cells run on past the table, blank.

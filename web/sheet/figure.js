@@ -2,9 +2,9 @@
 // the cells they name.
 
 import { CHART, CHARTS, chartShapes } from "./chart.js";
-import { CELL, make } from "./grid.js";
+import { make } from "./grid.js";
 import { openMenu } from "./menu.js";
-import { boxNamed, cellName } from "./text.js";
+import { boxNamed, CELL, cellName } from "./text.js";
 
 // A chart covers no more cells than this, whatever its file says.
 const MOST = 200;
@@ -40,9 +40,10 @@ const edges = (table) => {
   };
 };
 
-const nearest = (edge, place) => {
+// The cell whose edge is nearest, of the `most` that are drawn.
+const nearest = (edge, place, most) => {
   let at = 1;
-  while (at < 9999 && edge(at + 1) - place < place - edge(at)) at++;
+  while (at < most && edge(at + 1) - place < place - edge(at)) at++;
   return at;
 };
 const units = (length, unit) =>
@@ -81,8 +82,8 @@ function drag(layer, sheet, change) {
             }
           : {
               "data-at": cellName({
-                column: nearest(x, now.left + scrollX),
-                row: nearest(y, now.top + scrollY),
+                column: nearest(x, now.left + scrollX, sheet.size().columns),
+                row: nearest(y, now.top + scrollY, sheet.size().rows),
               }),
             };
         change([...layer.children].indexOf(figure), (chart) => [

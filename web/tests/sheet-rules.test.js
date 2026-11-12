@@ -79,19 +79,19 @@ test("a rule that is not understood is set apart, and the others stand", () => {
   assert.deepEqual(readRules(undefined, 3), { rules: [], unread: [] });
 });
 
-test("a table's rule must name a column the tab has: a word, or a letter past its width, is not one", () => {
+test("a table's rule names a column of the grid: one the tab has or a spare one past it; a word is none", () => {
   const said =
     "Status = Done: strike; Tax > 0: bad; not blank: muted; Z blank: muted; B blank: muted";
   const { rules, unread } = readRules(said, 4);
   assert.deepEqual(
     rules.map(({ text }) => text),
-    ["B blank: muted"],
+    ["Z blank: muted", "B blank: muted"],
   );
-  assert.equal(unread.length, 4);
+  assert.equal(unread.length, 3);
   // Columns put in or taken out move only the rules that name one.
   assert.equal(
     slidRules(said, 4, (column) => column + 1),
-    "Status = Done: strike; Tax > 0: bad; not blank: muted; Z blank: muted; C blank: muted",
+    "Status = Done: strike; Tax > 0: bad; not blank: muted; AA blank: muted; C blank: muted",
   );
 });
 

@@ -192,7 +192,8 @@ export function sizesOf(table, book, sheet) {
 // Draws the rows and columns `view` names (those held first), each where
 // `view.layout` puts it. `filters` is the tab's filtered columns. Windowed,
 // the table lies at its first scrolling cell's place inside the grid's area.
-// A row is `view.row` high or as high as its wrapped text makes it.
+// A row is `view.row` high or as high as its wrapped text makes it; the
+// area starts `view.base` down the grid.
 export function draw(table, book, sheet, filters, view) {
   const tab = book.tabs[sheet];
   const { layout, frozen } = view;
@@ -294,7 +295,7 @@ export function draw(table, book, sheet, filters, view) {
   Object.assign(table.style, {
     width: `${layout.x(1) + view.columns.reduce((sum, at) => sum + layout.x(at + 1) - layout.x(at), 0)}px`,
     left: `${layout.x(column) - layout.x(frozen.columns + 1)}px`,
-    top: `${layout.y(row) - layout.y(frozen.rows + 1)}px`,
+    top: `${layout.y(row) - layout.y(frozen.rows + 1) - view.base}px`,
   });
 }
 

@@ -694,7 +694,8 @@ test("the grid runs on past the table: what is typed there joins it, and the fil
     "A1048576 is too far from the table to keep: the file would hold every row between.",
   );
   expect(await saved()).toBe(reached);
-  await toRow(stage, 1);
+  // The scrollbar runs over a stretch of the grid there: a key leads home.
+  await app.keyboard.press("Control+Home");
   // Cleared, what was reached is given back; Undo takes back the rest.
   const less = with_(PLAN, {
     "<tr><th>Name<th>Value\n<tr><td>Budget<td>=Tasks!D5":
@@ -990,7 +991,11 @@ test("the editor and a chart lie on their cells: under wrapped rows of long word
   const high = () =>
     page.evaluate(() => document.querySelector(".sheet-area").offsetHeight);
   const short = await high();
-  await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+  // A fit of the grid before the scroll is heard takes nothing from it.
+  await page.evaluate(() => {
+    scrollTo(0, document.documentElement.scrollHeight);
+    dispatchEvent(new Event("resize"));
+  });
   await expect.poll(high).toBeGreaterThan(short);
   await page.evaluate(() => scrollBy(0, 300));
   await expect
@@ -1025,6 +1030,86 @@ test("the editor and a chart lie on their cells: under wrapped rows of long word
       return top(".sheet-chart") - top("tbody tr:nth-child(14)");
     }),
   ).toBe(0);
+});
+
+test("the grid reaches the spreadsheet's last row whatever a browser can scroll: its scroll area is a stretch of rows that moves under the view", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, bar, cell } = await openSheet(
+    app,
+    session,
+    host.project,
+    PLAN.replace('data-sheet="Tasks"', 'data-sheet="Tasks" data-frozen="1 A"'),
+  );
+  const page = stage.locator("html");
+  await expect(cell("Tasks", "B2")).toBeVisible();
+  // A stretch of ten thousand rows, where the page's own is millions of px.
+  const high = await cell("Tasks", "B2").evaluate(
+    (drawn) => drawn.parentElement.offsetHeight,
+  );
+  const span = 10_000 * high;
+  await page.evaluate(
+    (_, span) =>
+      document.documentElement.style.setProperty("--sheet-span", `${span}`),
+    span,
+  );
+  const area = () =>
+    page.evaluate(() => document.querySelector(".sheet-area").offsetHeight);
+  const placed = () => page.evaluate(() => scrollY);
+  // The row under a place near the view's foot.
+  const under = () =>
+    page.evaluate(() =>
+      Number(
+        document.elementFromPoint(20, innerHeight - 40)?.closest("tr")?.cells[0]
+          .dataset.row,
+      ),
+    );
+  // The last row, by a key: selected, in view, its editor on it, and the
+  // area no longer than the stretch.
+  await cell("Tasks", "B2").click();
+  for (let press = 0; press < 3; press++)
+    await app.keyboard.press("Control+ArrowDown");
+  await expect(bar.getByRole("status")).toHaveText("Tasks!B1048576");
+  await expect(cell("Tasks", "B1048576")).toBeInViewport();
+  expect(await area()).toBe(span);
+  const boxes = () =>
+    page.evaluate(() =>
+      ["input.sheet-editor", 'table:not([hidden]) [aria-selected="true"]'].map(
+        (selector) => {
+          const box = document.querySelector(selector).getBoundingClientRect();
+          return [box.left, box.top, box.width, box.height].join();
+        },
+      ),
+    );
+  const [editor, active] = await boxes();
+  expect(editor).toBe(active);
+
+  // Scrolled a long way up and down again, the stretch moves under the
+  // view each time a scroll rests near its end, and the view stays on its
+  // rows: each scroll moves it by just the rows scrolled.
+  const rows = 3_900;
+  let row = await under();
+  expect(row).toBeGreaterThan(1_048_500);
+  for (const way of [-1, -1, -1, -1, -1, -1, 1, 1, 1]) {
+    await page.evaluate((_, by) => scrollBy(0, by), way * rows * high);
+    row += way * rows;
+    await expect.poll(under).toBe(row);
+    // Rested: the view is in the stretch's middle half again.
+    await expect
+      .poll(async () => Math.abs((await placed()) - span / 2) <= span / 4)
+      .toBe(true);
+    expect(await under()).toBe(row);
+    expect(await area()).toBe(span);
+  }
+
+  // And back to the table, where the area is as long as the grid again.
+  await app.keyboard.press("Control+Home");
+  await expect(bar.getByRole("status")).toHaveText("Tasks!A1");
+  await page.evaluate(() => scrollTo(0, 0));
+  await expect(cell("Tasks", "B2")).toBeInViewport();
+  expect(await area()).toBeLessThan(span);
 });
 
 test("opened alone a sheet is its whole table and nothing past it", async ({

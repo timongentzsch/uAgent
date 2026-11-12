@@ -125,7 +125,7 @@ function drawn(type, { labels, series }, size) {
 }
 
 export function listenCharts(sheet) {
-  const layer = document.body.appendChild(
+  const layer = sheet.area.appendChild(
     make("div", { className: "sheet-charts" }),
   );
   const change = (index, next) =>

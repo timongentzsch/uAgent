@@ -93,23 +93,28 @@ async function open() {
   // Alone (its own tab, a print, the agent's browser) the page is its whole
   // table and nothing past it; in the pane it is a window on an endless grid.
   const whole = parent === window;
+  const root = document.documentElement;
   // Cells drawn past the view on each side, so a scroll finds them there.
   const OVER = { rows: 16, columns: 4 };
   const area = document.body.appendChild(
-    Object.assign(document.createElement("div"), { className: "sheet-area" }),
+    Object.assign(document.createElement("div"), {
+      className: whole ? "sheet-area" : "sheet-area sheet-stretch",
+    }),
   );
+  // The scroll area stands for a stretch of the grid's rows, far shorter
+  // than a browser can scroll (2^24 px in some); `base` is where in the
+  // grid it starts, `tall` how far it runs. A test makes it shorter.
+  const long = () =>
+    whole
+      ? Infinity
+      : Number(root.style.getPropertyValue("--sheet-span")) || 4_000_000;
+  let [base, tall] = [0, 0];
   // How far each tab's grid has been scrolled: it runs a pane past that, the
   // table, the selection and the charts, up to the spreadsheet's last cell.
   const reached = tables.map(() => ({ rows: 0, columns: 0 }));
   // Each tab's rows as high as they were drawn, while it has as many: a
   // wrapped row is as high as the browser made it, which sizes only reckon.
   const kept = tables.map(() => ({ rows: -1, heights: new Map() }));
-  // An element is at most this high: no row past it can be scrolled to.
-  const REACH = 33_554_432;
-  const most = () => ({
-    row: Math.min(LAST.row, layout.rowAt(REACH) - 1),
-    column: LAST.column,
-  });
   const extent = () => {
     const { anchor, focus } = picks[at];
     const charts = tab().charts.map(
@@ -120,7 +125,7 @@ async function open() {
     return {
       rows: far(
         tab().rows.length,
-        most().row,
+        LAST.row,
         Math.ceil(innerHeight / sizes.row),
         reached[at].rows,
         anchor.row,
@@ -145,9 +150,11 @@ async function open() {
   let frozen = { rows: 0, columns: 0 };
   let grid = { rows: 0, columns: 0 };
   let drawn = { top: 1, bottom: 0, left: 1, right: 0 };
+  // Where the stretch began when the grid was last drawn.
+  let based = 0;
   let tinted;
-  // Where the page itself last put the view: a scroll that ends there is
-  // not a person's, and makes the grid no longer.
+  // Where the page itself last moved the view to: a scroll that ends there
+  // is not a person's, and makes the grid no longer.
   let led = {};
   // The view ends where the grid does; a browser may leave it past the end
   // of a grid made shorter.
@@ -156,10 +163,25 @@ async function open() {
       whole ? at : Math.max(0, Math.min(at, end - room));
     const to = [
       within(x, layout.x(grid.columns + 1), innerWidth),
-      within(y, layout.y(grid.rows + 1), innerHeight),
+      within(y, tall, innerHeight),
     ];
-    if (to[0] !== scrollX || to[1] !== scrollY) scrollTo(...to);
+    if (to[0] === scrollX && to[1] === scrollY) return;
+    scrollTo(...to);
     led = { x: scrollX, y: scrollY };
+  };
+  // The stretch lies around `view`, a place in the grid to have at the
+  // view's top: in an outer quarter of it, the stretch moves so that it is
+  // in the middle, and the scroll with it, so the view stays on its rows.
+  const stretch = (view = scrollY + base, x = scrollX) => {
+    const all = layout.y(grid.rows + 1);
+    const [was, at, span] = [base, view - base, long()];
+    if (at < span / 4 || at > (span * 3) / 4)
+      base = Math.round(view - span / 2);
+    base = Math.max(0, Math.min(base, all - span));
+    if (base !== was) drawn = { top: 1, bottom: 0, left: 1, right: 0 };
+    tall = Math.min(span, all - base);
+    area.style.height = `${tall}px`;
+    settle(x, view - base);
   };
   // The row numbers' column is as wide as the last row's number needs:
   // of another width, it moves every column, and nothing drawn stands.
@@ -173,16 +195,13 @@ async function open() {
       edge,
       sizes.row,
     );
-    Object.assign(area.style, {
-      width: `${layout.x(grid.columns + 1)}px`,
-      height: `${layout.y(grid.rows + 1)}px`,
-    });
-    settle();
+    area.style.width = `${layout.x(grid.columns + 1)}px`;
+    stretch();
   };
   // What is in view past the held rows and columns, as cells.
   const inView = () => ({
-    top: layout.rowAt(scrollY + layout.y(frozen.rows + 1)),
-    bottom: layout.rowAt(scrollY + innerHeight),
+    top: layout.rowAt(scrollY + base + layout.y(frozen.rows + 1)),
+    bottom: layout.rowAt(scrollY + base + innerHeight),
     left: layout.columnAt(scrollX + layout.x(frozen.columns + 1)),
     right: layout.columnAt(scrollX + innerWidth),
   });
@@ -208,7 +227,7 @@ async function open() {
   // Drawn again where a row's real height moved those after it, and what
   // lies over the grid put there.
   const render = () => {
-    let moved = false;
+    let moved = base !== based;
     lay();
     for (let pass = 0; pass < 4 && measure(); pass++) {
       moved = true;
@@ -216,6 +235,7 @@ async function open() {
     }
     tables[at].classList.toggle("sheet-window", !whole);
     paint(tables[at], box(), pick().anchor, tinted);
+    based = base;
     if (moved) {
       charts();
       place();
@@ -245,6 +265,7 @@ async function open() {
     const held = (count) => Array.from({ length: count }, (_, n) => n + 1);
     draw(tables[at], book, at, filters[at], {
       layout,
+      base,
       frozen,
       row: sizes.row,
       rows: [
@@ -279,14 +300,14 @@ async function open() {
         : at < scrolled + held
           ? at - held
           : at + size - room;
-    settle(
+    stretch(
+      to(top, height, y, scrollY + base, innerHeight, cell.row <= frozen.rows),
       to(left, width, x, scrollX, innerWidth, cell.column <= frozen.columns),
-      to(top, height, y, scrollY, innerHeight, cell.row <= frozen.rows),
     );
     follow();
   };
   const within = ({ row, column }) => ({
-    row: Math.max(1, Math.min(row, whole ? grid.rows : most().row)),
+    row: Math.max(1, Math.min(row, whole ? grid.rows : LAST.row)),
     column: Math.max(1, Math.min(column, whole ? grid.columns : LAST.column)),
   });
   // The nearest row in view, looking first the way the selection moves.
@@ -295,7 +316,7 @@ async function open() {
     for (const step of [way, -way]) {
       let { row } = cell;
       while (hidden.has(row)) row += step;
-      if (row >= 1 && row <= most().row) return { ...cell, row };
+      if (row >= 1 && row <= LAST.row) return { ...cell, row };
     }
     return cell;
   };
@@ -361,16 +382,32 @@ async function open() {
     // The rows and columns the tab holds in view.
     held: () => frozen,
     // Where a cell lies in the page: where it is drawn (a held one does not
-    // scroll, and far down a browser places to 2 px), or where it would be.
+    // scroll), or where it would be, as far as the stretch runs.
     rect(cell) {
       const drawn = tables[at].querySelector(
         `tbody [data-row="${cell.row}"][data-column="${cell.column}"]`,
       );
-      if (!drawn) return layout.rect(cell);
-      const { left, top, width, height } = drawn.getBoundingClientRect();
-      return { left: left + scrollX, top: top + scrollY, width, height };
+      const box = drawn?.getBoundingClientRect() ?? layout.rect(cell);
+      const { left, top, width, height } = box;
+      return drawn
+        ? { left: left + scrollX, top: top + scrollY, width, height }
+        : { ...box, top: Math.max(0, Math.min(top - base, tall - height)) };
     },
-    layout: () => layout,
+    // Brings the active cell into view.
+    see: () => reveal(pick().anchor),
+    // The view at the row's start, or the grid's: a held cell is in view
+    // wherever the grid is scrolled, and would lead nowhere.
+    start(grid) {
+      stretch(grid ? 0 : undefined, 0);
+      follow();
+    },
+    // What lies over the grid is laid in it, and by its places in the page.
+    area,
+    layout: () => ({
+      ...layout,
+      y: (row) => layout.y(row) - base,
+      rowAt: (place) => layout.rowAt(place + base),
+    }),
     pick,
     box,
     high,
@@ -604,16 +641,31 @@ async function open() {
   // A scroll draws the window it leaves the last one for, once a frame, and
   // at the grid's end makes it a pane longer. The editor is no part of the
   // table: what is being typed stays through it.
-  const root = document.documentElement;
   let scrolled = 0;
+  // Where a scroll rests in an outer quarter of the stretch, the stretch
+  // moves under the view: not while it goes on, under a scrollbar held.
+  let resting = 0;
+  const rested = () => {
+    const up = scrollY < long() / 4 && base > 0;
+    const down =
+      scrollY > (long() * 3) / 4 && base + tall < layout.y(grid.rows + 1);
+    if (!up && !down) return;
+    fit();
+    follow();
+  };
   addEventListener(
     "scroll",
     () => {
+      clearTimeout(resting);
+      if (!whole) resting = setTimeout(rested, 150);
       scrolled ||= requestAnimationFrame(() => {
         scrolled = 0;
+        // The grid grows where the stretch ends with it.
         const ended = (at, room, all, far) =>
           at + room >= all - sizes.row ? far : 0;
-        const rows = ended(scrollY, innerHeight, root.scrollHeight, grid.rows);
+        const rows =
+          base + tall >= layout.y(grid.rows + 1) &&
+          ended(scrollY, innerHeight, root.scrollHeight, grid.rows);
         const columns = ended(
           scrollX,
           innerWidth,

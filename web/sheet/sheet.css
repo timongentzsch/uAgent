@@ -69,6 +69,11 @@ table[data-sheet] :is(th, td) {
   left: 0;
   pointer-events: none;
 }
+/* What lies past the stretch of the grid the area stands for is cut: it
+   would make the page longer. */
+.sheet-stretch {
+  overflow: clip;
+}
 table[data-sheet] .sheet-wrap {
   white-space: normal;
   overflow-wrap: anywhere;
@@ -271,6 +276,7 @@ table[data-sheet] .sheet-strike {
 .sheet-chart {
   position: absolute;
   z-index: 1;
+  pointer-events: auto;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;

@@ -105,6 +105,7 @@ export function listen(sheet) {
     const options = inBody(active()) && columnOf()["data-options"];
     if (options) return choose(options.split("|"));
     editing = true;
+    sheet.see();
     editor.dataset.editing = "";
     editor.inputMode = "text";
     hold();
@@ -262,9 +263,10 @@ export function listen(sheet) {
     else if (key === "Tab")
       sheet.select(stepped(anchor, { row: 0, column: way }));
     else if (key === "Enter" || key === "F2") edit();
-    else if (key === "Home")
+    else if (key === "Home") {
       sheet.select({ row: held ? 1 : focus.row, column: 1 }, event.shiftKey);
-    else if (key === "End")
+      sheet.start(held);
+    } else if (key === "End")
       sheet.select(
         { row: held ? end.row : focus.row, column: end.column },
         event.shiftKey,

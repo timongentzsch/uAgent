@@ -1,7 +1,7 @@
 import type { RefObject } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Redo2, Undo2 } from "lucide-preact";
-import { Button, IconButton } from "../../shared/ui.tsx";
+import { Button, IconButton, Notice } from "../../shared/ui.tsx";
 import { Input } from "../../shared/form-controls.tsx";
 import { Tabs } from "../../shared/tabs.tsx";
 import { plural } from "../../shared/quantities.ts";
@@ -99,9 +99,9 @@ export function SheetBar({
         tabs={boards.map((board, at) => ({ key: at, label: board.title }))}
       />
       {note.length > 0 && (
-        <span class="sheet-note small muted truncate" role="status">
-          {note.join(" · ")}
-        </span>
+        <small class="sheet-note muted">
+          <Notice tone="info">{note.join(" · ")}</Notice>
+        </small>
       )}
       {locked ? (
         <Button variant="secondary" onClick={() => act("sheet")}>

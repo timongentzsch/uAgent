@@ -54,7 +54,7 @@ test("what is typed into a cell or the formula bar is saved to the file, and und
   // Only that cell is another in the file.
   const typed = with_(PLAN, { "<td>1200<td>": "<td>2000<td>" });
   await expect.poll(saved).toBe(typed);
-  await expect(files.locator(".page-tools [role=status]")).toHaveText("Saved");
+  await expect(files.locator(".page-tools .notice")).toHaveText("Saved");
 
   // The formula bar: Escape puts back what the cell holds, Enter writes.
   await field.fill("nothing");
@@ -184,7 +184,7 @@ test("rows are put in and taken out, filled down and sorted: formulas follow on 
   const written = await saved();
   await cell("Tasks", "D1").getByRole("button").click();
   await menu("Sort A to Z").click();
-  await expect(files.locator(".page-tools [role=status]")).toHaveText(
+  await expect(files.locator(".page-tools .notice")).toHaveText(
     "Not sorted: =SUM(D2:D3) cannot be moved with its cell.",
   );
   await expect(cell("Tasks", "A2")).toHaveText("Book");
@@ -319,7 +319,7 @@ test("what a filter hides is neither cleared nor deleted unseen, and a column pu
   // Its rows are not taken out while one of them is hidden.
   await app.keyboard.press("Shift+F10");
   await stage.getByRole("menuitem", { name: "Delete 3 rows" }).click();
-  await expect(files.locator(".page-tools [role=status]")).toHaveText(
+  await expect(files.locator(".page-tools .notice")).toHaveText(
     "Clear the filter to delete these rows.",
   );
   expect(await saved()).toBe(cleared);
@@ -508,7 +508,7 @@ test("a cell written with a bare < is reported, and its tab is not edited over i
   await cell("Tasks", "A2").click();
   await app.keyboard.type("Draft");
   await app.keyboard.press("Enter");
-  await expect(files.locator(".page-tools [role=status]")).toHaveText(why);
+  await expect(files.locator(".page-tools .notice")).toHaveText(why);
   await expect(cell("Tasks", "A2")).toHaveText("Write");
   // Another tab is edited as ever.
   await tabs.nth(1).click();

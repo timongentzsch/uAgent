@@ -279,6 +279,11 @@ table[data-sheet] .sheet-strike {
 }
 .sheet-chart > p {
   margin: auto;
+}
+/* What went wrong, in the app's error tone: a file not read, a chart not
+   drawn. */
+.sheet-notice,
+.sheet-chart > p {
   color: var(--sheet-error);
 }
 .sheet-chart line {

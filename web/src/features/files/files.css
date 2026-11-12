@@ -317,8 +317,17 @@
   flex: 1;
   min-width: 0;
 }
+/* One line, cut short where the bar is. */
 .sheet-bar > .sheet-note {
   flex: 0 1 auto;
+  min-width: 0;
+}
+.sheet-note > .notice {
+  white-space: nowrap;
+}
+.sheet-note > .notice > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* What asks the page something is disabled until the page has drawn. */
 .page-asks {
@@ -640,15 +649,12 @@
 }
 /* Pages that failed to run, over the canvas or the sequence they are in. */
 .page-notice {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
   margin: 0;
   padding: var(--space-2) var(--space-4);
   border-bottom: var(--border);
   background: var(--bg);
 }
-.page-notice > span {
+.page-notice > .notice > span {
   flex: 1;
 }
 .canvas > .zoom-surface {

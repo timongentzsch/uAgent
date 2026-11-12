@@ -2047,9 +2047,7 @@ test("a document exports Markdown, and a block edited on its third page is saved
   await app.keyboard.press("End");
   await app.keyboard.type(" Churn held flat.");
   await beside.click();
-  await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
-    "Saved",
-  );
+  await expect(files.locator(".page-tools .notice")).toHaveText("Saved");
   const saved = await readFile(memo, "utf8");
   expect(saved).toContain("<p>Paragraph 25 of the memo. Churn held flat.</p>");
   await expect(paragraph).toHaveText(/Churn held flat\.$/);
@@ -2074,7 +2072,7 @@ test("a document exports Markdown, and a block edited on its third page is saved
   await app.keyboard.press("End");
   await app.keyboard.type(" Again.");
   await beside.click();
-  await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
+  await expect(files.locator(".page-tools .notice")).toHaveText(
     /The document changed/,
   );
   expect(await readFile(memo, "utf8")).toContain("Churn fell.");

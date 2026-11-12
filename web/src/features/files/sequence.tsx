@@ -20,7 +20,7 @@ import {
   Search,
   SlidersHorizontal,
 } from "lucide-preact";
-import { Actions, Button, IconButton } from "../../shared/ui.tsx";
+import { Actions, Button, IconButton, Notice } from "../../shared/ui.tsx";
 import { Textarea } from "../../shared/form-controls.tsx";
 import Frame, {
   type PageInfo,
@@ -196,7 +196,7 @@ export default function Sequence({
     setPicked(undefined);
     setHover(undefined);
     setMode((was) => (was === "edit" ? "" : was));
-    setSaved("");
+    setSaved(undefined);
     setZoom(1);
     setCell(undefined);
     setRanged(undefined);
@@ -318,15 +318,16 @@ export default function Sequence({
     return () => document.removeEventListener("keydown", pressed);
   }, [keys]);
   // A document's block typed in place is saved as it is left.
-  const [saved, setSaved] = useState("");
+  const [saved, setSaved] = useState<{ text: string; failed?: true }>();
+  const refused = (text: string) => setSaved({ text, failed: true });
   const keep = async (saving?: Promise<void>) => {
-    setSaved("Saving…");
+    setSaved({ text: "Saving…" });
     try {
       await saving;
-      setSaved("Saved");
+      setSaved({ text: "Saved" });
       if (doc) setSaves((count) => count + 1);
     } catch (error) {
-      setSaved(error instanceof Error ? error.message : "Not saved");
+      refused(error instanceof Error ? error.message : "Not saved");
     }
   };
   const stem = nameOf(path).replace(/\.[^.]+$/, "");
@@ -613,9 +614,9 @@ export default function Sequence({
           doc &&
           toggle("Edit", mode === "edit", () => flip("edit"), <Pencil />)}
         {saved && (
-          <span class="small muted" role="status">
-            {saved}
-          </span>
+          <small class="muted">
+            <Notice tone={saved.failed ? "error" : "info"}>{saved.text}</Notice>
+          </small>
         )}
         {(declared.length > 0 || !!theme.value?.colors.length) &&
           toggle(
@@ -811,7 +812,7 @@ export default function Sequence({
                           ? fileOf(message)
                           : undefined;
                       asked.current = "";
-                      if (typeof made === "string") setSaved(made);
+                      if (typeof made === "string") refused(made);
                       else if (made?.as === "sheet")
                         void keep(saveAs?.(made.text));
                       else if (made)
@@ -831,7 +832,7 @@ export default function Sequence({
                     } else if (message.type === "cell")
                       setCell(cellOf(message));
                     else if (message.type === "refused")
-                      setSaved(String(message.message).slice(0, 300));
+                      refused(String(message.message).slice(0, 300));
                     else if (message.type === "key") {
                       // A sheet's other keys are its own.
                       if (sheet) {

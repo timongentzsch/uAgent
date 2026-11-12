@@ -50,6 +50,7 @@ async function open() {
   // A file that cannot be read is said in its page, which then draws nothing.
   const unread = (error) => {
     const note = document.body.appendChild(document.createElement("p"));
+    note.className = "sheet-notice";
     note.textContent = `${decodeURIComponent(file)} cannot be shown: ${error.message ?? error}`;
     return note.textContent;
   };

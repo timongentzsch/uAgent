@@ -10,7 +10,7 @@ import {
 } from "lucide-preact";
 import { useApi } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
-import { Button, LoadError } from "../../shared/ui.tsx";
+import { Button, LoadError, Notice } from "../../shared/ui.tsx";
 import { HTML, IMAGE, MARKDOWN } from "../../shared/file-types.ts";
 import { join, type Listing as Pages } from "./boards.ts";
 import { folderView } from "./flow.ts";
@@ -77,7 +77,9 @@ function Entries({
       )}
       {listing.more && (
         <li class="files-note small">
-          Some entries may not be listed. Search to find the rest.
+          <Notice tone="info">
+            Some entries may not be listed. Search to find the rest.
+          </Notice>
         </li>
       )}
     </>

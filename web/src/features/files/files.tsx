@@ -13,7 +13,6 @@ import {
   Download,
   File,
   Pencil,
-  TriangleAlert,
   X,
 } from "lucide-preact";
 import { usePushDirection } from "../../shared/motion.ts";
@@ -25,6 +24,7 @@ import { useAction } from "../../shared/use-action.ts";
 import {
   Button,
   EmptyState,
+  Notice,
   IconButton,
   LoadError,
   Placeholder,
@@ -690,41 +690,42 @@ export default function Files({
       {stage && (
         <div class="files-stage">
           {arranging.error != null && (
-            <p class="page-notice" role="status">
-              <TriangleAlert />
-              <span>
+            <p class="page-notice">
+              <Notice tone="error">
                 {[404, 409].includes(failure(arranging.error).status ?? 0)
                   ? "The deck's folder changed meanwhile, so nothing was moved."
                   : failure(arranging.error).message}
-              </span>
+              </Notice>
             </p>
           )}
           {unsaved != null && (
-            <p class="page-notice" role="status">
-              <TriangleAlert />
-              <span>
+            <p class="page-notice">
+              <Notice tone="error">
                 {failure(unsaved).status === 409
                   ? "The last change was not saved: the file changed meanwhile. The sheet is shown as the file is now."
                   : `The last change was not saved: ${failure(unsaved).message}`}
-              </span>
+              </Notice>
             </p>
           )}
           {failed.count > 0 && (
             <p class="page-notice">
-              <TriangleAlert />
-              <span>
+              <Notice
+                tone="warning"
+                action={
+                  addToChat && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => addToChat(failed.text)}
+                    >
+                      Ask agent to fix
+                    </Button>
+                  )
+                }
+              >
                 {kind === "sheet"
                   ? `${plural(failed.count, "cell")} in error`
                   : `${plural(failed.count, "page")} failed to run`}
-              </span>
-              {addToChat && (
-                <Button
-                  variant="secondary"
-                  onClick={() => addToChat(failed.text)}
-                >
-                  Ask agent to fix
-                </Button>
-              )}
+              </Notice>
             </p>
           )}
           {pending ? (
@@ -870,17 +871,19 @@ export default function Files({
             )}
           </div>
           {view.kind === "list" && view.note && (
-            <p class="files-note small" role="status">
-              {view.note}
+            <p class="files-note small">
+              <Notice tone="warning">{view.note}</Notice>
             </p>
           )}
           {view.kind === "pick" && !search ? (
             <>
               <p class="files-note small">
-                {`${view.paths.length} files are named ${nameOf(view.name)}.`}
-                {view.lines
-                  ? ` Pick one to open it at line ${view.lines[0]}.`
-                  : " Pick one to open it."}
+                <Notice tone="info">
+                  {`${view.paths.length} files are named ${nameOf(view.name)}.`}
+                  {view.lines
+                    ? ` Pick one to open it at line ${view.lines[0]}.`
+                    : " Pick one to open it."}
+                </Notice>
               </p>
               {matches(view.paths, (path) => go(path, view.lines))}
             </>
@@ -895,7 +898,9 @@ export default function Files({
                 (found.value?.more ||
                   (found.value && found.value.paths.length > SHOWN)) && (
                   <p class="files-note small">
-                    Some entries may not be listed. Keep typing to narrow.
+                    <Notice tone="info">
+                      Some entries may not be listed. Keep typing to narrow.
+                    </Notice>
                   </p>
                 )
               )}
@@ -930,7 +935,9 @@ export default function Files({
                 <EmptyState>No uncommitted changes</EmptyState>
               )}
               {changed.value?.more && (
-                <p class="files-note small">Some changes may not be listed.</p>
+                <p class="files-note small">
+                  <Notice tone="info">Some changes may not be listed.</Notice>
+                </p>
               )}
             </>
           ) : (
@@ -999,7 +1006,9 @@ export default function Files({
                 <DiffView text={diffText.text} counts={counts} />
                 {diffText.more && (
                   <p class="files-note files-cut">
-                    Showing the first part of this change.
+                    <Notice tone="info">
+                      Showing the first part of this change.
+                    </Notice>
                   </p>
                 )}
               </>
@@ -1041,8 +1050,10 @@ export default function Files({
               )}
               {text.more && (
                 <p class="files-note files-cut">
-                  Showing the first part of this file.{" "}
-                  <a {...download}>Download it</a> for the rest.
+                  <Notice tone="info">
+                    Showing the first part of this file.{" "}
+                    <a {...download}>Download it</a> for the rest.
+                  </Notice>
                 </p>
               )}
             </>

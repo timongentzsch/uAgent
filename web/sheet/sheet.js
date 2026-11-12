@@ -742,15 +742,19 @@ async function open() {
     "column-fit": () => book.widen(at, box(), undefined),
     "clear-looks": () => book.unstyle(at, box(), hidden),
     // The selection's cells as one. Where others than its first hold text
-    // the app asks first, and is answered with the range it asked about.
-    merge(range) {
+    // the app asks first, and is answered with the range and the count it
+    // asked about: only as many are emptied.
+    merge(value) {
+      const range = boxName(box());
       const count = book.filled(at, box());
-      if (!count || range === boxName(box()))
-        return book.merge(at, box(), count);
-      if (range)
-        return "Not merged: another range is selected than the one asked about.";
-      say({ type: "merge", range: boxName(box()), count });
-      return false;
+      if (count && !value) {
+        say({ type: "merge", range, count });
+        return false;
+      }
+      const asked = value ? JSON.parse(value) : { range, count };
+      return asked.range === range
+        ? book.merge(at, box(), asked.count)
+        : "Not merged: another range is selected than the one asked about.";
     },
     unmerge: () => book.unmerge(at, box()),
     // The app around the page takes a comment on the selection when asked.

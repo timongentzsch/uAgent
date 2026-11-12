@@ -159,4 +159,27 @@ test("cells are merged from the format row after a question where others hold te
   await expect.poll(saved).toBe(listed("B2:C2 D2:E2 A4:A203"));
   await undo.click();
   await expect.poll(saved).toBe(BUDGET);
+
+  // Only what the person was told of is emptied: cells that change while
+  // they are asked are not merged over.
+  await cell("Costs", "B3").click();
+  await app.keyboard.press("Shift+ArrowRight");
+  await merge.click();
+  await expect(asking).toBeVisible();
+  await app.evaluate(() =>
+    document
+      .querySelector(".page-stage iframe:not([inert])")
+      .contentWindow.postMessage(
+        { uagentDesign: 1, type: "do", command: "clear" },
+        "*",
+      ),
+  );
+  const cleared = BUDGET.replace("<th>Q1<th>Q2<th>", "<th><th><th>");
+  await expect.poll(saved).toBe(cleared);
+  await asking.getByRole("button", { name: "Merge", exact: true }).click();
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveText("Not merged: its cells hold other text than when asked.");
+  await expect(cell("Costs", "C3")).toHaveCount(1);
+  expect(await saved()).toBe(cleared);
 });

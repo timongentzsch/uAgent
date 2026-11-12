@@ -1243,7 +1243,7 @@ export default function Sequence({
               close={() => setMerging(undefined)}
               confirm={() => {
                 setMerging(undefined);
-                act("merge", merging.range);
+                act("merge", JSON.stringify(merging));
               }}
             >
               {`Only the top-left cell's content stays: ${plural(merging.count, "other cell")} of ${merging.range} that ${merging.count === 1 ? "holds content is" : "hold content are"} emptied. Undo brings ${merging.count === 1 ? "it" : "them"} back.`}

@@ -86,8 +86,9 @@ test.describe("in Recent", () => {
     expect(observed.actions).toEqual([]);
     const today = page.getByRole("group", { name: "Today", exact: true });
     const row = (title) => today.locator(".session-row", { hasText: title });
+    // The host shown names only the place; another host's row names it too.
     await expect(row("GPU conversation").locator(".session-tag")).toHaveText(
-      "GPU · project",
+      "project",
     );
     await expect(row("Local conversation").locator(".session-tag")).toHaveText(
       `Local · ${host.project.split("/").at(-1)}`,

@@ -261,7 +261,7 @@ export const sessionOrder = (
   ).flatMap((id) => sessions.find((item) => item.id === id) || []);
 
 // What Recent shows on a row's right: the workspace's name or the folder's
-// own, after the host's when there are several.
+// own, after its host's where that is another one.
 const tagOf = (item: Session, spaces: Space[] = [], host = "") => {
   const path = folderOf(item);
   const place =
@@ -502,9 +502,6 @@ function SidebarView({
       counts.set(folderOf(item), (counts.get(folderOf(item)) || 0) + 1);
     return counts;
   }, [all]);
-  const hostName = several
-    ? hosts.sources.find((source) => source.id === host)?.name
-    : "";
   const row = (item: Session) => (
     <SessionEntry
       key={item.id}
@@ -512,7 +509,7 @@ function SidebarView({
       selected={item.id === selected}
       unread={unread.has(item.id)}
       online={online}
-      tag={view === "recent" ? tagOf(item, spaces, hostName) : undefined}
+      tag={view === "recent" ? tagOf(item, spaces) : undefined}
       choose={choose}
       menu={menu}
       picked={selection.ids.has(item.id)}

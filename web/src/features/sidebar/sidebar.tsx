@@ -465,6 +465,8 @@ function SidebarView({
     const conversations = entries.flatMap(function all(entry): Session[] {
       return [entry.item, ...entry.agents.flatMap(all)];
     });
+    const every = conversations.every((item) => selection.ids.has(item.id));
+    const some = conversations.some((item) => selection.ids.has(item.id));
     const shells = (terminals || []).filter(
       (item) =>
         item.folder === cwd &&
@@ -485,6 +487,19 @@ function SidebarView({
               picked={selection.ids.has(cwd)}
               label={`Select the workspace ${name}`}
               toggle={() => toggle(cwd)}
+            />
+          )}
+          {selection.selecting && !space && conversations.length > 0 && (
+            <RowCheck
+              picked={every}
+              mixed={!every && some}
+              label={`Select the conversations of ${name}`}
+              toggle={() =>
+                selection.set(
+                  conversations.map((item) => item.id),
+                  !every,
+                )
+              }
             />
           )}
           <IconButton

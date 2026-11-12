@@ -6,10 +6,13 @@ import "./selection-bar.css";
 
 export function RowCheck({
   picked,
+  mixed,
   label,
   toggle,
 }: {
   picked: boolean;
+  // Some of what it stands for is picked.
+  mixed?: boolean;
   label: string;
   toggle: () => void;
 }) {
@@ -18,6 +21,7 @@ export function RowCheck({
       type="checkbox"
       class="row-check"
       checked={picked}
+      indeterminate={mixed}
       aria-label={label}
       onChange={toggle}
     />

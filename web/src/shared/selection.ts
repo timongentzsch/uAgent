@@ -54,6 +54,16 @@ export function useSelection() {
       toggle: (id: string) => setState((was) => toggled(was, id)),
       all: (order: readonly string[]) =>
         setState((was) => ({ ...was, ids: new Set(order) })),
+      // Many at once (a folder's rows); a Shift run still starts where it did.
+      set: (ids: readonly string[], picked: boolean) =>
+        setState((was) => ({
+          ...was,
+          ids: new Set(
+            picked
+              ? [...was.ids, ...ids]
+              : [...was.ids].filter((id) => !ids.includes(id)),
+          ),
+        })),
       // Select mode from a row's menu: that row picked, taps pick.
       start: (id: string) =>
         setState({ ids: new Set([id]), anchor: id, mode: true }),

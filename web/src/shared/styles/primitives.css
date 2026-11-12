@@ -67,12 +67,20 @@
     transform: translateY(-15%) rotate(45deg);
     visibility: hidden;
   }
-  input[type="checkbox"]:not([switch]):checked::before {
+  input[type="checkbox"]:not([switch]):checked::before,
+  input[type="checkbox"]:not([switch]):indeterminate::before {
     background: var(--accent);
     border-color: var(--accent);
   }
-  input[type="checkbox"]:not([switch]):checked::after {
+  input[type="checkbox"]:not([switch]):checked::after,
+  input[type="checkbox"]:not([switch]):indeterminate::after {
     visibility: visible;
+  }
+  input[type="checkbox"]:not([switch]):indeterminate::after {
+    width: calc(var(--icon-l) * 0.5);
+    height: 0;
+    border-width: var(--stroke) 0 0;
+    transform: none;
   }
   input[type="checkbox"]:not([switch]):disabled {
     opacity: var(--opacity-disabled);

@@ -258,6 +258,36 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
   outline: none;
   background: var(--sheet-edge);
 }
+/* What a formula may take at its caret, by the cell typed in: the functions
+   to choose from, or the arguments of the one it stands in. */
+.sheet-suggest {
+  position: absolute;
+  z-index: 8;
+  box-sizing: border-box;
+  max-width: min(440px, 100vw);
+  max-height: 208px;
+  overflow-y: auto;
+  border: 1px solid var(--sheet-ink);
+  background: var(--sheet-ground);
+  color: var(--sheet-muted);
+}
+.sheet-suggest b {
+  color: var(--sheet-ink);
+  font-weight: 600;
+}
+.sheet-suggest[role="note"],
+.sheet-suggest > [role="option"] {
+  padding: 6px 8px;
+}
+.sheet-suggest > [role="option"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sheet-suggest > :is(:hover, [aria-selected="true"]) {
+  background: var(--sheet-edge);
+}
 table[data-sheet] input[type="checkbox"] {
   margin: 0;
   vertical-align: middle;

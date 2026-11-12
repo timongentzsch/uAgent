@@ -1,4 +1,8 @@
-import type { ComponentChildren, RefObject } from "preact";
+import type {
+  ComponentChildren,
+  RefObject,
+  TargetedKeyboardEvent,
+} from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
   Baseline,
@@ -26,14 +30,16 @@ import {
   Notice,
 } from "../../shared/ui.tsx";
 import { Input } from "../../shared/form-controls.tsx";
+import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
+import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { Tabs } from "../../shared/tabs.tsx";
 import { capitalize } from "../../shared/display.ts";
 import { plural } from "../../shared/quantities.ts";
 import type { Board } from "./boards.ts";
 import { useCurrentInView } from "./legend.tsx";
-import type { Cell } from "./sheet-edit.ts";
+import type { Cell, Offer } from "./sheet-edit.ts";
 
 // A sheet's chrome around its grid, which the page draws and edits itself.
 
@@ -168,8 +174,11 @@ function Looks({ cell, act }: { cell?: Cell; act: Act }) {
   );
 }
 
-// Enter writes into the cell; Escape puts back what the cell holds. Beside
-// it the cell's looks, which a narrow pane folds into one sheet.
+// Enter writes into the cell; Escape puts back what the cell holds. Under
+// it what a formula may take at the caret: functions to choose from (the
+// arrows walk them, Enter and Tab take one, Escape shuts the list), or the
+// arguments of the call it stands in. Beside it the cell's looks, which a
+// narrow pane folds into one sheet.
 export function FormulaBar({
   cell,
   typing,
@@ -177,6 +186,8 @@ export function FormulaBar({
   write,
   act,
   field,
+  offer,
+  ask,
 }: {
   cell?: Cell;
   // What is being typed in the cell itself.
@@ -185,27 +196,107 @@ export function FormulaBar({
   write: (value: string) => void;
   act: Act;
   field: RefObject<HTMLInputElement | null>;
+  // What the page offers the text it was last asked about.
+  offer?: Offer;
+  ask: (text: string) => void;
 }) {
   const [typed, setTyped] = useState<string>();
   // Another cell, or this one holding something else: what was typed goes.
   useEffect(() => setTyped(undefined), [cell?.ref, cell?.raw]);
+  // The text before the caret while the field has the focus, the option
+  // the keys are at, and the text a list was shut for.
+  const [before, setBefore] = useState("");
+  const [index, setIndex] = useState(0);
+  const [shut, setShut] = useState<string>();
+  const look = (input: HTMLInputElement, focused = true) => {
+    const caret = input.selectionStart ?? 0;
+    const text =
+      focused && !locked && input.selectionEnd === caret
+        ? input.value.slice(0, caret)
+        : "";
+    if (text === before) return;
+    setBefore(text);
+    setIndex(0);
+    if (text) ask(text);
+  };
+  const current = before && offer?.text === before ? offer : undefined;
+  const options = (shut !== before && current?.options) || [];
+  const hint = options.length ? undefined : current?.hint;
+  const take = (name: string) => {
+    const input = field.current!;
+    const caret = input.selectionStart ?? 0;
+    input.setRangeText(`${name}(`, caret - current!.typed!, caret, "end");
+    setTyped(input.value);
+    look(input);
+  };
+  const keyDown = (event: TargetedKeyboardEvent<HTMLInputElement>) => {
+    const { key } = event;
+    const listed =
+      options.length > 0 && event.keyCode !== 229 && plainKey(event);
+    if (listed && (key === "ArrowDown" || key === "ArrowUp"))
+      setIndex(nextIndex(index, key, options.length));
+    else if (listed && (key === "Enter" || key === "Tab"))
+      take(options[index].name);
+    else if (listed && key === "Escape") setShut(before);
+    else if (key === "Enter") write(event.currentTarget.value);
+    else if (key === "Escape") setTyped(undefined);
+    else return;
+    event.preventDefault();
+  };
   return (
     <div class="sheet-formula small" role="group" aria-label="Formula bar">
       <output>{cell?.ref}</output>
-      <Input
-        aria-label="Cell contents"
-        inputRef={field}
-        disabled={!cell}
-        readOnly={locked}
-        value={typed ?? typing ?? cell?.raw ?? ""}
-        onInput={(event) => setTyped(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") write(event.currentTarget.value);
-          else if (event.key === "Escape") setTyped(undefined);
-          else return;
-          event.preventDefault();
-        }}
-      />
+      <div class="sheet-typed">
+        <Input
+          aria-label="Cell contents"
+          aria-autocomplete="list"
+          aria-controls={options.length ? "formula-functions" : undefined}
+          aria-activedescendant={
+            options.length ? `formula-function-${index}` : undefined
+          }
+          inputRef={field}
+          disabled={!cell}
+          readOnly={locked}
+          value={typed ?? typing ?? cell?.raw ?? ""}
+          onInput={(event) => {
+            setTyped(event.currentTarget.value);
+            look(event.currentTarget);
+          }}
+          onKeyDown={keyDown}
+          onKeyUp={(event) => look(event.currentTarget)}
+          onClick={(event) => look(event.currentTarget)}
+          onBlur={(event) => look(event.currentTarget, false)}
+        />
+        {options.length > 0 && (
+          <SuggestionList
+            id="formula-functions"
+            label="Functions"
+            prefix="formula-function"
+            items={options}
+            index={index}
+            pick={(option) => take(option.name)}
+            keyOf={(option) => option.name}
+            class="sheet-offer popover-list"
+          >
+            {(option) => (
+              <>
+                <strong>{option.name}</strong>
+                <small class="truncate">{option.about}</small>
+              </>
+            )}
+          </SuggestionList>
+        )}
+        {hint && (
+          <div class="sheet-offer popover-list" role="note">
+            {hint.name}(
+            {hint.args.flatMap((arg, at) => [
+              at > 0 && ", ",
+              at === hint.at ? <strong key={arg}>{arg}</strong> : arg,
+            ])}
+            )
+          </div>
+        )}
+      </div>
       {!locked && (
         <>
           <div class="sheet-looks">

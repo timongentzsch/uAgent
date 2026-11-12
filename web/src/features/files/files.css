@@ -307,7 +307,7 @@
   padding-inline: 0;
   border: 0;
 }
-:is(.sheet-bar, .sheet-formula) > :not(.sheet-tabs, .text-control) {
+:is(.sheet-bar, .sheet-formula) > :not(.sheet-tabs, .sheet-typed) {
   flex: none;
 }
 /* A cell's looks in a row under what was typed in it; folded, in a sheet
@@ -368,9 +368,29 @@
 .sheet-formula > output {
   color: var(--muted);
 }
-:is(.sheet-formula, .page-notes) > .text-control {
+.sheet-typed,
+.page-notes > .text-control {
   flex: 1;
   min-width: 0;
+}
+/* What a formula may take at its caret, under the field it is typed in:
+   functions to choose from, or the arguments of the one it stands in. */
+.sheet-typed {
+  position: relative;
+}
+.sheet-offer {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  max-width: 100%;
+  max-height: var(--scroll-m);
+}
+.sheet-offer[role="note"] {
+  padding: var(--space-2) var(--inset-x);
+  color: var(--muted);
+}
+.sheet-offer strong {
+  color: var(--text);
 }
 /* One line, cut short where the bar is; what is being saved keeps at
    least its mark in view. */

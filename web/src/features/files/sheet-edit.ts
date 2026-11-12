@@ -38,6 +38,32 @@ export function cellOf(said: Cell): Cell {
   };
 }
 
+export type Offer = Extract<PageMessage, { type: "suggest" }>;
+
+// What the page offers a formula, each part as its kind and no longer than
+// one could be.
+export function offerOf(said: Offer): Offer {
+  const line = (text: unknown) => String(text ?? "").slice(0, 200);
+  const list = (items: unknown) => (Array.isArray(items) ? items : []);
+  const { name, args, at } = said.hint ?? {};
+  return {
+    type: "suggest",
+    text: String(said.text ?? ""),
+    typed: Number(said.typed) || 0,
+    options: list(said.options)
+      .slice(0, 1000)
+      .map((option) => ({
+        name: line(option?.name),
+        about: line(option?.about),
+      })),
+    hint: said.hint && {
+      name: line(name),
+      args: list(args).slice(0, 50).map(line),
+      at: Number(at),
+    },
+  };
+}
+
 // What the page hands over, taken only as the kind it names: bytes or CSV
 // to download, a sheet's text to save. A string is why it is too large.
 export function fileOf({

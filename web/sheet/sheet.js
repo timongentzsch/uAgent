@@ -7,6 +7,7 @@ import { listenCharts } from "./figure.js";
 import { draw, figuresOf, paint, readTab, sizesOf } from "./grid.js";
 import { listen } from "./input.js";
 import { layoutOf } from "./layout.js";
+import { suggestions } from "./suggest.js";
 import {
   boxName,
   boxNamed,
@@ -713,6 +714,11 @@ async function open() {
     if (source !== parent || data?.uagentDesign !== 1) return;
     if (data.type === "do") sheet.run(data.command, data.value);
     if (data.type === "input") sheet.write(String(data.value));
+    // What the app's formula bar may take after `text`.
+    if (data.type === "suggest") {
+      const text = String(data.text);
+      say({ type: "suggest", text, ...suggestions(text, book.tokens) });
+    }
   });
   // The address says which tab shows: "#2" is the second.
   const said = () =>

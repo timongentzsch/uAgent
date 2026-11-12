@@ -187,7 +187,10 @@ what a person would type, and the grid shows what the formulas come to. The
 engine that calculates ([IronCalc](https://www.ironcalc.com), WebAssembly)
 is installed with µAgent and loaded by the page, never by the app. The bar
 above the grid shows what the selected cell holds; typing replaces it, and
-Enter, F2 or a double click edits it in place. Arrows, Tab and Enter move;
+Enter, F2 or a double click edits it in place. A formula being typed, there
+or in the bar, is offered the functions its letters name (the arrows choose,
+Enter or Tab takes one) and shown the arguments of the one it stands in.
+Arrows, Tab and Enter move;
 copy, cut and paste work with other spreadsheets; ⌘/Ctrl+D fills down and
 ⌘/Ctrl+Z undoes. A header's ▾ sorts by its column or shows only the rows
 that contain some text; a row's number or a column's letter inserts and

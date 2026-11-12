@@ -50,7 +50,14 @@ import {
 } from "./boards.ts";
 import Legend from "./legend.tsx";
 import { FormulaBar, SheetBar } from "./sheet.tsx";
-import { type Cell, cellOf, fileOf, type TableEdit } from "./sheet-edit.ts";
+import {
+  type Cell,
+  cellOf,
+  fileOf,
+  type Offer,
+  offerOf,
+  type TableEdit,
+} from "./sheet-edit.ts";
 import SlideActions from "./slide-actions.tsx";
 import { type Caret, caretOf, FormatTools, LinkField } from "./format.tsx";
 import Tweaks, { type Tweak } from "./tweaks.tsx";
@@ -299,11 +306,12 @@ export default function Sequence({
   }, []);
   // Which of its file's boards shows: a document's page, a sheet's tab.
   const [part, setPart] = useState(0);
-  // A sheet's selection, the range a comment is being written on, and what
-  // the sheet last said of itself.
+  // A sheet's selection, what it offers the formula being typed, the range
+  // a comment is being written on, and what the sheet last said of itself.
   const [cell, setCell] = useState<Cell>();
   // What is being typed in the page's cell, for the formula bar to show.
   const [typed, setTyped] = useState<string>();
+  const [offer, setOffer] = useState<Offer>();
   const [ranged, setRanged] = useState<string>();
   const [told, setTold] = useState(UNTOLD);
   const formula = useRef<HTMLInputElement>(null);
@@ -866,6 +874,8 @@ export default function Sequence({
                 field={formula}
                 write={(value) => tell(frame.current, { type: "input", value })}
                 act={act}
+                offer={offer}
+                ask={(text) => tell(frame.current, { type: "suggest", text })}
               />
             </fieldset>
           )}
@@ -1038,7 +1048,9 @@ export default function Sequence({
                           ? { tab: Number(tab), tabs: Number(tabs), table }
                           : undefined,
                       );
-                    } else if (message.type === "refused")
+                    } else if (message.type === "suggest")
+                      setOffer(offerOf(message));
+                    else if (message.type === "refused")
                       refused(String(message.message).slice(0, 300));
                     else if (message.type === "key") {
                       // A sheet's other keys are its own.

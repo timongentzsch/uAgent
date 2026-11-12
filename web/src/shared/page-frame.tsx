@@ -125,13 +125,24 @@ export type PageMessage =
       range: string;
       summary?: { count: number; sum: number; average: number };
       marks?: Marks;
+    }
+  // What a sheet's formula may take after `text`: the functions named by
+  // its last `typed` letters, or the arguments of the call it stands in,
+  // with the one reached.
+  | {
+      type: "suggest";
+      text: string;
+      typed?: number;
+      options?: { name: string; about: string }[];
+      hint?: { name: string; args: string[]; at: number };
     };
 
 // Tells a page what to do: select or edit on or off (the caret put in the
 // block at `at`, `over` its words), a mark, a link or another kind for what
 // is being edited or a block to follow it, set a tweak, mark the words
-// found; a sheet: write into its active cell, do a command. Which part of
-// it shows (a page, a tab) is its address's to say: "#3".
+// found; a sheet: write into its active cell, do a command, say what a
+// formula may take after its text up to the caret. Which part of it shows
+// (a page, a tab) is its address's to say: "#3".
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
@@ -147,6 +158,7 @@ export const tell = (
     | { type: "tweak"; name: string; value: unknown }
     | { type: "find"; text: string; index: number }
     | { type: "input"; value: string }
+    | { type: "suggest"; text: string }
     | { type: "do"; command: string; value?: string },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 

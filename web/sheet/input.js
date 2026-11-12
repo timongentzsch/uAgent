@@ -3,6 +3,7 @@
 
 import { headOf } from "./book.js";
 import { openMenu } from "./menu.js";
+import { suggest } from "./suggest.js";
 import { edgeFrom, fromTsv, LAST, toTsv } from "./text.js";
 
 const ARROWS = {
@@ -22,6 +23,7 @@ export function listen(sheet) {
     spellcheck: false,
   });
   document.body.append(editor);
+  const hints = suggest(sheet, editor);
   let editing = false;
   // The open list of an options column.
   let list;
@@ -68,6 +70,7 @@ export function listen(sheet) {
     gone?.remove();
     place(editor);
     delete editor.dataset.editing;
+    hints.show();
     // No keyboard comes up on a phone while the field only holds focus.
     editor.inputMode = "none";
     // Something is selected, so copy is offered and typing replaces it.
@@ -125,6 +128,7 @@ export function listen(sheet) {
   editor.addEventListener("input", () => {
     if (!editing) edit(true);
     if (editing) draft();
+    hints.show();
   });
   editor.addEventListener("blur", () => editing && commit());
 
@@ -413,5 +417,12 @@ export function listen(sheet) {
     if (own?.from.cut) copied = undefined;
   });
 
-  return { rest, hold, place: () => place(list ?? editor) };
+  return {
+    rest,
+    hold,
+    place() {
+      place(list ?? editor);
+      hints.place();
+    },
+  };
 }

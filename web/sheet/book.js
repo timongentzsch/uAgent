@@ -502,6 +502,8 @@ export function openBook(engine, written, locked) {
       model.getFormattedCellValue(sheet, row, column),
     kind: (sheet, row, column) =>
       KINDS[model.getCellType(sheet, row, column)] ?? "text",
+    // A formula as the engine reads it, token by token.
+    tokens: engine.getTokens,
 
     // Whether a rule can make a cell of the column bold.
     emboldens: (sheet, column) =>

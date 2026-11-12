@@ -243,8 +243,7 @@ test("a sheet is drawn once its stylesheet has loaded, however late that comes",
   expect(await stage.locator("html").evaluate(() => window.styled)).toBe(true);
 });
 
-// The engine panics on XNPV of two plain numbers: the workbook it was
-// calculating is lost to it.
+// The engine panics on XNPV of two plain numbers.
 const COSTS = sheet("Costs", {
   Costs: ["<th>Item<th>Cost<th>Twice", "<td>Rent<td>1200<td>=B2*2"],
 });
@@ -305,4 +304,72 @@ test("a file with a formula the engine panics on is shown as written, with the r
     .getByRole("button", { name: "Ask agent to fix" })
     .click();
   await expect(app.locator("#prompt")).toHaveValue(new RegExp(reason));
+});
+
+// The engine never returns from the factorial of so large a number: the
+// page lets the worker calculating it go once its time is up, 20 seconds.
+const NEVER = "=FACT(99999999999)";
+
+test("a formula the engine never finishes is refused once its time is up; meanwhile the sheet says it is calculating, answers and keeps its file", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  test.setTimeout(90_000);
+  const { files, stage, bar, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    COSTS,
+  );
+  await cell("Costs", "B2").click();
+  await app.keyboard.type(NEVER);
+  await app.keyboard.press("Enter");
+  const status = files.locator(".page-tools .page-status");
+  await expect(status).toHaveText("Calculating…");
+  // The page answers: a cell is selected, and what it shows stands.
+  await cell("Costs", "A2").click();
+  await expect(bar.locator("output")).toHaveText("Costs!A2");
+  await expect(cell("Costs", "B2")).toHaveText("1200");
+  expect(await stage.locator("html").evaluate(() => document.readyState)).toBe(
+    "complete",
+  );
+  expect(await saved()).toBe(COSTS);
+  await expect(files.locator(".open-page > .page-notice .notice")).toHaveText(
+    "Not changed: the engine cannot calculate a formula this would leave in the sheet.",
+    { timeout: 30_000 },
+  );
+  await expect(status).toHaveCount(0);
+  expect(await saved()).toBe(COSTS);
+  // What it takes next is calculated and saved as ever.
+  await cell("Costs", "B2").click();
+  await app.keyboard.type("50");
+  await app.keyboard.press("Enter");
+  await expect(cell("Costs", "C2")).toHaveText("100");
+  await expect.poll(saved).toContain("<td>50<td>=B2*2");
+});
+
+test("a file with a formula the engine never finishes is shown as written once its time is up, with the reason", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  test.setTimeout(90_000);
+  const { files, stage } = await openSheet(
+    app,
+    session,
+    host.project,
+    sheet("Costs", {
+      Costs: ["<th>Item<th>Cost", `<td>Rent<td>${NEVER}`, "<td>Power<td>90"],
+    }),
+  );
+  await expect(files.locator(".page-tools .page-status")).toHaveText(
+    "Calculating…",
+  );
+  await expect(stage.locator(".sheet-notice")).toHaveText(
+    "This sheet is shown as written: the engine cannot calculate it",
+    { timeout: 30_000 },
+  );
+  await expect(stage.locator("table[data-sheet] td").nth(1)).toHaveText(NEVER);
+  await expect(files.locator(".page-tools .page-status")).toHaveCount(0);
 });

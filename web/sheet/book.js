@@ -25,8 +25,6 @@ import {
   tableText,
 } from "./text.js";
 
-// An engine sheet no tab shows, for sort keys and a selection's sum.
-const SCRATCH = "⌁";
 // Fifteen digits, so large numbers sort and sum exactly.
 const PLAIN = "0.00000000000000E+00";
 const KINDS = { 1: "number", 4: "boolean", 16: "error" };
@@ -236,120 +234,210 @@ const trimmed = (tab) => {
 };
 
 const LOCKED = "This file is read-only: save it as a sheet to change it.";
-// The engine panics on some formulas, and the workbook it was calculating
-// is then lost to it: it cannot be read, written or freed.
+// The engine panics on some formulas and never returns from others.
 const PANIC =
   "Not changed: the engine cannot calculate a formula this would leave in the sheet.";
 // The host keeps no file over 1,024 KB: the tabs' tables may come to this.
 const TABLES = 1_000_000;
 const bytes = (text) => new TextEncoder().encode(text).length;
 
-// `locked` for the tabs of an Excel or CSV file: no change is made to them.
-// Nothing where the engine cannot calculate the file at all.
-export function openBook(engine, written, locked) {
-  let tabs = written;
-  let model;
-  // Any other error is not the engine's panic, and goes on.
-  const panicked = (error) => {
-    if (!(error instanceof WebAssembly.RuntimeError)) throw error;
+// The tabs as an engine's workbook, made paused. Only a worker of the page
+// calculates one: a formula the engine never returns from holds still the
+// thread it calculates on.
+export const workbookOf = (engine, tabs, ruled = tabs.map(rulesOf)) => {
+  const model = new engine.Model("Sheet", "en", "UTC", "en");
+  model.pauseEvaluation();
+  // Named as it is made: a later tab may bear the next default name.
+  tabs.forEach((tab, sheet) => {
+    if (sheet) model.newSheet();
+    model.renameSheet(sheet, tab.name);
+  });
+  const format = (pattern, sheet, row, column, height = 1) => {
+    if (pattern && height)
+      model.updateRangeStyle(
+        { sheet, row, column, width: 1, height },
+        "num_fmt",
+        pattern,
+      );
   };
-  // Each tab's rules as the engine was built with them.
-  let ruled = tabs.map(rulesOf);
+  const patternOf = (cell, sheet, column) =>
+    cell.attrs["data-format"] ??
+    (cell.text.startsWith("=") &&
+      tabs[sheet].columns[column - 1]["data-format"]);
+  tabs.forEach((tab, sheet) =>
+    tab.columns.forEach((column, c) =>
+      format(column["data-format"], sheet, 1, c + 1, tab.rows.length),
+    ),
+  );
+  // Every pattern before any input: a formula shows as the cell it reads
+  // first does, wherever that lies.
+  eachCell(tabs, (cell, sheet, row, column) =>
+    format(cell.attrs["data-format"], sheet, row, column),
+  );
+  eachCell(tabs, (cell, sheet, row, column) => {
+    if (cell.text) model.setUserInput(sheet, row, column, cell.text);
+  });
+  // That takes a cell's own pattern and a formula's too, which are set
+  // again; over a column's, what a typed value brought ("4.5%", a date)
+  // stands.
+  eachCell(tabs, (cell, sheet, row, column) =>
+    format(patternOf(cell, sheet, column), sheet, row, column),
+  );
+  tabs.forEach((tab, sheet) => {
+    const [top, bottom] = [headOf(tab) + 1, tab.rows.length];
+    const { rules, unread } = ruled[sheet];
+    for (const rule of top > bottom ? [] : rules) {
+      const input = ruleInput(rule, top, bottom, tab.columns.length);
+      // A rule the engine refuses is said like one not understood.
+      try {
+        model.addConditionalFormatting(sheet, input.range, input.rule);
+      } catch {
+        if (!unread.includes(rule.text)) unread.push(rule.text);
+      }
+    }
+  });
+  return model;
+};
+
+// A cell past a tab's table, as the engine reads it.
+const BLANK = { shown: "", kind: "number", format: "general" };
+
+// What the page reads of the tabs, calculated: for each tab, each cell as
+// it shows, its kind and its pattern, and a number to fifteen digits, so it
+// sorts and sums exactly; the look a rule gives a cell it is set on; the
+// rules not understood.
+export function tableOf(engine, tabs) {
+  const ruled = tabs.map(rulesOf);
+  const model = workbookOf(engine, tabs, ruled);
+  try {
+    model.resumeEvaluation();
+    model.evaluate();
+    const table = tabs.map((tab, sheet) => {
+      const looks = {};
+      for (const rule of ruled[sheet].rules)
+        for (let row = headOf(tab) + 1; row <= tab.rows.length; row++)
+          for (const column of rule.row
+            ? tab.columns.map((_, c) => c + 1)
+            : [rule.column]) {
+            const { fill, font } = model.getCellStyle(sheet, row, column).style;
+            looks[`${row} ${column}`] = {
+              fill: FILLED[String(fill.color).toUpperCase()],
+              bold: !!font.b,
+              strike: !!font.strike,
+            };
+          }
+      const cells = tab.rows.map((row, r) =>
+        row.cells.map((_, c) => ({
+          shown: model.getFormattedCellValue(sheet, r + 1, c + 1),
+          kind: KINDS[model.getCellType(sheet, r + 1, c + 1)] ?? "text",
+          format: model.getCellStyle(sheet, r + 1, c + 1).style.num_fmt,
+        })),
+      );
+      return { cells, looks, unread: ruled[sheet].unread };
+    });
+    model.pauseEvaluation();
+    table.forEach(({ cells }, sheet) => {
+      const [height, width] = [cells.length, tabs[sheet].columns.length];
+      if (height && width)
+        model.updateRangeStyle(
+          { sheet, row: 1, column: 1, width, height },
+          "num_fmt",
+          PLAIN,
+        );
+      cells.forEach((row, r) =>
+        row.forEach((cell, c) => {
+          if (cell.kind === "number" && cell.shown)
+            cell.number = Number(
+              model.getFormattedCellValue(sheet, r + 1, c + 1),
+            );
+        }),
+      );
+    });
+    return table;
+  } finally {
+    model.free();
+  }
+}
+
+// How a cell shows but for the rules: its own marks over its row's and
+// column's. A header and a total are bold.
+const plainOf = (tab, row, column) => {
+  const line = tab.rows[row - 1];
+  const cell = line?.cells[column - 1];
+  if (!cell) return {};
+  return {
+    bold: has(cell.attrs, "bold") || isHeader(line) || isTotal(line),
+    italic: has(cell.attrs, "italic"),
+    wrap: has(cell.attrs, "wrap") || has(tab.columns[column - 1], "wrap"),
+    align: WORDS.align.find((word) => has(cell.attrs, word)) ?? "",
+    fill: cell.attrs["data-fill"] ?? line.attrs["data-fill"],
+    ink: cell.attrs["data-ink"],
+  };
+};
+
+// The tabs as an Excel workbook: a rule's look goes out as the rule; what
+// is written, as a style.
+export function xlsxOf(engine, tabs) {
+  const workbook = workbookOf(engine, tabs);
+  try {
+    tabs.forEach((tab, sheet) => {
+      const held = frozenOf(tab.attrs["data-frozen"], headOf(tab));
+      workbook.setFrozenRowsCount(sheet, held.rows);
+      workbook.setFrozenColumnsCount(sheet, held.columns);
+      tab.columns.forEach((column, c) => {
+        const wide = Number(column["data-width"]);
+        if (wide) workbook.setColumnsWidth(sheet, c + 1, c + 1, wide);
+      });
+    });
+    eachCell(tabs, (_, sheet, row, column) => {
+      const area = { sheet, row, column, width: 1, height: 1 };
+      for (const [name, value] of Object.entries(
+        plainOf(tabs[sheet], row, column),
+      )) {
+        const said = COLOURED[name] ? COLOURED[name][value] : `${value}`;
+        if (value && said) workbook.updateRangeStyle(area, STYLED[name], said);
+      }
+    });
+    workbook.resumeEvaluation();
+    workbook.evaluate();
+    return workbook.toXlsx();
+  } finally {
+    workbook.free();
+  }
+}
+
+// `locked` for the tabs of an Excel or CSV file: no change is made to them.
+// `calculate` answers with what is read of tabs (tableOf), made away from
+// the page, or with nothing where the engine does not finish. Nothing where
+// it does not for the tabs written.
+export async function openBook(engine, written, locked, calculate) {
+  let tabs, table, ruled;
   // Each chart as it was read since the last build, by "sheet index".
   const charted = new Map();
   const past = [];
   const future = [];
 
-  // The tabs as an engine's workbook. `scratch` adds the sheet this works
-  // on, which a workbook sent out does not carry.
-  const made = (scratch) => {
-    const model = new engine.Model("Sheet", "en", "UTC", "en");
-    model.pauseEvaluation();
-    // Named as it is made: a later tab may bear the next default name.
-    tabs.forEach((tab, sheet) => {
-      if (sheet) model.newSheet();
-      model.renameSheet(sheet, tab.name);
-    });
-    if (scratch) {
-      let name = SCRATCH;
-      while (tabs.some((tab) => tab.name === name)) name += SCRATCH;
-      model.newSheet();
-      model.renameSheet(tabs.length, name);
-    }
-    const format = (pattern, sheet, row, column, height = 1) => {
-      if (pattern && height)
-        model.updateRangeStyle(
-          { sheet, row, column, width: 1, height },
-          "num_fmt",
-          pattern,
-        );
-    };
-    const patternOf = (cell, sheet, column) =>
-      cell.attrs["data-format"] ??
-      (cell.text.startsWith("=") &&
-        tabs[sheet].columns[column - 1]["data-format"]);
-    tabs.forEach((tab, sheet) =>
-      tab.columns.forEach((column, c) =>
-        format(column["data-format"], sheet, 1, c + 1, tab.rows.length),
-      ),
-    );
-    // Every pattern before any input: a formula shows as the cell it reads
-    // first does, wherever that lies.
-    eachCell(tabs, (cell, sheet, row, column) =>
-      format(cell.attrs["data-format"], sheet, row, column),
-    );
-    eachCell(tabs, (cell, sheet, row, column) => {
-      if (cell.text) model.setUserInput(sheet, row, column, cell.text);
-    });
-    // That takes a cell's own pattern and a formula's too, which are set
-    // again; over a column's, what a typed value brought ("4.5%", a date)
-    // stands.
-    eachCell(tabs, (cell, sheet, row, column) =>
-      format(patternOf(cell, sheet, column), sheet, row, column),
-    );
-    tabs.forEach((tab, sheet) => {
-      const [top, bottom] = [headOf(tab) + 1, tab.rows.length];
-      const { rules, unread } = ruled[sheet];
-      for (const rule of top > bottom ? [] : rules) {
-        const input = ruleInput(rule, top, bottom, tab.columns.length);
-        // A rule the engine refuses is said like one not understood.
-        try {
-          model.addConditionalFormatting(sheet, input.range, input.rule);
-        } catch {
-          if (!unread.includes(rule.text)) unread.push(rule.text);
-        }
-      }
-    });
-    model.resumeEvaluation();
-    model.evaluate();
-    return model;
-  };
-  const tried = () => {
-    try {
-      return made(true);
-    } catch (error) {
-      return panicked(error);
-    }
-  };
-  // Whether `next` are the tabs now, with their workbook: made before the
-  // one before it is let go, so where the engine panics, that one and its
-  // tabs stand.
-  const build = (next = tabs) => {
-    const was = [tabs, ruled];
-    tabs = next;
-    ruled = tabs.map(rulesOf);
-    const fresh = tried();
-    if (!fresh) [tabs, ruled] = was;
-    else {
-      try {
-        model?.free();
-      } catch {}
-      model = fresh;
+  // Whether `next` are the tabs now, with what is read of them: where the
+  // engine does not finish them, the tabs stand.
+  const build = async (next) => {
+    const read = await calculate(next);
+    if (read) {
+      [tabs, table, ruled] = [next, read, next.map(rulesOf)];
       charted.clear();
     }
-    return !!fresh;
+    return !!read;
   };
-  if (!build()) return undefined;
+  if (!(await build(written))) return undefined;
+  const cellAt = (sheet, row, column) =>
+    table[sheet].cells[row - 1]?.[column - 1] ?? BLANK;
+  // One change after another, each made on the tabs the last left. One
+  // being calculated when the page is drawn anew or closed is lost, but for
+  // text typed in a cell, which the app holds.
+  let pending = Promise.resolve();
+  const queued =
+    (change) =>
+    (...args) =>
+      (pending = pending.catch(() => {}).then(() => change(...args)));
 
   // True for a step made, false for none, or why it was refused.
   const commit = (made) => {
@@ -360,16 +448,12 @@ export function openBook(engine, written, locked) {
     });
     const changed = next.filter((tab, at) => tab !== tabs[at]);
     const [refused] = locked ? [LOCKED] : changed.flatMap(markupOf);
-    if (refused || !changed.length) {
-      // What led here may have moved the engine's rows already.
-      if (made.some((tab, at) => tab !== tabs[at])) build();
-      return changed.length ? refused : false;
-    }
+    if (refused || !changed.length) return changed.length ? refused : false;
     return taken(next);
   };
-  const taken = (next) => {
+  const taken = async (next) => {
     const was = tabs;
-    if (!build(next)) return PANIC;
+    if (!(await build(next))) return PANIC;
     past.push(was);
     if (past.length > STEPS) past.shift();
     future.length = 0;
@@ -401,54 +485,37 @@ export function openBook(engine, written, locked) {
       ? `${cellName({ row, column })} is too far from the table to keep: the file would hold every row between.`
       : undefined;
   };
-  const step = (from, to) => {
+  const step = async (from, to) => {
     const was = tabs;
     if (!from.length) return false;
-    if (!build(from.at(-1))) return PANIC;
+    if (!(await build(from.at(-1)))) return PANIC;
     from.pop();
     to.push(was);
     return true;
   };
   const edit = (sheet, change) =>
     tabs.map((tab, at) => (at === sheet ? change(tab) : tab));
-  // Rows or columns moved by the engine. A formula takes the engine's text
-  // only where the move changed it: the engine rewrites "=1e3" as "=1000".
+  // Rows or columns moved by the engine, in a workbook made for the move and
+  // not calculated. A formula takes the engine's text only where the move
+  // changed it: the engine rewrites "=1e3" as "=1000".
   const restructured = (move, next) => {
-    const was = new Map();
-    eachCell(tabs, (cell, sheet, row, column) => {
-      if (cell.text.startsWith("="))
-        was.set(cell, model.getCellContent(sheet, row, column));
-    });
-    // Where the engine panics on the move, its workbook is made anew.
+    const model = workbookOf(engine, tabs);
     try {
-      move();
-    } catch (error) {
-      panicked(error);
-      build();
-      return PANIC;
+      const was = new Map();
+      eachCell(tabs, (cell, sheet, row, column) => {
+        if (cell.text.startsWith("="))
+          was.set(cell, model.getCellContent(sheet, row, column));
+      });
+      move(model);
+      return commit(
+        mapCells(next, (cell, sheet, row, column) => {
+          const now = was.has(cell) && model.getCellContent(sheet, row, column);
+          return now && now !== was.get(cell) ? withText(cell, now) : cell;
+        }),
+      );
+    } finally {
+      model.free();
     }
-    return commit(
-      mapCells(next, (cell, sheet, row, column) => {
-        const now = was.has(cell) && model.getCellContent(sheet, row, column);
-        return now && now !== was.get(cell) ? withText(cell, now) : cell;
-      }),
-    );
-  };
-  // How a cell shows but for the rules: its own marks over its row's and
-  // column's. A header and a total are bold.
-  const plain = (sheet, row, column) => {
-    const line = tabs[sheet].rows[row - 1];
-    const cell = line?.cells[column - 1];
-    if (!cell) return {};
-    return {
-      bold: has(cell.attrs, "bold") || isHeader(line) || isTotal(line),
-      italic: has(cell.attrs, "italic"),
-      wrap:
-        has(cell.attrs, "wrap") || has(tabs[sheet].columns[column - 1], "wrap"),
-      align: WORDS.align.find((word) => has(cell.attrs, word)) ?? "",
-      fill: cell.attrs["data-fill"] ?? line.attrs["data-fill"],
-      ink: cell.attrs["data-ink"],
-    };
   };
   // The cells of a tab moved to where `place` puts them, in `next`: the
   // formulas that read one of them read it there.
@@ -469,27 +536,6 @@ export function openBook(engine, written, locked) {
           : cell,
       ),
     );
-  const where = (name, box) => `${engine.quoteName(name)}!${boxName(box)}`;
-  const worked = (formulas) => {
-    if (!formulas.length) return [];
-    const scratch = tabs.length;
-    model.pauseEvaluation();
-    formulas.forEach((formula, at) =>
-      model.setUserInput(scratch, at + 1, 1, formula),
-    );
-    model.updateRangeStyle(
-      { sheet: scratch, row: 1, column: 1, width: 1, height: formulas.length },
-      "num_fmt",
-      PLAIN,
-    );
-    model.resumeEvaluation();
-    model.evaluate();
-    return formulas.map((_, at) => {
-      const kind = KINDS[model.getCellType(scratch, at + 1, 1)] ?? "text";
-      const shown = model.getFormattedCellValue(scratch, at + 1, 1);
-      return { kind, value: kind === "number" ? Number(shown) : shown };
-    });
-  };
   const spans = (formula) =>
     engine
       .getTokens(formula)
@@ -535,16 +581,14 @@ export function openBook(engine, written, locked) {
         right: column,
       })),
     );
-    const values = worked(cells.map((cell) => `=${where(tab.name, cell)}`)).map(
-      ({ kind, value }, at) =>
-        kind === "number" &&
-        tab.rows[cells[at].top - 1]?.cells[cells[at].left - 1]?.text
-          ? value
-          : undefined,
+    const values = cells.map(({ top, left }) =>
+      tab.rows[top - 1]?.cells[left - 1]?.text
+        ? cellAt(sheet, top, left).number
+        : undefined,
     );
     const series = columns
       .map((column, at) => ({
-        name: model.getFormattedCellValue(sheet, box.top, column),
+        name: cellAt(sheet, box.top, column).shown,
         values: values.slice(at * rows.length, (at + 1) * rows.length),
       }))
       .filter(({ values }) => values.some((value) => value !== undefined));
@@ -554,9 +598,7 @@ export function openBook(engine, written, locked) {
         : series.length > 0;
     return drawn
       ? {
-          labels: rows.map((row) =>
-            model.getFormattedCellValue(sheet, row, box.left),
-          ),
+          labels: rows.map((row) => cellAt(sheet, row, box.left).shown),
           series,
         }
       : { error: "holds no numbers" };
@@ -574,41 +616,11 @@ export function openBook(engine, written, locked) {
     },
     canUndo: () => past.length > 0,
     canRedo: () => future.length > 0,
-    undo: () => step(past, future),
-    redo: () => step(future, past),
+    undo: queued(() => step(past, future)),
+    redo: queued(() => step(future, past)),
     table: (sheet) => tableText(tabs[sheet]),
-    xlsx() {
-      const workbook = made(false);
-      try {
-        tabs.forEach((tab, sheet) => {
-          const held = frozenOf(tab.attrs["data-frozen"], headOf(tab));
-          workbook.setFrozenRowsCount(sheet, held.rows);
-          workbook.setFrozenColumnsCount(sheet, held.columns);
-          tab.columns.forEach((column, c) => {
-            const wide = Number(column["data-width"]);
-            if (wide) workbook.setColumnsWidth(sheet, c + 1, c + 1, wide);
-          });
-        });
-        // A rule's look goes out as the rule; what is written, as a style.
-        eachCell(tabs, (_, sheet, row, column) => {
-          const area = { sheet, row, column, width: 1, height: 1 };
-          for (const [name, value] of Object.entries(
-            plain(sheet, row, column),
-          )) {
-            const said = COLOURED[name] ? COLOURED[name][value] : `${value}`;
-            if (value && said)
-              workbook.updateRangeStyle(area, STYLED[name], said);
-          }
-        });
-        return workbook.toXlsx();
-      } finally {
-        workbook.free();
-      }
-    },
-    shown: (sheet, row, column) =>
-      model.getFormattedCellValue(sheet, row, column),
-    kind: (sheet, row, column) =>
-      KINDS[model.getCellType(sheet, row, column)] ?? "text",
+    shown: (sheet, row, column) => cellAt(sheet, row, column).shown,
+    kind: (sheet, row, column) => cellAt(sheet, row, column).kind,
     // A formula as the engine reads it, token by token.
     tokens: engine.getTokens,
 
@@ -617,22 +629,13 @@ export function openBook(engine, written, locked) {
       ruled[sheet].rules.some(
         (rule) => rule.format.font.b && (rule.row || rule.column === column),
       ),
-    // What a rule that matches gives a cell. A tab without rules does not
-    // ask the engine for every cell's style.
-    look(sheet, row, column) {
-      if (!ruled[sheet].rules.length) return {};
-      const { fill, font } = model.getCellStyle(sheet, row, column).style;
-      return {
-        fill: FILLED[String(fill.color).toUpperCase()],
-        bold: !!font.b,
-        strike: !!font.strike,
-      };
-    },
+    // What a rule that matches gives a cell.
+    look: (sheet, row, column) => table[sheet].looks[`${row} ${column}`] ?? {},
 
-    plain,
+    plain: (sheet, row, column) => plainOf(tabs[sheet], row, column),
     // How a cell shows: what is written, and a rule's look over it.
     marks(sheet, row, column) {
-      const own = plain(sheet, row, column);
+      const own = this.plain(sheet, row, column);
       const look = this.look(sheet, row, column);
       return {
         ...own,
@@ -650,18 +653,19 @@ export function openBook(engine, written, locked) {
         align:
           marks.align ||
           (this.kind(sheet, row, column) === "number" ? "right" : "left"),
-        format: model.getCellStyle(sheet, row, column).style.num_fmt,
+        format: cellAt(sheet, row, column).format,
       };
     },
 
     chart: chartOf,
-    setCharts: (sheet, change) =>
+    setCharts: queued((sheet, change) =>
       commit(edit(sheet, (tab) => ({ ...tab, charts: change(tab.charts) }))),
+    ),
 
     errors() {
       const found = tabs.flatMap((tab, sheet) => [
         ...markupOf(tab),
-        ...ruled[sheet].unread.map(
+        ...table[sheet].unread.map(
           (rule) => `${tab.name}: rule \`${rule}\` is not understood`,
         ),
         ...tab.charts.flatMap((chart, at) => {
@@ -672,28 +676,28 @@ export function openBook(engine, written, locked) {
         }),
       ]);
       eachCell(tabs, (cell, sheet, row, column) => {
-        if (model.getCellType(sheet, row, column) === 16)
+        const { kind, shown } = cellAt(sheet, row, column);
+        if (kind === "error")
           found.push(
-            `${tabs[sheet].name}!${letters(column)}${row} ${cell.text} is ${model.getFormattedCellValue(sheet, row, column)}`,
+            `${tabs[sheet].name}!${letters(column)}${row} ${cell.text} is ${shown}`,
           );
       });
       return found.slice(0, 20);
     },
 
     // Nothing for fewer than two numbers, or with a cell in error.
-    summary(sheet, box) {
-      const range = where(tabs[sheet].name, box);
-      const [count, sum] = worked([`=COUNT(${range})`, `=SUM(${range})`]);
-      return count.value > 1 && sum.kind === "number"
-        ? {
-            count: count.value,
-            sum: sum.value,
-            average: sum.value / count.value,
-          }
+    summary(sheet, { top, left, bottom, right }) {
+      const read = table[sheet].cells
+        .slice(top - 1, bottom)
+        .flatMap((row) => row.slice(left - 1, right));
+      const numbers = read.flatMap((cell) => cell.number ?? []);
+      const sum = numbers.reduce((all, number) => all + number, 0);
+      return numbers.length > 1 && !read.some((cell) => cell.kind === "error")
+        ? { count: numbers.length, sum, average: sum / numbers.length }
         : undefined;
     },
 
-    addTab: () =>
+    addTab: queued(() =>
       retabbed([
         ...tabs,
         {
@@ -705,25 +709,28 @@ export function openBook(engine, written, locked) {
           rows: [],
         },
       ]),
-    copyTab: (sheet) =>
+    ),
+    copyTab: queued((sheet) =>
       retabbed(
         tabs.toSpliced(sheet + 1, 0, {
           ...tabs[sheet],
           name: unused(`${tabs[sheet].name.slice(0, 26)} copy`),
         }),
       ),
-    dropTab: (sheet) =>
+    ),
+    dropTab: queued((sheet) =>
       tabs.length > 1
         ? retabbed(tabs.toSpliced(sheet, 1))
         : "A sheet keeps at least one tab.",
-    moveTab(sheet, by) {
+    ),
+    moveTab: queued((sheet, by) => {
       const to = sheet + by;
       return to >= 0 && to < tabs.length
         ? commit(tabs.with(sheet, tabs[to]).with(to, tabs[sheet]))
         : false;
-    },
+    }),
     // The engine writes the new name into the formulas that read the tab.
-    nameTab(sheet, said) {
+    nameTab: queued((sheet, said) => {
       const name = said.trim();
       if (name === tabs[sheet].name) return false;
       if (
@@ -737,10 +744,10 @@ export function openBook(engine, written, locked) {
       )
         return "A tab's name is its own, at most 31 characters, without [ ] : * ? / \\.";
       return restructured(
-        () => model.renameSheet(sheet, name),
+        (model) => model.renameSheet(sheet, name),
         tabs.with(sheet, { ...tabs[sheet], name }),
       );
-    },
+    }),
     // How many cells of other tabs read this one.
     readers(sheet) {
       const names = [tabs[sheet].name, engine.quoteName(tabs[sheet].name)];
@@ -760,9 +767,9 @@ export function openBook(engine, written, locked) {
     // The rule at `at` of a column's, which reads `text` there, set to
     // `rule` or taken out without one. For a rule of its own the table
     // reaches the column; one that would not be understood is not written.
-    setRule(sheet, column, at, text, rule) {
+    setRule: queued((sheet, column, at, text, rule) => {
       const width = tabs[sheet].columns.length;
-      if (this.rules(sheet, column)[at]?.text !== text)
+      if (rulesAt(tabs[sheet], column)[at]?.text !== text)
         return "Not changed: the column's rules are no longer the ones shown.";
       if (rule?.row && column > width + SPARE.columns)
         return `Not changed: column ${letters(column)} is too far from the table for a rule on its rows.`;
@@ -786,21 +793,22 @@ export function openBook(engine, written, locked) {
           ? commit(tabs.with(sheet, tab))
           : `Not changed: the sheet does not understand the rule ${rule.text}`)
       );
-    },
+    }),
 
     // A mark set on the tab's table: `data-frozen="2 B"`.
-    mark: (sheet, name, value) =>
+    mark: queued((sheet, name, value) =>
       commit(
         tabs.with(sheet, {
           ...tabs[sheet],
           attrs: { ...tabs[sheet].attrs, [name]: value },
         }),
       ),
+    ),
 
     // A look set on the box's cells but those in `skip`, which the table
     // reaches for. A word is taken out where every cell has it; an
     // attribute goes with "".
-    style(sheet, box, name, value, skip) {
+    style: queued((sheet, box, name, value, skip) => {
       const words = WORDS[name];
       const may = words ?? (SAID[name] && ["", ...SAID[name]]);
       if (may && !may.includes(value)) return false;
@@ -846,11 +854,11 @@ export function openBook(engine, written, locked) {
           },
         ),
       );
-    },
+    }),
 
     // The looks set on the box's cells, but those in `skip`, taken off; a
     // column selected whole gives up its own pattern and wrap too.
-    unstyle(sheet, box, skip) {
+    unstyle: queued((sheet, box, skip) => {
       const looks = Object.values(WORDS).flat();
       const plainly = (attrs, words, names) => {
         const next = { ...attrs };
@@ -897,7 +905,7 @@ export function openBook(engine, written, locked) {
           },
         ),
       );
-    },
+    }),
 
     // The tab's table as it would be with text in a cell, cut around that
     // text, and whole with the cell emptied where that ends the table
@@ -922,7 +930,7 @@ export function openBook(engine, written, locked) {
 
     // Text set down from a cell on. From this book's own cells (`from`)
     // formulas move along, and a cut clears.
-    paste(sheet, at, rows, from) {
+    paste: queued((sheet, at, rows, from) => {
       const texts = new Map();
       if (from?.cut && from.sheet === sheet)
         for (let row = from.box.top; row <= from.box.bottom; row++)
@@ -955,10 +963,10 @@ export function openBook(engine, written, locked) {
               : cell,
         ),
       );
-    },
+    }),
 
     // One row alone takes the row above it.
-    fillDown(sheet, box) {
+    fillDown: queued((sheet, box) => {
       const top = box.bottom > box.top ? box.top : box.top - 1;
       const source = tabs[sheet].rows[top - 1]?.cells;
       if (!source) return false;
@@ -988,11 +996,11 @@ export function openBook(engine, written, locked) {
               : cell,
         ),
       );
-    },
+    }),
 
-    insertRows: (sheet, at, count) =>
+    insertRows: queued((sheet, at, count) =>
       restructured(
-        () => model.insertRows(sheet, at, count),
+        (model) => model.insertRows(sheet, at, count),
         edit(sheet, (tab) => ({
           ...tab,
           charts: slidCharts(tab.charts, false, at, count),
@@ -1006,19 +1014,22 @@ export function openBook(engine, written, locked) {
           ),
         })),
       ),
-    deleteRows: (sheet, at, count) =>
-      count < tabs[sheet].rows.length &&
+    ),
+    deleteRows: queued(
+      (sheet, at, count) =>
+        count < tabs[sheet].rows.length &&
+        restructured(
+          (model) => model.deleteRows(sheet, at, count),
+          edit(sheet, (tab) => ({
+            ...tab,
+            charts: slidCharts(tab.charts, false, at, -count),
+            rows: tab.rows.toSpliced(at - 1, count),
+          })),
+        ),
+    ),
+    insertColumns: queued((sheet, at, count) =>
       restructured(
-        () => model.deleteRows(sheet, at, count),
-        edit(sheet, (tab) => ({
-          ...tab,
-          charts: slidCharts(tab.charts, false, at, -count),
-          rows: tab.rows.toSpliced(at - 1, count),
-        })),
-      ),
-    insertColumns: (sheet, at, count) =>
-      restructured(
-        () => model.insertColumns(sheet, at, count),
+        (model) => model.insertColumns(sheet, at, count),
         edit(sheet, (tab) => ({
           ...tab,
           attrs: slidAttrs(tab, at, count),
@@ -1039,27 +1050,30 @@ export function openBook(engine, written, locked) {
           })),
         })),
       ),
-    deleteColumns: (sheet, at, count) =>
-      count < tabs[sheet].columns.length &&
-      restructured(
-        () => model.deleteColumns(sheet, at, count),
-        edit(sheet, (tab) => ({
-          ...tab,
-          attrs: slidAttrs(tab, at, -count),
-          charts: slidCharts(tab.charts, true, at, -count),
-          columns: tab.columns.toSpliced(at - 1, count),
-          rows: tab.rows.map((row) => ({
-            ...row,
-            cells: row.cells.toSpliced(at - 1, count),
+    ),
+    deleteColumns: queued(
+      (sheet, at, count) =>
+        count < tabs[sheet].columns.length &&
+        restructured(
+          (model) => model.deleteColumns(sheet, at, count),
+          edit(sheet, (tab) => ({
+            ...tab,
+            attrs: slidAttrs(tab, at, -count),
+            charts: slidCharts(tab.charts, true, at, -count),
+            columns: tab.columns.toSpliced(at - 1, count),
+            rows: tab.rows.map((row) => ({
+              ...row,
+              cells: row.cells.toSpliced(at - 1, count),
+            })),
           })),
-        })),
-      ),
+        ),
+    ),
 
     // Rows or columns moved `by` places among their neighbours. Every
     // formula's reference to one of their cells follows, on any tab, a
     // chart its cells and a rule its column. A header row and a total row
     // stay, and no row passes one.
-    moveRows(sheet, at, count, by) {
+    moveRows: queued((sheet, at, count, by) => {
       const to = at + by;
       const [first, last] = [Math.min(at, to), Math.max(at, to) + count - 1];
       if (to < 1 || last > tabs[sheet].rows.length) return false;
@@ -1077,8 +1091,8 @@ export function openBook(engine, written, locked) {
           rows: lifted(tab.rows, at, count, by),
         })),
       );
-    },
-    moveColumns(sheet, at, count, by) {
+    }),
+    moveColumns: queued((sheet, at, count, by) => {
       const to = at + by;
       if (to < 1 || to + count - 1 > tabs[sheet].columns.length) return false;
       const place = lifting(at, count, by);
@@ -1106,10 +1120,10 @@ export function openBook(engine, written, locked) {
           })),
         })),
       );
-    },
+    }),
 
     // A column's width in pixels; without one it is as wide as its texts.
-    widen: (sheet, { left, right }, width) =>
+    widen: queued((sheet, { left, right }, width) =>
       commit(
         edit(sheet, (tab) => ({
           ...tab,
@@ -1120,24 +1134,23 @@ export function openBook(engine, written, locked) {
           }),
         })),
       ),
+    ),
 
     // Under the header and but for total rows; a formula follows its row.
-    sort(sheet, column, descending) {
+    sort: queued((sheet, column, descending) => {
       const tab = tabs[sheet];
       const places = tab.rows
         .map((_, at) => at)
         .filter((at) => at >= headOf(tab) && !isTotal(tab.rows[at]));
-      const values = worked(
-        places.map(
-          (at) =>
-            `=${where(tab.name, { top: at + 1, left: column, bottom: at + 1, right: column })}`,
-        ),
-      );
+      const keyOf = (at) => {
+        const { kind, number, shown } = cellAt(sheet, at + 1, column);
+        return { kind, value: kind === "number" ? number : shown };
+      };
       const sorted = places
-        .map((at, n) => ({
+        .map((at) => ({
           at,
           key: tab.rows[at].cells[column - 1].text
-            ? values[n]
+            ? keyOf(at)
             : { kind: "empty" },
         }))
         .sort((a, b) => inOrder(a.key, b.key, descending) || a.at - b.at);
@@ -1165,6 +1178,6 @@ export function openBook(engine, written, locked) {
           ? tabs
           : edit(sheet, () => ({ ...tab, rows })),
       );
-    },
+    }),
   };
 }

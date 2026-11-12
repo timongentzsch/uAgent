@@ -1,16 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { openBook } from "../sheet/book.js";
 import { sheetText } from "../sheet/text.js";
 import { csvTab, workbookTabs } from "../sheet/workbook.js";
+import { ask, calculate, engine } from "./sheet-engine.js";
 
-const wasm = createRequire(import.meta.url).resolve("@ironcalc/wasm-xlsx");
-const engine = await import(wasm);
-engine.initSync({
-  module: readFileSync(wasm.replace(/wasm\.js$/, "wasm_bg.wasm")),
-});
 const LOCALE = ["en", "UTC", "en"];
 const texts = (tab) => tab.rows.map((row) => row.cells.map(({ text }) => text));
 const heads = (tab) => tab.rows.map((row) => row.cells[0].th);
@@ -34,7 +28,7 @@ test("a CSV file is one tab, its rows as wide as the widest, its first row the h
   );
 });
 
-test("a CSV cell is a number only when it is plainly one: a phone number, an id and a formula stay their text", () => {
+test("a CSV cell is a number only when it is plainly one: a phone number, an id and a formula stay their text", async () => {
   const data = [
     ["1200", "-12.50", "0.5", "2027-03-01", "true", "Rent, flat", "12:30"],
     ["+1-555-1234", "00123", "1234567890123456789", "-note", "=1+1", "4.5%"],
@@ -45,7 +39,7 @@ test("a CSV cell is a number only when it is plainly one: a phone number, an id 
     "data",
     `h\n${data.map((row) => row.map((cell) => `"${cell}"`).join(",")).join("\n")}\n`,
   );
-  const book = openBook(engine, [tab], true);
+  const book = await openBook(engine, [tab], true, calculate);
   const read = (row) =>
     data[row].map((_, c) => [
       book.shown(0, row + 2, c + 1),
@@ -85,7 +79,7 @@ test("a CSV cell is a number only when it is plainly one: a phone number, an id 
   );
 });
 
-test("a CSV file's name makes a tab name a spreadsheet takes", () => {
+test("a CSV file's name makes a tab name a spreadsheet takes", async () => {
   const names = [
     ["exports [2026]: all/rows*?", "exports 2026 allrows"],
     ["a".repeat(40), "a".repeat(31)],
@@ -94,7 +88,10 @@ test("a CSV file's name makes a tab name a spreadsheet takes", () => {
   for (const [file, name] of names) {
     const tab = csvTab(engine, file, "Item\nRent\n");
     assert.equal(tab.name, name);
-    assert.equal(openBook(engine, [tab], true).shown(0, 2, 1), "Rent");
+    assert.equal(
+      (await openBook(engine, [tab], true, calculate)).shown(0, 2, 1),
+      "Rent",
+    );
   }
 });
 
@@ -201,21 +198,30 @@ test("a workbook with one cell far out is refused before any cell is built", {
   );
 });
 
-test("the tabs read are a book like any: calculated, and locked against every change", () => {
-  const book = openBook(engine, workbookTabs(engine, costs(), "book"), true);
+test("the tabs read are a book like any: calculated, and locked against every change", async () => {
+  const book = await openBook(
+    engine,
+    workbookTabs(engine, costs(), "book"),
+    true,
+    calculate,
+  );
   assert.equal(book.shown(0, 4, 3), "1,290.50");
   assert.equal(book.shown(0, 2, 4), "93%");
   assert.equal(book.shown(1, 1, 2), "4.50%");
   // A hidden sheet is there for the formulas that read it.
   assert.equal(book.shown(1, 2, 2), "kept out of sight");
   const why = "This file is read-only: save it as a sheet to change it.";
-  assert.equal(book.paste(0, { row: 2, column: 3 }, [["7"]]), why);
-  assert.equal(book.insertRows(0, 2, 1), why);
-  assert.equal(book.sort(0, 3, true), why);
+  assert.equal(await book.paste(0, { row: 2, column: 3 }, [["7"]]), why);
+  assert.equal(await book.insertRows(0, 2, 1), why);
+  assert.equal(await book.sort(0, 3, true), why);
   assert.equal(book.shown(0, 4, 3), "1,290.50");
   assert.equal(book.canUndo(), false);
-  // Sent out again it is the same workbook, without the sheet the book works on.
-  const again = workbookTabs(engine, book.xlsx(), "book");
+  // Sent out again it is the same workbook.
+  const again = workbookTabs(
+    engine,
+    await ask({ tabs: book.tabs, xlsx: true }),
+    "book",
+  );
   const cells = ({ hidden, ...tab }) => tab;
   assert.deepEqual(again.map(cells), book.tabs.map(cells));
 });

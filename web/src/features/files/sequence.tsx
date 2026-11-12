@@ -85,6 +85,8 @@ import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
 import { useResource } from "../../shared/use-resource.ts";
 
+// Said in the tools' row while a sheet's engine takes more than a moment.
+const CALCULATING = "Calculating…";
 // What a sheet says of itself, before it has.
 const UNTOLD = { hidden: 0, undo: false, redo: false, readers: 0 };
 // Where the pane goes with a tab put in, copied or moved: the page follows.
@@ -1087,6 +1089,14 @@ export default function Sequence({
                       setRuling(sheet && !locked && cell ? columnOf(cell) : "");
                     else if (message.type === "refused")
                       refused(String(message.message).slice(0, 300));
+                    else if (message.type === "calculating")
+                      setSaved((was) =>
+                        message.on
+                          ? { text: CALCULATING }
+                          : was?.text === CALCULATING
+                            ? undefined
+                            : was,
+                      );
                     else if (message.type === "comment") {
                       if (sheet && addToChat) setRanged(cell?.range);
                     } else if (message.type === "key") {

@@ -168,6 +168,7 @@ def test_web_sheet_page_loads_its_engine_from_its_own_address(root, home, *, bin
             status, _, headers = page("sheets/budget.html")
             policy = headers["Content-Security-Policy"]
             assert_true(status == 200 and "'wasm-unsafe-eval'" in policy, policy)
+            assert_true("worker-src blob:;" in policy, policy)
             for name, kind in (
                 ("sheet.js", "text/javascript"),
                 ("wasm_bg.wasm", "application/wasm"),

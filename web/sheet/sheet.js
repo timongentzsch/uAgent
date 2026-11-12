@@ -18,9 +18,9 @@ import {
   LAST,
   letters,
   sheetText,
+  tableText,
   toCsv,
 } from "./text.js";
-import { csvTab, workbookTabs } from "./workbook.js";
 
 const tables = [...document.querySelectorAll("table[data-sheet]")];
 // The page of an Excel or CSV file holds no tables: it names the file,
@@ -31,6 +31,53 @@ const title = decodeURIComponent(file).replace(/\.[^.]+$/, "");
 const say = (message) =>
   parent.postMessage({ uagentDesign: 1, ...message }, "*");
 const here = new URL(".", import.meta.url).href;
+
+// The engine calculates in a worker made for each answer, ended once it
+// answers, or once it has not in this long: a formula it never returns
+// from would otherwise hold the page, and the app around it, still.
+const LIMIT = 20_000;
+// Past this the app says the sheet is calculating; sooner, nothing shows.
+const MOMENT = 500;
+// A page in an opaque origin may make a worker only from its own blob.
+const WORKER = URL.createObjectURL(
+  new Blob(
+    [
+      `onmessage = ({ data }) =>
+        import(${JSON.stringify(`${here}calculate.js`)})
+          .then((engine) => engine.answer(data))
+          .then(postMessage, (error) =>
+            postMessage(
+              error instanceof WebAssembly.RuntimeError
+                ? undefined
+                : { error: error.message },
+            ),
+          );`,
+    ],
+    { type: "text/javascript" },
+  ),
+);
+// The engine's answer (calculate.js); nothing where it panicked or did not
+// finish in time.
+const ask = (request) =>
+  new Promise((done) => {
+    const worker = new Worker(WORKER);
+    let said = false;
+    const shown = setTimeout(() => {
+      said = true;
+      say({ type: "calculating", on: true });
+    }, MOMENT);
+    const end = (answer) => {
+      clearTimeout(shown);
+      clearTimeout(limit);
+      worker.terminate();
+      if (said) say({ type: "calculating", on: false });
+      done(answer);
+    };
+    const limit = setTimeout(end, LIMIT);
+    worker.onmessage = ({ data }) => end(data);
+    worker.onerror = () => end();
+    worker.postMessage(request);
+  });
 
 // The grid is measured as its stylesheet lays it out: drawn once that has
 // loaded, or failed to.
@@ -52,30 +99,52 @@ async function open() {
   // The engine can come ready inside a ResizeObserver's report (the page
   // helper's), where a page that resizes itself raises an error.
   await new Promise((done) => setTimeout(done));
+  const CANNOT = "the engine cannot calculate it";
   const read = async () => {
     const answer = await fetch(`./${file}`);
     if (!answer.ok) throw new Error(`the host answered ${answer.status}`);
-    return /\.csv$/i.test(file)
-      ? [csvTab(engine, title, await answer.text())]
-      : workbookTabs(engine, new Uint8Array(await answer.arrayBuffer()), title);
+    const said = await ask({
+      file: new Uint8Array(await answer.arrayBuffer()),
+      name: title,
+      csv: /\.csv$/i.test(file),
+    });
+    if (!said?.tabs) throw new Error(said?.error ?? CANNOT);
+    return said.tabs;
   };
   // A file that cannot be read or calculated is said in its page, which
   // then draws nothing: a sheet's tables stay as they are written.
   const unread = (error) => {
     const note = document.createElement("p");
     note.className = "sheet-notice";
-    note.textContent = `${file ? `${decodeURIComponent(file)} cannot be shown` : "This sheet is shown as written"}: ${
-      error instanceof WebAssembly.RuntimeError
-        ? "the engine cannot calculate it"
-        : (error.message ?? error)
-    }`;
+    note.textContent = `${file ? `${decodeURIComponent(file)} cannot be shown` : "This sheet is shown as written"}: ${error.message ?? error}`;
     document.body.prepend(note);
     return note.textContent;
   };
   const written = file ? await read().catch(unread) : tables.map(readTab);
   if (typeof written === "string") return [written];
-  const book = openBook(engine, written, !!file);
-  if (!book) return [unread("the engine cannot calculate it")];
+  // Each tab's table as the file holds it.
+  const told = written.map(tableText);
+  // The edits that make the file hold `next`: every table, where tabs were
+  // put in or taken out, over those the file has.
+  const editsOf = (next) =>
+    next.length !== told.length
+      ? [
+          {
+            tab: 0,
+            tabs: told.length,
+            all: true,
+            table: next.map(tableText).join("\n"),
+          },
+        ]
+      : next.flatMap((tab, at) => {
+          const table = tableText(tab);
+          return table === told[at]
+            ? []
+            : [{ tab: at, tabs: told.length, table }];
+        });
+  const calculate = async (next) => (await ask({ tabs: next }))?.table;
+  const book = await openBook(engine, written, !!file, calculate);
+  if (!book) return [unread(CANNOT)];
   // The tabs to choose from: a workbook's hidden sheets only calculate.
   const offered = written.flatMap((tab, at) => (tab.hidden ? [] : [at]));
   for (const figure of tables.flatMap(figuresOf)) figure.remove();
@@ -102,7 +171,6 @@ async function open() {
   const filters = tables.map(() => new Map());
   // The rows the shown tab's filters hide: no cell of them is selected.
   let hidden = new Set();
-  const told = tables.map((_, sheet) => book.table(sheet));
 
   const tab = () => book.tabs[at];
   // Alone (its own tab, a print, the agent's browser) the page is its whole
@@ -457,50 +525,31 @@ async function open() {
       tell();
     },
 
-    // `changed` is what the book answered: true, false, or why not.
-    did(changed) {
+    // `asked` is what the book answers: true, false, or why not. Once it
+    // has, a cell being typed in is said again: its draft's table, or the
+    // app's hold of it, may be gone.
+    async did(asked) {
+      const changed = await asked;
       if (typeof changed === "string")
         say({ type: "refused", message: changed });
-      if (changed !== true) return false;
-      // Tabs put in or taken out (by Undo too) are every table written anew
-      // over those the file has, and a table here for each.
-      if (book.tabs.length !== tables.length) {
-        say({
-          type: "edit",
-          tab: 0,
-          tabs: told.length,
-          all: true,
-          table: book.tabs.map((_, tab) => book.table(tab)).join("\n"),
-          undo: book.canUndo(),
-          redo: book.canRedo(),
-          errors: errors(),
-        });
-        retab();
+      if (changed === true) {
+        const edits = editsOf(book.tabs);
+        // Tabs put in or taken out (by Undo too) are a table here for each;
+        // a filter is of a column of the table.
+        if (book.tabs.length !== tables.length) retab();
+        else
+          book.tabs.forEach((tab, sheet) => {
+            for (const column of filters[sheet].keys())
+              if (column > tab.columns.length) filters[sheet].delete(column);
+          });
+        told.splice(0, Infinity, ...book.tabs.map(tableText));
         show(Math.min(at, tables.length - 1));
-        return true;
+        const [undo, redo, found] = [book.canUndo(), book.canRedo(), errors()];
+        for (const edit of edits)
+          say({ type: "edit", ...edit, undo, redo, errors: found });
       }
-      // A filter is of a column of the table.
-      book.tabs.forEach((tab, sheet) => {
-        for (const column of filters[sheet].keys())
-          if (column > tab.columns.length) filters[sheet].delete(column);
-      });
-      show(at);
-      const found = errors();
-      book.tabs.forEach((_, tab) => {
-        const table = book.table(tab);
-        if (table === told[tab]) return;
-        told[tab] = table;
-        say({
-          type: "edit",
-          tab,
-          tabs: tables.length,
-          table,
-          undo: book.canUndo(),
-          redo: book.canRedo(),
-          errors: found,
-        });
-      });
-      return true;
+      redraft();
+      return changed === true;
     },
     run: (command, value) => sheet.did(commands[command]?.(value)),
     // The shown tab's table as text typed in the active cell would make it.
@@ -517,29 +566,32 @@ async function open() {
     },
   };
   let commented = false;
-  // A row moved past one a filter hides would change the file unseen.
-  const carried = (rows, columns) => {
+  // A row moved past one a filter hides would change the file unseen. The
+  // selection goes with what it moved.
+  const carried = async (rows, columns) => {
     const [top, bottom] = [
       box().top + Math.min(rows, 0),
       box().bottom + Math.max(rows, 0),
     ];
     if (rows && [...hidden].some((row) => row >= top && row <= bottom))
       return "Clear the filter to move these rows.";
-    const changed = rows
-      ? book.moveRows(at, box().top, high(), rows)
-      : shifted(book.moveColumns(at, box().left, wide(), columns));
     const on = ({ row, column }) => ({
       row: row + rows,
       column: column + columns,
     });
+    const [sheet, { anchor, focus }] = [at, picks[at]];
+    const changed = await (rows
+      ? book.moveRows(at, box().top, high(), rows)
+      : shifted(book.moveColumns(at, box().left, wide(), columns)));
     if (changed === true)
-      picks[at] = { anchor: on(picks[at].anchor), focus: on(picks[at].focus) };
+      picks[sheet] = { anchor: on(anchor), focus: on(focus) };
     return changed;
   };
   // A filter is of a column by its place: with a column put in or taken
   // out before it, it would be another column's.
-  const shifted = (changed) => {
-    if (changed === true) filters[at].clear();
+  const shifted = async (asked, sheet = at) => {
+    const changed = await asked;
+    if (changed === true) filters[sheet].clear();
     return changed;
   };
 
@@ -548,7 +600,12 @@ async function open() {
     undo: book.undo,
     redo: book.redo,
     // The open tab's cells go out as they show.
-    xlsx: () => out("xlsx", book.xlsx()),
+    xlsx: async () => {
+      const said = await ask({ tabs: book.tabs, xlsx: true });
+      return said?.xlsx
+        ? out("xlsx", said.xlsx)
+        : "Not exported: the engine cannot calculate this sheet.";
+    },
     // The mark before it tells Excel the text is UTF-8.
     csv: () =>
       out(
@@ -622,14 +679,16 @@ async function open() {
     "tab-name": (name) => book.nameTab(at, String(name ?? "")),
     // One rule of the active cell's column as the app's dialog set it, by
     // its place among them and what it read there; without a rule, that one
-    // is taken out. The cell is said again either way: the dialog waits.
+    // is taken out. The cell is said again either way once answered: the
+    // dialog waits.
     rule(value) {
       const { of, place, text, rule } = JSON.parse(value);
       const { column } = pick().anchor;
-      tell();
-      return of === `${tab().name}!${letters(column)}`
-        ? book.setRule(at, column, place, text, rule)
-        : "Not changed: another column is selected than the rule was set for.";
+      return Promise.resolve(
+        of === `${tab().name}!${letters(column)}`
+          ? book.setRule(at, column, place, text, rule)
+          : "Not changed: another column is selected than the rule was set for.",
+      ).finally(tell);
     },
     // What is being typed in the cell, from the app's bar too: written, or
     // given up.
@@ -666,7 +725,6 @@ async function open() {
     filters.splice(0, Infinity, ...all(() => new Map()));
     reached.splice(0, Infinity, ...all(() => ({ rows: 0, columns: 0 })));
     kept.splice(0, Infinity, ...all(() => ({ rows: -1, heights: new Map() })));
-    told.splice(0, Infinity, ...all((tab) => book.table(tab)));
     offered.splice(0, Infinity, ...all((tab) => tab));
   };
   const freeze = (rows, columns) =>
@@ -781,7 +839,7 @@ async function open() {
       follow();
     });
   }).observe(root, { attributes: true, attributeFilter: ["style"] });
-  const { rest, hold, place, type, commit } = listen(sheet);
+  const { rest, hold, place, type, commit, redraft } = listen(sheet);
   sheet.hold = hold;
   const charts = listenCharts(sheet);
   addEventListener("message", ({ source, data }) => {

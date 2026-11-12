@@ -492,3 +492,29 @@ test("a sheet left while it calculates a change stays once, saying so; left agai
   await expect(cell("Costs", "B2")).toHaveCount(0);
   await expect.poll(saved).toContain("<td>50<td>=B2*2");
 });
+
+test("what is typed in the formula bar and refused at once goes from the bar, which shows what the cell holds", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, bar, field, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    COSTS,
+  );
+  await cell("Costs", "B2").click();
+  await app.keyboard.press("Control+ArrowDown");
+  await expect(bar.locator("output")).toHaveText("Costs!B1048576");
+  await field.click();
+  await field.pressSequentially("far");
+  await field.press("Enter");
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveText(
+    "B1048576 is too far from the table to keep: the file would hold every row between.",
+  );
+  await expect(field).toHaveValue("");
+  expect(await saved()).toBe(COSTS);
+});

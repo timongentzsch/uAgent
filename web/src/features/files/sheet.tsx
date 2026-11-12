@@ -203,17 +203,22 @@ export function FormulaBar({
   ask: (text: string) => void;
 }) {
   // What is typed here, shown at once until the page says it back, as the
-  // cell's draft or, written, as the cell's. It is written when the field
-  // is left, as a cell's is.
+  // cell's draft or, written, as the cell's; or says the draft over while
+  // the cell holds something else: it was refused. It is written when the
+  // field is left, as a cell's is.
   const [typed, setTyped] = useState<string>();
+  const written = useRef<string>(undefined);
   // Keys typed meanwhile are newer than what is compared here.
   useEffect(() => {
     const said = typing ?? cell?.raw;
-    setTyped((now) => (now === said ? undefined : now));
+    setTyped((now) =>
+      now === said || (typing === undefined && now === written.current)
+        ? undefined
+        : now,
+    );
   }, [typed, typing, cell?.raw]);
   // Written, then another cell: what was typed goes. Typed before the page
   // says the cell it goes to, it stays.
-  const written = useRef<string>(undefined);
   useEffect(() => {
     setTyped((now) => (now === written.current ? undefined : now));
   }, [cell?.ref]);

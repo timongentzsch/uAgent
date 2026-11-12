@@ -431,10 +431,11 @@ table[data-sheet] .sheet-italic {
 table[data-sheet] .sheet-strike {
   text-decoration: line-through;
 }
-/* A chart lies over the grid, on the cell it names. */
+/* A chart lies over the grid, on the cell it names, and under what is held
+   and the row numbers. */
 .sheet-chart {
   position: absolute;
-  z-index: 1;
+  z-index: 0;
   pointer-events: auto;
   box-sizing: border-box;
   display: flex;

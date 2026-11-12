@@ -1015,6 +1015,20 @@ test("the editor and a chart lie on their cells: under wrapped rows of long word
     ),
   ).toEqual([]);
 
+  // Scrolled sideways past its edge, the chart goes under the row numbers.
+  expect(
+    await page.evaluate(() => {
+      const chart = document.querySelector(".sheet-chart");
+      const { left, top } = chart.getBoundingClientRect();
+      scrollBy(left + 10, top - innerHeight / 2);
+      const over = document.elementFromPoint(
+        12,
+        chart.getBoundingClientRect().top + 20,
+      );
+      return over.closest(".sheet-edge, .sheet-chart").className;
+    }),
+  ).toContain("sheet-edge");
+
   // A held cell does not scroll, and neither does its editor.
   await page.evaluate(() => scrollTo(300, 250));
   await cell("Work", "A20").click();

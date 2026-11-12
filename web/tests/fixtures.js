@@ -227,6 +227,7 @@ export async function saveHistory(
     context_tokens: 0,
     context_window: 0,
     usage: {},
+    route_usage: {},
     last_sent_prompt: "",
     display: display || {},
     delivered_mail: [],

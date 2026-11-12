@@ -84,6 +84,7 @@ constexpr Field kStateFields[] = {
     {"context_tokens", json::value_t::number_integer, true},
     {"context_window", json::value_t::number_integer, true},
     {"usage", json::value_t::object, true},
+    {"route_usage", json::value_t::object, true},
     {"last_sent_prompt", json::value_t::string, true},
     {"display", json::value_t::object, true},
     {"delivered_mail", json::value_t::array, true}};
@@ -310,16 +311,12 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.state.context_tokens =
       std::max(int64_t{0}, state["context_tokens"].get<int64_t>());
   record.state.context_window =
-      std::max(int64_t{0}, JsonValue(state, "context_window", int64_t{0}));
+      std::max(int64_t{0}, state["context_window"].get<int64_t>());
   record.state.usage = UsageFromJson(state["usage"]);
-  record.state.route_usage =
-      RouteUsageFromJson(JsonValue(state, "route_usage", json::object()));
-  record.state.last_sent_prompt = JsonValue(state, "last_sent_prompt", "");
-  if (state.contains("display")) {
-    record.state.display = std::move(state["display"]);
-  }
-  record.state.delivered_mail =
-      JsonValue(state, "delivered_mail", json::array());
+  record.state.route_usage = RouteUsageFromJson(state["route_usage"]);
+  record.state.last_sent_prompt = state["last_sent_prompt"].get<std::string>();
+  record.state.display = std::move(state["display"]);
+  record.state.delivered_mail = std::move(state["delivered_mail"]);
   if (!ValidState(record.state)) {
     return fail("session payload is invalid or incomplete");
   }

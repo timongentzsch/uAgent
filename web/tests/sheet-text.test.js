@@ -14,6 +14,8 @@ import {
   frozenOf,
   inOrder,
   letters,
+  linesName,
+  linesNamed,
   followed,
   meeting,
   mergesBy,
@@ -83,6 +85,25 @@ test("a range is read from its name, and follows rows and columns put in or take
   assert.equal(edge("A2:A1048576", false), "A3:A1048576");
   assert.equal(edge("B1:XFD1", true), "C1:XFD1");
   assert.equal(slidBox(boxNamed("XFD1"), true, 1, 1), undefined);
+});
+
+test("whole rows and columns are read from their name, either way round, and named back", () => {
+  assert.deepEqual(linesNamed(" 6:3 "), { across: false, from: 3, to: 6 });
+  assert.deepEqual(linesNamed("d:b"), { across: true, from: 2, to: 4 });
+  assert.equal(linesName(linesNamed("d:b")), "B:D");
+  assert.equal(linesName(linesNamed("1048576:2")), "2:1048576");
+  for (const none of [
+    "",
+    "3",
+    "B",
+    "3:B",
+    "B3:C4",
+    "0:2",
+    "1048577:2",
+    "XFE:A",
+    undefined,
+  ])
+    assert.equal(linesNamed(none), undefined);
 });
 
 test("a tab holds in view what it says, else its header rows", () => {

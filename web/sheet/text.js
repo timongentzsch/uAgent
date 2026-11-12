@@ -49,6 +49,25 @@ export const boxNamed = (name = "") => {
     : undefined;
 };
 
+// A run of whole rows, "3:6", or of whole columns, "B:D", from its first to
+// its last; and its name.
+export const linesNamed = (name = "") => {
+  const [, ...ends] =
+    /^(?:(\d{1,7}):(\d{1,7})|([A-Za-z]{1,3}):([A-Za-z]{1,3}))$/.exec(
+      name.trim(),
+    ) ?? [];
+  const across = !!ends[2];
+  const [from, to] = ends
+    .slice(across ? 2 : 0, across ? 4 : 2)
+    .map((end) => (across ? columnOf(end) : Number(end)))
+    .sort((a, b) => a - b);
+  return from >= 1 && to <= (across ? LAST.column : LAST.row)
+    ? { across, from, to }
+    : undefined;
+};
+export const linesName = ({ across, from, to }) =>
+  across ? `${letters(from)}:${letters(to)}` : `${from}:${to}`;
+
 // Whether two boxes share a cell.
 export const meets = (a, b) =>
   a.top <= b.bottom &&

@@ -1646,3 +1646,184 @@ test("nothing the page asks of its engine calculates: every change answers as it
       change,
     );
 });
+
+// A budget whose items are grouped under their sums, the two kinds in one
+// group, and its amounts in a group of columns.
+const budget = (attrs) =>
+  open([
+    {
+      ...tab("Costs", [
+        ["#Item", "#Cost", "#Note"],
+        ["Rent", "1200", ""],
+        ["Power", "90", ""],
+        ["Housing", "=SUM(B2:B3)", ""],
+        ["Bus", "60", ""],
+        ["Train", "40", ""],
+        ["Travel", "=SUM(B5:B6)", ""],
+        ["{total}", "Total", "=B4+B7", ""],
+      ]),
+      attrs,
+    },
+  ]);
+const outline = (book) => {
+  const { rows, columns } = book.groups(0);
+  return [...rows, ...columns].map(
+    ({ name, depth, folded, shut }) =>
+      `${name} ${depth}${folded ? " folded" : ""}${shut ? " shut" : ""}`,
+  );
+};
+const lists = (book) => [
+  book.tabs[0].attrs["data-group"],
+  book.tabs[0].attrs["data-folded"],
+];
+
+test("a table's groups are read as listed, each as deep as those that hold it; one that names no lines, is listed twice, cuts or touches one before it, or lies too deep is reported and not drawn", async () => {
+  const book = await budget({
+    "data-group": "2:7 2:3 5:6 B:C 3:5 4:6 3:2 x A1:B2",
+    "data-folded": "6:5 9:9",
+  });
+  assert.deepEqual(outline(book), ["2:7 1", "2:3 2", "5:6 2 folded", "B:C 1"]);
+  assert.deepEqual(book.errors(), [
+    "Costs: group `3:5` cuts 2:3",
+    "Costs: group `4:6` touches 2:3: leave a row between",
+    "Costs: group `3:2` is listed twice",
+    "Costs: group `x` names no whole rows or columns",
+    "Costs: group `A1:B2` names no whole rows or columns",
+    "Costs: folded `9:9` is no group",
+  ]);
+  const deep = await budget({
+    "data-group": "1:20 2:19 3:18 4:17 5:16 6:15 7:14 8:13",
+    "data-folded": "1:20",
+  });
+  assert.deepEqual(deep.errors(), [
+    "Costs: group `8:13` is nested over 7 deep",
+  ]);
+  // A group in a folded one is shut: it is not drawn.
+  assert.deepEqual(outline(deep).slice(0, 2), ["1:20 1 folded", "2:19 2 shut"]);
+});
+
+test("groups follow rows and columns put in and taken out; a change that would leave two touching is refused", async () => {
+  const book = await budget({
+    "data-group": "2:7 2:3 5:6 B:C",
+    "data-folded": "5:6",
+  });
+  const step = async (change, after, answer = true) => {
+    assert.equal(await change(), answer);
+    assert.deepEqual(lists(book), after);
+  };
+  // Put in between them, the outer group grows and the later one moves.
+  await step(() => book.insertRows(0, 4, 1), ["2:8 2:3 6:7 B:C", "6:7"]);
+  await step(() => book.undo(), ["2:7 2:3 5:6 B:C", "5:6"]);
+  // Taken out whole, a group is gone; in part, it is smaller.
+  await step(() => book.deleteRows(0, 2, 3), ["2:4 2:3 B:C", "2:3"]);
+  await step(() => book.undo(), ["2:7 2:3 5:6 B:C", "5:6"]);
+  await step(() => book.insertColumns(0, 2, 1), ["2:7 2:3 5:6 C:D", "5:6"]);
+  await step(() => book.undo(), ["2:7 2:3 5:6 B:C", "5:6"]);
+  // The row between two groups holds the first one's button.
+  await step(
+    () => book.deleteRows(0, 4, 1),
+    ["2:7 2:3 5:6 B:C", "5:6"],
+    "Not changed: group `4:5` touches 2:3: leave a row between.",
+  );
+});
+
+test("a group moves whole: rows move within or past it, never across its edge, and a sort that would is refused", async () => {
+  const book = await budget({ "data-group": "2:7 2:3 5:6" });
+  assert.equal(await book.moveRows(0, 2, 1, 1), true);
+  assert.deepEqual(
+    texts(book, 0)
+      .slice(1, 3)
+      .map(([item]) => item),
+    ["Power", "Rent"],
+  );
+  assert.equal(await book.moveRows(0, 3, 1, 1), "A group moves whole.");
+  // Moved over the row between, a group would touch the one before it.
+  assert.equal(
+    await book.moveRows(0, 5, 2, -1),
+    "Not changed: group `4:5` touches 2:3: leave a row between.",
+  );
+  assert.equal(
+    await book.sort(0, 2, false),
+    "Not sorted: the sort would move rows across the group 2:3.",
+  );
+  assert.equal(lists(book)[0], "2:7 2:3 5:6");
+});
+
+test("lines are grouped, ungrouped, folded and opened, each a step Undo takes back; what is so already is no change", async () => {
+  const book = await budget({ "data-group": "2:7 2:3 5:6 B:C" });
+  assert.equal(await book.group(0, "5:6"), false);
+  assert.equal(
+    await book.group(0, "4:4"),
+    "Not changed: group `4:4` touches 2:3: leave a row between.",
+  );
+  assert.equal(await book.group(0, "B:B"), true);
+  assert.deepEqual(outline(book).slice(-2), ["B:C 1", "B:B 2"]);
+  assert.equal(await book.fold(0, "2:3", true), true);
+  assert.equal(await book.fold(0, "2:3", true), false);
+  assert.equal(await book.fold(0, "9:9", true), false);
+  assert.equal(await book.fold(0, "2:7", true), true);
+  assert.deepEqual(lists(book), ["2:7 2:3 5:6 B:C B:B", "2:3 2:7"]);
+  assert.deepEqual(outline(book).slice(0, 3), [
+    "2:7 1 folded",
+    "2:3 2 folded shut",
+    "5:6 2 shut",
+  ]);
+  // Taken out, a group's fold goes with it.
+  assert.equal(await book.ungroup(0, "2:3"), true);
+  assert.deepEqual(lists(book), ["2:7 5:6 B:C B:B", "2:7"]);
+  assert.equal(await book.fold(0, "2:7", false), true);
+  assert.deepEqual(lists(book), ["2:7 5:6 B:C B:B", undefined]);
+  for (const after of [
+    ["2:7 5:6 B:C B:B", "2:7"],
+    ["2:7 2:3 5:6 B:C B:B", "2:3 2:7"],
+    ["2:7 2:3 5:6 B:C B:B", "2:3"],
+  ]) {
+    assert.equal(await book.undo(), true);
+    assert.deepEqual(lists(book), after);
+  }
+  assert.equal(await book.redo(), true);
+  assert.deepEqual(lists(book), ["2:7 2:3 5:6 B:C B:B", "2:3 2:7"]);
+  assert.match(
+    book.table(0),
+    /^<table data-sheet="Costs" data-group="2:7 2:3 5:6 B:C B:B" data-folded="2:3 2:7">\n/,
+  );
+});
+
+test("a fold asked for behind a refused change is made again, as a typed cell is", async () => {
+  const book = await budget({ "data-group": "2:3 5:6" });
+  const [refused, folded] = await Promise.all([
+    book.paste(0, { row: 2, column: 3 }, [["=XNPV(1,2)"]]),
+    book.fold(0, "5:6", true),
+  ]);
+  assert.match(refused, PANICS);
+  assert.doesNotMatch(refused, /asked for after it/);
+  assert.equal(folded, true);
+  assert.deepEqual(lists(book), ["2:3 5:6", "5:6"]);
+  assert.equal(book.tabs[0].rows[1].cells[2].text, "");
+});
+
+test("a folded group's rows and columns go out to Excel hidden; the groups do not", async () => {
+  const book = await budget({
+    "data-group": "2:7 5:6 B:C",
+    "data-folded": "5:6 B:C",
+  });
+  const model = engine.Model.fromXlsx(
+    await ask({ tabs: book.tabs, xlsx: true }),
+    "book",
+    "en",
+    "UTC",
+    "en",
+  );
+  try {
+    assert.deepEqual(
+      [4, 5, 6, 7].map((row) => model.getRowHeight(0, row) > 0),
+      [true, false, false, true],
+    );
+    assert.deepEqual(
+      [1, 2, 3, 4].map((column) => model.getColumnWidth(0, column) > 0),
+      [true, false, false, true],
+    );
+  } finally {
+    model.free();
+  }
+});

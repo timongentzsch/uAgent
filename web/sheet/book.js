@@ -19,6 +19,8 @@ import {
   frozenOf,
   inOrder,
   letters,
+  linesName,
+  linesNamed,
   meeting,
   meets,
   mergesBy,
@@ -152,9 +154,10 @@ const carriedCharts = (charts, place) =>
     };
   });
 
-// A table's merged ranges, `data-merge="A1:D1 A5:A7"`, as written.
-const listed = (attrs) =>
-  (attrs["data-merge"] ?? "").split(/\s+/).filter(Boolean);
+// A list on a table, its merged ranges `data-merge="A1:D1 A5:A7"` unless
+// named, as written.
+const listed = (attrs, name = "data-merge") =>
+  (attrs[name] ?? "").split(/\s+/).filter(Boolean);
 // The cells of a box but its top left one that hold text, by name.
 const filledUnder = (tab, box) => {
   const found = [];
@@ -197,9 +200,9 @@ const mergesOf = (tab) => {
   }
   return { merges, unread };
 };
-const withMerges = (attrs, list) => {
-  const { "data-merge": _, ...rest } = attrs;
-  return list.length ? { ...attrs, "data-merge": list.join(" ") } : rest;
+const withList = (attrs, list, name = "data-merge") => {
+  const { [name]: _, ...rest } = attrs;
+  return list.length ? { ...attrs, [name]: list.join(" ") } : rest;
 };
 // The merged ranges listed but those that meet the box.
 const apart = (attrs, box) =>
@@ -208,17 +211,19 @@ const apart = (attrs, box) =>
     return !merge || !meets(merge, box);
   });
 const MOVED = "A merged cell moves whole.";
-// The merged ranges after cells moved to where `place` puts them, and the
-// first one the move would cut: its rows or columns would be apart, or its
-// top left cell not first. Within it, the cells it covers may move.
+// Where the numbers from `from` to `to` go, from the least to the most.
+const ends = (from, to, go) => {
+  let [least, most] = [Infinity, -Infinity];
+  for (let n = from; n <= to; n++)
+    [least, most] = [Math.min(least, go(n)), Math.max(most, go(n))];
+  return [least, most];
+};
+// The merged ranges and groups after cells moved to where `place` puts
+// them, and the first of each the move would cut: its rows or columns would
+// be apart, or a merged range's top left cell not first. Within one, the
+// cells it holds may move.
 const carriedMerges = (attrs, place) => {
-  // Where the numbers from `from` to `to` go, from the least to the most.
-  const ends = (from, to, go) => {
-    let [least, most] = [Infinity, -Infinity];
-    for (let n = from; n <= to; n++)
-      [least, most] = [Math.min(least, go(n)), Math.max(most, go(n))];
-    return [least, most];
-  };
+  let group;
   let cut;
   const list = listed(attrs).map((text) => {
     const box = boxNamed(text);
@@ -243,20 +248,119 @@ const carriedMerges = (attrs, place) => {
       cut ??= text;
     return boxName({ top, left, bottom, right });
   });
-  return { attrs: withMerges(attrs, list), cut };
+  const lines = regrouped(withList(attrs, list), (lines) => {
+    const [from, to] = ends(lines.from, lines.to, (n) =>
+      lines.across
+        ? place({ row: 1, column: n }).column
+        : place({ row: n, column: 1 }).row,
+    );
+    if (to - from !== lines.to - lines.from) group ??= linesName(lines);
+    return { ...lines, from, to };
+  });
+  return { attrs: lines, cut, group };
 };
 
-// A table's rules name columns by letter, and its merged ranges cells: they
-// follow them. A range left a cell or none is no merge.
-const slidAttrs = ({ attrs, columns }, across, at, count) => {
-  const merged = withMerges(
+// A table's groups, `data-group="2:12 3:6 B:D"`, by rows and by columns,
+// each as deep as the groups that hold it make it and folded where
+// `data-folded` names it; and why each other is not read. Of two that cut
+// or touch, the first is read: a group's button stands on the row or column
+// after it.
+const GROUPS = ["data-group", "data-folded"];
+const DEEPEST = 7;
+const holds = (a, b) =>
+  a.across === b.across && a.from <= b.from && b.to <= a.to;
+const groupsOf = (tab) => {
+  const [read, unread] = [[], []];
+  for (const text of listed(tab.attrs, "data-group")) {
+    const lines = linesNamed(text);
+    const other =
+      lines &&
+      read.find(
+        (group) =>
+          group.across === lines.across &&
+          group.from <= lines.to + 1 &&
+          lines.from <= group.to + 1 &&
+          holds(group, lines) === holds(lines, group),
+      );
+    const why = !lines
+      ? "names no whole rows or columns"
+      : !other
+        ? undefined
+        : holds(other, lines) && holds(lines, other)
+          ? "is listed twice"
+          : lines.to < other.from || lines.from > other.to
+            ? `touches ${other.name}: leave a ${lines.across ? "column" : "row"} between`
+            : `cuts ${other.name}`;
+    if (why) unread.push(`group \`${text}\` ${why}`);
+    else read.push({ ...lines, name: linesName(lines) });
+  }
+  const groups = read.filter((group) => {
+    group.depth = read.filter((other) => holds(other, group)).length;
+    const deep = group.depth > DEEPEST;
+    if (deep)
+      unread.push(`group \`${group.name}\` is nested over ${DEEPEST} deep`);
+    return !deep;
+  });
+  for (const text of listed(tab.attrs, "data-folded")) {
+    const lines = linesNamed(text);
+    const group = lines && groups.find(({ name }) => name === linesName(lines));
+    if (group) group.folded = true;
+    else unread.push(`folded \`${text}\` is no group`);
+  }
+  // A group in a folded one is not drawn.
+  for (const group of groups)
+    group.shut = groups.some(
+      (other) => other !== group && other.folded && holds(other, group),
+    );
+  return {
+    rows: groups.filter(({ across }) => !across),
+    columns: groups.filter(({ across }) => across),
+    unread,
+  };
+};
+// The table's groups and folds (or the lists named) each where `change`
+// puts its lines, or gone.
+const regrouped = (attrs, change, names = GROUPS) =>
+  names.reduce(
+    (next, name) =>
+      withList(
+        next,
+        listed(attrs, name).flatMap((text) => {
+          const lines = linesNamed(text);
+          const moved = lines && change(lines);
+          return !lines ? [text] : moved ? [linesName(moved)] : [];
+        }),
+        name,
+      ),
     attrs,
-    listed(attrs).flatMap((text) => {
-      const box = boxNamed(text);
-      const left = box && slidBox(box, across, at, count);
-      if (!box) return [text];
-      return left && boxName(left).includes(":") ? [boxName(left)] : [];
-    }),
+  );
+const GROUPED = "A group moves whole.";
+
+// A table's rules name columns by letter, its merged ranges cells and its
+// groups rows or columns: they follow them. A range left a cell or none is
+// no merge, a group left no row none.
+const slidAttrs = ({ attrs, columns }, across, at, count) => {
+  const merged = regrouped(
+    withList(
+      attrs,
+      listed(attrs).flatMap((text) => {
+        const box = boxNamed(text);
+        const left = box && slidBox(box, across, at, count);
+        if (!box) return [text];
+        return left && boxName(left).includes(":") ? [boxName(left)] : [];
+      }),
+    ),
+    (lines) => {
+      if (lines.across !== across) return lines;
+      const [first, last] = across ? ["left", "right"] : ["top", "bottom"];
+      const box = slidBox(
+        { [first]: lines.from, [last]: lines.to },
+        across,
+        at,
+        count,
+      );
+      return box && { across, from: box[first], to: box[last] };
+    },
   );
   return across && attrs["data-rule"]
     ? {
@@ -482,7 +586,8 @@ const plainOf = (tab, row, column) => {
 };
 
 // The tabs as an Excel workbook: a rule's look goes out as the rule; what
-// is written, as a style; a merged range drawn, as Excel's.
+// is written, as a style; a merged range drawn, as Excel's; a folded
+// group's rows or columns, hidden, as the engine keeps no groups.
 export function xlsxOf(engine, tabs) {
   const workbook = workbookOf(engine, tabs);
   tabs.forEach((tab, sheet) => {
@@ -512,6 +617,15 @@ export function xlsxOf(engine, tabs) {
         width: right - left + 1,
         height: bottom - top + 1,
       });
+    const { rows, columns } = groupsOf(tab);
+    for (const { across, from, to, folded } of [...rows, ...columns])
+      if (folded)
+        workbook[across ? "setColumnsHidden" : "setRowsHidden"](
+          sheet,
+          from,
+          to,
+          true,
+        );
   });
   workbook.resumeEvaluation();
   workbook.evaluate();
@@ -539,6 +653,9 @@ export async function openBook(engine, written, locked, calculate) {
   const merged = new WeakMap();
   const mergesFor = (tab) =>
     merged.get(tab) ?? merged.set(tab, mergesOf(tab)).get(tab);
+  const grouped = new WeakMap();
+  const groupsFor = (tab) =>
+    grouped.get(tab) ?? grouped.set(tab, groupsOf(tab)).get(tab);
   // Each chart as it was read since the tabs last changed, by "sheet index".
   const charted = new Map();
   const learned = (calculated, read) => {
@@ -693,9 +810,18 @@ export async function openBook(engine, written, locked, calculate) {
         ({ place }) => was[place] === now[place] && !undrawn.has(place),
       );
     });
+    // Nor where it leaves more groups unread than there were.
+    const unread = (all) => all.flatMap((tab) => groupsFor(tab).unread);
+    const [was, now] = [unread(tabs), unread(next)];
     const [refused] = locked
       ? [LOCKED]
-      : [...changed.flatMap(markupOf), ...covered.map((one) => one.refused)];
+      : [
+          ...changed.flatMap(markupOf),
+          ...covered.map((one) => one.refused),
+          ...now
+            .filter((said) => now.length > was.length && !was.includes(said))
+            .map((said) => `Not changed: ${said}.`),
+        ];
     if (refused || !changed.length) return changed.length ? refused : false;
     return taken(next);
   };
@@ -738,6 +864,18 @@ export async function openBook(engine, written, locked, calculate) {
     tabs = from.pop();
     return true;
   };
+  const named = (sheet, name) => {
+    const { rows, columns } = groupsFor(tabs[sheet]);
+    return [...rows, ...columns].find((group) => group.name === name);
+  };
+  const regroup = (sheet, change) =>
+    commit(
+      tabs.with(sheet, { ...tabs[sheet], attrs: change(tabs[sheet].attrs) }),
+    );
+  const added = (list, name) => (attrs) =>
+    withList(attrs, [...listed(attrs, list), name], list);
+  const dropped = (lists, name) => (attrs) =>
+    regrouped(attrs, (lines) => linesName(lines) !== name && lines, lists);
   const edit = (sheet, change) =>
     tabs.map((tab, at) => (at === sheet ? change(tab) : tab));
   // Rows or columns moved by the engine, in a workbook made for the move and
@@ -927,6 +1065,7 @@ export async function openBook(engine, written, locked, calculate) {
           (rule) => `${tab.name}: rule \`${rule}\` is not understood`,
         ),
         ...mergesFor(tab).unread.map(({ said }) => `${tab.name}: ${said}`),
+        ...groupsFor(tab).unread.map((said) => `${tab.name}: ${said}`),
         ...tab.charts.flatMap((chart, at) => {
           const { error } = chartOf(sheet, at);
           return error
@@ -1080,7 +1219,7 @@ export async function openBook(engine, written, locked, calculate) {
       const list = [...apart(tab.attrs, box), boxName(box)];
       return commit(
         mapCells(
-          tabs.with(sheet, { ...tab, attrs: withMerges(tab.attrs, list) }),
+          tabs.with(sheet, { ...tab, attrs: withList(tab.attrs, list) }),
           (cell, at, row, column) =>
             at === sheet && under.has(cellName({ row, column }))
               ? withText(cell, "")
@@ -1092,8 +1231,32 @@ export async function openBook(engine, written, locked, calculate) {
     // it is.
     unmerge: queued((sheet, box) => {
       const tab = tabs[sheet];
-      const attrs = withMerges(tab.attrs, apart(tab.attrs, box));
+      const attrs = withList(tab.attrs, apart(tab.attrs, box));
       return commit(tabs.with(sheet, { ...tab, attrs }));
+    }),
+
+    // The tab's groups that are read (groupsOf).
+    groups: (sheet) => groupsFor(tabs[sheet]),
+    // Lines named "3:6" or "B:D" made a group, a group taken out with its
+    // fold, or folded or opened. Nothing where it is so already.
+    group: queued(
+      (sheet, name) =>
+        !named(sheet, name) && regroup(sheet, added("data-group", name)),
+    ),
+    ungroup: queued(
+      (sheet, name) =>
+        !!named(sheet, name) && regroup(sheet, dropped(GROUPS, name)),
+    ),
+    fold: queued((sheet, name, folded) => {
+      const group = named(sheet, name);
+      return (
+        !!group &&
+        !group.folded === folded &&
+        regroup(
+          sheet,
+          folded ? added("data-folded", name) : dropped(["data-folded"], name),
+        )
+      );
     }),
 
     // A mark set on the tab's table: `data-frozen="2 B"`.
@@ -1387,6 +1550,7 @@ export async function openBook(engine, written, locked, calculate) {
       const place = ({ row, column }) => ({ row: rows(row), column });
       const merged = carriedMerges(tabs[sheet].attrs, place);
       if (merged.cut) return MOVED;
+      if (merged.group) return GROUPED;
       return following(
         sheet,
         place,
@@ -1405,6 +1569,7 @@ export async function openBook(engine, written, locked, calculate) {
       const cell = ({ row, column }) => ({ row, column: place(column) });
       const merged = carriedMerges(tabs[sheet].attrs, cell);
       if (merged.cut) return MOVED;
+      if (merged.group) return GROUPED;
       return following(
         sheet,
         cell,
@@ -1470,6 +1635,8 @@ export async function openBook(engine, written, locked, calculate) {
       }));
       if (merged.cut)
         return `Not sorted: ${merged.cut} is a merged cell across rows.`;
+      if (merged.group)
+        return `Not sorted: the sort would move rows across the group ${merged.group}.`;
       const rows = [...tab.rows];
       places.forEach((to, n) => {
         const from = sorted[n].at;

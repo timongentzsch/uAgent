@@ -642,6 +642,10 @@
   .page-legend[data-doc] {
     display: none;
   }
+  /* Its button's panel lies along the bottom too. */
+  .page-tools [aria-label="Legend"] > .lucide {
+    rotate: -90deg;
+  }
   .sheet-edit-cell {
     display: inline-flex;
   }

@@ -121,6 +121,7 @@ export default function Sequence({
   drawn,
   presenter,
   save,
+  settle,
   saveAs,
   arrange,
   arranging,
@@ -143,8 +144,11 @@ export default function Sequence({
   // folder's PDF is its deck), where it has one.
   drawn?: (as: "png" | "pdf", path: string) => string;
   presenter?: (slides: string[], at: string) => void;
-  // A document's edited block, or a sheet's edited tab, saved to its file.
+  // A document's or a slide's edited block, or a sheet's edited tab, saved
+  // to its file.
   save?: (edit: BlockEdit | TableEdit) => Promise<void>;
+  // Resolves once what was typed in a block is in its file.
+  settle: () => Promise<unknown>;
   // An Excel or CSV file's tabs, as a sheet's text, saved beside the file.
   saveAs?: (text: string) => Promise<void>;
   // A deck's slides renamed, copied or deleted as `moves` say, after which
@@ -158,6 +162,8 @@ export default function Sequence({
 }) {
   const doc = kind === "doc";
   const sheet = kind === "sheet";
+  // Whether its text is typed in place.
+  const editable = doc || kind === "deck";
   const unit = kind === "deck" ? "Slide" : "Page";
   const src = page(path);
   // A board's address: its file's, with its version, and after "#" its
@@ -165,7 +171,10 @@ export default function Sequence({
   // its "#" loads again). Those of all, and as one value.
   const address = (board: Board, more = "") =>
     `${page(board.path)}${more}${board.at === undefined ? "" : `#${board.at + 1}`}`;
-  // A block saved from here is in the file, which the legend draws again.
+  // A block saved from here is in the file, which the legend draws again
+  // once the block or the page is left: in WebKit a frame that loads ends
+  // what the block can undo.
+  const wrote = useRef(0);
   const [saves, setSaves] = useState(0);
   const srcs = boards.map((board) =>
     address(board, saves ? `&saved=${saves}` : ""),
@@ -181,9 +190,9 @@ export default function Sequence({
   const staged = useRef<PageInfo>(undefined);
   if (said?.drawn) staged.current = said;
   const info = staged.current;
-  // Select picks an element to comment on; Edit, a document's, lets its
-  // text be typed in place. One at a time, told to the page as each goes on
-  // or off.
+  // Select picks an element to comment on; Edit lets a document's or a
+  // slide's text be typed in place. One at a time, told to the page as each
+  // goes on or off.
   const [mode, setMode] = useState<"" | "select" | "edit">("");
   const enter = (next: typeof mode) => {
     if (mode) tell(frame.current, { type: mode, on: false });
@@ -203,13 +212,12 @@ export default function Sequence({
   const [arrived, setArrived] = useState("");
   const wanted = load ? `${src}&load=${load}` : src;
   const live = arrived === wanted;
-  // Another page: nothing picked, typed or zoomed carries over, and Edit is
-  // off.
+  // Another page: nothing picked, typed or zoomed carries over.
   useEffect(() => {
     setPicked(undefined);
     setHover(undefined);
-    setMode((was) => (was === "edit" ? "" : was));
     setSaved(undefined);
+    setSaves(wrote.current);
     setZoom(1);
     setCell(undefined);
     setRanged(undefined);
@@ -330,15 +338,19 @@ export default function Sequence({
     document.addEventListener("keydown", pressed);
     return () => document.removeEventListener("keydown", pressed);
   }, [keys]);
-  // A document's block typed in place is saved as it is left.
+  // What is being saved, said once: a block's edits as it is typed in share
+  // one save.
   const [saved, setSaved] = useState<{ text: string; failed?: true }>();
   const refused = (text: string) => setSaved({ text, failed: true });
+  const keeping = useRef<Promise<void>>(undefined);
   const keep = async (saving?: Promise<void>) => {
+    if (saving && saving === keeping.current) return;
+    keeping.current = saving;
     setSaved({ text: "Saving…" });
     try {
       await saving;
       setSaved({ text: "Saved" });
-      if (doc) setSaves((count) => count + 1);
+      if (editable) wrote.current++;
     } catch (error) {
       refused(error instanceof Error ? error.message : "Not saved");
     }
@@ -364,16 +376,21 @@ export default function Sequence({
     drawn &&
     info &&
     ((by: number) => `${drawn("png", path)}${sized}&scale=${by}${shownPart}`);
+  // What the host draws is of the file: asked for once what was typed is in
+  // it.
+  const download = (address: string, name: string) =>
+    settle().then(() => saveLink(`${address}&download=1`, name));
   // The page in another format: what fits its kind. Its source is Download
   // in the pane's header.
-  const download = (address: string, name: string) =>
-    saveLink(`${address}&download=1`, name);
   const exports: (false | undefined | [string, () => void])[] = [
     drawn
       ? ["PDF", () => download(drawn("pdf", path), `${stem}.pdf`)]
       : [
           "Print or save as PDF",
-          () => window.open(`${src}#print`, "_blank", "noopener"),
+          () => {
+            void settle();
+            window.open(`${src}#print`, "_blank", "noopener");
+          },
         ],
     drawn &&
       kind === "deck" && [
@@ -390,7 +407,9 @@ export default function Sequence({
       () =>
         navigator.clipboard.write([
           new ClipboardItem({
-            "image/png": fetch(png(2)).then((response) => response.blob()),
+            "image/png": settle()
+              .then(() => fetch(png(2)))
+              .then((response) => response.blob()),
           }),
         ]),
     ],
@@ -625,7 +644,7 @@ export default function Sequence({
             <MousePointerClick />,
           )}
         {save &&
-          doc &&
+          editable &&
           toggle("Edit", mode === "edit", () => flip("edit"), <Pencil />)}
         {saved && (
           <small class="muted">
@@ -651,7 +670,10 @@ export default function Sequence({
             label="Draw on it"
             disabled={!png}
             onClick={() =>
-              png && view({ src: png(1), name: `${stem}.png`, edit: true })
+              png &&
+              settle().then(() =>
+                view({ src: png(1), name: `${stem}.png`, edit: true }),
+              )
             }
           >
             <PenLine />
@@ -682,6 +704,7 @@ export default function Sequence({
           target="_blank"
           rel="noopener"
           aria-label="Open alone"
+          onClick={() => void settle()}
           title="Open alone"
         >
           <ExternalLink />
@@ -820,7 +843,14 @@ export default function Sequence({
                         const [undo, redo] = [!!message.undo, !!message.redo];
                         setTold((was) => ({ ...was, undo, redo }));
                       }
-                      void keep(save?.(message));
+                      if ("table" in message || editable)
+                        void keep(save?.(message));
+                    } else if (message.type === "left") {
+                      // Once its last edit is written.
+                      void keeping.current?.then(
+                        () => setSaves(wrote.current),
+                        () => {},
+                      );
                     } else if (message.type === "file") {
                       // The page is untrusted: only what was asked of a
                       // sheet is taken. Its text is asked of a read file alone.
@@ -883,12 +913,13 @@ export default function Sequence({
                 {presenter && kind === "deck" && (
                   <Button
                     variant="secondary"
-                    onClick={() =>
+                    onClick={() => {
+                      void settle();
                       presenter(
                         boards.map((board) => board.path),
                         path,
-                      )
-                    }
+                      );
+                    }}
                   >
                     Presenter view
                   </Button>

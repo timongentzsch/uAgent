@@ -22,7 +22,7 @@ change an existing one only when the person asks to change it.
 
 The person steps through a document's pages or a deck's slides, moves over a
 design's canvas, reads a sheet as a calculated grid, points at an element
-and comments, edits a document's text in place, presents and exports. Their comments come back to you as lines in
+and comments, edits a document's or a slide's text in place, presents and exports. Their comments come back to you as lines in
 their message. You make every change by editing the files.
 
 ## Before you build

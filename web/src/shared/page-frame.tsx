@@ -57,10 +57,12 @@ export type PageMessage =
   | { type: "key"; key: string; held?: boolean }
   | { type: "zoom"; by: number; x: number; y: number }
   // A document: how many pages it has, the page it went to by itself, its
-  // edited block, its text as Markdown.
+  // text as Markdown.
   | { type: "pages"; count: number }
   | { type: "page"; at: number }
+  // A document's or a slide's block as it was typed in, and that it was left.
   | { type: "edit"; index: number; before: string; html: string }
+  | { type: "left" }
   // A sheet's changed tab, its place among how many, as the table its file
   // keeps; whether the sheet can undo and redo; its cells in error.
   | {

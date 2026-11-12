@@ -94,7 +94,7 @@ import {
 } from "../../shared/page-frame.tsx";
 import Sequence from "./sequence.tsx";
 import { openPresenter } from "./present.ts";
-import { applyEdit } from "./doc-edit.ts";
+import { blockSaver } from "./doc-edit.ts";
 import { tableSaver } from "./sheet-edit.ts";
 
 // The Files pane: a folder's tree, search and previews of text, images and
@@ -189,6 +189,29 @@ export default function Files({
   const turn = session.turn_active;
   const viewer = useContext(ImageViewer);
   const { view, back } = flow;
+  // What is typed in a page's blocks, on its way to the file.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
+  const blocks = useMemo(
+    () =>
+      blockSaver({
+        read: (path) => api<FileText>(routes.files(id, "read", path)),
+        write: (path, text, revision, keepalive) =>
+          api(routes.fileWrite(id), { path, text, revision }, { keepalive }),
+      }),
+    [],
+  );
+  // A page is left once that is written; typing that could not be keeps it.
+  const leave = (update: (flow: Flow) => Flow) =>
+    void blocks.flush().then((written) => written && setFlow(update));
+  // Left with the app itself, as far as a closing page may still write.
+  useEffect(() => {
+    const closing = () => void blocks.flush(true);
+    addEventListener("pagehide", closing);
+    return () => {
+      removeEventListener("pagehide", closing);
+      void blocks.flush();
+    };
+  }, [blocks]);
   const dir = folderOfView(view);
   const file =
     view.kind === "file" || view.kind === "sequence" ? view.path : "";
@@ -244,8 +267,9 @@ export default function Files({
     `${pageAddress(preview.value.base, path)}?${SHEET_FILE.test(path) ? "sheet&" : ""}v=${versions[path] ?? 0}${shared ? `.${versions[""] ?? 0}` : ""}`;
   const url = (path: string) => routes.files(id, "raw", path);
   const list = (dir: string) => api<Listing>(routes.files(id, "list", dir));
+  // A file is read once what was typed in it is written.
   const readFile = (path: string) =>
-    api<FileText>(routes.files(id, "read", path));
+    blocks.flush().then(() => api<FileText>(routes.files(id, "read", path)));
   // Tagged with its folder: another folder's listing stays shown until this
   // one answers, and is never taken for it.
   const listing = useResource(
@@ -480,6 +504,7 @@ export default function Files({
   const arranging = useAction({ report: () => listing.retry() });
   const arrange = (moves: Move[], show: string) =>
     arranging.run(async () => {
+      await blocks.flush();
       await api(routes.fileWrite(id), { path: dir, moves });
       listing.setValue({ ...(await list(dir)), dir });
       setSeen((all) => carried(all, dir, moves));
@@ -600,7 +625,7 @@ export default function Files({
                 : "files-back files-back-canvas"
             }
             label={backLabel(above)}
-            onClick={() => setFlow(pop)}
+            onClick={() => leave(pop)}
           >
             <ChevronLeft />
           </IconButton>
@@ -631,7 +656,7 @@ export default function Files({
             variant="secondary"
             aria-pressed={source}
             onClick={() =>
-              setFlow((current) =>
+              leave((current) =>
                 swap(
                   current,
                   page
@@ -715,7 +740,10 @@ export default function Files({
                   addToChat && (
                     <Button
                       variant="secondary"
-                      onClick={() => addToChat(failed.text)}
+                      onClick={() => {
+                        void blocks.flush();
+                        addToChat(failed.text);
+                      }}
                     >
                       Ask agent to fix
                     </Button>
@@ -744,7 +772,7 @@ export default function Files({
               page={(path) => pageUrl(path, kind !== "sheet")!}
               heard={heard}
               go={(path) =>
-                setFlow((current) => swap(current, { kind: "sequence", path }))
+                leave((current) => swap(current, { kind: "sequence", path }))
               }
               addToChat={addToChat}
               base={preview.value!.base}
@@ -754,23 +782,12 @@ export default function Files({
               presenter={(slides, at) =>
                 openPresenter({ session: id, slides, at })
               }
-              save={async (edit) => {
-                if ("table" in edit) {
-                  await tables.save(file, edit);
-                  return setUnsaved(undefined);
-                }
-                const read = await readFile(file);
-                const text = read.revision ? applyEdit(read.text, edit) : null;
-                if (text === null)
-                  throw new Error(
-                    "The document changed since it was shown. Reopen it to edit.",
-                  );
-                await api(routes.fileWrite(id), {
-                  path: file,
-                  text,
-                  revision: read.revision,
-                });
-              }}
+              save={(edit) =>
+                "table" in edit
+                  ? tables.save(file, edit).then(() => setUnsaved(undefined))
+                  : blocks.save(file, edit)
+              }
+              settle={blocks.flush}
               saveAs={async (text) => {
                 const path = join(
                   dir,

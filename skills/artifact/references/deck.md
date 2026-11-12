@@ -2,7 +2,8 @@
 
 A deck is a folder of slides, `decks/<name>/`: one HTML file per slide.
 Files shows the slide beside a legend of all of them, in name order, and
-presents from there; the person can reorder, duplicate and delete slides.
+presents from there; the person can reorder, duplicate and delete slides
+and edit a slide's text in place.
 
 ## Files
 
@@ -19,6 +20,8 @@ presents from there; the person can reorder, duplicate and delete slides.
 - Slides are read from across a room: in `style.css` set the root size so the
   system's `rem` sizes scale with the slide (`html { font-size: 28px; }` on a
   1920px-wide slide, in proportion on others).
+- Write a slide's text directly in `h1`–`h3`, `p`, `li`, table cells,
+  `figcaption` or `blockquote`: people edit those in place, block by block.
 - Speaker notes: one `<aside>` as the last element of `<body>`, plain text,
   what the presenter says. It never shows on the slide.
 - No scripts, no animation; Files fades between slides when presenting.

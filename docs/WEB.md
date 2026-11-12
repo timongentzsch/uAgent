@@ -88,7 +88,7 @@ to play; an HTML page runs live (**Source** shows its code); any other file
 offers a download. In a git repository, **Changes** lists what differs from
 the last commit, with its count, and opens each as a diff. What is open is
 read again when a turn ends. Files changes the folder only where this guide
-says so: a document's text edited in place, a deck's slides moved,
+says so: a document's or a slide's text edited in place, a deck's slides moved,
 duplicated or deleted, a sheet's cells edited, and a sheet saved from an
 Excel or CSV file.
 
@@ -139,10 +139,15 @@ or a size in millimetres, with margins of 25 mm unless you ask for narrow,
 moderate, wide or your own. It is shown a sheet of its paper at a time; the
 browser breaks the pages as it does for print, so they are the PDF's but
 for what browsers do differently (Safari leaves a heading at the foot of a
-page). A link to a place in it turns to that page. **Edit** lets you type in
-its headings, paragraphs, list items and table cells; each block is saved to
-the file as you leave it, unless the agent changed that block meanwhile.
-Export gives it as PDF or Markdown, and the page shown as a picture.
+page). A link to a place in it turns to that page. Export gives it as PDF or
+Markdown, and the page shown as a picture.
+
+**Edit**, on a document or a slide, lets you type in its headings,
+paragraphs, list items and table cells. What you type is saved to the file
+when you pause, and before the pane goes anywhere else or exports; the
+legend follows once you leave the block. A block the agent changed
+meanwhile is not written over: the pane says so and keeps what you typed on
+the page.
 
 **A design's canvas** shows everything its folder holds: the pages, each
 live, and also its pictures and films at their own size, and a document or a

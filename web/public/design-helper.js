@@ -378,7 +378,8 @@
     return;
   }
 
-  // A document's text blocks, in order: what a person edits in place.
+  // A document's or a slide's text blocks, in order: what a person edits in
+  // place.
   const EDITABLE =
     "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote";
   const blocks = () =>
@@ -470,19 +471,13 @@
     };
     return `${block(document.body)}\n`;
   };
-  // Edit: text blocks take typing; a block left changed is reported with its
-  // place and its text before, which the app checks against the file.
+  // Edit: text blocks take typing; a block is reported as it changes, with
+  // its place and its text when Edit went on, which the app checks against
+  // the file.
   const before = new WeakMap();
-  const focused = (event) => {
+  const changed = (event) => {
     const block = event.target.closest?.("[contenteditable]");
-    if (block && !before.has(block))
-      before.set(block, { html: block.innerHTML, text: block.textContent });
-  };
-  const left = (event) => {
-    const block = event.target.closest?.("[contenteditable]");
-    const was = block && before.get(block);
-    if (!was || was.html === block.innerHTML) return;
-    before.delete(block);
+    if (!block) return;
     // Without the marks put on its parts here.
     const clean = block.cloneNode(true);
     for (const part of clean.querySelectorAll("*"))
@@ -490,16 +485,21 @@
         part.removeAttribute(mark);
     send("edit", {
       index: blocks().indexOf(block),
-      before: was.text,
+      before: before.get(block),
       html: clean.innerHTML,
     });
   };
+  // A block left: the app shows its legend the file as it now is.
+  const left = (event) =>
+    event.target.closest?.("[contenteditable]") && send("left");
   const edit = (on) => {
     for (const block of blocks())
-      if (on) block.setAttribute("contenteditable", "plaintext-only");
-      else block.removeAttribute("contenteditable");
+      if (on) {
+        block.setAttribute("contenteditable", "plaintext-only");
+        before.set(block, block.textContent);
+      } else block.removeAttribute("contenteditable");
     const toggle = on ? addEventListener : removeEventListener;
-    toggle("focusin", focused, true);
+    toggle("input", changed, true);
     toggle("focusout", left, true);
   };
 
@@ -749,7 +749,7 @@
   addEventListener("message", (event) => {
     if (event.source !== parent || event.data?.uagentDesign !== 1) return;
     if (event.data.type === "select") select(!!event.data.on);
-    if (event.data.type === "edit" && paper()) edit(!!event.data.on);
+    if (event.data.type === "edit" && stepped()) edit(!!event.data.on);
     if (event.data.type === "markdown") send("markdown", { text: markdown() });
     if (event.data.type === "find") {
       sought = [String(event.data.text), Number(event.data.index)];

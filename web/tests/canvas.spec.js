@@ -1,6 +1,6 @@
 // A design's pages open as a canvas in the Files pane, a deck's slides and a
 // document's pages in a viewer with a legend, each page in a sandboxed frame.
-import { readdir, rename, writeFile } from "node:fs/promises";
+import { readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   test,
@@ -1155,6 +1155,147 @@ test("a move the folder no longer allows is refused: nothing moves, and the pane
   ]);
 });
 
+// A deck of two slides, and one's file as it is on disk.
+const TALK = {
+  "01-cover.html": slide("Cover", "Say hello.", "<p>The plan</p>"),
+  "02-plan.html": slide("Plan"),
+};
+const talkFile = (project, name) =>
+  readFile(join(project, "decks/talk", name), "utf8");
+// Edit on, the caret at the end of a block of the stage's page, and time
+// stopped: what is typed next is written only by what the test then does.
+async function typeIn(app, files, block, press = (target) => target.click()) {
+  const edit = files.getByRole("button", { name: "Edit" });
+  if ((await edit.getAttribute("aria-pressed")) !== "true") await press(edit);
+  await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
+  await press(block);
+  await app.keyboard.press("End");
+  await app.clock.install();
+  await app.clock.pauseAt((await app.evaluate(() => Date.now())) + 60_000);
+}
+const saving = (files) => files.locator(".page-tools .notice");
+
+for (const touch of [false, true])
+  test(`what is typed in a slide is in its file when a ${touch ? "tap" : "click"} leaves the slide at once`, async ({
+    browser,
+    storageState,
+    session,
+    host,
+  }) => {
+    const context = await browser.newContext({ hasTouch: touch, storageState });
+    try {
+      const app = await context.newPage();
+      const press = (target) => (touch ? target.tap() : target.click());
+      const { files, stage, count } = await openDeck(
+        app,
+        session,
+        host.project,
+        TALK,
+      );
+      await typeIn(app, files, stage.getByText("The plan"), press);
+      await app.keyboard.insertText(" for Q3");
+      await expect(saving(files)).toHaveText("Saving…");
+      // No pause ends the typing: the step itself writes it, then steps.
+      await press(files.getByRole("button", { name: "Next slide" }));
+      await app.clock.resume();
+      await expect(count).toHaveText("2 / 2");
+      expect(await talkFile(host.project, "01-cover.html")).toContain(
+        "<h1>Cover</h1><p>The plan for Q3</p><aside>Say hello.</aside>",
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
+test("what is typed in a slide is in its file when the app itself is left at once", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage } = await openDeck(app, session, host.project, TALK);
+  // The file is read as typing starts; with that in hand, a page being
+  // closed still writes.
+  const read = app.waitForResponse((response) =>
+    response.url().includes("/files?read="),
+  );
+  await typeIn(app, files, stage.getByText("The plan"));
+  await app.keyboard.insertText(" for Q3");
+  await (await read).finished();
+  await expect(saving(files)).toHaveText("Saving…");
+  await app.goto("about:blank");
+  await expect
+    .poll(() => talkFile(host.project, "01-cover.html"))
+    .toContain("<p>The plan for Q3</p>");
+});
+
+test("a slide's text is saved as typing pauses, the caret where it was; undone, the file follows; rewritten meanwhile, it is refused and kept on the stage", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, legend, stage, count } = await openDeck(
+    app,
+    session,
+    host.project,
+    TALK,
+  );
+  const cover = () => talkFile(host.project, "01-cover.html");
+  const paragraph = stage.locator("p");
+  await typeIn(app, files, paragraph);
+  await app.keyboard.insertText(" for Q3");
+  await expect(saving(files)).toHaveText("Saving…");
+  expect(await cover()).toContain("<p>The plan</p>");
+  await app.clock.runFor(1000);
+  await expect(saving(files)).toHaveText("Saved");
+  expect(await cover()).toContain(
+    "<h1>Cover</h1><p>The plan for Q3</p><aside>Say hello.</aside>",
+  );
+  // The stage was not drawn again: typing goes on at the caret.
+  await app.keyboard.type("!");
+  await expect(saving(files)).toHaveText("Saving…");
+  await app.clock.runFor(1000);
+  await expect(saving(files)).toHaveText("Saved");
+  expect(await cover()).toContain("<p>The plan for Q3!</p>");
+  // Undo is the block's own, across the saves.
+  await app.keyboard.press("ControlOrMeta+z");
+  await expect(paragraph).not.toHaveText("The plan for Q3!");
+  await expect(saving(files)).toHaveText("Saving…");
+  await app.clock.runFor(1000);
+  await expect(saving(files)).toHaveText("Saved");
+  const undone = await paragraph.textContent();
+  expect(await cover()).toContain(`<p>${undone}</p>`);
+
+  // Edit stays on from slide to slide, and the legend shows the file.
+  await app.clock.resume();
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await expect(count).toHaveText("2 / 2");
+  await expect(
+    legend
+      .locator(".page-legend-item")
+      .first()
+      .locator("iframe:not([inert])")
+      .contentFrame()
+      .getByText(undone, { exact: true }),
+  ).toBeAttached();
+  // Behind the pane's back, as the agent would.
+  const plan = join(host.project, "decks/talk/02-plan.html");
+  const heading = stage.locator("h1");
+  await expect(heading).toHaveText("Plan");
+  await writeFile(plan, slide("Plan").replace("<h1>Plan", "<h1>Plan C"));
+  await typeIn(app, files, heading);
+  await app.keyboard.insertText(" B");
+  await expect(saving(files)).toHaveText("Saving…");
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await expect(saving(files)).toHaveText(/^Not saved: this text changed/);
+  await expect(count).toHaveText("2 / 2");
+  await expect(heading).toHaveText("Plan B");
+  expect(await readFile(plan, "utf8")).toContain("<h1>Plan C</h1>");
+  // Said once, the slide can be left.
+  await app.clock.resume();
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await expect(count).toHaveText("1 / 2");
+});
+
 test("on a phone a deck's legend is a filmstrip under the stage", async ({
   page: app,
   session,
@@ -1869,7 +2010,6 @@ test("a document's forced breaks, dead links and wide lines: the pages are those
   await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
     "Saved",
   );
-  const { readFile } = await import("node:fs/promises");
   expect(await readFile(memo, "utf8")).toContain(
     '<blockquote><p>Quote. More.</p><p style="break-before:page">Second part.</p></blockquote>',
   );
@@ -2039,28 +2179,27 @@ test("a document exports Markdown, and a block edited on its third page is saved
       .then(() => app.getByRole("menuitem", { name: "Markdown" }).click()),
   ]);
   expect(download.suggestedFilename()).toBe("memo.md");
-  const { readFile } = await import("node:fs/promises");
   const text = await readFile(await download.path(), "utf8");
   expect(text).toContain("# Q3 memo\n\nRevenue grew.\n\n- One\n- Two");
   expect(text).toContain("| Ask | When |\n| --- | --- |\n| Hire | Nov |");
 
-  // Edit: a block typed in place is saved to the file, nothing else changes,
-  // and the document drawn again shows the page it showed.
+  // Edit: a block typed in place is saved to the file as typing pauses,
+  // nothing else changes, and the document shows the page it showed.
   await app.keyboard.press("PageDown");
   await app.keyboard.press("PageDown");
   await expect(count).toHaveText(`3 / ${MEMO_PAGES}`);
   await files.getByRole("button", { name: "Edit" }).click();
   const paragraph = page.getByText(/^Paragraph 25 of the memo\./);
-  const beside = page.getByText("Paragraph 26 of the memo.");
+  await expect(paragraph).toHaveAttribute("contenteditable", "plaintext-only");
   await paragraph.click();
   await app.keyboard.press("End");
-  await app.keyboard.type(" Churn held flat.");
-  await beside.click();
-  await expect(files.locator(".page-tools .notice")).toHaveText("Saved");
+  await app.keyboard.insertText(" Churn held flat.");
+  await expect(saving(files)).toHaveText("Saved");
   const saved = await readFile(memo, "utf8");
   expect(saved).toContain("<p>Paragraph 25 of the memo. Churn held flat.</p>");
   await expect(paragraph).toHaveText(/Churn held flat\.$/);
-  // The legend's picture of the page is of the file as saved.
+  // The block left, the legend's picture of the page is of the file as saved.
+  await page.getByText("Paragraph 26 of the memo.").click();
   await expect(
     files
       .locator(".page-legend-item")
@@ -2078,11 +2217,7 @@ test("a document exports Markdown, and a block edited on its third page is saved
   // The agent rewrote that block meanwhile: the edit is refused, not merged.
   await writeFile(memo, saved.replace("Churn held flat.", "Churn fell."));
   await paragraph.click();
-  await app.keyboard.press("End");
-  await app.keyboard.type(" Again.");
-  await beside.click();
-  await expect(files.locator(".page-tools .notice")).toHaveText(
-    /The document changed/,
-  );
+  await app.keyboard.insertText(" Again.");
+  await expect(saving(files)).toHaveText(/^Not saved: this text changed/);
   expect(await readFile(memo, "utf8")).toContain("Churn fell.");
 });

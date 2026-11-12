@@ -1,4 +1,4 @@
-import type { ComponentChildren, Ref } from "preact";
+import type { ComponentChildren } from "preact";
 import { Button } from "./ui.tsx";
 
 // A tab list. Left, Right, Home and End go among the tabs that are not
@@ -11,8 +11,6 @@ export function Tabs<K extends string | number>({
   id,
   panel,
   size,
-  class: extra = "",
-  listRef,
 }: {
   label: string;
   tabs: {
@@ -27,15 +25,12 @@ export function Tabs<K extends string | number>({
   id?: string;
   panel?: string;
   size?: "compact";
-  class?: string;
-  listRef?: Ref<HTMLDivElement>;
 }) {
   return (
     <div
-      class={`tabs ${extra}`}
+      class="tabs"
       role="tablist"
       aria-label={label}
-      ref={listRef}
       onKeyDown={(event) => {
         const open = tabs.flatMap((tab, at) => (tab.disabled ? [] : [at]));
         const at = open.indexOf(tabs.findIndex((tab) => tab.key === value));

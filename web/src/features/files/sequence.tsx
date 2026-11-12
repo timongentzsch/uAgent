@@ -67,7 +67,14 @@ import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
 import { useResource } from "../../shared/use-resource.ts";
 
 // What a sheet says of itself, before it has.
-const UNTOLD = { hidden: 0, undo: false, redo: false };
+const UNTOLD = { hidden: 0, undo: false, redo: false, readers: 0 };
+// Where the pane goes with a tab put in, copied or moved: the page follows.
+const TAB_AFTER: Record<string, (index: number, tabs: number) => number> = {
+  "tab-add": (_, tabs) => tabs,
+  "tab-copy": (index) => index + 1,
+  "tab-right": (index) => index + 1,
+  "tab-left": (index) => index - 1,
+};
 
 // The zoom of an opened page, as a scale of its real size, and one step.
 const ZOOM_MIN = 0.1;
@@ -341,9 +348,10 @@ export default function Sequence({
   const locked = sheet && SHEET_FILE.test(path);
   // What the sheet was last told to do: a file comes only as its answer.
   const asked = useRef("");
-  const act = (command: string) => {
+  const act = (command: string, value?: string) => {
     asked.current = command;
-    tell(frame.current, { type: "do", command });
+    tell(frame.current, { type: "do", command, value });
+    if (TAB_AFTER[command]) setPart(TAB_AFTER[command](index, boards.length));
   };
   // Its size as a picture: an artboard's, or a page's full height.
   const size = pageSize(info, 8000);
@@ -836,7 +844,8 @@ export default function Sequence({
                       setPicked((was) => was && { ...was, rect: message.rect });
                     else if (message.type === "sheet") {
                       const hidden = Number(message.hidden) || 0;
-                      setTold((was) => ({ ...was, hidden }));
+                      const readers = Number(message.readers) || 0;
+                      setTold((was) => ({ ...was, hidden, readers }));
                     } else if (message.type === "cell")
                       setCell(cellOf(message));
                     else if (message.type === "refused")

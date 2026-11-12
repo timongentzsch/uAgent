@@ -1,8 +1,17 @@
 import type { RefObject } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Redo2, Undo2 } from "lucide-preact";
-import { Button, IconButton, Notice } from "../../shared/ui.tsx";
+import { Plus, Redo2, Undo2 } from "lucide-preact";
+import {
+  Actions,
+  Button,
+  ConfirmModal,
+  Field,
+  IconButton,
+  Modal,
+  Notice,
+} from "../../shared/ui.tsx";
 import { Input } from "../../shared/form-controls.tsx";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { Tabs } from "../../shared/tabs.tsx";
 import { plural } from "../../shared/quantities.ts";
 import type { Board } from "./boards.ts";
@@ -50,6 +59,98 @@ export function FormulaBar({
 const number = (value: number) =>
   value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
+// What is done to the tab shown, from its menu beside the tabs: a tablist
+// holds only its tabs. A new name is typed; a tab is taken out after a
+// question that says how many cells of other tabs read it.
+function TabActions({
+  boards,
+  index,
+  readers,
+  act,
+}: {
+  boards: Board[];
+  index: number;
+  readers: number;
+  act: (command: string, value?: string) => void;
+}) {
+  const [asking, setAsking] = useState<"" | "name" | "delete">("");
+  const [name, setName] = useState("");
+  const close = () => setAsking("");
+  const { title } = boards[index];
+  return (
+    <>
+      <Menu label="Tab actions">
+        <MenuItem
+          onClick={() => {
+            setName(title);
+            setAsking("name");
+          }}
+        >
+          Rename…
+        </MenuItem>
+        <MenuItem onClick={() => act("tab-copy")}>Duplicate</MenuItem>
+        <MenuItem disabled={!index} onClick={() => act("tab-left")}>
+          Move left
+        </MenuItem>
+        <MenuItem
+          disabled={index === boards.length - 1}
+          onClick={() => act("tab-right")}
+        >
+          Move right
+        </MenuItem>
+        <MenuItem
+          disabled={boards.length < 2}
+          onClick={() => setAsking("delete")}
+        >
+          Delete…
+        </MenuItem>
+      </Menu>
+      {asking === "name" && (
+        <Modal title="Rename tab" close={close} size="s">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              close();
+              act("tab-name", name);
+            }}
+          >
+            <Field label="Name">
+              <Input
+                value={name}
+                maxLength={31}
+                autoFocus
+                onInput={(event) => setName(event.currentTarget.value)}
+              />
+            </Field>
+            <Actions>
+              <Button onClick={close}>Cancel</Button>
+              <Button type="submit" variant="primary">
+                Rename
+              </Button>
+            </Actions>
+          </form>
+        </Modal>
+      )}
+      {asking === "delete" && (
+        <ConfirmModal
+          title="Delete tab"
+          close={close}
+          confirm={() => {
+            close();
+            act("tab-delete");
+          }}
+        >
+          {`${title} is deleted from the sheet.${
+            readers
+              ? ` ${plural(readers, "cell")} of other tabs ${readers === 1 ? "reads" : "read"} it and will show an error.`
+              : ""
+          } Undo brings it back.`}
+        </ConfirmModal>
+      )}
+    </>
+  );
+}
+
 // A sheet's legend, as tabs. On a phone no key reaches the grid: Edit cell
 // brings up the keyboard on the formula bar.
 export function SheetBar({
@@ -58,6 +159,7 @@ export function SheetBar({
   to,
   cell,
   hidden,
+  readers,
   undo,
   redo,
   locked,
@@ -70,11 +172,13 @@ export function SheetBar({
   to: (index: number) => void;
   cell?: Cell;
   hidden: number;
+  // How many cells of other tabs read the tab shown.
+  readers: number;
   undo: boolean;
   redo: boolean;
   // An Excel or CSV file: read, and saved as a sheet to change it.
   locked: boolean;
-  act: (command: "undo" | "redo" | "chart" | "sheet") => void;
+  act: (command: string, value?: string) => void;
   edit: () => void;
   comment?: () => void;
 }) {
@@ -89,15 +193,28 @@ export function SheetBar({
   ].filter(Boolean);
   return (
     <div class="sheet-bar">
-      <Tabs
-        label="Tabs"
-        size="compact"
-        class="sheet-tabs"
-        listRef={list}
-        value={index}
-        to={to}
-        tabs={boards.map((board, at) => ({ key: at, label: board.title }))}
-      />
+      <div class="sheet-tabs" ref={list}>
+        <Tabs
+          label="Tabs"
+          size="compact"
+          value={index}
+          to={to}
+          tabs={boards.map((board, at) => ({ key: at, label: board.title }))}
+        />
+        {!locked && (
+          <>
+            <IconButton label="Add tab" onClick={() => act("tab-add")}>
+              <Plus />
+            </IconButton>
+            <TabActions
+              boards={boards}
+              index={index}
+              readers={readers}
+              act={act}
+            />
+          </>
+        )}
+      </div>
       {note.length > 0 && (
         <small class="sheet-note muted">
           <Notice tone="info">{note.join(" · ")}</Notice>

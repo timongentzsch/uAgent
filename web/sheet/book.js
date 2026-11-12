@@ -256,6 +256,9 @@ export function openBook(engine, written, locked) {
       if (made.some((tab, at) => tab !== tabs[at])) build();
       return changed.length ? refused : false;
     }
+    return taken(next);
+  };
+  const taken = (next) => {
     past.push(tabs);
     if (past.length > STEPS) past.shift();
     future.length = 0;
@@ -263,6 +266,17 @@ export function openBook(engine, written, locked) {
     build();
     return true;
   };
+  // A name no tab has yet: itself, or with the first number that makes it so.
+  const unused = (name) => {
+    const has = (said) =>
+      tabs.some((tab) => tab.name.toLowerCase() === said.toLowerCase());
+    for (let n = 1; ; n++) {
+      const said = n > 1 ? `${name.slice(0, 28)} ${n}` : name;
+      if (!has(said)) return said;
+    }
+  };
+  // The tabs themselves put in or taken out: a step, as any change is.
+  const retabbed = (next) => (locked ? LOCKED : taken(next));
   // Why text set at `row`, `column` cannot be kept, if so: every blank row
   // and cell between it and the table would be written into the file.
   const sizes = new WeakMap();
@@ -482,6 +496,69 @@ export function openBook(engine, written, locked) {
             average: sum.value / count.value,
           }
         : undefined;
+    },
+
+    addTab: () =>
+      retabbed([
+        ...tabs,
+        {
+          name: unused("Sheet"),
+          attrs: {},
+          markup: [],
+          charts: [],
+          columns: [],
+          rows: [],
+        },
+      ]),
+    copyTab: (sheet) =>
+      retabbed(
+        tabs.toSpliced(sheet + 1, 0, {
+          ...tabs[sheet],
+          name: unused(`${tabs[sheet].name.slice(0, 26)} copy`),
+        }),
+      ),
+    dropTab: (sheet) =>
+      tabs.length > 1
+        ? retabbed(tabs.toSpliced(sheet, 1))
+        : "A sheet keeps at least one tab.",
+    moveTab(sheet, by) {
+      const to = sheet + by;
+      return to >= 0 && to < tabs.length
+        ? commit(tabs.with(sheet, tabs[to]).with(to, tabs[sheet]))
+        : false;
+    },
+    // The engine writes the new name into the formulas that read the tab.
+    nameTab(sheet, said) {
+      const name = said.trim();
+      if (name === tabs[sheet].name) return false;
+      if (
+        !name ||
+        name.length > 31 ||
+        /[[\]:*?/\\]/.test(name) ||
+        tabs.some(
+          (tab, at) =>
+            at !== sheet && tab.name.toLowerCase() === name.toLowerCase(),
+        )
+      )
+        return "A tab's name is its own, at most 31 characters, without [ ] : * ? / \\.";
+      return restructured(
+        () => model.renameSheet(sheet, name),
+        tabs.with(sheet, { ...tabs[sheet], name }),
+      );
+    },
+    // How many cells of other tabs read this one.
+    readers(sheet) {
+      const names = [tabs[sheet].name, engine.quoteName(tabs[sheet].name)];
+      let count = 0;
+      eachCell(tabs, (cell, on) => {
+        if (
+          on !== sheet &&
+          cell.text.startsWith("=") &&
+          names.some((name) => cell.text.includes(`${name}!`))
+        )
+          count++;
+      });
+      return count;
     },
 
     // A mark set on the tab's table: `data-frozen="2 B"`.

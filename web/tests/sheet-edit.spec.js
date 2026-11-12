@@ -851,6 +851,74 @@ test("opened alone a sheet is its whole table and nothing past it", async ({
   await expect(alone.getByText("Row 300", { exact: true })).toBeVisible();
 });
 
+test("tabs are added, renamed, duplicated, moved and deleted from the bar, and the file follows each", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, tabs, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    PLAN,
+  );
+  const shown = files.getByRole("tab", { selected: true });
+  const menu = async (name) => {
+    await files.getByRole("button", { name: "Tab actions" }).click();
+    await app.getByRole("menuitem", { name, exact: true }).click();
+  };
+  // A new tab is the one shown, and an empty table in the file.
+  await files.getByRole("button", { name: "Add tab" }).click();
+  await expect(tabs).toHaveText(["Tasks", "Inputs", "Sheet"]);
+  await expect(shown).toHaveText("Sheet");
+  const added = `${PLAN}<table data-sheet="Sheet">\n</table>\n`;
+  await expect.poll(saved).toBe(added);
+  await cell("Sheet", "A1").click();
+  await app.keyboard.type("x");
+  await app.keyboard.press("Enter");
+  const typed = added.replace('"Sheet">\n', '"Sheet">\n<tr><td>x\n');
+  await expect.poll(saved).toBe(typed);
+  // A new name is written into the formulas that read the tab.
+  await tabs.nth(0).click();
+  await menu("Rename…");
+  const naming = app.getByRole("dialog", { name: "Rename tab" });
+  await naming.getByRole("textbox", { name: "Name" }).fill("Jobs");
+  await naming.getByRole("button", { name: "Rename", exact: true }).click();
+  await expect(tabs).toHaveText(["Jobs", "Inputs", "Sheet"]);
+  const named = typed
+    .replace('data-sheet="Tasks"', 'data-sheet="Jobs"')
+    .replace("=Tasks!D5", "=Jobs!D5");
+  await expect.poll(saved).toBe(named);
+  // A copy comes after its tab and is the one shown; moved, it stays so.
+  await menu("Duplicate");
+  await expect(tabs).toHaveText(["Jobs", "Jobs copy", "Inputs", "Sheet"]);
+  await expect(shown).toHaveText("Jobs copy");
+  await menu("Move right");
+  await expect(tabs).toHaveText(["Jobs", "Inputs", "Jobs copy", "Sheet"]);
+  await expect(shown).toHaveText("Jobs copy");
+  await expect(cell("Jobs copy", "A2")).toHaveText("Write");
+  await expect
+    .poll(async () => (await saved()).match(/data-sheet="[^"]+"/g))
+    .toEqual(
+      ["Jobs", "Inputs", "Jobs copy", "Sheet"].map(
+        (name) => `data-sheet="${name}"`,
+      ),
+    );
+  // Deleting asks first and says who reads the tab; they show an error.
+  await tabs.nth(0).click();
+  await menu("Delete…");
+  const asking = app.getByRole("dialog", { name: "Delete tab" });
+  await expect(asking).toContainText("1 cell of other tabs reads it");
+  await asking.getByRole("button", { name: "Delete tab", exact: true }).click();
+  await expect(tabs).toHaveText(["Inputs", "Jobs copy", "Sheet"]);
+  await expect(cell("Inputs", "B2")).toHaveClass(/sheet-error/);
+  await expect.poll(saved).not.toContain('data-sheet="Jobs"');
+  // Undo brings the tab back, in the file too.
+  await files.getByRole("button", { name: "Undo" }).click();
+  await expect(tabs).toHaveText(["Jobs", "Inputs", "Jobs copy", "Sheet"]);
+  await expect.poll(saved).toContain('data-sheet="Jobs"');
+});
+
 test("a cell's menu shows one value alone or leaves it out, holds rows and columns up to the cell, pastes values and writes a link", async ({
   page: app,
   session,

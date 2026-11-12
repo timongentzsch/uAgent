@@ -324,6 +324,23 @@ async function open() {
       if (typeof changed === "string")
         say({ type: "refused", message: changed });
       if (changed !== true) return false;
+      // Tabs put in or taken out (by Undo too) are every table written anew
+      // over those the file has, and a table here for each.
+      if (book.tabs.length !== tables.length) {
+        say({
+          type: "edit",
+          tab: 0,
+          tabs: told.length,
+          all: true,
+          table: book.tabs.map((_, tab) => book.table(tab)).join("\n"),
+          undo: book.canUndo(),
+          redo: book.canRedo(),
+          errors: errors(),
+        });
+        retab();
+        show(Math.min(at, tables.length - 1));
+        return true;
+      }
       // A filter is of a column of the table.
       book.tabs.forEach((tab, sheet) => {
         for (const column of filters[sheet].keys())
@@ -347,7 +364,7 @@ async function open() {
       });
       return true;
     },
-    run: (command) => sheet.did(commands[command]?.()),
+    run: (command, value) => sheet.did(commands[command]?.(value)),
     write: (text) => sheet.did(book.paste(at, pick().anchor, [[text]])),
 
     filter(column, words) {
@@ -425,6 +442,34 @@ async function open() {
     "freeze-rows": () => freeze(pick().anchor.row, frozen.columns),
     "freeze-columns": () => freeze(frozen.rows, pick().anchor.column),
     unfreeze: () => freeze(0, 0),
+    "tab-add": () => book.addTab(),
+    "tab-copy": () => book.copyTab(at),
+    "tab-left": () => book.moveTab(at, -1),
+    "tab-right": () => book.moveTab(at, 1),
+    "tab-delete": () => book.dropTab(at),
+    "tab-name": (name) => book.nameTab(at, String(name ?? "")),
+  };
+  // What is kept of each tab (its place, its filters) is let go with them.
+  const retab = () => {
+    for (const table of tables) table.remove();
+    const all = (make) => book.tabs.map((_, tab) => make(tab));
+    tables.splice(
+      0,
+      Infinity,
+      ...all(() => document.body.appendChild(document.createElement("table"))),
+    );
+    picks.splice(
+      0,
+      Infinity,
+      ...all(() => ({
+        anchor: { row: 1, column: 1 },
+        focus: { row: 1, column: 1 },
+      })),
+    );
+    filters.splice(0, Infinity, ...all(() => new Map()));
+    reached.splice(0, Infinity, ...all(() => ({ rows: 0, columns: 0 })));
+    told.splice(0, Infinity, ...all((tab) => book.table(tab)));
+    offered.splice(0, Infinity, ...all((tab) => tab));
   };
   const freeze = (rows, columns) =>
     book.mark(
@@ -438,6 +483,7 @@ async function open() {
     at = index;
     tables.forEach((table, tab) => {
       table.hidden = tab !== at;
+      table.dataset.sheet = book.tabs[tab].name;
     });
     hidden = hides();
     picks[at] = { anchor: seen(pick().anchor), focus: seen(pick().focus) };
@@ -455,6 +501,8 @@ async function open() {
       type: "sheet",
       tabs: offered.map((tab) => book.tabs[tab].name),
       hidden: hidden.size,
+      // How many cells of other tabs read the one shown.
+      readers: book.readers(at),
     });
     tell();
   };
@@ -506,7 +554,7 @@ async function open() {
   const charts = listenCharts(sheet);
   addEventListener("message", ({ source, data }) => {
     if (source !== parent || data?.uagentDesign !== 1) return;
-    if (data.type === "do") sheet.run(data.command);
+    if (data.type === "do") sheet.run(data.command, data.value);
     if (data.type === "input") sheet.write(String(data.value));
   });
   // The address says which tab shows: "#2" is the second.

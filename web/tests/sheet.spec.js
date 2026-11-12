@@ -179,7 +179,7 @@ test("on a phone a sheet's tabs scroll sideways and its formula bar stays one li
     { phone: true },
   );
   await expect(tabs.last()).toHaveText("Month 12");
-  const list = files.getByRole("tablist", { name: "Tabs" });
+  const list = files.locator(".sheet-tabs");
   const row = await tabs.first().evaluate((tab) => tab.offsetHeight);
   expect(
     await list.evaluate((box) => [

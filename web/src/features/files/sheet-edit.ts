@@ -56,6 +56,9 @@ export interface TableEdit {
   tab: number;
   tabs: number;
   table: string;
+  // Tabs were put in or taken out: `table` is every tab's, for all the
+  // file's.
+  all?: boolean;
 }
 
 // A comment, or a tag with its quoted attribute values.
@@ -68,23 +71,29 @@ const CHART =
 
 // Null when the source does not hold the tabs the page counted: its tables
 // are not the page's, and the place would be a guess.
-export function splice(source: string, { tab, tabs, table }: TableEdit) {
+export function splice(source: string, { tab, tabs, table, all }: TableEdit) {
   if (!Number.isInteger(tab) || tab < 0 || typeof table !== "string")
     return null;
-  let seen = 0;
+  const spans: [number, number][] = [];
   let depth = 0;
-  let cut: [number, number] | undefined;
   let start = -1;
   for (const tag of source.matchAll(TAG)) {
     if (tag[2]?.toLowerCase() !== "table") continue;
     const opens = !tag[1];
-    if (opens && /\sdata-sheet(?![\w-])/i.test(tag[3]) && seen++ === tab)
+    if (start < 0) {
+      if (!opens || !/\sdata-sheet(?![\w-])/i.test(tag[3])) continue;
       start = tag.index;
-    if (start < 0 || cut) continue;
+      depth = 0;
+    }
     depth += opens ? 1 : -1;
-    if (!depth) cut = [start, tag.index + tag[0].length];
+    if (!depth) {
+      spans.push([start, tag.index + tag[0].length]);
+      start = -1;
+    }
   }
-  if (!cut || seen !== tabs) return null;
+  const cut = all ? [spans[0]?.[0], spans.at(-1)?.[1]] : spans[tab];
+  if (start >= 0 || spans.length !== tabs || cut?.[1] === undefined)
+    return null;
   let end = cut[1];
   for (CHART.lastIndex = end; CHART.test(source); ) end = CHART.lastIndex;
   return (

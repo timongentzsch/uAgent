@@ -527,6 +527,38 @@ const charted = (range, attrs = {}) =>
     },
   ]);
 
+test("tabs are put in, copied, moved, named and taken out, each a step; a new name is written into the formulas that read the tab", () => {
+  const book = plan();
+  const names = () => book.tabs.map((tab) => tab.name);
+  assert.equal(book.readers(0), 1);
+  assert.equal(book.readers(1), 0);
+  assert.equal(book.nameTab(0, "Jobs & more"), true);
+  assert.equal(book.tabs[1].rows[1].cells[1].text, "='Jobs & more'!C7*2");
+  assert.equal(book.shown(1, 2, 2), "19,441.00");
+  assert.equal(book.readers(0), 1);
+  // A name another tab has, or one a spreadsheet does not take, is refused.
+  for (const name of ["inputs", "", "a/b", "x".repeat(32)])
+    assert.match(book.nameTab(0, name), /^A tab's name/);
+  assert.equal(book.nameTab(0, "Jobs & more"), false);
+  book.undo();
+  assert.equal(book.tabs[1].rows[1].cells[1].text, "=Tasks!C7*2");
+  assert.equal(book.addTab(), true);
+  assert.equal(book.copyTab(1), true);
+  assert.deepEqual(names(), ["Tasks", "Inputs", "Inputs copy", "Sheet"]);
+  assert.equal(book.shown(2, 2, 2), "19,441.00");
+  assert.equal(book.moveTab(3, -1), true);
+  assert.equal(book.moveTab(0, -1), false);
+  assert.deepEqual(names(), ["Tasks", "Inputs", "Sheet", "Inputs copy"]);
+  // Taken out, the cells that read it are in error; the last tab stays.
+  assert.equal(book.dropTab(0), true);
+  assert.equal(book.kind(0, 2, 2), "error");
+  for (const _ of [1, 2]) book.dropTab(0);
+  assert.match(book.dropTab(0), /at least one tab/);
+  for (let steps = 0; steps < 6; steps++) book.undo();
+  assert.deepEqual(names(), ["Tasks", "Inputs"]);
+  assert.equal(book.shown(1, 2, 2), "19,441.00");
+});
+
 test("a chart reads its labels and the columns that hold numbers; a blank cell is a gap, not a zero", () => {
   const book = charted("A3:C6");
   // The Status column is text: it is no series.

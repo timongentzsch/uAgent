@@ -25,6 +25,18 @@ test("only the tab's table changes: the head, the other tabs and what lies betwe
   assert.equal(put(source, 2), null);
 });
 
+test("tabs put in or taken out are every table written anew over those the file has", () => {
+  const three = `${one}\n${two}\n<table data-sheet="New">\n</table>`;
+  const source = `${head}${one}\n<!-- between -->\n${two}\n<figure data-chart="bar" data-range="A1:B2"></figure>\n<p>after`;
+  const all = (tabs, table) =>
+    splice(source, { tab: 0, tabs, table, all: true });
+  assert.equal(all(2, three), `${head}${three}\n<p>after`);
+  assert.equal(all(2, two), `${head}${two}\n<p>after`);
+  // The file holds other tabs than the page counted: nothing is written.
+  assert.equal(all(3, three), null);
+  assert.equal(all(1, one), null);
+});
+
 test("a table's end is its own: not the text of a cell, an attribute's value or a table inside it", () => {
   const tricky =
     '<TABLE class="x" data-sheet=One>\n' +

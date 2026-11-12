@@ -58,6 +58,7 @@ export type PageMessage =
       tab: number;
       tabs: number;
       table: string;
+      all?: boolean;
       undo: boolean;
       redo: boolean;
       errors: string[];
@@ -68,7 +69,7 @@ export type PageMessage =
   // A sheet's tabs and how many rows a filter hides in the one shown; and its
   // selection: the active cell ("Costs!B2") and what was typed in it, the
   // range ("Costs!B2:C6") and what two numbers or more in it come to.
-  | { type: "sheet"; tabs: string[]; hidden: number }
+  | { type: "sheet"; tabs: string[]; hidden: number; readers?: number }
   // What a sheet hands over when asked: itself as a workbook's bytes, its
   // open tab as CSV, or a read file as the text of a sheet to save.
   | { type: "file"; as: string; data: Uint8Array | string }
@@ -94,7 +95,7 @@ export const tell = (
     | { type: "tweak"; name: string; value: unknown }
     | { type: "find"; text: string; index: number }
     | { type: "input"; value: string }
-    | { type: "do"; command: string },
+    | { type: "do"; command: string; value?: string },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 
 // What a sheet's grid takes from the app, as the variables of its stylesheet

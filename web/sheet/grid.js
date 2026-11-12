@@ -201,6 +201,7 @@ export function draw(table, book, sheet, filters, view) {
       drawn.classList.toggle("sheet-strike", !!look.strike);
       drawn.classList.toggle("sheet-number", kind === "number");
       drawn.classList.toggle("sheet-error", kind === "error");
+      drawn.classList.toggle("sheet-link", /^=HYPERLINK\(/i.test(cell.text));
       drawn.classList.toggle("sheet-wrap", /\bwrap\b/.test(column.class ?? ""));
       drawn.classList.toggle(
         "sheet-options",

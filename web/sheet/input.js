@@ -156,14 +156,51 @@ export function listen(sheet) {
     if (shown.length) openMenu(at, shown, hold);
   };
   const changes = (items) => (sheet.locked ? [] : items);
-  const cellItems = () => [
-    ...(isHead() ? headItems() : []),
-    ...changes([
-      ...rowItems(),
-      ...columnItems(),
-      command("Insert chart", "chart"),
-    ]),
-  ];
+  const cellItems = () => {
+    const at = active();
+    const { rows, columns } = sheet.tab();
+    const inTable = at.row <= rows.length && at.column <= columns.length;
+    const shown = book.shown(sheet.at, at.row, at.column);
+    const only = (label, words) => ({
+      label: `${label} “${shown}”`,
+      run: () => sheet.filter(at.column, `${words}${shown}`),
+    });
+    const held = sheet.held();
+    return [
+      ...(isHead() ? headItems() : []),
+      // One value of the column, shown alone or left out.
+      ...(inTable && inBody(at) && shown
+        ? [only("Show only", "="), only("Leave out", "<>")]
+        : []),
+      !isHead() &&
+        sheet.filterOf(at.column) && {
+          label: "Clear filter",
+          run: () => sheet.filter(at.column, ""),
+        },
+      ...changes([
+        // What was copied here, as the cells showed it: no formulas.
+        copied && {
+          label: "Paste values only",
+          run: () => sheet.did(book.paste(sheet.at, at, fromTsv(copied.text))),
+        },
+        ...rowItems(),
+        ...columnItems(),
+        command("Insert chart", "chart"),
+        inTable && command("Freeze rows up to here", "freeze-rows"),
+        inTable && command("Freeze columns up to here", "freeze-columns"),
+        held.rows + held.columns > 0 && command("Unfreeze", "unfreeze"),
+        {
+          field: "Link to an address",
+          value: "",
+          change: (address) =>
+            address.trim() &&
+            sheet.write(
+              `=HYPERLINK("${address.trim().replaceAll('"', '""')}","${(shown || address.trim()).replaceAll('"', '""')}")`,
+            ),
+        },
+      ]),
+    ];
+  };
   const under = () => {
     const box = sheet.rect(active());
     return { x: box.left - scrollX, y: box.top + box.height - scrollY };

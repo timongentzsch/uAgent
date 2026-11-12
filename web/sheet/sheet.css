@@ -77,6 +77,10 @@ table[data-sheet] .sheet-number {
 table[data-sheet] .sheet-error {
   color: var(--sheet-error);
 }
+table[data-sheet] .sheet-link {
+  color: var(--sheet-accent);
+  text-decoration: underline;
+}
 /* Letters across the top and numbers down the side, held in view: the
    numbers at the left, the letters at the top, the corner at both. What is
    held lies over what scrolls under it: rows over columns, the letters over

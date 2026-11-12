@@ -160,7 +160,7 @@ test("rows are put in and taken out, filled down and sorted: formulas follow on 
   await cell("Tasks", "B3").click();
   await app.keyboard.press("Shift+F10");
   await app.keyboard.press("ArrowDown");
-  await expect(menu("Insert row below")).toBeFocused();
+  await expect(menu("Leave out “Done”")).toBeFocused();
   await menu("Delete row").click();
   await expect.poll(saved).toBe(PLAN);
 
@@ -741,7 +741,9 @@ test("past the table: a row or column is selected across the table only, a spare
     stage.getByRole("menuitem", { name: "Insert chart" }),
   ).toBeVisible();
   await expect(stage.getByRole("menuitem", { name: /^Sort/ })).toHaveCount(0);
-  await expect(stage.getByRole("searchbox")).toHaveCount(0);
+  await expect(
+    stage.getByRole("searchbox", { name: "Filter: contains" }),
+  ).toHaveCount(0);
   await app.keyboard.press("Escape");
   // A filter is kept when a spare column is typed in, and when it is cut.
   await cell("Tasks", "B1").getByRole("button").click();
@@ -847,6 +849,70 @@ test("opened alone a sheet is its whole table and nothing past it", async ({
   await expect(alone.locator("tbody tr")).toHaveCount(300);
   await expect(alone.locator(".sheet-letters")).toHaveText("AB");
   await expect(alone.getByText("Row 300", { exact: true })).toBeVisible();
+});
+
+test("a cell's menu shows one value alone or leaves it out, holds rows and columns up to the cell, pastes values and writes a link", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    PLAN,
+  );
+  const pick = async (ref, name) => {
+    await cell("Tasks", ref).click({ button: "right" });
+    await stage.getByRole("menuitem", { name, exact: true }).click();
+  };
+  const note = files.locator(".sheet-note");
+  // The total row is never filtered out.
+  await pick("B3", "Show only “To do”");
+  await expect(note).toHaveText("2 rows hidden");
+  await expect(
+    cell("Tasks", "B1").getByRole("button", { pressed: true }),
+  ).toBeVisible();
+  await pick("B3", "Clear filter");
+  await expect(note).toHaveCount(0);
+  await pick("B3", "Leave out “To do”");
+  await expect(note).toHaveText("1 row hidden");
+  await pick("B2", "Clear filter");
+  // Held up to the cell, then let go; each is a step.
+  const frozen = (said) =>
+    said
+      ? PLAN.replace(
+          'data-sheet="Tasks"',
+          `data-sheet="Tasks" data-frozen="${said}"`,
+        )
+      : PLAN;
+  await pick("B3", "Freeze rows up to here");
+  await expect.poll(saved).toBe(frozen("3"));
+  await pick("B3", "Freeze columns up to here");
+  await expect.poll(saved).toBe(frozen("3 B"));
+  await expect(cell("Tasks", "B3")).toHaveClass(/sheet-pinned/);
+  await pick("B4", "Unfreeze");
+  await expect.poll(saved).toBe(frozen("0"));
+  for (let step = 0; step < 3; step++)
+    await files.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(saved).toBe(PLAN);
+  // What a formula shows is pasted, not the formula.
+  const run = await clipboard(stage);
+  await cell("Tasks", "E2").click();
+  await run("copy");
+  await pick("A7", "Paste values only");
+  await expect(cell("Tasks", "A7")).toHaveText("2,400.00");
+  await expect.poll(saved).toContain("\n<tr><td>2,400.00<td><td><td><td>\n");
+  // A link is a formula of the address and what the cell showed.
+  await cell("Tasks", "A2").click({ button: "right" });
+  const link = stage.getByRole("searchbox", { name: "Link to an address" });
+  await link.fill("https://example.com/a");
+  await link.press("Enter");
+  await expect(cell("Tasks", "A2")).toHaveText("Write");
+  await expect(cell("Tasks", "A2")).toHaveClass(/sheet-link/);
+  await expect
+    .poll(saved)
+    .toContain('<td>=HYPERLINK("https://example.com/a","Write")<td>');
 });
 
 test("a sheet with nothing in it shows a pane of cells to type in", async ({

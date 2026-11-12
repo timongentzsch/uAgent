@@ -15,6 +15,7 @@ import {
   cellName,
   frozenOf,
   LAST,
+  letters,
   sheetText,
   toCsv,
 } from "./text.js";
@@ -242,6 +243,14 @@ async function open() {
   const box = () => boxOf(pick().anchor, pick().focus);
   const high = () => box().bottom - box().top + 1;
   const wide = () => box().right - box().left + 1;
+  // A filter's words are in what a cell shows; after "=" they are all of
+  // it, and after "<>" a cell that shows just them is left out.
+  const matches = (shown, words) =>
+    words.startsWith("=")
+      ? shown === words.slice(1)
+      : words.startsWith("<>")
+        ? shown !== words.slice(2)
+        : shown.includes(words);
   const hides = () => {
     const rows = new Set();
     for (const [column, words] of filters[at])
@@ -249,10 +258,7 @@ async function open() {
         if (
           r >= headOf(tab()) &&
           !isTotal(row) &&
-          !book
-            .shown(at, r + 1, column)
-            .toLowerCase()
-            .includes(words)
+          !matches(book.shown(at, r + 1, column).toLowerCase(), words)
         )
           rows.add(r + 1);
       });
@@ -288,6 +294,8 @@ async function open() {
       tinted = box;
       paint(tables[at], sheet.box(), pick().anchor, tinted);
     },
+    // The rows and columns the tab holds in view.
+    held: () => frozen,
     // Where a cell lies in the page, drawn or not.
     rect: (cell) => layout.rect(cell),
     layout: () => layout,
@@ -413,7 +421,17 @@ async function open() {
     "column-right": () =>
       shifted(book.insertColumns(at, box().right + 1, wide())),
     "column-delete": () => shifted(book.deleteColumns(at, box().left, wide())),
+    // Held up to the active cell: its row, or its column, and those before.
+    "freeze-rows": () => freeze(pick().anchor.row, frozen.columns),
+    "freeze-columns": () => freeze(frozen.rows, pick().anchor.column),
+    unfreeze: () => freeze(0, 0),
   };
+  const freeze = (rows, columns) =>
+    book.mark(
+      at,
+      "data-frozen",
+      `${rows}${columns ? ` ${letters(columns)}` : ""}`,
+    );
 
   const show = (index) => {
     if (!tables[index]) return;

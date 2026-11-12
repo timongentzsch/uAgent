@@ -484,6 +484,15 @@ export function openBook(engine, written, locked) {
         : undefined;
     },
 
+    // A mark set on the tab's table: `data-frozen="2 B"`.
+    mark: (sheet, name, value) =>
+      commit(
+        tabs.with(sheet, {
+          ...tabs[sheet],
+          attrs: { ...tabs[sheet].attrs, [name]: value },
+        }),
+      ),
+
     // Text set down from a cell on. From this book's own cells (`from`)
     // formulas move along, and a cut clears.
     paste(sheet, at, rows, from) {

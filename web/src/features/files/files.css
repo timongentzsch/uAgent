@@ -320,6 +320,10 @@
 .sheet-bar > .sheet-note {
   flex: 0 1 auto;
 }
+/* What asks the page something is disabled until the page has drawn. */
+.page-asks {
+  display: contents;
+}
 /* Edit cell is a phone's way to the keyboard. */
 .sheet-edit-cell {
   display: none;

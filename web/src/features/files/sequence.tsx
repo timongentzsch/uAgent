@@ -185,6 +185,11 @@ export default function Sequence({
   const [tweaking, setTweaking] = useState(false);
   // Reset reloads the page: what it declares comes back.
   const [load, setLoad] = useState(0);
+  // The address whose page has drawn. What is asked of a page before it has
+  // is lost, so the controls that ask are disabled until the one wanted has.
+  const [arrived, setArrived] = useState("");
+  const wanted = load ? `${src}&load=${load}` : src;
+  const live = arrived === wanted;
   // Another page: nothing picked, typed or zoomed carries over, and Edit is
   // off.
   useEffect(() => {
@@ -373,9 +378,12 @@ export default function Sequence({
           }),
         ]),
     ],
-    doc && ["Markdown", () => tell(frame.current, { type: "markdown" })],
-    sheet && !/\.xlsx$/i.test(path) && ["Excel workbook", () => act("xlsx")],
-    sheet && ["CSV of this tab", () => act("csv")],
+    live &&
+      doc && ["Markdown", () => tell(frame.current, { type: "markdown" })],
+    live &&
+      sheet &&
+      !/\.xlsx$/i.test(path) && ["Excel workbook", () => act("xlsx")],
+    live && sheet && ["CSV of this tab", () => act("csv")],
   ];
   // A fixed artboard fits the stage whole; a page that names only its width
   // fits it across and scrolls down inside.
@@ -702,12 +710,14 @@ export default function Sequence({
         )}
         <div class="page-main">
           {sheet && (
-            <FormulaBar
-              cell={cell}
-              locked={locked}
-              field={formula}
-              write={(value) => tell(frame.current, { type: "input", value })}
-            />
+            <fieldset class="page-asks" disabled={!live}>
+              <FormulaBar
+                cell={cell}
+                locked={locked}
+                field={formula}
+                write={(value) => tell(frame.current, { type: "input", value })}
+              />
+            </fieldset>
           )}
           <div
             class="page-stage"
@@ -755,9 +765,10 @@ export default function Sequence({
                       if (mode) tell(frame.current, { type: mode, on: true });
                       // Drawn again, what was found stays marked.
                       if (query) marked();
-                    } else if (message.type === "drawn")
+                    } else if (message.type === "drawn") {
                       setSaid((was) => was && { ...was, drawn: true });
-                    else if (message.type === "zoom") {
+                      setArrived(wanted);
+                    } else if (message.type === "zoom") {
                       // A point of the page, where it sits in the scroller.
                       const page = frame.current!.getBoundingClientRect();
                       const box = scroller.current!.getBoundingClientRect();
@@ -883,17 +894,19 @@ export default function Sequence({
             </p>
           )}
           {sheet && (
-            <SheetBar
-              boards={boards}
-              index={index}
-              to={to}
-              cell={cell}
-              {...told}
-              locked={locked}
-              act={act}
-              edit={() => formula.current?.focus()}
-              comment={addToChat && (() => setRanged(cell?.range))}
-            />
+            <fieldset class="page-asks" disabled={!live}>
+              <SheetBar
+                boards={boards}
+                index={index}
+                to={to}
+                cell={cell}
+                {...told}
+                locked={locked}
+                act={act}
+                edit={() => formula.current?.focus()}
+                comment={addToChat && (() => setRanged(cell?.range))}
+              />
+            </fieldset>
           )}
         </div>
         <Tweaks

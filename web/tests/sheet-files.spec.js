@@ -150,7 +150,22 @@ test("an Excel file opens read-only, is saved as a sheet and edited there, and g
   );
 
   // The name is taken now: saving the file as a sheet again writes nothing.
+  // Until the file's page has drawn there is nothing to ask: with its
+  // workbook held back, the button waits.
+  let release;
+  await app.route(/books\/costs\.xlsx$/, async (route) => {
+    await new Promise((free) => {
+      release = free;
+    });
+    await route.continue();
+  });
   await files.getByRole("button", { name: "Back to costs.xlsx" }).click();
+  await expect.poll(() => !!release).toBe(true);
+  await expect(
+    files.getByRole("button", { name: "Save as sheet" }),
+  ).toBeDisabled();
+  await expect(tabs.first()).toBeDisabled();
+  release();
   await files.getByRole("button", { name: "Save as sheet" }).click();
   await expect(status).toHaveText("costs.html is already there");
   expect(await saved("books/costs.html")).toBe(

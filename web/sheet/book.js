@@ -692,11 +692,13 @@ export async function openBook(engine, written, locked, calculate) {
   const readOf = (cell) => {
     consulted = true;
     if (!cell) return BLANK;
-    // Not calculated yet: as typed, a formula blank.
+    // Not calculated yet: as typed, a formula blank, and words as text.
+    const shown = cell.text.startsWith("=") ? "" : cell.text;
     return (
       values.get(cell) ?? {
         ...BLANK,
-        shown: cell.text.startsWith("=") ? "" : cell.text,
+        shown,
+        kind: Number.isNaN(Number(shown)) ? "text" : "number",
       }
     );
   };

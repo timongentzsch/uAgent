@@ -248,6 +248,20 @@ test("a row put in leaves a formula it does not move exactly as typed", async ()
   );
 });
 
+test("what is typed stands as words or as a number before it is calculated", async () => {
+  const book = await open([tab("Typed", [["a"]])]);
+  const asked = book.paste(0, { row: 2, column: 1 }, [["word"], ["12"]]);
+  assert.deepEqual(
+    [2, 3].map((row) => [book.shown(0, row, 1), book.kind(0, row, 1)]),
+    [
+      ["word", "text"],
+      ["12", "number"],
+    ],
+  );
+  await asked;
+  assert.equal(book.kind(0, 2, 1), "text");
+});
+
 test("tabs may bear the names the engine gives its own sheets", async () => {
   const book = await open([
     tab("Sheet2", [["=Sheet1!A1+1"]]),

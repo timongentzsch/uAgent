@@ -73,6 +73,9 @@ const ZOOM_STEP = 1.25;
 // keeps the keys and scrolls in its frame (sheet.tsx).
 
 // The lines it adds to the draft, which the artifact skill reads.
+// A number a page said, which is untrusted: whole, and none below zero.
+const natural = (said: unknown) =>
+  Math.min(Math.max(0, Math.floor(Number(said)) || 0), 1e6);
 const commentLine = (path: string, where: string, comment: string) =>
   `\`${path}\` ${where} — ${comment}`;
 // A picked element as those lines name it, and as the pane does.
@@ -149,7 +152,11 @@ export default function Sequence({
   // its "#" loads again). Those of all, and as one value.
   const address = (board: Board, more = "") =>
     `${page(board.path)}${more}${board.at === undefined ? "" : `#${board.at + 1}`}`;
-  const srcs = boards.map((board) => address(board));
+  // A block saved from here is in the file, which the legend draws again.
+  const [saves, setSaves] = useState(0);
+  const srcs = boards.map((board) =>
+    address(board, saves ? `&saved=${saves}` : ""),
+  );
   const stamp = srcs.join("\n");
   const frame = useRef<HTMLIFrameElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -312,6 +319,7 @@ export default function Sequence({
     try {
       await saving;
       setSaved("Saved");
+      setSaves((count) => count + 1);
     } catch (error) {
       setSaved(error instanceof Error ? error.message : "Not saved");
     }
@@ -329,10 +337,12 @@ export default function Sequence({
   const size = pageSize(info, 8000);
   const { fixed } = size;
   const sized = `&w=${size.w}&h=${size.h}`;
+  // Of a file with several boards, the one shown is pictured.
+  const shownPart = boards[index]?.at === undefined ? "" : `&part=${part + 1}`;
   const png =
     drawn &&
     info &&
-    ((by: number) => `${drawn("png", path)}${sized}&scale=${by}`);
+    ((by: number) => `${drawn("png", path)}${sized}&scale=${by}${shownPart}`);
   // The page in another format: what fits its kind. Its source is Download
   // in the pane's header.
   const download = (address: string, name: string) =>
@@ -368,7 +378,7 @@ export default function Sequence({
     sheet && ["CSV of this tab", () => act("csv")],
   ];
   // A fixed artboard fits the stage whole; a page that names only its width
-  // (an A4 document) fits it across and scrolls down inside, as a PDF does.
+  // fits it across and scrolls down inside.
   const wide = !!info?.artboard.w;
   const fit =
     room.w && wide
@@ -766,12 +776,15 @@ export default function Sequence({
                       // A slide's are counted in its source, not here. Said
                       // again the same, a document's counts are no news.
                       const counts = Array.isArray(message.counts)
-                        ? message.counts.map((count) => Number(count) || 0)
+                        ? message.counts.slice(0, boards.length).map(natural)
                         : undefined;
                       if (doc)
                         setFound((was) =>
                           String(was) === String(counts) ? was : counts,
                         );
+                    } else if (message.type === "page") {
+                      // A link in the document, or its caret, led there.
+                      if (doc) to(natural(message.at) - 1);
                     } else if (message.type === "edit") {
                       if ("table" in message) {
                         const [undo, redo] = [!!message.undo, !!message.redo];

@@ -4,8 +4,8 @@
   const root = document.documentElement;
   const meta = (name) =>
     document.querySelector(`meta[name="${name}"]`)?.content.trim() || "";
-  // A document's print line: "flow", its paper (a name or WxHmm), "landscape",
-  // then its margins: a preset, or one to four lengths as CSS reads them.
+  // A document's print line: "flow", then in any order its paper (a name or
+  // WxHmm), "landscape", and its margins: a preset, or one to four lengths.
   const PAPER = {
     a3: [297, 420],
     a4: [210, 297],
@@ -19,27 +19,38 @@
     moderate: [25, 19],
     wide: [25, 50],
   };
-  // In millimetres, the margins from the top clockwise.
+  const MM = { mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, px: 25.4 / 96 };
+  // In millimetres, the margins from the top clockwise; `wrong` is what of
+  // the line was not understood.
   const paper = () => {
-    const [flow, name = "a4", ...more] = meta("print")
-      .toLowerCase()
-      .split(/\s+/);
+    const [flow, ...said] = meta("print").toLowerCase().split(/\s+/);
     if (flow !== "flow") return null;
-    const custom = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)mm$/.exec(name);
-    const [w, h] = custom ? [+custom[1], +custom[2]] : PAPER[name] || PAPER.a4;
-    const turned = more[0] === "landscape";
-    const said = more.slice(turned ? 1 : 0);
-    const lengths = said.map(Number.parseFloat);
-    const [top, right = top, bottom = top, left = right] =
-      MARGINS[said[0]] ??
-      (lengths.length && lengths.every(Number.isFinite)
-        ? lengths
-        : MARGINS.normal);
-    return {
-      w: turned ? h : w,
-      h: turned ? w : h,
-      margin: [top, right, bottom, left],
-    };
+    let size = PAPER.a4;
+    let turned = false;
+    let preset = MARGINS.normal;
+    const lengths = [];
+    const wrong = [];
+    for (const word of said) {
+      const custom = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)mm$/.exec(word);
+      const length = /^(\d+(?:\.\d+)?)(mm|cm|in|pt|px)$/.exec(word);
+      if (custom) size = [+custom[1], +custom[2]];
+      else if (Object.hasOwn(PAPER, word)) size = PAPER[word];
+      else if (word === "landscape") turned = true;
+      else if (Object.hasOwn(MARGINS, word)) preset = MARGINS[word];
+      else if (length && lengths.length < 4)
+        lengths.push(length[1] * MM[length[2]]);
+      else wrong.push(`"${word}" in the print line is not understood`);
+    }
+    const [w, h] = turned ? [size[1], size[0]] : size;
+    let [top, right = top, bottom = top, left = right] = lengths.length
+      ? lengths
+      : preset;
+    // Margins with no room between them are none.
+    if (left + right >= w || top + bottom >= h) {
+      wrong.push(`the margins leave no room on the ${w}x${h}mm paper`);
+      top = right = bottom = left = 0;
+    }
+    return { w, h, margin: [top, right, bottom, left], wrong };
   };
   const PX_PER_MM = 96 / 25.4;
   // The artboard ("1440x900", "1920x1080 slide", or a width only); a
@@ -144,12 +155,24 @@
   // A block that cannot break and is taller than a page of the document.
   const tallBlocks = () => {
     const page = pageHeight();
-    return [...document.querySelectorAll("figure, table, img, svg, pre")]
+    // Of all its parts: one that is too tall is cut over several pages.
+    const height = (block) =>
+      Math.round(
+        [...block.getClientRects()].reduce((sum, box) => sum + box.height, 0),
+      );
+    return [
+      ...document.querySelectorAll("figure, table, blockquote, pre, img, svg"),
+    ]
       .filter((block) => !block.parentElement.closest("figure, table, svg"))
-      .filter((block) => block.getBoundingClientRect().height > page + 1)
+      .filter(
+        (block) =>
+          block.matches("img, svg") ||
+          getComputedStyle(block).breakInside === "avoid",
+      )
+      .filter((block) => height(block) > page + 1)
       .map(
         (block) =>
-          `a ${block.localName} is ${Math.round(block.getBoundingClientRect().height)}px tall, more than a page (${Math.round(page)}px): shrink it or split it`,
+          `a ${block.localName} is ${height(block)}px tall, more than a page (${Math.round(page)}px): shrink it or split it`,
       );
   };
   const problems = () => {
@@ -171,7 +194,7 @@
         );
     });
     if (slide) found.push(...overlaps());
-    if (paper()) found.push(...tallBlocks());
+    if (paper()) found.push(...paper().wrong, ...tallBlocks());
     return found;
   };
   const checked = (report) =>
@@ -182,86 +205,81 @@
       [...problems(), ...cells].forEach(report);
     });
 
-  // Where each page of a document starts, from its body's top, estimated
-  // from its blocks: one that cannot break moves whole to the next page, a
-  // heading goes with what follows it, text breaks between two of its lines.
-  const ATOMIC =
-    "figure, img, svg, pre, tr, h1, h2, h3, h4, h5, h6, li, .title-page";
-  const pageStarts = () => {
-    const height = pageHeight();
-    const from = document.body.getBoundingClientRect().top;
-    const top = (box) => box.getBoundingClientRect().top - from;
-    const bottom = (box) => box.getBoundingClientRect().bottom - from;
-    // The top of the first line that runs past `limit`; the part's own when
-    // none of its lines fits.
-    const line = (part, limit) => {
-      const range = document.createRange();
-      range.selectNodeContents(part);
-      const boxes = [...range.getClientRects()];
-      const cut = boxes.findIndex((box) => box.bottom - from > limit);
-      return cut > 0 ? boxes[cut].top - from : cut ? limit : top(part);
-    };
-    const parts = [
-      ...document.body.querySelectorAll(`${ATOMIC}, p, blockquote, dt, dd`),
-    ].filter((el) => !el.parentElement.closest(ATOMIC) && el.offsetHeight);
-    const starts = [parts.length ? top(parts[0]) : 0];
-    let previous = null;
-    for (const part of parts) {
-      const after = previous && getComputedStyle(previous).breakAfter;
-      if (
-        top(part) > starts.at(-1) &&
-        (getComputedStyle(part).breakBefore === "page" || after === "page")
-      )
-        starts.push(top(part));
-      while (bottom(part) > starts.at(-1) + height + 0.5) {
-        const limit = starts.at(-1) + height;
-        let at = part.matches(ATOMIC) ? top(part) : line(part, limit);
-        if (/^H[1-6]$/.test(previous?.tagName || "") && at === top(part))
-          at = top(previous);
-        starts.push(at > starts.at(-1) ? at : limit);
-      }
-      previous = part;
-    }
-    return starts;
-  };
-  // A document's paper. In print its size and margins are the format's; on
-  // screen it is one sheet, the body its text box inside the margins, moved
-  // and cut to the page the address names ("#3").
-  let tops = [0];
+  // A document on screen is one sheet: its body is columns the size of a
+  // page's text, broken as the browser breaks pages, moved and cut to one.
+  let pages = 1;
   let shown = 0;
   let paged;
+  let went;
+  // The page a box of the body lies on, from 0.
+  const pageOf = (box) => {
+    const { w, margin } = paper();
+    const from = document.body.getBoundingClientRect().left;
+    return Math.floor((box.left - from) / PX_PER_MM / w + margin[3] / w);
+  };
+  // The page the address names: "#3", or the id of something on it.
   const turn = () => {
-    const { margin } = paper();
-    tops = pageStarts();
-    const said = Number(location.hash.slice(1)) || 1;
-    shown = Math.min(tops.length, Math.max(1, said)) - 1;
-    const end = tops[shown + 1];
-    root.style.setProperty(
-      "--uagent-top",
-      `${margin[0] * PX_PER_MM - tops[shown]}px`,
-    );
-    root.style.setProperty(
-      "--uagent-cut",
-      `inset(${tops[shown]}px -100vw ${end ? `calc(100% - ${end}px)` : "0px"} -100vw)`,
-    );
-    paged?.(tops.length);
+    const { w, margin } = paper();
+    const across = document.body.scrollWidth / PX_PER_MM;
+    pages = Math.max(1, Math.round((across + margin[1] + margin[3]) / w));
+    const said = decodeURIComponent(location.hash.slice(1));
+    const named = /\D/.test(said) && document.getElementById(said);
+    if (named) return to(named.getBoundingClientRect());
+    shown = Math.min(pages, Math.max(1, Math.floor(said) || 1)) - 1;
+    root.style.setProperty("--uagent-page", shown);
+    paged?.(pages);
+  };
+  // To the page of something the page itself went to: a link, the caret.
+  const to = (box) => {
+    const at = pageOf(box) + 1;
+    location.replace(`#${at}`);
+    went?.(at);
   };
   addEventListener("DOMContentLoaded", () => {
     const format = paper();
     if (!format) return;
     const { w, h, margin } = format;
     const [top, right, bottom, left] = margin;
+    const move = `calc(var(--uagent-page,0)*${w}mm)`;
     const style = document.createElement("style");
     style.textContent =
       `@page{size:${w}mm ${h}mm;margin:${margin.map((side) => `${side}mm`).join(" ")}}` +
-      `.title-page{box-sizing:border-box;height:${h - top - bottom}mm;break-after:page}` +
+      `.title-page{box-sizing:border-box;height:${h - top - bottom}mm!important;min-height:0!important}:where(.title-page){display:flow-root}` +
       `@media screen{html{width:${w}mm;height:${h}mm;overflow:hidden}` +
-      `body{position:absolute;top:var(--uagent-top);left:${left}mm;width:${w - left - right}mm;` +
-      "margin:0!important;padding:0!important;clip-path:var(--uagent-cut)}}";
+      `body{position:absolute;top:${top}mm;left:${left}mm;width:${w - left - right}mm;height:${h - top - bottom}mm;` +
+      `margin:0!important;padding:0!important;columns:1;column-gap:${left + right}mm;column-fill:auto;` +
+      `translate:calc(${move}*-1);` +
+      `clip-path:inset(-${top}mm calc(${move}*-1 - ${right}mm) -${bottom}mm calc(${move} - ${left}mm))}` +
+      "[data-uagent-break=before]{break-before:column!important}[data-uagent-break=after]{break-after:column!important}}";
     // After the page's own, which it overrules.
     document.head.append(style);
-    new ResizeObserver(turn).observe(document.body);
+    // A page break is a column's here, which no rule of the page's says.
+    const breaks = () => {
+      for (const part of document.body.querySelectorAll("*")) {
+        const { breakBefore, breakAfter } = getComputedStyle(part);
+        if (breakBefore === "page") part.dataset.uagentBreak = "before";
+        else if (breakAfter === "page") part.dataset.uagentBreak = "after";
+      }
+      turn();
+    };
+    breaks();
+    addEventListener("load", breaks);
+    // Whatever changes how far the text runs changes a block's size.
+    const sized = new ResizeObserver(turn);
+    for (const block of document.body.children) sized.observe(block);
     addEventListener("hashchange", turn);
+    // What would scroll the sheet (the caret, the focus) turns the page.
+    addEventListener("scroll", () => {
+      if (!scrollX && !scrollY) return;
+      scrollTo(0, 0);
+      const active = document.activeElement;
+      const on =
+        active.isContentEditable && getSelection().rangeCount
+          ? getSelection().getRangeAt(0)
+          : active;
+      if (on !== document.body)
+        to(on.getClientRects()[0] ?? on.getBoundingClientRect());
+    });
   });
   // For printing, a fixed artboard is one sheet its size.
   const paperStyle = () => {
@@ -439,8 +457,7 @@
   // How long a painted frame is waited for before a page counts as drawn.
   const PAINT_MS = 100;
   // Find: every occurrence of the words marked, the `index`th as the current
-  // one; answers how many there are. Letters fold as the app's find folds
-  // them (A-Z only); a slide's notes, which are not drawn, are not searched.
+  // one. Letters fold as the app's find does (A-Z); notes are not searched.
   const fold = (text) => text.replace(/[A-Z]/g, (c) => c.toLowerCase());
   const find = (text, index) => {
     const needle = fold(text);
@@ -465,19 +482,12 @@
         ranges.push(range);
       }
     }
-    // A document's are counted by the page they lie on, and the current
-    // one is the `index`th of the page shown.
-    const from = document.body.getBoundingClientRect().top;
-    const pages =
-      paper() &&
-      ranges.map((range) =>
-        tops.findLastIndex(
-          (start, at) =>
-            !at || start <= range.getBoundingClientRect().top - from + 1,
-        ),
-      );
+    // A document's are counted by the page they lie on, those drawn, and
+    // the current one is the `index`th of the page shown.
+    const boxes = paper() && ranges.map((range) => range.getClientRects()[0]);
+    const lies = boxes?.map((box) => (box ? pageOf(box) : -1));
     const current = (
-      pages ? ranges.filter((_, at) => pages[at] === shown) : ranges
+      lies ? ranges.filter((_, at) => lies[at] === shown) : ranges
     )[index];
     if (CSS.highlights) {
       CSS.highlights.set("uagent-find", new Highlight(...ranges));
@@ -487,10 +497,12 @@
       );
     }
     send("find", {
-      count: ranges.length,
       counts:
-        pages &&
-        tops.map((_, at) => pages.filter((page) => page === at).length),
+        lies &&
+        Array.from(
+          { length: pages },
+          (_, at) => lies.filter((page) => page === at).length,
+        ),
     });
   };
   // Marked in the system's own colours for it: the page's are unknown.
@@ -511,6 +523,7 @@
     if (count !== counted) send("pages", { count: (counted = count) });
     if (sought) find(...sought);
   };
+  went = (at) => send("page", { at });
   const failed = (message, line) =>
     send("error", {
       message: String(message || "error").slice(0, 300),

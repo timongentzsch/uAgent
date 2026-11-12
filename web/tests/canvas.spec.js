@@ -573,10 +573,13 @@ test("a slide with text over text and a document block taller than a page say so
         "<aside>Notes stay out of the check.</aside>",
       "1920x1080 slide",
     ),
-    // A5: a figure taller than its paper inside the margins.
+    // A5: a figure that may not break, taller than its paper inside the
+    // margins; the table as tall breaks between its rows.
     "memo.html": paper(
       "Memo",
-      '<style>*{margin:0}</style><figure style="height:1000px">tall</figure>',
+      "<style>*{margin:0}figure{break-inside:avoid}</style>" +
+        '<figure style="height:1000px">tall</figure>' +
+        '<table style="height:1000px"><tr><td>long</td></tr><tr><td>table</td></tr></table>',
     ),
   });
   // The one slide is a deck; the document beside it is its own.
@@ -1576,10 +1579,12 @@ async function openMemo(app, session, project, options) {
 }
 // A length of the page in millimetres, to a tenth.
 const mm = (px) => Math.round((px * 254) / 96) / 10;
-// Whether its middle is on the sheet and not cut away with another page.
+// Whether its first line is on the sheet and not cut away with another page.
 const onSheet = (text) =>
   text.evaluate((node) => {
-    const { x, y, width, height } = node.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const { x, y, width, height } = range.getClientRects()[0];
     return node.contains(
       document.elementFromPoint(x + width / 2, y + height / 2),
     );
@@ -1665,7 +1670,9 @@ test("a document's margins are its print line's, and its title page fills the fi
     moderate: [25, 19, 25, 19],
     wide: [25, 50, 25, 50],
     "20mm 18mm": [20, 18, 20, 18],
+    "2cm 1in": [20, 25.4, 20, 25.4],
     "landscape 10mm 20mm 30mm 40mm": [10, 20, 30, 40],
+    "narrow landscape": [12.7, 12.7, 12.7, 12.7],
   };
   const name = (said) => `${said.replaceAll(" ", "-") || "normal"}.html`;
   await writeFiles(
@@ -1674,7 +1681,7 @@ test("a document's margins are its print line's, and its title page fills the fi
       Object.keys(formats).map((said) => [
         name(said),
         `<!doctype html><html><head><title>Margins</title><meta name="print" content="flow a4 ${said}">` +
-          "<style>@page{margin:5mm}body{padding:40px}</style></head>" +
+          "<style>@page{margin:5mm}body{padding:40px}section.title-page{height:300px;min-height:120vh}</style></head>" +
           '<body><section class="title-page"><h1>Title</h1></section><p>After the title.</p></body></html>',
       ]),
     ),
@@ -1702,6 +1709,103 @@ test("a document's margins are its print line's, and its title page fills the fi
     await expect
       .poll(() => onSheet(page.getByText("After the title.")))
       .toBe(true);
+    await files.getByRole("button", { name: "Back to the list" }).click();
+  }
+});
+
+test("a document's pages are the browser's: any block has its page, and a link or the focus turns to it", async ({
+  page: app,
+  session,
+  host,
+  browserName,
+}) => {
+  // A5 inside its margins is 605px of text.
+  await writeFiles(join(host.project, "docs"), {
+    "letter.html": paper(
+      "Letter",
+      "<style>*{margin:0}table{break-inside:avoid}tr{height:100px}</style>" +
+        '<div style="height:120px">Letterhead</div>' +
+        '<p><a href="#end">To the end</a></p>' +
+        `<div>${"Bare text. ".repeat(600)}</div>` +
+        '<h2 id="kept" style="break-after:avoid">Kept with its table</h2>' +
+        "<table><tr><td>First row.</td></tr><tr><td>Second row.</td></tr><tr><td>Third row.</td></tr></table>" +
+        '<section style="break-before:page"><h2 id="end">The end</h2>' +
+        '<p><a href="https://example.com/">Elsewhere</a></p></section>' +
+        "<aside>Trailing aside.</aside>",
+    ),
+  });
+  const files = await openFiles(app, session, "docs/letter.html");
+  const { stage: page, count } = viewerOf(files);
+  await expect(count).toHaveText(/^1 \/ \d+$/);
+  const pages = Number((await count.textContent()).split(" / ")[1]);
+  expect(pages).toBeGreaterThan(3);
+  expect(await onSheet(page.getByText("Letterhead"))).toBe(true);
+  expect(await onSheet(page.getByText("Trailing aside."))).toBe(false);
+
+  // A link to a place in it turns to that place's page, and the pane follows.
+  await page.getByRole("link", { name: "To the end" }).click();
+  await expect(count).toHaveText(`${pages} / ${pages}`);
+  const end = page.getByRole("heading", { name: "The end" });
+  for (const text of [end, page.getByText("Trailing aside.")])
+    await expect.poll(() => onSheet(text)).toBe(true);
+  expect(await page.locator("html").evaluate(() => [scrollX, scrollY])).toEqual(
+    [0, 0],
+  );
+  // The page before: the table moved there whole, and where the browser
+  // keeps a heading with what follows it (WebKit does not), its heading too.
+  await app.keyboard.press("ArrowLeft");
+  await expect(count).toHaveText(`${pages - 1} / ${pages}`);
+  for (const text of ["First row.", "Third row."])
+    await expect.poll(() => onSheet(page.getByText(text))).toBe(true);
+  if (browserName !== "webkit")
+    expect(await onSheet(page.getByText("Kept with its table"))).toBe(true);
+
+  // The focus led to another page turns to it too.
+  await page.getByRole("link", { name: "Elsewhere" }).focus();
+  await expect(count).toHaveText(`${pages} / ${pages}`);
+  await expect.poll(() => onSheet(end)).toBe(true);
+});
+
+test("a print line that is not understood, or whose margins leave no room, says so", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const TEXT = "<style>*{margin:0}</style><p>Text.</p>";
+  await writeFiles(join(host.project, "docs"), {
+    "odd.html": paper("Odd", TEXT, "a4 wide constructor 3em"),
+    "card.html": paper("Card", TEXT, "90x50mm"),
+  });
+  const files = await openFiles(app, session, "docs");
+  const { stage: page, count } = viewerOf(files);
+  const draft = app.locator("#prompt");
+  for (const [name, said, sheet] of [
+    [
+      "odd.html",
+      /"constructor" in the print line is not understood; "3em" in the print line/,
+      [210, 297, 50, 25],
+    ],
+    [
+      "card.html",
+      /the margins leave no room on the 90x50mm paper/,
+      [90, 50, 0, 0],
+    ],
+  ]) {
+    await files.getByRole("button", { name, exact: true }).click();
+    await expect(count).toHaveCount(0);
+    // The sheet, and where its text starts: the margins understood, or none.
+    expect(
+      (
+        await page.getByText("Text.").evaluate((text) => {
+          const { x, y } = text.getBoundingClientRect();
+          const sheet = document.documentElement.getBoundingClientRect();
+          return [sheet.width, sheet.height, x, y];
+        })
+      ).map(mm),
+    ).toEqual(sheet);
+    await files.getByRole("button", { name: "Ask agent to fix" }).click();
+    await expect(draft).toHaveValue(said);
+    await draft.fill("");
     await files.getByRole("button", { name: "Back to the list" }).click();
   }
 });
@@ -1843,6 +1947,15 @@ test("a document exports Markdown, and a block edited on its third page is saved
   const saved = await readFile(memo, "utf8");
   expect(saved).toContain("<p>Paragraph 25 of the memo. Churn held flat.</p>");
   await expect(paragraph).toHaveText(/Churn held flat\.$/);
+  // The legend's picture of the page is of the file as saved.
+  await expect(
+    files
+      .locator(".page-legend-item")
+      .nth(2)
+      .locator("iframe:not([inert])")
+      .contentFrame()
+      .getByText(/Churn held flat\.$/),
+  ).toBeAttached();
   await expect(count).toHaveText(`3 / ${MEMO_PAGES}`);
   expect(saved).toContain("<td>Hire</td>");
   expect(

@@ -46,8 +46,10 @@ export type PageMessage =
   // A key the pane acts on; `held` with ⌘ or Ctrl.
   | { type: "key"; key: string; held?: boolean }
   | { type: "zoom"; by: number; x: number; y: number }
-  // A document: how many pages it has, its edited block, its text as Markdown.
+  // A document: how many pages it has, the page it went to by itself, its
+  // edited block, its text as Markdown.
   | { type: "pages"; count: number }
+  | { type: "page"; at: number }
   | { type: "edit"; index: number; before: string; html: string }
   // A sheet's changed tab, its place among how many, as the table its file
   // keeps; whether the sheet can undo and redo; its cells in error.
@@ -61,8 +63,8 @@ export type PageMessage =
       errors: string[];
     }
   | { type: "markdown"; text: string }
-  // How many occurrences a find marked; a document, on each of its pages.
-  | { type: "find"; count: number; counts?: number[] }
+  // A find's occurrences on each of a document's pages.
+  | { type: "find"; counts?: number[] }
   // A sheet's tabs and how many rows a filter hides in the one shown; and its
   // selection: the active cell ("Costs!B2") and what was typed in it, the
   // range ("Costs!B2:C6") and what two numbers or more in it come to.

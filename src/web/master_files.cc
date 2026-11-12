@@ -344,6 +344,9 @@ void Master::Picture(const Request& request, Response& response,
            std::to_string(width) + "&h=" + std::to_string(height);
   } else if (pdf) {
     url += "#paper";
+  } else if (request.has_param("part")) {
+    // A document's page or a sheet's tab.
+    url += "#" + std::to_string(ParamNumber(request, "part", 1, 1, 2000));
   }
   const json result =
       browser::Request({{"op", "capture"},

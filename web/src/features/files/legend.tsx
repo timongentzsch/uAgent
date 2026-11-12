@@ -25,8 +25,7 @@ export function useCurrentInView(
 }
 
 // The sequence small beside the stage (a filmstrip under it in a narrow pane).
-// A document is one frame with its pages marked on it: a frame per page would
-// each draw the whole document. Only boards near the legend's view are drawn.
+// Only boards near the legend's view are drawn.
 export default function Legend({
   unit,
   boards,

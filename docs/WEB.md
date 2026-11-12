@@ -108,8 +108,8 @@ page's head says what it is:
 
 **The viewer.** A page opens across the pane with what it is part of in a
 legend beside it (under it, as a filmstrip, in a narrow pane): a deck's
-slides as numbered thumbnails, a document's pages marked on one small
-picture of it, a design's pages. A counter with previous and next sits on
+slides or a document's pages as numbered thumbnails, a design's pages. A
+counter with previous and next sits on
 the page; the arrow keys, Page Up and Down, Home and End step through it,
 by slide or by page. **Find** looks through every slide or the whole
 document. **Select** picks an element: a comment on it is added to your
@@ -135,11 +135,14 @@ to move it up or down, duplicate it or delete it; the files are renamed to
 keep the order. Export offers the deck's PDF, a sheet a slide.
 
 **A document** is on A4 unless you ask for Letter, Legal, A3, A5, landscape
-or a size in millimetres: as wide as its paper, with lines where print will
-start each page (an estimate; the PDF is exact). **Edit** lets you type in
+or a size in millimetres, with margins of 25 mm unless you ask for narrow,
+moderate, wide or your own. It is shown a sheet of its paper at a time; the
+browser breaks the pages as it does for print, so they are the PDF's but
+for what browsers do differently (Safari leaves a heading at the foot of a
+page). A link to a place in it turns to that page. **Edit** lets you type in
 its headings, paragraphs, list items and table cells; each block is saved to
 the file as you leave it, unless the agent changed that block meanwhile.
-Export gives it as PDF or Markdown.
+Export gives it as PDF or Markdown, and the page shown as a picture.
 
 **A design's canvas** shows everything its folder holds: the pages, each
 live, and also its pictures and films at their own size, and a document or a

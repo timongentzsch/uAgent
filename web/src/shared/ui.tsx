@@ -84,7 +84,13 @@ export function updateChecked<P extends object>(
 }
 
 // `value` is an ISO string or epoch ms.
-export function Time({ value }: { value?: string | number }) {
+export function Time({
+  value,
+  brief,
+}: {
+  value?: string | number;
+  brief?: boolean;
+}) {
   const [prefs] = useStored(devicePrefs.time);
   const now = useNow(prefs.style !== "absolute");
   if (value == null || value === "") return null;
@@ -92,7 +98,7 @@ export function Time({ value }: { value?: string | number }) {
   if (Number.isNaN(date.getTime())) return null;
   return (
     <time dateTime={date.toISOString()} title={formatFullMoment(date, prefs)}>
-      <DataText>{formatMoment(date, prefs, now)}</DataText>
+      <DataText>{formatMoment(date, prefs, now, undefined, brief)}</DataText>
     </time>
   );
 }

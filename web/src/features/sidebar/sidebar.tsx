@@ -337,7 +337,7 @@ function SessionRow({
           <span class="session-tag truncate">{tag}</span>
         ) : item.updated ? (
           <span class="session-time">
-            <Time value={item.updated} />
+            <Time value={item.updated} brief />
           </span>
         ) : null}
       </ListRow>
@@ -371,7 +371,7 @@ function TerminalRow({
         }
       >
         <span class="session-time">
-          <Time value={terminal.started} />
+          <Time value={terminal.started} brief />
         </span>
       </ListRow>
       {menu(terminal)}

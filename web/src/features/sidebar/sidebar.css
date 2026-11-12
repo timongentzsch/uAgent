@@ -124,10 +124,10 @@
   flex: none;
   white-space: nowrap;
 }
-/* The place's name gives way before the title does. */
+/* The place's name keeps its room up to a part of the row. */
 .session-tag {
-  flex: 0 1000 auto;
-  min-width: 0;
+  flex: none;
+  max-width: 40%;
 }
 /* At rest a row's menu waits over its end, unseen; pointed at or focused,
    it takes the place of the time or the place's name. */

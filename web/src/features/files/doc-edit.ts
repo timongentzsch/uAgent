@@ -25,6 +25,10 @@ export function applyEdit(source: string, edit: BlockEdit, wrote?: string) {
   const now = words(block?.textContent);
   if (!block || (now !== words(edit.before) && now !== wrote)) return null;
   block.innerHTML = edit.html;
+  // What follows </body> is parsed into the body: a save adds no line there.
+  const tail = page.body.lastChild;
+  if (tail?.nodeType === Node.TEXT_NODE)
+    tail.textContent = tail.textContent!.trimEnd();
   // What comes before <html> (the doctype, a comment) stays as written.
   const at = source.search(/<html[\s>]/i);
   return {

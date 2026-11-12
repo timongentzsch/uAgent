@@ -1264,6 +1264,8 @@ test("a slide's text is saved as typing pauses, the caret where it was; undone, 
   await expect(saving(files)).toHaveText("Saved");
   const undone = await paragraph.textContent();
   expect(await cover()).toContain(`<p>${undone}</p>`);
+  // Saved three times, the file ends as it did.
+  expect(await cover()).toMatch(/<\/aside><\/body><\/html>\n$/);
 
   // Edit stays on from slide to slide, and the legend shows the file.
   await app.clock.resume();

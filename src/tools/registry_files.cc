@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -10,6 +12,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/skills.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
@@ -53,14 +56,19 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
     return !PathWithin(CanonicalAccessPath(JsonValue(args, "path", "")),
                        CanonicalAccessPath(ScratchDir(workspace).string()));
   };
-  // What uAgent wrote for the model to read, such as a spilled result, is
-  // read without asking: a command reads it freely anyway.
+  // What uAgent wrote for the model to read, such as a spilled result, and
+  // the skill folders are read without asking: a command reads them freely
+  // anyway.
   auto reads_only = [workspace](Tool& tool) {
     tool.needs_approval = [workspace](const json& args) {
       const std::string path = JsonValue(args, "path", ".");
+      auto holds = [target = CanonicalAccessPath(path)](
+                       const std::filesystem::path& folder) {
+        return PathWithin(target, CanonicalAccessPath(folder.string()));
+      };
       return PathApprovalRequired(path, workspace) &&
-             !PathWithin(CanonicalAccessPath(path),
-                         CanonicalAccessPath(UagentDir(kArtifactsDir)));
+             !holds(UagentDir(kArtifactsDir)) &&
+             !std::ranges::any_of(SkillSearchPath(workspace), holds);
     };
     tool.approval_class = [](const json& args) {
       return PathApprovalClass(JsonValue(args, "path", "."), PathAccess::kRead);

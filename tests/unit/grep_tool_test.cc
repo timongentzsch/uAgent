@@ -187,16 +187,22 @@ TEST_CASE(TestGrepTool) {
   CHECK(grep != nullptr);
   CHECK(!file_search.contains("context"));
   CHECK(grep && !FindToolArgumentIssue(*grep, file_search));
-  // What uAgent wrote for the model is read without asking; anything else
-  // outside the folder still asks, and so does writing where uAgent wrote.
+  // What uAgent wrote for the model and a skill's files are read without
+  // asking; anything else outside the folder still asks, and so does
+  // writing either.
   const std::string spilled = UagentDir(kArtifactsDir) + "/output-test";
+  const std::string reference = GlobalBase() + "/skills/notes/reference.md";
   const Tool* read = FindTool(lean_tools, "read_path");
-  CHECK(read && !read->needs_approval({{"path", spilled}}));
+  for (const std::string& free : {spilled, reference}) {
+    CHECK(read && !read->needs_approval({{"path", free}}));
+    CHECK(grep && !grep->needs_approval({{"pattern", "x"}, {"path", free}}));
+  }
   CHECK(read && read->needs_approval({{"path", "/etc/hosts"}}));
-  CHECK(grep && !grep->needs_approval({{"pattern", "x"}, {"path", spilled}}));
   auto full_tools = BuiltinTools(supervisor, root);
   const Tool* write = FindTool(full_tools, "write_file");
-  CHECK(write && write->needs_approval({{"path", spilled}}));
+  for (const std::string& kept : {spilled, reference}) {
+    CHECK(write && write->needs_approval({{"path", kept}}));
+  }
   const Tool* memory = FindTool(lean_tools, "memory");
   CHECK(memory != nullptr);
   if (memory) {

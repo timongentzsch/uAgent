@@ -62,7 +62,8 @@ and turn budgets apply in every approval mode.
 
 ## Approval
 
-Reading and searching inside the folder needs no approval. Calls that
+Reading and searching inside the folder needs no approval, and neither does
+reading a skill's files, wherever µAgent finds skills. Calls that
 change files, run commands, use the network or touch a path outside the
 folder follow the approval mode: `ask` (the default), `auto`, `yolo`
 (also `/yolo` or `--yolo`) or `plan` (also `/plan`), set with `/permissions`

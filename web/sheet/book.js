@@ -1568,7 +1568,8 @@ export async function openBook(engine, written, locked, calculate) {
     }),
     moveColumns: moving((sheet, at, count, by) => {
       const to = at + by;
-      if (to < 1 || to + count - 1 > tabs[sheet].columns.length) return false;
+      if (to < 1 || Math.max(at, to) + count - 1 > tabs[sheet].columns.length)
+        return false;
       const place = lifting(at, count, by);
       const cell = ({ row, column }) => ({ row, column: place(column) });
       const merged = carriedMerges(tabs[sheet].attrs, cell);

@@ -1833,3 +1833,24 @@ test("a folded group's rows and columns go out to Excel hidden; the groups do no
     model.free();
   }
 });
+
+test("a column moved from past the table is no move: no formula, group or chart follows it", async () => {
+  const book = await open([
+    {
+      ...tab("Costs", [
+        ["#Item", "#Double", "#Cost"],
+        ["Rent", "=C2*2", "5"],
+        ["Power", "=SUM(C2:C3)", "7"],
+      ]),
+      attrs: { "data-group": "C:C" },
+      charts: [
+        { attrs: { "data-chart": "bar", "data-range": "A1:C3" }, caption: "" },
+      ],
+    },
+  ]);
+  const before = book.table(0);
+  assert.equal(await book.moveColumns(0, 4, 1, -1), false);
+  assert.equal(await book.moveColumns(0, 3, 2, 1), false);
+  assert.equal(book.table(0), before);
+  assert.equal(book.canUndo(), false);
+});

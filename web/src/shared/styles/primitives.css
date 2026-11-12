@@ -890,7 +890,7 @@
   .menu-panel button {
     font-size: var(--font-small);
   }
-  .menu-panel button[role="menuitemradio"] {
+  .menu-panel button:is([role="menuitemradio"], [role="menuitemcheckbox"]) {
     justify-content: space-between;
   }
   .menu-value {

@@ -16,13 +16,14 @@ export interface Listing {
   // What its pages make the folder: a "deck", a "design", a "system" or "".
   kind?: string;
   // A page says "doc", "sheet", "slide" or "page" when its head declares
-  // one; a sheet, how many tabs it has.
+  // one; a sheet, how many tabs it has; a slide, that it is skipped.
   entries: {
     name: string;
     dir: boolean;
     kind?: string;
     size?: number;
     count?: number;
+    skip?: boolean;
   }[];
 }
 
@@ -45,6 +46,8 @@ export interface Board {
   at?: number;
   // A design's step: its variants and states share a row.
   row?: string;
+  // A slide left out of what is presented and printed.
+  skip?: true;
   // Why it failed, in a few words, else empty: a page threw or is not as it
   // should be drawn (design-helper.js); a picture or a film did not load.
   failed: string;
@@ -161,18 +164,33 @@ export function moved(slides: string[], from: number, to: number) {
   return renames(order);
 }
 
-// A copy of the slide at `at` right after it, named for it with `-copy`
-// (and a number, while another slide is called so).
-export function duplicated(slides: string[], at: number) {
-  const stem = rest(slides[at]).replace(/\.html$/, "-copy");
+// A slide's name from `stem` that no slide has, apart from its place: with
+// a number, while another is called so.
+function free(slides: string[], stem: string) {
   const taken = new Set(slides.map(rest));
-  let copy = `${stem}.html`;
-  for (let n = 2; taken.has(copy); n++) copy = `${stem}-${n}.html`;
+  let name = `${stem}.html`;
+  for (let n = 2; taken.has(name); n++) name = `${stem}-${n}.html`;
+  return name;
+}
+
+// A copy of the slide at `at` right after it, named for it with `-copy`.
+export function duplicated(slides: string[], at: number) {
+  const copy = free(slides, rest(slides[at]).replace(/\.html$/, "-copy"));
   const order = [...slides];
   order.splice(at + 1, 0, copy);
   return renames(order).map((move) =>
     move.from === copy ? { from: slides[at], to: move.to, copy: true } : move,
   );
+}
+
+// A new slide right after the one at `at`: the file to make, the renames
+// that give it its place, and what it is called once there.
+export function added(slides: string[], at: number) {
+  const name = free(slides, "slide");
+  const order = [...slides];
+  order.splice(at + 1, 0, name);
+  const moves = renames(order);
+  return { name, moves, place: moves.find((move) => move.from === name)!.to };
 }
 
 // The slide to show once `moves` are done, of a deck showing the one at
@@ -278,7 +296,12 @@ export function boardsOf(
     const like = slides
       .map((file) => seen[join(dir, file)]?.info)
       .find(Boolean);
-    return slides.map((file) => board(file, like));
+    const skipped = (file: string) =>
+      listing.entries.some((entry) => entry.name === file && entry.skip);
+    return slides.map((file) => ({
+      ...board(file, like),
+      ...(skipped(file) ? { skip: true as const } : {}),
+    }));
   }
   // What lies on the canvas, by the name that says its row.
   const lying = new Map<string, Board>();

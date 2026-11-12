@@ -1,6 +1,6 @@
 import type { RefObject } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { TriangleAlert } from "lucide-preact";
+import { EyeOff, TriangleAlert } from "lucide-preact";
 import { Button } from "../../shared/ui.tsx";
 import Frame, { type PageMessage } from "../../shared/page-frame.tsx";
 import { TAP_SLOP_PX } from "../../shared/zoom.ts";
@@ -179,6 +179,7 @@ export default function Legend({
           class="page-legend-item"
           data-path={board.path}
           data-failed={board.failed || undefined}
+          data-skipped={board.skip}
           data-dragging={drop?.from === at || undefined}
           data-drop={
             drop?.gap === at
@@ -200,6 +201,7 @@ export default function Legend({
           />
           <span class="page-legend-name small truncate">
             {board.failed && <TriangleAlert />}
+            {board.skip && <EyeOff />}
             {`${at + 1} · ${board.title}`}
           </span>
           <Button
@@ -207,7 +209,7 @@ export default function Legend({
             class="cover"
             {...option(
               at,
-              `${unit} ${at + 1}: ${board.title}${board.failed ? ", failed to run" : ""}`,
+              `${unit} ${at + 1}: ${board.title}${board.failed ? ", failed to run" : ""}${board.skip ? ", skipped" : ""}`,
             )}
           />
         </div>

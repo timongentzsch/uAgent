@@ -368,7 +368,7 @@
 .sheet-formula > output {
   color: var(--muted);
 }
-.sheet-formula > .text-control {
+:is(.sheet-formula, .page-notes) > .text-control {
   flex: 1;
   min-width: 0;
 }
@@ -424,6 +424,10 @@
 .page-legend-item[data-failed] > .page-frame {
   outline-color: var(--removed);
 }
+/* A slide that is skipped when presenting. */
+.page-legend-item[data-skipped] > .page-frame {
+  opacity: var(--opacity-disabled);
+}
 .page-legend-item:has([aria-selected="true"]) > .page-frame {
   outline: var(--focus-ring);
 }
@@ -448,6 +452,8 @@
 }
 .page-legend-name > .lucide {
   margin-right: var(--space-1);
+}
+.page-legend-item[data-failed] > .page-legend-name > .lucide:first-child {
   color: var(--removed);
 }
 .page-legend-item:has([aria-selected="true"]) > .page-legend-name {

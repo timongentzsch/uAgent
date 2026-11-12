@@ -1131,7 +1131,7 @@ test("a move the folder no longer allows is refused: nothing moves, and the pane
   await down();
   const notice = files.locator(".page-notice");
   await expect(notice).toHaveText(
-    "The deck's folder changed meanwhile, so nothing was moved.",
+    "The deck's folder changed meanwhile, so nothing was changed.",
   );
   expect(await slidesIn(host.project)).toEqual([
     "01-cover.html",
@@ -1296,6 +1296,134 @@ test("a slide's text is saved as typing pauses, the caret where it was; undone, 
   await app.clock.resume();
   await files.getByRole("button", { name: "Previous slide" }).click();
   await expect(count).toHaveText("1 / 2");
+});
+
+test("a deck's slide menu adds a slide in the deck's style, and skips one: dimmed in the legend, passed over when presenting", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const styled = (title) =>
+    slide(title).replace(
+      "</head>",
+      "<style>h1{letter-spacing:2px}</style></head>",
+    );
+  const { files, legend, stage, count } = await openDeck(
+    app,
+    session,
+    host.project,
+    {
+      "01-cover.html": styled("Cover"),
+      "02-plan.html": styled("Plan"),
+      "03-end.html": styled("End"),
+    },
+  );
+  const act = async (name) => {
+    await files.getByRole("button", { name: "Slide actions" }).click();
+    const role = name === "Skip slide" ? "menuitemcheckbox" : "menuitem";
+    await app.getByRole(role, { name }).click();
+  };
+  await act("Add slide after");
+  // The new slide is the one shown: the cover's head, words to type over.
+  await expect(count).toHaveText("2 / 4");
+  await expect(stage.getByRole("heading", { name: "Heading" })).toBeVisible();
+  await expect(stage.getByRole("heading")).toHaveCSS("letter-spacing", "2px");
+  expect(await slidesIn(host.project)).toEqual([
+    "01-cover.html",
+    "02-slide.html",
+    "03-plan.html",
+    "04-end.html",
+  ]);
+  expect(await talkFile(host.project, "02-slide.html")).toBe(
+    "<!doctype html><html><head><title>New slide</title>" +
+      '<meta name="artboard" content="1920x1080 slide">' +
+      "<style>h1{letter-spacing:2px}</style></head>" +
+      "<body><h1>Heading</h1><p>Text</p></body></html>\n",
+  );
+  await expect(legend.locator(".page-legend-name")).toHaveText([
+    "1 · Cover",
+    "2 · New slide",
+    "3 · Plan",
+    "4 · End",
+  ]);
+
+  // Skipped: said in its file's head, and shown in the legend and the menu.
+  await act("Skip slide");
+  const skipped = legend.getByRole("option", {
+    name: "Slide 2: New slide, skipped",
+  });
+  await expect(skipped).toBeVisible();
+  await expect(legend.locator("[data-skipped]")).toHaveCount(1);
+  expect(await talkFile(host.project, "02-slide.html")).toContain(
+    '<meta name="artboard" content="1920x1080 slide"><meta name="slide" content="skip">',
+  );
+  await files.getByRole("button", { name: "Slide actions" }).click();
+  await expect(
+    app.getByRole("menuitemcheckbox", { name: "Skip slide" }),
+  ).toHaveAttribute("aria-checked", "true");
+  await app.keyboard.press("Escape");
+  // Still shown and stepped to in the viewer; presenting starts after it
+  // and passes over it, in the presenter's window too.
+  await expect(stage.getByRole("heading", { name: "Heading" })).toBeVisible();
+  await files.getByRole("button", { name: "Present" }).click();
+  const presented = files.locator(".page-stage[data-presenting]");
+  await expect(presented.getByText("3 / 4")).toBeVisible();
+  await app.keyboard.press("ArrowLeft");
+  await expect(presented.getByText("1 / 4")).toBeVisible();
+  await app.keyboard.press("ArrowRight");
+  await expect(presented.getByText("3 / 4")).toBeVisible();
+  const [presenter] = await Promise.all([
+    app.waitForEvent("popup"),
+    presented.getByRole("button", { name: "Presenter view" }).click(),
+  ]);
+  await expect(presenter.getByText("Slide 2 of 3")).toBeVisible();
+  await presenter.close();
+  await presented.getByRole("button", { name: "End" }).click();
+
+  // Taken back, the mark is gone from the file and the legend.
+  await legend.getByRole("option", { name: "Slide 2" }).click();
+  await expect(count).toHaveText("2 / 4");
+  await act("Skip slide");
+  await expect(legend.locator("[data-skipped]")).toHaveCount(0);
+  expect(await talkFile(host.project, "02-slide.html")).not.toContain(
+    'name="slide"',
+  );
+});
+
+test("a slide's notes are typed under its stage while Edit is on, and made where it has none", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, count } = await openDeck(app, session, host.project, TALK);
+  const read = files.locator(".page-main > .page-notes");
+  await expect(read).toContainText("Say hello.");
+  await files.getByRole("button", { name: "Edit" }).click();
+  const notes = files.getByRole("textbox", { name: "Speaker notes" });
+  await expect(notes).toHaveValue("Say hello.");
+  await notes.fill("Say hello.\nThen the plan.");
+  await expect
+    .poll(() => talkFile(host.project, "01-cover.html"))
+    .toContain("<p>The plan</p><aside>Say hello.\nThen the plan.</aside>");
+  // A slide with none takes them too: its file gets the aside.
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await expect(count).toHaveText("2 / 2");
+  await expect(notes).toBeEnabled();
+  await expect(notes).toHaveValue("");
+  await notes.fill("Three steps & a <demo>.");
+  await expect
+    .poll(() => talkFile(host.project, "02-plan.html"))
+    .toContain(
+      "<h1>Plan</h1><aside>Three steps &amp; a &lt;demo&gt;.</aside></body>",
+    );
+  // Read where they were typed, and when presenting.
+  await files.getByRole("button", { name: "Edit" }).click();
+  await expect(read).toContainText("Three steps & a <demo>.");
+  await files.getByRole("button", { name: "Present" }).click();
+  await app.keyboard.press("n");
+  await expect(
+    files.locator(".page-stage[data-presenting] .page-notes"),
+  ).toHaveText("Three steps & a <demo>.");
 });
 
 test("on a phone a deck's legend is a filmstrip under the stage", async ({

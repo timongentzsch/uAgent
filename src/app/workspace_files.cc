@@ -107,15 +107,24 @@ std::string MetaTag(const std::string& head, const std::string& name) {
              : head.substr(open, close - open);
 }
 
+// The start of an HTML page, where its meta tags are.
+std::string Head(const fs::path& page) {
+  return ReadFile(page.string(), KiB(4)).value_or("");
+}
+
 // What an HTML page's head says it is: a "sheet" of tables, a "doc" on paper
 // (print flow), a "slide", a "page" with an artboard, or nothing.
-std::string PageKind(const fs::path& page) {
-  const std::string head = ReadFile(page.string(), KiB(4)).value_or("");
+std::string PageKind(const std::string& head) {
   if (!MetaTag(head, "sheet").empty()) return "sheet";
   if (MetaTag(head, "print").find("\"flow") != std::string::npos) return "doc";
   const std::string artboard = MetaTag(head, "artboard");
   if (artboard.empty()) return "";
   return artboard.find(" slide\"") == std::string::npos ? "page" : "slide";
+}
+
+// Whether a slide's head leaves it out of what is presented and printed.
+bool Skipped(const std::string& head) {
+  return MetaTag(head, "slide").find("\"skip\"") != std::string::npos;
 }
 
 // How many tabs a sheet has: its tables.
@@ -176,7 +185,7 @@ json Designs(const fs::path& root) {
       folder.kind.system = true;
       continue;
     }
-    const std::string kind = PageKind(root / relative);
+    const std::string kind = PageKind(Head(root / relative));
     if (kind == "doc") {
       folder.docs.push_back(path);
       continue;
@@ -473,7 +482,8 @@ std::string DeckPage(const fs::path& folder, int width, int height) {
   std::vector<std::string> slides;
   std::error_code error;
   for (const auto& entry : fs::directory_iterator(folder, error)) {
-    if (entry.is_regular_file(error) && entry.path().extension() == ".html") {
+    if (entry.is_regular_file(error) && entry.path().extension() == ".html" &&
+        !Skipped(Head(entry.path()))) {
       slides.push_back(entry.path().filename().string());
     }
   }
@@ -593,8 +603,10 @@ json Request(const fs::path& root, const json& request) {
       if (JsonValue(entry, "dir", false)) continue;
       folder.system = folder.system || name == "tokens.css";
       if (name.extension() != ".html") continue;
-      const std::string kind = PageKind(*target / name);
+      const std::string head = Head(*target / name);
+      const std::string kind = PageKind(head);
       if (!kind.empty()) entry["kind"] = kind;
+      if (Skipped(head)) entry["skip"] = true;
       if (kind == "sheet") {
         entry["count"] = SheetTabs(*target / name);
       } else if (kind != "doc") {

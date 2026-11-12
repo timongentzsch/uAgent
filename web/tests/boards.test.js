@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   boardsOf,
   carried,
+  added,
   duplicated,
   failures,
   hear,
@@ -358,6 +359,22 @@ test("from a hundred slides a place is three digits", () => {
   assert.deepEqual([...names].sort(), names);
   // Ninety-nine are two.
   assert.deepEqual(moved(hundred.slice(0, 99), 98, 0)[0].to, "01-s.html");
+});
+
+test("a new slide is made under a free name and renamed into the place after its slide", () => {
+  assert.deepEqual(added(deck, 1), {
+    name: "slide.html",
+    moves: [
+      rename("slide.html", "03-slide.html"),
+      rename("03-numbers.html", "04-numbers.html"),
+      rename("04-end.html", "05-end.html"),
+    ],
+    place: "03-slide.html",
+  });
+  // Another slide is called so already.
+  const twice = added(["01-cover.html", "02-slide.html"], 1);
+  assert.equal(twice.name, "slide-2.html");
+  assert.equal(twice.place, "03-slide-2.html");
 });
 
 test("a duplicate is named for its source and sits right after it", () => {

@@ -1,23 +1,32 @@
 import { useState } from "preact/hooks";
+import { Check } from "lucide-preact";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { ConfirmModal } from "../../shared/ui.tsx";
 import { duplicated, type Move, moved, removed } from "./boards.ts";
 
-// A deck's slide moved, duplicated or deleted from its menu, which stands
-// beside the counter, not in the legend: a listbox holds only its options.
+// A deck's slide moved, duplicated, added to, skipped or deleted from its
+// menu, which stands beside the counter, not in the legend: a listbox holds
+// only its options.
 export default function SlideActions({
   slides,
   index,
   title,
+  skipped,
   busy,
   act,
+  add,
+  skip,
 }: {
   // The deck's slides by name, and the one the menu is for.
   slides: string[];
   index: number;
   title: string;
+  skipped?: boolean;
   busy?: boolean;
   act: (moves: Move[]) => void;
+  // A new slide after this one; this one skipped, or no longer.
+  add: () => void;
+  skip: () => void;
 }) {
   const [deleting, setDeleting] = useState(false);
   const items: [string, boolean, () => void][] = [
@@ -28,7 +37,7 @@ export default function SlideActions({
       () => act(moved(slides, index, index + 1)),
     ],
     ["Duplicate", false, () => act(duplicated(slides, index))],
-    ["Delete…", false, () => setDeleting(true)],
+    ["Add slide after", false, add],
   ];
   return (
     <>
@@ -38,6 +47,18 @@ export default function SlideActions({
             {name}
           </MenuItem>
         ))}
+        <MenuItem
+          role="menuitemcheckbox"
+          aria-checked={!!skipped}
+          disabled={busy}
+          onClick={skip}
+        >
+          Skip slide
+          {skipped && <Check />}
+        </MenuItem>
+        <MenuItem disabled={busy} onClick={() => setDeleting(true)}>
+          Delete…
+        </MenuItem>
       </Menu>
       {deleting && (
         <ConfirmModal

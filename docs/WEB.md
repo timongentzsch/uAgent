@@ -88,8 +88,9 @@ to play; an HTML page runs live (**Source** shows its code); any other file
 offers a download. In a git repository, **Changes** lists what differs from
 the last commit, with its count, and opens each as a diff. What is open is
 read again when a turn ends. Files changes the folder only where this guide
-says so: a document's or a slide's text edited in place, a deck's slides moved,
-duplicated or deleted, a sheet's cells edited, and a sheet saved from an
+says so: a document's or a slide's text and a slide's notes edited in place,
+a deck's slides moved, duplicated, added, skipped or deleted, a sheet's
+cells edited, and a sheet saved from an
 Excel or CSV file.
 
 ### Artifacts
@@ -129,10 +130,13 @@ write finishes.
 **A deck** is 16:9 unless you ask for another size. A slide's last `<aside>`
 is its speaker notes: shown under the slide, never on it, and in **Presenter
 view**, a window of its own with the slide now and the next, the notes and a
-clock; either window moves both. Drag a slide in the legend to a new place,
-or use **Slide actions** beside the counter (also a right click on a slide)
-to move it up or down, duplicate it or delete it; the files are renamed to
-keep the order. Export offers the deck's PDF, a sheet a slide.
+clock; either window moves both. With **Edit** on, the notes are typed
+under the slide. Drag a slide in the legend to a new place, or use **Slide
+actions** beside the counter (also a right click on a slide) to move it
+earlier or later, duplicate it, add a slide after it in the deck's style,
+skip it or delete it; the files are renamed to keep the order. A skipped
+slide is dimmed in the legend and left out of Present, Presenter view and
+the deck's PDF. Export offers the deck's PDF, a sheet a slide.
 
 **A document** is on A4 unless you ask for Letter, Legal, A3, A5, landscape
 or a size in millimetres, with margins of 25 mm unless you ask for narrow,

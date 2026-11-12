@@ -5,6 +5,7 @@ const EDITABLE =
   "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote";
 
 export interface BlockEdit {
+  // Its place, or NOTES for a slide's speaker notes.
   index: number;
   // The block's text when the page was shown.
   before: string;
@@ -45,6 +46,53 @@ export const LINK = /^((https?|mailto):|#\S)/i;
 
 const words = (text?: string | null) =>
   (text ?? "").replace(/\s+/g, " ").trim();
+
+// A slide's speaker notes, typed under its stage, as an edit: of its last
+// <aside>, which is made when the slide has none.
+const NOTES = -1;
+export const notesEdit = (before: string, text: string): BlockEdit => ({
+  index: NOTES,
+  before,
+  html: text.replace(/[&<>]/g, (sign) => `&#${sign.charCodeAt(0)};`),
+});
+const notesOf = (page: Document) =>
+  [...page.querySelectorAll("body > aside")].pop() ??
+  page.body.appendChild(page.createElement("aside"));
+
+// A page as its file's text: what comes before <html> (the doctype, a
+// comment) stays as `source` has it, and what follows </body>, which is
+// parsed into the body, adds no line there.
+function written(page: Document, source: string) {
+  const tail = page.body.lastChild;
+  if (tail?.nodeType === Node.TEXT_NODE)
+    tail.textContent = tail.textContent!.trimEnd();
+  const at = source.search(/<html[\s>]/i);
+  return `${at >= 0 ? source.slice(0, at) : "<!doctype html>\n"}${page.documentElement.outerHTML}\n`;
+}
+const parsed = (source: string) =>
+  new DOMParser().parseFromString(source, "text/html");
+
+// A slide in the style of `source` (its head, its body's own attributes),
+// with a heading and a paragraph to type over.
+export function blankSlide(source: string) {
+  const page = parsed(source);
+  page.title = "New slide";
+  page.querySelector('meta[name="slide"]')?.remove();
+  page.body.innerHTML = "<h1>Heading</h1><p>Text</p>";
+  return written(page, source);
+}
+
+// A slide's source with its mark to be skipped set or taken away: beside
+// its artboard, where the host reads it.
+export function skipSlide(source: string, skip: boolean) {
+  const page = parsed(source);
+  page.querySelector('meta[name="slide"]')?.remove();
+  if (skip)
+    page
+      .querySelector('meta[name="artboard"]')
+      ?.insertAdjacentHTML("afterend", '<meta name="slide" content="skip">');
+  return written(page, source);
+}
 
 // The page is untrusted: an edit leaves in a block what it held, by tag and
 // attributes, and of anything else only bare marks and links (to a place in
@@ -115,12 +163,12 @@ function turn(block: Element, as: string) {
 // is there neither as the page showed it nor as `wrote` (the file changed
 // meanwhile).
 export function applyEdit(source: string, edit: BlockEdit, wrote?: string) {
-  const page = new DOMParser().parseFromString(source, "text/html");
+  const page = parsed(source);
   const blocks = () =>
     [...page.body.querySelectorAll(EDITABLE)].filter(
       (found) => !found.parentElement?.closest(EDITABLE),
     );
-  const block = blocks()[edit.index];
+  const block = edit.index === NOTES ? notesOf(page) : blocks()[edit.index];
   const now = words(block?.textContent);
   if (!block || (now !== words(edit.before) && now !== wrote)) return null;
   fill(block, edit.html);
@@ -136,14 +184,8 @@ export function applyEdit(source: string, edit: BlockEdit, wrote?: string) {
   const kind = kindOf(block);
   if (kind && edit.as && edit.as !== kind && Object.hasOwn(KINDS, edit.as))
     turn(block, edit.as);
-  // What follows </body> is parsed into the body: a save adds no line there.
-  const tail = page.body.lastChild;
-  if (tail?.nodeType === Node.TEXT_NODE)
-    tail.textContent = tail.textContent!.trimEnd();
-  // What comes before <html> (the doctype, a comment) stays as written.
-  const at = source.search(/<html[\s>]/i);
   return {
-    text: `${at >= 0 ? source.slice(0, at) : "<!doctype html>\n"}${page.documentElement.outerHTML}\n`,
+    text: written(page, source),
     wrote: text,
     at: added ? blocks().indexOf(added) : edit.index,
   };

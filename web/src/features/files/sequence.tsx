@@ -39,6 +39,7 @@ import { pageSize } from "../../shared/page-size.ts";
 import { FindField } from "../../shared/find-field.tsx";
 import { occurrences } from "../../shared/find.ts";
 import {
+  added,
   type Board,
   type Kind,
   type Move,
@@ -61,7 +62,12 @@ import { useRoom } from "../../shared/layout.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import type { ViewedImage } from "../../shared/attachments.tsx";
 import { presentChannel, STEPS } from "./present.ts";
-import type { BlockEdit } from "./doc-edit.ts";
+import {
+  type BlockEdit,
+  blankSlide,
+  notesEdit,
+  skipSlide,
+} from "./doc-edit.ts";
 import { downloadBlob, saveLink } from "../../shared/share.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
@@ -125,6 +131,7 @@ export default function Sequence({
   settle,
   saveAs,
   arrange,
+  rewrite,
   arranging,
   view,
 }: {
@@ -155,7 +162,14 @@ export default function Sequence({
   saveAs?: (text: string) => Promise<void>;
   // A deck's slides renamed, copied or deleted as `moves` say, after which
   // the slide named `show` is the one shown; `arranging` while that runs.
-  arrange?: (moves: Move[], show: string) => void;
+  // With `add`, a slide is made first, for the moves to place.
+  arrange?: (
+    moves: Move[],
+    show: string,
+    add?: { name: string; text: string },
+  ) => void;
+  // A slide's file written as `change` makes it of what it holds.
+  rewrite?: (path: string, change: (source: string) => string) => void;
   arranging?: boolean;
   // Opens a picture in the image viewer, which can draw on it.
   view: (image: ViewedImage) => void;
@@ -228,6 +242,7 @@ export default function Sequence({
     setPicked(undefined);
     setHover(undefined);
     setCaret(undefined);
+    setNoted(undefined);
     setSaved(undefined);
     setSaves(wrote.current);
     setZoom(1);
@@ -243,6 +258,7 @@ export default function Sequence({
   const present = (on: boolean) => {
     setPresenting(on);
     setNotesShown(on && matchMedia("(orientation: portrait)").matches);
+    if (on && boards[index]?.skip) to(past(1, true));
     if (on) stage.current?.requestFullscreen?.().catch(() => {});
     else if (document.fullscreenElement) document.exitFullscreen();
   };
@@ -286,16 +302,17 @@ export default function Sequence({
     }
     setPart(board.at ?? 0);
   };
-  // Past the last slide comes the first; a document ends at its ends.
-  const step = (by: number) => {
-    const last = boards.length - 1;
-    if (index < 0) return;
-    to(
-      doc
-        ? Math.min(last, Math.max(0, index + by))
-        : (index + by + boards.length) % boards.length,
-    );
+  // The board `by` on from the one shown. Past the last slide comes the
+  // first; a document ends at its ends; presenting passes over the slides
+  // that are skipped.
+  const past = (by: number, skipping = presenting) => {
+    if (doc) return Math.min(boards.length - 1, Math.max(0, index + by));
+    let next = index;
+    do next = (next + by + boards.length) % boards.length;
+    while (skipping && boards[next].skip && next !== index);
+    return next;
   };
+  const step = (by: number) => index >= 0 && to(past(by));
   // Whether the key was one that steps; Home and End go to the ends.
   const stepKey = (key: string) => {
     const by = STEPS[key];
@@ -354,6 +371,9 @@ export default function Sequence({
   // one save.
   const [saved, setSaved] = useState<{ text: string; failed?: true }>();
   const refused = (text: string) => setSaved({ text, failed: true });
+  // A slide's notes as typed under its stage, until its page says its own.
+  const [noted, setNoted] = useState<string>();
+  const notes = noted ?? info?.notes ?? "";
   const keeping = useRef<Promise<unknown>>(undefined);
   const keep = async (saving?: Promise<unknown>) => {
     if (saving && saving === keeping.current) return;
@@ -637,8 +657,19 @@ export default function Sequence({
           slides={names}
           index={index}
           title={boards[index]?.title}
+          skipped={boards[index]?.skip}
           busy={arranging}
           act={rearrange}
+          add={async () => {
+            const { name, moves, place } = added(names, index);
+            arrange(moves, place, {
+              name,
+              text: blankSlide(await read(path)),
+            });
+          }}
+          skip={() =>
+            rewrite?.(path, (source) => skipSlide(source, !boards[index]?.skip))
+          }
         />
       )}
     </div>
@@ -969,15 +1000,15 @@ export default function Sequence({
               </div>
             </div>
             {!presenting && counter}
-            {presenting && notesShown && info?.notes && (
-              <p class="page-notes">{info.notes}</p>
+            {presenting && notesShown && notes && (
+              <p class="page-notes">{notes}</p>
             )}
             {presenting && (
               <div class="page-present-bar">
                 {counter}
                 <Button
                   variant="secondary"
-                  disabled={!info?.notes}
+                  disabled={!notes}
                   aria-pressed={notesShown}
                   onClick={() => setNotesShown(!notesShown)}
                 >
@@ -989,7 +1020,9 @@ export default function Sequence({
                     onClick={() => {
                       void settle();
                       presenter(
-                        boards.map((board) => board.path),
+                        boards
+                          .filter((board) => !board.skip || board.path === path)
+                          .map((board) => board.path),
                         path,
                       );
                     }}
@@ -1011,11 +1044,28 @@ export default function Sequence({
               />
             )}
           </div>
-          {!presenting && info?.notes && (
-            <p class="page-notes">
+          {presenting ? null : kind === "deck" && mode === "edit" ? (
+            <label class="page-notes">
               <span class="muted">Notes</span>
-              {info.notes}
-            </p>
+              <Textarea
+                aria-label="Speaker notes"
+                placeholder="What to say with this slide"
+                rows={2}
+                disabled={!live}
+                value={notes}
+                onInput={({ currentTarget: field }) => {
+                  setNoted(field.value);
+                  void keep(save?.(notesEdit(info?.notes ?? "", field.value)));
+                }}
+              />
+            </label>
+          ) : (
+            notes && (
+              <p class="page-notes">
+                <span class="muted">Notes</span>
+                {notes}
+              </p>
+            )
           )}
           {sheet && (
             <fieldset class="page-asks" disabled={!live}>

@@ -91,6 +91,9 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
             # A deck prints through a page made from the folder's file names:
             # the slides keep their own sandbox, the page runs none of them.
             (project / 'design/02 "b".html').write_text("<p>b</p>")
+            (project / "design/03-left-out.html").write_text(
+                '<meta name="artboard" content="1440x900 slide"><meta name="slide" content="skip">'
+            )
             status, deck, headers = page("design/?deck&w=1440&h=99999")
             assert_true(status == 200, (status, deck))
             assert_true(b"@page{size:1440px 8000px;margin:0}" in deck, deck[:200])
@@ -99,6 +102,8 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
                 < deck.index(b'<iframe src="hero-a.html">'),
                 deck,
             )
+            # A slide that is skipped is not printed.
+            assert_true(b"left-out" not in deck, deck)
             policy = headers["Content-Security-Policy"]
             assert_true("sandbox" not in policy and "frame-ancestors 'none'" in policy, policy)
             assert_true(b"uagentDesign" not in deck, deck[:200])

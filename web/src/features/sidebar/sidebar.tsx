@@ -163,7 +163,7 @@ function arrange(
   const rest = places.filter(([path]) => !pinned("folder", path));
   return {
     top,
-    needs,
+    needs: needs.filter((entry) => !pinned("session", entry.item.id)),
     recent: rest.flatMap(([, entries]) => entries).sort(newest),
     kinds: (
       [

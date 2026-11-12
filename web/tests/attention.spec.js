@@ -52,6 +52,19 @@ test("a decision in another folder waits under Needs you, listed once in either 
     nav.getByRole("button", { name: /^Conversations of .*elsewhere$/ }),
   ).toHaveCount(0);
 
+  // Pinned, it is listed among the pinned alone.
+  const pinned = nav.getByRole("group", { name: "Pinned" });
+  for (const [from, item] of [
+    [needs, "Pin"],
+    [pinned, "Unpin"],
+  ]) {
+    await from.locator(".session-row").hover();
+    await from.getByRole("button", { name: "Conversation menu" }).click();
+    await page.getByRole("menuitem", { name: item, exact: true }).click();
+    await expect(from).toHaveCount(0);
+    await expect(nav.locator(".session")).toHaveCount(2);
+  }
+
   await needs.locator(".list-row").click();
   await expect(page).toHaveURL(new RegExp(`#session=${other.id}$`));
   await page.getByRole("button", { name: "Allow once" }).click();

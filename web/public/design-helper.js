@@ -501,6 +501,11 @@
     return node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
   };
   const editing = () => startOf()?.closest?.("[contenteditable]") || null;
+  // The first link of a block that what is selected touches.
+  const linked = (block) =>
+    [...block.querySelectorAll("a[href]")].find((link) =>
+      getSelection().containsNode(link, true),
+    );
   // What a block can be turned into another of: a paragraph, a heading or an
   // item of a plain list, named by its list.
   const kindOf = (block) =>
@@ -509,24 +514,30 @@
       : block.matches(":is(ul, ol) > li") && !block.querySelector("ul, ol")
         ? block.parentElement.localName
         : "";
+  // Whether what is selected is bold and italic; null where the block's own
+  // style is the mark, and there is none to make.
+  const marks = (block) => {
+    const own = getComputedStyle(block);
+    return {
+      bold: own.fontWeight < 600 ? document.queryCommandState("bold") : null,
+      italic:
+        own.fontStyle === "normal"
+          ? document.queryCommandState("italic")
+          : null,
+    };
+  };
   // What the app's tools show of the selection, said as it changes: the
-  // block's kind, whether anything is selected, its marks (none to make
-  // where the block's own style is the mark) and the link it starts in.
+  // block's kind, whether anything is selected, its marks and the link it
+  // touches.
   let told = "";
   const caret = () => {
     const block = editing();
-    const own = block && getComputedStyle(block);
     const state = block
       ? {
           kind: kindOf(block),
           selected: !getSelection().isCollapsed,
-          bold:
-            own.fontWeight < 600 ? document.queryCommandState("bold") : null,
-          italic:
-            own.fontStyle === "normal"
-              ? document.queryCommandState("italic")
-              : null,
-          href: startOf().closest("a[href]")?.getAttribute("href") || "",
+          ...marks(block),
+          href: linked(block)?.getAttribute("href") || "",
         }
       : {};
     if (told !== (told = JSON.stringify(state))) send("caret", state);
@@ -538,15 +549,28 @@
     const block = editing();
     if (!block) return;
     if (as) return report(block, { as });
-    const link = startOf().closest("a[href]");
+    if (mark && (getSelection().isCollapsed || marks(block)[mark] == null))
+      return;
+    if (href?.[0] === "#" && !document.getElementById(href.slice(1)))
+      return send("refused", {
+        message: `${href} names no place on this page`,
+      });
+    const link = linked(block);
     if (link && !mark) getSelection().selectAllChildren(link);
     block.setAttribute("contenteditable", "true");
-    if (mark) document.execCommand(mark === "italic" ? "italic" : "bold");
+    if (mark) document.execCommand(mark);
     else if (href) document.execCommand("createLink", false, String(href));
     else document.execCommand("unlink");
     block.setAttribute("contenteditable", "plaintext-only");
     block.focus();
     caret();
+  };
+  // ⌘ or Ctrl with B or I marks what is selected, as the app's tools do.
+  const keyed = (event) => {
+    const mark = { b: "bold", i: "italic" }[event.key];
+    if (!mark || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+    event.preventDefault();
+    format({ mark });
   };
   // Edit on or off; with `at`, the caret goes to the end of that block.
   const edit = (on, at) => {
@@ -558,6 +582,7 @@
     const toggle = on ? addEventListener : removeEventListener;
     toggle("input", changed, true);
     toggle("focusout", left, true);
+    toggle("keydown", keyed, true);
     toggle.call(document, "selectionchange", caret);
     told = "";
     const block = on && blocks()[at];

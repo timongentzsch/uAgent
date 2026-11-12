@@ -2231,7 +2231,7 @@ async function openNotes(app, session, project) {
   await writeFiles(project, {
     "docs/notes.html": paper(
       "Notes",
-      "<h1>Notes</h1><p>Alpha beta gamma</p>" +
+      '<h1 id="top">Notes</h1><p>Alpha beta gamma</p>' +
         '<p>Second <span class="tag">kept</span> one</p>' +
         "<ul><li>One</li><li>Two</li><li>Three</li></ul>",
     ),
@@ -2321,12 +2321,14 @@ test("Edit's tools mark and link what is selected in a block, and stand beside t
   await selectIn(first, "Alpha");
   await tool("Italic").click();
   await expect.poll(body).toContain("<p><i>Alpha</i> <b>beta</b> gamma</p>");
+  // ⌘ or Ctrl with B is the tool's key.
   await selectIn(first, "beta");
-  await tool("Bold").click();
+  await app.keyboard.press("ControlOrMeta+b");
   await expect(tool("Bold")).toHaveAttribute("aria-pressed", "false");
   await expect.poll(body).toContain("<p><i>Alpha</i> beta gamma</p>");
 
-  // A link's address is typed under the tools: http, https or mailto.
+  // A link's address is typed under the tools: http, https or mailto, or a
+  // place in the page that is there.
   await selectIn(first, "gamma");
   await tool("Link").click();
   const address = files.getByRole("textbox", { name: "Link address" });
@@ -2344,6 +2346,16 @@ test("Edit's tools mark and link what is selected in a block, and stand beside t
   await selectIn(first, "amm");
   await tool("Link").click();
   await expect(address).toHaveValue("https://example.com/a");
+  await address.fill("#nowhere");
+  await app.keyboard.press("Enter");
+  await expect(saving(files)).toHaveText(
+    "#nowhere names no place on this page",
+  );
+  await tool("Link").click();
+  await address.fill("#top");
+  await app.keyboard.press("Enter");
+  await expect.poll(body).toContain('beta <a href="#top">gamma</a></p>');
+  await tool("Link").click();
   await tool("Remove").click();
   await expect.poll(body).toContain("<p><i>Alpha</i> beta gamma</p>");
 
@@ -2365,6 +2377,7 @@ test("Edit's tools mark and link what is selected in a block, and stand beside t
           '<img src="x" onerror="alert(1)"><script>alert(2)</scr' +
           'ipt><b onclick="alert(3)">bold</b> <a href="javascript:alert(4)">bad</a> ' +
           '<a href="mailto:a@b.example" target="_blank">mail</a> ' +
+          '<a href="#nowhere">lost</a> ' +
           '<span class="tag">kept</span> <span class="new">plain</span>',
       },
       "*",
@@ -2373,7 +2386,7 @@ test("Edit's tools mark and link what is selected in a block, and stand beside t
   await expect
     .poll(body)
     .toContain(
-      '<p>alert(2)<b>bold</b> bad <a href="mailto:a@b.example">mail</a> ' +
+      '<p>alert(2)<b>bold</b> bad <a href="mailto:a@b.example">mail</a> lost ' +
         '<span class="tag">kept</span> plain</p>',
     );
 });
@@ -2416,7 +2429,7 @@ test("Edit's Style turns a block into a heading, a paragraph or a list item in t
   await expect
     .poll(body)
     .toBe(
-      "<h1>Notes</h1><ul><li>Alpha beta gamma</li>" +
+      '<h1 id="top">Notes</h1><ul><li>Alpha beta gamma</li>' +
         '<li>Second <span class="tag">kept</span> one more</li></ul>' +
         "<ul><li>One</li><li>Two</li><li>Three</li></ul>",
     );

@@ -17,7 +17,7 @@ import { KINDS, LINK } from "./doc-edit.ts";
 // What is selected in the block being edited, as its page says it
 // (design-helper.js): the block's kind where it can become another, whether
 // anything is selected, its marks (null where the block's own style is the
-// mark) and the link it starts in.
+// mark) and the link it touches.
 export interface Caret {
   kind: string;
   selected: boolean;
@@ -144,9 +144,9 @@ export function LinkField({
       }}
     >
       <Input
-        type="url"
+        inputMode="url"
         aria-label="Link address"
-        placeholder="https://…"
+        placeholder="https://… or #place"
         inputRef={field}
         value={address}
         onInput={(event) => setAddress(event.currentTarget.value)}

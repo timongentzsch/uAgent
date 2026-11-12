@@ -22,22 +22,27 @@ export const KINDS: Record<string, string> = {
   ul: "Bulleted list",
   ol: "Numbered list",
 };
-// The addresses a link made here may have.
-export const LINK = /^(https?|mailto):/i;
+// The addresses a link made here may have: the web's, mail's, or "#" and
+// the id of a place in the page.
+export const LINK = /^((https?|mailto):|#\S)/i;
 
 const words = (text?: string | null) =>
   (text ?? "").replace(/\s+/g, " ").trim();
 
 // The page is untrusted: an edit leaves in a block what it held, by tag and
-// attributes, and of anything else only bare marks and links.
+// attributes, and of anything else only bare marks and links (to a place in
+// the page, only one that is there).
 function fill(block: Element, html: string) {
   const shape = (part: Element) => (part.cloneNode() as Element).outerHTML;
   const held = new Set([...block.querySelectorAll("*")].map(shape));
   block.innerHTML = html;
   for (const part of block.querySelectorAll("*")) {
     if (held.has(shape(part))) continue;
+    const href = part.getAttribute("href") ?? "";
     const link =
-      part.localName === "a" && LINK.test(part.getAttribute("href") ?? "");
+      part.localName === "a" &&
+      LINK.test(href) &&
+      (href[0] !== "#" || !!block.ownerDocument.getElementById(href.slice(1)));
     if (!link && !part.matches("b, i, code, br"))
       part.replaceWith(...part.childNodes);
     else

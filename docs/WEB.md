@@ -222,9 +222,10 @@ An `.xlsx` or `.csv` file opens in the same grid, read-only. **Save as
 sheet** writes it as a sheet beside the file, which is then edited like any
 other. Export gives a sheet as an Excel workbook, with its rules, or its
 open tab as CSV, as the cells show; a folded group's rows and columns go
-out hidden, and the groups themselves do not, nor are an Excel file's read. From an Excel file come the cells, their
-formulas, number and date patterns and column widths; merged cells, fonts,
-borders, fills and the file's own charts and conditional formats do not. A
+out hidden, and the groups themselves do not. From an Excel file come the
+cells, their formulas, number and date patterns, column widths and merged
+cells; groups, fonts, borders, fills and the file's own charts and
+conditional formats do not. A
 CSV file's cells are kept as written: only a plain number, a date or TRUE
 and FALSE is read as more than text, so a phone number or a code with
 leading zeros stays what it was.

@@ -202,14 +202,25 @@ export function FormulaBar({
   offer?: Offer;
   ask: (text: string) => void;
 }) {
-  // What is typed here, shown at once; the page says it back as the
-  // cell's. It is written when the field is left, as a cell's is.
+  // What is typed here, shown at once until the page says it back, as the
+  // cell's draft or, written, as the cell's. It is written when the field
+  // is left, as a cell's is.
   const [typed, setTyped] = useState<string>();
-  // Another cell, or this one holding something else: what was typed goes.
-  useEffect(() => setTyped(undefined), [cell?.ref, cell?.raw]);
+  // Keys typed meanwhile are newer than what is compared here.
+  useEffect(() => {
+    const said = typing ?? cell?.raw;
+    setTyped((now) => (now === said ? undefined : now));
+  }, [typed, typing, cell?.raw]);
+  // Written, then another cell: what was typed goes. Typed before the page
+  // says the cell it goes to, it stays.
+  const written = useRef<string>(undefined);
+  useEffect(() => {
+    setTyped((now) => (now === written.current ? undefined : now));
+  }, [cell?.ref]);
   const end = (command: string) => {
     if ((typed ?? typing) !== undefined) act(command);
-    setTyped(undefined);
+    written.current = typed;
+    if (command === "cancel") setTyped(undefined);
   };
   // The text before the caret while the field has the focus, the option
   // the keys are at, and the text a list was shut for.

@@ -87,8 +87,9 @@ inline bool RemoteMessageCode(std::string_view message, std::string_view code) {
 
 // One distinctive substring per provider message shape, after opencode's
 // isContextOverflow(); the throttling exclusions below apply first.
-inline constexpr std::array<std::string_view, 25> kContextOverflowPhrases = {
+inline constexpr std::array<std::string_view, 26> kContextOverflowPhrases = {
     "prompt is too long",
+    "exceed context limit",
     "request_too_large",
     "input is too long",
     "exceeds the context window",

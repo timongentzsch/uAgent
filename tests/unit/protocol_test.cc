@@ -213,6 +213,12 @@ TEST_CASE(TestToolResults) {
       {{{"type", "invalid_request_error"},
         {"message", "prompt is too long: 300000 tokens > 200000 maximum"}},
        RemoteErrorKind::kContextLengthExceeded},
+      // Input that fits, with a response cap that no longer does.
+      {{{"type", "invalid_request_error"},
+        {"message",
+         "input length and `max_tokens` exceed context limit: 188240 + 21333 "
+         "> 200000, decrease input length or `max_tokens` and try again"}},
+       RemoteErrorKind::kContextLengthExceeded},
       {{{"message", "input is too long for requested model"}},
        RemoteErrorKind::kContextLengthExceeded},
       {{{"message", "exceeds the model's maximum context length (200000)"}},
@@ -500,6 +506,13 @@ TEST_CASE(TestModelCatalogParsing) {
   CHECK((*anthropic)[0].features["adaptive_thinking"] == true);
   CHECK((*anthropic)[0].features["reasoning_summary"] == true);
   CHECK((*anthropic)[0].efforts == std::vector<std::string>({"low"}));
+  // The most a model writes, where its catalogue states it.
+  const auto limits = ParseModels(
+      {{"data", json::array({{{"id", "a"}, {"max_tokens", 64000}},
+                             {{"id", "b"}, {"max_tokens", nullptr}}})}});
+  REQUIRE(limits && limits->size() == 2);
+  CHECK((*limits)[0].features["max_output_tokens"] == 64000);
+  CHECK((*limits)[1].features.is_null());
   auto models = ParseModels(
       {{"data",
         json::array({{{"id", "vendor/beta"}},

@@ -264,6 +264,11 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response,
         }
       }
     }
+    // A Messages catalogue states the most a model writes as max_tokens.
+    if (int64_t limit = JsonValue(model, "max_tokens", int64_t{0}); limit > 0) {
+      if (!info.features.is_object()) info.features = json::object();
+      info.features["max_output_tokens"] = limit;
+    }
     const json* modalities = JsonArray(model, "input_modalities");
     if (const json* architecture = JsonObject(model, "architecture")) {
       if (!modalities) {

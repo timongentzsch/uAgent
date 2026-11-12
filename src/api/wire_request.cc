@@ -592,8 +592,13 @@ bool HasContentPart(const json& messages, std::string_view type) {
 json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
                            const std::string& session_id,
                            WireRequestCache* cache) const {
-  const int64_t output_cap =
+  int64_t output_cap =
       max_output_tokens > 0 ? max_output_tokens : MaxOutputTokens();
+  // The Messages wire requires a cap: unset, it is the most the model writes.
+  if (output_cap <= 0 && wire_api == WireApi::kAnthropicMessages) {
+    output_cap =
+        JsonValue(capabilities.model_features, "max_output_tokens", int64_t{0});
+  }
   WireRequest request{
       .model = model,
       .messages = messages,

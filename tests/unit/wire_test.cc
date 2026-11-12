@@ -979,6 +979,14 @@ TEST_CASE(TestWireSideRequestKnobs) {
   CHECK(api.BuildRequestBody(messages, json::array())["max_tokens"] == 64);
   api.wire_api = WireApi::kAnthropicMessages;
   CHECK(api.BuildRequestBody(messages, json::array())["max_tokens"] == 64);
+  // The Messages wire requires a cap: unset, it is the most the model writes,
+  // and a fixed one only where nothing states that.
+  api.max_output_tokens = 0;
+  CHECK(api.BuildRequestBody(messages, json::array())["max_tokens"] == 8192);
+  api.capabilities.SetModelFeatures({{"max_output_tokens", 64000}});
+  CHECK(api.BuildRequestBody(messages, json::array())["max_tokens"] == 64000);
+  api.wire_api = WireApi::kChatCompletions;
+  CHECK(!api.BuildRequestBody(messages, json::array()).contains("max_tokens"));
 }
 
 }  // namespace uagent

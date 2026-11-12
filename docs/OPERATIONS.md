@@ -166,6 +166,11 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
   billing, and is measured again after compaction or a model switch.
 - Compaction reserves a quarter of the context window for the response, or
   `UAGENT_MAX_TOKENS` when that is smaller.
+- A route on the `anthropic_messages` wire must name a response cap. It is
+  `UAGENT_MAX_TOKENS` when set, else the most the model writes according to
+  the provider's catalogue or the route's `max_output_tokens` model feature,
+  else 8192. A route that declares both `context` and `features` is not
+  looked up in the catalogue, so it states `max_output_tokens` there itself.
 
 ## Recovery
 

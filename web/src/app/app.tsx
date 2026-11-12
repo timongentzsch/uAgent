@@ -123,7 +123,9 @@ function App({ host, bindResult, reading }: HostAppProps) {
     },
     [setFlow],
   );
-  const [terminalOpen, setTerminalOpen] = useState(false);
+  // Hidden (false), its panel stays and its shells run on; none started
+  // without a value.
+  const [terminalShown, setTerminalShown] = useState<boolean>();
   const [modal, setModal] = useState<AppModal | null>(null);
   const [overlay, setOverlay] = useState<"search" | "shortcuts" | null>(null);
   const [find, setFind] = useState<FindRequest | null>(null);
@@ -451,6 +453,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
     choose(order[nextIndex(at, key, order.length)].id);
   };
   const terminalAvailable = !!catalogue.terminals;
+  const terminalStarted = terminalAvailable && terminalShown !== undefined;
   const showTerminal = useCallback((terminal: TerminalInfo) => {
     setShell(terminal);
     setPage("terminal");
@@ -493,7 +496,11 @@ function App({ host, bindResult, reading }: HostAppProps) {
       ),
     [showTerminal, report, manage],
   );
-  const toggleTerminal = useCallback(() => setTerminalOpen((on) => !on), []);
+  const toggleTerminal = useCallback(() => setTerminalShown((on) => !on), []);
+  const hideTerminal = useCallback(
+    () => setTerminalShown((on) => on && false),
+    [],
+  );
   // Added to the draft, never sent. What covers the chat on a small screen
   // steps aside, unless `keep`.
   const addToChat = useCallback(
@@ -503,11 +510,11 @@ function App({ host, bindResult, reading }: HostAppProps) {
         text: current.text ? `${current.text}\n${text}` : text,
       }));
       if (keep) return;
-      if (compact) setTerminalOpen(false);
+      if (compact) hideTerminal();
       if (filesSheet) setFilesOpen(false);
       focusComposer();
     },
-    [updateDraft, selected, compact, filesSheet],
+    [updateDraft, selected, compact, filesSheet, hideTerminal],
   );
   const toChat = page === "chat" && session && online ? addToChat : undefined;
   const files = session && (
@@ -527,7 +534,9 @@ function App({ host, bindResult, reading }: HostAppProps) {
       fallback={<Spinner label="Opening the terminal…" />}
       cwd={session ? folderOf(session) : ""}
       addToChat={toChat}
-      close={() => setTerminalOpen(false)}
+      shown={!!terminalShown}
+      hide={hideTerminal}
+      close={() => setTerminalShown(undefined)}
       report={report}
     />
   );
@@ -718,7 +727,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       browserAvailable={browserAvailable}
                       terminal={
                         terminalAvailable
-                          ? { open: terminalOpen, toggle: toggleTerminal }
+                          ? { open: !!terminalShown, toggle: toggleTerminal }
                           : undefined
                       }
                       filesOpen={filesOpen}
@@ -812,8 +821,12 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       find={find}
                       closeFind={closeFind}
                     />
-                    {terminalOpen && terminalAvailable && !compact && (
-                      <section class="terminal-dock" aria-label="Terminal">
+                    {terminalStarted && !compact && (
+                      <section
+                        class="terminal-dock"
+                        aria-label="Terminal"
+                        hidden={!terminalShown}
+                      >
                         <ResizeHandle
                           pane="terminal"
                           label="Resize the terminal"
@@ -822,7 +835,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                         {terminal}
                       </section>
                     )}
-                    {terminalOpen && terminalAvailable && compact && (
+                    {terminalStarted && compact && (
                       // A docked strip is too small to type in once the
                       // keyboard is up.
                       <Modal
@@ -831,7 +844,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
                         className="terminal-sheet"
                         header={false}
                         swipeable={false}
-                        close={() => setTerminalOpen(false)}
+                        hidden={!terminalShown}
+                        close={hideTerminal}
                       >
                         {terminal}
                       </Modal>

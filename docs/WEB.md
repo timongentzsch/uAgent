@@ -305,8 +305,8 @@ shells at once:
   on a Mac) opens a panel under the chat and Files, in tabs like VS Code's
   terminal. **+** starts another, in the open conversation's folder, or in
   your home folder when no conversation is open. Its shells belong to this page:
-  they end when their tab or the panel closes or the page is left or
-  reloaded, and are never listed.
+  hidden, the panel keeps them running; they end when their tab closes or
+  the page is left or reloaded, and are never listed.
 
 - **It is your shell, unsandboxed.** It runs as you, your login shell
   (`$SHELL`, else `/bin/sh`) with `TERM=xterm-256color`, and can do whatever

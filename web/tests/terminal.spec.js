@@ -39,12 +39,24 @@ test("terminal tabs run commands and add their text to the chat", async ({
   await expect(composer).not.toHaveValue(/second-6/);
   await expect(composer).toBeFocused();
 
+  // Hidden, its shells run on: shown again it has what they printed, and
+  // the keys.
+  await dock.getByRole("button", { name: "Hide the terminal" }).click();
+  await expect(dock).toBeHidden();
   await headerAction(page, "Terminal");
+  await expect(shown.locator(".xterm-rows")).toContainText("first-42");
+  await expect(shown.getByRole("textbox")).toBeFocused();
+  await page.keyboard.type("echo back-$((3*3))\n");
+  await expect(shown.locator(".xterm-rows")).toContainText("back-9");
+
+  // Its last tab closed, the panel goes, and the next one starts anew.
+  for (const number of [2, 1])
+    await dock
+      .getByRole("button", { name: `Close Terminal ${number}` })
+      .click();
   await expect(dock).toHaveCount(0);
   await headerAction(page, "Terminal");
-  await expect(dock.locator("[aria-current] .terminal-place")).toHaveText(
-    /^Terminal 1 · /,
-  );
+  await expect(dock.locator(".terminal-tab")).toHaveCount(1);
   await expect(shown.locator(".xterm-rows")).not.toContainText("first-42");
 });
 
@@ -203,6 +215,34 @@ for (const installed of [true, false])
       .poll(async () => Math.round((await sheet.boundingBox()).height))
       .toBeGreaterThan(800);
   });
+
+test("on a phone the hidden terminal's shell runs on, however it was hidden", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Terminal");
+  const sheet = page.getByRole("dialog", { name: "Terminal" });
+  const rows = sheet.locator(".xterm-rows");
+  await expect(rows).toContainText(/\S/);
+  await sheet.locator(".xterm").click();
+  await page.keyboard.type("echo kept-$((4*4))\n");
+  await expect(rows).toContainText("kept-16");
+  // Its own button, then the step back: each plays the sheet's exit.
+  for (const hide of [
+    () => sheet.getByRole("button", { name: "Hide the terminal" }).click(),
+    () => page.goBack(),
+  ]) {
+    await hide();
+    await expect(sheet).toBeHidden();
+    await headerAction(page, "Terminal");
+    await expect(rows).toContainText("kept-16");
+  }
+  await sheet.locator(".xterm").click();
+  await page.keyboard.type("echo again-$((2*2))\n");
+  await expect(rows).toContainText("again-4");
+});
 
 test.describe("on a touch phone", () => {
   test.use({

@@ -391,16 +391,21 @@ export function FolderTerminal({
   );
 }
 
-// Closing the panel or the page ends these shells.
+// These shells end with their tab or the page; hidden, they run on.
 export default function TerminalPanel({
   cwd,
   addToChat,
+  shown,
+  hide,
   close,
   report,
 }: {
   // Where a new terminal starts; "" is the home folder.
   cwd: string;
   addToChat?: (text: string) => void;
+  shown: boolean;
+  hide: () => void;
+  // Its last tab closed.
   close: () => void;
   report: Report;
 }) {
@@ -504,7 +509,7 @@ export default function TerminalPanel({
             Close terminal
           </MenuItem>
         </Menu>
-        <IconButton label="Hide the terminal" onClick={close}>
+        <IconButton label="Hide the terminal" onClick={hide}>
           <ChevronDown />
         </IconButton>
       </div>
@@ -512,7 +517,7 @@ export default function TerminalPanel({
         <TerminalView
           key={tab.id}
           id={tab.id}
-          active={tab.id === active}
+          active={shown && tab.id === active}
           register={(id, view) => {
             if (view) views.current.set(id, view);
             else views.current.delete(id);

@@ -91,6 +91,9 @@
   max-height: calc(100% - var(--sheet) / 2);
   border-top: var(--border);
 }
+.terminal-dock[hidden] {
+  display: none;
+}
 .terminal-dock > :not(.resize-handle) {
   flex: 1;
   min-height: 0;

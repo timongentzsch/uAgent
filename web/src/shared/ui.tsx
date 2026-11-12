@@ -605,10 +605,13 @@ export function Modal({
   actions,
   header = true,
   swipeable = true,
+  hidden = false,
 }: {
   title: string;
   children: ComponentChildren;
   close: () => void;
+  // Closed with its content kept: what runs in it runs on.
+  hidden?: boolean;
   className?: string;
   // One of the --dialog-* widths. "s" is a sheet of a few actions, which
   // rises from the bottom on a phone instead of filling the screen.
@@ -653,18 +656,24 @@ export function Modal({
     // A parent that replaced this dialog meanwhile owns its state now.
     void animateOut(ref.current).then(() => mounted.current && close());
   };
-  useDismiss(true, requestClose);
+  useDismiss(!hidden, requestClose);
   useSheetSwipe(ref, requestClose, layout === "sheet" && swipeable && phone);
   useLayoutEffect(() => {
-    const prior = document.activeElement;
     const dialog = ref.current;
-    dialog?.showModal();
+    if (hidden || !dialog) return;
+    const prior = document.activeElement;
+    // Shown again, it is as it was before its exit played.
+    mounted.current = true;
+    leaving.current = false;
+    dialog.inert = false;
+    dialog.removeAttribute("data-leaving");
+    dialog.showModal();
     // Start at the dialog's title instead of highlighting its first action.
     // Tab still reaches Close; native modality and focus restoration remain.
     heading.current?.focus({ preventScroll: true });
     return () => {
       mounted.current = false;
-      dialog?.close();
+      dialog.close();
       const target =
         prior instanceof HTMLElement && prior.isConnected
           ? prior
@@ -676,7 +685,7 @@ export function Modal({
       if (restored instanceof HTMLElement)
         restored.focus({ preventScroll: true });
     };
-  }, []);
+  }, [hidden]);
   return (
     <dialog
       ref={ref}

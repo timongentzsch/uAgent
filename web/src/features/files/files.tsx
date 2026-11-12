@@ -873,9 +873,10 @@ export default function Files({
               }
               settle={settle}
               forget={blocks.forget}
-              typing={(edit, calculating) =>
-                tables.hold(file, edit, calculating)
-              }
+              typing={(edit, calculating) => {
+                tables.hold(file, edit, calculating);
+                if (!calculating) setStaying(false);
+              }}
               saveAs={async (text) => {
                 const path = join(
                   dir,

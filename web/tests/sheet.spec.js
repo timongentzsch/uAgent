@@ -501,6 +501,32 @@ test("a sheet left while it calculates a change stays once, saying so; left agai
   await expect.poll(saved).toContain("<td>50<td>=B2*2");
 });
 
+test("a sheet that stayed for a change says so no longer once that is calculated, and is left at the next press", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await holdAnswers(app);
+  const { files, stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    COSTS,
+  );
+  await cell("Costs", "B2").click();
+  await holding(stage, true);
+  await app.keyboard.type("50");
+  await app.keyboard.press("Enter");
+  const back = files.getByRole("button", { name: /^Back to/ });
+  await back.click();
+  await expect(files.locator(".page-notice")).toHaveCount(1);
+  await holding(stage, false);
+  await expect(files.locator(".page-notice")).toHaveCount(0);
+  await expect.poll(saved).toContain("<td>50<td>=B2*2");
+  await back.click();
+  await expect(cell("Costs", "B2")).toHaveCount(0);
+});
+
 test("what is typed in the formula bar and refused at once goes from the bar, which shows what the cell holds", async ({
   page: app,
   session,

@@ -359,15 +359,15 @@ async function open() {
     },
     // The rows and columns the tab holds in view.
     held: () => frozen,
-    // Where a cell lies in the page, drawn or not: one held in view does
-    // not scroll.
+    // Where a cell lies in the page: where it is drawn (a held one does not
+    // scroll, and far down a browser places to 2 px), or where it would be.
     rect(cell) {
-      const box = layout.rect(cell);
-      return {
-        ...box,
-        left: box.left + (cell.column <= frozen.columns ? scrollX : 0),
-        top: box.top + (cell.row <= frozen.rows ? scrollY : 0),
-      };
+      const drawn = tables[at].querySelector(
+        `tbody [data-row="${cell.row}"][data-column="${cell.column}"]`,
+      );
+      if (!drawn) return layout.rect(cell);
+      const { left, top, width, height } = drawn.getBoundingClientRect();
+      return { left: left + scrollX, top: top + scrollY, width, height };
     },
     layout: () => layout,
     pick,

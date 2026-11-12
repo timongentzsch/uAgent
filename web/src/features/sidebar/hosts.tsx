@@ -23,7 +23,7 @@ import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import { folderOf } from "../../shared/display.ts";
 import type { Pin, Session } from "../../shared/types.ts";
 import { livePins, PinItem } from "./pins.tsx";
-import { collapsed, opened, placeKey, useFolding } from "./folding.ts";
+import { collapsed, folded, opened, placeKey, useFolding } from "./folding.ts";
 
 export function Fold({
   name,
@@ -37,21 +37,21 @@ export function Fold({
   closed?: boolean;
 }) {
   useFolding();
-  const folded = closed ? !opened.has(name) : collapsed.has(name);
+  const shut = folded(name, closed);
   return (
     <div class="list-group" role="group" aria-label={label}>
       <Button
         variant="quiet"
         class="section-fold caption"
-        aria-expanded={!folded}
+        aria-expanded={!shut}
         onClick={() =>
-          closed ? opened.set(name, folded) : collapsed.set(name, !folded)
+          closed ? opened.set(name, shut) : collapsed.set(name, !shut)
         }
       >
-        {folded ? <ChevronRight /> : <ChevronDown />}
+        {shut ? <ChevronRight /> : <ChevronDown />}
         {label}
       </Button>
-      {!folded && children}
+      {!shut && children}
     </div>
   );
 }
@@ -113,6 +113,15 @@ function Shortcut({
     </div>
   );
 }
+// Another host's conversations as Recent lists them: top-level, not pinned.
+export const unpinned = (source: Source) => {
+  const pins = sourcePins(source);
+  return source.state.listed.filter(
+    (session) =>
+      !session.parent &&
+      !pins.some((pin) => pin.kind === "session" && pin.id === session.id),
+  );
+};
 export function SharedShortcuts({
   activePins,
 }: {
@@ -120,99 +129,64 @@ export function SharedShortcuts({
 }) {
   const hosts = useHosts();
   const sources = useMemo(
-    () =>
-      hosts.sources.map((source) => {
-        const pins = sourcePins(source);
-        return {
-          source,
-          pins,
-          sessions: new Set(
-            pins.filter((pin) => pin.kind === "session").map((pin) => pin.id),
-          ),
-        };
-      }),
+    () => hosts.sources.map((source) => ({ source, pins: sourcePins(source) })),
     [hosts.sources],
   );
   // The active host's pins are the rows the list itself draws.
   const pinned = sources.filter(({ source, pins }) =>
     source.id === hosts.active ? activePins.length : pins.length,
   );
-  const recent = sources
-    .flatMap(({ source, sessions }) =>
-      source.state.listed
-        .filter((session) => !session.parent && !sessions.has(session.id))
-        .map((session) => ({ source, session })),
-    )
-    .sort((a, b) => (b.session.updated || 0) - (a.session.updated || 0))
-    .slice(0, 10);
+  if (!pinned.length) return null;
   return (
-    <>
-      {!!pinned.length && (
-        <Fold name="$pinned" label="Pinned">
-          {pinned.map(({ source, pins }) => (
-            <div key={source.id}>
-              {hosts.sources.length > 1 && (
-                <p class="source-label caption">{source.name}</p>
-              )}
-              {source.id === hosts.active
-                ? activePins
-                : pins.map((pin) => {
-                    const session = source.state.listed.find(
-                      (item) => item.id === pin.id,
-                    );
-                    if (pin.kind === "session")
-                      return session ? (
-                        <Shortcut
-                          key={pin.id}
-                          source={source}
-                          session={session}
-                          pins={pins}
-                        />
-                      ) : null;
-                    const terminal = source.state.catalogue.terminals?.find(
-                      (item) => item.id === pin.id,
-                    );
-                    return (
-                      <div key={pin.id} class="session-row entry">
-                        <Button
-                          variant="quiet"
-                          class="session source-shortcut"
-                          onClick={() =>
-                            hosts.open(
-                              source.id,
-                              "",
-                              terminal?.folder || pin.id,
-                              terminal ? { terminal: terminal.id } : undefined,
-                            )
-                          }
-                        >
-                          <span class="truncate">
-                            {terminal?.title || folderName(pin.id)}
-                          </span>
-                        </Button>
-                        <SourcePin source={source} pin={pin} pins={pins} />
-                      </div>
-                    );
-                  })}
-            </div>
-          ))}
-        </Fold>
-      )}
-      {!!recent.length && (
-        <Fold name="$recent" label="Recent" closed>
-          {recent.map(({ source, session }) => (
-            <div key={`${source.id}:${session.id}`}>
-              <Shortcut source={source} session={session} />
-              {hosts.sources.length > 1 && (
-                <span class="recent-source caption">
-                  {source.name} · {folderName(folderOf(session))}
-                </span>
-              )}
-            </div>
-          ))}
-        </Fold>
-      )}
-    </>
+    <Fold name="$pinned" label="Pinned">
+      {pinned.map(({ source, pins }) => (
+        <div key={source.id}>
+          {hosts.sources.length > 1 && (
+            <p class="source-label caption">{source.name}</p>
+          )}
+          {source.id === hosts.active
+            ? activePins
+            : pins.map((pin) => {
+                const session = source.state.listed.find(
+                  (item) => item.id === pin.id,
+                );
+                if (pin.kind === "session")
+                  return session ? (
+                    <Shortcut
+                      key={pin.id}
+                      source={source}
+                      session={session}
+                      pins={pins}
+                    />
+                  ) : null;
+                const terminal = source.state.catalogue.terminals?.find(
+                  (item) => item.id === pin.id,
+                );
+                return (
+                  <div key={pin.id} class="session-row entry">
+                    <Button
+                      variant="quiet"
+                      class="session source-shortcut"
+                      onClick={() =>
+                        hosts.open(
+                          source.id,
+                          "",
+                          terminal?.folder || pin.id,
+                          terminal ? { terminal: terminal.id } : undefined,
+                        )
+                      }
+                    >
+                      <span class="truncate">
+                        {terminal?.title || folderName(pin.id)}
+                      </span>
+                    </Button>
+                    <SourcePin source={source} pin={pin} pins={pins} />
+                  </div>
+                );
+              })}
+        </div>
+      ))}
+    </Fold>
   );
 }
 export function OtherPlaces({ source }: { source: Source }) {

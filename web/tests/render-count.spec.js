@@ -4,6 +4,8 @@ import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
 // re-render of the shell or of every row per streamed frame fails here.
 const EPOCH = "render-epoch";
 const ID = "a".repeat(32);
+// Changed within the last day, so Recent lists every row open.
+const NOW = Date.now();
 const session = (id, index) => ({
   id,
   generation: `g-${id}`,
@@ -11,7 +13,7 @@ const session = (id, index) => ({
   cwd: `/project-${index % 4}`,
   status: "idle",
   presence: "active",
-  updated: 1_700_000_000_000 - index * 60_000,
+  updated: NOW - index * 60_000,
 });
 // A working agent, whose rows the stream must leave alone.
 const PARENT = { ...session("c".repeat(32), 90), cwd: "/project-1" };

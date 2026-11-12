@@ -2,6 +2,8 @@
 // folders. A place is a header over its rows, which fold and are remembered.
 import { test, expect, online, savedConversation } from "./fixtures.js";
 
+test.use({ places: true });
+
 test("a workspace is listed apart from folders, renamed and deleted", async ({
   page,
   host,

@@ -187,55 +187,58 @@ test("the Library picks across kinds and deletes them, files and all", async ({
   await access(resolve(host.project, "docs"));
 });
 
-test("a folder's check picks its conversations, half-ticked when only some are", async ({
-  page,
-  host,
-  request,
-}) => {
-  await three(host, request);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/");
-  await page.getByRole("button", { name: "New", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Workspace…" }).click();
-  await page.getByLabel("Name").fill("Trip");
-  await page.getByRole("button", { name: "Open workspace" }).click();
-  const folder = page.getByRole("group", { name: "Folders" });
-  const rows = folder.locator(".session-row");
-  await expect(row(page, "Charlie talk")).toBeVisible();
-  const total = await rows.count();
-  expect(total).toBeGreaterThanOrEqual(3);
-  await row(page, "Alpha talk").hover();
-  await row(page, "Alpha talk")
-    .getByRole("button", { name: "Conversation menu" })
-    .click();
-  await page.getByRole("menuitem", { name: "Select" }).click();
-  const bar = page.getByRole("toolbar", { name: "Selection" });
-  const check = folder.getByRole("checkbox", {
-    name: /^Select the conversations of /,
+test.describe("in Places", () => {
+  test.use({ places: true });
+  test("a folder's check picks its conversations, half-ticked when only some are", async ({
+    page,
+    host,
+    request,
+  }) => {
+    await three(host, request);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Workspace…" }).click();
+    await page.getByLabel("Name").fill("Trip");
+    await page.getByRole("button", { name: "Open workspace" }).click();
+    const folder = page.getByRole("group", { name: "Folders" });
+    const rows = folder.locator(".session-row");
+    await expect(row(page, "Charlie talk")).toBeVisible();
+    const total = await rows.count();
+    expect(total).toBeGreaterThanOrEqual(3);
+    await row(page, "Alpha talk").hover();
+    await row(page, "Alpha talk")
+      .getByRole("button", { name: "Conversation menu" })
+      .click();
+    await page.getByRole("menuitem", { name: "Select" }).click();
+    const bar = page.getByRole("toolbar", { name: "Selection" });
+    const check = folder.getByRole("checkbox", {
+      name: /^Select the conversations of /,
+    });
+    await expect(check).toBeChecked({ indeterminate: true });
+    await check.click();
+    await expect(bar.getByText(`${total} selected`)).toBeVisible();
+    await expect(rows.getByRole("checkbox", { checked: true })).toHaveCount(
+      total,
+    );
+    await row(page, "Bravo talk").getByRole("checkbox").uncheck();
+    await expect(check).toBeChecked({ indeterminate: true });
+    await check.click();
+    await expect(check).toBeChecked();
+    await expect(bar.getByText(`${total} selected`)).toBeVisible();
+    await check.click();
+    await expect(bar.getByText("0 selected")).toBeVisible();
+
+    // Folded, its rows are not shown, yet the check still picks them.
+    await folder.getByRole("button", { name: /^Conversations of / }).click();
+    await check.click();
+    await expect(bar.getByText(`${total} selected`)).toBeVisible();
+
+    // A workspace is a thing of its own: its check picks the workspace.
+    await page
+      .getByRole("group", { name: "Workspaces" })
+      .getByRole("checkbox", { name: "Select the workspace Trip" })
+      .click();
+    await expect(bar.getByText(`${total + 1} selected`)).toBeVisible();
   });
-  await expect(check).toBeChecked({ indeterminate: true });
-  await check.click();
-  await expect(bar.getByText(`${total} selected`)).toBeVisible();
-  await expect(rows.getByRole("checkbox", { checked: true })).toHaveCount(
-    total,
-  );
-  await row(page, "Bravo talk").getByRole("checkbox").uncheck();
-  await expect(check).toBeChecked({ indeterminate: true });
-  await check.click();
-  await expect(check).toBeChecked();
-  await expect(bar.getByText(`${total} selected`)).toBeVisible();
-  await check.click();
-  await expect(bar.getByText("0 selected")).toBeVisible();
-
-  // Folded, its rows are not shown, yet the check still picks them.
-  await folder.getByRole("button", { name: /^Conversations of / }).click();
-  await check.click();
-  await expect(bar.getByText(`${total} selected`)).toBeVisible();
-
-  // A workspace is a thing of its own: its check picks the workspace.
-  await page
-    .getByRole("group", { name: "Workspaces" })
-    .getByRole("checkbox", { name: "Select the workspace Trip" })
-    .click();
-  await expect(bar.getByText(`${total + 1} selected`)).toBeVisible();
 });

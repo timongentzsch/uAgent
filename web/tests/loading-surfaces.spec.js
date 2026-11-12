@@ -703,9 +703,10 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   const row = page
     .locator(".session-row")
     .filter({ has: page.locator(".session[aria-current]") });
-  await expect(row.locator("time")).toBeHidden();
+  // Pointed at, the row's menu takes its place's name.
+  await expect(row.locator(".session-tag")).toBeVisible();
   await row.hover();
-  await expect(row.locator("time")).toBeVisible();
+  await expect(row.locator(".session-tag")).toBeHidden();
   const menu = row.getByRole("button", {
     name: "Conversation menu",
     exact: true,

@@ -8,6 +8,8 @@ import {
   openMore,
 } from "./fixtures.js";
 
+test.use({ places: true });
+
 const lists = (page) => {
   const nav = page.getByRole("navigation", { name: "Conversations" });
   return {

@@ -23,6 +23,7 @@ test("late snapshots and retired streams cannot replace current session state", 
     status: "idle",
     presence: "active",
     incoming: 0,
+    updated: Date.now(),
   }));
   const snapshot = (metadata, context = 1000, cursor = 10) => ({
     v: 2,

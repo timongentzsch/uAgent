@@ -25,6 +25,9 @@ export const devicePrefs = {
   ),
   // By conversation and node id; choosing a level forgets them.
   toggles: stored<Record<string, boolean>>(storageKeys.toggles, {}),
+  list: stored<"recent" | "places">(storageKeys.list, "recent", (value) =>
+    value === "places" ? value : "recent",
+  ),
 };
 
 export function applyDevicePrefs() {

@@ -407,6 +407,8 @@ export const test = base.extend({
   noModel: [false, { option: true }],
   // A host in Auto approval whose decision model is wary of sending data.
   autoReview: [false, { option: true }],
+  // A device that chose Places for the list, for tests about places.
+  places: [false, { option: true }],
   page: failOnPageErrors,
   host: async ({ noModel, autoReview }, use, testInfo) => {
     const path = testInfo.outputPath("host.json");
@@ -471,7 +473,7 @@ export const test = base.extend({
     }
   },
   baseURL: async ({ host }, use) => use(host.origin),
-  storageState: async ({ host, paired }, use) => {
+  storageState: async ({ host, paired, places }, use) => {
     if (!paired) return use(undefined);
     const response = await fetch(`${host.origin}/api/auth`, {
       method: "POST",
@@ -496,7 +498,14 @@ export const test = base.extend({
           sameSite: "Strict",
         },
       ],
-      origins: [],
+      origins: places
+        ? [
+            {
+              origin: host.origin,
+              localStorage: [{ name: "uagent-list", value: "places" }],
+            },
+          ]
+        : [],
     });
   },
   command: async ({ host, request }, use) => {

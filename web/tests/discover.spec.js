@@ -85,47 +85,50 @@ test("? lists the shortcuts, and Alt+arrows step through conversations", async (
     .toBe(`#session=${session.id}`);
 });
 
-test("an empty workspace says what to do, and a folder's overview is one step away", async ({
-  page,
-  host,
-}) => {
-  await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "What are we working on?" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("navigation", { name: "Conversations" }),
-  ).toContainText("No conversations yet");
-  const tips = page.locator(".empty .tips dd");
-  await expect(tips).toHaveCount(3);
-  await expect(tips.first()).toContainText("opens its overview");
-  await expect(tips.nth(1)).toContainText("Searches every conversation");
+test.describe("in Places", () => {
+  test.use({ places: true });
+  test("an empty workspace says what to do, and a folder's overview is one step away", async ({
+    page,
+    host,
+  }) => {
+    await page.goto("/");
+    await expect(
+      page.getByRole("heading", { name: "What are we working on?" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("navigation", { name: "Conversations" }),
+    ).toContainText("No conversations yet");
+    const tips = page.locator(".empty .tips dd");
+    await expect(tips).toHaveCount(3);
+    await expect(tips.first()).toContainText("opens its overview");
+    await expect(tips.nth(1)).toContainText("Searches every conversation");
 
-  await page
-    .locator(".empty")
-    .getByRole("button", { name: "New folder…" })
-    .click();
-  const folder = page.getByLabel("Folder on the host");
-  await folder.fill(host.project);
-  await folder.press("Enter");
-  await expect(page.locator(".transcript .tips")).toContainText(
-    "Lists the commands",
-  );
+    await page
+      .locator(".empty")
+      .getByRole("button", { name: "New folder…" })
+      .click();
+    const folder = page.getByLabel("Folder on the host");
+    await folder.fill(host.project);
+    await folder.press("Enter");
+    await expect(page.locator(".transcript .tips")).toContainText(
+      "Lists the commands",
+    );
 
-  await page.getByTitle(/^Overview of /).click();
-  const overview = page.getByRole("region", { name: /^Overview of / });
-  await expect(overview.getByRole("term")).toHaveText([
-    "Working",
-    "Needs you",
-    "Today",
-    "Changed today",
-    "Conversations",
-  ]);
-  await expect(overview.locator(".overview-card")).toHaveCount(1);
-  await overview.locator(".overview-card").click();
-  await expect(page.locator(".transcript .tips")).toContainText(
-    "Lists the commands",
-  );
+    await page.getByTitle(/^Overview of /).click();
+    const overview = page.getByRole("region", { name: /^Overview of / });
+    await expect(overview.getByRole("term")).toHaveText([
+      "Working",
+      "Needs you",
+      "Today",
+      "Changed today",
+      "Conversations",
+    ]);
+    await expect(overview.locator(".overview-card")).toHaveCount(1);
+    await overview.locator(".overview-card").click();
+    await expect(page.locator(".transcript .tips")).toContainText(
+      "Lists the commands",
+    );
+  });
 });
 
 test("the tips of an empty conversation go with its first message", async ({

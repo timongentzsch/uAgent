@@ -7,7 +7,8 @@ import {
   selectProbeModel,
 } from "./fixtures.js";
 // Mocked host APIs must stay intercepted across reload and worker updates.
-test.use({ serviceWorkers: "block" });
+// Each host's places are a fold of their own.
+test.use({ serviceWorkers: "block", places: true });
 const remote = "b".repeat(32);
 async function offlineHost(
   page,
@@ -66,52 +67,51 @@ async function offlineHost(
   });
   return { actions, reads: () => reads };
 }
-test("restored hosts stay disconnected; Recent explicitly opens the owning host", async ({
-  page,
-  host,
-  request,
-}) => {
-  const local = await savedConversation(host, request, "Local conversation");
-  const observed = await offlineHost(page);
-  await page.goto(`/#host=${remote}`);
-  await expect(
-    page
-      .locator(".host-list")
-      .getByRole("button", { name: /GPU.*Disconnected/ }),
-  ).toBeVisible();
-  await expect.poll(observed.reads).toBeGreaterThanOrEqual(2);
-  expect(observed.actions).toEqual([]);
-  const recent = page.getByRole("group", { name: "Recent", exact: true });
-  await expect(
-    recent.getByRole("button", { name: "Recent", exact: true }),
-  ).toHaveAttribute("aria-expanded", "false");
-  await recent.getByRole("button", { name: "Recent", exact: true }).click();
-  await expect(
-    recent.getByRole("button", { name: "GPU conversation", exact: true }),
-  ).toBeVisible();
-  expect(observed.actions).toEqual([]);
-  await recent
-    .getByRole("button", { name: "Local conversation", exact: true })
-    .click();
-  await expect(page).toHaveURL(new RegExp(`#session=${local.id}$`));
-  await expect(
-    page.getByRole("heading", { name: "Local conversation", level: 1 }),
-  ).toBeVisible();
-  await recent
-    .getByRole("button", { name: "GPU conversation", exact: true })
-    .click();
-  await expect.poll(() => observed.actions.length).toBe(1);
-  expect(observed.actions[0]).toEqual({ action: "connect", id: remote });
-  await expect(page).toHaveURL(
-    new RegExp(`host=${remote}.*session=${"a".repeat(32)}`),
-  );
-  await page.reload();
-  await expect(
-    page
-      .locator(".host-list")
-      .getByRole("button", { name: /GPU.*Disconnected/ }),
-  ).toBeVisible();
-  expect(observed.actions).toHaveLength(1);
+test.describe("in Recent", () => {
+  test.use({ places: false });
+  test("restored hosts stay disconnected; Recent names and opens the owning host", async ({
+    page,
+    host,
+    request,
+  }) => {
+    const local = await savedConversation(host, request, "Local conversation");
+    const observed = await offlineHost(page);
+    await page.goto(`/#host=${remote}`);
+    await expect(
+      page
+        .locator(".host-list")
+        .getByRole("button", { name: /GPU.*Disconnected/ }),
+    ).toBeVisible();
+    await expect.poll(observed.reads).toBeGreaterThanOrEqual(2);
+    expect(observed.actions).toEqual([]);
+    const today = page.getByRole("group", { name: "Today", exact: true });
+    const row = (title) => today.locator(".session-row", { hasText: title });
+    await expect(row("GPU conversation").locator(".session-tag")).toHaveText(
+      "GPU · project",
+    );
+    await expect(row("Local conversation").locator(".session-tag")).toHaveText(
+      `Local · ${host.project.split("/").at(-1)}`,
+    );
+    expect(observed.actions).toEqual([]);
+    await row("Local conversation").locator(".list-row").click();
+    await expect(page).toHaveURL(new RegExp(`#session=${local.id}$`));
+    await expect(
+      page.getByRole("heading", { name: "Local conversation", level: 1 }),
+    ).toBeVisible();
+    await row("GPU conversation").locator(".list-row").click();
+    await expect.poll(() => observed.actions.length).toBe(1);
+    expect(observed.actions[0]).toEqual({ action: "connect", id: remote });
+    await expect(page).toHaveURL(
+      new RegExp(`host=${remote}.*session=${"a".repeat(32)}`),
+    );
+    await page.reload();
+    await expect(
+      page
+        .locator(".host-list")
+        .getByRole("button", { name: /GPU.*Disconnected/ }),
+    ).toBeVisible();
+    expect(observed.actions).toHaveLength(1);
+  });
 });
 test.describe("phone host controls", () => {
   test.use({

@@ -461,6 +461,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
       online,
       pins,
       hosts.active,
+      hosts.sources.length < 2,
+      selected,
     );
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);

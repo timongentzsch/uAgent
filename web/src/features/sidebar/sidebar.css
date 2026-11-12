@@ -73,25 +73,6 @@
     right: var(--inset-x);
   }
 }
-.place-head > .action-menu {
-  opacity: 0;
-}
-.place-head:has(:focus-visible, [aria-haspopup][aria-expanded="true"])
-  > .action-menu {
-  opacity: 1;
-}
-.place-head:has(:focus-visible, [aria-haspopup][aria-expanded="true"])
-  .place-count {
-  display: none;
-}
-@media (hover: hover) and (pointer: fine) {
-  .place-head:hover > .action-menu {
-    opacity: 1;
-  }
-  .place-head:hover .place-count {
-    display: none;
-  }
-}
 .place-head .attention {
   color: var(--accent);
 }
@@ -108,6 +89,7 @@
   display: none;
 }
 .session-row {
+  position: relative;
   display: flex;
   align-items: center;
   min-width: 0;
@@ -127,34 +109,63 @@
   flex: 1;
   font-size: var(--font-small);
 }
-.session-time {
-  display: none;
-  flex: none;
+.sidebar .session .row-text {
+  flex: 0 1 auto;
+}
+.session[data-unread] .row-label {
+  font-weight: var(--weight-strong);
+}
+.session-time,
+.session-tag {
+  margin-left: auto;
   color: var(--muted);
+}
+.session-time {
+  flex: none;
   white-space: nowrap;
 }
-.session-row:focus-within .session-time {
-  display: inline;
+/* The place's name gives way before the title does. */
+.session-tag {
+  flex: 0 1000 auto;
+  min-width: 0;
 }
-.session-row .action-menu {
+/* At rest a row's menu waits over its end, unseen; pointed at or focused,
+   it takes the place of the time or the place's name. */
+.session-row > .action-menu {
+  position: absolute;
+  right: 0;
+}
+.session-row > .action-menu,
+.place-head > .action-menu {
   opacity: 0;
 }
-.session-row:focus-within .action-menu {
+:is(.session-row, .place-head):has(
+    :focus-visible,
+    [aria-haspopup][aria-expanded="true"]
+  )
+  > .action-menu {
+  position: static;
   opacity: 1;
 }
+:is(.session-row, .place-head):has(
+    :focus-visible,
+    [aria-haspopup][aria-expanded="true"]
+  )
+  :is(.session-time, .session-tag, .place-count) {
+  display: none;
+}
 @media (hover: hover) and (pointer: fine) {
-  .session-row:hover .session-time {
-    display: inline;
-  }
-  .session-row:hover .action-menu {
+  :is(.session-row, .place-head):hover > .action-menu {
+    position: static;
     opacity: 1;
+  }
+  :is(.session-row, .place-head):hover
+    :is(.session-time, .session-tag, .place-count) {
+    display: none;
   }
 }
 /* Touch has no hover: the menus show, so Select is discoverable. */
 @media (pointer: coarse) {
-  .session-row {
-    position: relative;
-  }
   .session-row,
   .place-head {
     -webkit-touch-callout: none;
@@ -165,8 +176,9 @@
   .place-head[data-held] {
     background: var(--hover);
   }
-  .session-row .action-menu,
+  .session-row > .action-menu,
   .place-head > .action-menu {
+    position: static;
     opacity: 1;
   }
   .place-head:not(:has([aria-current], :focus-visible))
@@ -177,7 +189,8 @@
     pointer-events: none;
   }
 }
-.session .row-icon {
+/* One column for a row's state or a terminal's icon: the titles line up. */
+.session :is(.row-icon, .session-state) {
   width: var(--icon-s);
   height: var(--icon-s);
   margin-right: var(--space-2);
@@ -185,10 +198,8 @@
 }
 .session-state {
   display: inline-flex;
-  flex: none;
   align-items: center;
-  width: 1em;
-  height: 1em;
+  justify-content: center;
 }
 .session-state svg {
   width: 100%;
@@ -263,10 +274,6 @@
   width: 100%;
   justify-content: flex-start;
   text-align: left;
-}
-.recent-source {
-  display: block;
-  margin: calc(-1 * var(--stripe)) var(--space-3) var(--space-2);
 }
 .host-list {
   flex: none;

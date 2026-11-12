@@ -26,7 +26,7 @@ async function waitingElsewhere(host, command, request) {
   return session;
 }
 
-test("a decision in another folder waits under Needs you, listed once", async ({
+test("a decision in another folder waits under Needs you, listed once in either view", async ({
   page,
   host,
   session,
@@ -39,12 +39,15 @@ test("a decision in another folder waits under Needs you, listed once", async ({
   const nav = page.getByRole("navigation", { name: "Conversations" });
   const needs = nav.getByRole("group", { name: "Needs you" });
   await expect(page).toHaveTitle("(1) µAgent");
-  await expect(needs.locator(".session")).toHaveCount(1);
-  await expect(
-    needs.getByRole("img", { name: "Needs your input" }),
-  ).toBeVisible();
-  await expect(nav.locator(".session")).toHaveCount(2);
-  // Its folder holds nothing else, so it has no place in the list.
+  for (const view of ["Recent", "Places"]) {
+    await page.getByRole("button", { name: view, exact: true }).click();
+    await expect(needs.locator(".session")).toHaveCount(1);
+    await expect(
+      needs.getByRole("img", { name: "Needs your input" }),
+    ).toBeVisible();
+    await expect(nav.locator(".session")).toHaveCount(2);
+  }
+  // Its folder holds nothing else, so Places has no place for it.
   await expect(
     nav.getByRole("button", { name: /^Conversations of .*elsewhere$/ }),
   ).toHaveCount(0);

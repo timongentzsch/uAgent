@@ -20,6 +20,9 @@ function remembered(name: string) {
 
 export const collapsed = remembered("collapsed");
 export const opened = remembered("opened");
+// A fold given `closed` is folded until opened.
+export const folded = (name: string, closed = false) =>
+  closed ? !opened.has(name) : collapsed.has(name);
 export const placeKey = (host: string, path: string) =>
   host ? `${host}:${path}` : path;
 

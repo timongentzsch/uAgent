@@ -39,9 +39,8 @@ test.describe("message layout", () => {
     });
     await request.get("/api/sessions?refresh=1");
     await page.goto("/");
-    await page
-      .getByRole("button", { name: "Message layout", exact: true })
-      .click();
+    // Its row names its place too.
+    await page.getByRole("button", { name: /^Message layout / }).click();
     const message = page.locator(".message.user");
     await expect(message).toBeVisible();
     const meta = message.locator(".message-meta");

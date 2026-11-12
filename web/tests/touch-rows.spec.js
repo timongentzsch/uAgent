@@ -93,30 +93,33 @@ test("a short tap opens the conversation and no menu", async ({
   await expect(page.getByRole("menu")).toHaveCount(0);
 });
 
-test("a place's header opens its own menu, and shows no system menu", async ({
-  page,
-  host,
-  session,
-}) => {
-  const { drawer, touch } = await twoRows(page, host, session);
-  const head = drawer.locator(".place-head").first();
-  const name = head.locator("h2 button");
-  const box = await name.boundingBox();
-  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  const prevented = await name.evaluate((node) => {
-    const event = new MouseEvent("contextmenu", {
-      bubbles: true,
-      cancelable: true,
+test.describe("in Places", () => {
+  test.use({ places: true });
+  test("a place's header opens its own menu, and shows no system menu", async ({
+    page,
+    host,
+    session,
+  }) => {
+    const { drawer, touch } = await twoRows(page, host, session);
+    const head = drawer.locator(".place-head").first();
+    const name = head.locator("h2 button");
+    const box = await name.boundingBox();
+    const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const prevented = await name.evaluate((node) => {
+      const event = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+      });
+      node.dispatchEvent(event);
+      return event.defaultPrevented;
     });
-    node.dispatchEvent(event);
-    return event.defaultPrevented;
+    expect(prevented).toBe(true);
+    await touch("touchStart", at);
+    await page.clock.runFor(LONG_PRESS_MS + 50);
+    await touch("touchEnd");
+    await expect(
+      page.getByRole("menu", { name: /^Folder menu for/ }),
+    ).toBeVisible();
+    await expect(name).not.toHaveAttribute("aria-current", "page");
   });
-  expect(prevented).toBe(true);
-  await touch("touchStart", at);
-  await page.clock.runFor(LONG_PRESS_MS + 50);
-  await touch("touchEnd");
-  await expect(
-    page.getByRole("menu", { name: /^Folder menu for/ }),
-  ).toBeVisible();
-  await expect(name).not.toHaveAttribute("aria-current", "page");
 });

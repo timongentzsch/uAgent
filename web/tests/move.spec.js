@@ -9,6 +9,8 @@ import {
   withoutServiceWorker,
 } from "./fixtures.js";
 
+test.use({ places: true });
+
 test.beforeEach(({ command, session }) => selectProbeModel(command, session));
 
 const idOf = (page) =>

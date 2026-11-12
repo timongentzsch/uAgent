@@ -22,6 +22,8 @@ export const storageKeys = {
   panes: "uagent-panes",
   detail: "uagent-detail",
   toggles: "uagent-toggles",
+  // The sidebar's view: Recent or Places.
+  list: "uagent-list",
   scheduledDraft: "uagent-scheduled-draft",
   overview: "uagent-overview-layout",
   // The folder Files last showed, by the conversation's folder.

@@ -2,6 +2,8 @@
 // "Add to chat" puts a terminal's text into the composer and sends nothing.
 import { test, expect, headerAction } from "./fixtures.js";
 
+test.use({ places: true });
+
 test("terminal tabs run commands and add their text to the chat", async ({
   page,
   session,

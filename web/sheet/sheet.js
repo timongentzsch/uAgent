@@ -490,12 +490,11 @@ async function open() {
       return true;
     },
     run: (command, value) => sheet.did(commands[command]?.(value)),
-    // The shown tab's table as it would be with `text` in the active cell.
-    draft: (text) => ({
-      tab: at,
-      tabs: tables.length,
-      table: book.draft(at, pick().anchor, text),
-    }),
+    // The shown tab's table as text typed in the active cell would make it.
+    draft() {
+      const cut = book.draft(at, pick().anchor);
+      return cut && { tab: at, tabs: tables.length, ...cut };
+    },
     write: (text) => sheet.did(book.paste(at, pick().anchor, [[text]])),
 
     filter(column, words) {
@@ -590,6 +589,10 @@ async function open() {
         ? book.setRule(at, column, place, text, rule)
         : "Not changed: another column is selected than the rule was set for.";
     },
+    // What is being typed in the cell, from the app's bar too: written, or
+    // given up.
+    commit: () => void commit(),
+    cancel: () => void rest(),
     // A look for the selection's cells in view; a word (Bold) is its own
     // value.
     ...Object.fromEntries(
@@ -726,13 +729,13 @@ async function open() {
       show(at, true);
     });
   }).observe(root, { attributes: true, attributeFilter: ["style"] });
-  const { rest, hold, place } = listen(sheet);
+  const { rest, hold, place, type, commit } = listen(sheet);
   sheet.hold = hold;
   const charts = listenCharts(sheet);
   addEventListener("message", ({ source, data }) => {
     if (source !== parent || data?.uagentDesign !== 1) return;
     if (data.type === "do") sheet.run(data.command, data.value);
-    if (data.type === "input") sheet.write(String(data.value));
+    if (data.type === "input") type(String(data.value));
     // What the app's formula bar may take after `text`.
     if (data.type === "suggest") {
       const text = String(data.text);

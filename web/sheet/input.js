@@ -4,7 +4,7 @@
 import { headOf } from "./book.js";
 import { openMenu } from "./menu.js";
 import { suggest } from "./suggest.js";
-import { edgeFrom, fromTsv, LAST, toTsv } from "./text.js";
+import { edgeFrom, escaped, fromTsv, LAST, toTsv } from "./text.js";
 
 const ARROWS = {
   ArrowUp: { row: -1, column: 0 },
@@ -52,18 +52,28 @@ export function listen(sheet) {
     });
   };
 
-  // What is being typed is said as it is typed, with the table it would
-  // make: the app keeps that if the page is left before the cell is. It is
-  // said to be over where no edit follows.
+  // What is being typed is said as it is typed, as the file would hold it;
+  // first with the table it would make, cut around it, which the app keeps
+  // if the page is left before the cell is. It is said to be over where no
+  // edit follows, and where it is the cell's text again.
   let drafted = false;
   const draft = () => {
-    drafted = true;
     const text = editor.value;
-    sheet.say({ type: "typing", text, ...sheet.draft(text) });
+    if (text === cell().text) return undraft();
+    sheet.say({
+      type: "typing",
+      text,
+      written: escaped(text),
+      ...(drafted ? {} : sheet.draft()),
+    });
+    drafted = true;
   };
-  const rest = () => {
+  const undraft = () => {
     if (drafted) sheet.say({ type: "typing" });
     drafted = false;
+  };
+  const rest = () => {
+    undraft();
     editing = false;
     const gone = list;
     list = undefined;
@@ -130,6 +140,17 @@ export function listen(sheet) {
     if (editing) draft();
     hints.show();
   });
+  // What is typed in the app's bar is typed in the cell: shown in it, said
+  // back as its draft, and written when the bar is left or the page is.
+  const type = (text) => {
+    if (sheet.locked) return;
+    editing = true;
+    sheet.see();
+    editor.dataset.editing = "";
+    editor.value = text;
+    draft();
+    hints.show();
+  };
   editor.addEventListener("blur", () => editing && commit());
 
   const stepped = (from, by) => ({
@@ -431,5 +452,7 @@ export function listen(sheet) {
       place(list ?? editor);
       hints.place();
     },
+    type,
+    commit: () => editing && commit(),
   };
 }

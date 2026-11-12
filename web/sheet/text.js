@@ -208,7 +208,7 @@ export const inOrder = (a, b, descending) => {
 
 // The form skills/artifact/references/sheet.md teaches. A rule's "<" stays
 // as written: an attribute's value may hold it.
-const escaped = (text) =>
+export const escaped = (text) =>
   text.replace(
     /[&<>]/g,
     (sign) => `&${{ "&": "amp", "<": "lt", ">": "gt" }[sign]};`,

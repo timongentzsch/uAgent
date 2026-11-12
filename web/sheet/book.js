@@ -785,19 +785,66 @@ export function openBook(engine, written, locked) {
       );
     },
 
-    // The tab's table as it would be with `text` in a cell, where that can
-    // be kept: no step is made of it.
-    draft(sheet, at, text) {
-      const far = text ? at : { row: 0, column: 0 };
-      if (locked || tooFar(sheet, far)) return undefined;
-      const tab = reaching(tabs[sheet], far.row, far.column);
-      const row = tab.rows[at.row - 1];
-      const cell = row?.cells[at.column - 1];
-      if (!cell) return tableText(tab);
-      const cells = row.cells.with(at.column - 1, withText(cell, text));
-      return tableText(
-        trimmed({ ...tab, rows: tab.rows.with(at.row - 1, { ...row, cells }) }),
+    // The looks set on the box's cells, but those in `skip`, taken off; a
+    // column selected whole gives up its own pattern and wrap too.
+    unstyle(sheet, box, skip) {
+      const looks = Object.values(WORDS).flat();
+      const plainly = (attrs, words, names) => {
+        const next = { ...attrs };
+        for (const name of names) delete next[name];
+        const left = (attrs.class ?? "")
+          .split(/\s+/)
+          .filter((word) => word && !words.includes(word));
+        if (left.length) next.class = left.join(" ");
+        else delete next.class;
+        return JSON.stringify(next) === JSON.stringify(attrs) ? attrs : next;
+      };
+      const whole = box.top <= 1 && box.bottom >= tabs[sheet].rows.length;
+      const within = (column) => column >= box.left && column <= box.right;
+      return commit(
+        mapCells(
+          edit(sheet, (tab) => ({
+            ...tab,
+            columns: tab.columns.map((column, c) =>
+              whole && within(c + 1)
+                ? plainly(column, ["wrap"], ["data-format"])
+                : column,
+            ),
+          })),
+          (cell, at, row, column) => {
+            const inside = row >= box.top && row <= box.bottom;
+            if (at !== sheet || !inside || !within(column) || skip.has(row))
+              return cell;
+            const attrs = plainly(cell.attrs, looks, [
+              "data-fill",
+              "data-ink",
+              "data-format",
+            ]);
+            return attrs === cell.attrs ? cell : { ...cell, attrs };
+          },
+        ),
       );
+    },
+
+    // The tab's table as it would be with text in a cell, cut around that
+    // text, and whole with the cell emptied where that ends the table
+    // sooner; nothing where the text cannot be kept. No step is made.
+    draft(sheet, at) {
+      if (locked || tooFar(sheet, at)) return undefined;
+      const made = (text) => {
+        const far = text ? at : { row: 0, column: 0 };
+        const tab = reaching(tabs[sheet], far.row, far.column);
+        const row = tab.rows[at.row - 1];
+        const cell = row?.cells[at.column - 1];
+        if (!cell) return tableText(tab);
+        const cells = row.cells.with(at.column - 1, withText(cell, text));
+        const rows = tab.rows.with(at.row - 1, { ...row, cells });
+        return tableText(trimmed({ ...tab, rows }));
+      };
+      // No text read from a file holds this character.
+      const [head, tail] = made("\0").split("\0");
+      const empty = made("");
+      return { head, tail, ...(empty !== head + tail && { empty }) };
     },
 
     // Text set down from a cell on. From this book's own cells (`from`)

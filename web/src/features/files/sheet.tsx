@@ -174,35 +174,43 @@ function Looks({ cell, act }: { cell?: Cell; act: Act }) {
   );
 }
 
-// Enter writes into the cell; Escape puts back what the cell holds. Under
-// it what a formula may take at the caret: functions to choose from (the
-// arrows walk them, Enter and Tab take one, Escape shuts the list), or the
-// arguments of the call it stands in. Beside it the cell's looks, which a
-// narrow pane folds into one sheet.
+// What is typed here is typed in the cell: Enter, or leaving the field,
+// writes it; Escape puts back what the cell holds. Under it what a formula
+// may take at the caret: functions to choose from (the arrows walk them,
+// Enter and Tab take one, Escape shuts the list), or the arguments of the
+// call it stands in. Beside it the cell's looks, which a narrow pane folds
+// into one sheet.
 export function FormulaBar({
   cell,
   typing,
   locked,
-  write,
+  type,
   act,
   field,
   offer,
   ask,
 }: {
   cell?: Cell;
-  // What is being typed in the cell itself.
+  // What is being typed in the cell, as its page says it.
   typing?: string;
   locked: boolean;
-  write: (value: string) => void;
+  // What is typed here is typed in the cell.
+  type: (value: string) => void;
   act: Act;
   field: RefObject<HTMLInputElement | null>;
   // What the page offers the text it was last asked about.
   offer?: Offer;
   ask: (text: string) => void;
 }) {
+  // What is typed here, shown at once; the page says it back as the
+  // cell's. It is written when the field is left, as a cell's is.
   const [typed, setTyped] = useState<string>();
   // Another cell, or this one holding something else: what was typed goes.
   useEffect(() => setTyped(undefined), [cell?.ref, cell?.raw]);
+  const end = (command: string) => {
+    if ((typed ?? typing) !== undefined) act(command);
+    setTyped(undefined);
+  };
   // The text before the caret while the field has the focus, the option
   // the keys are at, and the text a list was shut for.
   const [before, setBefore] = useState("");
@@ -216,18 +224,24 @@ export function FormulaBar({
         : "";
     if (text === before) return;
     setBefore(text);
+    setShut(undefined);
     setIndex(0);
     if (text) ask(text);
   };
   const current = before && offer?.text === before ? offer : undefined;
   const options = (shut !== before && current?.options) || [];
   const hint = options.length ? undefined : current?.hint;
+  // Typed, or taken from the list: the cell's page hears it.
+  const said = (input: HTMLInputElement) => {
+    setTyped(input.value);
+    type(input.value);
+    look(input);
+  };
   const take = (name: string) => {
     const input = field.current!;
     const caret = input.selectionStart ?? 0;
     input.setRangeText(`${name}(`, caret - current!.typed!, caret, "end");
-    setTyped(input.value);
-    look(input);
+    said(input);
   };
   const keyDown = (event: TargetedKeyboardEvent<HTMLInputElement>) => {
     const { key } = event;
@@ -238,8 +252,8 @@ export function FormulaBar({
     else if (listed && (key === "Enter" || key === "Tab"))
       take(options[index].name);
     else if (listed && key === "Escape") setShut(before);
-    else if (key === "Enter") write(event.currentTarget.value);
-    else if (key === "Escape") setTyped(undefined);
+    else if (key === "Enter") end("commit");
+    else if (key === "Escape") end("cancel");
     else return;
     event.preventDefault();
   };
@@ -258,14 +272,14 @@ export function FormulaBar({
           disabled={!cell}
           readOnly={locked}
           value={typed ?? typing ?? cell?.raw ?? ""}
-          onInput={(event) => {
-            setTyped(event.currentTarget.value);
-            look(event.currentTarget);
-          }}
+          onInput={(event) => said(event.currentTarget)}
           onKeyDown={keyDown}
           onKeyUp={(event) => look(event.currentTarget)}
           onClick={(event) => look(event.currentTarget)}
-          onBlur={(event) => look(event.currentTarget, false)}
+          onBlur={(event) => {
+            look(event.currentTarget, false);
+            end("commit");
+          }}
         />
         {options.length > 0 && (
           <SuggestionList

@@ -120,14 +120,18 @@ export type PageMessage =
   | { type: "file"; as: string; data: Uint8Array | string }
   // Why a sheet did not make a change that was asked for.
   | { type: "refused"; message: string }
-  // What is being typed in a sheet's cell, with the edit it would make
-  // where it can be kept; bare once it is typed no more and no edit follows.
+  // What is being typed in a sheet's cell, and that text as its file would
+  // hold it; once, the table its edit would make, cut around the text.
+  // Bare once it is typed no more and no edit follows.
   | {
       type: "typing";
       text?: string;
+      written?: string;
       tab?: number;
       tabs?: number;
-      table?: string;
+      head?: string;
+      tail?: string;
+      empty?: string;
     }
   | {
       type: "cell";

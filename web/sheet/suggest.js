@@ -89,8 +89,11 @@ export function suggest(sheet, field) {
     Object.assign(document.createElement("b"), { textContent: text });
   const show = () => {
     const caret = field.selectionStart;
+    // Typed in the app's bar, the caret is there and so is the list.
     const text =
-      "editing" in field.dataset && field.selectionEnd === caret
+      document.hasFocus() &&
+      "editing" in field.dataset &&
+      field.selectionEnd === caret
         ? field.value.slice(0, caret)
         : "";
     if (text === seen) return;

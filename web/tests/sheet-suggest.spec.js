@@ -141,7 +141,7 @@ test("the formula bar lists the functions under its field and says a call's argu
   session,
   host,
 }) => {
-  const { files, bar, field, cell, saved } = await openSheet(
+  const { files, stage, bar, field, cell, saved } = await openSheet(
     app,
     session,
     host.project,
@@ -149,9 +149,13 @@ test("the formula bar lists the functions under its field and says a call's argu
   );
   const list = bar.getByRole("listbox", { name: "Functions" });
   const hint = bar.getByRole("note");
+  const editor = stage.getByRole("textbox", { name: "Cell" });
   await cell("Costs", "B5").click();
   await field.click();
   await field.pressSequentially("=ave");
+  // Typed in the cell too, but the list is where the caret is.
+  await expect(editor).toHaveValue("=ave");
+  await expect(stage.getByRole("listbox")).toHaveCount(0);
   await expect(options(list)).toHaveText([
     /^AVEDEV/,
     /^AVERAGE/,
@@ -176,6 +180,8 @@ test("the formula bar lists the functions under its field and says a call's argu
   await field.press("Enter");
   await expect(field).toHaveValue("=AVERAGE(");
   await expect(list).toBeHidden();
+  await expect(editor).toHaveValue("=AVERAGE(");
+  await expect(stage.getByRole("note")).toHaveCount(0);
   await expect(hint).toHaveText("AVERAGE(number1, [number2], …)");
   await expect(hint.locator("strong")).toHaveText("number1");
   // Past the arguments named, those that may follow.
@@ -212,6 +218,23 @@ test("the formula bar lists the functions under its field and says a call's argu
   await field.press("Tab");
   await expect(field).not.toBeFocused();
   await expect(files.getByRole("button", { name: "Bold" })).toBeFocused();
+
+  // A function taken is typed as the letters were: left at once, the sheet
+  // has it in its file.
+  await cell("Costs", "C5").click();
+  await app.evaluate(() =>
+    addEventListener("message", ({ data }) => {
+      if (data?.type === "typing") window.said = data.text;
+    }),
+  );
+  await field.click();
+  await field.pressSequentially("=sum");
+  await expect(picked(list)).toHaveText("SUMNumbers added");
+  await field.press("Enter");
+  await field.pressSequentially("B2:B4)");
+  await expect.poll(() => app.evaluate(() => window.said)).toBe("=SUM(B2:B4)");
+  await files.getByRole("button", { name: /^Back to/ }).click();
+  await expect.poll(saved).toContain("<td>=SUM(B2:B4)");
 });
 
 test("a file that is only read is offered nothing", async ({

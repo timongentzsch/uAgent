@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { headOf, openBook } from "../sheet/book.js";
+import { escaped } from "../sheet/text.js";
 
 const wasm = createRequire(import.meta.url).resolve("@ironcalc/wasm-xlsx");
 const engine = await import(wasm);
@@ -630,24 +631,26 @@ test("a look is set on a box's cells and taken off where all have it; the table 
   assert.deepEqual(attrs(4, 1), { "data-ink": "bad" });
 });
 
-test("the table a cell being typed in would make is the one its edit makes, and no step", () => {
+test("the table a cell being typed in would make, cut around its text, joins to the one its edit makes; no step is made", () => {
   const book = plan();
   for (const [at, text] of [
     [{ row: 4, column: 1 }, "Draft"],
     [{ row: 5, column: 3 }, "=C4*2"],
+    [{ row: 4, column: 2 }, "a < b & c"],
     [{ row: 9, column: 5 }, "far"],
     [{ row: 9, column: 5 }, ""],
+    [{ row: 7, column: 3 }, ""],
     [{ row: 6, column: 2 }, ""],
   ]) {
     const before = book.table(0);
-    const draft = book.draft(0, at, text);
+    const { head, tail, empty = head + tail } = book.draft(0, at);
     assert.equal(book.table(0), before);
     assert.equal(book.canUndo(), false);
     const taken = book.paste(0, at, [[text]]);
-    assert.equal(draft, book.table(0));
+    assert.equal(text ? head + escaped(text) + tail : empty, book.table(0));
     if (taken === true) book.undo();
   }
-  assert.equal(book.draft(0, { row: 900_000, column: 1 }, "x"), undefined);
+  assert.equal(book.draft(0, { row: 900_000, column: 1 }), undefined);
 });
 
 test("a workbook sent out carries the looks written: bold, italic, the colours, where the text stands and wrap", () => {

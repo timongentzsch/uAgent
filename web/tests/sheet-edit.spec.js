@@ -50,7 +50,7 @@ test("what is typed into a cell or the formula bar is saved to the file, and und
   session,
   host,
 }) => {
-  const { files, bar, field, cell, saved } = await openSheet(
+  const { files, stage, bar, field, cell, saved } = await openSheet(
     app,
     session,
     host.project,
@@ -72,20 +72,61 @@ test("what is typed into a cell or the formula bar is saved to the file, and und
 
   // The formula bar shows what is being typed in the cell, and what the
   // cell holds once that is given up.
+  await app.evaluate(() => {
+    window.said = [];
+    addEventListener("message", ({ data }) => {
+      if (data?.uagentDesign === 1 && data.type === "typing")
+        window.said.push(Object.keys(data).sort().join(" "));
+    });
+  });
+  const said = () => app.evaluate(() => window.said.splice(0));
   await app.keyboard.type("77");
   await expect(field).toHaveValue("77");
   await app.keyboard.press("Escape");
   await expect(field).toHaveValue("8400.5");
   await expect.poll(saved).toBe(typed);
+  // The page says the table once, cut around the text; a key then says
+  // only its text, and giving up says it is over.
+  const key = "text type uagentDesign written";
+  expect(await said()).toEqual([
+    `head tab tabs tail ${key}`,
+    key,
+    "type uagentDesign",
+  ]);
+  // Text that is the cell's own again is no edit to keep.
+  await app.keyboard.press("F2");
+  await app.keyboard.type("1");
+  await expect(field).toHaveValue("8400.51");
+  await app.keyboard.press("Backspace");
+  await expect(field).toHaveValue("8400.5");
+  expect((await said()).at(-1)).toBe("type uagentDesign");
+  await app.keyboard.press("Escape");
 
-  // The formula bar: Escape puts back what the cell holds, Enter writes.
+  // The formula bar: what is typed there is typed in the cell. Escape puts
+  // back what the cell holds, Enter writes.
+  const editor = stage.locator("input.sheet-editor");
   await field.fill("nothing");
+  await expect(editor).toHaveValue("nothing");
   await field.press("Escape");
   await expect(field).toHaveValue("8400.5");
+  await expect(editor).not.toHaveAttribute("data-editing");
   await field.fill("=D2/2");
   await field.press("Enter");
   await expect(cell("Tasks", "D3")).toHaveText("1,000.00");
   const halved = with_(typed, { "<td>8400.5<td>": "<td>=D2/2<td>" });
+  await expect.poll(saved).toBe(halved);
+  // Left by a press on another cell, the field writes into its own cell;
+  // left for a control, it writes before the control acts.
+  await field.fill("=D2/4");
+  await cell("Tasks", "B4").click();
+  await expect(cell("Tasks", "D3")).toHaveText("500.00");
+  await expect(cell("Tasks", "B4")).toHaveText("In progress");
+  await expect(bar.locator("output")).toHaveText("Tasks!B4");
+  await cell("Tasks", "D3").click();
+  await expect(field).toHaveValue("=D2/4");
+  await field.fill("=D2/2");
+  await field.press("Tab");
+  await expect(cell("Tasks", "D3")).toHaveText("1,000.00");
   await expect.poll(saved).toBe(halved);
 
   // F2 edits what is there; Escape leaves it; Tab writes and moves right.
@@ -110,13 +151,12 @@ test("what is typed into a cell or the formula bar is saved to the file, and und
   await expect(cell("Tasks", "A2")).toHaveText("Write");
   await expect.poll(saved).toBe(halved);
   await cell("Tasks", "A3").click();
-  await app.keyboard.press("Control+z");
-  await app.keyboard.press("Control+z");
+  for (let step = 0; step < 4; step++) await app.keyboard.press("Control+z");
   await expect(cell("Tasks", "D2")).toHaveText("1,200.00");
   await expect.poll(saved).toBe(PLAN);
   await expect(undo).toBeDisabled();
-  await app.keyboard.press("Control+Shift+z");
-  await app.keyboard.press("Control+y");
+  for (const key of ["Shift+z", "y", "Shift+z", "y"])
+    await app.keyboard.press(`Control+${key}`);
   await expect.poll(saved).toBe(halved);
   await redo.click();
   await expect.poll(saved).toBe(named);
@@ -725,11 +765,13 @@ test("the grid runs on past the table: what is typed there joins it, and the fil
 // reaches the app as it is typed, and leaving writes it. Time is stopped,
 // so nothing else can have.
 for (const touch of [false, true])
-  for (const [leaving, name] of [
-    ["Back", /^Back to/],
-    ["Close files", "Close files"],
+  for (const [leaving, name, where] of [
+    ["Back", /^Back to/, "a cell"],
+    ["Close files", "Close files", "a cell"],
+    ["Back", /^Back to/, "the formula bar"],
+    ["Close files", "Close files", "the formula bar"],
   ])
-    test(`what is typed in a cell is in its file when a ${touch ? "tap" : "click"} on ${leaving} leaves the sheet at once`, async ({
+    test(`what is typed in ${where} is in its file when a ${touch ? "tap" : "click"} on ${leaving} leaves the sheet at once`, async ({
       browser,
       storageState,
       session,
@@ -752,8 +794,15 @@ for (const touch of [false, true])
         await app.clock.pauseAt(
           (await app.evaluate(() => Date.now())) + 60_000,
         );
-        await app.keyboard.type("Draft");
-        // The app has it once its formula bar shows it.
+        // The app has it once the page has said it: in the bar, shown.
+        await app.evaluate(() =>
+          addEventListener("message", ({ data }) => {
+            if (data?.type === "typing") window.said = data.text;
+          }),
+        );
+        if (where === "a cell") await app.keyboard.type("Draft");
+        else await field.fill("Draft");
+        await expect.poll(() => app.evaluate(() => window.said)).toBe("Draft");
         await expect(field).toHaveValue("Draft");
         const leave = files.getByRole("button", { name });
         await (touch ? leave.tap() : leave.click());

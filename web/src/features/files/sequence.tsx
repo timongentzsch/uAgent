@@ -53,6 +53,9 @@ import { FormulaBar, SheetBar } from "./sheet.tsx";
 import {
   type Cell,
   cellOf,
+  type Draft,
+  draftOf,
+  editOf,
   fileOf,
   type Offer,
   offerOf,
@@ -176,7 +179,7 @@ export default function Sequence({
   forget: () => void;
   // A sheet's cell being typed in, as the edit it would make: written if
   // the sheet is left before the cell is. None once it is typed no more.
-  typing: (edit?: TableEdit) => void;
+  typing: (edit?: () => TableEdit) => void;
   // An Excel or CSV file's tabs, as a sheet's text, saved beside the file.
   saveAs?: (text: string) => Promise<void>;
   // A deck's slides renamed, copied or deleted as `moves` say, after which
@@ -317,6 +320,8 @@ export default function Sequence({
   // The column whose rules are being set: its dialog is open while the
   // active cell is in it.
   const [ruling, setRuling] = useState("");
+  // The table that cell's edit would make, as its page said it once.
+  const drafted = useRef<Draft>(undefined);
   const [ranged, setRanged] = useState<string>();
   const [told, setTold] = useState(UNTOLD);
   const formula = useRef<HTMLInputElement>(null);
@@ -879,7 +884,7 @@ export default function Sequence({
                 typing={typed}
                 locked={locked}
                 field={formula}
-                write={(value) => tell(frame.current, { type: "input", value })}
+                type={(value) => tell(frame.current, { type: "input", value })}
                 act={act}
                 offer={offer}
                 ask={(text) => tell(frame.current, { type: "suggest", text })}
@@ -1046,16 +1051,19 @@ export default function Sequence({
                       setCell(said);
                       setRuling((was) => (was === columnOf(said) ? was : ""));
                     } else if (message.type === "typing") {
-                      const { text, tab, tabs, table } = message;
+                      const { text, written } = message;
                       setTyped(
                         text === undefined
                           ? undefined
                           : String(text).slice(0, 8192),
                       );
+                      const cut =
+                        text === undefined
+                          ? undefined
+                          : (draftOf(message) ?? drafted.current);
+                      drafted.current = cut;
                       typing(
-                        sheet && typeof table === "string"
-                          ? { tab: Number(tab), tabs: Number(tabs), table }
-                          : undefined,
+                        sheet && cut ? () => editOf(cut, written) : undefined,
                       );
                     } else if (message.type === "suggest")
                       setOffer(offerOf(message));

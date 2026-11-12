@@ -203,6 +203,11 @@ test("a CSV file opens as one tab named after it, its cells as data, read-only, 
   await expect(cell(name, "C3")).toHaveText("00123");
   await expect(stage.locator("tr.sheet-head")).toHaveText("1ItemNetPhone");
   await expect(files.locator(".sheet-note")).toHaveText("Read-only");
+  // The grid runs on past its rows, and takes no typing there either.
+  await cell(name, "E8").click();
+  await app.keyboard.type("7");
+  await app.keyboard.press("Enter");
+  await expect(cell(name, "E8")).toHaveText("");
   // Its first row is its header: the column is filtered from there.
   await cell(name, "A1").getByRole("button").click();
   await expect(stage.getByRole("menuitem")).toHaveCount(0);

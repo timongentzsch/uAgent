@@ -104,6 +104,58 @@ const mapCells = (tabs, change) =>
 const withText = (cell, text) =>
   cell.text === text ? cell : { ...cell, text };
 
+// The grid runs on past a tab's table. Written to there, the table reaches
+// that far: blank cells under and beside it, a header row's headers too.
+const reaching = (tab, rows, columns) => {
+  const wider = Math.max(0, columns - tab.columns.length);
+  if (!wider && rows <= tab.rows.length) return tab;
+  const more = (row) =>
+    wider
+      ? {
+          ...row,
+          cells: [
+            ...row.cells,
+            ...Array.from({ length: wider }, () => blank(isHeader(row))),
+          ],
+        }
+      : row;
+  const width = tab.columns.length + wider;
+  return {
+    ...tab,
+    columns: [...tab.columns, ...Array.from({ length: wider }, () => ({}))],
+    rows: [
+      ...tab.rows.map(more),
+      ...Array.from({ length: rows - tab.rows.length }, () => ({
+        attrs: {},
+        cells: Array.from({ length: width }, () => blank()),
+      })),
+    ],
+  };
+};
+// The file holds what is used: no blank rows or columns after it.
+const bare = (attrs) => !Object.keys(attrs).length;
+const empty = (cell) => !cell.text && bare(cell.attrs);
+const trimmed = (tab) => {
+  const rows =
+    tab.rows.findLastIndex(
+      (row) => !bare(row.attrs) || !row.cells.every(empty),
+    ) + 1;
+  const columns =
+    tab.columns.findLastIndex(
+      (column, c) =>
+        !bare(column) || !tab.rows.every((row) => empty(row.cells[c])),
+    ) + 1;
+  return rows === tab.rows.length && columns === tab.columns.length
+    ? tab
+    : {
+        ...tab,
+        columns: tab.columns.slice(0, columns),
+        rows: tab.rows
+          .slice(0, rows)
+          .map((row) => ({ ...row, cells: row.cells.slice(0, columns) })),
+      };
+};
+
 const LOCKED = "This file is read-only: save it as a sheet to change it.";
 
 // `locked` for the tabs of an Excel or CSV file: no change is made to them.
@@ -189,9 +241,18 @@ export function openBook(engine, written, locked) {
   build();
 
   // True for a step made, false for none, or why it was refused.
-  const commit = (next) => {
+  const commit = (made) => {
+    // Blank cells put in at the end and cut again are no change.
+    const next = made.map((tab, at) => {
+      const cut = tab === tabs[at] ? tab : trimmed(tab);
+      return tableText(cut) === tableText(tabs[at]) ? tabs[at] : cut;
+    });
     const changed = next.filter((tab, at) => tab !== tabs[at]);
-    if (!changed.length) return false;
+    if (!changed.length) {
+      // What led here may have moved the engine's rows already.
+      if (made.some((tab, at) => tab !== tabs[at])) build();
+      return false;
+    }
     const [refused] = locked ? [LOCKED] : changed.flatMap(markupOf);
     if (refused) {
       // What led here may have moved the engine's rows already.
@@ -411,8 +472,8 @@ export function openBook(engine, written, locked) {
         : undefined;
     },
 
-    // Text set down from a cell on, as far as the tab reaches. From this
-    // book's own cells (`from`) formulas move along, and a cut clears.
+    // Text set down from a cell on. From this book's own cells (`from`)
+    // formulas move along, and a cut clears.
     paste(sheet, at, rows, from) {
       const texts = new Map();
       if (from?.cut && from.sheet === sheet)
@@ -432,12 +493,20 @@ export function openBook(engine, written, locked) {
           ),
         ),
       );
+      const far = { row: 0, column: 0 };
+      for (const [place, text] of texts) {
+        const [row, column] = place.split(",").map(Number);
+        if (text) far.row = Math.max(far.row, row);
+        if (text) far.column = Math.max(far.column, column);
+      }
       return placed(
         "pasted",
-        mapCells(tabs, (cell, on, row, column) =>
-          on === sheet && texts.has(`${row},${column}`)
-            ? withText(cell, texts.get(`${row},${column}`))
-            : cell,
+        mapCells(
+          tabs.with(sheet, reaching(tabs[sheet], far.row, far.column)),
+          (cell, on, row, column) =>
+            on === sheet && texts.has(`${row},${column}`)
+              ? withText(cell, texts.get(`${row},${column}`))
+              : cell,
         ),
       );
     },
@@ -445,24 +514,29 @@ export function openBook(engine, written, locked) {
     // One row alone takes the row above it.
     fillDown(sheet, box) {
       const top = box.bottom > box.top ? box.top : box.top - 1;
-      if (top < 1) return false;
-      const source = tabs[sheet].rows[top - 1].cells;
+      const source = tabs[sheet].rows[top - 1]?.cells;
+      if (!source) return false;
+      const filled = source
+        .slice(box.left - 1, box.right)
+        .some(({ text }) => text);
       return placed(
         "filled",
-        mapCells(tabs, (cell, at, row, column) =>
-          at === sheet &&
-          row > top &&
-          row <= box.bottom &&
-          column >= box.left &&
-          column <= box.right
-            ? withText(
-                cell,
-                relocated(source[column - 1].text, {
-                  row: row - top,
-                  column: 0,
-                }),
-              )
-            : cell,
+        mapCells(
+          tabs.with(sheet, reaching(tabs[sheet], filled ? box.bottom : 0, 0)),
+          (cell, at, row, column) =>
+            at === sheet &&
+            row > top &&
+            row <= box.bottom &&
+            column >= box.left &&
+            column <= box.right
+              ? withText(
+                  cell,
+                  relocated(source[column - 1].text, {
+                    row: row - top,
+                    column: 0,
+                  }),
+                )
+              : cell,
         ),
       );
     },

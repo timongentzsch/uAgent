@@ -88,9 +88,21 @@ const edge = (text, scope, data = {}) => {
   return cell;
 };
 
-// `filters` is the tab's filtered columns, `hidden` the rows they hide.
-export function draw(table, book, sheet, filters, hidden) {
+// The grid's cell where nothing sizes it: a spare column's width, every
+// row's height, and the unit a chart's size counts in.
+export const CELL = { width: 96, height: 24 };
+
+// `filters` is the tab's filtered columns, `hidden` the rows they hide, and
+// `grid` how far the cells run on past the table, blank.
+export function draw(table, book, sheet, filters, hidden, grid) {
   const tab = book.tabs[sheet];
+  // Row `r`'s blank cells from the column after `from` on.
+  const blank = (r, from) =>
+    Array.from({ length: grid.columns - from }, (_, c) => {
+      const cell = make("td");
+      Object.assign(cell.dataset, { row: r + 1, column: from + c + 1 });
+      return cell;
+    });
   const head = headOf(tab);
   const said = frozenOf(tab.attrs["data-frozen"], head);
   const frozen = {
@@ -148,22 +160,31 @@ export function draw(table, book, sheet, filters, hidden) {
     drawn.classList.toggle("sheet-head", isHeader(row));
     drawn.classList.toggle("sheet-frozen", r < frozen.rows);
     drawn.hidden = hidden.has(r + 1);
-    drawn.append(edge(r + 1, "row", { row: r + 1 }), ...cells);
+    drawn.append(
+      edge(r + 1, "row", { row: r + 1 }),
+      ...cells,
+      ...blank(r, cells.length),
+    );
     return drawn;
   });
+  for (let r = tab.rows.length; r < grid.rows; r++)
+    body.push(
+      make("tr", {}, [edge(r + 1, "row", { row: r + 1 }), ...blank(r, 0)]),
+    );
   table.replaceChildren(
     make("colgroup", {}, [
       make("col", { className: "sheet-edge" }),
-      ...tab.columns.map((column) => {
+      ...Array.from({ length: grid.columns }, (_, c) => {
         const col = make("col");
-        if (column["data-width"]) col.style.width = `${column["data-width"]}px`;
+        const wide = tab.columns[c] ? tab.columns[c]["data-width"] : CELL.width;
+        if (wide) col.style.width = `${wide}px`;
         return col;
       }),
     ]),
     make("thead", {}, [
       make("tr", { className: "sheet-letters" }, [
         edge("", "col"),
-        ...tab.columns.map((_, c) =>
+        ...Array.from({ length: grid.columns }, (_, c) =>
           edge(letters(c + 1), "col", { column: c + 1 }),
         ),
       ]),

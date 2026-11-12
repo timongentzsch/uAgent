@@ -4,9 +4,17 @@
 import { headOf, isTotal, openBook } from "./book.js";
 import { CHART } from "./chart.js";
 import { listenCharts } from "./figure.js";
-import { cellAt, draw, figuresOf, paint, readTab } from "./grid.js";
+import { CELL, cellAt, draw, figuresOf, paint, readTab } from "./grid.js";
 import { listen } from "./input.js";
-import { boxName, boxOf, cellName, sheetText, toCsv } from "./text.js";
+import {
+  boxName,
+  boxNamed,
+  boxOf,
+  cellName,
+  LAST,
+  sheetText,
+  toCsv,
+} from "./text.js";
 import { csvTab, workbookTabs } from "./workbook.js";
 
 const tables = [...document.querySelectorAll("table[data-sheet]")];
@@ -77,10 +85,37 @@ async function open() {
   const told = tables.map((_, sheet) => book.table(sheet));
 
   const tab = () => book.tabs[at];
-  const size = () => ({
-    rows: tab().rows.length,
-    columns: tab().columns.length,
-  });
+  // The grid runs on past the table, as far as each tab was reached (by its
+  // selection or its scroll) or holds a chart, and a pane of cells beyond.
+  const reached = tables.map(() => ({ rows: 0, columns: 0 }));
+  let grid = { rows: 0, columns: 0 };
+  const size = () => grid;
+  const extent = () => {
+    const charts = tab().charts.map(
+      ({ attrs }) => boxNamed(attrs["data-at"]) ?? { top: 0, left: 0 },
+    );
+    const far = (count, gone, corner, most, pane) =>
+      Math.min(
+        most,
+        Math.max(count, gone, ...charts.map((chart) => chart[corner])) + pane,
+      );
+    return {
+      rows: far(
+        tab().rows.length,
+        reached[at].rows,
+        "top",
+        LAST.row,
+        Math.ceil(innerHeight / CELL.height),
+      ),
+      columns: far(
+        tab().columns.length,
+        reached[at].columns,
+        "left",
+        LAST.column,
+        Math.ceil(innerWidth / CELL.width),
+      ),
+    };
+  };
   const within = ({ row, column }) => ({
     row: Math.max(1, Math.min(row, size().rows)),
     column: Math.max(1, Math.min(column, size().columns)),
@@ -128,7 +163,7 @@ async function open() {
       say({
         type: "cell",
         ref: `${tab().name}!${cellName(anchor)}`,
-        raw: tab().rows[anchor.row - 1].cells[anchor.column - 1].text,
+        raw: tab().rows[anchor.row - 1]?.cells[anchor.column - 1]?.text ?? "",
         range: `${tab().name}!${boxName(box())}`,
         summary: high() * wide() > 1 ? book.summary(at, box()) : undefined,
       });
@@ -158,6 +193,8 @@ async function open() {
         anchor: from === true ? pick().anchor : seen(within(from || to)),
         focus: to,
       };
+      // A whole row or column selected reaches no further.
+      if (!still) reach(to.row, to.column);
       paint(tables[at], box(), pick().anchor);
       if (!still)
         cellAt(tables[at], to)?.scrollIntoView({
@@ -273,8 +310,9 @@ async function open() {
       table.hidden = tab !== at;
     });
     hidden = hides();
+    grid = extent();
     picks[at] = { anchor: seen(pick().anchor), focus: seen(pick().focus) };
-    draw(tables[at], book, at, filters[at], hidden);
+    draw(tables[at], book, at, filters[at], hidden, grid);
     charts();
     paint(tables[at], box(), pick().anchor);
     rest();
@@ -285,6 +323,34 @@ async function open() {
     });
     tell();
   };
+  // Its last spare cells reached, the grid is drawn a pane larger.
+  const reach = (rows, columns) => {
+    reached[at] = {
+      rows: Math.max(reached[at].rows, rows),
+      columns: Math.max(reached[at].columns, columns),
+    };
+    if (reached[at].rows >= grid.rows || reached[at].columns >= grid.columns)
+      show(at);
+  };
+  const root = document.documentElement;
+  addEventListener(
+    "scroll",
+    () =>
+      reach(
+        scrollY + innerHeight >= root.scrollHeight - CELL.height
+          ? grid.rows
+          : 0,
+        scrollX + innerWidth >= root.scrollWidth - CELL.width
+          ? grid.columns
+          : 0,
+      ),
+    { passive: true },
+  );
+  // A larger pane has more cells to fill.
+  addEventListener("resize", () => {
+    const next = extent();
+    if (next.rows > grid.rows || next.columns > grid.columns) show(at);
+  });
   const { rest, hold } = listen(sheet);
   sheet.hold = hold;
   const charts = listenCharts(sheet);

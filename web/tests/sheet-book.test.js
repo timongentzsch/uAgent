@@ -120,9 +120,9 @@ test("a typed cell is one step: dependents follow, undo and redo take it back an
   assert.equal(book.paste(0, { row: 4, column: 3 }, [["2000"]]), true);
   assert.equal(book.shown(0, 7, 3), "10,600.50");
   assert.equal(book.shown(1, 2, 2), "21,201.00");
-  // The same text again is no step; nor is a cell the tab does not have.
+  // The same text again is no step; nor is nothing set past the table.
   assert.equal(book.paste(0, { row: 4, column: 3 }, [["2000"]]), false);
-  assert.equal(book.paste(0, { row: 99, column: 1 }, [["x"]]), false);
+  assert.equal(book.paste(0, { row: 99, column: 1 }, [[""]]), false);
   assert.equal(book.undo(), true);
   assert.equal(book.shown(0, 7, 3), "9,720.50");
   assert.equal(book.canUndo(), false);
@@ -315,12 +315,62 @@ test("undo keeps the last hundred steps and lets go of the oldest", () => {
   assert.equal(texts(book, 0)[1][0], "0");
 });
 
+test("text set past the table makes it reach there, a header row staying one; blank rows and columns at its end are never kept", () => {
+  const book = openBook(engine, [
+    tab(
+      "Costs",
+      [
+        ["#Item", "#Net"],
+        ["Rent", "1200"],
+      ],
+      [{}, { "data-rule": "> 1000: bold" }],
+    ),
+  ]);
+  // A column's rule covers what is typed under the table's last row.
+  book.paste(0, { row: 3, column: 2 }, [["2000"]]);
+  assert.equal(book.look(0, 3, 2).bold, true);
+  book.undo();
+  const before = book.table(0);
+  assert.equal(book.paste(0, { row: 4, column: 4 }, [["=B2*2"]]), true);
+  assert.deepEqual(texts(book, 0), [
+    ["Item", "Net", "", ""],
+    ["Rent", "1200", "", ""],
+    ["", "", "", ""],
+    ["", "", "", "=B2*2"],
+  ]);
+  assert.equal(book.shown(0, 4, 4), "2400");
+  assert.deepEqual(
+    book.tabs[0].rows.map((row) => row.cells.every((cell) => cell.th)),
+    [true, false, false, false],
+  );
+  // Undo takes the reach back; cleared, the table is the used range again.
+  book.undo();
+  assert.equal(book.table(0), before);
+  book.redo();
+  assert.equal(book.paste(0, { row: 4, column: 4 }, [[""]]), true);
+  assert.equal(book.table(0), before);
+  // Filled down past its end, it reaches as far as what is filled.
+  book.fillDown(0, { top: 2, left: 1, bottom: 4, right: 3 });
+  assert.deepEqual(texts(book, 0).slice(2), [
+    ["Rent", "1200"],
+    ["Rent", "1200"],
+  ]);
+  // A blank row put in at its end is no change, and no step.
+  const steps = () => {
+    let count = 0;
+    while (book.undo()) count++;
+    return count;
+  };
+  assert.equal(book.insertRows(0, 5, 2), false);
+  assert.equal(steps(), 3);
+});
+
 test("pasted text lands from a cell on; this book's own cells bring their formulas, and a cut clears", () => {
   const book = plan();
   book.paste(0, { row: 5, column: 2 }, [
     ["To do", "7"],
     ["Done", "=C5*2"],
-    ["beyond", "the", "tab"],
+    ["beyond", "the"],
   ]);
   assert.deepEqual(texts(book, 0).slice(4), [
     ["Book", "To do", "7"],

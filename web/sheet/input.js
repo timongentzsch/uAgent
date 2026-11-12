@@ -30,9 +30,10 @@ export function listen(sheet) {
   let copied;
 
   const active = () => sheet.pick().anchor;
+  // Past the table a cell is blank, in a column that says nothing.
   const cell = ({ row, column } = active()) =>
-    sheet.tab().rows[row - 1]?.cells[column - 1];
-  const columnOf = (at = active()) => sheet.tab().columns[at.column - 1];
+    sheet.tab().rows[row - 1]?.cells[column - 1] ?? { text: "" };
+  const columnOf = (at = active()) => sheet.tab().columns[at.column - 1] ?? {};
   const inBody = (at) => at.row > headOf(sheet.tab());
   const hold = () => editor.focus({ preventScroll: true });
   const place = (field) => {
@@ -168,7 +169,11 @@ export function listen(sheet) {
     const held = event.ctrlKey || event.metaKey;
     const letter = held && key.toLowerCase();
     const { anchor, focus } = sheet.pick();
-    const size = sheet.size();
+    // End and all go to the table's last cell; the arrows run on past it.
+    const last = {
+      row: sheet.tab().rows.length || 1,
+      column: sheet.tab().columns.length || 1,
+    };
     const way = event.shiftKey ? -1 : 1;
     if (editing) {
       if (key === "Enter") commit({ row: way, column: 0 });
@@ -183,7 +188,7 @@ export function listen(sheet) {
     } else if (ARROWS[key])
       sheet.select(
         held
-          ? edgeFrom((at) => !!cell(at)?.text, size, focus, ARROWS[key])
+          ? edgeFrom((at) => !!cell(at).text, sheet.size(), focus, ARROWS[key])
           : stepped(focus, ARROWS[key]),
         event.shiftKey,
       );
@@ -194,7 +199,7 @@ export function listen(sheet) {
       sheet.select({ row: held ? 1 : focus.row, column: 1 }, event.shiftKey);
     else if (key === "End")
       sheet.select(
-        { row: held ? size.rows : focus.row, column: size.columns },
+        { row: held ? last.row : focus.row, column: last.column },
         event.shiftKey,
       );
     else if (key === "PageUp" || key === "PageDown") {
@@ -210,12 +215,7 @@ export function listen(sheet) {
     else if (letter === "z") sheet.run(event.shiftKey ? "redo" : "undo");
     else if (letter === "y") sheet.run("redo");
     else if (letter === "d") sheet.run("fill-down");
-    else if (letter === "a")
-      sheet.select(
-        { row: size.rows, column: size.columns },
-        { row: 1, column: 1 },
-        true,
-      );
+    else if (letter === "a") sheet.select(last, { row: 1, column: 1 }, true);
     else if (key === " " && isBox()) toggle();
     else if (key === "ContextMenu" || (event.shiftKey && key === "F10"))
       menu(under(), cellItems());

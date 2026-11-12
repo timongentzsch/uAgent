@@ -155,13 +155,9 @@ test("rows are put in and taken out, filled down and sorted: formulas follow on 
   // formula with its row; the total stays and still sums them.
   await cell("Tasks", "D1").getByRole("button").click();
   await menu("Sort A to Z").click();
-  await expect(stage.locator('[data-column="1"]:not(.sheet-edge)')).toHaveText([
-    "Task",
-    "Brief",
-    "Write",
-    "Book",
-    "Total",
-  ]);
+  await expect(
+    stage.locator('tr:nth-child(-n+5) > [data-column="1"]:not(.sheet-edge)'),
+  ).toHaveText(["Task", "Brief", "Write", "Book", "Total"]);
   await expect(cell("Tasks", "E4")).toHaveText("16,801.00");
   await expect(cell("Tasks", "D5")).toHaveText("9,900.50");
   const sorted = PLAN.replace(
@@ -592,6 +588,111 @@ test("a range's numbers are summed, and a comment on it goes into the draft", as
   );
 });
 
+test("the grid runs on past the table: what is typed there joins it, and the file holds only what is used", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage, bar, tabs, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    PLAN,
+  );
+  const at = bar.locator("output");
+  await tabs.nth(1).click();
+  // The arrows leave the table of two columns and two rows.
+  await cell("Inputs", "B2").click();
+  for (let step = 0; step < 3; step++) await app.keyboard.press("ArrowRight");
+  await expect(at).toHaveText("Inputs!E2");
+  await app.keyboard.type("x");
+  await app.keyboard.press("Enter");
+  await cell("Inputs", "B2").click();
+  for (let step = 0; step < 5; step++) await app.keyboard.press("ArrowDown");
+  await expect(at).toHaveText("Inputs!B7");
+  await app.keyboard.type("=B2*2");
+  await app.keyboard.press("Enter");
+  await expect(cell("Inputs", "B7")).toHaveText("19,801.00");
+  // The table reaches to both and no further: a header row stays one.
+  const reached = with_(PLAN, {
+    "<tr><th>Name<th>Value\n<tr><td>Budget<td>=Tasks!D5":
+      "<tr><th>Name<th>Value<th><th><th>\n<tr><td>Budget<td>=Tasks!D5<td><td><td>x" +
+      "\n<tr><td><td><td><td><td>".repeat(4) +
+      "\n<tr><td><td>=B2*2<td><td><td>",
+  });
+  await expect.poll(saved).toBe(reached);
+  // Scrolled to its end the grid has more rows to show.
+  const rows = () =>
+    stage.locator('table[data-sheet="Inputs"] tbody tr').count();
+  const before = await rows();
+  expect(before).toBeGreaterThan(7);
+  await stage
+    .locator("html")
+    .evaluate((root) => scrollTo(0, root.scrollHeight));
+  await expect.poll(rows).toBeGreaterThan(before);
+  // Cleared, what was reached is given back; Undo takes back the rest.
+  const less = with_(PLAN, {
+    "<tr><th>Name<th>Value\n<tr><td>Budget<td>=Tasks!D5":
+      "<tr><th>Name<th>Value<th><th><th>\n<tr><td>Budget<td>=Tasks!D5<td><td><td>x",
+  });
+  await cell("Inputs", "B7").click();
+  await app.keyboard.press("Delete");
+  await expect.poll(saved).toBe(less);
+  const undo = files.getByRole("button", { name: "Undo" });
+  await undo.click();
+  await expect.poll(saved).toBe(reached);
+  await undo.click();
+  await expect.poll(saved).toBe(less);
+  await undo.click();
+  await expect.poll(saved).toBe(PLAN);
+  await files.getByRole("button", { name: "Redo" }).click();
+  await files.getByRole("button", { name: "Redo" }).click();
+  await expect.poll(saved).toBe(reached);
+  // Read anew it is the same sheet, and nothing is written for that.
+  await stage.locator("html").evaluate(() => location.reload());
+  await expect(cell("Inputs", "E2")).toHaveText("x");
+  await expect(cell("Inputs", "B7")).toHaveText("19,801.00");
+  expect(await saved()).toBe(reached);
+});
+
+test("a sheet with nothing in it shows a pane of cells to type in", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const blank = sheet("Blank", { One: [] });
+  const { stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    blank,
+  );
+  // A cell lies under the pane's far corner.
+  await expect(cell("One", "A1")).toBeVisible();
+  expect(
+    await stage
+      .locator("html")
+      .evaluate(
+        () =>
+          document
+            .elementFromPoint(innerWidth - 24, innerHeight - 24)
+            ?.closest("td")?.dataset.row,
+      ),
+  ).toBeTruthy();
+  expect(await saved()).toBe(blank);
+  await cell("One", "C3").click();
+  await app.keyboard.type("here");
+  await app.keyboard.press("Enter");
+  await expect
+    .poll(saved)
+    .toBe(
+      blank.replace(
+        "\n</table>",
+        "<tr><td><td><td>\n<tr><td><td><td>\n<tr><td><td><td>here\n</table>",
+      ),
+    );
+});
+
 test("on a phone the rows and columns a sheet holds stay in view, and a cell is edited from the formula bar", async ({
   page: app,
   session,
@@ -615,9 +716,7 @@ test("on a phone the rows and columns a sheet holds stay in view, and a cell is 
     { phone: true },
   );
   await expect(cell("Months", "B2")).toBeInViewport();
-  await stage.locator("html").evaluate((root) => {
-    scrollTo(root.scrollWidth, root.scrollHeight);
-  });
+  await cell("Months", "L40").evaluate((last) => last.scrollIntoView());
   await expect(cell("Months", "B2")).not.toBeInViewport();
   for (const held of ["A1", "L1", "A40"])
     await expect(cell("Months", held)).toBeInViewport();

@@ -23,7 +23,7 @@ test("a sheet is calculated and drawn as a grid, with its tabs, its clicked cell
   await expect(cell("Tasks", "C7")).toHaveText("9,600.50");
   const tasks = stage.locator('table[data-sheet="Tasks"]');
   await expect(tasks.locator("tr.sheet-head")).toContainText("TaskStatusCost");
-  await expect(tasks.locator("tr.sheet-letters")).toHaveText("ABC");
+  await expect(tasks.locator("tr.sheet-letters")).toHaveText(/^ABCDE/);
   // The grid is drawn in the app's palette, and follows it to another theme.
   const drawn = () =>
     stage

@@ -27,7 +27,7 @@ export const boxName = ({ top, left, bottom, right }) => {
 };
 
 // A spreadsheet's last row and column: a name past them is no cell's.
-const LAST = { row: 1_048_576, column: 16_384 };
+export const LAST = { row: 1_048_576, column: 16_384 };
 export const boxNamed = (name = "") => {
   const [, left, top, right = left, bottom = top] =
     /^([A-Za-z]{1,3})(\d{1,7})(?::([A-Za-z]{1,3})(\d{1,7}))?$/.exec(

@@ -2,13 +2,10 @@
 // the cells they name.
 
 import { CHART, CHARTS, chartShapes } from "./chart.js";
-import { make } from "./grid.js";
+import { CELL, make } from "./grid.js";
 import { openMenu } from "./menu.js";
 import { boxNamed, cellName } from "./text.js";
 
-// The grid's cell where nothing sizes it, beyond the grid too: the unit a
-// chart's size counts in, so that a move keeps its size.
-const CELL = { width: 96, height: 24 };
 // A chart covers no more cells than this, whatever its file says.
 const MOST = 200;
 // The stylesheet has this many series colours; further series start over.
@@ -25,22 +22,21 @@ const shape = (name, attrs = {}, text = "") => {
 };
 
 // Widths and heights are added up, since a held cell's own place moves as
-// the page scrolls; past the grid every cell is one size.
+// the page scrolls.
 const edges = (table) => {
-  const run = (cells, count, size, beyond) => {
-    let total = Math.max(0, count - cells.length) * beyond;
+  const run = (cells, count, size) => {
+    let total = 0;
     for (let at = 0; at < Math.min(count, cells.length); at++)
       total += cells[at][size];
     return total;
   };
   return {
     x: (column) =>
-      table.offsetLeft +
-      run(table.tHead.rows[0].cells, column, "offsetWidth", CELL.width),
+      table.offsetLeft + run(table.tHead.rows[0].cells, column, "offsetWidth"),
     y: (row) =>
       table.offsetTop +
       table.tHead.offsetHeight +
-      run(table.tBodies[0].rows, row - 1, "offsetHeight", CELL.height),
+      run(table.tBodies[0].rows, row - 1, "offsetHeight"),
   };
 };
 
@@ -176,7 +172,7 @@ export function listenCharts(sheet) {
       // Unsaid, beside the grid.
       const on = boxNamed(attrs["data-at"]) ?? {
         top: 1,
-        left: sheet.size().columns + 2,
+        left: sheet.tab().columns.length + 2,
       };
       const [wide, high] = (attrs["data-size"] ?? CHART["data-size"])
         .split("x")

@@ -172,7 +172,7 @@ const filledUnder = (tab, box) => {
 // hold nothing; and why each other is not, said to the agent and to a change
 // that would leave it so. Of two that overlap the first is drawn.
 const mergesOf = (tab) => {
-  const merges = mergesBy();
+  const merges = mergesBy(tab.rows.length);
   const unread = [];
   for (const [place, text] of listed(tab.attrs).entries()) {
     const box = boxNamed(text);

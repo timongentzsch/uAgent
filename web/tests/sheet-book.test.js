@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { headOf, openBook } from "../sheet/book.js";
-import { boxName, boxNamed, escaped, spread } from "../sheet/text.js";
+import { boxAt, boxName, boxNamed, escaped, spread } from "../sheet/text.js";
 import { ask, calculate, engine } from "./sheet-engine.js";
 
 const open = (tabs, locked) => openBook(engine, tabs, locked, calculate);
@@ -1540,6 +1540,33 @@ test("twenty thousand merged cells open, are selected across, and a change is ma
   assert.equal(await book.paste(0, { row: 1, column: 3 }, [["c"]]), true);
   assert.ok(performance.now() - started < 1000);
   assert.equal(boxName(across), "A1:B20001");
+});
+
+test("a merged range to the spreadsheet's last row is kept by row only near the table: it is drawn and selected as one far down, and a change is quick", async () => {
+  for (const range of ["B1:B1048576", "B1:XFD1048576"]) {
+    const book = await open([
+      {
+        ...tab("Costs", [
+          ["#Item", "#Note"],
+          ["Rent", ""],
+          ["Power", ""],
+        ]),
+        attrs: { "data-merge": range },
+      },
+    ]);
+    const started = performance.now();
+    const merges = book.merges(0);
+    assert.ok(performance.now() - started < 20);
+    assert.ok(merges.rows.size <= 1003);
+    const far = { top: 1_000_000, left: 2, bottom: 1_000_000, right: 2 };
+    assert.equal(boxName(boxAt(merges, { row: far.top, column: 2 })), range);
+    assert.equal(boxName(spread(far, merges)), range);
+    const changed = performance.now();
+    assert.equal(await book.paste(0, { row: 2, column: 1 }, [["Light"]]), true);
+    assert.equal(await book.moveRows(0, 2, 1, 1), true);
+    assert.ok(performance.now() - changed < 500);
+    assert.equal(book.tabs[0].attrs["data-merge"], range);
+  }
 });
 
 // The engine as it is, which calculates where it is asked to anywhere

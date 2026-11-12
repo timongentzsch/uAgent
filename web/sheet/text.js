@@ -57,12 +57,17 @@ export const meets = (a, b) =>
   b.left <= a.right;
 // Merged boxes that meet none other, `all` of them and by each row they
 // span in the order of their columns: those a box meets are found without
-// reading every one.
-export const mergesBy = () => ({
+// reading every one. A box is kept so down to NEAR rows past a table
+// `held` rows long, or past its own first; past that every cell is blank,
+// and the few boxes reaching there are kept apart, from where they do.
+const NEAR = 1000;
+export const mergesBy = (held) => ({
   all: [],
   rows: new Map(),
   top: Infinity,
   bottom: 0,
+  held,
+  far: [],
 });
 // Where in a row's boxes the first that reaches the column is.
 const reaching = (line, column) => {
@@ -82,15 +87,19 @@ export function* meeting(merges, box) {
     for (let at = reaching(line, box.left); line[at]?.left <= box.right; at++)
       yield line[at];
   }
+  for (const { merge, from } of merges.far)
+    if (meets(merge, { ...box, top: Math.max(box.top, from) })) yield merge;
 }
 export const addMerge = (merges, box) => {
   merges.all.push(box);
-  for (let row = box.top; row <= box.bottom; row++) {
+  const bottom = Math.min(box.bottom, Math.max(merges.held, box.top) + NEAR);
+  for (let row = box.top; row <= bottom; row++) {
     const line = merges.rows.get(row) ?? merges.rows.set(row, []).get(row);
     line.splice(reaching(line, box.left), 0, box);
   }
   merges.top = Math.min(merges.top, box.top);
-  merges.bottom = Math.max(merges.bottom, box.bottom);
+  merges.bottom = Math.max(merges.bottom, bottom);
+  if (box.bottom > bottom) merges.far.push({ merge: box, from: bottom + 1 });
 };
 // The merged box a cell lies in, or the cell's own.
 export const boxAt = (merges, { row, column }) => {

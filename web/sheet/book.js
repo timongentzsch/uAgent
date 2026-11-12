@@ -119,32 +119,27 @@ const slidCharts = (charts, across, at, count) =>
   });
 
 // Charts after cells moved, each to where `place` puts it: a chart lies on
-// its cell, and its range follows where its ends moved alike, as a
-// formula's does.
+// its cell, and its range runs between where its two ends went, so what it
+// drew is still in it.
 const carriedCharts = (charts, place) =>
   charts.map((chart) => {
     const range = boxNamed(chart.attrs["data-range"]);
     const on = boxNamed(chart.attrs["data-at"]);
-    const [from, to] = range
-      ? [
-          place({ row: range.top, column: range.left }),
-          place({ row: range.bottom, column: range.right }),
-        ]
-      : [];
-    const alike =
-      range &&
-      to.row - from.row === range.bottom - range.top &&
-      to.column - from.column === range.right - range.left;
+    const ends = range && [
+      place({ row: range.top, column: range.left }),
+      place({ row: range.bottom, column: range.right }),
+    ];
+    const most = (way, of) => of(...ends.map((end) => end[way]));
     return {
       ...chart,
       attrs: {
         ...chart.attrs,
-        ...(alike && {
+        ...(ends && {
           "data-range": boxName({
-            top: from.row,
-            left: from.column,
-            bottom: to.row,
-            right: to.column,
+            top: most("row", Math.min),
+            left: most("column", Math.min),
+            bottom: most("row", Math.max),
+            right: most("column", Math.max),
           }),
         }),
         ...(on && {

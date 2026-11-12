@@ -195,20 +195,31 @@ export function followed(formula, spans, of, home, place) {
   const chars = [...formula];
   let out = "";
   let from = 0;
-  // "A1 : B2" comes as two references with the colon between them: one
-  // range, written without the spaces.
+  // "A1 : B2" comes as two references with the colon between them, the
+  // second with the space before it: one range where both ends are on one
+  // tab, read without the spaces and with the tab named once. Any other
+  // pair stays two references.
+  const tabbed = (text) => text.slice(0, text.lastIndexOf("!") + 1);
   const ranges = [];
-  for (const { start, end } of spans) {
+  for (const span of spans) {
+    const spaced = chars.slice(span.start, span.end).join("");
+    const text = spaced.trimStart();
+    const [start, end] = [span.end - [...text].length, span.end];
     const before = ranges.at(-1);
-    if (before && /^\s*:\s*$/.test(chars.slice(before.end, start).join("")))
-      before.end = end;
-    else ranges.push({ start, end });
+    const between = before && chars.slice(before.end, start).join("");
+    const one =
+      before &&
+      /^\s*:\s*$/.test(between) &&
+      !before.text.includes(":") &&
+      tabbed(text).toLowerCase() === tabbed(before.text).toLowerCase();
+    if (one)
+      Object.assign(before, {
+        end,
+        text: `${before.text}:${text.slice(tabbed(text).length)}`,
+      });
+    else ranges.push({ start, end, text });
   }
-  for (const { start, end } of ranges) {
-    const text = chars
-      .slice(start, end)
-      .join("")
-      .replace(/\s*:\s*/, ":");
+  for (const { start, end, text } of ranges) {
     const cut = text.lastIndexOf("!") + 1;
     const read = ADDRESS.exec(text.slice(cut));
     const ends = [read?.slice(2, 6), read?.slice(6)].filter(
@@ -226,7 +237,7 @@ export function followed(formula, spans, of, home, place) {
       !ends.length ||
       on.toLowerCase() !== of.toLowerCase() ||
       by.some(({ row, column }) => row !== by[0].row || column !== by[0].column)
-        ? text
+        ? chars.slice(start, end).join("")
         : text.slice(0, cut) +
           read[1] +
           ends

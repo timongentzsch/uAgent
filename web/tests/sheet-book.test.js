@@ -680,8 +680,8 @@ test("rows and columns move among their neighbours: a reference follows its cell
     ["Water", "60", "12", "=SUM(B2:B4)"],
   ]);
   assert.equal(book.shown(0, 3, 4), "1440.00");
-  // The chart keeps its range, which the row moved within, and lies on
-  // the cell it lay on, a row down.
+  // The chart's range runs between where its ends went, here where they
+  // were, and it lies on the cell it lay on, a row down.
   assert.deepEqual(charted(), { ...chart, "data-at": "F2" });
   // Up again, and no further than under the header.
   assert.equal(book.moveRows(0, 3, 1, -1), true);
@@ -696,9 +696,9 @@ test("rows and columns move among their neighbours: a reference follows its cell
   assert.equal(book.look(0, 2, 2).bold, true);
   assert.equal(book.moveColumns(0, 1, 1, -1), false);
   assert.deepEqual(texts(book, 0)[3], ["Water", "12", "=SUM(D2:D4)", "60"]);
-  // Its two columns moved apart: the chart keeps its range. Moved alike,
-  // the range goes along.
-  assert.equal(charted()["data-range"], "B1:C4");
+  // Its two columns moved apart: the range takes in what lies between,
+  // so both are still drawn. Moved alike, it goes along as it is.
+  assert.equal(charted()["data-range"], "B1:D4");
   book.undo();
   assert.equal(book.moveColumns(0, 2, 2, 1), true);
   assert.equal(charted()["data-range"], "C1:D4");

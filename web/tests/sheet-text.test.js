@@ -374,5 +374,17 @@ test("a formula follows cells that moved: one cell wherever it is read from, a r
   assert.equal(after("=SUM(B2:C2)", "Costs", "B2:C2"), "=SUM(B3:C3)");
   assert.equal(after("=SUM(B2:B4)", "Costs", "B2:B4"), "=SUM(B2:B4)");
   assert.equal(after("=SUM(B:B)", "Costs", "B:B"), "=SUM(B:B)");
-  assert.equal(after("=SUM(B2 : C2)", "Costs", "B2", "C2"), "=SUM(B3:C3)");
+  // The engine's second reference of a spaced pair starts at its space.
+  assert.equal(after("=SUM(B2 : C2)", "Costs", "B2", " C2"), "=SUM(B3:C3)");
+  // A spaced range is one where its ends are on one tab, named once or
+  // twice; kept, it is as it was written. Ends on two tabs are two cells.
+  assert.equal(
+    after("=SUM(Costs!B2 : Costs!C2)", "Notes", "Costs!B2", " Costs!C2"),
+    "=SUM(Costs!B3:C3)",
+  );
+  assert.equal(after("=SUM(B2 : B4)", "Costs", "B2", " B4"), "=SUM(B2 : B4)");
+  assert.equal(
+    after("=SUM(Costs!B2 : C2)", "Notes", "Costs!B2", " C2"),
+    "=SUM(Costs!B3 : C2)",
+  );
 });

@@ -2266,6 +2266,26 @@ async function selectIn(block, text) {
   }, text);
 }
 
+// The contrast of an element's colour on its own ground, as WCAG counts it.
+const contrastOf = (target) =>
+  target.evaluate((node) => {
+    const light = (colour) => {
+      const [r, g, b] = colour
+        .match(/[\d.]+/g)
+        .slice(0, 3)
+        .map((part) => part / 255)
+        .map((part) =>
+          part <= 0.03928 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4,
+        );
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const { color, backgroundColor } = getComputedStyle(node);
+    const [more, less] = [light(color), light(backgroundColor)].sort(
+      (a, b) => b - a,
+    );
+    return (more + 0.05) / (less + 0.05);
+  });
+
 test("Edit's tools mark and link what is selected in a block, and stand beside the stage's own without moving them", async ({
   page: app,
   session,
@@ -2292,6 +2312,9 @@ test("Edit's tools mark and link what is selected in a block, and stand beside t
   await selectIn(first, "beta");
   await tool("Bold").click();
   await expect(tool("Bold")).toHaveAttribute("aria-pressed", "true");
+  // Pressed, its icon keeps its contrast under the pointer.
+  await tool("Bold").hover();
+  await expect.poll(() => contrastOf(tool("Bold"))).toBeGreaterThan(4.5);
   await expect.poll(body).toContain("<p>Alpha <b>beta</b> gamma</p>");
   // The press left the focus in the block.
   await expect(first).toBeFocused();

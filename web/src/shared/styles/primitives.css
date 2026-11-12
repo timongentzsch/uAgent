@@ -159,7 +159,9 @@
     .file-button:hover {
       background: var(--hover);
     }
-    .primary:enabled:hover {
+    .primary:enabled:hover,
+    button[aria-pressed="true"]:enabled:hover,
+    .tabs [aria-selected="true"]:enabled:hover {
       background: var(--accent-hover);
     }
     .quiet:not(:disabled):hover {
@@ -178,7 +180,9 @@
     background: var(--hover);
     transition: none;
   }
-  .primary:enabled:active {
+  .primary:enabled:active,
+  button[aria-pressed="true"]:enabled:active,
+  .tabs [aria-selected="true"]:enabled:active {
     background: var(--accent-active);
   }
   .destructive {

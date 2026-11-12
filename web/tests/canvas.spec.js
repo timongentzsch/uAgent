@@ -1329,6 +1329,29 @@ test("Edit says why a file too large to save cannot be edited", async ({
   );
 });
 
+test("Edit goes off on a step to a slide too large to save", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage, count } = await openDeck(app, session, host.project, {
+    "01-cover.html": slide("Cover"),
+    "02-long.html": slide("Long", "", `<!-- ${"x".repeat(1024 * 1024)} -->`),
+  });
+  const edit = files.getByRole("button", { name: "Edit" });
+  await edit.click();
+  await expect(files.getByRole("button", { name: "Bold" })).toBeVisible();
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await expect(count).toHaveText("2 / 2");
+  const long = stage.getByRole("heading", { name: "Long" });
+  await expect(long).toBeVisible();
+  // Not on, not told to the page, and its tools gone.
+  await expect(edit).toBeDisabled();
+  await expect(edit).toHaveAttribute("aria-pressed", "false");
+  await expect(files.getByRole("button", { name: "Bold" })).toHaveCount(0);
+  await expect(long).not.toHaveAttribute("contenteditable");
+});
+
 test("a slide's text is saved as typing pauses, the caret where it was; undone, the file follows; rewritten meanwhile, it is refused and kept on the stage", async ({
   page: app,
   session,
@@ -1397,6 +1420,33 @@ test("a slide's text is saved as typing pauses, the caret where it was; undone, 
   await app.clock.resume();
   await files.getByRole("button", { name: "Previous slide" }).click();
   await expect(count).toHaveText("1 / 2");
+});
+
+test("a slide that cannot be made once room was made for it says what was changed", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, count } = await openDeck(app, session, host.project, FOUR);
+  await expect(count).toHaveText("1 / 4");
+  // Behind the pane's back, a file takes the name of the new slide's place.
+  await writeFile(
+    join(host.project, "decks/talk/02-slide.html"),
+    slide("Taken"),
+  );
+  await files.getByRole("button", { name: "Slide actions" }).click();
+  await app.getByRole("menuitem", { name: "Add slide after" }).click();
+  await expect(files.locator(".page-notice")).toHaveText(
+    "The slides after it were renumbered, but the new slide was not made: 02-slide.html is already there",
+  );
+  expect(await slidesIn(host.project)).toEqual([
+    "01-cover.html",
+    "02-slide.html",
+    "03-plan.html",
+    "04-numbers.html",
+    "05-end.html",
+  ]);
+  await expect(count).toHaveText("1 / 5");
 });
 
 test("a deck's slide menu adds a slide in the deck's style, and skips one: dimmed in the legend, passed over when presenting", async ({

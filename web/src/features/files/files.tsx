@@ -524,6 +524,12 @@ export default function Files({
           path: join(dir, add.name),
           text: add.text,
           create: true,
+        }).catch((error) => {
+          // Nothing was changed only where nothing made room.
+          if (!moves.length) throw error;
+          throw new Error(
+            `The slides after it were renumbered, but the new slide was not made: ${failure(error).message}`,
+          );
         });
       listing.setValue({ ...(await list(dir)), dir });
       setSeen((all) => carried(all, dir, moves));

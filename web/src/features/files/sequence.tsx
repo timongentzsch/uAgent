@@ -214,6 +214,9 @@ export default function Sequence({
   // slide's text be typed in place. One at a time, told to the page as each
   // goes on or off.
   const [mode, setMode] = useState<"" | "select" | "edit">("");
+  // Where Edit cannot be offered, it is off before the page there can be
+  // told of it.
+  if (uneditable && mode === "edit") setMode("");
   const enter = (next: typeof mode) => {
     if (mode) tell(frame.current, { type: mode, on: false });
     if (next) tell(frame.current, { type: next, on: true });

@@ -154,6 +154,13 @@ Tool PresentTool(const std::string& session_path, const Tool* remote_read) {
   return tool;
 }
 
+namespace {
+// An empty `from` is none: a model may fill every field of the schema.
+bool CopiesAttachment(const json& args) {
+  return !JsonValue(args, "from", "").empty();
+}
+}  // namespace
+
 void CopyAttachments(std::vector<Tool>& tools,
                      const std::string& session_path) {
   auto write = std::find_if(tools.begin(), tools.end(), [](const Tool& tool) {
@@ -178,13 +185,14 @@ void CopyAttachments(std::vector<Tool>& tools,
   };
   write->run = [run = std::move(write->run), bytes](
                    const json& args, const ToolContext& context) {
-    if (!args.contains("from")) {
-      if (JsonStringRef(args, "content")) return run(args, context);
+    json copy = args;
+    copy.erase("from");
+    if (!CopiesAttachment(args)) {
+      if (JsonStringRef(args, "content")) return run(copy, context);
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "write_file needs content, or from to copy an "
                          "attached file");
     }
-    json copy = args;
     std::string data;
     if (!bytes(args, data)) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -192,15 +200,12 @@ void CopyAttachments(std::vector<Tool>& tools,
     }
     copy[RemoteWorkspace() ? "content_hex" : "content"] =
         RemoteWorkspace() ? HexEncode(data) : std::move(data);
-    copy.erase("from");
     return run(copy, context);
   };
   if (RemoteWorkspace()) {
     auto prepare = [](json args) {
-      if (args.contains("from")) {
-        args.erase("from");
-        args["content"] = "";
-      }
+      if (CopiesAttachment(args)) args["content"] = "";
+      args.erase("from");
       return args;
     };
     write->validate = [validate = std::move(write->validate), prepare](
@@ -209,7 +214,7 @@ void CopyAttachments(std::vector<Tool>& tools,
                            prepare](json& args) {
       json checked = prepare(args);
       canonicalize(checked);
-      if (args.contains("from")) checked["from"] = args["from"];
+      if (CopiesAttachment(args)) checked["from"] = args["from"];
       args = std::move(checked);
     };
     write->mutates = [mutates = std::move(write->mutates), prepare](
@@ -229,8 +234,8 @@ void CopyAttachments(std::vector<Tool>& tools,
   }
   write->approval_preview = [preview = std::move(write->approval_preview)](
                                 const json& args) {
-    return args.contains("from") ? "a copy of " + JsonValue(args, "from", "")
-                                 : preview(args);
+    return CopiesAttachment(args) ? "a copy of " + JsonValue(args, "from", "")
+                                  : preview(args);
   };
 }
 

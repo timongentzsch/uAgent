@@ -580,6 +580,8 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
     with Server(
         [
             copy_attachment,
+            # An empty `from` is none: the content is written.
+            tool_call("write_file", {"path": "plain.txt", "content": "plain", "from": ""}),
             answer,
             tool_call("read_path", {"path": "pixel.png"}),
             received_image,
@@ -643,6 +645,9 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
             assert_true(
                 (project / "copied.bin").read_bytes() == copied_bytes,
                 "main attachment copy changed",
+            )
+            assert_true(
+                (project / "plain.txt").read_text() == "plain", "empty from was not a write"
             )
             assert_true(canary.read_text() == "untouched", "main canary changed")
             assert_true(not (project / "forbidden").exists(), "remote MCP ran")

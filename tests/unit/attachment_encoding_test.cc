@@ -430,6 +430,19 @@ TEST_CASE(TestWriteFileCopiesAttachments) {
                    {"content", "plain"}},
                   context)
             .Ok());
+  // An empty `from` is none: the content is written, and without content
+  // the call is refused as one that names neither.
+  const json filled = {{"path", (root / "work/filled.txt").string()},
+                       {"content", "plain"},
+                       {"from", ""}};
+  CHECK(write->run(filled, context).Ok());
+  CHECK(ReadFile((root / "work/filled.txt").string(), 1024).value_or("") ==
+        "plain");
+  CHECK(!write->approval_preview(filled).starts_with("a copy of"));
+  CHECK(!write
+             ->run({{"path", (root / "work/empty.txt").string()}, {"from", ""}},
+                   context)
+             .Ok());
   fs::remove_all(root);
 }
 

@@ -186,6 +186,27 @@ test("an Excel file is read into tabs: what cells hold, a column's pattern, the 
   );
 });
 
+test("an Excel file's merged cells are read as the table's list, and go out to Excel again; one the sheet does not draw stays out", async () => {
+  const merged = workbook(
+    {
+      Costs: [["Budget 2027"], ["Item", "Q1", "Q2"], ["Rent", "1200", "1300"]],
+    },
+    (model) =>
+      model.mergeCells({ sheet: 0, row: 1, column: 1, width: 3, height: 1 }),
+  );
+  const [read] = workbookTabs(engine, merged, "book");
+  assert.deepEqual(read.attrs, { "data-merge": "A1:C1" });
+  // B3:C3 covers text: it is not drawn, and not sent out.
+  const tab = { ...read, attrs: { "data-merge": "A1:C1 B3:C3" } };
+  const [again] = workbookTabs(
+    engine,
+    await ask({ tabs: [tab], xlsx: true }),
+    "book",
+  );
+  assert.deepEqual(again.attrs, { "data-merge": "A1:C1" });
+  assert.deepEqual(texts(again), texts(read));
+});
+
 test("a workbook with one cell far out is refused before any cell is built", {
   timeout: 5000,
 }, () => {

@@ -1,7 +1,7 @@
 // An Excel or CSV file read into the tabs a sheet keeps, so it is drawn,
 // and saved as a sheet, like one.
 
-import { fromCsv } from "./text.js";
+import { boxName, fromCsv } from "./text.js";
 
 // A file with more cells is not read: the page would not answer for long.
 const CELLS = 200_000;
@@ -72,7 +72,8 @@ export function csvTab(engine, name, text) {
 }
 
 // Carried: what each cell holds, its number or date pattern, the widths set
-// for columns. A hidden sheet is read too: formulas on the others read it.
+// for columns, the merged cells. A hidden sheet is read too: formulas on
+// the others read it.
 export function workbookTabs(engine, bytes, name) {
   const model = engine.Model.fromXlsx(bytes, name, "en", "UTC", "en");
   const read = (sheet, at) => {
@@ -115,8 +116,19 @@ export function workbookTabs(engine, bytes, name) {
       for (const { cells } of rows)
         if (cells[c].attrs["data-format"] === format) cells[c].attrs = {};
     });
+    const merged = model
+      .getMergedCells(at)
+      .map(({ row, column, width, height }) =>
+        boxName({
+          top: row,
+          left: column,
+          bottom: row + height - 1,
+          right: column + width - 1,
+        }),
+      );
     return {
       ...tab(sheet.name, columns, rows),
+      ...(merged.length && { attrs: { "data-merge": merged.join(" ") } }),
       hidden: sheet.state !== "visible",
     };
   };

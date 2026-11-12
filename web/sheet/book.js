@@ -478,7 +478,7 @@ const plainOf = (tab, row, column) => {
 };
 
 // The tabs as an Excel workbook: a rule's look goes out as the rule; what
-// is written, as a style.
+// is written, as a style; a merged range drawn, as Excel's.
 export function xlsxOf(engine, tabs) {
   const workbook = workbookOf(engine, tabs);
   tabs.forEach((tab, sheet) => {
@@ -498,6 +498,16 @@ export function xlsxOf(engine, tabs) {
       const said = COLOURED[name] ? COLOURED[name][value] : `${value}`;
       if (value && said) workbook.updateRangeStyle(area, STYLED[name], said);
     }
+  });
+  tabs.forEach((tab, sheet) => {
+    for (const { top, left, bottom, right } of mergesOf(tab).merges)
+      workbook.mergeCells({
+        sheet,
+        row: top,
+        column: left,
+        width: right - left + 1,
+        height: bottom - top + 1,
+      });
   });
   workbook.resumeEvaluation();
   workbook.evaluate();

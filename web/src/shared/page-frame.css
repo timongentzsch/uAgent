@@ -23,3 +23,14 @@
 .page-frame:not([data-live]) iframe {
   pointer-events: none;
 }
+/* A page on its way is unseen until it has drawn; the page it follows lies
+   where it lay until then. */
+.page-frame iframe[data-arriving] {
+  opacity: 0;
+  pointer-events: none;
+}
+.page-frame iframe[inert] {
+  position: absolute;
+  top: 0;
+  left: 0;
+}

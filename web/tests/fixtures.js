@@ -121,7 +121,7 @@ export async function openSheet(page, session, project, source, options) {
 
 // The viewer's stage (its page) and its counter, in the pane.
 export const viewerOf = (files) => ({
-  stage: files.frameLocator(".page-stage iframe"),
+  stage: files.frameLocator(".page-stage iframe:not([inert])"),
   count: files.getByRole("group", { name: "Step" }).locator("output"),
 });
 

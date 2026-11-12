@@ -37,6 +37,8 @@ export interface Pick {
 }
 export type PageMessage =
   | ({ type: "ready" } & PageInfo)
+  // Loaded, a sheet calculated, and painted: what the frame waits for.
+  | { type: "drawn" }
   | { type: "size"; height: number }
   | { type: "error"; message: string; line: number }
   | { type: "hover" | "picked"; rect: Rect }
@@ -162,6 +164,14 @@ export default function Frame({
   const own = useRef<HTMLIFrameElement>(null);
   const frame = frameRef ?? own;
   const handle = useLatest(onMessage);
+  // The address whose page has drawn. A page on its way is unseen until it
+  // has, and the page before it stays under it, still.
+  const [drawn, setDrawn] = useState<string>();
+  const wanted = useLatest(src);
+  const paged = !far && !media;
+  useLayoutEffect(() => {
+    if (!paged) setDrawn(undefined);
+  }, [paged]);
   // A sheet takes the app's look as it loads, and again when that changes
   // (the theme, the zoom).
   const [sheet, setSheet] = useState(false);
@@ -174,6 +184,7 @@ export default function Frame({
         setSheet(!!event.data.sheet);
         if (event.data.sheet) tellLook(frame.current);
       }
+      if (event.data.type === "drawn") setDrawn(wanted.current);
       handle.current?.(event.data);
     };
     addEventListener("message", heard);
@@ -231,22 +242,34 @@ export default function Frame({
           onError={lost}
         />
       ) : (
-        <iframe
-          ref={frame}
-          src={src}
-          title={title}
-          sandbox="allow-scripts allow-forms"
-          tabIndex={live ? undefined : -1}
-          style={
-            sized
-              ? {
-                  width: `${width}px`,
-                  height: `${height}px`,
-                  transform: `scale(${scale})`,
-                }
-              : undefined
-          }
-        />
+        [...new Set([drawn ?? src, src])].map((address) => (
+          <iframe
+            key={address}
+            // Only the page wanted is told things and heard.
+            ref={
+              address === src
+                ? (node) => {
+                    if (node) frame.current = node;
+                  }
+                : undefined
+            }
+            src={address}
+            title={address === src ? title : undefined}
+            sandbox="allow-scripts allow-forms"
+            tabIndex={live ? undefined : -1}
+            inert={address !== src}
+            data-arriving={address !== drawn || undefined}
+            style={
+              sized
+                ? {
+                    width: `${width}px`,
+                    height: `${height}px`,
+                    transform: `scale(${scale})`,
+                  }
+                : undefined
+            }
+          />
+        ))
       )}
     </div>
   );

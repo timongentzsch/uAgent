@@ -428,7 +428,7 @@
 .page-stage:is([data-fixed], [data-wide]) .page-scroll {
   padding: var(--space-6);
 }
-/* A new page fades in once it has drawn. */
+/* The first page fades in once it has drawn. */
 .page-holder {
   position: relative;
   flex: 1;

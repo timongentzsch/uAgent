@@ -785,6 +785,86 @@ test("a deck's legend, counter and keys step through its slides", async ({
   ).toBeVisible();
 });
 
+// The colours the screen shows at the middle of an element and at its left
+// edge, read from a screenshot decoded in the page.
+const shownIn = async (app, locator) => {
+  const png = await locator.screenshot();
+  return app.evaluate(async (data) => {
+    const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
+    const image = await createImageBitmap(new Blob([bytes]));
+    const canvas = new OffscreenCanvas(image.width, image.height);
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0);
+    return [image.width / 2, 4].map((x) =>
+      [
+        ...context.getImageData(x, image.height / 2, 1, 1).data.slice(0, 3),
+      ].join(),
+    );
+  }, png.toString("base64"));
+};
+
+test("a step shows the slide before until the next has drawn, and the stage's tools stay", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await app.emulateMedia({ colorScheme: "dark" });
+  const dark = (title, head) =>
+    `<!doctype html><html><head><title>${title}</title><meta name="artboard" content="1920x1080 slide">${head}</head>` +
+    `<body><script type="application/json" id="tweaks">{"--gap":{"editor":"range","default":8,"min":0,"max":32}}</script><h1>${title}</h1></body></html>`;
+  const { files, legend, stage } = await openDeck(app, session, host.project, {
+    "01-cover.html": dark("Cover", "<style>body{background:#102030}</style>"),
+    "02-plan.html": dark("Plan", '<link rel="stylesheet" href="plan.css">'),
+    "plan.css": "body{background:#302010}",
+  });
+  const box = files.locator(".page-stage");
+  const shown = () => shownIn(app, box);
+  await expect.poll(async () => (await shown())[0]).toBe("16,32,48");
+  const cover = await shown();
+  const tools = await Promise.all(
+    ["Tweaks", "Zoom in"].map((name) =>
+      files.getByRole("button", { name }).elementHandle(),
+    ),
+  );
+  const kept = () =>
+    Promise.all(tools.map((tool) => tool.evaluate((node) => node.isConnected)));
+
+  // The next slide is held back twice: before it answers, and with its
+  // stylesheet missing, when it has said what it is but has not drawn.
+  const held = {};
+  for (const [name, address] of Object.entries({
+    page: /02-plan\.html/,
+    style: /plan\.css/,
+  }))
+    await app.route(address, async (route) => {
+      await new Promise((free) => {
+        held[name] = free;
+      });
+      await route.continue();
+    });
+  await legend.getByRole("option", { name: "Slide 2: Plan" }).click();
+  await expect.poll(() => !!held.page).toBe(true);
+  expect(await shown()).toEqual(cover);
+  expect(await kept()).toEqual([true, true]);
+  held.page();
+  await expect
+    .poll(() => stage.locator("html").evaluate(() => document.readyState))
+    .toBe("interactive");
+  await app.evaluate(
+    () =>
+      new Promise((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(done)),
+      ),
+  );
+  expect(await shown()).toEqual(cover);
+  expect(await kept()).toEqual([true, true]);
+  held.style();
+  await expect.poll(async () => (await shown())[0]).toBe("48,32,16");
+  expect((await shown())[1]).toBe(cover[1]);
+  expect(await kept()).toEqual([true, true]);
+  await expect(box.locator("iframe")).toHaveCount(1);
+});
+
 test("a long deck's legend draws only the slides near its view, and keeps the current one in it", async ({
   page: app,
   session,

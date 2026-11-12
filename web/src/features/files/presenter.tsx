@@ -32,7 +32,6 @@ function Slide({
   return (
     <div class="presenter-slide" ref={box}>
       <Frame
-        key={path}
         src={pageAddress(base, path)}
         title={info?.title || path}
         width={w}

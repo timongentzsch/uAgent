@@ -152,9 +152,12 @@ export default function Sequence({
   const stage = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const room = useRoom(scroller);
-  // What the page said it is, for the address it said it at.
-  const [said, setSaid] = useState<PageInfo & { src: string }>();
-  const info = said?.src === src ? said : undefined;
+  // What the page said it is. It counts once the page has drawn: until then
+  // the stage and its tools are those of the page before it.
+  const [said, setSaid] = useState<PageInfo & { drawn?: true }>();
+  const staged = useRef<PageInfo>(undefined);
+  if (said?.drawn) staged.current = said;
+  const info = staged.current;
   // Select picks an element to comment on; Edit, a document's, lets its
   // text be typed in place. One at a time, told to the page as each goes on
   // or off.
@@ -729,8 +732,8 @@ export default function Sequence({
             <div class="page-scroll" ref={scroller}>
               <div
                 class="page-holder"
-                // A new page fades in once it has drawn. (No effect hides it
-                // again: a page that loads fast is ready before one runs.)
+                // The first page fades in once it has drawn; one after it
+                // takes its place in the frame.
                 data-arriving={!info || undefined}
                 style={
                   wide
@@ -742,11 +745,7 @@ export default function Sequence({
                 }
               >
                 <Frame
-                  // A frame an address: what a page says as it is left (an
-                  // error while it unloads) has no window here to be taken
-                  // for the next page's.
-                  key={`${load} ${src}`}
-                  src={src}
+                  src={load ? `${src}&load=${load}` : src}
                   title={info?.title || path}
                   frameRef={frame}
                   width={wide ? info!.artboard.w : undefined}
@@ -761,14 +760,16 @@ export default function Sequence({
                     if (doc || sheet || message.type === "error")
                       heard(path)(message);
                     if (message.type === "ready") {
-                      setSaid({ ...message, src });
+                      setSaid(message);
                       if (mode) tell(frame.current, { type: mode, on: true });
                       // Rewritten and drawn again, a document stays where it
                       // was read, and what was found stays marked.
                       gotos.current = 0;
                       if (where.top) goto(where.top);
                       if (query) marked();
-                    } else if (message.type === "zoom") {
+                    } else if (message.type === "drawn")
+                      setSaid((was) => was && { ...was, drawn: true });
+                    else if (message.type === "zoom") {
                       // A point of the page, where it sits in the scroller.
                       const page = frame.current!.getBoundingClientRect();
                       const box = scroller.current!.getBoundingClientRect();
@@ -876,15 +877,14 @@ export default function Sequence({
             {presenting && (
               <div class="page-present-bar">
                 {counter}
-                {info?.notes && (
-                  <Button
-                    variant="secondary"
-                    aria-pressed={notesShown}
-                    onClick={() => setNotesShown(!notesShown)}
-                  >
-                    Notes
-                  </Button>
-                )}
+                <Button
+                  variant="secondary"
+                  disabled={!info?.notes}
+                  aria-pressed={notesShown}
+                  onClick={() => setNotesShown(!notesShown)}
+                >
+                  Notes
+                </Button>
                 {presenter && kind === "deck" && (
                   <Button
                     variant="secondary"

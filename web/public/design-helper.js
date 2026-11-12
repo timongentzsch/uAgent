@@ -387,6 +387,8 @@
 
   const send = (type, data) =>
     parent.postMessage({ uagentDesign: 1, type, ...data }, "*");
+  // How long a painted frame is waited for before a page counts as drawn.
+  const PAINT_MS = 100;
   // Find: every occurrence of the words marked, the `index`th as the current
   // one; answers how many there are. Letters fold as the app's find folds
   // them (A-Z only); a slide's notes, which are not drawn, are not searched.
@@ -446,6 +448,29 @@
   addEventListener("unhandledrejection", (event) =>
     failed(event.reason?.message || event.reason, 0),
   );
+  // Drawn: its stylesheets in (or all of it loaded: one may fail), a sheet
+  // calculated, and a frame of it painted. A page the browser does not paint
+  // (off screen, a hidden tab) is not waited for.
+  addEventListener("DOMContentLoaded", async () => {
+    await Promise.race([
+      Promise.all(
+        [...document.querySelectorAll('link[rel="stylesheet"]')].map(
+          (link) =>
+            link.sheet ||
+            new Promise((styled) => link.addEventListener("load", styled)),
+        ),
+      ),
+      new Promise((loaded) => addEventListener("load", loaded)),
+    ]);
+    await window.uagentReady;
+    await Promise.race([
+      new Promise((painted) =>
+        requestAnimationFrame(() => requestAnimationFrame(painted)),
+      ),
+      new Promise((late) => setTimeout(late, PAINT_MS)),
+    ]);
+    send("drawn");
+  });
   addEventListener("DOMContentLoaded", () => {
     send("ready", {
       title: document.title,

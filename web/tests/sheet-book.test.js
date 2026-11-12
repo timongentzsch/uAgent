@@ -1104,6 +1104,24 @@ test("a cell not yet calculated shows as typed, a formula blank; one a move only
   assert.deepEqual(shown(book, 0, 2, 2), ["7", "21"]);
 });
 
+test("a formula a sort moved keeps its value until it is calculated again", async () => {
+  const book = await open([
+    tab("Costs", [
+      ["#N", "#Twice"],
+      ["3", "=A2*2"],
+      ["1", "=A3*2"],
+    ]),
+  ]);
+  const sorted = book.sort(0, 1, false);
+  assert.deepEqual(texts(book, 0).slice(1), [
+    ["1", "=A2*2"],
+    ["3", "=A3*2"],
+  ]);
+  assert.deepEqual(shown(book, 0, 2, 2), ["1", "2"]);
+  assert.equal(await sorted, true);
+  assert.deepEqual(shown(book, 0, 2, 2), ["1", "2"]);
+});
+
 test("a change refused puts back the tabs calculated, and those asked for behind it are refused too", async () => {
   const book = await rows();
   const asked = [
@@ -1147,6 +1165,53 @@ test("a change that fails while it is made is refused with why; the book goes on
   assert.deepEqual(column(book), ["N", "ok", "r3", "r4", "r5"]);
 });
 
+// What was calculated is kept by row and cell: each stands in one place.
+const once = (book) => {
+  const seen = new Set();
+  for (const tab of book.tabs)
+    for (const row of tab.rows)
+      for (const item of [row, ...row.cells]) {
+        assert.ok(!seen.has(item), `${tab.name}: a row or cell twice`);
+        seen.add(item);
+      }
+};
+
+test("after any change a row or cell stands in one place of the tabs, and a copied tab shows values of its own", async () => {
+  const book = await open([
+    tab("T", [
+      ["#N", "#Twice"],
+      ["5", "=A2*2"],
+      ["3", "=A3*2"],
+    ]),
+  ]);
+  await book.copyTab(0);
+  await book.paste(1, { row: 2, column: 1 }, [["7"]]);
+  assert.deepEqual([book.shown(0, 2, 2), book.shown(1, 2, 2)], ["10", "14"]);
+  once(book);
+  const own = { sheet: 0, box: { top: 2, left: 1, bottom: 3, right: 2 } };
+  for (const change of [
+    () => book.fillDown(0, { top: 2, left: 1, bottom: 4, right: 2 }),
+    () => book.paste(0, { row: 5, column: 1 }, [["=A2", "=B2"]], own),
+    () => book.insertRows(0, 2, 2),
+    () => book.deleteRows(0, 2, 1),
+    () => book.insertColumns(0, 1, 1),
+    () => book.deleteColumns(0, 1, 1),
+    () => book.moveRows(0, 3, 1, 1),
+    () => book.moveColumns(0, 1, 1, 1),
+    () => book.sort(0, 1, true),
+    () => book.style(0, own.box, "bold", "bold", new Set()),
+    () => book.undo(),
+    () => book.undo(),
+    () => book.redo(),
+    () => book.copyTab(1),
+    () => book.moveTab(0, 1),
+    () => book.dropTab(0),
+  ]) {
+    assert.equal(typeof (await change()), "boolean");
+    once(book);
+  }
+});
+
 test("rows put in one after another are each worked out once", async () => {
   let made = 0;
   const counted = {
@@ -1170,20 +1235,35 @@ test("rows put in one after another are each worked out once", async () => {
 });
 
 // The engine as it is, which calculates where it is asked to anywhere
-// inside: a call of the page's that did would not return here.
-test("nothing the page asks of its engine calculates: every change finishes on a sheet holding formulas the engine never returns from or panics on", async () => {
-  const done = await ask(
-    {
-      tabs: [
-        tab("Costs", [
-          ["1", "=FACT(99999999999)"],
-          ["2", "=A1+XNPV(1,2)"],
-          ["3", "=Costs!A2*2"],
-        ]),
-      ],
-    },
+// inside: a call of the page's that did would not return here, or panic.
+// Each change the page makes that reaches its engine, and its answer.
+const REACHING = [
+  ["sheet.insertRows(0, 2, 1)", true],
+  ["sheet.deleteRows(0, 2, 1)", true],
+  ["sheet.insertColumns(0, 1, 1)", true],
+  ["sheet.deleteColumns(0, 1, 1)", true],
+  ["sheet.moveRows(0, 1, 1, 1)", true],
+  ["sheet.moveColumns(0, 1, 1, 1)", true],
+  ['sheet.nameTab(0, "Other")', true],
+  // What it reads is blank here: nothing moves.
+  ["sheet.sort(0, 1, false)", false],
+  ["sheet.fillDown(0, { top: 1, left: 1, bottom: 3, right: 2 })", true],
+  [
+    'sheet.paste(0, { row: 4, column: 2 }, [["=FACT(99999999999)"]], { sheet: 0, box: { top: 1, left: 2, bottom: 1, right: 2 } })',
+    true,
+  ],
+  ["sheet.undo()", true],
+  ["sheet.redo()", true],
+  ["sheet.copyTab(0)", true],
+  ['sheet.tokens("=FACT(99999999999)").length > 0', true],
+];
+// The changes made one after another in a worker, on a book whose answers
+// are blank: what each answered, or nothing past the limit.
+const changed = (rows, changes) =>
+  ask(
+    { tabs: [tab("Costs", rows)] },
     5000,
-    `const shown = (tabs) =>
+    `const blank = (tabs) =>
       tabs.map((tab) => ({
         cells: tab.rows.map((row) =>
           row.cells.map(() => ({ shown: "", kind: "text", format: "general" })),
@@ -1191,25 +1271,37 @@ test("nothing the page asks of its engine calculates: every change finishes on a
         looks: {},
         unread: [],
       }));
-    const sheet = await book.openBook(engine, request.tabs, false, async (tabs) => shown(tabs));
-    const own = { sheet: 0, box: { top: 1, left: 2, bottom: 1, right: 2 } };
-    const answers = [
-      await sheet.insertRows(0, 2, 1),
-      await sheet.deleteRows(0, 2, 1),
-      await sheet.insertColumns(0, 1, 1),
-      await sheet.deleteColumns(0, 1, 1),
-      await sheet.moveRows(0, 1, 1, 1),
-      await sheet.moveColumns(0, 1, 1, 1),
-      await sheet.nameTab(0, "Other"),
-      await sheet.sort(0, 1, false),
-      await sheet.fillDown(0, { top: 1, left: 1, bottom: 3, right: 2 }),
-      await sheet.paste(0, { row: 4, column: 2 }, [["=FACT(99999999999)"]], own),
-      await sheet.undo(),
-      await sheet.redo(),
-      await sheet.copyTab(0),
-    ];
-    sheet.tokens("=FACT(99999999999)");
+    const sheet = await book.openBook(engine, request.tabs, false, async (tabs) => blank(tabs));
+    const answers = [];
+    ${changes.map((change) => `answers.push(await ${change});`).join("\n")}
     return answers;`,
   );
-  assert.equal(done?.length, 13);
+
+test("nothing the page asks of its engine calculates: every change answers as it would on a sheet holding formulas the engine never returns from or panics on", async () => {
+  assert.deepEqual(
+    await changed(
+      [
+        ["1", "=FACT(99999999999)"],
+        ["2", "=A1+XNPV(1,2)"],
+        ["3", "=Costs!A2*2"],
+      ],
+      REACHING.map(([change]) => change),
+    ),
+    REACHING.map(([, answer]) => answer),
+  );
+  // Each alone, where a call that calculates can only fail to return.
+  for (const [change] of REACHING)
+    assert.equal(
+      (
+        await changed(
+          [
+            ["1", "=FACT(99999999999)"],
+            ["2", "=FACT(99999999999)"],
+          ],
+          [change],
+        )
+      )?.length,
+      1,
+      change,
+    );
 });

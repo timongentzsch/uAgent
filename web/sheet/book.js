@@ -792,6 +792,11 @@ export async function openBook(engine, written, locked, calculate) {
         tabs.toSpliced(sheet + 1, 0, {
           ...tabs[sheet],
           name: unused(`${tabs[sheet].name.slice(0, 26)} copy`),
+          // Rows and cells of its own: what was calculated is kept by them.
+          rows: tabs[sheet].rows.map((row) => ({
+            ...row,
+            cells: row.cells.map((cell) => ({ ...cell })),
+          })),
         }),
       ),
     ),

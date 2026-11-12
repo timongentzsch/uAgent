@@ -275,6 +275,7 @@ export default function Sequence({
     setCaret(undefined);
     setNoted(undefined);
     setSaved(undefined);
+    setUnmade(undefined);
     setSaves(wrote.current);
     setZoom(1);
     setCell(undefined);
@@ -442,6 +443,10 @@ export default function Sequence({
   // one save.
   const [saved, setSaved] = useState<{ text: string; failed?: true }>();
   const refused = (text: string) => setSaved({ text, failed: true });
+  // Why a sheet did not make a change, until the next one is asked of it: a
+  // change asked before it may be saved after.
+  const [unmade, setUnmade] = useState<{ text: string }>();
+  const failure = unmade ?? (saved?.failed ? saved : undefined);
   // A slide's notes as typed under its stage, until its page says its own.
   const [noted, setNoted] = useState<string>();
   const notes = noted ?? info?.notes ?? "";
@@ -703,7 +708,7 @@ export default function Sequence({
   // else's in the tools' row. Last there, it takes the room the tools leave,
   // so no tool moves for it. Why something was not saved or done is said
   // over the tools, whole: a row would cut it short.
-  const status = saved && !saved.failed && (
+  const status = saved && !failure && (
     <small class="page-status muted">
       <Notice tone="info">{saved.text}</Notice>
     </small>
@@ -760,9 +765,9 @@ export default function Sequence({
   );
   return (
     <div class="open-page">
-      {saved?.failed && (
+      {failure && (
         <p class="page-notice">
-          <Notice tone="error">{saved.text}</Notice>
+          <Notice tone="error">{failure.text}</Notice>
         </p>
       )}
       <div class="page-tools">
@@ -1120,7 +1125,11 @@ export default function Sequence({
                           : undefined,
                       );
                     else if (message.type === "refused")
-                      refused(String(message.message).slice(0, 300));
+                      setUnmade(
+                        message.message
+                          ? { text: String(message.message).slice(0, 300) }
+                          : undefined,
+                      );
                     else if (message.type === "calculating")
                       setSaved((was) =>
                         message.on
@@ -1231,7 +1240,7 @@ export default function Sequence({
           {ruling && cell && (
             <RulesDialog
               cell={cell}
-              refusal={saved?.failed ? saved : undefined}
+              refusal={failure}
               act={act}
               close={() => setRuling("")}
             />

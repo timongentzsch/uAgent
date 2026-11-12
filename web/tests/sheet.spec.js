@@ -336,20 +336,28 @@ test("a formula the engine never finishes is refused once its time is up; meanwh
   expect(await stage.locator("html").evaluate(() => document.readyState)).toBe(
     "complete",
   );
+  // A change asked for behind it shows, and waits with it.
+  await app.keyboard.type("Lease");
+  await app.keyboard.press("Enter");
+  await expect(cell("Costs", "A2")).toHaveText("Lease");
   expect(await saved()).toBe(COSTS);
-  await expect(files.locator(".open-page > .page-notice .notice")).toHaveText(
+  const why = files.locator(".open-page > .page-notice .notice");
+  await expect(why).toHaveText(
     "Not changed: the engine has not finished calculating after 20 seconds.",
     { timeout: 30_000 },
   );
-  await expect(status).toHaveCount(0);
   await expect(cell("Costs", "B2")).toHaveText("1200");
-  expect(await saved()).toBe(COSTS);
-  // What it takes next is calculated and saved as ever.
+  // The change behind it is made and saved, and the reason still stands.
+  await expect.poll(saved).toBe(COSTS.replace("Rent", "Lease"));
+  await expect(why).toBeVisible();
+  await expect(status).toHaveCount(0);
+  // What it takes next is calculated and saved as ever, and ends the reason.
   await cell("Costs", "B2").click();
   await app.keyboard.type("50");
   await app.keyboard.press("Enter");
   await expect(cell("Costs", "C2")).toHaveText("100");
   await expect.poll(saved).toContain("<td>50<td>=B2*2");
+  await expect(why).toHaveCount(0);
 });
 
 test("a file with a formula the engine never finishes is shown as written once its time is up, with the reason", async ({

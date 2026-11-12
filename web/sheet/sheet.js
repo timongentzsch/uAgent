@@ -579,9 +579,11 @@ async function open() {
     // `asked` is what the book answers: true, false, or why not. A change
     // shows as it is asked for, and is held; answered, what is calculated
     // shows, or where it was refused what was before, and what is
-    // calculated goes to the file.
+    // calculated goes to the file. Why one was refused stands until the
+    // next is asked for.
     async did(asked) {
       try {
+        say({ type: "refused", message: "" });
         redraw();
         held();
         renew();

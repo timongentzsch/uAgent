@@ -267,6 +267,11 @@ test("a page opened: select and comment, tweaks, print", async ({
   // Select picks an element; the comment goes into the draft, pane open.
   await files.getByRole("button", { name: "Select" }).click();
   await frame.getByText("Alpha headline").click();
+  // Its mark is the inverse of the page under it, seen on any page.
+  await expect(files.locator(".page-mark.picked")).toHaveCSS(
+    "mix-blend-mode",
+    "difference",
+  );
   await files.getByRole("textbox", { name: "Comment" }).fill("Make it bigger");
   await files.getByRole("button", { name: "Add to chat" }).click();
   await expect(app.locator("#prompt")).toHaveValue(
@@ -906,7 +911,7 @@ test("a long deck's legend draws only the slides near its view, and keeps the cu
   const scrolled = () => legend.evaluate((list) => list.scrollTop);
   const top = await scrolled();
   await files.getByRole("button", { name: "Slide actions" }).click();
-  await app.getByRole("menuitem", { name: "Move up" }).click();
+  await app.getByRole("menuitem", { name: "Move earlier" }).click();
   await expect(count).toHaveText("39 / 40");
   await expect(
     legend.getByRole("option", { name: "Slide 40: S39" }),
@@ -1021,12 +1026,12 @@ test("a deck's slide is moved, duplicated and deleted from its menu, by keyboard
   const actions = files.getByRole("button", { name: "Slide actions" });
   const item = (name) => app.getByRole("menuitem", { name });
   await expect(names).toHaveCount(4);
-  // By keyboard: the first slide cannot move up, so the menu opens on Move
-  // down; the button keeps the focus for the next move.
+  // By keyboard: the first slide cannot move earlier, so the menu opens on
+  // Move later; the button keeps the focus for the next move.
   await actions.focus();
   await app.keyboard.press("Enter");
-  await expect(item("Move up")).toBeDisabled();
-  await expect(item("Move down")).toBeFocused();
+  await expect(item("Move earlier")).toBeDisabled();
+  await expect(item("Move later")).toBeFocused();
   await app.keyboard.press("Enter");
   await expect(names).toHaveText([
     "1 · Plan",
@@ -1037,7 +1042,7 @@ test("a deck's slide is moved, duplicated and deleted from its menu, by keyboard
   await expect(count).toHaveText("2 / 4");
   await expect(actions).toBeFocused();
   await app.keyboard.press("Enter");
-  await expect(item("Move up")).toBeFocused();
+  await expect(item("Move earlier")).toBeFocused();
   await app.keyboard.press("Enter");
   await expect(count).toHaveText("1 / 4");
   expect(await slidesIn(host.project)).toEqual(Object.keys(FOUR));
@@ -1121,7 +1126,7 @@ test("a move the folder no longer allows is refused: nothing moves, and the pane
   await rename(join(dir, "02-plan.html"), join(dir, "02-agenda.html"));
   const down = async () => {
     await files.getByRole("button", { name: "Slide actions" }).click();
-    await app.getByRole("menuitem", { name: "Move down" }).click();
+    await app.getByRole("menuitem", { name: "Move later" }).click();
   };
   await down();
   const notice = files.locator(".page-notice");
@@ -1637,6 +1642,40 @@ test("a document is stepped a sheet of its paper at a time, by its legend, its c
   await files.getByRole("button", { name: "Next page" }).click();
   await shows(3);
   expect(await page.locator("html").evaluate(() => window.loaded)).toBe("once");
+});
+
+test("a document opened alone turns its pages by the keys", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files } = await openMemo(app, session, host.project);
+  const alone = await app.context().newPage();
+  await alone.goto(
+    await files.getByRole("link", { name: "Open alone" }).getAttribute("href"),
+  );
+  const shows = async (page) => {
+    await expect
+      .poll(() =>
+        onSheet(
+          alone.getByText(`Paragraph ${(page - 1) * 12 + 1} of the memo.`),
+        ),
+      )
+      .toBe(true);
+    expect(await alone.evaluate(() => location.hash)).toBe(`#${page}`);
+  };
+  for (const [key, page] of [
+    ["PageDown", 2],
+    ["ArrowRight", 3],
+    ["End", MEMO_PAGES],
+    ["PageDown", MEMO_PAGES],
+    ["ArrowLeft", MEMO_PAGES - 1],
+    ["Home", 1],
+    ["PageUp", 1],
+  ]) {
+    await alone.keyboard.press(key);
+    await shows(page);
+  }
 });
 
 test("on a phone a document's pages are a filmstrip under its sheet", async ({

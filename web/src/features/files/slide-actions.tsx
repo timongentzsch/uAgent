@@ -21,9 +21,9 @@ export default function SlideActions({
 }) {
   const [deleting, setDeleting] = useState(false);
   const items: [string, boolean, () => void][] = [
-    ["Move up", !index, () => act(moved(slides, index, index - 1))],
+    ["Move earlier", !index, () => act(moved(slides, index, index - 1))],
     [
-      "Move down",
+      "Move later",
       index === slides.length - 1,
       () => act(moved(slides, index, index + 1)),
     ],

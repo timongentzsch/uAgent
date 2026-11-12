@@ -322,6 +322,23 @@
 
   if (parent === window) {
     checked((problem) => console.warn(`uagent page: ${problem}`));
+    // Alone, a document turns its own pages by the keys the pane steps with.
+    addEventListener("keydown", (event) => {
+      const by = {
+        ArrowRight: 1,
+        PageDown: 1,
+        ArrowLeft: -1,
+        PageUp: -1,
+        Home: -pages,
+        End: pages,
+      }[event.key];
+      // With a modifier the key is the browser's (Back, a tab's end).
+      const held = event.metaKey || event.ctrlKey || event.altKey;
+      if (!by || held || !paper()) return;
+      if (event.target.closest?.("input, textarea, select")) return;
+      event.preventDefault();
+      location.replace(`#${Math.min(pages, Math.max(1, shown + 1 + by))}`);
+    });
     if (location.hash !== "#print" && location.hash !== "#paper") return;
     addEventListener("DOMContentLoaded", paperStyle);
     if (location.hash === "#print")

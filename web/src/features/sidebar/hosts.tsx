@@ -15,6 +15,7 @@ import {
   Input,
   LoadError,
   Modal,
+  Notice,
 } from "../../shared/ui.tsx";
 import HostLatency from "./host-latency.tsx";
 import { Menu } from "../../shared/menu.tsx";
@@ -414,9 +415,11 @@ export function HostList() {
                 {source!.address} · {status(source!)}
               </p>
               {!hosts.gatewayOnline && (
-                <p>The serving host is unavailable. Reconnect to it first.</p>
+                <Notice tone="warning">
+                  The serving host is unavailable. Reconnect to it first.
+                </Notice>
               )}
-              {source!.error && <p class="plain small">{source!.error}</p>}
+              {source!.error && <Notice tone="error">{source!.error}</Notice>}
               {source!.phase === "connected" && hosts.gatewayOnline && (
                 <HostLatency key={source!.id} id={source!.id} />
               )}

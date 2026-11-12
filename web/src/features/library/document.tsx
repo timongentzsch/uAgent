@@ -13,6 +13,7 @@ import {
   Input,
   LoadError,
   Modal,
+  Notice,
   Select,
   Spinner,
   Textarea,
@@ -331,17 +332,21 @@ export default function LibraryDocument({
         </p>
       )}
       {stale && (
-        <p role="status">
-          Changed on disk. Your draft is retained.{" "}
-          <Button
-            onClick={() => {
-              forget();
-              loaded.retry();
-            }}
-          >
-            Reload
-          </Button>
-        </p>
+        <Notice
+          tone="warning"
+          action={
+            <Button
+              onClick={() => {
+                forget();
+                loaded.retry();
+              }}
+            >
+              Reload
+            </Button>
+          }
+        >
+          Changed on disk. Your draft is retained.
+        </Notice>
       )}
       <div class="segmented document-toolbar">
         {item.writable && !editing && (

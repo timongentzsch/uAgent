@@ -237,7 +237,7 @@ test("unread completions, background activity and conversation lifecycle", async
   await expect(page.getByLabel("Unread messages", { exact: true })).toHaveCount(
     0,
   );
-  await expect(page.locator(".error-banner")).toHaveCount(0);
+  await expect(page.locator(".banner")).toHaveCount(0);
   await page
     .getByLabel("Message or guidance")
     .fill("Background activity probe");

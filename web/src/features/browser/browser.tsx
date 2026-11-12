@@ -17,6 +17,7 @@ import {
   Button,
   IconButton,
   Input,
+  Notice,
   Select,
   Textarea,
 } from "../../shared/ui.tsx";
@@ -739,13 +740,18 @@ export default function BrowserPanel({
     </SheetButton>
   );
 
-  const banner =
-    status.error ||
-    (driving && status.profile_setup
-      ? "Sign in to your sites. Done reopens this profile for the agent with your saved logins."
-      : !driving && status.waiting && viewing
-        ? "The agent is waiting for you. Take over to continue."
-        : "");
+  const banner = status.error ? (
+    <Notice tone="error">{status.error}</Notice>
+  ) : driving && status.profile_setup ? (
+    <Notice tone="info">
+      Sign in to your sites. Done reopens this profile for the agent with your
+      saved logins.
+    </Notice>
+  ) : !driving && status.waiting && viewing ? (
+    <Notice tone="info">
+      The agent is waiting for you. Take over to continue.
+    </Notice>
+  ) : null;
   const overlay = !status.ok
     ? "Loading browser…"
     : otherDevice
@@ -756,20 +762,22 @@ export default function BrowserPanel({
           : "Chrome is stopped. Take over to start it and sign in to sites; the agent uses your logins."
         : "";
 
-  const [bannerShown, bannerRef] = useExit<string, HTMLParagraphElement>(
+  const [bannerShown, bannerRef] = useExit<typeof banner, HTMLParagraphElement>(
     banner,
   );
   const [toastShown, toastRef] = useExit<string, HTMLParagraphElement>(toast);
   const overlays = (
     <>
       {bannerShown && (
-        <p ref={bannerRef} class="browser-banner enters" role="status">
+        <p ref={bannerRef} class="browser-banner enters">
           {bannerShown}
         </p>
       )}
       {toastShown && (
-        <p ref={toastRef} class="browser-toast enters" role="status">
-          {toastShown}
+        <p ref={toastRef} class="browser-toast enters">
+          <Notice tone={toastShown === "Copied" ? "info" : "error"}>
+            {toastShown}
+          </Notice>
         </p>
       )}
       {card && (

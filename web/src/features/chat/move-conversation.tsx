@@ -15,6 +15,7 @@ import {
   Group,
   Input,
   LoadError,
+  Notice,
 } from "../../shared/ui.tsx";
 
 // The conversation and the agents under it, which a move takes along.
@@ -124,11 +125,11 @@ export default function MoveConversation({
         {`. Files stay ${current ? `in ${current}` : "where they are"}, and memories stay with the old ${current ? "folder" : "folders"}.`}
       </p>
       {running.length > 0 && (
-        <p role="status">
+        <Notice tone="warning">
           It cannot move while{" "}
           {running.map((item) => `“${item.title}”`).join(", ")}{" "}
           {running.length === 1 ? "is" : "are"} running.
-        </p>
+        </Notice>
       )}
       {error && <LoadError error={error} />}
       <Actions>

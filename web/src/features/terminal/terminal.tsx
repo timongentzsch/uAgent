@@ -13,7 +13,7 @@ import type {
 import { useApi } from "../../state/api.ts";
 import { folderName } from "../../shared/folder-label.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
-import { Button, IconButton, Spinner } from "../../shared/ui.tsx";
+import { Button, IconButton, Notice, Spinner } from "../../shared/ui.tsx";
 import { KeyBar, keepFocus, type BarKey } from "../../shared/key-bar.tsx";
 import { coarsePointer } from "../../shared/layout.ts";
 import { useLatest } from "../../shared/use-latest.ts";
@@ -295,23 +295,25 @@ function TerminalView({
     <div class="terminal-tabpanel" id={`terminal-${id}`} hidden={!active}>
       <div class="terminal-view" ref={box} />
       {state !== "live" && (
-        <p class="terminal-note small" role="status">
-          {state === "connecting" ? (
-            "Reconnecting…"
-          ) : state === "ended" ? (
-            code < 0 ? (
-              "The shell ended."
-            ) : (
-              `The shell exited with code ${code}.`
-            )
-          ) : (
-            <>
-              Open on another device.{" "}
-              <Button variant="quiet" onClick={() => setAttempt(attempt + 1)}>
-                Use here
-              </Button>
-            </>
-          )}
+        <p class="terminal-note small">
+          <Notice
+            tone="info"
+            action={
+              state === "replaced" && (
+                <Button variant="quiet" onClick={() => setAttempt(attempt + 1)}>
+                  Use here
+                </Button>
+              )
+            }
+          >
+            {state === "connecting"
+              ? "Reconnecting…"
+              : state === "replaced"
+                ? "Open on another device."
+                : code < 0
+                  ? "The shell ended."
+                  : `The shell exited with code ${code}.`}
+          </Notice>
         </p>
       )}
       {active && coarsePointer() && (

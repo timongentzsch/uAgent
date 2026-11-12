@@ -75,9 +75,6 @@
   display: grid;
   gap: var(--gap);
 }
-.setting-error {
-  color: var(--removed);
-}
 @media (max-width: 600px) {
   .setting-field[data-wide] .row {
     flex-wrap: wrap;

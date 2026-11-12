@@ -25,6 +25,7 @@ import {
   IconButton,
   Select,
   LoadError,
+  Notice,
   Input,
   Textarea,
   Placeholder,
@@ -291,10 +292,12 @@ export default function Scheduled({
                     )}
                   </div>
                   {changed && (
-                    <p role="status">
-                      This task changed. Your draft is retained.{" "}
-                      <Button onClick={discard}>Reload</Button>
-                    </p>
+                    <Notice
+                      tone="warning"
+                      action={<Button onClick={discard}>Reload</Button>}
+                    >
+                      This task changed. Your draft is retained.
+                    </Notice>
                   )}
                   <div class="field-row">
                     <Field label="Name">

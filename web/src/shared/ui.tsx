@@ -26,7 +26,15 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { ChevronRight, X, Check, Copy } from "lucide-preact";
+import {
+  ChevronRight,
+  X,
+  Check,
+  Copy,
+  CircleAlert,
+  TriangleAlert,
+  Info,
+} from "lucide-preact";
 import { markPath } from "./mark.ts";
 import { animateOut, motionMs } from "./motion.ts";
 import { useDismiss } from "./dismiss.ts";
@@ -433,6 +441,32 @@ export function Spinner({
     </div>
   );
 }
+const toneIcons = { error: CircleAlert, warning: TriangleAlert, info: Info };
+
+// Every message to the person. Only its text is the live region, so an
+// action beside it is not read out with it.
+export function Notice({
+  tone,
+  children,
+  action,
+  id,
+}: {
+  tone: keyof typeof toneIcons;
+  children: ComponentChildren;
+  action?: ComponentChildren;
+  id?: string;
+}) {
+  const Icon = toneIcons[tone];
+  return (
+    <span class="notice" data-tone={tone}>
+      <Icon />
+      <span id={id} role={tone === "error" ? "alert" : "status"}>
+        {children}
+      </span>
+      {action}
+    </span>
+  );
+}
 export function LoadError({
   error,
   retry,
@@ -441,10 +475,12 @@ export function LoadError({
   retry?: () => void;
 }) {
   return (
-    <div class="load-error">
-      <p role="alert">{failure(error).message}</p>
-      {retry && <Button onClick={retry}>Retry</Button>}
-    </div>
+    <Notice
+      tone="error"
+      action={retry && <Button onClick={retry}>Retry</Button>}
+    >
+      {failure(error).message}
+    </Notice>
   );
 }
 // Contains a render failure to its subtree: one malformed event or message

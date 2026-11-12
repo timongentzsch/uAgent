@@ -63,8 +63,14 @@ dialog.browser-view[data-layout="sheet"] {
   background: var(--screen-scrim);
   color: var(--screen-ink);
   font-size: var(--font-small);
-  text-align: center;
   pointer-events: none;
+}
+.browser-banner > .notice {
+  justify-content: center;
+}
+/* The palette's red is for its own surfaces; the screen is dark in both. */
+:is(.browser-banner, .browser-toast) [data-tone="error"] > * {
+  color: var(--screen-error);
 }
 .browser-banner {
   --from: 0 calc(-1 * var(--rise));

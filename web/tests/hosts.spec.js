@@ -13,6 +13,7 @@ async function offlineHost(
   page,
   phase = "disconnected",
   notifications = false,
+  error = "",
 ) {
   // These API mocks exercise a client without the separate PWA lifecycle.
   await page.addInitScript((notifications) => {
@@ -41,7 +42,7 @@ async function offlineHost(
               id: remote,
               address: "GPU",
               phase,
-              error: "",
+              error,
             },
           ],
         },
@@ -338,6 +339,33 @@ for (const phase of ["connected", "connecting"]) {
     ).toBeDisabled();
   });
 }
+
+// Wherever a host says why it is not connected, that is an error notice.
+test("a host's connection error is drawn as an error", async ({ page }) => {
+  const error =
+    "A complete four-target remote bundle for this exact build is required.";
+  await offlineHost(page, "disconnected", false, error);
+  await page.goto("/");
+  const red = await page.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement("i"));
+    probe.style.color = "var(--removed)";
+    return getComputedStyle(probe).color;
+  });
+  await page.locator(".host-list").getByRole("button", { name: /GPU/ }).click();
+  const detail = page.getByRole("dialog", { name: "GPU", exact: true });
+  await expect(detail.getByRole("alert")).toHaveText(error);
+  await expect(detail.getByRole("alert")).toHaveCSS("color", red);
+  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "New conversation", exact: true })
+    .click();
+  const creating = page.getByRole("dialog", { name: "New conversation" });
+  await creating
+    .getByRole("combobox", { name: "Host", exact: true })
+    .selectOption(remote);
+  await expect(creating.getByRole("alert")).toHaveText(error);
+  await expect(creating.getByRole("alert")).toHaveCSS("color", red);
+});
 
 test("adding a host submits with a click", async ({ page }) => {
   const observed = await offlineHost(page);

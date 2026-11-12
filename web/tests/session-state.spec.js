@@ -183,7 +183,7 @@ test("late snapshots and retired streams cannot replace current session state", 
   );
   await expect(context).toHaveAttribute("title", /Estimated context: 12,000 /);
   await expect(connected(page)).toBeVisible();
-  await expect(page.locator(".error-banner")).toHaveCount(0);
+  await expect(page.locator(".banner")).toHaveCount(0);
 });
 
 test("tool rows and memory receipts survive reload and mobile rotation", async ({

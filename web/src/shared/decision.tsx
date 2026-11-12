@@ -1,7 +1,7 @@
 import type { Pending, Act, CommandInputs, Report } from "./types.ts";
 import { failure } from "./types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Actions, Button, cleanText, Input, Textarea } from "./ui.tsx";
+import { Actions, Button, cleanText, Input, Notice, Textarea } from "./ui.tsx";
 import Ask from "./ask.tsx";
 import { AttachmentList } from "./attachments.tsx";
 import DiffView from "./diff-view.tsx";
@@ -188,16 +188,20 @@ export default function Decision({
         </div>
       )}
       {failed && (
-        <p class="failure" role="alert">
-          {failed.message}{" "}
-          <Button
-            size="compact"
-            disabled={idle}
-            onClick={() => void answer(failed.fields)}
-          >
-            Retry
-          </Button>
-        </p>
+        <Notice
+          tone="error"
+          action={
+            <Button
+              size="compact"
+              disabled={idle}
+              onClick={() => void answer(failed.fields)}
+            >
+              Retry
+            </Button>
+          }
+        >
+          {failed.message}
+        </Notice>
       )}
       {asking ? (
         <Ask

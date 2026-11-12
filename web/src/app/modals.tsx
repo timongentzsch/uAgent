@@ -20,6 +20,7 @@ import {
   Button,
   EmptyState,
   Input,
+  Notice,
 } from "../shared/ui.tsx";
 import { ImageViewerDialog, type ViewedImage } from "../shared/attachments.tsx";
 import { BrowserLoading } from "../features/browser/frame.tsx";
@@ -308,7 +309,7 @@ export default function Modals({
                 Connect to {newSource.name}
               </Button>
             )}
-            {newSource.error && <p class="plain small">{newSource.error}</p>}
+            {newSource.error && <Notice tone="error">{newSource.error}</Notice>}
             {modal.place === "workspace" ? (
               <>
                 <label>

@@ -232,7 +232,7 @@ test("a refused send stays at its message with Retry", async ({
   await send(page, "Retry probe");
   const row = page.locator(".message.user", { hasText: "Retry probe" });
   await expect(row.getByRole("alert")).toContainText("Refused for this test");
-  await expect(page.locator(".error-banner")).toHaveCount(0);
+  await expect(page.locator(".banner")).toHaveCount(0);
   await row.getByRole("button", { name: "Retry" }).click();
   await expect(
     page.getByRole("heading", { name: "Verified response" }),

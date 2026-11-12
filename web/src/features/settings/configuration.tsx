@@ -7,6 +7,7 @@ import {
   Group,
   Input,
   LoadError,
+  Notice,
   Row,
 } from "../../shared/ui.tsx";
 import { SettingRowsLoading } from "./loading.tsx";
@@ -78,8 +79,8 @@ export default function Configuration({
     <section class="configuration">
       {failed}
       {config.problem && (
-        <p class="group-footer small setting-error" role="alert">
-          {config.problem}
+        <p class="group-footer">
+          <Notice tone="error">{config.problem}</Notice>
         </p>
       )}
       {config.restart.length > 0 && (

@@ -1,9 +1,8 @@
 import { ExternalLink, X } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { Act } from "../../shared/types.ts";
-import { Button, IconButton } from "../../shared/ui.tsx";
+import { Button, IconButton, LoadError } from "../../shared/ui.tsx";
 import { useAction } from "../../shared/use-action.ts";
-import { failure } from "../../shared/types.ts";
 import MessageInput from "../../shared/message-input.tsx";
 import Decision from "../../shared/decision.tsx";
 import { useApi } from "../../state/api.ts";
@@ -121,7 +120,7 @@ export default function SideAnswer({
             ))}
         </div>
       </div>
-      {!!error && <p role="alert">{failure(error).message}</p>}
+      {!!error && <LoadError error={error} />}
       <form
         onSubmit={(event) => {
           event.preventDefault();

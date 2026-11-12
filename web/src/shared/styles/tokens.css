@@ -11,6 +11,7 @@
     /* The remote browser's screen: a dark desktop in either theme. */
     --screen-bg: #171717;
     --screen-ink: #e5e5e5;
+    --screen-error: #ff8a80;
     --screen-scrim: rgb(0 0 0 / 0.78);
     --screen-mark: #fff;
     --screen-mark-fill: rgb(255 255 255 / 0.25);
@@ -103,7 +104,6 @@
     --icon-align: -0.2em;
     --stroke: max(1px, 0.12rem);
     --stripe: 2px;
-    --stripe-callout: 3px;
     /* The focus ring's distance outside its box (inside, where a box clips). */
     --focus-offset: 2px;
     --opacity-disabled: 0.45;
@@ -189,6 +189,7 @@
     --added-bg: rgba(63, 185, 80, 0.12);
     --removed: #f85149;
     --removed-bg: rgba(248, 81, 73, 0.12);
+    --warning: #e3b341;
     --accent-hover: #e2e2e2;
     --accent-active: #ccc;
     --on-accent: #000;
@@ -244,6 +245,7 @@
     --added-bg: rgba(26, 127, 55, 0.1);
     --removed: #b31d28;
     --removed-bg: rgba(209, 36, 47, 0.1);
+    --warning: #855600;
     --on-accent: #fff;
     --knob: #fff;
     --find: rgba(255, 204, 0, 0.4);

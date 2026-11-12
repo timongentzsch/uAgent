@@ -233,7 +233,7 @@ test("a refused insertion keeps the queued message available", async ({
     });
   });
   await tray.getByRole("button", { name: "Insert now" }).click();
-  await expect(page.locator(".error-banner")).toContainText(
+  await expect(page.locator(".banner")).toContainText(
     "Insertion refused for test",
   );
   await expect(tray).toContainText("Keep this queued");

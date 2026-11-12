@@ -6,6 +6,7 @@ import { SheetButton } from "../../../shared/sheet.tsx";
 import {
   IconButton,
   Input,
+  Notice,
   Row,
   Switch,
   ValueSelect,
@@ -178,9 +179,7 @@ export function SettingField({
     />
   );
   const detail = error ? (
-    <span class="setting-error" role="alert">
-      {error}
-    </span>
+    <Notice tone="error">{error}</Notice>
   ) : (
     note || setting.purpose || setting.description
   );

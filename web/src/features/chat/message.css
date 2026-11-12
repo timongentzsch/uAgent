@@ -60,19 +60,6 @@
     white-space: normal;
   }
 }
-.failure {
-  margin: 0;
-  padding: var(--space-1) var(--inset-x);
-  color: var(--removed);
-  overflow-wrap: anywhere;
-}
-.failure.unsent {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-4);
-  padding-inline: 0;
-}
 
 /* Loads with the transcript, not with the lazy statistics dialog. */
 .turn-footer {
@@ -115,9 +102,8 @@
   text-align: left;
   overflow-wrap: anywhere;
 }
-.turn-files .failure {
+.turn-files .notice {
   flex-basis: 100%;
-  padding: 0;
 }
 @container column (max-width: 43rem) {
   .turn-calls {

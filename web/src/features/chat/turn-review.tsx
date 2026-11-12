@@ -1,7 +1,6 @@
 import { useState } from "preact/hooks";
 import type { SessionRef, TurnFile } from "../../shared/types.ts";
-import { failure } from "../../shared/types.ts";
-import { Actions, Button } from "../../shared/ui.tsx";
+import { Actions, Button, LoadError, Notice } from "../../shared/ui.tsx";
 import { useAction } from "../../shared/use-action.ts";
 import { useApi } from "../../state/api.ts";
 import { formatStat } from "../../shared/display.ts";
@@ -86,16 +85,15 @@ export default function TurnReview({
               <small>Not kept</small>
             )}
             {kept[file.path] && (
-              <p class="failure" role="alert">
+              <Notice tone="error">
                 Kept {file.path}: {kept[file.path]}
-              </p>
+              </Notice>
             )}
           </li>
         ))}
       </ul>
-      {(note || !!error) && (
-        <p role="status">{note || failure(error).message}</p>
-      )}
+      {note && <Notice tone="info">{note}</Notice>}
+      {!!error && <LoadError error={error} />}
       <Actions>
         <Button
           variant="destructive"

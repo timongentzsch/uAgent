@@ -9,6 +9,7 @@ import {
   Group,
   LoadError,
   Modal,
+  Notice,
   Row,
   Time,
 } from "../../../shared/ui.tsx";
@@ -124,7 +125,11 @@ export function AboutPane() {
                 ? "GitHub could not be asked"
                 : "The update was not installed"
             }
-            detail={state.output?.trim().split("\n").at(-1) || state.error}
+            detail={
+              <Notice tone="error">
+                {state.output?.trim().split("\n").at(-1) || state.error}
+              </Notice>
+            }
           />
         )}
       </Group>

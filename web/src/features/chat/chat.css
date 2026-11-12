@@ -1,8 +1,3 @@
-.retention {
-  border: var(--border);
-  padding: var(--space-4);
-  overflow-anchor: none;
-}
 .history-button {
   display: block;
   margin-inline: auto;

@@ -9,6 +9,7 @@ import { useResource } from "../../shared/use-resource.ts";
 import { useContext } from "preact/hooks";
 import {
   LoadError,
+  Notice,
   Placeholder,
   Welcome,
   updateChecked,
@@ -128,10 +129,10 @@ function Chat({
           load={() => olderPage.run(() => preserveWhile(older).catch(report))}
         />
         {snapshot?.live_truncated && (
-          <p class="retention small">
+          <Notice tone="info">
             The live preview exceeded its buffer. Retained history refreshes
             when this turn saves.
-          </p>
+          </Notice>
         )}
         {!!loadError && <LoadError error={loadError} retry={retry} />}
         {/* A failed first load shows only its error. */}
@@ -156,15 +157,9 @@ function Chat({
         {snapshot && prepared && (
           <Transcript nodes={nodes} online={online} session={session} />
         )}
-        {session.error && (
-          <p class="failure" role="alert">
-            {session.error}
-          </p>
-        )}
+        {session.error && <Notice tone="error">{session.error}</Notice>}
         {snapshot?.state?.error && (
-          <p class="failure" role="alert">
-            {snapshot.state.error}
-          </p>
+          <Notice tone="error">{snapshot.state.error}</Notice>
         )}
       </div>
     </div>

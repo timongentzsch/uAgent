@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import mermaid from "mermaid";
-import { Button, CodeCopy, Modal } from "./ui.tsx";
+import { Button, CodeCopy, Modal, Notice } from "./ui.tsx";
 import { useResource } from "./use-resource.ts";
 import {
   dropOldest,
@@ -122,9 +122,11 @@ export default function Diagram({ source }: { source: string }) {
               height={size.height || undefined}
             />
           </Button>
+        ) : error ? (
+          <Notice tone="error">{error}</Notice>
         ) : (
           <p class="muted small" role="status">
-            {error || "Rendering diagram…"}
+            Rendering diagram…
           </p>
         )}
       </div>

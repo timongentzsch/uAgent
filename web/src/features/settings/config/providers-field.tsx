@@ -9,6 +9,7 @@ import {
   Group,
   Input,
   Modal,
+  Notice,
   Row,
   Select,
   Switch,
@@ -287,11 +288,7 @@ function ProviderForm({
           })
         }
       />
-      {definition.problem && (
-        <small class="setting-error" role="alert">
-          {definition.problem}
-        </small>
-      )}
+      {definition.problem && <Notice tone="error">{definition.problem}</Notice>}
       <Actions>
         <Button
           onClick={() => {
@@ -413,11 +410,7 @@ function ProviderForm({
       {other.length > 0 && (
         <small class="muted">Also in the file: {other.join(", ")}</small>
       )}
-      {refused && error && (
-        <p class="setting-error" role="alert">
-          {error}
-        </p>
-      )}
+      {refused && error && <Notice tone="error">{error}</Notice>}
       <Actions>
         {before && (
           <Button

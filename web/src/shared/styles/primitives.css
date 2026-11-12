@@ -495,32 +495,49 @@
       translate: -50% 0;
     }
   }
-  .error-banner,
-  .update-banner {
+  .banner {
+    max-height: var(--scroll-s);
     padding: var(--space-3) var(--space-6);
     border: var(--border-field);
     background: var(--raised);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--pad);
+    overflow: auto;
     font-size: var(--font-small);
     pointer-events: auto;
     --from: 0 calc(-1 * var(--rise));
   }
-  .error-banner {
-    max-height: var(--scroll-s);
-    overflow: auto;
-  }
-  .update-banner {
-    border-left: var(--stripe-callout) solid var(--live);
-  }
-  .load-error {
-    padding: var(--space-4) 0;
+  /* A message: its tone's icon, then its text, both in the tone's colour.
+     Info takes the colour of the text around it. */
+  .notice {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    margin: var(--space-4) 0;
     overflow-wrap: anywhere;
+    white-space: pre-wrap;
   }
-  .load-error p {
-    margin-top: 0;
+  .notice[data-tone="error"] > :not(button) {
+    color: var(--removed);
+  }
+  .notice[data-tone="warning"] > :not(button) {
+    color: var(--warning);
+  }
+  /* A flex item stands on the baseline: this drops the icon to the text's
+     middle, as --icon-align does inline. */
+  .notice > .lucide {
+    translate: 0 calc(-1 * var(--icon-align));
+  }
+  .notice > button {
+    flex: none;
+  }
+  :is(p, small, li, .banner, .transcript-content) > .notice {
+    margin: 0;
+  }
+  /* In the transcript it lines up with the text of the messages. */
+  .transcript-content > .notice {
+    padding-inline: var(--inset-x);
+  }
+  .banner > .notice > span {
+    flex: 1;
   }
   .loading-indicator {
     display: flex;

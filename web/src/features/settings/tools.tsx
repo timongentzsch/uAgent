@@ -10,6 +10,7 @@ import {
   DataText,
   Input,
   LoadError,
+  Notice,
   Placeholder,
   Select,
 } from "../../shared/ui.tsx";
@@ -160,9 +161,9 @@ export default function Tools({
         reuse.
       </p>
       {busy && (
-        <p class="card tools-busy" role="status">
+        <Notice tone="warning">
           Finish the current turn before changing tools.
-        </p>
+        </Notice>
       )}
       {error && <LoadError error={error} />}
       <Input

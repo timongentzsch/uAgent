@@ -18,7 +18,7 @@ import { useStored } from "../../shared/storage.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { MessageActions } from "./message-actions.ts";
 import { X } from "lucide-preact";
-import { Button, IconButton, Time } from "../../shared/ui.tsx";
+import { Button, IconButton, Notice, Time } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { useApi } from "../../state/api.ts";
@@ -285,18 +285,23 @@ function Message({
         </Button>
       )}
       {(node.error || (resend && unsent(node))) && (
-        <p role="alert" class={unsent(node) ? "failure unsent" : undefined}>
+        <Notice
+          tone="error"
+          action={
+            resend &&
+            unsent(node) && (
+              <Button
+                size="compact"
+                disabled={!online}
+                onClick={() => resend(node)}
+              >
+                Retry
+              </Button>
+            )
+          }
+        >
           {node.error || node.status}
-          {resend && unsent(node) && (
-            <Button
-              size="compact"
-              disabled={!online}
-              onClick={() => resend(node)}
-            >
-              Retry
-            </Button>
-          )}
-        </p>
+        </Notice>
       )}
       {(node.unavailable_images || 0) > 0 && (
         <p class="muted">

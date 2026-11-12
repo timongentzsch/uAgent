@@ -180,8 +180,8 @@ export const draftOf = (said: Record<string, unknown>): Draft | undefined =>
         empty: typeof said.empty === "string" ? said.empty : undefined,
       }
     : undefined;
-// The edits a sheet's page holds out while a change is calculated, each in
-// the shape of a tab's edit; nothing once it is made or refused.
+// The edits a sheet's page holds out while changes are calculated, each in
+// the shape of a tab's edit; nothing once none is.
 export const heldOf = (said: { edits?: unknown }): TableEdit[] | undefined =>
   Array.isArray(said.edits)
     ? said.edits.map((edit) => ({

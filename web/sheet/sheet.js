@@ -122,8 +122,11 @@ async function open() {
   };
   const written = file ? await read().catch(unread) : tables.map(readTab);
   if (typeof written === "string") return [written];
+  const texts = new WeakMap();
+  const textOf = (tab) =>
+    texts.get(tab) ?? texts.set(tab, tableText(tab)).get(tab);
   // Each tab's table as the file holds it.
-  const told = written.map(tableText);
+  const told = written.map(textOf);
   // The edits that make the file hold `next`: every table, where tabs were
   // put in or taken out, over those the file has.
   const editsOf = (next) =>
@@ -133,25 +136,23 @@ async function open() {
             tab: 0,
             tabs: told.length,
             all: true,
-            table: next.map(tableText).join("\n"),
+            table: next.map(textOf).join("\n"),
           },
         ]
       : next.flatMap((tab, at) => {
-          const table = tableText(tab);
+          const table = textOf(tab);
           return table === told[at]
             ? []
             : [{ tab: at, tabs: told.length, table }];
         });
-  // While a change is calculated the app holds the edits it would make, and
-  // writes them if the page is left before the answer.
-  const calculate = async (next) => {
-    const edits = editsOf(next);
-    if (edits.length) say({ type: "held", edits });
-    const said = await ask({ tabs: next });
-    if (edits.length && !said?.table) say({ type: "held" });
-    return said?.table;
-  };
+  const calculate = async (next) => (await ask({ tabs: next }))?.table;
   const book = await openBook(engine, written, !!file, calculate);
+  // The app holds what the tabs will be once the changes asked for are
+  // made, and writes it if the page is left before.
+  const held = () => {
+    const edits = editsOf(book.ahead);
+    say(edits.length ? { type: "held", edits } : { type: "held" });
+  };
   if (!book) return [unread(CANNOT)];
   // The tabs to choose from: a workbook's hidden sheets only calculate.
   const offered = written.flatMap((tab, at) => (tab.hidden ? [] : [at]));
@@ -533,10 +534,12 @@ async function open() {
       tell();
     },
 
-    // `asked` is what the book answers: true, false, or why not. Once it
-    // has, a cell being typed in is said again: its draft's table, or the
-    // app's hold of it, may be gone.
+    // `asked` is what the book answers: true, false, or why not. As it is
+    // asked and once it has answered, what is held is said again, and a
+    // cell being typed in: its draft's table may be another.
     async did(asked) {
+      held();
+      redraft();
       const changed = await asked;
       if (typeof changed === "string")
         say({ type: "refused", message: changed });
@@ -550,21 +553,19 @@ async function open() {
             for (const column of filters[sheet].keys())
               if (column > tab.columns.length) filters[sheet].delete(column);
           });
-        told.splice(0, Infinity, ...book.tabs.map(tableText));
+        told.splice(0, Infinity, ...book.tabs.map(textOf));
         show(Math.min(at, tables.length - 1));
         const [undo, redo, found] = [book.canUndo(), book.canRedo(), errors()];
         for (const edit of edits)
           say({ type: "edit", ...edit, undo, redo, errors: found });
       }
+      held();
       redraft();
       return changed === true;
     },
     run: (command, value) => sheet.did(commands[command]?.(value)),
     // The shown tab's table as text typed in the active cell would make it.
-    draft() {
-      const cut = book.draft(at, pick().anchor);
-      return cut && { tab: at, tabs: tables.length, ...cut };
-    },
+    draft: () => book.draft(tab(), pick().anchor),
     write: (text) => sheet.did(book.paste(at, pick().anchor, [[text]])),
 
     filter(column, words) {
@@ -587,19 +588,19 @@ async function open() {
       row: row + rows,
       column: column + columns,
     });
-    const [sheet, { anchor, focus }] = [at, picks[at]];
+    const [moved, { anchor, focus }] = [tab(), picks[at]];
     const changed = await (rows
       ? book.moveRows(at, box().top, high(), rows)
       : shifted(book.moveColumns(at, box().left, wide(), columns)));
     if (changed === true)
-      picks[sheet] = { anchor: on(anchor), focus: on(focus) };
+      picks[book.find(moved)] = { anchor: on(anchor), focus: on(focus) };
     return changed;
   };
   // A filter is of a column by its place: with a column put in or taken
   // out before it, it would be another column's.
-  const shifted = async (asked, sheet = at) => {
+  const shifted = async (asked, changing = tab()) => {
     const changed = await asked;
-    if (changed === true) filters[sheet].clear();
+    if (changed === true) filters[book.find(changing)].clear();
     return changed;
   };
 

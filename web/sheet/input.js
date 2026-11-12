@@ -132,11 +132,10 @@ export function listen(sheet) {
     const said = drafted;
     drafted = false;
     rest();
-    // Written or refused, that draft is over: the next, begun meanwhile,
-    // has its own table.
-    sheet.write(text).then(() => {
-      if (said && !drafted) sheet.say({ type: "typing" });
-    });
+    // Asked for, the edit is held as a change; that draft is over, and the
+    // next has its own table.
+    sheet.write(text);
+    if (said) sheet.say({ type: "typing" });
     if (by) sheet.select(stepped(active(), by));
   };
   editor.addEventListener("input", () => {
@@ -399,7 +398,7 @@ export function listen(sheet) {
         text,
         tabs: book.tabs,
         rows: cells((at) => cell(at).text),
-        from: { sheet: sheet.at, box: sheet.box(), cut: kind === "cut" },
+        from: { tab: sheet.tab(), box: sheet.box(), cut: kind === "cut" },
       };
     });
   const pasted = (text) => {

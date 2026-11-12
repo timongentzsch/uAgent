@@ -223,5 +223,5 @@ test("the tabs read are a book like any: calculated, and locked against every ch
     "book",
   );
   const cells = ({ hidden, ...tab }) => tab;
-  assert.deepEqual(again.map(cells), book.tabs.map(cells));
+  assert.deepEqual(again.map(cells), structuredClone(book.tabs).map(cells));
 });

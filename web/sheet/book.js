@@ -234,6 +234,9 @@ const trimmed = (tab) => {
 };
 
 const LOCKED = "This file is read-only: save it as a sheet to change it.";
+const GONE = "Not changed: the tab was taken out.";
+// Which tab a tab is, whatever its place, name or contents.
+const TAB = Symbol("tab");
 // The engine panics on some formulas and never returns from others.
 const PANIC =
   "Not changed: the engine cannot calculate a formula this would leave in the sheet.";
@@ -414,8 +417,8 @@ export async function openBook(engine, written, locked, calculate) {
   let tabs, table, ruled;
   // Each chart as it was read since the last build, by "sheet index".
   const charted = new Map();
-  const past = [];
-  const future = [];
+  let past = [];
+  let future = [];
 
   // Whether `next` are the tabs now, with what is read of them: where the
   // engine does not finish them, the tabs stand.
@@ -427,17 +430,84 @@ export async function openBook(engine, written, locked, calculate) {
     }
     return !!read;
   };
-  if (!(await build(written))) return undefined;
+  if (!(await build(written.map((tab) => ({ ...tab, [TAB]: Symbol() })))))
+    return undefined;
   const cellAt = (sheet, row, column) =>
-    table[sheet].cells[row - 1]?.[column - 1] ?? BLANK;
-  // One change after another, each made on the tabs the last left. The app
-  // holds the one being calculated, and writes it if the page goes first;
-  // those waiting behind it are lost then.
+    table[sheet]?.cells[row - 1]?.[column - 1] ?? BLANK;
+
+  // `run` on other tabs and steps than the book's.
+  const on = (state, run) => {
+    const own = [tabs, past, future];
+    [tabs, past, future] = [state.tabs, state.past, state.future];
+    try {
+      return run();
+    } finally {
+      [tabs, past, future] = own;
+    }
+  };
+  // Changes are made one after another, each on the tabs the last left.
+  // Asked for, each is tried at once, uncalculated, on what those before it
+  // would leave: the tabs ahead, which the app holds and writes if the page
+  // goes first. Its turn come, it is made as tried where nothing it read
+  // has changed since, and made anew where something has.
   let pending = Promise.resolve();
+  const waiting = [];
+  let ahead = { tabs, past, future };
+  let dry = false;
+  // `asked` tried on `state`: what it answered, and the tabs and steps then.
+  const trying = (asked, state) => {
+    const copy = { ...state, past: [...state.past], future: [...state.future] };
+    asked.from = state;
+    asked.read = table;
+    asked.to = on(copy, () => {
+      dry = true;
+      try {
+        const answer = asked.made();
+        return { tabs, past, future, answer };
+      } finally {
+        dry = false;
+      }
+    });
+    return asked.to;
+  };
   const queued =
     (change) =>
-    (...args) =>
-      (pending = pending.catch(() => {}).then(() => change(...args)));
+    (...args) => {
+      const asked = { made: () => change(...args) };
+      waiting.push(asked);
+      ahead = trying(asked, ahead);
+      return (pending = pending
+        .catch(() => {})
+        .then(async () => {
+          try {
+            const { from, read, to } = asked;
+            if (from.tabs !== tabs || read !== table) return await asked.made();
+            const answer = await to.answer;
+            if (answer !== true) return answer;
+            if (!(await build(to.tabs))) return PANIC;
+            [past, future] = [to.past, to.future];
+            return true;
+          } finally {
+            waiting.shift();
+            ahead = waiting.reduce((state, next) => trying(next, state), {
+              tabs,
+              past,
+              future,
+            });
+          }
+        }));
+    };
+  // A change of one tab, asked for by its place now: made on that tab
+  // wherever it then lies.
+  const ofTab =
+    (change) =>
+    (sheet, ...rest) => {
+      const asked = tabs[sheet]?.[TAB];
+      return queued(() => {
+        const at = tabs.findIndex((tab) => tab[TAB] === asked);
+        return at < 0 ? GONE : change(at, ...rest);
+      })();
+    };
 
   // True for a step made, false for none, or why it was refused.
   const commit = (made) => {
@@ -453,7 +523,8 @@ export async function openBook(engine, written, locked, calculate) {
   };
   const taken = async (next) => {
     const was = tabs;
-    if (!(await build(next))) return PANIC;
+    if (dry) tabs = next;
+    else if (!(await build(next))) return PANIC;
     past.push(was);
     if (past.length > STEPS) past.shift();
     future.length = 0;
@@ -488,7 +559,8 @@ export async function openBook(engine, written, locked, calculate) {
   const step = async (from, to) => {
     const was = tabs;
     if (!from.length) return false;
-    if (!(await build(from.at(-1)))) return PANIC;
+    if (dry) tabs = from.at(-1);
+    else if (!(await build(from.at(-1)))) return PANIC;
     from.pop();
     to.push(was);
     return true;
@@ -614,6 +686,12 @@ export async function openBook(engine, written, locked, calculate) {
     get tabs() {
       return tabs;
     },
+    // The tabs once every change asked for is made, as far as told yet.
+    get ahead() {
+      return ahead.tabs;
+    },
+    // Where a tab of these or earlier tabs lies now, or -1.
+    find: (tab) => tabs.findIndex((at) => at[TAB] === tab[TAB]),
     canUndo: () => past.length > 0,
     canRedo: () => future.length > 0,
     undo: queued(() => step(past, future)),
@@ -658,7 +736,7 @@ export async function openBook(engine, written, locked, calculate) {
     },
 
     chart: chartOf,
-    setCharts: queued((sheet, change) =>
+    setCharts: ofTab((sheet, change) =>
       commit(edit(sheet, (tab) => ({ ...tab, charts: change(tab.charts) }))),
     ),
 
@@ -701,6 +779,7 @@ export async function openBook(engine, written, locked, calculate) {
       retabbed([
         ...tabs,
         {
+          [TAB]: Symbol(),
           name: unused("Sheet"),
           attrs: {},
           markup: [],
@@ -710,27 +789,28 @@ export async function openBook(engine, written, locked, calculate) {
         },
       ]),
     ),
-    copyTab: queued((sheet) =>
+    copyTab: ofTab((sheet) =>
       retabbed(
         tabs.toSpliced(sheet + 1, 0, {
           ...tabs[sheet],
+          [TAB]: Symbol(),
           name: unused(`${tabs[sheet].name.slice(0, 26)} copy`),
         }),
       ),
     ),
-    dropTab: queued((sheet) =>
+    dropTab: ofTab((sheet) =>
       tabs.length > 1
         ? retabbed(tabs.toSpliced(sheet, 1))
         : "A sheet keeps at least one tab.",
     ),
-    moveTab: queued((sheet, by) => {
+    moveTab: ofTab((sheet, by) => {
       const to = sheet + by;
       return to >= 0 && to < tabs.length
         ? commit(tabs.with(sheet, tabs[to]).with(to, tabs[sheet]))
         : false;
     }),
     // The engine writes the new name into the formulas that read the tab.
-    nameTab: queued((sheet, said) => {
+    nameTab: ofTab((sheet, said) => {
       const name = said.trim();
       if (name === tabs[sheet].name) return false;
       if (
@@ -767,7 +847,7 @@ export async function openBook(engine, written, locked, calculate) {
     // The rule at `at` of a column's, which reads `text` there, set to
     // `rule` or taken out without one. For a rule of its own the table
     // reaches the column; one that would not be understood is not written.
-    setRule: queued((sheet, column, at, text, rule) => {
+    setRule: ofTab((sheet, column, at, text, rule) => {
       const width = tabs[sheet].columns.length;
       if (rulesAt(tabs[sheet], column)[at]?.text !== text)
         return "Not changed: the column's rules are no longer the ones shown.";
@@ -796,7 +876,7 @@ export async function openBook(engine, written, locked, calculate) {
     }),
 
     // A mark set on the tab's table: `data-frozen="2 B"`.
-    mark: queued((sheet, name, value) =>
+    mark: ofTab((sheet, name, value) =>
       commit(
         tabs.with(sheet, {
           ...tabs[sheet],
@@ -808,7 +888,7 @@ export async function openBook(engine, written, locked, calculate) {
     // A look set on the box's cells but those in `skip`, which the table
     // reaches for. A word is taken out where every cell has it; an
     // attribute goes with "".
-    style: queued((sheet, box, name, value, skip) => {
+    style: ofTab((sheet, box, name, value, skip) => {
       const words = WORDS[name];
       const may = words ?? (SAID[name] && ["", ...SAID[name]]);
       if (may && !may.includes(value)) return false;
@@ -858,7 +938,7 @@ export async function openBook(engine, written, locked, calculate) {
 
     // The looks set on the box's cells, but those in `skip`, taken off; a
     // column selected whole gives up its own pattern and wrap too.
-    unstyle: queued((sheet, box, skip) => {
+    unstyle: ofTab((sheet, box, skip) => {
       const looks = Object.values(WORDS).flat();
       const plainly = (attrs, words, names) => {
         const next = { ...attrs };
@@ -909,30 +989,39 @@ export async function openBook(engine, written, locked, calculate) {
 
     // The tab's table as it would be with text in a cell, cut around that
     // text, and whole with the cell emptied where that ends the table
-    // sooner; nothing where the text cannot be kept. No step is made.
-    draft(sheet, at) {
-      if (locked || tooFar(sheet, at)) return undefined;
-      const made = (text) => {
-        const far = text ? at : { row: 0, column: 0 };
-        const tab = reaching(tabs[sheet], far.row, far.column);
-        const row = tab.rows[at.row - 1];
-        const cell = row?.cells[at.column - 1];
-        if (!cell) return tableText(tab);
-        const cells = row.cells.with(at.column - 1, withText(cell, text));
-        const rows = tab.rows.with(at.row - 1, { ...row, cells });
-        return tableText(trimmed({ ...tab, rows }));
-      };
-      // No text read from a file holds this character.
-      const [head, tail] = made("\0").split("\0");
-      const empty = made("");
-      return { head, tail, ...(empty !== head + tail && { empty }) };
-    },
+    // sooner, among the tabs ahead; nothing where the text cannot be kept.
+    // No step is made.
+    draft: (shown, at) =>
+      on(ahead, () => {
+        const sheet = tabs.findIndex((tab) => tab[TAB] === shown[TAB]);
+        if (locked || sheet < 0 || tooFar(sheet, at)) return undefined;
+        const made = (text) => {
+          const far = text ? at : { row: 0, column: 0 };
+          const tab = reaching(tabs[sheet], far.row, far.column);
+          const row = tab.rows[at.row - 1];
+          const cell = row?.cells[at.column - 1];
+          if (!cell) return tableText(tab);
+          const cells = row.cells.with(at.column - 1, withText(cell, text));
+          const rows = tab.rows.with(at.row - 1, { ...row, cells });
+          return tableText(trimmed({ ...tab, rows }));
+        };
+        // No text read from a file holds this character.
+        const [head, tail] = made("\0").split("\0");
+        const empty = made("");
+        return {
+          tab: sheet,
+          tabs: tabs.length,
+          head,
+          tail,
+          ...(empty !== head + tail && { empty }),
+        };
+      }),
 
     // Text set down from a cell on. From this book's own cells (`from`)
     // formulas move along, and a cut clears.
-    paste: queued((sheet, at, rows, from) => {
+    paste: ofTab((sheet, at, rows, from) => {
       const texts = new Map();
-      if (from?.cut && from.sheet === sheet)
+      if (from?.cut && from.tab[TAB] === tabs[sheet][TAB])
         for (let row = from.box.top; row <= from.box.bottom; row++)
           for (let column = from.box.left; column <= from.box.right; column++)
             texts.set(`${row},${column}`, "");
@@ -966,7 +1055,7 @@ export async function openBook(engine, written, locked, calculate) {
     }),
 
     // One row alone takes the row above it.
-    fillDown: queued((sheet, box) => {
+    fillDown: ofTab((sheet, box) => {
       const top = box.bottom > box.top ? box.top : box.top - 1;
       const source = tabs[sheet].rows[top - 1]?.cells;
       if (!source) return false;
@@ -998,7 +1087,7 @@ export async function openBook(engine, written, locked, calculate) {
       );
     }),
 
-    insertRows: queued((sheet, at, count) =>
+    insertRows: ofTab((sheet, at, count) =>
       restructured(
         (model) => model.insertRows(sheet, at, count),
         edit(sheet, (tab) => ({
@@ -1015,7 +1104,7 @@ export async function openBook(engine, written, locked, calculate) {
         })),
       ),
     ),
-    deleteRows: queued(
+    deleteRows: ofTab(
       (sheet, at, count) =>
         count < tabs[sheet].rows.length &&
         restructured(
@@ -1027,7 +1116,7 @@ export async function openBook(engine, written, locked, calculate) {
           })),
         ),
     ),
-    insertColumns: queued((sheet, at, count) =>
+    insertColumns: ofTab((sheet, at, count) =>
       restructured(
         (model) => model.insertColumns(sheet, at, count),
         edit(sheet, (tab) => ({
@@ -1051,7 +1140,7 @@ export async function openBook(engine, written, locked, calculate) {
         })),
       ),
     ),
-    deleteColumns: queued(
+    deleteColumns: ofTab(
       (sheet, at, count) =>
         count < tabs[sheet].columns.length &&
         restructured(
@@ -1073,7 +1162,7 @@ export async function openBook(engine, written, locked, calculate) {
     // formula's reference to one of their cells follows, on any tab, a
     // chart its cells and a rule its column. A header row and a total row
     // stay, and no row passes one.
-    moveRows: queued((sheet, at, count, by) => {
+    moveRows: ofTab((sheet, at, count, by) => {
       const to = at + by;
       const [first, last] = [Math.min(at, to), Math.max(at, to) + count - 1];
       if (to < 1 || last > tabs[sheet].rows.length) return false;
@@ -1092,7 +1181,7 @@ export async function openBook(engine, written, locked, calculate) {
         })),
       );
     }),
-    moveColumns: queued((sheet, at, count, by) => {
+    moveColumns: ofTab((sheet, at, count, by) => {
       const to = at + by;
       if (to < 1 || to + count - 1 > tabs[sheet].columns.length) return false;
       const place = lifting(at, count, by);
@@ -1123,7 +1212,7 @@ export async function openBook(engine, written, locked, calculate) {
     }),
 
     // A column's width in pixels; without one it is as wide as its texts.
-    widen: queued((sheet, { left, right }, width) =>
+    widen: ofTab((sheet, { left, right }, width) =>
       commit(
         edit(sheet, (tab) => ({
           ...tab,
@@ -1137,7 +1226,7 @@ export async function openBook(engine, written, locked, calculate) {
     ),
 
     // Under the header and but for total rows; a formula follows its row.
-    sort: queued((sheet, column, descending) => {
+    sort: ofTab((sheet, column, descending) => {
       const tab = tabs[sheet];
       const places = tab.rows
         .map((_, at) => at)

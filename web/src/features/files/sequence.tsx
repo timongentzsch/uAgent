@@ -180,8 +180,9 @@ export default function Sequence({
   // dropped of it when its page is drawn again from the file.
   settle: () => Promise<unknown>;
   forget: () => void;
-  // A sheet's cell being typed in, as the edit it would make: written if
-  // the sheet is left before the cell is. None once it is typed no more.
+  // A sheet's cell being typed in and the changes it is calculating, as the
+  // edits they would make: written if the sheet is left first. None once
+  // there are none.
   typing: (edit?: () => TableEdit[]) => void;
   // An Excel or CSV file's tabs, as a sheet's text, saved beside the file.
   saveAs?: (text: string) => Promise<void>;
@@ -323,8 +324,24 @@ export default function Sequence({
   // The column whose rules are being set: its dialog is open while the
   // active cell is in it.
   const [ruling, setRuling] = useState("");
-  // The table that cell's edit would make, as its page said it once.
+  // The table that cell's edit would make, as its page said it once, and
+  // its text; and the edits of the changes the sheet is calculating. All
+  // are held, to be written if the sheet is left first.
   const cutNow = useRef<Draft>(undefined);
+  const writtenNow = useRef<unknown>(undefined);
+  const heldNow = useRef<TableEdit[]>([]);
+  const hold = () => {
+    const [held, cut, written] = [
+      heldNow.current,
+      cutNow.current,
+      writtenNow.current,
+    ];
+    typing(
+      sheet && (held.length || cut)
+        ? () => [...held, ...(cut ? [editOf(cut, written)] : [])]
+        : undefined,
+    );
+  };
   const [ranged, setRanged] = useState<string>();
   const [told, setTold] = useState(UNTOLD);
   const formula = useRef<HTMLInputElement>(null);
@@ -1081,9 +1098,8 @@ export default function Sequence({
                             ? draftOf(message)
                             : cutNow.current;
                       cutNow.current = cut;
-                      typing(
-                        sheet && cut ? () => [editOf(cut, written)] : undefined,
-                      );
+                      writtenNow.current = written;
+                      hold();
                     } else if (message.type === "suggest")
                       setOffer(offerOf(message));
                     else if (message.type === "rules")
@@ -1099,8 +1115,8 @@ export default function Sequence({
                             : was,
                       );
                     else if (message.type === "held") {
-                      const edits = heldOf(message);
-                      typing(sheet && edits ? () => edits : undefined);
+                      heldNow.current = heldOf(message) ?? [];
+                      hold();
                     } else if (message.type === "comment") {
                       if (sheet && addToChat) setRanged(cell?.range);
                     } else if (message.type === "key") {

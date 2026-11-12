@@ -391,7 +391,10 @@ test("pasted text lands from a cell on; this book's own cells bring their formul
     ["Brief", "Done", "=C5*2"],
     ["Total", "beyond", "the"],
   ]);
-  const own = { sheet: 0, box: { top: 6, left: 3, bottom: 6, right: 3 } };
+  const own = {
+    tab: book.tabs[0],
+    box: { top: 6, left: 3, bottom: 6, right: 3 },
+  };
   await book.paste(0, { row: 4, column: 3 }, [["=C5*2"]], own);
   assert.equal(texts(book, 0)[3][2], "=C3*2");
   await book.paste(0, { row: 1, column: 3 }, [["=C5*2"]], {
@@ -638,14 +641,17 @@ test("the table a cell being typed in would make, cut around its text, joins to 
     [{ row: 6, column: 2 }, ""],
   ]) {
     const before = book.table(0);
-    const { head, tail, empty = head + tail } = book.draft(0, at);
+    const { head, tail, empty = head + tail } = book.draft(book.tabs[0], at);
     assert.equal(book.table(0), before);
     assert.equal(book.canUndo(), false);
     const taken = await book.paste(0, at, [[text]]);
     assert.equal(text ? head + escaped(text) + tail : empty, book.table(0));
     if (taken === true) await book.undo();
   }
-  assert.equal(book.draft(0, { row: 900_000, column: 1 }), undefined);
+  assert.equal(
+    book.draft(book.tabs[0], { row: 900_000, column: 1 }),
+    undefined,
+  );
 });
 
 test("rows and columns move among their neighbours: a reference follows its cell on every tab, a range where its ends moved alike, a chart its cells, a rule its column; a header row and a total row stay", async () => {
@@ -1052,4 +1058,104 @@ test("changes asked for while one is calculated are made after it, each on the t
     ["Book", "Done", "8400.5"],
   ]);
   assert.equal(book.shown(0, 7, 3), "10,600.50");
+});
+
+// What the tabs ahead hold of a tab, by its name.
+const ahead = (book, name) =>
+  book.ahead
+    .find((tab) => tab.name === name)
+    ?.rows.map((row) => row.cells.map((cell) => cell.text));
+
+test("a change asked for behind another is made on the tab it was asked for, wherever that then lies, and refused where it is gone", async () => {
+  // Inputs is the second tab when each is asked for.
+  const rate = (book) => book.paste(1, { row: 3, column: 2 }, [["9%"]]);
+  const copied = await plan();
+  assert.deepEqual(await Promise.all([copied.copyTab(0), rate(copied)]), [
+    true,
+    true,
+  ]);
+  assert.deepEqual(
+    copied.tabs.map((tab) => tab.name),
+    ["Tasks", "Tasks copy", "Inputs"],
+  );
+  assert.equal(texts(copied, 2)[2][1], "9%");
+  const dropped = await plan();
+  assert.deepEqual(await Promise.all([dropped.dropTab(0), rate(dropped)]), [
+    true,
+    true,
+  ]);
+  assert.equal(texts(dropped, 0)[2][1], "9%");
+  const moved = await plan();
+  assert.deepEqual(
+    await Promise.all([
+      moved.moveTab(1, -1),
+      rate(moved),
+      moved.sort(1, 1, true),
+    ]),
+    [true, true, true],
+  );
+  assert.deepEqual(texts(moved, 0).slice(1), [
+    ["Rate", "9%"],
+    ["Budget", "=Tasks!C7*2"],
+  ]);
+  // The tab itself taken out first: the change is refused, with why.
+  const gone = await plan();
+  const [, refused] = await Promise.all([gone.dropTab(1), rate(gone)]);
+  assert.equal(refused, "Not changed: the tab was taken out.");
+  assert.deepEqual(
+    gone.tabs.map((tab) => tab.name),
+    ["Tasks"],
+  );
+});
+
+test("the tabs ahead hold every change asked for, made on what those before it leave, while the first is calculated", async () => {
+  const book = await plan();
+  const asked = [
+    book.paste(0, { row: 4, column: 3 }, [["2000"]]),
+    book.insertRows(0, 4, 1),
+    book.paste(0, { row: 4, column: 1 }, [["New"]]),
+  ];
+  // The tabs shown are as they were; those ahead hold all three.
+  assert.equal(texts(book, 0)[3][2], "1200");
+  assert.deepEqual(ahead(book, "Tasks").slice(3, 5), [
+    ["New", "", ""],
+    ["Write", "Done", "2000"],
+  ]);
+  assert.equal(ahead(book, "Inputs")[1][1], "=Tasks!C8*2");
+  await Promise.all(asked);
+  assert.equal(book.ahead, book.tabs);
+  // Undo behind a change takes it back ahead too.
+  const undone = [book.paste(0, { row: 4, column: 1 }, [["Old"]]), book.undo()];
+  assert.equal(ahead(book, "Tasks")[3][0], "New");
+  await Promise.all(undone);
+  assert.equal(texts(book, 0)[3][0], "New");
+  assert.equal(book.canRedo(), true);
+});
+
+test("a change refused leaves the tabs ahead holding those behind it, made on the tabs as they are", async () => {
+  const book = await open([
+    tab("Costs", [
+      ["#Rate", "#Worth"],
+      ["1", "2"],
+    ]),
+  ]);
+  const asked = [
+    book.paste(0, { row: 2, column: 2 }, [["=XNPV(1,1)"]]),
+    book.paste(0, { row: 2, column: 1 }, [["3"]]),
+    book.paste(0, { row: 3, column: 1 }, [["4"]]),
+  ];
+  assert.deepEqual(ahead(book, "Costs").slice(1), [
+    ["3", "=XNPV(1,1)"],
+    ["4", ""],
+  ]);
+  assert.match(await asked[0], PANICS);
+  assert.deepEqual(ahead(book, "Costs").slice(1), [
+    ["3", "2"],
+    ["4", ""],
+  ]);
+  assert.deepEqual(await Promise.all(asked.slice(1)), [true, true]);
+  assert.deepEqual(texts(book, 0).slice(1), [
+    ["3", "2"],
+    ["4", ""],
+  ]);
 });

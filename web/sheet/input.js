@@ -2,9 +2,8 @@
 // and the clipboard works as in any field.
 
 import { headOf } from "./book.js";
-import { cellAt } from "./grid.js";
 import { openMenu } from "./menu.js";
-import { edgeFrom, fromTsv, toTsv } from "./text.js";
+import { edgeFrom, fromTsv, LAST, toTsv } from "./text.js";
 
 const ARROWS = {
   ArrowUp: { row: -1, column: 0 },
@@ -42,14 +41,13 @@ export function listen(sheet) {
   });
   const hold = () => editor.focus({ preventScroll: true });
   const place = (field) => {
-    const box = cellAt(sheet.table(), active())?.getBoundingClientRect();
-    if (box)
-      Object.assign(field.style, {
-        left: `${box.left + scrollX}px`,
-        top: `${box.top + scrollY}px`,
-        width: `${box.width}px`,
-        height: `${box.height}px`,
-      });
+    const box = sheet.rect(active());
+    Object.assign(field.style, {
+      left: `${box.left}px`,
+      top: `${box.top}px`,
+      width: `${box.width}px`,
+      height: `${box.height}px`,
+    });
   };
 
   const rest = () => {
@@ -167,8 +165,8 @@ export function listen(sheet) {
     ]),
   ];
   const under = () => {
-    const box = cellAt(sheet.table(), active()).getBoundingClientRect();
-    return { x: box.left, y: box.bottom };
+    const box = sheet.rect(active());
+    return { x: box.left - scrollX, y: box.top + box.height - scrollY };
   };
 
   editor.addEventListener("keydown", (event) => {
@@ -178,13 +176,13 @@ export function listen(sheet) {
     const { anchor, focus } = sheet.pick();
     const end = last();
     // With Ctrl an arrow stops at the table's last row or column; from
-    // there, or from outside the table, it runs to the grid's.
+    // there, or from outside the table, it runs to the spreadsheet's.
     const run = (by) =>
       focus.row <= end.row &&
       focus.column <= end.column &&
       (by.row > 0 ? focus.row < end.row : focus.column < end.column)
         ? { rows: end.row, columns: end.column }
-        : sheet.size();
+        : { rows: LAST.row, columns: LAST.column };
     const way = event.shiftKey ? -1 : 1;
     if (editing) {
       if (key === "Enter") commit({ row: way, column: 0 });
@@ -358,5 +356,5 @@ export function listen(sheet) {
     if (own?.from.cut) copied = undefined;
   });
 
-  return { rest, hold, typing: () => editing };
+  return { rest, hold };
 }

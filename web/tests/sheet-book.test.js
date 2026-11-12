@@ -355,6 +355,16 @@ test("text set past the table makes it reach there, a header row staying one; bl
     ["Rent", "1200"],
     ["Rent", "1200"],
   ]);
+  // Too far from the table, what is typed is refused: the file would hold
+  // every blank row between, and the host keeps no file that large.
+  const refusal = /^B100000 is too far from the table to keep/;
+  assert.match(book.paste(0, { row: 100_000, column: 2 }, [["x"]]), refusal);
+  assert.match(
+    book.fillDown(0, { top: 2, left: 1, bottom: 100_000, right: 2 }),
+    /^A100000 is too far/,
+  );
+  assert.equal(book.paste(0, { row: 30_000, column: 2 }, [["x"]]), true);
+  book.undo();
   // A blank row put in at its end is no change, and no step.
   const steps = () => {
     let count = 0;

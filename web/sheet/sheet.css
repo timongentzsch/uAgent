@@ -36,8 +36,9 @@ figure[data-chart]:not(:has(table)) {
   display: none;
 }
 table[data-sheet] {
-  /* As wide as its columns: the grid scrolls, it is never squeezed. */
-  width: max-content;
+  /* Each column as wide as the page worked out: the grid scrolls, it is
+     never squeezed, and a column is as wide whatever part of it is drawn. */
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   font-variant-numeric: tabular-nums;
@@ -45,7 +46,6 @@ table[data-sheet] {
 table[data-sheet] :is(th, td) {
   box-sizing: border-box;
   height: 24px;
-  max-width: 400px;
   padding: 2px 8px;
   border: solid var(--sheet-line);
   border-width: 0 1px 1px 0;
@@ -55,6 +55,17 @@ table[data-sheet] :is(th, td) {
   white-space: nowrap;
   font-weight: 400;
   background: var(--sheet-ground);
+}
+/* In the pane the table is a window on the grid: the cells in view, laid
+   where they belong in an area as large as the grid has been reached. */
+.sheet-window {
+  position: absolute;
+}
+.sheet-area {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
 }
 table[data-sheet] .sheet-wrap {
   white-space: normal;

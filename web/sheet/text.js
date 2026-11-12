@@ -28,10 +28,11 @@ export const boxName = ({ top, left, bottom, right }) => {
 
 // A spreadsheet's last row and column: a name past them is no cell's.
 export const LAST = { row: 1_048_576, column: 16_384 };
-// The grid's cell where nothing sizes it (a spare column's width, every
-// row's height), and how far the grid runs on past a table's end.
+// The grid's cell where nothing sizes it: a column's width past the table,
+// a row's least height, the unit a chart's size counts in. And how many
+// columns past its table a tab's rule may name.
 export const CELL = { width: 96, height: 24 };
-export const SPARE = { rows: 200, columns: 26 };
+export const SPARE = { columns: 26 };
 export const boxNamed = (name = "") => {
   const [, left, top, right = left, bottom = top] =
     /^([A-Za-z]{1,3})(\d{1,7})(?::([A-Za-z]{1,3})(\d{1,7}))?$/.exec(

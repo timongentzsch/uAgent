@@ -157,6 +157,8 @@ const trimmed = (tab) => {
 };
 
 const LOCKED = "This file is read-only: save it as a sheet to change it.";
+// The host keeps no file over 1,024 KB: the tabs' tables may come to this.
+const TABLES = 1_000_000;
 
 // `locked` for the tabs of an Excel or CSV file: no change is made to them.
 export function openBook(engine, written, locked) {
@@ -260,6 +262,21 @@ export function openBook(engine, written, locked) {
     tabs = next;
     build();
     return true;
+  };
+  // Why text set at `row`, `column` cannot be kept, if so: every blank row
+  // and cell between it and the table would be written into the file.
+  const sizes = new WeakMap();
+  const sized = (tab) =>
+    sizes.get(tab) ?? sizes.set(tab, tableText(tab).length).get(tab);
+  const tooFar = (sheet, { row, column }) => {
+    const { rows, columns } = tabs[sheet];
+    const wider = Math.max(0, column - columns.length);
+    const more =
+      Math.max(0, row - rows.length) * (5 + 4 * (columns.length + wider)) +
+      rows.length * 4 * wider;
+    return more && tabs.reduce((all, tab) => all + sized(tab), more) > TABLES
+      ? `${cellName({ row, column })} is too far from the table to keep: the file would hold every row between.`
+      : undefined;
   };
   const step = (from, to) => {
     if (!from.length) return false;
@@ -490,6 +507,8 @@ export function openBook(engine, written, locked) {
           if (text) far.column = Math.max(far.column, column);
         }),
       );
+      const refused = tooFar(sheet, far);
+      if (refused) return refused;
       return placed(
         "pasted",
         mapCells(
@@ -510,6 +529,8 @@ export function openBook(engine, written, locked) {
       const filled = source
         .slice(box.left - 1, box.right)
         .some(({ text }) => text);
+      const refused = filled && tooFar(sheet, { row: box.bottom, column: 1 });
+      if (refused) return refused;
       return placed(
         "filled",
         mapCells(

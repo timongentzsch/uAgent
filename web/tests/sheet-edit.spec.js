@@ -24,6 +24,19 @@ const PLAN = sheet("Plan", {
   ],
   Inputs: ["<th>Name<th>Value", "<td>Budget<td>=Tasks!D5"],
 });
+// Scrolls the grid until `row` is the first under what is held: where the
+// grid ends before it, a pane more comes with each frame at its end.
+const toRow = (stage, row) =>
+  stage.locator("html").evaluate(async (_, row) => {
+    const high = document.querySelector(
+      "table:not([hidden]) tbody tr:last-child",
+    ).offsetHeight;
+    for (let frames = 0; frames < 2000; frames++) {
+      scrollTo(scrollX, (row - 1) * high);
+      if (scrollY >= (row - 1) * high - 1) break;
+      await new Promise(requestAnimationFrame);
+    }
+  }, row);
 // The file with some of its text another.
 const with_ = (source, changes) =>
   Object.entries(changes).reduce((text, [from, to]) => {
@@ -221,19 +234,22 @@ test("the keys move and stretch the selection, Delete clears it, and a column is
     await expect(at).toHaveText(`Tasks!${ref}`);
   }
   // Inside the table Ctrl and an arrow stop at its last row, stretching the
-  // selection too; from there they run on to the grid's last.
+  // selection too; from there, and from outside it, they run on to the
+  // spreadsheet's last row and column, and back to what is filled.
   await cell("Tasks", "A2").click();
   await app.keyboard.press("Control+Shift+ArrowDown");
   await expect(stage.locator(".sheet-in")).toHaveCount(4);
   await cell("Tasks", "A5").click();
-  const drawn = await stage
-    .locator('table[data-sheet="Tasks"] tbody tr')
-    .count();
-  expect(drawn).toBeGreaterThan(5);
-  await app.keyboard.press("Control+ArrowDown");
-  await expect(at).toHaveText(`Tasks!A${drawn}`);
-  await app.keyboard.press("Control+ArrowUp");
-  await expect(at).toHaveText("Tasks!A5");
+  for (const [key, ref] of [
+    ["Control+ArrowDown", "A1048576"],
+    ["Control+ArrowRight", "XFD1048576"],
+    ["Control+ArrowLeft", "A1048576"],
+    ["Control+ArrowUp", "A5"],
+  ]) {
+    await app.keyboard.press(key);
+    await expect(at).toHaveText(`Tasks!${ref}`);
+    await expect(cell("Tasks", ref)).toBeInViewport();
+  }
   await cell("Tasks", "A3").click();
   await app.keyboard.press("Shift+ArrowRight");
   await expect(stage.locator(".sheet-in")).toHaveText(["Book", "To do"]);
@@ -636,41 +652,40 @@ test("the grid runs on past the table: what is typed there joins it, and the fil
       "\n<tr><td><td>=B2*2<td><td><td>",
   });
   await expect.poll(saved).toBe(reached);
-  // Scrolled to its end the grid has more rows to show, but not under a
-  // cell being typed in, whose text a new grid would drop.
-  const rows = () =>
-    stage.locator('table[data-sheet="Inputs"] tbody tr').count();
-  const toEnd = () =>
-    stage
-      .locator("html")
-      .evaluate((root) => scrollTo(root.scrollWidth, root.scrollHeight));
-  const before = await rows();
-  expect(before).toBeGreaterThan(7);
+  // What is being typed stays while its cell is scrolled out of what is
+  // drawn and back.
   await cell("Inputs", "A9").click();
   await app.keyboard.type("kept");
-  await toEnd();
-  await stage.locator("html").evaluate(() => scrollTo(0, 0));
-  expect(await rows()).toBe(before);
+  await toRow(stage, 4990);
+  await expect(cell("Inputs", "A5000")).toBeInViewport();
+  await expect(cell("Inputs", "A9")).toHaveCount(0);
+  await toRow(stage, 1);
+  await expect(cell("Inputs", "A9")).toBeInViewport();
   await expect(stage.locator("input.sheet-editor")).toHaveValue("kept");
   await app.keyboard.press("Escape");
-  await toEnd();
-  await expect.poll(rows).toBeGreaterThan(before);
-  // It ends 200 rows and 26 columns past the table, however far it is
-  // scrolled; back at the top it is a pane again.
-  const size = async () => {
-    await toEnd();
-    return [
-      await rows(),
-      (await stage
-        .locator('table[data-sheet="Inputs"] .sheet-letters th')
-        .count()) - 1,
-    ];
-  };
-  await expect.poll(size).toEqual([7 + 200, 5 + 26]);
-  await stage.locator("html").evaluate(() => scrollTo(0, 0));
-  await tabs.nth(0).click();
-  await tabs.nth(1).click();
-  await expect.poll(rows).toBeLessThan(before + 10);
+  // Typed five thousand rows down, the file holds every row between, and
+  // Undo gives them back.
+  await toRow(stage, 4990);
+  await cell("Inputs", "A5000").click();
+  await app.keyboard.type("far");
+  await app.keyboard.press("Enter");
+  await expect
+    .poll(async () => (await saved()).match(/\n<tr/g).length)
+    .toBe(5 + 5000);
+  expect((await saved()).length).toBeLessThan(200_000);
+  await files.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(saved).toBe(reached);
+  // At the spreadsheet's last row it is refused: the file would be too large.
+  await cell("Inputs", "A4995").click();
+  await app.keyboard.press("Control+ArrowDown");
+  await expect(at).toHaveText("Inputs!A1048576");
+  await app.keyboard.type("too far");
+  await app.keyboard.press("Enter");
+  await expect(files.locator(".page-tools .notice")).toHaveText(
+    "A1048576 is too far from the table to keep: the file would hold every row between.",
+  );
+  expect(await saved()).toBe(reached);
+  await toRow(stage, 1);
   // Cleared, what was reached is given back; Undo takes back the rest.
   const less = with_(PLAN, {
     "<tr><th>Name<th>Value\n<tr><td>Budget<td>=Tasks!D5":
@@ -746,7 +761,7 @@ test("past the table: a row or column is selected across the table only, a spare
   await expect(cell("Tasks", "A4")).toBeHidden();
 });
 
-test("a chart placed far past the table is drawn at the grid's last cells, and a chart's range may reach past the table", async ({
+test("a chart placed far past the table is drawn there, and a chart's range may reach past the table", async ({
   page: app,
   session,
   host,
@@ -759,11 +774,79 @@ test("a chart placed far past the table is drawn at the grid's last cells, and a
       '<figure data-chart="bar" data-range="A1:B9" data-at="A20000" data-size="3x8"><figcaption>Costs</figcaption></figure>',
     ],
   });
-  const { stage, saved } = await openSheet(app, session, host.project, far);
+  const { stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    far,
+  );
   const chart = stage.getByRole("img", { name: "Costs" });
   await expect(chart.locator("rect")).toHaveCount(2);
-  expect(await stage.locator("tbody tr").count()).toBe(3 + 200);
+  await expect(chart).not.toBeInViewport();
+  await toRow(stage, 19995);
+  await expect(chart).toBeInViewport();
+  // Its corner is on the cell it names.
+  const [corner, named] = await Promise.all([
+    stage.locator(".sheet-chart").boundingBox(),
+    cell("Costs", "A20000").boundingBox(),
+  ]);
+  expect([corner.x, corner.y]).toEqual([named.x, named.y]);
   expect(await saved()).toBe(far);
+});
+
+test("a table of five thousand rows is drawn a screenful at a time, wherever it is scrolled to", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    sheet("Big", {
+      Data: Array.from({ length: 5000 }, (_, row) =>
+        row ? `<td>Row ${row + 1}<td>${row}` : "<th>Name<th>Value",
+      ),
+    }),
+  );
+  const rows = () => stage.locator("tbody tr").count();
+  await expect(cell("Data", "A2")).toHaveText("Row 2");
+  const screenful = await rows();
+  expect(screenful).toBeLessThan(120);
+  await toRow(stage, 2500);
+  await expect(cell("Data", "A2510")).toHaveText("Row 2510");
+  expect(await rows()).toBeLessThan(120);
+  // The header row is held; a value typed there is saved as any.
+  await expect(cell("Data", "A1")).toBeInViewport();
+  await cell("Data", "B2510").click();
+  await app.keyboard.type("7");
+  await app.keyboard.press("Enter");
+  await expect.poll(saved).toContain("<tr><td>Row 2510<td>7\n");
+  expect(await rows()).toBeLessThan(120);
+});
+
+test("opened alone a sheet is its whole table and nothing past it", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files } = await openSheet(
+    app,
+    session,
+    host.project,
+    sheet("Big", {
+      Data: Array.from({ length: 300 }, (_, row) =>
+        row ? `<td>Row ${row + 1}<td>${row}` : "<th>Name<th>Value",
+      ),
+    }),
+  );
+  const alone = await app.context().newPage();
+  await alone.goto(
+    await files.getByRole("link", { name: "Open alone" }).getAttribute("href"),
+  );
+  await expect(alone.locator("tbody tr")).toHaveCount(300);
+  await expect(alone.locator(".sheet-letters")).toHaveText("AB");
+  await expect(alone.getByText("Row 300", { exact: true })).toBeVisible();
 });
 
 test("a sheet with nothing in it shows a pane of cells to type in", async ({
@@ -827,7 +910,8 @@ test("on a phone the rows and columns a sheet holds stay in view, and a cell is 
     { phone: true },
   );
   await expect(cell("Months", "B2")).toBeInViewport();
-  await cell("Months", "L40").evaluate((last) => last.scrollIntoView());
+  await cell("Months", "B2").click();
+  await app.keyboard.press("Control+End");
   await expect(cell("Months", "B2")).not.toBeInViewport();
   for (const held of ["A1", "L1", "A40"])
     await expect(cell("Months", held)).toBeInViewport();
@@ -964,6 +1048,7 @@ test("a chart is drawn from its cells, follows an edit, is put in from a selecti
   await expect.poll(saved).toBe(pie);
 
   // A chart of the selection, put in beside it.
+  await app.keyboard.press("Control+Home");
   await cell("Costs", "A1").click();
   await cell("Costs", "B4").click({ modifiers: ["Shift"] });
   await files.getByRole("button", { name: "Chart", exact: true }).click();

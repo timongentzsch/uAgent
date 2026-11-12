@@ -21,30 +21,11 @@ const shape = (name, attrs = {}, text = "") => {
   return element;
 };
 
-// Widths and heights are added up, since a held cell's own place moves as
-// the page scrolls.
-const edges = (table) => {
-  const run = (cells, count, size) => {
-    let total = 0;
-    for (let at = 0; at < Math.min(count, cells.length); at++)
-      total += cells[at][size];
-    return total;
-  };
-  return {
-    x: (column) =>
-      table.offsetLeft + run(table.tHead.rows[0].cells, column, "offsetWidth"),
-    y: (row) =>
-      table.offsetTop +
-      table.tHead.offsetHeight +
-      run(table.tBodies[0].rows, row - 1, "offsetHeight"),
-  };
-};
-
-// The cell whose edge is nearest, of the `most` that are drawn.
-const nearest = (edge, place, most) => {
-  let at = 1;
-  while (at < most && edge(at + 1) - place < place - edge(at)) at++;
-  return at;
+// The cell whose edge is nearest to a place: `at` finds the cell it lies in,
+// `start` where a cell starts.
+const nearest = (at, start, place) => {
+  const cell = at(place);
+  return start(cell + 1) - place < place - start(cell) ? cell + 1 : cell;
 };
 const units = (length, unit) =>
   Math.max(1, Math.min(MOST, Math.round(length / unit)));
@@ -73,7 +54,7 @@ function drag(layer, sheet, change) {
       (to) => {
         figure.removeEventListener("pointermove", move);
         if (by(to).every((moved) => Math.abs(moved) < 4)) return;
-        const { x, y } = edges(sheet.table());
+        const { x, y, columnAt, rowAt } = sheet.layout();
         const now = figure.getBoundingClientRect();
         // A move changes where it sits, its corner how much it covers.
         const next = sizing
@@ -82,8 +63,8 @@ function drag(layer, sheet, change) {
             }
           : {
               "data-at": cellName({
-                column: nearest(x, now.left + scrollX, sheet.size().columns),
-                row: nearest(y, now.top + scrollY, sheet.size().rows),
+                column: nearest(columnAt, x, now.left + scrollX),
+                row: nearest(rowAt, y, now.top + scrollY),
               }),
             };
         change([...layer.children].indexOf(figure), (chart) => [
@@ -168,7 +149,7 @@ export function listenCharts(sheet) {
   });
 
   return () => {
-    const { x, y } = edges(sheet.table());
+    const { x, y } = sheet.layout();
     const figures = sheet.tab().charts.map(({ attrs, caption }, index) => {
       // Unsaid, beside the grid.
       const on = boxNamed(attrs["data-at"]) ?? {

@@ -1,8 +1,8 @@
 // A tab read once from the page's table as it was written, then drawn over
 // it as a spreadsheet's grid.
 
-import { headOf, isHeader } from "./book.js";
-import { CELL, cellName, frozenOf, letters } from "./text.js";
+import { headOf, isHeader, isTotal } from "./book.js";
+import { CELL, cellName, letters } from "./text.js";
 
 const attrsOf = (element, skip) =>
   Object.fromEntries(
@@ -88,32 +88,112 @@ const edge = (text, scope, data = {}) => {
   return cell;
 };
 
-// `filters` is the tab's filtered columns, `hidden` the rows they hide, and
-// `grid` how far the cells run on past the table, blank.
-export function draw(table, book, sheet, filters, hidden, grid) {
+// A text's width as the grid draws it, asked of a canvas once a text.
+const pen = document.createElement("canvas").getContext("2d");
+const known = new Map();
+const wide = (text, font) => {
+  const key = `${font}\n${text}`;
+  if (!known.has(key)) {
+    pen.font = font;
+    known.set(key, pen.measureText(text).width);
+  }
+  return known.get(key);
+};
+// How many lines a text takes in a cell `room` wide, a word after another.
+const lines = (text, font, room) => {
+  let [count, used] = [1, 0];
+  for (const word of text.split(/\s+/)) {
+    const length = wide(`${word} `, font);
+    if (used && used + length > room) [count, used] = [count + 1, 0];
+    count += Math.max(0, Math.ceil(length / room) - 1);
+    used = length > room ? length % room : used + length;
+  }
+  return count;
+};
+// A cell's padding and line, as sheet.css sets them; a column is as wide as
+// its widest text needs, within these, where the file says no width.
+const PAD = 17;
+const NARROW = 40;
+const WIDE = 400;
+
+// The widths of the table's columns and the heights of its rows, from what
+// the cells show: the grid is laid out from these, not by the browser, so
+// a column is as wide whatever part of it is drawn.
+export function sizesOf(table, book, sheet) {
   const tab = book.tabs[sheet];
-  // Row `r`'s blank cells from the column after `from` on.
-  const blank = (r, from) =>
-    Array.from({ length: grid.columns - from }, (_, c) => {
-      const cell = make("td");
-      Object.assign(cell.dataset, { row: r + 1, column: from + c + 1 });
-      return cell;
-    });
+  const style = getComputedStyle(table);
+  const font = (bold) =>
+    `${bold ? 600 : 400} ${style.fontSize} ${style.fontFamily}`;
+  // The mark of a header's menu (in a button) and of a list of options.
+  const mark = wide("▾", font(false)) + 4;
   const head = headOf(tab);
-  const said = frozenOf(tab.attrs["data-frozen"], head);
-  const frozen = {
-    rows: Math.min(said.rows, tab.rows.length),
-    columns: Math.min(said.columns, tab.columns.length),
-  };
-  const body = tab.rows.map((row, r) => {
-    const cells = row.cells.map((cell, c) => {
+  const shown = tab.rows.map((row, r) =>
+    row.cells.map((_, c) => book.shown(sheet, r + 1, c + 1)),
+  );
+  const bold = tab.rows.map(
+    (row, r) => (c) =>
+      isHeader(row) || isTotal(row) || !!book.look(sheet, r + 1, c + 1).bold,
+  );
+  const widths = tab.columns.map((column, c) => {
+    if (column["data-width"]) return Number(column["data-width"]) || NARROW;
+    const most = shown.reduce(
+      (most, texts, r) =>
+        Math.max(
+          most,
+          wide(texts[c], font(bold[r](c))) +
+            (r === head - 1
+              ? mark + 4
+              : r >= head && column["data-options"]
+                ? mark
+                : 0),
+        ),
+      0,
+    );
+    return Math.min(WIDE, Math.max(NARROW, Math.ceil(most) + PAD));
+  });
+  // A row is as high as a line of the look the app passes in needs.
+  const line = Number.parseFloat(style.lineHeight) || 0;
+  const row = Math.max(CELL.height, Math.ceil(line) + 5);
+  const wrapped = tab.columns.flatMap((column, c) =>
+    /\bwrap\b/.test(column.class ?? "") ? [c] : [],
+  );
+  // A total row has a line over it.
+  const heights = shown.map((texts, r) =>
+    Math.max(
+      row + (isTotal(tab.rows[r]) ? 1 : 0),
+      ...wrapped.map(
+        (c) => lines(texts[c], font(bold[r](c)), widths[c] - PAD) * line + 5,
+      ),
+    ),
+  );
+  return { widths, heights, row };
+}
+
+// Draws the rows and columns `view` names (those held first), each where
+// `view.layout` puts it. `filters` is the tab's filtered columns. Windowed,
+// the table lies at its first scrolling cell's place inside the grid's area.
+export function draw(table, book, sheet, filters, view) {
+  const tab = book.tabs[sheet];
+  const { layout, frozen } = view;
+  const head = headOf(tab);
+  const body = view.rows.map((number) => {
+    const r = number - 1;
+    const row = tab.rows[r];
+    const cells = view.columns.map((at) => {
+      const c = at - 1;
+      const cell = row?.cells[c];
+      if (!cell) {
+        const blank = make("td");
+        Object.assign(blank.dataset, { row: number, column: at });
+        return blank;
+      }
       const column = tab.columns[c];
-      const shown = book.shown(sheet, r + 1, c + 1);
-      const kind = book.kind(sheet, r + 1, c + 1);
+      const shown = book.shown(sheet, number, at);
+      const kind = book.kind(sheet, number, at);
       const drawn = marked(make(cell.th ? "th" : "td"), cell.attrs);
-      Object.assign(drawn.dataset, { row: r + 1, column: c + 1 });
+      Object.assign(drawn.dataset, { row: number, column: at });
       // A rule's fill lies over the cell's own, and that over its row's.
-      const look = book.look(sheet, r + 1, c + 1);
+      const look = book.look(sheet, number, at);
       const fill =
         look.fill ?? cell.attrs["data-fill"] ?? row.attrs["data-fill"];
       if (fill) drawn.dataset.fill = fill;
@@ -136,7 +216,7 @@ export function draw(table, book, sheet, filters, hidden, grid) {
             type: "checkbox",
             checked: shown === "TRUE",
             tabIndex: -1,
-            ariaLabel: `${letters(c + 1)}${r + 1}`,
+            ariaLabel: `${letters(at)}${number}`,
           }),
         );
       else drawn.textContent = shown;
@@ -146,78 +226,74 @@ export function draw(table, book, sheet, filters, hidden, grid) {
             type: "button",
             className: "sheet-more",
             tabIndex: -1,
-            ariaLabel: `Sort and filter column ${letters(c + 1)}`,
-            ariaPressed: filters.has(c + 1),
+            ariaLabel: `Sort and filter column ${letters(at)}`,
+            ariaPressed: filters.has(at),
           }),
         );
       return drawn;
     });
-    const drawn = marked(make("tr"), row.attrs);
-    drawn.classList.toggle("sheet-head", isHeader(row));
-    drawn.classList.toggle("sheet-frozen", r < frozen.rows);
-    drawn.hidden = hidden.has(r + 1);
-    drawn.append(
-      edge(r + 1, "row", { row: r + 1 }),
-      ...cells,
-      ...blank(r, cells.length),
-    );
+    const drawn = marked(make("tr"), row?.attrs ?? {});
+    drawn.classList.toggle("sheet-head", !!row && isHeader(row));
+    drawn.style.height = `${layout.y(number + 1) - layout.y(number)}px`;
+    // Each held row sticks under those before it, each held column beside.
+    if (number <= frozen.rows) {
+      drawn.classList.add("sheet-frozen");
+      drawn.style.setProperty("--sheet-top", `${layout.y(number)}px`);
+    }
+    drawn.append(edge(number, "row", { row: number }), ...cells);
     return drawn;
   });
-  for (let r = tab.rows.length; r < grid.rows; r++)
-    body.push(
-      make("tr", {}, [edge(r + 1, "row", { row: r + 1 }), ...blank(r, 0)]),
-    );
+  const lettered = make("tr", { className: "sheet-letters" }, [
+    edge("", "col"),
+    ...view.columns.map((at) => edge(letters(at), "col", { column: at })),
+  ]);
+  const span = (from, to) => `${layout.x(to) - layout.x(from)}px`;
   table.replaceChildren(
     make("colgroup", {}, [
-      make("col", { className: "sheet-edge" }),
-      ...Array.from({ length: grid.columns }, (_, c) => {
-        const col = make("col");
-        const wide = tab.columns[c] ? tab.columns[c]["data-width"] : CELL.width;
-        if (wide) col.style.width = `${wide}px`;
-        return col;
-      }),
+      Object.assign(make("col"), { style: `width:${layout.x(1)}px` }),
+      ...view.columns.map((at) =>
+        Object.assign(make("col"), { style: `width:${span(at, at + 1)}` }),
+      ),
     ]),
-    make("thead", {}, [
-      make("tr", { className: "sheet-letters" }, [
-        edge("", "col"),
-        ...Array.from({ length: grid.columns }, (_, c) =>
-          edge(letters(c + 1), "col", { column: c + 1 }),
-        ),
-      ]),
-    ]),
+    make("thead", {}, [lettered]),
     make("tbody", {}, body),
   );
+  view.columns.forEach((at, place) => {
+    if (at > frozen.columns) return;
+    for (const row of [lettered, ...body]) {
+      row.cells[place + 1].classList.add("sheet-pinned");
+      row.cells[place + 1].style.left = `${layout.x(at)}px`;
+    }
+  });
   table.setAttribute("role", "grid");
-  // Each held row and column sticks under and beside those before it.
-  const tops = body.slice(0, frozen.rows).map((row) => row.offsetTop);
-  tops.forEach((top, r) =>
-    body[r].style.setProperty("--sheet-top", `${top}px`),
-  );
-  const lefts = Array.from(
-    { length: frozen.columns },
-    (_, c) => table.tHead.rows[0].cells[c + 1].offsetLeft,
-  );
-  for (const row of [table.tHead.rows[0], ...body])
-    lefts.forEach((left, c) => {
-      row.cells[c + 1].classList.add("sheet-pinned");
-      row.cells[c + 1].style.left = `${left}px`;
-    });
-  // A cell scrolled into view stops short of what is held.
-  const root = document.documentElement;
-  root.style.scrollPaddingTop = `${body[frozen.rows]?.offsetTop ?? 0}px`;
-  root.style.scrollPaddingLeft = `${table.tHead.rows[0].cells[frozen.columns + 1]?.offsetLeft ?? 0}px`;
+  const first = (drawn, held) => drawn.find((at) => at > held) ?? held + 1;
+  const [row, column] = [
+    first(view.rows, frozen.rows),
+    first(view.columns, frozen.columns),
+  ];
+  Object.assign(table.style, {
+    width: `${layout.x(1) + view.columns.reduce((sum, at) => sum + layout.x(at + 1) - layout.x(at), 0)}px`,
+    left: `${layout.x(column) - layout.x(frozen.columns + 1)}px`,
+    top: `${layout.y(row) - layout.y(frozen.rows + 1)}px`,
+  });
 }
 
-export const cellAt = (table, { row, column }) =>
-  table.tBodies[0].rows[row - 1]?.cells[column];
-
+// The cells drawn are marked by where the selection lies: its box, and its
+// active cell.
 export function paint(table, box, active) {
-  for (const cell of table.querySelectorAll(".sheet-in, [aria-selected]")) {
-    cell.classList.remove("sheet-in");
-    cell.removeAttribute("aria-selected");
+  for (const cell of table.querySelectorAll("tbody [data-column]")) {
+    const [row, column] = [
+      Number(cell.dataset.row),
+      Number(cell.dataset.column),
+    ];
+    const inside =
+      row >= box.top &&
+      row <= box.bottom &&
+      column >= box.left &&
+      column <= box.right;
+    cell.classList.toggle("sheet-in", inside);
+    if (row === active.row && column === active.column)
+      cell.setAttribute("aria-selected", "true");
+    else cell.removeAttribute("aria-selected");
   }
-  for (let row = box.top; row <= box.bottom; row++)
-    for (let column = box.left; column <= box.right; column++)
-      cellAt(table, { row, column })?.classList.add("sheet-in");
-  cellAt(table, active)?.setAttribute("aria-selected", "true");
 }

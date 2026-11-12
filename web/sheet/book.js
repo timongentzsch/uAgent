@@ -432,8 +432,15 @@ export async function openBook(engine, written, locked, calculate) {
   };
   if (!(await build(written.map((tab) => ({ ...tab, [TAB]: Symbol() })))))
     return undefined;
+  // Every read of what was calculated comes through here, and marks the
+  // change being tried as one that read it.
+  let consulted = false;
+  const calculated = (sheet) => {
+    consulted = true;
+    return table[sheet];
+  };
   const cellAt = (sheet, row, column) =>
-    table[sheet]?.cells[row - 1]?.[column - 1] ?? BLANK;
+    calculated(sheet)?.cells[row - 1]?.[column - 1] ?? BLANK;
 
   // `run` on other tabs and steps than the book's.
   const on = (state, run) => {
@@ -458,7 +465,7 @@ export async function openBook(engine, written, locked, calculate) {
   const trying = (asked, state) => {
     const copy = { ...state, past: [...state.past], future: [...state.future] };
     asked.from = state;
-    asked.read = table;
+    consulted = false;
     asked.to = on(copy, () => {
       dry = true;
       try {
@@ -468,6 +475,7 @@ export async function openBook(engine, written, locked, calculate) {
         dry = false;
       }
     });
+    asked.read = consulted && table;
     return asked.to;
   };
   const queued =
@@ -481,7 +489,8 @@ export async function openBook(engine, written, locked, calculate) {
         .then(async () => {
           try {
             const { from, read, to } = asked;
-            if (from.tabs !== tabs || read !== table) return await asked.made();
+            if (from.tabs !== tabs || (read && read !== table))
+              return await asked.made();
             const answer = await to.answer;
             if (answer !== true) return answer;
             if (!(await build(to.tabs))) return PANIC;
@@ -489,11 +498,13 @@ export async function openBook(engine, written, locked, calculate) {
             return true;
           } finally {
             waiting.shift();
-            ahead = waiting.reduce((state, next) => trying(next, state), {
-              tabs,
-              past,
-              future,
-            });
+            // Made otherwise than tried, those behind it are tried anew.
+            if (tabs !== asked.to.tabs)
+              ahead = waiting.reduce((state, next) => trying(next, state), {
+                tabs,
+                past,
+                future,
+              });
           }
         }));
     };
@@ -708,7 +719,8 @@ export async function openBook(engine, written, locked, calculate) {
         (rule) => rule.format.font.b && (rule.row || rule.column === column),
       ),
     // What a rule that matches gives a cell.
-    look: (sheet, row, column) => table[sheet].looks[`${row} ${column}`] ?? {},
+    look: (sheet, row, column) =>
+      calculated(sheet).looks[`${row} ${column}`] ?? {},
 
     plain: (sheet, row, column) => plainOf(tabs[sheet], row, column),
     // How a cell shows: what is written, and a rule's look over it.
@@ -743,7 +755,7 @@ export async function openBook(engine, written, locked, calculate) {
     errors() {
       const found = tabs.flatMap((tab, sheet) => [
         ...markupOf(tab),
-        ...table[sheet].unread.map(
+        ...calculated(sheet).unread.map(
           (rule) => `${tab.name}: rule \`${rule}\` is not understood`,
         ),
         ...tab.charts.flatMap((chart, at) => {
@@ -765,8 +777,8 @@ export async function openBook(engine, written, locked, calculate) {
 
     // Nothing for fewer than two numbers, or with a cell in error.
     summary(sheet, { top, left, bottom, right }) {
-      const read = table[sheet].cells
-        .slice(top - 1, bottom)
+      const read = calculated(sheet)
+        .cells.slice(top - 1, bottom)
         .flatMap((row) => row.slice(left - 1, right));
       const numbers = read.flatMap((cell) => cell.number ?? []);
       const sum = numbers.reduce((all, number) => all + number, 0);

@@ -1159,3 +1159,48 @@ test("a change refused leaves the tabs ahead holding those behind it, made on th
     ["4", ""],
   ]);
 });
+
+test("a change asked for behind another is worked out once, unless it reads what is calculated: a sort orders by the values the change before it leaves", async () => {
+  // Moving a formula reads its tokens: how often says how often a change
+  // was worked out.
+  let read = 0;
+  const counted = {
+    ...engine,
+    getTokens: (formula) => {
+      read++;
+      return engine.getTokens(formula);
+    },
+  };
+  const book = await openBook(
+    counted,
+    [
+      tab("Costs", [
+        ["#N", "#Twice"],
+        ["3", "=A2*2"],
+        ["1", ""],
+        ["2", ""],
+      ]),
+    ],
+    false,
+    calculate,
+  );
+  const filled = [
+    book.paste(0, { row: 2, column: 1 }, [["0"]]),
+    book.fillDown(0, { top: 2, left: 2, bottom: 4, right: 2 }),
+  ];
+  const asked = read;
+  assert.deepEqual(await Promise.all(filled), [true, true]);
+  assert.equal(read, asked);
+  const sorted = [
+    book.paste(0, { row: 2, column: 1 }, [["5"]]),
+    book.sort(0, 1, false),
+  ];
+  const sorting = read;
+  assert.deepEqual(await Promise.all(sorted), [true, true]);
+  assert.ok(read > sorting);
+  assert.deepEqual(texts(book, 0).slice(1), [
+    ["1", "=A2*2"],
+    ["2", "=A3*2"],
+    ["5", "=A4*2"],
+  ]);
+});

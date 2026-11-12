@@ -203,8 +203,8 @@ export function tableSaver(io: {
   let typing: { path: string; edit: () => TableEdit } | undefined;
   let round = 0;
   let said = -1;
-  // A write failed, and no leave has been kept for it yet.
-  let owed = false;
+  // How many writes have failed: a leave is kept for one it waited for.
+  let failures = 0;
   let last: Promise<unknown> = Promise.resolve();
   const renew = () => {
     held = typing = undefined;
@@ -238,10 +238,9 @@ export function tableSaver(io: {
         const { revision } = await io.write(next, closing);
         if (of === round) held = { ...next, revision };
       }
-      owed = false;
       return true;
     } catch (error) {
-      owed = true;
+      failures++;
       if (of === round) renew();
       if (said !== of) io.failed(error, path);
       said = of;
@@ -263,10 +262,10 @@ export function tableSaver(io: {
       if (edit && held?.path !== path)
         last = last.then(run, run).catch(() => {});
     },
-    // Writes what is held; whether all that was typed is in its file. A
-    // write that failed answers no once: the leave it stops is its word.
+    // Writes what is held; whether all that was typed is in its file,
+    // which it is not where a write failed while this waited for it.
     flush(closing = false) {
-      const [mine, of] = [typing, round];
+      const [mine, of, before] = [typing, round, failures];
       // A closing page cannot wait for its file to be read.
       if (mine && closing && held?.path !== mine.path)
         return Promise.resolve(false);
@@ -277,13 +276,7 @@ export function tableSaver(io: {
         if (sent && typing === mine) typing = undefined;
       };
       last = last.then(run, run);
-      return last
-        .catch(() => {})
-        .then(() => {
-          const whole = sent && !owed;
-          owed = false;
-          return whole;
-        });
+      return last.catch(() => {}).then(() => sent && failures === before);
     },
     // For a sheet drawn anew from its file: edits made before are not saved.
     renew,

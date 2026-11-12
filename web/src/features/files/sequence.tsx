@@ -321,7 +321,7 @@ export default function Sequence({
   // active cell is in it.
   const [ruling, setRuling] = useState("");
   // The table that cell's edit would make, as its page said it once.
-  const drafted = useRef<Draft>(undefined);
+  const cutNow = useRef<Draft>(undefined);
   const [ranged, setRanged] = useState<string>();
   const [told, setTold] = useState(UNTOLD);
   const formula = useRef<HTMLInputElement>(null);
@@ -1073,8 +1073,8 @@ export default function Sequence({
                       const cut =
                         text === undefined
                           ? undefined
-                          : (draftOf(message) ?? drafted.current);
-                      drafted.current = cut;
+                          : (draftOf(message) ?? cutNow.current);
+                      cutNow.current = cut;
                       typing(
                         sheet && cut ? () => editOf(cut, written) : undefined,
                       );

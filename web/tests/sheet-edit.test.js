@@ -334,7 +334,7 @@ test("a cell being typed in is held as its edit and written when the sheet is le
   );
 });
 
-test("a write refused while the sheet is being left keeps the leave once: a cell's own edit, a held cell, or one dropped behind a refusal", async () => {
+test("a write refused while a leave waits for it keeps the leave: a cell's own edit, a held cell, or one dropped behind a refusal; one refused before does not", async () => {
   const file = { now: { text: `${head}${one}\n${two}`, revision: "r0" } };
   let release;
   const { saver, log } = saving(file, new Promise((go) => (release = go)));
@@ -351,7 +351,7 @@ test("a write refused while the sheet is being left keeps the leave once: a cell
     "write a.html on r0",
     "failed conflict",
   ]);
-  // Told once: the next leave goes.
+  // That was said and seen: a later leave goes.
   assert.equal(await saver.flush(), true);
   // A held cell that cannot be written.
   await saver.save("a.html", edit(0, "now"));
@@ -364,14 +364,10 @@ test("a write refused while the sheet is being left keeps the leave once: a cell
   file.now = { ...file.now, revision: "r5" };
   const refused = saver.save("a.html", edit(0, "first"));
   saver.hold("a.html", typed(1, "typing"));
+  const kept = saver.flush();
   await assert.rejects(refused, /conflict/);
-  assert.equal(await saver.flush(), false);
+  assert.equal(await kept, false);
   assert.ok(!file.now.text.includes("typing"));
-  // A save that is made settles what was owed.
-  await saver.save("a.html", edit(0, "x"));
-  file.now = { ...file.now, revision: "r3" };
-  await assert.rejects(saver.save("a.html", edit(0, "z")));
-  await saver.save("a.html", edit(0, "y"));
   assert.equal(await saver.flush(), true);
 });
 

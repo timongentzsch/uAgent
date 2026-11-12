@@ -246,9 +246,10 @@ export function FormulaBar({
     said(input);
   };
   const keyDown = (event: TargetedKeyboardEvent<HTMLInputElement>) => {
+    // A key that confirms an input method's composition is its own.
+    if (event.isComposing || event.keyCode === 229) return;
     const { key } = event;
-    const listed =
-      options.length > 0 && event.keyCode !== 229 && plainKey(event);
+    const listed = options.length > 0 && plainKey(event);
     if (listed && (key === "ArrowDown" || key === "ArrowUp"))
       setIndex(nextIndex(index, key, options.length));
     else if (listed && (key === "Enter" || key === "Tab"))

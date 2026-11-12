@@ -132,7 +132,9 @@ export function listen(sheet) {
     const said = drafted;
     drafted = false;
     rest();
-    if (!sheet.write(text) && said) sheet.say({ type: "typing" });
+    sheet.write(text);
+    // Written or refused, that draft is over: the next has its own table.
+    if (said) sheet.say({ type: "typing" });
     if (by) sheet.select(stepped(active(), by));
   };
   editor.addEventListener("input", () => {

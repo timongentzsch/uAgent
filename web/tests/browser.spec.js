@@ -24,15 +24,16 @@ const openBrowser = async (page, session) => {
   await headerAction(page, "Open browser");
   return page.getByRole("dialog", { name: "Browser", exact: true });
 };
-const openControlled = async (page, session) => {
+// With a screen served to the viewer: this device drives it, unless `status`
+// says who does.
+const openControlled = async (
+  page,
+  session,
+  status = { mode: "human", controller: true, leased: true },
+) => {
   const { serveFramebuffer } = await import("./rfb-fixture.js");
   const remote = await serveFramebuffer(page);
-  await browserStatus(page, {
-    mode: "human",
-    running: true,
-    controller: true,
-    leased: true,
-  });
+  await browserStatus(page, { running: true, ...status });
   await page.goto(`/#session=${session.id}`);
   await remote.prepare();
   await headerAction(page, "Open browser");
@@ -377,13 +378,13 @@ test("watches an active agent without taking control", async ({
   page,
   session,
 }) => {
-  await browserStatus(page, {
+  // A screen to watch: without one the viewer's canvas comes and goes with
+  // each attempt to connect.
+  const { dialog } = await openControlled(page, session, {
     mode: "agent",
-    running: true,
     leased: false,
     controller: false,
   });
-  const dialog = await openBrowser(page, session);
   await expect(dialog.getByLabel("Browser viewport")).toHaveCount(1);
   await expect(dialog.getByText("Agent", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Take over" })).toBeVisible();

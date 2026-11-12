@@ -653,10 +653,11 @@ export default function Sequence({
       </Button>
     );
   const flip = (to: "select" | "edit") => enter(mode === to ? "" : to);
-  // What is being saved: a sheet's among its tools, a block's in the row of
-  // Edit's own, under them, which no width hides.
+  // What is being saved: a block's in the row of Edit's own, anything
+  // else's in the tools' row. Last there, it takes the room the tools leave,
+  // so no tool moves for it; cut short, its title says it whole.
   const status = saved && (
-    <small class="muted">
+    <small class="page-status muted" title={saved.text}>
       <Notice tone={saved.failed ? "error" : "info"}>{saved.text}</Notice>
     </small>
   );
@@ -739,7 +740,6 @@ export default function Sequence({
             false,
             uneditable,
           )}
-        {!editable && status}
         {(declared.length > 0 || !!theme.value?.colors.length) &&
           toggle(
             "Tweaks",
@@ -790,6 +790,7 @@ export default function Sequence({
         <IconButton label="Open alone" onClick={() => open(src)}>
           <ExternalLink />
         </IconButton>
+        {!editable && status}
       </div>
       {mode === "edit" && (
         <div class="page-tools">

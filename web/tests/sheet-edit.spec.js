@@ -1112,6 +1112,52 @@ test("the grid reaches the spreadsheet's last row whatever a browser can scroll:
   expect(await area()).toBeLessThan(span);
 });
 
+// The notice stands last in the tools' row and takes the room they leave.
+for (const [pane, phone] of [
+  ["a docked pane", false],
+  ["a phone's pane", true],
+])
+  test(`a sheet's tools keep their places when a notice comes, short or long, in ${pane}`, async ({
+    page: app,
+    session,
+    host,
+  }) => {
+    const { files, cell } = await openSheet(app, session, host.project, PLAN, {
+      phone,
+    });
+    const tools = files.locator(".page-tools").first();
+    const notice = tools.locator(".page-status");
+    const places = () =>
+      tools.getByRole("button").evaluateAll((all) =>
+        all.map((tool) => {
+          const { left, top, width, height } = tool.getBoundingClientRect();
+          return [tool.textContent || tool.ariaLabel, left, top, width, height];
+        }),
+      );
+    await expect(cell("Tasks", "B2")).toBeVisible();
+    await expect(notice).toHaveCount(0);
+    const bare = await places();
+    expect(bare.map(([name]) => name)).toContain("Open alone");
+    await cell("Tasks", "A2").click();
+    await app.keyboard.type("Draft");
+    await app.keyboard.press("Enter");
+    await expect(notice).toHaveText("Saved");
+    expect(await places()).toEqual(bare);
+    // A refusal is longer than the row: cut short, whole in its title.
+    for (let press = 0; press < 3; press++)
+      await app.keyboard.press("Control+ArrowDown");
+    await app.keyboard.type("x");
+    await app.keyboard.press("Enter");
+    const why =
+      "A1048576 is too far from the table to keep: the file would hold every row between.";
+    await expect(notice).toHaveText(why);
+    await expect(notice).toHaveAttribute("title", why);
+    expect(await places()).toEqual(bare);
+    const row = await tools.boundingBox();
+    const said = await notice.boundingBox();
+    expect(said.x + said.width).toBeLessThanOrEqual(row.x + row.width);
+  });
+
 test("opened alone a sheet is its whole table and nothing past it", async ({
   page: app,
   session,

@@ -372,15 +372,20 @@
   flex: 1;
   min-width: 0;
 }
-/* One line, cut short where the bar is. */
+/* One line, cut short where the bar is; what is being saved keeps at
+   least its mark in view. */
 .sheet-bar > .sheet-note {
   flex: 0 1 auto;
   min-width: 0;
 }
-.sheet-note > .notice {
+.page-tools > .page-status {
+  flex: 0 1 auto;
+  min-width: var(--control);
+}
+:is(.sheet-note, .page-status) > .notice {
   white-space: nowrap;
 }
-.sheet-note > .notice > span {
+:is(.sheet-note, .page-status) > .notice > span {
   overflow: hidden;
   text-overflow: ellipsis;
 }

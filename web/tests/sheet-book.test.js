@@ -1247,6 +1247,38 @@ test("after any change a row or cell stands in one place of the tabs, and a copi
   }
 });
 
+test("a change the engine reads nothing of is not calculated again, and the cells it gives a look keep their values", async () => {
+  let asked = 0;
+  const book = await openBook(
+    engine,
+    [
+      tab("Costs", [
+        ["#N", "#Twice"],
+        ["5", "=A2*2"],
+      ]),
+    ],
+    false,
+    (tabs) => {
+      asked++;
+      return calculate(tabs);
+    },
+  );
+  const box = { top: 2, left: 1, bottom: 2, right: 2 };
+  const looks = [
+    book.style(0, box, "bold", "bold", new Set()),
+    book.widen(0, box, 120),
+    book.mark(0, "data-frozen", "1"),
+  ];
+  assert.deepEqual(shown(book, 0, 2, 2), ["5", "10"]);
+  assert.deepEqual(await Promise.all(looks), [true, true, true]);
+  assert.equal(asked, 1);
+  assert.equal(book.marks(0, 2, 2).bold, true);
+  // A pattern is read: calculated, and shown in it.
+  await book.style(0, box, "format", "0.00", new Set());
+  assert.equal(asked, 2);
+  assert.deepEqual(shown(book, 0, 2, 2), ["5.00", "10.00"]);
+});
+
 test("rows put in one after another are each worked out once", async () => {
   let made = 0;
   const counted = {

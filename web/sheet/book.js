@@ -462,6 +462,50 @@ export async function openBook(engine, written, locked, calculate) {
     if (next !== cell && values.has(cell)) values.set(next, values.get(cell));
     return next;
   };
+  // Where nothing moved, a cell or row only given a look keeps what was
+  // calculated of it.
+  const kept = (before, after) =>
+    after.forEach((tab, sheet) =>
+      tab.rows.forEach((row, r) => {
+        const was = before[sheet]?.rows[r];
+        if (!was || was === row) return;
+        if (looks.has(was) && !looks.has(row)) looks.set(row, looks.get(was));
+        row.cells.forEach((cell, c) => {
+          const old = was.cells[c];
+          if (!old || old.text !== cell.text || values.has(cell)) return;
+          if (values.has(old)) values.set(cell, values.get(old));
+          if (looks.has(old)) looks.set(cell, looks.get(old));
+        });
+      }),
+    );
+  // What the engine reads of a tab: tabs that read alike are not calculated
+  // again.
+  const inputs = new WeakMap();
+  const inputOf = (tab) =>
+    inputs.get(tab) ??
+    inputs
+      .set(
+        tab,
+        JSON.stringify([
+          tab.name,
+          tab.attrs["data-rule"],
+          tab.columns.map((column) => [
+            column["data-format"],
+            column["data-rule"],
+          ]),
+          tab.rows.map((row) =>
+            row.cells.map(({ th, text, attrs }) => [
+              th,
+              text,
+              attrs["data-format"],
+            ]),
+          ),
+        ]),
+      )
+      .get(tab);
+  const alike = (a, b) =>
+    a.length === b.length &&
+    a.every((tab, at) => tab === b[at] || inputOf(tab) === inputOf(b[at]));
 
   // A change is made at once on the tabs shown, then calculated after those
   // asked for before it. Where one of those is refused, the tabs go back to
@@ -484,6 +528,7 @@ export async function openBook(engine, written, locked, calculate) {
       answer = `Not changed: ${error.message}`;
     }
     if (answer === true) {
+      if (!asked.moves) kept(was[0], tabs);
       asked.to = { tabs, past: [...past], future: [...future] };
       charted.clear();
     } else [tabs, past, future] = was;
@@ -501,10 +546,12 @@ export async function openBook(engine, written, locked, calculate) {
         .then(async () => {
           try {
             if (asked.dropped) return false;
-            const read = await calculate(asked.to.tabs);
+            const read =
+              alike(asked.to.tabs, made.tabs) ||
+              (await calculate(asked.to.tabs));
             if (typeof read !== "string") {
               made = asked.to;
-              learned(made.tabs, read);
+              if (read !== true) learned(made.tabs, read);
               return true;
             }
             [tabs, past, future] = [

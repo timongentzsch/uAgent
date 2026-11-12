@@ -272,7 +272,7 @@ const holds = (a, b) =>
   a.across === b.across && a.from <= b.from && b.to <= a.to;
 const groupsOf = (tab) => {
   const [read, unread] = [[], []];
-  for (const text of listed(tab.attrs, "data-group")) {
+  for (const [place, text] of listed(tab.attrs, "data-group").entries()) {
     const lines = linesNamed(text);
     const other =
       lines &&
@@ -295,21 +295,24 @@ const groupsOf = (tab) => {
             : lines.to < other.from || lines.from > other.to
               ? `touches ${other.name}: leave a ${line} between`
               : `cuts ${other.name}`;
-    if (why) unread.push(`group \`${text}\` ${why}`);
-    else read.push({ ...lines, name: linesName(lines) });
+    if (why) unread.push({ place, said: `group \`${text}\` ${why}` });
+    else read.push({ ...lines, name: linesName(lines), place });
   }
   const groups = read.filter((group) => {
     group.depth = read.filter((other) => holds(other, group)).length;
     const deep = group.depth > DEEPEST;
     if (deep)
-      unread.push(`group \`${group.name}\` is nested over ${DEEPEST} deep`);
+      unread.push({
+        place: group.place,
+        said: `group \`${group.name}\` is nested over ${DEEPEST} deep`,
+      });
     return !deep;
   });
   for (const text of listed(tab.attrs, "data-folded")) {
     const lines = linesNamed(text);
     const group = lines && groups.find(({ name }) => name === linesName(lines));
     if (group) group.folded = true;
-    else unread.push(`folded \`${text}\` is no group`);
+    else unread.push({ said: `folded \`${text}\` is no group` });
   }
   // A group in a folded one is not drawn.
   for (const group of groups)
@@ -814,17 +817,29 @@ export async function openBook(engine, written, locked, calculate) {
         ({ place }) => was[place] === now[place] && !undrawn.has(place),
       );
     });
-    // Nor where it leaves more groups unread than there were.
-    const unread = (all) => all.flatMap((tab) => groupsFor(tab).unread);
-    const [was, now] = [unread(tabs), unread(next)];
+    // Nor where a group read before is not after: one more of the tab's than
+    // there were, or, in a list as long, one in its place there as written.
+    const ungrouped = next.flatMap((tab, at) => {
+      if (tabs.includes(tab)) return [];
+      const [was, now] = [groupsFor(tabs[at]).unread, groupsFor(tab).unread];
+      const [before, after] = [tabs[at], tab].map(({ attrs }) =>
+        listed(attrs, "data-group"),
+      );
+      const kept = ({ place }) =>
+        before.length === after.length && before[place] === after[place];
+      return now.filter(
+        (one) =>
+          one.place >= 0 &&
+          !(kept(one) && was.some(({ place }) => place === one.place)) &&
+          (kept(one) || now.length > was.length),
+      );
+    });
     const [refused] = locked
       ? [LOCKED]
       : [
           ...changed.flatMap(markupOf),
           ...covered.map((one) => one.refused),
-          ...now
-            .filter((said) => now.length > was.length && !was.includes(said))
-            .map((said) => `Not changed: ${said}.`),
+          ...ungrouped.map(({ said }) => `Not changed: ${said}.`),
         ];
     if (refused || !changed.length) return changed.length ? refused : false;
     return taken(next);
@@ -1069,7 +1084,7 @@ export async function openBook(engine, written, locked, calculate) {
           (rule) => `${tab.name}: rule \`${rule}\` is not understood`,
         ),
         ...mergesFor(tab).unread.map(({ said }) => `${tab.name}: ${said}`),
-        ...groupsFor(tab).unread.map((said) => `${tab.name}: ${said}`),
+        ...groupsFor(tab).unread.map(({ said }) => `${tab.name}: ${said}`),
         ...tab.charts.flatMap((chart, at) => {
           const { error } = chartOf(sheet, at);
           return error

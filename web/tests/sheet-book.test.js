@@ -1854,3 +1854,24 @@ test("a column moved from past the table is no move: no formula, group or chart 
   assert.equal(book.table(0), before);
   assert.equal(book.canUndo(), false);
 });
+
+test("no change trades a group read for one that was not: one read before stays read, while entries that are not read stop nothing", async () => {
+  const book = await budget({ "data-group": "2:3 4:5 7:8" });
+  assert.deepEqual(book.errors(), [
+    "Costs: group `4:5` touches 2:3: leave a row between",
+  ]);
+  // Moved down, 4:5 would be read and 7:8, read before, would touch it.
+  assert.equal(
+    await book.moveRows(0, 4, 2, 1),
+    "Not changed: group `7:8` touches 5:6: leave a row between.",
+  );
+  // A slide names them all anew; what was not read stays so.
+  assert.equal(await book.insertRows(0, 1, 1), true);
+  assert.deepEqual(lists(book), ["3:4 5:6 8:9", undefined]);
+  // A duplicate stops no other change, and one before it taken out moves
+  // the places of those after it.
+  const twice = await budget({ "data-group": "2:3 5:6 6:5 8:8" });
+  assert.equal(await twice.paste(0, { row: 2, column: 3 }, [["note"]]), true);
+  assert.equal(await twice.ungroup(0, "2:3"), true);
+  assert.deepEqual(lists(twice), ["5:6 5:6 8:8", undefined]);
+});

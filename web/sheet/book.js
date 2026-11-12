@@ -11,6 +11,7 @@ import {
   withRule,
 } from "./rules.js";
 import {
+  addMerge,
   boxName,
   boxNamed,
   cellName,
@@ -18,7 +19,9 @@ import {
   frozenOf,
   inOrder,
   letters,
+  meeting,
   meets,
+  mergesBy,
   moved,
   renamed,
   slid,
@@ -169,11 +172,11 @@ const filledUnder = (tab, box) => {
 // hold nothing; and why each other is not, said to the agent and to a change
 // that would leave it so. Of two that overlap the first is drawn.
 const mergesOf = (tab) => {
-  const merges = [];
+  const merges = mergesBy();
   const unread = [];
   for (const text of listed(tab.attrs)) {
     const box = boxNamed(text);
-    const over = box && merges.find((merge) => meets(merge, box));
+    const over = box && meeting(merges, box).next().value;
     const [under] = box && !over ? filledUnder(tab, box) : [];
     const why = !box
       ? "names no cells"
@@ -182,7 +185,7 @@ const mergesOf = (tab) => {
         : over
           ? `overlaps ${boxName(over)}`
           : under && `covers text in ${under}`;
-    if (!why) merges.push(box);
+    if (!why) addMerge(merges, box);
     else
       unread.push({
         said: `merge \`${text}\` ${why}`,
@@ -500,7 +503,7 @@ export function xlsxOf(engine, tabs) {
     }
   });
   tabs.forEach((tab, sheet) => {
-    for (const { top, left, bottom, right } of mergesOf(tab).merges)
+    for (const { top, left, bottom, right } of mergesOf(tab).merges.all)
       workbook.mergeCells({
         sheet,
         row: top,
@@ -881,7 +884,7 @@ export async function openBook(engine, written, locked, calculate) {
     },
 
     plain: (sheet, row, column) => plainOf(tabs[sheet], row, column),
-    // The tab's merged ranges that are drawn, as boxes.
+    // The tab's merged ranges that are drawn (mergesBy).
     merges: (sheet) => mergesFor(tabs[sheet]).merges,
     // How a cell shows: what is written, and a rule's look over it.
     marks(sheet, row, column) {

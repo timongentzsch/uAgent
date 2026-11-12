@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  addMerge,
   boxAt,
   boxName,
   boxNamed,
@@ -14,6 +15,8 @@ import {
   inOrder,
   letters,
   followed,
+  meeting,
+  mergesBy,
   moved,
   renamed,
   sheetText,
@@ -85,9 +88,16 @@ test("a tab holds in view what it says, else its header rows", () => {
 
 test("a cell in a merged box is that box, and a box grows until it cuts none", () => {
   // A1:C1 over the table, B3:B5 down it, C5:D6 beside that.
-  const merges = ["A1:C1", "B3:B5", "C5:D6"].map(boxNamed);
-  assert.deepEqual(boxAt(merges, { row: 1, column: 2 }), merges[0]);
+  const merges = mergesBy();
+  for (const name of ["C5:D6", "A1:C1", "B3:B5"])
+    addMerge(merges, boxNamed(name));
+  assert.equal(boxName(boxAt(merges, { row: 1, column: 2 })), "A1:C1");
+  assert.equal(boxName(boxAt(merges, { row: 6, column: 4 })), "C5:D6");
   assert.deepEqual(boxAt(merges, { row: 2, column: 2 }), boxNamed("B2"));
+  assert.deepEqual([...meeting(merges, boxNamed("A5:D5"))].map(boxName), [
+    "B3:B5",
+    "C5:D6",
+  ]);
   assert.equal(boxName(spread(boxNamed("A2:B2"), merges)), "A2:B2");
   assert.equal(boxName(spread(boxNamed("B1"), merges)), "A1:C1");
   // One merged box reached leads to the next.

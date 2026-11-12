@@ -156,7 +156,7 @@ export function sizesOf(table, book, sheet) {
     }),
   );
   // A merged cell sizes neither its columns nor its rows, as in Excel.
-  for (const { top, left } of book.merges(sheet))
+  for (const { top, left } of book.merges(sheet).all)
     if (top <= shown.length && left <= tab.columns.length)
       shown[top - 1][left - 1] = "";
   const widths = tab.columns.map((column, c) => {

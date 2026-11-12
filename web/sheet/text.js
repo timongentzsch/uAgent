@@ -55,32 +55,73 @@ export const meets = (a, b) =>
   b.top <= a.bottom &&
   a.left <= b.right &&
   b.left <= a.right;
+// Merged boxes that meet none other, `all` of them and by each row they
+// span in the order of their columns: those a box meets are found without
+// reading every one.
+export const mergesBy = () => ({
+  all: [],
+  rows: new Map(),
+  top: Infinity,
+  bottom: 0,
+});
+// Where in a row's boxes the first that reaches the column is.
+const reaching = (line, column) => {
+  let [low, high] = [0, line.length];
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (line[middle].right < column) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+};
+// The merged boxes `box` meets, one for each of its rows they span.
+export function* meeting(merges, box) {
+  const last = Math.min(box.bottom, merges.bottom);
+  for (let row = Math.max(box.top, merges.top); row <= last; row++) {
+    const line = merges.rows.get(row) ?? [];
+    for (let at = reaching(line, box.left); line[at]?.left <= box.right; at++)
+      yield line[at];
+  }
+}
+export const addMerge = (merges, box) => {
+  merges.all.push(box);
+  for (let row = box.top; row <= box.bottom; row++) {
+    const line = merges.rows.get(row) ?? merges.rows.set(row, []).get(row);
+    line.splice(reaching(line, box.left), 0, box);
+  }
+  merges.top = Math.min(merges.top, box.top);
+  merges.bottom = Math.max(merges.bottom, box.bottom);
+};
 // The merged box a cell lies in, or the cell's own.
 export const boxAt = (merges, { row, column }) => {
   const own = { top: row, left: column, bottom: row, right: column };
-  return merges.find((merge) => meets(merge, own)) ?? own;
+  return meeting(merges, own).next().value ?? own;
 };
-// A box grown until it cuts no merged box.
+// A box grown until it cuts no merged box: each time it grows, only what it
+// grew by is looked at.
 export const spread = (box, merges) => {
-  const cut = merges.find(
-    (merge) =>
-      meets(merge, box) &&
-      (merge.top < box.top ||
-        merge.left < box.left ||
-        merge.bottom > box.bottom ||
-        merge.right > box.right),
-  );
-  return cut
-    ? spread(
-        {
-          top: Math.min(box.top, cut.top),
-          left: Math.min(box.left, cut.left),
-          bottom: Math.max(box.bottom, cut.bottom),
-          right: Math.max(box.right, cut.right),
-        },
-        merges,
-      )
-    : box;
+  let [read, next] = [undefined, box];
+  while (read !== next) {
+    const was = read;
+    read = next;
+    const parts = was
+      ? [
+          { ...next, bottom: was.top - 1 },
+          { ...next, top: was.bottom + 1 },
+          { ...was, left: next.left, right: was.left - 1 },
+          { ...was, left: was.right + 1, right: next.right },
+        ]
+      : [next];
+    for (const part of parts.filter((one) => one.left <= one.right))
+      for (const merge of meeting(merges, part))
+        next = {
+          top: Math.min(next.top, merge.top),
+          left: Math.min(next.left, merge.left),
+          bottom: Math.max(next.bottom, merge.bottom),
+          right: Math.max(next.right, merge.right),
+        };
+  }
+  return next;
 };
 
 // Where a row or column lies once `count` were put in before `at`; a

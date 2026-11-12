@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { headOf, openBook } from "../sheet/book.js";
-import { escaped } from "../sheet/text.js";
+import { boxName, boxNamed, escaped, spread } from "../sheet/text.js";
 import { ask, calculate, engine } from "./sheet-engine.js";
 
 const open = (tabs, locked) => openBook(engine, tabs, locked, calculate);
@@ -1324,7 +1324,7 @@ const merged = (merge) =>
 
 test("a table's merged ranges are drawn as listed; one that names no cells, is one cell, overlaps one before it or covers text is reported and not drawn", async () => {
   const book = await merged("A1:E1 B2:C2 D2:E2 A6:B6 A1:B2 F9 B4:C4 1:2 G1:H3");
-  assert.deepEqual(book.merges(0), [
+  assert.deepEqual(book.merges(0).all, [
     { top: 1, left: 1, bottom: 1, right: 5 },
     { top: 2, left: 2, bottom: 2, right: 3 },
     { top: 2, left: 4, bottom: 2, right: 5 },
@@ -1480,6 +1480,24 @@ test("cells are merged in one step that Undo takes back, emptying only the text 
   assert.equal(remade, false);
   assert.equal(list(), "A1:E1 B2:C2 D2:E2");
   assert.deepEqual(texts(book, 0)[2], ["Item", "Q1", "Q2", "Q3", "Q4"]);
+});
+
+test("twenty thousand merged cells open, are selected across, and a change is made in under a second", async () => {
+  // Down two columns, each merged pair of rows meeting the next.
+  const chain = Array.from(
+    { length: 20_000 },
+    (_, at) => `${at % 2 ? "B" : "A"}${at + 1}:${at % 2 ? "B" : "A"}${at + 2}`,
+  );
+  const book = await open([
+    { ...tab("Chain", [["a", "b"]]), attrs: { "data-merge": chain.join(" ") } },
+  ]);
+  assert.equal(book.merges(0).all.length, 20_000);
+  assert.deepEqual(book.errors(), []);
+  const started = performance.now();
+  const across = spread(boxNamed("A1:B1"), book.merges(0));
+  assert.equal(await book.paste(0, { row: 1, column: 3 }, [["c"]]), true);
+  assert.ok(performance.now() - started < 1000);
+  assert.equal(boxName(across), "A1:B20001");
 });
 
 // The engine as it is, which calculates where it is asked to anywhere

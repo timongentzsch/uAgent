@@ -3,7 +3,7 @@
 // of it that applies there.
 
 import { headOf } from "./book.js";
-import { boxName, fromTsv, meets } from "./text.js";
+import { boxName, fromTsv, meeting } from "./text.js";
 
 const count = (n, one) => (n === 1 ? one : `${n} ${one}s`);
 const HELD = /Mac|iP/.test(navigator.platform) ? "⌘" : "Ctrl+";
@@ -68,7 +68,7 @@ export const actionsOf = (sheet, clip) => (on) => {
   const held = sheet.held();
   // The merged cells the selection meets: it is merged unless it is one.
   const box = sheet.box();
-  const merged = book.merges(sheet.at).filter((merge) => meets(merge, box));
+  const merged = [...new Set(meeting(book.merges(sheet.at), box))];
   const joined = merged.length === 1 && boxName(merged[0]) === boxName(box);
   // A file that is only read is copied from and filtered, nothing else.
   const changes = (items) => (sheet.locked ? [] : items);

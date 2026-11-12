@@ -17,7 +17,7 @@ import {
   frozenOf,
   LAST,
   letters,
-  meets,
+  meeting,
   sheetText,
   spread,
   tableText,
@@ -508,7 +508,7 @@ async function open() {
       range: `${tab().name}!${boxName(box())}`,
       summary: high() * wide() > 1 ? book.summary(at, box()) : undefined,
       marks: book.state(at, anchor.row, anchor.column),
-      merged: book.merges(at).some((merge) => meets(merge, box())),
+      merged: !meeting(book.merges(at), box()).next().done,
       rules: book.rules(at, anchor.column),
     });
   };

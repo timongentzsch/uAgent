@@ -4,6 +4,7 @@
 
 #include <map>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -493,6 +494,41 @@ TEST_CASE(TestWireStreamHostedSearch) {
   CHECK(anthropic_result.replay["content"][0]["type"] == "server_tool_use");
   CHECK(anthropic_result.replay["content"][1]["type"] ==
         "web_search_tool_result");
+
+  // A reply cut inside a call keeps the calls before it; the cut one is in
+  // neither the calls nor the replay, where no result would answer it.
+  ChatResult cut_result;
+  std::map<int, ToolCall> cut_calls;
+  WireStreamState cut_state;
+  auto cut_event = [&](const json& value) {
+    DecodeWireStreamEvent(WireApi::kAnthropicMessages, JsonDump(value),
+                          cut_result, cut_calls, cut_state);
+  };
+  for (const auto& [index, id, input] :
+       {std::tuple{0, "whole", R"({"path":"a"})"},
+        std::tuple{1, "cut", R"({"path":)"}}) {
+    cut_event({{"type", "content_block_start"},
+               {"index", index},
+               {"content_block",
+                {{"type", "tool_use"},
+                 {"id", id},
+                 {"name", "read_path"},
+                 {"input", json::object()}}}});
+    cut_event(
+        {{"type", "content_block_delta"},
+         {"index", index},
+         {"delta", {{"type", "input_json_delta"}, {"partial_json", input}}}});
+    cut_event({{"type", "content_block_stop"}, {"index", index}});
+  }
+  cut_event(
+      {{"type", "message_delta"}, {"delta", {{"stop_reason", "max_tokens"}}}});
+  cut_event({{"type", "message_stop"}});
+  CollectToolCalls(cut_calls, cut_result);
+  CHECK(cut_result.stop_cause == ResponseStopCause::kLength);
+  REQUIRE(cut_result.tool_calls.size() == 1);
+  CHECK(cut_result.tool_calls[0].id == "whole");
+  REQUIRE(cut_result.replay["content"].size() == 1);
+  CHECK(cut_result.replay["content"][0]["id"] == "whole");
 
   // An error record in place of results is a failed search.
   ChatResult error_result;

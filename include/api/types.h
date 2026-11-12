@@ -150,6 +150,8 @@ struct ChatResult {
   // Calls that named no function: nothing can answer them, so they are
   // dropped and the model is told when that leaves the response empty.
   int64_t nameless_tool_calls = 0;
+  // The length limit cut a call, which was dropped.
+  bool cut_tool_call = false;
   bool interrupted = false;
   bool suppressed = false;
   bool semantic_progress = false;

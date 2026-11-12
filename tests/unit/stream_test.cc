@@ -374,6 +374,15 @@ TEST_CASE(TestSseChunkPartitions) {
   CHECK(salvaged.tool_calls[0].id == "complete");
   CHECK(ClassifyResponseStop("model_context_window_exceeded") ==
         ResponseStopCause::kLength);
+  // A call the cut reached before its arguments is no call without any.
+  std::map<int, ToolCall> cut_at_start = {
+      {0, {"complete", "read_path", R"({"path":"README.md"})"}},
+      {1, {"started", "read_path", ""}}};
+  salvaged.tool_calls.clear();
+  CollectToolCalls(cut_at_start, salvaged);
+  REQUIRE(salvaged.tool_calls.size() == 1);
+  CHECK(salvaged.tool_calls[0].id == "complete");
+  CHECK(salvaged.cut_tool_call);
 
   ChatResult usage_then_error;
   std::map<int, ToolCall> no_tool_calls;

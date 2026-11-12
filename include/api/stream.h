@@ -244,21 +244,33 @@ inline void CollectToolCalls(std::map<int, ToolCall>& streamed,
     auto current = it++;
     int index = current->first;
     ToolCall& call = current->second;
-    // Some models send no arguments at all for a call that takes none.
-    if (call.args.find_first_not_of(" \t\r\n") == std::string::npos) {
+    const bool truncated =
+        it == streamed.end() &&
+        (result.stop_cause == ResponseStopCause::kLength ||
+         result.stop_cause == ResponseStopCause::kInputLimit);
+    // Some models send no arguments at all for a call that takes none; in a
+    // reply cut by its length, the last call's had not arrived.
+    if (!truncated &&
+        call.args.find_first_not_of(" \t\r\n") == std::string::npos) {
       call.args = "{}";
     }
     json arguments = json::parse(call.args, nullptr, false);
     if (call.name.empty() || arguments.is_discarded() ||
         !arguments.is_object()) {
-      const bool truncated =
-          it == streamed.end() &&
-          (result.stop_cause == ResponseStopCause::kLength ||
-           result.stop_cause == ResponseStopCause::kInputLimit);
       if (truncated) {
         DebugLog(
             "partial_tool_call_dropped",
             {{"stream_index", index}, {"finish_reason", result.finish_reason}});
+        result.cut_tool_call = true;
+        // No result will answer it, so the replay drops its block too.
+        auto blocks = result.replay.find("content");
+        if (blocks != result.replay.end() && blocks->is_array()) {
+          std::erase_if(blocks->get_ref<json::array_t&>(),
+                        [&](const json& block) {
+                          return JsonValue(block, "type", "") == "tool_use" &&
+                                 JsonValue(block, "id", "") == call.id;
+                        });
+        }
         streamed.erase(current);
         break;
       }

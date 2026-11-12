@@ -739,11 +739,7 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
                         "", true);
     }
     if (JsonValue(block.block, "type", "") == "tool_use") {
-      ToolCall& call = calls[index];
-      if (call.args.empty() && block.block.contains("input")) {
-        call.args = JsonDump(block.block["input"]);
-      }
-      json parsed = json::parse(call.args, nullptr, false);
+      json parsed = json::parse(calls[index].args, nullptr, false);
       if (!parsed.is_discarded()) block.block["input"] = std::move(parsed);
     } else if (!block.input.empty()) {
       json parsed = json::parse(block.input, nullptr, false);

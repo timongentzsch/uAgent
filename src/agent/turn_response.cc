@@ -158,6 +158,11 @@ Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
       cause == ResponseStopCause::kPause) {
     return StepFlow::kProceed;
   }
+  const std::string reason = response.finish_reason.empty()
+                                 ? ResponseStopCauseName(cause)
+                                 : response.finish_reason;
+  // Only a cut by the output limit is known to have taken what follows.
+  const bool by_length = cause == ResponseStopCause::kLength;
   const bool has_tool_calls = tool_call_count > 0;
   const bool salvage_calls =
       has_tool_calls && (cause == ResponseStopCause::kLength ||
@@ -167,15 +172,14 @@ Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
                                            {"step", loop.step},
                                            {"reason", response.finish_reason},
                                            {"tool_calls", tool_call_count}});
+    // Told with the results: a call the cut left unfinished is not there.
+    if (by_length) PushStepNote(loop, FaultText(kCutCallNote, 0, reason));
     return StepFlow::kProceed;
   }
 
   // An unknown stop reason gets one retry even with calls, which are not
   // executed: a future policy stop must fail closed. A response cut off by
   // its length continues too.
-  const std::string reason = response.finish_reason.empty()
-                                 ? ResponseStopCauseName(cause)
-                                 : response.finish_reason;
   const bool continuable =
       cause == ResponseStopCause::kOther ||
       (!has_tool_calls && (cause == ResponseStopCause::kLength ||
@@ -184,7 +188,14 @@ Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
     FailTurn(state, FaultText(kStoppedBeforeCompletion, 0, reason));
     return StepFlow::kEndTurn;
   }
-  if (!Strike(Fault::kCutOff, state, loop, reason)) return StepFlow::kEndTurn;
+  // Text goes on where it stopped. An output cut that took a call, or left
+  // nothing to read, is told what did not run.
+  const bool lost_more =
+      by_length && (response.cut_tool_call || response.content.empty());
+  if (!Strike(Fault::kCutOff, state, loop, reason, /*advise=*/!lost_more)) {
+    return StepFlow::kEndTurn;
+  }
+  if (lost_more) PushStepNote(loop, FaultText(kCutCallNote, 0, reason));
   if (!response.content.empty()) PushAssistantMessage(response, {});
   Emit(NoticeEvent(PresentationStatus::kNeutral,
                    "continuing a partial model response"));

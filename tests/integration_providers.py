@@ -1610,6 +1610,89 @@ def test_provider_defined_hosted_tool_is_sent_and_replayed(root, home, *, binary
         assert_true(len(server.requests) == 2, len(server.requests))
 
 
+def test_anthropic_reply_cut_inside_a_call_continues(root, home, *, binary):
+    """The catalogue's limit is the cap; a cut call is dropped and the turn goes on."""
+
+    def call(index, call_id, arguments):
+        return [
+            {
+                "type": "content_block_start",
+                "index": index,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": call_id,
+                    "name": "read_path",
+                    "input": {},
+                },
+            },
+            {
+                "type": "content_block_delta",
+                "index": index,
+                "delta": {"type": "input_json_delta", "partial_json": arguments},
+            },
+            {"type": "content_block_stop", "index": index},
+        ]
+
+    def cut(handler, body):
+        assert_true(body["max_tokens"] == 64000, body["max_tokens"])
+        write_sse_sequence(
+            handler,
+            [
+                {"type": "message_start", "message": {"usage": {"input_tokens": 5}}},
+                *call(0, "whole", '{"path":"."}'),
+                *call(1, "cut", '{"path":'),
+                {"type": "message_delta", "delta": {"stop_reason": "max_tokens"}},
+                {"type": "message_stop"},
+            ],
+        )
+
+    def rest(handler, body):
+        assistant, results = body["messages"][-2:]
+        calls = [block["id"] for block in assistant["content"] if block["type"] == "tool_use"]
+        assert_true(calls == ["whole"], assistant)
+        answered = [
+            block["tool_use_id"] for block in results["content"] if block["type"] == "tool_result"
+        ]
+        assert_true(answered == ["whole"], results)
+        assert_true("partial model response: max_tokens" in json.dumps(results), results)
+        write_sse_sequence(
+            handler,
+            [
+                {"type": "message_start", "message": {"usage": {"input_tokens": 9}}},
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "text", "text": "cut-continued"},
+                },
+                {"type": "content_block_stop", "index": 0},
+                {"type": "message_delta", "delta": {"stop_reason": "end_turn"}},
+                {"type": "message_stop"},
+            ],
+        )
+
+    catalog = {"data": [{"id": "claude-test", "max_input_tokens": 200000, "max_tokens": 64000}]}
+    with Server([cut, rest], get_response=catalog) as server:
+        env = base_env(home, server.url)
+        env.update(
+            {
+                "UAGENT_MODEL": "box/claude-test",
+                "UAGENT_PROVIDERS": json.dumps(
+                    {
+                        "box": {
+                            "base_url": server.url,
+                            "api_key": "box-key",
+                            "wire_api": "anthropic_messages",
+                        }
+                    }
+                ),
+            }
+        )
+        result = run(root, env, "--yolo", "-p", "inspect", binary=binary)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(result.stdout.strip() == "cut-continued", result.stdout)
+        assert_true(len(server.requests) == 2, len(server.requests))
+
+
 def test_uagent_tool_reports_live_configuration(root, home, *, binary):
     """uagent inspection answers from the running binary and never leaks secrets."""
     save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=120)

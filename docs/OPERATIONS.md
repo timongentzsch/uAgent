@@ -171,6 +171,10 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
   the provider's catalogue or the route's `max_output_tokens` model feature,
   else 8192. A route that declares both `context` and `features` is not
   looked up in the catalogue, so it states `max_output_tokens` there itself.
+- A response cut off by its cap continues. Cut text goes on where it
+  stopped. Complete tool calls run, an unfinished one is dropped, and the
+  model is told to send the rest in smaller replies. A second cut with
+  nothing complete ends the turn.
 
 ## Recovery
 

@@ -139,6 +139,12 @@ struct FaultRule {
 
 inline constexpr char kStoppedBeforeCompletion[] =
     "model response stopped before completion ({x})";
+// In place of the partial_response note when the output limit cut more than
+// text.
+inline constexpr char kCutCallNote[] =
+    "[partial model response: {x}] The reply was cut off; tool calls not "
+    "shown above did not run. Send the remaining work in smaller replies, "
+    "with fewer or smaller tool calls each.";
 #define UAGENT_WAIT_INSTEAD \
   "use a bounded wait operation when you are observing ongoing work."
 inline constexpr FaultRule kFaultRules[] = {

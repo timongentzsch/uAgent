@@ -4,7 +4,8 @@
   const root = document.documentElement;
   const meta = (name) =>
     document.querySelector(`meta[name="${name}"]`)?.content.trim() || "";
-  // Paper in millimetres: a name, "landscape" after it, or WxHmm.
+  // A document's print line: "flow", its paper (a name or WxHmm), "landscape",
+  // then its margins: a preset, or one to four lengths as CSS reads them.
   const PAPER = {
     a3: [297, 420],
     a4: [210, 297],
@@ -12,26 +13,49 @@
     letter: [215.9, 279.4],
     legal: [215.9, 355.6],
   };
+  const MARGINS = {
+    normal: [25],
+    narrow: [12.7],
+    moderate: [25, 19],
+    wide: [25, 50],
+  };
+  // In millimetres, the margins from the top clockwise.
   const paper = () => {
-    const [flow, name = "a4", turn] = meta("print").toLowerCase().split(/\s+/);
+    const [flow, name = "a4", ...more] = meta("print")
+      .toLowerCase()
+      .split(/\s+/);
     if (flow !== "flow") return null;
     const custom = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)mm$/.exec(name);
     const [w, h] = custom ? [+custom[1], +custom[2]] : PAPER[name] || PAPER.a4;
-    return turn === "landscape" ? { w: h, h: w } : { w, h };
+    const turned = more[0] === "landscape";
+    const said = more.slice(turned ? 1 : 0);
+    const lengths = said.map(Number.parseFloat);
+    const [top, right = top, bottom = top, left = right] =
+      MARGINS[said[0]] ??
+      (lengths.length && lengths.every(Number.isFinite)
+        ? lengths
+        : MARGINS.normal);
+    return {
+      w: turned ? h : w,
+      h: turned ? w : h,
+      margin: [top, right, bottom, left],
+    };
   };
   const PX_PER_MM = 96 / 25.4;
-  // The artboard ("1440x900", "1920x1080 slide", or a width only); a document
-  // without one is its paper's width.
+  // The artboard ("1440x900", "1920x1080 slide", or a width only); a
+  // document's is one sheet of its paper.
   const artboard = () => {
     const [, w, h, slide] =
       /^(\d+)(?:x(\d+))?(\s+slide)?$/.exec(meta("artboard")) || [];
     const sheet = paper();
     return {
       w: +w || (sheet ? Math.round(sheet.w * PX_PER_MM) : 0),
-      h: +h || 0,
+      h: +h || (sheet ? Math.round(sheet.h * PX_PER_MM) : 0),
       slide: !!slide,
     };
   };
+  // Stepped through with its neighbours, and with nothing to scroll.
+  const stepped = () => artboard().slide || !!paper();
   const tweaks = () => {
     try {
       return JSON.parse(
@@ -112,31 +136,10 @@
         }
     return found;
   };
-  // A length the page's CSS gives, in pixels.
-  const pixels = (length) => {
-    const probe = document.createElement("div");
-    probe.style.cssText = `position:absolute;visibility:hidden;height:${length}`;
-    document.body.append(probe);
-    const value = probe.offsetHeight;
-    probe.remove();
-    return value;
-  };
-  // The height of a page's text: its paper less the @page margins the
-  // page's own <style> gives.
+  // The height of a page's text: its paper less the margins.
   const pageHeight = () => {
-    let margins = 0;
-    for (const style of document.styleSheets) {
-      try {
-        const rule = [...style.cssRules].find((r) => r instanceof CSSPageRule);
-        if (rule)
-          margins =
-            pixels(rule.style.marginTop || "0") +
-            pixels(rule.style.marginBottom || "0");
-      } catch {
-        // A linked sheet from another origin: its rules are not readable.
-      }
-    }
-    return paper().h * PX_PER_MM - margins;
+    const { h, margin } = paper();
+    return (h - margin[0] - margin[2]) * PX_PER_MM;
   };
   // A block that cannot break and is taller than a page of the document.
   const tallBlocks = () => {
@@ -152,7 +155,12 @@
   const problems = () => {
     const found = missing.map((url) => `${url} did not load`);
     const { w, h, slide } = artboard();
-    if (w && h && (root.scrollWidth > w + 1 || root.scrollHeight > h + 1))
+    if (
+      !paper() &&
+      w &&
+      h &&
+      (root.scrollWidth > w + 1 || root.scrollHeight > h + 1)
+    )
       found.push(
         `the page is ${root.scrollWidth}x${root.scrollHeight}, larger than its ${w}x${h} artboard: make it fit, or for a page that scrolls give the artboard only its width (content="${w}")`,
       );
@@ -174,18 +182,93 @@
       [...problems(), ...cells].forEach(report);
     });
 
-  // Its paper for printing: a fixed artboard is one sheet its size, a
-  // document its paper, with its own @page margins kept.
-  const paperStyle = () => {
-    const { w, h } = artboard();
-    const sheet = paper();
+  // Where each page of a document starts, from its body's top, estimated
+  // from its blocks: one that cannot break moves whole to the next page, a
+  // heading goes with what follows it, text breaks between two of its lines.
+  const ATOMIC =
+    "figure, img, svg, pre, tr, h1, h2, h3, h4, h5, h6, li, .title-page";
+  const pageStarts = () => {
+    const height = pageHeight();
+    const from = document.body.getBoundingClientRect().top;
+    const top = (box) => box.getBoundingClientRect().top - from;
+    const bottom = (box) => box.getBoundingClientRect().bottom - from;
+    // The top of the first line that runs past `limit`; the part's own when
+    // none of its lines fits.
+    const line = (part, limit) => {
+      const range = document.createRange();
+      range.selectNodeContents(part);
+      const boxes = [...range.getClientRects()];
+      const cut = boxes.findIndex((box) => box.bottom - from > limit);
+      return cut > 0 ? boxes[cut].top - from : cut ? limit : top(part);
+    };
+    const parts = [
+      ...document.body.querySelectorAll(`${ATOMIC}, p, blockquote, dt, dd`),
+    ].filter((el) => !el.parentElement.closest(ATOMIC) && el.offsetHeight);
+    const starts = [parts.length ? top(parts[0]) : 0];
+    let previous = null;
+    for (const part of parts) {
+      const after = previous && getComputedStyle(previous).breakAfter;
+      if (
+        top(part) > starts.at(-1) &&
+        (getComputedStyle(part).breakBefore === "page" || after === "page")
+      )
+        starts.push(top(part));
+      while (bottom(part) > starts.at(-1) + height + 0.5) {
+        const limit = starts.at(-1) + height;
+        let at = part.matches(ATOMIC) ? top(part) : line(part, limit);
+        if (/^H[1-6]$/.test(previous?.tagName || "") && at === top(part))
+          at = top(previous);
+        starts.push(at > starts.at(-1) ? at : limit);
+      }
+      previous = part;
+    }
+    return starts;
+  };
+  // A document's paper. In print its size and margins are the format's; on
+  // screen it is one sheet, the body its text box inside the margins, moved
+  // and cut to the page the address names ("#3").
+  let tops = [0];
+  let shown = 0;
+  let paged;
+  const turn = () => {
+    const { margin } = paper();
+    tops = pageStarts();
+    const said = Number(location.hash.slice(1)) || 1;
+    shown = Math.min(tops.length, Math.max(1, said)) - 1;
+    const end = tops[shown + 1];
+    root.style.setProperty(
+      "--uagent-top",
+      `${margin[0] * PX_PER_MM - tops[shown]}px`,
+    );
+    root.style.setProperty(
+      "--uagent-cut",
+      `inset(${tops[shown]}px -100vw ${end ? `calc(100% - ${end}px)` : "0px"} -100vw)`,
+    );
+    paged?.(tops.length);
+  };
+  addEventListener("DOMContentLoaded", () => {
+    const format = paper();
+    if (!format) return;
+    const { w, h, margin } = format;
+    const [top, right, bottom, left] = margin;
     const style = document.createElement("style");
     style.textContent =
-      w && h
-        ? `@page{size:${w}px ${h}px;margin:0}`
-        : sheet
-          ? `@page{size:${sheet.w}mm ${sheet.h}mm}`
-          : "";
+      `@page{size:${w}mm ${h}mm;margin:${margin.map((side) => `${side}mm`).join(" ")}}` +
+      `.title-page{box-sizing:border-box;height:${h - top - bottom}mm;break-after:page}` +
+      `@media screen{html{width:${w}mm;height:${h}mm;overflow:hidden}` +
+      `body{position:absolute;top:var(--uagent-top);left:${left}mm;width:${w - left - right}mm;` +
+      "margin:0!important;padding:0!important;clip-path:var(--uagent-cut)}}";
+    // After the page's own, which it overrules.
+    document.head.append(style);
+    new ResizeObserver(turn).observe(document.body);
+    addEventListener("hashchange", turn);
+  });
+  // For printing, a fixed artboard is one sheet its size.
+  const paperStyle = () => {
+    const { w, h } = artboard();
+    if (paper() || !w || !h) return;
+    const style = document.createElement("style");
+    style.textContent = `@page{size:${w}px ${h}px;margin:0}`;
     document.head.prepend(style);
   };
   // Printed as drawn, backgrounds too, also in a deck's frames, which a
@@ -238,40 +321,6 @@
     [...document.body.querySelectorAll(EDITABLE)].filter(
       (block) => !block.parentElement.closest(EDITABLE),
     );
-  // Where print will start each page after the first, estimated from the
-  // blocks' heights: one that cannot break moves whole to the next page,
-  // and a heading goes with what follows it. The PDF is the exact one.
-  const ATOMIC = "figure, img, svg, pre, tr, h1, h2, h3, h4, h5, h6, li";
-  const pageBreaks = () => {
-    const height = pageHeight();
-    const top = (el) => el.getBoundingClientRect().top + scrollY;
-    const bottom = (el) => el.getBoundingClientRect().bottom + scrollY;
-    const parts = [
-      ...document.body.querySelectorAll(`${ATOMIC}, p, blockquote, dt, dd`),
-    ].filter((el) => !el.parentElement.closest(ATOMIC) && el.offsetHeight);
-    const breaks = [];
-    let start = parts.length ? top(parts[0]) : 0;
-    let previous = null;
-    for (const part of parts) {
-      const forced = getComputedStyle(part).breakBefore === "page";
-      if (!forced && bottom(part) <= start + height) {
-        previous = part;
-        continue;
-      }
-      let at = forced || part.matches(ATOMIC) ? top(part) : start + height;
-      if (/^H[1-6]$/.test(previous?.tagName || "") && at === top(part))
-        at = top(previous);
-      if (at <= start) at = start + height;
-      breaks.push(Math.round(at));
-      start = at;
-      while (bottom(part) > start + height) {
-        start += height;
-        breaks.push(Math.round(start));
-      }
-      previous = part;
-    }
-    return breaks;
-  };
   // The page as Markdown: its text, headings, lists, tables, links and images.
   const markdown = () => {
     const inline = (node) =>
@@ -416,8 +465,20 @@
         ranges.push(range);
       }
     }
-    const current = ranges[index];
-    // Without the Highlight API a document still scrolls to each one.
+    // A document's are counted by the page they lie on, and the current
+    // one is the `index`th of the page shown.
+    const from = document.body.getBoundingClientRect().top;
+    const pages =
+      paper() &&
+      ranges.map((range) =>
+        tops.findLastIndex(
+          (start, at) =>
+            !at || start <= range.getBoundingClientRect().top - from + 1,
+        ),
+      );
+    const current = (
+      pages ? ranges.filter((_, at) => pages[at] === shown) : ranges
+    )[index];
     if (CSS.highlights) {
       CSS.highlights.set("uagent-find", new Highlight(...ranges));
       CSS.highlights.set(
@@ -425,9 +486,12 @@
         new Highlight(...(current ? [current] : [])),
       );
     }
-    if (current && paper())
-      current.startContainer.parentElement.scrollIntoView({ block: "center" });
-    send("find", { count: ranges.length });
+    send("find", {
+      count: ranges.length,
+      counts:
+        pages &&
+        tops.map((_, at) => pages.filter((page) => page === at).length),
+    });
   };
   // Marked in the system's own colours for it: the page's are unknown.
   addEventListener("DOMContentLoaded", () => {
@@ -439,6 +503,14 @@
   });
   const height = () => root.scrollHeight;
   checked((problem) => send("error", { message: problem, line: 0 }));
+  // What was last asked to be found: a document marks it again on the page
+  // it turns to, for the turn and the asking arrive either way round.
+  let counted = 0;
+  let sought;
+  paged = (count) => {
+    if (count !== counted) send("pages", { count: (counted = count) });
+    if (sought) find(...sought);
+  };
   const failed = (message, line) =>
     send("error", {
       message: String(message || "error").slice(0, 300),
@@ -488,7 +560,6 @@
     let last = 0;
     new ResizeObserver(() => {
       if (height() !== last) send("size", { height: (last = height()) });
-      if (paper()) send("pages", { breaks: pageBreaks() });
     }).observe(root);
   });
 
@@ -576,20 +647,20 @@
       if (event.type === "gesturechange") zoom(event.scale / pinch, event);
       pinch = event.type === "gesturestart" ? 1 : event.scale;
     });
-  // The keys the pane steps with, unless a field has them: a slide, which
-  // has nothing to scroll, gives up the paging keys too (Space only where
-  // it presses nothing).
+  // The keys the pane steps with, unless a field has them: a slide or a
+  // document's sheet, which has nothing to scroll, gives up the paging keys
+  // too (Space only where it presses nothing).
   addEventListener("keydown", (event) => {
     const within = (selector) => event.target.closest?.(selector);
     if (within("input, textarea, select, [contenteditable]")) return;
     const paging =
-      artboard().slide &&
+      stepped() &&
       ["Home", "End", "PageUp", "PageDown", " "].includes(event.key) &&
       !(event.key === " " && within("button, a, summary"));
     if (paging || ["Escape", "ArrowLeft", "ArrowRight"].includes(event.key))
       send("key", { key: event.key });
   });
-  // A swipe across a slide steps as the arrow keys do.
+  // A swipe across a slide or a sheet steps as the arrow keys do.
   let swipe = null;
   addEventListener(
     "touchstart",
@@ -601,43 +672,22 @@
   addEventListener("touchend", (event) => {
     const from = swipe;
     swipe = null;
-    if (!from || !artboard().slide) return;
+    if (!from || !stepped()) return;
     const dx = event.changedTouches[0].clientX - from.clientX;
     const dy = event.changedTouches[0].clientY - from.clientY;
     if (Math.abs(dx) > innerWidth / 8 && Math.abs(dx) > 2 * Math.abs(dy))
       send("key", { key: dx < 0 ? "ArrowRight" : "ArrowLeft" });
   });
-  // A document says where it is scrolled to, once a frame at most, whether
-  // that is its end, and after which goto: what it said before the app's
-  // latest one is of a place it has left.
-  let told = 0;
-  let went = 0;
-  addEventListener(
-    "scroll",
-    () => {
-      if (!paper()) return;
-      cancelAnimationFrame(told);
-      told = requestAnimationFrame(() =>
-        send("at", {
-          top: scrollY,
-          end: scrollY + innerHeight >= root.scrollHeight - 1,
-          after: went,
-        }),
-      );
-    },
-    { passive: true },
-  );
   addEventListener("message", (event) => {
     if (event.source !== parent || event.data?.uagentDesign !== 1) return;
     if (event.data.type === "select") select(!!event.data.on);
     if (event.data.type === "edit" && paper()) edit(!!event.data.on);
     if (event.data.type === "markdown") send("markdown", { text: markdown() });
-    if (event.data.type === "goto") {
-      went = event.data.n;
-      scrollTo(0, Number(event.data.top) || 0);
+    if (event.data.type === "find") {
+      sought = [String(event.data.text), Number(event.data.index)];
+      if (paper()) turn();
+      else find(...sought);
     }
-    if (event.data.type === "find")
-      find(String(event.data.text), Number(event.data.index));
     if (event.data.type === "tweak")
       tweak(String(event.data.name), event.data.value);
   });

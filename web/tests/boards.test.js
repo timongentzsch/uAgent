@@ -10,7 +10,6 @@ import {
   hear,
   kindOf,
   moved,
-  pageAt,
   removed,
   rewritten,
   settled,
@@ -61,11 +60,11 @@ test("a sheet's boards are its tabs: numbered as many as the folder says, then a
   const tabs = (seen) =>
     boardsOf("d", folder, seen, "budget.html").map((board) => board.title);
   assert.deepEqual(tabs({}), ["1", "2"]);
-  const said = { type: "sheet", tabs: ["Costs", "Inputs", "Notes"], active: 0 };
+  const said = { type: "sheet", tabs: ["Costs", "Inputs", "Notes"], hidden: 0 };
   const seen = hear({}, "d/budget.html", said);
   assert.deepEqual(tabs(seen), ["Costs", "Inputs", "Notes"]);
-  // Said again, with another tab shown, nothing is new.
-  assert.equal(hear(seen, "d/budget.html", { ...said, active: 2 }), seen);
+  // Said again, with rows hidden, nothing is new.
+  assert.equal(hear(seen, "d/budget.html", { ...said, hidden: 2 }), seen);
   // Every tab is the one file; its cells in error are counted each.
   const errors = ["Costs!B2 =1/0 is #DIV/0!", "Inputs!A1 =x is #NAME?"].reduce(
     (all, message) =>
@@ -174,8 +173,8 @@ test("a design's canvas holds its pages, pictures and films, and a stack for a d
   const deck = listing("deck", ["02.html", "slide"], ["01.html", "slide"]);
   const folders = { talk: deck, "02-talk": deck, src: listing("") };
   // A document has said its pages; a picture its size; another did not load.
-  let seen = hear({}, "d/memo.html", ready("Memo", 794, 0, 2500));
-  seen = hear(seen, "d/memo.html", { type: "pages", breaks: [1000, 2000] });
+  let seen = hear({}, "d/memo.html", ready("Memo", 794, 1123));
+  seen = hear(seen, "d/memo.html", { type: "pages", count: 3 });
   seen = hear(seen, "d/hero.png", ready("", 640, 480));
   seen = hear(seen, "d/torn.gif", {
     type: "error",
@@ -203,12 +202,12 @@ test("a design's canvas holds its pages, pictures and films, and a stack for a d
     ],
   );
   const named = Object.fromEntries(boards.map((board) => [board.path, board]));
-  // A picture is as large as it said; a document's stack is its first page;
-  // a deck's is named for its folder.
+  // A picture is as large as it said; a document's stack is one sheet of its
+  // paper; a deck's is named for its folder.
   assert.deepEqual([named["d/hero.png"].w, named["d/hero.png"].h], [640, 480]);
   assert.deepEqual(
     [named["d/memo.html"].title, named["d/memo.html"].h],
-    ["Memo", 1000],
+    ["Memo", 1123],
   );
   assert.equal(named["d/talk/01.html"].title, "talk");
   // What did not load, or is more than the preview serves, says so by its
@@ -243,31 +242,24 @@ test("a design's canvas holds its pages, pictures and films, and a stack for a d
   );
 });
 
-test("a document's boards are its pages, from where print starts each", () => {
+test("a document's boards are its pages: one sheet of its paper each, as many as it says", () => {
   const docs = listing("", ["memo.html", "doc"]);
-  let seen = hear({}, "docs/memo.html", ready("Memo", 794, 0, 2500));
+  let seen = hear({}, "docs/memo.html", ready("Memo", 794, 1123));
+  const pages = () =>
+    boardsOf("docs", docs, seen, "memo.html").map(
+      ({ path, title, w, h, at }) => [path, title, w, h, at],
+    );
+  assert.deepEqual(pages(), [["docs/memo.html", "Memo", 794, 1123, 0]]);
+  seen = hear(seen, "docs/memo.html", { type: "pages", count: 3 });
   assert.deepEqual(
-    boardsOf("docs", docs, seen, "memo.html").map((b) => b.top),
-    [0],
+    pages(),
+    [0, 1, 2].map((at) => ["docs/memo.html", "Memo", 794, 1123, at]),
   );
-  seen = hear(seen, "docs/memo.html", { type: "pages", breaks: [1000, 2000] });
-  const pages = boardsOf("docs", docs, seen, "memo.html");
-  assert.deepEqual(
-    pages.map(({ path, title, w, top, h }) => [path, title, w, top, h]),
-    [
-      ["docs/memo.html", "Memo", 794, 0, 1000],
-      ["docs/memo.html", "Memo", 794, 1000, 1000],
-      ["docs/memo.html", "Memo", 794, 2000, 500],
-    ],
-  );
-  // The page a scroll offset is in; at the end, the last, which a short
-  // last page would never reach by its top.
-  assert.equal(pageAt(pages, 0, false), 0);
-  assert.equal(pageAt(pages, 999, false), 1);
-  assert.equal(pageAt(pages, 1400, false), 1);
-  assert.equal(pageAt(pages, 1700, true), 2);
-  // All of it in view: at its end without a scroll, it is at its start.
-  assert.equal(pageAt(pages, 0, true), 0);
+  // Said again, nothing is new; what is no count is one page.
+  const again = hear(seen, "docs/memo.html", { type: "pages", count: 3 });
+  assert.equal(again, seen);
+  seen = hear(seen, "docs/memo.html", { type: "pages", count: "many" });
+  assert.equal(pages().length, 1);
 });
 
 test("what a page says is kept once: its size as it grows, an error however often it is drawn", () => {
@@ -300,7 +292,7 @@ test("failed pages are counted once each and written as lines for the agent", ()
   const pages = boardsOf(
     "d",
     listing("", ["a.html", "doc"]),
-    hear(seen, "d/a.html", { type: "pages", breaks: [500] }),
+    hear(seen, "d/a.html", { type: "pages", count: 2 }),
     "a.html",
   );
   assert.equal(pages.length, 2);

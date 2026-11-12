@@ -4,7 +4,7 @@ import { TriangleAlert } from "lucide-preact";
 import { Button } from "../../shared/ui.tsx";
 import Frame, { type PageMessage } from "../../shared/page-frame.tsx";
 import { TAP_SLOP_PX } from "../../shared/zoom.ts";
-import { type Board, sum } from "./boards.ts";
+import type { Board } from "./boards.ts";
 
 const LEGEND_WIDTH = 128;
 
@@ -53,24 +53,25 @@ export default function Legend({
   menu?: (index: number) => void;
 }) {
   const list = useRef<HTMLDivElement>(null);
-  const [near, setNear] = useState<ReadonlySet<string>>(new Set());
+  // The boards near the legend's view, by their place.
+  const [near, setNear] = useState<ReadonlySet<number>>(new Set());
   // Watched again when the boards are others.
   useEffect(() => {
+    const items = list.current!.children;
     const observer = new IntersectionObserver(
       (entries) =>
         setNear((was) => {
           const next = new Set(was);
           for (const entry of entries) {
-            const path = (entry.target as HTMLElement).dataset.path!;
-            if (entry.isIntersecting) next.add(path);
-            else next.delete(path);
+            const at = [...items].indexOf(entry.target);
+            if (entry.isIntersecting) next.add(at);
+            else next.delete(at);
           }
           return next;
         }),
       { root: list.current, rootMargin: "100%" },
     );
-    for (const item of list.current!.querySelectorAll("[data-path]"))
-      observer.observe(item);
+    for (const item of items) observer.observe(item);
     return () => observer.disconnect();
   }, [stamp]);
   useCurrentInView(list, index);
@@ -107,15 +108,11 @@ export default function Legend({
         : clientY > box.top + box.height / 2;
     }).length;
   };
-  // Only a document's pages say where in it they start.
-  const doc = boards[0].top !== undefined && boards[0];
-  const scale = LEGEND_WIDTH / boards[0].w;
   return (
     <div
       class="page-legend"
       role="listbox"
       aria-label={`${unit}s`}
-      data-doc={!!doc || undefined}
       ref={list}
       // Up and Down walk it as a list; the pane's keys do the rest.
       onKeyDown={(event) => {
@@ -175,74 +172,47 @@ export default function Legend({
         else menu(at);
       }}
     >
-      {doc ? (
-        <div class="page-legend-doc">
+      {boards.map((board, at) => (
+        <div
+          // By its place: a slide renamed is the same item, so the legend
+          // keeps its scroll through a reorder.
+          key={at}
+          class="page-legend-item"
+          data-path={board.path}
+          data-failed={board.failed || undefined}
+          data-dragging={drop?.from === at || undefined}
+          data-drop={
+            drop?.gap === at
+              ? "before"
+              : drop?.gap === at + 1 && at === boards.length - 1
+                ? "after"
+                : undefined
+          }
+        >
           <Frame
             live={false}
-            src={srcs[0]}
-            title={`${doc.title}: pages`}
-            width={doc.w}
-            height={sum(boards.map((board) => board.h))}
-            scale={scale}
+            src={srcs[at]}
+            title={`${unit} ${at + 1}: ${board.title}`}
+            width={board.w}
+            height={board.h}
+            scale={LEGEND_WIDTH / board.w}
+            far={!near.has(at)}
+            onMessage={heard(board.path)}
           />
-          {boards.map((board, at) => (
-            <Button
-              key={board.top}
-              variant="quiet"
-              class="cover page-legend-page small"
-              style={{
-                top: `${board.top! * scale}px`,
-                height: `${board.h * scale}px`,
-              }}
-              {...option(at, `Page ${at + 1}`)}
-            >
-              <span>{at + 1}</span>
-            </Button>
-          ))}
+          <span class="page-legend-name small truncate">
+            {board.failed && <TriangleAlert />}
+            {`${at + 1} · ${board.title}`}
+          </span>
+          <Button
+            variant="quiet"
+            class="cover"
+            {...option(
+              at,
+              `${unit} ${at + 1}: ${board.title}${board.failed ? ", failed to run" : ""}`,
+            )}
+          />
         </div>
-      ) : (
-        boards.map((board, at) => (
-          <div
-            // By its place: a slide renamed is the same item, so the legend
-            // keeps its scroll through a reorder.
-            key={at}
-            class="page-legend-item"
-            data-path={board.path}
-            data-failed={board.failed || undefined}
-            data-dragging={drop?.from === at || undefined}
-            data-drop={
-              drop?.gap === at
-                ? "before"
-                : drop?.gap === at + 1 && at === boards.length - 1
-                  ? "after"
-                  : undefined
-            }
-          >
-            <Frame
-              live={false}
-              src={srcs[at]}
-              title={`${unit} ${at + 1}: ${board.title}`}
-              width={board.w}
-              height={board.h}
-              scale={LEGEND_WIDTH / board.w}
-              far={!near.has(board.path)}
-              onMessage={heard(board.path)}
-            />
-            <span class="page-legend-name small truncate">
-              {board.failed && <TriangleAlert />}
-              {`${at + 1} · ${board.title}`}
-            </span>
-            <Button
-              variant="quiet"
-              class="cover"
-              {...option(
-                at,
-                `${unit} ${at + 1}: ${board.title}${board.failed ? ", failed to run" : ""}`,
-              )}
-            />
-          </div>
-        ))
-      )}
+      ))}
     </div>
   );
 }

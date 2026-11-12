@@ -37,7 +37,6 @@ import {
   type Kind,
   type Move,
   moved,
-  pageAt,
   shownAfter,
   spotAt,
   sum,
@@ -145,8 +144,12 @@ export default function Sequence({
   const sheet = kind === "sheet";
   const unit = kind === "deck" ? "Slide" : "Page";
   const src = page(path);
-  // The boards' addresses with their versions, and those as one value.
-  const srcs = boards.map((board) => page(board.path));
+  // A board's address: its file's, with its version, and after "#" its
+  // number among the file's boards (the first too: an address that loses
+  // its "#" loads again). Those of all, and as one value.
+  const address = (board: Board, more = "") =>
+    `${page(board.path)}${more}${board.at === undefined ? "" : `#${board.at + 1}`}`;
+  const srcs = boards.map((board) => address(board));
   const stamp = srcs.join("\n");
   const frame = useRef<HTMLIFrameElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -215,52 +218,28 @@ export default function Sequence({
     channel.current = opened;
     return () => opened.close();
   }, []);
-  // Where a document is scrolled to inside its frame (`end`: as far as it
-  // goes), which says its page, unless a step chose one. The chosen page holds
-  // while the document cannot scroll to it: its last pages may share a view.
-  const [where, setWhere] = useState<{
-    top: number;
-    end: boolean;
-    chosen?: number;
-  }>({ top: 0, end: false });
-  // A sheet's tab, which is the pane's to say; its selection; the range a
-  // comment is being written on; and what the sheet last said of itself.
-  const [tab, setTab] = useState(0);
+  // Which of its file's boards shows: a document's page, a sheet's tab.
+  const [part, setPart] = useState(0);
+  // A sheet's selection, the range a comment is being written on, and what
+  // the sheet last said of itself.
   const [cell, setCell] = useState<Cell>();
   const [ranged, setRanged] = useState<string>();
   const [told, setTold] = useState(UNTOLD);
   const formula = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    setWhere({ top: 0, end: false });
-    setTab(0);
-  }, [path]);
-  // Gotos are numbered, and the document says after which one it reports
-  // where it is: a report from before the latest is of a place it has left,
-  // and must not undo the step that sent it on.
-  const gotos = useRef(0);
-  const goto = (top: number) =>
-    tell(frame.current, { type: "goto", top, n: ++gotos.current });
-  const shown = boards.findIndex((board) => board.path === path);
-  const index = doc
-    ? (where.chosen ?? pageAt(boards, where.top, where.end))
-    : sheet
-      ? Math.min(tab, boards.length - 1)
-      : shown;
-  // A document scrolls to its page and a sheet shows its tab; a deck or a
-  // design shows another board, and the presenter's window with it.
+  useEffect(() => setPart(0), [path]);
+  const first = boards.findIndex((board) => board.path === path);
+  const index = boards.findLastIndex(
+    (board, at) => board.path === path && at <= first + part,
+  );
+  // Another file is another view, and the presenter's window goes with it.
   const to = (next: number) => {
     const board = boards[next];
     if (!board) return;
-    if (doc) {
-      setWhere((was) => ({ ...was, chosen: next }));
-      goto(board.top!);
-    } else if (sheet) {
-      setTab(next);
-      tell(frame.current, { type: "tab", index: next });
-    } else if (board.path !== path) {
+    if (board.path !== path) {
       go(board.path);
       channel.current?.postMessage({ at: board.path });
     }
+    setPart(board.at ?? 0);
   };
   // Past the last slide comes the first; a document ends at its ends.
   const step = (by: number) => {
@@ -456,10 +435,11 @@ export default function Sequence({
   );
   // Find: a deck's or a design's occurrences are counted in the boards'
   // source, so a step reaches a board that is not drawn, and the stage marks
-  // those of the one shown. A document is one board that counts its own.
+  // those of the one shown. Only a document's layout knows which page a word
+  // is on: its frame counts them.
   const [finding, setFinding] = useState(false);
   const [words, setWords] = useState("");
-  const [found, setFound] = useState<number>();
+  const [found, setFound] = useState<number[]>();
   const query = finding ? words.trim() : "";
   // The current occurrence, for the words it was stepped to in: new words
   // start at the first.
@@ -483,9 +463,7 @@ export default function Sequence({
   const counts = useMemo(
     () =>
       doc
-        ? found === undefined
-          ? undefined
-          : [found]
+        ? found
         : texts?.map((nodes) =>
             sum(nodes.map((text) => occurrences(text, query).length)),
           ),
@@ -496,16 +474,16 @@ export default function Sequence({
   const show = (next: number) => {
     setStepped({ query, spot: next });
     const { at } = spotAt(counts ?? [], next);
-    if (hits && boards[at].path !== path) to(at);
+    if (hits && at !== index) to(at);
   };
   // Counted: the first occurrence on this board or after it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: lands once per count; a step taken since must not move it
   useEffect(() => {
-    const before = sum((counts ?? []).slice(0, shown));
+    const before = sum((counts ?? []).slice(0, index));
     show(hits && before < hits ? before : 0);
   }, [query, counts]);
   // What the stage's page marks: the current occurrence, when it is there.
-  const nth = boards[hit.at]?.path === path ? hit.nth : -1;
+  const nth = hit.at === index ? hit.nth : -1;
   const marked = () =>
     tell(frame.current, { type: "find", text: query, index: nth });
   useEffect(marked, [query, nth]);
@@ -573,7 +551,6 @@ export default function Sequence({
         <ChevronLeft />
       </IconButton>
       <output>
-        {doc && "Page "}
         {index + 1} / {boards.length}
       </output>
       <IconButton
@@ -745,7 +722,11 @@ export default function Sequence({
                 }
               >
                 <Frame
-                  src={load ? `${src}&load=${load}` : src}
+                  src={
+                    boards[index]
+                      ? address(boards[index], load ? `&load=${load}` : "")
+                      : src
+                  }
                   title={info?.title || path}
                   frameRef={frame}
                   width={wide ? info!.artboard.w : undefined}
@@ -755,17 +736,14 @@ export default function Sequence({
                   scale={scale}
                   onMessage={(message) => {
                     // The boards hear what fails here, and all of a document
-                    // or a sheet, which has no other frame. Any other page is
+                    // or a sheet, whose legend may be shut. Any other page is
                     // measured by its picture: here it is as tall as the stage.
                     if (doc || sheet || message.type === "error")
                       heard(path)(message);
                     if (message.type === "ready") {
                       setSaid(message);
                       if (mode) tell(frame.current, { type: mode, on: true });
-                      // Rewritten and drawn again, a document stays where it
-                      // was read, and what was found stays marked.
-                      gotos.current = 0;
-                      if (where.top) goto(where.top);
+                      // Drawn again, what was found stays marked.
                       if (query) marked();
                     } else if (message.type === "drawn")
                       setSaid((was) => was && { ...was, drawn: true });
@@ -784,21 +762,16 @@ export default function Sequence({
                       setSaid(
                         (was) => was && { ...was, height: message.height },
                       );
-                    else if (message.type === "at") {
-                      if (message.after !== gotos.current) return;
-                      setWhere((was) => ({
-                        top: message.top,
-                        end: message.end,
-                        chosen:
-                          message.end &&
-                          (was.chosen ?? -1) >=
-                            pageAt(boards, message.top, false)
-                            ? was.chosen
-                            : undefined,
-                      }));
-                    } else if (message.type === "find") {
-                      // A slide's are counted in its source, not here.
-                      if (doc) setFound(message.count);
+                    else if (message.type === "find") {
+                      // A slide's are counted in its source, not here. Said
+                      // again the same, a document's counts are no news.
+                      const counts = Array.isArray(message.counts)
+                        ? message.counts.map((count) => Number(count) || 0)
+                        : undefined;
+                      if (doc)
+                        setFound((was) =>
+                          String(was) === String(counts) ? was : counts,
+                        );
                     } else if (message.type === "edit") {
                       if ("table" in message) {
                         const [undo, redo] = [!!message.undo, !!message.redo];
@@ -828,10 +801,6 @@ export default function Sequence({
                     else if (message.type === "picked")
                       setPicked((was) => was && { ...was, rect: message.rect });
                     else if (message.type === "sheet") {
-                      // Drawn again (rewritten), it shows the tab it showed.
-                      const kept = Math.min(tab, boards.length - 1);
-                      if (message.active !== kept)
-                        tell(frame.current, { type: "tab", index: kept });
                       const hidden = Number(message.hidden) || 0;
                       setTold((was) => ({ ...was, hidden }));
                     } else if (message.type === "cell")
@@ -848,24 +817,6 @@ export default function Sequence({
                     }
                   }}
                 />
-                {doc &&
-                  boards.map((board, number) => {
-                    // Where the page starts in the stage, while that shows.
-                    const top = (board.top! - where.top) * scale;
-                    return (
-                      number > 0 &&
-                      top > 0 &&
-                      top < room.h && (
-                        <span
-                          key={board.top}
-                          class="page-break small"
-                          style={{ top: `${top}px` }}
-                        >
-                          Page {number + 1}
-                        </span>
-                      )
-                    );
-                  })}
                 {mode === "select" && hover && mark(hover, "hover")}
                 {picked && mark(picked.rect, "picked")}
               </div>

@@ -12,7 +12,7 @@ import "./page-frame.css";
 export interface PageInfo {
   title: string;
   // A fixed artboard's size; 0 × 0 for a page, which is as tall as it is. A
-  // document is its paper's width.
+  // document's is one sheet of its paper.
   artboard: { w: number; h: number; slide?: boolean };
   // A slide's speaker notes.
   notes?: string;
@@ -46,10 +46,8 @@ export type PageMessage =
   // A key the pane acts on; `held` with ⌘ or Ctrl.
   | { type: "key"; key: string; held?: boolean }
   | { type: "zoom"; by: number; x: number; y: number }
-  // A document's page breaks, its edited block, its text as Markdown, and
-  // where it is scrolled to (`end`: as far as it goes; `after`: the last
-  // goto it was told).
-  | { type: "pages"; breaks: number[] }
+  // A document: how many pages it has, its edited block, its text as Markdown.
+  | { type: "pages"; count: number }
   | { type: "edit"; index: number; before: string; html: string }
   // A sheet's changed tab, its place among how many, as the table its file
   // keeps; whether the sheet can undo and redo; its cells in error.
@@ -63,13 +61,12 @@ export type PageMessage =
       errors: string[];
     }
   | { type: "markdown"; text: string }
-  | { type: "at"; top: number; end: boolean; after: number }
-  // How many occurrences a find marked.
-  | { type: "find"; count: number }
-  // A sheet's tabs, the one shown and how many rows a filter hides; and its
+  // How many occurrences a find marked; a document, on each of its pages.
+  | { type: "find"; count: number; counts?: number[] }
+  // A sheet's tabs and how many rows a filter hides in the one shown; and its
   // selection: the active cell ("Costs!B2") and what was typed in it, the
   // range ("Costs!B2:C6") and what two numbers or more in it come to.
-  | { type: "sheet"; tabs: string[]; active: number; hidden: number }
+  | { type: "sheet"; tabs: string[]; hidden: number }
   // What a sheet hands over when asked: itself as a workbook's bytes, its
   // open tab as CSV, or a read file as the text of a sheet to save.
   | { type: "file"; as: string; data: Uint8Array | string }
@@ -83,9 +80,9 @@ export type PageMessage =
       summary?: { count: number; sum: number; average: number };
     };
 
-// Tells a page what to do: select on or off, set a tweak, scroll a document
-// to an offset (its `n`th goto, counted from 1 per document loaded), mark the
-// words found; a sheet: show a tab, write into its active cell, do a command.
+// Tells a page what to do: select on or off, set a tweak, mark the words
+// found; a sheet: write into its active cell, do a command. Which part of
+// it shows (a page, a tab) is its address's to say: "#3".
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
@@ -93,9 +90,7 @@ export const tell = (
     | { type: "edit"; on: boolean }
     | { type: "markdown" }
     | { type: "tweak"; name: string; value: unknown }
-    | { type: "goto"; top: number; n: number }
     | { type: "find"; text: string; index: number }
-    | { type: "tab"; index: number }
     | { type: "input"; value: string }
     | { type: "do"; command: string },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
@@ -164,10 +159,15 @@ export default function Frame({
   const own = useRef<HTMLIFrameElement>(null);
   const frame = frameRef ?? own;
   const handle = useLatest(onMessage);
-  // The address whose page has drawn. A page on its way is unseen until it
-  // has, and the page before it stays under it, still.
+  // What follows "#" names a part of the file (a document's page, a sheet's
+  // tab), which the page shows without loading again.
+  const file = src.replace(/#.*$/, "");
+  // The file whose page has drawn. A page on its way is unseen until it
+  // has, and the page before it stays under it, still, where it was.
   const [drawn, setDrawn] = useState<string>();
-  const wanted = useLatest(src);
+  const wanted = useLatest(file);
+  const left = useRef(src);
+  if (drawn === file) left.current = src;
   const paged = !far && !media;
   useLayoutEffect(() => {
     if (!paged) setDrawn(undefined);
@@ -242,22 +242,22 @@ export default function Frame({
           onError={lost}
         />
       ) : (
-        [...new Set([drawn ?? src, src])].map((address) => (
+        [...new Set([drawn ?? file, file])].map((address) => (
           <iframe
             key={address}
             // Only the page wanted is told things and heard.
             ref={
-              address === src
+              address === file
                 ? (node) => {
                     if (node) frame.current = node;
                   }
                 : undefined
             }
-            src={address}
-            title={address === src ? title : undefined}
+            src={address === file ? src : left.current}
+            title={address === file ? title : undefined}
             sandbox="allow-scripts allow-forms"
             tabIndex={live ? undefined : -1}
-            inert={address !== src}
+            inert={address !== file}
             data-arriving={address !== drawn || undefined}
             style={
               sized

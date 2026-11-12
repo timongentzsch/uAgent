@@ -40,8 +40,9 @@ export interface Board {
   count?: number;
   w: number;
   h: number;
-  // A document's page: where it starts in the document.
-  top?: number;
+  // Its place among the boards of one file, from 0: a document's page, a
+  // sheet's tab. The file's address with "#" and its number shows it.
+  at?: number;
   // A design's step: its variants and states share a row.
   row?: string;
   // Why it failed, in a few words, else empty: a page threw or is not as it
@@ -50,16 +51,17 @@ export interface Board {
 }
 
 // What a page's frames said, by its path: what it is, what failed in it,
-// for a document where print starts each page after the first, and for a
-// sheet its tabs.
+// for a document how many pages it has, and for a sheet its tabs.
 interface Seen {
   info?: PageInfo;
   errors: string[];
-  breaks?: number[];
+  pages?: number;
   tabs?: string[];
 }
 export type SeenPages = Record<string, Seen>;
 
+// A page is untrusted: a document counts as no more pages than this.
+const PAGES = 2000;
 // What one message may carry of the pages' errors.
 const ERRORS_MAX = 1800;
 
@@ -84,8 +86,8 @@ export function hear(
     if (was.info && was.info.height !== message.height)
       next = { ...was, info: { ...was.info, height: message.height } };
   } else if (message.type === "pages") {
-    if (String(was.breaks) !== String(message.breaks))
-      next = { ...was, breaks: message.breaks };
+    const pages = Math.min(Math.max(1, Math.floor(message.count) || 1), PAGES);
+    if (was.pages !== pages) next = { ...was, pages };
   } else if (message.type === "sheet") {
     const tabs = strings(message.tabs);
     if (was.tabs?.join("\n") !== tabs.join("\n")) next = { ...was, tabs };
@@ -258,24 +260,17 @@ export function boardsOf(
     };
   };
   const kind = name === undefined ? undefined : kindOf(listing, name);
-  if (kind === "doc") {
+  if (kind === "doc" || kind === "sheet") {
+    // One page until the document has said how many; a sheet's tabs are
+    // numbered until it has said what they are called.
     const page = board(name!);
-    const { info, breaks = [] } = seen[page.path] ?? {};
-    const tops = [0, ...breaks];
-    return tops.map((top, at) => ({
-      ...page,
-      top,
-      h: (tops[at + 1] ?? Math.max(top, info?.height ?? 0)) - top,
-    }));
-  }
-  if (kind === "sheet") {
-    // Numbered until the sheet has said what its tabs are called.
-    const page = board(name!);
+    const { pages = 1, tabs } = seen[page.path] ?? {};
     const { count = 1 } = listing.entries.find((entry) => entry.name === name)!;
-    const tabs =
-      seen[page.path]?.tabs ??
-      Array.from({ length: count }, (_, at) => `${at + 1}`);
-    return tabs.map((title) => ({ ...page, title }));
+    const titles =
+      kind === "doc"
+        ? Array.from({ length: pages }, () => page.title)
+        : (tabs ?? Array.from({ length: count }, (_, at) => `${at + 1}`));
+    return titles.map((title, at) => ({ ...page, title, at }));
   }
   if (kind === "deck") {
     // A slide not drawn yet is taken to be as large as one that is.
@@ -290,7 +285,7 @@ export function boardsOf(
   for (const entry of listing.entries) {
     if (entry.dir) continue;
     const made = board(entry.name);
-    const { breaks, tabs } = seen[made.path] ?? {};
+    const { pages, tabs } = seen[made.path] ?? {};
     if (HTML.test(entry.name) && !alone(entry.kind))
       lying.set(entry.name, made);
     else if (kind) continue;
@@ -302,13 +297,11 @@ export function boardsOf(
         count: tabs?.length ?? entry.count,
       });
     else if (entry.kind === "doc")
-      // Its first page, as tall as print makes it.
       lying.set(entry.name, {
         ...made,
         media: "stack",
         type: "doc",
-        count: breaks && breaks.length + 1,
-        h: breaks?.[0] ?? made.h,
+        count: pages,
       });
     else if (IMAGE.test(entry.name) || VIDEO.test(entry.name))
       lying.set(entry.name, {
@@ -348,17 +341,6 @@ export const settled = (board: Board, seen: SeenPages) =>
   seen[board.path]?.info
     ? board.media !== "stack" || !!board.count
     : still(board) && !!board.failed;
-
-// The document's page at a scroll offset: the last one that starts at or
-// above it, and the last of all once the document is scrolled to its end
-// (a short last page never reaches the top).
-export function pageAt(boards: Board[], top: number, end: boolean) {
-  if (end && top > 0) return boards.length - 1;
-  return Math.max(
-    0,
-    boards.findLastIndex((board) => (board.top ?? 0) <= top + 1),
-  );
-}
 
 // The boards' failed pages, and what they threw as lines for the agent. A
 // sheet opened fails by the cell: each is counted.

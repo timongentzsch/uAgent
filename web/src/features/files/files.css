@@ -350,15 +350,13 @@
   gap: var(--space-1);
   width: fit-content;
 }
-.page-legend-item > .page-frame,
-.page-legend-doc {
+.page-legend-item > .page-frame {
   outline: var(--border);
 }
 .page-legend-item[data-failed] > .page-frame {
   outline-color: var(--removed);
 }
-.page-legend-item:has([aria-selected="true"]) > .page-frame,
-.page-legend-page[aria-selected="true"] {
+.page-legend-item:has([aria-selected="true"]) > .page-frame {
   outline: var(--focus-ring);
 }
 /* A slide being dragged to a new place, and the line where it would drop:
@@ -387,23 +385,6 @@
 .page-legend-item:has([aria-selected="true"]) > .page-legend-name {
   color: var(--text);
   font-weight: var(--weight-strong);
-}
-/* A document is one picture, its pages marked where print starts them. */
-.page-legend-doc {
-  position: relative;
-  flex: none;
-}
-.page-legend-page {
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding: var(--space-1);
-  border-top: var(--border);
-}
-/* Its number, on a ground of its own: the page's text runs under it. */
-.page-legend-page > span {
-  padding: 0 var(--space-1);
-  background: var(--raised);
-  color: var(--text);
 }
 /* The stage, and a slide's notes under it. */
 .page-main {
@@ -457,17 +438,6 @@
 .page-count {
   left: var(--space-4);
   bottom: var(--space-4);
-}
-/* Where print will start a document's next page: a hairline across it. */
-.page-break {
-  position: absolute;
-  left: 0;
-  right: 0;
-  border-top: var(--border);
-  pointer-events: none;
-  text-align: right;
-  color: var(--muted);
-  padding-right: var(--space-2);
 }
 .page-mark {
   position: absolute;
@@ -627,8 +597,7 @@
   flex: 0 0 30%;
   margin: 0;
 }
-/* A narrow pane stacks them: the legend a filmstrip under the stage. A
-   document's one tall picture has no strip, so its counter stands alone. */
+/* A narrow pane stacks them: the legend a filmstrip under the stage. */
 @container files (max-width: 40rem) {
   .page-body {
     flex-direction: column;
@@ -638,9 +607,6 @@
     flex-direction: row;
     border-right: 0;
     border-top: var(--border);
-  }
-  .page-legend[data-doc] {
-    display: none;
   }
   /* Its button's panel lies along the bottom too. */
   .page-tools [aria-label="Legend"] > .lucide {

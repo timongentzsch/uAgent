@@ -281,7 +281,6 @@ async function open() {
     say({
       type: "sheet",
       tabs: offered.map((tab) => book.tabs[tab].name),
-      active: offered.indexOf(at),
       hidden: hidden.size,
     });
     tell();
@@ -291,11 +290,14 @@ async function open() {
   const charts = listenCharts(sheet);
   addEventListener("message", ({ source, data }) => {
     if (source !== parent || data?.uagentDesign !== 1) return;
-    if (data.type === "tab") show(offered[data.index]);
     if (data.type === "do") sheet.run(data.command);
     if (data.type === "input") sheet.write(String(data.value));
   });
-  show(offered[0]);
+  // The address says which tab shows: "#2" is the second.
+  const said = () =>
+    show(offered[(Number(location.hash.slice(1)) || 1) - 1] ?? offered[0]);
+  addEventListener("hashchange", said);
+  said();
   return errors();
 }
 

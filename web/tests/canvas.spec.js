@@ -573,7 +573,7 @@ test("a slide with text over text and a document block taller than a page say so
         "<aside>Notes stay out of the check.</aside>",
       "1920x1080 slide",
     ),
-    // A5 with no artboard: as wide as its paper, and a figure taller than it.
+    // A5: a figure taller than its paper inside the margins.
     "memo.html": paper(
       "Memo",
       '<style>*{margin:0}</style><figure style="height:1000px">tall</figure>',
@@ -593,7 +593,7 @@ test("a slide with text over text and a document block taller than a page say so
   await expect(files.getByText("1 page failed to run")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   await expect(draft).toHaveValue(
-    /`design\/checks\/memo\.html` threw: a figure is 1000px tall, more than a page \(794px\)/,
+    /`design\/checks\/memo\.html` threw: a figure is 1000px tall, more than a page \(605px\)/,
   );
 });
 
@@ -1518,7 +1518,7 @@ test("a design's canvas shows its pictures and films, and a document or a deck i
     .getByRole("button", { name: "Open document Memo, 2 pages" })
     .click();
   await expect(stage.getByRole("heading", { name: "Memo" })).toBeVisible();
-  await expect(count).toHaveText("Page 1 / 2");
+  await expect(count).toHaveText("1 / 2");
   await back.click();
   // A page's legend still lists the pages only.
   await files.getByRole("button", { name: "Open Home" }).click();
@@ -1550,93 +1550,42 @@ test("find follows what the agent rewrites while it is open", async ({
   ).toBeVisible();
 });
 
-// docs/ends.html: three pages, the first nearly a full one and the other
-// two short, so the last two lie together in the document's last view.
-for (const [where, phone] of [
-  ["a phone, where the counter is the only stepper", true],
-  ["a wide pane, by the legend too", false],
-])
-  test(`a document's last pages are stepped to though it cannot scroll to them: on ${where}`, async ({
-    page: app,
-    session,
-    host,
-  }) => {
-    await writeFiles(join(host.project, "docs"), {
-      "ends.html": paper(
-        "Ends",
-        '<style>*{margin:0}</style><p style="height:780px">One</p>' +
-          '<h2 style="break-before:page;height:40px">Two</h2><p style="height:400px">second</p>' +
-          '<h2 style="break-before:page;height:40px">Three</h2><p style="height:100px">third</p>',
-      ),
-    });
-    const files = await openFiles(app, session, "docs/ends.html", { phone });
-    const { stage, count } = viewerOf(files);
-    const page = stage.locator("html");
-    const next = files.getByRole("button", { name: "Next page" });
-    const previous = files.getByRole("button", { name: "Previous page" });
-    const legend = files.getByRole("listbox", { name: "Pages" });
-    await expect(count).toHaveText("Page 1 / 3");
-    await expect(legend).toBeVisible({ visible: !phone });
-    // Page 2 starts past where the document can scroll: it goes to its end.
-    await next.click();
-    await expect(count).toHaveText("Page 2 / 3");
-    await expect
-      .poll(() => page.evaluate(() => scrollY + innerHeight))
-      .toBeGreaterThan(1358);
-    // Scrolled by hand the choice is forgotten: the page at the top counts,
-    // and at the end the last.
-    await page.evaluate(() => scrollTo(0, 10));
-    await expect(count).toHaveText("Page 1 / 3");
-    await page.evaluate(() => scrollTo(0, 2000));
-    await expect(count).toHaveText("Page 3 / 3");
-    await expect(next).toBeDisabled();
-    // From there Previous and Next need no scroll at all.
-    await previous.click();
-    await expect(count).toHaveText("Page 2 / 3");
-    await next.click();
-    await expect(count).toHaveText("Page 3 / 3");
-    if (!phone) {
-      await legend.getByRole("option", { name: "Page 2" }).click();
-      await expect(count).toHaveText("Page 2 / 3");
-      await expect(
-        legend.getByRole("option", { name: "Page 2" }),
-      ).toHaveAttribute("aria-selected", "true");
-      await legend.getByRole("option", { name: "Page 3" }).click();
-      await expect(count).toHaveText("Page 3 / 3");
-    }
-    await previous.click();
-    await expect(count).toHaveText("Page 2 / 3");
-    await previous.click();
-    await expect(count).toHaveText("Page 1 / 3");
-    await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
-  });
-
 // docs/memo.html, opened from the tree: an A5 document of ten parts, each
-// starting a page and shorter than one, so it has ten pages at any width.
+// starting a page and shorter than one, so it has ten pages.
 const MEMO_PAGES = 10;
-async function openMemo(app, session, project) {
+async function openMemo(app, session, project, options) {
   const memo = join(project, "docs/memo.html");
   const parts = Array.from({ length: MEMO_PAGES }, (_, part) =>
     Array.from(
       { length: 12 },
-      (_, at) =>
-        `<p>Paragraph ${part * 12 + at + 1} of the memo, long enough to fill some of a page.</p>`,
+      (_, at) => `<p>Paragraph ${part * 12 + at + 1} of the memo.</p>`,
     ).join(""),
   ).join('<h2 style="break-before:page">Next part</h2>');
   await writeFiles(project, {
     "docs/memo.html": paper(
       "Memo",
-      "<h1>Q3 memo</h1><p>Revenue grew.</p><ul><li>One</li><li>Two</li></ul>" +
+      "<style>*{margin:0}p{height:30px}</style>" +
+        "<h1>Q3 memo</h1><p>Revenue grew.</p><ul><li>One</li><li>Two</li></ul>" +
         "<table><tr><th>Ask</th><th>When</th></tr><tr><td>Hire</td><td>Nov</td></tr></table>" +
         parts,
     ),
   });
-  const files = await openFiles(app, session, "docs/memo.html");
+  const files = await openFiles(app, session, "docs/memo.html", options);
   const { stage: page, count } = viewerOf(files);
   return { files, memo, page, count };
 }
+// A length of the page in millimetres, to a tenth.
+const mm = (px) => Math.round((px * 254) / 96) / 10;
+// Whether its middle is on the sheet and not cut away with another page.
+const onSheet = (text) =>
+  text.evaluate((node) => {
+    const { x, y, width, height } = node.getBoundingClientRect();
+    return node.contains(
+      document.elementFromPoint(x + width / 2, y + height / 2),
+    );
+  });
 
-test("a document's legend is its pages on one picture; a click, the Page keys and its own scroll move through them", async ({
+test("a document is stepped a sheet of its paper at a time, by its legend, its counter and the keys, in a frame that never loads again", async ({
   page: app,
   session,
   host,
@@ -1644,26 +1593,31 @@ test("a document's legend is its pages on one picture; a click, the Page keys an
   const { files, page, count } = await openMemo(app, session, host.project);
   const legend = files.getByRole("listbox", { name: "Pages" });
   const pages = MEMO_PAGES;
-  await expect(count).toHaveText(`Page 1 / ${pages}`);
-  // One frame of the whole document, a numbered area a page.
-  await expect(legend.getByRole("option")).toHaveCount(pages);
-  await expect(legend.locator("iframe")).toHaveCount(1);
   const shows = async (at) => {
-    await expect(count).toHaveText(`Page ${at} / ${pages}`);
+    await expect(count).toHaveText(`${at} / ${pages}`);
     await expect(
-      legend.getByRole("option", { name: `Page ${at}`, exact: true }),
+      legend.getByRole("option", { name: `Page ${at}: Memo` }),
     ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      page.getByText(`Paragraph ${(at - 1) * 12 + 1} of the memo.`),
+    ).toBeInViewport();
   };
-  const scrolled = () => page.locator("html").evaluate(() => scrollY);
   await shows(1);
+  await expect(legend.getByRole("option")).toHaveCount(pages);
+  // One sheet of A5, whatever the pane's size.
+  expect(
+    await page.locator("html").evaluate(() => [innerWidth, innerHeight]),
+  ).toEqual([559, 794]);
+  await page.locator("html").evaluate(() => {
+    window.loaded = "once";
+  });
   await expect(
     files.getByRole("button", { name: "Previous page" }),
   ).toBeDisabled();
-  // A click on a page scrolls the document to it, inside its frame.
-  await legend.getByRole("option", { name: "Page 2", exact: true }).click();
+  await legend.getByRole("option", { name: "Page 2: Memo" }).click();
   await shows(2);
-  await expect.poll(scrolled).toBeGreaterThan(0);
-  // The keys move by page, to the ends too; the last page is the end.
+  await expect(page.getByText("Paragraph 1 of the memo.")).not.toBeInViewport();
+  // The keys move by page, to the ends too; the legend is walked as a list.
   for (const [key, at] of [
     ["PageDown", 3],
     ["PageUp", 2],
@@ -1677,69 +1631,184 @@ test("a document's legend is its pages on one picture; a click, the Page keys an
   }
   await files.getByRole("button", { name: "Next page" }).click();
   await shows(3);
-  await expect(page.getByText("Paragraph 13 of the memo")).not.toBeInViewport();
-  // Scrolled by hand from there, the document says where it is, and the
-  // next page's start is marked on the stage.
-  await page.locator("html").evaluate(() => scrollTo(0, 0));
-  await shows(1);
-  await expect(files.locator(".page-break").first()).toHaveText("Page 2");
+  expect(await page.locator("html").evaluate(() => window.loaded)).toBe("once");
 });
 
-test("find in a document counts in the page itself and scrolls to what it found", async ({
+test("on a phone a document's pages are a filmstrip under its sheet", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, page, count } = await openMemo(app, session, host.project, {
+    phone: true,
+  });
+  const legend = files.getByRole("listbox", { name: "Pages" });
+  await expect(count).toHaveText(`1 / ${MEMO_PAGES}`);
+  const sheet = await files.locator(".page-stage").boundingBox();
+  expect((await legend.boundingBox()).y).toBeGreaterThanOrEqual(
+    sheet.y + sheet.height,
+  );
+  await legend.getByRole("option", { name: "Page 2: Memo" }).click();
+  await expect(count).toHaveText(`2 / ${MEMO_PAGES}`);
+  await expect(page.getByText("Paragraph 13 of the memo.")).toBeInViewport();
+});
+
+test("a document's margins are its print line's, and its title page fills the first sheet inside them", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  // The margins from the top clockwise, in millimetres.
+  const formats = {
+    "": [25, 25, 25, 25],
+    narrow: [12.7, 12.7, 12.7, 12.7],
+    moderate: [25, 19, 25, 19],
+    wide: [25, 50, 25, 50],
+    "20mm 18mm": [20, 18, 20, 18],
+    "landscape 10mm 20mm 30mm 40mm": [10, 20, 30, 40],
+  };
+  const name = (said) => `${said.replaceAll(" ", "-") || "normal"}.html`;
+  await writeFiles(
+    join(host.project, "docs"),
+    Object.fromEntries(
+      Object.keys(formats).map((said) => [
+        name(said),
+        `<!doctype html><html><head><title>Margins</title><meta name="print" content="flow a4 ${said}">` +
+          "<style>@page{margin:5mm}body{padding:40px}</style></head>" +
+          '<body><section class="title-page"><h1>Title</h1></section><p>After the title.</p></body></html>',
+      ]),
+    ),
+  );
+  const files = await openFiles(app, session, "docs");
+  const { stage: page, count } = viewerOf(files);
+  for (const [said, [top, right, bottom, left]] of Object.entries(formats)) {
+    await files.getByRole("button", { name: name(said), exact: true }).click();
+    await expect(count).toHaveText("1 / 2");
+    const [w, h] = said.includes("landscape") ? [297, 210] : [210, 297];
+    const boxes = await page.locator(".title-page").evaluate((title) => {
+      const { x, y, width, height } = title.getBoundingClientRect();
+      const sheet = document.documentElement.getBoundingClientRect();
+      return [sheet.width, sheet.height, x, y, width, height];
+    });
+    // The sheet, then the title page: where it starts and what it covers.
+    expect(boxes.map(mm)).toEqual(
+      [w, h, left, top, w - left - right, h - top - bottom].map(
+        (length) => Math.round(length * 10) / 10,
+      ),
+    );
+    expect(await onSheet(page.getByText("After the title."))).toBe(false);
+    await app.keyboard.press("PageDown");
+    await expect(count).toHaveText("2 / 2");
+    await expect
+      .poll(() => onSheet(page.getByText("After the title.")))
+      .toBe(true);
+    await files.getByRole("button", { name: "Back to the list" }).click();
+  }
+});
+
+test("a long table breaks between its rows across a document's sheets, and prints on as many", async ({
+  page: app,
+  session,
+  host,
+  browserName,
+}) => {
+  // A5 inside its margins holds 20 rows of 30px.
+  await writeFiles(join(host.project, "docs"), {
+    "rows.html": paper(
+      "Rows",
+      "<style>*{margin:0;padding:0}table{border-collapse:collapse}tr{height:30px}</style>" +
+        `<table>${Array.from({ length: 60 }, (_, at) => `<tr><td>Row ${at + 1}.</td></tr>`).join("")}</table>`,
+    ),
+  });
+  const files = await openFiles(app, session, "docs/rows.html");
+  const { stage: page, count } = viewerOf(files);
+  await expect(count).toHaveText("1 / 3");
+  await app.keyboard.press("PageDown");
+  await expect(count).toHaveText("2 / 3");
+  const top = (row) =>
+    page
+      .getByText(`Row ${row}.`)
+      .evaluate((cell) => cell.parentElement.getBoundingClientRect().top);
+  // Row 21 starts the second sheet at its top margin; the rows of the
+  // sheets before and after are cut away.
+  await expect.poll(async () => mm(await top(21))).toBe(25);
+  for (const [row, shown] of [
+    [20, false],
+    [21, true],
+    [40, true],
+    [41, false],
+  ])
+    expect(await onSheet(page.getByText(`Row ${row}.`))).toBe(shown);
+  // Printed from its own address, where only Chromium writes a PDF.
+  if (browserName !== "chromium") return;
+  const alone = await app.context().newPage();
+  await alone.goto(
+    await files.getByRole("link", { name: "Open alone" }).getAttribute("href"),
+  );
+  const pdf = await alone.pdf({ preferCSSPageSize: true });
+  expect(pdf.toString("latin1").match(/\/Type\s*\/Page\b/g)).toHaveLength(3);
+});
+
+test("find in a document is counted by its pages and steps to the page of what it found", async ({
   page: app,
   session,
   host,
 }) => {
   const { files, page, count } = await openMemo(app, session, host.project);
   const pages = MEMO_PAGES;
-  await expect(count).toHaveText(`Page 1 / ${pages}`);
-  // What the page is asked to find, each as "words index".
-  await page.locator("html").evaluate(() => {
-    window.asked = [];
-    addEventListener(
-      "message",
-      (event) =>
-        event.data?.type === "find" &&
-        window.asked.push(`${event.data.text} ${event.data.index}`),
-    );
-  });
+  await expect(count).toHaveText(`1 / ${pages}`);
   await files.getByRole("button", { name: "Find" }).click();
   const bar = files.getByRole("search", { name: "Find in this document" });
   const field = bar.getByRole("searchbox");
   await field.fill("OF THE MEMO");
   await expect(bar).toContainText("1 of 120");
-  await expect(count).toHaveText(`Page 1 / ${pages}`);
+  await expect(count).toHaveText(`1 / ${pages}`);
   const marks = (name) =>
     page
       .locator("html")
       .evaluate((_, name) => CSS.highlights.get(name)?.size ?? 0, name);
+  // The current one, as the page marks it.
+  const current = () =>
+    page
+      .locator("html")
+      .evaluate(() =>
+        [...(CSS.highlights.get("uagent-found") ?? [])]
+          .map((range) => range.startContainer.textContent)
+          .join(),
+      );
   await expect.poll(() => marks("uagent-find")).toBe(120);
+  await expect.poll(current).toBe("Paragraph 1 of the memo.");
   // The one before the first is the last, on the last page.
   await field.press("Shift+Enter");
   await expect(bar).toContainText("120 of 120");
-  await expect(count).toHaveText(`Page ${pages} / ${pages}`);
-  await expect(page.getByText("Paragraph 120 of the memo")).toBeInViewport();
-  // New words start at their first occurrence, and are asked for once.
+  await expect(count).toHaveText(`${pages} / ${pages}`);
+  await expect(page.getByText("Paragraph 120 of the memo.")).toBeInViewport();
+  await expect.poll(current).toBe("Paragraph 120 of the memo.");
+  // Past the last comes the first; the 14th is the second of page 2.
+  for (let step = 0; step < 14; step++) await field.press("Enter");
+  await expect(bar).toContainText("14 of 120");
+  await expect(count).toHaveText(`2 / ${pages}`);
+  await expect.poll(current).toBe("Paragraph 14 of the memo.");
+  // New words start at their first occurrence.
   await field.fill("revenue grew");
   await expect(bar).toContainText("1 of 1");
-  await expect(count).toHaveText(`Page 1 / ${pages}`);
-  expect(await page.locator("html").evaluate(() => window.asked)).toEqual([
-    "OF THE MEMO 0",
-    "OF THE MEMO 119",
-    "revenue grew 0",
-  ]);
+  await expect(count).toHaveText(`1 / ${pages}`);
   await field.fill("wombat");
   await expect(bar).toContainText("No matches");
   await bar.getByRole("button", { name: "Close find" }).click();
   await expect.poll(() => marks("uagent-find")).toBe(0);
 });
 
-test("a document is edited in place, saved to its file, and exports Markdown", async ({
+test("a document exports Markdown, and a block edited on its third page is saved to its file", async ({
   page: app,
   session,
   host,
 }) => {
-  const { files, memo, page } = await openMemo(app, session, host.project);
+  const { files, memo, page, count } = await openMemo(
+    app,
+    session,
+    host.project,
+  );
   await expect(page.getByRole("heading", { name: "Q3 memo" })).toBeVisible();
 
   // Markdown, from the page itself.
@@ -1756,18 +1825,25 @@ test("a document is edited in place, saved to its file, and exports Markdown", a
   expect(text).toContain("# Q3 memo\n\nRevenue grew.\n\n- One\n- Two");
   expect(text).toContain("| Ask | When |\n| --- | --- |\n| Hire | Nov |");
 
-  // Edit: a block typed in place is saved to the file, nothing else changes.
+  // Edit: a block typed in place is saved to the file, nothing else changes,
+  // and the document drawn again shows the page it showed.
+  await app.keyboard.press("PageDown");
+  await app.keyboard.press("PageDown");
+  await expect(count).toHaveText(`3 / ${MEMO_PAGES}`);
   await files.getByRole("button", { name: "Edit" }).click();
-  const paragraph = page.getByText("Revenue grew.");
+  const paragraph = page.getByText(/^Paragraph 25 of the memo\./);
+  const beside = page.getByText("Paragraph 26 of the memo.");
   await paragraph.click();
   await app.keyboard.press("End");
   await app.keyboard.type(" Churn held flat.");
-  await page.getByRole("heading", { name: "Q3 memo" }).click();
+  await beside.click();
   await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
     "Saved",
   );
   const saved = await readFile(memo, "utf8");
-  expect(saved).toContain("<p>Revenue grew. Churn held flat.</p>");
+  expect(saved).toContain("<p>Paragraph 25 of the memo. Churn held flat.</p>");
+  await expect(paragraph).toHaveText(/Churn held flat\.$/);
+  await expect(count).toHaveText(`3 / ${MEMO_PAGES}`);
   expect(saved).toContain("<td>Hire</td>");
   expect(
     saved.startsWith("<!doctype html><html><head><title>Memo</title>"),
@@ -1778,7 +1854,7 @@ test("a document is edited in place, saved to its file, and exports Markdown", a
   await paragraph.click();
   await app.keyboard.press("End");
   await app.keyboard.type(" Again.");
-  await page.getByRole("heading", { name: "Q3 memo" }).click();
+  await beside.click();
   await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
     /The document changed/,
   );

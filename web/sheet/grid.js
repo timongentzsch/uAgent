@@ -210,38 +210,46 @@ export function draw(table, book, sheet, filters, view) {
     return drawn;
   };
   // A merged range is drawn as its top left cell over those of its rows and
-  // columns drawn, in a part on each side of the held ones.
+  // columns drawn, in a part on each side of the held ones. What it holds
+  // shows once: in the part of its top left cell, or where that is not
+  // drawn, in the first part drawn; the others are empty.
   const merges = book.merges(sheet);
-  const spans = (merge, line, place) => {
-    const along = (drawn, from, to, held, at) =>
-      drawn.filter((n) => n >= from && n <= to && n <= held === at <= held);
-    const rows = along(view.rows, merge.top, merge.bottom, frozen.rows, line);
-    const columns = along(
-      view.columns,
-      merge.left,
-      merge.right,
-      frozen.columns,
-      place,
-    );
+  const partOf = (merge, line, place) => {
+    const along = (drawn, from, to) =>
+      drawn.filter((n) => n >= from && n <= to);
+    const rows = along(view.rows, merge.top, merge.bottom);
+    const columns = along(view.columns, merge.left, merge.right);
+    const side = (held, at) => (n) => n <= held === at <= held;
+    const own = [
+      rows.filter(side(frozen.rows, line)),
+      columns.filter(side(frozen.columns, place)),
+    ];
+    const first =
+      rows.includes(merge.top) && columns.includes(merge.left)
+        ? [merge.top, merge.left]
+        : [rows[0], columns[0]];
     return (
-      rows[0] === line &&
-      columns[0] === place && { rowSpan: rows.length, colSpan: columns.length }
+      own[0][0] === line &&
+      own[1][0] === place && {
+        spans: { rowSpan: own[0].length, colSpan: own[1].length },
+        shows: line === first[0] && place === first[1],
+      }
     );
   };
   const body = view.rows.map((line) => {
     const cells = view.columns.flatMap((place) => {
       const merge = boxAt(merges, { row: line, column: place });
-      const over =
+      const part =
         merge.bottom > merge.top || merge.right > merge.left
-          ? spans(merge, line, place)
-          : {};
-      if (!over) return [];
+          ? partOf(merge, line, place)
+          : { shows: true };
+      if (!part) return [];
       const [number, at] = [merge.top, merge.left];
       const r = number - 1;
       const c = at - 1;
       const cell = tab.rows[r]?.cells[c];
       if (!cell) {
-        const blank = pin(Object.assign(make("td"), over), place);
+        const blank = pin(Object.assign(make("td"), part.spans), place);
         Object.assign(blank.dataset, { row: number, column: at });
         return [blank];
       }
@@ -286,7 +294,8 @@ export function draw(table, book, sheet, filters, view) {
             ariaPressed: filters.has(at),
           }),
         );
-      return [pin(Object.assign(drawn, over), place)];
+      if (!part.shows) drawn.replaceChildren();
+      return [pin(Object.assign(drawn, part.spans), place)];
     });
     const row = tab.rows[line - 1];
     const drawn = marked(make("tr"), row?.attrs ?? {});

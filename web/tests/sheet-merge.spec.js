@@ -30,17 +30,17 @@ const parts = (cell) =>
     })),
   );
 
-test("a merged range is drawn as its top left cell, in a part on each side of what is held, wherever it is scrolled", async ({
+test("a merged range is drawn as its top left cell, in a part on each side of what is held, and reads once wherever it is scrolled", async ({
   page: app,
   session,
   host,
 }) => {
   const { stage, cell } = await openSheet(app, session, host.project, BUDGET);
-  // The held column cuts the title: its text over A, and again over B:E.
+  // The held column cuts the title: its text over A, empty over B:E.
   await expect(cell("Costs", "A1")).toHaveCount(2);
   expect(await parts(cell("Costs", "A1"))).toEqual([
     { text: "Budget 2027", spans: [1, 1] },
-    { text: "Budget 2027", spans: [1, 4] },
+    { text: "", spans: [1, 4] },
   ]);
   expect(await parts(cell("Costs", "B2"))).toEqual([
     { text: "H1", spans: [1, 2] },

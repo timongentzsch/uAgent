@@ -154,8 +154,12 @@ test("a sheet shows nothing as written while its engine loads, and is drawn with
     "visibility",
     "hidden",
   );
+  // Until it has drawn, the stage says it is opening.
+  const opening = files.getByRole("status", { name: "Opening the page…" });
+  await expect(opening).toBeVisible();
   await stage.locator("html").evaluate(() => window.handOver());
   await expect(cell("Tasks", "B1")).toHaveText("2");
+  await expect(opening).toHaveCount(0);
   await expect(files.locator(".page-notice")).toContainText(
     /^2 cells in error/,
   );

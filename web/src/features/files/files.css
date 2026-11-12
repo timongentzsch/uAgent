@@ -411,6 +411,12 @@
   display: flex;
   background: var(--surface);
 }
+/* Until its first page has drawn, the stage says it is opening. */
+.page-stage > .loading-indicator {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
 /* The page scrolls inside the stage once zoomed past it; a fixed or wide
    page is centred while it fits (margin: auto keeps all of it in reach). */
 .page-scroll {

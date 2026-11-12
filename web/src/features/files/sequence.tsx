@@ -20,7 +20,13 @@ import {
   Search,
   SlidersHorizontal,
 } from "lucide-preact";
-import { Actions, Button, IconButton, Notice } from "../../shared/ui.tsx";
+import {
+  Actions,
+  Button,
+  IconButton,
+  Notice,
+  Spinner,
+} from "../../shared/ui.tsx";
 import { Textarea } from "../../shared/form-controls.tsx";
 import Frame, {
   type PageInfo,
@@ -632,11 +638,12 @@ export default function Sequence({
             <Presentation />
           </IconButton>
         )}
-        {png && (
+        {drawn && (
           <IconButton
             label="Draw on it"
+            disabled={!png}
             onClick={() =>
-              view({ src: png(1), name: `${stem}.png`, edit: true })
+              png && view({ src: png(1), name: `${stem}.png`, edit: true })
             }
           >
             <PenLine />
@@ -728,6 +735,7 @@ export default function Sequence({
             data-wide={(wide && !fixed) || undefined}
             data-presenting={presenting || undefined}
           >
+            {!info && <Spinner label="Opening the page…" />}
             <div class="page-scroll" ref={scroller}>
               <div
                 class="page-holder"

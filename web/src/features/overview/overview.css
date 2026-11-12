@@ -86,6 +86,11 @@
   gap: var(--space-3);
   min-width: 0;
 }
+/* Its two facts stay whole: the second goes under the first when short of room. */
+.overview-foot {
+  flex-wrap: wrap;
+  white-space: nowrap;
+}
 .overview-title > span:first-child {
   min-width: 0;
   overflow: hidden;

@@ -1132,6 +1132,173 @@ test("a cell's menu shows one value alone or leaves it out, holds rows and colum
     .toContain('<td>=HYPERLINK("https://example.com/a","Write")<td>');
 });
 
+test("the selection's cells are made bold, coloured, filled, aligned, patterned and wrapped from the formula bar, which shows how the active cell is", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const narrow = with_(PLAN, {
+    "<col><col data-options": '<col data-width="60"><col data-options',
+  });
+  const { files, stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    narrow,
+  );
+  const bar = files.getByRole("group", { name: "Formula bar" });
+  const press = (name) => bar.getByRole("button", { name, exact: true });
+  const choice = (name) =>
+    app.getByRole("menuitemradio", { name, exact: true });
+  const choose = async (menu, name) => {
+    await press(menu).click();
+    await choice(name).click();
+  };
+  const undo = files.getByRole("button", { name: "Undo" });
+  // A word of the class: on where a cell lacks it, off where all have it.
+  await cell("Tasks", "A2").click();
+  await expect(press("Bold")).toHaveAttribute("aria-pressed", "false");
+  await press("Bold").click();
+  await expect(cell("Tasks", "A2")).toHaveClass(/sheet-bold/);
+  await expect(press("Bold")).toHaveAttribute("aria-pressed", "true");
+  await cell("Tasks", "A2").click();
+  await app.keyboard.press("Shift+ArrowDown");
+  await press("Bold").click();
+  await press("Italic").click();
+  const marked = with_(narrow, {
+    "<td>Write": '<td class="bold italic">Write',
+    "<td>Book": '<td class="bold italic">Book',
+  });
+  await expect.poll(saved).toBe(marked);
+  await expect(cell("Tasks", "A3")).toHaveCSS("font-style", "italic");
+  await press("Bold").click();
+  await press("Italic").click();
+  await expect.poll(saved).toBe(narrow);
+  await expect(cell("Tasks", "A2")).not.toHaveClass(/sheet-bold/);
+  // In the grid the keys do the same.
+  await cell("Tasks", "A2").click();
+  await app.keyboard.press("Control+b");
+  await app.keyboard.press("Control+i");
+  await expect(press("Bold")).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(saved)
+    .toBe(with_(narrow, { "<td>Write": '<td class="bold italic">Write' }));
+  await app.keyboard.press("Control+i");
+  await app.keyboard.press("Control+b");
+  await expect.poll(saved).toBe(narrow);
+  // A header and a total are bold whatever is pressed, and are shown so.
+  await cell("Tasks", "A1").click();
+  await expect(press("Bold")).toHaveAttribute("aria-pressed", "true");
+
+  // A fill is the one its menu shows, over a header's band too; the menu
+  // ticks the one the cell has.
+  const ground = (ref) =>
+    cell("Tasks", ref).evaluate(
+      (drawn) => getComputedStyle(drawn).backgroundColor,
+    );
+  await press("Fill").click();
+  await expect(choice("None")).toHaveAttribute("aria-checked", "true");
+  const good = await choice("Good")
+    .locator("span")
+    .evaluate((name) => getComputedStyle(name, "::before").backgroundColor);
+  await choice("Good").click();
+  await expect.poll(() => ground("A1")).toBe(good);
+  expect(await ground("B1")).not.toBe(good);
+  await press("Fill").click();
+  await expect(choice("Good")).toHaveAttribute("aria-checked", "true");
+  await app.keyboard.press("Escape");
+  await cell("Tasks", "D3").click();
+  const ink = () =>
+    cell("Tasks", "D3").evaluate((drawn) => getComputedStyle(drawn).color);
+  const plain = await ink();
+  await choose("Text colour", "Bad");
+  await expect.poll(ink).not.toBe(plain);
+
+  // A number stands right until it is told where; its own pattern stands
+  // over its column's.
+  await press("Align").click();
+  await expect(choice("Right")).toHaveAttribute("aria-checked", "true");
+  await choice("Center").click();
+  await expect(cell("Tasks", "D3")).toHaveCSS("text-align", "center");
+  await choose("Number format", "Currency");
+  await expect(cell("Tasks", "D3")).toHaveText("$8,400.50");
+  const looked = with_(narrow, {
+    "<th>Task": '<th data-fill="good">Task',
+    "<td>8400.5":
+      '<td data-ink="bad" class="center" data-format="$#,##0.00">8400.5',
+  });
+  await expect.poll(saved).toBe(looked);
+  await choose("Number format", "General");
+  await expect(cell("Tasks", "D3")).toHaveText("8400.5");
+  await press("Number format").click();
+  await expect(choice("General")).toHaveAttribute("aria-checked", "true");
+  await app.keyboard.press("Escape");
+  await undo.click();
+  await expect(cell("Tasks", "D3")).toHaveText("$8,400.50");
+
+  // Wrapped, a long text takes the lines its column leaves it.
+  await cell("Tasks", "A4").click();
+  await app.keyboard.type("Brief the whole team");
+  await app.keyboard.press("Enter");
+  const high = () =>
+    cell("Tasks", "A4").evaluate((drawn) => drawn.parentElement.offsetHeight);
+  const line = await high();
+  await cell("Tasks", "A4").click();
+  await press("Wrap text").click();
+  await expect.poll(high).toBeGreaterThan(line * 2);
+  await expect(press("Wrap text")).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(saved).toContain('<td class="wrap">Brief the whole team');
+  await undo.click();
+  await undo.click();
+  await expect.poll(saved).toBe(looked);
+
+  // Only the rows in view take a look; past the table it reaches there.
+  await cell("Tasks", "B2").click({ button: "right" });
+  await stage.getByRole("menuitem", { name: "Show only “Done”" }).click();
+  await cell("Tasks", "A2").click();
+  await app.keyboard.press("Shift+ArrowDown");
+  await expect(bar.getByRole("status")).toHaveText("Tasks!A2");
+  await choose("Fill", "Warning");
+  await expect.poll(saved).toBe(
+    with_(looked, {
+      "<td>Write": '<td data-fill="warn">Write',
+      "<td>Total": '<td data-fill="warn">Total',
+    }),
+  );
+  await undo.click();
+  await cell("Tasks", "B2").click({ button: "right" });
+  await stage.getByRole("menuitem", { name: "Clear filter" }).click();
+  await cell("Tasks", "G7").click();
+  await choose("Fill", "Accent");
+  await expect
+    .poll(saved)
+    .toContain(
+      '\n<tr><td><td><td><td><td><td><td data-fill="accent">\n</table>',
+    );
+  await expect(cell("Tasks", "G7")).toHaveAttribute("data-fill", "accent");
+  await undo.click();
+  await expect.poll(saved).toBe(looked);
+
+  // A narrow pane folds the controls into one sheet.
+  await app.setViewportSize({ width: 390, height: 780 });
+  await expect(press("Bold")).toBeHidden();
+  await cell("Tasks", "A2").click();
+  await press("Format").click();
+  const folded = app.getByRole("dialog", { name: "Format" });
+  await folded.getByRole("button", { name: "Bold" }).click();
+  await expect(folded.getByRole("button", { name: "Bold" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await folded.getByRole("button", { name: "Fill" }).click();
+  await choice("Bad").click();
+  await expect
+    .poll(saved)
+    .toBe(
+      with_(looked, { "<td>Write": '<td class="bold" data-fill="bad">Write' }),
+    );
+});
+
 test("a sheet with nothing in it shows a pane of cells to type in", async ({
   page: app,
   session,

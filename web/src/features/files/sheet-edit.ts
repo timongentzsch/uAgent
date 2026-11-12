@@ -15,6 +15,7 @@ const name = (said: unknown) =>
     .slice(0, 80);
 export function cellOf(said: Cell): Cell {
   const { count, sum, average } = said.summary ?? {};
+  const { bold, italic, wrap, align, fill, ink, format } = said.marks ?? {};
   return {
     type: "cell",
     ref: name(said.ref),
@@ -24,6 +25,15 @@ export function cellOf(said: Cell): Cell {
       Number.isFinite(count) && Number.isFinite(sum) && Number.isFinite(average)
         ? { count: count!, sum: sum!, average: average! }
         : undefined,
+    marks: {
+      bold: !!bold,
+      italic: !!italic,
+      wrap: !!wrap,
+      align: name(align),
+      fill: name(fill),
+      ink: name(ink),
+      format: name(format),
+    },
   };
 }
 

@@ -143,13 +143,17 @@ export function sizesOf(table, book, sheet) {
   const shown = tab.rows.map((row, r) =>
     row.cells.map((_, c) => book.shown(sheet, r + 1, c + 1)),
   );
-  // The engine is asked for a cell's style only where a rule can embolden.
+  // What is written, and a rule's bold: the engine is asked for a cell's
+  // style only where a rule can embolden.
   const ruled = tab.columns.map((_, c) => book.emboldens(sheet, c + 1));
-  const bold = tab.rows.map(
-    (row, r) => (c) =>
-      isHeader(row) ||
-      isTotal(row) ||
-      (ruled[c] && !!book.look(sheet, r + 1, c + 1).bold),
+  const marks = tab.rows.map((row, r) =>
+    row.cells.map((_, c) => {
+      const { bold, wrap } = book.plain(sheet, r + 1, c + 1);
+      return {
+        wrap,
+        bold: bold || (ruled[c] && !!book.look(sheet, r + 1, c + 1).bold),
+      };
+    }),
   );
   const widths = tab.columns.map((column, c) => {
     if (column["data-width"]) return Number(column["data-width"]) || NARROW;
@@ -157,7 +161,7 @@ export function sizesOf(table, book, sheet) {
       (most, texts, r) =>
         Math.max(
           most,
-          wide(texts[c], font(bold[r](c))) +
+          wide(texts[c], font(marks[r][c].bold)) +
             (r === head - 1
               ? mark + 4
               : r >= head && column["data-options"]
@@ -171,15 +175,14 @@ export function sizesOf(table, book, sheet) {
   // A row is as high as a line of the look the app passes in needs.
   const line = Number.parseFloat(style.lineHeight) || 0;
   const row = Math.max(CELL.height, Math.ceil(line) + 5);
-  const wrapped = tab.columns.flatMap((column, c) =>
-    /\bwrap\b/.test(column.class ?? "") ? [c] : [],
-  );
   // A total row has a line over it.
   const heights = shown.map((texts, r) =>
     Math.max(
       row + (isTotal(tab.rows[r]) ? 1 : 0),
-      ...wrapped.map(
-        (c) => lines(texts[c], font(bold[r](c)), widths[c] - PAD) * line + 5,
+      ...texts.map((text, c) =>
+        marks[r][c].wrap
+          ? lines(text, font(marks[r][c].bold), widths[c] - PAD) * line + 5
+          : 0,
       ),
     ),
   );
@@ -210,17 +213,14 @@ export function draw(table, book, sheet, filters, view) {
       const kind = book.kind(sheet, number, at);
       const drawn = marked(make(cell.th ? "th" : "td"), cell.attrs);
       Object.assign(drawn.dataset, { row: number, column: at });
-      // A rule's fill lies over the cell's own, and that over its row's.
-      const look = book.look(sheet, number, at);
-      const fill =
-        look.fill ?? cell.attrs["data-fill"] ?? row.attrs["data-fill"];
-      if (fill) drawn.dataset.fill = fill;
-      drawn.classList.toggle("sheet-bold", !!look.bold);
-      drawn.classList.toggle("sheet-strike", !!look.strike);
+      const marks = book.marks(sheet, number, at);
+      if (marks.fill) drawn.dataset.fill = marks.fill;
+      if (marks.align) drawn.classList.add(`sheet-${marks.align}`);
+      for (const name of ["bold", "italic", "strike", "wrap"])
+        drawn.classList.toggle(`sheet-${name}`, marks[name]);
       drawn.classList.toggle("sheet-number", kind === "number");
       drawn.classList.toggle("sheet-error", kind === "error");
       drawn.classList.toggle("sheet-link", /^=HYPERLINK\(/i.test(cell.text));
-      drawn.classList.toggle("sheet-wrap", /\bwrap\b/.test(column.class ?? ""));
       drawn.classList.toggle(
         "sheet-options",
         r >= head && !!column["data-options"],

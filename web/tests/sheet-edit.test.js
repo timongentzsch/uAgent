@@ -150,12 +150,22 @@ test("what the page hands over is taken as the kind it names, under what a file 
 // `held`, when given, is what every write waits for.
 test("what the page says of its selection is taken in the shape and size expected", () => {
   const summary = { count: 2, sum: 3.5, average: 1.75 };
+  const marks = {
+    bold: true,
+    italic: false,
+    wrap: false,
+    align: "right",
+    fill: "good",
+    ink: "",
+    format: "0%",
+  };
   const said = {
     type: "cell",
     ref: "Costs!B2",
     raw: "=A2",
     range: "Costs!B2:C3",
     summary,
+    marks,
   };
   assert.deepEqual(cellOf(said), said);
   assert.deepEqual(
@@ -164,6 +174,7 @@ test("what the page says of its selection is taken in the shape and size expecte
       raw: 7,
       range: "x".repeat(500),
       summary: {},
+      marks: { bold: "yes", fill: "a`b", format: 7, more: 1 },
       more: 1,
     }),
     {
@@ -172,6 +183,12 @@ test("what the page says of its selection is taken in the shape and size expecte
       raw: "7",
       range: "x".repeat(80),
       summary: undefined,
+      marks: {
+        ...marks,
+        align: "",
+        fill: "ab",
+        format: "7",
+      },
     },
   );
   assert.equal(

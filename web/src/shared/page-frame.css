@@ -4,6 +4,13 @@
   width: fit-content;
   outline: var(--border);
 }
+/* A sheet's fills, for its page and for the controls that set them. */
+:root {
+  --sheet-tint: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  --sheet-good: color-mix(in srgb, var(--added) 20%, var(--bg));
+  --sheet-warn: color-mix(in srgb, var(--find-current) 20%, var(--bg));
+  --sheet-bad: color-mix(in srgb, var(--removed) 20%, var(--bg));
+}
 .page-frame {
   position: relative;
   overflow: hidden;

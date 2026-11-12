@@ -35,6 +35,16 @@ export interface Pick {
   tag: string;
   text: string;
 }
+// How a sheet's cell shows, which the format controls set.
+export interface Marks {
+  bold: boolean;
+  italic: boolean;
+  wrap: boolean;
+  align: string;
+  fill: string;
+  ink: string;
+  format: string;
+}
 export type PageMessage =
   | ({ type: "ready" } & PageInfo)
   // Loaded, a sheet calculated, and painted: what the frame waits for.
@@ -67,8 +77,9 @@ export type PageMessage =
   // A find's occurrences on each of a document's pages.
   | { type: "find"; counts?: number[] }
   // A sheet's tabs and how many rows a filter hides in the one shown; and its
-  // selection: the active cell ("Costs!B2") and what was typed in it, the
-  // range ("Costs!B2:C6") and what two numbers or more in it come to.
+  // selection: the active cell ("Costs!B2"), what was typed in it and how
+  // it shows, the range ("Costs!B2:C6") and what two numbers or more in it
+  // come to.
   | { type: "sheet"; tabs: string[]; hidden: number; readers?: number }
   // What a sheet hands over when asked: itself as a workbook's bytes, its
   // open tab as CSV, or a read file as the text of a sheet to save.
@@ -81,6 +92,7 @@ export type PageMessage =
       raw: string;
       range: string;
       summary?: { count: number; sum: number; average: number };
+      marks?: Marks;
     };
 
 // Tells a page what to do: select on or off, set a tweak, mark the words
@@ -99,8 +111,8 @@ export const tell = (
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 
 // What a sheet's grid takes from the app, as the variables of its stylesheet
-// (web/sheet/sheet.css): the palette, a cell's fills and the type. Resolved
-// here, since the page is another document.
+// (web/sheet/sheet.css): the palette, a cell's fills and text colours, and
+// the type. Resolved here, since the page is another document.
 const SHEET_LOOK = {
   ground: "bg",
   ink: "text",
@@ -110,8 +122,13 @@ const SHEET_LOOK = {
   head: "raised",
   accent: "accent",
   error: "removed",
+  tint: "sheet-tint",
+  good: "sheet-good",
+  warn: "sheet-warn",
+  bad: "sheet-bad",
+  "ink-good": "added",
+  "ink-warn": "warning",
 };
-const SHEET_FILLS = { good: "added", warn: "find-current", bad: "removed" };
 function tellLook(frame: HTMLIFrameElement | null) {
   if (!frame) return;
   const style = getComputedStyle(frame);
@@ -119,8 +136,6 @@ function tellLook(frame: HTMLIFrameElement | null) {
   const set = (name: string, value: string) =>
     tell(frame, { type: "tweak", name: `--sheet-${name}`, value });
   for (const [name, from] of Object.entries(SHEET_LOOK)) set(name, token(from));
-  for (const [name, from] of Object.entries(SHEET_FILLS))
-    set(name, `color-mix(in srgb, ${token(from)} 20%, ${token("bg")})`);
   set("font", `${style.fontSize}/${style.lineHeight} ${style.fontFamily}`);
 }
 

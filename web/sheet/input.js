@@ -266,6 +266,8 @@ export function listen(sheet) {
     else if (letter === "z") sheet.run(event.shiftKey ? "redo" : "undo");
     else if (letter === "y") sheet.run("redo");
     else if (letter === "d") sheet.run("fill-down");
+    else if (letter === "b") sheet.run("bold");
+    else if (letter === "i") sheet.run("italic");
     else if (letter === "a") sheet.select(end, { row: 1, column: 1 }, true);
     else if (key === " " && isBox()) toggle();
     else if (key === "ContextMenu" || (event.shiftKey && key === "F10"))

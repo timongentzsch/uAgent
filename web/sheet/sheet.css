@@ -19,6 +19,8 @@
   --sheet-good: #dcf5e3;
   --sheet-warn: #fdf0c8;
   --sheet-bad: #fbdcdc;
+  --sheet-ink-good: #116329;
+  --sheet-ink-warn: #855600;
   --sheet-font: 13px/1.35 system-ui, sans-serif;
 }
 body {
@@ -71,8 +73,14 @@ table[data-sheet] .sheet-wrap {
   white-space: normal;
   overflow-wrap: anywhere;
 }
-table[data-sheet] .sheet-number {
+table[data-sheet] :is(.sheet-number, .sheet-right) {
   text-align: right;
+}
+table[data-sheet] .sheet-left {
+  text-align: left;
+}
+table[data-sheet] .sheet-center {
+  text-align: center;
 }
 table[data-sheet] .sheet-error {
   color: var(--sheet-error);
@@ -106,7 +114,7 @@ table[data-sheet] .sheet-letters .sheet-edge:first-child {
   z-index: 6;
 }
 /* The header band, and the rows frozen with it. */
-table[data-sheet] .sheet-head :is(th, td):not(.sheet-edge) {
+table[data-sheet] .sheet-head :where(th, td):where(:not(.sheet-edge)) {
   background: var(--sheet-head);
   font-weight: 600;
 }
@@ -136,6 +144,18 @@ table[data-sheet] [data-fill="bad"] {
 }
 table[data-sheet] [data-fill="muted"] {
   background: var(--sheet-edge);
+  color: var(--sheet-muted);
+}
+table[data-sheet] [data-ink="good"] {
+  color: var(--sheet-ink-good);
+}
+table[data-sheet] [data-ink="warn"] {
+  color: var(--sheet-ink-warn);
+}
+table[data-sheet] [data-ink="bad"] {
+  color: var(--sheet-error);
+}
+table[data-sheet] [data-ink="muted"] {
   color: var(--sheet-muted);
 }
 /* The selection: its box tinted over whatever fills the cells, its active
@@ -237,9 +257,12 @@ table[data-sheet] input[type="checkbox"] {
   margin: 0;
   vertical-align: middle;
 }
-/* What a rule gives the cells it matches. */
+/* What a rule gives the cells it matches, or a cell's own class. */
 table[data-sheet] .sheet-bold {
   font-weight: 600;
+}
+table[data-sheet] .sheet-italic {
+  font-style: italic;
 }
 table[data-sheet] .sheet-strike {
   text-decoration: line-through;

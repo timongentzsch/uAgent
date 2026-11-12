@@ -47,6 +47,33 @@ const rulesOf = (tab) =>
 const FILLED = Object.fromEntries(
   Object.entries(FILLS).map(([name, color]) => [color, name]),
 );
+// A cell's looks a person sets. One is a word of its class, which stands
+// in place of the others of its kind; or what an attribute may say.
+const WORDS = {
+  bold: ["bold"],
+  italic: ["italic"],
+  wrap: ["wrap"],
+  align: ["left", "center", "right"],
+};
+// The text colours, as a workbook sent out has them.
+const INKS = {
+  good: "#116329",
+  warn: "#855600",
+  bad: "#B31D28",
+  muted: "#555555",
+};
+const SAID = { fill: Object.keys(FILLS), ink: Object.keys(INKS) };
+// Where the engine keeps each look, and what it calls a colour.
+const STYLED = {
+  bold: "font.b",
+  italic: "font.i",
+  wrap: "alignment.wrap_text",
+  align: "alignment.horizontal",
+  fill: "fill.color",
+  ink: "font.color",
+};
+const COLOURED = { fill: FILLS, ink: INKS };
+const has = (attrs, word) => !!attrs.class?.split(/\s+/).includes(word);
 
 // A chart goes with its rows or columns when its whole range does.
 const slidCharts = (charts, across, at, count) =>
@@ -198,7 +225,8 @@ export function openBook(engine, written, locked) {
     };
     const patternOf = (cell, sheet, column) =>
       cell.attrs["data-format"] ??
-      tabs[sheet].columns[column - 1]["data-format"];
+      (cell.text.startsWith("=") &&
+        tabs[sheet].columns[column - 1]["data-format"]);
     tabs.forEach((tab, sheet) =>
       tab.columns.forEach((column, c) =>
         format(column["data-format"], sheet, 1, c + 1, tab.rows.length),
@@ -212,12 +240,12 @@ export function openBook(engine, written, locked) {
     eachCell(tabs, (cell, sheet, row, column) => {
       if (cell.text) model.setUserInput(sheet, row, column, cell.text);
     });
-    // That takes a formula's own pattern too, which is set again; what a
-    // typed value brought ("4.5%", a date) stands.
-    eachCell(tabs, (cell, sheet, row, column) => {
-      if (cell.text.startsWith("="))
-        format(patternOf(cell, sheet, column), sheet, row, column);
-    });
+    // That takes a cell's own pattern and a formula's too, which are set
+    // again; over a column's, what a typed value brought ("4.5%", a date)
+    // stands.
+    eachCell(tabs, (cell, sheet, row, column) =>
+      format(patternOf(cell, sheet, column), sheet, row, column),
+    );
     tabs.forEach((tab, sheet) => {
       const [top, bottom] = [headOf(tab) + 1, tab.rows.length];
       const { rules, unread } = ruled[sheet];
@@ -317,6 +345,22 @@ export function openBook(engine, written, locked) {
         return now && now !== was.get(cell) ? withText(cell, now) : cell;
       }),
     );
+  };
+  // How a cell shows but for the rules: its own marks over its row's and
+  // column's. A header and a total are bold.
+  const plain = (sheet, row, column) => {
+    const line = tabs[sheet].rows[row - 1];
+    const cell = line?.cells[column - 1];
+    if (!cell) return {};
+    return {
+      bold: has(cell.attrs, "bold") || isHeader(line) || isTotal(line),
+      italic: has(cell.attrs, "italic"),
+      wrap:
+        has(cell.attrs, "wrap") || has(tabs[sheet].columns[column - 1], "wrap"),
+      align: WORDS.align.find((word) => has(cell.attrs, word)) ?? "",
+      fill: cell.attrs["data-fill"] ?? line.attrs["data-fill"],
+      ink: cell.attrs["data-ink"],
+    };
   };
   const where = (name, box) => `${engine.quoteName(name)}!${boxName(box)}`;
   const worked = (formulas) => {
@@ -438,6 +482,17 @@ export function openBook(engine, written, locked) {
             if (wide) workbook.setColumnsWidth(sheet, c + 1, c + 1, wide);
           });
         });
+        // A rule's look goes out as the rule; what is written, as a style.
+        eachCell(tabs, (_, sheet, row, column) => {
+          const area = { sheet, row, column, width: 1, height: 1 };
+          for (const [name, value] of Object.entries(
+            plain(sheet, row, column),
+          )) {
+            const said = COLOURED[name] ? COLOURED[name][value] : `${value}`;
+            if (value && said)
+              workbook.updateRangeStyle(area, STYLED[name], said);
+          }
+        });
         return workbook.toXlsx();
       } finally {
         workbook.free();
@@ -462,6 +517,31 @@ export function openBook(engine, written, locked) {
         fill: FILLED[String(fill.color).toUpperCase()],
         bold: !!font.b,
         strike: !!font.strike,
+      };
+    },
+
+    plain,
+    // How a cell shows: what is written, and a rule's look over it.
+    marks(sheet, row, column) {
+      const own = plain(sheet, row, column);
+      const look = this.look(sheet, row, column);
+      return {
+        ...own,
+        bold: !!(own.bold || look.bold),
+        strike: !!look.strike,
+        fill: look.fill ?? own.fill,
+      };
+    },
+    // The same for the controls that set them, with what the engine knows:
+    // a number stands right, in a pattern ("general" for none).
+    state(sheet, row, column) {
+      const marks = this.marks(sheet, row, column);
+      return {
+        ...marks,
+        align:
+          marks.align ||
+          (this.kind(sheet, row, column) === "number" ? "right" : "left"),
+        format: model.getCellStyle(sheet, row, column).style.num_fmt,
       };
     },
 
@@ -575,6 +655,57 @@ export function openBook(engine, written, locked) {
           attrs: { ...tabs[sheet].attrs, [name]: value },
         }),
       ),
+
+    // A look set on the box's cells but those in `skip`, which the table
+    // reaches for. A word is taken out where every cell has it; an
+    // attribute goes with "".
+    style(sheet, box, name, value, skip) {
+      const words = WORDS[name];
+      const may = words ?? (SAID[name] && ["", ...SAID[name]]);
+      if (may && !may.includes(value)) return false;
+      const tab = tabs[sheet];
+      const attr = words ? "class" : `data-${name}`;
+      const inside = (row, column) =>
+        row >= box.top &&
+        row <= box.bottom &&
+        column >= box.left &&
+        column <= box.right &&
+        !skip.has(row);
+      const off = words
+        ? box.bottom <= tab.rows.length &&
+          box.right <= tab.columns.length &&
+          tab.rows.every((row, r) =>
+            row.cells.every(
+              (cell, c) => !inside(r + 1, c + 1) || has(cell.attrs, value),
+            ),
+          )
+        : !value;
+      const refused =
+        !off && tooFar(sheet, { row: box.bottom, column: box.right });
+      if (refused) return refused;
+      return commit(
+        mapCells(
+          edit(sheet, () => (off ? tab : reaching(tab, box.bottom, box.right))),
+          (cell, at, row, column) => {
+            if (at !== sheet || !inside(row, column)) return cell;
+            const { [attr]: was = "", ...rest } = cell.attrs;
+            const now = words
+              ? [
+                  ...was.split(/\s+/).filter((word) => !words.includes(word)),
+                  ...(off ? [] : [value]),
+                ]
+                  .join(" ")
+                  .trim()
+              : value;
+            if (now === was) return cell;
+            return {
+              ...cell,
+              attrs: now ? { ...cell.attrs, [attr]: now } : rest,
+            };
+          },
+        ),
+      );
+    },
 
     // Text set down from a cell on. From this book's own cells (`from`)
     // formulas move along, and a cut clears.

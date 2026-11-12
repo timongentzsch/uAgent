@@ -51,6 +51,8 @@ with `browser` `open`, it lists every cell in error with the reason.
 | `data-width="240"` on a `<col>` | the column's width in pixels |
 | `class="wrap"` on a `<col>` or a cell | long text wraps |
 | `data-fill="accent\|good\|warn\|bad\|muted"` on a cell or row | a fill from the theme |
+| `data-ink="good\|warn\|bad\|muted"` on a cell | the text's colour, from the theme |
+| `class="bold"`, `"italic"`, `"left"`, `"center"`, `"right"` on a cell | bold, italic, and where its text stands |
 | `data-control="checkbox"` on a `<col>` | TRUE and FALSE as boxes to tick |
 | `data-options="To do\|In progress\|Done"` on a `<col>` | a dropdown |
 | `data-frozen="1 A"` on the table | rows and columns that stay in view |

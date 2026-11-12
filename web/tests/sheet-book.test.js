@@ -570,6 +570,97 @@ test("tabs are put in, copied, moved, named and taken out, each a step; a new na
   assert.equal(book.shown(1, 2, 2), "19,441.00");
 });
 
+test("a look is set on a box's cells and taken off where all have it; the table reaches for it, and a far cell is refused", () => {
+  const book = plan();
+  const none = new Set();
+  const box = { top: 4, left: 1, bottom: 5, right: 2 };
+  const attrs = (row, column) =>
+    book.tabs[0].rows[row - 1].cells[column - 1].attrs;
+  assert.equal(book.style(0, box, "bold", "bold", new Set([5])), true);
+  assert.deepEqual([attrs(4, 2), attrs(5, 2)], [{ class: "bold" }, {}]);
+  // Not all have it: the rest take it. All have it: it goes.
+  assert.equal(book.style(0, box, "bold", "bold", none), true);
+  assert.equal(book.style(0, box, "align", "center", none), true);
+  assert.equal(book.style(0, box, "align", "right", none), true);
+  assert.deepEqual(attrs(5, 1), { class: "bold right" });
+  assert.equal(book.style(0, box, "bold", "bold", none), true);
+  assert.deepEqual(attrs(5, 1), { class: "right" });
+  assert.equal(book.style(0, box, "align", "right", none), true);
+  assert.deepEqual(attrs(5, 1), {});
+  // A header is bold whatever its class says, and a number stands right.
+  assert.equal(book.state(0, 3, 1).bold, true);
+  assert.equal(book.state(0, 4, 3).align, "right");
+  assert.equal(book.state(0, 4, 1).align, "left");
+  assert.equal(book.state(0, 40, 9).format, "general");
+
+  assert.equal(book.style(0, box, "fill", "good", none), true);
+  assert.equal(book.style(0, box, "ink", "bad", none), true);
+  assert.deepEqual(attrs(4, 1), { "data-fill": "good", "data-ink": "bad" });
+  assert.equal(book.marks(0, 4, 1).fill, "good");
+  assert.equal(book.style(0, box, "fill", "", none), true);
+  assert.deepEqual(attrs(4, 1), { "data-ink": "bad" });
+  assert.equal(book.style(0, box, "fill", "", none), false);
+  // Only the theme's names and the grid's words are taken.
+  assert.equal(book.style(0, box, "fill", "#f00", none), false);
+  assert.equal(book.style(0, box, "align", "bold", none), false);
+
+  // A cell's own pattern stands over what was typed in it; General over
+  // its column's.
+  const rate = { top: 3, left: 2, bottom: 3, right: 2 };
+  assert.equal(book.style(1, rate, "format", "0.000", none), true);
+  assert.equal(book.shown(1, 3, 2), "0.045");
+  assert.equal(book.state(1, 3, 2).format, "0.000");
+  const cost = { top: 5, left: 3, bottom: 5, right: 3 };
+  assert.equal(book.style(0, cost, "format", "general", none), true);
+  assert.equal(book.shown(0, 5, 3), "8400.5");
+
+  // Past the table it reaches there, as text typed there does.
+  const past = { top: 9, left: 4, bottom: 9, right: 4 };
+  assert.equal(book.style(0, past, "wrap", "wrap", none), true);
+  assert.equal(book.tabs[0].rows.length, 9);
+  assert.deepEqual(attrs(9, 4), { class: "wrap" });
+  assert.equal(book.marks(0, 9, 4).wrap, true);
+  assert.equal(book.style(0, past, "wrap", "wrap", none), true);
+  assert.equal(book.tabs[0].rows.length, 7);
+  const far = { top: 1, left: 1, bottom: 1_048_576, right: 16_384 };
+  assert.match(book.style(0, far, "bold", "bold", none), /too far/);
+  assert.equal(book.style(0, far, "ink", "", none), true);
+  assert.deepEqual(attrs(4, 1), {});
+  book.undo();
+  assert.deepEqual(attrs(4, 1), { "data-ink": "bad" });
+});
+
+test("a workbook sent out carries the looks written: bold, italic, the colours, where the text stands and wrap", () => {
+  const book = plan();
+  const at = { top: 4, left: 1, bottom: 4, right: 1 };
+  for (const [name, value] of [
+    ["bold", "bold"],
+    ["italic", "italic"],
+    ["wrap", "wrap"],
+    ["align", "center"],
+    ["fill", "good"],
+    ["ink", "bad"],
+  ])
+    assert.equal(book.style(0, at, name, value, new Set()), true);
+  const read = engine.Model.fromXlsx(book.xlsx(), "Plan", "en", "UTC", "en");
+  const styled = (row) => read.getCellStyle(0, row, 1).style;
+  const { font, fill, alignment } = styled(4);
+  assert.deepEqual(
+    [font.b, font.i, font.color, fill.color, alignment],
+    [
+      true,
+      true,
+      "#B31D28",
+      "#DCF5E3",
+      { horizontal: "center", wrap_text: true },
+    ],
+  );
+  // A header is bold there as here; a plain cell is plain.
+  assert.equal(styled(3).font.b, true);
+  assert.equal(!!styled(5).font.b, false);
+  read.free();
+});
+
 test("a chart reads its labels and the columns that hold numbers; a blank cell is a gap, not a zero", () => {
   const book = charted("A3:C6");
   // The Status column is text: it is no series.

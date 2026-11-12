@@ -340,6 +340,7 @@ async function open() {
         raw: tab().rows[anchor.row - 1]?.cells[anchor.column - 1]?.text ?? "",
         range: `${tab().name}!${boxName(box())}`,
         summary: high() * wide() > 1 ? book.summary(at, box()) : undefined,
+        marks: book.state(at, anchor.row, anchor.column),
       });
     });
   };
@@ -519,6 +520,16 @@ async function open() {
     "tab-right": () => book.moveTab(at, 1),
     "tab-delete": () => book.dropTab(at),
     "tab-name": (name) => book.nameTab(at, String(name ?? "")),
+    // A look for the selection's cells in view; a word (Bold) is its own
+    // value.
+    ...Object.fromEntries(
+      ["bold", "italic", "wrap", "align", "fill", "ink", "format"].map(
+        (name) => [
+          name,
+          (value = name) => book.style(at, box(), name, String(value), hidden),
+        ],
+      ),
+    ),
   };
   // What is kept of each tab (its place, its filters) is let go with them.
   const retab = () => {

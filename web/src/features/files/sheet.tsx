@@ -1,6 +1,21 @@
-import type { RefObject } from "preact";
+import type { ComponentChildren, RefObject } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Plus, Redo2, Undo2 } from "lucide-preact";
+import {
+  Baseline,
+  Bold,
+  Check,
+  ChevronDown,
+  Hash,
+  Italic,
+  PaintBucket,
+  Plus,
+  Redo2,
+  TextAlignCenter,
+  TextAlignEnd,
+  TextAlignStart,
+  TextWrap,
+  Undo2,
+} from "lucide-preact";
 import {
   Actions,
   Button,
@@ -12,7 +27,9 @@ import {
 } from "../../shared/ui.tsx";
 import { Input } from "../../shared/form-controls.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
+import { SheetButton } from "../../shared/sheet.tsx";
 import { Tabs } from "../../shared/tabs.tsx";
+import { capitalize } from "../../shared/display.ts";
 import { plural } from "../../shared/quantities.ts";
 import type { Board } from "./boards.ts";
 import { useCurrentInView } from "./legend.tsx";
@@ -20,16 +37,150 @@ import type { Cell } from "./sheet-edit.ts";
 
 // A sheet's chrome around its grid, which the page draws and edits itself.
 
-// Enter writes into the cell; Escape puts back what the cell holds.
+type Act = (command: string, value?: string) => void;
+type Options = [string, string][];
+
+// The looks a cell may take (skills/artifact/references/sheet.md): the
+// theme's fills and text colours by name, a few number patterns.
+const COLOURS: Options = [
+  ["Accent", "accent"],
+  ["Good", "good"],
+  ["Warning", "warn"],
+  ["Bad", "bad"],
+  ["Muted", "muted"],
+];
+const ALIGNS = {
+  left: TextAlignStart,
+  center: TextAlignCenter,
+  right: TextAlignEnd,
+};
+const FORMATS: Options = [
+  ["General", "general"],
+  ["Number", "#,##0.00"],
+  ["Currency", "$#,##0.00"],
+  ["Percent", "0%"],
+  ["Date", "yyyy-mm-dd"],
+];
+
+// One of a few, from a menu under an icon: the one the cell has is ticked.
+// A colour has its swatch before its name.
+function Choice({
+  label,
+  icon,
+  options,
+  value,
+  pick,
+  swatch,
+}: {
+  label: string;
+  icon: ComponentChildren;
+  options: Options;
+  value: string;
+  pick: (value: string) => void;
+  swatch?: "fill" | "ink";
+}) {
+  return (
+    <Menu
+      label={label}
+      trigger={
+        <>
+          {icon}
+          <span class="sr-only">{label}</span>
+          <ChevronDown />
+        </>
+      }
+    >
+      {options.map(([name, option]) => (
+        <MenuItem
+          key={option}
+          role="menuitemradio"
+          aria-checked={option === value}
+          onClick={() => pick(option)}
+        >
+          <span data-look={swatch && option ? `${swatch}-${option}` : null}>
+            {name}
+          </span>
+          {option === value && <Check />}
+        </MenuItem>
+      ))}
+    </Menu>
+  );
+}
+
+// How the selection's cells look, set as the active cell shows it.
+function Looks({ cell, act }: { cell?: Cell; act: Act }) {
+  const { bold, italic, wrap, align, fill, ink, format } = cell?.marks ?? {};
+  const Aligned = ALIGNS[align as keyof typeof ALIGNS] ?? TextAlignStart;
+  return (
+    <>
+      <IconButton
+        label="Bold"
+        aria-pressed={!!bold}
+        onClick={() => act("bold")}
+      >
+        <Bold />
+      </IconButton>
+      <IconButton
+        label="Italic"
+        aria-pressed={!!italic}
+        onClick={() => act("italic")}
+      >
+        <Italic />
+      </IconButton>
+      <Choice
+        label="Text colour"
+        icon={<Baseline />}
+        options={[["Default", ""], ...COLOURS.slice(1)]}
+        swatch="ink"
+        value={ink ?? ""}
+        pick={(value) => act("ink", value)}
+      />
+      <Choice
+        label="Fill"
+        icon={<PaintBucket />}
+        options={[["None", ""], ...COLOURS]}
+        swatch="fill"
+        value={fill ?? ""}
+        pick={(value) => act("fill", value)}
+      />
+      <Choice
+        label="Align"
+        icon={<Aligned />}
+        options={Object.keys(ALIGNS).map((name) => [capitalize(name), name])}
+        value={align ?? ""}
+        pick={(value) => act("align", value)}
+      />
+      <Choice
+        label="Number format"
+        icon={<Hash />}
+        options={FORMATS}
+        value={(format ?? "").toLowerCase()}
+        pick={(value) => act("format", value)}
+      />
+      <IconButton
+        label="Wrap text"
+        aria-pressed={!!wrap}
+        onClick={() => act("wrap")}
+      >
+        <TextWrap />
+      </IconButton>
+    </>
+  );
+}
+
+// Enter writes into the cell; Escape puts back what the cell holds. Beside
+// it the cell's looks, which a narrow pane folds into one sheet.
 export function FormulaBar({
   cell,
   locked,
   write,
+  act,
   field,
 }: {
   cell?: Cell;
   locked: boolean;
   write: (value: string) => void;
+  act: Act;
   field: RefObject<HTMLInputElement | null>;
 }) {
   const [typed, setTyped] = useState<string>();
@@ -52,6 +203,27 @@ export function FormulaBar({
           event.preventDefault();
         }}
       />
+      {!locked && (
+        <>
+          <div class="sheet-looks">
+            <Looks cell={cell} act={act} />
+          </div>
+          <SheetButton
+            className="sheet-looks-folded"
+            label="Format"
+            trigger={
+              <>
+                Format
+                <ChevronDown />
+              </>
+            }
+          >
+            <div class="sheet-looks-sheet">
+              <Looks cell={cell} act={act} />
+            </div>
+          </SheetButton>
+        </>
+      )}
     </div>
   );
 }
@@ -71,7 +243,7 @@ function TabActions({
   boards: Board[];
   index: number;
   readers: number;
-  act: (command: string, value?: string) => void;
+  act: Act;
 }) {
   const [asking, setAsking] = useState<"" | "name" | "delete">("");
   const [name, setName] = useState("");
@@ -178,7 +350,7 @@ export function SheetBar({
   redo: boolean;
   // An Excel or CSV file: read, and saved as a sheet to change it.
   locked: boolean;
-  act: (command: string, value?: string) => void;
+  act: Act;
   edit: () => void;
   comment?: () => void;
 }) {

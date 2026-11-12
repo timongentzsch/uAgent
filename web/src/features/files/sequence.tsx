@@ -733,6 +733,7 @@ export default function Sequence({
                 locked={locked}
                 field={formula}
                 write={(value) => tell(frame.current, { type: "input", value })}
+                act={act}
               />
             </fieldset>
           )}

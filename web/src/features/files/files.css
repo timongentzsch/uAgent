@@ -310,6 +310,61 @@
 :is(.sheet-bar, .sheet-formula) > :not(.sheet-tabs, .text-control) {
   flex: none;
 }
+/* A cell's looks in a row under what was typed in it; folded, in a sheet
+   of their own, whose button stands beside the field. */
+.sheet-formula {
+  flex-wrap: wrap;
+}
+.sheet-looks,
+.sheet-looks-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sheet-looks {
+  width: 100%;
+}
+.sheet-looks-folded {
+  display: none;
+}
+/* A fill or a text colour by name, its swatch before it. */
+[data-look]::before {
+  content: "";
+  display: inline-block;
+  width: var(--icon-s);
+  aspect-ratio: 1;
+  margin-right: var(--space-2);
+  vertical-align: var(--icon-align);
+  border: var(--border);
+}
+[data-look="fill-accent"]::before {
+  background: var(--sheet-tint);
+}
+[data-look="fill-good"]::before {
+  background: var(--sheet-good);
+}
+[data-look="fill-warn"]::before {
+  background: var(--sheet-warn);
+}
+[data-look="fill-bad"]::before {
+  background: var(--sheet-bad);
+}
+[data-look="fill-muted"]::before {
+  background: var(--surface);
+}
+[data-look="ink-good"]::before {
+  background: var(--added);
+}
+[data-look="ink-warn"]::before {
+  background: var(--warning);
+}
+[data-look="ink-bad"]::before {
+  background: var(--removed);
+}
+[data-look="ink-muted"]::before {
+  background: var(--muted);
+}
 .sheet-formula > output {
   color: var(--muted);
 }
@@ -634,7 +689,11 @@
   .sheet-edit-cell {
     display: inline-flex;
   }
-  .sheet-note {
+  .sheet-looks-folded {
+    display: block;
+  }
+  .sheet-note,
+  .sheet-looks {
     display: none;
   }
   .page-legend-item[data-drop]::before {

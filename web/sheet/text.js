@@ -137,12 +137,16 @@ export const spread = (box, merges) => {
 // negative count takes that many out from `at` on, and one of those is gone.
 export const slid = (n, at, count) =>
   n < at ? n : n < at - count ? undefined : n + count;
+// A box pushed past the grid's last row or column ends there.
 export const slidBox = (box, across, at, count) => {
   const [first, last] = across ? ["left", "right"] : ["top", "bottom"];
   const next = {
     ...box,
     [first]: slid(box[first], at, count) ?? at,
-    [last]: slid(box[last], at, count) ?? at - 1,
+    [last]: Math.min(
+      slid(box[last], at, count) ?? at - 1,
+      across ? LAST.column : LAST.row,
+    ),
   };
   return next[last] < next[first] ? undefined : next;
 };

@@ -78,6 +78,11 @@ test("a range is read from its name, and follows rows and columns put in or take
   assert.equal(boxName(slidBox(box, false, 5, -9)), "B2:D4");
   assert.equal(slidBox(box, false, 2, -4), undefined);
   assert.equal(boxName(slidBox(box, true, 1, 1)), "C2:E5");
+  // Pushed past the grid's last row or column, a box ends there.
+  const edge = (name, across) => boxName(slidBox(boxNamed(name), across, 1, 1));
+  assert.equal(edge("A2:A1048576", false), "A3:A1048576");
+  assert.equal(edge("B1:XFD1", true), "C1:XFD1");
+  assert.equal(slidBox(boxNamed("XFD1"), true, 1, 1), undefined);
 });
 
 test("a tab holds in view what it says, else its header rows", () => {

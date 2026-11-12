@@ -1566,6 +1566,12 @@ test("a merged range to the spreadsheet's last row is kept by row only near the 
     assert.equal(await book.moveRows(0, 2, 1, 1), true);
     assert.ok(performance.now() - changed < 500);
     assert.equal(book.tabs[0].attrs["data-merge"], range);
+    // Pushed down and right, it ends at the grid's last row and column.
+    const right = range === "B1:B1048576" ? "C" : "XFD";
+    assert.equal(await book.insertRows(0, 1, 1), true);
+    assert.equal(await book.insertColumns(0, 1, 1), true);
+    assert.equal(book.tabs[0].attrs["data-merge"], `C2:${right}1048576`);
+    assert.deepEqual(book.errors(), []);
   }
 });
 

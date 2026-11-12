@@ -58,13 +58,15 @@ test("a place folds to its header with a count, remembered, and + starts a conve
     expanded: true,
   });
   await expect(folders.locator(".session")).toHaveCount(1);
+  await expect(folders.locator(".place-count")).toHaveText("1");
+  // Its own name; no other listed folder shares it, so no parent.
   const path = host.project.split("/").filter(Boolean);
   await expect(folders.locator(".folder-own")).toHaveText(path.at(-1));
-  await expect(folders.locator(".folder-parent")).toHaveText(path.at(-2));
+  await expect(folders.locator(".folder-parent")).toHaveCount(0);
 
   await header.click();
   await expect(folders.locator(".session")).toHaveCount(0);
-  await expect(folders.locator(".place-count")).toHaveText("(1)");
+  await expect(folders.locator(".place-count")).toHaveText("1");
   await expect(
     folders.getByRole("button", {
       name: /^Conversations of /,
@@ -81,7 +83,15 @@ test("a place folds to its header with a count, remembered, and + starts a conve
   await folders.getByRole("button", { name: /^New in / }).click();
   await page.getByRole("menuitem", { name: "Conversation" }).click();
   await expect(folders.locator(".session")).toHaveCount(2);
-  await expect(folders.locator(".place-count")).toHaveCount(0);
+  // Each place counts its own (macOS lists /var and /private/var apart).
+  await expect
+    .poll(async () =>
+      (await folders.locator(".place-count").allInnerTexts()).reduce(
+        (sum, count) => sum + Number(count),
+        0,
+      ),
+    )
+    .toBe(2);
 });
 
 test("New conversation starts in the Scratch workspace, and a second joins it", async ({

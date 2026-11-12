@@ -29,6 +29,7 @@
   margin-top: var(--space-6);
 }
 .place-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -37,7 +38,7 @@
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: var(--font-small);
+  font-size: var(--font-body);
   font-weight: var(--weight-strong);
 }
 .sidebar h2 button {
@@ -63,6 +64,33 @@
 .place-count {
   font-weight: var(--weight-regular);
   color: var(--muted);
+}
+/* The count stands at the header's end, in line with the rows' times, until
+   the header's menus take its place. */
+@media not (pointer: coarse) {
+  .place-count {
+    position: absolute;
+    right: var(--inset-x);
+  }
+}
+.place-head > .action-menu {
+  opacity: 0;
+}
+.place-head:has(:focus-visible, [aria-haspopup][aria-expanded="true"])
+  > .action-menu {
+  opacity: 1;
+}
+.place-head:has(:focus-visible, [aria-haspopup][aria-expanded="true"])
+  .place-count {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .place-head:hover > .action-menu {
+    opacity: 1;
+  }
+  .place-head:hover .place-count {
+    display: none;
+  }
 }
 .place-head .attention {
   color: var(--accent);
@@ -132,9 +160,11 @@
 }
 /* Touch has no hover: the menus show, so Select is discoverable. */
 @media (pointer: coarse) {
+  .session-row {
+    position: relative;
+  }
   .session-row,
   .place-head {
-    position: relative;
     -webkit-touch-callout: none;
     user-select: none;
   }
@@ -143,7 +173,8 @@
   .place-head[data-held] {
     background: var(--hover);
   }
-  .session-row .action-menu {
+  .session-row .action-menu,
+  .place-head > .action-menu {
     opacity: 1;
   }
   .place-head:not(:has([aria-current], :focus-visible))

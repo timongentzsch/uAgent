@@ -12,6 +12,8 @@ const Workspace = createLucideIcon("workspace", [
 export const folderName = (path = "") =>
   path.split("/").filter(Boolean).slice(-2).join("/") ||
   "Unavailable directory";
+export const ownName = (path = "") =>
+  path.split("/").filter(Boolean).at(-1) || folderName();
 
 // The own name keeps its room and the directory truncates first.
 export default function FolderLabel({
@@ -30,11 +32,7 @@ export default function FolderLabel({
       {space ? <Workspace /> : <Folder />}
       <span>
         <span class="folder-own">
-          <DataText>
-            {children ||
-              path?.split("/").filter(Boolean).at(-1) ||
-              folderName()}
-          </DataText>
+          <DataText>{children || ownName(path)}</DataText>
         </span>
         {parent && <small class="folder-parent">{parent}</small>}
       </span>

@@ -28,7 +28,10 @@ import {
   EmptyState,
   updateChecked,
 } from "../../shared/ui.tsx";
-import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
+import FolderLabel, {
+  folderName,
+  ownName,
+} from "../../shared/folder-label.tsx";
 import { folderOf } from "../../shared/display.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { Menu, MenuItem, useLongPress } from "../../shared/menu.tsx";
@@ -458,6 +461,13 @@ function SidebarView({
     />
   );
   const kept = new Map(spaces.map((space) => [space.path, space]));
+  // A folder goes by its own name, with its parent's only where two share it.
+  const folderNames = [
+    ...top.flatMap((pinned) => ("place" in pinned ? [pinned.place] : [])),
+    ...kinds.flatMap(([, places]) => places),
+  ]
+    .filter(([path]) => !kept.has(path))
+    .map(([path]) => ownName(path));
   const place = ([cwd, entries]: Place) => {
     const space = kept.get(cwd);
     const name = space?.name || folderName(cwd);
@@ -476,6 +486,7 @@ function SidebarView({
     const attention = conversations.filter((item) =>
       ["waiting", "failed"].includes(statusOf(item, online)),
     ).length;
+    const own = ownName(cwd);
     return (
       <section key={cwd}>
         <div
@@ -523,14 +534,17 @@ function SidebarView({
               onClick={(event) => (space && pick(cwd, event)) || overview(cwd)}
             >
               <FolderLabel path={cwd} space={!!space}>
-                {space?.name}
+                {space?.name ||
+                  (folderNames.filter((other) => other === own).length > 1
+                    ? undefined
+                    : own)}
               </FolderLabel>
-              {folded && conversations.length > 0 && (
+              {conversations.length > 0 && (
                 <span
                   class="place-count"
                   aria-label={plural(conversations.length, "conversation")}
                 >
-                  ({conversations.length})
+                  {conversations.length}
                 </span>
               )}
               {folded && attention > 0 && (

@@ -251,12 +251,27 @@ function App({ host, bindResult, reading }: HostAppProps) {
     (value: Draft, id = selected) => updateDraft(id, () => value),
     [updateDraft, selected],
   );
+  // Commands on their way, by request id. One that acts on another (a
+  // queued message taken back or inserted) waits for that one's answer: the
+  // host may not know it yet, and would say it was already delivered.
+  const going = useRef(new Map<string, Promise<unknown>>());
   const act: Act = useCallback(
     async <K extends CommandKind>(kind: K, fields?: CommandFields<K>) => {
       if (!online)
         throw new Error("Reconnect and refresh before sending commands.");
-      if (fields?.request_id) correlate(fields.request_id);
-      return command(kind, session, fields);
+      const { request_id, target_id } = (fields ?? {}) as {
+        request_id?: string;
+        target_id?: string;
+      };
+      if (request_id) correlate(request_id);
+      await going.current.get(target_id ?? "");
+      const sent = command(kind, session, fields);
+      if (request_id)
+        going.current.set(
+          request_id,
+          sent.catch(() => {}).finally(() => going.current.delete(request_id)),
+        );
+      return sent;
     },
     [online, session, correlate, command],
   );

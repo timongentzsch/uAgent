@@ -151,6 +151,42 @@ for (const [how, lose] of [
     );
   });
 
+// The row is shown as queued before the host has said so: taking it back
+// then must not reach the host before the message itself has.
+test("guidance taken back before its send is answered is taken back once it is", async ({
+  page,
+  session,
+}) => {
+  const prompt = await start(page, session);
+  let answer;
+  await page.route("**/api/command", async (route) => {
+    if (route.request().postDataJSON().kind === "steer")
+      await new Promise((go) => (answer = go));
+    await route.continue();
+  });
+  await prompt.fill("Held on its way");
+  await page
+    .getByRole("button", { name: "Send guidance", exact: true })
+    .click();
+  const tray = page.getByRole("region", { name: "Queued messages" });
+  await expect(tray).toContainText("Held on its way");
+  await expect.poll(() => typeof answer).toBe("function");
+  await tray.getByRole("button", { name: "Edit", exact: true }).click();
+  answer();
+  await expect(tray).toHaveCount(0);
+  await expect(prompt).toHaveValue("Held on its way");
+  // The host holds nothing of it: the turn goes on without it.
+  await page.unroute("**/api/command");
+  await page.reload();
+  await expect(page.locator(".message.response")).toContainText(
+    "Waiting for guidance",
+  );
+  await expect(page.locator(".message.user")).toHaveCount(1);
+  await expect(
+    page.getByRole("region", { name: "Queued messages" }),
+  ).toHaveCount(0);
+});
+
 test("queued guidance can be edited with its attachments without replacing a draft", async ({
   page,
   session,

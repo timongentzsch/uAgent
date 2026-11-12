@@ -476,6 +476,23 @@ test("a closing page writes a held change into the file in hand, every tab of it
   );
 });
 
+test("a leave stays once for a change still being calculated; the next writes it, and a change made or refused lets leaves go", async () => {
+  const file = { now: { text: `${head}${one}\n${two}`, revision: "r0" } };
+  const { saver } = saving(file);
+  // A cell typed in alone is no reason.
+  saver.hold("a.html", typed(0, "typed"));
+  assert.equal(saver.stays(), false);
+  saver.hold("a.html", changing(edit(0, "calculated")), true);
+  assert.equal(saver.stays(), true);
+  assert.equal(saver.stays(), false);
+  assert.equal(await saver.flush(), true);
+  assert.ok(file.now.text.includes("calculated"));
+  // Answered, the next change asks again.
+  saver.hold("a.html");
+  saver.hold("a.html", changing(edit(1, "next")), true);
+  assert.equal(saver.stays(), true);
+});
+
 test("a cell's draft is the table said once, joined around the text as its file would hold it", () => {
   const said = { tab: 1, tabs: 2, head: "<td>", tail: "<td>x", empty: "" };
   assert.deepEqual(draftOf({ ...said, more: 1 }), said);

@@ -183,7 +183,7 @@ export default function Sequence({
   // A sheet's cell being typed in and the changes it is calculating, as the
   // edits they would make: written if the sheet is left first. None once
   // there are none.
-  typing: (edit?: () => TableEdit[]) => void;
+  typing: (edit?: () => TableEdit[], calculating?: boolean) => void;
   // An Excel or CSV file's tabs, as a sheet's text, saved beside the file.
   saveAs?: (text: string) => Promise<void>;
   // A deck's slides renamed, copied or deleted as `moves` say, after which
@@ -340,6 +340,7 @@ export default function Sequence({
       sheet && (held.length || cut)
         ? () => [...held, ...(cut ? [editOf(cut, written)] : [])]
         : undefined,
+      held.length > 0,
     );
   };
   const [ranged, setRanged] = useState<string>();

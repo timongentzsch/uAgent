@@ -214,7 +214,21 @@ export default function Files({
     );
   // A page is left once that is written. Typing that could not be keeps
   // its page once, its notice read; the next time the person leaves it.
+  // So does a sheet that was calculating a change as the press began: the
+  // cell its own press ends is written as it leaves.
+  const [staying, setStaying] = useState(false);
+  const pressed = useRef<boolean>(undefined);
+  const stays = () => {
+    const stay = pressed.current ?? tables.stays();
+    pressed.current = undefined;
+    setStaying(stay);
+    return stay;
+  };
+  const press = () => {
+    pressed.current = tables.stays();
+  };
   const leave = (update: (flow: Flow) => Flow) =>
+    stays() ||
     void settle().then((written) =>
       written ? setFlow(update) : blocks.forget(),
     );
@@ -580,7 +594,10 @@ export default function Files({
     [],
   );
   // Said of the file it happened in.
-  useEffect(() => setUnsaved(undefined), [file]);
+  useEffect(() => {
+    setUnsaved(undefined);
+    setStaying(false);
+  }, [file]);
   // A write reloads the page it changed.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
   useEffect(() => {
@@ -667,6 +684,7 @@ export default function Files({
                 : "files-back files-back-canvas"
             }
             label={backLabel(above)}
+            onPointerDown={press}
             onClick={() => leave(pop)}
           >
             <ChevronLeft />
@@ -749,7 +767,11 @@ export default function Files({
           </a>
         )}
         {closeFiles && (
-          <IconButton label="Close files" onClick={closeFiles}>
+          <IconButton
+            label="Close files"
+            onPointerDown={press}
+            onClick={() => stays() || closeFiles()}
+          >
             <X />
           </IconButton>
         )}
@@ -762,6 +784,14 @@ export default function Files({
                 {[404, 409].includes(failure(arranging.error).status ?? 0)
                   ? "The deck's folder changed meanwhile, so nothing was changed."
                   : failure(arranging.error).message}
+              </Notice>
+            </p>
+          )}
+          {staying && (
+            <p class="page-notice">
+              <Notice tone="warning">
+                The sheet is still calculating a change. Leave again to keep it
+                as it stands; it is calculated when the sheet is next opened.
               </Notice>
             </p>
           )}
@@ -837,7 +867,9 @@ export default function Files({
               }
               settle={settle}
               forget={blocks.forget}
-              typing={(edit) => tables.hold(file, edit)}
+              typing={(edit, calculating) =>
+                tables.hold(file, edit, calculating)
+              }
               saveAs={async (text) => {
                 const path = join(
                   dir,

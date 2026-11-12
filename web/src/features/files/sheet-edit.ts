@@ -214,7 +214,11 @@ export function tableSaver(io: {
   failed: (error: unknown, path: string) => void;
 }) {
   let held: Held | undefined;
-  let typing: { path: string; edit: () => TableEdit[] } | undefined;
+  let typing:
+    | { path: string; edit: () => TableEdit[]; calculating: boolean }
+    | undefined;
+  // Whether a leave stayed, once, for the change being calculated.
+  let stayed = false;
   let round = 0;
   let said = -1;
   // How many writes have failed: a leave is kept for one it waited for.
@@ -275,8 +279,9 @@ export function tableSaver(io: {
     // nothing once it is typed no more and they are made or refused. What is
     // written so is calculated when the sheet is next opened. The file is
     // read meanwhile, so a closing page can write into it.
-    hold(path: string, edit?: () => TableEdit[]) {
-      typing = edit && { path, edit };
+    hold(path: string, edit?: () => TableEdit[], calculating = false) {
+      typing = edit && { path, edit, calculating };
+      if (!calculating) stayed = false;
       const run = () => read(round, path);
       if (edit && held?.path !== path)
         last = last.then(run, run).catch(() => {});
@@ -296,6 +301,13 @@ export function tableSaver(io: {
       };
       last = last.then(run, run);
       return last.catch(() => {}).then(() => sent && failures === before);
+    },
+    // Whether a leave stays, this once, for changes still being calculated:
+    // the person is told first, and the next leave writes them as they are.
+    stays() {
+      const stay = !!typing?.calculating && !stayed;
+      stayed ||= stay;
+      return stay;
     },
     // For a sheet drawn anew from its file: edits made before are not saved.
     renew,

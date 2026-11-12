@@ -464,3 +464,31 @@ test("what is typed on in the cells while a cell written is calculated is kept: 
   await expect(cell("Costs", "B3")).toHaveText("5");
   await expect.poll(saved).toContain("=2+2+1");
 });
+
+test("a sheet left while it calculates a change stays once, saying so; left again, the change is written as it stands", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await holdAnswers(app);
+  const { files, stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    COSTS,
+  );
+  await cell("Costs", "B2").click();
+  await holding(stage, true);
+  await app.keyboard.type("50");
+  await app.keyboard.press("Enter");
+  const back = files.getByRole("button", { name: /^Back to/ });
+  await back.click();
+  await expect(files.locator(".page-notice .notice")).toHaveText(
+    "The sheet is still calculating a change. Leave again to keep it as it stands; it is calculated when the sheet is next opened.",
+  );
+  await expect(cell("Costs", "B2")).toHaveText("50");
+  expect(await saved()).toBe(COSTS);
+  await back.click();
+  await expect(cell("Costs", "B2")).toHaveCount(0);
+  await expect.poll(saved).toContain("<td>50<td>=B2*2");
+});

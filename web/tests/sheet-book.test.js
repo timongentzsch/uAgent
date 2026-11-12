@@ -1122,23 +1122,58 @@ test("a formula a sort moved keeps its value until it is calculated again", asyn
   assert.deepEqual(shown(book, 0, 2, 2), ["1", "2"]);
 });
 
-test("a change refused puts back the tabs calculated, and those asked for behind it are refused too", async () => {
-  const book = await rows();
+test("a change refused is taken back alone: those asked for behind it that move nothing are made again on the tabs calculated", async () => {
+  const book = await timed([
+    tab("Rows", [
+      ["#N", "#M"],
+      ["r2", ""],
+      ["r3", ""],
+      ["r4", ""],
+    ]),
+  ]);
+  const box = { top: 3, left: 1, bottom: 3, right: 1 };
   const asked = [
-    book.paste(0, { row: 2, column: 1 }, [["=XNPV(1,1)"]]),
-    book.paste(0, { row: 3, column: 1 }, [["x"]]),
+    book.paste(0, { row: 2, column: 2 }, [["=FACT(99999999999)"]]),
+    book.paste(0, { row: 3, column: 2 }, [["typed"]]),
+    book.paste(0, { row: 4, column: 2 }, [["=A4"]]),
+    book.style(0, box, "bold", "bold", new Set()),
   ];
-  assert.deepEqual(column(book), ["N", "=XNPV(1,1)", "x", "r4", "r5"]);
-  const [first, second] = await Promise.all(asked);
+  assert.deepEqual(await Promise.all(asked), [LATE, true, true, true]);
+  assert.deepEqual(texts(book, 0).slice(1), [
+    ["r2", ""],
+    ["r3", "typed"],
+    ["r4", "=A4"],
+  ]);
+  assert.equal(book.shown(0, 4, 2), "r4");
+  assert.equal(book.marks(0, 3, 1).bold, true);
+  assert.equal(book.made, book.tabs);
+  // A paste refused moved nothing: a row put in behind it is made again,
+  // and what was typed in that row.
+  const moved = await rows();
+  const behind = [
+    moved.paste(0, { row: 2, column: 1 }, [["=XNPV(1,1)"]]),
+    moved.insertRows(0, 2, 1),
+    moved.paste(0, { row: 2, column: 1 }, [["above"]]),
+  ];
+  const [first, ...made] = await Promise.all(behind);
   assert.match(first, PANICS);
-  assert.equal(
-    second,
-    "Not changed: a change asked for before it was refused.",
-  );
-  assert.deepEqual(column(book), ["N", "r2", "r3", "r4", "r5"]);
-  assert.equal(book.canUndo(), false);
-  // The next is made as ever.
-  assert.equal(await book.paste(0, { row: 3, column: 1 }, [["y"]]), true);
+  assert.deepEqual(made, [true, true]);
+  assert.deepEqual(column(moved), ["N", "above", "r2", "r3", "r4", "r5"]);
+});
+
+test("a change refused that moved cells takes back those behind it, said once with how many", async () => {
+  // Put in above it, the formula no longer stands in row 2.
+  const formula = "=IF(ROW()=2,1,FACT(99999999999))";
+  const book = await timed([tab("Rows", [["#N"], [formula], ["r3"]])]);
+  const asked = [
+    book.insertRows(0, 2, 1),
+    book.paste(0, { row: 2, column: 1 }, [["typed"]]),
+  ];
+  assert.deepEqual(await Promise.all(asked), [
+    `${LATE} A change asked for after it was not made either.`,
+    false,
+  ]);
+  assert.deepEqual(column(book), ["N", formula, "r3"]);
 });
 
 test("a sort asked for while a change is calculated is refused: the values it orders by are not known yet", async () => {

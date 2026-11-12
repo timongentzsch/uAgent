@@ -235,7 +235,6 @@ const trimmed = (tab) => {
 };
 
 const LOCKED = "This file is read-only: save it as a sheet to change it.";
-const BEFORE = "Not changed: a change asked for before it was refused.";
 const STILL =
   "Not changed: the values it reads are still being calculated. Ask again in a moment.";
 // The host keeps no file over 1,024 KB: the tabs' tables may come to this.
@@ -465,48 +464,74 @@ export async function openBook(engine, written, locked, calculate) {
   };
 
   // A change is made at once on the tabs shown, then calculated after those
-  // asked for before it; where one of those is refused, the tabs go back to
-  // those calculated, and the change is refused too. The app holds the tabs
-  // shown, and writes them if the page goes first.
+  // asked for before it. Where one of those is refused, the tabs go back to
+  // those calculated and those behind it are made again on them; where it
+  // moved cells (`moves`), what they point at moved, and they are refused
+  // too. The app holds the tabs shown, and writes them if the page goes
+  // first.
   let pending = Promise.resolve();
-  const queued =
-    (change) =>
-    (...args) => {
-      const was = [tabs, [...past], [...future]];
-      consulted = false;
-      let answer;
-      try {
-        answer = change(...args);
-        // A change that reads values not yet calculated would read others.
-        if (consulted && was[0] !== made.tabs) answer = STILL;
-      } catch (error) {
-        answer = `Not changed: ${error.message}`;
-      }
-      if (answer !== true) {
-        [tabs, past, future] = was;
-        return Promise.resolve(answer);
-      }
+  const waiting = [];
+  // `asked` made on the tabs shown: true, false for no change, or why not.
+  const attempt = (asked) => {
+    const was = [tabs, [...past], [...future]];
+    consulted = false;
+    let answer;
+    try {
+      answer = asked.make();
+      // A change that reads values not yet calculated would read others.
+      if (consulted && was[0] !== made.tabs) answer = STILL;
+    } catch (error) {
+      answer = `Not changed: ${error.message}`;
+    }
+    if (answer === true) {
+      asked.to = { tabs, past: [...past], future: [...future] };
       charted.clear();
-      const to = { tabs, past: [...past], future: [...future] };
+    } else [tabs, past, future] = was;
+    return answer;
+  };
+  const queued =
+    (change, moves = false) =>
+    (...args) => {
+      const asked = { make: () => change(...args), moves };
+      const answer = attempt(asked);
+      if (answer !== true) return Promise.resolve(answer);
+      waiting.push(asked);
       return (pending = pending
         .catch(() => {})
         .then(async () => {
-          if (made.tabs !== was[0]) return BEFORE;
-          const read = await calculate(to.tabs);
-          if (typeof read === "string") {
+          try {
+            if (asked.dropped) return false;
+            const read = await calculate(asked.to.tabs);
+            if (typeof read !== "string") {
+              made = asked.to;
+              learned(made.tabs, read);
+              return true;
+            }
             [tabs, past, future] = [
               made.tabs,
               [...made.past],
               [...made.future],
             ];
+            let [moved, dropped] = [asked.moves, 0];
+            for (const next of waiting.slice(1)) {
+              if (next.dropped) continue;
+              const again = !moved && attempt(next);
+              if (again === true) continue;
+              next.dropped = true;
+              dropped++;
+              moved ||= next.moves;
+            }
             charted.clear();
-            return read;
+            return dropped
+              ? `${read} ${dropped === 1 ? "A change" : `${dropped} changes`} asked for after it ${dropped === 1 ? "was" : "were"} not made either.`
+              : read;
+          } finally {
+            waiting.shift();
           }
-          made = to;
-          learned(to.tabs, read);
-          return true;
         }));
     };
+  // A change that moves cells or tabs.
+  const moving = (change) => queued(change, true);
 
   // True for a step made, false for none, or why it was refused.
   const commit = (made) => {
@@ -688,8 +713,8 @@ export async function openBook(engine, written, locked, calculate) {
     settled: () => pending,
     canUndo: () => past.length > 0,
     canRedo: () => future.length > 0,
-    undo: queued(() => step(past, future)),
-    redo: queued(() => step(future, past)),
+    undo: moving(() => step(past, future)),
+    redo: moving(() => step(future, past)),
     table: (sheet) => tableText(tabs[sheet]),
     shown: (sheet, row, column) => cellAt(sheet, row, column).shown,
     kind: (sheet, row, column) => cellAt(sheet, row, column).kind,
@@ -774,7 +799,7 @@ export async function openBook(engine, written, locked, calculate) {
         : undefined;
     },
 
-    addTab: queued(() =>
+    addTab: moving(() =>
       retabbed([
         ...tabs,
         {
@@ -787,7 +812,7 @@ export async function openBook(engine, written, locked, calculate) {
         },
       ]),
     ),
-    copyTab: queued((sheet) =>
+    copyTab: moving((sheet) =>
       retabbed(
         tabs.toSpliced(sheet + 1, 0, {
           ...tabs[sheet],
@@ -800,12 +825,12 @@ export async function openBook(engine, written, locked, calculate) {
         }),
       ),
     ),
-    dropTab: queued((sheet) =>
+    dropTab: moving((sheet) =>
       tabs.length > 1
         ? retabbed(tabs.toSpliced(sheet, 1))
         : "A sheet keeps at least one tab.",
     ),
-    moveTab: queued((sheet, by) => {
+    moveTab: moving((sheet, by) => {
       const to = sheet + by;
       return to >= 0 && to < tabs.length
         ? commit(tabs.with(sheet, tabs[to]).with(to, tabs[sheet]))
@@ -1087,7 +1112,7 @@ export async function openBook(engine, written, locked, calculate) {
       );
     }),
 
-    insertRows: queued((sheet, at, count) =>
+    insertRows: moving((sheet, at, count) =>
       restructured(
         (model) => model.insertRows(sheet, at, count),
         edit(sheet, (tab) => ({
@@ -1104,7 +1129,7 @@ export async function openBook(engine, written, locked, calculate) {
         })),
       ),
     ),
-    deleteRows: queued(
+    deleteRows: moving(
       (sheet, at, count) =>
         count < tabs[sheet].rows.length &&
         restructured(
@@ -1116,7 +1141,7 @@ export async function openBook(engine, written, locked, calculate) {
           })),
         ),
     ),
-    insertColumns: queued((sheet, at, count) =>
+    insertColumns: moving((sheet, at, count) =>
       restructured(
         (model) => model.insertColumns(sheet, at, count),
         edit(sheet, (tab) => ({
@@ -1140,7 +1165,7 @@ export async function openBook(engine, written, locked, calculate) {
         })),
       ),
     ),
-    deleteColumns: queued(
+    deleteColumns: moving(
       (sheet, at, count) =>
         count < tabs[sheet].columns.length &&
         restructured(
@@ -1162,7 +1187,7 @@ export async function openBook(engine, written, locked, calculate) {
     // formula's reference to one of their cells follows, on any tab, a
     // chart its cells and a rule its column. A header row and a total row
     // stay, and no row passes one.
-    moveRows: queued((sheet, at, count, by) => {
+    moveRows: moving((sheet, at, count, by) => {
       const to = at + by;
       const [first, last] = [Math.min(at, to), Math.max(at, to) + count - 1];
       if (to < 1 || last > tabs[sheet].rows.length) return false;
@@ -1181,7 +1206,7 @@ export async function openBook(engine, written, locked, calculate) {
         })),
       );
     }),
-    moveColumns: queued((sheet, at, count, by) => {
+    moveColumns: moving((sheet, at, count, by) => {
       const to = at + by;
       if (to < 1 || to + count - 1 > tabs[sheet].columns.length) return false;
       const place = lifting(at, count, by);
@@ -1226,7 +1251,7 @@ export async function openBook(engine, written, locked, calculate) {
     ),
 
     // Under the header and but for total rows; a formula follows its row.
-    sort: queued((sheet, column, descending) => {
+    sort: moving((sheet, column, descending) => {
       const tab = tabs[sheet];
       const places = tab.rows
         .map((_, at) => at)

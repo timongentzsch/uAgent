@@ -214,18 +214,26 @@ export default function Files({
     );
   // A page is left once that is written. Typing that could not be keeps
   // its page once, its notice read; the next time the person leaves it.
-  // So does a sheet that was calculating a change as the press began: the
-  // cell its own press ends is written as it leaves.
+  // So does a sheet that was calculating a change as the press or key that
+  // leaves began: a cell that press ends is written as it leaves.
   const [staying, setStaying] = useState(false);
-  const pressed = useRef<boolean>(undefined);
+  const calculating = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
+  useEffect(() => {
+    const began = () => {
+      calculating.current = tables.calculating();
+    };
+    for (const type of ["pointerdown", "keydown"])
+      addEventListener(type, began, true);
+    return () => {
+      for (const type of ["pointerdown", "keydown"])
+        removeEventListener(type, began, true);
+    };
+  }, []);
   const stays = () => {
-    const stay = pressed.current ?? tables.stays();
-    pressed.current = undefined;
+    const stay = calculating.current && tables.stays();
     setStaying(stay);
     return stay;
-  };
-  const press = () => {
-    pressed.current = tables.stays();
   };
   const leave = (update: (flow: Flow) => Flow) =>
     stays() ||
@@ -684,7 +692,6 @@ export default function Files({
                 : "files-back files-back-canvas"
             }
             label={backLabel(above)}
-            onPointerDown={press}
             onClick={() => leave(pop)}
           >
             <ChevronLeft />
@@ -769,7 +776,6 @@ export default function Files({
         {closeFiles && (
           <IconButton
             label="Close files"
-            onPointerDown={press}
             onClick={() => stays() || closeFiles()}
           >
             <X />

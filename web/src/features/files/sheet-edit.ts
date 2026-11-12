@@ -302,6 +302,7 @@ export function tableSaver(io: {
       last = last.then(run, run);
       return last.catch(() => {}).then(() => sent && failures === before);
     },
+    calculating: () => !!typing?.calculating,
     // Whether a leave stays, this once, for changes still being calculated:
     // the person is told first, and the next leave writes them as they are.
     stays() {

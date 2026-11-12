@@ -482,7 +482,9 @@ test("a leave stays once for a change still being calculated; the next writes it
   // A cell typed in alone is no reason.
   saver.hold("a.html", typed(0, "typed"));
   assert.equal(saver.stays(), false);
+  assert.equal(saver.calculating(), false);
   saver.hold("a.html", changing(edit(0, "calculated")), true);
+  assert.equal(saver.calculating(), true);
   assert.equal(saver.stays(), true);
   assert.equal(saver.stays(), false);
   assert.equal(await saver.flush(), true);

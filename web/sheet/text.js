@@ -250,6 +250,26 @@ export function followed(formula, spans, of, home, place) {
   return out + chars.slice(from).join("");
 }
 
+// A formula whose references to the tab named `was` name it as `name`, as
+// a formula writes it.
+export function renamed(formula, spans, was, name) {
+  const chars = [...formula];
+  let out = "";
+  let from = 0;
+  for (const { start, end } of spans) {
+    const text = chars.slice(start, end).join("");
+    const cut = text.lastIndexOf("!");
+    if (
+      cut < 0 ||
+      tabOf(text.slice(0, cut)).toLowerCase() !== was.toLowerCase()
+    )
+      continue;
+    out += `${chars.slice(from, start).join("")}${/^\s*/.exec(text)[0]}${name}${text.slice(cut)}`;
+    from = end;
+  }
+  return out + chars.slice(from).join("");
+}
+
 // Numbers, then text, then TRUE and FALSE, then errors; what is empty comes
 // last whichever way the sort runs.
 const KINDS = { number: 0, text: 1, boolean: 2, error: 3, empty: 4 };

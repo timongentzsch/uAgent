@@ -1204,3 +1204,48 @@ test("a change asked for behind another is worked out once, unless it reads what
     ["5", "=A4*2"],
   ]);
 });
+
+// The engine as it is, which calculates where it is asked to anywhere
+// inside: a call of the page's that did would not return here.
+test("nothing the page asks of its engine calculates: every change finishes on a sheet holding formulas the engine never returns from or panics on", async () => {
+  const done = await ask(
+    {
+      tabs: [
+        tab("Costs", [
+          ["1", "=FACT(99999999999)"],
+          ["2", "=A1+XNPV(1,2)"],
+          ["3", "=Costs!A2*2"],
+        ]),
+      ],
+    },
+    5000,
+    `const shown = (tabs) =>
+      tabs.map((tab) => ({
+        cells: tab.rows.map((row) =>
+          row.cells.map(() => ({ shown: "", kind: "text", format: "general" })),
+        ),
+        looks: {},
+        unread: [],
+      }));
+    const sheet = await book.openBook(engine, request.tabs, false, async (tabs) => shown(tabs));
+    const own = { tab: sheet.tabs[0], box: { top: 1, left: 2, bottom: 1, right: 2 } };
+    const answers = [
+      await sheet.insertRows(0, 2, 1),
+      await sheet.deleteRows(0, 2, 1),
+      await sheet.insertColumns(0, 1, 1),
+      await sheet.deleteColumns(0, 1, 1),
+      await sheet.moveRows(0, 1, 1, 1),
+      await sheet.moveColumns(0, 1, 1, 1),
+      await sheet.nameTab(0, "Other"),
+      await sheet.sort(0, 1, false),
+      await sheet.fillDown(0, { top: 1, left: 1, bottom: 3, right: 2 }),
+      await sheet.paste(0, { row: 4, column: 2 }, [["=FACT(99999999999)"]], own),
+      await sheet.undo(),
+      await sheet.redo(),
+      await sheet.copyTab(0),
+    ];
+    sheet.tokens("=FACT(99999999999)");
+    return answers;`,
+  );
+  assert.equal(done?.length, 13);
+});

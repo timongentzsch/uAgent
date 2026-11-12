@@ -14,6 +14,7 @@ import {
   letters,
   followed,
   moved,
+  renamed,
   sheetText,
   slid,
   slidBox,
@@ -351,6 +352,20 @@ test("tabs from another kind of file are written as a whole sheet", () => {
     '<!doctype html>\n<meta charset="utf-8">\n<meta name="sheet" content="1">\n<title>Q&amp;A &lt;1&gt;</title>\n' +
       '<table data-sheet="One">\n<tr><td>1\n</table>\n<table data-sheet="Two">\n<tr><td>1\n</table>\n',
   );
+});
+
+test("a tab renamed is renamed in the references that name it, however they are written; a cell of its own and another tab's stay", () => {
+  const after = (formula, ...refs) =>
+    renamed(formula, spans(formula, ...refs), "Costs", "'Jobs & more'");
+  assert.equal(
+    after("=Costs!B2+'costs'!C3:D4", "Costs!B2", "'costs'!C3:D4"),
+    "='Jobs & more'!B2+'Jobs & more'!C3:D4",
+  );
+  assert.equal(
+    after("=SUM(Costs!B2 : Costs!C2)", "Costs!B2", " Costs!C2"),
+    "=SUM('Jobs & more'!B2 : 'Jobs & more'!C2)",
+  );
+  assert.equal(after("=B2+Other!B3", "B2", "Other!B3"), "=B2+Other!B3");
 });
 
 test("a formula follows cells that moved: one cell wherever it is read from, a range where its ends moved alike", () => {

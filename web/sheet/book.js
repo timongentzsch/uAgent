@@ -19,6 +19,7 @@ import {
   inOrder,
   letters,
   moved,
+  renamed,
   slid,
   slidBox,
   SPARE,
@@ -821,7 +822,7 @@ export async function openBook(engine, written, locked, calculate) {
         ? commit(tabs.with(sheet, tabs[to]).with(to, tabs[sheet]))
         : false;
     }),
-    // The engine writes the new name into the formulas that read the tab.
+    // The new name is written into the formulas that read the tab.
     nameTab: ofTab((sheet, said) => {
       const name = said.trim();
       if (name === tabs[sheet].name) return false;
@@ -835,9 +836,16 @@ export async function openBook(engine, written, locked, calculate) {
         )
       )
         return "A tab's name is its own, at most 31 characters, without [ ] : * ? / \\.";
-      return restructured(
-        (model) => model.renameSheet(sheet, name),
-        tabs.with(sheet, { ...tabs[sheet], name }),
+      const quoted = engine.quoteName(name);
+      return commit(
+        mapCells(tabs.with(sheet, { ...tabs[sheet], name }), (cell) =>
+          cell.text.startsWith("=")
+            ? withText(
+                cell,
+                renamed(cell.text, spans(cell.text), tabs[sheet].name, quoted),
+              )
+            : cell,
+        ),
       );
     }),
     // How many cells of other tabs read this one.

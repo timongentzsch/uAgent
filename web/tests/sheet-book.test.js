@@ -630,6 +630,26 @@ test("a look is set on a box's cells and taken off where all have it; the table 
   assert.deepEqual(attrs(4, 1), { "data-ink": "bad" });
 });
 
+test("the table a cell being typed in would make is the one its edit makes, and no step", () => {
+  const book = plan();
+  for (const [at, text] of [
+    [{ row: 4, column: 1 }, "Draft"],
+    [{ row: 5, column: 3 }, "=C4*2"],
+    [{ row: 9, column: 5 }, "far"],
+    [{ row: 9, column: 5 }, ""],
+    [{ row: 6, column: 2 }, ""],
+  ]) {
+    const before = book.table(0);
+    const draft = book.draft(0, at, text);
+    assert.equal(book.table(0), before);
+    assert.equal(book.canUndo(), false);
+    const taken = book.paste(0, at, [[text]]);
+    assert.equal(draft, book.table(0));
+    if (taken === true) book.undo();
+  }
+  assert.equal(book.draft(0, { row: 900_000, column: 1 }, "x"), undefined);
+});
+
 test("a workbook sent out carries the looks written: bold, italic, the colours, where the text stands and wrap", () => {
   const book = plan();
   const at = { top: 4, left: 1, bottom: 4, right: 1 };

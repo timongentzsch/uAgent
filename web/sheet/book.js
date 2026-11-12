@@ -707,6 +707,21 @@ export function openBook(engine, written, locked) {
       );
     },
 
+    // The tab's table as it would be with `text` in a cell, where that can
+    // be kept: no step is made of it.
+    draft(sheet, at, text) {
+      const far = text ? at : { row: 0, column: 0 };
+      if (locked || tooFar(sheet, far)) return undefined;
+      const tab = reaching(tabs[sheet], far.row, far.column);
+      const row = tab.rows[at.row - 1];
+      const cell = row?.cells[at.column - 1];
+      if (!cell) return tableText(tab);
+      const cells = row.cells.with(at.column - 1, withText(cell, text));
+      return tableText(
+        trimmed({ ...tab, rows: tab.rows.with(at.row - 1, { ...row, cells }) }),
+      );
+    },
+
     // Text set down from a cell on. From this book's own cells (`from`)
     // formulas move along, and a cut clears.
     paste(sheet, at, rows, from) {

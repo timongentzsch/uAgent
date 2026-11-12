@@ -50,7 +50,18 @@ export function listen(sheet) {
     });
   };
 
+  // What is being typed is said as it is typed, with the table it would
+  // make: the app keeps that if the page is left before the cell is. It is
+  // said to be over where no edit follows.
+  let drafted = false;
+  const draft = () => {
+    drafted = true;
+    const text = editor.value;
+    sheet.say({ type: "typing", text, ...sheet.draft(text) });
+  };
   const rest = () => {
+    if (drafted) sheet.say({ type: "typing" });
+    drafted = false;
     editing = false;
     const gone = list;
     list = undefined;
@@ -104,11 +115,16 @@ export function listen(sheet) {
   };
   const commit = (by) => {
     const text = editor.value;
+    const said = drafted;
+    drafted = false;
     rest();
-    sheet.write(text);
+    if (!sheet.write(text) && said) sheet.say({ type: "typing" });
     if (by) sheet.select(stepped(active(), by));
   };
-  editor.addEventListener("input", () => editing || edit(true));
+  editor.addEventListener("input", () => {
+    if (!editing) edit(true);
+    if (editing) draft();
+  });
   editor.addEventListener("blur", () => editing && commit());
 
   const stepped = (from, by) => ({

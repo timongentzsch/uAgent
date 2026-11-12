@@ -437,6 +437,12 @@ async function open() {
       return true;
     },
     run: (command, value) => sheet.did(commands[command]?.(value)),
+    // The shown tab's table as it would be with `text` in the active cell.
+    draft: (text) => ({
+      tab: at,
+      tabs: tables.length,
+      table: book.draft(at, pick().anchor, text),
+    }),
     write: (text) => sheet.did(book.paste(at, pick().anchor, [[text]])),
 
     filter(column, words) {

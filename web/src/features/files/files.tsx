@@ -41,7 +41,8 @@ import { MarkdownFile } from "../../shared/markdown-view.tsx";
 import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
 import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
-import { plural } from "../../shared/quantities.ts";
+import { bytes, plural } from "../../shared/quantities.ts";
+import { maxTextFileBytes } from "../../shared/limits.ts";
 import { stored } from "../../shared/storage.ts";
 import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
 import {
@@ -196,13 +197,20 @@ export default function Files({
       blockSaver({
         read: (path) => api<FileText>(routes.files(id, "read", path)),
         write: (path, text, revision, keepalive) =>
-          api(routes.fileWrite(id), { path, text, revision }, { keepalive }),
+          api<{ revision: string }>(
+            routes.fileWrite(id),
+            { path, text, revision },
+            { keepalive },
+          ),
       }),
     [],
   );
-  // A page is left once that is written; typing that could not be keeps it.
+  // A page is left once that is written. Typing that could not be keeps
+  // its page once, its notice read; the next time the person leaves it.
   const leave = (update: (flow: Flow) => Flow) =>
-    void blocks.flush().then((written) => written && setFlow(update));
+    void blocks
+      .flush()
+      .then((written) => (written ? setFlow(update) : blocks.forget()));
   // Left with the app itself, as far as a closing page may still write.
   useEffect(() => {
     const closing = () => void blocks.flush(true);
@@ -800,6 +808,12 @@ export default function Files({
               }
               presenter={(slides, at) =>
                 openPresenter({ session: id, slides, at }, blocks.flush())
+              }
+              uneditable={
+                (here?.entries.find((entry) => entry.name === nameOf(file))
+                  ?.size ?? 0) > maxTextFileBytes
+                  ? `Too large to edit here: over ${bytes(maxTextFileBytes)}`
+                  : undefined
               }
               save={(edit) =>
                 "table" in edit

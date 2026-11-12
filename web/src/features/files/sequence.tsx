@@ -66,6 +66,7 @@ import {
   type BlockEdit,
   blankSlide,
   notesEdit,
+  type Saved,
   skipSlide,
 } from "./doc-edit.ts";
 import { downloadBlob, saveLink } from "../../shared/share.ts";
@@ -128,6 +129,7 @@ export default function Sequence({
   drawn,
   presenter,
   save,
+  uneditable,
   settle,
   saveAs,
   arrange,
@@ -156,6 +158,8 @@ export default function Sequence({
   // to its file. A block's answers with the place of the block the caret
   // then belongs in.
   save?: (edit: BlockEdit | TableEdit) => Promise<unknown>;
+  // Why the file's text cannot be edited here, when it cannot.
+  uneditable?: string;
   // Resolves once what was typed in a block is in its file.
   settle: () => Promise<unknown>;
   // An Excel or CSV file's tabs, as a sheet's text, saved beside the file.
@@ -384,16 +388,20 @@ export default function Sequence({
   const [noted, setNoted] = useState<string>();
   const notes = noted ?? info?.notes ?? "";
   const keeping = useRef<Promise<unknown>>(undefined);
+  // Why a block was last refused: said again while that block is owed.
+  const owed = useRef("");
   const keep = async (saving?: Promise<unknown>) => {
     if (saving && saving === keeping.current) return;
     keeping.current = saving;
     setSaved({ text: "Saving…" });
     try {
-      await saving;
-      setSaved({ text: "Saved" });
+      const done = (await saving) as Partial<Saved> | undefined;
+      if (done?.whole === false) refused(owed.current);
+      else setSaved({ text: "Saved" });
       if (editable) wrote.current++;
     } catch (error) {
-      refused(error instanceof Error ? error.message : "Not saved");
+      owed.current = error instanceof Error ? error.message : "Not saved";
+      refused(owed.current);
     }
   };
   // A window opened in the press that asks for it and sent to its address
@@ -613,13 +621,21 @@ export default function Sequence({
     press: () => void,
     icon: ComponentChildren,
     bare?: boolean,
+    // Why it cannot be pressed, when it cannot.
+    off?: string,
   ) =>
     bare ? (
       <IconButton label={label} aria-pressed={on} onClick={press}>
         {icon}
       </IconButton>
     ) : (
-      <Button variant="secondary" aria-pressed={on} onClick={press}>
+      <Button
+        variant="secondary"
+        aria-pressed={on}
+        disabled={!!off}
+        title={off}
+        onClick={press}
+      >
         {icon}
         {label}
       </Button>
@@ -703,7 +719,14 @@ export default function Sequence({
           )}
         {save &&
           editable &&
-          toggle("Edit", mode === "edit", () => flip("edit"), <Pencil />)}
+          toggle(
+            "Edit",
+            mode === "edit",
+            () => flip("edit"),
+            <Pencil />,
+            false,
+            uneditable,
+          )}
         {!editable && status}
         {(declared.length > 0 || !!theme.value?.colors.length) &&
           toggle(
@@ -918,28 +941,30 @@ export default function Sequence({
                       // A link in the document, or its caret, led there.
                       if (doc) to(natural(message.at) - 1);
                     } else if (message.type === "edit") {
+                      // The page is untrusted: an edit is taken only where
+                      // it is on offer. A slide takes no new block.
                       if ("table" in message) {
+                        if (!sheet) return;
                         const [undo, redo] = [!!message.undo, !!message.redo];
                         setTold((was) => ({ ...was, undo, redo }));
-                      }
-                      const saving =
-                        "table" in message || editable
-                          ? save?.(message)
-                          : undefined;
-                      void keep(saving);
-                      // Another kind of block, or a new one, is the file's
-                      // to make: written at once, the page is drawn again
-                      // from it.
-                      if (
-                        "index" in message &&
-                        (message.as || message.insert)
-                      ) {
+                        void keep(save?.(message));
+                      } else if (mode === "edit" && editable) {
+                        const edit = {
+                          ...message,
+                          insert: doc ? message.insert : undefined,
+                        };
+                        const saving = save?.(edit);
+                        void keep(saving);
+                        // Another kind of block, or a new one, is the
+                        // file's to make: written at once, the page is
+                        // drawn again from it.
+                        if (!edit.as && !edit.insert) return;
                         void settle();
                         void saving?.then(
-                          (at) => {
+                          (saved) => {
                             caretAt.current = {
-                              at: natural(at),
-                              over: !!message.insert,
+                              at: natural((saved as Saved).at),
+                              over: !!edit.insert,
                             };
                             setLoad((count) => count + 1);
                             setSaves(wrote.current);

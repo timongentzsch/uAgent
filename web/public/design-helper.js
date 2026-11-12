@@ -382,10 +382,21 @@
   // place.
   const EDITABLE =
     "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote";
-  const blocks = () =>
-    [...document.body.querySelectorAll(EDITABLE)].filter(
+  const within = (part) =>
+    [...part.querySelectorAll(EDITABLE)].filter(
       (block) => !block.parentElement.closest(EDITABLE),
     );
+  // A slide's notes are none of them.
+  const blocks = () => {
+    const aside = notes();
+    return within(document.body).filter((block) => !aside?.contains(block));
+  };
+  // A slide's notes as lines: its aside's blocks, one to a line, or its text.
+  const noted = () => {
+    const aside = notes();
+    const lines = aside ? within(aside).map((line) => line.textContent) : [];
+    return (lines.length ? lines.join("\n") : aside?.textContent || "").trim();
+  };
   // The page as Markdown: its text, headings, lists, tables, links and images.
   const markdown = () => {
     const inline = (node) =>
@@ -472,8 +483,8 @@
     return `${block(document.body)}\n`;
   };
   // Edit: text blocks take typing; a block is reported as it changes, with
-  // its place and its text when Edit went on, which the app checks against
-  // the file.
+  // its place as it was when Edit went on (its text, that of the blocks
+  // around it, how many there were), which the app checks against the file.
   const before = new WeakMap();
   const report = (block, more) => {
     // Without the marks put on its parts here.
@@ -481,9 +492,13 @@
     for (const part of clean.querySelectorAll("*"))
       for (const mark of ["data-uagent-before", "data-uagent-after"])
         part.removeAttribute(mark);
+    const all = blocks();
+    const index = all.indexOf(block);
     send("edit", {
-      index: blocks().indexOf(block),
+      index,
+      of: all.length,
       before: before.get(block),
+      around: [before.get(all[index - 1]), before.get(all[index + 1])],
       html: clean.innerHTML,
       ...more,
     });
@@ -506,14 +521,6 @@
     [...block.querySelectorAll("a[href]")].find((link) =>
       getSelection().containsNode(link, true),
     );
-  // What a block can be turned into another of: a paragraph, a heading or an
-  // item of a plain list, named by its list.
-  const kindOf = (block) =>
-    block.matches("p, h2, h3")
-      ? block.localName
-      : block.matches(":is(ul, ol) > li") && !block.querySelector("ul, ol")
-        ? block.parentElement.localName
-        : "";
   // Whether what is selected is bold and italic; null where the block's own
   // style is the mark, and there is none to make.
   const marks = (block) => {
@@ -527,14 +534,15 @@
     };
   };
   // What the app's tools show of the selection, said as it changes: the
-  // block's kind, whether anything is selected, its marks and the link it
-  // touches.
+  // block's tag and its parent's, whether anything is selected, its marks
+  // and the link it touches.
   let told = "";
   const caret = () => {
     const block = editing();
     const state = block
       ? {
-          kind: kindOf(block),
+          tag: block.localName,
+          parent: block.parentElement.localName,
           selected: !getSelection().isCollapsed,
           ...marks(block),
           href: linked(block)?.getAttribute("href") || "",
@@ -705,7 +713,7 @@
     send("ready", {
       title: document.title,
       artboard: artboard(),
-      notes: notes()?.textContent.trim() || "",
+      notes: noted(),
       tweaks: tweaks(),
       height: height(),
       // Where its stylesheets are, so the app can read a design system's.

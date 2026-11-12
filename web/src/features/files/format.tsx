@@ -8,12 +8,11 @@ import {
   Link,
   Pilcrow,
   Plus,
-  X,
 } from "lucide-preact";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import type { PageMessage } from "../../shared/page-frame.tsx";
 import { Button, IconButton, Input } from "../../shared/ui.tsx";
-import { INSERTS, KINDS, LINK } from "./doc-edit.ts";
+import { INSERTS, KINDS, kindOf, LINK } from "./doc-edit.ts";
 
 // What is selected in the block being edited, as its page says it
 // (design-helper.js): the block's kind where it can become another, whether
@@ -31,9 +30,9 @@ export interface Caret {
 export const caretOf = (
   said: Extract<PageMessage, { type: "caret" }>,
 ): Caret | undefined =>
-  typeof said.kind === "string"
+  typeof said.tag === "string"
     ? {
-        kind: Object.hasOwn(KINDS, said.kind) ? said.kind : "",
+        kind: kindOf(said.tag, String(said.parent)),
         selected: said.selected === true,
         bold: said.bold === null ? null : said.bold === true,
         italic: said.italic === null ? null : said.italic === true,
@@ -138,7 +137,8 @@ export function FormatTools({
   );
 }
 
-// The address of the link on what is selected, typed under the tools.
+// The address of the link on what is selected, typed under the tools; Esc
+// or the Link tool shuts it.
 export function LinkField({
   href,
   apply,
@@ -181,9 +181,6 @@ export function LinkField({
       <Button disabled={!href} onClick={() => apply("")}>
         Remove
       </Button>
-      <IconButton label="Close link" onClick={close}>
-        <X />
-      </IconButton>
     </form>
   );
 }

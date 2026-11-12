@@ -22,8 +22,9 @@ delete slides and edit a slide's text and notes in place.
   1920px-wide slide, in proportion on others).
 - Write a slide's text directly in `h1`–`h3`, `p`, `li`, table cells,
   `figcaption` or `blockquote`: people edit those in place, block by block.
-- Speaker notes: one `<aside>` as the last element of `<body>`, plain text,
-  what the presenter says. It never shows on the slide.
+- Speaker notes: one `<aside>` as the last element of `<body>`, plain text
+  or a paragraph a line, what the presenter says. It never shows on the
+  slide.
 - A slide to leave out of the presentation and the PDF, but keep in the
   deck, has `<meta name="slide" content="skip">` right after its artboard.
 - No scripts, no animation; Files fades between slides when presenting.

@@ -14,7 +14,7 @@ export interface PageInfo {
   // A fixed artboard's size; 0 × 0 for a page, which is as tall as it is. A
   // document's is one sheet of its paper.
   artboard: { w: number; h: number; slide?: boolean };
-  // A slide's speaker notes.
+  // A slide's speaker notes, a line each.
   notes?: string;
   tweaks: Record<string, unknown> | null;
   height: number;
@@ -60,14 +60,16 @@ export type PageMessage =
   // text as Markdown.
   | { type: "pages"; count: number }
   | { type: "page"; at: number }
-  // A document's or a slide's block as it was typed in, with the kind it is
-  // to become and what is to follow it; that it was left; and what is
-  // selected in the block being edited (nothing, outside one): its kind, its
-  // marks and its link.
+  // A document's or a slide's block as it was typed in, with its place
+  // when Edit went on, the kind it is to become and what is to follow it;
+  // that it was left; and what is selected in the block being edited
+  // (nothing, outside one): its tag and its parent's, its marks and its link.
   | {
       type: "edit";
       index: number;
+      of?: number;
       before: string;
+      around?: [string?, string?];
       html: string;
       as?: string;
       insert?: string;
@@ -75,7 +77,8 @@ export type PageMessage =
   | { type: "left" }
   | {
       type: "caret";
-      kind?: string;
+      tag?: string;
+      parent?: string;
       selected?: boolean;
       bold?: boolean | null;
       italic?: boolean | null;

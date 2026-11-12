@@ -1217,25 +1217,125 @@ for (const touch of [false, true])
     }
   });
 
-test("what is typed in a slide is in its file when the app itself is left at once", async ({
+test("what is typed in a slide saved before is in its file when the app itself is left at once, and a window opened then shows it", async ({
   page: app,
   session,
   host,
 }) => {
   const { files, stage } = await openDeck(app, session, host.project, TALK);
-  // The file is read as typing starts; with that in hand, a page being
-  // closed still writes.
-  const read = app.waitForResponse((response) =>
-    response.url().includes("/files?read="),
-  );
   await typeIn(app, files, stage.getByText("The plan"));
-  await app.keyboard.insertText(" for Q3");
-  await (await read).finished();
+  await app.keyboard.insertText(" for");
+  await expect(saving(files)).toHaveText("Saving…");
+  // Opened alone before any pause: its window waits for the write.
+  const alone = await openAlone(app, files);
+  await expect(alone.getByText("The plan for", { exact: true })).toBeVisible();
+  await alone.close();
+  await expect(saving(files)).toHaveText("Saved");
+  // The pane has seen the file now: a page being closed writes into that,
+  // in one request that outlives it.
+  await stage.getByText("The plan for").click();
+  await app.keyboard.insertText(" Q3");
   await expect(saving(files)).toHaveText("Saving…");
   await app.goto("about:blank");
   await expect
     .poll(() => talkFile(host.project, "01-cover.html"))
     .toContain("<p>The plan for Q3</p>");
+});
+
+test("a block that was refused stays owed: its notice stands though another is saved, and the slide is left once that was read", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const cover = join(host.project, "decks/talk/01-cover.html");
+  const { files, stage, count } = await openDeck(app, session, host.project, {
+    "01-cover.html": slide("Cover", "", "<p>One</p><p>Two</p>"),
+    "02-plan.html": slide("Plan"),
+    "03-end.html": slide("End"),
+  });
+  const last = stage.getByText("Two");
+  await expect(last).toBeVisible();
+  // Behind the pane's back, as the agent would.
+  await writeFile(
+    cover,
+    (await readFile(cover, "utf8")).replace("<p>Two</p>", "<p>Two more</p>"),
+  );
+  await typeIn(app, files, last);
+  await app.keyboard.insertText("!");
+  await expect(saving(files)).toHaveText("Saving…");
+  await app.clock.runFor(1000);
+  await expect(saving(files)).toHaveText(/^Not saved: this text changed/);
+  // Another block, with the same blocks around it, is saved; the notice
+  // still says what is not.
+  await stage.getByRole("heading", { name: "Cover" }).click();
+  await app.keyboard.insertText(" page");
+  await expect(saving(files)).toHaveText("Saving…");
+  await app.clock.runFor(1000);
+  await expect
+    .poll(() => readFile(cover, "utf8"))
+    .toContain("<h1>Cover page</h1><p>One</p><p>Two more</p>");
+  await expect(saving(files)).toHaveText(/^Not saved: this text changed/);
+  // The first step stays, the second leaves: were the first taken, two
+  // would end on the third slide.
+  await app.clock.resume();
+  const next = files.getByRole("button", { name: "Next slide" });
+  await next.click();
+  await next.click();
+  await expect(count).toHaveText("2 / 3");
+});
+
+test("an edit is taken only where it is on offer: not with Edit off, and no new block in a slide", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage } = await openDeck(app, session, host.project, TALK);
+  await expect(stage.getByText("The plan")).toBeVisible();
+  const forge = (edit) =>
+    stage
+      .locator("body")
+      .evaluate(
+        (_, edit) =>
+          parent.postMessage({ uagentDesign: 1, type: "edit", ...edit }, "*"),
+        edit,
+      );
+  // The page says a block was edited though Edit is off.
+  await forge({ index: 0, before: "Cover", html: "Forged" });
+  await files.getByRole("button", { name: "Edit" }).click();
+  await expect(stage.getByText("The plan")).toHaveAttribute(
+    "contenteditable",
+    "plaintext-only",
+  );
+  // With Edit on its text is taken, but a slide gets no new block.
+  await forge({
+    index: 1,
+    before: "The plan",
+    html: "The plan, said",
+    insert: "p",
+  });
+  await expect
+    .poll(() => talkFile(host.project, "01-cover.html"))
+    .toContain("<h1>Cover</h1><p>The plan, said</p><aside>");
+});
+
+test("Edit says why a file too large to save cannot be edited", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await writeFiles(host.project, {
+    "docs/long.html": paper(
+      "Long",
+      `<p>Short text.</p><!-- ${"x".repeat(1024 * 1024)} -->`,
+    ),
+  });
+  const files = await openFiles(app, session, "docs/long.html");
+  const edit = files.getByRole("button", { name: "Edit" });
+  await expect(edit).toBeDisabled();
+  await expect(edit).toHaveAttribute(
+    "title",
+    "Too large to edit here: over 1 MB",
+  );
 });
 
 test("a slide's text is saved as typing pauses, the caret where it was; undone, the file follows; rewritten meanwhile, it is refused and kept on the stage", async ({
@@ -1275,7 +1375,7 @@ test("a slide's text is saved as typing pauses, the caret where it was; undone, 
   const undone = await paragraph.textContent();
   expect(await cover()).toContain(`<p>${undone}</p>`);
   // Saved three times, the file ends as it did.
-  expect(await cover()).toMatch(/<\/aside><\/body><\/html>\n$/);
+  expect(await cover()).toMatch(/<\/aside><\/body><\/html>$/);
 
   // Edit stays on from slide to slide, and the legend shows the file.
   await app.clock.resume();
@@ -1345,10 +1445,10 @@ test("a deck's slide menu adds a slide in the deck's style, and skips one: dimme
     "04-end.html",
   ]);
   expect(await talkFile(host.project, "02-slide.html")).toBe(
-    "<!doctype html><html><head><title>New slide</title>" +
+    "<!doctype html>\n<html><head><title>New slide</title>" +
       '<meta name="artboard" content="1920x1080 slide">' +
       "<style>h1{letter-spacing:2px}</style></head>" +
-      "<body><h1>Heading</h1><p>Text</p></body></html>\n",
+      "<body><h1>Heading</h1><p>Text</p></body></html>",
   );
   await expect(legend.locator(".page-legend-name")).toHaveText([
     "1 · Cover",
@@ -1417,7 +1517,13 @@ test("a slide's notes are typed under its stage while Edit is on, and made where
   session,
   host,
 }) => {
-  const { files, count } = await openDeck(app, session, host.project, TALK);
+  const { files, stage, count } = await openDeck(app, session, host.project, {
+    ...TALK,
+    "03-end.html": slide("End").replace(
+      "</body>",
+      "<aside><p>First point.</p><ul><li>Second.</li></ul></aside></body>",
+    ),
+  });
   const read = files.locator(".page-main > .page-notes");
   await expect(read).toContainText("Say hello.");
   await files.getByRole("button", { name: "Edit" }).click();
@@ -1429,7 +1535,7 @@ test("a slide's notes are typed under its stage while Edit is on, and made where
     .toContain("<p>The plan</p><aside>Say hello.\nThen the plan.</aside>");
   // A slide with none takes them too: its file gets the aside.
   await files.getByRole("button", { name: "Next slide" }).click();
-  await expect(count).toHaveText("2 / 2");
+  await expect(count).toHaveText("2 / 3");
   await expect(notes).toBeEnabled();
   await expect(notes).toHaveValue("");
   await notes.fill("Three steps & a <demo>.");
@@ -1438,6 +1544,22 @@ test("a slide's notes are typed under its stage while Edit is on, and made where
     .toContain(
       "<h1>Plan</h1><aside>Three steps &amp; a &lt;demo&gt;.</aside></body>",
     );
+  // Notes a model wrote as paragraphs and a list are lines here, and each
+  // line is saved as a paragraph; they are none of the slide's blocks.
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await expect(notes).toHaveValue("First point.\nSecond.");
+  await notes.fill("First point.\nSecond, changed.\nThird.");
+  const end = () => talkFile(host.project, "03-end.html");
+  await expect
+    .poll(end)
+    .toContain(
+      "<aside><p>First point.</p><p>Second, changed.</p><p>Third.</p></aside>",
+    );
+  await stage.getByRole("heading", { name: "End" }).click();
+  await app.keyboard.insertText("!");
+  await expect.poll(end).toContain("<h1>End!</h1><aside><p>First");
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await expect(count).toHaveText("2 / 3");
   // Read where they were typed, and when presenting.
   await files.getByRole("button", { name: "Edit" }).click();
   await expect(read).toContainText("Three steps & a <demo>.");
@@ -2357,7 +2479,7 @@ test("a document exports Markdown, and a block edited on its third page is saved
   await expect(count).toHaveText(`3 / ${MEMO_PAGES}`);
   expect(saved).toContain("<td>Hire</td>");
   expect(
-    saved.startsWith("<!doctype html><html><head><title>Memo</title>"),
+    saved.startsWith("<!doctype html>\n<html><head><title>Memo</title>"),
   ).toBe(true);
 
   // The agent rewrote that block meanwhile: the edit is refused, not merged.
@@ -2578,14 +2700,16 @@ test("Edit's Style turns a block into a heading, a paragraph or a list item in t
         "<ul><li>One</li><li>Two</li><li>Three</li></ul>",
     );
   // An item takes its list along to the other kind, and leaves it as a
-  // paragraph, the list cut in two around it.
+  // paragraph, the list cut in two around it and counting on.
   await style(stage.getByText("Two", { exact: true }), "Numbered list");
   await expect(stage.locator("ol > li")).toHaveCount(3);
   await style(stage.getByText("Two", { exact: true }), "Paragraph");
   await expect(stage.locator("ol")).toHaveCount(2);
   await expect
     .poll(body)
-    .toContain("<ol><li>One</li></ol><p>Two</p><ol><li>Three</li></ol>");
+    .toContain(
+      '<ol><li>One</li></ol><p>Two</p><ol start="2"><li>Three</li></ol>',
+    );
 });
 
 test("Edit's Insert puts a paragraph, a list, a table or a divider after the block in the file, its words to type over", async ({

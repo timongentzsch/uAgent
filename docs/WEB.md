@@ -131,7 +131,7 @@ write finishes.
 is its speaker notes: shown under the slide, never on it, and in **Presenter
 view**, a window of its own with the slide now and the next, the notes and a
 clock; either window moves both. With **Edit** on, the notes are typed
-under the slide. Drag a slide in the legend to a new place, or use **Slide
+under the slide, a line to a paragraph. Drag a slide in the legend to a new place, or use **Slide
 actions** beside the counter (also a right click on a slide) to move it
 earlier or later, duplicate it, add a slide after it in the deck's style,
 skip it or delete it; the files are renamed to keep the order. A skipped
@@ -155,9 +155,16 @@ paragraph, a heading or an item of a bulleted or numbered list. In a
 document **Insert** puts a paragraph, a heading, a list, a table or a
 divider after the block, with words to type over. What you
 type is saved to the file when you pause, and before the pane goes anywhere
-else or exports; the legend follows once you leave the block. A block the
-agent changed meanwhile is not written over: the pane says so and keeps
-what you typed on the page.
+else, exports or opens a window; the legend follows once you leave the
+block. A block the agent changed meanwhile, or whose neighbours it changed,
+is not written over: the pane says so until that block is saved, keeps what
+you typed on the page, and stays on it the first time you turn away. Close
+the tab within that pause and the last words reach the file only if the
+pane has already read or saved it and it is under about 48 KB. A file over
+1 MB is not edited here. The first save writes the file as a browser reads
+it: attribute quotes double, entities such as `&mdash;` as their
+characters, the closing tags and `<tbody>` that were left out, and line
+ends as LF.
 
 **A design's canvas** shows everything its folder holds: the pages, each
 live, and also its pictures and films at their own size, and a document or a

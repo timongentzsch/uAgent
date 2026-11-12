@@ -121,49 +121,30 @@ const slidCharts = (charts, across, at, count) =>
     ];
   });
 
-// The box a box's cells span once moved to where `place` puts them, so all
-// it held is still in it; and whether the move cut it: its rows or columns
-// went apart, or its top left cell is not first. Within it, cells may move.
-const carried = (box, place) => {
-  // Where the numbers from `from` to `to` go, from the least to the most.
-  const ends = (from, to, go) => {
-    let [least, most] = [Infinity, -Infinity];
-    for (let n = from; n <= to; n++)
-      [least, most] = [Math.min(least, go(n)), Math.max(most, go(n))];
-    return [least, most];
-  };
-  const [top, bottom] = ends(
-    box.top,
-    box.bottom,
-    (row) => place({ row, column: box.left }).row,
-  );
-  const [left, right] = ends(
-    box.left,
-    box.right,
-    (column) => place({ row: box.top, column }).column,
-  );
-  const first = place({ row: box.top, column: box.left });
-  return {
-    box: { top, left, bottom, right },
-    cut:
-      first.row !== top ||
-      first.column !== left ||
-      bottom - top !== box.bottom - box.top ||
-      right - left !== box.right - box.left,
-  };
-};
-
 // Charts after cells moved, each to where `place` puts it: a chart lies on
-// its cell, and its range holds every cell it drew.
+// its cell, and its range runs between where its two ends went, so what it
+// drew is still in it.
 const carriedCharts = (charts, place) =>
   charts.map((chart) => {
     const range = boxNamed(chart.attrs["data-range"]);
     const on = boxNamed(chart.attrs["data-at"]);
+    const ends = range && [
+      place({ row: range.top, column: range.left }),
+      place({ row: range.bottom, column: range.right }),
+    ];
+    const most = (way, of) => of(...ends.map((end) => end[way]));
     return {
       ...chart,
       attrs: {
         ...chart.attrs,
-        ...(range && { "data-range": boxName(carried(range, place).box) }),
+        ...(ends && {
+          "data-range": boxName({
+            top: most("row", Math.min),
+            left: most("column", Math.min),
+            bottom: most("row", Math.max),
+            right: most("column", Math.max),
+          }),
+        }),
         ...(on && {
           "data-at": cellName(place({ row: on.top, column: on.left })),
         }),
@@ -228,14 +209,39 @@ const apart = (attrs, box) =>
   });
 const MOVED = "A merged cell moves whole.";
 // The merged ranges after cells moved to where `place` puts them, and the
-// first one the move would cut.
+// first one the move would cut: its rows or columns would be apart, or its
+// top left cell not first. Within it, the cells it covers may move.
 const carriedMerges = (attrs, place) => {
+  // Where the numbers from `from` to `to` go, from the least to the most.
+  const ends = (from, to, go) => {
+    let [least, most] = [Infinity, -Infinity];
+    for (let n = from; n <= to; n++)
+      [least, most] = [Math.min(least, go(n)), Math.max(most, go(n))];
+    return [least, most];
+  };
   let cut;
   const list = listed(attrs).map((text) => {
     const box = boxNamed(text);
-    const moved = box && carried(box, place);
-    if (moved?.cut) cut ??= text;
-    return moved ? boxName(moved.box) : text;
+    if (!box) return text;
+    const [top, bottom] = ends(
+      box.top,
+      box.bottom,
+      (row) => place({ row, column: box.left }).row,
+    );
+    const [left, right] = ends(
+      box.left,
+      box.right,
+      (column) => place({ row: box.top, column }).column,
+    );
+    const first = place({ row: box.top, column: box.left });
+    if (
+      first.row !== top ||
+      first.column !== left ||
+      bottom - top !== box.bottom - box.top ||
+      right - left !== box.right - box.left
+    )
+      cut ??= text;
+    return boxName({ top, left, bottom, right });
   });
   return { attrs: withMerges(attrs, list), cut };
 };

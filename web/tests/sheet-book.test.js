@@ -675,8 +675,8 @@ test("rows and columns move among their neighbours: a reference follows its cell
     ["Water", "60", "12", "=SUM(B2:B4)"],
   ]);
   assert.equal(book.shown(0, 3, 4), "1440.00");
-  // The chart's range holds the cells it drew, here where they were, and
-  // it lies on the cell it lay on, a row down.
+  // The chart's range runs between where its ends went, here where they
+  // were, and it lies on the cell it lay on, a row down.
   assert.deepEqual(charted(), { ...chart, "data-at": "F2" });
   // Up again, and no further than under the header.
   assert.equal(await book.moveRows(0, 3, 1, -1), true);
@@ -911,6 +911,14 @@ test("a chart follows the rows and columns it draws from, goes with them, and is
     "data-chart": "bar",
     "data-range": "A5:C8",
   });
+  // Its last row moved down one and back: its range follows its corners
+  // there and back, and is what it was.
+  const moved = await charted("A3:C5");
+  const range = () => moved.tabs[0].charts[0].attrs["data-range"];
+  assert.equal(await moved.moveRows(0, 5, 1, 1), true);
+  assert.equal(range(), "A3:C6");
+  assert.equal(await moved.moveRows(0, 6, 1, -1), true);
+  assert.equal(range(), "A3:C5");
 });
 
 test("a column's rule is set as one step: its cells take the look, a far column is reached for its own, and one not understood is refused", async () => {

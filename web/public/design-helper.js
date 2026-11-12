@@ -382,20 +382,33 @@
   // place.
   const EDITABLE =
     "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote";
-  const within = (part) =>
-    [...part.querySelectorAll(EDITABLE)].filter(
-      (block) => !block.parentElement.closest(EDITABLE),
-    );
   // A slide's notes are none of them.
   const blocks = () => {
     const aside = notes();
-    return within(document.body).filter((block) => !aside?.contains(block));
+    return [...document.body.querySelectorAll(EDITABLE)].filter(
+      (block) =>
+        !aside?.contains(block) && !block.parentElement.closest(EDITABLE),
+    );
   };
-  // A slide's notes as lines: its aside's blocks, one to a line, or its text.
+  // A slide's notes as lines. An aside of text is its text; in one that
+  // holds elements each block is a line and so is the text between blocks:
+  // all of its text, which is what the app compares.
   const noted = () => {
     const aside = notes();
-    const lines = aside ? within(aside).map((line) => line.textContent) : [];
-    return (lines.length ? lines.join("\n") : aside?.textContent || "").trim();
+    if (!aside?.children.length) return aside?.textContent.trim() || "";
+    const lines = [];
+    let last;
+    const walk = document.createTreeWalker(aside, NodeFilter.SHOW_TEXT);
+    while (walk.nextNode()) {
+      const block = walk.currentNode.parentElement.closest(EDITABLE);
+      if (block !== last || !lines.length) lines.push("");
+      lines[lines.length - 1] += walk.currentNode.data;
+      last = block;
+    }
+    return lines
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .join("\n");
   };
   // The page as Markdown: its text, headings, lists, tables, links and images.
   const markdown = () => {

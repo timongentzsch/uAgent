@@ -163,8 +163,8 @@ the tab within that pause and the last words reach the file only if the
 pane has already read or saved it and it is under about 48 KB. A file over
 1 MB is not edited here. The first save writes the file as a browser reads
 it: attribute quotes double, entities such as `&mdash;` as their
-characters, the closing tags and `<tbody>` that were left out, and line
-ends as LF.
+characters, and the closing tags and `<tbody>` that were left out; its
+line endings and a byte order mark stay as they were.
 
 **A design's canvas** shows everything its folder holds: the pages, each
 live, and also its pictures and films at their own size, and a document or a

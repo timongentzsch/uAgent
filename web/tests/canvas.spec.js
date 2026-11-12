@@ -1265,7 +1265,9 @@ test("a block that was refused stays owed: its notice stands though another is s
   await expect
     .poll(() => readFile(cover, "utf8"))
     .toContain("<h1>Cover page</h1><p>One</p><p>Two more</p>");
-  await expect(saving(files)).toHaveText(/^Not saved: this text changed/);
+  await expect(saving(files)).toHaveText(
+    "Saved, but a block typed in before is not in the file: this text changed in the file meanwhile. Reopen it to edit.",
+  );
   // The first step stays, the second leaves: were the first taken, two
   // would end on the third slide.
   await app.clock.resume();
@@ -1562,7 +1564,7 @@ test("a slide's notes are typed under its stage while Edit is on, and made where
     ...TALK,
     "03-end.html": slide("End").replace(
       "</body>",
-      "<aside><p>First point.</p><ul><li>Second.</li></ul></aside></body>",
+      "<aside><strong>Say:</strong> <p>First point.</p><ul><li>Second.</li></ul></aside></body>",
     ),
   });
   const read = files.locator(".page-main > .page-notes");
@@ -1585,20 +1587,21 @@ test("a slide's notes are typed under its stage while Edit is on, and made where
     .toContain(
       "<h1>Plan</h1><aside>Three steps &amp; a &lt;demo&gt;.</aside></body>",
     );
-  // Notes a model wrote as paragraphs and a list are lines here, and each
-  // line is saved as a paragraph; they are none of the slide's blocks.
+  // Notes a model wrote as paragraphs and a list, with text beside them,
+  // are lines here, and each line is saved as a paragraph; they are none of
+  // the slide's blocks.
   await files.getByRole("button", { name: "Next slide" }).click();
-  await expect(notes).toHaveValue("First point.\nSecond.");
-  await notes.fill("First point.\nSecond, changed.\nThird.");
+  await expect(notes).toHaveValue("Say:\nFirst point.\nSecond.");
+  await notes.fill("Say:\nFirst point.\nSecond, changed.\nThird.");
   const end = () => talkFile(host.project, "03-end.html");
   await expect
     .poll(end)
     .toContain(
-      "<aside><p>First point.</p><p>Second, changed.</p><p>Third.</p></aside>",
+      "<aside><p>Say:</p><p>First point.</p><p>Second, changed.</p><p>Third.</p></aside>",
     );
   await stage.getByRole("heading", { name: "End" }).click();
   await app.keyboard.insertText("!");
-  await expect.poll(end).toContain("<h1>End!</h1><aside><p>First");
+  await expect.poll(end).toContain("<h1>End!</h1><aside><p>Say:");
   await files.getByRole("button", { name: "Previous slide" }).click();
   await expect(count).toHaveText("2 / 3");
   // Read where they were typed, and when presenting.

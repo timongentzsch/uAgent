@@ -827,6 +827,7 @@ export default function Files({
                   : blocks.save(file, edit)
               }
               settle={blocks.flush}
+              forget={blocks.forget}
               saveAs={async (text) => {
                 const path = join(
                   dir,

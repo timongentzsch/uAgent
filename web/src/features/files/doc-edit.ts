@@ -92,10 +92,15 @@ function note(aside: Element, text: string) {
     );
 }
 
-// A file's text as a page. What follows </body> is parsed into the body: it
-// is dropped there, so that a save adds no line.
+// A file's text as a page, read without the byte order mark it may start
+// with. What follows </body> is parsed into the body: it is dropped there,
+// so that a save adds no line.
+const BOM = "\uFEFF";
 function parsed(source: string) {
-  const page = new DOMParser().parseFromString(source, "text/html");
+  const page = new DOMParser().parseFromString(
+    source.startsWith(BOM) ? source.slice(1) : source,
+    "text/html",
+  );
   const tail = page.body.lastChild;
   if (tail?.nodeType === Node.TEXT_NODE)
     tail.textContent = tail.textContent!.trimEnd();
@@ -103,8 +108,8 @@ function parsed(source: string) {
 }
 // A page as its file's text: the document's own nodes, a line each (its
 // doctype, the comments beside its html element), then the file's own
-// ending. The line break a pre starts with, which a parser drops, is
-// written twice.
+// ending, with the mark it started with and in the line ending it had. The
+// line break a pre starts with, which a parser drops, is written twice.
 function written(page: Document, source: string) {
   for (const kept of page.querySelectorAll("pre, textarea, listing"))
     if (kept.firstChild?.nodeValue?.startsWith("\n")) kept.prepend("\n");
@@ -115,7 +120,12 @@ function written(page: Document, source: string) {
           .serializeToString(node)
           .replace(/^<!DOCTYPE/, "<!doctype"),
   );
-  return nodes.join("\n") + /\s*$/.exec(source)![0];
+  const text =
+    nodes.join("\n") + /\s*$/.exec(source)![0].replaceAll("\r\n", "\n");
+  return (
+    (source.startsWith(BOM) ? BOM : "") +
+    (source.includes("\r\n") ? text.replaceAll("\n", "\r\n") : text)
+  );
 }
 
 // A slide in the style of `source`: its head, its body's own attributes,
@@ -181,7 +191,8 @@ const retag = (from: Element, tag: string) => {
 // The block as another kind. An item that becomes the other list's takes its
 // list along; a paragraph that becomes an item joins the list before it, or
 // starts one; an item that becomes a paragraph or a heading leaves its list,
-// cut in two around it, a numbered one counting on after the break.
+// cut in two around it, a numbered one counting on after the break (one
+// that counts down is left as it is).
 function turn(block: Element, as: string) {
   const page = block.ownerDocument;
   const list = block.localName === "li" ? block.parentElement! : null;
@@ -206,11 +217,14 @@ function turn(block: Element, as: string) {
   rest.removeAttribute("id");
   while (block.nextSibling) rest.append(block.nextSibling);
   block.remove();
-  if (rest.localName === "ol")
-    rest.setAttribute(
-      "start",
-      String((list as HTMLOListElement).start + list.children.length),
-    );
+  if (rest.localName === "ol" && !rest.hasAttribute("reversed")) {
+    let next = (list as HTMLOListElement).start;
+    for (const item of list.children) {
+      const own = Number.parseInt(item.getAttribute("value") ?? "", 10);
+      next = (Number.isNaN(own) ? next : own) + 1;
+    }
+    rest.setAttribute("start", String(next));
+  }
   list.after(...made, rest);
   for (const part of [list, rest]) if (!part.children.length) part.remove();
 }
@@ -226,7 +240,8 @@ export function applyEdit(
   wrote?: (index: number) => string | undefined,
 ) {
   const page = parsed(source);
-  const notes = isSlide(page)
+  const slide = isSlide(page);
+  const notes = slide
     ? [...page.querySelectorAll("body > aside")].pop()
     : undefined;
   // As the page lists them: what a noscript holds is text there, and a
@@ -239,10 +254,14 @@ export function applyEdit(
         !found.parentElement?.closest(EDITABLE),
     );
   const all = blocks();
-  const stands = (part: Element | undefined, at: number, shown?: string) => {
+  const stands = (
+    part: Element | undefined,
+    at: number,
+    shown?: string | null,
+  ) => {
     const now = part && squash(part.textContent);
     return (
-      now === (shown === undefined ? undefined : squash(shown)) ||
+      now === (shown == null ? undefined : squash(shown)) ||
       (now !== undefined && now === wrote?.(at))
     );
   };
@@ -251,7 +270,7 @@ export function applyEdit(
     index !== NOTES
       ? all[index]
       : (notes ??
-        (isSlide(page)
+        (slide
           ? page.body.appendChild(page.createElement("aside"))
           : undefined));
   if (!block || !stands(block, index, String(edit.before))) return null;
@@ -298,16 +317,17 @@ const PAUSE_MS = 1000;
 const CLOSING_BYTES = 48 * 1024;
 
 // What a save answers with: the place of the block the caret then belongs
-// in, and whether all that was typed is in its file.
+// in, and, while a block typed in before is not in the file, why not.
 export interface Saved {
   at: number;
-  whole: boolean;
+  owed?: string;
 }
 
 // What is typed in a block reaches its file once typing pauses, another
 // block is typed in or `flush` is called, whichever is first: one write at a
-// time, each into the file as it then is. A block whose write was refused
-// stays owed until it is written, or forgotten.
+// time, each into the file as it then is. A block whose typing was refused
+// stays owed, with why, until it is written or forgotten; another kind or a
+// new block that was refused took nothing typed with it, and is not owed.
 export function blockSaver(io: {
   read: (path: string) => Promise<{ text: string; revision?: string }>;
   write: (
@@ -320,7 +340,7 @@ export function blockSaver(io: {
   const key = (path: string, index: number) => `${path}\n${index}`;
   // What was last written in a block from here, and the blocks owed.
   const wrote = new Map<string, string>();
-  const owed = new Set<string>();
+  const owed = new Map<string, string>();
   // The file as last read or written here: a closing page cannot wait for a
   // read, and writes into this.
   let seen: { path: string; text: string; revision: string } | undefined;
@@ -336,31 +356,36 @@ export function blockSaver(io: {
   let last: Promise<unknown> = Promise.resolve();
   const write = async (path: string, edit: BlockEdit, closing: boolean) => {
     const mine = key(path, edit.index);
-    owed.add(mine);
-    if (!closing) {
-      const { text, revision = "" } = await io.read(path);
-      seen = { path, text, revision };
-    }
-    const next =
-      seen?.path === path && seen.revision
-        ? applyEdit(seen.text, edit, (index) => wrote.get(key(path, index)))
-        : null;
-    if (!next || (closing && new Blob([next.text]).size > CLOSING_BYTES))
-      throw new Error(
-        "Not saved: this text changed in the file meanwhile. Reopen it to edit.",
+    try {
+      if (!closing) {
+        const { text, revision = "" } = await io.read(path);
+        seen = { path, text, revision };
+      }
+      const next =
+        seen?.path === path && seen.revision
+          ? applyEdit(seen.text, edit, (index) => wrote.get(key(path, index)))
+          : null;
+      if (!next || (closing && new Blob([next.text]).size > CLOSING_BYTES))
+        throw new Error(
+          "this text changed in the file meanwhile. Reopen it to edit.",
+        );
+      const { revision } = await io.write(
+        path,
+        next.text,
+        seen!.revision,
+        closing,
       );
-    const { revision } = await io.write(
-      path,
-      next.text,
-      seen!.revision,
-      closing,
-    );
-    seen = { path, text: next.text, revision };
-    // Another kind or a new block moves the places after it.
-    if (edit.as || edit.insert) wrote.clear();
-    else wrote.set(mine, next.wrote);
-    owed.delete(mine);
-    return { at: next.at, whole: !owed.size };
+      seen = { path, text: next.text, revision };
+      // Another kind or a new block moves the places after it.
+      if (edit.as || edit.insert) wrote.clear();
+      else wrote.set(mine, next.wrote);
+      owed.delete(mine);
+      return { at: next.at, owed: [...owed.values()][0] };
+    } catch (error) {
+      const why = error instanceof Error ? error.message : String(error);
+      if (!edit.as && !edit.insert) owed.set(mine, why);
+      throw new Error(`Not saved: ${why}`);
+    }
   };
   // Writes what is held now; whether all that was typed is in its file.
   const flush = (closing = false) => {
@@ -390,7 +415,8 @@ export function blockSaver(io: {
       return held.done;
     },
     flush,
-    // The person was told what is owed, and leaves it.
+    // What is owed is left: the person was told and goes, or the page was
+    // drawn again from the file and no longer holds it.
     forget: () => owed.clear(),
   };
 }

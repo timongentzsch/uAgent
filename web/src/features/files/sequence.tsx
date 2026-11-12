@@ -131,6 +131,7 @@ export default function Sequence({
   save,
   uneditable,
   settle,
+  forget,
   saveAs,
   arrange,
   rewrite,
@@ -160,8 +161,10 @@ export default function Sequence({
   save?: (edit: BlockEdit | TableEdit) => Promise<unknown>;
   // Why the file's text cannot be edited here, when it cannot.
   uneditable?: string;
-  // Resolves once what was typed in a block is in its file.
+  // Resolves once what was typed in a block is in its file; and what is
+  // dropped of it when its page is drawn again from the file.
   settle: () => Promise<unknown>;
+  forget: () => void;
   // An Excel or CSV file's tabs, as a sheet's text, saved beside the file.
   saveAs?: (text: string) => Promise<void>;
   // A deck's slides renamed, copied or deleted as `moves` say, after which
@@ -391,20 +394,20 @@ export default function Sequence({
   const [noted, setNoted] = useState<string>();
   const notes = noted ?? info?.notes ?? "";
   const keeping = useRef<Promise<unknown>>(undefined);
-  // Why a block was last refused: said again while that block is owed.
-  const owed = useRef("");
   const keep = async (saving?: Promise<unknown>) => {
     if (saving && saving === keeping.current) return;
     keeping.current = saving;
     setSaved({ text: "Saving…" });
     try {
       const done = (await saving) as Partial<Saved> | undefined;
-      if (done?.whole === false) refused(owed.current);
+      if (done?.owed)
+        refused(
+          `Saved, but a block typed in before is not in the file: ${done.owed}`,
+        );
       else setSaved({ text: "Saved" });
       if (editable) wrote.current++;
     } catch (error) {
-      owed.current = error instanceof Error ? error.message : "Not saved";
-      refused(owed.current);
+      refused(error instanceof Error ? error.message : "Not saved");
     }
   };
   // A window opened in the press that asks for it and sent to its address
@@ -902,6 +905,9 @@ export default function Sequence({
                       heard(path)(message);
                     if (message.type === "ready") {
                       setSaid(message);
+                      // Drawn from the file: what it does not hold of what
+                      // was typed is on no page any more.
+                      forget();
                       if (mode)
                         tell(frame.current, {
                           type: mode,

@@ -53,6 +53,18 @@ test("a save writes the document's own nodes: its comments stay where they stood
   ).toBe(
     "<!-- note -->\n<!doctype html>\n<html><head><title>T</title>\n</head><body><p>Hi!</p></body></html>",
   );
+  // A byte order mark stays first, and a file of CRLF lines stays one.
+  expect(
+    await edited(
+      page,
+      "\uFEFF<!doctype html>\r\n<html>\r\n<head>\r\n<title>T</title>\r\n</head>\r\n" +
+        "<body>\r\n<p>Hi</p>\r\n<pre>\r\n\r\ncode</pre>\r\n</body>\r\n</html>\r\n",
+      typed(0, "Hi"),
+    ),
+  ).toBe(
+    "\uFEFF<!doctype html>\r\n<html><head>\r\n<title>T</title>\r\n</head>\r\n" +
+      "<body>\r\n<p>Hi!</p>\r\n<pre>\r\n\r\ncode</pre></body></html>\r\n",
+  );
   // Saved again with nothing changed, the text is the same.
   const once = await edited(page, page1("<p>Hi</p>\n\n"), typed(0, "Hi"));
   expect(once).toBe(page1("<p>Hi!</p>"));
@@ -135,6 +147,24 @@ test("a block turned into another kind, or followed by a new one, leaves valid H
   ).toBe(
     '<ol start="5" id="steps"><li>one</li></ol><h2>two</h2><ol start="6"><li>three</li></ol>',
   );
+  // An item's own number is counted from; a list that counts down is left
+  // as it is.
+  expect(
+    await body(
+      '<ol><li value="10">ten</li><li>eleven</li><li>twelve</li></ol>',
+      { ...typed(1, "eleven", "eleven"), as: "p" },
+    ),
+  ).toBe(
+    '<ol><li value="10">ten</li></ol><p>eleven</p><ol start="11"><li>twelve</li></ol>',
+  );
+  expect(
+    await body("<ol reversed><li>one</li><li>two</li><li>three</li></ol>", {
+      ...typed(1, "two", "two"),
+      as: "p",
+    }),
+  ).toBe(
+    '<ol reversed=""><li>one</li></ol><p>two</p><ol reversed=""><li>three</li></ol>',
+  );
   // After the whole figure a cell is part of, not inside it.
   expect(
     await body(
@@ -160,6 +190,14 @@ test("a slide's notes are lines, and no block of the slide; a new slide is laid 
       notes("a\nb", "a\n<b>c</b>\n\nd"),
     ),
   ).toContain("<aside><p>a</p><p>&lt;b&gt;c&lt;/b&gt;</p><p>d</p></aside>");
+  // An aside's lines are all its text: what stands beside its blocks too.
+  expect(
+    await edited(
+      page,
+      slide("<h1>T</h1><aside><strong>Say:</strong> <p>one</p></aside>"),
+      notes("Say:\none", "Say:\none\ntwo"),
+    ),
+  ).toContain("<aside><p>Say:</p><p>one</p><p>two</p></aside>");
   // Text where it held text; made where the slide has none.
   expect(
     await edited(page, slide("<h1>T</h1><aside>a</aside>"), notes("a", "a\nb")),
@@ -217,13 +255,13 @@ test("each write reads the file first, so what the agent wrote meanwhile is kept
   }, HARNESS);
   expect(said).toEqual([
     true,
-    { at: 0, whole: true },
+    { at: 0 },
     ["read 7", "write on 7"],
     "<p>a1</p><p>b by the agent</p>",
   ]);
 });
 
-test("a block that was refused stays owed until it is written or forgotten", async ({
+test("a block that was refused stays owed, with why, until it is written or forgotten; a refused kind change is not", async ({
   page,
 }) => {
   const said = await page.evaluate(async (harness) => {
@@ -231,36 +269,50 @@ test("a block that was refused stays owed until it is written or forgotten", asy
     const { saver, refuse, body } = saverOn();
     refuse(1);
     const first = outcome(saver.save("f", edit(0, "a", "a1")));
+    // Another block is saved, and says what is still owed.
     const second = outcome(saver.save("f", edit(1, "b", "b1")));
     const owing = [await saver.flush(), await saver.flush()];
     saver.forget();
     const forgotten = await saver.flush();
+    const third = outcome(saver.save("f", edit(1, "b", "b2")));
+    await saver.flush();
     // Owed again once refused again, and paid by a write of that block.
     refuse(1);
     const again = outcome(saver.save("f", edit(0, "a", "a2")));
     owing.push(await saver.flush());
     const paid = outcome(saver.save("f", edit(0, "a", "a3")));
     const whole = await saver.flush();
+    // Another kind that is refused takes nothing typed with it.
+    refuse(1);
+    const turned = outcome(
+      saver.save("f", { ...edit(0, "a", "a3"), as: "h2" }),
+    );
     return [
       await first,
       await second,
       owing,
       forgotten,
+      await third,
       await again,
       await paid,
       whole,
+      await saver.flush(),
+      await turned,
       body(),
     ];
   }, HARNESS);
   expect(said).toEqual([
-    "refused",
-    { at: 1, whole: false },
+    "Not saved: refused",
+    { at: 1, owed: "refused" },
     [false, false, false],
     true,
-    "refused",
-    { at: 0, whole: true },
+    { at: 1 },
+    "Not saved: refused",
+    { at: 0 },
     true,
-    "<p>a3</p><p>b1</p>",
+    true,
+    "Not saved: refused",
+    "<p>a3</p><p>b2</p>",
   ]);
 });
 

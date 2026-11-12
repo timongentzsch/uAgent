@@ -57,7 +57,7 @@ with `browser` `open`, it lists every cell in error with the reason.
 | `data-options="To do\|In progress\|Done"` on a `<col>` | a dropdown |
 | `data-frozen="1 A"` on the table | rows and columns that stay in view |
 | `data-merge="A1:D1 A5:A7"` on the table | each range as one cell showing its top-left cell; the others are written empty |
-| `data-group="2:12 3:6 B:D"` on the table | rows 2 to 12 and 3 to 6, and columns B to D, as groups a reader folds; groups nest or leave a row between |
+| `data-group="2:12 3:6 B:D"` on the table | rows 2 to 12 and 3 to 6, and columns B to D, as groups a reader folds; groups nest or leave a row between; a heading over columns is merged, not grouped |
 | `data-folded="3:6"` on the table | those groups shown folded |
 | `data-rule="< 0: bad"` on a `<col>` | the column's cells that meet the condition take the effect |
 | `data-rule="D = Done: strike muted"` on the table | the rows whose column D meets it take the effect |
@@ -87,8 +87,8 @@ Nothing else: no fonts or borders, no `style`.
 - The pane shows about six columns: the important ones come first.
 - A summary goes in rows above its table or on a tab of its own, never
   beside the table.
-- A title or a label over several columns is merged, not grouped; data cells
-  are not: a sort cannot run through a merge.
+- A title or a label over several columns is merged; data cells are not: a
+  sort cannot run through a merge.
 - Detail rows that a subtotal sums are a group, the subtotal in the row after
   them.
 - Long text gets `class="wrap"` and a width of 240 to 400.

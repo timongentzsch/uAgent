@@ -12,7 +12,7 @@ import type {
 import { useRef } from "preact/hooks";
 import {
   ArrowDownToLine,
-  ChevronUp,
+  ChevronDown,
   CircleAlert,
   Square,
   Terminal,
@@ -125,7 +125,7 @@ function ActivityButtonView({
                 {details}
               </DataText>
             </span>
-            <ChevronUp />
+            <ChevronDown />
           </>
         }
       >

@@ -20,6 +20,7 @@ import {
   moved,
   slid,
   slidBox,
+  SPARE,
   tableText,
 } from "./text.js";
 
@@ -693,10 +694,15 @@ export function openBook(engine, written, locked) {
     },
 
     rules: (sheet, column) => rulesAt(tabs[sheet], column),
-    // One of a column's rules set, or taken out without `rule`. For a rule
-    // of its own the table reaches the column; one that would not be
-    // understood there is not written.
-    setRule(sheet, column, at, rule) {
+    // The rule at `at` of a column's, which reads `text` there, set to
+    // `rule` or taken out without one. For a rule of its own the table
+    // reaches the column; one that would not be understood is not written.
+    setRule(sheet, column, at, text, rule) {
+      const width = tabs[sheet].columns.length;
+      if (this.rules(sheet, column)[at]?.text !== text)
+        return "Not changed: the column's rules are no longer the ones shown.";
+      if (rule?.row && column > width + SPARE.columns)
+        return `Not changed: column ${letters(column)} is too far from the table for a rule on its rows.`;
       const far =
         rule?.row === false ? { row: 1, column } : { row: 0, column: 0 };
       const tab = withRule(
@@ -704,6 +710,7 @@ export function openBook(engine, written, locked) {
         column,
         at,
         rule,
+        width,
       );
       const read =
         !rule ||
@@ -714,7 +721,7 @@ export function openBook(engine, written, locked) {
         tooFar(sheet, far) ??
         (read
           ? commit(tabs.with(sheet, tab))
-          : `The sheet does not understand the rule ${rule.text}`)
+          : `Not changed: the sheet does not understand the rule ${rule.text}`)
       );
     },
 

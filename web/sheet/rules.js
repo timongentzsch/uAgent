@@ -115,15 +115,20 @@ const without = ({ "data-rule": _, ...attrs }) => attrs;
 const ruled = (attrs, rules) =>
   rules.length ? { ...attrs, "data-rule": rules.join("; ") } : without(attrs);
 
-// A column's rules as a person sets them: the table's that test it, on the
-// row and said without its letter, then its own, on its cell. One that is
-// understood says its condition and its effects.
-export function rulesAt(tab, column) {
-  const width = tab.columns.length;
+// Whether a table's rule is listed with a column's: it tests it, or it
+// names no column of the grid and is listed with every column's.
+const listed = (text, width, column) =>
+  (columnIn(text, width)?.column ?? column) === column;
+
+// A column's rules as a person sets them: the table's listed with it, on
+// the row and said without its letter, then its own, on its cell. One that
+// is understood says its condition and its effects. `width` is the table's
+// before it was made to reach the column.
+export function rulesAt(tab, column, width = tab.columns.length) {
   const said = (text, row) => {
     const [rule] = readRules(text, width, !row && column).rules;
     return {
-      text: row ? columnIn(text, width).rest.trim() : text,
+      text: (row && columnIn(text, width)?.rest.trim()) || text,
       row,
       condition: rule?.condition,
       effects: rule?.effects,
@@ -131,7 +136,7 @@ export function rulesAt(tab, column) {
   };
   return [
     ...each(tab.attrs["data-rule"])
-      .filter((text) => columnIn(text, width)?.column === column)
+      .filter((text) => listed(text, width, column))
       .map((text) => said(text, true)),
     ...each(tab.columns[column - 1]?.["data-rule"]).map((text) =>
       said(text, false),
@@ -142,16 +147,15 @@ export function rulesAt(tab, column) {
 // The tab with the rule `rulesAt` lists at `at` set to `rule`, which is
 // `{ text, row }`, or taken out without one. It keeps its place where it
 // stays on the row or on the cell; else, and past the last, it is one more.
-export function withRule(tab, column, at, rule) {
-  const width = tab.columns.length;
-  const now = rulesAt(tab, column).map((was, place) =>
+export function withRule(tab, column, at, rule, width = tab.columns.length) {
+  const now = rulesAt(tab, column, width).map((was, place) =>
     place !== at ? was : rule?.row === was.row ? rule : undefined,
   );
   if (rule && !now.includes(rule)) now.push(rule);
   const lettered = ({ text }) => `${letters(column)} ${text}`;
   let place = 0;
   const table = each(tab.attrs["data-rule"]).flatMap((text) => {
-    if (columnIn(text, width)?.column !== column) return [text];
+    if (!listed(text, width, column)) return [text];
     const set = now[place++];
     return !set ? [] : set === rule ? [lettered(set)] : [text];
   });

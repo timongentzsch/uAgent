@@ -58,7 +58,7 @@ import {
   offerOf,
   type TableEdit,
 } from "./sheet-edit.ts";
-import { RulesDialog } from "./sheet-rules.tsx";
+import { columnOf, RulesDialog } from "./sheet-rules.tsx";
 import SlideActions from "./slide-actions.tsx";
 import { type Caret, caretOf, FormatTools, LinkField } from "./format.tsx";
 import Tweaks, { type Tweak } from "./tweaks.tsx";
@@ -269,6 +269,7 @@ export default function Sequence({
     setSaves(wrote.current);
     setZoom(1);
     setCell(undefined);
+    setRuling("");
     setRanged(undefined);
     setTold(UNTOLD);
   }, [src]);
@@ -313,8 +314,9 @@ export default function Sequence({
   // What is being typed in the page's cell, for the formula bar to show.
   const [typed, setTyped] = useState<string>();
   const [offer, setOffer] = useState<Offer>();
-  // The rules of the active cell's column are being set.
-  const [ruling, setRuling] = useState(false);
+  // The column whose rules are being set: its dialog is open while the
+  // active cell is in it.
+  const [ruling, setRuling] = useState("");
   const [ranged, setRanged] = useState<string>();
   const [told, setTold] = useState(UNTOLD);
   const formula = useRef<HTMLInputElement>(null);
@@ -375,10 +377,12 @@ export default function Sequence({
   // at the press: a key right after a step counts from where that step led.
   const keys = useLatest((event: KeyboardEvent) => {
     const target = event.target as Element;
-    // Not a key another widget took, nor Space on a button, which presses
-    // it.
+    const modal = target.closest?.("dialog");
+    // Not a key another widget took, nor one in a dialog opened over the
+    // pane, nor Space on a button, which presses it.
     if (
       event.defaultPrevented ||
+      (modal && !modal.contains(stage.current)) ||
       (event.key === " " && target.closest?.("button"))
     )
       return;
@@ -1037,8 +1041,10 @@ export default function Sequence({
                       const readers = Number(message.readers) || 0;
                       setTold((was) => ({ ...was, hidden, readers }));
                     } else if (message.type === "cell") {
+                      const said = cellOf(message);
                       setTyped(undefined);
-                      setCell(cellOf(message));
+                      setCell(said);
+                      setRuling((was) => (was === columnOf(said) ? was : ""));
                     } else if (message.type === "typing") {
                       const { text, tab, tabs, table } = message;
                       setTyped(
@@ -1054,7 +1060,7 @@ export default function Sequence({
                     } else if (message.type === "suggest")
                       setOffer(offerOf(message));
                     else if (message.type === "rules")
-                      setRuling(sheet && !locked);
+                      setRuling(sheet && !locked && cell ? columnOf(cell) : "");
                     else if (message.type === "refused")
                       refused(String(message.message).slice(0, 300));
                     else if (message.type === "key") {
@@ -1152,7 +1158,12 @@ export default function Sequence({
             </fieldset>
           )}
           {ruling && cell && (
-            <RulesDialog cell={cell} act={act} close={() => setRuling(false)} />
+            <RulesDialog
+              cell={cell}
+              refusal={saved?.failed ? saved : undefined}
+              act={act}
+              close={() => setRuling("")}
+            />
           )}
         </div>
         <Tweaks

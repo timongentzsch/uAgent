@@ -793,10 +793,9 @@ test("a column's rule is set as one step: its cells take the look, a far column 
   const book = plan();
   const tasks = () => book.tabs[0];
   // On the costs: one cell is over a thousand, a formula's result too.
-  assert.equal(
-    book.setRule(0, 3, 0, { text: "> 1000: bad", row: false }),
-    true,
-  );
+  const added = (column, rule) =>
+    book.setRule(0, column, book.rules(0, column).length, undefined, rule);
+  assert.equal(added(3, { text: "> 1000: bad", row: false }), true);
   assert.equal(tasks().columns[2]["data-rule"], "> 1000: bad");
   assert.deepEqual(
     [4, 5, 6].map((row) => book.look(0, row, 3).fill),
@@ -806,16 +805,19 @@ test("a column's rule is set as one step: its cells take the look, a far column 
     { text: "> 1000: bad", row: false, condition: "> 1000", effects: ["bad"] },
   ]);
   // On the rows by their status, then taken out again.
-  book.setRule(0, 2, 0, { text: "= Done: strike", row: true });
+  added(2, { text: "= Done: strike", row: true });
   assert.equal(tasks().attrs["data-rule"], "B = Done: strike");
   assert.equal(book.look(0, 4, 1).strike, true);
-  book.setRule(0, 2, 0);
+  // Its place is taken with what stands there: another text is refused.
+  assert.match(book.setRule(0, 2, 0, "= Open: strike"), /no longer/);
+  assert.equal(book.setRule(0, 2, 1), false);
+  book.setRule(0, 2, 0, "= Done: strike");
   assert.equal(tasks().attrs["data-rule"], undefined);
   for (const _ of "123") book.undo();
   assert.equal(book.canUndo(), false);
   assert.equal(tasks().columns[2]["data-rule"], undefined);
   // A column past the table is reached for a rule of its own.
-  book.setRule(0, 6, 0, { text: "blank: muted", row: false });
+  added(6, { text: "blank: muted", row: false });
   assert.deepEqual(tasks().columns.slice(3), [
     {},
     {},
@@ -823,13 +825,16 @@ test("a column's rule is set as one step: its cells take the look, a far column 
   ]);
   // Not understood, or of a column too far to test: nothing is written.
   const before = book.table(0);
-  for (const [column, rule] of [
-    [3, { text: "> many: bad", row: false }],
-    [3, { text: "> 1: sparkle", row: true }],
-    [60, { text: "> 1: bad", row: true }],
+  for (const [column, rule, why] of [
+    [3, { text: "> many: bad", row: false }, /does not understand/],
+    [3, { text: "> 1: sparkle", row: true }, /does not understand/],
+    [60, { text: "> 1: bad", row: true }, /column BH is too far/],
   ])
-    assert.match(book.setRule(0, column, 0, rule), /does not understand/);
+    assert.match(added(column, rule), why);
   assert.equal(book.table(0), before);
+  // Of its own, the far column is reached.
+  assert.equal(added(60, { text: "> 1: bad", row: false }), true);
+  assert.equal(book.tabs[0].columns[59]["data-rule"], "> 1: bad");
 });
 
 // The engine panics on XNPV of two plain numbers, and each panic costs it

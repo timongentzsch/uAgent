@@ -215,3 +215,112 @@ test("a file that is only read offers no rules to set", async ({
     stage.getByRole("menuitem", { name: "Conditional formatting…" }),
   ).toHaveCount(0);
 });
+
+test("the keys follow the dialog: into the form and back to what opened it, and the pane under it takes none", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const two = PLAN.replace(
+    /\n$/,
+    '\n<table data-sheet="More">\n<tr><td>1\n</table>\n',
+  );
+  const { stage, tabs, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    two,
+  );
+  const dialog = app.getByRole("dialog", {
+    name: "Conditional formatting: column A",
+  });
+  const button = (name) => dialog.getByRole("button", { name, exact: true });
+  const value = dialog.getByRole("textbox", { name: "Value" });
+  await cell("Tasks", "A2").click({ button: "right" });
+  await stage
+    .getByRole("menuitem", { name: "Conditional formatting…" })
+    .click();
+  // Add rule by its key: the form's first field has the keys, and what is
+  // typed goes into the value.
+  await button("Add rule").focus();
+  await app.keyboard.press("Enter");
+  await expect(dialog.getByLabel("When the cell")).toBeFocused();
+  await app.keyboard.press("Tab");
+  await expect(value).toBeFocused();
+  await app.keyboard.type("Write");
+  await expect(value).toHaveValue("Write");
+  // The pane's key for the next tab is not the dialog's.
+  await app.keyboard.press("Control+PageDown");
+  await dialog.getByRole("switch", { name: "Bold" }).check();
+  await button("Save").click();
+  // Saved, the keys are at the rule; cancelled, at what opened the form.
+  await expect(button("Edit Is Write")).toBeFocused();
+  await expect(tabs.and(app.locator('[aria-selected="true"]'))).toHaveText(
+    "Tasks",
+  );
+  await expect.poll(saved).toContain('<col data-rule="= Write: bold">');
+  await app.keyboard.press("Enter");
+  await expect(dialog.getByLabel("When the cell")).toBeFocused();
+  await button("Cancel").click();
+  await expect(button("Edit Is Write")).toBeFocused();
+  await button("Add rule").click();
+  await button("Cancel").click();
+  await expect(button("Add rule")).toBeFocused();
+});
+
+test("what the page refuses is said in the form, which stays; a rule that names no column is listed with every column's; another cell's column closes the dialog", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, bar, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    PLAN.replace(TABLE, `sparkle; ${TABLE}`),
+  );
+  const dialog = app.getByRole("dialog", { name: /^Conditional formatting/ });
+  const rows = dialog.locator(".row");
+  const button = (name) => dialog.getByRole("button", { name, exact: true });
+  // A column far past the table: it can have a rule of its own, none on
+  // its rows.
+  await cell("Tasks", "C2").click();
+  for (let step = 0; step < 30; step++) await app.keyboard.press("ArrowRight");
+  await expect(bar.locator("output")).toHaveText("Tasks!AG2");
+  await app.keyboard.press("Shift+F10");
+  await stage
+    .getByRole("menuitem", { name: "Conditional formatting…" })
+    .click();
+  await expect(dialog).toHaveAccessibleName(
+    "Conditional formatting: column AG",
+  );
+  await expect(rows).toHaveText([/^sparkleNot understood, on the whole row/]);
+  await expect(button("Edit sparkle")).toHaveCount(0);
+  await button("Add rule").click();
+  await dialog.getByLabel("When the cell").selectOption("Is greater than");
+  await dialog.getByRole("textbox", { name: "Value" }).fill("1");
+  await dialog.getByLabel("Fill").selectOption("Bad");
+  const whole = dialog.getByRole("switch", { name: "The whole row" });
+  await whole.check();
+  await button("Save").click();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "Not changed: column AG is too far from the table for a rule on its rows.",
+  );
+  await expect(whole).toBeChecked();
+  await whole.uncheck();
+  await button("Save").click();
+  await expect(rows).toHaveText([/^sparkle/, /^Is greater than 1Bad fill/]);
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect.poll(saved).toContain('<col data-rule="> 1: bad">');
+  await button("Remove sparkle").click();
+  await expect(rows).toHaveCount(1);
+  await expect.poll(saved).toContain(`data-rule="${TABLE}"`);
+
+  // The page says another cell: the dialog was for this column, and is
+  // not opened again by coming back to it.
+  await cell("Tasks", "AF2").dispatchEvent("mousedown");
+  await expect(dialog).toBeHidden();
+  await cell("Tasks", "AG2").dispatchEvent("mousedown");
+  await expect(bar.locator("output")).toHaveText("Tasks!AG2");
+  await expect(dialog).toBeHidden();
+});

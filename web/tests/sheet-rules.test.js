@@ -133,6 +133,7 @@ test("a column's rules are the table's that test it, then its own, each as it is
       effects: ["strike", "muted"],
     },
     { text: "glows: bad", row: true, condition: undefined, effects: undefined },
+    { text: "nothing", row: true, condition: undefined, effects: undefined },
     {
       text: "> 1000: bold",
       row: false,
@@ -146,10 +147,25 @@ test("a column's rules are the table's that test it, then its own, each as it is
       effects: ["good", "bad"],
     },
   ]);
+  // One that names no column of the grid is listed with every column's.
   assert.deepEqual(
     rulesAt(tab, 2).map(({ text }) => text),
-    ["blank: warn"],
+    ["blank: warn", "nothing"],
   );
+  assert.deepEqual(rulesAt(ruled("Tax > 0: bad; BL > 0: bad"), 1), [
+    {
+      text: "Tax > 0: bad",
+      row: true,
+      condition: undefined,
+      effects: undefined,
+    },
+    {
+      text: "BL > 0: bad",
+      row: true,
+      condition: undefined,
+      effects: undefined,
+    },
+  ]);
   // A spare column past the table has the table's rules for it, none of its own.
   assert.deepEqual(rulesAt(ruled("E > 0: bad"), 5), [
     { text: "> 0: bad", row: true, condition: "> 0", effects: ["bad"] },
@@ -195,6 +211,20 @@ test("one of a column's rules is set in its place, taken out, or added: the othe
     "c  = Done: strike; B blank: warn; C < 0: bad; C > 1: bold",
     undefined,
   ]);
+  // One listed with every column's is taken out from any; and the places
+  // are those of the table as wide as it was before it reached the column.
+  assert.deepEqual(
+    withRule(ruled("nothing; C blank: bad"), 3, 0).attrs["data-rule"],
+    "C blank: bad",
+  );
+  const far = {
+    ...ruled("AE = 1: bad; AF = 1: bad"),
+    columns: Array(32).fill({}),
+  };
+  assert.deepEqual(
+    withRule(far, 32, 1, undefined, 3).attrs["data-rule"],
+    "AE = 1: bad",
+  );
   // With none left the attribute goes, and the others stay as they were.
   const bare = withRule(ruled("C blank: bad"), 3, 0);
   assert.deepEqual(bare.attrs, { "data-frozen": "1" });

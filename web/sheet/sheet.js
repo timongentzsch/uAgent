@@ -580,10 +580,15 @@ async function open() {
     "tab-delete": () => book.dropTab(at),
     "tab-name": (name) => book.nameTab(at, String(name ?? "")),
     // One rule of the active cell's column as the app's dialog set it, by
-    // its place among them; without a rule, that one is taken out.
+    // its place among them and what it read there; without a rule, that one
+    // is taken out. The cell is said again either way: the dialog waits.
     rule(value) {
-      const { place, rule } = JSON.parse(value);
-      return book.setRule(at, pick().anchor.column, place, rule);
+      const { of, place, text, rule } = JSON.parse(value);
+      const { column } = pick().anchor;
+      tell();
+      return of === `${tab().name}!${letters(column)}`
+        ? book.setRule(at, column, place, text, rule)
+        : "Not changed: another column is selected than the rule was set for.";
     },
     // A look for the selection's cells in view; a word (Bold) is its own
     // value.

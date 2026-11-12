@@ -472,10 +472,11 @@
 .page-mark {
   position: absolute;
   pointer-events: none;
-  outline: var(--focus-ring);
+  outline: var(--page-mark);
+  mix-blend-mode: difference;
 }
 .page-mark.hover {
-  opacity: var(--opacity-disabled);
+  outline-style: dashed;
 }
 .page-tweaks {
   width: var(--pane);

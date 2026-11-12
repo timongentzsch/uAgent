@@ -12,6 +12,9 @@
     --screen-bg: #171717;
     --screen-ink: #e5e5e5;
     --screen-error: #ff8a80;
+    /* Drawn with mix-blend-mode: difference, white is the inverse of
+       whatever lies under it: an outline seen on any page. */
+    --page-mark: 2px solid #fff;
     --screen-scrim: rgb(0 0 0 / 0.78);
     --screen-mark: #fff;
     --screen-mark-fill: rgb(255 255 255 / 0.25);

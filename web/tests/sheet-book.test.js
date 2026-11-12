@@ -831,3 +831,58 @@ test("a column's rule is set as one step: its cells take the look, a far column 
     assert.match(book.setRule(0, column, 0, rule), /does not understand/);
   assert.equal(book.table(0), before);
 });
+
+// The engine panics on XNPV of two plain numbers, and each panic costs it
+// stack: each test that makes it panic has an engine of its own.
+const spare = async () => {
+  const fresh = await import(`${wasm}?${Math.random()}`);
+  fresh.initSync({
+    module: readFileSync(wasm.replace(/wasm\.js$/, "wasm_bg.wasm")),
+  });
+  return fresh;
+};
+const PANICS = /^Not changed: the engine cannot calculate/;
+
+test("a change the engine panics on is refused: the tabs, the steps and the workbook stand", async () => {
+  const book = openBook(await spare(), [
+    tab("Costs", [
+      ["#Rate", "#Flow", "#Worth"],
+      ["1", "", "=XNPV(A2,B2)"],
+      ["2", "3", "=A3+B3"],
+    ]),
+  ]);
+  const before = book.table(0);
+  const refused = (changed) => {
+    assert.match(changed, PANICS);
+    assert.equal(book.table(0), before);
+    assert.equal(book.canUndo(), false);
+    assert.deepEqual(shown(book, 0, 3, 3), ["2", "3", "5"]);
+  };
+  // A formula typed, one moved along, and a value another formula reads.
+  refused(book.paste(0, { row: 2, column: 4 }, [["=XNPV(1,1)"]]));
+  refused(book.fillDown(0, { top: 2, left: 3, bottom: 3, right: 3 }));
+  refused(book.paste(0, { row: 2, column: 2 }, [["1"]]));
+  // A row put in by the engine itself moves the formula to where it panics.
+  const moved = openBook(await spare(), [
+    tab("Costs", [['=XNPV(1,IF(ROW()=1,"x",1))'], ["2"]]),
+  ]);
+  assert.equal(moved.shown(0, 1, 1), "#NUM!");
+  assert.match(moved.insertRows(0, 1, 1), PANICS);
+  assert.deepEqual(shown(moved, 0, 2, 1), ["2"]);
+  assert.equal(moved.insertRows(0, 2, 1), true);
+  assert.equal(moved.tabs[0].rows.length, 3);
+  // What it takes is a step as ever, and Undo and Redo go over it.
+  assert.equal(book.paste(0, { row: 2, column: 2 }, [["x"]]), true);
+  assert.equal(book.shown(0, 2, 3), "#NUM!");
+  assert.equal(book.undo(), true);
+  assert.equal(book.redo(), true);
+});
+
+test("a file with a formula the engine panics on is not opened", async () => {
+  const rows = [
+    ["#Rate", "#Worth"],
+    ["1", "=XNPV(A2,1)"],
+    ["2", "=A3*2"],
+  ];
+  assert.equal(openBook(await spare(), [tab("Costs", rows)]), undefined);
+});

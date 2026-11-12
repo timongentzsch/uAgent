@@ -191,16 +191,25 @@ const trimmed = (tab) => {
 };
 
 const LOCKED = "This file is read-only: save it as a sheet to change it.";
+// The engine panics on some formulas, and the workbook it was calculating
+// is then lost to it: it cannot be read, written or freed.
+const PANIC =
+  "Not changed: the engine cannot calculate a formula this would leave in the sheet.";
 // The host keeps no file over 1,024 KB: the tabs' tables may come to this.
 const TABLES = 1_000_000;
 const bytes = (text) => new TextEncoder().encode(text).length;
 
 // `locked` for the tabs of an Excel or CSV file: no change is made to them.
+// Nothing where the engine cannot calculate the file at all.
 export function openBook(engine, written, locked) {
   let tabs = written;
   let model;
+  // Any other error is not the engine's panic, and goes on.
+  const panicked = (error) => {
+    if (!(error instanceof WebAssembly.RuntimeError)) throw error;
+  };
   // Each tab's rules as the engine was built with them.
-  let ruled = [];
+  let ruled = tabs.map(rulesOf);
   // Each chart as it was read since the last build, by "sheet index".
   const charted = new Map();
   const past = [];
@@ -270,13 +279,32 @@ export function openBook(engine, written, locked) {
     model.evaluate();
     return model;
   };
-  const build = () => {
-    model?.free();
-    ruled = tabs.map(rulesOf);
-    charted.clear();
-    model = made(true);
+  const tried = () => {
+    try {
+      return made(true);
+    } catch (error) {
+      return panicked(error);
+    }
   };
-  build();
+  // Whether `next` are the tabs now, with their workbook: made before the
+  // one before it is let go, so where the engine panics, that one and its
+  // tabs stand.
+  const build = (next = tabs) => {
+    const was = [tabs, ruled];
+    tabs = next;
+    ruled = tabs.map(rulesOf);
+    const fresh = tried();
+    if (!fresh) [tabs, ruled] = was;
+    else {
+      try {
+        model?.free();
+      } catch {}
+      model = fresh;
+      charted.clear();
+    }
+    return !!fresh;
+  };
+  if (!build()) return undefined;
 
   // True for a step made, false for none, or why it was refused.
   const commit = (made) => {
@@ -295,11 +323,11 @@ export function openBook(engine, written, locked) {
     return taken(next);
   };
   const taken = (next) => {
-    past.push(tabs);
+    const was = tabs;
+    if (!build(next)) return PANIC;
+    past.push(was);
     if (past.length > STEPS) past.shift();
     future.length = 0;
-    tabs = next;
-    build();
     return true;
   };
   // A name no tab has yet: itself, or with the first number that makes it so.
@@ -329,10 +357,11 @@ export function openBook(engine, written, locked) {
       : undefined;
   };
   const step = (from, to) => {
+    const was = tabs;
     if (!from.length) return false;
-    to.push(tabs);
-    tabs = from.pop();
-    build();
+    if (!build(from.at(-1))) return PANIC;
+    from.pop();
+    to.push(was);
     return true;
   };
   const edit = (sheet, change) =>
@@ -345,7 +374,14 @@ export function openBook(engine, written, locked) {
       if (cell.text.startsWith("="))
         was.set(cell, model.getCellContent(sheet, row, column));
     });
-    move();
+    // Where the engine panics on the move, its workbook is made anew.
+    try {
+      move();
+    } catch (error) {
+      panicked(error);
+      build();
+      return PANIC;
+    }
     return commit(
       mapCells(next, (cell, sheet, row, column) => {
         const now = was.has(cell) && model.getCellContent(sheet, row, column);

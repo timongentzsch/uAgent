@@ -242,3 +242,65 @@ test("a sheet is drawn once its stylesheet has loaded, however late that comes",
   await expect(cell("Tasks", "A4")).toHaveText("Write the plan");
   expect(await stage.locator("html").evaluate(() => window.styled)).toBe(true);
 });
+
+// The engine panics on XNPV of two plain numbers: the workbook it was
+// calculating is lost to it.
+const COSTS = sheet("Costs", {
+  Costs: ["<th>Item<th>Cost<th>Twice", "<td>Rent<td>1200<td>=B2*2"],
+});
+
+test("a formula the engine panics on is refused when entered: the sheet goes on and the file stays", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    COSTS,
+  );
+  await cell("Costs", "B2").click();
+  await app.keyboard.type("=XNPV(1,1)");
+  await app.keyboard.press("Enter");
+  await expect(files.locator(".page-tools .notice")).toHaveText(
+    "Not changed: the engine cannot calculate a formula this would leave in the sheet.",
+  );
+  await expect(cell("Costs", "B2")).toHaveText("1200");
+  expect(await saved()).toBe(COSTS);
+  // What it takes is calculated and saved as ever, and undone.
+  await cell("Costs", "B2").click();
+  await app.keyboard.type("50");
+  await app.keyboard.press("Enter");
+  await expect(cell("Costs", "C2")).toHaveText("100");
+  await expect.poll(saved).toContain("<td>50<td>=B2*2");
+  await files.getByRole("button", { name: "Undo" }).click();
+  await expect(cell("Costs", "C2")).toHaveText("2400");
+  await expect.poll(saved).toBe(COSTS);
+});
+
+test("a file with a formula the engine panics on is shown as written, with the reason", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage } = await openSheet(
+    app,
+    session,
+    host.project,
+    sheet("Costs", {
+      Costs: ["<th>Item<th>Cost", "<td>Rent<td>=XNPV(1,1)", "<td>Power<td>90"],
+    }),
+  );
+  const reason =
+    "This sheet is shown as written: the engine cannot calculate it";
+  await expect(stage.locator(".sheet-notice")).toHaveText(reason);
+  await expect(stage.locator("table[data-sheet] td").nth(1)).toHaveText(
+    "=XNPV(1,1)",
+  );
+  await files
+    .locator(".page-notice")
+    .getByRole("button", { name: "Ask agent to fix" })
+    .click();
+  await expect(app.locator("#prompt")).toHaveValue(new RegExp(reason));
+});

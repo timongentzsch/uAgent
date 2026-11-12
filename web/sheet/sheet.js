@@ -59,16 +59,23 @@ async function open() {
       ? [csvTab(engine, title, await answer.text())]
       : workbookTabs(engine, new Uint8Array(await answer.arrayBuffer()), title);
   };
-  // A file that cannot be read is said in its page, which then draws nothing.
+  // A file that cannot be read or calculated is said in its page, which
+  // then draws nothing: a sheet's tables stay as they are written.
   const unread = (error) => {
-    const note = document.body.appendChild(document.createElement("p"));
+    const note = document.createElement("p");
     note.className = "sheet-notice";
-    note.textContent = `${decodeURIComponent(file)} cannot be shown: ${error.message ?? error}`;
+    note.textContent = `${file ? `${decodeURIComponent(file)} cannot be shown` : "This sheet is shown as written"}: ${
+      error instanceof WebAssembly.RuntimeError
+        ? "the engine cannot calculate it"
+        : (error.message ?? error)
+    }`;
+    document.body.prepend(note);
     return note.textContent;
   };
   const written = file ? await read().catch(unread) : tables.map(readTab);
   if (typeof written === "string") return [written];
   const book = openBook(engine, written, !!file);
+  if (!book) return [unread("the engine cannot calculate it")];
   // The tabs to choose from: a workbook's hidden sheets only calculate.
   const offered = written.flatMap((tab, at) => (tab.hidden ? [] : [at]));
   for (const figure of tables.flatMap(figuresOf)) figure.remove();

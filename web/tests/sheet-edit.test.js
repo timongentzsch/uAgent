@@ -5,6 +5,7 @@ import {
   draftOf,
   editOf,
   fileOf,
+  heldOf,
   splice,
   tableSaver,
 } from "../src/features/files/sheet-edit.ts";
@@ -300,7 +301,7 @@ test("a sheet drawn anew while a save is on its way: that save stands, and one q
 });
 
 // A cell being typed in, as the saver holds it.
-const typed = (tab, value) => () => edit(tab, value);
+const typed = (tab, value) => () => [edit(tab, value)];
 
 test("a cell being typed in is held as its edit and written when the sheet is left first; an edit, or typing no more, lets it go", async () => {
   const file = { now: { text: `${head}${one}\n${two}`, revision: "r0" } };
@@ -406,6 +407,72 @@ test("a closing page writes a held cell into the file in hand; what it cannot se
   assert.ok(!log.some((line) => line.startsWith("failed")));
 });
 
+// A change being calculated, as the page holds it out: its edits of tabs.
+const changing =
+  (...edits) =>
+  () =>
+    edits;
+
+test("a change being calculated is held as its edits: made, it is saved once; refused, nothing is written; left first, it is written once", async () => {
+  const file = { now: { text: `${head}${one}\n${two}`, revision: "r0" } };
+  const { saver, log } = saving(file);
+  // Made: the page's own edits are the save, and the hold is let go.
+  saver.hold("a.html", changing(edit(0, "made"), edit(1, "made")));
+  await saver.save("a.html", edit(0, "made"));
+  await saver.save("a.html", edit(1, "made"));
+  await saver.flush();
+  assert.deepEqual(log, [
+    "read a.html",
+    "write a.html on r0",
+    "write a.html on r1",
+  ]);
+  // Refused: let go, and nothing is written.
+  saver.hold("a.html", changing(edit(0, "refused")));
+  saver.hold("a.html");
+  assert.equal(await saver.flush(), true);
+  assert.deepEqual(log.slice(3), []);
+  // The sheet left before the answer: every tab it changes, in one write.
+  saver.hold("a.html", changing(edit(0, "left"), edit(1, "left")));
+  assert.equal(await saver.flush(), true);
+  await saver.flush();
+  assert.deepEqual(log.slice(3), ["write a.html on r2"]);
+  assert.equal(
+    file.now.text,
+    `${head}${edit(0, "left").table}\n${edit(1, "left").table}`,
+  );
+});
+
+test("a change held behind one made is the later one: the first is never written over what was made after it", async () => {
+  const file = { now: { text: `${head}${one}\n${two}`, revision: "r0" } };
+  const { saver } = saving(file);
+  saver.hold("a.html", changing(edit(0, "first")));
+  await saver.save("a.html", edit(0, "first"));
+  // The second, made on what the first left, is being calculated when the
+  // page goes: a tab put in, so every table.
+  const all = {
+    tab: 0,
+    tabs: 2,
+    all: true,
+    table: `${edit(0, "first").table}\n${edit(1, "put in").table}\n${two}`,
+  };
+  saver.hold("a.html", changing(all));
+  assert.equal(await saver.flush(), true);
+  assert.equal(file.now.text, `${head}${all.table}`);
+});
+
+test("a closing page writes a held change into the file in hand, every tab of it", async () => {
+  const file = { now: { text: `${head}${one}\n${two}`, revision: "r0" } };
+  const { saver, log } = saving(file);
+  saver.hold("a.html", changing(edit(0, "a"), edit(1, "b")));
+  await new Promise(setImmediate);
+  assert.equal(await saver.flush(true), true);
+  assert.deepEqual(log, ["read a.html", "write a.html on r0, closing"]);
+  assert.equal(
+    file.now.text,
+    `${head}${edit(0, "a").table}\n${edit(1, "b").table}`,
+  );
+});
+
 test("a cell's draft is the table said once, joined around the text as its file would hold it", () => {
   const said = { tab: 1, tabs: 2, head: "<td>", tail: "<td>x", empty: "" };
   assert.deepEqual(draftOf({ ...said, more: 1 }), said);
@@ -421,4 +488,16 @@ test("a cell's draft is the table said once, joined around the text as its file 
   const { empty: _, ...cut } = said;
   assert.deepEqual(draftOf(cut), { ...cut, empty: undefined });
   assert.equal(editOf(cut, "").table, "<td><td>x");
+});
+
+test("a held change is taken as tabs' edits in their shape; bare, it is none", () => {
+  assert.deepEqual(
+    heldOf({ edits: [{ tab: "1", tabs: 2, table: 7, more: 1 }, null] }),
+    [
+      { tab: 1, tabs: 2, table: "7", all: false },
+      { tab: Number.NaN, tabs: Number.NaN, table: "", all: false },
+    ],
+  );
+  assert.equal(heldOf({}), undefined);
+  assert.equal(heldOf({ edits: "all" }), undefined);
 });

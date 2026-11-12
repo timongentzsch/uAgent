@@ -180,6 +180,17 @@ export const draftOf = (said: Record<string, unknown>): Draft | undefined =>
         empty: typeof said.empty === "string" ? said.empty : undefined,
       }
     : undefined;
+// The edits a sheet's page holds out while a change is calculated, each in
+// the shape of a tab's edit; nothing once it is made or refused.
+export const heldOf = (said: { edits?: unknown }): TableEdit[] | undefined =>
+  Array.isArray(said.edits)
+    ? said.edits.map((edit) => ({
+        tab: Number(edit?.tab),
+        tabs: Number(edit?.tabs),
+        table: String(edit?.table ?? ""),
+        all: !!edit?.all,
+      }))
+    : undefined;
 export const editOf = (
   { tab, tabs, head, tail, empty }: Draft,
   written: unknown,
@@ -191,16 +202,17 @@ export const editOf = (
 
 // One write at a time, each on the revision the last left. A failure is
 // said once; edits made before the sheet was read anew are dropped. A cell
-// being typed in is held as the edit it would make, and written by `flush`
-// if the sheet is left before the cell is. A page restored after a closing
-// flush may give up a cell that flush wrote.
+// being typed in, or a change being calculated, is held as the edits it
+// would make, and written by `flush` if the sheet is left before the cell or
+// the change is. A page restored after a closing flush may give up a cell
+// that flush wrote.
 export function tableSaver(io: {
   read: (path: string) => Promise<{ text: string; revision?: string }>;
   write: (held: Held, closing: boolean) => Promise<{ revision: string }>;
   failed: (error: unknown, path: string) => void;
 }) {
   let held: Held | undefined;
-  let typing: { path: string; edit: () => TableEdit } | undefined;
+  let typing: { path: string; edit: () => TableEdit[] } | undefined;
   let round = 0;
   let said = -1;
   // How many writes have failed: a leave is kept for one it waited for.
@@ -217,19 +229,22 @@ export function tableSaver(io: {
     held = { path, text, revision: revision ?? "" };
     return held;
   };
-  // Whether it is in the file. A closing page writes only what it can send
-  // at once, into the file in hand; what it cannot changes nothing.
+  // Whether they are in the file. A closing page writes only what it can
+  // send at once, into the file in hand; what it cannot changes nothing.
   const write = async (
     of: number,
     path: string,
-    edit: TableEdit,
+    edits: TableEdit[],
     closing = false,
   ) => {
     try {
       if (of !== round) throw new Error("Not saved");
       if (closing && held?.path !== path) return false;
       const file = await read(of, path);
-      const text = splice(file.text, edit);
+      const text = edits.reduce<string | null>(
+        (text, edit) => (text === null ? null : splice(text, edit)),
+        file.text,
+      );
       const large = closing && new Blob([text ?? ""]).size > CLOSING_BYTES;
       if (closing && (text === null || large)) return false;
       if (text === null) throw new Error("The tab is not in the file.");
@@ -250,13 +265,14 @@ export function tableSaver(io: {
   return {
     save(path: string, edit: TableEdit) {
       typing = undefined;
-      const run = write.bind(null, round, path, edit, false);
+      const run = write.bind(null, round, path, [edit], false);
       last = last.then(run, run);
       return last;
     },
-    // What is being typed in a cell, or nothing once it is typed no more.
-    // The file is read meanwhile, so a closing page can write into it.
-    hold(path: string, edit?: () => TableEdit) {
+    // What is being typed in a cell, or a change being calculated; nothing
+    // once it is typed no more, made or refused. The file is read meanwhile,
+    // so a closing page can write into it.
+    hold(path: string, edit?: () => TableEdit[]) {
       typing = edit && { path, edit };
       const run = () => read(round, path);
       if (edit && held?.path !== path)

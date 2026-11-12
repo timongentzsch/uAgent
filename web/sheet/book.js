@@ -430,9 +430,9 @@ export async function openBook(engine, written, locked, calculate) {
   if (!(await build(written))) return undefined;
   const cellAt = (sheet, row, column) =>
     table[sheet].cells[row - 1]?.[column - 1] ?? BLANK;
-  // One change after another, each made on the tabs the last left. One
-  // being calculated when the page is drawn anew or closed is lost, but for
-  // text typed in a cell, which the app holds.
+  // One change after another, each made on the tabs the last left. The app
+  // holds the one being calculated, and writes it if the page goes first;
+  // those waiting behind it are lost then.
   let pending = Promise.resolve();
   const queued =
     (change) =>

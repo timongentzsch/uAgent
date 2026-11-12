@@ -57,6 +57,7 @@ import {
   draftOf,
   editOf,
   fileOf,
+  heldOf,
   type Offer,
   offerOf,
   type TableEdit,
@@ -181,7 +182,7 @@ export default function Sequence({
   forget: () => void;
   // A sheet's cell being typed in, as the edit it would make: written if
   // the sheet is left before the cell is. None once it is typed no more.
-  typing: (edit?: () => TableEdit) => void;
+  typing: (edit?: () => TableEdit[]) => void;
   // An Excel or CSV file's tabs, as a sheet's text, saved beside the file.
   saveAs?: (text: string) => Promise<void>;
   // A deck's slides renamed, copied or deleted as `moves` say, after which
@@ -1081,7 +1082,7 @@ export default function Sequence({
                             : cutNow.current;
                       cutNow.current = cut;
                       typing(
-                        sheet && cut ? () => editOf(cut, written) : undefined,
+                        sheet && cut ? () => [editOf(cut, written)] : undefined,
                       );
                     } else if (message.type === "suggest")
                       setOffer(offerOf(message));
@@ -1097,7 +1098,10 @@ export default function Sequence({
                             ? undefined
                             : was,
                       );
-                    else if (message.type === "comment") {
+                    else if (message.type === "held") {
+                      const edits = heldOf(message);
+                      typing(sheet && edits ? () => edits : undefined);
+                    } else if (message.type === "comment") {
                       if (sheet && addToChat) setRanged(cell?.range);
                     } else if (message.type === "key") {
                       // A sheet's other keys are its own.

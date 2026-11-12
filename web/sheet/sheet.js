@@ -142,7 +142,15 @@ async function open() {
             ? []
             : [{ tab: at, tabs: told.length, table }];
         });
-  const calculate = async (next) => (await ask({ tabs: next }))?.table;
+  // While a change is calculated the app holds the edits it would make, and
+  // writes them if the page is left before the answer.
+  const calculate = async (next) => {
+    const edits = editsOf(next);
+    if (edits.length) say({ type: "held", edits });
+    const said = await ask({ tabs: next });
+    if (edits.length && !said?.table) say({ type: "held" });
+    return said?.table;
+  };
   const book = await openBook(engine, written, !!file, calculate);
   if (!book) return [unread(CANNOT)];
   // The tabs to choose from: a workbook's hidden sheets only calculate.

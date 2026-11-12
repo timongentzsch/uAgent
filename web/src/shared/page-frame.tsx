@@ -122,6 +122,12 @@ export type PageMessage =
   | { type: "refused"; message: string }
   // That a sheet's engine is calculating, past a moment, and when it is not.
   | { type: "calculating"; on: boolean }
+  // The edits a sheet's change being calculated would make; bare once it is
+  // made or refused.
+  | {
+      type: "held";
+      edits?: { tab: number; tabs: number; table: string; all?: boolean }[];
+    }
   // A comment on a sheet's selection, asked for from its own menus.
   | { type: "comment" }
   // What is being typed in a sheet's cell, and that text as its file would

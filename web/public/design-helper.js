@@ -153,28 +153,36 @@
     const { h, margin } = paper();
     return (h - margin[0] - margin[2]) * PX_PER_MM;
   };
-  // A block that cannot break and is taller than a page of the document.
-  const tallBlocks = () => {
-    const page = pageHeight();
-    // Of all its parts: one that is too tall is cut over several pages.
-    const height = (block) =>
-      Math.round(
-        [...block.getClientRects()].reduce((sum, box) => sum + box.height, 0),
+  // A document's blocks that do not fit: wider than the text, for which
+  // print shrinks the whole page, or unbreakable and taller than a page.
+  const misfits = () => {
+    const high = pageHeight();
+    const wide = document.body.clientWidth;
+    const found = [];
+    for (const block of document.querySelectorAll(
+      "figure, table, blockquote, pre, img, svg",
+    )) {
+      if (block.parentElement.closest("figure, table, svg")) continue;
+      // Of all its parts: one that is too tall is cut over several pages.
+      const boxes = [...block.getClientRects()];
+      const across = Math.round(
+        Math.max(block.scrollWidth || 0, ...boxes.map((box) => box.width)),
       );
-    return [
-      ...document.querySelectorAll("figure, table, blockquote, pre, img, svg"),
-    ]
-      .filter((block) => !block.parentElement.closest("figure, table, svg"))
-      .filter(
-        (block) =>
-          block.matches("img, svg") ||
-          getComputedStyle(block).breakInside === "avoid",
+      const down = Math.round(boxes.reduce((sum, box) => sum + box.height, 0));
+      if (across > wide + 1)
+        found.push(
+          `a ${block.localName} is ${across}px wide, more than the page's text (${wide}px): wrap or shrink it, or print shrinks the whole page to fit it`,
+        );
+      if (
+        down > high + 1 &&
+        (block.matches("img, svg") ||
+          getComputedStyle(block).breakInside === "avoid")
       )
-      .filter((block) => height(block) > page + 1)
-      .map(
-        (block) =>
-          `a ${block.localName} is ${height(block)}px tall, more than a page (${Math.round(page)}px): shrink it or split it`,
-      );
+        found.push(
+          `a ${block.localName} is ${down}px tall, more than a page (${Math.round(high)}px): shrink it or split it`,
+        );
+    }
+    return found;
   };
   const problems = () => {
     const found = missing.map((url) => `${url} did not load`);
@@ -195,7 +203,7 @@
         );
     });
     if (slide) found.push(...overlaps());
-    if (paper()) found.push(...paper().wrong, ...tallBlocks());
+    if (paper()) found.push(...paper().wrong, ...misfits());
     return found;
   };
   const checked = (report) =>
@@ -258,6 +266,8 @@
       `margin:0!important;padding:0!important;columns:1;column-gap:${left + right}mm;column-fill:auto;` +
       `translate:calc(${move}*-1);` +
       `clip-path:inset(-${top}mm calc(${move}*-1 - ${right}mm) -${bottom}mm calc(${move} - ${left}mm))}` +
+      // What is wider than the text is cut there, or it shows on the next page.
+      "body>*{overflow-x:clip}" +
       "[data-uagent-before]{break-before:column!important}[data-uagent-after]{break-after:column!important}}";
     // After the page's own, which it overrules.
     document.head.append(style);

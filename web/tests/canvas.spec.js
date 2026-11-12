@@ -1833,6 +1833,12 @@ test("a document's forced breaks, dead links and wide lines: the pages are those
     expect(await onSheet(page.getByText(cut))).toBe(false);
   };
   await on(1, "Opening.", "Alone.");
+  // The line wider than the text is said: print would shrink every page.
+  await files.getByRole("button", { name: "Ask agent to fix" }).click();
+  await expect(app.locator("#prompt")).toHaveValue(
+    /a pre is \d+px wide, more than the page's text \(559px\)/,
+  );
+  await page.locator("html").click();
   await app.keyboard.press("PageDown");
   await on(2, "Alone.", "Third.");
   await app.keyboard.press("PageDown");
@@ -1843,6 +1849,9 @@ test("a document's forced breaks, dead links and wide lines: the pages are those
   await on(3, "Third.", "Named three");
   await page.getByRole("link", { name: "Digits" }).click();
   await on(4, "Named three", "Second part.");
+  // The wide line of the page before is cut at its text's edge, not drawn
+  // across this page.
+  expect(await onSheet(page.locator("pre"))).toBe(false);
   await app.keyboard.press("PageUp");
   await on(3, "Third.", "Named three");
   await page.getByRole("link", { name: "Top" }).click();

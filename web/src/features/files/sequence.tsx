@@ -146,11 +146,11 @@ export default function Sequence({
   drawn?: (as: "png" | "pdf", path: string) => string;
   presenter?: (slides: string[], at: string) => void;
   // A document's or a slide's edited block, or a sheet's edited tab, saved
-  // to its file.
-  save?: (edit: BlockEdit | TableEdit) => Promise<void>;
-  // Resolves once what was typed in a block is in its file, with whether
-  // it is.
-  settle: () => Promise<boolean>;
+  // to its file. A block's answers with the place of the block the caret
+  // then belongs in.
+  save?: (edit: BlockEdit | TableEdit) => Promise<unknown>;
+  // Resolves once what was typed in a block is in its file.
+  settle: () => Promise<unknown>;
   // An Excel or CSV file's tabs, as a sheet's text, saved beside the file.
   saveAs?: (text: string) => Promise<void>;
   // A deck's slides renamed, copied or deleted as `moves` say, after which
@@ -209,8 +209,9 @@ export default function Sequence({
   // address is being typed.
   const [caret, setCaret] = useState<Caret>();
   const [linking, setLinking] = useState(false);
-  // The block the caret goes back to once the page is drawn again.
-  const caretAt = useRef<number>(undefined);
+  // The block the caret goes to once the page is drawn again: to its end,
+  // or `over` the words of a new one.
+  const caretAt = useRef<{ at: number; over: boolean }>(undefined);
   const [hover, setHover] = useState<Rect>();
   const [picked, setPicked] = useState<Pick>();
   const [comment, setComment] = useState("");
@@ -353,8 +354,8 @@ export default function Sequence({
   // one save.
   const [saved, setSaved] = useState<{ text: string; failed?: true }>();
   const refused = (text: string) => setSaved({ text, failed: true });
-  const keeping = useRef<Promise<void>>(undefined);
-  const keep = async (saving?: Promise<void>) => {
+  const keeping = useRef<Promise<unknown>>(undefined);
+  const keep = async (saving?: Promise<unknown>) => {
     if (saving && saving === keeping.current) return;
     keeping.current = saving;
     setSaved({ text: "Saving…" });
@@ -731,6 +732,7 @@ export default function Sequence({
             format={(format) =>
               tell(frame.current, { type: "format", ...format })
             }
+            inserts={doc}
             linking={linking && !!caret}
             link={() => setLinking(!linking)}
           />
@@ -847,9 +849,9 @@ export default function Sequence({
                         tell(frame.current, {
                           type: mode,
                           on: true,
-                          at: caretAt.current,
+                          ...caretAt.current,
                         });
-                      if (caretAt.current !== undefined) frame.current?.focus();
+                      if (caretAt.current) frame.current?.focus();
                       caretAt.current = undefined;
                       // Drawn again, what was found stays marked.
                       if (query) marked();
@@ -889,17 +891,31 @@ export default function Sequence({
                         const [undo, redo] = [!!message.undo, !!message.redo];
                         setTold((was) => ({ ...was, undo, redo }));
                       }
-                      if ("table" in message || editable)
-                        void keep(save?.(message));
-                      // Another kind of block is the file's to make: once
-                      // written, the page is drawn again from it.
-                      if ("as" in message && message.as)
-                        void settle().then((written) => {
-                          if (!written) return;
-                          caretAt.current = natural(message.index);
-                          setLoad((count) => count + 1);
-                          setSaves(wrote.current);
-                        });
+                      const saving =
+                        "table" in message || editable
+                          ? save?.(message)
+                          : undefined;
+                      void keep(saving);
+                      // Another kind of block, or a new one, is the file's
+                      // to make: written at once, the page is drawn again
+                      // from it.
+                      if (
+                        "index" in message &&
+                        (message.as || message.insert)
+                      ) {
+                        void settle();
+                        void saving?.then(
+                          (at) => {
+                            caretAt.current = {
+                              at: natural(at),
+                              over: !!message.insert,
+                            };
+                            setLoad((count) => count + 1);
+                            setSaves(wrote.current);
+                          },
+                          () => {},
+                        );
+                      }
                     } else if (message.type === "caret") {
                       setCaret(caretOf(message));
                     } else if (message.type === "left") {

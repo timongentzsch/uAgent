@@ -2444,6 +2444,45 @@ test("Edit's Style turns a block into a heading, a paragraph or a list item in t
     .toContain("<ol><li>One</li></ol><p>Two</p><ol><li>Three</li></ol>");
 });
 
+test("Edit's Insert puts a paragraph, a list, a table or a divider after the block in the file, its words to type over", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, tool, body } = await openNotes(app, session, host.project);
+  await tool("Edit").click();
+  const first = stage.getByText("Alpha beta gamma");
+  await expect(first).toHaveAttribute("contenteditable", "plaintext-only");
+  const insert = async (block, name) => {
+    await block.click();
+    await tool("Insert").click();
+    await app.getByRole("menuitem", { name }).click();
+  };
+  await insert(first, "Paragraph");
+  await expect(stage.getByText("Paragraph", { exact: true })).toBeFocused();
+  await app.keyboard.type("Typed over");
+  await expect
+    .poll(body)
+    .toContain("<p>Alpha beta gamma</p><p>Typed over</p><p>Second");
+  // After an item is after its list; a table's first cell takes the caret.
+  await insert(stage.getByText("Two", { exact: true }), "Table");
+  await expect(stage.locator("th").first()).toBeFocused();
+  expect(await body()).toContain(
+    "<li>Three</li></ul><table><thead><tr><th>Column</th><th>Column</th></tr></thead>" +
+      "<tbody><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table>",
+  );
+  // A divider holds no text: the caret stays in its block.
+  const title = stage.locator("h1");
+  await insert(title, "Divider");
+  await expect(title).toBeFocused();
+  expect(await body()).toContain('<h1 id="top">Notes</h1><hr><p>Alpha');
+  await insert(title, "Bulleted list");
+  await expect(stage.getByText("Item", { exact: true })).toBeFocused();
+  expect(await body()).toContain(
+    '<h1 id="top">Notes</h1><ul><li>Item</li></ul><hr>',
+  );
+});
+
 test("a slide's block takes Edit's tools as a document's does", async ({
   page: app,
   session,
@@ -2455,6 +2494,9 @@ test("a slide's block takes Edit's tools as a document's does", async ({
   await tool("Edit").click();
   const text = stage.getByText("The plan");
   await expect(text).toHaveAttribute("contenteditable", "plaintext-only");
+  // A slide's text does not flow on: nothing is put in after a block.
+  await expect(tool("Style")).toBeVisible();
+  await expect(tool("Insert")).toHaveCount(0);
   await selectIn(text, "plan");
   await tool("Bold").click();
   await expect.poll(cover).toContain("<p>The <b>plan</b></p><aside>");

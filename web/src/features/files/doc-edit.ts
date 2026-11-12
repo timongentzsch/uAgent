@@ -11,6 +11,8 @@ export interface BlockEdit {
   html: string;
   // The kind the block is to become: one of KINDS.
   as?: string;
+  // What is put in after it: one of INSERTS.
+  insert?: string;
 }
 
 // What a block can be turned into (an item is named by its list), and what
@@ -22,6 +24,21 @@ export const KINDS: Record<string, string> = {
   ul: "Bulleted list",
   ol: "Numbered list",
 };
+// What can be put in after a block, with words to type over, and what each
+// is called.
+export const INSERTS: Record<string, string> = {
+  ...KINDS,
+  table: "Table",
+  hr: "Divider",
+};
+const fresh = (kind: string) =>
+  kind === "hr"
+    ? "<hr>"
+    : kind === "table"
+      ? `<table><thead><tr>${"<th>Column</th>".repeat(2)}</tr></thead><tbody>${`<tr>${"<td>Cell</td>".repeat(2)}</tr>`.repeat(2)}</tbody></table>`
+      : kind === "ul" || kind === "ol"
+        ? `<${kind}><li>Item</li></${kind}>`
+        : `<${kind}>${KINDS[kind]}</${kind}>`;
 // The addresses a link made here may have: the web's, mail's, or "#" and
 // the id of a place in the page.
 export const LINK = /^((https?|mailto):|#\S)/i;
@@ -93,18 +110,29 @@ function turn(block: Element, as: string) {
   } else block.replaceWith(next);
 }
 
-// The source with the edit made and the block's text then, or null when that
-// block is there neither as the page showed it nor as `wrote` (the file
-// changed meanwhile).
+// The source with the edit made, the block's text then and the place of the
+// block the caret belongs in (a new one's first), or null when that block
+// is there neither as the page showed it nor as `wrote` (the file changed
+// meanwhile).
 export function applyEdit(source: string, edit: BlockEdit, wrote?: string) {
   const page = new DOMParser().parseFromString(source, "text/html");
-  const block = [...page.body.querySelectorAll(EDITABLE)].filter(
-    (found) => !found.parentElement?.closest(EDITABLE),
-  )[edit.index];
+  const blocks = () =>
+    [...page.body.querySelectorAll(EDITABLE)].filter(
+      (found) => !found.parentElement?.closest(EDITABLE),
+    );
+  const block = blocks()[edit.index];
   const now = words(block?.textContent);
   if (!block || (now !== words(edit.before) && now !== wrote)) return null;
   fill(block, edit.html);
   const text = words(block.textContent);
+  // After the block, or after the list, table or figure it is part of.
+  let added: Element | null = null;
+  if (edit.insert && Object.hasOwn(INSERTS, edit.insert)) {
+    const whole = block.closest("ul, ol, dl, table, figure") ?? block;
+    whole.insertAdjacentHTML("afterend", fresh(edit.insert));
+    added = whole.nextElementSibling!;
+    added = added.matches(EDITABLE) ? added : added.querySelector(EDITABLE);
+  }
   const kind = kindOf(block);
   if (kind && edit.as && edit.as !== kind && Object.hasOwn(KINDS, edit.as))
     turn(block, edit.as);
@@ -117,6 +145,7 @@ export function applyEdit(source: string, edit: BlockEdit, wrote?: string) {
   return {
     text: `${at >= 0 ? source.slice(0, at) : "<!doctype html>\n"}${page.documentElement.outerHTML}\n`,
     wrote: text,
+    at: added ? blocks().indexOf(added) : edit.index,
   };
 }
 
@@ -143,7 +172,7 @@ export function blockSaver(io: {
         key: string;
         edit: BlockEdit;
         go: (closing: boolean) => void;
-        written: Promise<void>;
+        written: Promise<number>;
       }
     | undefined;
   let timer: ReturnType<typeof setTimeout>;
@@ -159,7 +188,7 @@ export function blockSaver(io: {
     let go!: (closing: boolean) => void;
     const paused = new Promise<boolean>((resolve) => (go = resolve));
     const file = last.then(() => io.read(path));
-    const mine = {
+    const mine: NonNullable<typeof held> = {
       key,
       edit,
       go,
@@ -172,6 +201,7 @@ export function blockSaver(io: {
             );
           await io.write(path, next.text, revision!, closing);
           wrote.set(key, next.wrote);
+          return next.at;
         },
       ),
     };
@@ -186,7 +216,8 @@ export function blockSaver(io: {
     return mine;
   };
   return {
-    // Resolves once the edit, or a later one of its block, is in the file.
+    // Resolves once the edit, or a later one of its block, is in the file,
+    // with the place of the block the caret then belongs in.
     save(path: string, edit: BlockEdit) {
       const key = `${path}\n${edit.index}`;
       if (held?.key !== key) {

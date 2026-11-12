@@ -23,7 +23,9 @@ people edit its text in place and export it to PDF and Markdown.
   an image or inline SVG and a `figcaption`, `blockquote`. Write each block's
   text directly in its element, with only `b`, `i`, `a` and `code` inside:
   people edit text in place, block by block, mark it bold or italic, link
-  it, and turn a block into a paragraph, an `h2`, an `h3` or a list item.
+  it, turn a block into a paragraph, an `h2`, an `h3` or a list item, and
+  put a paragraph, a heading, a list, a plain table or an `hr` after one:
+  style those elements, not classes only.
 - No scripts, no absolute positioning, no fixed heights: the text flows from
   page to page, and each page is shown as its own sheet.
 

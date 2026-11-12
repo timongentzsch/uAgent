@@ -544,11 +544,11 @@
   };
   // A mark or a link on what is selected in the block, made as a rich text
   // field makes them (a link is changed or taken away whole); or the block
-  // reported with the kind it is to become.
-  const format = ({ mark, href, as }) => {
+  // reported with the kind it is to become, or what is to follow it.
+  const format = ({ mark, href, as, insert }) => {
     const block = editing();
     if (!block) return;
-    if (as) return report(block, { as });
+    if (as || insert) return report(block, { as, insert });
     if (mark && (getSelection().isCollapsed || marks(block)[mark] == null))
       return;
     if (href?.[0] === "#" && !document.getElementById(href.slice(1)))
@@ -572,8 +572,9 @@
     event.preventDefault();
     format({ mark });
   };
-  // Edit on or off; with `at`, the caret goes to the end of that block.
-  const edit = (on, at) => {
+  // Edit on or off; with `at`, the caret goes to the end of that block, or
+  // `over` its words, to type over them.
+  const edit = (on, at, over) => {
     for (const block of blocks())
       if (on) {
         block.setAttribute("contenteditable", "plaintext-only");
@@ -589,7 +590,7 @@
     if (!block) return;
     block.focus();
     getSelection().selectAllChildren(block);
-    getSelection().collapseToEnd();
+    if (!over) getSelection().collapseToEnd();
   };
 
   const send = (type, data) =>
@@ -839,7 +840,7 @@
     if (event.source !== parent || event.data?.uagentDesign !== 1) return;
     if (event.data.type === "select") select(!!event.data.on);
     if (event.data.type === "edit" && stepped())
-      edit(!!event.data.on, event.data.at);
+      edit(!!event.data.on, event.data.at, event.data.over);
     if (event.data.type === "format") format(event.data);
     if (event.data.type === "markdown") send("markdown", { text: markdown() });
     if (event.data.type === "find") {

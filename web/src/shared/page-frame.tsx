@@ -61,9 +61,17 @@ export type PageMessage =
   | { type: "pages"; count: number }
   | { type: "page"; at: number }
   // A document's or a slide's block as it was typed in, with the kind it is
-  // to become; that it was left; and what is selected in the block being
-  // edited (nothing, outside one): its kind, its marks and its link.
-  | { type: "edit"; index: number; before: string; html: string; as?: string }
+  // to become and what is to follow it; that it was left; and what is
+  // selected in the block being edited (nothing, outside one): its kind, its
+  // marks and its link.
+  | {
+      type: "edit";
+      index: number;
+      before: string;
+      html: string;
+      as?: string;
+      insert?: string;
+    }
   | { type: "left" }
   | {
       type: "caret";
@@ -108,15 +116,21 @@ export type PageMessage =
     };
 
 // Tells a page what to do: select or edit on or off (the caret put in the
-// block at `at`), a mark, a link or another kind for what is being edited,
-// set a tweak, mark the words found; a sheet: write into its active cell,
-// do a command. Which part of it shows (a page, a tab) is its address's to
-// say: "#3".
+// block at `at`, `over` its words), a mark, a link or another kind for what
+// is being edited or a block to follow it, set a tweak, mark the words
+// found; a sheet: write into its active cell, do a command. Which part of
+// it shows (a page, a tab) is its address's to say: "#3".
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
-    | { type: "select" | "edit"; on: boolean; at?: number }
-    | { type: "format"; mark?: "bold" | "italic"; href?: string; as?: string }
+    | { type: "select" | "edit"; on: boolean; at?: number; over?: boolean }
+    | {
+        type: "format";
+        mark?: "bold" | "italic";
+        href?: string;
+        as?: string;
+        insert?: string;
+      }
     | { type: "markdown" }
     | { type: "tweak"; name: string; value: unknown }
     | { type: "find"; text: string; index: number }

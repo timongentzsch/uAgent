@@ -7,12 +7,13 @@ import {
   Italic,
   Link,
   Pilcrow,
+  Plus,
   X,
 } from "lucide-preact";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import type { PageMessage } from "../../shared/page-frame.tsx";
 import { Button, IconButton, Input } from "../../shared/ui.tsx";
-import { KINDS, LINK } from "./doc-edit.ts";
+import { INSERTS, KINDS, LINK } from "./doc-edit.ts";
 
 // What is selected in the block being edited, as its page says it
 // (design-helper.js): the block's kind where it can become another, whether
@@ -44,7 +45,8 @@ export type Format =
   | { mark: "bold" | "italic" }
   // Its address; empty takes the link away.
   | { href: string }
-  | { as: string };
+  | { as: string }
+  | { insert: string };
 
 // Edit's tools, in a row of their own while Edit is on, each disabled where
 // it does not apply. A press leaves the focus, and so the selection, in the
@@ -52,11 +54,15 @@ export type Format =
 export function FormatTools({
   caret,
   format,
+  inserts,
   linking,
   link,
 }: {
   caret?: Caret;
   format: (format: Format) => void;
+  // Whether blocks can be put in: a document's text flows on, a slide's
+  // does not.
+  inserts: boolean;
   // Whether the link's field is open, and what opens or closes it.
   linking: boolean;
   link: () => void;
@@ -110,6 +116,24 @@ export function FormatTools({
           </MenuItem>
         ))}
       </Menu>
+      {inserts && (
+        <Menu
+          label="Insert after this block"
+          trigger={
+            <>
+              <Plus />
+              Insert
+              <ChevronDown />
+            </>
+          }
+        >
+          {Object.entries(INSERTS).map(([kind, name]) => (
+            <MenuItem key={kind} onClick={() => format({ insert: kind })}>
+              {name}
+            </MenuItem>
+          ))}
+        </Menu>
+      )}
     </fieldset>
   );
 }

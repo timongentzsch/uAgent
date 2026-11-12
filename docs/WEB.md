@@ -147,7 +147,9 @@ paragraphs, list items and table cells. Its own tools come under the
 others: **Bold** (⌘/Ctrl B), **Italic** (⌘/Ctrl I) and **Link** (an http,
 https or mailto address, or `#` and the id of a place in the page) for what
 you have selected, and **Style**, which makes the block a
-paragraph, a heading or an item of a bulleted or numbered list. What you
+paragraph, a heading or an item of a bulleted or numbered list. In a
+document **Insert** puts a paragraph, a heading, a list, a table or a
+divider after the block, with words to type over. What you
 type is saved to the file when you pause, and before the pane goes anywhere
 else or exports; the legend follows once you leave the block. A block the
 agent changed meanwhile is not written over: the pane says so and keeps

@@ -1,4 +1,4 @@
-import { ExternalLink, X } from "lucide-preact";
+import { ArrowRight, X } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { Act } from "../../shared/types.ts";
 import { Button, IconButton, LoadError } from "../../shared/ui.tsx";
@@ -76,7 +76,7 @@ export default function SideAnswer({
             label="Open side conversation"
             onClick={() => void choose(side.id!)}
           >
-            <ExternalLink />
+            <ArrowRight />
           </IconButton>
         )}
         <IconButton label="Dismiss side conversation" onClick={close}>

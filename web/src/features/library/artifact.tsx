@@ -120,6 +120,7 @@ export default function LibraryArtifact({
             }
           >
             {OPEN[kind] ?? (book ? "Open its brand book" : "Open its folder")}
+            {!place?.session && " in a new conversation"}
           </Button>
         )}
       </div>

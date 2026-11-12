@@ -147,7 +147,7 @@ function Chat({
               [<kbd>@</kbd>, "Refers to a file you dropped or pasted in."],
               [
                 <kbd>Esc</kbd>,
-                "Stops a turn. Undo under a finished turn puts back the files it changed.",
+                "Stops a turn. The file count under a finished turn opens its changes, where Undo puts them back.",
               ],
             ]}
           >

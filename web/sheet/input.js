@@ -64,7 +64,7 @@ export function listen(sheet) {
       type: "typing",
       text,
       written: escaped(text),
-      ...(drafted ? {} : sheet.draft()),
+      ...(drafted ? {} : { first: true, ...sheet.draft() }),
     });
     drafted = true;
   };

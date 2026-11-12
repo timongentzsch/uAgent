@@ -89,7 +89,7 @@ test("what is typed into a cell or the formula bar is saved to the file, and und
   // only its text, and giving up says it is over.
   const key = "text type uagentDesign written";
   expect(await said()).toEqual([
-    `head tab tabs tail ${key}`,
+    `first head tab tabs tail ${key}`,
     key,
     "type uagentDesign",
   ]);

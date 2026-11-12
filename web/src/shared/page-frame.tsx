@@ -123,12 +123,13 @@ export type PageMessage =
   // A comment on a sheet's selection, asked for from its own menus.
   | { type: "comment" }
   // What is being typed in a sheet's cell, and that text as its file would
-  // hold it; once, the table its edit would make, cut around the text.
-  // Bare once it is typed no more and no edit follows.
+  // hold it; `first`, with the table its edit would make, cut around the
+  // text, where that can be kept. Bare once it is typed no more.
   | {
       type: "typing";
       text?: string;
       written?: string;
+      first?: boolean;
       tab?: number;
       tabs?: number;
       head?: string;

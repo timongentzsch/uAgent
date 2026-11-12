@@ -1063,16 +1063,20 @@ export default function Sequence({
                       setCell(said);
                       setRuling((was) => (was === columnOf(said) ? was : ""));
                     } else if (message.type === "typing") {
-                      const { text, written } = message;
+                      const { text, written, first } = message;
                       setTyped(
                         text === undefined
                           ? undefined
                           : String(text).slice(0, 8192),
                       );
+                      // A draft's table is its own, said with its first
+                      // text, or none: never one said before.
                       const cut =
                         text === undefined
                           ? undefined
-                          : (draftOf(message) ?? cutNow.current);
+                          : first
+                            ? draftOf(message)
+                            : cutNow.current;
                       cutNow.current = cut;
                       typing(
                         sheet && cut ? () => editOf(cut, written) : undefined,

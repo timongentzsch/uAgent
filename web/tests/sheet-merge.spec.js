@@ -71,3 +71,44 @@ test("a merged range is drawn as its top left cell, in a part on each side of wh
   expect(label.spans[0]).toBeGreaterThan(1);
   expect(label.spans[0]).toBeLessThan(200);
 });
+
+test("a merged cell is selected as one: pressed anywhere, stepped into and out of, and grown into by a range; a column's letter picks its column alone", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, bar, cell } = await openSheet(
+    app,
+    session,
+    host.project,
+    BUDGET,
+  );
+  const at = bar.locator("output");
+  // The title's part past the held column is the title.
+  await cell("Costs", "A1").last().click();
+  await expect(at).toHaveText("Costs!A1");
+  for (const [key, ref] of [
+    ["ArrowDown", "A2"],
+    ["ArrowRight", "B2"],
+    ["ArrowRight", "D2"],
+    ["ArrowRight", "F2"],
+    ["ArrowLeft", "D2"],
+    ["ArrowUp", "A1"],
+    ["ArrowDown", "A2"],
+    ["End", "D2"],
+  ]) {
+    await app.keyboard.press(key);
+    await expect(at).toHaveText(`Costs!${ref}`);
+  }
+  // A range that cuts a merged cell takes it whole.
+  await cell("Costs", "B3").click();
+  await app.keyboard.press("Shift+ArrowUp");
+  await expect(stage.locator(".sheet-in")).toHaveText(["H1", "Q1", "Q2"]);
+  await expect(at).toHaveText("Costs!B3");
+  // A column's letter picks the column, through the cells merged over it.
+  await stage.locator('.sheet-letters [data-column="3"]').click();
+  await app.keyboard.press("Escape");
+  await expect(at).toHaveText("Costs!C1");
+  await expect(cell("Costs", "C3")).toHaveClass(/sheet-in/);
+  await expect(cell("Costs", "B2")).not.toHaveClass(/sheet-in/);
+});

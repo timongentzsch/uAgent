@@ -18,6 +18,7 @@ import {
   LAST,
   letters,
   sheetText,
+  spread,
   tableText,
   toCsv,
 } from "./text.js";
@@ -453,7 +454,15 @@ async function open() {
     anchor: within(picks[at].anchor),
     focus: within(picks[at].focus),
   });
-  const box = () => boxOf(pick().anchor, pick().focus);
+  // A selection grows over the merged cells it cuts; one of whole rows or
+  // columns stays as picked, as in Excel.
+  const box = () => {
+    const picked = boxOf(pick().anchor, pick().focus);
+    const lines =
+      (picked.top <= 1 && picked.bottom >= tab().rows.length) ||
+      (picked.left <= 1 && picked.right >= tab().columns.length);
+    return lines ? picked : spread(picked, book.merges(at));
+  };
   const high = () => box().bottom - box().top + 1;
   const wide = () => box().right - box().left + 1;
   // A filter's words are in what a cell shows; after "=" they are all of

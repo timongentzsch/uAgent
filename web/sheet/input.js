@@ -5,7 +5,7 @@ import { headOf } from "./book.js";
 import { actionsOf } from "./actions.js";
 import { openMenu } from "./menu.js";
 import { composing, suggest } from "./suggest.js";
-import { edgeFrom, escaped, fromTsv, LAST, toTsv } from "./text.js";
+import { boxAt, edgeFrom, escaped, fromTsv, LAST, toTsv } from "./text.js";
 
 const ARROWS = {
   ArrowUp: { row: -1, column: 0 },
@@ -156,10 +156,19 @@ export function listen(sheet) {
   };
   editor.addEventListener("blur", () => editing && commit());
 
-  const stepped = (from, by) => ({
-    row: from.row + by.row,
-    column: from.column + by.column,
-  });
+  // A cell in a merged one is its top left cell; a step leaves a merged
+  // cell from its far side.
+  const own = (cell) => {
+    const { top, left } = boxAt(book.merges(sheet.at), cell);
+    return { row: top, column: left };
+  };
+  const stepped = (from, by) => {
+    const box = boxAt(book.merges(sheet.at), from);
+    return own({
+      row: (by.row > 0 ? box.bottom : box.top) + by.row,
+      column: (by.column > 0 ? box.right : box.left) + by.column,
+    });
+  };
   const toggle = () => {
     const ticked = /^(TRUE|FALSE)$/i.exec(cell().text)?.[1].toUpperCase();
     if (ticked) sheet.write(ticked === "TRUE" ? "FALSE" : "TRUE");
@@ -205,11 +214,13 @@ export function listen(sheet) {
     } else if (ARROWS[key])
       sheet.select(
         held
-          ? edgeFrom(
-              (at) => !!cell(at).text,
-              run(ARROWS[key]),
-              focus,
-              ARROWS[key],
+          ? own(
+              edgeFrom(
+                (at) => !!cell(at).text,
+                run(ARROWS[key]),
+                focus,
+                ARROWS[key],
+              ),
             )
           : stepped(focus, ARROWS[key]),
         event.shiftKey,
@@ -218,11 +229,14 @@ export function listen(sheet) {
       sheet.select(stepped(anchor, { row: 0, column: way }));
     else if (key === "Enter" || key === "F2") edit();
     else if (key === "Home") {
-      sheet.select({ row: held ? 1 : focus.row, column: 1 }, event.shiftKey);
+      sheet.select(
+        own({ row: held ? 1 : focus.row, column: 1 }),
+        event.shiftKey,
+      );
       sheet.start(held);
     } else if (key === "End")
       sheet.select(
-        { row: held ? end.row : focus.row, column: end.column },
+        own({ row: held ? end.row : focus.row, column: end.column }),
         event.shiftKey,
       );
     else if (key === "PageUp" || key === "PageDown") {
@@ -231,7 +245,7 @@ export function listen(sheet) {
         Math.floor(innerHeight / editor.offsetHeight) - 2,
       );
       sheet.select(
-        { ...focus, row: focus.row + (key === "PageUp" ? -page : page) },
+        own({ ...focus, row: focus.row + (key === "PageUp" ? -page : page) }),
         event.shiftKey,
       );
     } else if (key === "Delete" || key === "Backspace") sheet.run("clear");

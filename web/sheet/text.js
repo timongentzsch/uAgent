@@ -60,6 +60,28 @@ export const boxAt = (merges, { row, column }) => {
   const own = { top: row, left: column, bottom: row, right: column };
   return merges.find((merge) => meets(merge, own)) ?? own;
 };
+// A box grown until it cuts no merged box.
+export const spread = (box, merges) => {
+  const cut = merges.find(
+    (merge) =>
+      meets(merge, box) &&
+      (merge.top < box.top ||
+        merge.left < box.left ||
+        merge.bottom > box.bottom ||
+        merge.right > box.right),
+  );
+  return cut
+    ? spread(
+        {
+          top: Math.min(box.top, cut.top),
+          left: Math.min(box.left, cut.left),
+          bottom: Math.max(box.bottom, cut.bottom),
+          right: Math.max(box.right, cut.right),
+        },
+        merges,
+      )
+    : box;
+};
 
 // Where a row or column lies once `count` were put in before `at`; a
 // negative count takes that many out from `at` on, and one of those is gone.

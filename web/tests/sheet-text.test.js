@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  boxAt,
   boxName,
   boxNamed,
   boxOf,
@@ -18,6 +19,7 @@ import {
   sheetText,
   slid,
   slidBox,
+  spread,
   tableText,
   toCsv,
   toTsv,
@@ -79,6 +81,17 @@ test("a tab holds in view what it says, else its header rows", () => {
   assert.deepEqual(frozenOf("2 B", 5), { rows: 2, columns: 2 });
   assert.deepEqual(frozenOf("A"), { rows: 0, columns: 1 });
   assert.deepEqual(frozenOf(undefined, 3), { rows: 3, columns: 0 });
+});
+
+test("a cell in a merged box is that box, and a box grows until it cuts none", () => {
+  // A1:C1 over the table, B3:B5 down it, C5:D6 beside that.
+  const merges = ["A1:C1", "B3:B5", "C5:D6"].map(boxNamed);
+  assert.deepEqual(boxAt(merges, { row: 1, column: 2 }), merges[0]);
+  assert.deepEqual(boxAt(merges, { row: 2, column: 2 }), boxNamed("B2"));
+  assert.equal(boxName(spread(boxNamed("A2:B2"), merges)), "A2:B2");
+  assert.equal(boxName(spread(boxNamed("B1"), merges)), "A1:C1");
+  // One merged box reached leads to the next.
+  assert.equal(boxName(spread(boxNamed("A4:C4"), merges)), "A3:D6");
 });
 
 test("Ctrl and an arrow run along what is filled, then jump to the next filled cell or the edge", () => {

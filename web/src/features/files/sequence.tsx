@@ -387,6 +387,14 @@ export default function Sequence({
       refused(error instanceof Error ? error.message : "Not saved");
     }
   };
+  // A window opened in the press that asks for it and sent to its address
+  // once what was typed is in the file, so it shows the file as it then is.
+  const open = (address: string) => {
+    const made = window.open("", "_blank");
+    if (!made) return;
+    made.opener = null;
+    void settle().then(() => made.location.replace(address));
+  };
   const stem = nameOf(path).replace(/\.[^.]+$/, "");
   // An Excel or CSV file is only read: its page takes no change.
   const locked = sheet && SHEET_FILE.test(path);
@@ -417,13 +425,7 @@ export default function Sequence({
   const exports: (false | undefined | [string, () => void])[] = [
     drawn
       ? ["PDF", () => download(drawn("pdf", path), `${stem}.pdf`)]
-      : [
-          "Print or save as PDF",
-          () => {
-            void settle();
-            window.open(`${src}#print`, "_blank", "noopener");
-          },
-        ],
+      : ["Print or save as PDF", () => open(`${src}#print`)],
     drawn &&
       kind === "deck" && [
         "PDF, a page per slide",
@@ -744,17 +746,9 @@ export default function Sequence({
               ),
           )}
         </Menu>
-        <a
-          class="file-button quiet icon-button"
-          href={src}
-          target="_blank"
-          rel="noopener"
-          aria-label="Open alone"
-          onClick={() => void settle()}
-          title="Open alone"
-        >
+        <IconButton label="Open alone" onClick={() => open(src)}>
           <ExternalLink />
-        </a>
+        </IconButton>
       </div>
       {mode === "edit" && (
         <div class="page-tools">
@@ -1017,15 +1011,14 @@ export default function Sequence({
                 {presenter && kind === "deck" && (
                   <Button
                     variant="secondary"
-                    onClick={() => {
-                      void settle();
+                    onClick={() =>
                       presenter(
                         boards
                           .filter((board) => !board.skip || board.path === path)
                           .map((board) => board.path),
                         path,
-                      );
-                    }}
+                      )
+                    }
                   >
                     Presenter view
                   </Button>

@@ -798,7 +798,7 @@ export default function Files({
                 pictures ? (as, path) => routes.files(id, as, path) : undefined
               }
               presenter={(slides, at) =>
-                openPresenter({ session: id, slides, at })
+                openPresenter({ session: id, slides, at }, blocks.flush())
               }
               save={(edit) =>
                 "table" in edit

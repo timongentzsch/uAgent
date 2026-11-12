@@ -20,12 +20,19 @@ export const STEPS: Record<string, number | undefined> = {
 const HASH = "#presenter=";
 export const presentChannel = () => new BroadcastChannel("uagent-present");
 
-export function openPresenter(deck: Presenting) {
-  window.open(
-    `${location.pathname}${HASH}${encodeURIComponent(JSON.stringify(deck))}`,
+// Opened in the press that asks for it; it goes to the deck once `ready`
+// (what was typed in a slide is in its file).
+export function openPresenter(deck: Presenting, ready: Promise<unknown>) {
+  const made = window.open(
+    "",
     "uagent-presenter",
     "popup,width=1280,height=800",
   );
+  const address = new URL(
+    `${location.pathname}${HASH}${encodeURIComponent(JSON.stringify(deck))}`,
+    location.href,
+  );
+  void ready.then(() => made?.location.replace(address));
 }
 
 // The deck this window presents for, when it is a presenter's view.

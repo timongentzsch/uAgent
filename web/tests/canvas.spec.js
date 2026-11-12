@@ -300,7 +300,7 @@ test("a page opened: select and comment, tweaks, print", async ({
     app.waitForEvent("popup"),
     app.getByRole("menuitem", { name: "Print or save as PDF" }).click(),
   ]);
-  expect(alone.url()).toMatch(
+  await alone.waitForURL(
     /\/preview\/[0-9a-f]{48}\/design\/hero-a\.html\?v=[\d.]+#print$/,
   );
   await alone.close();
@@ -604,6 +604,16 @@ test("a slide with text over text and a document block taller than a page say so
     /`design\/checks\/memo\.html` threw: a figure is 1000px tall, more than a page \(605px\)/,
   );
 });
+
+// The page opened alone from the pane, once it is at its address.
+async function openAlone(app, files) {
+  const [alone] = await Promise.all([
+    app.waitForEvent("popup"),
+    files.getByRole("button", { name: "Open alone" }).click(),
+  ]);
+  await alone.waitForURL(/\/preview\//);
+  return alone;
+}
 
 // A deck in decks/talk, opened from the tree: the pane, its legend, the
 // stage's page and the counter.
@@ -1921,10 +1931,7 @@ test("a document opened alone turns its pages by the keys", async ({
   host,
 }) => {
   const { files } = await openMemo(app, session, host.project);
-  const alone = await app.context().newPage();
-  await alone.goto(
-    await files.getByRole("link", { name: "Open alone" }).getAttribute("href"),
-  );
+  const alone = await openAlone(app, files);
   const shows = async (page) => {
     await expect
       .poll(() =>
@@ -2230,10 +2237,7 @@ test("a long table breaks between its rows across a document's sheets, and print
     expect(await onSheet(page.getByText(`Row ${row}.`))).toBe(shown);
   // Printed from its own address, where only Chromium writes a PDF.
   if (browserName !== "chromium") return;
-  const alone = await app.context().newPage();
-  await alone.goto(
-    await files.getByRole("link", { name: "Open alone" }).getAttribute("href"),
-  );
+  const alone = await openAlone(app, files);
   const pdf = await alone.pdf({ preferCSSPageSize: true });
   expect(pdf.toString("latin1").match(/\/Type\s*\/Page\b/g)).toHaveLength(3);
 });

@@ -6,8 +6,8 @@ import { tableOf, xlsxOf } from "./book.js";
 import init, * as engine from "./wasm.js";
 import { csvTab, workbookTabs } from "./workbook.js";
 
-export async function answer({ tabs, file, name, csv, xlsx }) {
-  await init();
+export async function answer({ module, tabs, file, name, csv, xlsx }) {
+  await init({ module_or_path: module });
   if (file)
     return {
       tabs: csv

@@ -117,10 +117,10 @@ test("a sheet shows nothing as written while its engine loads, and is drawn with
   await app.addInitScript(() => {
     if (!location.pathname.startsWith("/preview/")) return;
     let release;
-    const instantiate = WebAssembly.instantiateStreaming;
+    const compile = WebAssembly.compileStreaming;
     const held = new Promise((reached) => {
-      WebAssembly.instantiateStreaming = async (...given) => {
-        const made = await instantiate(...given);
+      WebAssembly.compileStreaming = async (...given) => {
+        const made = await compile(...given);
         await new Promise((done) => {
           release = done;
           reached();
@@ -246,6 +246,27 @@ test("a sheet is drawn once its stylesheet has loaded, however late that comes",
 // The engine panics on XNPV of two plain numbers.
 const COSTS = sheet("Costs", {
   Costs: ["<th>Item<th>Cost<th>Twice", "<td>Rent<td>1200<td>=B2*2"],
+});
+
+// A page in an opaque origin has no cache: what each worker needs of the
+// engine it is handed, not left to fetch.
+test("a sheet fetches the engine once, however many changes it calculates", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  let fetched = 0;
+  app.on("request", (request) => {
+    if (request.url().endsWith("/wasm_bg.wasm")) fetched++;
+  });
+  const { cell } = await openSheet(app, session, host.project, COSTS);
+  for (const cost of [50, 60]) {
+    await cell("Costs", "B2").click();
+    await app.keyboard.type(`${cost}`);
+    await app.keyboard.press("Enter");
+    await expect(cell("Costs", "C2")).toHaveText(`${cost * 2}`);
+  }
+  expect(fetched).toBe(1);
 });
 
 test("a formula the engine panics on is refused when entered: the sheet goes on and the file stays", async ({

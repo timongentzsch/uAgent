@@ -40,6 +40,9 @@ const here = new URL(".", import.meta.url).href;
 const LIMIT = 20_000;
 // Past this the app says the sheet is calculating; sooner, nothing shows.
 const MOMENT = 500;
+// The engine is fetched and compiled once: a page in an opaque origin has
+// no cache, and each worker would fetch it again.
+const compiled = WebAssembly.compileStreaming(fetch(`${here}wasm_bg.wasm`));
 // A page in an opaque origin may make a worker only from its own blob.
 const WORKER = URL.createObjectURL(
   new Blob(
@@ -84,7 +87,10 @@ const ask = (request) =>
     worker.onmessage = ({ data }) => end(data);
     worker.onerror = (event) =>
       end({ failed: event.message || "the engine did not start" });
-    worker.postMessage(request);
+    compiled.then(
+      (module) => worker.postMessage({ ...request, module }),
+      (error) => end({ failed: error.message }),
+    );
   });
 
 // The grid is measured as its stylesheet lays it out: drawn once that has
@@ -102,7 +108,7 @@ const styled = new Promise((done) =>
 
 async function open() {
   const engine = await import(`${here}wasm.js`);
-  await engine.default();
+  await engine.default({ module_or_path: await compiled });
   await styled;
   // The engine can come ready inside a ResizeObserver's report (the page
   // helper's), where a page that resizes itself raises an error.

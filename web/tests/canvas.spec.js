@@ -1389,6 +1389,33 @@ test("what is typed in a slide saved before is in its file when the app itself i
     .toContain("<p>The plan for Q3</p>");
 });
 
+// What is being saved stands last in Edit's own row, so no tool moves for it.
+test("a slide's tools keep their places while what is typed in it is saved", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage } = await openDeck(app, session, host.project, TALK);
+  await typeIn(app, files, stage.getByText("The plan"));
+  const rows = files.locator(".page-tools");
+  const places = () =>
+    rows.getByRole("button").evaluateAll((all) =>
+      all.map((tool) => {
+        const { left, top, width, height } = tool.getBoundingClientRect();
+        return [tool.textContent || tool.ariaLabel, left, top, width, height];
+      }),
+    );
+  const bare = await places();
+  await app.keyboard.insertText(" for Q3");
+  const status = rows.last().locator(".page-status");
+  await expect(status).toHaveText("Saving…");
+  expect(await places()).toEqual(bare);
+  await app.clock.resume();
+  await expect(status).toHaveText("Saved");
+  await expect(rows.first().locator(".page-status")).toHaveCount(0);
+  expect(await places()).toEqual(bare);
+});
+
 test("a block that was refused stays owed: its notice stands though another is saved, and the slide is left once that was read", async ({
   page: app,
   session,

@@ -211,3 +211,34 @@ test("on a phone a sheet's tabs scroll sideways and its formula bar stays one li
     }),
   ).toEqual([true, true]);
 });
+
+test("a sheet is drawn once its stylesheet has loaded, however late that comes", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  // The stylesheet comes after the engine has.
+  const engine = app.waitForEvent("requestfinished", (request) =>
+    request.url().endsWith("wasm_bg.wasm"),
+  );
+  await app.route("**/~sheet/sheet.css", async (route) => {
+    await engine;
+    await route.continue();
+  });
+  // In the page: whether the stylesheet was in when its first rows were drawn.
+  await app.addInitScript(() => {
+    new MutationObserver((_, observer) => {
+      if (!document.querySelector("tbody [data-row]")) return;
+      observer.disconnect();
+      window.styled = !!document.querySelector('link[href$="sheet.css"]').sheet;
+    }).observe(document, { subtree: true, childList: true });
+  });
+  const { stage, cell } = await openSheet(
+    app,
+    session,
+    host.project,
+    SAMPLE_SHEET,
+  );
+  await expect(cell("Tasks", "A4")).toHaveText("Write the plan");
+  expect(await stage.locator("html").evaluate(() => window.styled)).toBe(true);
+});

@@ -31,16 +31,23 @@ const say = (message) =>
   parent.postMessage({ uagentDesign: 1, ...message }, "*");
 const here = new URL(".", import.meta.url).href;
 
-document.head.append(
-  Object.assign(document.createElement("link"), {
-    rel: "stylesheet",
-    href: `${here}sheet.css`,
-  }),
+// The grid is measured as its stylesheet lays it out: drawn once that has
+// loaded, or failed to.
+const styled = new Promise((done) =>
+  document.head.append(
+    Object.assign(document.createElement("link"), {
+      rel: "stylesheet",
+      href: `${here}sheet.css`,
+      onload: done,
+      onerror: done,
+    }),
+  ),
 );
 
 async function open() {
   const engine = await import(`${here}wasm.js`);
   await engine.default();
+  await styled;
   // The engine can come ready inside a ResizeObserver's report (the page
   // helper's), where a page that resizes itself raises an error.
   await new Promise((done) => setTimeout(done));

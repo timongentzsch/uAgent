@@ -475,9 +475,7 @@
   // its place and its text when Edit went on, which the app checks against
   // the file.
   const before = new WeakMap();
-  const changed = (event) => {
-    const block = event.target.closest?.("[contenteditable]");
-    if (!block) return;
+  const report = (block, more) => {
     // Without the marks put on its parts here.
     const clean = block.cloneNode(true);
     for (const part of clean.querySelectorAll("*"))
@@ -487,12 +485,71 @@
       index: blocks().indexOf(block),
       before: before.get(block),
       html: clean.innerHTML,
+      ...more,
     });
+  };
+  const changed = (event) => {
+    const block = event.target.closest?.("[contenteditable]");
+    if (block) report(block);
   };
   // A block left: the app shows its legend the file as it now is.
   const left = (event) =>
     event.target.closest?.("[contenteditable]") && send("left");
-  const edit = (on) => {
+  // Where the selection starts, and the block being edited it is in.
+  const startOf = () => {
+    const node = getSelection().anchorNode;
+    return node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  };
+  const editing = () => startOf()?.closest?.("[contenteditable]") || null;
+  // What a block can be turned into another of: a paragraph, a heading or an
+  // item of a plain list, named by its list.
+  const kindOf = (block) =>
+    block.matches("p, h2, h3")
+      ? block.localName
+      : block.matches(":is(ul, ol) > li") && !block.querySelector("ul, ol")
+        ? block.parentElement.localName
+        : "";
+  // What the app's tools show of the selection, said as it changes: the
+  // block's kind, whether anything is selected, its marks (none to make
+  // where the block's own style is the mark) and the link it starts in.
+  let told = "";
+  const caret = () => {
+    const block = editing();
+    const own = block && getComputedStyle(block);
+    const state = block
+      ? {
+          kind: kindOf(block),
+          selected: !getSelection().isCollapsed,
+          bold:
+            own.fontWeight < 600 ? document.queryCommandState("bold") : null,
+          italic:
+            own.fontStyle === "normal"
+              ? document.queryCommandState("italic")
+              : null,
+          href: startOf().closest("a[href]")?.getAttribute("href") || "",
+        }
+      : {};
+    if (told !== (told = JSON.stringify(state))) send("caret", state);
+  };
+  // A mark or a link on what is selected in the block, made as a rich text
+  // field makes them (a link is changed or taken away whole); or the block
+  // reported with the kind it is to become.
+  const format = ({ mark, href, as }) => {
+    const block = editing();
+    if (!block) return;
+    if (as) return report(block, { as });
+    const link = startOf().closest("a[href]");
+    if (link && !mark) getSelection().selectAllChildren(link);
+    block.setAttribute("contenteditable", "true");
+    if (mark) document.execCommand(mark === "italic" ? "italic" : "bold");
+    else if (href) document.execCommand("createLink", false, String(href));
+    else document.execCommand("unlink");
+    block.setAttribute("contenteditable", "plaintext-only");
+    block.focus();
+    caret();
+  };
+  // Edit on or off; with `at`, the caret goes to the end of that block.
+  const edit = (on, at) => {
     for (const block of blocks())
       if (on) {
         block.setAttribute("contenteditable", "plaintext-only");
@@ -501,6 +558,13 @@
     const toggle = on ? addEventListener : removeEventListener;
     toggle("input", changed, true);
     toggle("focusout", left, true);
+    toggle.call(document, "selectionchange", caret);
+    told = "";
+    const block = on && blocks()[at];
+    if (!block) return;
+    block.focus();
+    getSelection().selectAllChildren(block);
+    getSelection().collapseToEnd();
   };
 
   const send = (type, data) =>
@@ -749,7 +813,9 @@
   addEventListener("message", (event) => {
     if (event.source !== parent || event.data?.uagentDesign !== 1) return;
     if (event.data.type === "select") select(!!event.data.on);
-    if (event.data.type === "edit" && stepped()) edit(!!event.data.on);
+    if (event.data.type === "edit" && stepped())
+      edit(!!event.data.on, event.data.at);
+    if (event.data.type === "format") format(event.data);
     if (event.data.type === "markdown") send("markdown", { text: markdown() });
     if (event.data.type === "find") {
       sought = [String(event.data.text), Number(event.data.index)];

@@ -51,6 +51,7 @@ import Legend from "./legend.tsx";
 import { FormulaBar, SheetBar } from "./sheet.tsx";
 import { type Cell, cellOf, fileOf, type TableEdit } from "./sheet-edit.ts";
 import SlideActions from "./slide-actions.tsx";
+import { type Caret, caretOf, FormatTools, LinkField } from "./format.tsx";
 import Tweaks, { type Tweak } from "./tweaks.tsx";
 import { dirOf } from "./flow.ts";
 import { readTokens } from "./tokens.ts";
@@ -147,8 +148,9 @@ export default function Sequence({
   // A document's or a slide's edited block, or a sheet's edited tab, saved
   // to its file.
   save?: (edit: BlockEdit | TableEdit) => Promise<void>;
-  // Resolves once what was typed in a block is in its file.
-  settle: () => Promise<unknown>;
+  // Resolves once what was typed in a block is in its file, with whether
+  // it is.
+  settle: () => Promise<boolean>;
   // An Excel or CSV file's tabs, as a sheet's text, saved beside the file.
   saveAs?: (text: string) => Promise<void>;
   // A deck's slides renamed, copied or deleted as `moves` say, after which
@@ -199,8 +201,16 @@ export default function Sequence({
     if (next) tell(frame.current, { type: next, on: true });
     setMode(next);
     setHover(undefined);
+    setCaret(undefined);
+    setLinking(false);
     if (next !== "select") setPicked(undefined);
   };
+  // What is selected in the block being edited, and whether its link's
+  // address is being typed.
+  const [caret, setCaret] = useState<Caret>();
+  const [linking, setLinking] = useState(false);
+  // The block the caret goes back to once the page is drawn again.
+  const caretAt = useRef<number>(undefined);
   const [hover, setHover] = useState<Rect>();
   const [picked, setPicked] = useState<Pick>();
   const [comment, setComment] = useState("");
@@ -216,6 +226,7 @@ export default function Sequence({
   useEffect(() => {
     setPicked(undefined);
     setHover(undefined);
+    setCaret(undefined);
     setSaved(undefined);
     setSaves(wrote.current);
     setZoom(1);
@@ -582,6 +593,13 @@ export default function Sequence({
       </Button>
     );
   const flip = (to: "select" | "edit") => enter(mode === to ? "" : to);
+  // What is being saved: a sheet's among its tools, a block's in the row of
+  // Edit's own, under them, which no width hides.
+  const status = saved && (
+    <small class="muted">
+      <Notice tone={saved.failed ? "error" : "info"}>{saved.text}</Notice>
+    </small>
+  );
   const whole = doc ? "document" : kind === "deck" ? "deck" : "design";
   // A deck rearranged from here, by a drag in the legend or from the slide's
   // menu: the stage follows its slide.
@@ -646,11 +664,7 @@ export default function Sequence({
         {save &&
           editable &&
           toggle("Edit", mode === "edit", () => flip("edit"), <Pencil />)}
-        {saved && (
-          <small class="muted">
-            <Notice tone={saved.failed ? "error" : "info"}>{saved.text}</Notice>
-          </small>
-        )}
+        {!editable && status}
         {(declared.length > 0 || !!theme.value?.colors.length) &&
           toggle(
             "Tweaks",
@@ -710,6 +724,31 @@ export default function Sequence({
           <ExternalLink />
         </a>
       </div>
+      {mode === "edit" && (
+        <div class="page-tools">
+          <FormatTools
+            caret={caret}
+            format={(format) =>
+              tell(frame.current, { type: "format", ...format })
+            }
+            linking={linking && !!caret}
+            link={() => setLinking(!linking)}
+          />
+          {status}
+        </div>
+      )}
+      {linking && caret && (
+        <LinkField
+          key={caret.href}
+          href={caret.href}
+          apply={(href) => {
+            tell(frame.current, { type: "format", href });
+            setLinking(false);
+            frame.current?.focus();
+          }}
+          close={() => setLinking(false)}
+        />
+      )}
       {finding && (
         <FindField
           label={`Find in this ${whole}`}
@@ -804,7 +843,14 @@ export default function Sequence({
                       heard(path)(message);
                     if (message.type === "ready") {
                       setSaid(message);
-                      if (mode) tell(frame.current, { type: mode, on: true });
+                      if (mode)
+                        tell(frame.current, {
+                          type: mode,
+                          on: true,
+                          at: caretAt.current,
+                        });
+                      if (caretAt.current !== undefined) frame.current?.focus();
+                      caretAt.current = undefined;
                       // Drawn again, what was found stays marked.
                       if (query) marked();
                     } else if (message.type === "drawn") {
@@ -845,6 +891,17 @@ export default function Sequence({
                       }
                       if ("table" in message || editable)
                         void keep(save?.(message));
+                      // Another kind of block is the file's to make: once
+                      // written, the page is drawn again from it.
+                      if ("as" in message && message.as)
+                        void settle().then((written) => {
+                          if (!written) return;
+                          caretAt.current = natural(message.index);
+                          setLoad((count) => count + 1);
+                          setSaves(wrote.current);
+                        });
+                    } else if (message.type === "caret") {
+                      setCaret(caretOf(message));
                     } else if (message.type === "left") {
                       // Once its last edit is written.
                       void keeping.current?.then(

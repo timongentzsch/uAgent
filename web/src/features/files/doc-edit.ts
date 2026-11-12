@@ -9,10 +9,84 @@ export interface BlockEdit {
   // The block's text when the page was shown.
   before: string;
   html: string;
+  // The kind the block is to become: one of KINDS.
+  as?: string;
 }
+
+// What a block can be turned into (an item is named by its list), and what
+// each is called.
+export const KINDS: Record<string, string> = {
+  p: "Paragraph",
+  h2: "Heading 2",
+  h3: "Heading 3",
+  ul: "Bulleted list",
+  ol: "Numbered list",
+};
+// The addresses a link made here may have.
+export const LINK = /^(https?|mailto):/i;
 
 const words = (text?: string | null) =>
   (text ?? "").replace(/\s+/g, " ").trim();
+
+// The page is untrusted: an edit leaves in a block what it held, by tag and
+// attributes, and of anything else only bare marks and links.
+function fill(block: Element, html: string) {
+  const shape = (part: Element) => (part.cloneNode() as Element).outerHTML;
+  const held = new Set([...block.querySelectorAll("*")].map(shape));
+  block.innerHTML = html;
+  for (const part of block.querySelectorAll("*")) {
+    if (held.has(shape(part))) continue;
+    const link =
+      part.localName === "a" && LINK.test(part.getAttribute("href") ?? "");
+    if (!link && !part.matches("b, i, code, br"))
+      part.replaceWith(...part.childNodes);
+    else
+      for (const { name } of [...part.attributes])
+        if (!link || name !== "href") part.removeAttribute(name);
+  }
+}
+
+// The kind of a block that can be turned into another: an item of a plain
+// list is named by its list.
+const kindOf = (block: Element) =>
+  block.matches("p, h2, h3")
+    ? block.localName
+    : block.matches(":is(ul, ol) > li") && !block.querySelector("ul, ol")
+      ? block.parentElement!.localName
+      : "";
+
+const retag = (from: Element, tag: string) => {
+  const to = from.ownerDocument.createElement(tag);
+  for (const { name, value } of from.attributes) to.setAttribute(name, value);
+  to.append(...from.childNodes);
+  return to;
+};
+
+// The block as another kind. An item that becomes the other list's takes its
+// list along; one that becomes a paragraph or a heading leaves its list, cut
+// in two around it; a paragraph that becomes an item joins the list before
+// it, or starts one.
+function turn(block: Element, as: string) {
+  const list = block.localName === "li" ? block.parentElement! : null;
+  const listed = as === "ul" || as === "ol";
+  if (list && listed) return list.replaceWith(retag(list, as));
+  const next = retag(block, listed ? "li" : as);
+  if (list) {
+    const rest = list.cloneNode() as Element;
+    rest.removeAttribute("id");
+    while (block.nextSibling) rest.append(block.nextSibling);
+    list.after(next, rest);
+    block.remove();
+    for (const part of [list, rest]) if (!part.children.length) part.remove();
+  } else if (listed) {
+    const before = block.previousElementSibling;
+    const into =
+      before?.localName === as ? before : block.ownerDocument.createElement(as);
+    if (into !== before) block.before(into);
+    into.append(next);
+    block.remove();
+  } else block.replaceWith(next);
+}
 
 // The source with the edit made and the block's text then, or null when that
 // block is there neither as the page showed it nor as `wrote` (the file
@@ -24,7 +98,11 @@ export function applyEdit(source: string, edit: BlockEdit, wrote?: string) {
   )[edit.index];
   const now = words(block?.textContent);
   if (!block || (now !== words(edit.before) && now !== wrote)) return null;
-  block.innerHTML = edit.html;
+  fill(block, edit.html);
+  const text = words(block.textContent);
+  const kind = kindOf(block);
+  if (kind && edit.as && edit.as !== kind && Object.hasOwn(KINDS, edit.as))
+    turn(block, edit.as);
   // What follows </body> is parsed into the body: a save adds no line there.
   const tail = page.body.lastChild;
   if (tail?.nodeType === Node.TEXT_NODE)
@@ -33,7 +111,7 @@ export function applyEdit(source: string, edit: BlockEdit, wrote?: string) {
   const at = source.search(/<html[\s>]/i);
   return {
     text: `${at >= 0 ? source.slice(0, at) : "<!doctype html>\n"}${page.documentElement.outerHTML}\n`,
-    wrote: words(block.textContent),
+    wrote: text,
   };
 }
 

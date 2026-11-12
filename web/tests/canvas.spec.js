@@ -2223,3 +2223,209 @@ test("a document exports Markdown, and a block edited on its third page is saved
   await expect(saving(files)).toHaveText(/^Not saved: this text changed/);
   expect(await readFile(memo, "utf8")).toContain("Churn fell.");
 });
+
+// docs/notes.html opened: a few blocks to format, and its body as the file
+// has it.
+async function openNotes(app, session, project) {
+  const notes = join(project, "docs/notes.html");
+  await writeFiles(project, {
+    "docs/notes.html": paper(
+      "Notes",
+      "<h1>Notes</h1><p>Alpha beta gamma</p>" +
+        '<p>Second <span class="tag">kept</span> one</p>' +
+        "<ul><li>One</li><li>Two</li><li>Three</li></ul>",
+    ),
+  });
+  const files = await openFiles(app, session, "docs/notes.html");
+  return {
+    files,
+    stage: viewerOf(files).stage,
+    tool: (name) => files.getByRole("button", { name, exact: true }),
+    body: async () =>
+      /<body>(.*)<\/body>/s.exec(await readFile(notes, "utf8"))[1],
+  };
+}
+// The caret in a block of the stage's page, with the first `text` in it
+// selected.
+async function selectIn(block, text) {
+  await block.click();
+  await block.evaluate((node, text) => {
+    const walk = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    while (walk.nextNode()) {
+      const at = walk.currentNode.data.indexOf(text);
+      if (at < 0) continue;
+      const end = at + text.length;
+      getSelection().setBaseAndExtent(
+        walk.currentNode,
+        at,
+        walk.currentNode,
+        end,
+      );
+      return;
+    }
+  }, text);
+}
+
+test("Edit's tools mark and link what is selected in a block, and stand beside the stage's own without moving them", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage, tool, body } = await openNotes(
+    app,
+    session,
+    host.project,
+  );
+  const places = async () => [
+    await tool("Find").boundingBox(),
+    await tool("Export").boundingBox(),
+  ];
+  const before = await places();
+  await tool("Edit").click();
+  const first = stage.getByText("Alpha beta gamma");
+  await expect(first).toHaveAttribute("contenteditable", "plaintext-only");
+  // There from the start, off until something is selected.
+  for (const name of ["Bold", "Italic", "Link", "Style"])
+    await expect(tool(name)).toBeDisabled();
+  expect(await places()).toEqual(before);
+
+  await selectIn(first, "beta");
+  await tool("Bold").click();
+  await expect(tool("Bold")).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(body).toContain("<p>Alpha <b>beta</b> gamma</p>");
+  // The press left the focus in the block.
+  await expect(first).toBeFocused();
+  await selectIn(first, "Alpha");
+  await tool("Italic").click();
+  await expect.poll(body).toContain("<p><i>Alpha</i> <b>beta</b> gamma</p>");
+  await selectIn(first, "beta");
+  await tool("Bold").click();
+  await expect(tool("Bold")).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(body).toContain("<p><i>Alpha</i> beta gamma</p>");
+
+  // A link's address is typed under the tools: http, https or mailto.
+  await selectIn(first, "gamma");
+  await tool("Link").click();
+  const address = files.getByRole("textbox", { name: "Link address" });
+  await expect(address).toBeFocused();
+  await address.fill("javascript:alert(1)");
+  await expect(tool("Apply")).toBeDisabled();
+  await address.fill("https://example.com/a");
+  await app.keyboard.press("Enter");
+  await expect(address).toHaveCount(0);
+  await expect
+    .poll(body)
+    .toContain('beta <a href="https://example.com/a">gamma</a></p>');
+  // Back in the block, the caret in the link: it is changed or removed whole.
+  await expect(first).toBeFocused();
+  await selectIn(first, "amm");
+  await tool("Link").click();
+  await expect(address).toHaveValue("https://example.com/a");
+  await tool("Remove").click();
+  await expect.poll(body).toContain("<p><i>Alpha</i> beta gamma</p>");
+
+  // A heading is bold by itself: there is no such mark to make in it.
+  await selectIn(stage.locator("h1"), "Notes");
+  await expect(tool("Italic")).toBeEnabled();
+  await expect(tool("Bold")).toBeDisabled();
+
+  // The page is untrusted: of what it says a block holds, the file takes
+  // what the block held, bare marks and links, and the text of the rest.
+  await stage.locator("body").evaluate(() =>
+    parent.postMessage(
+      {
+        uagentDesign: 1,
+        type: "edit",
+        index: 2,
+        before: "Second kept one",
+        html:
+          '<img src="x" onerror="alert(1)"><script>alert(2)</scr' +
+          'ipt><b onclick="alert(3)">bold</b> <a href="javascript:alert(4)">bad</a> ' +
+          '<a href="mailto:a@b.example" target="_blank">mail</a> ' +
+          '<span class="tag">kept</span> <span class="new">plain</span>',
+      },
+      "*",
+    ),
+  );
+  await expect
+    .poll(body)
+    .toContain(
+      '<p>alert(2)<b>bold</b> bad <a href="mailto:a@b.example">mail</a> ' +
+        '<span class="tag">kept</span> plain</p>',
+    );
+});
+
+test("Edit's Style turns a block into a heading, a paragraph or a list item in the file, and the caret stays in it", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, tool, body } = await openNotes(app, session, host.project);
+  await tool("Edit").click();
+  const second = stage.getByText("Second kept one");
+  await expect(second).toHaveAttribute("contenteditable", "plaintext-only");
+  const style = async (block, name) => {
+    await block.click();
+    await tool("Style").click();
+    await app.getByRole("menuitemradio", { name }).click();
+  };
+  await style(second, "Heading 2");
+  const heading = stage.locator("h2");
+  await expect(heading).toBeFocused();
+  await app.keyboard.type(" more");
+  await expect
+    .poll(body)
+    .toContain(
+      '</p><h2>Second <span class="tag">kept</span> one more</h2><ul>',
+    );
+  // Its menu says what the block is.
+  await tool("Style").click();
+  await expect(
+    app.getByRole("menuitemradio", { name: "Heading 2" }),
+  ).toHaveAttribute("aria-checked", "true");
+  await app.keyboard.press("Escape");
+
+  // A paragraph starts a list; the block after it joins that list.
+  await style(stage.getByText("Alpha beta gamma"), "Bulleted list");
+  await expect(stage.locator("ul").first()).toHaveText("Alpha beta gamma");
+  await style(heading, "Bulleted list");
+  await expect(heading).toHaveCount(0);
+  await expect
+    .poll(body)
+    .toBe(
+      "<h1>Notes</h1><ul><li>Alpha beta gamma</li>" +
+        '<li>Second <span class="tag">kept</span> one more</li></ul>' +
+        "<ul><li>One</li><li>Two</li><li>Three</li></ul>",
+    );
+  // An item takes its list along to the other kind, and leaves it as a
+  // paragraph, the list cut in two around it.
+  await style(stage.getByText("Two", { exact: true }), "Numbered list");
+  await expect(stage.locator("ol > li")).toHaveCount(3);
+  await style(stage.getByText("Two", { exact: true }), "Paragraph");
+  await expect(stage.locator("ol")).toHaveCount(2);
+  await expect
+    .poll(body)
+    .toContain("<ol><li>One</li></ol><p>Two</p><ol><li>Three</li></ol>");
+});
+
+test("a slide's block takes Edit's tools as a document's does", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage } = await openDeck(app, session, host.project, TALK);
+  const tool = (name) => files.getByRole("button", { name, exact: true });
+  const cover = () => talkFile(host.project, "01-cover.html");
+  await tool("Edit").click();
+  const text = stage.getByText("The plan");
+  await expect(text).toHaveAttribute("contenteditable", "plaintext-only");
+  await selectIn(text, "plan");
+  await tool("Bold").click();
+  await expect.poll(cover).toContain("<p>The <b>plan</b></p><aside>");
+  await tool("Style").click();
+  await app.getByRole("menuitemradio", { name: "Heading 2" }).click();
+  await expect(stage.locator("h2")).toBeFocused();
+  expect(await cover()).toContain(
+    "<h1>Cover</h1><h2>The <b>plan</b></h2><aside>Say hello.</aside>",
+  );
+});

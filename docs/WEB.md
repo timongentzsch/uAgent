@@ -143,11 +143,14 @@ page). A link to a place in it turns to that page. Export gives it as PDF or
 Markdown, and the page shown as a picture.
 
 **Edit**, on a document or a slide, lets you type in its headings,
-paragraphs, list items and table cells. What you type is saved to the file
-when you pause, and before the pane goes anywhere else or exports; the
-legend follows once you leave the block. A block the agent changed
-meanwhile is not written over: the pane says so and keeps what you typed on
-the page.
+paragraphs, list items and table cells. Its own tools come under the
+others: **Bold**, **Italic** and **Link** (an http, https or mailto
+address) for what you have selected, and **Style**, which makes the block a
+paragraph, a heading or an item of a bulleted or numbered list. What you
+type is saved to the file when you pause, and before the pane goes anywhere
+else or exports; the legend follows once you leave the block. A block the
+agent changed meanwhile is not written over: the pane says so and keeps
+what you typed on the page.
 
 **A design's canvas** shows everything its folder holds: the pages, each
 live, and also its pictures and films at their own size, and a document or a

@@ -28,7 +28,7 @@
 
 namespace uagent {
 
-enum class ActivityKind : uint8_t { kCommand, kMemory, kDetached };
+enum class ActivityKind : uint8_t { kCommand, kDetached };
 enum class ActivityState : uint8_t {
   kStarting,
   kRunning,
@@ -91,8 +91,6 @@ struct Activity {
   int64_t id = 0;
   std::shared_ptr<ActivitySession> session{};
   std::string display_label{};
-  std::string receipt_path{};
-  std::string source_id{};
   // Put right when the activity ends, where the sandbox could not deny its
   // writes.
   std::shared_ptr<const SandboxWatch> watch{};

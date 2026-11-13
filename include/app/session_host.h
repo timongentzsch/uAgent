@@ -95,6 +95,7 @@ struct HostSession {
   SessionStatus status = SessionStatus::kSaved;
   // `parent` is the session that started an agent, `model` the file's.
   std::string parent, model;
+  json suggestion = nullptr;
   // Spend, turns and to-do progress as last saved, until its runtime says.
   double cost = 0;
   int64_t turns = 0;

@@ -123,6 +123,7 @@ std::string Rewrite(const SessionMove& move, size_t index,
         if (CanonicalAccessPath(metadata.cwd) ==
             CanonicalAccessPath(move.from_cwd)) {
           metadata.cwd = move.to_cwd;
+          metadata.suggestion = nullptr;
           changed = true;
         }
         if (const auto parent =

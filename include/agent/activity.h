@@ -34,8 +34,6 @@ struct ActivityCompletion {
   std::string output;
   std::string hint;  // for the model only: the full log, how to resume it
   std::string display_label;
-  std::string receipt_path;
-  std::string source_id;
   int64_t started_ms = 0;  // Unix milliseconds
 };
 

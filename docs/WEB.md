@@ -38,7 +38,8 @@ The sidebar groups this main's conversations by execution host, then by place:
 before it folds the place away (remembered per browser) and **+** starts a
 conversation there. Each conversation is followed by its agents: those at
 work or waiting with their state; finished agents remain accessible from
-their reports and search. **Recent** is collapsible. **Pin** in the
+their reports and search. **To file**, above them, lists the conversations
+in Scratch that have a suggested place. **Recent** is collapsible. **Pin** in the
 menu of a conversation, workspace or folder moves it to a **Pinned** section
 at the top, in the order pinned; **Unpin** returns it. The pins belong to
 the main, so every paired device shows the same, including remote conversations. Browsing saved history
@@ -59,9 +60,33 @@ conversation, and the conversations as cards (a list on a phone; the toggle
 is remembered per browser), each with its state (Working, Needs you,
 Stopped, Idle), current step, to-do progress, agents, last change and cost.
 
-**New** at the top of the sidebar and **New conversation** on the home screen
-start work. Conversation and folder actions choose a **Host** and reuse the
-Files tree to browse a directory; typing a path remains optional. Named
+The home screen starts work: type into its field and the conversation starts
+in the **Scratch** workspace on Local, with nothing to choose. **New** at the
+top of the sidebar opens the home screen with the field ready. **Other
+place…** beside the field keeps what you typed and asks for a host and a
+folder instead. Conversation and folder actions choose a **Host** and reuse
+the Files tree to browse a directory; typing a path remains optional.
+
+µAgent suggests where a conversation in Scratch belongs, and never moves it
+by itself:
+
+- **With your first message**, the title's model also sees your 30 newest
+  conversations. If the message carries one of them on, a bar above the
+  input offers **Continue there** (the message is sent in that conversation
+  and the new one is removed) or **New in** its folder (the conversation
+  starts over there). The offer holds until the first tool runs.
+- **When a turn ends**, files it changed inside a folder you already work in
+  name that folder, or two. If it changed none and nothing was suggested
+  yet, the model is asked once: it may name a place, two, a new workspace by
+  name, or nothing.
+- The suggestion shows above the input, as a row under **To file** on the
+  home screen, and in the sidebar. **Move to…** moves the conversation as
+  **Move to…** in its menu does (**Create and move** makes the workspace
+  first), **Other place…** opens that dialog, and **Keep in Scratch**
+  answers for good. Move waits for a running turn to end.
+- **To file** also lists, for a week, Scratch conversations nothing was
+  suggested for. With `title.model` set to `off` only the changed files
+  suggest. Named
 **Workspaces** belong to Local. An existing conversation or folder supplies its
 host, shown beside the conversation title. There is no application-wide host
 switch. The bottom **Remote hosts** panel shows status and measured main-to-host SSH

@@ -1,0 +1,51 @@
+.start-field {
+  display: flex;
+  gap: var(--gap);
+}
+.start-field input {
+  flex: 1;
+  min-width: 0;
+}
+.start-field button {
+  white-space: nowrap;
+}
+.filing {
+  margin: 0 var(--column-inset) var(--gap);
+  padding: var(--pad);
+}
+.filing p {
+  margin: var(--space-2) 0;
+}
+.filing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+.to-file {
+  margin-top: var(--space-12);
+  text-align: left;
+}
+.to-file ul {
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.to-file li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--space-3) var(--pad);
+}
+.to-file li > button {
+  display: grid;
+  flex: 1 1 var(--pane);
+  min-width: 0;
+  height: auto;
+  justify-content: start;
+  justify-items: start;
+  text-align: left;
+}
+.to-file small {
+  color: var(--muted);
+}

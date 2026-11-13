@@ -67,8 +67,7 @@ std::vector<Tool> BuildTools(AppContext& context,
                              std::vector<Skill> skills, std::string& error) {
   Api& api = context.runtime.api;
   AppRuntime& runtime = context.runtime;
-  // A memory extractor gets its memory tools only; a tool-less child remains
-  // useful for constrained internal tasks.
+  // A tool-less child remains useful for constrained internal tasks.
   const std::string toolset = EnvStr("UAGENT_INTERNAL_TOOLSET");
   const std::string session_path =
       context.channel ? context.channel->SessionPath() : std::string();
@@ -102,10 +101,6 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
-  }
-  if (toolset == "memory") {
-    std::erase_if(tools, [](const Tool& tool) { return !tool.memory_store; });
-    return tools;
   }
   if (toolset == "none") return {};
   // Where nobody can approve, or the policy forbids changes, uagent only shows.

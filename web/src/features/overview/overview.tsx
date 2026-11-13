@@ -1,5 +1,4 @@
 import { HostLabel } from "../../shared/host-scope.tsx";
-import type { TargetedSubmitEvent } from "preact";
 import { useState } from "preact/hooks";
 import { CircleAlert, LayoutGrid, List, SquareTerminal } from "lucide-preact";
 import type {
@@ -20,13 +19,13 @@ import { useResource } from "../../shared/use-resource.ts";
 import { stored } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
 import WaitingList from "../../shared/escalations.tsx";
+import { StartField } from "../filing/filing.tsx";
 import SessionName from "../../shared/session-name.tsx";
 import {
   Button,
   DataText,
   EmptyState,
   IconButton,
-  Input,
   Row,
   SectionTitle,
   Time,
@@ -63,11 +62,10 @@ export default function FolderOverview({
   newTerminal?: (folder: string) => void;
 }) {
   const { api, routes } = useApi();
-  const { online, report } = useHostContext();
+  const { online } = useHostContext();
   const narrow = useNarrowColumn();
   const [kept, keep] = useState(layoutKept.read);
   const layout = kept || (narrow ? "list" : "grid");
-  const [text, setText] = useState("");
   const name = space?.name || folderName(folder);
   const here = sessions.filter((item) => folderOf(item) === folder);
   const roots = here
@@ -91,10 +89,6 @@ export default function FolderOverview({
   );
   const git = facts?.git;
   const shells = (terminals || []).filter((item) => item.folder === folder);
-  const submit = (event: TargetedSubmitEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    start(folder, text.trim()).then(() => setText(""), report);
-  };
   const choice = (value: "grid" | "list") => {
     keep(value);
     layoutKept.write(value);
@@ -118,23 +112,20 @@ export default function FolderOverview({
           </DataText>
         </p>
       </header>
-      <form class="overview-start" onSubmit={submit}>
-        <Input
-          aria-label={`Start a conversation in ${name}`}
-          placeholder={`Start a conversation in ${name}…`}
-          value={text}
-          disabled={!online}
-          onInput={(event) => setText(event.currentTarget.value)}
-        />
-        <Button variant="primary" type="submit" disabled={!online}>
-          Start
-        </Button>
-        {newTerminal && (
-          <Button disabled={!online} onClick={() => newTerminal(folder)}>
-            New terminal
-          </Button>
-        )}
-      </form>
+      <StartField
+        label={`Start a conversation in ${name}`}
+        placeholder={`Start a conversation in ${name}…`}
+        disabled={!online}
+        start={(text) => start(folder, text)}
+      >
+        {() =>
+          newTerminal && (
+            <Button disabled={!online} onClick={() => newTerminal(folder)}>
+              New terminal
+            </Button>
+          )
+        }
+      </StartField>
       <dl class="overview-stats card divided" aria-label="Summary">
         <Stat
           label="Working"

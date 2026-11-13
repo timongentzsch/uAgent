@@ -64,129 +64,45 @@ void Agent::RecordReceipt(const Headline& headline, json parts) {
   Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
 }
 
-// One finished extraction: its receipt decides what the memory event records,
-// and only a change or a failure is worth a line on screen.
-void Agent::ReportMemoryCompletion(ActivityCompletion& completion) {
-  bool success = ExitedOk(completion.status);
-  MemoryEvent event;
-  std::string receipt_error;
-  bool receipt_exists =
-      !completion.receipt_path.empty() && PathExists(completion.receipt_path);
-  bool has_receipt =
-      receipt_exists &&
-      ReadMemoryReceipt(completion.receipt_path, event, receipt_error);
-  if (!success || !has_receipt) {
-    event = {};
-    if (!success) {
-      event.action = "failed";
-    } else if (receipt_exists) {
-      event.action = "receipt_unavailable";
-    } else {
-      event.action = "no_change";
-    }
-    event.source_session = completion.source_id;
-    event.timestamp = UtcStamp();
-    event.automatic = true;
-    if (!success) {
-      // The last line, not the first: a failed child has usually printed a
-      // startup warning before its error, and errors live at the end.
-      std::string output = RedactMemorySecrets(completion.output);
-      std::string_view tail(output);
-      while (!tail.empty()) {
-        size_t line = tail.find_last_not_of("\r\n");
-        if (line == std::string_view::npos) break;
-        tail = tail.substr(0, line + 1);
-        size_t start = tail.find_last_of('\n');
-        std::string_view candidate =
-            start == std::string_view::npos ? tail : tail.substr(start + 1);
-        if (!Trim(std::string(candidate)).empty()) {
-          event.preview = Utf8Trunc(std::string(candidate), kStatusLabelBytes);
-          break;
-        }
-        tail = start == std::string_view::npos ? std::string_view()
-                                               : tail.substr(0, start);
-      }
-    }
-    std::string event_error;
-    if (!WriteMemoryEvent(event, {}, event_error)) {
-      DebugLog("memory_event_write_error", {{"error", event_error}});
-    }
+// A memory saved or lost outside a turn, as the row a memory tool call draws.
+void Agent::RecordMemory(const MemoryEvent& event) {
+  const bool failed = event.action == "failed";
+  const Headline headline =
+      failed ? Headline{"Saving memory", "Could not save memory", event.key}
+      : event.action == "created"
+          ? Headline{"Saving memory", "Saved memory", event.key}
+          : Headline{"Updating memory", "Updated memory", event.key};
+  json parts = json::array();
+  if (!failed && !event.key.empty()) {
+    parts.push_back(LinkPart("memory", event.key, "Open memory"));
   }
-  if (!completion.receipt_path.empty()) {
-    std::error_code ignored;
-    std::filesystem::remove(completion.receipt_path, ignored);
-  }
-
-  // Routine outcomes are recorded too, marked minor: a client showing the
-  // full picture lists them, the default view does not.
-  const bool minor = event.action != "created" && event.action != "updated" &&
-                     event.action != "failed" &&
-                     event.action != "receipt_unavailable";
-  {
-    bool warning =
-        event.action == "failed" || event.action == "receipt_unavailable";
-    std::string label = event.action;
-    if (event.action == "no_change") {
-      label = "extraction complete · nothing saved";
-    } else if (event.action == "receipt_unavailable") {
-      label = "extraction complete · receipt unavailable";
-    }
-    std::string line = "Memory " + label;
-    if (!event.key.empty()) line += " · " + event.key;
-    // The same row shape as a memory tool call: verb, key, link.
-    const Headline headline =
-        event.action == "created"
-            ? Headline{"Saving memory", "Saved memory", event.key}
-        : event.action == "updated"
-            ? Headline{"Updating memory", "Updated memory", event.key}
-        : event.action == "deleted"
-            ? Headline{"Forgetting memory", "Forgot memory", event.key}
-        : warning
-            ? Headline{"Saving memory", "Could not save memory", event.key}
-            : Headline{"Checking memory", "Checked memory", event.key};
-    json parts = json::array();
-    if (!event.key.empty() && event.action != "deleted") {
-      parts.push_back(LinkPart("memory", event.key, "Open memory"));
-    }
-    ResultFacts facts;
-    facts.no_change = event.action == "no_change";
-    if (event.action == "receipt_unavailable") facts.outcome = event.action;
-    json node = Receipt(headline, warning ? "failed" : "ok", facts,
-                        event.preview, "markdown", std::move(parts));
-    node["memory"] = {{"action", event.action},
-                      {"key", event.key},
-                      {"automatic", event.automatic}};
-    if (minor) node["routine"] = true;
-    node["turn_root"] = turn_root_;
-    node = conversation_.RecordEntry(std::move(node));
-    Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
-    // The preview continues the notice, indented under its dot.
-    if (!event.preview.empty()) line += "\n  " + event.preview;
-    Emit(NoticeEvent(
-        warning ? PresentationStatus::kFailed : PresentationStatus::kNeutral,
-        std::move(line), minor));
-  }
-  DebugLog("memory_extract_finished", {{"activity_id", completion.activity_id},
-                                       {"action", event.action},
-                                       {"key", event.key},
-                                       {"source_session", event.source_session},
-                                       {"receipt_error", receipt_error}});
+  json node = Receipt(headline, failed ? "failed" : "ok", {}, event.preview,
+                      "markdown", std::move(parts));
+  node["memory"] = {{"action", event.action},
+                    {"key", event.key},
+                    {"automatic", event.automatic}};
+  node["turn_root"] = turn_root_;
+  node = conversation_.RecordEntry(std::move(node));
+  Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
+  std::string line = "Memory " + event.action;
+  if (!event.key.empty()) line += " · " + event.key;
+  if (!event.preview.empty()) line += "\n  " + event.preview;
+  Emit(NoticeEvent(failed ? PresentationStatus::kFailed
+                          : PresentationStatus::kNeutral,
+                   std::move(line), false));
+  ++revision_;
 }
 
-// Everything that is not a memory extraction: a notice and a presentation
-// record each, and one bounded batch message for the model.
+// A notice and a presentation record each, and one bounded batch message for
+// the model.
 void Agent::DeliverActivityCompletions(
     const std::vector<ActivityCompletion>& completions) {
-  const size_t delivered = static_cast<size_t>(std::count_if(
-      completions.begin(), completions.end(), [](const auto& completion) {
-        return completion.kind != ActivityKind::kMemory;
-      }));
+  const size_t delivered = completions.size();
   constexpr size_t kAutomaticBatchBytes = KiB(12);
   std::string batch = "[completed activities; bounded]\n";
   size_t reduced = 0;
   bool first = true;
   for (const ActivityCompletion& completion : completions) {
-    if (completion.kind == ActivityKind::kMemory) continue;
     const bool succeeded = ExitedOk(completion.status);
     PresentationRecord record;
     record.status = succeeded ? PresentationStatus::kSucceeded
@@ -315,15 +231,7 @@ bool Agent::DrainActivities(bool start_turn) {
       for (const json& e : *rows) processes_.Stopped(EndedFromJson(e));
     }
   }
-  for (ActivityCompletion& completion : completions) {
-    if (completion.kind == ActivityKind::kMemory) {
-      ReportMemoryCompletion(completion);
-    }
-  }
-  const bool delivered = std::any_of(
-      completions.begin(), completions.end(), [](const auto& completion) {
-        return completion.kind != ActivityKind::kMemory;
-      });
+  const bool delivered = !completions.empty();
   if (delivered) {
     DeliverActivityCompletions(completions);
     changed = true;
@@ -336,14 +244,13 @@ bool Agent::DrainActivities(bool start_turn) {
     changed |= FinishCommandRow(ended);
   }
   if (DrainAttachments()) changed = true;
+  std::vector<std::function<void()>> done;
   {
-    std::lock_guard lock(title_mutex_);
-    if (!generated_title_.empty() && !custom_title_) {
-      session_title_ = std::move(generated_title_);
-      changed = true;
-    }
-    generated_title_.clear();
+    std::lock_guard lock(side_call_mutex_);
+    done.swap(side_done_);
   }
+  for (const auto& deliver : done) deliver();
+  changed |= !done.empty();
   if (changed) ++revision_;
   return changed;
 }

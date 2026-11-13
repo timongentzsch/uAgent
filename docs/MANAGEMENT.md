@@ -26,9 +26,16 @@ new ones, and files you put there yourself are all read. Global memories are
 read into every top-level session, smallest first, while they fit in 2 KiB
 together. Every other memory is listed with its key, its first sentence and,
 when opened, the date it was saved; the agent opens one with its `memory`
-tool when the topic fits. It writes a memory when you ask, and a background
-extractor adds lessons from finished sessions unless
-`UAGENT_MEMORY_GENERATE=0`. `UAGENT_MEMORY=0` or `--no-memory` turns memory
+tool when the topic fits; the list names the newest first, each with its
+description or opening sentence. It writes a memory when you ask, correct it
+or state a standing preference, into the note that already covers the topic
+when there is one. A background extractor adds lessons from finished
+sessions unless `UAGENT_MEMORY_GENERATE=0`: when a conversation starts, one
+request to the memory model reads an older one of the folder, idle for
+`memory.idleHours`, and saves at most one note, shown in the conversation
+only when it saved or failed. A conversation in Scratch with an unanswered
+suggestion waits until it is filed. When a scope is three-quarters full the
+extractor may fold one overlapping note into the one it writes. `UAGENT_MEMORY=0` or `--no-memory` turns memory
 off, and a conversation run with it off is never extracted from.
 
 A skill is a folder with a `SKILL.md`; see

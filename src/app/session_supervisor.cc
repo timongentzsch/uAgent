@@ -406,6 +406,9 @@ void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
              !session.run_id.empty() || session.restart);
     }
   }
+  if (session.state.contains("suggestion")) {
+    session.suggestion = session.state["suggestion"];
+  }
   session.pending = JsonValue(frame, "pending", json(nullptr));
   session.turn_active = JsonValue(frame, "busy", false);
   session.command_busy = JsonValue(frame, "command_busy", false);

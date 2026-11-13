@@ -96,7 +96,8 @@ stays in the model id, so an endpoint's routing suffix (OpenRouter's
   choice as `/model NAME --default` does. `-p` and `--json` never choose for
   you: they exit with an error that names your providers.
 - Background work uses your conversation's model unless you name one: the
-  title (`title.model`, or `off`), memory extraction and agents. Image
+  title and where an unfiled conversation belongs (`title.model`, or `off`),
+  memory extraction (`memory.model`) and agents. Image
   reading does too when that model accepts images; otherwise it uses the
   first model of the same endpoint that does, or tells you to set
   `image.model`.

@@ -533,3 +533,49 @@ def test_web_update_is_checked_installed_and_restarts_the_host(root, home, *, bi
             wait_until(restarted, "the host did not restart after the update", timeout=20)
             assert_true(process.poll() is None, "host exited instead of re-exec")
             assert_true((prefix / "installed").read_text() == "999.0.0\n", "not installed")
+
+
+def test_web_unfiled_conversation_is_offered_where_it_belongs(root, home, *, binary):
+    """A first message in Scratch goes to the title's model with the earlier
+    conversations; what fits comes back as the suggestion, and `keep` answers
+    it with "here"."""
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        if "Title this coding session" not in text:
+            return event({"content": "Recorded answer"})
+        if "<conversations>" not in text:
+            return event({"content": "Fix the pairing test"})
+        assert_true("1. Fix the pairing test" in text, text)
+        return event({"content": "Pairing test again\nfits: 1 continues"})
+
+    with Server([route]) as provider:
+        env = {"UAGENT_TITLE_MODEL": ""}
+        with web_host(binary, root, home, provider.url, extra_env=env) as (web, code, _, _):
+            web.pair(code)
+            earlier = web.create(root)
+            web.command("submit", earlier, text="the pairing test fails one run in five")
+            web.until(earlier, lambda value: value["metadata"]["title"] == "Fix the pairing test")
+            filed = web.until(earlier, lambda value: value["metadata"]["status"] == "idle")
+            assert_true(not filed["metadata"].get("suggestion"), filed["metadata"])
+
+            unfiled = web.command("create", space="Scratch")["session"]
+            unfiled = web.command("activate", unfiled)["session"]
+            web.command("submit", unfiled, text="the pairing test is flaky again")
+            value = web.until(unfiled, lambda value: value["metadata"].get("suggestion"))
+            assert_true(value["metadata"]["title"] == "Pairing test again", value["metadata"])
+            assert_true(
+                value["metadata"]["suggestion"]["options"]
+                == [{"cwd": filed["metadata"]["cwd"], "session": earlier["id"]}],
+                value["metadata"]["suggestion"],
+            )
+            web.until(unfiled, lambda value: value["metadata"]["status"] == "idle")
+            web.command("keep", unfiled)
+            web.until(
+                unfiled, lambda value: value["metadata"]["suggestion"] == {"dismissed": True}
+            )
+            # A suggested new workspace is created by the move that names it,
+            # and what moved carries no suggestion with it.
+            moved = web.command("move", unfiled, space="Lisbon trip")["result"]
+            assert_true("/spaces/" in moved["cwd"] and moved["id"] != unfiled["id"], moved)
+            assert_true(not moved.get("suggestion"), moved)

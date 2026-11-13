@@ -196,6 +196,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.todo = item.todo;
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
+    session.suggestion = item.suggestion;
     // The catalogue stated the file already; its time is the one it read.
     session.updated =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -313,6 +314,7 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"parent", session.parent},
       {"model", session.model},
       {"title", session.title},
+      {"suggestion", session.suggestion},
       {"generation", session.generation},
       {"status", SessionStatusName(session.status)},
       {"presence", session.pid > 0 && !session.exited ? "active" : ""},

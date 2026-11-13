@@ -1,3 +1,4 @@
+import { filingTag, unfiled } from "../filing/filing.tsx";
 import { useHosts, type Source } from "../../state/sources.ts";
 import {
   Fold,
@@ -404,7 +405,7 @@ type SidebarProps = {
   settings: () => void;
   create: (place: "workspace" | "folder") => void;
   start: (cwd: string) => void;
-  startScratch: () => void;
+  home: () => void;
   overview: (cwd: string) => void;
   shownPlace: string;
   terminals?: TerminalInfo[] | null;
@@ -430,7 +431,7 @@ function SidebarView({
   settings,
   create,
   start,
-  startScratch,
+  home,
   overview,
   shownPlace,
   terminals,
@@ -502,14 +503,14 @@ function SidebarView({
       counts.set(folderOf(item), (counts.get(folderOf(item)) || 0) + 1);
     return counts;
   }, [all]);
-  const row = (item: Session) => (
+  const row = (item: Session, filing?: string) => (
     <SessionEntry
       key={item.id}
       item={item}
       selected={item.id === selected}
       unread={unread.has(item.id)}
       online={online}
-      tag={view === "recent" ? tagOf(item, spaces) : undefined}
+      tag={filing ?? (view === "recent" ? tagOf(item, spaces) : undefined)}
       choose={choose}
       menu={menu}
       picked={selection.ids.has(item.id)}
@@ -706,6 +707,10 @@ function SidebarView({
       </section>
     );
   };
+  // Only what has a suggestion: the rest of Scratch is under its workspace.
+  const toFile = drawing
+    ? []
+    : unfiled(all, spaces).filter((item) => filingTag(item, spaces));
   const group = (kind: string, rows: ComponentChildren[]) => (
     <div key={kind} class="list-group" role="group" aria-label={kind}>
       <p class="section-title caption">{kind}</p>
@@ -760,6 +765,11 @@ function SidebarView({
   const list = [
     <SharedShortcuts key="pinned" activePins={activePins} />,
     needs.length > 0 && group("Needs you", needs.map(conversation)),
+    toFile.length > 0 &&
+      group(
+        "To file",
+        toFile.map((item) => row(item, filingTag(item, spaces) ?? "")),
+      ),
     ...(view === "recent"
       ? [
           ...DAYS.map((day, index) => {
@@ -813,7 +823,7 @@ function SidebarView({
             </>
           }
         >
-          <MenuItem disabled={!online} onClick={startScratch}>
+          <MenuItem disabled={!online} onClick={home}>
             Conversation
           </MenuItem>
           <MenuItem disabled={!online} onClick={() => create("workspace")}>

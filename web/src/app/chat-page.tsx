@@ -7,6 +7,7 @@ import type {
   Outgoing,
   Session,
   Snapshot,
+  Space,
   View,
   SlashCommand,
 } from "../shared/types.ts";
@@ -14,7 +15,13 @@ import { queuedGuidance } from "../shared/message-view.ts";
 import { useCallback, useMemo } from "preact/hooks";
 import { useApi } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
-import { Welcome, Button, Actions } from "../shared/ui.tsx";
+import { Welcome, Button } from "../shared/ui.tsx";
+import {
+  type Redirect,
+  StartField,
+  Suggestion,
+  ToFile,
+} from "../features/filing/filing.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import { SideLayout } from "../shared/side-pane.tsx";
@@ -32,6 +39,8 @@ import SideAnswer from "../features/chat/side-answer.tsx";
 // Empty lists, so an idle context value or prop never changes identity.
 const NO_ACTIVITIES: Activity[] = [];
 const NO_COMMANDS: SlashCommand[] = [];
+const NO_SPACES: Space[] = [];
+export const startFieldId = "start-field";
 
 // The host's view, then this device's messages it has not confirmed yet.
 export function transcriptNodes(
@@ -70,6 +79,8 @@ export default function ChatPage({
   outgoing,
   loadError,
   newPlace,
+  start,
+  redirect,
   updateView,
   choose,
   side,
@@ -88,7 +99,12 @@ export default function ChatPage({
   catalogue: Catalogue;
   outgoing: Outgoing[];
   loadError: unknown;
-  newPlace: (place: "conversation" | "workspace" | "folder") => void;
+  newPlace: (
+    place: "conversation" | "workspace" | "folder",
+    text?: string,
+  ) => void;
+  start: (text: string) => Promise<unknown>;
+  redirect: Redirect;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
   choose: (id: string) => Promise<void>;
   side: { question: string; id?: string; firstRequest: string } | null;
@@ -230,6 +246,14 @@ export default function ChatPage({
       choose={open}
     />
   );
+  // Its only message, while nothing has run for it yet.
+  const asked = nodes.filter((node) => node.kind === "turn");
+  const first =
+    session?.turn_active &&
+    asked.length === 1 &&
+    !nodes.some((node) => node.kind === "call")
+      ? asked[0].body?.text || ""
+      : "";
   return shown ? (
     <SideLayout
       pane={
@@ -278,6 +302,16 @@ export default function ChatPage({
           close={closeSide}
         />
       )}
+      {session && (
+        <Suggestion
+          key={session.id}
+          session={session}
+          sessions={catalogue.sessions}
+          spaces={catalogue.spaces || NO_SPACES}
+          first={first}
+          redirect={redirect}
+        />
+      )}
       {composerFor(shown)}
     </SideLayout>
   ) : (
@@ -296,25 +330,32 @@ export default function ChatPage({
         [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
       ]}
     >
+      <StartField
+        id={startFieldId}
+        label="Start a conversation"
+        placeholder="Ask, or describe the work…"
+        disabled={!online}
+        autoFocus
+        start={start}
+      >
+        {(text) => (
+          <Button
+            disabled={!online}
+            onClick={() => newPlace("conversation", text)}
+          >
+            Other place…
+          </Button>
+        )}
+      </StartField>
       <p>
-        Start a conversation and choose where it runs, or open one from the
-        list.
+        It starts in Scratch, and µAgent suggests where it belongs once it
+        knows.
       </p>
-      <Actions>
-        <Button
-          variant="primary"
-          onClick={() => newPlace("conversation")}
-          disabled={!online}
-        >
-          New conversation
-        </Button>
-        <Button onClick={() => newPlace("workspace")} disabled={!online}>
-          New workspace…
-        </Button>
-        <Button onClick={() => newPlace("folder")} disabled={!online}>
-          New folder…
-        </Button>
-      </Actions>
+      <ToFile
+        sessions={catalogue.sessions}
+        spaces={catalogue.spaces || NO_SPACES}
+        choose={choose}
+      />
     </Welcome>
   );
 }

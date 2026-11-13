@@ -23,10 +23,9 @@ Usage Agent::AccountModelUsage(const json& reported,
   Usage usage;
   usage.Add(reported);
   MergeSessionUsage(usage);
-  const std::string& tag = purpose.empty() ? usage_purpose_ : purpose;
-  route_usage_[tag.empty() ? ActiveRoute()
-                           : RouteKey(api_.base_url, tag, api_.model,
-                                      api_.reasoning_effort)]
+  route_usage_[purpose.empty() ? ActiveRoute()
+                               : RouteKey(api_.base_url, purpose, api_.model,
+                                          api_.reasoning_effort)]
       .Merge(usage);
   return usage;
 }

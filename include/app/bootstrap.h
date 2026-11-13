@@ -42,6 +42,8 @@ struct ApplicationInput {
   // Who wrote the text when not the person (Steering::Message::origin).
   json origin{};
   std::optional<std::string> title{};
+  // Keeps the conversation where it is (Agent::KeepHere).
+  bool keep = false;
 };
 
 // Transport-neutral input half of the application protocol. NextInput

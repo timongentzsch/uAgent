@@ -93,8 +93,6 @@ std::string AnswerRootPrompt(ActivitySession& session, std::string_view chunk) {
 
 std::string ActivityKindName(ActivityKind kind) {
   switch (kind) {
-    case ActivityKind::kMemory:
-      return "memory";
     case ActivityKind::kDetached:
       return "detached";
     case ActivityKind::kCommand:
@@ -413,7 +411,6 @@ json ActivitySupervisor::ActivityViews() const {
                                 : json::array();
   for (size_t index = 0; index < jobs.size(); ++index) {
     const Activity& job = jobs[index];
-    if (job.kind == ActivityKind::kMemory) continue;
     json row = {{"id", ActivityId(job)}};
     // The turn is waiting on it, as opposed to running behind it.
     row["foreground"] = index >= background && index < background + foreground;

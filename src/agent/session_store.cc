@@ -125,6 +125,7 @@ json HeaderJson(const SessionMetadata& metadata) {
   if (!metadata.host.empty()) header["host"] = metadata.host;
   if (!metadata.agent.empty()) header[kSessionHeaderAgent] = metadata.agent;
   if (!metadata.memory) header["memory"] = false;
+  if (!metadata.suggestion.is_null()) header["suggestion"] = metadata.suggestion;
   return header;
 }
 
@@ -296,6 +297,7 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.metadata.turns = header[kSessionHeaderTurns].get<int64_t>();
   record.metadata.title = header[kSessionHeaderTitle].get<std::string>();
   record.metadata.custom_title = JsonValue(header, "custom_title", false);
+  record.metadata.suggestion = JsonValue(header, "suggestion", json(nullptr));
   record.metadata.parent_session_id =
       JsonValue(header, kSessionHeaderParent, "");
   record.metadata.forked_at_turn =
@@ -423,7 +425,9 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.host = JsonValue(header, "host", "");
         item.title = JsonValue(header, kSessionHeaderTitle, "(untitled)");
         item.model = JsonValue(header, kSessionHeaderModel, "");
+        item.session_id = JsonValue(header, kSessionHeaderSessionId, "");
         item.custom_title = JsonValue(header, "custom_title", false);
+        item.suggestion = JsonValue(header, "suggestion", json(nullptr));
         item.turns = JsonValue(header, kSessionHeaderTurns, int64_t{0});
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
         item.cost = JsonValue(header, "cost", 0.0);
@@ -748,16 +752,11 @@ SessionStoreStatus SessionStore::Rename(const std::string& path,
   if (!ValidSessionTitle(title)) {
     return Error(SessionStoreError::kInvalid, InvalidSessionTitleMessage());
   }
-  FileLease writer;
-  std::string error;
-  if (!writer.Acquire(SessionLockPath(path), error)) {
-    return Error(SessionStoreError::kIo, std::move(error));
-  }
-  auto loaded = Inspect(path);
-  if (!loaded.status.Ok() || !loaded.record) return loaded.status;
-  loaded.record->metadata.title = title;
-  loaded.record->metadata.custom_title = true;
-  return Save(path, *loaded.record);
+  return Edit(path, [&](SessionRecord& record) {
+    record.metadata.title = title;
+    record.metadata.custom_title = true;
+    return true;
+  });
 }
 
 SessionStoreStatus SessionStore::Remove(const std::string& path,

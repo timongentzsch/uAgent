@@ -50,7 +50,7 @@ import { DetailContext } from "../features/chat/node.tsx";
 import { detailLevels } from "../shared/tree.ts";
 import { devicePrefs } from "../shared/device-prefs.ts";
 import { useStored } from "../shared/storage.ts";
-import ChatPage from "./chat-page.tsx";
+import ChatPage, { startFieldId } from "./chat-page.tsx";
 import ConversationHeader from "./conversation-header.tsx";
 import Modals, { PreferencesContext } from "./modals.tsx";
 import Toasts from "./toasts.tsx";
@@ -317,8 +317,22 @@ function App({ host, bindResult, reading }: HostAppProps) {
     setModal,
     setBusy,
   });
-  const { startConversation, newPlace, startIn, startScratch, projects } =
-    places;
+  const {
+    startConversation,
+    newPlace,
+    startIn,
+    startUnfiled,
+    redirect,
+    projects,
+  } = places;
+  // The home screen, ready to type on.
+  const home = useCallback(() => {
+    void choose("").then(() =>
+      requestAnimationFrame(() =>
+        document.getElementById(startFieldId)?.focus(),
+      ),
+    );
+  }, [choose]);
   const showInPlace = useCallback(
     (place: LibraryPlace, target: FileTarget) => {
       setFilesOpen(true);
@@ -664,7 +678,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
       settings={settings}
       create={newPlace}
       start={startIn}
-      startScratch={startScratch}
+      home={home}
       overview={overview}
       shownPlace={page === "folder" ? place : ""}
       terminals={catalogue.terminals}
@@ -826,6 +840,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       outgoing={outgoing}
                       loadError={loadErrors[selected]}
                       newPlace={newPlace}
+                      start={startUnfiled}
+                      redirect={redirect}
                       updateView={updateView}
                       choose={choose}
                       side={side}

@@ -207,7 +207,7 @@ export async function selectProbeModel(
 export async function saveHistory(
   host,
   file,
-  { id, title, turns, messages, kinds, cwd, display },
+  { id, title, turns, messages, kinds, cwd, display, suggestion },
 ) {
   const directory = `${host.home}/.uagent/history`;
   await mkdir(directory, { recursive: true });
@@ -218,6 +218,7 @@ export async function saveHistory(
     session_id: id,
     title,
     turns,
+    ...(suggestion ? { suggestion } : {}),
   };
   const state = {
     messages,

@@ -392,6 +392,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     return result;
   }
   if ((kind == SessionCommandKind::kRename ||
+       kind == SessionCommandKind::kKeep ||
        kind == SessionCommandKind::kDelete) &&
       session->pid <= 0) {
     if (JsonValue(command, "generation", "") != session->generation) {
@@ -415,6 +416,11 @@ SessionCommandResult SessionHost::ExecuteCommand(
     SessionStoreStatus stored;
     if (kind == SessionCommandKind::kDelete) {
       result.error = DeleteConversation(session->path, draft_path);
+    } else if (kind == SessionCommandKind::kKeep) {
+      stored = SessionStore::Edit(session->path, [](SessionRecord& record) {
+        record.metadata.suggestion = {{"dismissed", true}};
+        return true;
+      });
     } else if (PathExists(session->path)) {
       stored = SessionStore::Rename(session->path, title);
     } else {
@@ -436,8 +442,12 @@ SessionCommandResult SessionHost::ExecuteCommand(
       sessions_.erase(session->id);
       Record(session->id, "", {{"kind", "deleted"}}, !session->run_id.empty());
     } else if (result.error.empty()) {
-      session->title = title;
-      session->draft_title = title;
+      if (kind == SessionCommandKind::kKeep) {
+        session->suggestion = {{"dismissed", true}};
+      } else {
+        session->title = title;
+        session->draft_title = title;
+      }
       session->updated = NowMillis();
       PublishMetadata(session->id, *session);
     }

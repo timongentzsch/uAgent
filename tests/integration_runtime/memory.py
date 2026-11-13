@@ -146,39 +146,16 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
     def extract(_, body):
         text = json.dumps(body)
         valid = (
-            function_names(body) == {"memory"}
+            not function_names(body)
             and "memory-extract-user-sentinel" in text
             and "system-content-must-not-leak" not in text
             and "at most one durable" in text
         )
         if not valid:
-            return event({"content": "extract-schema-bad"})
-        return tool_call("memory", {"action": "list"})
+            return event({"content": "none"})
+        return event({"content": "key: project/extracted\nKeep repository fixes concise."})
 
-    def search(_, _body):
-        return tool_call("memory", {"action": "search", "key": "concise"})
-
-    def inspect(_, _body):
-        return tool_call("memory", {"action": "get", "key": "project/extracted"})
-
-    def write(_, _body):
-        return tool_call(
-            "memory",
-            {
-                "action": "set",
-                "key": "project/extracted",
-                "content": "Keep repository fixes concise.",
-            },
-        )
-
-    def finish(_, body):
-        wrote = any(
-            message.get("role") == "tool" and "wrote " in str(message.get("content", ""))
-            for message in body["messages"]
-        )
-        return event({"content": "extract-done" if wrote else "extract-write-bad"})
-
-    with Server([extract, search, inspect, write, finish]) as server:
+    with Server([extract]) as server:
         env = base_env(home, server.url)
 
         def extracted():
@@ -198,7 +175,7 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
         )
         assert_true(code == 0, output)
         assert_true(target.read_text(encoding="utf-8") == "Keep repository fixes concise.", target)
-        assert_true(len(server.requests) == 5, server.requests)
+        assert_true(len(server.requests) == 1, server.requests)
         assert_true(b"memory-extract-user-sentinel" not in output, output)
         assert_true(b"Activity result" not in output, output)
         # The extractor's own pass is not saved as a conversation of the folder.
@@ -215,14 +192,14 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
             ]
 
         code, output = run_pty(workspace, env, b"/q\n", startup_marker=b"Ready", binary=binary)
-        assert_true(code == 0 and len(server.requests) == 5 and states() == ["done"], output)
+        assert_true(code == 0 and len(server.requests) == 1 and states() == ["done"], output)
         # Idle, and newer than its marker: the source is eligible again.
         for marker in (home / ".uagent/memory/.processed").rglob("*.state"):
             age(marker, IDLE_SECONDS + 60)
         disabled = dict(env)
         disabled["UAGENT_MEMORY_GENERATE"] = "0"
         code, output = run_pty(workspace, disabled, b"/q\n", startup_marker=b"Ready", binary=binary)
-        assert_true(code == 0 and len(server.requests) == 5 and states() == ["done"], output)
+        assert_true(code == 0 and len(server.requests) == 1 and states() == ["done"], output)
 
 
 def test_memory_off_conversations_are_never_extracted(root, home, *, binary):
@@ -299,8 +276,8 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
         assert_true(not list((no_write_home / ".uagent/memory").rglob("*.md")), no_write_home)
 
     def overfill_globals(case_home):
-        """More global memory than the always-on slice can carry, so the
-        extractor child prints a truncation warning before the real error."""
+        """More global memory than the always-on slice can carry: the
+        truncation warning must never stand in for the real error."""
         globals_dir = global_memory_dir(case_home)
         globals_dir.mkdir(parents=True, exist_ok=True)
         for index in range(8):
@@ -349,8 +326,6 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
             if name != "terminated":
                 assert_true(completion_logged(), f"{name} extractor did not complete")
                 wait_until(lambda: not markers(case_home), f"{name} claim survived shutdown")
-                # The planted globals make the child print a truncation warning
-                # first: a failure preview shows the tail, where the cause is.
                 journal = case_home / ".uagent/memory/events.jsonl"
                 previews = [
                     json.loads(line).get("preview", "")
@@ -365,9 +340,9 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
                     )
                 return server.requests
 
-            # Shutdown gives a background group 500ms before SIGKILL, so a slow
-            # child can leave its claim behind. A surviving claim must say
-            # `processing`, which is reclaimable: `done` would skip the session.
+            # A request cut off by shutdown leaves its claim behind. It must
+            # say `processing`, which is reclaimable: `done` would skip the
+            # session.
             try:
                 wait_until(lambda: not markers(case_home), "claim released", timeout=10)
                 released = True

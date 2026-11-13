@@ -197,8 +197,9 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
     // A running conversation says its own, which its file lags behind.
-    if (session.pid <= 0 || session.exited)
+    if (session.pid <= 0 || session.exited) {
       session.suggestion = item.suggestion;
+    }
     // The catalogue stated the file already; its time is the one it read.
     session.updated =
         std::chrono::duration_cast<std::chrono::milliseconds>(

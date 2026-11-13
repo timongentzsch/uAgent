@@ -204,23 +204,20 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
   // The two reads are one row at default, and their own under it at full.
-  await expect(rows).toHaveText([
-    /^Worked 2 reads/,
-    /^Explored 2 files/,
-    /^Thought /,
-  ]);
+  await expect(rows).toHaveText([/^Worked 2 reads/, /^Explored 2 files/]);
+  // A thought is text among them, not a row to open.
+  await expect(page.locator(".thought .node-text")).toBeVisible();
   await chooseDetail(page, "Full");
   await expect(rows).toHaveText([
     /^Worked 2 reads/,
     /^Explored 2 files/,
     /^Read \./,
     /^Read \./,
-    /^Thought /,
   ]);
   await chooseDetail(page, "Minimal");
   await expect(rows).toHaveText([/^Worked 2 reads/]);
   await chooseDetail(page, "Default");
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(2);
   const table = page.locator(".message .table-scroll > table");
   await expect(table).toHaveCount(1);
   await expect(table).toHaveCSS("display", "table");
@@ -335,16 +332,8 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   await prompt.press("Enter");
   await expect(page.locator(".composer .status-led.running")).toBeVisible();
 
-  // "Thinking" while it streams, then "Thought" and its first line.
-  const thinkingRow = page.locator(".node-row", {
-    hasText: /Thinking|Thought/,
-  });
-  await expect(thinkingRow).toBeVisible();
-  const thinking = thinkingRow.locator("..");
-  await expect(thinking.locator(".node-body")).toHaveCount(0);
-  // Dispatched: the reply streaming moves the page under a real click, and
-  // whether a click lands is not what this holds to.
-  await thinkingRow.dispatchEvent("click");
+  // A thought shows as text as it streams, with nothing to open.
+  const thinking = page.locator(".thought");
   await expect(thinking.locator(".node-text")).toBeVisible();
 
   const opening = page
@@ -465,9 +454,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
             node.textContent?.includes("Stable opening paragraph"),
           )?.parentElement,
         selected: getSelection().toString(),
-        thinking: [...document.querySelectorAll(".node-row")]
-          .find((row) => /Thinking|Thought/.test(row.textContent || ""))
-          ?.getAttribute("aria-expanded"),
+        thinking: !!document.querySelector(".thought .node-text"),
         copy:
           window.__stableCopyControl ===
           document.querySelector('.message.response [aria-label*="Cop"]'),
@@ -481,7 +468,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
     .toEqual({
       same: true,
       selected,
-      thinking: "true",
+      thinking: true,
       copy: true,
       table: true,
       kept: true,

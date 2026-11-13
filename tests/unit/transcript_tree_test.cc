@@ -302,8 +302,7 @@ TEST_CASE(TestGoldenChainOfCalls) {
       std::vector<std::string>{
           "turn m-2 < - \"fix it\"",
           "work w-m-2 < m-2 [ok] Worked 3 steps · edited 1 file · 2m 4s",
-          std::string("thinking r-1-1-1:thinking < w-m-2 Thought look first ") +
-              "\"look first\"",
+          "thinking r-1-1-1:thinking < w-m-2 \"look first\"",
           "call " + a + " < w-m-2 [ok] Read a.txt · 1 line · 5ms " +
               "\"alpha\"",
           "call " + b + " < w-m-2 [ok] Read b.txt · 1 line · 5ms " + "\"beta\"",
@@ -314,7 +313,7 @@ TEST_CASE(TestGoldenChainOfCalls) {
       }));
   CHECK(Lines(turn.Live()) == page);
   // The terminal opens the work at depth 1 and everything at depth all; an
-  // open node adds its body's tail, and a thought is its first line.
+  // open node adds its body's tail, and a thought is text among the steps.
   CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
          std::vector<std::string>{
              "> fix it\n"
@@ -322,15 +321,14 @@ TEST_CASE(TestGoldenChainOfCalls) {
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
              "> fix it\n"
              "  · Worked 3 steps · edited 1 file · 2m 4s\n"
-             "    · Thought look first\n"
+             "    look first\n"
              "    · Read a.txt · 1 line · 5ms\n"
              "    · Read b.txt · 1 line · 5ms\n"
              "    · Edited b.txt · +1 −1 · 5ms\n"
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
              "> fix it\n"
              "  · Worked 3 steps · edited 1 file · 2m 4s\n"
-             "    · Thought look first\n"
-             "      │ look first\n"
+             "    look first\n"
              "    · Read a.txt · 1 line · 5ms\n"
              "      │ alpha\n"
              "    · Read b.txt · 1 line · 5ms\n"
@@ -347,9 +345,30 @@ TEST_CASE(TestGoldenChainOfCalls) {
     const std::string drawn = Plain(CaptureStdout([&] {
       quiet.Draw({{"nodes", ConversationView(turn.History())["nodes"]}});
     }));
-    CHECK(drawn.find("Thought") == std::string::npos);
     CHECK(drawn.find("look first") == std::string::npos);
     CHECK(drawn.find("· Read a.txt · 1 line · 5ms\n") != std::string::npos);
+  }
+  // A long thought is cut to its first lines where only its work is open,
+  // and whole where everything is.
+  {
+    json nodes = ConversationView(turn.History())["nodes"];
+    std::string lengthy;
+    for (int at = 0; at < 60; ++at) lengthy += "reason ";
+    lengthy += "the end";
+    for (json& node : nodes) {
+      if (JsonValue(node, "kind", "") == "thinking") {
+        node["body"]["text"] = lengthy;
+      }
+    }
+    const auto drawn = [&](const char* level) {
+      TerminalPresenter shown;
+      shown.SetDetail(DetailFor(level));
+      shown.ShowThinking(true);
+      return Plain(CaptureStdout([&] { shown.Draw({{"nodes", nodes}}); }));
+    };
+    CHECK(drawn("default").find("    reason reason") != std::string::npos);
+    CHECK(drawn("default").find("the end") == std::string::npos);
+    CHECK(drawn("full").find("the end") != std::string::npos);
   }
   // Live, a step is drawn once it ends, in the tree's order, and the work's
   // line once the turn does: after the answer, which streamed.

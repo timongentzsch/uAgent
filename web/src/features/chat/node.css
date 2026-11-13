@@ -87,8 +87,23 @@ div.node-row > .row-chevron {
 .node.failed .node-text {
   color: var(--removed);
 }
-.node[data-kind="thinking"] > .node-open .node-text {
+/* A thought is text in the flow, not a box: fainter than a reply, and cut
+   to its first lines where the level says so. */
+.thought .node-text {
+  max-height: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  overflow: visible;
+  white-space: pre-wrap;
   color: var(--muted);
+  font-style: italic;
+}
+.thought[data-held] .node-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--lines);
+  overflow: hidden;
 }
 .node-command {
   margin: 0;

@@ -265,8 +265,10 @@ the turn has ended those notes stay between the steps at `default` and
 printed and folds them when it draws the turn again.
 
 Thinking is its own switch, `UAGENT_THINKING`, off at first: off, it is drawn
-nowhere; on, each thought is a row reading as its first line, closed at
-`default`, open at `full`, and counted in the work line.
+nowhere; on, each thought is text among the steps, fainter than a reply and
+in italics, with no row of its own: its first two lines at `default`, whole
+at `full`, and counted in the work line. In a browser a folded work shows
+its latest thought on one line while it runs.
 
 `/detail LEVEL` changes it for every terminal, and Ctrl+O steps to the next
 one; a browser starts at it. The level and **Thinking** in a web

@@ -77,7 +77,6 @@ export const chain = [
     parent: "w-m-12",
     kind: "thinking",
     sequence: 13,
-    headline: { verb: "Thinking", target: "" },
     body: { kind: "text", text: "look first" },
   },
   call("t-a", "w-m-12", 14, "ok", "Read", "fli/search.py", "120 lines · 5ms", {
@@ -263,6 +262,26 @@ export const arrivals = [
 ];
 
 // Two pages of history: the older one is read in front of the newer.
+// A turn at work whose latest step is a long thought.
+export const pondering = [
+  turn("m-40", 40, "rename it everywhere"),
+  work("m-40", "running"),
+  call("t-p", "w-m-40", 41, "ok", "Read", "src/names.ts", "40 lines · 5ms"),
+  {
+    id: "r-9-1-1:thinking",
+    parent: "w-m-40",
+    kind: "thinking",
+    sequence: 42,
+    body: {
+      kind: "text",
+      text: Array.from(
+        { length: 12 },
+        (_, at) => `Reason ${at + 1}: the name is used in more places.`,
+      ).join(" "),
+    },
+  },
+];
+
 export const pages = [plain, chain];
 
 export const conversation = [...chain, ...failed, ...steered];

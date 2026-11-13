@@ -135,17 +135,8 @@ std::string GroupId(std::string_view call) {
 std::string ThinkingId(std::string_view message) {
   return std::string(message) + ":thinking";
 }
-// Thinking reads as its first line once it has one to show.
 json ThinkingNode(std::string_view message, std::string_view work,
                   json fields) {
-  std::string first;
-  if (!JsonValue(fields, "streaming", false)) {
-    first = FirstLine(
-        Trim(JsonValue(JsonValue(fields, "body", kNone), "text", "")));
-    first.resize(std::min(first.find(". "), first.size()));
-  }
-  fields["headline"] = {{"verb", first.empty() ? "Thinking" : "Thought"},
-                        {"target", Utf8Trunc(first, kThoughtChars)}};
   return MakeNode(ThinkingId(message), work, "thinking", std::move(fields));
 }
 

@@ -4,7 +4,7 @@ import {
   DEV_SERVER_URL,
   openMore,
 } from "./fixtures.js";
-import { agents, arrivals, conversation } from "./golden-turns.js";
+import { agents, arrivals, conversation, pondering } from "./golden-turns.js";
 
 // The transcript tree on the dev page with a mocked host, at each detail
 // level. Set UAGENT_SHOTS to a folder to keep a screenshot of each.
@@ -66,7 +66,9 @@ async function open(page, level, nodes = conversation) {
     return json({ error: "Not in this mock" }, 404);
   });
   await page.goto(new URL(`/#session=${ID}`, DEV_SERVER_URL).href);
-  await expect(page.locator('[data-message-id="r-3-2-1"]')).toBeVisible();
+  await expect(
+    page.locator(`[data-message-id="${nodes[0].id}"]`),
+  ).toBeVisible();
 }
 
 const rows = (page) => page.locator(".transcript .node-row");
@@ -106,7 +108,7 @@ for (const [device, viewport] of [
       const shown = rows(page);
       // Minimal shows each turn's work as one line; default opens it.
       await expect(shown).toHaveCount(
-        { minimal: 4, default: 14, full: 14 }[level],
+        { minimal: 4, default: 13, full: 13 }[level],
       );
       const measured = await gaps(page);
       expect(measured.length).toBeGreaterThan(0);
@@ -180,7 +182,7 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await openMore(page);
   await page.getByRole("menuitem", { name: /^Detail/ }).click();
   await page.getByRole("menuitemradio", { name: "Full" }).click();
-  await expect(rows(page)).toHaveCount(14);
+  await expect(rows(page)).toHaveCount(13);
   await page
     .locator(".conversation-head")
     .getByLabel("Conversation menu", { exact: true })
@@ -191,15 +193,53 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await expect(work).toHaveAttribute("aria-expanded", "false");
 });
 
+test("a thought is text among the steps: one line under a folded work, two and the rest on asking at default, whole at full", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await open(page, "minimal", pondering);
+  const thought = page.locator(".thought");
+  const text = thought.locator(".node-text");
+  const lines = async () => {
+    const { height, line } = await text.evaluate((node) => ({
+      height: node.getBoundingClientRect().height,
+      line: parseFloat(getComputedStyle(node).lineHeight),
+    }));
+    return Math.round(height / line);
+  };
+  // Not a row: nothing to open, no box round it, and set apart by its face.
+  await expect(thought.locator(".node-row")).toHaveCount(0);
+  await expect(text).toHaveCSS("font-style", "italic");
+  await expect(text).toHaveCSS("border-top-width", "0px");
+  // Folded, the work still says what it is thinking, on one line.
+  await expect(
+    page.locator('[data-message-id="w-m-40"] > .node-row'),
+  ).toHaveAttribute("aria-expanded", "false");
+  expect(await lines()).toBe(1);
+  const head = page.locator(".conversation-head");
+  await head.getByRole("tab", { name: "Default" }).click();
+  await expect(thought).toHaveCount(1);
+  expect(await lines()).toBe(2);
+  await thought.getByRole("button", { name: "More" }).click();
+  expect(await lines()).toBeGreaterThan(2);
+  await thought.getByRole("button", { name: "Less" }).click();
+  expect(await lines()).toBe(2);
+  await head.getByRole("tab", { name: "Full" }).click();
+  await expect(thought.getByRole("button", { name: "More" })).toHaveCount(0);
+  expect(await lines()).toBeGreaterThan(2);
+});
+
 test("the header sets the level and shows or hides thinking", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 1400 });
   await open(page, "full");
-  await expect(rows(page)).toHaveCount(14);
+  await expect(rows(page)).toHaveCount(13);
   const head = page.locator(".conversation-head");
   const thinking = head.getByRole("button", { name: "Thinking", exact: true });
   await expect(thinking).toHaveAttribute("aria-pressed", "true");
+  // A thought is text among the rows, so hiding it leaves them as they were.
+  await expect(page.locator('[data-kind="thinking"]')).toHaveCount(1);
   await thinking.click();
   await expect(thinking).toHaveAttribute("aria-pressed", "false");
   await expect(rows(page)).toHaveCount(13);

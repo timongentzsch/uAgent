@@ -37,7 +37,7 @@ inline bool HoldsOthers(std::string_view id) {
   return id.starts_with(kWorkPrefix) || id.starts_with(kGroupPrefix);
 }
 std::string ThinkingId(std::string_view message);
-// A reply's thinking: a node of its own under its work.
+// A reply's thinking: a node of its own under its work, read as text.
 json ThinkingNode(std::string_view message, std::string_view work,
                   json fields = json::object());
 

@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import {
   test,
   expect,
@@ -243,14 +245,19 @@ for (const width of [390, 1440]) {
       await dialog
         .getByRole("combobox", { name: "Host", exact: true })
         .selectOption(remote);
-      await expect(dialog.getByLabel("Folder on the host")).toHaveValue("/srv");
+      // The folder that opens is the one chosen; a click chooses another,
+      // and its arrow goes into it.
+      const chosen = dialog.locator(".folder-picker-path");
+      await expect(chosen).toHaveText("/srv");
       await dialog
         .getByRole("button", { name: "projects", exact: true })
         .click();
+      await expect(chosen).toHaveText("/srv/projects");
+      await dialog
+        .getByRole("button", { name: "Open projects", exact: true })
+        .click();
       await dialog.getByRole("button", { name: "sample", exact: true }).click();
-      await expect(dialog.getByLabel("Folder on the host")).toHaveValue(
-        "/srv/projects/sample",
-      );
+      await expect(chosen).toHaveText("/srv/projects/sample");
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(width);
@@ -311,10 +318,12 @@ test("late home loading preserves path entry and its caret", async ({
     name: "New conversation",
     exact: true,
   });
+  await dialog.getByRole("button", { name: "Type a path" }).click();
   const path = dialog.getByLabel("Folder on the host");
-  await path.focus();
+  const loading = dialog.getByRole("status", { name: "Loading folders…" });
+  await expect(loading).toHaveCount(1);
   release();
-  await expect(dialog.locator(".folder-picker-path")).toHaveText(host.home);
+  await expect(loading).toHaveCount(0);
   await expect(path).toHaveValue("");
   await path.fill(host.project);
   await dialog
@@ -451,6 +460,34 @@ test("choosing a disconnected host's own conversation reconnects once", async ({
     .toEqual([{ action: "connect", id: remote }]);
 });
 
+test("the folder browser hides dot folders until asked, goes into one by its arrow and back by a crumb", async ({
+  page,
+  host,
+}) => {
+  await mkdir(join(host.home, ".hidden", "inner"), { recursive: true });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Other place…", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "New conversation",
+    exact: true,
+  });
+  const chosen = dialog.locator(".folder-picker-path");
+  const crumbs = dialog.getByRole("navigation", { name: "Folder on the host" });
+  const hidden = dialog.getByRole("button", { name: ".hidden", exact: true });
+  await expect(chosen).toHaveText(host.home);
+  await expect(hidden).toHaveCount(0);
+  await dialog.getByRole("switch", { name: "Show hidden folders" }).check();
+  await dialog.getByRole("button", { name: "Open .hidden" }).click();
+  await expect(chosen).toHaveText(join(host.home, ".hidden"));
+  await expect(
+    dialog.getByRole("button", { name: "inner", exact: true }),
+  ).toBeVisible();
+  await expect(crumbs.getByRole("button")).toHaveText(["~", ".hidden", ""]);
+  await crumbs.getByRole("button", { name: "~", exact: true }).click();
+  await expect(chosen).toHaveText(host.home);
+  await expect(hidden).toBeVisible();
+});
+
 test("known folders follow the chosen host without duplicate suggestions", async ({
   page,
   host,
@@ -465,19 +502,16 @@ test("known folders follow the chosen host without duplicate suggestions", async
     name: "New conversation",
     exact: true,
   });
-  await expect(dialog.locator("datalist option")).toHaveCount(1);
-  await expect(dialog.locator("datalist option")).toHaveAttribute(
-    "value",
-    host.project,
-  );
+  const recent = dialog
+    .getByRole("list", { name: "Recent on this host" })
+    .getByRole("listitem");
+  await expect(recent).toHaveCount(1);
+  await expect(recent).toHaveAttribute("data-path", host.project);
   await dialog
     .getByRole("combobox", { name: "Host", exact: true })
     .selectOption(remote);
-  await expect(dialog.locator("datalist option")).toHaveCount(1);
-  await expect(dialog.locator("datalist option")).toHaveAttribute(
-    "value",
-    "/srv/project",
-  );
+  await expect(recent).toHaveCount(1);
+  await expect(recent).toHaveAttribute("data-path", "/srv/project");
 });
 
 test("single-host headers and scheduled tasks omit redundant host controls", async ({

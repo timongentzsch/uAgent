@@ -4,18 +4,53 @@
   gap: var(--space-2);
   min-width: 0;
 }
-.folder-picker-actions {
+/* Where you are: each folder on the way leads back to itself. */
+.folder-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+}
+.folder-crumbs > button + button:not([aria-label])::before {
+  content: "/";
+  margin-right: var(--space-2);
+  color: var(--muted);
+}
+.folder-crumbs > [aria-current] {
+  font-weight: var(--weight-strong);
+}
+.folder-crumbs > [aria-label] {
+  margin-left: auto;
+}
+/* The list keeps its height from folder to folder, so the dialog holds
+   still as one loads. */
+.folder-list {
+  display: flex;
+  flex-direction: column;
+  height: var(--scroll-m);
+  overflow: auto;
+  border-block: var(--border);
+}
+.folder-list > .files-tree {
+  flex: none;
+  overflow: visible;
+}
+.folder-list > :is(h3, p) {
+  margin: 0;
+  padding: var(--space-2);
+}
+.folder-foot,
+.folder-foot > label {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
-.folder-picker-path {
-  overflow-wrap: anywhere;
-  margin: 0;
+.folder-foot {
+  justify-content: space-between;
 }
-.folder-picker .files-tree {
-  max-height: var(--scroll-m);
-  min-height: 0;
+.folder-picker-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 @media (pointer: coarse) {
   .folder-picker .tree-row {

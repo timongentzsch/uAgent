@@ -11,6 +11,7 @@ import {
 import { useApi } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { Button, LoadError, Notice } from "../../shared/ui.tsx";
+import { DataText, Placeholder } from "../../shared/placeholder.tsx";
 import { HTML, IMAGE, MARKDOWN } from "../../shared/file-types.ts";
 import { join, type Listing as Pages } from "./boards.ts";
 import { folderView } from "./flow.ts";
@@ -21,6 +22,15 @@ import { folderView } from "./flow.ts";
 export interface Listing extends Pages {
   more: boolean;
 }
+// What a folder is drawn from while it loads.
+export const SAMPLE_LISTING: Listing = {
+  entries: [
+    { name: "src", dir: true },
+    { name: "tests", dir: true },
+    { name: "README.md", dir: false },
+  ],
+  more: false,
+};
 interface TreeProps {
   session: string;
   // Read again when a turn starts or ends, or a file is written.
@@ -113,7 +123,9 @@ function FileRow({
       >
         <span class="tree-twisty" />
         {icon(name)}
-        <span class="files-name truncate">{name}</span>
+        <span class="files-name truncate">
+          <DataText>{name}</DataText>
+        </span>
       </Button>
     </li>
   );
@@ -159,7 +171,9 @@ function FolderNode({
         >
           <ChevronRight class="tree-twisty" />
           {open ? <FolderOpen /> : <Folder />}
-          <span class="files-name truncate">{name}</span>
+          <span class="files-name truncate">
+            <DataText>{name}</DataText>
+          </span>
         </Button>
         {open && opens && (listing.value?.kind || opens.kind === "canvas") && (
           <Button
@@ -174,11 +188,17 @@ function FolderNode({
       {open &&
         (listing.error ? (
           <LoadError error={listing.error} retry={listing.retry} />
-        ) : listing.value ? (
-          <ul role="group">
-            <Entries path={path} props={props} listing={listing.value} />
-          </ul>
-        ) : null)}
+        ) : (
+          <Placeholder label={`Opening ${name}…`} when={!listing.value}>
+            <ul role="group">
+              <Entries
+                path={path}
+                props={props}
+                listing={listing.value ?? SAMPLE_LISTING}
+              />
+            </ul>
+          </Placeholder>
+        ))}
     </li>
   );
 }

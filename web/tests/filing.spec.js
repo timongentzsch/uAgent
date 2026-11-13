@@ -48,7 +48,7 @@ test("on a phone the home screen scrolls through what waits, with long titles cu
     await unfiled(
       host,
       request,
-      `Conversation ${at} with a title far longer than a phone is wide`,
+      `Conversation ${at} with a title that is far longer than any phone is wide, by a good margin`,
     );
   await page.setViewportSize({ width: 390, height: 700 });
   await page.goto("/");
@@ -58,8 +58,28 @@ test("on a phone the home screen scrolls through what waits, with long titles cu
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
-  for (const row of await waiting.getByRole("listitem").all())
-    expect((await row.boundingBox()).width).toBeLessThanOrEqual(390);
+  // Every line of a row ends inside it, cut with an ellipsis where it is
+  // longer: measured on the text, which a clipped row would still hide.
+  const overruns = await waiting.getByRole("listitem").evaluateAll((rows) =>
+    rows.flatMap((row) => {
+      const edge = row.getBoundingClientRect().right;
+      return [...row.querySelectorAll(".truncate")]
+        .filter(
+          (line) =>
+            line.getBoundingClientRect().right > edge + 0.5 ||
+            (line.scrollWidth > line.clientWidth &&
+              getComputedStyle(line).textOverflow !== "ellipsis"),
+        )
+        .map((line) => line.textContent);
+    }),
+  );
+  expect(overruns).toEqual([]);
+  expect(
+    await waiting
+      .locator(".truncate")
+      .first()
+      .evaluate((line) => line.scrollWidth > line.clientWidth),
+  ).toBe(true);
   const field = await page.getByLabel("Start a conversation").boundingBox();
   expect(field.width).toBeGreaterThan(300);
   // The last one is below the screen, and scrolling reaches it.

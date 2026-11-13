@@ -373,6 +373,11 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   std::vector<CallTask> tasks(calls.size());
   rejections.clear();
   activity_polls.clear();
+  // A call may wait on a person for as long as they like: what a side
+  // request said by now shows while it does, not after the answer.
+  if (TakeSideReplies()) {
+    ++revision_;
+  }
   for (size_t index = 0; index < calls.size(); ++index) {
     PrepareCall(calls[index], tasks[index], state, loop);
   }

@@ -177,6 +177,7 @@ export async function leaveEnd(box) {
 export async function startInFolder(page, path) {
   await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("menuitem", { name: "Folder…" }).click();
+  await page.getByRole("button", { name: "Type a path" }).click();
   await page.getByLabel("Folder on the host").fill(path);
   const dialog = page.getByRole("dialog", { name: "New folder" });
   await dialog

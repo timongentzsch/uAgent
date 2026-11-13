@@ -105,6 +105,7 @@ test.describe("in Places", () => {
 
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "Folder…" }).click();
+    await page.getByRole("button", { name: "Type a path" }).click();
     const folder = page.getByLabel("Folder on the host");
     await folder.fill(host.project);
     await folder.press("Enter");

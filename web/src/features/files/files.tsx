@@ -88,7 +88,7 @@ import {
   swap,
   type View,
 } from "./flow.ts";
-import FileTree, { type Listing } from "./tree.tsx";
+import FileTree, { type Listing, SAMPLE_LISTING } from "./tree.tsx";
 import {
   type PageMessage,
   pageAddress,
@@ -125,14 +125,6 @@ interface FileText {
 const TEXT_PAGE = /\.(html?|csv)$/i;
 // Search results shown at once; typing more narrows them.
 // A folder as it is drawn before its entries arrive (see <Placeholder>).
-const SAMPLE_LISTING: Listing = {
-  entries: [
-    { name: "src", dir: true },
-    { name: "tests", dir: true },
-    { name: "README.md", dir: false },
-  ],
-  more: false,
-};
 const SHOWN = 50;
 // The folders open in the tree, per conversation folder, on this device.
 const folderStore = (host: string) =>

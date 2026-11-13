@@ -1,8 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #include "include/web/remote_hosts.h"
 
-#include <atomic>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>

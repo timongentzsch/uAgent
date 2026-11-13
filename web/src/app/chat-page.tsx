@@ -12,7 +12,7 @@ import type {
   SlashCommand,
 } from "../shared/types.ts";
 import { queuedGuidance } from "../shared/message-view.ts";
-import { useCallback, useMemo } from "preact/hooks";
+import { useCallback, useMemo, useState } from "preact/hooks";
 import { useApi } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
 import { Welcome, Button } from "../shared/ui.tsx";
@@ -22,6 +22,9 @@ import {
   ToFile,
 } from "../features/filing/filing.tsx";
 import { StartField } from "../shared/start-field.tsx";
+import { SheetButton } from "../shared/sheet.tsx";
+import ModelPicker from "../shared/model-picker.tsx";
+import type { ModelChoice } from "./use-places.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import { SideLayout } from "../shared/side-pane.tsx";
@@ -103,7 +106,7 @@ export default function ChatPage({
     place: "conversation" | "workspace" | "folder",
     text?: string,
   ) => void;
-  start: (text: string) => Promise<unknown>;
+  start: (text: string, model?: ModelChoice) => Promise<unknown>;
   redirect: Redirect;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
   choose: (id: string) => Promise<void>;
@@ -117,6 +120,8 @@ export default function ChatPage({
 }) {
   const { api, routes } = useApi();
   const { store, online, report, load, setModal } = useHostContext();
+  // The model picked on the home screen for the conversation it starts.
+  const [model, setModel] = useState<ModelChoice>();
   const { setFollowing, draft, setDraft, submit } = useConversation();
   const snapshot = useSnapshots(store, (all) => all[selected]);
   const view = snapshot?.state?.view;
@@ -315,47 +320,70 @@ export default function ChatPage({
       {composerFor(shown)}
     </SideLayout>
   ) : (
-    <Welcome
-      level={1}
-      title="What are we working on?"
-      tips={[
-        [
-          "Folders",
-          "A folder’s name in the list opens its overview: what works, what needs you, spend and changes.",
-        ],
-        [
-          <kbd>{keysOf("search").join(" ")}</kbd>,
-          "Searches every conversation, command and setting.",
-        ],
-        [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
-      ]}
-    >
-      <StartField
-        id={startFieldId}
-        label="Start a conversation"
-        placeholder="Ask, or describe the work…"
-        disabled={!online}
-        autoFocus
-        start={start}
+    <div class="home">
+      <Welcome
+        level={1}
+        title="What are we working on?"
+        tips={[
+          [
+            "Folders",
+            "A folder’s name in the list opens its overview: what works, what needs you, spend and changes.",
+          ],
+          [
+            <kbd>{keysOf("search").join(" ")}</kbd>,
+            "Searches every conversation, command and setting.",
+          ],
+          [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
+        ]}
       >
-        {(text) => (
-          <Button
-            disabled={!online}
-            onClick={() => newPlace("conversation", text)}
-          >
-            Other place…
-          </Button>
-        )}
-      </StartField>
-      <p>
-        It starts in Scratch, and µAgent suggests where it belongs once it
-        knows.
-      </p>
-      <ToFile
-        sessions={catalogue.sessions}
-        spaces={catalogue.spaces || NO_SPACES}
-        choose={choose}
-      />
-    </Welcome>
+        <StartField
+          id={startFieldId}
+          label="Start a conversation"
+          placeholder="Ask, or describe the work…"
+          disabled={!online}
+          autoFocus
+          start={(text) => start(text, model)}
+        >
+          {(text) => (
+            <>
+              <SheetButton
+                label="Model for this conversation"
+                title="Model and effort"
+                disabled={!online}
+                trigger={<span>{model?.label || "Default model"}</span>}
+              >
+                {(close) => (
+                  <ModelPicker
+                    session={{ id: "new-conversation", generation: "" }}
+                    selection={model?.label}
+                    save={(label, picked, effort) =>
+                      setModel({ label, model: picked, effort })
+                    }
+                    close={close}
+                    online={online}
+                    running={false}
+                  />
+                )}
+              </SheetButton>
+              <Button
+                disabled={!online}
+                onClick={() => newPlace("conversation", text)}
+              >
+                Other place…
+              </Button>
+            </>
+          )}
+        </StartField>
+        <p>
+          It starts in Scratch, and µAgent suggests where it belongs once it
+          knows.
+        </p>
+        <ToFile
+          sessions={catalogue.sessions}
+          spaces={catalogue.spaces || NO_SPACES}
+          choose={choose}
+        />
+      </Welcome>
+    </div>
   );
 }

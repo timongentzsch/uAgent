@@ -16,6 +16,13 @@ import { scratchSpace } from "../shared/limits.ts";
 import { SpaceMenu } from "./menus.tsx";
 import { collapsed, placeKey } from "../features/sidebar/folding.ts";
 
+// A model picked before a conversation exists, and how it reads.
+export interface ModelChoice {
+  label: string;
+  model: string;
+  effort: string;
+}
+
 export function usePlaces({
   catalogue,
   upsertSession,
@@ -65,7 +72,13 @@ export function usePlaces({
   // One start at a time: a double click must not race two activations.
   const starting = useRef(false);
   const startConversation = useCallback(
-    async (folder: string, space = "", text = "", targetHost = host) => {
+    async (
+      folder: string,
+      space = "",
+      text = "",
+      targetHost = host,
+      model?: ModelChoice,
+    ) => {
       if (starting.current) return;
       starting.current = true;
       try {
@@ -83,6 +96,13 @@ export function usePlaces({
         try {
           if (created.session.presence !== "active")
             await command("activate", created.session);
+          // The model picked for it is its own before its first message.
+          if (model)
+            await command("model", created.session, {
+              operation: "select",
+              model: model.model,
+              effort: model.effort,
+            });
           if (text) await command("submit", created.session, { text });
         } finally {
           await choose(created.session.id, targetHost);
@@ -111,7 +131,8 @@ export function usePlaces({
   );
   // Scratch is a workspace, so Local's.
   const startUnfiled = useCallback(
-    (text: string) => startConversation("", scratchSpace, text, ""),
+    (text: string, model?: ModelChoice) =>
+      startConversation("", scratchSpace, text, "", model),
     [startConversation],
   );
   const redirect: Redirect = useCallback(

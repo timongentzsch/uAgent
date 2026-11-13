@@ -23,7 +23,7 @@ export default function ModelPicker({
   // With `save` the choice is handed back, not applied to a session: the
   // picker closes once it was taken.
   selection?: string;
-  save?: (value: string) => unknown;
+  save?: (value: string, model: string, effort: string) => unknown;
   close: () => void;
 }) {
   const { command } = useApi();
@@ -159,6 +159,8 @@ export default function ModelPicker({
                 [model, effort === "default" ? "" : effort]
                   .filter(Boolean)
                   .join(":"),
+                model,
+                effort,
               );
               if (taken !== false) return close();
               throw new Error("Not saved. Its row in Settings says why.");

@@ -28,6 +28,7 @@ jobs:
       web: ${{ steps.select.outputs.web }}
       tidy: ${{ steps.select.outputs.tidy }}
       heavy: ${{ steps.select.outputs.heavy }}
+      bundle: ${{ steps.select.outputs.bundle }}
       image: ${{ steps.select.outputs.image }}
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
@@ -70,8 +71,8 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # The ARM64 leg is left to master unless the change is heavy
-      # (.github/changes.py).
+      # Linux ARM64 is left to master unless the change is heavy, and Intel
+      # macOS unless it changes what builds or packages (.github/changes.py).
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     # A shared runner can pause a PTY case past its deadline, which reads as a
@@ -147,7 +148,7 @@ jobs:
 
   remote-bundle:
     needs: [changes, build-and-test]
-    if: needs.changes.outputs.native == 'true' && needs.changes.outputs.heavy == 'true'
+    if: needs.changes.outputs.native == 'true' && needs.changes.outputs.bundle == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

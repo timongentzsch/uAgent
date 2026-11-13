@@ -10,7 +10,7 @@ import {
   Field,
   Select,
   LoadError,
-  Spinner,
+  Skeleton,
   Time,
 } from "../../shared/ui.tsx";
 import { Tabs } from "../../shared/tabs.tsx";
@@ -177,7 +177,7 @@ export default function Raw({
         {read.error ? (
           <LoadError error={read.error} retry={read.retry} />
         ) : body === undefined ? (
-          <Spinner label="Loading full body…" surface />
+          <Skeleton rows={6} label="Loading full body…" />
         ) : !text.trim() ? (
           <p class="muted">No content recorded.</p>
         ) : (

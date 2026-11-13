@@ -32,18 +32,17 @@
   min-width: 0;
   padding-right: var(--pad);
 }
-.home-list li > button:first-child {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+.home-list li > .list-row {
   flex: 1;
   min-width: 0;
   height: auto;
-  padding: var(--space-3) var(--pad);
-  /* Each line as wide as the row and no wider, so a long one is cut. */
-  justify-items: stretch;
-  text-align: left;
+  padding-block: var(--space-3);
 }
-.home-list :is(small, time) {
+/* Each line as wide as the row and no wider, so a long one is cut. */
+.home-list .row-text {
+  grid-template-columns: minmax(0, 1fr);
+}
+.home-list time {
   color: var(--muted);
   font-size: var(--font-small);
 }

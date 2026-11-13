@@ -779,7 +779,7 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
   host,
 }) => {
   const { files, legend, count } = await openDeck(app, session, host.project, {
-    "01-cover.html": slide("Cover", "Say hello."),
+    "01-cover.html": slide("Cover", "Say hello. ".repeat(60)),
     "02-plan.html": slide("Plan", "Three steps."),
     "10-end.html": slide("End"),
   });
@@ -795,6 +795,27 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
   await expect(files.locator(".page-main > .page-notes")).toContainText(
     "Say hello.",
   );
+  // A slide sits where the one before it sat, however much there is to say
+  // of it: a paragraph of notes, a line, or none.
+  const placed = (within) =>
+    within.locator(".page-holder > .page-frame").evaluate((frame) => {
+      const { x, y, width, height } = frame.getBoundingClientRect();
+      return [x, y, width, height].map(Math.round);
+    });
+  const reading = files.locator(".page-stage");
+  const first = await placed(reading);
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await expect(count).toHaveText("2 / 3");
+  expect(await placed(reading)).toEqual(first);
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await expect(count).toHaveText("3 / 3");
+  await expect(files.locator(".page-main > .page-notes")).toContainText(
+    "None for this slide",
+  );
+  expect(await placed(reading)).toEqual(first);
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await files.getByRole("button", { name: "Previous slide" }).click();
+  await expect(count).toHaveText("1 / 3");
 
   await files.getByRole("button", { name: "Present" }).click();
   const stage = files.locator(".page-stage[data-presenting]");
@@ -806,10 +827,19 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
   ).toBeVisible();
   await expect(slideFrame.getByText("Say hello.")).toBeHidden();
   await app.keyboard.press("n");
-  await expect(stage.locator(".page-notes")).toHaveText("Say hello.");
+  await expect(stage.locator(".page-notes")).toContainText("Say hello.");
+  const shown = await placed(stage);
   await app.keyboard.press("ArrowRight");
   await expect(stage.getByText("2 / 3")).toBeVisible();
   await expect(stage.locator(".page-notes")).toHaveText("Three steps.");
+  expect(await placed(stage)).toEqual(shown);
+  // Presenting too, a slide with none keeps the notes' room.
+  await app.keyboard.press("ArrowRight");
+  await expect(stage.getByText("3 / 3")).toBeVisible();
+  await expect(stage.locator(".page-notes")).toHaveText("");
+  expect(await placed(stage)).toEqual(shown);
+  await app.keyboard.press("ArrowLeft");
+  await expect(stage.getByText("2 / 3")).toBeVisible();
   // Space on the focused Next presses it: one slide on, not a second for
   // the key.
   await app.keyboard.press("ArrowLeft");

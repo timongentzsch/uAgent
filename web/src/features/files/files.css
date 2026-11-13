@@ -607,9 +607,12 @@
 .page-stage[data-presenting] .page-scroll {
   padding: 0;
 }
+/* As tall with a line as with a page of them: the slide above keeps its
+   size and its place from one to the next. */
 .page-notes {
+  flex: none;
   margin: 0;
-  max-height: 40%;
+  height: 30%;
   overflow-y: auto;
   padding: var(--space-6);
   border-top: var(--border);
@@ -620,10 +623,13 @@
 .page-main > .page-notes {
   display: flex;
   gap: var(--space-4);
-  max-height: var(--scroll-s);
+  height: auto;
   padding: var(--space-4);
   background: var(--bg);
   font-size: var(--font-small);
+}
+.page-main > p.page-notes {
+  height: calc(3lh + 2 * var(--space-4));
 }
 .page-present-bar {
   display: flex;

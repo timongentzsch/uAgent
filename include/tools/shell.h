@@ -38,10 +38,7 @@ struct ShellCommand {
   bool sandbox = true;
   int64_t yield_ms = 0;
   int64_t max_output_chars = 0;
-  ActivityKind activity_kind = ActivityKind::kCommand;
   std::string activity_label = {};
-  std::string receipt_path = {};
-  std::string source_id = {};
   EnvironmentOverrides environment = {};
   ChildEnvironmentPolicy environment_policy =
       ChildEnvironmentPolicy::kSanitized;

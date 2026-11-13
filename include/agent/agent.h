@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <list>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -22,6 +23,7 @@
 #include "include/agent/activity_supervisor.h"
 #include "include/agent/conversation.h"
 #include "include/agent/edit_journal.h"
+#include "include/agent/memory_store.h"
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/agent/trace.h"
@@ -103,10 +105,6 @@ class Agent {
   void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
   // An agent's role ({agent}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
-  // Bills every response under this purpose instead of the conversation.
-  void SetUsagePurpose(std::string purpose) {
-    usage_purpose_ = std::move(purpose);
-  }
   void RetainExchanges(bool enabled) {
     retain_exchanges_ = enabled;
     api_.capture_http = enabled;
@@ -156,7 +154,6 @@ class Agent {
 
   // Hands finished background jobs to the model, as a turn with `start_turn`.
   bool DrainActivities(bool start_turn = false);
-  void ReportMemoryCompletion(ActivityCompletion& completion);
   void DeliverActivityCompletions(
       const std::vector<ActivityCompletion>& completions);
   // Gives a backgrounded command's row its result; false when no row waits.
@@ -187,8 +184,27 @@ class Agent {
   bool DrainAttachments();
   // False when they could not be attached; a note then says why.
   bool PushAttachments(const std::vector<Attachment>& attachments);
-  // DrainActivities applies the title unless the user renamed the session.
+  // One small request beside the turn, on `selection`'s route (a setting's
+  // model, "" for the conversation's). DrainActivities hands its reply to
+  // `deliver` on the agent's thread. Starting a purpose again cancels the one
+  // still running. False when the route cannot be resolved.
+  using SideDeliver = std::function<void(const ChatResult&)>;
+  // What each side request is charged as, and replaced by.
+  static constexpr const char* kTitlePurpose = "session_title";
+  static constexpr const char* kPlacementPurpose = "placement";
+  static constexpr const char* kMemoryPurpose = "memory_extract";
+  bool StartSide(const std::string& purpose, const std::string& selection,
+                 json messages, int64_t timeout_seconds, SideDeliver deliver,
+                 bool terse = false);
+  // Titles the session and looks for where its first message belongs.
   void StartTitle(const std::string& user_input);
+  // Where a conversation in Scratch belongs (null: nowhere known):
+  // {options: [{cwd} | {cwd, session} | {workspace}], reason, dismissed}.
+  const json& Suggestion() const { return suggestion_; }
+  void KeepHere() {
+    suggestion_ = KeptSuggestion();
+    ++revision_;
+  }
 
   // Runs until prose; `origin` (Steering::Message) names a non-person writer.
   void Turn(const std::string& user_input, json user_content = nullptr,
@@ -196,6 +212,7 @@ class Agent {
             const std::string& request_id = "", const json& origin = nullptr);
   // A call-shaped row in the last turn for what the host did as it ended.
   void RecordReceipt(const Headline& headline, json parts);
+  void RecordMemory(const MemoryEvent& event);
 
  private:
   struct TurnExecution;
@@ -444,7 +461,6 @@ class Agent {
   std::string attachment_warning_;
   json last_stop_;
   json turn_side_statistics_ = json::object();
-  std::string usage_purpose_;
   // What the provider's reported prompt held beyond the byte estimate.
   int64_t context_offset_ = 0;
   KeepFile keep_tool_file_;
@@ -458,10 +474,17 @@ class Agent {
   std::shared_ptr<const SideCheckpoint> side_context_
       UAGENT_GUARDED_BY(side_mutex_);
   bool generate_titles_ = false;
-  std::mutex title_mutex_;
-  std::string generated_title_ UAGENT_GUARDED_BY(title_mutex_);
-  // Last member: its destructor joins before the fields it writes go away.
-  std::jthread title_thread_;
+  json suggestion_ = nullptr;
+  bool placement_asked_ = false;
+  void SuggestFromTurn(const json& files);
+  // Hands the replies that have come to their callers; true when any had.
+  bool TakeSideReplies();
+  void DropSideCalls();
+  std::mutex side_call_mutex_;
+  std::vector<std::function<void()>> side_done_
+      UAGENT_GUARDED_BY(side_call_mutex_);
+  // Last member: its destructor joins before the fields they write go away.
+  std::map<std::string, std::jthread> side_calls_;
 };
 
 }  // namespace uagent

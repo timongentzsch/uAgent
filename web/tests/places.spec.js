@@ -96,7 +96,7 @@ test("a place folds to its header with a count, remembered, and + starts a conve
     .toBe(2);
 });
 
-test("New conversation starts in the Scratch workspace, and a second joins it", async ({
+test("New opens the home screen, and what is typed there starts in Scratch", async ({
   page,
   session,
 }) => {
@@ -104,22 +104,24 @@ test("New conversation starts in the Scratch workspace, and a second joins it", 
   await page.goto(`/#session=${session.id}`);
   await online(page);
   const workspaces = page.getByRole("group", { name: "Workspaces" });
-  for (let started = 0; started < 2; started++) {
-    const before = page.url();
+  const field = page.getByLabel("Start a conversation");
+  for (let started = 1; started <= 2; started++) {
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "Conversation" }).click();
-    // The one it left, still empty, is left out of the list.
-    await expect(workspaces.locator(".session")).toHaveCount(1);
-    // The page has gone to it: typing before this reaches the one it left.
-    await expect(page).not.toHaveURL(before);
+    // Nothing is created until something is said.
+    await expect(field).toBeFocused();
+    await expect(workspaces.locator(".session")).toHaveCount(started - 1);
+    // The words the scripted provider answers on a new conversation's model.
+    await field.fill("Retained follow-up");
+    await field.press("Enter");
     await expect(
       workspaces.locator('.session[aria-current="page"]'),
     ).toHaveCount(1);
+    await expect(workspaces.locator(".session")).toHaveCount(started);
     await expect(workspaces.getByRole("heading")).toHaveCount(1);
     await expect(workspaces.getByRole("heading")).toContainText("Scratch");
-    await expect(page.locator(".composer .activity-button")).toHaveCount(0);
+    await expect(page.locator(".message.user")).toContainText(
+      "Retained follow-up",
+    );
   }
-  await online(page);
-  await page.locator(".composer textarea").fill("hello");
-  await expect(page.locator(".composer textarea")).toHaveValue("hello");
 });

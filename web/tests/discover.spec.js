@@ -103,10 +103,8 @@ test.describe("in Places", () => {
     await expect(tips.first()).toContainText("opens its overview");
     await expect(tips.nth(1)).toContainText("Searches every conversation");
 
-    await page
-      .locator(".empty")
-      .getByRole("button", { name: "New folder…" })
-      .click();
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Folder…" }).click();
     const folder = page.getByLabel("Folder on the host");
     await folder.fill(host.project);
     await folder.press("Enter");

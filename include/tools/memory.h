@@ -15,8 +15,8 @@
 
 namespace uagent {
 
+class Agent;
 class Api;
-class ActivitySupervisor;
 
 ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
                             const std::optional<std::string>& content);
@@ -35,15 +35,18 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
                                size_t max_bytes);
 
-// One bounded extraction pass over an idle session, by a child agent.
-std::string StartMemoryExtractor(ActivitySupervisor& processes, const Api& api,
+// One bounded extraction pass over an older idle session of `cwd`, as a side
+// request of `agent`; "" or why none started.
+std::string StartMemoryExtractor(Agent& agent, const Api& api,
                                  const std::filesystem::path& cwd,
                                  const std::string& current_session);
-// Called by that child as it ends: marks its session done, or releases it.
-void SettleMemoryClaim(bool extracted);
-bool BuildMemoryExtractionPrompt(const std::string& source,
+// A write on a background extraction's behalf, from the session `source`.
+ToolResult ExtractedMemoryAction(const std::string& action,
+                                 const std::string& key,
+                                 const std::optional<std::string>& content,
                                  const std::filesystem::path& cwd,
-                                 std::string& prompt, std::string& error);
+                                 const std::string& source,
+                                 MemoryEvent* written = nullptr);
 
 }  // namespace uagent
 

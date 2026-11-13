@@ -236,8 +236,6 @@ ShellCommandResult StartDetachedShell(
                .kind = ActivityKind::kDetached,
                .id = pid,
                .display_label = std::move(spec.activity_label),
-               .receipt_path = std::move(spec.receipt_path),
-               .source_id = std::move(spec.source_id),
                .watch = std::move(watch)};
   if (!supervisor.TryAdd(std::move(job), MaxActivities())) {
     return fail_and_reap(ActivityLimitError());
@@ -383,12 +381,9 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   Activity foreground{.pid = pid,
                       .log = log,
                       .cmd = cmd,
-                      .kind = spec.activity_kind,
                       .id = reservation->Id(),
                       .session = session,
                       .display_label = std::move(spec.activity_label),
-                      .receipt_path = std::move(spec.receipt_path),
-                      .source_id = std::move(spec.source_id),
                       .watch = watch};
   std::optional<int64_t> registered = reservation->Register(foreground);
   if (!registered) {

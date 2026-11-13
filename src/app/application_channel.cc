@@ -40,8 +40,7 @@ int Application::RunChannel() {
   if (!RemoteWorkspace() && AgentDepth() == 0 && api_.config.memory_enabled &&
       api_.config.memory_generate) {
     std::string error = StartMemoryExtractor(
-        runtime_.processes, api_, CanonicalAccessPath(CanonicalCwd()),
-        session_file_);
+        agent_, api_, CanonicalAccessPath(CanonicalCwd()), session_file_);
     if (!error.empty()) {
       DebugLog("memory_extract_start_error", {{"error", error}});
     }
@@ -79,6 +78,8 @@ int Application::RunChannel() {
     json result;
     if (input->title) {
       agent_.Rename(std::move(*input->title));
+    } else if (input->keep) {
+      agent_.KeepHere();
     } else if (!input->control.is_null()) {
       AppSession session = Session();
       result = SessionControl(session, input->control);
@@ -143,6 +144,7 @@ void Application::PublishChannelState(bool checkpoint) {
   state["todo"] = todo_ = agent_.Todo();
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
   state["title"] = Utf8Prefix(agent_.FirstUserText(), kUserTitleChars);
+  state["suggestion"] = suggestion_ = agent_.Suggestion();
   state["stop"] = agent_.LastStop();
   if (channel_) channel_->PublishState(state, checkpoint);
 }

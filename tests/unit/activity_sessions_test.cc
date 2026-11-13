@@ -1073,50 +1073,6 @@ TEST_CASE(TestActivityWaitAndDelivery) {
     }
   }
 
-  ActivitySupervisor memory_activity;
-  Gate memory_gate;
-  CHECK(RunShellCommand(memory_activity, context,
-                        {.command = memory_gate.Hold("printf memory-done"),
-                         .background = true,
-                         .immediate = true,
-                         .activity_kind = ActivityKind::kMemory,
-                         .activity_label = "extracting from source-123",
-                         .receipt_path = "/tmp/receipt-123.json",
-                         .source_id = "source-123"})
-            .result.Ok());
-  memory_gate.Open();
-  std::vector<Activity> memory_jobs = memory_activity.Snapshot();
-  CHECK(memory_jobs.size() == 1);
-  CHECK(
-      ToolActivityOutput(memory_activity, 0).output.find("[memory] activity") !=
-      std::string::npos);
-  // A wait consumes the completion it observes, so extraction must stay out of
-  // reach: the harness drains it into the memory audit instead. It is still
-  // listed, just not waitable.
-  CHECK(ToolActivityWait(memory_activity, {}, "any", 0, context)
-            .output.find("no waitable activities") != std::string::npos);
-  if (!memory_jobs.empty()) {
-    ToolResult named = ToolActivityWait(
-        memory_activity, {ActivityId(memory_jobs[0])}, "all", 0, context);
-    CHECK(!named.Ok());
-    CHECK(named.output.find("not waitable") != std::string::npos);
-  }
-  CHECK(ToolActivityOutput(memory_activity, 0)
-            .output.find("extracting from source-123") != std::string::npos);
-  if (!memory_jobs.empty()) {
-    WaitForActivityDrain(memory_activity, memory_jobs[0]);
-    std::vector<ActivityCompletion> completed =
-        ActivityTakeCompletedDetails(memory_activity, "memory");
-    CHECK(completed.size() == 1);
-    if (!completed.empty()) {
-      CHECK(completed[0].kind == ActivityKind::kMemory);
-      CHECK(completed[0].display_label == "extracting from source-123");
-      CHECK(completed[0].receipt_path == "/tmp/receipt-123.json");
-      CHECK(completed[0].source_id == "source-123");
-      CHECK(completed[0].output.find("memory-done") != std::string::npos);
-    }
-  }
-
   ActivitySupervisor delivery_race;
   Gate delivery_gate;
   CHECK(

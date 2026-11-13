@@ -593,6 +593,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   if (json files = edits_.Files(turn_id_); !files.empty()) {
     summary["files"] = std::move(files);
   }
+  SuggestFromTurn(JsonValue(summary, "files", json::array()));
   // The stored node already carries the full summary: the footer the live
   // turn prints and the one --resume replays read identical inputs.
   summary.update(

@@ -220,7 +220,6 @@ int HeadlessMain(Options options, char* executable,
   int code = boot.Ok()
                  ? RunApplication(*boot.context)
                  : Fail(json_stream, json_envelope, boot.error, boot.exit_code);
-  SettleMemoryClaim(code == 0);
   // Owners stop in reverse order: runtime, then sinks, then signal state.
   boot.context.reset();
   observability.Shutdown();

@@ -26,6 +26,8 @@ enum class SessionCommandKind {
   kRecall,
   kInsert,
   kRename,
+  // Answers a suggested place with "here".
+  kKeep,
   kRefresh,
   kPermissions,
   kActivity,

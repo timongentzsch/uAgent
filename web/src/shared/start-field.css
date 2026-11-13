@@ -1,0 +1,11 @@
+.start-field {
+  display: flex;
+  gap: var(--gap);
+}
+.start-field input {
+  flex: 1;
+  min-width: 0;
+}
+.start-field button {
+  white-space: nowrap;
+}

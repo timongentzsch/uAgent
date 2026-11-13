@@ -265,13 +265,15 @@ Provider-reported partial usage is combined with the confirmed session total
 for live display; final usage replaces it through the normal accounting path.
 Unknown cost stays unknown. Every model call is charged to a route keyed
 `authority|purpose-or-provider|model|effort`: the conversation's own calls
-under their provider, and titles, compaction, memory extraction, image
-analysis, web search and permission review under their purpose, so `/cost`
-names what each one spent. Turn statistics describe one turn; compaction has
-its own display record and never appears as another turn. Memory extraction
-and agents report what they spend to their parent session's ledger, which
-the parent folds into its totals: memory extraction when it ends, an agent
-at each of its turns' end. Spend reported after the parent's turn ended is
+under their provider, and titles, placement, compaction, memory extraction,
+image analysis, web search and permission review under their purpose, so
+`/cost` names what each one spent. The title, the placement of an unfiled
+conversation and memory extraction are side requests (`Agent::StartSide`):
+one request each on its own thread, whose reply the agent takes at its next
+drain. Turn statistics describe one turn; compaction has
+its own display record and never appears as another turn. Agents report
+what they spend to their parent session's ledger, which the parent folds
+into its totals at each of their turns' end. Spend reported after the parent's turn ended is
 added to that turn and journaled as `turn.usage_amended`, since
 `turn.completed` is written once.
 Durations and time to first token describe the attempt that answered; retry

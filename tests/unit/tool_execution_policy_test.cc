@@ -310,32 +310,6 @@ TEST_CASE(TestToolExecutionPolicy) {
   task_completion.command = "make check\nmore";
   CHECK(ActivityResultHeader(task_completion) ==
         "[Activity result: command 7 `make check`]");
-
-  {
-    TestWorkspace memory_workspace("automatic-memory-write-limit");
-    setenv("UAGENT_INTERNAL_MEMORY_SOURCE", "test-source", 1);
-    ActivitySupervisor memory_processes;
-    std::vector<Tool> memory_tools = BuiltinTools(memory_processes);
-    unsetenv("UAGENT_INTERNAL_MEMORY_SOURCE");
-    const Tool* memory = FindTool(memory_tools, "memory");
-    CHECK(memory != nullptr);
-    if (memory) {
-      ToolResult first =
-          memory->run({{"action", "set"},
-                       {"key", "project/one"},
-                       {"content", "One durable automatic lesson."}},
-                      base);
-      ToolResult second =
-          memory->run({{"action", "set"},
-                       {"key", "project/two"},
-                       {"content", "A second automatic lesson."}},
-                      base);
-      CHECK(first.Ok());
-      CHECK(!second.Ok());
-      CHECK(second.output.find("already wrote one memory") !=
-            std::string::npos);
-    }
-  }
 }
 
 TEST_CASE(TestBlockingWaitCalls) {

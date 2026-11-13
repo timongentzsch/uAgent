@@ -591,6 +591,16 @@ class WorkerChannel final : public ApplicationChannel {
           SendState();
         }
         break;
+      case SessionCommandKind::kKeep:
+        if (input_) {
+          error = "keep requires an empty input queue";
+        } else {
+          input_ = ApplicationInput{.keep = true};
+          busy_ = true;
+          wake_.Wake();
+          SendState();
+        }
+        break;
       case SessionCommandKind::kRefresh:
         SendState();
         break;

@@ -52,7 +52,7 @@ inline constexpr size_t kUserTitleChars = 256;
 inline constexpr size_t kSpaceNameChars = 64;
 inline constexpr int64_t kTitleTimeoutSeconds = 30;
 // Enough for a title once the model does not think first.
-inline constexpr int64_t kTitleMaxTokens = 64;
+inline constexpr int64_t kTitleMaxTokens = 96;
 // Upload and subsequent claim validation must accept the same display names.
 inline constexpr size_t kAssetNameChars = 128;
 inline constexpr size_t kImageAnalysisCacheEntries = 8;
@@ -169,6 +169,14 @@ inline constexpr size_t kWebTerminalMessageBytes = KiB(64);
 // A hosted search's own work counts against this as well as its answer.
 inline constexpr int64_t kWebSearchMaxTokens = 6000;
 inline constexpr size_t kMemoryExtractBytes = KiB(32);
+inline constexpr int64_t kMemoryExtractSeconds = 300;
+// A scope this full of its limit, as a fraction, lets an extraction fold one
+// of its notes into the one it writes.
+inline constexpr size_t kMemoryCrowdedParts = 3, kMemoryCrowdedOf = 4;
+// What placing an unfiled conversation shows the model: this many of the
+// newest conversations, and this much of the latest reply.
+inline constexpr size_t kPlacementCandidates = 30;
+inline constexpr size_t kPlacementReplyChars = 2000;
 inline constexpr size_t kSkillBodyBytes = KiB(512);
 // The most of a memory file the library reads.
 inline constexpr size_t kMemoryFileBytes = KiB(512);

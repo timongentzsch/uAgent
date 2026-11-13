@@ -12,17 +12,6 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
-.overview-start {
-  display: flex;
-  gap: var(--gap);
-}
-.overview-start input {
-  flex: 1;
-  min-width: 0;
-}
-.overview-start button {
-  white-space: nowrap;
-}
 .overview-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(var(--pane-s), 1fr));

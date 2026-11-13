@@ -36,10 +36,7 @@ struct MemoryIndex {
 };
 
 std::vector<MemoryEvent> LoadMemoryEvents(size_t limit = 128);
-bool ReadMemoryReceipt(const std::string& path, MemoryEvent& event,
-                       std::string& error);
-bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
-                      std::string& error);
+bool WriteMemoryEvent(const MemoryEvent& event, std::string& error);
 
 std::string RedactMemorySecrets(std::string text);
 

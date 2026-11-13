@@ -152,29 +152,8 @@ bool AppendBoundedMemoryEvent(const std::string& line, std::string& error) {
   return true;
 }
 
-bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
-                      std::string& error) {
-  std::string serialized = JsonDump(MemoryEventJson(event));
-  bool appended = AppendBoundedMemoryEvent(serialized, error);
-  if (receipt_path.empty()) return appended;
-  std::string receipt_error;
-  bool receipt =
-      WritePrivateFile(receipt_path, serialized + "\n", receipt_error);
-  if (!receipt) {
-    if (!error.empty()) error += "; ";
-    error += "receipt: " + receipt_error;
-  }
-  return appended && receipt;
-}
-
-bool ReadMemoryReceipt(const std::string& path, MemoryEvent& event,
-                       std::string& error) {
-  json value = ReadJsonFile(path, kMemoryEventLineBytes);
-  if (value.is_discarded() || !ParseMemoryEvent(value, event)) {
-    error = "invalid memory receipt";
-    return false;
-  }
-  return true;
+bool WriteMemoryEvent(const MemoryEvent& event, std::string& error) {
+  return AppendBoundedMemoryEvent(JsonDump(MemoryEventJson(event)), error);
 }
 
 std::vector<MemoryEvent> LoadMemoryEvents(size_t limit) {

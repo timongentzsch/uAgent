@@ -454,26 +454,20 @@ TEST_CASE(TestScopedBaseAndMemory) {
   CHECK(!fs::exists(workspace / ".uagent"));
 
   // A global memory lands in the home directory even from inside a workspace.
-  fs::path receipt = home / ".uagent/memory/test-receipt.json";
-  setenv("UAGENT_INTERNAL_MEMORY_RECEIPT", receipt.c_str(), 1);
-  setenv("UAGENT_INTERNAL_MEMORY_SOURCE", "/tmp/source-session.json", 1);
-  CHECK(ToolMemoryAction("set", "global/prefers-tabs",
-                         std::string("The user prefers tabs."))
-            .output.starts_with("wrote "));
   MemoryEvent memory_event;
-  std::string receipt_error;
-  CHECK(ReadMemoryReceipt(receipt.string(), memory_event, receipt_error));
+  CHECK(ExtractedMemoryAction("set", "global/prefers-tabs",
+                              std::string("The user prefers tabs."), workspace,
+                              "/tmp/source-session.json", &memory_event)
+            .output.starts_with("wrote "));
   CHECK(memory_event.action == "created");
   CHECK(memory_event.key == "global/prefers-tabs");
   CHECK(memory_event.automatic);
   CHECK(memory_event.source_session == WorkspaceId("/tmp/source-session.json"));
-  CHECK(ToolMemoryAction("set", "global/prefers-tabs",
-                         std::string("The user prefers tabs."))
+  CHECK(ExtractedMemoryAction("set", "global/prefers-tabs",
+                              std::string("The user prefers tabs."), workspace,
+                              "/tmp/source-session.json", &memory_event)
             .output.starts_with("unchanged "));
-  CHECK(ReadMemoryReceipt(receipt.string(), memory_event, receipt_error));
   CHECK(memory_event.action == "unchanged");
-  unsetenv("UAGENT_INTERNAL_MEMORY_RECEIPT");
-  unsetenv("UAGENT_INTERNAL_MEMORY_SOURCE");
   std::vector<MemoryEvent> memory_events = LoadMemoryEvents();
   CHECK(memory_events.size() >= 2);
   CHECK(memory_events.back().action == "unchanged");
@@ -587,8 +581,12 @@ TEST_CASE(TestScopedBaseAndMemory) {
         std::string::npos);
   CHECK(loaded.memory_index.find("codex/MEMORY") != std::string::npos);
   CHECK(loaded.memory_index.find("claude/MEMORY") != std::string::npos);
-  CHECK(loaded.memory_index.find("global/prefers-tabs") <
-        loaded.memory_index.find("project/build-uses-ninja"));
+  // The newest first: a full budget drops the oldest.
+  fs::last_write_time(home / ".uagent/memory/global/prefers-tabs.md",
+                      fs::file_time_type::clock::now() - std::chrono::hours(1));
+  const std::string by_age = LoadMemoryIndex(workspace, size_t{32} * 1024).text;
+  CHECK(by_age.find("project/build-uses-ninja") <
+        by_age.find("global/prefers-tabs"));
   // Ours come before borrowed stores, which cannot spend the budget first.
   CHECK(loaded.memory_index.find("project/build-uses-ninja") <
         loaded.memory_index.find("claude/MEMORY"));

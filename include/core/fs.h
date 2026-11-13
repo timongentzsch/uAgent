@@ -74,6 +74,8 @@ inline constexpr const char* kConfigDir = "config";
 inline constexpr const char* kMailDir = "mail";
 // Named workspaces, one folder each.
 inline constexpr const char* kSpacesDir = "spaces";
+// The workspace a conversation starts in until it is filed.
+inline constexpr const char* kUnfiledSpace = "Scratch";
 inline constexpr const char* kWebDir = "web";
 // Imports build here; the pruner empties what a killed import left.
 inline constexpr const char* kStagingDir = "staging";

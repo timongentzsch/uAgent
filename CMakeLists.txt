@@ -182,6 +182,7 @@ target_link_libraries(uagent_toolcore PUBLIC uagent_api)
 add_library(
   uagent_agent
   src/agent/agent.cc
+  src/agent/placement.cc
   src/agent/activity_drain.cc
   src/agent/child_agent.cc
   src/agent/mail_delivery.cc

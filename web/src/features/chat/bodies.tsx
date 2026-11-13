@@ -159,7 +159,8 @@ export function NodeBody({
   online: boolean;
   session: SessionRef;
 }) {
-  const { routes } = useApi();
+  const { routes, command } = useApi();
+  const report = useContext(HostContext)?.report;
   const { read, inspect, activity, open } = useContext(MessageActions);
   const load = useNodeReader(session, read);
   const body = node.body;
@@ -188,6 +189,18 @@ export function NodeBody({
         onClick={() => setWantFull(true)}
       >
         Full output
+      </Button>
+    ),
+    node.moved && (
+      <Button
+        variant="quiet"
+        class="node-action small"
+        disabled={!online}
+        onClick={() =>
+          void command("move", session, { cwd: node.moved?.from }).catch(report)
+        }
+      >
+        Move back
       </Button>
     ),
     inspect && node.kind === "call" && (

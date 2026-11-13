@@ -207,7 +207,7 @@ export async function selectProbeModel(
 export async function saveHistory(
   host,
   file,
-  { id, title, turns, messages, kinds, cwd, display },
+  { id, title, turns, messages, kinds, cwd, display, suggestion },
 ) {
   const directory = `${host.home}/.uagent/history`;
   await mkdir(directory, { recursive: true });
@@ -218,6 +218,7 @@ export async function saveHistory(
     session_id: id,
     title,
     turns,
+    ...(suggestion ? { suggestion } : {}),
   };
   const state = {
     messages,
@@ -408,10 +409,12 @@ export const test = base.extend({
   noModel: [false, { option: true }],
   // A host in Auto approval whose decision model is wary of sending data.
   autoReview: [false, { option: true }],
+  // A host whose model titles conversations and places unfiled ones.
+  titles: [false, { option: true }],
   // A device that chose Places for the list, for tests about places.
   places: [false, { option: true }],
   page: failOnPageErrors,
-  host: async ({ noModel, autoReview }, use, testInfo) => {
+  host: async ({ noModel, autoReview, titles }, use, testInfo) => {
     const path = testInfo.outputPath("host.json");
     const child = spawn("python3", [
       "../tests/web_host.py",
@@ -425,6 +428,7 @@ export const test = base.extend({
       path,
       ...(noModel ? ["--no-model"] : []),
       ...(autoReview ? ["--auto-review"] : []),
+      ...(titles ? ["--titles"] : []),
     ]);
     const exited = once(child, "exit");
     let output = "",

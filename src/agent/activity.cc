@@ -1072,8 +1072,7 @@ std::vector<ActivityCompletion> TakeCompleted(ActivitySupervisor& supervisor,
     AddHint(notes, SandboxRestoreNote(job.watch.get(), CanonicalCwd()));
     completions.push_back({ActivityId(job), job.kind, status, job.cmd,
                            std::move(output), std::move(notes.hint),
-                           job.display_label, job.receipt_path, job.source_id,
-                           job.started_ms});
+                           job.display_label, job.started_ms});
   }
   return completions;
 }
@@ -1149,16 +1148,11 @@ ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
                             std::string_view mode, int64_t wait_ms,
                             const ToolContext& context,
                             int64_t max_output_chars) {
-  // Waiting consumes the completion it observes, so memory extraction, which
-  // the harness drains into the audit, is not waitable. A detached activity
-  // may never end, so it is waited for only when named.
-  auto waitable = [](const Activity& job) {
-    return job.kind != ActivityKind::kMemory;
-  };
+  // A detached activity may never end, so it is waited for only when named.
   std::vector<int64_t> ids;
   if (requested.empty()) {
     for (const Activity& job : supervisor.Snapshot()) {
-      if (waitable(job) && !job.Detached()) ids.push_back(ActivityId(job));
+      if (!job.Detached()) ids.push_back(ActivityId(job));
     }
   } else {
     for (int64_t requested_id : requested) {
@@ -1168,11 +1162,6 @@ ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
         return ToolFailure(ToolErrorCode::kNotFound,
                            "activity " + std::to_string(requested_id) +
                                " is not running in this session");
-      }
-      if (!waitable(*job)) {
-        return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "activity " + std::to_string(requested_id) +
-                               " is harness maintenance and is not waitable");
       }
       if (std::find(ids.begin(), ids.end(), requested_id) == ids.end()) {
         ids.push_back(requested_id);

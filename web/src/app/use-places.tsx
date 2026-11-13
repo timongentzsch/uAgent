@@ -9,7 +9,8 @@ import type {
   Space,
 } from "../shared/types.ts";
 import { hostApi, useApi } from "../state/api.ts";
-import { useMultipleHosts } from "../state/sources.ts";
+import { deleteConversation } from "../features/chat/conversation-actions.tsx";
+import type { Redirect } from "../features/filing/filing.tsx";
 import { folderOf, projectsOf } from "../shared/display.ts";
 import { scratchSpace } from "../shared/limits.ts";
 import { SpaceMenu } from "./menus.tsx";
@@ -37,7 +38,6 @@ export function usePlaces({
   setBusy: (busy: boolean) => void;
 }) {
   const { command, host } = useApi();
-  const multipleHosts = useMultipleHosts();
   const [newHost, setNewHost] = useState(host);
   const [folder, setFolder] = useState("");
   const [space, setSpace] = useState("");
@@ -50,7 +50,7 @@ export function usePlaces({
       await startConversation(
         workspace ? "" : folder,
         workspace ? space.trim() : "",
-        "",
+        carried.current,
         newHost,
       );
       setModal(null);
@@ -60,6 +60,8 @@ export function usePlaces({
       setBusy(false);
     }
   }
+  // What was typed on the home screen before its place was asked for.
+  const carried = useRef("");
   // One start at a time: a double click must not race two activations.
   const starting = useRef(false);
   const startConversation = useCallback(
@@ -94,7 +96,8 @@ export function usePlaces({
     [upsertSession, choose, load, command, host],
   );
   const newPlace = useCallback(
-    (place: "conversation" | "workspace" | "folder") => {
+    (place: "conversation" | "workspace" | "folder", text = "") => {
+      carried.current = text;
       setNewHost(place === "workspace" ? "" : host);
       setSpace("");
       setFolder("");
@@ -106,12 +109,20 @@ export function usePlaces({
     (cwd: string) => startConversation(cwd).catch(report),
     [startConversation, report],
   );
-  const startScratch = useCallback(
-    () =>
-      multipleHosts
-        ? newPlace("conversation")
-        : startConversation("", scratchSpace).catch(report),
-    [startConversation, report, multipleHosts, newPlace],
+  // Scratch is a workspace, so Local's.
+  const startUnfiled = useCallback(
+    (text: string) => startConversation("", scratchSpace, text, ""),
+    [startConversation],
+  );
+  const redirect: Redirect = useCallback(
+    async (from, text, to) => {
+      await command("interrupt", from).catch(() => {});
+      await deleteConversation(from, command);
+      if (!to.session) return startConversation(to.cwd, "", text, "");
+      await command("submit", to.session, { text });
+      await choose(to.session.id);
+    },
+    [command, startConversation, choose],
   );
   const projects = useMemo(
     () => projectsOf(catalogue.sessions),
@@ -134,7 +145,8 @@ export function usePlaces({
     startConversation,
     newPlace,
     startIn,
-    startScratch,
+    startUnfiled,
+    redirect,
     projects,
     spaceMenu,
   };

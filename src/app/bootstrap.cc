@@ -152,12 +152,9 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
 // Project docs and memory context share one byte budget: what the folder
 // instructions do not spend is what the memory index may.
 ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
-                                     const RuntimeConfig& config,
-                                     bool memory_child) {
-  ProjectInstructions instructions;
-  if (!memory_child) {
-    instructions = LoadProjectInstructions(workspace, ProjectDocBytes());
-  }
+                                     const RuntimeConfig& config) {
+  ProjectInstructions instructions =
+      LoadProjectInstructions(workspace, ProjectDocBytes());
   if (config.memory_enabled) {
     // A delegated child's brief is standalone: inlining always-on memory
     // there only duplicates the parent's context.
@@ -319,8 +316,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   SetExecutablePath(executable);
   // Nothing chdir()s during startup, so the canonical folder is invariant.
   const std::filesystem::path workspace = CanonicalAccessPath(CanonicalCwd());
-  std::string memory_source = EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE");
-  const bool memory_child = !memory_source.empty();
   bool trusted = false;
   json trusted_snapshot = nullptr;
   std::string error;
@@ -328,7 +323,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (options.show_system_prompt) {
     trusted = ProjectConfigTrusted(&trusted_snapshot);
   }
-  if (!RemoteWorkspace() && !options.show_system_prompt && !memory_child &&
+  if (!RemoteWorkspace() && !options.show_system_prompt &&
       !ResolveProjectTrust(options, trusted, trusted_snapshot, error,
                            exit_code)) {
     return Failure(std::move(error), exit_code);
@@ -351,10 +346,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   PrintWarning(config_manager.Problem());
   if (headless && !config_manager.Problem().empty()) {
     fprintf(stderr, "uagent: %s\n", config_manager.Problem().c_str());
-  }
-  if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,
-                                                   options.prompt, error)) {
-    return Failure(std::move(error), 2);
   }
   // Housekeeping over the whole artifact tree is a session's, not something
   // each child it starts repeats.
@@ -410,7 +401,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
   Api& api = context->runtime.api;
   ProjectInstructions instructions =
-      LoadInstructions(workspace, context->runtime.config, memory_child);
+      LoadInstructions(workspace, context->runtime.config);
   if (instructions.truncated) {
     PrintWarning("folder instructions truncated at " +
                  std::to_string(ProjectDocBytes()) + " bytes");
@@ -419,8 +410,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     PrintWarning("memory context truncated at " +
                  std::to_string(instructions.memory_limit) + " bytes");
   }
-  std::vector<Skill> skills =
-      memory_child ? std::vector<Skill>{} : LoadSkills(CanonicalCwd());
+  std::vector<Skill> skills = LoadSkills(CanonicalCwd());
 
   context->provider = ConfigureProvider(api);
   PrintWarning(context->provider.warning);
@@ -472,7 +462,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       context->runtime.side_usage, MakeApprover(app), MakeToolRefresher(app),
       std::move(instructions), std::move(skills));
   context->agent->SetSessionRole(context->options.session);
-  if (memory_child) context->agent->SetUsagePurpose("memory_extract");
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->OpenEditJournal(context->channel->SessionPath() +
                                     kSessionEditsSuffix);

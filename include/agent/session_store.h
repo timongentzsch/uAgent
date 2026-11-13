@@ -41,7 +41,7 @@ inline constexpr size_t kSessionReadBytes = size_t{64} * 1024 * 1024;
 enum class SessionScope { kWorkspace, kAll };
 
 struct SessionInfo {
-  std::string path, cwd, title, model;
+  std::string path, cwd, title, model, session_id;
   bool custom_title = false;
   int64_t turns = 0;
   uint64_t incoming = 0;
@@ -54,7 +54,17 @@ struct SessionInfo {
   std::string parent;  // the session id of whoever started it, for an agent
   bool memory = true;
   std::string host = {};
+  json suggestion = nullptr;
 };
+
+// The suggestion of a conversation that was told to stay where it is.
+inline json KeptSuggestion() { return {{"dismissed", true}}; }
+// A suggestion (Agent::Suggestion) still waiting for its answer.
+inline bool OpenSuggestion(const json& suggestion) {
+  const json* options = JsonArray(suggestion, "options");
+  return options && !options->empty() &&
+         !JsonValue(suggestion, "dismissed", false);
+}
 
 // Every valid conversation saved in the directory of `path`, newest first.
 std::vector<SessionInfo> SessionsBeside(const std::string& path);
@@ -110,6 +120,7 @@ struct SessionMetadata {
   json agent = json::object();
   // False for a conversation run with memory off: nothing learns from it.
   bool memory = true;
+  json suggestion = nullptr;
 };
 
 struct SessionState {

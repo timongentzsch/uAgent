@@ -90,6 +90,8 @@ interface ResultFacts {
   added?: number;
   removed?: number;
   items?: number;
+  // On a turn's work: how many files it has changed.
+  edited?: number;
   unit?: string;
   outcome?: string;
   reason?: string;
@@ -222,6 +224,8 @@ export interface Node {
   usage?: Usage;
   usage_reported?: boolean;
   memory?: MemoryNote;
+  // On the row of a move: the folder the conversation came from.
+  moved?: { from: string };
   activity_id?: number;
   command?: string;
   summary?: TurnSummary;
@@ -382,8 +386,20 @@ type SessionStatus =
   | "failed"
   | "updating"
   | "deleting";
+// Where a conversation in Scratch belongs, as its host suggests: a folder,
+// a conversation there to continue, or a workspace to create by name.
+export interface PlaceOption {
+  cwd?: string;
+  session?: string;
+  workspace?: string;
+}
 export interface Session {
   host?: string;
+  suggestion?: {
+    options?: PlaceOption[];
+    reason?: string;
+    dismissed?: boolean;
+  } | null;
   task_id?: string;
   id: string;
   generation?: string;
@@ -757,6 +773,7 @@ export interface CommandResults {
   activate: never;
   close: never;
   rename: never;
+  keep: never;
   delete: never;
   logout: never;
   submit: never;
@@ -856,7 +873,9 @@ export interface CommandInputs {
   share: None;
   side: { operation: string; text: string };
   // The folder or workspace to move to, by its path on the host.
-  move: { cwd: string };
+  move: { cwd?: string; space?: string };
+  // Answers a suggested place with "here".
+  keep: None;
   // A workspace by its name (`space`), in place of `cwd`.
   create: { cwd?: string; space?: string };
   activate: None;

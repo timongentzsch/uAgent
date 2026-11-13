@@ -75,6 +75,7 @@ class Application {
   uint64_t message_subscription_ = 0;
   // The to-do list clients were last sent.
   json todo_ = json::array();
+  json suggestion_ = nullptr;
   std::string input_error_;
   ApplicationChannel* channel_ = nullptr;
 };

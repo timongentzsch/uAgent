@@ -1,4 +1,4 @@
-import { filingTag, unfiled } from "../filing/filing.tsx";
+import { filingTag, unfiled } from "../../shared/filing.ts";
 import { useHosts, type Source } from "../../state/sources.ts";
 import {
   Fold,

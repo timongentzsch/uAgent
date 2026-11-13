@@ -125,7 +125,8 @@ json HeaderJson(const SessionMetadata& metadata) {
   if (!metadata.host.empty()) header["host"] = metadata.host;
   if (!metadata.agent.empty()) header[kSessionHeaderAgent] = metadata.agent;
   if (!metadata.memory) header["memory"] = false;
-  if (!metadata.suggestion.is_null()) header["suggestion"] = metadata.suggestion;
+  if (!metadata.suggestion.is_null())
+    header["suggestion"] = metadata.suggestion;
   return header;
 }
 

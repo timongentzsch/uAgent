@@ -1,14 +1,3 @@
-.start-field {
-  display: flex;
-  gap: var(--gap);
-}
-.start-field input {
-  flex: 1;
-  min-width: 0;
-}
-.start-field button {
-  white-space: nowrap;
-}
 .filing {
   margin: 0 var(--column-inset) var(--gap);
   padding: var(--pad);

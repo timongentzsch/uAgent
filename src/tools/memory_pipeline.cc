@@ -260,8 +260,7 @@ MemoryEvent Save(const std::filesystem::path& cwd, const std::string& source,
   if (!saved.Ok()) return Failed(saved.output, key);
   if (!folded.empty() && folded != key &&
       ScopePrefix(folded) == ScopePrefix(key) &&
-      ExtractedMemoryAction("forget", folded, std::nullopt, cwd, source)
-          .Ok()) {
+      ExtractedMemoryAction("forget", folded, std::nullopt, cwd, source).Ok()) {
     event.action = "updated";
     event.preview = "Merged " + folded + " into " + key;
   }
@@ -293,9 +292,9 @@ std::string StartMemoryExtractor(Agent& agent, const Api& api,
     return {};
   }
   std::string rules(kExtractionRules);
-  std::string evidence =
-      "<memories>\n" + LoadMemoryIndex(cwd, kMemoryExtractBytes).text +
-      "</memories>\n";
+  std::string evidence = "<memories>\n" +
+                         LoadMemoryIndex(cwd, kMemoryExtractBytes).text +
+                         "</memories>\n";
   if (const std::string crowded = CrowdedMemories(cwd); !crowded.empty()) {
     rules +=
         " Memory is nearly full: when your note and one memory given whole "

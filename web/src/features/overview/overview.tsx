@@ -19,7 +19,7 @@ import { useResource } from "../../shared/use-resource.ts";
 import { stored } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
 import WaitingList from "../../shared/escalations.tsx";
-import { StartField } from "../filing/filing.tsx";
+import { StartField } from "../../shared/start-field.tsx";
 import SessionName from "../../shared/session-name.tsx";
 import {
   Button,

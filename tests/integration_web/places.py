@@ -562,8 +562,15 @@ def test_web_unfiled_conversation_is_offered_where_it_belongs(root, home, *, bin
             unfiled = web.command("create", space="Scratch")["session"]
             unfiled = web.command("activate", unfiled)["session"]
             web.command("submit", unfiled, text="the pairing test is flaky again")
-            value = web.until(unfiled, lambda value: value["metadata"].get("suggestion"))
-            assert_true(value["metadata"]["title"] == "Pairing test again", value["metadata"])
+            # The suggestion is told at the step that took it, the title with
+            # the turn's next checkpoint.
+            value = web.until(
+                unfiled,
+                lambda value: (
+                    value["metadata"].get("suggestion")
+                    and value["metadata"]["title"] == "Pairing test again"
+                ),
+            )
             assert_true(
                 value["metadata"]["suggestion"]["options"]
                 == [{"cwd": filed["metadata"]["cwd"], "session": earlier["id"]}],
@@ -571,9 +578,7 @@ def test_web_unfiled_conversation_is_offered_where_it_belongs(root, home, *, bin
             )
             web.until(unfiled, lambda value: value["metadata"]["status"] == "idle")
             web.command("keep", unfiled)
-            web.until(
-                unfiled, lambda value: value["metadata"]["suggestion"] == {"dismissed": True}
-            )
+            web.until(unfiled, lambda value: value["metadata"]["suggestion"] == {"dismissed": True})
             # A suggested new workspace is created by the move that names it,
             # and what moved carries no suggestion with it.
             moved = web.command("move", unfiled, space="Lisbon trip")["result"]
@@ -586,7 +591,7 @@ def test_web_suggestion_arrives_while_the_first_turn_works(root, home, *, binary
     reaches clients then, not when the turn ends."""
     hold = threading.Event()
 
-    def route(handler, body):
+    def route(_, body):
         text = json.dumps(body["messages"])
         if "Title this coding session" in text:
             listed = "<conversations>" in text

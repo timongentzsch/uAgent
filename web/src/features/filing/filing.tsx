@@ -1,17 +1,13 @@
-import type { ComponentChildren, TargetedSubmitEvent } from "preact";
 import { useState } from "preact/hooks";
 import type { PlaceOption, Session, Space } from "../../shared/types.ts";
 import { useApi } from "../../state/api.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { folderOf } from "../../shared/display.ts";
-import { folderName } from "../../shared/folder-label.tsx";
-import { scratchSpace, unfiledDays } from "../../shared/limits.ts";
+import { filingTag, nameOf, optionsOf, unfiled } from "../../shared/filing.ts";
 import { useAction } from "../../shared/use-action.ts";
 import SessionName from "../../shared/session-name.tsx";
-import { Button, DataText, Input, SectionTitle } from "../../shared/ui.tsx";
+import { Button, DataText, SectionTitle } from "../../shared/ui.tsx";
 import "./filing.css";
-
-const DAY = 24 * 60 * 60 * 1000;
 
 // Where a first message goes instead of the conversation it started.
 export type Redirect = (
@@ -19,85 +15,6 @@ export type Redirect = (
   text: string,
   to: { cwd: string; session?: Session },
 ) => Promise<unknown>;
-
-const optionsOf = (item: Session) =>
-  item.suggestion?.dismissed ? [] : item.suggestion?.options || [];
-
-const nameOf = (option: PlaceOption, spaces: Space[]) =>
-  option.workspace ||
-  spaces.find((space) => space.path === option.cwd)?.name ||
-  folderName(option.cwd);
-
-// What a list says of a suggestion in a few words.
-export const filingTag = (item: Session, spaces: Space[]) => {
-  const options = optionsOf(item);
-  if (!options.length) return undefined;
-  return options[0].workspace
-    ? "→ new workspace"
-    : `→ ${options.map((option) => nameOf(option, spaces)).join(" or ")}`;
-};
-
-// Scratch's conversations that still wait for a place: the suggested ones,
-// and for a week the ones nothing was suggested for.
-export function unfiled(sessions: Session[], spaces: Space[]) {
-  const scratch = spaces.find((space) => space.name === scratchSpace)?.path;
-  if (!scratch) return [];
-  return sessions
-    .filter(
-      (item) =>
-        !item.parent &&
-        !item.host &&
-        folderOf(item) === scratch &&
-        !item.suggestion?.dismissed &&
-        (optionsOf(item).length > 0 ||
-          Date.now() - (item.updated || 0) < unfiledDays * DAY),
-    )
-    .sort((a, b) => (b.updated || 0) - (a.updated || 0));
-}
-
-// A line of text that starts a conversation; `children` adds controls that
-// act on what is typed.
-export function StartField({
-  id,
-  label,
-  placeholder,
-  disabled,
-  autoFocus,
-  start,
-  children,
-}: {
-  id?: string;
-  label: string;
-  placeholder: string;
-  disabled?: boolean;
-  autoFocus?: boolean;
-  start: (text: string) => Promise<unknown> | undefined;
-  children?: (text: string) => ComponentChildren;
-}) {
-  const { report } = useHostContext();
-  const [text, setText] = useState("");
-  const submit = (event: TargetedSubmitEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    Promise.resolve(start(text.trim())).then(() => setText(""), report);
-  };
-  return (
-    <form class="start-field" onSubmit={submit}>
-      <Input
-        id={id}
-        aria-label={label}
-        placeholder={placeholder}
-        value={text}
-        disabled={disabled}
-        autoFocus={autoFocus}
-        onInput={(event) => setText(event.currentTarget.value)}
-      />
-      <Button variant="primary" type="submit" disabled={disabled}>
-        Start
-      </Button>
-      {children?.(text.trim())}
-    </form>
-  );
-}
 
 // The host's suggestion for one conversation in Scratch, with its answers.
 // `first` is its only message while its first turn has changed no file: it

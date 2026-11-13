@@ -87,9 +87,9 @@ void Agent::RecordMemory(const MemoryEvent& event) {
   std::string line = "Memory " + event.action;
   if (!event.key.empty()) line += " · " + event.key;
   if (!event.preview.empty()) line += "\n  " + event.preview;
-  Emit(NoticeEvent(failed ? PresentationStatus::kFailed
-                          : PresentationStatus::kNeutral,
-                   std::move(line), false));
+  Emit(NoticeEvent(
+      failed ? PresentationStatus::kFailed : PresentationStatus::kNeutral,
+      std::move(line), false));
   ++revision_;
 }
 

@@ -310,7 +310,6 @@ TEST_CASE(TestToolExecutionPolicy) {
   task_completion.command = "make check\nmore";
   CHECK(ActivityResultHeader(task_completion) ==
         "[Activity result: command 7 `make check`]");
-
 }
 
 TEST_CASE(TestBlockingWaitCalls) {

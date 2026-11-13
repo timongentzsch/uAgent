@@ -61,10 +61,13 @@ def answer(handler, body):
     ]
     prompt = str(texts[-1]) if texts else ""
     if "Title this coding session" in json.dumps(body):
-        fits = "\nfits: 1 continues" if "<conversations>" in prompt else ""
+        # "File me probe" fits nothing by its words: its place is asked for
+        # once its turn has ended.
+        late = "File me probe" in prompt
+        fits = "\nfits: 1 continues" if "<conversations>" in prompt and not late else ""
         return event({"content": "Titled by the model" + fits})
     if "Decide where a conversation belongs" in json.dumps(body):
-        return event({"content": "none"})
+        return event({"content": "place: 1" if "Titled by the model" in prompt else "none"})
     # One look around, then a long answer: a first turn still at work when
     # the title's reply has been taken.
     if "Filing probe" in prompt and not any(
@@ -83,7 +86,7 @@ def answer(handler, body):
                 ]
             }
         )
-    unselected = prompt in ("Retained follow-up", "Filing probe")
+    unselected = prompt in ("Retained follow-up", "Filing probe", "File me probe")
     expected_model = "model-a" if unselected else "model-b"
     assert body.get("model") == expected_model, body.get("model")
     if "for a fresh agent context" in str(body["messages"]):

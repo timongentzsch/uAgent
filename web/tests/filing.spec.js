@@ -61,7 +61,7 @@ test("what waits in Scratch is filed from the home screen", async ({
   await expect(listed.locator(".session")).toHaveCount(1);
   await expect(listed).toContainText("Fix the flaky test");
 
-  // Moving is the host's (tests/integration_web); here the row offers it.
+  // What Move does is the test below this file's last; here the row has it.
   await expect(
     waiting.getByRole("button", { name: /^Move to / }),
   ).toBeEnabled();
@@ -101,6 +101,40 @@ test("a suggestion is answered in the conversation, and stays answered", async (
 
 test.describe("with a model that places", () => {
   test.use({ titles: true });
+  test("a finished conversation is offered its place, and Move takes it there", async ({
+    page,
+    host,
+    request,
+  }) => {
+    await savedConversation(host, request, "Pairing over SSH");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    const field = page.getByLabel("Start a conversation");
+    await expect(field).toBeEnabled();
+    await field.fill("File me probe");
+    await field.press("Enter");
+    await expect(page.locator(".message.response")).toContainText(
+      "Verified response",
+    );
+    // Asked once the turn had ended, the model names the folder.
+    const bar = page.getByRole("region", { name: "Suggested place" });
+    await expect(bar).toContainText("This belongs in");
+    const listed = page.getByRole("group", { name: "To file" });
+    await expect(listed.locator(".session")).toHaveCount(1);
+    const before = page.url();
+    await bar.getByRole("button", { name: /^Move to / }).click();
+    // The page follows the conversation to its new address, in the folder.
+    await expect(page).not.toHaveURL(before);
+    await expect(bar).toBeHidden();
+    await expect(listed).toBeHidden();
+    await expect(
+      page.getByRole("group", { name: "Folders" }).locator(".session"),
+    ).toHaveCount(2);
+    await expect(page.locator(".message.response")).toContainText(
+      "Verified response",
+    );
+  });
+
   test("a first message joins the conversation it continues, before anything has changed", async ({
     page,
     host,

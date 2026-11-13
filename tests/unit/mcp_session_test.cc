@@ -584,8 +584,7 @@ TEST_CASE(TestScopedBaseAndMemory) {
   // The newest first: a full budget drops the oldest.
   fs::last_write_time(home / ".uagent/memory/global/prefers-tabs.md",
                       fs::file_time_type::clock::now() - std::chrono::hours(1));
-  const std::string by_age =
-      LoadMemoryIndex(workspace, size_t{32} * 1024).text;
+  const std::string by_age = LoadMemoryIndex(workspace, size_t{32} * 1024).text;
   CHECK(by_age.find("project/build-uses-ninja") <
         by_age.find("global/prefers-tabs"));
   // Ours come before borrowed stores, which cannot spend the budget first.

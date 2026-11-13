@@ -18,10 +18,10 @@ import { useConversation, useHostContext } from "../state/host-context.ts";
 import { Welcome, Button } from "../shared/ui.tsx";
 import {
   type Redirect,
-  StartField,
   Suggestion,
   ToFile,
 } from "../features/filing/filing.tsx";
+import { StartField } from "../shared/start-field.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import { SideLayout } from "../shared/side-pane.tsx";

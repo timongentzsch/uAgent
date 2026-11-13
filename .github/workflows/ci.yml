@@ -87,7 +87,7 @@ jobs:
         with:
           web-dist: true
           ccache: release
-          ccache-size: 800M
+          ccache-size: 300M
       # macOS links Homebrew's libcrypto statically, so the archive runs on
       # hosts without Homebrew.
       - name: Configure
@@ -198,7 +198,7 @@ jobs:
         with:
           web-dist: true
           ccache: sanitize
-          ccache-size: 1G
+          ccache-size: 600M
       - name: Configure ASan and UBSan
         run: cmake --preset sanitize
       - name: Build
@@ -225,7 +225,7 @@ jobs:
         with:
           web-dist: true
           ccache: tsan
-          ccache-size: 1G
+          ccache-size: 700M
       - name: Configure TSan
         run: cmake --preset tsan
       # The races worth finding are between the supervisor, its I/O threads
@@ -326,7 +326,7 @@ jobs:
         with:
           ccache: release
           ccache-save: false
-          ccache-size: 800M
+          ccache-size: 300M
       - name: Build native push host
         run: |
           cmake --preset ci-release -B build

@@ -2,8 +2,11 @@ name: Native setup
 description: >
   What a native build needs after checkout: the libraries it links, the web
   UI it embeds and the compiler cache. The cache is restored everywhere and
-  saved on master and once per pull request and build flavor. A pull request
-  starts from master, then reuses its own snapshot across pushes. The precompiled
+  saved on master and, for a pull request, once per state of what nearly every
+  unit includes (the headers and the build files): a push that changes none of
+  them reuses the snapshot and compiles what it touched, and one that does
+  saves a new snapshot instead of recompiling everything on every later push.
+  A pull request starts from its own newest snapshot, else master's. The precompiled
   header needs the sloppiness and the compiler flag below to be cacheable at
   all (with GCC, 145 of 152 units were refused without them; with them a warm
   Release build of uagent took 62 s instead of 304 s on two cores). The
@@ -32,9 +35,10 @@ inputs:
     description: >
       Upper bound of the cache. A cache that fills evicts its oldest objects,
       so one that is rebuilt whole by a change to a common header needs room
-      for the whole build. Keep the total of master and active pull request
-      snapshots within the repository cache quota to avoid eviction.
-    default: 400M
+      for the whole build, and little more: a snapshot grows to its bound, and
+      the repository holds 10 GB for master's and every open pull request's.
+      One Release build is about 150 MB, one sanitizer build about 370 MB.
+    default: 300M
 runs:
   using: composite
   steps:
@@ -71,14 +75,18 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/ccache
-        key: ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
-        restore-keys: ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-
+        key: ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-${{ github.event_name == 'pull_request' && format('pr-{0}-{1}', github.event.pull_request.number, hashFiles('include/**', 'third_party/**', 'CMakeLists.txt', 'CMakePresets.json', 'cmake/**')) || github.sha }}
+        restore-keys: |
+          ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-${{ github.event_name == 'pull_request' && format('pr-{0}-', github.event.pull_request.number) || 'none' }}
+          ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-
     - if: inputs.ccache != '' && (inputs.ccache-save != 'true' || (github.ref != 'refs/heads/master' && github.event_name != 'pull_request'))
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/ccache
-        key: ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
-        restore-keys: ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-
+        key: ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-${{ github.event_name == 'pull_request' && format('pr-{0}-{1}', github.event.pull_request.number, hashFiles('include/**', 'third_party/**', 'CMakeLists.txt', 'CMakePresets.json', 'cmake/**')) || github.sha }}
+        restore-keys: |
+          ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-${{ github.event_name == 'pull_request' && format('pr-{0}-', github.event.pull_request.number) || 'none' }}
+          ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-
     - if: inputs.ccache != ''
       shell: bash
       run: ccache --zero-stats

@@ -1036,13 +1036,17 @@ test("the editor and a chart lie on their cells: under wrapped rows of long word
   await exact();
   await page.evaluate(() => scrollBy(40, 0));
   await exact();
-  await cell("Work", "D1").click();
+  // By its corner: the middle of a narrow header cell is its filter's arrow
+  // where the font is wider, and that opens the filter over the grid.
+  await cell("Work", "D1").click({ position: { x: 3, y: 3 } });
   await exact();
   await page.evaluate(() => scrollBy(0, 60));
   await exact();
 
-  // What is typed stays through a change of the app's look.
-  await cell("Work", "D30").click();
+  // What is typed stays through a change of the app's look. In the row
+  // already clicked above: the grid draws only the rows near the view, and
+  // how many that is depends on how tall the font makes the wrapped ones.
+  await cell("Work", "D20").click();
   await app.keyboard.type("half");
   const ground = () =>
     page.evaluate(() =>
@@ -1054,7 +1058,7 @@ test("the editor and a chart lie on their cells: under wrapped rows of long word
   await expect(stage.locator("input.sheet-editor")).toHaveValue("half");
   await exact(2);
   await app.keyboard.press("Enter");
-  await expect(cell("Work", "D30")).toHaveText("half");
+  await expect(cell("Work", "D20")).toHaveText("half");
 
   // At its end the grid grows a pane and is drawn there. The far end is
   // reached with a key; the grid is no longer for it afterwards.

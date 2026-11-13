@@ -6,9 +6,9 @@ import contextlib
 import hashlib
 import io
 import json
-import re
 import os
 import pathlib
+import re
 import signal
 import socket
 import subprocess
@@ -435,6 +435,13 @@ def test_remote_bundle_user_setting_and_environment_precedence(root, home, *, bi
         remote_home = root / f"remote-{override}"
         remote_home.mkdir()
         (home / "ssh-fixture-home").write_text(str(remote_home))
+        # Two builds other mains left: one used lately, one not for 40 days.
+        builds = remote_home / ".uagent/remote/builds"
+        for name in ("recent", "stale"):
+            (builds / name).mkdir(parents=True)
+            (builds / name / "uagent").write_text("")
+        long_ago = time.time() - 40 * 24 * 60 * 60
+        os.utime(builds / "stale", (long_ago, long_ago))
         settings.write_text(
             json.dumps(
                 {
@@ -475,6 +482,11 @@ def test_remote_bundle_user_setting_and_environment_precedence(root, home, *, bi
             assert_true(
                 (remote_home / f".uagent/remote/builds/{build}/uagent").is_file(),
                 "installation missing",
+            )
+            # Connecting clears out only the build nobody has used for long.
+            assert_true(
+                sorted(path.name for path in builds.iterdir()) == sorted([build, "recent"]),
+                list(builds.iterdir()),
             )
 
 
@@ -819,11 +831,12 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
                 any(row["id"] == terminal for row in listed(web)),
                 "main restart lost terminal catalogue",
             )
-            web.json("/api/hosts", {"action": "reconnect", "id": host})
+            # It was connected when the main stopped, so the main connects it
+            # again by itself: an updated main reaches its hosts unasked.
             wait_until(
                 lambda: web.json("/api/hosts")[1]["hosts"][0]["phase"] == "connected",
                 timeout=budget(12),
-                message="restart reconnect failed",
+                message="a restarted main did not reconnect its host",
             )
             viewer = Socket(web, f"/api/terminals/{terminal}")
             viewer.type('printf "after-restart-%s\\n" "$REMOTE_PTY_SURVIVAL"\n')

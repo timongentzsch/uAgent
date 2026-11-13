@@ -40,6 +40,12 @@ signal.signal(signal.SIGINT, lambda *_: stop.set())
 signal.signal(signal.SIGTERM, lambda *_: stop.set())
 
 
+# Set once a title has been asked for, and how many looks the "Filing probe"
+# turn had taken by then.
+titled = threading.Event()
+titled_at = {}
+
+
 def decide(handler):
     """The decisions endpoint: allow is likely, sending data away is too."""
     noul = {"destructive": 0.0, "beyond_request": 0.0, "touches_secrets": 0.0}
@@ -65,23 +71,32 @@ def answer(handler, body):
         # once its turn has ended.
         late = "File me probe" in prompt
         fits = "\nfits: 1 continues" if "<conversations>" in prompt and not late else ""
+        titled.set()
         return event({"content": "Titled by the model" + fits})
     if "Decide where a conversation belongs" in json.dumps(body):
         return event({"content": "place: 1" if "Titled by the model" in prompt else "none"})
-    # One look around, then a long answer: a first turn still at work when
-    # the title's reply has been taken.
-    if "Filing probe" in prompt and not any(
-        message.get("tool_call_id") == "filing-look" for message in body["messages"]
-    ):
-        # The agent takes the title's reply between steps: let it come first.
-        time.sleep(1)
+    # Looks around until the title's reply has gone out and three more steps
+    # have ended, then a long answer: the agent takes that reply between
+    # steps, so the first turn is still at work when its place is known.
+    looked = sum(
+        str(message.get("tool_call_id", "")).startswith("filing-look")
+        for message in body["messages"]
+    )
+    if titled.is_set():
+        titled_at.setdefault("looks", looked)
+    if "Filing probe" in prompt and looked < min(titled_at.get("looks", 40) + 3, 40):
+        time.sleep(0.3)
         return event(
             {
                 "tool_calls": [
                     {
                         "index": 0,
-                        "id": "filing-look",
-                        "function": {"name": "read_path", "arguments": json.dumps({"path": "."})},
+                        "id": f"filing-look-{looked}",
+                        # Never the same call twice: that would end the turn.
+                        "function": {
+                            "name": "read_path",
+                            "arguments": json.dumps({"path": "/".join(["."] * (looked + 1))}),
+                        },
                     }
                 ]
             }

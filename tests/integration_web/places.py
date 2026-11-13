@@ -1,3 +1,4 @@
+import itertools
 import json
 import pathlib
 import shutil
@@ -588,8 +589,10 @@ def test_web_unfiled_conversation_is_offered_where_it_belongs(root, home, *, bin
 
 def test_web_suggestion_arrives_while_the_first_turn_works(root, home, *, binary):
     """The title's reply is taken between steps, and the place it names
-    reaches clients then, not when the turn ends."""
-    hold = threading.Event()
+    reaches clients then, not when the turn ends: the turn here keeps taking
+    steps until the suggestion has been seen."""
+    seen = threading.Event()
+    looks = itertools.count()
 
     def route(_, body):
         text = json.dumps(body["messages"])
@@ -600,12 +603,12 @@ def test_web_suggestion_arrives_while_the_first_turn_works(root, home, *, binary
             return event({"content": "none"})
         if "second question" not in text:
             return event({"content": "Recorded answer"})
-        if '"role": "tool"' not in text:
-            # The title's reply comes first: the agent takes it between steps.
-            time.sleep(budget(1))
-            return tool_call("read_path", {"path": "."})
-        hold.wait(budget(20))
-        return event({"content": "Looked"})
+        look = next(looks)
+        if seen.is_set() or look >= 200:
+            return event({"content": "Looked"})
+        time.sleep(0.05)
+        # A different path each time: the same call over and over ends a turn.
+        return tool_call("read_path", {"path": "/".join(["."] * (look % 5 + 1))})
 
     with Server([route]) as provider:
         env = {"UAGENT_TITLE_MODEL": ""}
@@ -620,12 +623,19 @@ def test_web_suggestion_arrives_while_the_first_turn_works(root, home, *, binary
             web.command("submit", unfiled, text="second question")
             try:
                 value = web.until(unfiled, lambda value: value["metadata"].get("suggestion"))
-                assert_true(value["metadata"]["turn_active"], value["metadata"])
-                assert_true(
-                    value["metadata"]["suggestion"]["options"]
-                    == [{"cwd": filed["metadata"]["cwd"]}],
-                    value["metadata"]["suggestion"],
-                )
+                # The file was last saved before the reply came: reading the
+                # list again must not put what it says over what is known.
+                web.json("/api/sessions?refresh=1")
+                reread = web.snapshot(unfiled)["metadata"]
             finally:
-                hold.set()
+                seen.set()
+            assert_true(value["metadata"]["turn_active"], value["metadata"])
+            assert_true(
+                reread["turn_active"] and reread["suggestion"] == value["metadata"]["suggestion"],
+                reread,
+            )
+            assert_true(
+                value["metadata"]["suggestion"]["options"] == [{"cwd": filed["metadata"]["cwd"]}],
+                value["metadata"]["suggestion"],
+            )
             web.until(unfiled, lambda value: value["metadata"]["status"] == "idle")

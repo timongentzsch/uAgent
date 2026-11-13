@@ -1036,7 +1036,9 @@ test("the editor and a chart lie on their cells: under wrapped rows of long word
   await exact();
   await page.evaluate(() => scrollBy(40, 0));
   await exact();
-  await cell("Work", "D1").click();
+  // By its corner: the middle of a narrow header cell is its filter's arrow
+  // where the font is wider, and that opens the filter over the grid.
+  await cell("Work", "D1").click({ position: { x: 3, y: 3 } });
   await exact();
   await page.evaluate(() => scrollBy(0, 60));
   await exact();

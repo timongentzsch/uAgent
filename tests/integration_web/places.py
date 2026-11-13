@@ -639,3 +639,47 @@ def test_web_suggestion_arrives_while_the_first_turn_works(root, home, *, binary
                 value["metadata"]["suggestion"],
             )
             web.until(unfiled, lambda value: value["metadata"]["status"] == "idle")
+
+
+def test_web_suggestion_shows_while_a_call_waits_for_approval(root, home, *, binary):
+    """A turn that stops to ask for approval may stay stopped for long. The
+    place its first message fits is told by then, not after the answer."""
+    titled = threading.Event()
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        if "Title this coding session" in text:
+            listed = "<conversations>" in text
+            titled.set()
+            return event({"content": "Named" + ("\nfits: 1" if listed else "")})
+        if "Decide where a conversation belongs" in text:
+            return event({"content": "none"})
+        if "second question" not in text:
+            return event({"content": "Recorded answer"})
+        if '"role": "tool"' in text:
+            return event({"content": "Ran it"})
+        # The title's reply has gone out; the agent needs a moment to hold it
+        # before this reply's call asks for approval.
+        titled.wait(budget(10))
+        time.sleep(budget(0.5))
+        return tool_call("run", {"command": "true"})
+
+    with Server([route]) as provider:
+        env = {"UAGENT_TITLE_MODEL": ""}
+        with web_host(binary, root, home, provider.url, extra_env=env) as (web, code, _, _):
+            web.pair(code)
+            earlier = web.create(root)
+            web.command("submit", earlier, text="first question")
+            filed = web.until(earlier, lambda value: value["metadata"]["status"] == "idle")
+            titled.clear()
+            unfiled = web.command("create", space="Scratch")["session"]
+            unfiled = web.command("activate", unfiled)["session"]
+            web.command("submit", unfiled, text="second question")
+            waiting = web.until(unfiled, lambda value: bool(value.get("pending")))
+            assert_true(
+                (waiting["metadata"].get("suggestion") or {}).get("options")
+                == [{"cwd": filed["metadata"]["cwd"]}],
+                waiting["metadata"],
+            )
+            web.command("reply", unfiled, interaction_id=waiting["pending"]["id"], text="y")
+            web.until(unfiled, lambda value: value["metadata"]["status"] == "idle")

@@ -1,42 +1,19 @@
-/* One box, as a conversation's composer is: the text, and under it what it
-   starts with and the button that starts it. */
+/* A conversation's first message is written in the box every message is;
+   what it starts with gives way before the button that starts it. */
 .start-field {
-  display: flex;
-  flex-direction: column;
-  border: var(--border);
-  background: var(--surface);
+  display: grid;
   text-align: left;
 }
-.start-field:has(textarea:focus-visible) {
-  outline: var(--focus-ring);
-  outline-offset: var(--focus-offset);
-}
-.start-field > .message-input {
-  --input-min-height: max(var(--control-l), calc(1.5em + var(--space-4)));
-  --input-padding-y: var(--space-3);
-}
-.start-field > .message-input > textarea {
-  border: 0;
-  background: transparent;
-}
-.start-field > .message-input > textarea:focus-visible {
-  outline: none;
-}
-.start-tools {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  padding: var(--space-2);
-  border-top: var(--border);
-}
-/* A choice reads as a chip and gives way before the button does. */
-.start-tools button:not(.icon-button) {
+.start-tools > :not(.icon-button) {
   min-width: 0;
   flex: 0 1 auto;
+}
+.start-tools :is(.model-selector, .start-place) {
+  min-width: 0;
+  max-width: 100%;
   font-size: var(--font-small);
 }
-.start-tools button > span {
+.start-tools :is(.model-selector, .start-place) > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -21,7 +21,8 @@ import {
   type Redirect,
   Suggestion,
 } from "../features/filing/filing.tsx";
-import { ChevronDown } from "lucide-preact";
+import { ChevronDown, Gauge, LayoutGrid } from "lucide-preact";
+import "../shared/model-control.css";
 import { StartField } from "../shared/start-field.tsx";
 import { SheetButton } from "../shared/sheet.tsx";
 import ModelPicker from "../shared/model-picker.tsx";
@@ -342,19 +343,24 @@ export default function ChatPage({
           {(text) => (
             <>
               <Button
+                class="start-place"
                 title="It starts in Scratch, and µAgent suggests where it belongs once it knows. Choose another place here."
                 disabled={!online}
                 onClick={() => newPlace("conversation", text)}
               >
+                <LayoutGrid />
                 <span>Scratch</span>
                 <ChevronDown />
               </Button>
               <SheetButton
                 label="Model for this conversation"
                 title="Model and effort"
+                className="model-control"
+                buttonClass="model-selector"
                 disabled={!online}
                 trigger={
                   <>
+                    <Gauge />
                     <span>{model?.label || "Default model"}</span>
                     <ChevronDown />
                   </>

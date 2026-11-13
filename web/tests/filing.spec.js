@@ -104,6 +104,65 @@ test("on a phone the home screen lists the latest above a docked start box, with
   await expect.poll(under).toBeLessThanOrEqual(1);
 });
 
+test("the start box is the composer's own box, and the list leads back to it from a conversation", async ({
+  page,
+  host,
+  request,
+}) => {
+  const session = await savedConversation(host, request, "Somewhere else");
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  const look = (form) =>
+    form.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return [style.border, style.backgroundColor];
+    });
+  const composer = await look(page.locator(".composer > form"));
+  // The two lists and the two pages share one row.
+  const tabs = page.locator(".sidebar-tabs button");
+  await expect(tabs).toHaveText(["Recent", "Places", "Library", "Scheduled"]);
+  const tops = await tabs.evaluateAll((all) =>
+    all.map((tab) => Math.round(tab.getBoundingClientRect().top)),
+  );
+  expect(new Set(tops).size).toBe(1);
+  for (const tab of await tabs.all())
+    expect(
+      await tab.evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+  await page
+    .locator(".sidebar")
+    .getByRole("button", { name: "Home", exact: true })
+    .click();
+  const start = page.getByLabel("Start a conversation");
+  await expect(start).toBeVisible();
+  expect(await look(page.locator(".start-field"))).toEqual(composer);
+});
+
+test("on a phone the list's sheet leads home, and search is a panel with the screen round it", async ({
+  page,
+  host,
+  request,
+}) => {
+  const session = await savedConversation(host, request, "Somewhere else");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await page.getByRole("button", { name: "Open conversations" }).click();
+  const sheet = page.getByRole("dialog", { name: "Conversations" });
+  await sheet.getByRole("button", { name: "Search", exact: true }).click();
+  const search = page.getByRole("dialog", { name: "Search" });
+  await expect(search).toBeVisible();
+  const box = await search.boundingBox();
+  expect(box.x).toBeGreaterThan(0);
+  expect(box.y).toBeGreaterThan(0);
+  expect(box.x + box.width).toBeLessThan(390);
+  expect(Math.abs(box.x - (390 - box.x - box.width))).toBeLessThanOrEqual(1);
+  await page.keyboard.press("Escape");
+  // Search took the sheet's place; opened again, it leads home.
+  await page.getByRole("button", { name: "Open conversations" }).click();
+  await sheet.getByRole("button", { name: "Home", exact: true }).click();
+  await expect(page.getByLabel("Start a conversation")).toBeVisible();
+});
+
 test("a model chosen on the home screen is the one its conversation starts with", async ({
   page,
 }) => {

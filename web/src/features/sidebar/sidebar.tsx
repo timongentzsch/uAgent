@@ -17,6 +17,7 @@ import {
   Plus,
   RefreshCw,
   Settings,
+  House,
   Library,
   CalendarClock,
   Search,
@@ -817,6 +818,23 @@ function SidebarView({
         />
       </div>
       <div class="sidebar-tabs">
+        <div class="sidebar-sections segmented" role="group" aria-label="List">
+          {(
+            [
+              ["recent", "Recent"],
+              ["places", "Places"],
+            ] as const
+          ).map(([name, label]) => (
+            <Button
+              key={name}
+              variant="secondary"
+              aria-pressed={view === name}
+              onClick={() => setView(name)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
         <div class="sidebar-sections">
           <Button
             variant="quiet"
@@ -843,23 +861,6 @@ function SidebarView({
               />
             )}
           </Button>
-        </div>
-        <div class="sidebar-sections segmented" role="group" aria-label="List">
-          {(
-            [
-              ["recent", "Recent"],
-              ["places", "Places"],
-            ] as const
-          ).map(([name, label]) => (
-            <Button
-              key={name}
-              variant="secondary"
-              aria-pressed={view === name}
-              onClick={() => setView(name)}
-            >
-              {label}
-            </Button>
-          ))}
         </div>
       </div>
       <nav
@@ -934,6 +935,9 @@ export function ListActions({
 }) {
   return (
     <>
+      <IconButton label="Home" onClick={home}>
+        <House />
+      </IconButton>
       <IconButton label="Search" onClick={search}>
         <Search />
       </IconButton>

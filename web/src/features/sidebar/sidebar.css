@@ -243,8 +243,62 @@
 .connection .status-led {
   margin-right: var(--space-3);
 }
-.drawer .sidebar-head .brand {
+.sidebar-tabs {
+  display: contents;
+}
+/* In the sheet a narrow screen holds the list in: Search and New are in
+   the sheet's header, and the two pages join the two lists as one row. */
+.drawer .sidebar-head {
   display: none;
+}
+.drawer .sidebar-tabs {
+  display: flex;
+  gap: var(--space-2);
+}
+.drawer .sidebar-tabs > .sidebar-sections {
+  display: contents;
+}
+.drawer .sidebar-tabs > .segmented > button {
+  order: -1;
+}
+.drawer .sidebar-tabs button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: var(--space-2);
+}
+.drawer .sidebar-tabs button:not([aria-pressed="true"]) {
+  background: var(--raised);
+}
+.drawer .sidebar-tabs .lucide {
+  display: none;
+}
+/* A row there is its title, whole, over its time or place. Its menu opens
+   on a long press. */
+.drawer .session {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  height: auto;
+  padding-block: var(--space-3);
+}
+.drawer .session :is(.session-time, .session-tag) {
+  max-width: none;
+  margin-left: calc(var(--icon-s) + var(--space-2));
+  font-size: var(--font-caption, var(--font-small));
+  text-align: left;
+}
+@media (pointer: coarse) {
+  /* At rest only: open or focused, the menu shows and takes taps. */
+  .drawer
+    .session-row:not(
+      :has(:focus-visible, [aria-haspopup][aria-expanded="true"])
+    )
+    > .action-menu {
+    position: absolute;
+    right: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 /* The open conversation keeps its stripe, so the two never look alike. */

@@ -30,7 +30,10 @@ import { ResizeHandle } from "../shared/side-pane.tsx";
 import { settled, useDismiss } from "../shared/dismiss.ts";
 import { slide } from "../shared/motion.ts";
 import { useEdgeSwipe } from "../shared/swipe.ts";
-import Sidebar, { sessionOrder } from "../features/sidebar/sidebar.tsx";
+import Sidebar, {
+  ListActions,
+  sessionOrder,
+} from "../features/sidebar/sidebar.tsx";
 import { livePins } from "../features/sidebar/pins.tsx";
 import { ConversationMenu, TerminalMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
@@ -186,7 +189,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const shown = authenticated !== false;
   const compact = useCompact(shown);
   useEffect(() => setDrawer(false), [compact]);
-  useEdgeSwipe(compact, () => setDrawer(true));
+  const openDrawer = useCallback(() => setDrawer(true), []);
+  useEdgeSwipe(compact, openDrawer);
   const filesSheet = useNarrowColumn(shown) || compact;
   const { side, closeSide, ask, clearSides } = useSideConversations({
     selected,
@@ -749,6 +753,15 @@ function App({ host, bindResult, reading }: HostAppProps) {
                         title="Conversations"
                         className="sidebar drawer"
                         close={() => setDrawer(false)}
+                        actions={
+                          <ListActions
+                            search={openSearch}
+                            home={home}
+                            create={newPlace}
+                            online={online}
+                            brief
+                          />
+                        }
                       >
                         {sidebar}
                       </Modal>
@@ -772,7 +785,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       setFilesOpen={setFilesOpen}
                       outgoing={outgoing}
                       parent={sessionById(catalogue.sessions, session?.parent)}
-                      openDrawer={() => setDrawer(true)}
+                      openDrawer={openDrawer}
                       choose={choose}
                       settings={settings}
                       menu={conversationMenu}
@@ -850,6 +863,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       loadError={loadErrors[selected]}
                       newPlace={newPlace}
                       start={startUnfiled}
+                      openList={compact ? openDrawer : undefined}
                       redirect={redirect}
                       updateView={updateView}
                       choose={choose}

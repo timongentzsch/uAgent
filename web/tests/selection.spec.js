@@ -30,9 +30,10 @@ test.describe("touch selection", () => {
     await page
       .getByRole("button", { name: "Open conversations", exact: true })
       .tap();
+    // A touch row shows no menu button; its menu is still a key away.
     await row(page, "Alpha talk")
       .getByRole("button", { name: "Conversation menu" })
-      .tap();
+      .press("Enter");
     await page.getByRole("menuitem", { name: "Select", exact: true }).tap();
     const bar = page.getByRole("toolbar", { name: "Selection", exact: true });
     await expect(bar.getByText("1 selected")).toBeVisible();

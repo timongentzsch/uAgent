@@ -51,7 +51,10 @@ test.describe("mobile navigation and commands", () => {
       await page
         .getByRole("button", { name: "Open conversations", exact: true })
         .click();
-      await page.getByRole("button", { name: new RegExp(title) }).click();
+      await page
+        .getByRole("dialog", { name: "Conversations" })
+        .getByRole("button", { name: new RegExp(title) })
+        .click();
     };
     await choose(firstTitle);
     const prompt = page.getByLabel("Message or guidance");
@@ -257,7 +260,10 @@ test.describe("in an iPhone home-screen app", () => {
       await page
         .getByRole("button", { name: "Open conversations", exact: true })
         .click();
-      await page.getByRole("button", { name: new RegExp(title) }).click();
+      await page
+        .getByRole("dialog", { name: "Conversations" })
+        .getByRole("button", { name: new RegExp(title) })
+        .click();
       await expect(
         page.getByRole("heading", { name: title, exact: true }),
       ).toBeVisible();

@@ -39,7 +39,7 @@ async function unfiled(host, request, title, suggestion) {
   return found;
 }
 
-test("on a phone the home screen scrolls through what waits, with long titles cut and room to type", async ({
+test("on a phone the home screen lists the latest above a docked start box, with long titles cut and room to type", async ({
   page,
   host,
   request,
@@ -52,8 +52,8 @@ test("on a phone the home screen scrolls through what waits, with long titles cu
     );
   await page.setViewportSize({ width: 390, height: 700 });
   await page.goto("/");
-  const waiting = page.getByRole("region", { name: "To file" });
-  await expect(waiting.getByRole("listitem")).toHaveCount(9);
+  const waiting = page.getByRole("region", { name: "Recent" });
+  await expect(waiting.getByRole("listitem")).toHaveCount(6);
   // Nothing runs off the side, and the field keeps most of the width.
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
@@ -80,13 +80,28 @@ test("on a phone the home screen scrolls through what waits, with long titles cu
       .first()
       .evaluate((line) => line.scrollWidth > line.clientWidth),
   ).toBe(true);
+  // The start box is docked at the bottom, as wide as the screen allows,
+  // and a list too long for the room above it scrolls clear of it.
+  await page.setViewportSize({ width: 390, height: 420 });
+  const start = page.locator(".home-start");
   const field = await page.getByLabel("Start a conversation").boundingBox();
   expect(field.width).toBeGreaterThan(300);
-  // The last one is below the screen, and scrolling reaches it.
+  await expect
+    .poll(async () => {
+      const docked = await start.boundingBox();
+      return docked.y > 210 && docked.y + docked.height <= 420;
+    })
+    .toBe(true);
   const last = waiting.getByRole("listitem").last();
-  await expect(last).not.toBeInViewport();
-  await last.scrollIntoViewIfNeeded();
-  await expect(last).toBeInViewport();
+  const under = async () =>
+    (await last.boundingBox()).y +
+    (await last.boundingBox()).height -
+    (await start.boundingBox()).y;
+  expect(await under()).toBeGreaterThan(0);
+  await page.locator(".home").evaluate((home) => {
+    home.scrollTop = home.scrollHeight;
+  });
+  await expect.poll(under).toBeLessThanOrEqual(1);
 });
 
 test("a model chosen on the home screen is the one its conversation starts with", async ({
@@ -124,10 +139,13 @@ test("what waits in Scratch is filed from the home screen", async ({
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await expect(page.getByLabel("Start a conversation")).toBeEnabled();
-  const waiting = page.getByRole("region", { name: "To file" });
-  await expect(waiting.getByRole("listitem")).toHaveCount(2);
+  // Home lists what has a place suggested, and says nothing of the rest.
+  const waiting = page.getByRole("region", { name: "Suggested moves" });
+  await expect(waiting.getByRole("listitem")).toHaveCount(1);
   await expect(waiting).toContainText("It changed 2 files there.");
-  await expect(waiting).toContainText("No place suggested");
+  await expect(page.getByText("No place suggested")).toHaveCount(0);
+  // The whole list is beside it at this width, so no second one repeats it.
+  await expect(page.getByRole("region", { name: "Recent" })).toHaveCount(0);
   // The list names only what has a suggestion.
   const listed = page.getByRole("group", { name: "To file" });
   await expect(listed.locator(".session")).toHaveCount(1);

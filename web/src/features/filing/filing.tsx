@@ -1,4 +1,6 @@
+import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
+import { ChevronRight } from "lucide-preact";
 import type { PlaceOption, Session, Space } from "../../shared/types.ts";
 import { useApi } from "../../state/api.ts";
 import { useHostContext } from "../../state/host-context.ts";
@@ -6,7 +8,9 @@ import { folderOf } from "../../shared/display.ts";
 import { filingTag, nameOf, optionsOf, unfiled } from "../../shared/filing.ts";
 import { useAction } from "../../shared/use-action.ts";
 import SessionName from "../../shared/session-name.tsx";
-import { Button, DataText, SectionTitle } from "../../shared/ui.tsx";
+import { Button, DataText, SectionTitle, Time } from "../../shared/ui.tsx";
+import { folderName } from "../../shared/folder-label.tsx";
+import { homeRecent } from "../../shared/limits.ts";
 import "./filing.css";
 
 // Where a first message goes instead of the conversation it started.
@@ -106,11 +110,19 @@ export function Suggestion({
     options.map((option, index) => (
       <Button
         key={names[index]}
-        variant={options.length === 1 ? "primary" : "secondary"}
+        variant={options.length === 1 && !compact ? "primary" : "secondary"}
+        size={compact ? "compact" : "default"}
+        aria-label={option.workspace ? undefined : `Move to ${names[index]}`}
         disabled={blocked}
         onClick={() => move(option)}
       >
-        {option.workspace ? "Create and move" : `Move to ${names[index]}`}
+        {option.workspace
+          ? "Create and move"
+          : compact
+            ? options.length > 1
+              ? names[index]
+              : "Move"
+            : `Move to ${names[index]}`}
       </Button>
     ))
   );
@@ -154,47 +166,109 @@ export function Suggestion({
   );
 }
 
-// Home's list of what waits in Scratch.
-export function ToFile({
+// One conversation on the home screen: its title over what a list has to
+// say of it, the time it last changed, and what can be done with it.
+function HomeRow({
+  item,
+  detail,
+  choose,
+  children,
+}: {
+  item: Session;
+  detail: string;
+  choose: (id: string) => void;
+  children?: ComponentChildren;
+}) {
+  return (
+    <li>
+      <Button variant="quiet" onClick={() => choose(item.id)}>
+        <span class="truncate">
+          <SessionName item={item} />
+        </span>
+        {detail && (
+          <small class="truncate">
+            <DataText>{detail}</DataText>
+          </small>
+        )}
+      </Button>
+      {children ?? <Time value={item.updated} brief />}
+    </li>
+  );
+}
+
+// The home screen's lists: the conversations with a place suggested, each
+// with its move, then, where the whole list is not beside this one, the
+// latest from every place and `all`, which opens that list.
+export function HomeLists({
   sessions,
   spaces,
   choose,
+  all,
 }: {
   sessions: Session[];
   spaces: Space[];
   choose: (id: string) => void;
+  all?: () => void;
 }) {
-  const waiting = unfiled(sessions, spaces);
-  if (!waiting.length) return null;
+  const suggested = unfiled(sessions, spaces);
+  const recent = sessions
+    .filter((item) => !item.parent && !suggested.includes(item))
+    .sort((a, b) => (b.updated || 0) - (a.updated || 0))
+    .slice(0, homeRecent);
+  const placeOf = (item: Session) =>
+    spaces.find((space) => space.path === folderOf(item))?.name ||
+    folderName(folderOf(item));
   return (
-    <section class="to-file" aria-label="To file">
-      <SectionTitle>To file · {waiting.length} in Scratch</SectionTitle>
-      <ul class="divided card">
-        {waiting.map((item) => (
-          <li key={item.id}>
-            <Button variant="quiet" onClick={() => choose(item.id)}>
-              <span class="truncate">
-                <SessionName item={item} />
-              </span>
-              <small class="truncate">
-                <DataText>
-                  {item.turn_active
+    <>
+      {suggested.length > 0 && (
+        <section class="home-list" aria-label="Suggested moves">
+          <SectionTitle>Suggested moves · {suggested.length}</SectionTitle>
+          <ul class="divided card">
+            {suggested.map((item) => (
+              <HomeRow
+                key={item.id}
+                item={item}
+                detail={
+                  item.turn_active
                     ? "Working"
                     : [filingTag(item, spaces), item.suggestion?.reason]
                         .filter(Boolean)
-                        .join(" · ") || "No place suggested"}
-                </DataText>
-              </small>
+                        .join(" · ")
+                }
+                choose={choose}
+              >
+                <Suggestion
+                  session={item}
+                  sessions={sessions}
+                  spaces={spaces}
+                  compact
+                />
+              </HomeRow>
+            ))}
+          </ul>
+        </section>
+      )}
+      {all && recent.length > 0 && (
+        <section class="home-list" aria-label="Recent">
+          <header>
+            <SectionTitle>Recent</SectionTitle>
+            <Button variant="quiet" size="compact" onClick={all}>
+              All
+              <ChevronRight />
             </Button>
-            <Suggestion
-              session={item}
-              sessions={sessions}
-              spaces={spaces}
-              compact
-            />
-          </li>
-        ))}
-      </ul>
-    </section>
+          </header>
+          <ul class="divided card">
+            {recent.map((item) => (
+              <HomeRow
+                key={item.id}
+                item={item}
+                detail={item.turn_active ? "Working" : placeOf(item)}
+                choose={choose}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   );
 }

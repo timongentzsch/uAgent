@@ -1,4 +1,5 @@
-// Touch menus remain visible; a long press also opens any row's menu.
+// A conversation's row keeps its width for its title on a touch screen: its
+// menu opens on a long press, and stays reachable by keyboard.
 import { test, expect, online, savedConversation } from "./fixtures.js";
 
 const LONG_PRESS_MS = 450;
@@ -36,7 +37,7 @@ async function twoRows(page, host, session) {
   return { drawer, row, menuOf, touch, at };
 }
 
-test("every touch row shows its menu and keeps keyboard access", async ({
+test("a touch row shows no menu button, and its menu keeps keyboard access", async ({
   page,
   host,
   session,
@@ -44,9 +45,9 @@ test("every touch row shows its menu and keeps keyboard access", async ({
   const { menuOf } = await twoRows(page, host, session);
   const open = page.locator(".sidebar .session-row:has([aria-current])");
   await expect(open).toHaveCount(1);
-  await expect(open.locator(".action-menu")).toHaveCSS("opacity", "1");
+  await expect(open.locator(".action-menu")).toHaveCSS("opacity", "0");
   const other = menuOf("Other row");
-  await expect(other.locator("..")).toHaveCSS("opacity", "1");
+  await expect(other.locator("..")).toHaveCSS("opacity", "0");
   await other.focus();
   await expect(other).toBeFocused();
 });
@@ -64,6 +65,10 @@ test("a long press opens the row's menu and releasing does not open the conversa
   await expect(row("Other row")).toHaveAttribute("data-held", "");
   await touch("touchEnd");
   await expect(menu).toBeVisible();
+  // Its items take a tap: the button it hangs from shows no more at rest.
+  await menu
+    .getByRole("menuitem", { name: "Select", exact: true })
+    .click({ trial: true });
   await expect(row("Other row")).not.toHaveAttribute("data-held", "");
   await expect(page).toHaveURL(new RegExp(`#session=${session.id}`));
   await expect(row("Other row").locator("[aria-current]")).toHaveCount(0);

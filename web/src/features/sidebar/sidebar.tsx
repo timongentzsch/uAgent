@@ -708,9 +708,7 @@ function SidebarView({
     );
   };
   // Only what has a suggestion: the rest of Scratch is under its workspace.
-  const toFile = drawing
-    ? []
-    : unfiled(all, spaces).filter((item) => filingTag(item, spaces));
+  const toFile = drawing ? [] : unfiled(all, spaces);
   const group = (kind: string, rows: ComponentChildren[]) => (
     <div key={kind} class="list-group" role="group" aria-label={kind}>
       <p class="section-title caption">{kind}</p>
@@ -811,72 +809,58 @@ function SidebarView({
         >
           <Mark />
         </a>
-        <IconButton label="Search" onClick={search}>
-          <Search />
-        </IconButton>
-        <Menu
-          label="New"
-          trigger={
-            <>
-              New
-              <ChevronDown />
-            </>
-          }
-        >
-          <MenuItem disabled={!online} onClick={home}>
-            Conversation
-          </MenuItem>
-          <MenuItem disabled={!online} onClick={() => create("workspace")}>
-            Workspace…
-          </MenuItem>
-          <MenuItem disabled={!online} onClick={() => create("folder")}>
-            Folder…
-          </MenuItem>
-        </Menu>
+        <ListActions
+          search={search}
+          home={home}
+          create={create}
+          online={online}
+        />
       </div>
-      <div class="sidebar-sections">
-        <Button
-          variant="quiet"
-          class="entry"
-          aria-current={page === "library" ? "page" : undefined}
-          onClick={() => navigate("library")}
-        >
-          <Library />
-          Library
-        </Button>
-        <Button
-          variant="quiet"
-          class="entry"
-          aria-current={page === "scheduled" ? "page" : undefined}
-          onClick={() => navigate("scheduled")}
-        >
-          <CalendarClock />
-          Scheduled
-          {scheduledUnread && (
-            <span
-              class="status-led unread"
-              role="img"
-              aria-label="Unread scheduled results"
-            />
-          )}
-        </Button>
-      </div>
-      <div class="sidebar-sections segmented" role="group" aria-label="List">
-        {(
-          [
-            ["recent", "Recent"],
-            ["places", "Places"],
-          ] as const
-        ).map(([name, label]) => (
+      <div class="sidebar-tabs">
+        <div class="sidebar-sections">
           <Button
-            key={name}
-            variant="secondary"
-            aria-pressed={view === name}
-            onClick={() => setView(name)}
+            variant="quiet"
+            class="entry"
+            aria-current={page === "library" ? "page" : undefined}
+            onClick={() => navigate("library")}
           >
-            {label}
+            <Library />
+            Library
           </Button>
-        ))}
+          <Button
+            variant="quiet"
+            class="entry"
+            aria-current={page === "scheduled" ? "page" : undefined}
+            onClick={() => navigate("scheduled")}
+          >
+            <CalendarClock />
+            Scheduled
+            {scheduledUnread && (
+              <span
+                class="status-led unread"
+                role="img"
+                aria-label="Unread scheduled results"
+              />
+            )}
+          </Button>
+        </div>
+        <div class="sidebar-sections segmented" role="group" aria-label="List">
+          {(
+            [
+              ["recent", "Recent"],
+              ["places", "Places"],
+            ] as const
+          ).map(([name, label]) => (
+            <Button
+              key={name}
+              variant="secondary"
+              aria-pressed={view === name}
+              onClick={() => setView(name)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
       </div>
       <nav
         ref={rows}
@@ -929,6 +913,56 @@ function SidebarView({
           </IconButton>
         </footer>
       )}
+    </>
+  );
+}
+
+// Search and New: in the list's head, and in the header of the sheet that
+// holds the list on a narrow screen, where New is its icon.
+export function ListActions({
+  search,
+  home,
+  create,
+  online,
+  brief = false,
+}: {
+  search: () => void;
+  home: () => void;
+  create: (place: "workspace" | "folder") => void;
+  online: boolean;
+  brief?: boolean;
+}) {
+  return (
+    <>
+      <IconButton label="Search" onClick={search}>
+        <Search />
+      </IconButton>
+      <Menu
+        label="New"
+        trigger={
+          brief ? (
+            <>
+              <Plus />
+              <span class="sr-only">New</span>
+            </>
+          ) : (
+            <>
+              New
+              <ChevronDown />
+            </>
+          )
+        }
+      >
+        <MenuItem disabled={!online} onClick={home}>
+          Conversation
+        </MenuItem>
+        <MenuItem disabled={!online} onClick={() => create("workspace")}>
+          Workspace…
+        </MenuItem>
+        <MenuItem disabled={!online} onClick={() => create("folder")}>
+          Folder…
+        </MenuItem>
+      </Menu>
     </>
   );
 }

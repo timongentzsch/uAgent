@@ -846,6 +846,42 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
   ).toBeVisible();
 });
 
+test("a slide shows once all of it is in (a font, a picture, what it fetches), its outline standing in until then", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  // Each arrives late, one after the other, as large ones do.
+  const late = {};
+  for (const name of ["late.woff2", "late.png", "late.json"]) {
+    const { promise: held, resolve: release } = Promise.withResolvers();
+    const { promise: asked, resolve: wanted } = Promise.withResolvers();
+    late[name] = { asked, release };
+    await app.route(`**/${name}`, async (route) => {
+      wanted();
+      await held;
+      await route.fulfill({ status: 404 });
+    });
+  }
+  const parts =
+    "<style>@font-face{font-family:Late;src:url(late.woff2)}" +
+    "h1{font-family:Late,serif}</style>" +
+    '<img src="late.png" alt=""><script>fetch("late.json")</script>';
+  const { files } = await openDeck(app, session, host.project, {
+    "01-cover.html": slide("Cover", "", parts),
+  });
+  const frame = files.locator(".page-stage .page-frame");
+  // Shown now it would be set again, or filled in: it is not shown yet.
+  for (const name of Object.keys(late)) {
+    await late[name].asked;
+    await expect(frame).toHaveAttribute("data-waiting", "page");
+    await expect(frame.locator("iframe")).toHaveCSS("opacity", "0");
+    late[name].release();
+  }
+  await expect(frame).not.toHaveAttribute("data-waiting");
+  await expect(frame.locator("iframe")).toHaveCSS("opacity", "1");
+});
+
 test("a deck's legend, counter and keys step through its slides", async ({
   page: app,
   session,

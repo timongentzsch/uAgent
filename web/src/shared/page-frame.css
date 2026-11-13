@@ -36,6 +36,44 @@
   opacity: 0;
   pointer-events: none;
 }
+/* Until its first page has drawn a frame holds the outline of one: a title
+   and lines, or a sheet's grid. It comes after a moment, so a page that is
+   quick shows nothing before itself. */
+.page-frame[data-waiting]::before {
+  content: "";
+  position: absolute;
+  inset: 10% 10% auto;
+  height: 36%;
+  background:
+    linear-gradient(var(--placeholder) 0 0) 0 0 / 55% 16% no-repeat,
+    linear-gradient(var(--placeholder) 0 0) 0 45% / 100% 8% no-repeat,
+    linear-gradient(var(--placeholder) 0 0) 0 68% / 85% 8% no-repeat,
+    linear-gradient(var(--placeholder) 0 0) 0 91% / 62% 8% no-repeat;
+  animation:
+    page-waiting var(--motion-slow) step-end,
+    pulse var(--motion-pulse) var(--ease-standard) var(--motion-slow) infinite;
+}
+.page-frame[data-waiting="sheet"]::before {
+  inset: 0;
+  height: auto;
+  background:
+    linear-gradient(var(--placeholder) 0 0) 0 0 / 100% 1.75em no-repeat,
+    repeating-linear-gradient(
+      to right,
+      transparent 0 calc(7em - 1px),
+      var(--line) 0 7em
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 calc(1.75em - 1px),
+      var(--line) 0 1.75em
+    );
+}
+@keyframes page-waiting {
+  from {
+    opacity: 0;
+  }
+}
 .page-frame iframe[inert] {
   position: absolute;
   top: 0;

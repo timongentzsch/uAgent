@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import io
 import json
+import re
 import os
 import pathlib
 import signal
@@ -610,6 +611,11 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
             )
             measured = web.json(f"/api/hosts/{host}/ping")
             assert_true(measured[0] == 200 and measured[1]["round_trip_ms"] >= 0, measured)
+            # A connected host runs the main's own build, and says its version.
+            row = web.json("/api/hosts")[1]["hosts"][0]
+            assert_true(
+                re.fullmatch(r"\d+\.\d+\.\d+", row["version"]) and not row["installing"], row
+            )
             browsed = web.json("/api/folders?" + urlencode({"host": host, "path": str(project)}))
             assert_true(browsed[0] == 200 and browsed[1]["path"] == str(project.resolve()), browsed)
             assert_true(all(row["dir"] for row in browsed[1]["entries"]), browsed)

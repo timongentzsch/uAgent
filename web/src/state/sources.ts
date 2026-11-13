@@ -8,6 +8,10 @@ export interface SavedHost {
   phase: ConnectionPhase;
   error: string;
   round_trip_ms?: number | null;
+  // The µAgent version it runs, the main's own, once connected; and whether
+  // that is being copied there now.
+  version?: string;
+  installing?: boolean;
 }
 // Local or a remote host, with the part of the main's catalogue it runs.
 export interface Source extends SavedHost {

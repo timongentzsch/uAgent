@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 #include "include/web/remote_hosts.h"
 
+#include <atomic>
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
@@ -35,6 +36,9 @@ struct Host {
   int retry = 0;
   pid_t pid = -1;
   bool endpoint = false;
+  // The main's executable is being copied there: a first connection, or the
+  // first one after the main was updated.
+  std::atomic<bool> installing = false;
   std::optional<double> round_trip_ms;
 };
 bool Address(const std::string& address) {
@@ -215,9 +219,11 @@ bool Connect(Host& host, const std::string& bundle, std::string& error,
     host.executable = "\"$HOME/.uagent/remote/builds/" + build + "/uagent\"";
     present = Run(host, "test -x " + host.executable + " && " +
                             host.executable + " --build-id");
-    if ((!present.Ok() || Trim(present.output) != build) &&
-        !Install(host, bundle, error)) {
-      return false;
+    if (!present.Ok() || Trim(present.output) != build) {
+      host.installing = true;
+      const bool installed = Install(host, bundle, error);
+      host.installing = false;
+      if (!installed) return false;
     }
   }
   return true;
@@ -412,6 +418,10 @@ json RemoteHosts::List() const {
                     {"address", host->address},
                     {"phase", host->phase},
                     {"error", host->error},
+                    {"installing", host->installing.load()},
+                    // A connected host runs the main's own build: Connect
+                    // accepts no other.
+                    {"version", host->endpoint ? kVersion : ""},
                     {"round_trip_ms", host->endpoint && host->round_trip_ms
                                           ? json(*host->round_trip_ms)
                                           : json(nullptr)}});

@@ -28,6 +28,10 @@ flowchart LR
    Conversations appear under their host and name it in the header. Pins work
    across hosts; **Recent** is collapsible.
 
+A remote host always runs the main's own build: when the main is updated, the
+next connection copies the new executable there, and the host reads
+**Updating…** while it does. Its details name the version it runs.
+
 The bottom **Remote hosts** panel monitors connections; it does not switch application
 mode. Open a host for its status, reconnect/disconnect controls and measured
 **Main → host** SSH request round trip. Connected rows refresh this measurement

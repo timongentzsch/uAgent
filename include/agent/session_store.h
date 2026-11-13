@@ -57,6 +57,8 @@ struct SessionInfo {
   json suggestion = nullptr;
 };
 
+// The suggestion of a conversation that was told to stay where it is.
+inline json KeptSuggestion() { return {{"dismissed", true}}; }
 // A suggestion (Agent::Suggestion) still waiting for its answer.
 inline bool OpenSuggestion(const json& suggestion) {
   const json* options = JsonArray(suggestion, "options");

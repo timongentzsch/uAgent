@@ -184,8 +184,9 @@ std::string CrowdedMemories(const std::filesystem::path& cwd) {
     const auto ours = [&](const MemoryEntry& memory) {
       return memory.key.starts_with(scope);
     };
-    if (static_cast<size_t>(std::ranges::count_if(memories, ours)) * 4 <
-        MaxMemories() * 3) {
+    if (static_cast<size_t>(std::ranges::count_if(memories, ours)) *
+            kMemoryCrowdedOf <
+        MaxMemories() * kMemoryCrowdedParts) {
       continue;
     }
     for (const MemoryEntry& memory : memories) {
@@ -200,6 +201,9 @@ std::string CrowdedMemories(const std::filesystem::path& cwd) {
   }
   return bodies;
 }
+
+// The lines a reply is read by: the note's key, and a note it replaces.
+constexpr std::string_view kKeyLine = "key:", kMergeLine = "merge:";
 
 // "key: scope/name" on a line of its own, as `label` names it.
 std::string TakeLine(std::string& text, std::string_view label) {
@@ -248,8 +252,8 @@ MemoryEvent Save(const std::filesystem::path& cwd, const std::string& source,
   MemoryEvent event;
   event.action = "no_change";
   std::string text = Trim(result.content);
-  const std::string key = TakeLine(text, "key:");
-  const std::string folded = TakeLine(text, "merge:");
+  const std::string key = TakeLine(text, kKeyLine);
+  const std::string folded = TakeLine(text, kMergeLine);
   if (key.empty() || Trim(text).empty()) return event;
   ToolResult saved =
       ExtractedMemoryAction("set", key, Trim(text), cwd, source, &event);
@@ -313,7 +317,7 @@ std::string StartMemoryExtractor(Agent& agent, const Api& api,
   // A small, bounded summarization pass, so it can run on a cheaper or local
   // route than the conversation.
   const bool started = agent.StartSide(
-      "memory_extract", SettingText(Cfg("UAGENT_MEMORY_MODEL")),
+      Agent::kMemoryPurpose, SettingText(Cfg("UAGENT_MEMORY_MODEL")),
       json::array({{{"role", "system"}, {"content", std::move(rules)}},
                    {{"role", "user"}, {"content", std::move(evidence)}}}),
       kMemoryExtractSeconds, [&agent, claimed](const ChatResult& result) {

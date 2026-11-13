@@ -27,8 +27,11 @@
 namespace uagent {
 namespace {
 
-constexpr size_t kCandidates = 30;
-constexpr size_t kReplyChars = 2000;
+// The lines a reply is read by: which listed conversation or folder a
+// message fits, whether it carries that conversation on, and the name of a
+// workspace to make.
+constexpr std::string_view kFits = "fits:", kContinues = "continues",
+                           kPlace = "place:", kNew = "new:";
 
 bool Unfiled(const std::string& cwd) {
   std::error_code error;
@@ -45,7 +48,9 @@ std::vector<SessionInfo> Candidates(const std::string& own) {
            session.turns == 0 || session.session_id == own;
   });
   std::ranges::sort(sessions, std::greater{}, &SessionInfo::mtime);
-  if (sessions.size() > kCandidates) sessions.resize(kCandidates);
+  if (sessions.size() > kPlacementCandidates) {
+    sessions.resize(kPlacementCandidates);
+  }
   return sessions;
 }
 
@@ -117,7 +122,7 @@ void Agent::StartTitle(const std::string& user_input) {
     input += "</conversations>";
   }
   StartSide(
-      "session_title", selection,
+      kTitlePurpose, selection,
       json::array({{{"role", "system"}, {"content", std::move(rules)}},
                    {{"role", "user"}, {"content", std::move(input)}}}),
       kTitleTimeoutSeconds,
@@ -136,14 +141,14 @@ void Agent::StartTitle(const std::string& user_input) {
           return;
         }
         if (!custom_title_) session_title_ = std::move(title);
-        const std::vector<size_t> fits = Numbers(result.content, "fits:");
+        const std::vector<size_t> fits = Numbers(result.content, kFits);
         if (fits.empty() || fits[0] == 0 || fits[0] > beside.size() ||
             !suggestion_.is_null()) {
           return;
         }
         const SessionInfo& match = beside[fits[0] - 1];
         const bool continues =
-            result.content.find("continues") != std::string::npos;
+            result.content.find(kContinues) != std::string::npos;
         if (!continues && Unfiled(match.cwd)) return;
         json option = {{"cwd", match.cwd}};
         if (continues) option["session"] = SessionIdFor(match.path);
@@ -197,7 +202,7 @@ void Agent::SuggestFromTurn(const json& files) {
   placement_asked_ = true;
   std::string input = "<title>" + session_title_ + "</title>\n<reply>\n" +
                       Utf8Prefix(conversation_.LastAssistantText(),
-                                 kReplyChars) +
+                                 kPlacementReplyChars) +
                       "\n</reply>\n<folders>\n";
   for (size_t index = 0; index < places.size(); ++index) {
     input += std::to_string(index + 1) + ". " + places[index].first + " — " +
@@ -205,7 +210,7 @@ void Agent::SuggestFromTurn(const json& files) {
   }
   input += "</folders>";
   StartSide(
-      "placement", api_.config.title_model,
+      kPlacementPurpose, api_.config.title_model,
       json::array(
           {{{"role", "system"},
             {"content",
@@ -222,16 +227,16 @@ void Agent::SuggestFromTurn(const json& files) {
       [this, places](const ChatResult& result) {
         if (!result.error.empty() || !suggestion_.is_null()) return;
         json options = json::array();
-        for (size_t number : Numbers(result.content, "place:")) {
+        for (size_t number : Numbers(result.content, kPlace)) {
           if (number > 0 && number <= places.size() && options.size() < 2) {
             options.push_back({{"cwd", places[number - 1].first}});
           }
         }
         const std::string reply = Trim(FirstLine(Trim(result.content)));
-        if (options.empty() && reply.starts_with("new:")) {
-          const std::string name = Trim(reply.substr(4));
+        if (options.empty() && reply.starts_with(kNew)) {
+          const std::string name = Trim(reply.substr(kNew.size()));
           if (ValidSessionTitle(name) && name.find('/') == std::string::npos) {
-            options.push_back({{"workspace", Utf8Prefix(name, 40)}});
+            options.push_back({{"workspace", Utf8Prefix(name, kSpaceNameChars)}});
           }
         }
         if (options.empty()) return;

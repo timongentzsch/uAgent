@@ -418,7 +418,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
       result.error = DeleteConversation(session->path, draft_path);
     } else if (kind == SessionCommandKind::kKeep) {
       stored = SessionStore::Edit(session->path, [](SessionRecord& record) {
-        record.metadata.suggestion = {{"dismissed", true}};
+        record.metadata.suggestion = KeptSuggestion();
         return true;
       });
     } else if (PathExists(session->path)) {
@@ -443,7 +443,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
       Record(session->id, "", {{"kind", "deleted"}}, !session->run_id.empty());
     } else if (result.error.empty()) {
       if (kind == SessionCommandKind::kKeep) {
-        session->suggestion = {{"dismissed", true}};
+        session->suggestion = KeptSuggestion();
       } else {
         session->title = title;
         session->draft_title = title;

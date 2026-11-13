@@ -189,6 +189,10 @@ class Agent {
   // `deliver` on the agent's thread. Starting a purpose again cancels the one
   // still running. False when the route cannot be resolved.
   using SideDeliver = std::function<void(const ChatResult&)>;
+  // What each side request is charged as, and replaced by.
+  static constexpr const char* kTitlePurpose = "session_title";
+  static constexpr const char* kPlacementPurpose = "placement";
+  static constexpr const char* kMemoryPurpose = "memory_extract";
   bool StartSide(const std::string& purpose, const std::string& selection,
                  json messages, int64_t timeout_seconds, SideDeliver deliver,
                  bool terse = false);
@@ -198,7 +202,7 @@ class Agent {
   // {options: [{cwd} | {cwd, session} | {workspace}], reason, dismissed}.
   const json& Suggestion() const { return suggestion_; }
   void KeepHere() {
-    suggestion_ = {{"dismissed", true}};
+    suggestion_ = KeptSuggestion();
     ++revision_;
   }
 

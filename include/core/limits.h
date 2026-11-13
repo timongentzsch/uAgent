@@ -170,6 +170,13 @@ inline constexpr size_t kWebTerminalMessageBytes = KiB(64);
 inline constexpr int64_t kWebSearchMaxTokens = 6000;
 inline constexpr size_t kMemoryExtractBytes = KiB(32);
 inline constexpr int64_t kMemoryExtractSeconds = 300;
+// A scope this full of its limit, as a fraction, lets an extraction fold one
+// of its notes into the one it writes.
+inline constexpr size_t kMemoryCrowdedParts = 3, kMemoryCrowdedOf = 4;
+// What placing an unfiled conversation shows the model: this many of the
+// newest conversations, and this much of the latest reply.
+inline constexpr size_t kPlacementCandidates = 30;
+inline constexpr size_t kPlacementReplyChars = 2000;
 inline constexpr size_t kSkillBodyBytes = KiB(512);
 // The most of a memory file the library reads.
 inline constexpr size_t kMemoryFileBytes = KiB(512);

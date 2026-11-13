@@ -5,13 +5,13 @@ import { useApi } from "../../state/api.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { folderOf } from "../../shared/display.ts";
 import { folderName } from "../../shared/folder-label.tsx";
-import { scratchSpace } from "../../shared/limits.ts";
+import { scratchSpace, unfiledDays } from "../../shared/limits.ts";
 import { useAction } from "../../shared/use-action.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { Button, DataText, Input, SectionTitle } from "../../shared/ui.tsx";
 import "./filing.css";
 
-const WEEK = 7 * 24 * 60 * 60 * 1000;
+const DAY = 24 * 60 * 60 * 1000;
 
 // Where a first message goes instead of the conversation it started.
 export type Redirect = (
@@ -49,7 +49,8 @@ export function unfiled(sessions: Session[], spaces: Space[]) {
         !item.host &&
         folderOf(item) === scratch &&
         !item.suggestion?.dismissed &&
-        (optionsOf(item).length > 0 || Date.now() - (item.updated || 0) < WEEK),
+        (optionsOf(item).length > 0 ||
+          Date.now() - (item.updated || 0) < unfiledDays * DAY),
     )
     .sort((a, b) => (b.updated || 0) - (a.updated || 0));
 }

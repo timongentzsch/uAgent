@@ -69,6 +69,28 @@ test("on a phone the home screen scrolls through what waits, with long titles cu
   await expect(last).toBeInViewport();
 });
 
+test("a model chosen on the home screen is the one its conversation starts with", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByLabel("Start a conversation")).toBeEnabled();
+  const choice = page.getByRole("button", {
+    name: "Model for this conversation",
+    exact: true,
+  });
+  await expect(choice).toHaveText("Default model");
+  await choice.click();
+  await page.getByLabel("Model", { exact: true }).fill("model-b");
+  await page.getByRole("option").filter({ hasText: "mock/model-b" }).click();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(choice).toHaveText("mock/model-b");
+  await page.getByLabel("Start a conversation").fill("Model probe");
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Model and effort", exact: true }),
+  ).toContainText("mock/model-b");
+});
+
 test("what waits in Scratch is filed from the home screen", async ({
   page,
   host,

@@ -79,6 +79,12 @@
 .place-body {
   padding-left: var(--indent);
 }
+/* A phone has no width to spare: a row's own state column sets it in. */
+@media (pointer: coarse) {
+  .place-body {
+    padding-left: 0;
+  }
+}
 .place-agents {
   margin-left: var(--space-6);
   padding-left: var(--space-2);

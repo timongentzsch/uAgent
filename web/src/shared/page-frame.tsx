@@ -318,6 +318,10 @@ export default function Frame({
     <div
       class="page-frame"
       data-live={live || undefined}
+      // Nothing of it drawn yet: its outline stands in, a grid for a sheet.
+      data-waiting={
+        paged && drawn === undefined ? (sheet ? "sheet" : "page") : undefined
+      }
       // A picture stands beside what names and opens it.
       aria-hidden={!live || undefined}
       style={

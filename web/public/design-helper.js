@@ -219,6 +219,31 @@
   // What is wrong with the page as it is laid out, once its fonts are in, a
   // sheet is calculated (its cells in error too) and a frame is painted: a
   // script that lays the page out when it is sized has run by then.
+  // All of it in, so nothing is set again or pops in once it shows: what the
+  // page loads (its images, its scripts), what its scripts fetch, and its
+  // fonts, which it asks for when it is laid out. What does not come is
+  // waited for only so long.
+  const SETTLE_MS = 5000;
+  let fetching = 0;
+  let idle = [];
+  const fetchOf = window.fetch;
+  window.fetch = (...request) => {
+    fetching++;
+    return fetchOf(...request).finally(() => {
+      if (!--fetching) for (const done of idle.splice(0)) done();
+    });
+  };
+  const loaded = new Promise((done) => addEventListener("load", done));
+  const settled = () =>
+    Promise.race([
+      (async () => {
+        await loaded;
+        void root.offsetHeight;
+        await document.fonts.ready;
+        if (fetching) await new Promise((done) => idle.push(done));
+      })(),
+      new Promise((late) => setTimeout(late, SETTLE_MS)),
+    ]);
   const found = async () => {
     await document.fonts.ready;
     const cells = (await window.uagentReady) ?? [];
@@ -741,20 +766,11 @@
   addEventListener("unhandledrejection", (event) =>
     failed(event.reason?.message || event.reason, 0),
   );
-  // Drawn: its stylesheets in (or all of it loaded: one may fail), a sheet
-  // calculated, and a frame of it painted. A page the browser does not paint
-  // (off screen, a hidden tab) is not waited for.
+  // Drawn: all of it in, a sheet calculated, and a frame of it painted. A
+  // page the browser does not paint (off screen, a hidden tab) is not waited
+  // for.
   addEventListener("DOMContentLoaded", async () => {
-    await Promise.race([
-      Promise.all(
-        [...document.querySelectorAll('link[rel="stylesheet"]')].map(
-          (link) =>
-            link.sheet ||
-            new Promise((styled) => link.addEventListener("load", styled)),
-        ),
-      ),
-      new Promise((loaded) => addEventListener("load", loaded)),
-    ]);
+    await settled();
     await window.uagentReady;
     await painted();
     send("drawn");

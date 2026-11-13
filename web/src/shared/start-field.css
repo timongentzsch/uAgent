@@ -1,9 +1,12 @@
+/* The field takes a row of its own where the buttons would squeeze it. */
 .start-field {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--gap);
 }
 .start-field input {
-  flex: 1;
+  flex: 1 1 var(--pane);
   min-width: 0;
 }
 .start-field button {

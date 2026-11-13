@@ -39,6 +39,36 @@ async function unfiled(host, request, title, suggestion) {
   return found;
 }
 
+test("on a phone the home screen scrolls through what waits, with long titles cut and room to type", async ({
+  page,
+  host,
+  request,
+}) => {
+  for (let at = 1; at <= 9; at++)
+    await unfiled(
+      host,
+      request,
+      `Conversation ${at} with a title far longer than a phone is wide`,
+    );
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto("/");
+  const waiting = page.getByRole("region", { name: "To file" });
+  await expect(waiting.getByRole("listitem")).toHaveCount(9);
+  // Nothing runs off the side, and the field keeps most of the width.
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  for (const row of await waiting.getByRole("listitem").all())
+    expect((await row.boundingBox()).width).toBeLessThanOrEqual(390);
+  const field = await page.getByLabel("Start a conversation").boundingBox();
+  expect(field.width).toBeGreaterThan(300);
+  // The last one is below the screen, and scrolling reaches it.
+  const last = waiting.getByRole("listitem").last();
+  await expect(last).not.toBeInViewport();
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+});
+
 test("what waits in Scratch is filed from the home screen", async ({
   page,
   host,

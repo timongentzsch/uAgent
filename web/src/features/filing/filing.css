@@ -28,6 +28,7 @@
 }
 .to-file li > button {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   flex: 1 1 var(--pane);
   min-width: 0;
   height: auto;

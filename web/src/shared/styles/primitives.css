@@ -769,6 +769,21 @@
     max-width: var(--sheet);
     padding: var(--pad);
   }
+  /* The home screen scrolls once what waits to be filed outgrows it; short,
+     it sits in the middle. */
+  .home {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+  }
+  .home > .empty {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+  }
   .transcript .empty {
     padding-top: min(var(--space-24), calc(var(--viewport-height) * 0.06));
   }

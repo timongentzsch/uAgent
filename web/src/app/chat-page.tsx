@@ -315,47 +315,49 @@ export default function ChatPage({
       {composerFor(shown)}
     </SideLayout>
   ) : (
-    <Welcome
-      level={1}
-      title="What are we working on?"
-      tips={[
-        [
-          "Folders",
-          "A folder’s name in the list opens its overview: what works, what needs you, spend and changes.",
-        ],
-        [
-          <kbd>{keysOf("search").join(" ")}</kbd>,
-          "Searches every conversation, command and setting.",
-        ],
-        [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
-      ]}
-    >
-      <StartField
-        id={startFieldId}
-        label="Start a conversation"
-        placeholder="Ask, or describe the work…"
-        disabled={!online}
-        autoFocus
-        start={start}
+    <div class="home">
+      <Welcome
+        level={1}
+        title="What are we working on?"
+        tips={[
+          [
+            "Folders",
+            "A folder’s name in the list opens its overview: what works, what needs you, spend and changes.",
+          ],
+          [
+            <kbd>{keysOf("search").join(" ")}</kbd>,
+            "Searches every conversation, command and setting.",
+          ],
+          [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
+        ]}
       >
-        {(text) => (
-          <Button
-            disabled={!online}
-            onClick={() => newPlace("conversation", text)}
-          >
-            Other place…
-          </Button>
-        )}
-      </StartField>
-      <p>
-        It starts in Scratch, and µAgent suggests where it belongs once it
-        knows.
-      </p>
-      <ToFile
-        sessions={catalogue.sessions}
-        spaces={catalogue.spaces || NO_SPACES}
-        choose={choose}
-      />
-    </Welcome>
+        <StartField
+          id={startFieldId}
+          label="Start a conversation"
+          placeholder="Ask, or describe the work…"
+          disabled={!online}
+          autoFocus
+          start={start}
+        >
+          {(text) => (
+            <Button
+              disabled={!online}
+              onClick={() => newPlace("conversation", text)}
+            >
+              Other place…
+            </Button>
+          )}
+        </StartField>
+        <p>
+          It starts in Scratch, and µAgent suggests where it belongs once it
+          knows.
+        </p>
+        <ToFile
+          sessions={catalogue.sessions}
+          spaces={catalogue.spaces || NO_SPACES}
+          choose={choose}
+        />
+      </Welcome>
+    </div>
   );
 }

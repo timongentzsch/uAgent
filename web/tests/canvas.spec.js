@@ -874,6 +874,17 @@ test("a deck's legend, counter and keys step through its slides", async ({
   // A click in the legend goes there, and Back is still the list.
   await legend.getByRole("option", { name: "Slide 3: Numbers" }).click();
   await shows("Numbers", 3);
+  // Current and under the pointer, it has one ring: round its picture,
+  // none more round the picture and its name.
+  const rings = await legend
+    .locator(".page-legend-item")
+    .nth(2)
+    .evaluate((item) =>
+      [".page-frame", ".cover"].map(
+        (part) => getComputedStyle(item.querySelector(part)).outlineWidth,
+      ),
+    );
+  expect(rings).toEqual(["2px", "0px"]);
   // The keys: arrows and the Page keys step, round the ends; Home and End
   // go to them; Up and Down walk the legend as a list.
   for (const [key, title, at] of [

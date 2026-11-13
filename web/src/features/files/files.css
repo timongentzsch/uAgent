@@ -452,7 +452,15 @@
 .page-legend-item[data-skipped] > .page-frame {
   opacity: var(--opacity-disabled);
 }
-.page-legend-item:has([aria-selected="true"]) > .page-frame {
+/* One ring, round the picture, for the current one and the one pointed at:
+   the cover's own would box the name in beside it. */
+.page-legend-item > button.cover:is(:hover, :focus-visible) {
+  outline: 0;
+}
+.page-legend-item:has(
+    > .cover:is(:hover, :focus-visible, [aria-selected="true"])
+  )
+  > .page-frame {
   outline: var(--focus-ring);
 }
 /* A slide being dragged to a new place, and the line where it would drop:

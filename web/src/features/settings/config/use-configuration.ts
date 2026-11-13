@@ -41,8 +41,16 @@ export function useConfiguration(
   const [failed, setFailed] = useState<{ key: string; error: unknown }>();
   // Collected while settings are open, so several saves offer one restart.
   const [restart, setRestart] = useState<string[]>([]);
-  const run = async (key: string, fields: CommandInputs["config"]) => {
+  // One save at a time, in the order made: each is checked against what was
+  // saved before it, so a second one sent early is refused or lands first.
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  const run = (key: string, fields: CommandInputs["config"]) => {
     setBusy((count) => count + 1);
+    const done = saving.current.then(() => send(key, fields));
+    saving.current = done;
+    return done;
+  };
+  const send = async (key: string, fields: CommandInputs["config"]) => {
     setFailed(undefined);
     const request = ++asked.current;
     try {

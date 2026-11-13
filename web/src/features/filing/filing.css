@@ -32,8 +32,8 @@
   flex: 1 1 var(--pane);
   min-width: 0;
   height: auto;
-  justify-content: start;
-  justify-items: start;
+  /* Each line as wide as the row and no wider, so a long one is cut. */
+  justify-items: stretch;
   text-align: left;
 }
 .to-file small {

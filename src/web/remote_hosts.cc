@@ -231,12 +231,13 @@ bool Connect(Host& host, const std::string& bundle, std::string& error,
       if (!installed) return false;
     }
     // This build is in use; one that no main has used for a while, and that
-    // nothing runs from, goes. Other mains keep theirs by connecting.
+    // nothing runs from, goes. Other mains keep theirs by connecting. The
+    // bracket keeps one connection's search from finding another's.
     Run(host, "cd \"$HOME/.uagent/remote/builds\" && touch " + build +
                   " && for d in */; do d=${d%/}; test \"$d\" = " + build +
                   " && continue; test -n \"$(find \"$d\" -maxdepth 0 -mtime +" +
                   std::to_string(kRemoteBuildDays) +
-                  ")\" || continue; pgrep -f \"remote/builds/$d/uagent\" "
+                  ")\" || continue; pgrep -f \"remote/builds/$d/[u]agent\" "
                   ">/dev/null 2>&1 && continue; rm -rf \"$d\"; done");
   }
   return true;

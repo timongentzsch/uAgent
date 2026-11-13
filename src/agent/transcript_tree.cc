@@ -140,8 +140,8 @@ json ThinkingNode(std::string_view message, std::string_view work,
                   json fields) {
   std::string first;
   if (!JsonValue(fields, "streaming", false)) {
-    first = FirstLine(Trim(JsonValue(JsonValue(fields, "body", kNone), "text",
-                                     "")));
+    first = FirstLine(
+        Trim(JsonValue(JsonValue(fields, "body", kNone), "text", "")));
     first.resize(std::min(first.find(". "), first.size()));
   }
   fields["headline"] = {{"verb", first.empty() ? "Thinking" : "Thought"},
@@ -157,15 +157,15 @@ struct Step {
 };
 constexpr std::string_view kOtherStep = "step", kNote = "note";
 constexpr Step kSteps[] = {
-    {"read", "read", "file"}, {"search", "search", "search"},
+    {"read", "read", "file"},   {"search", "search", "search"},
     {"fetch", "fetch", "page"}, {"edit", "edit", ""},
     {"command", "command", ""}, {"agent", "agent", ""},
-    {kOtherStep, "step", ""}, {kNote, "note", ""}};
+    {kOtherStep, "step", ""},   {kNote, "note", ""}};
 // The verbs a row can start with, by what their call counts as.
 constexpr std::pair<std::string_view, std::string_view> kVerbs[] = {
-    {"Read", "read"},     {"List", "read"},      {"Search", "search"},
-    {"Fetch", "fetch"},   {"Wrote", "edit"},     {"Writing", "edit"},
-    {"Edit", "edit"},     {"Delet", "edit"},     {"Ran", "command"},
+    {"Read", "read"},       {"List", "read"},  {"Search", "search"},
+    {"Fetch", "fetch"},     {"Wrote", "edit"}, {"Writing", "edit"},
+    {"Edit", "edit"},       {"Delet", "edit"}, {"Ran", "command"},
     {"Running", "command"}, {"Start", "agent"}};
 
 // "3 reads, 1 search": what `kinds` counts, under each step's `noun`.
@@ -199,13 +199,12 @@ bool Explores(std::string_view kind) {
 
 json GroupNode(const std::string& id, const json& facts) {
   const bool done = !JsonValue(facts, "outcome", "").empty();
-  json node = MakeNode(
-      id, JsonValue(facts, "work", ""), "group",
-      {{"state", done ? "ok" : "running"},
-       {"headline",
-        {{"verb", done ? "Explored" : "Exploring"},
-         {"target",
-          Counted(JsonValue(facts, "kinds", kNone), &Step::looked)}}}});
+  json node = MakeNode(id, JsonValue(facts, "work", ""), "group",
+                       {{"state", done ? "ok" : "running"},
+                        {"headline",
+                         {{"verb", done ? "Explored" : "Exploring"},
+                          {"target", Counted(JsonValue(facts, "kinds", kNone),
+                                             &Step::looked)}}}});
   if (done) {
     node["result"] = {
         {"word", FmtDuration(JsonValue(facts, "duration_ms", 0.0) / 1000)}};
@@ -294,9 +293,8 @@ json WorkNode(const std::string& message, const json& facts) {
     did = JoinDot({steps || !done ? Plural(steps, "step") : "",
                    edited ? "edited " + Plural(edited, "file") : ""});
   }
-  const std::string target =
-      JoinDot({did.empty() && !done ? "0 steps" : did,
-               errors ? Plural(errors, "error") : ""});
+  const std::string target = JoinDot({did.empty() && !done ? "0 steps" : did,
+                                      errors ? Plural(errors, "error") : ""});
   return MakeNode(
       WorkId(message), message, "work",
       {{"state", !done                      ? "running"

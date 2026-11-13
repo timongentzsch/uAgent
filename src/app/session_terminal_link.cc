@@ -116,9 +116,8 @@ void Terminal::ReceiveState(const json& frame) {
     presenter_.ShowThinking(thinking_);
     presenter_.Draw(transcript_["view"]);
     WriteTerminalRecord(
-        Note(Tone::kNeutral,
-             "detail " + std::string(detail->name) +
-                 (thinking_ ? " · thinking shown" : "")));
+        Note(Tone::kNeutral, "detail " + std::string(detail->name) +
+                                 (thinking_ ? " · thinking shown" : "")));
   }
   wake_.Wake();
 }

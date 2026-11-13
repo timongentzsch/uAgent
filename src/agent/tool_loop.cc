@@ -302,12 +302,10 @@ void Agent::PublishWork(const std::vector<CallTask>& tasks) {
       work_.edited.insert(JsonValue(task.headline, "target", ""));
     }
   }
-  const json counts = {{"items", work_.steps},
-                       {"errors", work_.errors},
-                       {"edited", work_.edited.size()},
-                       {"kinds", work_.kinds},
-                       {"notes", work_.notes},
-                       {"thoughts", work_.thoughts}};
+  const json counts = {
+      {"items", work_.steps},          {"errors", work_.errors},
+      {"edited", work_.edited.size()}, {"kinds", work_.kinds},
+      {"notes", work_.notes},          {"thoughts", work_.thoughts}};
   conversation_.RecordDisplay(WorkId(reply_to_), counts);
   Emit(
       Event{EventId::kMessageChanged, {{"node", WorkNode(reply_to_, counts)}}});
@@ -346,8 +344,8 @@ void Agent::PublishRun(bool ended) {
     facts["duration_ms"] = ElapsedMs(run.started);
   }
   conversation_.RecordDisplay(run.group, facts);
-  Emit(Event{EventId::kMessageChanged,
-             {{"node", GroupNode(run.group, facts)}}});
+  Emit(
+      Event{EventId::kMessageChanged, {{"node", GroupNode(run.group, facts)}}});
 }
 
 void Agent::EndRun() {

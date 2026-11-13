@@ -206,8 +206,8 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       // A reply starts on a line of its own.
       if (std::exchange(line_open_, false)) fputs("\n", stdout);
       // Thinking streams where it is open, at every level of the tree.
-      state_ = std::make_unique<State>(
-          thinking_ && detail_->depth == kDepthAll, spoke_);
+      state_ = std::make_unique<State>(thinking_ && detail_->depth == kDepthAll,
+                                       spoke_);
       break;
     case EventId::kReasoningDelta:
       if (state_ && state_->full_reasoning && spinner_) spinner_->Stop();

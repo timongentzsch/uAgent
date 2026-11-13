@@ -278,9 +278,8 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
       json set = {{"streaming", false}};
       // A finished thought reads as its first line.
       if (id != response_id) {
-        set["headline"] = (*found)["headline"] =
-            ThinkingNode(response_id, "", {{"body", (*found)["body"]}})
-                ["headline"];
+        set["headline"] = (*found)["headline"] = ThinkingNode(
+            response_id, "", {{"body", (*found)["body"]}})["headline"];
       }
       if (patches) {
         patches->push_back({{"kind", "node"}, {"id", id}, {"set", set}});

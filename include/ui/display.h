@@ -162,11 +162,10 @@ inline std::string TurnStatusBar(const TurnStatusView& view) {
     return count ? label + FmtCount(static_cast<int64_t>(count)) : "";
   };
   std::string suffix =
-      " · " +
-      JoinDot({view.model, seconds,
-               ContextSummary(view.context_used, view.context_window),
-               counted("act:", view.background),
-               counted("steer:", view.queued)});
+      " · " + JoinDot({view.model, seconds,
+                       ContextSummary(view.context_used, view.context_window),
+                       counted("act:", view.background),
+                       counted("steer:", view.queued)});
   // The hint is the first thing a narrow terminal gives up.
   std::string hint = " · Esc stop · Ctrl+B background";
   if (view.foreground > 1) {

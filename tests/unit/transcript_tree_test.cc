@@ -339,6 +339,18 @@ TEST_CASE(TestGoldenChainOfCalls) {
              "      │ edited b.txt\n"
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
          }));
+  // Where thinking is switched off, as a new install has it, no level draws a
+  // thought, and the rest of the turn is as it was.
+  {
+    TerminalPresenter quiet;
+    quiet.SetDetail(DetailFor("full"));
+    const std::string drawn = Plain(CaptureStdout([&] {
+      quiet.Draw({{"nodes", ConversationView(turn.History())["nodes"]}});
+    }));
+    CHECK(drawn.find("Thought") == std::string::npos);
+    CHECK(drawn.find("look first") == std::string::npos);
+    CHECK(drawn.find("· Read a.txt · 1 line · 5ms\n") != std::string::npos);
+  }
   // Live, a step is drawn once it ends, in the tree's order, and the work's
   // line once the turn does: after the answer, which streamed.
   CHECK(turn.Watched() ==
@@ -676,16 +688,18 @@ TEST_CASE(TestWorkCountsByKindAndLooksGroup) {
   // shows thinking.
   CHECK(work["result"]["thoughts"] == 1);
   // A conversation saved before kinds were counted says how many steps.
-  CHECK(WorkNode("m-1", {{"items", 2}, {"edited", 1}, {"outcome", "complete"}})
-            ["headline"]["target"] == "2 steps · edited 1 file");
+  CHECK(WorkNode("m-1", {{"items", 2},
+                         {"edited", 1},
+                         {"outcome", "complete"}})["headline"]["target"] ==
+        "2 steps · edited 1 file");
 
   json facts = {{"work", "w-m-1"},
                 {"kinds", {{"read", 3}, {"search", 2}, {"fetch", 1}}}};
   json group = GroupNode("g-c1", facts);
   CHECK(group["kind"] == "group" && group["parent"] == "w-m-1");
   CHECK(group["state"] == "running");
-  CHECK(group["headline"] ==
-        json({{"verb", "Exploring"}, {"target", "3 files, 2 searches, 1 page"}}));
+  CHECK(group["headline"] == json({{"verb", "Exploring"},
+                                   {"target", "3 files, 2 searches, 1 page"}}));
   facts.update({{"outcome", "complete"}, {"duration_ms", 3000}});
   group = GroupNode("g-c1", facts);
   CHECK(group["state"] == "ok" && group["headline"]["verb"] == "Explored");

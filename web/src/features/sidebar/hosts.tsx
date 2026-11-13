@@ -299,7 +299,11 @@ export function HostList() {
       }
     });
   const status = (source: Source) =>
-    hosts.gatewayOnline ? connectionLabels[source.phase] : "Unavailable";
+    !hosts.gatewayOnline
+      ? "Unavailable"
+      : source.installing
+        ? "Updating…"
+        : connectionLabels[source.phase];
   return (
     <div class="host-list">
       <Fold name="$hosts" label="Remote hosts">
@@ -388,6 +392,15 @@ export function HostList() {
               <p>
                 {source!.address} · {status(source!)}
               </p>
+              {source!.version && (
+                <p class="small muted">
+                  µAgent {source!.version}, the same build as this host. It
+                  updates by itself when this host does.
+                </p>
+              )}
+              {source!.installing && (
+                <p class="small muted">Copying this host's µAgent there.</p>
+              )}
               {!hosts.gatewayOnline && (
                 <Notice tone="warning">
                   The serving host is unavailable. Reconnect to it first.

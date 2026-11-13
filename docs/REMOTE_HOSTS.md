@@ -28,6 +28,12 @@ flowchart LR
    Conversations appear under their host and name it in the header. Pins work
    across hosts; **Recent** is collapsible.
 
+A remote host always runs the main's own build: when the main is updated, the
+next connection copies the new executable there, and the host reads
+**Updating…** while it does. Its details name the version it runs. A build no
+main has connected with for 30 days, and that nothing runs from, is removed
+from the host at the next connection.
+
 The bottom **Remote hosts** panel monitors connections; it does not switch application
 mode. Open a host for its status, reconnect/disconnect controls and measured
 **Main → host** SSH request round trip. Connected rows refresh this measurement
@@ -85,8 +91,10 @@ on the main. Existing remote CLI data is neither migrated nor removed.
 Authentication failures show an SSH action to take instead of retrying forever.
 Paging loaded history, expanding groups and refreshing the page do not initiate
 SSH. Explicitly opening a remote conversation or folder can connect its host.
-Saved hosts start disconnected after restarting the main. You can also choose
-**Reconnect** in host details, or **Connect** while selecting a host for new work.
+A restarted main connects again the hosts that were connected when it
+stopped, so an update of the main reaches them unasked; a host you
+disconnected stays so. You can also choose **Reconnect** in host details, or
+**Connect** while selecting a host for new work.
 
 **Disconnect** closes SSH access. Main-owned history remains readable; already
 running remote commands and terminals can survive a transport drop. Reconnect

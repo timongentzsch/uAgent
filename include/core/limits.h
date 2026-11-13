@@ -48,6 +48,8 @@ inline constexpr size_t kTitleInputChars = 2000;
 inline constexpr size_t kTitleChars = 80;
 // The first line of a thought, as its row shows it.
 inline constexpr size_t kThoughtChars = 80;
+// A remote host keeps a build no main has connected with for this long.
+inline constexpr int kRemoteBuildDays = 30;
 // The longest title a user may give a session, and the longest workspace
 // name, in characters. The web form mirrors both (web/src/shared/limits.ts).
 inline constexpr size_t kUserTitleChars = 256;

@@ -2,6 +2,7 @@
 #include "include/web/remote_hosts.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
@@ -17,7 +18,9 @@
 #include "include/core/build.h"
 #include "include/core/capture.h"
 #include "include/core/child_env.h"
+#include "include/core/debug.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/private_store.h"
 #include "include/core/strings.h"
 #include "include/web/protocol.h"
@@ -32,9 +35,15 @@ struct Host {
   std::jthread worker;
   std::string phase = "disconnected", error;
   bool requested = false, disconnect = false, attempting = false;
+  // Asked for and not since disconnected: kept, so a restarted main connects
+  // again by itself.
+  bool wanted = false;
   int retry = 0;
   pid_t pid = -1;
   bool endpoint = false;
+  // The main's executable is being copied there: a first connection, or the
+  // first one after the main was updated.
+  std::atomic<bool> installing = false;
   std::optional<double> round_trip_ms;
 };
 bool Address(const std::string& address) {
@@ -215,10 +224,21 @@ bool Connect(Host& host, const std::string& bundle, std::string& error,
     host.executable = "\"$HOME/.uagent/remote/builds/" + build + "/uagent\"";
     present = Run(host, "test -x " + host.executable + " && " +
                             host.executable + " --build-id");
-    if ((!present.Ok() || Trim(present.output) != build) &&
-        !Install(host, bundle, error)) {
-      return false;
+    if (!present.Ok() || Trim(present.output) != build) {
+      host.installing = true;
+      const bool installed = Install(host, bundle, error);
+      host.installing = false;
+      if (!installed) return false;
     }
+    // This build is in use; one that no main has used for a while, and that
+    // nothing runs from, goes. Other mains keep theirs by connecting. The
+    // bracket keeps one connection's search from finding another's.
+    Run(host, "cd \"$HOME/.uagent/remote/builds\" && touch " + build +
+                  " && for d in */; do d=${d%/}; test \"$d\" = " + build +
+                  " && continue; test -n \"$(find \"$d\" -maxdepth 0 -mtime +" +
+                  std::to_string(kRemoteBuildDays) +
+                  ")\" || continue; pgrep -f \"remote/builds/$d/[u]agent\" "
+                  ">/dev/null 2>&1 && continue; rm -rf \"$d\"; done");
   }
   return true;
 }
@@ -376,6 +396,17 @@ struct RemoteHosts::Impl {
     });
     return host;
   }
+  // The hosts, and which of them a restarted main connects again.
+  bool Save(std::string& error) const {
+    json saved = json::array();
+    for (const auto& [key, item] : hosts) {
+      saved.push_back({{"id", key},
+                       {"address", item->address},
+                       {"connected", item->wanted}});
+    }
+    return WritePrivateFile(GlobalBase() + "/web/hosts.json", JsonDump(saved),
+                            error);
+  }
 };
 RemoteHosts::RemoteHosts(const std::string& executable,
                          const std::string& bundle)
@@ -391,7 +422,12 @@ RemoteHosts::RemoteHosts(const std::string& executable,
       const std::string id = JsonValue(row, "id", ""),
                         address = JsonValue(row, "address", "");
       if (OpaqueId(id) && Address(address) && impl_->hosts.size() < 16) {
-        impl_->Add(id, address);
+        const auto host = impl_->Add(id, address);
+        if (host && JsonValue(row, "connected", false)) {
+          std::lock_guard state(host->mutex);
+          host->wanted = host->requested = true;
+          host->wake.notify_all();
+        }
       }
     }
   }
@@ -412,6 +448,10 @@ json RemoteHosts::List() const {
                     {"address", host->address},
                     {"phase", host->phase},
                     {"error", host->error},
+                    {"installing", host->installing.load()},
+                    // A connected host runs the main's own build: Connect
+                    // accepts no other.
+                    {"version", host->endpoint ? kVersion : ""},
                     {"round_trip_ms", host->endpoint && host->round_trip_ms
                                           ? json(*host->round_trip_ms)
                                           : json(nullptr)}});
@@ -462,12 +502,8 @@ json RemoteHosts::Change(const json& action, std::string& error) {
       error = "Cannot create the private SSH runtime directory.";
       return nullptr;
     }
-    json saved = json::array();
-    for (const auto& [key, item] : impl_->hosts) {
-      saved.push_back({{"id", key}, {"address", item->address}});
-    }
-    if (!WritePrivateFile(GlobalBase() + "/web/hosts.json", JsonDump(saved),
-                          error)) {
+    host->wanted = true;
+    if (!impl_->Save(error)) {
       host->worker.request_stop();
       host->wake.notify_all();
       host->worker.join();
@@ -486,7 +522,9 @@ json RemoteHosts::Change(const json& action, std::string& error) {
   if (kind == "disconnect") {
     host->disconnect = true;
     host->requested = false;
+    host->wanted = false;
   } else if (kind == "connect" || kind == "reconnect" || kind == "add") {
+    host->wanted = true;
     if (!host->endpoint) {
       host->retry = 0;
       if (!host->attempting) host->requested = true;
@@ -496,6 +534,11 @@ json RemoteHosts::Change(const json& action, std::string& error) {
     return nullptr;
   }
   host->wake.notify_all();
+  // Kept for the next start; the change itself stands without it.
+  std::string unsaved;
+  if (kind != "add" && !impl_->Save(unsaved)) {
+    DebugLog("remote_hosts_save_error", {{"error", unsaved}});
+  }
   return {{"id", host->id}};
 }
 json RemoteHosts::Target(const std::string& id, const std::string& cwd,

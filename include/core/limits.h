@@ -46,6 +46,8 @@ inline constexpr size_t kGenericTitleReplacementMinChars = 12;
 // Generated titles: the first-message excerpt sent, and the title kept.
 inline constexpr size_t kTitleInputChars = 2000;
 inline constexpr size_t kTitleChars = 80;
+// The first line of a thought, as its row shows it.
+inline constexpr size_t kThoughtChars = 80;
 // The longest title a user may give a session, and the longest workspace
 // name, in characters. The web form mirrors both (web/src/shared/limits.ts).
 inline constexpr size_t kUserTitleChars = 256;

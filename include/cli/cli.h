@@ -94,7 +94,15 @@ std::string SlashCommandPrompt(const ParsedSlashCommand& command);
 // An alias carries an empty description and is hidden from listings.
 std::span<const SlashCommandSpec> SlashCommandRegistry();
 
-enum class InteractiveInputKind { kNone, kLine, kEscape, kBackground, kEof };
+enum class InteractiveInputKind {
+  kNone,
+  kLine,
+  kEscape,
+  kBackground,
+  // Ctrl+O: the next detail level.
+  kDetail,
+  kEof
+};
 
 struct InteractiveInputEvent {
   InteractiveInputKind kind = InteractiveInputKind::kNone;

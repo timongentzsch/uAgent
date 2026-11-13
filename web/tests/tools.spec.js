@@ -87,7 +87,7 @@ test("a presented file previews inline in the conversation, sandboxed", async ({
   );
   await chooseDetail(page, "Minimal");
   await expect(page.locator(".transcript .node-row")).toHaveText([
-    /^Worked 2 steps/,
+    /^Worked 1 edit, 1 step/,
   ]);
   await expect(page.locator(".node .diff")).toHaveCount(0);
   await expect(file).toHaveCount(1);

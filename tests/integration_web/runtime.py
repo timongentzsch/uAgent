@@ -632,3 +632,53 @@ def test_web_compact_renders_single_footer_without_duplicates(root, home, *, bin
             )
             assert unchanged["state"]["context_tokens"] == before
             assert len([b for b in unchanged["state"]["view"]["nodes"] if "compaction" in b]) == 1
+
+
+def test_looks_fold_into_a_group_and_the_work_counts_by_kind(root, home, *, binary):
+    """Two reads in a row are one "Explored" group; what the agent says ends
+    the run, so the read after it stands alone, and the work's line counts
+    what was done by kind."""
+    project = root / "kinds"
+    project.mkdir()
+    for name in ("a.txt", "b.txt", "c.txt"):
+        (project / name).write_text(name)
+
+    def read(name):
+        return {
+            "index": ord(name[0]) - ord("a"),
+            "id": f"read-{name[0]}",
+            "function": {"name": "read_path", "arguments": json.dumps({"path": name})},
+        }
+
+    def answer(_, body):
+        done = {m.get("tool_call_id") for m in body["messages"] if m.get("role") == "tool"}
+        if "read-a" not in done:
+            return event({"tool_calls": [read("a.txt"), read("b.txt")]})
+        if "read-c" not in done:
+            return event({"content": "Found it.", "tool_calls": [read("c.txt")]})
+        return event({"content": "Done."})
+
+    with Server([answer]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project)
+            client.command("submit", session, text="look around")
+            value = client.until(session, lambda value: value["metadata"]["status"] == "idle")
+            nodes = value["state"]["view"]["nodes"]
+            by_kind = lambda kind: [node for node in nodes if node["kind"] == kind]  # noqa: E731
+            (work,) = by_kind("work")
+            assert_true(work["headline"] == {"verb": "Worked", "target": "3 reads, 1 note"}, work)
+            (group,) = by_kind("group")
+            assert_true(
+                group["headline"] == {"verb": "Explored", "target": "2 files"}
+                and group["state"] == "ok"
+                and group["parent"] == work["id"],
+                group,
+            )
+            parents = [node["parent"] for node in by_kind("call")]
+            assert_true(parents == [group["id"], group["id"], work["id"]], parents)
+            # A page read back from the saved conversation is the same tree.
+            status, saved, _ = client.json(f"/api/sessions/{session['id']}/view")
+            if status == 200:
+                kinds = [node["kind"] for node in saved.get("nodes", [])]
+                assert_true(kinds.count("group") == 1, kinds)

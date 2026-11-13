@@ -45,11 +45,14 @@ class TerminalPresenter {
   void Finish() noexcept;
   void SetDetail(const DetailLevel& detail) { detail_ = &detail; }
   const DetailLevel& Detail() const { return *detail_; }
+  void ShowThinking(bool shown) { thinking_ = shown; }
+  bool Thinking() const { return thinking_; }
 
  private:
   struct State;
   void DrawTree(const json& view, bool live);
   const DetailLevel* detail_ = &DetailFor("default");
+  bool thinking_ = false;
   // The settled nodes on screen, by id.
   std::set<std::string, std::less<>> drawn_;
   // A streamed reply left its last line open.

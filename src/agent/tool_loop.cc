@@ -253,6 +253,11 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
               {"view", std::move(view)},
               {"time", UtcStamp()}};
   if (tool && tool->routine && tool->routine(arguments)) row["routine"] = true;
+  const std::string kind(StepKind(JsonValue(task.headline, "verb", "")));
+  ++work_.kinds[kind];
+  if (const std::string group = JoinRun(call.detail_id, kind); !group.empty()) {
+    row["group"] = group;
+  }
   conversation_.RecordDisplay(call.detail_id, row);
   Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
   call_event.data["work"] = WorkId(reply_to_);
@@ -299,15 +304,61 @@ void Agent::PublishWork(const std::vector<CallTask>& tasks) {
   }
   const json counts = {{"items", work_.steps},
                        {"errors", work_.errors},
-                       {"edited", work_.edited.size()}};
+                       {"edited", work_.edited.size()},
+                       {"kinds", work_.kinds},
+                       {"notes", work_.notes},
+                       {"thoughts", work_.thoughts}};
   conversation_.RecordDisplay(WorkId(reply_to_), counts);
   Emit(
       Event{EventId::kMessageChanged, {{"node", WorkNode(reply_to_, counts)}}});
 }
 
+std::string Agent::JoinRun(const std::string& call, std::string_view kind) {
+  Work::Run& run = work_.run;
+  if (!Explores(kind)) {
+    EndRun();
+    return "";
+  }
+  ++run.kinds[std::string(kind)];
+  if (run.first.empty()) {
+    run.first = call;
+    run.started = std::chrono::steady_clock::now();
+    return "";
+  }
+  if (run.group.empty()) {
+    // The second look makes the run a group, and takes the first under it.
+    run.group = GroupId(run.first);
+    conversation_.RecordDisplay(run.first, {{"group", run.group}});
+    PublishRun(false);
+    Emit(Event{EventId::kMessageChanged,
+               {{"node", {{"id", run.first}, {"parent", run.group}}}}});
+  } else {
+    PublishRun(false);
+  }
+  return run.group;
+}
+
+void Agent::PublishRun(bool ended) {
+  const Work::Run& run = work_.run;
+  json facts = {{"work", WorkId(reply_to_)}, {"kinds", run.kinds}};
+  if (ended) {
+    facts["outcome"] = "complete";
+    facts["duration_ms"] = ElapsedMs(run.started);
+  }
+  conversation_.RecordDisplay(run.group, facts);
+  Emit(Event{EventId::kMessageChanged,
+             {{"node", GroupNode(run.group, facts)}}});
+}
+
+void Agent::EndRun() {
+  if (!work_.run.group.empty()) PublishRun(true);
+  work_.run = {};
+}
+
 void Agent::CloseWork(const std::string& outcome) {
   const std::string id = WorkId(reply_to_);
   if (id.empty()) return;
+  EndRun();
   conversation_.RecordDisplay(
       id, {{"outcome", outcome}, {"duration_ms", ElapsedMs(work_.started)}});
   Emit(Event{

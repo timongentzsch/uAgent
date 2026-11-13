@@ -33,7 +33,7 @@ interface EventHost {
   localRequests: Ref<Set<string>>;
   flush: Ref<(id?: string) => void>;
   setManagementVersion: Dispatch<StateUpdater<number>>;
-  setDetail: (level: string) => void;
+  setDetail: (level: string, thinking?: boolean) => void;
   setCatalogue: Dispatch<StateUpdater<Catalogue>>;
   patchSession: (id: string, change: (item: Session) => Session) => void;
   upsertSession: (session: Session) => void;
@@ -75,7 +75,7 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     return;
   }
   if (event.kind === "settings.changed") {
-    setDetail(event.level);
+    setDetail(event.level, !!event.thinking);
     setManagementVersion((version) => version + 1);
     return;
   }

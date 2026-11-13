@@ -467,7 +467,7 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   await expect(
     reply.getByRole("button", { name: "Copied!", exact: true }),
   ).toBeVisible();
-  const thinking = (await openRow(page, "Thinking")).locator(".node-text");
+  const thinking = (await openRow(page, "Thought")).locator(".node-text");
   await expect(thinking).toContainText("I checked the supplied evidence.");
   const thinkingColor = await thinking.evaluate(
     (element) => getComputedStyle(element).color,

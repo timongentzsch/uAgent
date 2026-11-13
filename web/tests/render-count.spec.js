@@ -81,6 +81,8 @@ async function open(page) {
   });
   await page.addInitScript(
     ({ epoch, cursor, id, generation }) => {
+      // The level these counts were taken at: every step a row.
+      localStorage.setItem("uagent-detail", "default");
       globalThis.EventSource = class extends EventTarget {
         readyState = 1;
         constructor() {

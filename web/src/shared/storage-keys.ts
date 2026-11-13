@@ -21,6 +21,7 @@ export const storageKeys = {
   time: "uagent-time",
   panes: "uagent-panes",
   detail: "uagent-detail",
+  thinking: "uagent-thinking",
   toggles: "uagent-toggles",
   // The sidebar's view: Recent or Places.
   list: "uagent-list",

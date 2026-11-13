@@ -1,5 +1,6 @@
 // The transcript as the host sends it: nodes that name their parent, drawn
 // as one tree. Nothing here knows a tool, a provider or a model.
+import { plural } from "./quantities.ts";
 import type { NodePatch, Node } from "./types.ts";
 
 // A node and the nodes under it, oldest first.
@@ -23,12 +24,18 @@ export const isRow = (node: Node) => !!node.headline;
 // Whether a row `depth` rows deep starts open at a level `level` deep.
 // Routine rows show only when everything does.
 export const opens = (depth: number, level: number) => depth < level;
-export const visible = (node: Node, level: number) =>
-  !node.routine || level === Infinity;
+// Thinking shows only where it is switched on, at any level.
+export const visible = (node: Node, level: number, thinking: boolean) =>
+  (!node.routine || level === Infinity) &&
+  (node.kind !== "thinking" || thinking);
 
-// A row's headline as one line: "Ran npm test".
-export const headlineOf = (node: Node) =>
-  [node.headline?.verb, node.headline?.target].filter(Boolean).join(" ");
+// A row's headline as one line: "Ran npm test". A work counts its thoughts
+// where thinking is shown.
+export const headlineOf = (node: Node, thinking = false) =>
+  [node.headline?.verb, node.headline?.target].filter(Boolean).join(" ") +
+  (thinking && node.result?.thoughts
+    ? `, ${plural(node.result.thoughts, "thought")}`
+    : "");
 
 // The newest row under a row: what a closed running row says it is doing.
 export function currentStep(branch: Branch): string | undefined {
@@ -47,13 +54,14 @@ export interface Item {
 export function layout(
   branches: Branch[],
   level: number,
+  thinking: boolean,
   since?: string,
 ): Item[] {
   const answer = branches.findLast(
     (branch) => branch.node.role === "assistant",
   )?.node;
   return branches
-    .filter((branch) => visible(branch.node, level))
+    .filter((branch) => visible(branch.node, level, thinking))
     .flatMap((branch) =>
       isRow(branch.node)
         ? [{ branch, since }]
@@ -62,7 +70,7 @@ export function layout(
               branch,
               answer: branch.node.kind === "footer" ? answer : undefined,
             },
-            ...layout(branch.kids, level, branch.node.time ?? since),
+            ...layout(branch.kids, level, thinking, branch.node.time ?? since),
           ],
     );
 }

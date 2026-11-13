@@ -42,6 +42,14 @@ const DetailLevel& ConfiguredDetail(const RuntimeConfig::Values& overrides) {
       std::string(kDetailSetting)));
 }
 
+bool ConfiguredThinking() {
+  bool shown = false;
+  ParseBool(
+      ConfigManager::Capture({}).Read().Get(std::string(kThinkingSetting)),
+      shown);
+  return shown;
+}
+
 int Terminal::Run(const std::vector<std::string>& attachments) {
   if (!Attach()) return 1;
   std::vector<std::string> files = attachments;
@@ -231,6 +239,9 @@ Terminal::Command Terminal::Handle(const InteractiveInputEvent& input,
   if (input.kind == InteractiveInputKind::kBackground) {
     Send({{"kind", "activity"}, {"operation", "background"}});
     return Command::kDone;
+  }
+  if (input.kind == InteractiveInputKind::kDetail) {
+    return SetDetail(std::string(NextDetail(Detail()).name));
   }
   if (input.kind != InteractiveInputKind::kLine) return Command::kDone;
   if (raw_) {

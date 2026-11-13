@@ -127,15 +127,90 @@ bool Blank(std::string_view text) {
   return text.find_first_not_of(" \t\r\n") == std::string_view::npos;
 }
 std::string WorkId(std::string_view message) {
-  return message.empty() ? "" : "w-" + std::string(message);
+  return message.empty() ? "" : std::string(kWorkPrefix) + std::string(message);
+}
+std::string GroupId(std::string_view call) {
+  return std::string(kGroupPrefix) + std::string(call);
 }
 std::string ThinkingId(std::string_view message) {
   return std::string(message) + ":thinking";
 }
+// Thinking reads as its first line once it has one to show.
 json ThinkingNode(std::string_view message, std::string_view work,
                   json fields) {
-  fields["headline"] = {{"verb", "Thinking"}, {"target", ""}};
+  std::string first;
+  if (!JsonValue(fields, "streaming", false)) {
+    first = FirstLine(Trim(JsonValue(JsonValue(fields, "body", kNone), "text",
+                                     "")));
+    first.resize(std::min(first.find(". "), first.size()));
+  }
+  fields["headline"] = {{"verb", first.empty() ? "Thinking" : "Thought"},
+                        {"target", Utf8Trunc(first, kThoughtChars)}};
   return MakeNode(ThinkingId(message), work, "thinking", std::move(fields));
+}
+
+namespace {
+// What a step counts as: the noun its work counts it under and, for one that
+// only looks, the noun its group does.
+struct Step {
+  std::string_view kind, noun, looked;
+};
+constexpr std::string_view kOtherStep = "step", kNote = "note";
+constexpr Step kSteps[] = {
+    {"read", "read", "file"}, {"search", "search", "search"},
+    {"fetch", "fetch", "page"}, {"edit", "edit", ""},
+    {"command", "command", ""}, {"agent", "agent", ""},
+    {kOtherStep, "step", ""}, {kNote, "note", ""}};
+// The verbs a row can start with, by what their call counts as.
+constexpr std::pair<std::string_view, std::string_view> kVerbs[] = {
+    {"Read", "read"},     {"List", "read"},      {"Search", "search"},
+    {"Fetch", "fetch"},   {"Wrote", "edit"},     {"Writing", "edit"},
+    {"Edit", "edit"},     {"Delet", "edit"},     {"Ran", "command"},
+    {"Running", "command"}, {"Start", "agent"}};
+
+// "3 reads, 1 search": what `kinds` counts, under each step's `noun`.
+std::string Counted(const json& kinds, std::string_view Step::* noun) {
+  std::string text;
+  for (const Step& step : kSteps) {
+    const int64_t count =
+        JsonValue(kinds, std::string(step.kind).c_str(), int64_t{0});
+    const std::string_view word = step.*noun;
+    if (!count || word.empty()) continue;
+    if (!text.empty()) text += ", ";
+    text += std::to_string(count) + " " + std::string(word);
+    if (count != 1) text += word.ends_with("ch") ? "es" : "s";
+  }
+  return text;
+}
+}  // namespace
+
+std::string_view StepKind(std::string_view verb) {
+  for (const auto& [prefix, kind] : kVerbs) {
+    if (verb.starts_with(prefix)) return kind;
+  }
+  return kOtherStep;
+}
+
+bool Explores(std::string_view kind) {
+  return std::ranges::any_of(kSteps, [&](const Step& step) {
+    return step.kind == kind && !step.looked.empty();
+  });
+}
+
+json GroupNode(const std::string& id, const json& facts) {
+  const bool done = !JsonValue(facts, "outcome", "").empty();
+  json node = MakeNode(
+      id, JsonValue(facts, "work", ""), "group",
+      {{"state", done ? "ok" : "running"},
+       {"headline",
+        {{"verb", done ? "Explored" : "Exploring"},
+         {"target",
+          Counted(JsonValue(facts, "kinds", kNone), &Step::looked)}}}});
+  if (done) {
+    node["result"] = {
+        {"word", FmtDuration(JsonValue(facts, "duration_ms", 0.0) / 1000)}};
+  }
+  return node;
 }
 
 json CallHeadline(const json& view, std::string_view state,
@@ -153,8 +228,9 @@ json CallNode(const json& record, std::string_view work) {
   const std::string state = JsonValue(record, "state", "running");
   const json activity = JsonValue(record, "activity", kNone);
   const json view = JsonValue(record, "view", json(nullptr));
+  const std::string group = JsonValue(record, "group", "");
   json node = MakeNode(
-      JsonValue(record, "detail_id", ""), work, "call",
+      JsonValue(record, "detail_id", ""), group.empty() ? work : group, "call",
       {{"state", state},
        {"headline", JsonValue(record, "headline",
                               CallHeadline(view, state,
@@ -209,6 +285,18 @@ json WorkNode(const std::string& message, const json& facts) {
                 errors = count("errors");
   const std::string outcome = JsonValue(facts, "outcome", "");
   const bool done = !outcome.empty();
+  // What it did, by kind; a conversation saved before kinds were counted
+  // says how many steps.
+  json kinds = JsonValue(facts, "kinds", json::object());
+  kinds[std::string(kNote)] = count("notes");
+  std::string did = Counted(kinds, &Step::noun);
+  if (!facts.contains("kinds")) {
+    did = JoinDot({steps || !done ? Plural(steps, "step") : "",
+                   edited ? "edited " + Plural(edited, "file") : ""});
+  }
+  const std::string target =
+      JoinDot({did.empty() && !done ? "0 steps" : did,
+               errors ? Plural(errors, "error") : ""});
   return MakeNode(
       WorkId(message), message, "work",
       {{"state", !done                      ? "running"
@@ -217,17 +305,14 @@ json WorkNode(const std::string& message, const json& facts) {
                                             : "failed"},
        // While it runs, the status line under the input says "Working" and
        // keeps the time; the row counts what is done, from "0 steps".
-       {"headline",
-        {{"verb", done ? "Worked" : ""},
-         {"target", JoinDot({steps || !done ? Plural(steps, "step") : "",
-                             edited ? "edited " + Plural(edited, "file") : "",
-                             errors ? Plural(errors, "error") : ""})}}},
+       {"headline", {{"verb", done ? "Worked" : ""}, {"target", target}}},
        {"result",
         {{"word",
           done ? FmtDuration(JsonValue(facts, "duration_ms", 0.0) / 1000) : ""},
          {"items", steps},
          {"edited", edited},
-         {"errors", errors}}}});
+         {"errors", errors},
+         {"thoughts", count("thoughts")}}}});
 }
 
 json EntryNode(const json& entry) {
@@ -334,9 +419,9 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
   if (entry.kind == "assistant") {
     // The live node streamed under the response id; the saved one is it.
     const std::string id = response_id.empty() ? key : response_id;
-    json thinking = ThinkingNode(id, work);
-    SetBody(thinking, "text", EntryText(facts, sequence, message, true));
-    if (thinking.contains("body")) add(std::move(thinking));
+    json thought;
+    SetBody(thought, "text", EntryText(facts, sequence, message, true));
+    if (thought.contains("body")) add(ThinkingNode(id, work, thought));
     // A reply that made calls is a step of its work; the one after the
     // last call is its turn's answer.
     node = MakeNode(id, tool_calls && !tool_calls->empty() ? work : turn,

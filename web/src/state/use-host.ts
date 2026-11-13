@@ -200,9 +200,11 @@ export function useHost(
   const patchSession = (id: string, change: (item: Session) => Session) =>
     setCatalogue((prior) => patchCatalogue(prior, id, change));
   const setDetail = useCallback(
-    (level: string) =>
+    (level: string, thinking = false) =>
       setCatalogue((prior) =>
-        prior.detail === level ? prior : { ...prior, detail: level },
+        prior.detail === level && !!prior.thinking === thinking
+          ? prior
+          : { ...prior, detail: level, thinking },
       ),
     [],
   );

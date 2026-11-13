@@ -198,7 +198,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const [notificationMode, setNotificationMode] = useState(false);
   // Choosing a level forgets the rows opened or closed on this device.
   const [chosen, setChosen] = useStored(devicePrefs.detail);
-  const detail = chosen || catalogue.detail || "default";
+  const detail = chosen || catalogue.detail || detailLevels[0];
   const levels = detailLevels as readonly string[];
   const changeDetail = useCallback(
     (level: string) => {
@@ -206,6 +206,22 @@ function App({ host, bindResult, reading }: HostAppProps) {
       setChosen(level);
     },
     [setChosen],
+  );
+  const [thinkingChosen, chooseThinking] = useStored(devicePrefs.thinking);
+  const thinking = thinkingChosen
+    ? thinkingChosen === "show"
+    : !!catalogue.thinking;
+  const display = useMemo(() => ({ detail, thinking }), [detail, thinking]);
+  // What the header and the conversation menu change it with.
+  const detailControl = useMemo(
+    () => ({
+      levels,
+      level: detail,
+      change: changeDetail,
+      thinking,
+      showThinking: (shown: boolean) => chooseThinking(shown ? "show" : "hide"),
+    }),
+    [levels, detail, changeDetail, thinking, chooseThinking],
   );
   // A path asked for in another conversation opens once that one is shown.
   const revealNext = useRef<FileTarget | null>(null);
@@ -449,15 +465,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
         }
         notify={setNotice}
         open={open}
-        detail={
-          withDetail
-            ? {
-                levels,
-                level: detail,
-                change: changeDetail,
-              }
-            : undefined
-        }
+        detail={withDetail ? detailControl : undefined}
         more={extra?.more}
         select={
           withDetail ? undefined : () => latestSelection.current.start(item.id)
@@ -466,7 +474,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
         {extra?.top}
       </ConversationMenu>
     ),
-    [online, fork, load, report, open, detail, levels, changeDetail],
+    [online, fork, load, report, open, detailControl],
   );
   const step = (key: "ArrowUp" | "ArrowDown") => {
     const order = sessionOrder(
@@ -693,7 +701,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
   return (
     <HostContext.Provider value={hostContext}>
       <ConversationContext.Provider value={conversation}>
-        <DetailContext.Provider value={detail}>
+        <DetailContext.Provider value={display}>
           <ImageViewer.Provider value={setViewed}>
             <Toasts
               error={error}
@@ -748,6 +756,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                   )}
                   <main class="conversation" id="conversation" tabIndex={-1}>
                     <ConversationHeader
+                      detail={detailControl}
                       page={page}
                       selected={selected}
                       session={session}

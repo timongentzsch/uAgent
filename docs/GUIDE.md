@@ -69,6 +69,7 @@ command with its arguments.
 | Ctrl+X Ctrl+E | Edit the draft in `$VISUAL` or `$EDITOR` |
 | Ctrl+A, Ctrl+E, Ctrl+W, Ctrl+K, Ctrl+U | Line editing as in a shell |
 | Ctrl+B | Move the running command to the background |
+| Ctrl+O | Step to the next detail level and draw the conversation again |
 | Ctrl+C | Stop a running turn; twice while idle, leave |
 | Ctrl+D on an empty draft | Leave |
 

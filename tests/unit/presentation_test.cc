@@ -374,6 +374,7 @@ TEST_CASE(TestHostedSearchStatusRow) {
   const std::string corrected = CaptureStdout([&] {
     TerminalPresenter verbose;
     verbose.SetDetail(DetailFor("full"));
+    verbose.ShowThinking(true);
     verbose.Consume(AppEvent{1, "", "response.started", json::object()});
     verbose.Consume(
         AppEvent{2, "", "response.reasoning.delta", {{"text", "original"}}});

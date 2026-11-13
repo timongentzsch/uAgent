@@ -420,10 +420,22 @@ class Agent {
   std::string turn_root_, reply_to_;
   // What that work's calls did and when it began, for its work node.
   struct Work {
-    int64_t steps = 0, errors = 0;
+    int64_t steps = 0, errors = 0, notes = 0, thoughts = 0;
     std::set<std::string> edited;
+    std::map<std::string, int64_t> kinds;
     std::chrono::steady_clock::time_point started;
+    // The run of calls that only look: a group once it holds two.
+    struct Run {
+      std::string first, group;
+      std::map<std::string, int64_t> kinds;
+      std::chrono::steady_clock::time_point started;
+    } run;
   } work_;
+  // The group `call` goes under, "" for none; a call that does more than
+  // look ends the run.
+  std::string JoinRun(const std::string& call, std::string_view kind);
+  void PublishRun(bool ended);
+  void EndRun();
   // Image analyses by key, the most recently used first.
   std::list<std::pair<std::string, std::string>> image_analyses_;
   // Images whose analysis failed this turn, so later steps do not ask again.

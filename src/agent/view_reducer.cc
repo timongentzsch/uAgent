@@ -198,8 +198,9 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
   const auto upsert = [&](const json& node) {
     if (Upsert(nodes, node)) changed.emplace_back(Field(node, "id"));
     const std::string_view parent = Field(node, "parent");
-    if (parent.starts_with("w-") && Find(nodes, parent) == nodes.end()) {
-      Upsert(nodes, WorkNode(std::string(parent.substr(2)), json::object()));
+    if (parent.starts_with(kWorkPrefix) && Find(nodes, parent) == nodes.end()) {
+      Upsert(nodes, WorkNode(std::string(parent.substr(kWorkPrefix.size())),
+                             json::object()));
       changed.emplace_back(parent);
     }
   };
@@ -274,9 +275,15 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
         continue;
       }
       (*found)["streaming"] = false;
+      json set = {{"streaming", false}};
+      // A finished thought reads as its first line.
+      if (id != response_id) {
+        set["headline"] = (*found)["headline"] =
+            ThinkingNode(response_id, "", {{"body", (*found)["body"]}})
+                ["headline"];
+      }
       if (patches) {
-        patches->push_back(
-            {{"kind", "node"}, {"id", id}, {"set", {{"streaming", false}}}});
+        patches->push_back({{"kind", "node"}, {"id", id}, {"set", set}});
       }
     }
   } else if (type == AppType(EventId::kToolCall)) {

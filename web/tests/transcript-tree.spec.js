@@ -24,6 +24,7 @@ const SESSION = {
 async function open(page, level, nodes = conversation) {
   await page.addInitScript((detail) => {
     localStorage.setItem("uagent-detail", detail);
+    localStorage.setItem("uagent-thinking", "show");
     globalThis.EventSource = class extends EventTarget {
       readyState = 1;
       constructor() {
@@ -188,6 +189,68 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await page.getByRole("menuitem", { name: /^Detail/ }).click();
   await page.getByRole("menuitemradio", { name: "Minimal" }).click();
   await expect(work).toHaveAttribute("aria-expanded", "false");
+});
+
+test("the header sets the level and shows or hides thinking", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await open(page, "full");
+  await expect(rows(page)).toHaveCount(14);
+  const head = page.locator(".conversation-head");
+  const thinking = head.getByRole("button", { name: "Thinking", exact: true });
+  await expect(thinking).toHaveAttribute("aria-pressed", "true");
+  await thinking.click();
+  await expect(thinking).toHaveAttribute("aria-pressed", "false");
+  await expect(rows(page)).toHaveCount(13);
+  await expect(page.locator('[data-kind="thinking"]')).toHaveCount(0);
+  await head.getByRole("tab", { name: "Minimal" }).click();
+  await expect(
+    page.locator('[data-message-id="w-m-22"] > .node-row'),
+  ).toHaveAttribute("aria-expanded", "false");
+});
+
+test("what the agent says while it works shows under a folded work", async ({
+  page,
+}) => {
+  // open() waits for r-3-2-1, here the note.
+  const running = [
+    {
+      id: "m-1",
+      parent: null,
+      kind: "turn",
+      body: { kind: "text", text: "q" },
+    },
+    {
+      id: "w-m-1",
+      parent: "m-1",
+      kind: "work",
+      state: "running",
+      headline: { verb: "", target: "1 read" },
+    },
+    {
+      id: "t-1",
+      parent: "w-m-1",
+      kind: "call",
+      state: "ok",
+      headline: { verb: "Read", target: "a.txt" },
+    },
+    {
+      id: "r-3-2-1",
+      parent: "w-m-1",
+      kind: "message",
+      role: "assistant",
+      body: { kind: "markdown", text: "Looking at the host first." },
+    },
+  ];
+  await open(page, "minimal", running);
+  const work = page.locator('[data-message-id="w-m-1"]');
+  await expect(work.locator("> .node-row")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(work).toContainText("Looking at the host first.");
+  await expect(page.locator('[data-message-id="t-1"]')).toHaveCount(0);
 });
 
 test("an agent's link opens its conversation", async ({ page }) => {

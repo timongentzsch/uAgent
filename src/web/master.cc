@@ -505,6 +505,7 @@ void Master::RegisterApiRoutes() {
                            {"pins", std::move(catalogue["pins"])},
                            {"commands", CommandSchemaJson()},
                            {"detail", ConfiguredDetail()},
+                           {"thinking", ConfiguredThinking()},
                            {"capabilities", push_->Capabilities(device)},
                            {"devices", std::move(devices)},
                            {"scheduled", std::move(catalogue["scheduled"])},
@@ -809,8 +810,15 @@ std::string Master::ConfiguredDetail() {
   const std::string level = settings.Get(std::string(kDetailSetting));
   return std::string(DetailFor(level).name);
 }
+bool Master::ConfiguredThinking() {
+  bool shown = false;
+  ParseBool(
+      ConfigManager::Capture({}, "").Read().Get(std::string(kThinkingSetting)),
+      shown);
+  return shown;
+}
 // Tells every browser that what is saved is no longer what they read, and
-// the level with it: display state they all share.
+// the level and thinking with it: display state they all share.
 void Master::PublishSettings() {
   const FileStamp saved = SnapshotFile(SettingsPath());
   {
@@ -819,7 +827,9 @@ void Master::PublishSettings() {
     settings_ = saved;
   }
   host_.Publish("", "",
-                {{"kind", "settings.changed"}, {"level", ConfiguredDetail()}});
+                {{"kind", "settings.changed"},
+                 {"level", ConfiguredDetail()},
+                 {"thinking", ConfiguredThinking()}});
 }
 
 }  // namespace master

@@ -66,12 +66,14 @@ std::string Plain(std::string_view drawn) {
   return plain;
 }
 
-// What a terminal draws of `nodes` at the three levels, depth 0, 1 and all.
+// What a terminal that shows thinking draws of `nodes` at the three levels,
+// depth 0, 1 and all.
 std::vector<std::string> Drawings(const json& nodes) {
   std::vector<std::string> drawings;
   for (const char* level : {"minimal", "default", "full"}) {
     TerminalPresenter presenter;
     presenter.SetDetail(DetailFor(level));
+    presenter.ShowThinking(true);
     drawings.push_back(
         Plain(CaptureStdout([&] { presenter.Draw({{"nodes", nodes}}); })));
   }
@@ -300,7 +302,8 @@ TEST_CASE(TestGoldenChainOfCalls) {
       std::vector<std::string>{
           "turn m-2 < - \"fix it\"",
           "work w-m-2 < m-2 [ok] Worked 3 steps · edited 1 file · 2m 4s",
-          "thinking r-1-1-1:thinking < w-m-2 Thinking \"look first\"",
+          "thinking r-1-1-1:thinking < w-m-2 Thought look first "
+          "\"look first\"",
           "call " + a + " < w-m-2 [ok] Read a.txt · 1 line · 5ms " +
               "\"alpha\"",
           "call " + b + " < w-m-2 [ok] Read b.txt · 1 line · 5ms " + "\"beta\"",
@@ -311,7 +314,7 @@ TEST_CASE(TestGoldenChainOfCalls) {
       }));
   CHECK(Lines(turn.Live()) == page);
   // The terminal opens the work at depth 1 and everything at depth all; an
-  // open node adds its body's tail, and closed thinking says nothing.
+  // open node adds its body's tail, and a thought is its first line.
   CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
          std::vector<std::string>{
              "> fix it\n"
@@ -319,13 +322,14 @@ TEST_CASE(TestGoldenChainOfCalls) {
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
              "> fix it\n"
              "  · Worked 3 steps · edited 1 file · 2m 4s\n"
+             "    · Thought look first\n"
              "    · Read a.txt · 1 line · 5ms\n"
              "    · Read b.txt · 1 line · 5ms\n"
              "    · Edited b.txt · +1 −1 · 5ms\n"
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
              "> fix it\n"
              "  · Worked 3 steps · edited 1 file · 2m 4s\n"
-             "    · Thinking\n"
+             "    · Thought look first\n"
              "      │ look first\n"
              "    · Read a.txt · 1 line · 5ms\n"
              "      │ alpha\n"
@@ -645,4 +649,49 @@ TEST_CASE(TestCompactionNoticeSaysWhatWent) {
   CHECK(node["result"]["word"] == "120 → 40 messages · 1.2s");
 }
 
+}  // namespace uagent
+
+namespace uagent {
+TEST_CASE(TestWorkCountsByKindAndLooksGroup) {
+  CHECK(StepKind("Read") == "read");
+  CHECK(StepKind("Searching file names for") == "search");
+  CHECK(StepKind("Fetched") == "fetch");
+  CHECK(StepKind("Edited") == "edit");
+  CHECK(StepKind("Ran") == "command");
+  CHECK(StepKind("Asked") == "step");
+  CHECK(Explores("fetch") && !Explores("command"));
+
+  const json work = WorkNode(
+      "m-1",
+      {{"items", 7},
+       {"kinds", {{"read", 3}, {"search", 1}, {"edit", 2}, {"command", 1}}},
+       {"notes", 2},
+       {"thoughts", 1},
+       {"errors", 1},
+       {"outcome", "complete"},
+       {"duration_ms", 48000}});
+  CHECK(work["headline"]["target"] ==
+        "3 reads, 1 search, 2 edits, 1 command, 2 notes · 1 error");
+  // Thoughts are counted beside the words: a client says them only where it
+  // shows thinking.
+  CHECK(work["result"]["thoughts"] == 1);
+  // A conversation saved before kinds were counted says how many steps.
+  CHECK(WorkNode("m-1", {{"items", 2}, {"edited", 1}, {"outcome", "complete"}})
+            ["headline"]["target"] == "2 steps · edited 1 file");
+
+  json facts = {{"work", "w-m-1"},
+                {"kinds", {{"read", 3}, {"search", 2}, {"fetch", 1}}}};
+  json group = GroupNode("g-c1", facts);
+  CHECK(group["kind"] == "group" && group["parent"] == "w-m-1");
+  CHECK(group["state"] == "running");
+  CHECK(group["headline"] ==
+        json({{"verb", "Exploring"}, {"target", "3 files, 2 searches, 1 page"}}));
+  facts.update({{"outcome", "complete"}, {"duration_ms", 3000}});
+  group = GroupNode("g-c1", facts);
+  CHECK(group["state"] == "ok" && group["headline"]["verb"] == "Explored");
+  // A call of the run sits under its group, any other under the work.
+  CHECK(CallNode({{"detail_id", "c2"}, {"group", "g-c1"}}, "w-m-1")["parent"] ==
+        "g-c1");
+  CHECK(CallNode({{"detail_id", "c9"}}, "w-m-1")["parent"] == "w-m-1");
+}
 }  // namespace uagent

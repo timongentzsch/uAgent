@@ -89,6 +89,16 @@ export function TerminalMenu({
   );
 }
 
+// The level a conversation's work is drawn at, whether thinking is, and how
+// this device changes either.
+export interface DetailControl {
+  levels: readonly string[];
+  level: string;
+  change: (level: string) => void;
+  thinking: boolean;
+  showThinking: (shown: boolean) => void;
+}
+
 export function ConversationMenu({
   item,
   fork,
@@ -105,11 +115,7 @@ export function ConversationMenu({
   find?: () => void;
   notify: (text: string) => void;
   open: (modal: AppModal) => void;
-  detail?: {
-    levels: readonly string[];
-    level: string;
-    change: (level: string) => void;
-  };
+  detail?: DetailControl;
   children?: ComponentChildren;
   more?: ComponentChildren;
   select?: () => void;
@@ -188,6 +194,14 @@ export function ConversationMenu({
                 {level === detail.level && <Check />}
               </MenuItem>
             ))}
+            <MenuItem
+              role="menuitemcheckbox"
+              aria-checked={detail.thinking}
+              onClick={() => detail.showThinking(!detail.thinking)}
+            >
+              Thinking
+              {detail.thinking && <Check />}
+            </MenuItem>
             <p class="menu-note small">On this device.</p>
           </MenuSub>
         )}

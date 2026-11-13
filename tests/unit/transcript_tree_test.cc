@@ -302,8 +302,8 @@ TEST_CASE(TestGoldenChainOfCalls) {
       std::vector<std::string>{
           "turn m-2 < - \"fix it\"",
           "work w-m-2 < m-2 [ok] Worked 3 steps · edited 1 file · 2m 4s",
-          "thinking r-1-1-1:thinking < w-m-2 Thought look first "
-          "\"look first\"",
+          std::string("thinking r-1-1-1:thinking < w-m-2 Thought look first ") +
+              "\"look first\"",
           "call " + a + " < w-m-2 [ok] Read a.txt · 1 line · 5ms " +
               "\"alpha\"",
           "call " + b + " < w-m-2 [ok] Read b.txt · 1 line · 5ms " + "\"beta\"",

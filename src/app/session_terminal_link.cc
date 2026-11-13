@@ -108,13 +108,16 @@ void Terminal::ReceiveState(const json& frame) {
       history_ = true;
     }
   } else if (const DetailLevel* detail = detail_;
-             detail != &presenter_.Detail()) {
-    // Another level: the tree held here again, open to its depth, and why
-    // the screen changed where the eye is.
+             detail != &presenter_.Detail() ||
+             thinking_ != presenter_.Thinking()) {
+    // Another level, or thinking shown or hidden: the tree held here again,
+    // and why the screen changed where the eye is.
     presenter_.SetDetail(*detail);
+    presenter_.ShowThinking(thinking_);
     presenter_.Draw(transcript_["view"]);
     WriteTerminalRecord(
-        Note(Tone::kNeutral, "detail " + std::string(detail->name)));
+        Note(Tone::kNeutral, "detail " + std::string(detail->name) +
+                                 (thinking_ ? " · thinking shown" : "")));
   }
   wake_.Wake();
 }
@@ -166,6 +169,12 @@ bool Terminal::ReceiveEvent(const json& frame) {
           detail != detail_) {
         Restyle(*detail);
       }
+    }
+    if (const json* changed = JsonArray(data, "changed");
+        type == AppType(EventId::kConfigChanged) && changed &&
+        std::ranges::find(*changed, json(kThinkingSetting)) != changed->end()) {
+      thinking_ = ConfiguredThinking();
+      Restyle(Detail());
     }
     presenter_.Consume(AppEvent{0, JsonValue(frame, "time", ""), type, data});
   }

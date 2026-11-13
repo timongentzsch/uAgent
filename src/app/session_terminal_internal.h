@@ -30,6 +30,7 @@ namespace uagent::session {
 // The level this terminal shows: its --detail when given, else the
 // configured one.
 const DetailLevel& ConfiguredDetail(const RuntimeConfig::Values& overrides);
+bool ConfiguredThinking();
 
 class Terminal {
  public:
@@ -45,6 +46,7 @@ class Terminal {
         detail_(&detail),
         pinned_(pinned) {
     presenter_.SetDetail(detail);
+    presenter_.ShowThinking(thinking_);
   }
   const DetailLevel& Detail() const { return *detail_; }
 
@@ -142,6 +144,7 @@ class Terminal {
   std::atomic<bool> rewinding_{false};
   std::string carry_, side_question_;
   std::atomic<const DetailLevel*> detail_;
+  std::atomic<bool> thinking_ = ConfiguredThinking();
   const bool pinned_;
   std::atomic<bool> input_blocked_{true}, interaction_{false};
   std::set<std::string> own_requests_;

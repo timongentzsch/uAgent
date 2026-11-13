@@ -284,12 +284,13 @@ test("call details and statistics name the upstream that served each call", () =
 
 // One line per thing a fresh transcript draws: a row as its headline and
 // result (⌄ open, › closed, · nothing to open), its body as "| text", its
-// parts in brackets, a message as its text ("you: " for yours).
-function outline(nodes, detail, max = Infinity) {
+// parts in brackets, a message as its text ("you: " for yours). Thinking is
+// drawn unless `thinking` says it is switched off.
+function outline(nodes, detail, max = Infinity, thinking = true) {
   const level = depthOf(detail);
   const lines = [];
   const walk = (branches, depth, indent) => {
-    for (const { branch } of layout(branches, level)) {
+    for (const { branch } of layout(branches, level, thinking)) {
       const { node } = branch;
       if (!isRow(node)) {
         lines.push(
@@ -305,13 +306,15 @@ function outline(nodes, detail, max = Infinity) {
         );
         continue;
       }
-      const kids = branch.kids.filter((kid) => visible(kid.node, level));
+      const kids = branch.kids.filter((kid) =>
+        visible(kid.node, level, thinking),
+      );
       const openable =
         node.body || kids.length || node.parts || node.kind === "call";
       const open = openable && opens(depth, level);
       const word = node.result?.word ? ` · ${node.result.word}` : "";
       const mark = !openable ? "·" : open ? "⌄" : "›";
-      lines.push(`${indent}${mark} ${headlineOf(node)}${word}`);
+      lines.push(`${indent}${mark} ${headlineOf(node, thinking)}${word}`);
       if (!open) continue;
       if (node.body) lines.push(`${indent}  | ${node.body.text}`);
       for (const part of node.parts || [])
@@ -367,6 +370,27 @@ test("a chain of calls opens one level per depth", () => {
     "    | - const line = 0;\n+ let line = 1;\n+ const column = 0;",
     ...end,
   ]);
+  // Switched off, a thought is drawn at no level, and nothing else changes.
+  assert.deepEqual(
+    outline(golden.chain, "full", Infinity, false),
+    full.filter((line) => !/Thinking|look first/.test(line)),
+  );
+});
+
+test("a work counts its thoughts only where thinking is shown", () => {
+  const work = {
+    id: "w-m-1",
+    parent: "m-1",
+    kind: "work",
+    headline: { verb: "Worked", target: "2 reads, 1 note" },
+    result: { thoughts: 2 },
+  };
+  assert.equal(headlineOf(work, true), "Worked 2 reads, 1 note, 2 thoughts");
+  assert.equal(headlineOf(work, false), "Worked 2 reads, 1 note");
+  assert.equal(
+    headlineOf({ ...work, result: { thoughts: 1 } }, true),
+    "Worked 2 reads, 1 note, 1 thought",
+  );
 });
 
 test("failed, cancelled, denied and rejected calls read as their words", () => {

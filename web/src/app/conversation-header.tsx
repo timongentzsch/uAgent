@@ -20,6 +20,9 @@ import { useHostContext } from "../state/host-context.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { isBrowsing } from "./chat-page.tsx";
 import type { Page } from "./app.tsx";
+import type { DetailControl } from "./menus.tsx";
+import { Tabs } from "../shared/tabs.tsx";
+import { capitalize } from "../shared/display.ts";
 
 function Totals({
   session,
@@ -59,6 +62,7 @@ export default function ConversationHeader({
   openDrawer,
   choose,
   settings,
+  detail,
   menu,
 }: {
   page: Page;
@@ -75,6 +79,7 @@ export default function ConversationHeader({
   openDrawer: () => void;
   choose: (id: string) => void;
   settings: () => void;
+  detail: DetailControl;
   menu: (
     item: Session,
     withDetail?: boolean,
@@ -165,6 +170,27 @@ export default function ConversationHeader({
         )}
         {inMenu && session && <Totals session={session} outgoing={outgoing} />}
       </div>
+      {!inMenu && page === "chat" && session && (
+        <>
+          <Tabs
+            label="Detail"
+            size="compact"
+            tabs={detail.levels.map((level) => ({
+              key: level,
+              label: capitalize(level),
+            }))}
+            value={detail.level}
+            to={detail.change}
+          />
+          <Button
+            size="compact"
+            aria-pressed={detail.thinking}
+            onClick={() => detail.showThinking(!detail.thinking)}
+          >
+            Thinking
+          </Button>
+        </>
+      )}
       {browserAvailable && (!inMenu || browsing) && (
         <IconButton
           label={browsing ? "Open browser, agent working" : "Open browser"}

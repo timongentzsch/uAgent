@@ -45,8 +45,7 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
          .model = route,
          .background = counts.background,
          .foreground = counts.foreground,
-         .interrupting = interrupting,
-         .detail = std::string(detail)});
+         .interrupting = interrupting});
   }
   const json permissions = JsonValue(state, "permissions", json::object());
   return StatusBar(

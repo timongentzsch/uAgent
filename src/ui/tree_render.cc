@@ -138,11 +138,9 @@ std::string Opened(const json& node, size_t level, const char* style) {
 
 // One node's own rows: messages and replies whole, a footer as the turn's
 // statistics, every other node as its row and, open, what it holds.
-void DrawRows(const json& node, size_t level, bool open) {
+void DrawRows(const json& node, size_t level, bool open, bool thinking) {
   const std::string_view kind = Field(node, "kind");
   const std::string pad(kRowIndent * level, ' ');
-  // Closed thinking says nothing a terminal could open later.
-  if (kind == "thinking" && !open) return;
   const std::string text = TerminalSafe(BodyText(node));
   if (kind == "turn" || (kind == "message" && Field(node, "role") == "user")) {
     if (kind == "message" && text.empty()) return;
@@ -179,8 +177,14 @@ void DrawRows(const json& node, size_t level, bool open) {
     const json headline = JsonValue(node, "headline", json::object());
     const std::string verb = JsonValue(headline, "verb", "");
     const std::string target = FirstLine(JsonValue(headline, "target", ""));
-    const std::string head =
+    std::string head =
         verb.empty() || target.empty() ? verb + target : verb + " " + target;
+    // A work counts its thoughts only where thinking is shown.
+    if (const int64_t thoughts = JsonValue(
+            JsonValue(node, "result", json::object()), "thoughts", int64_t{0});
+        thinking && thoughts) {
+      head += ", " + Plural(thoughts, "thought");
+    }
     WriteTerminalRecord(Row(head, node, level, style) +
                         (open ? Opened(node, level, style) : ""));
   }
@@ -226,7 +230,8 @@ void TerminalPresenter::DrawTree(const json& view, bool live) {
   const auto draw = [&](const auto& self, const json& node,
                         size_t level) -> void {
     const std::string_view kind = Field(node, "kind");
-    if (JsonValue(node, "routine", false) && depth != kDepthAll) {
+    if ((JsonValue(node, "routine", false) && depth != kDepthAll) ||
+        (kind == "thinking" && !thinking_)) {
       return;
     }
     const bool open = level <= static_cast<size_t>(depth);
@@ -245,7 +250,7 @@ void TerminalPresenter::DrawTree(const json& view, bool live) {
         if (spinner_) spinner_->Stop();
         // A streamed reply may have left its last line open.
         if (std::exchange(line_open_, false)) fputs("\n", stdout);
-        DrawRows(node, level, open);
+        DrawRows(node, level, open, thinking_);
       }
       if (settled) drawn_.emplace(id);
     }

@@ -240,6 +240,10 @@ def base_env(home, url):
             "UAGENT_STREAM_TIMEOUT": timeout_setting(STREAM_TIMEOUT_SECONDS),
             # A background title request would consume scripted responses.
             "UAGENT_TITLE_MODEL": "off",
+            # What these tests were written against: each step one line, and
+            # thinking shown.
+            "UAGENT_DETAIL": "default",
+            "UAGENT_THINKING": "1",
         }
     )
     return env

@@ -90,8 +90,10 @@ interface ResultFacts {
   added?: number;
   removed?: number;
   items?: number;
-  // On a turn's work: how many files it has changed.
+  // On a turn's work: how many files it has changed, and how often it
+  // thought.
   edited?: number;
+  thoughts?: number;
   unit?: string;
   outcome?: string;
   reason?: string;
@@ -192,7 +194,15 @@ interface AgentFacts {
 export interface Node {
   id: string;
   parent: string | null;
-  kind: "turn" | "message" | "work" | "call" | "thinking" | "notice" | "footer";
+  kind:
+    | "turn"
+    | "message"
+    | "work"
+    | "group"
+    | "call"
+    | "thinking"
+    | "notice"
+    | "footer";
   sequence?: number;
   time?: string;
   state?: RowState;
@@ -521,8 +531,10 @@ export interface Catalogue {
   spaces?: Space[];
   pins?: Pin[];
   commands?: SlashCommand[];
-  // The detail level a device starts at until it chooses its own.
+  // The detail level, and whether thinking shows, until a device chooses
+  // its own.
   detail?: string;
+  thinking?: boolean;
   scheduled?: ScheduledState;
   // The folders' shells; null while paired devices may open none
   // (web.terminal).
@@ -628,7 +640,7 @@ export type HostEvent = HostEnvelope &
       }
     // moved_to: the id it has now, when it was moved rather than removed.
     | { kind: "deleted"; moved_to?: string }
-    | { kind: "settings.changed"; level: string }
+    | { kind: "settings.changed"; level: string; thinking?: boolean }
     | { kind: "pins.changed"; pins: Pin[] }
     | { kind: "spaces.changed"; spaces: Space[] }
     | { kind: "terminals.changed"; terminals: TerminalInfo[] | null }

@@ -21,12 +21,21 @@ import {
   layout,
   opens,
   visible,
+  detailLevels,
 } from "../../shared/tree.ts";
 import type { Node, SessionRef } from "../../shared/types.ts";
 import { NodeBody } from "./bodies.tsx";
 import { MessageView } from "./message.tsx";
 
-export const DetailContext = createContext("default");
+// How much of the agent's work is drawn: the level, and whether thinking is.
+export interface Display {
+  detail: string;
+  thinking: boolean;
+}
+export const DetailContext = createContext<Display>({
+  detail: detailLevels[0],
+  thinking: false,
+});
 
 // Rows a person opened or closed here, kept by conversation and node id.
 let toggled: Record<string, boolean> | undefined;
@@ -51,6 +60,7 @@ interface Scope {
   // How many rows deep the drawn nodes are, and the level's depth.
   depth: number;
   level: number;
+  thinking: boolean;
   online: boolean;
   session: SessionRef;
 }
@@ -66,15 +76,16 @@ export function Transcript({
   online: boolean;
   session: SessionRef;
 }) {
-  const detail = useContext(DetailContext);
+  const { detail, thinking } = useContext(DetailContext);
   const level = depthOf(detail);
   const roots = useMemo(() => grow(nodes), [nodes]);
   return (
     <Nodes
-      items={layout(roots, level)}
-      scope={`${session.id}:${detail}:`}
+      items={layout(roots, level, thinking)}
+      scope={`${session.id}:${detail}:${thinking}:`}
       depth={0}
       level={level}
+      thinking={thinking}
       online={online}
       session={session}
     />
@@ -149,6 +160,7 @@ function RowNode({
   since,
   depth,
   level,
+  thinking,
   online,
   session,
   scope,
@@ -165,7 +177,13 @@ function RowNode({
     setOpen(value);
     remember(latest.current.key, value);
   }, []);
-  const kids = branch.kids.filter((kid) => visible(kid.node, level));
+  const kids = branch.kids.filter((kid) => visible(kid.node, level, thinking));
+  // What the agent says while it works shows as it says it, whatever is
+  // folded; once the turn has ended it is among the work's steps.
+  const said =
+    !open && node.kind === "work" && node.state === "running"
+      ? kids.filter((kid) => kid.node.role === "assistant")
+      : [];
   const openable =
     !!node.body ||
     kids.length > 0 ||
@@ -185,9 +203,21 @@ function RowNode({
         open={open}
         openable={openable}
         toggle={toggle}
+        thinking={thinking}
         step={!open && node.state === "running" ? currentStep(branch) : ""}
         since={node.time ?? since}
       />
+      {said.length > 0 && (
+        <Nodes
+          items={said.map((kid) => ({ branch: kid }))}
+          depth={depth + 1}
+          level={level}
+          thinking={thinking}
+          online={online}
+          session={session}
+          scope={scope}
+        />
+      )}
       {open && openable && (
         <div class="node-open">
           <NodeBody node={node} online={online} session={session} />
@@ -197,6 +227,7 @@ function RowNode({
               since={node.time ?? since}
               depth={depth + 1}
               level={level}
+              thinking={thinking}
               online={online}
               session={session}
               scope={scope}
@@ -238,7 +269,7 @@ function Kids({
         </Button>
       )}
       <Nodes
-        items={layout(shown, props.level, since)}
+        items={layout(shown, props.level, props.thinking, since)}
         scope={scope}
         {...props}
       />
@@ -275,6 +306,7 @@ class NodeRow extends Component<{
   open: boolean;
   openable: boolean;
   toggle: (next?: boolean) => void;
+  thinking: boolean;
   step: string | undefined;
   since?: string;
 }> {
@@ -284,6 +316,7 @@ class NodeRow extends Component<{
       next.node !== prior.node ||
       next.open !== prior.open ||
       next.openable !== prior.openable ||
+      next.thinking !== prior.thinking ||
       next.step !== prior.step ||
       next.since !== prior.since
     );
@@ -298,6 +331,7 @@ function RowLine({
   open,
   openable,
   toggle,
+  thinking,
   step,
   since,
 }: NodeRow["props"]) {
@@ -305,7 +339,9 @@ function RowLine({
     node.state === "running" && node.kind !== "work",
     since ? Date.parse(since) : undefined,
   );
-  const headline = [headlineOf(node), step].filter(Boolean).join(" · ");
+  const headline = [headlineOf(node, thinking), step]
+    .filter(Boolean)
+    .join(" · ");
   const word = [node.result?.word, elapsed].filter(Boolean).join(" · ");
   const content = (
     <>

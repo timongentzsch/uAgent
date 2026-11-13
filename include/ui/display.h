@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/detail.h"
 #include "include/core/env.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
@@ -71,8 +72,9 @@ struct StatusView {
   std::string model{};
   // The effective approval mode, as ApprovalModeName spells it.
   std::string approval = "ask";
-  // The detail level, named in the row when it is not the default.
-  std::string detail = "default";
+  // The detail level, named in the row when it is not the one a new install
+  // starts at.
+  std::string detail{kDetailLevels[0]};
   size_t background = 0;
 };
 
@@ -104,7 +106,7 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
     add(4, TokenSummary(usage));
   }
   add(5, CacheSummary(usage));
-  if (view.detail != "default") add(6, view.detail);
+  if (view.detail != kDetailLevels[0]) add(6, view.detail);
   add(7, "/help for shortcuts");
 
   auto join = [&segments] {
@@ -142,7 +144,6 @@ struct TurnStatusView {
   size_t foreground = 0;
   size_t queued = 0;
   bool interrupting = false;
-  std::string detail = "default";
 };
 
 // The working row. When it does not fit, the label is cut: the counters on
@@ -161,11 +162,10 @@ inline std::string TurnStatusBar(const TurnStatusView& view) {
     return count ? label + FmtCount(static_cast<int64_t>(count)) : "";
   };
   std::string suffix =
-      " · " +
-      JoinDot({view.model, seconds,
-               ContextSummary(view.context_used, view.context_window),
-               counted("act:", view.background), counted("steer:", view.queued),
-               view.detail == "default" ? "" : view.detail});
+      " · " + JoinDot({view.model, seconds,
+                       ContextSummary(view.context_used, view.context_window),
+                       counted("act:", view.background),
+                       counted("steer:", view.queued)});
   // The hint is the first thing a narrow terminal gives up.
   std::string hint = " · Esc stop · Ctrl+B background";
   if (view.foreground > 1) {

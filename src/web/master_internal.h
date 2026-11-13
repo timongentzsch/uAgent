@@ -99,6 +99,7 @@ class Master {
   bool RegisterAssetRoutes(std::string& error);
   const std::string* ExpectedOrigin(const Request& request) const;
   static std::string ConfiguredDetail();
+  static bool ConfiguredThinking();
   void PublishSettings();
   std::string Pair() UAGENT_REQUIRES(mutex_);
   json PublicDevices() const UAGENT_REQUIRES(mutex_);

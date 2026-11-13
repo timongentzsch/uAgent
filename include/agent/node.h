@@ -5,6 +5,8 @@
 // The transcript as one tree of nodes, the only shape a client draws:
 //   {id, parent, kind, headline {verb, target}, result {word, facts...},
 //    state, routine, time?, body {kind, text, ...}}
+// A work holds its replies, thinking, calls, and a group for each run of
+// calls that only looked: its summary counts them by kind.
 // kind: turn, message, work, group, call, thinking, notice, footer;
 // state: running, ok, failed, cancelled. `parent` is null at the root.
 
@@ -22,8 +24,18 @@ json MakeNode(std::string id, std::string_view parent, std::string_view kind,
 void SetBody(json& node, std::string_view kind, const std::string& text,
              bool truncated = false);
 bool Blank(std::string_view text);
+// How the ids of a work and of a group start; no other node's id does.
+inline constexpr std::string_view kWorkPrefix = "w-";
+inline constexpr std::string_view kGroupPrefix = "g-";
 // The work replying to `message`; "" for none.
 std::string WorkId(std::string_view message);
+// The group whose first call is `call`.
+std::string GroupId(std::string_view call);
+// Whether `id` names a work or a group: a node others sit under, made from
+// the facts kept under its id.
+inline bool HoldsOthers(std::string_view id) {
+  return id.starts_with(kWorkPrefix) || id.starts_with(kGroupPrefix);
+}
 std::string ThinkingId(std::string_view message);
 // A reply's thinking: a node of its own under its work.
 json ThinkingNode(std::string_view message, std::string_view work,
@@ -32,11 +44,20 @@ json ThinkingNode(std::string_view message, std::string_view work,
 // Present verb while it runs, past after; a refused call reads as `sent`.
 json CallHeadline(const json& view, std::string_view state,
                   const std::string& sent);
+// What a call counts as in its work's summary, by the verb its row shows:
+// read, search, fetch, edit, command, agent, else step.
+std::string_view StepKind(std::string_view verb);
+// Whether calls of that kind only look, and so fold into a group.
+bool Explores(std::string_view kind);
 // Sits under its group, else under `work`.
 json CallNode(const json& record, std::string_view work);
+// A run of looking under `work`: `facts` ({work, kinds}) hold outcome and
+// duration_ms once the run has ended.
+json GroupNode(const std::string& id, const json& facts);
 // The files a call handed to the person, under its turn; null for none.
 json FilesNode(const json& record, std::string_view turn);
-// Finished once `facts` ({items, edited, errors}) hold outcome and duration_ms.
+// Finished once `facts` ({items, edited, errors, kinds, notes, thoughts})
+// hold outcome and duration_ms.
 json WorkNode(const std::string& message, const json& facts);
 // A receipt or a compaction becomes a notice, a turn's summary its footer.
 json EntryNode(const json& entry);

@@ -240,10 +240,14 @@ stopped), a state (running, ok, failed, cancelled) and a body to open.
 Nothing in it names a tool, provider or model; an MCP or unknown tool reads
 "Called NAME".
 
-Each call is one row, and the work line is the only fold. It counts what it
-holds: "Worked 6 steps · edited 1 file · 1 error". A tool declares the calls that only look at earlier work
-`routine` (an `activity` list, an `agents` list): their rows
-show at full detail only.
+Each call is one row. The work line folds a turn's work and counts it by
+kind: "Worked 3 reads, 1 search, 2 edits, 1 command, 2 notes · 1 error". A
+note is what the agent said between calls. Two or more calls in a row that
+only look (a read, a search, a web fetch, a memory lookup) sit under one
+group row, "Explored 3 files, 1 search"; a call that does more, or a note,
+ends the run. A tool declares the calls that only look at earlier work
+`routine` (an `activity` list, an `agents` list): their rows show at full
+detail only.
 
 The terminal and the web draw the same tree. The detail level,
 `UAGENT_DETAIL`, only sets how deep it starts open, and the model never
@@ -251,10 +255,20 @@ reads it:
 
 | Level | Depth | Shows |
 | --- | --- | --- |
-| `minimal` | 0 | each turn's work as one line (the current step while it runs) |
-| `default` | 1 | the work's steps, each one closed line |
+| `minimal` | 0 | each turn's work as one line (the current step while it runs); a new install starts here |
+| `default` | 1 | the work's steps, each one closed line, a run of looking as one |
 | `full` | all | every row open, routine rows included |
 
-`/detail LEVEL` changes it for every terminal, and a browser starts at it;
-Detail in a web conversation's menu sets that browser's own level.
+What the agent says while it works shows as it says it at every level. Once
+the turn has ended those notes stay between the steps at `default` and
+`full`, and fold into the work line at `minimal`; a terminal keeps what it
+printed and folds them when it draws the turn again.
+
+Thinking is its own switch, `UAGENT_THINKING`, off at first: off, it is drawn
+nowhere; on, each thought is a row reading as its first line, closed at
+`default`, open at `full`, and counted in the work line.
+
+`/detail LEVEL` changes it for every terminal, and Ctrl+O steps to the next
+one; a browser starts at it. The level and **Thinking** in a web
+conversation's header (its menu on a narrow screen) set that browser's own.
 `--detail LEVEL` pins one terminal for one run.

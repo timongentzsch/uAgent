@@ -760,13 +760,19 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Plain output")),
     registry::Named(
         registry::Choice(
-            registry::Str("detail", "UAGENT_DETAIL", {}, "default",
+            registry::Str("detail", "UAGENT_DETAIL", {}, "minimal",
                           ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                           "behaviour",
                           "how much of the agent's work is shown: minimal, "
                           "default or full; display only"),
             kDetailLevels),
         "Detail"),
+    registry::Named(
+        registry::Bul("thinking", "UAGENT_THINKING", {}, false,
+                      ReloadPolicy::kNextUserTurn, "behaviour",
+                      "show the model's thinking in the transcript; display "
+                      "only"),
+        "Thinking"),
 };
 
 inline std::span<const ConfigDescriptor> ConfigRegistry() {

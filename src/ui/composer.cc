@@ -256,6 +256,9 @@ InteractiveInputEvent RawComposer::Read() {
     if (ch == Ctrl('B')) {
       return {InteractiveInputKind::kBackground, buffer_};
     }
+    if (ch == Ctrl('O')) {
+      return {InteractiveInputKind::kDetail, buffer_};
+    }
     if (ch == Ctrl('D') && buffer_.empty()) {
       return {InteractiveInputKind::kEof, {}};
     }

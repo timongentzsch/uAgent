@@ -431,6 +431,15 @@ void Agent::Turn(const std::string& user_input, json user_content,
     }
 
     PushAssistantMessage(response, calls);
+    // What it said or thought on the way is counted with its work, and
+    // words between two looks end the run they would otherwise join.
+    if (!calls.empty()) {
+      if (!Blank(response.content)) {
+        ++work_.notes;
+        EndRun();
+      }
+      if (!Blank(response.reasoning)) ++work_.thoughts;
+    }
     flow = calls.empty()
                ? FinishWithProse(state, loop)
                : ExecuteToolCalls(calls, response.served_by, state, loop);

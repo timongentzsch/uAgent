@@ -203,18 +203,24 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
+  // The two reads are one row at default, and their own under it at full.
   await expect(rows).toHaveText([
-    /^Worked.*2 steps/,
-    /^Read \./,
-    /^Read \./,
-    /^Thinking/,
+    /^Worked 2 reads/,
+    /^Explored 2 files/,
+    /^Thought /,
   ]);
   await chooseDetail(page, "Full");
-  await expect(rows).toHaveCount(4);
+  await expect(rows).toHaveText([
+    /^Worked 2 reads/,
+    /^Explored 2 files/,
+    /^Read \./,
+    /^Read \./,
+    /^Thought /,
+  ]);
   await chooseDetail(page, "Minimal");
-  await expect(rows).toHaveText([/^Worked.*2 steps/]);
+  await expect(rows).toHaveText([/^Worked 2 reads/]);
   await chooseDetail(page, "Default");
-  await expect(rows).toHaveCount(4);
+  await expect(rows).toHaveCount(3);
   const table = page.locator(".message .table-scroll > table");
   await expect(table).toHaveCount(1);
   await expect(table).toHaveCSS("display", "table");
@@ -262,7 +268,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   ).toBeVisible();
   await page.reload();
   await expect(
-    page.locator(".node-row", { hasText: /^Read \./ }).first(),
+    page.locator(".node-row", { hasText: /^Explored 2 files/ }).first(),
   ).toBeVisible();
   await expect(page.locator(".transcript .node.running")).toHaveCount(0);
   await expect(
@@ -329,7 +335,10 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   await prompt.press("Enter");
   await expect(page.locator(".composer .status-led.running")).toBeVisible();
 
-  const thinkingRow = page.locator(".node-row", { hasText: "Thinking" });
+  // "Thinking" while it streams, then "Thought" and its first line.
+  const thinkingRow = page.locator(".node-row", {
+    hasText: /Thinking|Thought/,
+  });
   await expect(thinkingRow).toBeVisible();
   const thinking = thinkingRow.locator("..");
   await expect(thinking.locator(".node-body")).toHaveCount(0);
@@ -457,7 +466,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
           )?.parentElement,
         selected: getSelection().toString(),
         thinking: [...document.querySelectorAll(".node-row")]
-          .find((row) => row.textContent?.includes("Thinking"))
+          .find((row) => /Thinking|Thought/.test(row.textContent || ""))
           ?.getAttribute("aria-expanded"),
         copy:
           window.__stableCopyControl ===

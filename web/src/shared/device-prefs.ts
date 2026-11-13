@@ -23,6 +23,10 @@ export const devicePrefs = {
     "",
     (value) => detailLevels.find((level) => level === value) ?? "",
   ),
+  // Empty until this device chooses, so it starts as the host has it.
+  thinking: stored<"" | "show" | "hide">(storageKeys.thinking, "", (value) =>
+    value === "show" || value === "hide" ? value : "",
+  ),
   // By conversation and node id; choosing a level forgets them.
   toggles: stored<Record<string, boolean>>(storageKeys.toggles, {}),
   list: stored<"recent" | "places">(storageKeys.list, "recent", (value) =>

@@ -77,8 +77,9 @@ std::string MoveFiles(const MovedFile& file) {
 
 // Adds the note once, as a message for the next request and as a row; nothing
 // wakes. False, with `failed` set, when the transcript cannot take it.
-bool AddNote(SessionRecord& record, const std::string& note,
-             const std::string& to_cwd, std::string& failed) {
+bool AddNote(SessionRecord& record, const SessionMove& move,
+             std::string& failed) {
+  const std::string& note = move.note;
   SessionState& state = record.state;
   if (state.message_kinds.back() == MessageKind::kInternal &&
       JsonValue(state.messages.back(), "content", "") == note) {
@@ -92,7 +93,8 @@ bool AddNote(SessionRecord& record, const std::string& note,
   }
   conversation.Push(HarnessMessage(note), MessageKind::kInternal);
   conversation.RecordEntry(
-      {{"view", {{"verb", {"Moving", "Moved"}}, {"target", to_cwd}}},
+      {{"view", {{"verb", {"Moving", "Moved"}}, {"target", move.to_cwd}}},
+       {"moved", {{"from", move.from_cwd}}},
        {"state", "ok"},
        {"body_kind", "text"},
        {"text", note},
@@ -141,7 +143,7 @@ std::string Rewrite(const SessionMove& move, size_t index,
             }
           }
         });
-        if (index == 0 && AddNote(record, move.note, move.to_cwd, failed)) {
+        if (index == 0 && AddNote(record, move, failed)) {
           changed = true;
         }
         return changed && failed.empty();

@@ -258,8 +258,8 @@ json EntryNode(const json& entry) {
   SetBody(node, JsonValue(entry, "body_kind", "text"),
           JsonValue(entry, "text", ""));
   Keep(node, entry,
-       {"result", "routine", "parts", "memory", "activity_id", "agent_id",
-        "command"});
+       {"result", "routine", "parts", "memory", "moved", "activity_id",
+        "agent_id", "command"});
   return node;
 }
 

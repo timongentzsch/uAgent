@@ -246,12 +246,12 @@ export default function ChatPage({
       choose={open}
     />
   );
-  // Its only message, while nothing has run for it yet.
+  // Its only message, while its first turn has changed no file yet.
   const asked = nodes.filter((node) => node.kind === "turn");
   const first =
     session?.turn_active &&
     asked.length === 1 &&
-    !nodes.some((node) => node.kind === "call")
+    !nodes.some((node) => node.kind === "work" && node.result?.edited)
       ? asked[0].body?.text || ""
       : "";
   return shown ? (

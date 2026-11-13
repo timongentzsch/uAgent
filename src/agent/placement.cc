@@ -158,6 +158,8 @@ void Agent::SuggestFromTurn(const json& files) {
       !Unfiled(Workspace().path) || JsonValue(suggestion_, "dismissed", false)) {
     return;
   }
+  // What the first message's reply said counts before anything is asked.
+  TakeSideReplies();
   const auto places = Places(Candidates(session_id_));
   // A file changed outside this folder is shown by its whole path.
   std::map<std::string, int> changed;

@@ -49,11 +49,15 @@ Application::Application(AppContext& context)
                          !session_file_.empty());
   message_subscription_ =
       context_.observability.Subscribe([this](const AppEvent& event) {
+        // A suggested place reaches clients at the step that took it, and a
+        // changed to-do list as it changes, not as the turn ends.
+        if (event.type == AppType(EventId::kTurnStatus) && channel_ &&
+            agent_.Suggestion() != suggestion_) {
+          PublishChannelState(false);
+        }
         if (event.type != AppType(EventId::kMessageChanged)) {
           return;
         }
-        // A changed to-do list reaches clients as it changes, not as the turn
-        // ends.
         if (channel_ && agent_.Todo() != todo_) PublishChannelState(false);
         // A message of yours is saved as it arrives.
         const json& node = event.data["node"];

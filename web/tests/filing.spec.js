@@ -1,7 +1,13 @@
 // A conversation starts in Scratch and is filed later, where its host
 // suggests: from the home screen, the list, or the conversation itself.
 import { mkdir, realpath } from "node:fs/promises";
-import { test, expect, online, saveHistory } from "./fixtures.js";
+import {
+  test,
+  expect,
+  online,
+  saveHistory,
+  savedConversation,
+} from "./fixtures.js";
 
 test.use({ places: true });
 
@@ -91,4 +97,36 @@ test("a suggestion is answered in the conversation, and stays answered", async (
   await online(page);
   await expect(page.locator(".message.response")).toContainText("Done");
   await expect(bar).toBeHidden();
+});
+
+test.describe("with a model that places", () => {
+  test.use({ titles: true });
+  test("a first message joins the conversation it continues, before anything has changed", async ({
+    page,
+    host,
+    request,
+  }) => {
+    const earlier = await savedConversation(host, request, "Pairing over SSH");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    const field = page.getByLabel("Start a conversation");
+    await expect(field).toBeEnabled();
+    // The scripted provider looks around once, then answers slowly.
+    await field.fill("Filing probe");
+    await field.press("Enter");
+    const bar = page.getByRole("region", { name: "Suggested place" });
+    await expect(bar).toContainText("Continue “Pairing over SSH”");
+    await expect(bar).toContainText("Nothing has changed yet");
+    await bar.getByRole("button", { name: "Continue there" }).click();
+    await expect
+      .poll(() => new URL(page.url()).hash)
+      .toBe(`#session=${earlier.id}`);
+    await expect(page.locator(".message.user").last()).toContainText(
+      "Filing probe",
+    );
+    // The conversation it left had done nothing, and is gone.
+    await expect(
+      page.getByRole("group", { name: "Workspaces" }).locator(".session"),
+    ).toHaveCount(0);
+  });
 });

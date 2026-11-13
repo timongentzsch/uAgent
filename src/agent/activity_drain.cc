@@ -208,8 +208,6 @@ bool Agent::FinishCommandRow(const EndedCommand& ended) {
 
 bool Agent::DrainActivities(bool start_turn) {
   bool changed = false;
-  // One snapshot: with two takes, the generic pass could steal a memory child
-  // that completed in between, bypassing its receipt and audit handling.
   std::vector<ActivityCompletion> completions =
       ActivityTakeCompletedDetails(processes_);
   if (RemoteWorkspace()) {
@@ -244,13 +242,7 @@ bool Agent::DrainActivities(bool start_turn) {
     changed |= FinishCommandRow(ended);
   }
   if (DrainAttachments()) changed = true;
-  std::vector<std::function<void()>> done;
-  {
-    std::lock_guard lock(side_call_mutex_);
-    done.swap(side_done_);
-  }
-  for (const auto& deliver : done) deliver();
-  changed |= !done.empty();
+  changed |= TakeSideReplies();
   if (changed) ++revision_;
   return changed;
 }

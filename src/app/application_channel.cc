@@ -144,7 +144,7 @@ void Application::PublishChannelState(bool checkpoint) {
   state["todo"] = todo_ = agent_.Todo();
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
   state["title"] = Utf8Prefix(agent_.FirstUserText(), kUserTitleChars);
-  state["suggestion"] = agent_.Suggestion();
+  state["suggestion"] = suggestion_ = agent_.Suggestion();
   state["stop"] = agent_.LastStop();
   if (channel_) channel_->PublishState(state, checkpoint);
 }

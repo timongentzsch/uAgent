@@ -579,3 +579,48 @@ def test_web_unfiled_conversation_is_offered_where_it_belongs(root, home, *, bin
             moved = web.command("move", unfiled, space="Lisbon trip")["result"]
             assert_true("/spaces/" in moved["cwd"] and moved["id"] != unfiled["id"], moved)
             assert_true(not moved.get("suggestion"), moved)
+
+
+def test_web_suggestion_arrives_while_the_first_turn_works(root, home, *, binary):
+    """The title's reply is taken between steps, and the place it names
+    reaches clients then, not when the turn ends."""
+    hold = threading.Event()
+
+    def route(handler, body):
+        text = json.dumps(body["messages"])
+        if "Title this coding session" in text:
+            listed = "<conversations>" in text
+            return event({"content": "Named" + ("\nfits: 1" if listed else "")})
+        if "Decide where a conversation belongs" in text:
+            return event({"content": "none"})
+        if "second question" not in text:
+            return event({"content": "Recorded answer"})
+        if '"role": "tool"' not in text:
+            # The title's reply comes first: the agent takes it between steps.
+            time.sleep(budget(1))
+            return tool_call("read_path", {"path": "."})
+        hold.wait(budget(20))
+        return event({"content": "Looked"})
+
+    with Server([route]) as provider:
+        env = {"UAGENT_TITLE_MODEL": ""}
+        with web_host(binary, root, home, provider.url, extra_env=env) as (web, code, _, _):
+            web.pair(code)
+            earlier = web.create(root)
+            web.command("submit", earlier, text="first question")
+            web.until(earlier, lambda value: value["metadata"]["title"] == "Named")
+            filed = web.until(earlier, lambda value: value["metadata"]["status"] == "idle")
+            unfiled = web.command("create", space="Scratch")["session"]
+            unfiled = web.command("activate", unfiled)["session"]
+            web.command("submit", unfiled, text="second question")
+            try:
+                value = web.until(unfiled, lambda value: value["metadata"].get("suggestion"))
+                assert_true(value["metadata"]["turn_active"], value["metadata"])
+                assert_true(
+                    value["metadata"]["suggestion"]["options"]
+                    == [{"cwd": filed["metadata"]["cwd"]}],
+                    value["metadata"]["suggestion"],
+                )
+            finally:
+                hold.set()
+            web.until(unfiled, lambda value: value["metadata"]["status"] == "idle")

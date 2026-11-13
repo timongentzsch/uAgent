@@ -206,6 +206,16 @@ bool Agent::StartSide(const std::string& purpose, const std::string& selection,
   return true;
 }
 
+bool Agent::TakeSideReplies() {
+  std::vector<std::function<void()>> done;
+  {
+    std::lock_guard lock(side_call_mutex_);
+    done.swap(side_done_);
+  }
+  for (const auto& deliver : done) deliver();
+  return !done.empty();
+}
+
 void Agent::DropSideCalls() {
   side_calls_.clear();
   std::lock_guard lock(side_call_mutex_);

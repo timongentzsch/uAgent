@@ -473,6 +473,8 @@ class Agent {
   json suggestion_ = nullptr;
   bool placement_asked_ = false;
   void SuggestFromTurn(const json& files);
+  // Hands the replies that have come to their callers; true when any had.
+  bool TakeSideReplies();
   void DropSideCalls();
   std::mutex side_call_mutex_;
   std::vector<std::function<void()>> side_done_

@@ -10,6 +10,7 @@ import re
 import signal
 import tempfile
 import threading
+import time
 
 from integration_support import (
     OPENROUTER_SUPPORTS,
@@ -30,6 +31,9 @@ parser.add_argument("--no-model", action="store_true")
 # Approval is Auto and a decision model on the mock provider is sure but
 # worried about where the data goes.
 parser.add_argument("--auto-review", action="store_true")
+# The conversation's model titles it, and finds every first message in Scratch
+# to continue the newest conversation.
+parser.add_argument("--titles", action="store_true")
 args = parser.parse_args()
 stop = threading.Event()
 signal.signal(signal.SIGINT, lambda *_: stop.set())
@@ -56,7 +60,31 @@ def answer(handler, body):
         message.get("content", "") for message in body["messages"] if message.get("role") == "user"
     ]
     prompt = str(texts[-1]) if texts else ""
-    expected_model = "model-a" if prompt == "Retained follow-up" else "model-b"
+    if "Title this coding session" in json.dumps(body):
+        fits = "\nfits: 1 continues" if "<conversations>" in prompt else ""
+        return event({"content": "Titled by the model" + fits})
+    if "Decide where a conversation belongs" in json.dumps(body):
+        return event({"content": "none"})
+    # One look around, then a long answer: a first turn still at work when
+    # the title's reply has been taken.
+    if "Filing probe" in prompt and not any(
+        message.get("tool_call_id") == "filing-look" for message in body["messages"]
+    ):
+        # The agent takes the title's reply between steps: let it come first.
+        time.sleep(1)
+        return event(
+            {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "filing-look",
+                        "function": {"name": "read_path", "arguments": json.dumps({"path": "."})},
+                    }
+                ]
+            }
+        )
+    unselected = prompt in ("Retained follow-up", "Filing probe")
+    expected_model = "model-a" if unselected else "model-b"
     assert body.get("model") == expected_model, body.get("model")
     if "for a fresh agent context" in str(body["messages"]):
         return event({"content": "COMPACT-PREVIEW-SUMMARY"})
@@ -194,7 +222,7 @@ def answer(handler, body):
         ), "side history was lost"
         return event({"content": "SIDE-FOLLOWUP-COMPLETE"})
     content = "# Verified response\n\nA **streamed** answer with a table.\n\n| Check | Result |\n| --- | --- |\n| Native worker | Ready |\n\nInline $x^2 + y^2 = z^2$ and \\(a+b\\).\n\n$$\\int_0^1 x \\, dx = \\frac{1}{2}$$\n\n```python\nprint('hello')\n```\n\nPrices $5 and $10. `<script>bad()</script>`\n\n![blocked](https://example.com/tracker.png)\n\n[unsafe](javascript:alert(1))\n"
-    if "Queue controls probe" in prompt:
+    if "Queue controls probe" in prompt or "Filing probe" in prompt:
         write_sse_sequence(
             handler, [event({"content": "Waiting for guidance. "}, finish=None)] * 200, delay=0.1
         )
@@ -330,6 +358,7 @@ with (
             "PATH": f"{fake_bin}:{os.environ['PATH']}",
             "UAGENT_INTERNAL_RELEASES": str(root / "releases"),
             **({"UAGENT_APPROVAL": "auto"} if args.auto_review else {}),
+            **({"UAGENT_TITLE_MODEL": ""} if args.titles else {}),
             # Locally the host serves the bundle on disk, so a web edit needs
             # no rebuild of the binary; CI serves the embedded one.
             **(

@@ -74,7 +74,8 @@ by itself:
   conversations. If the message carries one of them on, a bar above the
   input offers **Continue there** (the message is sent in that conversation
   and the new one is removed) or **New in** its folder (the conversation
-  starts over there). The offer holds until the first tool runs.
+  starts over there). The offer holds while the first turn runs and has
+  changed no file.
 - **When a turn ends**, files it changed inside a folder you already work in
   name that folder, or two. If it changed none and nothing was suggested
   yet, the model is asked once: it may name a place, two, a new workspace by

@@ -99,8 +99,9 @@ export function StartField({
 }
 
 // The host's suggestion for one conversation in Scratch, with its answers.
-// `first` is its only message while nothing has run yet: it can then still
-// start over in the place, or join the conversation it continues.
+// `first` is its only message while its first turn has changed no file: it
+// can then still start over in the place, or join the conversation it
+// continues.
 export function Suggestion({
   session,
   sessions,
@@ -206,7 +207,7 @@ export function Suggestion({
         <DataText>
           {[
             session.suggestion?.reason,
-            early && "Nothing has run yet, so it starts over there.",
+            early && "Nothing has changed yet, so it starts over there.",
             !early && session.turn_active && "It can move when this turn ends.",
           ]
             .filter(Boolean)

@@ -76,6 +76,11 @@ test("a conversation moves to a typed folder and the page follows it", async ({
   await expect(other.locator(".message.response")).toContainText(
     "Verified response",
   );
+
+  // The move's own row, open as a turn's work is, takes it back.
+  await page.getByRole("button", { name: "Move back" }).click();
+  await expect(folders).not.toContainText("elsewhere");
+  await expect(folders.locator(".session")).toHaveCount(1);
 });
 
 test("a running turn keeps the conversation where it is, and the dialog says so", async ({

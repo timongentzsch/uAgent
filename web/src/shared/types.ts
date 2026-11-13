@@ -90,6 +90,8 @@ interface ResultFacts {
   added?: number;
   removed?: number;
   items?: number;
+  // On a turn's work: how many files it has changed.
+  edited?: number;
   unit?: string;
   outcome?: string;
   reason?: string;
@@ -222,6 +224,8 @@ export interface Node {
   usage?: Usage;
   usage_reported?: boolean;
   memory?: MemoryNote;
+  // On the row of a move: the folder the conversation came from.
+  moved?: { from: string };
   activity_id?: number;
   command?: string;
   summary?: TurnSummary;

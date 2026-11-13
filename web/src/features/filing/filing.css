@@ -10,32 +10,43 @@
   flex-wrap: wrap;
   gap: var(--gap);
 }
-.to-file {
-  margin-top: var(--space-12);
+/* A list of the home screen: a caption, then rows of a title over a line
+   about it, with the time or what can be done at the row's end. */
+.home-list {
   text-align: left;
 }
-.to-file ul {
-  margin: var(--space-3) 0 0;
+.home-list > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.home-list ul {
+  margin: var(--space-2) 0 0;
   padding: 0;
   list-style: none;
 }
-.to-file li {
+.home-list li {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--gap);
-  padding: var(--space-3) var(--pad);
+  min-width: 0;
+  padding-right: var(--pad);
 }
-.to-file li > button {
+.home-list li > button:first-child {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  flex: 1 1 var(--pane);
+  flex: 1;
   min-width: 0;
   height: auto;
+  padding: var(--space-3) var(--pad);
   /* Each line as wide as the row and no wider, so a long one is cut. */
   justify-items: stretch;
   text-align: left;
 }
-.to-file small {
+.home-list :is(small, time) {
   color: var(--muted);
+  font-size: var(--font-small);
+}
+.home-list li > :not(:first-child) {
+  flex: none;
 }

@@ -1,11 +1,13 @@
-import type { ComponentChildren, TargetedSubmitEvent } from "preact";
+import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
+import { ArrowUp } from "lucide-preact";
 import { useHostContext } from "../state/host-context.ts";
-import { Button, Input } from "./ui.tsx";
+import { IconButton } from "./ui.tsx";
+import MessageInput from "./message-input.tsx";
 import "./start-field.css";
 
-// A line of text that starts a conversation; `children` adds controls that
-// act on what is typed.
+// The box a conversation starts from: what to ask, then a row of what it
+// starts with (`children`: a place, a model) and the button that starts it.
 export function StartField({
   id,
   label,
@@ -25,25 +27,34 @@ export function StartField({
 }) {
   const { report } = useHostContext();
   const [text, setText] = useState("");
-  const submit = (event: TargetedSubmitEvent<HTMLFormElement>) => {
+  const submit = (event: Event) => {
     event.preventDefault();
     Promise.resolve(start(text.trim())).then(() => setText(""), report);
   };
   return (
     <form class="start-field" onSubmit={submit}>
-      <Input
+      <MessageInput
         id={id}
+        rows={1}
         aria-label={label}
         placeholder={placeholder}
         value={text}
         disabled={disabled}
         autoFocus={autoFocus}
+        submit={submit}
         onInput={(event) => setText(event.currentTarget.value)}
       />
-      <Button variant="primary" type="submit" disabled={disabled}>
-        Start
-      </Button>
-      {children?.(text.trim())}
+      <div class="start-tools">
+        {children?.(text.trim())}
+        <IconButton
+          label="Start"
+          variant="primary"
+          type="submit"
+          disabled={disabled}
+        >
+          <ArrowUp />
+        </IconButton>
+      </div>
     </form>
   );
 }

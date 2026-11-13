@@ -60,8 +60,6 @@ export const schedulePreviewDebounceMs = 200;
 // units, never fewer, so the form is never laxer than the host.
 export const maxTitleChars = 256;
 export const maxSpaceNameChars = 64;
-// How long a conversation nothing was suggested for stays under To file.
-export const unfiledDays = 7;
 // The workspace a conversation starts in when no folder is chosen.
 export const scratchSpace = "Scratch";
 
@@ -103,3 +101,5 @@ export const edgeSwipeStartPx = 24;
 export const edgeSwipeOpenPx = 60;
 // The lines a thought takes among the steps where not everything is open.
 export const thoughtLines = 2;
+// The latest conversations the home screen lists.
+export const homeRecent = 6;

@@ -60,12 +60,15 @@ conversation, and the conversations as cards (a list on a phone; the toggle
 is remembered per browser), each with its state (Working, Needs you,
 Stopped, Idle), current step, to-do progress, agents, last change and cost.
 
-The home screen starts work: type into its field and the conversation starts
-in the **Scratch** workspace on Local, with nothing to choose. **New** at the
-top of the sidebar opens the home screen with the field ready. **Other
-place…** beside the field keeps what you typed and asks for a host and a
-folder instead. Conversation and folder actions choose a **Host** and reuse
-the Files tree to browse a directory; typing a path remains optional.
+The home screen starts work from one box: type into it and the conversation
+starts in the **Scratch** workspace on Local, with nothing to choose. Under
+the text the box names where it starts and which model it starts with:
+**Scratch** keeps what you typed and asks for a host and a folder instead,
+and the model beside it picks one for this conversation. **New** at the top
+of the sidebar opens the home screen with the box ready. On a narrow screen
+the box is docked at the bottom, under the latest conversations from every
+place, and **All** opens the whole list. Conversation and folder actions
+choose a **Host** and browse its folders; typing a path remains optional.
 
 µAgent suggests where a conversation in Scratch belongs, and never moves it
 by itself:
@@ -80,14 +83,13 @@ by itself:
   name that folder, or two. If it changed none and nothing was suggested
   yet, the model is asked once: it may name a place, two, a new workspace by
   name, or nothing.
-- The suggestion shows above the input, as a row under **To file** on the
-  home screen, and in the sidebar. **Move to…** moves the conversation as
+- The suggestion shows above the input, as a row under **Suggested moves**
+  on the home screen, and under **To file** in the sidebar. **Move to…**
+  (**Move** on the home screen) moves the conversation as
   **Move to…** in its menu does (**Create and move** makes the workspace
   first), **Other place…** opens that dialog, and **Keep in Scratch**
   answers for good. Move waits for a running turn to end.
-- **To file** also lists, for a week, Scratch conversations nothing was
-  suggested for. With `title.model` set to `off` only the changed files
-  suggest. Named
+- With `title.model` set to `off` only the changed files suggest. Named
 **Workspaces** belong to Local. An existing conversation or folder supplies its
 host, shown beside the conversation title. There is no application-wide host
 switch. The bottom **Remote hosts** panel shows status and measured main-to-host SSH

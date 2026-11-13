@@ -235,9 +235,7 @@ for (const width of [390, 1440]) {
         });
       });
       await page.goto("/");
-      await page
-        .getByRole("button", { name: "Other place…", exact: true })
-        .click();
+      await page.getByRole("button", { name: "Scratch", exact: true }).click();
       const dialog = page.getByRole("dialog", {
         name: "New conversation",
         exact: true,
@@ -313,7 +311,7 @@ test("late home loading preserves path entry and its caret", async ({
     });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Other place…", exact: true }).click();
+  await page.getByRole("button", { name: "Scratch", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "New conversation",
     exact: true,
@@ -364,7 +362,7 @@ test("a host's connection error is drawn as an error", async ({ page }) => {
   await expect(detail.getByRole("alert")).toHaveText(error);
   await expect(detail.getByRole("alert")).toHaveCSS("color", red);
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Other place…", exact: true }).click();
+  await page.getByRole("button", { name: "Scratch", exact: true }).click();
   const creating = page.getByRole("dialog", { name: "New conversation" });
   await creating
     .getByRole("combobox", { name: "Host", exact: true })
@@ -466,7 +464,7 @@ test("the folder browser hides dot folders until asked, goes into one by its arr
 }) => {
   await mkdir(join(host.home, ".hidden", "inner"), { recursive: true });
   await page.goto("/");
-  await page.getByRole("button", { name: "Other place…", exact: true }).click();
+  await page.getByRole("button", { name: "Scratch", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "New conversation",
     exact: true,
@@ -497,7 +495,7 @@ test("known folders follow the chosen host without duplicate suggestions", async
   await savedConversation(host, request, "Second local folder");
   await offlineHost(page, "connected");
   await page.goto("/");
-  await page.getByRole("button", { name: "Other place…", exact: true }).click();
+  await page.getByRole("button", { name: "Scratch", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "New conversation",
     exact: true,

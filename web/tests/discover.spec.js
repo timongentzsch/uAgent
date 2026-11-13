@@ -98,7 +98,7 @@ test.describe("in Places", () => {
     await expect(
       page.getByRole("navigation", { name: "Conversations" }),
     ).toContainText("No conversations yet");
-    const tips = page.locator(".empty .tips dd");
+    const tips = page.locator(".home .tips dd");
     await expect(tips).toHaveCount(3);
     await expect(tips.first()).toContainText("opens its overview");
     await expect(tips.nth(1)).toContainText("Searches every conversation");

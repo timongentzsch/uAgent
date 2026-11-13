@@ -1,14 +1,47 @@
-/* The field takes a row of its own where the buttons would squeeze it. */
+/* One box, as a conversation's composer is: the text, and under it what it
+   starts with and the button that starts it. */
 .start-field {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--gap);
+  flex-direction: column;
+  border: var(--border);
+  background: var(--surface);
+  text-align: left;
 }
-.start-field input {
-  flex: 1 1 var(--pane);
+.start-field:has(textarea:focus-visible) {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+.start-field > .message-input {
+  --input-min-height: max(var(--control-l), calc(1.5em + var(--space-4)));
+  --input-padding-y: var(--space-3);
+}
+.start-field > .message-input > textarea {
+  border: 0;
+  background: transparent;
+}
+.start-field > .message-input > textarea:focus-visible {
+  outline: none;
+}
+.start-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
+  padding: var(--space-2);
+  border-top: var(--border);
 }
-.start-field button {
+/* A choice reads as a chip and gives way before the button does. */
+.start-tools button:not(.icon-button) {
+  min-width: 0;
+  flex: 0 1 auto;
+  font-size: var(--font-small);
+}
+.start-tools button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+.start-tools > :last-child {
+  margin-left: auto;
+  flex: none;
 }

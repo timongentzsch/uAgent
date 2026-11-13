@@ -15,12 +15,13 @@ import { queuedGuidance } from "../shared/message-view.ts";
 import { useCallback, useMemo, useState } from "preact/hooks";
 import { useApi } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
-import { Welcome, Button } from "../shared/ui.tsx";
+import { Button, Mark } from "../shared/ui.tsx";
 import {
+  HomeLists,
   type Redirect,
   Suggestion,
-  ToFile,
 } from "../features/filing/filing.tsx";
+import { ChevronDown } from "lucide-preact";
 import { StartField } from "../shared/start-field.tsx";
 import { SheetButton } from "../shared/sheet.tsx";
 import ModelPicker from "../shared/model-picker.tsx";
@@ -83,6 +84,7 @@ export default function ChatPage({
   loadError,
   newPlace,
   start,
+  openList,
   redirect,
   updateView,
   choose,
@@ -107,6 +109,8 @@ export default function ChatPage({
     text?: string,
   ) => void;
   start: (text: string, model?: ModelChoice) => Promise<unknown>;
+  // On a narrow screen: opens the list of every conversation.
+  openList?: () => void;
   redirect: Redirect;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
   choose: (id: string) => Promise<void>;
@@ -321,36 +325,40 @@ export default function ChatPage({
     </SideLayout>
   ) : (
     <div class="home">
-      <Welcome
-        level={1}
-        title="What are we working on?"
-        tips={[
-          [
-            "Folders",
-            "A folder’s name in the list opens its overview: what works, what needs you, spend and changes.",
-          ],
-          [
-            <kbd>{keysOf("search").join(" ")}</kbd>,
-            "Searches every conversation, command and setting.",
-          ],
-          [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
-        ]}
-      >
+      <header class="home-head">
+        <Mark className="cursor-mark" />
+        <h1>What are we working on?</h1>
+      </header>
+      <div class="home-start">
         <StartField
           id={startFieldId}
           label="Start a conversation"
           placeholder="Ask, or describe the work…"
           disabled={!online}
-          autoFocus
+          // A phone would open its keyboard over the lists.
+          autoFocus={!openList}
           start={(text) => start(text, model)}
         >
           {(text) => (
             <>
+              <Button
+                title="It starts in Scratch, and µAgent suggests where it belongs once it knows. Choose another place here."
+                disabled={!online}
+                onClick={() => newPlace("conversation", text)}
+              >
+                <span>Scratch</span>
+                <ChevronDown />
+              </Button>
               <SheetButton
                 label="Model for this conversation"
                 title="Model and effort"
                 disabled={!online}
-                trigger={<span>{model?.label || "Default model"}</span>}
+                trigger={
+                  <>
+                    <span>{model?.label || "Default model"}</span>
+                    <ChevronDown />
+                  </>
+                }
               >
                 {(close) => (
                   <ModelPicker
@@ -365,25 +373,36 @@ export default function ChatPage({
                   />
                 )}
               </SheetButton>
-              <Button
-                disabled={!online}
-                onClick={() => newPlace("conversation", text)}
-              >
-                Other place…
-              </Button>
             </>
           )}
         </StartField>
-        <p>
-          It starts in Scratch, and µAgent suggests where it belongs once it
-          knows.
-        </p>
-        <ToFile
-          sessions={catalogue.sessions}
-          spaces={catalogue.spaces || NO_SPACES}
-          choose={choose}
-        />
-      </Welcome>
+      </div>
+      <HomeLists
+        sessions={catalogue.sessions}
+        spaces={catalogue.spaces || NO_SPACES}
+        choose={choose}
+        all={openList}
+      />
+      <dl class="tips">
+        {(
+          [
+            [
+              "Folders",
+              "A folder’s name in the list opens its overview: what works, what needs you, spend and changes.",
+            ],
+            [
+              <kbd>{keysOf("search").join(" ")}</kbd>,
+              "Searches every conversation, command and setting.",
+            ],
+            [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
+          ] as const
+        ).map(([lead, text], index) => (
+          <div key={index}>
+            <dt>{lead}</dt>
+            <dd>{text}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

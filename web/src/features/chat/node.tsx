@@ -1,11 +1,22 @@
 import "./node.css";
 import { Component, createContext } from "preact";
 import type { TargetedKeyboardEvent } from "preact";
-import { useCallback, useContext, useMemo, useState } from "preact/hooks";
+import {
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/hooks";
 import { ChevronRight } from "lucide-preact";
 import { Button, ErrorBoundary } from "../../shared/ui.tsx";
 import { devicePrefs } from "../../shared/device-prefs.ts";
-import { maxRememberedToggles, maxShownSteps } from "../../shared/limits.ts";
+import {
+  maxRememberedToggles,
+  maxShownSteps,
+  thoughtLines,
+} from "../../shared/limits.ts";
 import { plural } from "../../shared/quantities.ts";
 import { useElapsed } from "../../shared/time.ts";
 import { useLatest } from "../../shared/use-latest.ts";
@@ -140,6 +151,13 @@ class NodeView extends Component<NodeProps> {
       <ErrorBoundary>
         {isRow(node) ? (
           <RowNode {...props} />
+        ) : node.kind === "thinking" ? (
+          <Thought
+            node={node}
+            lines={props.level === Infinity ? undefined : thoughtLines}
+            online={props.online}
+            session={props.session}
+          />
         ) : (
           <MessageView
             node={node}
@@ -151,6 +169,52 @@ class NodeView extends Component<NodeProps> {
       </ErrorBoundary>
     );
   }
+}
+
+// A thought reads as text among the steps, fainter than a reply: whole where
+// everything is open, else its first lines and a way to the rest.
+function Thought({
+  node,
+  lines,
+  online,
+  session,
+}: {
+  node: Node;
+  lines?: number;
+  online: boolean;
+  session: SessionRef;
+}) {
+  const [whole, setWhole] = useState(false);
+  const [cut, setCut] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const held = !!lines && !whole;
+  useLayoutEffect(() => {
+    const text = box.current?.querySelector(".node-text");
+    if (held && text) setCut(text.scrollHeight > text.clientHeight + 1);
+  }, [held, node]);
+  return (
+    <div
+      ref={box}
+      class="node thought"
+      data-kind="thinking"
+      data-message-id={node.id}
+      data-sequence={node.sequence}
+      data-held={held || undefined}
+      style={held ? { "--lines": lines } : undefined}
+    >
+      <NodeBody node={node} online={online} session={session} />
+      {!!lines && (cut || whole) && (
+        <Button
+          variant="quiet"
+          class="node-action small"
+          aria-expanded={whole}
+          onClick={() => setWhole(!whole)}
+        >
+          {whole ? "Less" : "More"}
+        </Button>
+      )}
+    </div>
+  );
 }
 
 // Starts open when less deep than the level, unless this device remembers
@@ -184,6 +248,12 @@ function RowNode({
     !open && node.kind === "work" && node.state === "running"
       ? kids.filter((kid) => kid.node.role === "assistant")
       : [];
+  // So does its latest thought, on one line, while it is the latest thing.
+  const working = !open && node.kind === "work" && node.state === "running";
+  const thought =
+    working && kids.at(-1)?.node.kind === "thinking"
+      ? kids.at(-1)?.node
+      : undefined;
   const openable =
     !!node.body ||
     kids.length > 0 ||
@@ -217,6 +287,9 @@ function RowNode({
           session={session}
           scope={scope}
         />
+      )}
+      {thought && (
+        <Thought node={thought} lines={1} online={online} session={session} />
       )}
       {open && openable && (
         <div class="node-open">

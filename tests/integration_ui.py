@@ -188,7 +188,8 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             binary=binary,
         )
         assert_true(code == 0, verbose)
-        assert_true(b"\xc2\xb7 Thinking" in verbose, verbose)
+        # A thought is text in its own face, with no row naming it.
+        assert_true(b"\xc2\xb7 Thinking" not in verbose, verbose)
         reasoning_style = b"\x1b[0m\x1b[39m\x1b[49m\x1b[90m\x1b[3m"
         assert_true(reasoning_style + b"latest line" in verbose, verbose)
         assert_true(verbose.find(b"first line") < verbose.find(b"Final answer"), verbose)

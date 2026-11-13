@@ -150,9 +150,6 @@ struct TerminalPresenter::State {
     std::string style = std::string(RST()) + MUTED() + ITAL();
     if (!in_reasoning) {
       if (content_started && line_open) markdown.FeedPlain("\n");
-      markdown.Control(RST());
-      markdown.Control(DIM());
-      markdown.FeedPlain(RowMark(Mark::kNote) + "Thinking\n");
       line_open = false;
       in_reasoning = true;
     }

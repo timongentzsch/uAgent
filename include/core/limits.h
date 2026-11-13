@@ -46,8 +46,8 @@ inline constexpr size_t kGenericTitleReplacementMinChars = 12;
 // Generated titles: the first-message excerpt sent, and the title kept.
 inline constexpr size_t kTitleInputChars = 2000;
 inline constexpr size_t kTitleChars = 80;
-// The first line of a thought, as its row shows it.
-inline constexpr size_t kThoughtChars = 80;
+// The terminal lines a thought takes where its work is open but it is not.
+inline constexpr size_t kThoughtLines = 2;
 // A remote host keeps a build no main has connected with for this long.
 inline constexpr int kRemoteBuildDays = 30;
 // The longest title a user may give a session, and the longest workspace

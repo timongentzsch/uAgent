@@ -297,12 +297,14 @@ function outline(nodes, detail, max = Infinity, thinking = true) {
           indent +
             (node.kind === "footer"
               ? "footer"
-              : `${node.role === "assistant" ? "" : "you: "}${
-                  node.body?.text ??
-                  (node.parts || [])
-                    .map((part) => `[${part.kind} ${part.name}]`)
-                    .join(" ")
-                }`),
+              : node.kind === "thinking"
+                ? `~ ${node.body.text}`
+                : `${node.role === "assistant" ? "" : "you: "}${
+                    node.body?.text ??
+                    (node.parts || [])
+                      .map((part) => `[${part.kind} ${part.name}]`)
+                      .join(" ")
+                  }`),
         );
         continue;
       }
@@ -351,7 +353,7 @@ test("a chain of calls opens one level per depth", () => {
   assert.deepEqual(middle, [
     ask,
     `⌄ ${worked}`,
-    "  › Thinking",
+    "  ~ look first",
     "  › Read fli/search.py · 120 lines · 5ms",
     "  › Read fli/models.py · 88 lines · 5ms",
     "  › Edited src/parser.ts · +2 −1 · 5ms",
@@ -360,8 +362,7 @@ test("a chain of calls opens one level per depth", () => {
   assert.deepEqual(full, [
     ask,
     `⌄ ${worked}`,
-    "  ⌄ Thinking",
-    "    | look first",
+    "  ~ look first",
     "  ⌄ Read fli/search.py · 120 lines · 5ms",
     "    | alpha",
     "  ⌄ Read fli/models.py · 88 lines · 5ms",
@@ -373,7 +374,7 @@ test("a chain of calls opens one level per depth", () => {
   // Switched off, a thought is drawn at no level, and nothing else changes.
   assert.deepEqual(
     outline(golden.chain, "full", Infinity, false),
-    full.filter((line) => !/Thinking|look first/.test(line)),
+    full.filter((line) => !/look first/.test(line)),
   );
 });
 

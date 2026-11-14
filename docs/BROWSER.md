@@ -39,7 +39,8 @@ code, run `docker compose -f deploy/compose.yaml exec uagent uagent --web`.
   repository index Google signs, and checks again daily; a newer one is
   unpacked beside the one in use and taken the next time the browser starts.
   Until the first download is done the browser says it is still downloading.
-  A failed check keeps the Chrome that is there.
+  A failed check keeps the Chrome that is there. Settings → About names the
+  Chrome in use and when it was last checked, and **Check now** looks again.
 - Chrome and Xvnc stay stopped until the browser is first used.
 - Set `TZ` and `LANGUAGE` (for example `TZ=Europe/Berlin` and
   `LANGUAGE=de`) in `.env.appliance`: pages see that clock and language

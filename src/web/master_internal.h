@@ -221,6 +221,8 @@ class Master {
   std::mutex update_mutex_;
   json update_ UAGENT_GUARDED_BY(update_mutex_) = json::object();
   std::jthread updater_;
+  std::atomic<bool> chrome_checking_{false};
+  std::jthread chrome_updater_;
   std::jthread update_checker_;
   std::atomic<size_t> terminal_sockets_{0};
   mutable std::mutex remote_terminals_mutex_;

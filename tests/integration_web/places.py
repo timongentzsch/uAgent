@@ -1,9 +1,11 @@
 import itertools
 import json
+import os
 import pathlib
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -464,6 +466,38 @@ def test_folder_overview_counts_spend_changes_and_git(root, home, *, binary):
             )
             assert_true(listed["todo"] == {"done": 1, "total": 2, "current": "Read them"}, listed)
             assert_true(isinstance(listed["cost"], (int, float)), listed)
+
+
+def test_web_about_says_which_chrome_a_container_holds_and_looks_again(root, home, *, binary):
+    # What the container's updater leaves on the data volume, and an updater
+    # standing in for it that finds a newer Chrome. The browser's folder has
+    # to be private and short enough for its sockets.
+    data = pathlib.Path(tempfile.mkdtemp(prefix="ub-", dir="/tmp"))
+    try:
+        (data / "chrome").mkdir()
+        status = data / "chrome/status"
+        status.write_text("ready 157.0.1-1\n")
+        tools = root / "tools"
+        tools.mkdir()
+        updater = tools / "chrome-update"
+        updater.write_text(f"#!/bin/sh\nsleep 0.3\necho 'ready 158.0.2-1' >'{status}'\n")
+        updater.chmod(0o755)
+        env = {"UAGENT_BROWSER_DATA": str(data), "PATH": f"{tools}:{os.environ['PATH']}"}
+        with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+            with web_host(binary, root, home, provider.url, extra_env=env) as (client, code, _, _):
+                client.pair(code)
+                shown = client.command("update")["result"]["chrome"]
+                assert_true(shown["status"] == "ready 157.0.1-1" and not shown["checking"], shown)
+                assert_true(shown["checked_ms"] > 0, shown)
+                client.command("update", action="chrome")
+
+                def found():
+                    chrome = client.command("update")["result"]["chrome"]
+                    return (chrome["status"], chrome["checking"]) == ("ready 158.0.2-1", False)
+
+                wait_until(found, "the updater's finding did not show")
+    finally:
+        shutil.rmtree(data, ignore_errors=True)
 
 
 def test_web_update_is_checked_installed_and_restarts_the_host(root, home, *, binary):

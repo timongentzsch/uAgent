@@ -58,6 +58,7 @@
 
 ### Fixes
 
+- **A container install can write to its folder.** The one-line installer made `~/uagent-workspaces` as you, and the container's user (UID 10001) could not create anything in it. It now grants that user access with `setfacl`, keeps yours to what the agent creates, and says what to do where `setfacl` is missing.
 - **A conversation of one long turn shows again.** When a single turn held more steps than one page, a saved conversation opened with only "Load older retained messages": the page carried the turn's steps but not the message that started it, so none could be drawn. A page now keeps that message, as the live view already did, and older steps load after it.
 - **Draw on a page opens the markup at once.** In a design, the pen button goes straight to annotating the page's picture, with a spinner while the picture renders, instead of the image viewer first. The viewer no longer shows a zoom cursor, since a click there does not zoom.
 

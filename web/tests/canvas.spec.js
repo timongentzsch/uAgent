@@ -803,10 +803,14 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
       return [x, y, width, height].map(Math.round);
     });
   const reading = files.locator(".page-stage");
-  // Drawn, not the skeleton it waits behind, which fills the stage.
+  // A slide has its room from the size its file names, before it has drawn:
+  // nothing moves when it arrives.
+  await reading.locator(".page-holder > .page-frame").waitFor();
+  const waiting = await placed(reading);
   await expect(
     reading.locator(".page-holder > .page-frame:not([data-waiting])"),
   ).toBeVisible();
+  expect(await placed(reading)).toEqual(waiting);
   const first = await placed(reading);
   await files.getByRole("button", { name: "Next slide" }).click();
   await expect(count).toHaveText("2 / 3");
@@ -832,7 +836,15 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
   await expect(slideFrame.getByText("Say hello.")).toBeHidden();
   await app.keyboard.press("n");
   await expect(stage.locator(".page-notes")).toContainText("Say hello.");
-  const shown = await placed(stage);
+  // Where the slide comes to rest once the notes have taken their room.
+  let shown = await placed(stage);
+  await expect
+    .poll(async () => {
+      const before = shown;
+      shown = await placed(stage);
+      return String(shown) === String(before);
+    })
+    .toBe(true);
   await app.keyboard.press("ArrowRight");
   await expect(stage.getByText("2 / 3")).toBeVisible();
   await expect(stage.locator(".page-notes")).toHaveText("Three steps.");

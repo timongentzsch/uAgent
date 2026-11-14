@@ -29,6 +29,7 @@ import {
   IconButton,
   LoadError,
   Placeholder,
+  Skeleton,
   Spinner,
   useDialog,
 } from "../../shared/ui.tsx";
@@ -1092,14 +1093,14 @@ export default function Files({
               {`${view.path} is outside this conversation's folder, so it can't be shown here.`}
             </EmptyState>
           ) : view.kind === "resolve" ? (
-            <Spinner label={`Looking for ${nameOf(view.path)}…`} />
+            <Skeleton label={`Looking for ${nameOf(view.path)}…`} />
           ) : !file ? (
             <EmptyState>Choose a file to read it here.</EmptyState>
           ) : changing ? (
             diff.error ? (
               <LoadError error={diff.error} retry={diff.retry} />
             ) : !diffText ? (
-              <Spinner label="Reading the changes…" />
+              <Skeleton rows={6} label="Reading the changes…" />
             ) : (
               <>
                 <DiffView text={diffText.text} counts={counts} />
@@ -1132,7 +1133,7 @@ export default function Files({
               <LoadError error={content.error} retry={content.retry} />
             )
           ) : !text ? (
-            <Spinner label="Reading the file…" />
+            <Skeleton rows={6} label="Reading the file…" />
           ) : (
             <>
               {markdown ? (
@@ -1145,7 +1146,7 @@ export default function Files({
                   dangerouslySetInnerHTML={{ __html: code }}
                 />
               ) : (
-                <Spinner label="Highlighting…" />
+                <Skeleton rows={6} label="Highlighting…" />
               )}
               {text.more && (
                 <p class="files-note files-cut">

@@ -1158,15 +1158,15 @@ export default function Sequence({
               </div>
             </div>
             {!presenting && counter}
-            {presenting && notesShown && notes && (
-              <p class="page-notes">{notes}</p>
-            )}
+            {/* Shown, the notes keep their room on a slide that has none, so
+                the slide does not move from one to the next. */}
+            {presenting && notesShown && <p class="page-notes">{notes}</p>}
             {presenting && (
               <div class="page-present-bar">
                 {counter}
                 <Button
                   variant="secondary"
-                  disabled={!notes}
+                  disabled={!notes && !notesShown}
                   aria-pressed={notesShown}
                   onClick={() => setNotesShown(!notesShown)}
                 >
@@ -1215,10 +1215,12 @@ export default function Sequence({
               />
             </label>
           ) : (
-            notes && (
+            // A deck's notes have their room under every slide, as the field
+            // has when editing: a slide sits where the one before it sat.
+            (kind === "deck" || notes) && (
               <p class="page-notes">
                 <span class="muted">Notes</span>
-                {notes}
+                {notes || <span class="muted">None for this slide</span>}
               </p>
             )
           )}

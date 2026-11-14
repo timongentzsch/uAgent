@@ -7,7 +7,7 @@ import {
   LoadError,
   Modal,
   Row,
-  Spinner,
+  Skeleton,
 } from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
 import { useResource } from "../../shared/use-resource.ts";
@@ -51,7 +51,7 @@ export default function ImportDialog({
   return (
     <Modal title="Import from Claude Code and Codex" close={close}>
       {!items && !error ? (
-        <Spinner label="Looking for importable items…" />
+        <Skeleton label="Looking for importable items…" />
       ) : items?.length ? (
         items.map((item) => {
           const note =

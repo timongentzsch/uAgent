@@ -15,7 +15,7 @@ import {
   Modal,
   Notice,
   Select,
-  Spinner,
+  Skeleton,
   Textarea,
   Time,
 } from "../../shared/ui.tsx";
@@ -238,7 +238,7 @@ export default function LibraryDocument({
   );
   if (loaded.error)
     return <LoadError error={loaded.error} retry={loaded.retry} />;
-  if (!item) return <Spinner label="Loading document…" surface />;
+  if (!item) return <Skeleton rows={6} label="Loading document…" />;
   const off = (listed?.status || item.status) === "disabled";
   const memory = kind === "memory";
   return (

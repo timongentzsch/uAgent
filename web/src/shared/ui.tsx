@@ -413,7 +413,7 @@ export function Skeleton({
 }) {
   if (!useDelayed(delayMs)) return null;
   return (
-    <div class="skeleton" role="status" aria-busy="true">
+    <div class="skeleton" role="status" aria-label={label} aria-busy="true">
       <small class="loading-label">{label}</small>
       <div aria-hidden="true">
         {Array.from({ length: rows }, (_, index) => (

@@ -3,7 +3,7 @@ import { useResource } from "./use-resource.ts";
 import type { Act, Pending, Session } from "./types.ts";
 import { useApi } from "../state/api.ts";
 import { useHostContext } from "../state/host-context.ts";
-import { Button, LoadError, Spinner } from "./ui.tsx";
+import { Button, LoadError, Skeleton } from "./ui.tsx";
 import Decision from "./decision.tsx";
 import { waiting } from "../state/attention.ts";
 import SessionName from "./session-name.tsx";
@@ -59,7 +59,7 @@ function Escalation({
   const { value: pending, error, retry } = usePendingDecision(item);
   if (pending === null) return null;
   const act: Act = (kind, fields) => command(kind, item, fields);
-  const loading = <Spinner label="Loading decision…" surface />;
+  const loading = <Skeleton label="Loading decision…" />;
   return (
     <div class="escalation">
       <Button

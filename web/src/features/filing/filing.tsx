@@ -8,6 +8,7 @@ import { folderOf } from "../../shared/display.ts";
 import { filingTag, nameOf, optionsOf, unfiled } from "../../shared/filing.ts";
 import { useAction } from "../../shared/use-action.ts";
 import SessionName from "../../shared/session-name.tsx";
+import { ListRow } from "../../shared/list-row.tsx";
 import { Button, DataText, SectionTitle, Time } from "../../shared/ui.tsx";
 import { folderName } from "../../shared/folder-label.tsx";
 import { homeRecent } from "../../shared/limits.ts";
@@ -181,16 +182,11 @@ function HomeRow({
 }) {
   return (
     <li>
-      <Button variant="quiet" onClick={() => choose(item.id)}>
-        <span class="truncate">
-          <SessionName item={item} />
-        </span>
-        {detail && (
-          <small class="truncate">
-            <DataText>{detail}</DataText>
-          </small>
-        )}
-      </Button>
+      <ListRow
+        title={<SessionName item={item} />}
+        meta={detail && <DataText>{detail}</DataText>}
+        onClick={() => choose(item.id)}
+      />
       {children ?? <Time value={item.updated} brief />}
     </li>
   );

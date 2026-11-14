@@ -129,7 +129,7 @@ choice=${UAGENT_INSTALL:-here}
 if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes ]; then
   here=
   [ "$mode" = release ] && [ -n "$unsupported" ] && here=", built from source ($unsupported)"
-  echo "1) In a container (recommended): web interface, browser and terminal, isolated from this machine"
+  echo "1) In a container (recommended): web interface, browser and terminal, kept from this machine's files"
   echo "2) Here: the terminal, the web interface$([ "$browser" = yes ] && echo " and the browser")$here"
   reply 'Install [1]:' || true
   [ "$answer" = 2 ] || choice=container
@@ -165,7 +165,7 @@ if [ "$choice" = container ]; then
       workspaces=$HOME/uagent-workspaces
       if [ -f "$deploy/.env" ]; then
         workspaces=$(sed -n 's/^UAGENT_WORKSPACES=//p' "$deploy/.env")
-      elif reply "Folder the agent works in, all it sees of this machine [$workspaces]:" &&
+      elif reply "Folder the agent works in, the only files of this machine it sees [$workspaces]:" &&
            [ -n "$answer" ]; then
         workspaces=$answer
       fi

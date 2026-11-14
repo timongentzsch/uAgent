@@ -52,6 +52,9 @@ code, run `docker compose -f deploy/compose.yaml exec uagent uagent --web`.
 | `UAGENT_WORKSPACES` | `../workspaces` | Host directory mounted at `/workspaces` |
 | `UAGENT_SHM_SIZE` | `256m` | Chrome shared memory |
 | `UAGENT_TMPFS_SIZE` | `512m` | `/tmp` tmpfs size |
+| `UAGENT_PIDS_LIMIT` | `4096` | Most processes and threads the container may hold |
+| `UAGENT_MEM_LIMIT` | none | Memory limit, such as `4g`; size it with `deploy/footprint.sh` |
+| `UAGENT_CPUS` | none | CPU limit, such as `4` |
 
 Run `deploy/footprint.sh` before opening Chrome, during a viewer session and
 after **Stop browser** to compare image size, packages, processes and
@@ -231,9 +234,22 @@ several paired devices.
 
 - The service exposes neither a CDP nor a VNC TCP port. The agent reaches
   Chrome over inherited pipes, the viewer over the authenticated web host.
-- Chrome's sandbox needs a narrow [seccomp profile](../deploy/seccomp-chrome.json) that
-  permits user namespace creation. Compose applies it without privileged mode
-  and without disabling the sandbox. If the host disables unprivileged user
+- The container's files are isolated from the host; its network is not. An
+  agent command or a page in the agent's browser can reach whatever the Docker
+  host can: services on the host, your LAN and tailnet, a cloud metadata
+  address. `web_fetch` refuses non-public addresses; `run` and the browser do
+  not. Where that matters, block the container's subnet from private ranges
+  in the host's firewall (the `DOCKER-USER` chain, and `INPUT` for the host's
+  own addresses), allowing only what the agent needs.
+- Compose drops every capability but `SYS_CHROOT` (Chrome's sandbox calls
+  `chroot` inside its own namespace), sets `no-new-privileges`, keeps the root
+  filesystem read-only and `/tmp` `noexec`, and limits the number of
+  processes. Memory and CPU are unlimited unless you set them.
+- Chrome's sandbox needs a [seccomp profile](../deploy/seccomp-chrome.json):
+  Docker's default with `clone` and `unshare` allowed, so user namespaces can
+  be created. That applies to every process in the container, the agent's
+  commands included, not to Chrome alone. Compose applies it without
+  privileged mode and without disabling the sandbox. If the host disables unprivileged user
   namespaces, takeover fails and the browser stays stopped.
 - With the command sandbox on, agent commands cannot read the browser data
   directory (saved logins, cookies) or connect to its sockets, and the file
@@ -317,7 +333,8 @@ What the container adds that a native setup lacks:
 
 - Chrome runs as your own user, with your file access, next to the web host
   and the agent's commands. The image uses a separate nonroot UID, a seccomp
-  profile for Chrome's sandbox and a container boundary.
+  profile for Chrome's sandbox and a container boundary around its files and
+  processes, not its network.
 - The managed policy applies only if you install it as above, and then to
   every Chrome on that machine, including your own.
 - The profiles hold your saved logins. The command sandbox keeps agent

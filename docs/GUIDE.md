@@ -24,7 +24,7 @@ unpublished one needs its
 
 | Choice | What you get |
 | --- | --- |
-| In a container (offered where Docker runs) | The published image with the web interface, the agent's browser and the terminal. It sees only the folder you give it (`~/uagent-workspaces`), which the installer opens to the container's user (UID 10001) with `setfacl`, and starts with Docker. |
+| In a container (offered where Docker runs) | The published image with the web interface, the agent's browser and the terminal. Of this machine's files it sees only the folder you give it (`~/uagent-workspaces`), which the installer opens to the container's user (UID 10001) with `setfacl`, and starts with Docker. |
 | Here | The release under `~/.local`, checked against its checksum. It offers to put `~/.local/bin` on your `PATH` and to run the web interface as [a service at login](WEB.md). |
 
 | Variable | Effect |
@@ -344,7 +344,7 @@ conversation open in a terminal is the same one in the browser.
 [The agent's browser](BROWSER.md) covers the Chrome the agent can drive.
 
 For a folder on another machine, use **Remote hosts → Add host**, then choose that
-**Host** in **New conversation** or **New folder** and browse its Files tree.
+**Host** in **New conversation** or **New folder** and browse to a folder.
 The main still owns model keys, settings and history. The bottom Remote hosts panel
 reports connectivity and measured round trip; it does not switch the whole
 application. [Remote hosts](REMOTE_HOSTS.md) covers SSH setup and limits.

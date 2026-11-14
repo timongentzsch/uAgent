@@ -14,6 +14,7 @@ import { coarsePointer } from "../../shared/layout.ts";
 import RFB from "@novnc/novnc";
 import { isTextEntry } from "../../shared/shortcuts.ts";
 import {
+  Cluster,
   Button,
   IconButton,
   Input,
@@ -701,7 +702,7 @@ export default function BrowserPanel({
         {!canChangeProfile && (
           <small class="muted">Take over to switch profiles.</small>
         )}
-        <div class="browser-profile-controls">
+        <Cluster class="browser-profile-controls">
           <Button
             disabled={busy || !canChangeProfile}
             onClick={() => setAddingProfile(!addingProfile)}
@@ -722,7 +723,7 @@ export default function BrowserPanel({
               Stop browser
             </Button>
           )}
-        </div>
+        </Cluster>
         {addingProfile && (
           <InputRow
             as="form"
@@ -809,7 +810,7 @@ export default function BrowserPanel({
             autocapitalize="off"
             spellcheck={false}
           />
-          <div class="browser-card-actions">
+          <Cluster align="end" class="browser-card-actions">
             <Button onClick={() => setCard(null)}>
               {card.copy ? "Done" : "Cancel"}
             </Button>
@@ -822,7 +823,7 @@ export default function BrowserPanel({
                 Send
               </Button>
             )}
-          </div>
+          </Cluster>
         </form>
       )}
       {coarsePointer() && driving && (

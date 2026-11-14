@@ -9,7 +9,13 @@ import { filingTag, nameOf, optionsOf, unfiled } from "../../shared/filing.ts";
 import { useAction } from "../../shared/use-action.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
-import { Button, DataText, SectionTitle, Time } from "../../shared/ui.tsx";
+import {
+  Cluster,
+  Button,
+  DataText,
+  SectionTitle,
+  Time,
+} from "../../shared/ui.tsx";
 import { folderName } from "../../shared/folder-label.tsx";
 import { homeRecent } from "../../shared/limits.ts";
 import "./filing.css";
@@ -145,7 +151,7 @@ export function Suggestion({
             .join(" ")}
         </DataText>
       </p>
-      <div class="filing-actions">
+      <Cluster class="filing-actions">
         {buttons}
         {!early && (
           <Button
@@ -162,7 +168,7 @@ export function Suggestion({
         >
           {early ? "Stay in Scratch" : "Keep in Scratch"}
         </Button>
-      </div>
+      </Cluster>
     </section>
   );
 }

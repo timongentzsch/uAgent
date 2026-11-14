@@ -97,11 +97,6 @@ dialog.browser-view[data-layout="sheet"] {
   --input-min-height: calc(2 * var(--control-l));
   --input-max-height: var(--scroll-s);
 }
-.browser-card-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--gap);
-}
 
 .browser-touch {
   position: absolute;
@@ -119,13 +114,6 @@ dialog.browser-view[data-layout="sheet"] {
 
 /* Keeps its height while the special keys take its place. */
 .browser-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  height: calc(var(--control) + 2 * var(--gap));
-  padding: var(--gap) var(--inset-x);
-  border-top: var(--border);
   background: var(--bg);
 }
 .browser-status-menu {
@@ -159,11 +147,6 @@ dialog.browser-view[data-layout="sheet"] {
   display: grid;
   gap: var(--gap);
   min-width: 0;
-}
-.browser-profile-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--gap);
 }
 .browser-profile-create {
   --input-row-min: calc(var(--pane) / 2);

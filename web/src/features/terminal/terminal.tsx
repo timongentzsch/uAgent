@@ -13,7 +13,7 @@ import type {
 import { useApi } from "../../state/api.ts";
 import { folderName } from "../../shared/folder-label.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
-import { Button, IconButton, Notice, Spinner } from "../../shared/ui.tsx";
+import { Bar, Button, IconButton, Notice, Spinner } from "../../shared/ui.tsx";
 import { KeyBar, keepFocus, type BarKey } from "../../shared/key-bar.tsx";
 import { coarsePointer } from "../../shared/layout.ts";
 import { useLatest } from "../../shared/use-latest.ts";
@@ -382,10 +382,10 @@ export function FolderTerminal({
       class="terminal-panel"
       aria-label={`Terminal in ${where(terminal.cwd)}`}
     >
-      <div class="terminal-bar">
+      <Bar density="dense" edge="bottom" class="terminal-bar">
         <Place name={terminal.title} cwd={terminal.cwd} />
         <Button onClick={() => close(terminal)}>Close terminal</Button>
-      </div>
+      </Bar>
       <TerminalView key={terminal.id} id={terminal.id} />
     </section>
   );
@@ -457,7 +457,7 @@ export default function TerminalPanel({
   if (!tabs.length && busy) return <Spinner label="Opening the terminal…" />;
   return (
     <div class="terminal-panel">
-      <div class="terminal-bar">
+      <Bar density="dense" edge="bottom" class="terminal-bar">
         <div class="terminal-tabs" role="group" aria-label="Terminals">
           {tabs.map((tab) => (
             <div class="terminal-tab entry" key={tab.id}>
@@ -512,7 +512,7 @@ export default function TerminalPanel({
         <IconButton label="Hide the terminal" onClick={hide}>
           <ChevronDown />
         </IconButton>
-      </div>
+      </Bar>
       {tabs.map((tab) => (
         <TerminalView
           key={tab.id}

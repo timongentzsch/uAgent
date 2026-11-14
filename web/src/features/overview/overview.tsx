@@ -22,6 +22,7 @@ import WaitingList from "../../shared/escalations.tsx";
 import { StartField } from "../../shared/start-field.tsx";
 import SessionName from "../../shared/session-name.tsx";
 import {
+  Bar,
   Button,
   DataText,
   EmptyState,
@@ -172,7 +173,7 @@ export default function FolderOverview({
         </div>
       )}
       <div class="overview-section">
-        <div class="overview-caption">
+        <Bar density="flush" class="overview-caption">
           <SectionTitle>Conversations</SectionTitle>
           <IconButton
             label="Show as cards"
@@ -188,7 +189,7 @@ export default function FolderOverview({
           >
             <List />
           </IconButton>
-        </div>
+        </Bar>
         {roots.length ? (
           <ul
             class={`overview-${layout}${layout === "list" ? " divided" : ""}`}

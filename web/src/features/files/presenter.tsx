@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Button } from "../../shared/ui.tsx";
+import { Bar, Button } from "../../shared/ui.tsx";
 import Frame, {
   type PageInfo,
   pageAddress,
@@ -90,7 +90,7 @@ export default function Presenter({ deck }: { deck: Presenting }) {
   const next = deck.slides[index + 1];
   return (
     <main class="presenter" aria-label="Presenter view">
-      <header class="presenter-bar">
+      <Bar as="header" edge="bottom" class="presenter-bar">
         <span>
           Slide {index + 1} of {deck.slides.length}
         </span>
@@ -100,7 +100,7 @@ export default function Presenter({ deck }: { deck: Presenting }) {
         <Button variant="secondary" onClick={() => setStarted(Date.now())}>
           Reset
         </Button>
-      </header>
+      </Bar>
       {base && (
         <div class="presenter-body">
           <section class="presenter-now" aria-label="Now">
@@ -122,7 +122,7 @@ export default function Presenter({ deck }: { deck: Presenting }) {
           </section>
         </div>
       )}
-      <footer class="presenter-bar">
+      <Bar as="footer" edge="top" class="presenter-bar">
         <Button
           variant="secondary"
           disabled={index <= 0}
@@ -137,7 +137,7 @@ export default function Presenter({ deck }: { deck: Presenting }) {
         >
           Next
         </Button>
-      </footer>
+      </Bar>
     </main>
   );
 }

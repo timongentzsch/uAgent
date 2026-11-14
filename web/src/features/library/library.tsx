@@ -21,6 +21,7 @@ import type {
   LibraryPlace,
 } from "../../shared/types.ts";
 import {
+  Bar,
   Button,
   DataText,
   EmptyState,
@@ -379,7 +380,7 @@ export default function Library({
     ) : null;
   return (
     <div class="management library">
-      <div class="management-toolbar">
+      <Bar edge="bottom" class="management-toolbar">
         <Input
           aria-label="Search library"
           type="search"
@@ -451,7 +452,7 @@ export default function Library({
             </Menu>
           ))
         )}
-      </div>
+      </Bar>
       {listing.value?.limits.memory_enabled === false && (
         <p class="muted">
           Memory is disabled in configuration. Saved entries remain available to

@@ -18,6 +18,8 @@ import type {
 import { useEffect, useState } from "preact/hooks";
 import { Plus, Play, Square, ChevronLeft } from "lucide-preact";
 import {
+  Cluster,
+  Bar,
   Button,
   ConfirmModal,
   EmptyState,
@@ -203,7 +205,7 @@ export default function Scheduled({
     .filter((run) => !task?.id || run.task_id === task.id);
   return (
     <div class="management">
-      <div class="management-toolbar">
+      <Bar edge="bottom" class="management-toolbar">
         <p class="muted">
           Runs while the uAgent host is open. Your browser can close.
         </p>
@@ -217,7 +219,7 @@ export default function Scheduled({
           <Plus />
           New task
         </Button>
-      </div>
+      </Bar>
       {scheduled?.error ? (
         <LoadError error={scheduled.error} retry={refresh} />
       ) : (
@@ -266,7 +268,7 @@ export default function Scheduled({
             >
               {task && (
                 <>
-                  <div class="editor-head">
+                  <Bar density="flush" class="editor-head">
                     <Button variant="quiet" onClick={() => setTask(null)}>
                       <ChevronLeft />
                       All runs
@@ -290,7 +292,7 @@ export default function Scheduled({
                         </MenuItem>
                       </Menu>
                     )}
-                  </div>
+                  </Bar>
                   {changed && (
                     <Notice
                       tone="warning"
@@ -527,7 +529,7 @@ export default function Scheduled({
                       />
                     )}
                   </SheetButton>
-                  <div class="editor-actions">
+                  <Cluster align="end" class="editor-actions">
                     <Button disabled={busy} onClick={discard}>
                       Cancel
                     </Button>
@@ -564,7 +566,7 @@ export default function Scheduled({
                     >
                       Save
                     </Button>
-                  </div>
+                  </Cluster>
                 </>
               )}
               {error && <LoadError error={error} />}

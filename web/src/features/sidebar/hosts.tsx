@@ -10,6 +10,7 @@ import { ApiContext, hostApi } from "../../state/api.ts";
 import { HostContext, useHostContext } from "../../state/host-context.ts";
 import { useHosts, type Source } from "../../state/sources.ts";
 import {
+  Cluster,
   Button,
   IconButton,
   Input,
@@ -410,7 +411,7 @@ export function HostList() {
               {source!.phase === "connected" && hosts.gatewayOnline && (
                 <HostLatency key={source!.id} id={source!.id} />
               )}
-              <div class="host-actions">
+              <Cluster class="host-actions">
                 <Button
                   disabled={
                     busy ||
@@ -432,7 +433,7 @@ export function HostList() {
                 >
                   Disconnect
                 </Button>
-              </div>
+              </Cluster>
               <p class="small muted">
                 Disconnect closes SSH access. Work continues on the remote host.
                 Reconnect restores remote file and command access.

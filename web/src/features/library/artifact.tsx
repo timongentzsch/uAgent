@@ -6,7 +6,14 @@ import type {
   LibraryItem,
   LibraryPlace,
 } from "../../shared/types.ts";
-import { Button, LoadError, Spinner, Time } from "../../shared/ui.tsx";
+import {
+  Cluster,
+  Bar,
+  Button,
+  LoadError,
+  Spinner,
+  Time,
+} from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
 import { ARTIFACT, artifactSize } from "../../shared/artifact.ts";
 import { PageThumb, usePreviewBase } from "../../shared/page-frame.tsx";
@@ -68,13 +75,13 @@ export default function LibraryArtifact({
     file && item.session ? routes.asset(item.session, item.key) : "";
   return (
     <div class="library-document">
-      <div class="editor-head">
+      <Bar density="flush" class="editor-head">
         <Button variant="quiet" onClick={close}>
           <ChevronLeft />
           Back
         </Button>
         <strong>{item.name}</strong>
-      </div>
+      </Bar>
       <p class="muted">
         {KIND[kind]} · {place?.name ?? item.place}
         {size && ` · ${size}`}
@@ -86,7 +93,7 @@ export default function LibraryArtifact({
           </>
         ) : null}
       </p>
-      <div class="library-actions">
+      <Cluster class="library-actions">
         {file ? (
           <>
             <a
@@ -123,7 +130,7 @@ export default function LibraryArtifact({
             {!place?.session && " in a new conversation"}
           </Button>
         )}
-      </div>
+      </Cluster>
       {!file && place?.session && item.pages?.length ? (
         <Thumbnails session={place.session} pages={item.pages} />
       ) : null}

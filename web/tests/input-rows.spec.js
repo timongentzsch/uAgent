@@ -48,3 +48,30 @@ test("a field keeps its room: wide controls take the next row", async ({
   // A name wider than the box is held inside it.
   expect((await measure(200, "x".repeat(80))).inside).toBe(true);
 });
+
+test("the activity line's icons keep their size beside its text", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const sizes = await page.evaluate(() => {
+    const line = document.createElement("div");
+    line.innerHTML =
+      '<button class="activity-button"><svg></svg><span>Working</span></button>' +
+      '<span class="activity-state"><svg></svg><span>Needs you</span></span>';
+    const probe = document.createElement("i");
+    probe.style.cssText = "display:block;width:var(--icon)";
+    line.append(probe);
+    document.body.append(line);
+    const px = (value) => Math.round(parseFloat(value));
+    const found = [...line.querySelectorAll("svg")].map((svg) => {
+      const style = getComputedStyle(svg);
+      return [px(style.width), px(style.height), px(style.paddingLeft)];
+    });
+    const want = px(getComputedStyle(probe).width);
+    line.remove();
+    return { want, found };
+  });
+  expect(sizes.found).toEqual(Array(2).fill([sizes.want, sizes.want, 0]));
+});

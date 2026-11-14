@@ -873,7 +873,10 @@ export interface CommandInputs {
   space: { action: string; cwd: string; name: string };
   pins: { pins: Pin[] };
   restart_host: None;
-  update: { action: "show" | "check" | "apply"; version?: string };
+  update: {
+    action: "show" | "check" | "apply" | "chrome";
+    version?: string;
+  };
   tools: {
     operation: string;
     name?: string;
@@ -1175,4 +1178,7 @@ export interface UpdateState {
   installing?: boolean;
   output?: string;
   error?: string;
+  // A container's own Chrome: "ready VERSION", "downloading VERSION" or
+  // "failed REASON", and when it last looked.
+  chrome?: { status: string; checked_ms: number; checking?: boolean };
 }

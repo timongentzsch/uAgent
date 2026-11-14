@@ -41,3 +41,35 @@ test("About checks for a release, shows its notes and how to update", async ({
     notes.getByRole("button", { name: "Open on GitHub" }),
   ).toBeVisible();
 });
+
+test("About says which Chrome a container holds, and looks again when asked", async ({
+  page,
+  session,
+}) => {
+  const asked = [];
+  const chrome = { status: "ready 157.0.1-1", checked_ms: Date.now() - 3600e3 };
+  await page.route("**/api/command", async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.kind !== "update") return route.continue();
+    asked.push(body.action || "show");
+    if (body.action === "chrome") chrome.status = "ready 158.0.2-1";
+    const response = await route.fetch({
+      postData: JSON.stringify({ ...body, action: "show" }),
+    });
+    const outcome = await response.json();
+    outcome.result.chrome = { ...chrome, checking: false };
+    await route.fulfill({ response, json: outcome });
+  });
+  await page.goto(`/#session=${session.id}`);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .locator(".settings-nav")
+    .getByRole("button", { name: "About", exact: true })
+    .click();
+  const group = page.getByRole("region", { name: "Chrome", exact: true });
+  await expect(group).toContainText("Chrome 157.0.1-1");
+  await expect(group.locator("time")).toBeVisible();
+  await group.getByRole("button", { name: "Check now" }).click();
+  await expect(group).toContainText("Chrome 158.0.2-1");
+  expect(asked).toContain("chrome");
+});

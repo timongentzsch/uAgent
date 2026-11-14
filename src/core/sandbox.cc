@@ -32,7 +32,10 @@ void Offer(std::string_view root, const SandboxInputs& inputs,
            std::vector<std::string>* rejected) {
   if (root.empty()) return;
   if (!Acceptable(root, inputs.global_base)) {
-    rejected->emplace_back(root);
+    // A folder offered under two names is said once.
+    if (std::ranges::find(*rejected, root) == rejected->end()) {
+      rejected->emplace_back(root);
+    }
     return;
   }
   accepted->emplace_back(root);

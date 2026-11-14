@@ -2,6 +2,7 @@
 
 #include "include/app/update.h"
 
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <cstdlib>
@@ -109,6 +110,16 @@ json UpdateState(bool terminal) {
   state["command"] = Command(install);
   state["blocked"] = blocked;
   state["apply"] = here && available && blocked.empty();
+  // A container keeps its own Chrome: which one, and when it last looked.
+  if (const char* data = std::getenv("UAGENT_BROWSER_DATA")) {
+    const std::string path = std::string(data) + "/chrome/status";
+    struct stat written{};
+    if (stat(path.c_str(), &written) == 0) {
+      state["chrome"] = {
+          {"status", Trim(ReadFile(path, 256).value_or(""))},
+          {"checked_ms", static_cast<int64_t>(written.st_mtime) * 1000}};
+    }
+  }
   return state;
 }
 

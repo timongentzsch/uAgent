@@ -62,6 +62,7 @@
 
 ### Fixes
 
+- **A slide does not move when it arrives.** A deck's first slide was first drawn across the whole stage and then shrank into its place. The listing now says each page's size, so the stage holds the slide's room while it loads.
 - **A long model name no longer squeezes the message box.** Beside a one-line draft the controls took whatever their names needed and left the draft a letter wide. They share the row only while both fit, and take the next row otherwise.
 - **A container install can write to its folder.** The one-line installer made `~/uagent-workspaces` as you, and the container's user (UID 10001) could not create anything in it. It now grants that user access with `setfacl`, keeps yours to what the agent creates, and says what to do where `setfacl` is missing.
 - **A conversation of one long turn shows again.** When a single turn held more steps than one page, a saved conversation opened with only "Load older retained messages": the page carried the turn's steps but not the message that started it, so none could be drawn. A page now keeps that message, as the live view already did, and older steps load after it.

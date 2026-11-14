@@ -162,6 +162,10 @@ def test_web_files_listing_says_what_a_folder_s_pages_are(root, home, *, binary)
             )
             skipped = [e["name"] for e in json.loads(body)["entries"] if e.get("skip")]
             assert_true(skipped == ["02-plan.html"], body)
+            # Each slide's size is listed with it, so a viewer gives it its room
+            # before it has drawn; a file that names none says none.
+            sizes = {e["name"]: e.get("artboard") for e in json.loads(body)["entries"]}
+            assert_true((sizes["01-cover.html"], sizes["style.css"]) == ([1920, 1080], None), sizes)
             assert_true(
                 listed("decks/q3")
                 == (

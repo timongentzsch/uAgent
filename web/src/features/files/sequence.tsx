@@ -487,7 +487,13 @@ export default function Sequence({
     if (TAB_AFTER[command]) setPart(TAB_AFTER[command](index, boards.length));
   };
   // Its size as a picture: an artboard's, or a page's full height.
-  const size = pageSize(info, 8000);
+  // The page's shape: what it said once drawn, and until then what its file
+  // names, so the stage does not move when it arrives.
+  const shape = info?.artboard ?? boards[index]?.named;
+  const size = pageSize(
+    info ?? (shape && ({ artboard: shape } as PageInfo)),
+    8000,
+  );
   const { fixed } = size;
   const sized = `&w=${size.w}&h=${size.h}`;
   // Of a file with several boards, the one shown is pictured.
@@ -537,14 +543,10 @@ export default function Sequence({
   ];
   // A fixed artboard fits the stage whole; a page that names only its width
   // fits it across and scrolls down inside.
-  const wide = !!info?.artboard.w;
+  const wide = !!shape?.w;
   const fit =
     room.w && wide
-      ? Math.min(
-          1,
-          room.w / info!.artboard.w,
-          fixed ? room.h / info!.artboard.h : 1,
-        )
+      ? Math.min(1, room.w / shape!.w, fixed ? room.h / shape!.h : 1)
       : 1;
   // How far the person zoomed from the fit; each page opens at the fit.
   const [zoom, setZoom] = useState(1);
@@ -946,8 +948,8 @@ export default function Sequence({
                 style={
                   wide
                     ? {
-                        width: `${info!.artboard.w * scale}px`,
-                        height: `${fixed ? info!.artboard.h * scale : room.h}px`,
+                        width: `${shape!.w * scale}px`,
+                        height: `${fixed ? shape!.h * scale : room.h}px`,
                       }
                     : undefined
                 }
@@ -960,10 +962,8 @@ export default function Sequence({
                   }
                   title={info?.title || path}
                   frameRef={frame}
-                  width={wide ? info!.artboard.w : undefined}
-                  height={
-                    fixed ? info!.artboard.h : wide ? room.h / scale : undefined
-                  }
+                  width={wide ? shape!.w : undefined}
+                  height={fixed ? shape!.h : wide ? room.h / scale : undefined}
                   scale={scale}
                   onMessage={(message) => {
                     // The boards hear what fails here, and all of a document

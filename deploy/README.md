@@ -23,8 +23,10 @@ Setup, the Compose variables and the isolation model are in
 | Path | Contents |
 | --- | --- |
 | `Dockerfile` | Builds the web UI and the native binary, then a Debian image with Chrome and a nonroot `agent` user |
-| `compose.yaml` | The service: read-only root, no capabilities but `SYS_CHROOT`, no new privileges, a process limit, loopback-only port, data volume, workspaces mount, health check |
+| `compose.yaml` | The agent's service and the `network` service that owns its network: read-only root, no capabilities but `SYS_CHROOT`, no new privileges, a process limit, loopback-only port, data volume, workspaces mount, health check |
 | `chrome-policy.json` | Managed Chrome policy; [Browser](../docs/BROWSER.md) says what it blocks |
+| `firewall.sh` | What the `network` service runs: refuses private addresses to the agent, except those `UAGENT_NETWORK_ALLOW` names |
+| `check-network.sh` | Checks a running stack from the agent's side: public reachable, private refused, rules out of reach |
 | `seccomp-chrome.json` | Seccomp profile that lets Chrome create its own user namespace |
 | `footprint.sh` | Snapshot of the running container, for comparing before and during browser use |
 | `NOTICE.md`, `APACHE-2.0.txt` | Origin and license of the seccomp profile |

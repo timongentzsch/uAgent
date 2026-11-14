@@ -29,7 +29,7 @@ FROM ${UAGENT_INSTALL_STAGE} AS installation
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
     bash ca-certificates curl git ripgrep openssh-client tini tigervnc-standalone-server \
-    xauth fonts-liberation fonts-dejavu-core fonts-noto-core \
+    xauth nftables fonts-liberation fonts-dejavu-core fonts-noto-core \
     fonts-noto-color-emoji libcurl4 \
     && touch /etc/default/google-chrome \
     && curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb -o /tmp/chrome.deb \
@@ -40,6 +40,7 @@ RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 instal
 COPY --from=installation /opt/uagent/ /usr/local/
 RUN echo container >/usr/local/share/uagent/install
 COPY deploy/chrome-policy.json /etc/opt/chrome/policies/managed/uagent.json
+COPY deploy/firewall.sh /usr/local/bin/uagent-firewall
 RUN groupadd --gid 10001 agent && useradd --uid 10001 --gid 10001 \
     --home-dir /data/agent --shell /bin/bash agent \
     && mkdir -p /data/agent /data/browser /workspaces \

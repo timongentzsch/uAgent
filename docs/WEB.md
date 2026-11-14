@@ -74,7 +74,8 @@ While the host has no provider, the home screen offers **Sign in with
 OpenRouter** for its [free models](GUIDE.md#free-model-setup). Opened on
 `localhost` or over HTTPS, OpenRouter sends the browser back signed in; on any
 other address it shows a code to paste. The key is saved on the host and never
-reaches the page. **I have an API key** opens Settings.
+reaches the page. **I have an API key** opens Settings, whose providers offer
+the same sign-in to a host that already has one.
 
 µAgent suggests where a conversation in Scratch belongs, and never moves it
 by itself:

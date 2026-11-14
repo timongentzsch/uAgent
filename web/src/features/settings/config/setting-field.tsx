@@ -36,6 +36,7 @@ export function SettingField({
   disabled,
   online,
   save,
+  reload,
 }: {
   setting: ConfigSetting;
   scope: SavedScope;
@@ -46,6 +47,7 @@ export function SettingField({
   disabled: boolean;
   online: boolean;
   save: (change: ConfigChange) => Promise<boolean>;
+  reload?: () => void;
 }) {
   const hidden = secret(setting);
   const own = setting.set?.[scope];
@@ -197,6 +199,8 @@ export function SettingField({
         error={error}
         disabled={disabled}
         save={set}
+        reload={reload}
+        online={online}
       />
     );
   return (

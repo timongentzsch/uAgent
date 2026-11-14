@@ -129,6 +129,7 @@ export default function Configuration({
           const field = (setting: ConfigSetting) => (
             <SettingField
               key={setting.name}
+              reload={config.retry}
               setting={setting}
               scope={scope}
               folder={folder}

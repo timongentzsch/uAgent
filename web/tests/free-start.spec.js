@@ -1,5 +1,5 @@
 // A host with no provider offers OpenRouter's sign-in on the home screen.
-import { test, expect } from "./fixtures.js";
+import { test, expect, headerAction } from "./fixtures.js";
 
 // Answers the host's provider and sign-in commands; `asked` holds the latter.
 async function withoutProvider(page, configured = false) {
@@ -74,4 +74,33 @@ test("a host with a provider offers no sign-in", async ({ page, host }) => {
   await expect(
     page.getByRole("region", { name: "Start with a free model" }),
   ).toHaveCount(0);
+});
+
+test("Settings signs in to OpenRouter beside the providers, and reads them again", async ({
+  page,
+  session,
+}) => {
+  const asked = await withoutProvider(page, true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Settings");
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settings
+    .locator(".settings-nav")
+    .getByRole("button", { name: "All conversations", exact: true })
+    .click();
+  const reads = [];
+  page.on("request", (request) => {
+    if (request.postDataJSON?.()?.kind === "config") reads.push(request.url());
+  });
+  await settings
+    .getByRole("button", { name: "Sign in with OpenRouter" })
+    .click();
+  await settings.getByLabel("Code from OpenRouter").fill("the-code");
+  await settings.getByRole("button", { name: "Finish sign-in" }).click();
+  await expect(
+    settings.getByText("New conversations use openrouter-free/coder:free"),
+  ).toBeVisible();
+  expect(asked.map((body) => body.action)).toEqual(["start", "finish"]);
+  await expect.poll(() => reads.length).toBeGreaterThan(0);
 });

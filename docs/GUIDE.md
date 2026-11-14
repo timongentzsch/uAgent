@@ -132,7 +132,9 @@ Or choose the free option in `uagent setup`, create an
 the key and queries OpenRouter's model catalogue, reusing a cached response for
 up to 24 hours. It lists `:free` variants with tool calling, at least 65,536
 context tokens, and zero prices in every advertised pricing field. The list is
-metadata-based, not a coding-quality ranking; no model names are hardcoded.
+metadata-based, not a coding-quality ranking, and no model names are hardcoded:
+it is ordered by how much a model writes in one reply, then how much it reads,
+then how new it is, and the first is the one suggested.
 
 Either way creates a separate `openrouter-free` provider with `options.free_only: true`
 and a key reference to `OPENROUTER_FREE_API_KEY`. Other providers are preserved.

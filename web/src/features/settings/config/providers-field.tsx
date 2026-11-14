@@ -16,6 +16,7 @@ import {
   Textarea,
   useDialogClose,
 } from "../../../shared/ui.tsx";
+import { OpenRouterSignIn } from "../../../shared/openrouter-signin.tsx";
 import { REDACTED } from "./facts.ts";
 
 // What the host shows in place of a key it holds, and takes back as "keep".
@@ -84,6 +85,8 @@ export function ProvidersField({
   error,
   disabled,
   save,
+  reload,
+  online = true,
 }: {
   label: string;
   footer: ComponentChildren;
@@ -93,6 +96,9 @@ export function ProvidersField({
   disabled: boolean;
   // Saves the whole set, or removes the setting when it is empty.
   save: (text: string) => Promise<boolean>;
+  // Reads the settings again, after a sign-in saved a provider itself.
+  reload?: () => void;
+  online?: boolean;
 }) {
   const held: Providers = value && isObject(value) ? (value as Providers) : {};
   // The provider whose sheet is open, by name; "" while adding one.
@@ -132,6 +138,12 @@ export function ProvidersField({
             </Actions>
           </div>
         )}
+        <div class="group-block">
+          <OpenRouterSignIn
+            online={online && !disabled}
+            done={() => reload?.()}
+          />
+        </div>
         {Object.entries(held).map(([name, entry]) => (
           <Row
             key={name}

@@ -259,7 +259,9 @@ int Main(int argc, char** argv) {
   if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
     return session::WorkerMain(argc, argv);
   }
-  if (argc == 2 && std::string_view(argv[1]) == "setup") return SetupMain();
+  if (argc >= 2 && std::string_view(argv[1]) == "setup") {
+    return SetupMain(argc, argv);
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--browser-service") {
     return browser::ServiceMain(3);
   }

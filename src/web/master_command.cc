@@ -112,6 +112,8 @@ void Master::Command(const Request& request, Response& response) {
       {"skills", false, &Master::ManagementCommand},
       {"schedule", false, &Master::ManagementCommand},
       {"models", false, &Master::ManagementCommand},
+      {"openrouter", false, &Master::ManagementCommand},
+      {"provider", false, &Master::ManagementCommand},
       {"permission_rules", false, &Master::ManagementCommand},
       {"instructions", false, &Master::ManagementCommand},
       {"import", false, &Master::ManagementCommand},

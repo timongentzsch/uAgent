@@ -69,8 +69,9 @@ curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install
 ```
 
 Choose a local or container install, then connect a provider. The optional free
-OpenRouter setup requires an OpenRouter account and API key; it lists eligible
-models from the current catalogue. Open a project:
+OpenRouter setup requires an OpenRouter account: sign in from the home screen or
+with `uagent setup openrouter`, with no key to copy. It lists eligible models
+from the current catalogue. Open a project:
 
 ```sh
 cd my-project

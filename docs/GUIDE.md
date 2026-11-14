@@ -118,14 +118,23 @@ Run it again to change them; a start with no provider offers it.
 
 ### Free-model setup
 
-Choose the free option in `uagent setup`, create an
+Sign in instead of copying a key: `uagent setup openrouter` opens OpenRouter in
+this machine's browser, you approve, and µAgent receives a key of your own. Over
+SSH, in a container or with `--no-browser` it prints a link to open on any
+device and asks for the code that page shows; the code works once, for ten
+minutes, and only with a secret that stays on this host. Without a terminal it
+takes the code from standard input and the first eligible model. The web
+interface offers the same on its home screen while no provider is set up. An
+OpenRouter account is still needed.
+
+Or choose the free option in `uagent setup`, create an
 [OpenRouter API key](https://openrouter.ai/keys), and select a model. Setup checks
 the key and queries OpenRouter's model catalogue, reusing a cached response for
 up to 24 hours. It lists `:free` variants with tool calling, at least 65,536
 context tokens, and zero prices in every advertised pricing field. The list is
 metadata-based, not a coding-quality ranking; no model names are hardcoded.
 
-This creates a separate `openrouter-free` provider with `options.free_only: true`
+Either way creates a separate `openrouter-free` provider with `options.free_only: true`
 and a key reference to `OPENROUTER_FREE_API_KEY`. Other providers are preserved.
 Choosing a model makes it the default for new conversations. If the key cannot
 be validated or no eligible models are available, setup leaves settings

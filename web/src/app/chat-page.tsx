@@ -26,6 +26,7 @@ import "../shared/model-control.css";
 import { StartField } from "../shared/start-field.tsx";
 import { SheetButton } from "../shared/sheet.tsx";
 import ModelPicker from "../shared/model-picker.tsx";
+import { FreeStart } from "./free-start.tsx";
 import type { ModelChoice } from "./use-places.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
@@ -85,6 +86,7 @@ export default function ChatPage({
   loadError,
   newPlace,
   start,
+  settings,
   openList,
   redirect,
   updateView,
@@ -110,6 +112,7 @@ export default function ChatPage({
     text?: string,
   ) => void;
   start: (text: string, model?: ModelChoice) => Promise<unknown>;
+  settings: () => void;
   // On a narrow screen: opens the list of every conversation.
   openList?: () => void;
   redirect: Redirect;
@@ -330,6 +333,7 @@ export default function ChatPage({
         <Mark className="cursor-mark" />
         <h1>What are we working on?</h1>
       </header>
+      <FreeStart online={online} settings={settings} />
       <div class="home-start">
         <StartField
           id={startFieldId}

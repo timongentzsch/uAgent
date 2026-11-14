@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "include/core/json.h"
 #include "include/core/settings_store.h"
 
 namespace uagent {
@@ -33,9 +34,16 @@ bool ProviderConfigured();
 // The interactive flow; 0 when something was saved or kept. Needs a terminal.
 int RunSetup();
 
+// Signing in to OpenRouter for the web: `start` returns the address to
+// approve at (with `callback`, OpenRouter sends the browser back there), and
+// `finish` redeems the code, saves the key as the free provider and returns
+// the default model.
+json OpenRouterControl(const json& request);
+
 // One line from stdin with echo off where it is a terminal, as typed.
 std::string ReadHidden();
-int SetupMain();
+// `uagent setup`, or `uagent setup openrouter [--no-browser]` to sign in.
+int SetupMain(int argc, char** argv);
 
 }  // namespace uagent
 #endif

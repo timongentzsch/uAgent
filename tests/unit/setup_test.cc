@@ -133,6 +133,32 @@ TEST_CASE(TestSetupFreeCatalogue) {
   missing = eligible;
   missing.erase("supported_parameters");
   CHECK(parse(missing)->empty());
+
+  // The free ones are listed by how much they write, then read, then age;
+  // any other catalogue keeps its order.
+  const auto named = [&](const char* id, int64_t writes, int64_t reads,
+                         int64_t created) {
+    json model = eligible;
+    model.update({{"id", id},
+                  {"context_length", reads},
+                  {"created", created},
+                  {"top_provider", {{"max_completion_tokens", writes}}}});
+    return model;
+  };
+  const json catalogue = {{"data",
+                           {named("small:free", 8192, 1048576, 9),
+                            named("old:free", 131072, 262144, 1),
+                            named("new:free", 131072, 262144, 2),
+                            named("wide:free", 131072, 1000000, 0),
+                            named("long:free", 921600, 1024000, 5)}}};
+  const auto ids = [&](bool free_only) {
+    const auto models = ParseModels(catalogue, free_only);
+    std::string out;
+    for (const ModelInfo& info : *models) out += info.id + " ";
+    return out;
+  };
+  CHECK(ids(true) == "long:free wide:free new:free old:free small:free ");
+  CHECK(ids(false).starts_with("small:free "));
 }
 
 // RFC 7636, appendix B.

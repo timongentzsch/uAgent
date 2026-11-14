@@ -4,7 +4,9 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -234,9 +236,30 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response,
   const json* data = JsonArray(response, "data");
   if (!data) return std::nullopt;
 
-  std::vector<ModelInfo> models;
+  std::vector<const json*> listed;
   for (const json& model : *data) {
-    if (!model.is_object() || (free_only && !FreeCodingModel(model))) continue;
+    if (model.is_object() && (!free_only || FreeCodingModel(model))) {
+      listed.push_back(&model);
+    }
+  }
+  // Nothing in a catalogue says how well a model codes. Of the free ones,
+  // the first is the one that writes the most in a reply, then reads the
+  // most, then is the newest.
+  if (free_only) {
+    auto rank = [](const json* model) {
+      const json* provider = JsonObject(*model, "top_provider");
+      return std::tuple(
+          provider ? JsonValue(*provider, "max_completion_tokens", int64_t{0})
+                   : int64_t{0},
+          CatalogContextLength(*model),
+          JsonValue(*model, "created", int64_t{0}));
+    };
+    std::ranges::stable_sort(listed, std::greater{}, rank);
+  }
+
+  std::vector<ModelInfo> models;
+  for (const json* entry : listed) {
+    const json& model = *entry;
     std::string id = JsonValue(model, "id", "");
     if (id.empty()) continue;
     ModelInfo info{std::move(id), {}, {}, CatalogContextLength(model)};

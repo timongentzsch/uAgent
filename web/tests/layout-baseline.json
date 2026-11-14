@@ -23,7 +23,6 @@
     "features/sidebar/sidebar.css .sidebar-head button",
     "features/sidebar/sidebar.css .sidebar-pages button",
     "features/sidebar/sidebar.css .sidebar-sections button",
-    "shared/activity.css .activity-button",
     "shared/decision.css .decision-answers > button",
     "shared/key-bar.css .key-bar > button"
   ],

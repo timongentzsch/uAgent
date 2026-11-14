@@ -3,7 +3,6 @@
 #include "include/app/self_description.h"
 
 #include <algorithm>
-#include <memory>
 #include <string>
 #include <utility>
 #include <variant>
@@ -14,9 +13,10 @@
 #include "include/agent/prompt.h"
 #include "include/api/client.h"
 #include "include/app/agent_tools.h"
-#include "include/app/artifact.h"
 #include "include/app/config_proposal.h"
+#include "include/app/present.h"
 #include "include/app/uagent_tool.h"
+#include "include/app/update.h"
 #include "include/cli/cli.h"
 #include "include/cli/options.h"
 #include "include/core/config_registry.h"
@@ -24,6 +24,7 @@
 #include "include/core/env.h"
 #include "include/core/sandbox.h"
 #include "include/core/strings.h"
+#include "include/mcp/register.h"
 #include "include/providers/providers.h"
 #include "include/tools/browser.h"
 #include "include/tools/registry.h"
@@ -44,7 +45,7 @@ constexpr TopicName kTopics[] = {
     {SelfTopic::kStatus, "status"},     {SelfTopic::kCli, "cli"},
     {SelfTopic::kCommands, "commands"}, {SelfTopic::kConfig, "config"},
     {SelfTopic::kPrompt, "prompt"},     {SelfTopic::kTools, "tools"},
-    {SelfTopic::kRoutes, "routes"},
+    {SelfTopic::kRoutes, "routes"},     {SelfTopic::kMcp, "mcp"},
 };
 
 json DescriptorJson(const ConfigDescriptor& descriptor) {
@@ -175,8 +176,6 @@ json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
         JsonValue(configured.sources, key.c_str(), "default");
     entry["source"] = source;
     entry["locked"] = source == "environment" || source == "cli";
-    // Where it is set, scope by scope: what a change here would override,
-    // and what overrides it.
     for (const auto& [scope, held] : configured.layers) {
       if (auto own = held.find(key);
           own != held.end() && !own->second.empty()) {
@@ -259,6 +258,11 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       out["memory"] = inputs.active.memory_enabled;
       out["web_search"] = inputs.active.web_search_backend;
       out["sandbox"] = SandboxDiagnosticJson();
+      // A newer release, as About last read it; only a person installs it.
+      if (const json update = UpdateState(false);
+          JsonValue(update, "available", false)) {
+        out["update"] = update["latest"];
+      }
       json diagnostics = inputs.config_manager.DiagnosticJson(inputs.active);
       out["restart_required"] = diagnostics["restart_required"];
       break;
@@ -276,9 +280,8 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       break;
     }
     case SelfTopic::kRoutes: {
-      // Which routes exist, never their credentials. A model that cannot read
-      // this guesses a selection, and a guess that resolves to the wrong
-      // endpoint fails as an authentication error rather than as a typo.
+      // Which routes exist, never their credentials. Without it a model
+      // guesses, and a wrong guess fails as an authentication error.
       ProviderCatalog catalog = LoadProviderCatalog();
       json models = json::array();
       for (const Route& route : catalog.models) {
@@ -312,9 +315,18 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
           "A named model route resolves by its own name; any other id is "
           "provider/model. Ids a provider serves are not enumerated here — "
           "only what this build is configured to reach; change providers with "
-          "uagent_configure.";
+          "uagent set.";
       break;
     }
+    case SelfTopic::kMcp:
+      // Not a server's command line or its log: either can carry a
+      // credential.
+      out["servers"] = json::array();
+      for (const json& server : McpStatus(inputs.mcp, inputs.tools)) {
+        out["servers"].push_back(
+            JsonPick(server, {"name", "scope", "file", "state", "tools"}));
+      }
+      break;
     case SelfTopic::kPrompt: {
       if (inputs.agent) return inputs.agent->PromptPreview();
       out.update(
@@ -347,10 +359,8 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
 }
 
 json PromptSurfaceJson() {
-  // Capability fragments are conditional on a registered tool, so each one is
-  // rendered against a probe registry naming just its trigger. Nothing here
-  // reads the environment or a live session: the emitted surface has to be a
-  // function of the source alone for the CI diff to mean anything.
+  // Each capability fragment renders against a probe registry naming just its
+  // trigger: the surface is a function of the source alone, for the CI diff.
   auto probe = [](const char* name) {
     return MakeTool(
         name, "", json::object(),
@@ -378,12 +388,8 @@ json PromptSurfaceJson() {
 }
 
 json ToolSurfaceJson() {
-  // Every schema the model can be charged for, not just the built-in ones.
-  // The conditionally registered tools are the largest schemas in the surface,
-  // so leaving them out left most of the token cost outside the drift gate.
-  // Each factory is constructed with empty dependencies: the emitted text is
-  // the template, and the route- and catalogue-dependent parts a live session
-  // splices in are reported by `/context` instead.
+  // Every schema the model can be charged for, conditional tools included.
+  // Factories get empty dependencies: the emitted text is the template.
   ActivitySupervisor supervisor;
   Api api;
   UsageAccumulator usage;
@@ -391,17 +397,13 @@ json ToolSurfaceJson() {
   std::vector<Tool> tools = BuiltinTools(supervisor, workspace);
   std::vector<std::pair<Tool, const char*>> conditional;
   conditional.emplace_back(
-      UagentTool([](SelfTopic, const std::string&) { return json::object(); }),
-      "uagent-config skill open");
-  conditional.emplace_back(
-      UagentConfigureTool(
-          [](ConfigProposalScope, const std::vector<ConfigChange>&) {
-            return ConfigProposal{};
-          },
-          std::make_shared<ConfigApprovals>()),
-      "uagent-config skill open, interactive approval");
-  conditional.emplace_back(UagentFileTool(),
-                           "uagent-config skill open, interactive approval");
+      UagentTool([](SelfTopic, const std::string&) { return json::object(); },
+                 [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+                   return ConfigProposal{};
+                 },
+                 [](const std::string&) {}),
+      "uagent-config skill open; set and write where a person can approve, "
+      "command in a conversation's own session");
   conditional.emplace_back(WebSearchTool(api, usage, {}), "search route");
   conditional.emplace_back(WebFetchTool(api), "always");
   std::vector<Tool> agent_tools;
@@ -410,7 +412,7 @@ json ToolSurfaceJson() {
     const char* when = tool.name == "agent_start" ? "agent depth" : "always";
     conditional.emplace_back(std::move(tool), when);
   }
-  conditional.emplace_back(ArtifactTool(""), "a session with a client");
+  conditional.emplace_back(PresentTool(""), "a session with a client");
   conditional.emplace_back(ScheduleTool([] { return std::string(); }),
                            "a session with a client");
   conditional.emplace_back(

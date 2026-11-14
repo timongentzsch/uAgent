@@ -1,5 +1,7 @@
+import itertools
 import json
 import pathlib
+import shutil
 import subprocess
 import sys
 import threading
@@ -245,9 +247,8 @@ def test_web_conversation_starts_in_a_space_by_name(root, home, *, binary):
 
 
 def test_web_space_is_renamed_and_deleted(root, home, *, binary):
-    """A space goes by the name it was given, in several words if it likes.
-    Renaming it changes that name and nothing else; deleting it removes its
-    conversations and its folder, and never a folder that is not a workspace."""
+    """Renaming a space changes its name and nothing else; deleting it removes
+    its conversations and its folder, never a folder that is no workspace."""
     with Server([event({"content": "ok"})]) as provider:
         with web_host(binary, root, home, provider.url) as (web, code, _, _env):
             web.pair(code)
@@ -352,8 +353,6 @@ def test_web_interrupt_stops_a_command_that_ignores_being_asked(root, home, *, b
 
 
 def test_stopped_session_starts_for_several_commands_and_says_why_it_cannot(root, home, *, binary):
-    import shutil
-
     project = root / "restart-project"
     project.mkdir()
     with Server([event({"content": "unused"})]) as provider:
@@ -465,3 +464,222 @@ def test_folder_overview_counts_spend_changes_and_git(root, home, *, binary):
             )
             assert_true(listed["todo"] == {"done": 1, "total": 2, "current": "Read them"}, listed)
             assert_true(isinstance(listed["cost"], (int, float)), listed)
+
+
+def test_web_update_is_checked_installed_and_restarts_the_host(root, home, *, binary):
+    # An install as its installer leaves it, and a folder standing in for
+    # GitHub: the newest release and its installer.
+    prefix = root / "prefix"
+    (prefix / "bin").mkdir(parents=True)
+    (prefix / "share/uagent").mkdir(parents=True)
+    installed = prefix / "bin/uagent"
+    shutil.copy2(binary, installed)
+    (prefix / "share/uagent/install").write_text("release\n")
+    releases = root / "releases"
+    releases.mkdir()
+    page = "https://github.com/timongentzsch/uAgent/releases/tag/v999.0.0"
+    (releases / "latest.json").write_text(
+        json.dumps({"tag_name": "v999.0.0", "body": "- faster", "html_url": page})
+    )
+    (releases / "install.sh").write_text(
+        "#!/bin/sh\n"
+        'echo "installing $UAGENT_VERSION"\n'
+        '[ "$UAGENT_NONINTERACTIVE$UAGENT_INSTALL" = 1here ] || exit 3\n'
+        '[ "$UAGENT_VERSION" != 999.0.0 ] || echo "$UAGENT_VERSION" >"$UAGENT_PREFIX/installed"\n'
+    )
+    stand_in = {"UAGENT_INTERNAL_RELEASES": str(releases)}
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(installed, root, home, provider.url, extra_env=stand_in) as (
+            client,
+            code,
+            process,
+            _,
+        ):
+            client.pair(code)
+            shown = client.command("update")["result"]
+            assert_true(
+                (shown["install"], shown["available"], shown["apply"]) == ("release", False, False),
+                shown,
+            )
+            checked = client.command("update", action="check")["result"]
+            assert_true(
+                (checked["latest"], checked["available"], checked["apply"], checked["blocked"])
+                == ("999.0.0", True, True, ""),
+                checked,
+            )
+            assert_true((checked["notes"], checked["url"]) == ("- faster", page), checked)
+            assert_true("install.sh | sh" in checked["command"], checked)
+
+            # Only the release GitHub named is installed.
+            client.command("update", action="apply", version="998.0.0")
+            wait_until(
+                lambda: not client.command("update")["result"]["installing"],
+                "the refusal did not arrive",
+            )
+            refused = client.command("update")["result"]
+            assert_true("cannot be updated" in refused["error"], refused)
+            assert_true(not (prefix / "installed").exists(), "installed another version")
+
+            discovery = home / ".uagent/web/discovery.json"
+            epoch = json.loads(discovery.read_text())["epoch"]
+            client.command("update", action="apply", version="999.0.0")
+
+            def restarted():
+                try:
+                    current = json.loads(discovery.read_text())["epoch"]
+                    return current != epoch and client.json("/api/sessions")[0] == 200
+                except (OSError, ValueError, ConnectionError):
+                    return False
+
+            wait_until(restarted, "the host did not restart after the update", timeout=20)
+            assert_true(process.poll() is None, "host exited instead of re-exec")
+            assert_true((prefix / "installed").read_text() == "999.0.0\n", "not installed")
+
+
+def test_web_unfiled_conversation_is_offered_where_it_belongs(root, home, *, binary):
+    """A first message in Scratch goes to the title's model with the earlier
+    conversations; what fits comes back as the suggestion, and `keep` answers
+    it with "here"."""
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        if "Title this coding session" not in text:
+            return event({"content": "Recorded answer"})
+        if "<conversations>" not in text:
+            return event({"content": "Fix the pairing test"})
+        assert_true("1. Fix the pairing test" in text, text)
+        return event({"content": "Pairing test again\nfits: 1 continues"})
+
+    with Server([route]) as provider:
+        env = {"UAGENT_TITLE_MODEL": ""}
+        with web_host(binary, root, home, provider.url, extra_env=env) as (web, code, _, _):
+            web.pair(code)
+            earlier = web.create(root)
+            web.command("submit", earlier, text="the pairing test fails one run in five")
+            web.until(earlier, lambda value: value["metadata"]["title"] == "Fix the pairing test")
+            filed = web.until(earlier, lambda value: value["metadata"]["status"] == "idle")
+            assert_true(not filed["metadata"].get("suggestion"), filed["metadata"])
+
+            unfiled = web.command("create", space="Scratch")["session"]
+            unfiled = web.command("activate", unfiled)["session"]
+            web.command("submit", unfiled, text="the pairing test is flaky again")
+            # The suggestion is told at the step that took it, the title with
+            # the turn's next checkpoint.
+            value = web.until(
+                unfiled,
+                lambda value: (
+                    value["metadata"].get("suggestion")
+                    and value["metadata"]["title"] == "Pairing test again"
+                ),
+            )
+            assert_true(
+                value["metadata"]["suggestion"]["options"]
+                == [{"cwd": filed["metadata"]["cwd"], "session": earlier["id"]}],
+                value["metadata"]["suggestion"],
+            )
+            web.until(unfiled, lambda value: value["metadata"]["status"] == "idle")
+            web.command("keep", unfiled)
+            web.until(unfiled, lambda value: value["metadata"]["suggestion"] == {"dismissed": True})
+            # A suggested new workspace is created by the move that names it,
+            # and what moved carries no suggestion with it.
+            moved = web.command("move", unfiled, space="Lisbon trip")["result"]
+            assert_true("/spaces/" in moved["cwd"] and moved["id"] != unfiled["id"], moved)
+            assert_true(not moved.get("suggestion"), moved)
+
+
+def test_web_suggestion_arrives_while_the_first_turn_works(root, home, *, binary):
+    """The title's reply is taken between steps, and the place it names
+    reaches clients then, not when the turn ends: the turn here keeps taking
+    steps until the suggestion has been seen."""
+    seen = threading.Event()
+    looks = itertools.count()
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        if "Title this coding session" in text:
+            listed = "<conversations>" in text
+            return event({"content": "Named" + ("\nfits: 1" if listed else "")})
+        if "Decide where a conversation belongs" in text:
+            return event({"content": "none"})
+        if "second question" not in text:
+            return event({"content": "Recorded answer"})
+        look = next(looks)
+        if seen.is_set() or look >= 200:
+            return event({"content": "Looked"})
+        time.sleep(0.05)
+        # A different path each time: the same call over and over ends a turn.
+        return tool_call("read_path", {"path": "/".join(["."] * (look % 5 + 1))})
+
+    with Server([route]) as provider:
+        env = {"UAGENT_TITLE_MODEL": ""}
+        with web_host(binary, root, home, provider.url, extra_env=env) as (web, code, _, _):
+            web.pair(code)
+            earlier = web.create(root)
+            web.command("submit", earlier, text="first question")
+            web.until(earlier, lambda value: value["metadata"]["title"] == "Named")
+            filed = web.until(earlier, lambda value: value["metadata"]["status"] == "idle")
+            unfiled = web.command("create", space="Scratch")["session"]
+            unfiled = web.command("activate", unfiled)["session"]
+            web.command("submit", unfiled, text="second question")
+            try:
+                value = web.until(unfiled, lambda value: value["metadata"].get("suggestion"))
+                # The file was last saved before the reply came: reading the
+                # list again must not put what it says over what is known.
+                web.json("/api/sessions?refresh=1")
+                reread = web.snapshot(unfiled)["metadata"]
+            finally:
+                seen.set()
+            assert_true(value["metadata"]["turn_active"], value["metadata"])
+            assert_true(
+                reread["turn_active"] and reread["suggestion"] == value["metadata"]["suggestion"],
+                reread,
+            )
+            assert_true(
+                value["metadata"]["suggestion"]["options"] == [{"cwd": filed["metadata"]["cwd"]}],
+                value["metadata"]["suggestion"],
+            )
+            web.until(unfiled, lambda value: value["metadata"]["status"] == "idle")
+
+
+def test_web_suggestion_shows_while_a_call_waits_for_approval(root, home, *, binary):
+    """A turn that stops to ask for approval may stay stopped for long. The
+    place its first message fits is told by then, not after the answer."""
+    titled = threading.Event()
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        if "Title this coding session" in text:
+            listed = "<conversations>" in text
+            titled.set()
+            return event({"content": "Named" + ("\nfits: 1" if listed else "")})
+        if "Decide where a conversation belongs" in text:
+            return event({"content": "none"})
+        if "second question" not in text:
+            return event({"content": "Recorded answer"})
+        if '"role": "tool"' in text:
+            return event({"content": "Ran it"})
+        # The title's reply has gone out; the agent needs a moment to hold it
+        # before this reply's call asks for approval.
+        titled.wait(budget(10))
+        time.sleep(budget(0.5))
+        return tool_call("run", {"command": "true"})
+
+    with Server([route]) as provider:
+        env = {"UAGENT_TITLE_MODEL": ""}
+        with web_host(binary, root, home, provider.url, extra_env=env) as (web, code, _, _):
+            web.pair(code)
+            earlier = web.create(root)
+            web.command("submit", earlier, text="first question")
+            filed = web.until(earlier, lambda value: value["metadata"]["status"] == "idle")
+            titled.clear()
+            unfiled = web.command("create", space="Scratch")["session"]
+            unfiled = web.command("activate", unfiled)["session"]
+            web.command("submit", unfiled, text="second question")
+            waiting = web.until(unfiled, lambda value: bool(value.get("pending")))
+            assert_true(
+                (waiting["metadata"].get("suggestion") or {}).get("options")
+                == [{"cwd": filed["metadata"]["cwd"]}],
+                waiting["metadata"],
+            )
+            web.command("reply", unfiled, interaction_id=waiting["pending"]["id"], text="y")
+            web.until(unfiled, lambda value: value["metadata"]["status"] == "idle")

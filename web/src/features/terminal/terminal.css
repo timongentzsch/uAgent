@@ -7,8 +7,6 @@
   min-height: 0;
   background: var(--bg);
 }
-/* A folder's terminal takes the conversation's place; the page's own takes
-   the phone's sheet. */
 .conversation > .terminal-panel,
 .terminal-sheet > .terminal-panel {
   flex: 1;
@@ -29,7 +27,6 @@
   padding-inline: var(--inset-x);
   border-bottom: var(--border);
 }
-/* The bar's tabs, one per shell, scrolling sideways. */
 .terminal-tabs {
   display: flex;
   flex: 1;
@@ -57,9 +54,8 @@
 .terminal-tabpanel[hidden] {
   display: none;
 }
-/* The app's monospace face at the size of small text, which xterm.js reads
-   from here. The padding is on the screen, which the fit subtracts; on the
-   view it would be counted as room and the screen would overflow. */
+/* xterm.js reads the font size from here. The padding is on .xterm, which the
+   fit subtracts; on the view it would count as room and overflow. */
 .terminal-view {
   flex: 1;
   min-height: 0;

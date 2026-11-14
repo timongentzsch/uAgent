@@ -38,9 +38,7 @@ ToolResult ToolAtomicWrite(const std::string& path, const std::string& content,
                      path);
 }
 
-// Atomic write: temp file in the same directory, then rename — a disk-full or
-// crash mid-write can never leave the target truncated. Keeps an existing
-// file's permissions.
+// Keeps an existing file's permissions.
 ToolResult ToolWriteFileMode(const std::string& path,
                              const std::string& content, mode_t create_mode) {
   if (auto invalid = ValidatePathTarget(path, PathTarget::kWritableFile)) {

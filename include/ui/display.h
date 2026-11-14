@@ -2,7 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_UI_DISPLAY_H_
 #define UAGENT_INCLUDE_UI_DISPLAY_H_
-// Terminal rendering for the REPL: model/route listings and the status line.
+// The terminal's status rows and the summaries they are made of.
 
 #include <algorithm>
 #include <chrono>
@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/detail.h"
 #include "include/core/env.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
@@ -21,8 +22,8 @@
 
 namespace uagent {
 
-// The status row's totals: the whole prompt in, everything generated out.
-// Cache is separate so a narrow terminal can drop it on its own.
+// The whole prompt in, everything generated out; cache is separate so a
+// narrow terminal can drop it on its own.
 inline std::string TokenSummary(const Usage& usage) {
   return FmtCount(usage.PromptTokens()) + " in · " +
          FmtCount(usage.GeneratedTokens()) + " out";
@@ -61,26 +62,24 @@ inline std::string ContextSummary(int64_t used, int64_t window = 0) {
   return context;
 }
 
-// Compact session metadata for the persistent composer. Keep the stable
-// identity first; transient work state gets its own line while a turn runs.
+// The idle status row's content; a running turn has TurnStatusView.
 struct StatusView {
   // What the session is doing between turns: Ready, Interrupted, Connecting.
   std::string turn_status{};
   int64_t context_used = 0;
   int64_t context_window = 0;
-  // The active route in schema form, [provider/]model[:variant][:effort], so
-  // the row shows a selection the user could paste back into --model.
+  // The active route as a selection the user could paste back into --model.
   std::string model{};
   // The effective approval mode, as ApprovalModeName spells it.
   std::string approval = "ask";
-  // The detail level, named in the row when it is not the default.
-  std::string detail = "default";
+  // The detail level, named in the row when it is not the one a new install
+  // starts at.
+  std::string detail{kDetailLevels[0]};
   size_t background = 0;
 };
 
-// One ordered list of segments, rendered in place and dropped by priority when
-// the terminal is too narrow. A second hand-maintained "cramped" spelling of
-// the same row is how the two copies used to drift.
+// One ordered list of segments, dropped by priority when the terminal is
+// too narrow.
 inline std::string StatusBar(const Usage& usage, const StatusView& view) {
   struct Segment {
     int priority;  // higher is dropped first
@@ -91,8 +90,6 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
     if (!text.empty()) segments.push_back({priority, text});
   };
 
-  // Where requests go, what they may do unasked, how much room is left and
-  // what it has cost lead the row and are the last to go.
   add(0, view.turn_status);
   add(0, view.model);
   add(1, view.approval == "yolo"   ? "YOLO"
@@ -109,7 +106,7 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
     add(4, TokenSummary(usage));
   }
   add(5, CacheSummary(usage));
-  if (view.detail != "default") add(6, view.detail);
+  if (view.detail != kDetailLevels[0]) add(6, view.detail);
   add(7, "/help for shortcuts");
 
   auto join = [&segments] {
@@ -122,8 +119,7 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
   };
   std::string line = join();
   if (!g_tty) return line;
-  // Drop the least valuable segment until the row fits, the rightmost of a
-  // tie first; StatusBarLine still performs the final UTF-8-safe clipping.
+  // The least valuable segment goes first, the rightmost of a tie.
   while (DisplayWidth(line) > TerminalWidth(1) && segments.size() > 1) {
     auto victim = std::max_element(segments.rbegin(), segments.rend(),
                                    [](const Segment& a, const Segment& b) {
@@ -136,27 +132,22 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
   return line;
 }
 
-// Transient work state for the pinned row while a turn runs. StatusBar owns
-// the idle row; this one animates, so it is handed the frame clock instead of
-// reading it — which is also what lets a test drive a frame without a turn.
+// Work state for the pinned row while a turn runs. It is handed the frame
+// clock instead of reading it, so a test can drive a frame.
 struct TurnStatusView {
   std::chrono::steady_clock::duration elapsed{};
   int64_t context_used = 0;
   int64_t context_window = 0;
-  // The active route in schema form, the same string StatusView::model
-  // spells, so both rows name the route identically.
+  // The active route, spelled as StatusView::model.
   std::string model{};
   size_t background = 0;
   size_t foreground = 0;
   size_t queued = 0;
   bool interrupting = false;
-  // The detail level, named when it is not the default, as on the idle row.
-  std::string detail = "default";
 };
 
-// The working row: spinner frame, status label, and the same "drop what does
-// not fit" discipline as StatusBar, except here the label is what gets cut
-// because the counters on the right are the part that changes.
+// The working row. When it does not fit, the label is cut: the counters on
+// the right are the part that changes.
 inline std::string TurnStatusBar(const TurnStatusView& view) {
   std::string seconds =
       FmtDuration(std::chrono::duration<double>(view.elapsed).count());
@@ -171,13 +162,11 @@ inline std::string TurnStatusBar(const TurnStatusView& view) {
     return count ? label + FmtCount(static_cast<int64_t>(count)) : "";
   };
   std::string suffix =
-      " · " +
-      JoinDot({view.model, seconds,
-               ContextSummary(view.context_used, view.context_window),
-               counted("act:", view.background), counted("steer:", view.queued),
-               view.detail == "default" ? "" : view.detail});
-  // The keys that act on a running turn: the lowest priority, so the hint is
-  // the first thing a narrow terminal gives up.
+      " · " + JoinDot({view.model, seconds,
+                       ContextSummary(view.context_used, view.context_window),
+                       counted("act:", view.background),
+                       counted("steer:", view.queued)});
+  // The hint is the first thing a narrow terminal gives up.
   std::string hint = " · Esc stop · Ctrl+B background";
   if (view.foreground > 1) {
     hint += " " + FmtCount(static_cast<int64_t>(view.foreground)) + " commands";
@@ -194,8 +183,8 @@ inline std::string TurnStatusBar(const TurnStatusView& view) {
   return prefix + StatusLabel(state, status_width) + suffix;
 }
 
-// The pinned status row: dim, clipped to the terminal, and cleared to the
-// right so a shorter line never leaves stale text behind.
+// Dim, clipped to the terminal, and cleared to the right so a shorter line
+// leaves no stale text behind.
 inline std::string StatusBarLine(const std::string& status) {
   std::string text =
       DisplayTrunc(AsciiGlyphs(TerminalSafe(status)), TerminalWidth(1));

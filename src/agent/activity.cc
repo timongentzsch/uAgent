@@ -49,8 +49,7 @@ namespace uagent {
 namespace {
 
 // A wait bounded by the caller's request and by the turn deadline. The note
-// says which one ended it: "timed out" alone reads as though the requested
-// wait elapsed and invites giving up on an activity that is running normally.
+// says which one ended it, so a capped wait does not read as a full one.
 struct WaitWindow {
   // Declared first: the constructor measures the deadline from it.
   std::chrono::steady_clock::time_point started =
@@ -79,10 +78,6 @@ struct WaitWindow {
   }
 };
 
-// How long a child agent told to stop is given before it is killed. It has
-// already stopped what it started; the time is for closing its MCP servers,
-// saving its session and reporting what it spent.
-
 inline constexpr std::string_view kNoNewActivityOutput = "(no new output)";
 
 }  // namespace
@@ -97,8 +92,7 @@ void KillProcess(pid_t pid) {
   }
 }
 
-// A caller-requested budget never exceeds the global tool-result cap; 0 means
-// "whatever the global cap allows".
+// 0 means whatever the global cap allows.
 int64_t ActivityOutputCap(int64_t requested) {
   return requested > 0 ? std::min(requested, ToolResultCap()) : ToolResultCap();
 }
@@ -176,15 +170,9 @@ ToolArtifact PromoteLogArtifact(const std::string& path, uint64_t bytes) {
 }
 }  // namespace
 
-// Completed small logs are disposable. Oversized logs become bounded,
-// private artifacts so the model can inspect only the relevant slice instead
-// of paying to keep the entire stream in context. Non-detached process logs
-// are single files; rotating detached logs have their own persistent lifecycle.
-//
-// A failed process's log is never disposable, whatever its size. "Small"
-// stands in for "already fully reported", which holds only when the caller
-// keeps the whole thing: a failure is summarised on its way back, so deleting
-// the log destroys the detail the caller needs precisely when it needs it.
+// Small completed logs are disposable; oversized ones become private
+// artifacts. A failed process's log is never disposable: the failure is
+// summarised on its way back, and the log holds the detail.
 std::optional<ToolArtifact> KeepCompletedLog(const std::string& path,
                                              int64_t cap, bool failed) {
   uint64_t bytes = LogFileBytes(path);
@@ -276,16 +264,14 @@ std::filesystem::file_time_type DetachedRecordCutoff() {
          std::chrono::hours(24 * LogKeepDays());
 }
 
-// Reads one terminal record, annotating liveness. A PID is not an identity:
-// after reuse it may name an unrelated process group. Only a matching kernel
-// start identity makes a persisted record live. Corrupt records and expired
-// dead ones are removed with their logs and reported as absent.
+// A PID is not an identity: after reuse it may name an unrelated process
+// group, so only a matching kernel start identity makes a record live.
+// Corrupt records and expired dead ones are removed with their logs.
 std::optional<json> LoadDetachedRecord(const std::filesystem::path& path,
                                        std::filesystem::file_time_type cutoff) {
   namespace fs = std::filesystem;
-  // A record holds one command, which a tool argument bounds well below this.
-  // Only a record that reads but does not parse is corrupt; one that cannot be
-  // read now (a race, no descriptors) may still name a live command.
+  // Only a record that reads but does not parse is corrupt; one that cannot
+  // be read now (a race, no descriptors) may still name a live command.
   std::string bytes, error;
   if (!ReadRegularFile(path.string(), MiB(1), bytes, error)) {
     return std::nullopt;
@@ -352,8 +338,8 @@ std::optional<DetachedActivity> FindRunningDetachedActivity(
 }
 
 namespace {
-// Records are named after their pid, so one lookup beats scanning, parsing and
-// sorting every record — this runs inside wait loops.
+// Records are named after their pid, so one lookup replaces a scan: this
+// runs inside wait loops.
 std::optional<json> FindDetachedRecord(int64_t pid) {
   if (pid <= 0 || pid > std::numeric_limits<pid_t>::max()) return std::nullopt;
   return LoadDetachedRecord(DetachedRecordPath(static_cast<pid_t>(pid)),
@@ -506,9 +492,8 @@ std::string DrainActivityOutput(const Activity& job, int64_t cap) {
 
 namespace {
 
-// fresh reports whether the returned text is captured output rather than a
-// status sentinel, so callers never have to compare against those strings.
-// `note`, when given, receives why a wait ended early, for the model.
+// `fresh` reports captured output rather than a status sentinel; `note`
+// receives why a wait ended early, for the model.
 std::string CollectSessionOutput(const ActivitySupervisor& supervisor,
                                  const Activity& job, int64_t wait_ms,
                                  std::string_view until,
@@ -551,8 +536,7 @@ std::string CollectSessionOutput(const ActivitySupervisor& supervisor,
             std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
       }
     }
-    // Materialising the buffer is not free, so every exit test below shares one
-    // snapshot per iteration.
+    // One snapshot per iteration serves every exit test below.
     std::string snapshot = collected.Snapshot();
     matched = matched ||
               (!until.empty() && snapshot.find(until) != std::string::npos);
@@ -606,9 +590,8 @@ ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor,
     if (job->session) {
       interaction = std::unique_lock<std::mutex>(job->session->interaction);
     }
-    // Whether it is still running is the first thing the reader needs, so it
-    // rides in the header: an exit code means finished, its absence means the
-    // id is still worth writing to.
+    // Whether it is still running rides in the header: an exit code means
+    // finished, its absence that the id is still worth writing to.
     std::string state;
     bool terminal = false;
     if (job->session) {
@@ -662,10 +645,8 @@ ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor, int64_t id,
   TerminalStatusLabel waiting("wait · activity " + std::to_string(id));
   std::optional<Activity> job = supervisor.Find(id);
   if (!job || !job->session) {
-    // Persistent detached activities intentionally remain rotating-log based.
-    // The activity or record is resolved once here: re-deriving it per
-    // iteration would re-parse every terminal record for the length of the
-    // wait.
+    // Detached activities stay rotating-log based. The record is resolved
+    // once: per iteration it would re-parse every terminal record.
     std::string watch_path;
     std::string record_cwd;
     if (job) {
@@ -713,9 +694,8 @@ ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor, int64_t id,
         if (steering_yield) {
           note = "[wait yielded for queued steering; process still running]";
         } else if (expired && !found) {
-          // Returning the log alone reads as "here is the state you asked
-          // for", when in fact the marker never appeared and the wait may have
-          // been cut short by the turn deadline rather than by wait_ms.
+          // The log alone would read as the state asked for, when the marker
+          // never appeared or the turn deadline cut the wait short.
           note = "[" +
                  window.Note(until.empty() ? "waited"
                                            : "marker \"" + std::string(until) +
@@ -971,12 +951,8 @@ std::string ActivityCount(size_t count) {
 
 }  // namespace
 
-// Drain finished activities exactly once after the process-I/O owner has
-// recorded status and drained trailing output.
 namespace {
 
-// An activity is identified by its kind and id, and by what it was asked to
-// run.
 std::string ActivityName(ActivityKind kind, int64_t id,
                          const std::string& command) {
   return ActivityKindName(kind) + " " + std::to_string(id) + " `" +
@@ -1000,10 +976,9 @@ int64_t AutomaticResultCap() {
                  : kActivityResultChars;
 }
 
-// A detached leader's exit status, from the poll that reaps it until its
-// result is taken: no later poll finds a child to ask. Reaping and keeping
-// are one step, so two waits at once agree on it. Process-wide, like the
-// pids it is kept by.
+// A detached leader's exit status, kept from the poll that reaps it until
+// its result is taken: no later poll finds a child to ask. Reaping and
+// keeping are one step, so two waits at once agree on it.
 struct LeaderExits {
   std::mutex mutex;
   std::map<pid_t, int> statuses UAGENT_GUARDED_BY(mutex);
@@ -1035,9 +1010,8 @@ std::vector<ActivityCompletion> TakeCompleted(ActivitySupervisor& supervisor,
   std::vector<Activity> jobs = supervisor.Snapshot();
   std::vector<ActivityCompletion> completions;
   for (Activity& candidate : jobs) {
-    // Filter before locking: both tests read fields that are immutable once the
-    // id is assigned, and `interaction` is held for a whole tool interaction,
-    // so taking it first blocks this wait on an unrelated activity.
+    // Filtered before locking: `interaction` is held for a whole tool
+    // interaction, so taking it first would block on an unrelated activity.
     if (ids && std::find(ids->begin(), ids->end(), ActivityId(candidate)) ==
                    ids->end()) {
       continue;
@@ -1098,8 +1072,7 @@ std::vector<ActivityCompletion> TakeCompleted(ActivitySupervisor& supervisor,
     AddHint(notes, SandboxRestoreNote(job.watch.get(), CanonicalCwd()));
     completions.push_back({ActivityId(job), job.kind, status, job.cmd,
                            std::move(output), std::move(notes.hint),
-                           job.display_label, job.receipt_path, job.source_id,
-                           job.started_ms});
+                           job.display_label, job.started_ms});
   }
   return completions;
 }
@@ -1175,18 +1148,11 @@ ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
                             std::string_view mode, int64_t wait_ms,
                             const ToolContext& context,
                             int64_t max_output_chars) {
-  // Waiting consumes the completion it observes. Memory extraction is drained
-  // by the harness into the memory audit instead, so a wait that scooped one
-  // up would silently lose that record. A detached activity is waited for
-  // when it is named: it may be a server that never ends, so a wait for
-  // everything leaves it out.
-  auto waitable = [](const Activity& job) {
-    return job.kind != ActivityKind::kMemory;
-  };
+  // A detached activity may never end, so it is waited for only when named.
   std::vector<int64_t> ids;
   if (requested.empty()) {
     for (const Activity& job : supervisor.Snapshot()) {
-      if (waitable(job) && !job.Detached()) ids.push_back(ActivityId(job));
+      if (!job.Detached()) ids.push_back(ActivityId(job));
     }
   } else {
     for (int64_t requested_id : requested) {
@@ -1196,11 +1162,6 @@ ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
         return ToolFailure(ToolErrorCode::kNotFound,
                            "activity " + std::to_string(requested_id) +
                                " is not running in this session");
-      }
-      if (!waitable(*job)) {
-        return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "activity " + std::to_string(requested_id) +
-                               " is harness maintenance and is not waitable");
       }
       if (std::find(ids.begin(), ids.end(), requested_id) == ids.end()) {
         ids.push_back(requested_id);
@@ -1215,11 +1176,7 @@ ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
 
   int64_t cap = ActivityOutputCap(max_output_chars);
 
-  // The caller's wait_ms is only half the story: a tool call may not outlive
-  // context.deadline, which for this tool is the turn's rather than the
-  // per-call budget. Both ends are reported below, because "timed out" alone
-  // reads as though the requested wait elapsed and invites the caller to give
-  // up on an activity that is running normally.
+  // context.deadline is the turn's for this tool, not the per-call budget.
   const WaitWindow window(wait_ms, context.deadline);
   std::vector<ActivityCompletion> taken;
   for (;;) {

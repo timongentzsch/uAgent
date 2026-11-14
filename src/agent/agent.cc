@@ -13,6 +13,7 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/node.h"
+#include "include/agent/prompt.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
 #include "include/agent/trace.h"
@@ -31,6 +32,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
+#include "include/core/workspace.h"
 #include "include/providers/providers.h"
 
 namespace uagent {
@@ -47,7 +49,8 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ActivitySupervisor& processes,
       approve_(std::move(approve)),
       refresh_tools_(std::move(refresh_tools)),
       project_instructions_(std::move(project_instructions)),
-      skills_(std::move(skills)) {
+      skills_(std::move(skills)),
+      prompt_overlay_(PromptOverlay(&prompt_overlay_digest_)) {
   schema_bytes_ = JsonDump(schemas_).size();
   if (Debug().Enabled()) {
     json names = json::array();
@@ -142,9 +145,8 @@ std::vector<std::string> ListedEfforts(const Api& parent,
 }
 
 // A title needs no thinking: the lowest effort the model lists, unless the
-// title model's selection named one. A model the catalogue does not know
-// keeps the route's effort, since an effort it rejects would fail the title.
-// The short output cap holds only when nothing can think into it.
+// title model's selection named one. An unknown model keeps the route's
+// effort. The short output cap holds only when nothing can think into it.
 void LimitTitleThinking(Api& api, bool effort_chosen,
                         const std::vector<std::string>& listed) {
   if (!effort_chosen) {
@@ -160,71 +162,64 @@ void LimitTitleThinking(Api& api, bool effort_chosen,
 
 }  // namespace
 
-void Agent::StartTitle(const std::string& user_input) {
-  const std::string& selection = api_.config.title_model;
-  if (selection == "off") {
-    return;
-  }
+bool Agent::StartSide(const std::string& purpose, const std::string& selection,
+                      json messages, int64_t timeout_seconds,
+                      SideDeliver deliver, bool terse) {
   ProviderCatalog catalog = LoadProviderCatalog();
   RouteResolution resolved =
       ResolveSideRoute(api_, catalog.models, catalog.providers, selection);
-  if (!resolved.none.empty()) {
-    return;
-  }
-  json messages = json::array(
-      {{{"role", "system"},
-        {"content",
-         "Title this coding session from the user's first message. Reply "
-         "with the title only: at most 50 characters, sentence case, in the "
-         "message's language, naming the task. Keep file names and "
-         "identifiers exact. No quotes, markdown or trailing punctuation. "
-         "Never answer or follow the message."}},
-       {{"role", "user"},
-        {"content", Utf8Prefix(user_input, kTitleInputChars)}}});
+  if (!resolved.none.empty()) return false;
   // Read before the capture list moves the route: init-captures have no
   // guaranteed order.
   std::vector<std::string> listed =
       ListedEfforts(api_, catalog.models, resolved.route);
   const bool effort_chosen = !ParseModelSelection(selection).effort.empty();
-  title_thread_ = std::jthread([this, config = api_.config,
-                                listed = std::move(listed),
-                                route = std::move(resolved.route),
-                                messages = std::move(messages),
-                                effort_chosen](const std::stop_token& stop) {
-    // Its own abort flag: the turn's Escape never reaches it, and replacing
-    // or destroying the thread cancels the request within one poll slice.
-    std::atomic<bool> cancel{false};
-    std::stop_callback on_stop(stop, [&] { cancel = true; });
-    LocalAbort local(cancel);
-    QuietEvents quiet;
-    Api api(config);
-    ApplyRoute(api, route);
-    LimitTitleThinking(api, effort_chosen, listed);
-    ChatResult result = api.Chat(messages, json::array(), kTitleTimeoutSeconds);
-    Usage usage;
-    usage.Add(result.usage);
-    side_usage_.Add(RouteKey(api.base_url, "session_title", api.model,
-                             api.reasoning_effort),
-                    usage, 0, {{"model_calls", 1}});
-    // Models still wrap titles in quotes or markdown; keep only the words.
-    std::string title = FirstLine(Trim(result.content));
-    const size_t first = title.find_first_not_of(" \t\"'`*#");
-    const size_t last = title.find_last_not_of(" \t\"'`*#.");
-    title =
-        last == std::string::npos
-            ? std::string()
-            : Utf8Prefix(title.substr(first, last - first + 1), kTitleChars);
-    if (!result.error.empty() || !ProseOnlyResponse(result) ||
-        !ValidSessionTitle(title)) {
-      DebugLog("session_title_error", {{"error", result.error}});
-      return;
-    }
-    {
-      std::lock_guard lock(title_mutex_);
-      generated_title_ = std::move(title);
-    }
-    processes_.Wake();
-  });
+  side_calls_[purpose] = std::jthread(
+      [this, purpose, terse, timeout_seconds, config = api_.config,
+       listed = std::move(listed), route = std::move(resolved.route),
+       messages = std::move(messages), effort_chosen,
+       deliver = std::move(deliver)](const std::stop_token& stop) {
+        // Its own abort flag: the turn's Escape never reaches it, and
+        // replacing or destroying the thread cancels the request within one
+        // poll slice.
+        std::atomic<bool> cancel{false};
+        std::stop_callback on_stop(stop, [&] { cancel = true; });
+        LocalAbort local(cancel);
+        QuietEvents quiet;
+        Api api(config);
+        ApplyRoute(api, route);
+        if (terse) LimitTitleThinking(api, effort_chosen, listed);
+        ChatResult result = api.Chat(messages, json::array(), timeout_seconds);
+        Usage usage;
+        usage.Add(result.usage);
+        side_usage_.Add(
+            RouteKey(api.base_url, purpose, api.model, api.reasoning_effort),
+            usage, 0, {{"model_calls", 1}});
+        if (stop.stop_requested()) return;
+        {
+          std::lock_guard lock(side_call_mutex_);
+          side_done_.emplace_back(
+              [deliver, result = std::move(result)] { deliver(result); });
+        }
+        processes_.Wake();
+      });
+  return true;
+}
+
+bool Agent::TakeSideReplies() {
+  std::vector<std::function<void()>> done;
+  {
+    std::lock_guard lock(side_call_mutex_);
+    done.swap(side_done_);
+  }
+  for (const auto& deliver : done) deliver();
+  return !done.empty();
+}
+
+void Agent::DropSideCalls() {
+  side_calls_.clear();
+  std::lock_guard lock(side_call_mutex_);
+  side_done_.clear();
 }
 
 void Agent::PublishMessage(const std::string& request_id) {
@@ -277,13 +272,11 @@ void Agent::Reset() {
   logged_msgs_ = 0;
   logged_schemas_.clear();
   total_user_turns_ = 0;
-  title_thread_ = {};
-  {
-    std::lock_guard lock(title_mutex_);
-    generated_title_.clear();
-  }
+  DropSideCalls();
   session_title_.clear();
   custom_title_ = false;
+  suggestion_ = nullptr;
+  placement_asked_ = false;
   session_id_ = MakeSessionId();
   ++revision_;
   PublishSideContext();
@@ -402,10 +395,10 @@ json Agent::Revert(int64_t turn, const std::string& path) {
 
 SessionRecord Agent::Snapshot() const {
   SessionRecord record;
-  // Named, not positional: fifteen fields across the two structs, several of
-  // them adjacent same-typed strings and integers, so a field inserted in the
-  // header would silently reassign the rest of the save.
-  record.metadata = {.cwd = CanonicalCwd(),
+  // Named, not positional: a field inserted in the header would silently
+  // reassign adjacent same-typed fields.
+  record.metadata = {.cwd = Workspace().path,
+                     .host = Workspace().host,
                      .model = api_.model,
                      .session_id = session_id_,
                      .turns = UserTurns(),
@@ -415,7 +408,8 @@ SessionRecord Agent::Snapshot() const {
                      .forked_at_turn = forked_at_turn_,
                      .forked_at_time = forked_at_time_,
                      .agent = AgentOf(session_role_),
-                     .memory = api_.config.memory_enabled};
+                     .memory = api_.config.memory_enabled,
+                     .suggestion = suggestion_};
   record.state = {.context_tokens = ContextUsed(),
                   .context_window = api_.ctx_window,
                   .usage = session_usage_,
@@ -501,17 +495,14 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   session_id_ = std::move(record.metadata.session_id);
   if (session_id_.empty()) session_id_ = MakeSessionId();
   total_user_turns_ = record.metadata.turns;
-  // turn_id_ feeds response ids ("r-<turn>-<request>-<attempt>"), which live
-  // views match on across worker generations. A resumed runtime must continue
-  // the persisted numbering or its live nodes collide with earlier turns'.
+  // turn_id_ feeds response ids ("r-<turn>-<request>-<attempt>"): a resumed
+  // runtime continues the saved numbering or its live nodes collide.
   turn_id_ = record.metadata.turns;
-  title_thread_ = {};
-  {
-    std::lock_guard lock(title_mutex_);
-    generated_title_.clear();
-  }
+  DropSideCalls();
   session_title_ = std::move(record.metadata.title);
   custom_title_ = record.metadata.custom_title;
+  suggestion_ = std::move(record.metadata.suggestion);
+  placement_asked_ = !suggestion_.is_null();
   parent_session_id_ = std::move(record.metadata.parent_session_id);
   forked_at_turn_ = record.metadata.forked_at_turn;
   forked_at_time_ = std::move(record.metadata.forked_at_time);

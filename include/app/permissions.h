@@ -31,10 +31,8 @@ struct PermissionRule {
 // (else its absolute path), a URL's host, or the call's arguments.
 std::string RuleSubject(const Tool& tool, const json& arguments,
                         const std::string& root);
-// The broadest rule a person is offered for this call: a command and its
-// subcommand, the file's folder, the host, an MCP tool, or the call itself.
-// A command's prefix is offered, and covers, only where it runs `confined` in
-// the enforced sandbox, which holds whatever the prefix lets through.
+// The broadest rule a person is offered for this call. A command's prefix is
+// offered, and covers, only where it runs `confined` in the enforced sandbox.
 PermissionRule SuggestRule(const Tool& tool, const json& arguments,
                            const std::string& root, bool confined);
 bool RuleCovers(const PermissionRule& rule, const Tool& tool,
@@ -45,9 +43,7 @@ std::string RuleLabel(const PermissionRule& rule);
 // Whether the call names a path outside the folder `root`.
 bool PathOutsideFolder(const json& arguments, const std::string& root);
 
-// What approving this call risks, for the headline of its approval: runs,
-// writes, network, outside (the folder `root`). [{id, label}], most serious
-// first; empty for a call that only reads.
+// [{id, label}] of runs, writes, network, outside; most serious first.
 json ApprovalRisks(const Tool& tool, const json& arguments,
                    const std::string& root);
 
@@ -61,9 +57,8 @@ json PermissionRulesControl(const json& request);
 
 enum class AutoPermissionDecision { kAllow, kAsk, kDeny };
 
-// The probabilities that decide a review: allow needs P(allow) of at least
-// `allow` and every reason question below `veto`; deny needs P(deny) of at
-// least `deny`; anything else asks.
+// Allow needs P(allow) >= `allow` and every reason question below `veto`;
+// deny needs P(deny) >= `deny`; anything else asks.
 struct ReviewBars {
   double allow, deny, veto;
 };
@@ -71,8 +66,7 @@ struct ReviewBars {
 struct AutoPermissionReview {
   AutoPermissionDecision decision = AutoPermissionDecision::kAsk;
   json probabilities = json::object();
-  // The likely reasons for caution, [{id, label}] (the label carries the
-  // probability), and in words which bar decided.
+  // [{id, label}], each label with its probability; `note` names the bar.
   json reasons = json::array();
   std::string note;
   std::string error;
@@ -81,8 +75,7 @@ struct AutoPermissionReview {
 // The questions every review asks, as tests/reviewer_eval/questions.json.
 const json& ReviewQuestions();
 
-// The bars for `model` at `endpoint`: its row of `decision_bars`, else the
-// strict ones.
+// The `decision_bars` row for `model` at `endpoint`, else the strict bars.
 ReviewBars ReviewBarsFor(const Endpoint& endpoint, const std::string& model);
 
 // The verdict the answers of a decisions request give under `bars`.
@@ -94,8 +87,7 @@ struct ReviewedCall {
   int64_t turn = 0;
 };
 
-// Asks the decision model `route` names; with no endpoint serving one the
-// review says so and asks.
+// Asks the decision model `route` names; with no endpoint for one, it asks.
 AutoPermissionReview ReviewPermission(Api& api, const RouteResolution& route,
                                       UsageAccumulator& usage,
                                       const ReviewedCall& call);

@@ -17,21 +17,17 @@
 
 namespace uagent {
 namespace {
-// What a well-known host declares, as data, for any provider whose address
-// is on it. This table and the provider entries are the only places a vendor
-// is named.
+// What a well-known host declares for any provider on it. This table and
+// the provider entries are the only places a vendor is named.
 struct KnownEndpoint {
   const char* host;
   FeatureSet features;
   const char* options;
 };
 
-// The decision models the endpoint serves: the address, the model used when
-// none is chosen, and for each model the probabilities that decide a review
-// (see tests/reviewer_eval, which finds them): allow needs P(allow) at least
-// `allow`, deny needs P(deny) at least `deny`, and any reason question at or
-// above `veto` asks instead of allowing. A model with no row here gets the
-// strict bars of permissions.cc.
+// The decision models the endpoint serves. Per model: allow needs P(allow)
+// at least `allow`, deny needs P(deny) at least `deny`, and a reason question
+// at or above `veto` asks instead. A model with no row gets the strict bars.
 constexpr char kOpenRouterOptions[] = R"({
   "pdf_engine": "cloudflare-ai",
   "decisions_url": "https://openrouter.ai/api/alpha/decisions",
@@ -69,6 +65,28 @@ std::string CataloguePath(const std::string& identity) {
   return UagentDir(kModelsDir) + "/" + HashHex(identity) + ".json";
 }
 
+// OpenRouter's free variants are explicit catalogue entries; missing
+// prices or capabilities never qualify.
+bool FreeCodingModel(const json& model) {
+  const json* pricing = JsonObject(model, "pricing");
+  const json* parameters = JsonArray(model, "supported_parameters");
+  if (!JsonValue(model, "id", "").ends_with(":free") ||
+      CatalogContextLength(model) < 65536 || !pricing ||
+      !pricing->contains("prompt") || !pricing->contains("completion") ||
+      !parameters ||
+      std::ranges::find(*parameters, "tools") == parameters->end()) {
+    return false;
+  }
+  return std::ranges::all_of(*pricing, [](const json& price) {
+    if (price.is_number()) return price.get<double>() == 0;
+    double value = -1;
+    return price.is_string() &&
+           ParseFiniteDouble(price.get_ref<const std::string&>().c_str(),
+                             value) &&
+           value == 0;
+  });
+}
+
 }  // namespace
 
 bool DeclareHost(Endpoint& endpoint) {
@@ -95,11 +113,17 @@ const Endpoint* FindEndpoint(const std::vector<Endpoint>& providers,
   return nullptr;
 }
 
-// The provider serving a base URL.
-std::string ProviderScope(const std::string& base_url,
+// Preserve the named provider when endpoints share an address. Inherited
+// routes can lack a name; their wire and price policy still distinguish them.
+std::string ProviderScope(const Endpoint& endpoint,
                           const std::vector<Endpoint>& providers) {
+  if (!endpoint.name.empty()) return endpoint.name;
   for (const Endpoint& provider : providers) {
-    if (provider.base_url == base_url) return provider.name;
+    if (provider.base_url == endpoint.base_url &&
+        provider.wire_api == endpoint.wire_api &&
+        provider.FreeOnly() == endpoint.FreeOnly()) {
+      return provider.name;
+    }
   }
   return {};
 }
@@ -142,6 +166,12 @@ ProviderCatalog LoadProviderCatalog() {
     if (const json* options = JsonObject(provider, "options")) {
       if (!endpoint.options.is_object()) endpoint.options = json::object();
       endpoint.options.update(*options);
+    }
+    if (endpoint.FreeOnly()) {
+      endpoint.features.Remove(Feature::kHostedSearch);
+      endpoint.features.Remove(Feature::kPdfParser);
+      endpoint.features.Remove(Feature::kDecisions);
+      endpoint.hosted_tools = json::array();
     }
     endpoint.model_features = JsonValue(provider, "features", json(nullptr));
     catalog.providers.push_back(endpoint);
@@ -199,13 +229,14 @@ int64_t CatalogContextLength(const json& model) {
   return meta ? JsonValue(*meta, "n_ctx_train", int64_t{0}) : 0;
 }
 
-std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
+std::optional<std::vector<ModelInfo>> ParseModels(const json& response,
+                                                  bool free_only) {
   const json* data = JsonArray(response, "data");
   if (!data) return std::nullopt;
 
   std::vector<ModelInfo> models;
   for (const json& model : *data) {
-    if (!model.is_object()) continue;
+    if (!model.is_object() || (free_only && !FreeCodingModel(model))) continue;
     std::string id = JsonValue(model, "id", "");
     if (id.empty()) continue;
     ModelInfo info{std::move(id), {}, {}, CatalogContextLength(model)};
@@ -232,6 +263,11 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
           }
         }
       }
+    }
+    // A Messages catalogue states the most a model writes as max_tokens.
+    if (int64_t limit = JsonValue(model, "max_tokens", int64_t{0}); limit > 0) {
+      if (!info.features.is_object()) info.features = json::object();
+      info.features["max_output_tokens"] = limit;
     }
     const json* modalities = JsonArray(model, "input_modalities");
     if (const json* architecture = JsonObject(model, "architecture")) {
@@ -280,19 +316,18 @@ std::optional<std::vector<ModelInfo>> CachedModels(const Api& api) {
   if (JsonValue(file, "identity", "") != identity || !response) {
     return std::nullopt;
   }
-  auto models = ParseModels(*response);
+  auto models = ParseModels(*response, api.FreeOnly());
   if (!models || models->empty()) return std::nullopt;
   return models;
 }
 
-// A start reads the catalogue from CachedModels instead of waiting on the
-// provider, and what is learned from it (context window, modalities) changes
-// rarely; every answer that is usable keeps that copy current.
+// Every usable answer keeps the copy CachedModels reads current, so a
+// start does not wait on the provider.
 std::optional<std::vector<ModelInfo>> QueryModels(Api& api, bool abortable,
                                                   int64_t timeout_s) {
   JsonResponse response = api.Get("/models", abortable, timeout_s);
   if (!response.error.empty()) return std::nullopt;
-  auto models = ParseModels(response.body);
+  auto models = ParseModels(response.body, api.FreeOnly());
   if (models && !models->empty()) {
     const std::string identity = CatalogueIdentity(api);
     std::string error;

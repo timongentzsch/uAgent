@@ -1,7 +1,7 @@
 import { folderOf } from "../../shared/display.ts";
 import { MenuItem } from "../../shared/menu.tsx";
 import type { Pin, Session, Space, TerminalInfo } from "../../shared/types.ts";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useHostContext } from "../../state/host-context.ts";
 
 const same = (a: Pin, b: Pin) => a.kind === b.kind && a.id === b.id;
@@ -27,8 +27,8 @@ export function livePins(
   );
 }
 
-// Keeps a conversation, a folder or a terminal at the top of the list, on every device.
 export function PinItem({ pin }: { pin: Pin }) {
+  const { command } = useApi();
   const { online, pins, report } = useHostContext();
   const pinned = pins.some((item) => same(item, pin));
   return (

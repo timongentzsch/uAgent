@@ -1,4 +1,3 @@
-/* The keys a touch keyboard lacks, in one row over it. */
 .key-bar {
   display: flex;
   flex: 1;

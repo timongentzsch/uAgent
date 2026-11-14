@@ -1,6 +1,6 @@
 import { nameOf } from "../../shared/file-types.ts";
 import { ChevronLeft } from "lucide-preact";
-import { routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import type {
   FileTarget,
   LibraryItem,
@@ -8,17 +8,20 @@ import type {
 } from "../../shared/types.ts";
 import { Button, LoadError, Spinner, Time } from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
+import { ARTIFACT, artifactSize } from "../../shared/artifact.ts";
 import { PageThumb, usePreviewBase } from "../../shared/page-frame.tsx";
 
-// A design, a design system or a shared file, as the Library shows one: its
-// pages small, and the way to where it is worked on.
+// An artifact or a shared file, as the Library shows one: its pages
+// small, and the way to where it is worked on.
 
-const KIND = {
-  design: "Design",
-  deck: "Deck",
-  doc: "Doc",
-  system: "Design system",
-  file: "Shared file",
+const KIND = { ...ARTIFACT, file: "Shared file" };
+// A document and a sheet are one file; the others are their folder.
+const OWN = new Set(["doc", "sheet"]);
+const OPEN: Record<string, string> = {
+  design: "Open canvas",
+  deck: "Open deck",
+  doc: "Open document",
+  sheet: "Open sheet",
 };
 
 function Thumbnails({ session, pages }: { session: string; pages: string[] }) {
@@ -52,9 +55,10 @@ export default function LibraryArtifact({
   open: (target: FileTarget) => void;
   choose: (session: string) => void;
 }) {
+  const { routes } = useApi();
   const kind = item.kind as keyof typeof KIND;
-  const unit = kind === "deck" ? "slide" : "page";
   const file = kind === "file";
+  const size = !file && item.count ? artifactSize(kind, item.count) : "";
   // A design system's book, which the agent writes beside its tokens.
   const book =
     kind === "system"
@@ -73,9 +77,7 @@ export default function LibraryArtifact({
       </div>
       <p class="muted">
         {KIND[kind]} · {place?.name ?? item.place}
-        {item.count && kind !== "doc"
-          ? ` · ${item.count} ${unit}${item.count === 1 ? "" : "s"}`
-          : ""}
+        {size && ` · ${size}`}
         {file && item.bytes !== undefined ? ` · ${bytes(item.bytes)}` : ""}
         {item.modified ? (
           <>
@@ -113,17 +115,12 @@ export default function LibraryArtifact({
             variant="primary"
             onClick={() =>
               open({
-                path: book ?? (kind === "doc" ? item.path : `${item.path}/`),
+                path: book ?? (OWN.has(kind) ? item.path : `${item.path}/`),
               })
             }
           >
-            {kind === "design" || kind === "deck"
-              ? "Open canvas"
-              : kind === "doc"
-                ? "Open document"
-                : book
-                  ? "Open its brand book"
-                  : "Open its folder"}
+            {OPEN[kind] ?? (book ? "Open its brand book" : "Open its folder")}
+            {!place?.session && " in a new conversation"}
           </Button>
         )}
       </div>

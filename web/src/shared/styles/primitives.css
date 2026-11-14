@@ -1,5 +1,4 @@
-/* The app's shared pieces and its frame, in cascade order: controls, rows,
-   cards, dialogs, the shell and the transcript. */
+/* The shared pieces and the frame, in cascade order. */
 @layer primitives {
   #app {
     background: var(--bg);
@@ -36,8 +35,66 @@
     padding: 0;
     accent-color: var(--accent);
   }
-  /* Switch: the checkbox drawn as a square track and knob, with a 44px touch
-     area. Like every control here it is flat: no rounding, no shadow. */
+  input[type="checkbox"]:not([switch]) {
+    appearance: none;
+    display: inline-grid;
+    place-content: center;
+    flex-shrink: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--on-accent);
+    cursor: pointer;
+  }
+  /* Paint the box and tick in the same grid cell, independently of the hit
+     area, so selection rows can enlarge the native input for touch. */
+  input[type="checkbox"]:not([switch])::before {
+    content: "";
+    grid-area: 1 / 1;
+    width: var(--icon-l);
+    height: var(--icon-l);
+    border: var(--border-field);
+    background: var(--surface);
+  }
+  input[type="checkbox"]:not([switch])::after {
+    content: "";
+    grid-area: 1 / 1;
+    place-self: center;
+    width: calc(var(--icon-l) * 0.25);
+    height: calc(var(--icon-l) * 0.5);
+    border: solid currentColor;
+    border-width: 0 var(--stroke) var(--stroke) 0;
+    transform: translateY(-15%) rotate(45deg);
+    visibility: hidden;
+  }
+  input[type="checkbox"]:not([switch]):checked::before,
+  input[type="checkbox"]:not([switch]):indeterminate::before {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  input[type="checkbox"]:not([switch]):checked::after,
+  input[type="checkbox"]:not([switch]):indeterminate::after {
+    visibility: visible;
+  }
+  input[type="checkbox"]:not([switch]):indeterminate::after {
+    width: calc(var(--icon-l) * 0.5);
+    height: 0;
+    border-width: var(--stroke) 0 0;
+    transform: none;
+  }
+  input[type="checkbox"]:not([switch]):disabled {
+    opacity: var(--opacity-disabled);
+    cursor: not-allowed;
+  }
+  @media (forced-colors: active) {
+    input[type="checkbox"]:not([switch]) {
+      appearance: auto;
+    }
+    input[type="checkbox"]:not([switch])::before,
+    input[type="checkbox"]:not([switch])::after {
+      content: none;
+    }
+  }
   .switch {
     display: inline-flex;
     align-items: center;
@@ -105,13 +162,14 @@
     border-color: transparent;
     background: transparent;
   }
-  /* Hover is an enhancement for a primary pointer that supports it. */
   @media (hover: hover) and (pointer: fine) {
     button:enabled:hover,
     .file-button:hover {
       background: var(--hover);
     }
-    .primary:enabled:hover {
+    .primary:enabled:hover,
+    button[aria-pressed="true"]:enabled:hover,
+    .tabs [aria-selected="true"]:enabled:hover {
       background: var(--accent-hover);
     }
     .quiet:not(:disabled):hover {
@@ -130,7 +188,9 @@
     background: var(--hover);
     transition: none;
   }
-  .primary:enabled:active {
+  .primary:enabled:active,
+  button[aria-pressed="true"]:enabled:active,
+  .tabs [aria-selected="true"]:enabled:active {
     background: var(--accent-active);
   }
   .destructive {
@@ -149,8 +209,7 @@
     padding: 0;
     flex-shrink: 0;
   }
-  /* A dense list (a transcript) has short rows for a mouse; touch keeps
-     --touch. A list's icon buttons are as tall as its rows. */
+  /* A dense list has short rows for a mouse; touch keeps --touch. */
   @media (pointer: fine) {
     .dense {
       --row: var(--control-s);
@@ -279,7 +338,6 @@
     text-transform: uppercase;
     letter-spacing: var(--tracking-caps);
   }
-  /* A tag: a file, a header, a state; outlined, what an action risks. */
   .chip {
     display: inline-flex;
     align-items: center;
@@ -295,8 +353,7 @@
     border: var(--border-field);
     background: none;
   }
-  /* What arrives on its own (a banner, a card, a list) fades in from --from
-     and leaves the same way when it goes (motion.ts useExit). */
+  /* Fades in from --from and leaves the same way (motion.ts useExit). */
   :where(.enters) {
     --from: 0 var(--rise);
   }
@@ -314,8 +371,6 @@
     translate: var(--from);
     transition-timing-function: var(--ease-in);
   }
-  /* A view pushed into its place, as in a native navigation stack: it comes
-     in from the end, or from the start when going back. */
   .push {
     transition:
       opacity var(--motion-slow) var(--ease-out),
@@ -330,13 +385,11 @@
       translate: calc(-1 * var(--push)) 0;
     }
   }
-  /* A box set apart on its surface: an option, a tool, a notice, a card. */
   .card {
     padding: var(--space-4);
     border: var(--border-field);
     background: var(--raised);
   }
-  /* A list over the page: a menu, suggestions, a picker's options. */
   .popover-list {
     z-index: var(--z-popover);
     overflow-y: auto;
@@ -345,7 +398,6 @@
     background: var(--surface);
     color: var(--text);
   }
-  /* Controls floating over what they act on, such as zoom. */
   .float-toolbar {
     position: absolute;
     display: flex;
@@ -356,13 +408,47 @@
     background: var(--raised);
     color: var(--text);
   }
-  /* Entries a hairline divides. */
+  /* Laid over what it opens: the whole tile takes the press and shows the
+     focus, and the button draws nothing of its own. */
+  button.cover,
+  button.cover:enabled:is(:hover, :active) {
+    position: absolute;
+    inset: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  button.cover:is(:hover, :focus-visible) {
+    outline: var(--focus-ring);
+  }
+  .float-toolbar output {
+    min-width: 5ch;
+    text-align: center;
+    font-size: var(--font-small);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .find-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: var(--border);
+    background: var(--surface);
+  }
+  .find-bar > :first-child {
+    flex: 1;
+    min-width: 0;
+  }
+  .find-count {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
   .divided > :not(:first-child) {
     border-top: var(--border);
   }
-  /* The current entry of a list (the open conversation, section, file or
-     terminal) and a list's chosen option: filled, with the accent stripe at
-     its start. A pressed toggle is the other selection: the accent fill. */
   .entry:is(
     [aria-current],
     [aria-selected="true"],
@@ -376,7 +462,6 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  /* One line, cut short with an ellipsis where it runs out of room. */
   .truncate {
     display: block;
     min-width: 0;
@@ -384,8 +469,7 @@
     white-space: nowrap;
     text-overflow: ellipsis;
   }
-  /* Read, not seen; the skip link until a keyboard reaches it, then it is
-     drawn over the top corner. */
+  /* Read, not seen; the skip link too, until a keyboard reaches it. */
   .sr-only,
   .skip-link:not(:focus) {
     position: absolute;
@@ -405,8 +489,7 @@
     background: var(--accent);
     color: var(--on-accent);
   }
-  /* Error, notice and update banners stack over the top of the app, inside
-     the safe area, so showing or dismissing one never moves the layout. */
+  /* Stacked over the app: showing or dismissing one never moves the layout. */
   .toasts {
     /* #app is a size container, so it is the containing block. */
     position: absolute;
@@ -424,33 +507,49 @@
       translate: -50% 0;
     }
   }
-  .error-banner,
-  .update-banner {
+  .banner {
+    max-height: var(--scroll-s);
     padding: var(--space-3) var(--space-6);
-    /* What floats over the page is set apart by its edge alone. */
     border: var(--border-field);
     background: var(--raised);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--pad);
+    overflow: auto;
     font-size: var(--font-small);
     pointer-events: auto;
     --from: 0 calc(-1 * var(--rise));
   }
-  .error-banner {
-    max-height: var(--scroll-s);
-    overflow: auto;
-  }
-  .update-banner {
-    border-left: var(--stripe-callout) solid var(--live);
-  }
-  .load-error {
-    padding: var(--space-4) 0;
+  /* A message: its tone's icon, then its text, both in the tone's colour.
+     Info takes the colour of the text around it. */
+  .notice {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    margin: var(--space-4) 0;
     overflow-wrap: anywhere;
+    white-space: pre-wrap;
   }
-  .load-error p {
-    margin-top: 0;
+  .notice[data-tone="error"] > :not(button) {
+    color: var(--removed);
+  }
+  .notice[data-tone="warning"] > :not(button) {
+    color: var(--warning);
+  }
+  /* A flex item stands on the baseline: this drops the icon to the text's
+     middle, as --icon-align does inline. */
+  .notice > .lucide {
+    translate: 0 calc(-1 * var(--icon-align));
+  }
+  .notice > button {
+    flex: none;
+  }
+  :is(p, small, li, .banner, .transcript-content) > .notice {
+    margin: 0;
+  }
+  /* In the transcript it lines up with the text of the messages. */
+  .transcript-content > .notice {
+    padding-inline: var(--inset-x);
+  }
+  .banner > .notice > span {
+    flex: 1;
   }
   .loading-indicator {
     display: flex;
@@ -485,8 +584,7 @@
     flex-shrink: 0;
   }
 
-  /* The shell has one header per column; only the transcript owns chat
-     scrolling. */
+  /* Only the transcript owns chat scrolling. */
   .shell {
     flex: 1;
     min-height: 0;
@@ -500,11 +598,9 @@
   .shell > .conversation {
     grid-column: 2;
   }
-  /* The conversations list sits beside the conversation where --sidebar and
-     --chat-min both fit and the window is not short (the height below which
-     the app trims its chrome); elsewhere a drawer holds it. A query cannot
-     read a token, so 44.28rem is their sum, and it follows zoom as they do.
-     The query also sets --docked, which useCompact reads. */
+  /* Docked where --sidebar and --chat-min both fit and the window is not
+     short; elsewhere a drawer holds it. A query cannot read a token, so
+     44.28rem is their sum. The query also sets --docked, for useCompact. */
   aside.sidebar {
     display: none;
     position: relative;
@@ -558,7 +654,6 @@
     flex: none;
     max-width: 100%;
   }
-  /* The directory a folder is in gives way before the folder's own name. */
   .folder-parent {
     min-width: 0;
     font-weight: var(--weight-regular);
@@ -578,7 +673,6 @@
     background: var(--live);
     border-color: var(--live);
   }
-  /* News: a filled light after an entry's name. */
   .status-led.unread {
     margin-left: var(--space-4);
     background: currentColor;
@@ -589,7 +683,6 @@
     border-color: var(--removed);
     border-radius: 0;
   }
-  /* Alive: work under way, or content on its way in. */
   .working,
   .status-led.running,
   .skeleton > div,
@@ -652,9 +745,8 @@
     gap: var(--gap);
     min-height: 100%;
   }
-  /* A row that arrives in a live conversation fades in where it lands,
-     never on load or paging. Opacity only: the scroll maths reads true
-     positions. */
+  /* A row that arrives in a live conversation fades in, never on load or
+     paging. Opacity only: the scroll maths reads true positions. */
   .transcript[data-live]:not([aria-busy])
     :is(.transcript-content, .node-kids)
     > * {
@@ -677,6 +769,59 @@
     max-width: var(--sheet);
     padding: var(--pad);
   }
+  /* The home screen is one scrolling column: a heading, the box a
+     conversation starts from, then what to file and what was last worked
+     on. Narrow, the box is docked at the bottom, as a conversation's is, and
+     the lists scroll above it. */
+  .home {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+    padding: var(--space-12) var(--pad) 0;
+  }
+  .home > * {
+    box-sizing: border-box;
+    flex: none;
+    width: 100%;
+    max-width: var(--sheet);
+    margin-inline: auto;
+  }
+  .home-head {
+    text-align: center;
+  }
+  .home-head h1 {
+    margin: var(--space-6) 0 0;
+  }
+  .home > .tips {
+    margin-top: 0;
+    margin-bottom: var(--space-12);
+  }
+  .home-start {
+    padding-bottom: var(--space-4);
+  }
+  @container column (max-width: 43rem) {
+    .home {
+      gap: var(--space-6);
+      padding-top: var(--pad);
+    }
+    .home-head,
+    .home > .tips {
+      display: none;
+    }
+    .home-start {
+      order: 1;
+      position: sticky;
+      bottom: 0;
+      margin-top: auto;
+      padding-top: var(--space-4);
+      padding-bottom: max(var(--pad), env(safe-area-inset-bottom, 0px));
+      background: var(--bg);
+    }
+  }
   .transcript .empty {
     padding-top: min(var(--space-24), calc(var(--viewport-height) * 0.06));
   }
@@ -687,9 +832,8 @@
   .empty p {
     color: var(--muted);
   }
-  /* What to try first: a lead and what it does per row, the leads in one
-     column so the rows read as a table. Left-aligned under the centred
-     heading: centred lines of uneven length are hard to scan. */
+  /* Left-aligned under the centred heading: centred lines of uneven length
+     are hard to scan. */
   .tips {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
@@ -776,9 +920,7 @@
   .sheet-control {
     position: relative;
   }
-  /* A row's ⋯ actions drop down from their button (shared/menu.tsx), a
-     native top-layer popover that fades in from its anchor and out again;
-     allow-discrete keeps it painted until its exit has played. */
+  /* allow-discrete keeps the popover painted until its exit has played. */
   .action-menu {
     position: relative;
   }
@@ -809,8 +951,7 @@
   .menu-panel button {
     font-size: var(--font-small);
   }
-  /* A choice carries its tick at the row's far edge. */
-  .menu-panel button[role="menuitemradio"] {
+  .menu-panel button:is([role="menuitemradio"], [role="menuitemcheckbox"]) {
     justify-content: space-between;
   }
   .menu-value {
@@ -861,9 +1002,8 @@
   dialog[data-layout="sheet"] > .dialog-body {
     flex: 1;
   }
-  /* Spotlight: search over everything, centered in the upper part of the
-     window as a launcher is, as tall as its results. A phone pins it to the
-     top, clear of the keyboard. */
+  /* Centred in the upper part of the window; on a phone a panel as wide as
+     the screen allows, high enough to clear the keyboard. */
   dialog[data-layout="spotlight"] {
     --dialog-width: var(--spotlight);
     top: calc(
@@ -880,16 +1020,11 @@
   }
   @media (max-width: 600px) {
     dialog[data-layout="spotlight"] {
-      top: calc(var(--viewport-top) + var(--safe-top));
-      left: calc(var(--viewport-left) + var(--safe-left));
-      transform: none;
-      width: var(--content-width);
-      max-height: var(--content-height);
-      border-width: 0 0 1px;
+      top: calc(var(--viewport-top) + var(--safe-top) + var(--pad));
+      width: calc(var(--content-width) - 2 * var(--pad));
+      max-height: calc(var(--content-height) - 2 * var(--pad));
     }
   }
-  /* Sheet: full content height at the right edge, beside the conversation;
-     the mirror of the sidebar drawer. Full screen on a phone. */
   dialog[data-layout="sheet"] {
     top: calc(var(--viewport-top) + var(--safe-top));
     left: calc(
@@ -916,9 +1051,7 @@
       border-width: 0;
     }
   }
-  /* A small sheet holds a few actions or one control (SheetButton): on a
-     phone it rises from the bottom only as tall as its content, like a native
-     action sheet. */
+  /* A small sheet rises from the bottom only as tall as its content. */
   @media (max-width: 600px) {
     dialog[data-layout="sheet"][data-size="s"] {
       top: calc(var(--viewport-top) + var(--viewport-height));
@@ -928,9 +1061,6 @@
       border-width: 1px 0 0;
     }
   }
-  /* Dialog containers and titles are focus anchors, not interactive
-     controls. */
-  /* Header actions sit with Close, after the title. */
   .dialog-header-actions {
     display: flex;
     align-items: center;
@@ -987,8 +1117,8 @@
     background: var(--placeholder);
     user-select: none;
   }
-  /* A view drawn from sample data (shared/placeholder.tsx): it lays out like
-     the loaded view, and fields keep their box but not the sample's value. */
+  /* Lays out like the loaded view (shared/placeholder.tsx); fields keep their
+     box but not the sample's value. */
   .placeholder {
     display: contents;
   }
@@ -1004,9 +1134,8 @@
   }
 
   @media (pointer: coarse) {
-    /* A small control (a dense row's button, a link in a line of text, a
-       switch, a fold) keeps its look but takes a 44px touch: an invisible
-       hit area centred on it, at least --touch each way. */
+    /* A small control keeps its look but takes a 44px touch: an invisible hit
+       area centred on it, at least --touch each way. */
     :where(
         .activity-button,
         .metrics > button,
@@ -1056,8 +1185,7 @@
     gap: var(--gap);
     padding: var(--space-4);
   }
-  /* What the conversation's column is narrow for: the width of a phone,
-     wherever the list sits. The header carries --narrow for useNarrowColumn. */
+  /* The header carries --narrow for useNarrowColumn. */
   @container column (max-width: 43rem) {
     .conversation-head {
       --narrow: 1;
@@ -1067,7 +1195,6 @@
       font-size: var(--font-body);
     }
     .transcript {
-      /* Outer scroll-area inset is page layout; rem keeps it on zoom. */
       padding: var(--space-4);
       scrollbar-gutter: auto;
     }
@@ -1080,10 +1207,7 @@
       padding-block: var(--space-2);
     }
   }
-  /* Surfaces arrive with a short, native motion and leave the way they
-     came: centred dialogs fade and rise, sheets slide from their edge (from
-     below on a phone) and the drawer from the left. `data-leaving` is set by
-     Modal while it animates out (see shared/motion.ts). */
+  /* `data-leaving` is set by Modal while it animates out (shared/motion.ts). */
   dialog[open] {
     display: flex;
     flex-direction: column;
@@ -1139,8 +1263,7 @@
       }
     }
   }
-  /* A sheet pulled down by a finger (useSheetSwipe) follows it as it moves;
-     let go, it returns to its place by the transition above, or leaves. */
+  /* A sheet pulled down (useSheetSwipe) follows the finger, untransitioned. */
   dialog[data-layout="sheet"][data-dragging] {
     translate: 0 var(--swipe, 0);
     transition: none;
@@ -1150,10 +1273,8 @@
   dialog[data-layout="sheet"] > header {
     touch-action: none;
   }
-  /* A conversation opened from the drawer slides in from the right, going back
-     from the left (slide() in shared/motion.ts). Only the transcript moves; the
-     rest of the page changes at once, and the old transcript waits under the
-     new one. */
+  /* Only the transcript slides (slide() in shared/motion.ts); the old one
+     waits under the new one. */
   :root[data-slide] .transcript {
     view-transition-name: screen;
     background: var(--bg);
@@ -1184,8 +1305,7 @@
     height: var(--control);
   }
 
-  /* Grouped rows: the settings-style list used wherever items are listed
-     with a value or an action. Captions, cards and rows come from here only. */
+  /* Grouped rows: captions, cards and rows come from here only. */
   .section-title {
     margin: 0 0 var(--space-3);
     padding-inline: var(--inset-x);
@@ -1193,8 +1313,6 @@
   .group {
     margin: 0 0 var(--space-12);
   }
-  /* A caption with an action for the whole group, which ends where the
-     rows' values do. */
   .group-caption {
     display: flex;
     align-items: center;
@@ -1206,8 +1324,6 @@
   .group-caption > .section-title {
     margin: 0;
   }
-  /* Quiet: rows sit on the surface itself, separated by hairlines, with no
-     card around them; only hover and the current item are filled. */
   /* One column as wide as the group: a row's long value is cut short there
      rather than widening every row. */
   .group-rows {
@@ -1225,12 +1341,9 @@
     padding: var(--space-2) var(--inset-x);
     overflow-wrap: anywhere;
   }
-  /* A row: an entry in any list (settings, conversations, menus,
-     suggestions, disclosures). A leading icon, one line or a label over its
-     detail, then a trailing value, time or menu, centred in a --row-tall box.
-     A label over a detail is as tall as a roomy row, so a list keeps one
-     rhythm whichever its rows have. A disclosure's summary draws no fill,
-     so it sits flush with the text around it; every other row is inset. */
+  /* A row: an entry in any list. A label over a detail is as tall as a roomy
+     row, so a list keeps one rhythm whichever its rows have. A disclosure's
+     summary draws no fill, so it sits flush; every other row is inset. */
   :is(
     .row,
     .list-row,
@@ -1295,8 +1408,6 @@
   .destructive-row .row-label {
     color: var(--removed);
   }
-  /* A choice shown as a row's value: the native picker, drawn as quiet text
-     with its chevron, not as a field. */
   .text-control.value-select {
     width: auto;
   }

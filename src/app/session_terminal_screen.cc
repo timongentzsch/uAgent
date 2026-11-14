@@ -26,8 +26,7 @@
 
 namespace uagent::session {
 namespace {
-// The pinned row from the worker's state frame: the working row while a turn
-// runs, the session row otherwise -- the same renderers presentation_test pins.
+// The pinned row: the working row while a turn runs, else the session row.
 std::string StatusRow(const json& state, bool running, bool interrupting,
                       std::string_view detail) {
   const int64_t used = JsonValue(state, "context_tokens", int64_t{0});
@@ -46,8 +45,7 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
          .model = route,
          .background = counts.background,
          .foreground = counts.foreground,
-         .interrupting = interrupting,
-         .detail = std::string(detail)});
+         .interrupting = interrupting});
   }
   const json permissions = JsonValue(state, "permissions", json::object());
   return StatusBar(
@@ -61,7 +59,6 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
        .background = counts.background});
 }
 
-// What a pending approval or question says above its prompt.
 std::string DecisionDescription(const json& pending) {
   std::string description = JsonValue(pending, "description", "");
   if (const json* approval = JsonObject(pending, "approval")) {

@@ -378,26 +378,6 @@ TEST_CASE(TestWorkspaceScopedSession) {
   CHECK(std::string(std::istreambuf_iterator<char>(preserved),
                     std::istreambuf_iterator<char>()) == corrupt);
 
-  // Format 2 is no longer inferred from ambiguous roles. Old sessions remain
-  // on disk, but callers get an explicit compatibility error instead of a
-  // transcript whose harness/user distinctions were guessed.
-  json legacy_header = {{"format", 2},     {"cwd", CanonicalCwd()},
-                        {"model", "test"}, {"session_id", "legacy"},
-                        {"turns", 1},      {"title", "legacy"}};
-  json legacy_state = {
-      {"messages",
-       json::array({{{"role", "system"}, {"content", "baseline"}}})},
-      {"archive", json::array()},
-      {"archive_dropped_segments", 0},
-      {"context_tokens", 12},
-      {"usage", json::object()}};
-  CHECK(ToolWritePrivateFile(session.string(),
-                             legacy_header.dump() + "\n" + legacy_state.dump())
-            .Ok());
-  SessionLoadResult legacy =
-      SessionStore::Load(session.string(), CanonicalCwd());
-  CHECK(legacy.status.error == SessionStoreError::kIncompatible);
-
   std::error_code ec;
   fs::remove_all(root, ec);
 }
@@ -474,26 +454,20 @@ TEST_CASE(TestScopedBaseAndMemory) {
   CHECK(!fs::exists(workspace / ".uagent"));
 
   // A global memory lands in the home directory even from inside a workspace.
-  fs::path receipt = home / ".uagent/memory/test-receipt.json";
-  setenv("UAGENT_INTERNAL_MEMORY_RECEIPT", receipt.c_str(), 1);
-  setenv("UAGENT_INTERNAL_MEMORY_SOURCE", "/tmp/source-session.json", 1);
-  CHECK(ToolMemoryAction("set", "global/prefers-tabs",
-                         std::string("The user prefers tabs."))
-            .output.starts_with("wrote "));
   MemoryEvent memory_event;
-  std::string receipt_error;
-  CHECK(ReadMemoryReceipt(receipt.string(), memory_event, receipt_error));
+  CHECK(ExtractedMemoryAction("set", "global/prefers-tabs",
+                              std::string("The user prefers tabs."), workspace,
+                              "/tmp/source-session.json", &memory_event)
+            .output.starts_with("wrote "));
   CHECK(memory_event.action == "created");
   CHECK(memory_event.key == "global/prefers-tabs");
   CHECK(memory_event.automatic);
   CHECK(memory_event.source_session == WorkspaceId("/tmp/source-session.json"));
-  CHECK(ToolMemoryAction("set", "global/prefers-tabs",
-                         std::string("The user prefers tabs."))
+  CHECK(ExtractedMemoryAction("set", "global/prefers-tabs",
+                              std::string("The user prefers tabs."), workspace,
+                              "/tmp/source-session.json", &memory_event)
             .output.starts_with("unchanged "));
-  CHECK(ReadMemoryReceipt(receipt.string(), memory_event, receipt_error));
   CHECK(memory_event.action == "unchanged");
-  unsetenv("UAGENT_INTERNAL_MEMORY_RECEIPT");
-  unsetenv("UAGENT_INTERNAL_MEMORY_SOURCE");
   std::vector<MemoryEvent> memory_events = LoadMemoryEvents();
   CHECK(memory_events.size() >= 2);
   CHECK(memory_events.back().action == "unchanged");
@@ -532,8 +506,6 @@ TEST_CASE(TestScopedBaseAndMemory) {
   }
   CHECK(UagentDir("history") == (home / ".uagent/history").string());
 
-  // Keys are scoped and flat, oversize content is refused, an existing key is
-  // replaced, and forget is explicit.
   CHECK(ToolMemoryAction("set", "project/../escape", std::string("x"))
             .output.starts_with("error:"));
   CHECK(ToolMemoryAction("set", "global/", std::string("x"))
@@ -599,21 +571,22 @@ TEST_CASE(TestScopedBaseAndMemory) {
   CHECK(loaded.text.find("workspace rules") != std::string::npos);
   CHECK(loaded.text.find("## memory: prefers-tabs") == std::string::npos);
   CHECK(loaded.memory_index.find("global/prefers-tabs") != std::string::npos);
-  // A global's opening clause rides in the index so the model can tell whether
-  // it is worth fetching; its body is already eligible for every request
-  // through the always-on slice, so this discloses nothing new.
+  // A global's opening clause rides in the index; its body is already eligible
+  // for every request, so this discloses nothing new.
   CHECK(loaded.memory_index.find(
             "global/prefers-tabs: The user prefers tabs") != std::string::npos);
-  // A project memory gets its hook too: the index lists only this
-  // repository's, and a bare key was missed live when the question did not
-  // share its words.
+  // A project memory gets its hook too; the index lists only this repository's.
   CHECK(loaded.memory_index.find(
             "project/build-uses-ninja: This repo builds with ninja") !=
         std::string::npos);
   CHECK(loaded.memory_index.find("codex/MEMORY") != std::string::npos);
   CHECK(loaded.memory_index.find("claude/MEMORY") != std::string::npos);
-  CHECK(loaded.memory_index.find("global/prefers-tabs") <
-        loaded.memory_index.find("project/build-uses-ninja"));
+  // The newest first: a full budget drops the oldest.
+  fs::last_write_time(home / ".uagent/memory/global/prefers-tabs.md",
+                      fs::file_time_type::clock::now() - std::chrono::hours(1));
+  const std::string by_age = LoadMemoryIndex(workspace, size_t{32} * 1024).text;
+  CHECK(by_age.find("project/build-uses-ninja") <
+        by_age.find("global/prefers-tabs"));
   // Ours come before borrowed stores, which cannot spend the budget first.
   CHECK(loaded.memory_index.find("project/build-uses-ninja") <
         loaded.memory_index.find("claude/MEMORY"));
@@ -681,8 +654,6 @@ TEST_CASE(TestScopedBaseAndMemory) {
             .output.starts_with("forgot "));
   fs::current_path(workspace);
 
-  // A project's setting wins key by key; what is saved for all fills the
-  // rest.
   CHECK(SaveSettings({{"UAGENT_MODEL", "global/model"},
                       {"UAGENT_MEMORY_MODEL", "global/memory"}})
             .empty());

@@ -18,15 +18,12 @@ export interface Host {
   online: boolean;
   connection: ConnectionPhase;
   report: Report;
-  // The pinned conversations and folders the list still has, in order.
   pins: Pin[];
   store: SnapshotStore;
   load: (id: string) => Promise<Snapshot>;
   refresh: () => Promise<void>;
   forget: (id: string, movedTo?: string) => void;
   setModal: (modal: AppModal | null) => void;
-  // Opens the context a conversation was last sent: the open one's, or the
-  // given one's.
   showContext: (item?: Session) => void;
 }
 
@@ -34,13 +31,10 @@ export interface Host {
 // upload and key typed, so only the page, its composer and the dialogs read
 // it, never a list row.
 export interface Conversation {
-  // The open conversation's draft, and sending it.
   draft: Draft;
   setDraft: (value: Draft) => void;
   submit: (event: Event, jump: () => void, queue?: boolean) => Promise<void>;
-  // Runs a command on the open conversation.
   act: Act;
-  // Attaches files to the open conversation's draft.
   upload: (files: File[]) => Promise<boolean>;
   uploading: boolean;
   // A message or a new conversation is on its way.

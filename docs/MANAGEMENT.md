@@ -11,7 +11,7 @@ Scheduled), the terminal (`/memory`, `/skills`, `/schedule`) or a script
 | remove or move one | `/memory forget KEY`, `/memory rename KEY TARGET`, `/memory copy KEY TARGET` |
 | see installed skills | `/skills` |
 | add a skill | `/skills set global/NAME @SKILL.md` |
-| take over what Claude Code and Codex keep | `/skills import [NAME\|all]`, `/memory import [NAME\|all]` |
+| import skills and memories from Claude Code or Codex | `/skills import [NAME\|all]`, `/memory import [NAME\|all]` |
 | switch a skill off or on | `/skills disable ID`, `/skills enable ID` |
 | list scheduled tasks and runs | `/schedule` |
 | run, pause or resume a task | `/schedule run ID`, `/schedule pause ID`, `/schedule resume ID` |
@@ -26,9 +26,16 @@ new ones, and files you put there yourself are all read. Global memories are
 read into every top-level session, smallest first, while they fit in 2 KiB
 together. Every other memory is listed with its key, its first sentence and,
 when opened, the date it was saved; the agent opens one with its `memory`
-tool when the topic fits. It writes a memory when you ask, and a background
-extractor adds lessons from finished sessions unless
-`UAGENT_MEMORY_GENERATE=0`. `UAGENT_MEMORY=0` or `--no-memory` turns memory
+tool when the topic fits; the list names the newest first, each with its
+description or opening sentence. It writes a memory when you ask, correct it
+or state a standing preference, into the note that already covers the topic
+when there is one. A background extractor adds lessons from finished
+sessions unless `UAGENT_MEMORY_GENERATE=0`: when a conversation starts, one
+request to the memory model reads an older one of the folder, idle for
+`memory.idleHours`, and saves at most one note, shown in the conversation
+only when it saved or failed. A conversation in Scratch with an unanswered
+suggestion waits until it is filed. When a scope is three-quarters full the
+extractor may fold one overlapping note into the one it writes. `UAGENT_MEMORY=0` or `--no-memory` turns memory
 off, and a conversation run with it off is never extracted from.
 
 A skill is a folder with a `SKILL.md`; see
@@ -58,13 +65,13 @@ too; condensing it takes a model, so invoke `$import`.
 
 In the web UI, the Library lists everything kept in every folder and
 workspace a conversation works in, grouped by place: memories, skills,
-designs and design systems (folders with a page that declares an artboard,
-and folders with a `tokens.css`; see the `design` skill), and files the agent
-shared with `artifact`. A rail filters by kind and place, and the search reads
-names, first lines and places. Nothing is copied: each item stays where it
-lives. A memory opens beside the list, where **Move to…** and **Copy to
-everywhere** take it to another place or to every place; a design opens its
-canvas in the Files pane of the place's latest conversation; a shared file
+artifacts (documents, decks, designs, design systems and sheets, as their
+pages say what they are; see the `artifact` skill), and files the agent
+handed over with `present`. A rail filters by kind and place, and the search
+reads names, first lines and places. Nothing is copied: each item stays
+where it lives. A memory opens beside the list, where **Move to…** and **Copy to
+everywhere** take it to another place or to every place; an artifact opens
+in the Files pane of the place's latest conversation; a presented file
 opens, downloads or leads to its conversation. Ctrl-click (⌘-click) and
 Shift-click pick several items, of any kind and place, and **Delete…**
 removes them after one confirmation: memories and skills are forgotten

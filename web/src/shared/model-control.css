@@ -2,8 +2,6 @@
   flex: 1;
   min-width: var(--control);
 }
-/* The slot is the flexible one; the button is as wide as its name, with
-   its chevron beside it. */
 .model-selector {
   min-width: 0;
   max-width: 100%;

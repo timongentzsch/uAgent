@@ -61,7 +61,6 @@ test("the unfinished tail of a stream renders formatted, never as raw syntax", (
     ["![img](http", ""],
     ["$$\nx^2", "$$\nx^2\n$$"],
     ["Para.\n\nNext **b", "Para.\n\nNext **b**"],
-    // A marker just typed waits instead of showing up literally.
     ["done **", "done "],
     // A table row waits for its line to end, even where a cell just did.
     ["| a | b |\n|---|---|\n| 1 ", "| a | b |\n|---|---|"],
@@ -78,8 +77,7 @@ test("the unfinished tail of a stream renders formatted, never as raw syntax", (
     ["Text\n## ", "Text"],
   ];
   for (const [input, healed] of cases) assert.equal(healTail(input), healed);
-  // Left alone: bullets, word-internal underscores, prices, tildes and
-  // anything inside an open code fence (markdown-it runs it to the end).
+  // An open code fence is left alone: markdown-it runs it to the end.
   for (const kept of [
     "* item one",
     "Steps:\n- o",
@@ -164,14 +162,13 @@ test("a file's relative images and links resolve in its folder", async () => {
     /<a href="\/raw\?docs\/web\/GUIDE.md" data-file="docs\/web\/GUIDE.md">/,
   );
   assert.match(html, /<a href="\/raw\?x.md" data-file="x.md">up<\/a>/);
-  // Outside the folder: the words stay, the link goes.
   assert.match(html, /<a>out<\/a>/);
   assert.match(html, /\[image: remote\]/);
   assert.match(
     html,
     /<a href="https:\/\/x" rel="noopener noreferrer" target="_blank">/,
   );
-  // A reply's relative links stay text, as before.
+  // A reply's relative links stay text.
   const reply = await renderMarkdown("[guide](./GUIDE.md) ![shot](a.png)");
   assert.doesNotMatch(reply, /<a |<img /);
 });
@@ -233,7 +230,6 @@ test("references render only where a surface opens them", () => {
     "See `src/a.ts:2`, `ledger.summary` and [the app](src/a.ts#L3) or [`b.ts:4`](b.ts).";
   const plain = markdownBlocks(text)[0].html;
   assert.doesNotMatch(plain, /file-ref/);
-  // Without references a relative link keeps its words, not raw Markdown.
   assert.match(plain, /<a>the app<\/a>/);
   const html = markdownBlocks(text, 0, { refs: true })[0].html;
   assert.match(
@@ -251,7 +247,6 @@ test("references render only where a surface opens them", () => {
     /<button type="button" class="file-ref" data-file="b.ts"><code>b.ts:4<\/code><\/button>/,
   );
   assert.equal(html.match(/<button/g).length, 3);
-  // Web links stay web links.
   assert.match(
     markdownBlocks("[x](https://example.com/a.ts)", 0, { refs: true })[0].html,
     /<a href="https:\/\/example.com\/a.ts" rel="noopener noreferrer" target="_blank">/,

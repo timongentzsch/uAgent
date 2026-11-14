@@ -12,7 +12,6 @@
 #include "include/core/library.h"
 
 namespace uagent {
-// The same bounded document operations serve the terminal and web clients.
 json LibraryControl(const json& request,
                     const std::filesystem::path& workspace);
 json SkillControl(const json& request, const std::filesystem::path& workspace);

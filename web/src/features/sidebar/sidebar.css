@@ -11,7 +11,6 @@
   gap: var(--gap);
   min-height: var(--control-l);
 }
-/* The mark at the left; search and New together at the right. */
 .sidebar-head .brand {
   margin-right: auto;
 }
@@ -23,16 +22,14 @@
   flex: 1;
   min-height: 0;
 }
-/* Places stand apart by the space between them, and by their bold header. */
 .sidebar nav section + section {
   margin-top: var(--space-6);
 }
 .list-group + .list-group {
   margin-top: var(--space-6);
 }
-/* A place's header: fold it, its name (which opens its overview), start a
-   conversation in it, its menu. */
 .place-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -41,10 +38,9 @@
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: var(--font-small);
+  font-size: var(--font-body);
   font-weight: var(--weight-strong);
 }
-/* The name's text lines up with the conversations' under it. */
 .sidebar h2 button {
   width: 100%;
   justify-content: flex-start;
@@ -65,20 +61,30 @@
   width: var(--indent);
   min-width: var(--indent);
 }
-/* What a folded place holds: how many, or how many need you. */
 .place-count {
   font-weight: var(--weight-regular);
   color: var(--muted);
 }
-.place-count.attention {
+/* The count stands at the header's end, in line with the rows' times, until
+   the header's menus take its place. */
+@media not (pointer: coarse) {
+  .place-count {
+    position: absolute;
+    right: var(--inset-x);
+  }
+}
+.place-head .attention {
   color: var(--accent);
 }
 .place-body {
   padding-left: var(--indent);
 }
-/* A conversation's agents at work, beneath it on a thin line: little
-   indent, so their titles keep their width, and no agent mark, since the
-   line already says whose they are. */
+/* A phone has no width to spare: a row's own state column sets it in. */
+@media (pointer: coarse) {
+  .place-body {
+    padding-left: 0;
+  }
+}
 .place-agents {
   margin-left: var(--space-6);
   padding-left: var(--space-2);
@@ -88,16 +94,8 @@
 .place-agents .thread-mark {
   display: none;
 }
-/* Every folder's waiting decisions, above the list. */
-.needs-you > button {
-  width: 100%;
-  justify-content: flex-start;
-  gap: var(--gap);
-  font-size: var(--font-small);
-  font-weight: var(--weight-strong);
-  color: var(--accent);
-}
 .session-row {
+  position: relative;
   display: flex;
   align-items: center;
   min-width: 0;
@@ -113,43 +111,69 @@
     background: none;
   }
 }
-/* One line to a row: the title and its state. The time and the menu show
-   while the row is pointed at or focused; a touch screen draws the menu
-   on the open row only. */
 .sidebar .session {
   flex: 1;
   font-size: var(--font-small);
 }
-.session-time {
-  display: none;
-  flex: none;
+.sidebar .session .row-text {
+  flex: 0 1 auto;
+}
+.session[data-unread] .row-label {
+  font-weight: var(--weight-strong);
+}
+.session-time,
+.session-tag {
+  margin-left: auto;
   color: var(--muted);
+}
+.session-time {
+  flex: none;
   white-space: nowrap;
 }
-.session-row:focus-within .session-time {
-  display: inline;
+/* The place's name keeps its room up to a part of the row. */
+.session-tag {
+  flex: none;
+  max-width: 40%;
 }
-.session-row .action-menu {
+/* At rest a row's menu waits over its end, unseen; pointed at or focused,
+   it takes the place of the time or the place's name. */
+.session-row > .action-menu {
+  position: absolute;
+  right: 0;
+}
+.session-row > .action-menu,
+.place-head > .action-menu {
   opacity: 0;
 }
-.session-row:focus-within .action-menu {
+:is(.session-row, .place-head):has(
+    :focus-visible,
+    [aria-haspopup][aria-expanded="true"]
+  )
+  > .action-menu {
+  position: static;
   opacity: 1;
 }
+:is(.session-row, .place-head):has(
+    :focus-visible,
+    [aria-haspopup][aria-expanded="true"]
+  )
+  :is(.session-time, .session-tag, .place-count) {
+  display: none;
+}
 @media (hover: hover) and (pointer: fine) {
-  .session-row:hover .session-time {
-    display: inline;
-  }
-  .session-row:hover .action-menu {
+  :is(.session-row, .place-head):hover > .action-menu {
+    position: static;
     opacity: 1;
   }
+  :is(.session-row, .place-head):hover
+    :is(.session-time, .session-tag, .place-count) {
+    display: none;
+  }
 }
-/* On a touch screen only the open row draws its ⋯; a long press opens any
-   row's menu. The others stay for a screen reader and a keyboard, out of the
-   flow and the touch's way, at the row's end where the menu opens. */
+/* Touch has no hover: the menus show, so Select is discoverable. */
 @media (pointer: coarse) {
   .session-row,
   .place-head {
-    position: relative;
     -webkit-touch-callout: none;
     user-select: none;
   }
@@ -158,10 +182,11 @@
   .place-head[data-held] {
     background: var(--hover);
   }
-  .session-row .action-menu {
+  .session-row > .action-menu,
+  .place-head > .action-menu {
+    position: static;
     opacity: 1;
   }
-  .session-row:not(:has([aria-current], :focus-visible)) .action-menu,
   .place-head:not(:has([aria-current], :focus-visible))
     > .action-menu:last-child {
     position: absolute;
@@ -170,8 +195,8 @@
     pointer-events: none;
   }
 }
-/* A folder's terminal, marked by its icon. */
-.session .row-icon {
+/* One column for a row's state or a terminal's icon: the titles line up. */
+.session :is(.row-icon, .session-state) {
   width: var(--icon-s);
   height: var(--icon-s);
   margin-right: var(--space-2);
@@ -179,10 +204,8 @@
 }
 .session-state {
   display: inline-flex;
-  flex: none;
   align-items: center;
-  width: 1em;
-  height: 1em;
+  justify-content: center;
 }
 .session-state svg {
   width: 100%;
@@ -220,19 +243,55 @@
 .connection .status-led {
   margin-right: var(--space-3);
 }
-/* The drawer opens on the list; the mark stays in the header. */
-.drawer .sidebar-head .brand {
+.sidebar-pages {
+  display: flex;
+  gap: var(--gap);
+  border-top: var(--border);
+  padding-top: var(--space-2);
+}
+.sidebar-pages button {
+  flex: 1;
+  font-size: var(--font-small);
+}
+/* In the sheet a narrow screen holds the list in, Home, Search and New are
+   in the sheet's header. */
+.drawer .sidebar-head {
   display: none;
 }
+/* A row there is its title, whole, over its time or place. Its menu opens
+   on a long press. */
+.drawer .session {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  height: auto;
+  padding-block: var(--space-3);
+}
+.drawer .session :is(.session-time, .session-tag) {
+  max-width: none;
+  margin-left: calc(var(--icon-s) + var(--space-2));
+  font-size: var(--font-caption, var(--font-small));
+  text-align: left;
+}
+@media (pointer: coarse) {
+  /* At rest only: open or focused, the menu shows and takes taps. */
+  .drawer
+    .session-row:not(
+      :has(:focus-visible, [aria-haspopup][aria-expanded="true"])
+    )
+    > .action-menu {
+    position: absolute;
+    right: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+}
 
-/* Picked to act on with others: the row's checkbox and a fill. The open
-   conversation keeps its stripe, so the two never look alike. */
+/* The open conversation keeps its stripe, so the two never look alike. */
 .session-row[data-picked]:not(:has([aria-current])),
 .place-head[data-picked] {
   box-shadow: none;
 }
-/* While something is picked the footer is its bar, its actions under the
-   count, each as wide. */
 .sidebar footer > .selection-bar {
   flex: 1;
   flex-direction: column;
@@ -242,4 +301,61 @@
   flex: 1;
   font-size: var(--font-small);
   white-space: nowrap;
+}
+
+.section-fold {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--space-2);
+}
+.section-fold svg {
+  width: 1em;
+  height: 1em;
+}
+.source-label {
+  margin: var(--space-2) var(--indent);
+}
+.source-shortcut {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+.host-list {
+  flex: none;
+  border-top: var(--border);
+  padding-top: var(--space-2);
+}
+.host-list .list-group {
+  margin: 0;
+}
+.host-list-scroll {
+  max-height: var(--scroll-s);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.host-row {
+  width: 100%;
+  gap: var(--space-2);
+  justify-content: flex-start;
+  font-size: var(--font-small);
+}
+.host-row > .truncate {
+  flex: 1;
+  text-align: left;
+}
+.host-phase {
+  flex: none;
+}
+.host-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+@media (pointer: coarse) {
+  .sidebar .host-row,
+  .sidebar .section-fold,
+  .sidebar .source-shortcut {
+    min-height: var(--touch);
+  }
 }

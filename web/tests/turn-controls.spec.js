@@ -1,6 +1,5 @@
-// A turn's controls: deciding an approval, queueing the next message,
-// stopping and continuing, retrying a send that failed, and undoing the
-// files a turn changed.
+// A turn's controls: approving, queueing, stopping and continuing, retrying
+// a failed send, and undoing the files a turn changed.
 import { test, expect, selectProbeModel } from "./fixtures.js";
 import { access, realpath } from "node:fs/promises";
 
@@ -32,7 +31,6 @@ test("always allowing an action remembers it in Settings", async ({
   await expect(
     card.getByRole("button", { name: "Allow for this conversation" }),
   ).toBeVisible();
-  // One row of answers; the rest waits under More options.
   const answers = await card
     .locator(".decision-answers > button")
     .evaluateAll((buttons) =>
@@ -54,7 +52,6 @@ test("always allowing an action remembers it in Settings", async ({
     card.getByRole("checkbox", { name: /^Always allow here: / }),
   ).toBeHidden();
   await card.getByText("More options").click();
-  // Guidance stays folded until asked for.
   await expect(card.getByLabel("Guidance")).toHaveCount(0);
   await card.getByRole("button", { name: "+ guidance" }).click();
   await expect(card.getByLabel("Guidance")).toBeVisible();
@@ -69,7 +66,6 @@ test("always allowing an action remembers it in Settings", async ({
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await send(page, "/permissions");
   const settings = page.getByRole("dialog", { name: "Settings" });
-  // What this repository remembers is among the project's settings.
   await settings
     .locator(".settings-nav")
     .getByRole("button", { name: /^This folder/ })
@@ -143,11 +139,9 @@ test("an undone turn puts its file back", async ({ page, session, host }) => {
   const receipt = page.getByRole("button", { name: /^Review changes: / });
   await expect(receipt).toHaveText(/1 file · \+1 −0/);
   await expect(page.locator(".turn-footer")).toBeVisible();
-  // The files and what the turn spent read as one line.
   await expect(page.locator(".turn-summary")).toHaveText(/^· /);
   expect(await exists(`${host.project}/browser-proof.txt`)).toBe(true);
-  // A changed file opens in the Files pane; outside a repository there is
-  // no diff, so the file itself.
+  // Outside a repository there is no diff, so the file itself opens.
   await receipt.click();
   await page
     .getByRole("dialog", { name: "Changed files" })
@@ -176,12 +170,9 @@ test("a message queued during a turn runs after it", async ({
     "placeholder",
     "Add guidance… (Esc to stop)",
   );
-  // The status line's slot offers Queue next only once there is a draft,
-  // and the primary turns from Stop into Send guidance in place.
   const queue = page.getByRole("button", { name: "Queue next" });
   await expect(queue).toBeHidden();
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
-  // Its row in the list shows work with the one breathing LED, no icon.
   const row = page.locator(".session-row:has([aria-current])");
   await expect(row.locator(".status-led.running")).toBeVisible();
   await expect(row.locator(".session-state svg")).toHaveCount(0);
@@ -207,12 +198,9 @@ test("a stopped turn ends with Continue", async ({ page, session }) => {
   await page.goto(`/#session=${session.id}`);
   await send(page, "Long continuity probe");
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
-  // The status control under the input counts the turn's seconds while it
-  // runs, and names no step.
   const line = page.locator(".composer .status-line");
   await expect(line.locator(".activity-button")).toHaveText(/^Working · \d+s$/);
   await page.getByLabel("Message or guidance").press("Escape");
-  // It says the turn stopped, drops the count and offers the way on.
   await expect(line.locator(".activity-state")).toContainText("Stopped");
   await expect(line.locator(".activity-button")).toHaveCount(0);
   await expect(line.getByRole("status")).toHaveText("Stopped");
@@ -244,7 +232,7 @@ test("a refused send stays at its message with Retry", async ({
   await send(page, "Retry probe");
   const row = page.locator(".message.user", { hasText: "Retry probe" });
   await expect(row.getByRole("alert")).toContainText("Refused for this test");
-  await expect(page.locator(".error-banner")).toHaveCount(0);
+  await expect(page.locator(".banner")).toHaveCount(0);
   await row.getByRole("button", { name: "Retry" }).click();
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
@@ -252,9 +240,6 @@ test("a refused send stays at its message with Retry", async ({
   await expect(page.getByText("Refused for this test")).toHaveCount(0);
 });
 
-// The input frame is one shape whatever the turn is doing: idle, running,
-// stopped and waiting on a decision draw the textarea, the frame and the
-// permission chip alike. Only a phone's status row moves them, by that row.
 for (const [name, viewport] of [
   ["phone", { width: 390, height: 844 }],
   ["desktop", { width: 1280, height: 800 }],
@@ -316,7 +301,6 @@ for (const [name, viewport] of [
             `${state}: ${part}.${key} ${JSON.stringify(actual)} vs idle ${JSON.stringify(expected)}`,
           ).toBeLessThanOrEqual(1);
       }
-    // Deciding hands the keyboard back to the input it waited above.
     await page.getByRole("button", { name: "Allow once", exact: true }).click();
     await expect(prompt).toBeFocused();
   });

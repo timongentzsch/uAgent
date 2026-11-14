@@ -1,13 +1,12 @@
 import type { Session, Space } from "../../shared/types.ts";
-import { manage } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { folderOf } from "../../shared/display.ts";
 import { folderName } from "../../shared/folder-label.tsx";
 import { plural } from "../../shared/quantities.ts";
 import DeleteMany from "../../shared/delete-many.tsx";
 import { deleteConversation } from "./conversation-actions.tsx";
 
-// The sidebar's selection to the one delete confirmation: workspaces first,
-// each taking its conversations, then the conversations outside them.
+// Workspaces go first, each taking its conversations, then the rest.
 
 export default function DeleteConversations({
   sessions,
@@ -23,6 +22,7 @@ export default function DeleteConversations({
   done: (gone: string[]) => Promise<void>;
   close: () => void;
 }) {
+  const { manage, command } = useApi();
   // A conversation inside a workspace that goes anyway is not asked twice.
   const loose = sessions.filter(
     (item) => !spaces.some((space) => space.path === folderOf(item)),
@@ -40,7 +40,7 @@ export default function DeleteConversations({
         ...loose.map((item) => ({
           key: item.id,
           name: `${item.title || "Untitled"} · ${folderName(folderOf(item))}`,
-          remove: () => deleteConversation(item),
+          remove: () => deleteConversation(item, command),
         })),
       ]}
       note={

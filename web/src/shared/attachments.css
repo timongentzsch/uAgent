@@ -24,7 +24,6 @@
   height: var(--control-l);
   border: 0;
 }
-/* Rename control: reads as the file name until focused. */
 .chip-name {
   padding: 0;
   font: inherit;
@@ -39,8 +38,6 @@
   max-width: 100%;
   font: inherit;
 }
-/* Files in the conversation: image tiles that open the viewer, then cards
-   naming each other file's type and size. */
 .attachment-list {
   display: flex;
   flex-wrap: wrap;
@@ -88,7 +85,6 @@
   white-space: nowrap;
   font-weight: var(--weight-strong);
 }
-/* Inline @-mention images keep their shape at a readable size. */
 .mention-image {
   display: block;
   margin: var(--space-2) 0;
@@ -105,15 +101,12 @@
   max-height: var(--pane-s);
   object-fit: contain;
 }
-/* A file the agent shared shows larger, up to the row's width. */
 .node-file > .attachment-tile {
   max-width: 100%;
 }
 .node-file > .attachment-tile img {
   max-height: var(--popover);
 }
-/* The viewer: the image fits the dialog; tapping it closes. */
-/* The image viewer takes the whole screen, like a native photo viewer. */
 dialog.image-view[data-layout="panel"] {
   top: calc(var(--viewport-top) + var(--safe-top));
   left: calc(var(--viewport-left) + var(--safe-left));
@@ -137,7 +130,6 @@ dialog.image-view[data-layout="panel"] {
 .mention-chip {
   vertical-align: baseline;
 }
-/* Files staged on the host from a terminal, with the way to drop them. */
 .host-files {
   display: flex;
   align-items: center;

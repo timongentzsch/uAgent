@@ -9,26 +9,18 @@
 
 #include "include/tools/tool.h"
 namespace uagent {
-// Asks the person to finish in the browser (interaction id, prompt) and
-// returns their answer; sets *eof when no one can answer.
+// Asks the person to finish a step in the browser; *eof when no one can answer.
 using BrowserAsk = std::function<std::string(
     const std::string& interaction, const std::string& prompt, bool* eof)>;
 Tool BrowserTool(std::string session_id, BrowserAsk ask);
 
-// What a conversation was last shown of a page, so that the next result for
-// the same page can carry only what changed: a zero-context line diff of the
-// two texts, when that is shorter than the text itself.
+// What a conversation last saw of a page, so the next result can be a diff.
 class PageMemory {
  public:
-  // The text to show for `current`, the page at `url` as a result shows it
-  // (address, title, elements and text). The full text unless the previous
-  // result was for the same page and the diff is shorter; with `diff` false
-  // (a read) always the full text. Either way `current` becomes what the
-  // conversation has seen.
+  // `current` in full, or its diff to the text last shown for `url` if shorter.
   std::string Show(const std::string& url, const std::string& current,
                    bool diff = true);
-  // The page is no longer the one seen: a navigation by other means, another
-  // tab, an error or a dialog.
+  // For when the page changed by other means: another tab, an error, a dialog.
   void Forget() { url_.clear(); }
 
  private:

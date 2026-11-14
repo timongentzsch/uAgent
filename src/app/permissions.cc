@@ -19,6 +19,7 @@
 #include "include/core/runtime_config.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 namespace {
@@ -69,8 +70,7 @@ bool ValidStore(const json& store, std::string& error) {
 }
 
 // The rules file, locked for its lifetime. Usable() is false, with `error`
-// set, when it cannot be read or fails validation. Rules of an earlier
-// version, remembered as exact calls, are dropped.
+// set, when it cannot be read or fails validation.
 class RulesFile : public PrivateJsonStore {
  public:
   explicit RulesFile(std::string& error)
@@ -171,10 +171,16 @@ std::string RuleSubject(const Tool& tool, const json& arguments,
                         const std::string& root) {
   if (tool.name == "run") return Trim(JsonValue(arguments, "command", ""));
   if (tool.name == "web_fetch") return UrlHost(JsonValue(arguments, "url", ""));
-  if (tool.approval_subject) return JsonDump(tool.approval_subject(arguments));
+  const json subject =
+      tool.approval_subject ? tool.approval_subject(arguments) : json();
+  // A remote path tool's subject names where its gateway resolved the path.
+  const std::string* resolved = JsonStringRef(subject, "resolved");
+  if (!subject.is_null() && !resolved) return JsonDump(subject);
   if (const std::string* path = JsonStringRef(arguments, "path")) {
     // Inside the folder by its place there, so a rule reads as ./src/.
-    const std::filesystem::path canonical = CanonicalAccessPath(*path);
+    const std::filesystem::path canonical =
+        resolved ? std::filesystem::path(*resolved)
+                 : CanonicalAccessPath(*path);
     if (PathWithin(canonical, root)) {
       return "./" + canonical.lexically_relative(root).generic_string();
     }
@@ -201,8 +207,8 @@ PermissionRule SuggestRule(const Tool& tool, const json& arguments,
       const bool exact = words.size() > 2 && prefix == words[0];
       if (!exact) rule.match = prefix + " *";
     }
-  } else if (!tool.approval_subject && JsonStringRef(arguments, "path")) {
-    // The file's folder.
+  } else if (subject.starts_with("./") || subject.starts_with("/")) {
+    // A path: the file's folder.
     const size_t slash = subject.rfind('/');
     if (slash != std::string::npos) rule.match = subject.substr(0, slash + 1);
   }
@@ -230,6 +236,11 @@ std::string RuleLabel(const PermissionRule& rule) {
 
 bool PathOutsideFolder(const json& arguments, const std::string& root) {
   const std::string path = JsonValue(arguments, "path", "");
+  if (RemoteWorkspace() && !path.empty()) {
+    const json checked = WorkspaceRequest(
+        {{"op", "check"}, {"tool", "read_path"}, {"args", {{"path", path}}}});
+    return JsonValue(checked.value("scope", json::object()), "outside", true);
+  }
   return !path.empty() && !WithinWorkArea(path, root);
 }
 
@@ -264,7 +275,8 @@ bool RepositoryRuleAllows(const std::string& root, const Tool& tool,
   for (const json& held : file.Rules()) {
     PermissionRule rule{JsonValue(held, "tool", ""),
                         JsonValue(held, "match", "")};
-    if (JsonValue(held, "root", "") == root &&
+    if (JsonValue(held, "root", "") ==
+            WorkspaceIdentity{Workspace().host, root}.Key() &&
         RuleCovers(rule, tool, arguments, root, confined)) {
       if (matched) *matched = std::move(rule);
       return true;
@@ -278,8 +290,9 @@ bool RememberRepositoryRule(const std::string& root, const PermissionRule& rule,
   RulesFile file(error);
   if (!file.Usable()) return false;
   json& rules = file.Rules();
-  if (std::none_of(rules.begin(), rules.end(), RuleOf(root, &rule))) {
-    rules.push_back({{"root", root},
+  const std::string identity = WorkspaceIdentity{Workspace().host, root}.Key();
+  if (std::none_of(rules.begin(), rules.end(), RuleOf(identity, &rule))) {
+    rules.push_back({{"root", identity},
                      {"tool", rule.tool},
                      {"match", rule.match},
                      {"created", NowSeconds()}});
@@ -288,7 +301,7 @@ bool RememberRepositoryRule(const std::string& root, const PermissionRule& rule,
 }
 
 json PermissionRulesControl(const json& request) {
-  const std::string root = CanonicalCwd();
+  const std::string root = Workspace().Key();
   const std::string action = JsonValue(request, "action", "list");
   std::string error;
   RulesFile file(error);
@@ -446,7 +459,7 @@ AutoPermissionReview ReviewPermission(Api& api, const RouteResolution& route,
       {"state",
        {{"tool", call.tool.name},
         {"provider", call.tool.provider},
-        {"working_directory", CanonicalCwd()},
+        {"working_directory", Workspace().path},
         {"user_request", Utf8Prefix(call.user_request, kReviewerPreviewBytes)},
         {"action", Utf8Prefix(call.preview, kReviewerPreviewBytes)},
         {"action_truncated", call.preview.size() > kReviewerPreviewBytes}}},

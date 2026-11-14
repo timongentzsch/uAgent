@@ -1,4 +1,4 @@
-import { test, expect, withoutServiceWorker } from "./fixtures.js";
+import { connected, test, expect, withoutServiceWorker } from "./fixtures.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 
@@ -91,8 +91,6 @@ test("the Library lists every place's things, opens them beside and moves a memo
     page.getByRole("region", { name: basename(path), exact: true });
   const editor = page.getByLabel("Document content");
 
-  // A new memory is named and placed, then opens beside the list.
-  // Under Everything, New asks which: a memory or a skill.
   await page
     .locator(".management-toolbar")
     .getByRole("button", { name: "New", exact: true })
@@ -120,7 +118,6 @@ test("the Library lists every place's things, opens them beside and moves a memo
     "collapse",
   );
 
-  // An unsaved edit waits in the tab for the item's next opening.
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await editor.fill("Unsaved draft survives navigation.");
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
@@ -132,7 +129,6 @@ test("the Library lists every place's things, opens them beside and moves a memo
     page.getByRole("heading", { name: "Durable lesson" }),
   ).toBeVisible();
 
-  // The search reads what an item says, not only its name.
   const search = page.getByLabel("Search library");
   await search.fill("native controls");
   await expect(page.locator(LOADED_ROWS)).toHaveCount(0);
@@ -140,7 +136,6 @@ test("the Library lists every place's things, opens them beside and moves a memo
   await expect(page.locator(LOADED_ROWS)).toHaveCount(1);
   await search.fill("");
 
-  // Moved to another place, it is that place's alone.
   await page.getByRole("button", { name: "Library item menu" }).click();
   await page.getByRole("menuitem", { name: "Move to…" }).click();
   await page
@@ -157,7 +152,6 @@ test("the Library lists every place's things, opens them beside and moves a memo
       .filter({ hasText: "browser-lesson" }),
   ).toHaveCount(0);
 
-  // A design shows its pages and opens as the canvas.
   await page
     .getByRole("navigation", { name: "Library filters" })
     .getByRole("button", { name: /^Designs/ })
@@ -171,7 +165,6 @@ test("the Library lists every place's things, opens them beside and moves a memo
     page.frameLocator('iframe[title="Hero"]').getByText("hi"),
   ).toBeVisible();
 
-  // On a phone the kinds are chips, the place a field, an item the page.
   await nav.getByRole("button", { name: "Library", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   const place = page.getByLabel("Place", { exact: true });
@@ -199,7 +192,7 @@ test("scheduled tasks run, report and pause", async ({
   await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   const nav = page.getByRole("complementary");
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
   await page.getByRole("button", { name: "New task", exact: true }).click();

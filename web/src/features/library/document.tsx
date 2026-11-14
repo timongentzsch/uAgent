@@ -2,8 +2,8 @@ import { useAction } from "../../shared/use-action.ts";
 import { useLayoutEffect, useMemo, useState } from "preact/hooks";
 import { ChevronLeft, Pencil } from "lucide-preact";
 import { tabDrafts } from "../../shared/storage.ts";
-import { storageKeys } from "../../shared/storage-keys.ts";
-import { manage } from "../../state/api.ts";
+import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
+import { useApi } from "../../state/api.ts";
 import type { LibraryItem, LibraryPlace } from "../../shared/types.ts";
 import {
   Actions,
@@ -13,8 +13,9 @@ import {
   Input,
   LoadError,
   Modal,
+  Notice,
   Select,
-  Spinner,
+  Skeleton,
   Textarea,
   Time,
 } from "../../shared/ui.tsx";
@@ -103,12 +104,14 @@ export default function LibraryDocument({
   opened?: (key: string, place: string) => void;
   changed: () => void;
 }) {
+  const { manage, host } = useApi();
   const fresh = "new" in entry;
   // The listing's copy, newer when it changed on disk.
   const listed = fresh ? undefined : entry;
   const drafts = useMemo(
-    () => tabDrafts<Draft>(storageKeys.library(kind, cwd)),
-    [kind, cwd],
+    () =>
+      tabDrafts<Draft>(hostStorageKey(storageKeys.library(kind, cwd), host)),
+    [kind, cwd, host],
   );
   const key = fresh ? "" : entry.key;
   const loaded = useResource(
@@ -235,7 +238,7 @@ export default function LibraryDocument({
   );
   if (loaded.error)
     return <LoadError error={loaded.error} retry={loaded.retry} />;
-  if (!item) return <Spinner label="Loading document…" surface />;
+  if (!item) return <Skeleton rows={6} label="Loading document…" />;
   const off = (listed?.status || item.status) === "disabled";
   const memory = kind === "memory";
   return (
@@ -329,17 +332,21 @@ export default function LibraryDocument({
         </p>
       )}
       {stale && (
-        <p role="status">
-          Changed on disk. Your draft is retained.{" "}
-          <Button
-            onClick={() => {
-              forget();
-              loaded.retry();
-            }}
-          >
-            Reload
-          </Button>
-        </p>
+        <Notice
+          tone="warning"
+          action={
+            <Button
+              onClick={() => {
+                forget();
+                loaded.retry();
+              }}
+            >
+              Reload
+            </Button>
+          }
+        >
+          Changed on disk. Your draft is retained.
+        </Notice>
       )}
       <div class="segmented document-toolbar">
         {item.writable && !editing && (

@@ -1,21 +1,7 @@
 #!/bin/sh
-# Installs µAgent the most capable way this machine allows: it says what it
-# found, recommends, and asks once. Piped from the web it installs the latest
-# release:
-#
-#   curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | sh
-#
-# and run from a checkout it builds that checkout. In a container µAgent runs
-# its web interface, browser and terminal isolated from this machine;
-# installed here it has the terminal, the web interface, and the browser on
-# Linux with Chrome and TigerVNC. Then it asks for your API keys and a default
-# model (uagent setup), and offers to keep the web interface running.
-#
-# UAGENT_INSTALL=container|here chooses without asking; UAGENT_VERSION picks a
-# release; UAGENT_PREFIX (~/.local) is where it installs here. Without a
-# terminal, or with UAGENT_NONINTERACTIVE=1, nothing is asked: it installs
-# here and leaves keys and services alone. Nothing runs with sudo unless you
-# agree.
+# Installs µAgent: the latest release when piped to sh, the checkout when run
+# from one. Environment: UAGENT_INSTALL=container|here, UAGENT_VERSION,
+# UAGENT_PREFIX (~/.local), UAGENT_NONINTERACTIVE=1 (asks nothing).
 set -eu
 repo=timongentzsch/uAgent
 prefix=${UAGENT_PREFIX:-"$HOME/.local"}
@@ -58,6 +44,7 @@ case $os-$(uname -m) in
   Linux-x86_64) target=linux-x86_64 ;;
   Linux-aarch64 | Linux-arm64) target=linux-arm64 ;;
   Darwin-arm64) target=macos-arm64 ;;
+  Darwin-x86_64) target=macos-x86_64 ;;
   *) target= ;;
 esac
 # What the release archives are built against (the CI runners): an older
@@ -90,13 +77,15 @@ build_from_source() {
   echo "Building µAgent from source: $1."
   echo "That needs git, CMake 3.21+, a C++20 compiler, libcurl and zlib (Node.js adds the web interface)."
   has git || { echo "git is missing" >&2; exit 1; }
+  release_version
   if [ -d "$data/src/.git" ]; then
-    git -C "$data/src" pull --ff-only --quiet
+    git -C "$data/src" fetch --depth 1 --quiet origin "refs/tags/v$version"
+    git -C "$data/src" checkout --quiet --detach FETCH_HEAD
   else
     mkdir -p "$data"
-    git clone --depth 1 --quiet "https://github.com/$repo.git" "$data/src"
+    git clone --depth 1 --branch "v$version" --quiet "https://github.com/$repo.git" "$data/src"
   fi
-  # The container question is behind us: what follows installs here.
+  # The container question is answered: the checkout's installer installs here.
   UAGENT_INSTALL=here exec sh "$data/src/install.sh"
 }
 
@@ -140,18 +129,28 @@ choice=${UAGENT_INSTALL:-here}
 if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes ]; then
   here=
   [ "$mode" = release ] && [ -n "$unsupported" ] && here=", built from source ($unsupported)"
-  echo "1) In a container (recommended): web interface, browser and terminal, isolated from this machine"
+  echo "1) In a container (recommended): web interface, browser and terminal, kept from this machine's files"
   echo "2) Here: the terminal, the web interface$([ "$browser" = yes ] && echo " and the browser")$here"
   reply 'Install [1]:' || true
   [ "$answer" = 2 ] || choice=container
 fi
+
+# The container's agent is UID 10001; you keep access to what it makes.
+workspace_folder() {
+  mkdir -p "$1"
+  if [ "$os" = Linux ] && [ "$(id -u)" != 10001 ] &&
+     ! { has setfacl && setfacl -m u:10001:rwx -m d:u:10001:rwx \
+           -m "d:u:$(id -u):rwx" "$1" 2>/dev/null; }; then
+    echo "The agent cannot write to $1: give UID 10001 read and write access to it." >&2
+  fi
+}
 
 # A release's container is its published image, run from the compose files
 # of the same release; a checkout builds its own.
 if [ "$choice" = container ]; then
   if [ "$mode" = source ]; then
     deploy=$root/deploy
-    mkdir -p "$root/workspaces"
+    workspace_folder "$root/workspaces"
   else
     release_version
     deploy=$data/container/deploy
@@ -166,11 +165,11 @@ if [ "$choice" = container ]; then
       workspaces=$HOME/uagent-workspaces
       if [ -f "$deploy/.env" ]; then
         workspaces=$(sed -n 's/^UAGENT_WORKSPACES=//p' "$deploy/.env")
-      elif reply "Folder the agent works in, all it sees of this machine [$workspaces]:" &&
+      elif reply "Folder the agent works in, the only files of this machine it sees [$workspaces]:" &&
            [ -n "$answer" ]; then
         workspaces=$answer
       fi
-      mkdir -p "$workspaces"
+      workspace_folder "$workspaces"
       printf 'UAGENT_VERSION=%s\nUAGENT_WORKSPACES=%s\n' "$version" "$workspaces" >"$deploy/.env"
     fi
   fi
@@ -194,8 +193,7 @@ if [ "$choice" = container ]; then
     sleep 1
   done
   echo
-  # Keys and the model live on the container's data volume, so they outlast
-  # updates.
+  # Keys and the model live on the container's data volume and outlast updates.
   if [ "$interactive" = yes ]; then
     if compose exec -T uagent uagent --control '{"kind":"provider"}' 2>/dev/null |
        grep -q '"configured":true'; then
@@ -221,8 +219,7 @@ fi
 
 if [ "$mode" = release ] && [ -n "$unsupported" ]; then build_from_source "$unsupported"; fi
 
-# The agent's browser needs Chrome and TigerVNC on Linux; offer the packages
-# the container image installs.
+# The same packages the container image installs.
 if [ "$os" = Linux ] && [ "$browser" = no ] && has apt-get &&
    ask "Install Chrome and TigerVNC for the agent's browser, with sudo?"; then
   deb=$tmp/chrome.deb
@@ -252,7 +249,39 @@ if [ "$mode" = source ]; then
     cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
   fi
   cmake --build "$build" --target uagent --parallel "$build_jobs"
+  if [ "${UAGENT_LOCAL_ONLY:-0}" != 1 ]; then
+    build_id=$("$build/uagent" --build-id)
+    bundle=${UAGENT_REMOTE_BUNDLE:-"$prefix/share/uagent/remote/$build_id"}
+    if [ ! -f "$bundle/manifest.json" ] && [ -z "${UAGENT_REMOTE_BUNDLE:-}" ]; then
+      source_version=$("$build/uagent" --version | sed 's/^uagent //')
+      bundle_name=uagent-$source_version-remote-$build_id.tar.gz
+      bundle_url=https://github.com/$repo/releases/download/v$source_version/$bundle_name
+      if fetch "$bundle_url" "$tmp/$bundle_name" && fetch "$bundle_url.sha256" "$tmp/bundle.sha256"; then
+        expected=$(cut -d' ' -f1 < "$tmp/bundle.sha256")
+        actual=$(cmake -E sha256sum "$tmp/$bundle_name" | cut -d' ' -f1)
+        [ "$expected" = "$actual" ] || { echo "remote bundle checksum differs; nothing was installed" >&2; exit 1; }
+        # Only the manifest and four compressed payloads belong at this level.
+        tar -tzf "$tmp/$bundle_name" | while IFS= read -r member; do
+          case $member in manifest.json|linux-x86_64.tar.gz|linux-arm64.tar.gz|macos-x86_64.tar.gz|macos-arm64.tar.gz) ;;
+            *) echo "remote bundle holds an unexpected file: $member; nothing was installed" >&2; exit 1 ;;
+          esac
+        done
+        bundle=$tmp/remote-bundle
+        mkdir "$bundle"
+        tar -xzf "$tmp/$bundle_name" -C "$bundle"
+      fi
+    fi
+    cmake "-DBINARY=$build/uagent" "-DBUNDLE=$bundle" \
+      "-DDESTINATION=$prefix/share/uagent/remote" -P "$root/cmake/install_remote_bundle.cmake"
+  else
+    echo "Local-only developer install: a complete remote bundle was not required."
+  fi
   cmake --install "$build" --prefix "$prefix" --strip
+  # How this was installed, for the About page: the installer's own build of
+  # a release, or a checkout.
+  mkdir -p "$prefix/share/uagent"
+  if [ "$root" = "$data/src" ]; then echo source; else echo checkout; fi \
+    >"$prefix/share/uagent/install"
   policy_source=$root/deploy/chrome-policy.json
 else
   release_version
@@ -281,13 +310,21 @@ else
   if ! problem=$("$unpacked/bin/uagent" --version 2>&1 >/dev/null); then
     build_from_source "the prebuilt µAgent does not start here: $(echo "$problem" | head -n 1)"
   fi
+  build_id=$("$unpacked/bin/uagent" --build-id)
+  "$unpacked/bin/uagent" --check-remote-bundle "$unpacked/share/uagent/remote/$build_id"
   mkdir -p "$prefix/bin" "$prefix/share/doc"
-  # What a release ships replaces what an earlier one did; a binary that is
-  # running keeps its old file until it restarts.
-  rm -rf "$prefix/share/uagent" "$prefix/share/doc/uagent"
-  cp -R "$unpacked/share/uagent" "$prefix/share/uagent"
-  cp -R "$unpacked/share/doc/uagent" "$prefix/share/doc/uagent"
+  # What a release ships replaces what an earlier one did, copied whole
+  # before anything is replaced: a copy that fails leaves the old install.
+  # A binary that is running keeps its old file until it restarts.
+  rm -rf "$prefix/share/uagent.new" "$prefix/share/doc/uagent.new"
+  cp -R "$unpacked/share/uagent" "$prefix/share/uagent.new"
+  cp -R "$unpacked/share/doc/uagent" "$prefix/share/doc/uagent.new"
+  echo release >"$prefix/share/uagent.new/install"
   cp "$unpacked/bin/uagent" "$bin.new"
+  for kept in share/uagent share/doc/uagent; do
+    rm -rf "${prefix:?}/$kept"
+    mv "$prefix/$kept.new" "$prefix/$kept"
+  done
   mv -f "$bin.new" "$bin"
   policy_source=$tmp/chrome-policy.json
   fetch "https://raw.githubusercontent.com/$repo/v$version/deploy/chrome-policy.json" "$policy_source" 2>/dev/null ||
@@ -310,7 +347,6 @@ fi
   exit 0
 }
 
-# Where the shell looks for it.
 case :$PATH: in
   *:"$prefix/bin":*) ;;
   *)
@@ -341,7 +377,6 @@ if "$bin" --help 2>/dev/null | grep -q '^uagent setup'; then
   fi
 fi
 
-# The web interface as a service of this user, started at login.
 service=
 if "$bin" --help 2>/dev/null | grep -q -- '--web'; then
   if [ "$os" = Linux ] && has systemctl && systemctl --user show-environment >/dev/null 2>&1; then

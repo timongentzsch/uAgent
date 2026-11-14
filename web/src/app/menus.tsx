@@ -6,19 +6,24 @@ import type {
   Space,
   TerminalInfo,
 } from "../shared/types.ts";
-import { command, manage } from "../state/api.ts";
+import { useApi, type ApiClient } from "../state/api.ts";
 import { useHostContext } from "../state/host-context.ts";
 import { Menu, MenuItem, MenuSub } from "../shared/menu.tsx";
 import { capitalize } from "../shared/display.ts";
 import { PinItem } from "../features/sidebar/pins.tsx";
 
-// The conversation's transcript as Markdown on the host; says where.
-export async function shareTranscript(item: Session) {
+export async function shareTranscript(
+  item: Session,
+  command: ApiClient["command"],
+) {
   const result = await command("share", item);
   return result.pending ? "" : `Transcript saved to ${result.result.path}`;
 }
-// A fresh runtime that keeps the history, e.g. for a setting that needs it.
-export async function restartConversation(item: Session) {
+// A fresh runtime that keeps the history.
+export async function restartConversation(
+  item: Session,
+  manage: ApiClient["manage"],
+) {
   const { restarting, deferred } = await manage("restart_conversations", {
     target_id: item.id,
   });
@@ -29,7 +34,6 @@ export async function restartConversation(item: Session) {
       : "Nothing to restart: this conversation is not running.";
 }
 
-// What can be done to a workspace, which is µAgent's own to rename and remove.
 export function SpaceMenu({
   space,
   conversations,
@@ -59,7 +63,6 @@ export function SpaceMenu({
   );
 }
 
-// What can be done to a folder's terminal.
 export function TerminalMenu({
   terminal,
   open,
@@ -86,6 +89,16 @@ export function TerminalMenu({
   );
 }
 
+// The level a conversation's work is drawn at, whether thinking is, and how
+// this device changes either.
+export interface DetailControl {
+  levels: readonly string[];
+  level: string;
+  change: (level: string) => void;
+  thinking: boolean;
+  showThinking: (shown: boolean) => void;
+}
+
 export function ConversationMenu({
   item,
   fork,
@@ -99,26 +112,15 @@ export function ConversationMenu({
 }: {
   item: Session;
   fork: (item: Session) => void;
-  // Opens the find bar, for the conversation open on the page.
   find?: () => void;
-  // Says what an action did, where the conversation shows its notices.
   notify: (text: string) => void;
   open: (modal: AppModal) => void;
-  // How much of the agent's work transcripts show on this device, and
-  // changing it, offered where a transcript is read.
-  detail?: {
-    levels: readonly string[];
-    level: string;
-    change: (level: string) => void;
-  };
-  // What the conversation's header holds on a phone: first in the menu, and
-  // first under More.
+  detail?: DetailControl;
   children?: ComponentChildren;
   more?: ComponentChildren;
-  // In the list: picks this row and starts picking more (a phone's way to
-  // ⌘-click).
   select?: () => void;
 }) {
+  const { command, manage } = useApi();
   const { online, load: loadSnapshot, report } = useHostContext();
   return (
     <Menu label="Conversation menu">
@@ -173,7 +175,9 @@ export function ConversationMenu({
         </MenuItem>
         <MenuItem
           disabled={!online}
-          onClick={() => void shareTranscript(item).then(notify, report)}
+          onClick={() =>
+            void shareTranscript(item, command).then(notify, report)
+          }
         >
           Export transcript
         </MenuItem>
@@ -190,6 +194,14 @@ export function ConversationMenu({
                 {level === detail.level && <Check />}
               </MenuItem>
             ))}
+            <MenuItem
+              role="menuitemcheckbox"
+              aria-checked={detail.thinking}
+              onClick={() => detail.showThinking(!detail.thinking)}
+            >
+              Thinking
+              {detail.thinking && <Check />}
+            </MenuItem>
             <p class="menu-note small">On this device.</p>
           </MenuSub>
         )}
@@ -206,7 +218,9 @@ export function ConversationMenu({
         {item.generation && (
           <MenuItem
             disabled={!online}
-            onClick={() => void restartConversation(item).then(notify, report)}
+            onClick={() =>
+              void restartConversation(item, manage).then(notify, report)
+            }
           >
             Restart
           </MenuItem>

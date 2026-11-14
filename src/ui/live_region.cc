@@ -20,11 +20,8 @@ namespace uagent {
 namespace {
 
 // `replay` followed by the SGRs `text` wrote: replayed after a reset they
-// restore the styling it left set, so a row drawn on its own keeps the bold or
-// colour an earlier row opened, whatever the codes (38;5;n included). An SGR
-// sets the same attributes wherever it stands, so only its last occurrence
-// counts, and a reset leaves nothing to restore: the replay stays as long as
-// the distinct styles in use, not as the text.
+// restore the styling it left set. Only an SGR's last occurrence counts, so
+// the replay stays as long as the styles in use, not as the text.
 std::string ActiveSgr(std::string_view text, std::string replay = {}) {
   for (size_t at = text.find("\033["); at != std::string_view::npos;
        at = text.find("\033[", at + 1)) {
@@ -153,9 +150,8 @@ void LiveRegion::Flush() {
     caret_column = DisplayWidth(rows.back());
     frame.insert(frame.end(), rows.begin(), rows.end());
   }
-  // As much tail as fits above them; rows scrolling off its top go to
-  // scrollback once, so a paragraph taller than the screen is never
-  // repainted where no erase can reach it.
+  // As much tail as fits above them. Rows scrolling off its top go to
+  // scrollback once: no erase can reach a row there.
   std::vector<std::string> raw;
   std::vector<std::string> tail =
       Rows(std::string_view(tail_).substr(emitted_), width, emitted_sgr_, &raw);

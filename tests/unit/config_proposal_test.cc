@@ -2,12 +2,15 @@
 
 #include "include/app/config_proposal.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "include/app/self_description.h"
 #include "include/app/uagent_tool.h"
 #include "include/core/config.h"
 #include "include/core/effective_config.h"
@@ -16,10 +19,19 @@
 #include "include/core/project.h"
 #include "include/core/runtime_config.h"
 #include "include/core/settings_store.h"
+#include "include/mcp/server.h"
 #include "include/providers/providers.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+namespace {
+// What a uagent tool reads of the build, for a test that does not look.
+json Describes(SelfTopic, const std::string&) { return json::object(); }
+// The settings side of a tool whose test changes none.
+ConfigProposal Proposes(ConfigProposalScope, const std::vector<ConfigChange>&) {
+  return {};
+}
+}  // namespace
 
 TEST_CASE(TestConfigProposalAndCommit) {
   TestWorkspace test("config-proposal");
@@ -37,13 +49,11 @@ TEST_CASE(TestConfigProposalAndCommit) {
   ConfigManager manager = ConfigManager::Capture({});
   RuntimeConfig active = manager.Initialize();
 
-  // Unknown keys are rejected before anything is read or written.
   ConfigProposal unknown =
       PrepareConfigProposal(ConfigProposalScope::kUser,
                             {{"UAGENT_NOT_A_SETTING", "1", false}}, manager);
   CHECK(!unknown.ok);
   CHECK(unknown.error.find("unknown setting") != std::string::npos);
-  // A fixed-choice setting refuses a spelling it would otherwise ignore.
   ConfigProposal choice = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_WEB_SEARCH_BACKEND", "foo", false}},
       manager);
@@ -66,7 +76,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
       /*direct_user=*/true);
   CHECK(!invalid_human_provider.ok);
 
-  // A boolean takes any documented spelling and is stored in one of them.
   ConfigProposal boolean = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_MEMORY", "off", false}}, manager);
   CHECK(boolean.ok);
@@ -147,7 +156,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
     CHECK(rejected.error.find("without credentials") != std::string::npos);
   }
 
-  // Out-of-range values are refused against the registry's own bounds.
   ConfigProposal invalid =
       PrepareConfigProposal(ConfigProposalScope::kUser,
                             {{"UAGENT_MAX_TOOL_CALLS", "-5", false}}, manager);
@@ -161,7 +169,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(proposal.effects[0].effect == ConfigEffect::kActiveNextUserTurn);
   // Preparing saves nothing.
   CHECK(ReadSettings("").all.at("UAGENT_MAX_TOOL_CALLS") == "40");
-  // A secret is no part of the preview.
   CHECK(proposal.Preview().find("adjacent-provider-secret") ==
         std::string::npos);
 
@@ -170,8 +177,7 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(saved.at("UAGENT_MAX_TOOL_CALLS") == "120");
   CHECK(saved.at("QWEN_GPU_API_KEY") == "adjacent-provider-secret");
 
-  // Replaying the same approved proposal is refused: what it replaces is no
-  // longer there.
+  // A replayed proposal is refused: what it replaces is no longer there.
   CHECK(!CommitConfigProposal(proposal, error));
   CHECK(error.find("changed after the preview") != std::string::npos);
 
@@ -196,7 +202,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(!CommitConfigProposal(racing, error));
   CHECK(ReadSettings("").all.at("UAGENT_MAX_STEPS") == "3");
 
-  // An expired proposal cannot commit.
   ConfigProposal expired = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_MAX_STEPS", "9", false}}, manager);
   CHECK(expired.ok);
@@ -204,9 +209,7 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(!CommitConfigProposal(expired, error));
   CHECK(error.find("expired") != std::string::npos);
 
-  // A value typed into the document that its setting does not take, and
-  // one spelled another way, are replaced like any other: the preview and
-  // the save compare with what the document holds.
+  // A value its setting does not take is replaced like any other.
   CHECK(ChangeSettings("", [](SettingValues& scope) {
           scope["UAGENT_MAX_STEPS"] = "many";
           scope["UAGENT_SANDBOX"] = "off";
@@ -221,9 +224,8 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(ReadSettings("").all.at("UAGENT_MAX_STEPS") == "11");
   CHECK(ReadSettings("").warning.empty());
 
-  // The screen shows providers with their keys hidden and sends back what it
-  // was shown: a key left hidden is the one held, and one with nothing
-  // behind it is asked for.
+  // The screen sends back providers with their keys hidden: a hidden key is the
+  // one held, and one with nothing behind it is asked for.
   CHECK(ChangeSettings("", [](SettingValues& scope) {
           scope["UAGENT_PROVIDERS"] =
               R"({"old":{"base_url":"https://old.example/v1",)"
@@ -265,9 +267,7 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(keyless.error.find("enter the key for provider new") !=
         std::string::npos);
 
-  // The store hands a proposal out once, and only for the arguments it was
-  // prepared from.
-  ConfigApprovals store;
+  ApprovedProposals<ConfigProposal> store;
   ConfigProposal stored = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_MAX_STEPS", "9", false}}, manager);
   CHECK(stored.ok);
@@ -281,38 +281,195 @@ TEST_CASE(TestConfigProposalAndCommit) {
             std::chrono::steady_clock::now() - std::chrono::seconds(1));
   CHECK(!store.Take(arguments));  // expired
 
-  // Inspecting needs no one and survives restricted policies; each writing
-  // tool needs a person, whatever it is asked.
-  Tool inspect =
-      UagentTool([](SelfTopic, const std::string&) { return json::object(); });
-  const json config = {{"topic", "config"}};
-  CHECK(RequiredApproval(inspect, config) == ApprovalClass::kNone);
-  CHECK(inspect.run(config, {}).Ok());
-  CHECK(inspect.capabilities == 0);
-  CHECK(!inspect.parameters["properties"].contains("changes"));
-  Tool configure = UagentConfigureTool(
-      [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+  // Showing needs no one and survives restricted policies. With nobody to
+  // approve, the schema offers nothing else.
+  const Tool shows = UagentTool(Describes);
+  const json config = {{"action", "show"}, {"topic", "config"}};
+  const json reset = {{"action", "write"}, {"file", "style"}, {"text", ""}};
+  CHECK(RequiredApproval(shows, config) == ApprovalClass::kNone);
+  CHECK(shows.run(config, {}).Ok());
+  CHECK(shows.capabilities == 0 && shows.parallel_safe);
+  CHECK(FindToolArgumentIssue(shows, reset).has_value());
+  CHECK(FindToolArgumentIssue(shows, {{"action", "set"}}).has_value());
+  // Where a person can approve, every change needs one, whatever it asks.
+  const Tool tool = UagentTool(
+      Describes, [](ConfigProposalScope, const std::vector<ConfigChange>&) {
         ConfigProposal rejected;
         rejected.error = "specific rejection";
         return rejected;
-      },
-      std::make_shared<ConfigApprovals>());
-  CHECK(RequiredApproval(configure, json::object()) ==
-        ApprovalClass::kMandatoryHuman);
-  CHECK(RequiredApproval(UagentFileTool(), json::object()) ==
-        ApprovalClass::kMandatoryHuman);
-  auto issue = configure.validate({{"scope", "user"},
-                                   {"changes",
-                                    {{{"key", "UAGENT_MAX_STEPS"},
-                                      {"operation", "set"},
-                                      {"value", "7"}}}}});
+      });
+  CHECK(RequiredApproval(tool, config) == ApprovalClass::kNone);
+  CHECK(!FindToolArgumentIssue(tool, reset) && !tool.validate(reset));
+  for (const char* action : {"set", "write", "anything"}) {
+    CHECK(RequiredApproval(tool, {{"action", action}}) ==
+          ApprovalClass::kMandatoryHuman);
+  }
+  auto issue = tool.validate({{"action", "set"},
+                              {"scope", "user"},
+                              {"changes",
+                               {{{"key", "UAGENT_MAX_STEPS"},
+                                 {"operation", "set"},
+                                 {"value", "7"}}}}});
   CHECK(issue && issue->code == "config.rejected");
   CHECK(issue && issue->field == "changes");
   CHECK(issue && issue->message == "specific rejection");
 }
 
-// A project's settings are saved under its folder, beside what is saved for
-// all conversations, and nowhere in the project.
+TEST_CASE(TestUagentWritesWhatWasApproved) {
+  TestWorkspace test("uagent-write");
+  const Tool tool = UagentTool(Describes, Proposes);
+  const std::string skill = "---\ndescription: Release notes\n---\nBody\n";
+  const std::filesystem::path config = test.home / ".uagent/config";
+  const std::vector<std::pair<json, std::filesystem::path>> written = {
+      {{{"file", "style"}, {"text", ":root { --accent: red; }\n"}},
+       config / "style.css"},
+      {{{"file", "prompt"}, {"text", R"({"replace":{"## Scratch":"None."}})"}},
+       config / "prompt.json"},
+      {{{"file", "mcp"}, {"text", R"({"mcpServers":{}})"}},
+       test.workspace / ".mcp.json"},
+      {{{"file", "skill"}, {"name", "notes"}, {"text", skill}},
+       test.home / ".uagent/skills/notes/SKILL.md"},
+      {{{"file", "instructions"}, {"scope", "project"}, {"text", "Brief.\n"}},
+       test.workspace / "AGENTS.md"}};
+  for (auto [arguments, path] : written) {
+    arguments["action"] = "write";
+    const std::string text = arguments["text"].get<std::string>();
+    CHECK(!FindToolArgumentIssue(tool, arguments) && !tool.validate(arguments));
+    CHECK(tool.run(arguments, {}).error == ToolErrorCode::kPermissionDenied);
+    CHECK(!PathExists(path));
+    const std::string preview = tool.approval_preview(arguments);
+    CHECK(preview.find(path.filename().string() + "\n+ " +
+                       text.substr(0, text.find('\n'))) != std::string::npos);
+    CHECK(tool.run(arguments, {}).Ok());
+    CHECK(ReadFile(path.string(), 4096) == text);
+    CHECK(!tool.run(arguments, {}).Ok());
+    arguments["text"] = text + "\n";
+    tool.approval_preview(arguments);
+    WriteFile(path, "theirs");
+    CHECK(!tool.run(arguments, {}).Ok());
+    CHECK(ReadFile(path.string(), 4096) == "theirs");
+  }
+  // New, the folder's server file is private: an entry may carry a key.
+  CHECK((std::filesystem::status(test.workspace / ".mcp.json").permissions() &
+         (std::filesystem::perms::group_all |
+          std::filesystem::perms::others_all)) == std::filesystem::perms::none);
+
+  // A file is named by kind and a skill by one folder name, never a path;
+  // text that cannot be saved is refused before anyone is asked.
+  const std::vector<json> refused = {
+      {{"file", "instructions"}, {"text", "no scope"}},
+      {{"file", "style"}},
+      {{"file", "style"}, {"text", std::string(kUserStyleBytes + 1, 'x')}},
+      {{"file", "prompt"}, {"text", R"({"replace":{"## Nope":"x"}})"}},
+      {{"file", "prompt"}, {"text", "not json"}},
+      {{"file", "mcp"}, {"text", "[]"}},
+      {{"file", "skill"}, {"text", skill}},
+      {{"file", "skill"}, {"name", "../notes"}, {"text", skill}},
+      {{"file", "skill"}, {"name", "a.b"}, {"text", skill}}};
+  for (json arguments : refused) {
+    arguments["action"] = "write";
+    const auto issue = tool.validate(arguments);
+    CHECK(issue && issue->code == "file.rejected");
+  }
+  // What makes a skill is the Library's to say, when it saves one.
+  const json plain = {{"action", "write"},
+                      {"file", "skill"},
+                      {"name", "plain"},
+                      {"text", "no front matter"}};
+  tool.approval_preview(plain);
+  CHECK(!tool.run(plain, {}).Ok());
+  CHECK(!PathExists(test.home / ".uagent/skills/plain"));
+}
+
+TEST_CASE(TestUagentQueuesTheApprovedCommand) {
+  std::vector<std::string> queued;
+  const Tool tool = UagentTool(
+      Describes, Proposes,
+      [&queued](const std::string& line) { queued.push_back(line); });
+  const auto command = [](const std::string& line) {
+    return json{{"action", "command"}, {"line", line}};
+  };
+  const Tool agent = UagentTool(Describes, Proposes);
+  CHECK(FindToolArgumentIssue(agent, command("/compact")).has_value());
+  CHECK(!agent.parameters["properties"].contains("line"));
+  CHECK(FindToolArgumentIssue(tool, {{"action", "command"}}).has_value());
+  for (const char* line : {"/nope", "compact", "/fork later", "/quit", "/init",
+                           "/review src", "/compact\n/yolo"}) {
+    const auto issue = tool.validate(command(line));
+    CHECK(issue && issue->code == "command.rejected" && issue->field == "line");
+    CHECK(issue &&
+          issue->message.find("show topic commands") != std::string::npos);
+    // Put to a person all the same, it is not recorded as approved.
+    CHECK(tool.approval_preview(command(line)).starts_with("cannot apply: "));
+    CHECK(!tool.run(command(line), {}).Ok() && queued.empty());
+  }
+  const ApprovalMode before = CurrentApprovalMode();
+  SetApprovalMode(ApprovalMode::kAsk);
+  const std::string moves = " what the agent may do without asking.";
+  const std::vector<std::pair<std::string, std::string>> previews = {
+      {"/model sonnet", "/model sonnet"},
+      {" /compact\n", "/compact"},
+      {"/permissions yolo", "/permissions yolo\nThis widens" + moves},
+      {"/permissions plan", "/permissions plan\nThis narrows" + moves},
+      {"/yolo", "/yolo\nThis changes" + moves},
+      {"/plan", "/plan\nThis changes" + moves}};
+  for (const auto& [line, preview] : previews) {
+    const json arguments = command(line);
+    CHECK(!FindToolArgumentIssue(tool, arguments) && !tool.validate(arguments));
+    CHECK(RequiredApproval(tool, arguments) == ApprovalClass::kMandatoryHuman);
+    // Nothing is queued before a person saw the line, nor twice after.
+    CHECK(tool.run(arguments, {}).error == ToolErrorCode::kPermissionDenied);
+    CHECK(tool.approval_preview(arguments) == preview);
+    CHECK(queued.empty());
+    const ToolResult result = tool.run(arguments, {});
+    CHECK(result.Ok() && result.output.find("not to you") != std::string::npos);
+    CHECK(queued ==
+          std::vector<std::string>{preview.substr(0, preview.find('\n'))});
+    CHECK(!tool.run(arguments, {}).Ok());
+    queued.clear();
+  }
+  // What runs is the line approved, not another asked for meanwhile.
+  tool.approval_preview(command("/compact"));
+  CHECK(!tool.run(command("/yolo"), {}).Ok() && queued.empty());
+  SetApprovalMode(before);
+}
+
+// What starts a server is never shown: it can carry a credential.
+TEST_CASE(TestUagentShowsServersRulesAndSkills) {
+  TestWorkspace test("uagent-show");
+  WriteFile(test.home / ".uagent/skills/notes/SKILL.md",
+            "---\ndescription: Release notes\n---\n");
+  ConfigManager manager = ConfigManager::Capture({});
+  const RuntimeConfig active = manager.Initialize();
+  const Api api(active);
+  const std::vector<Tool> tools;
+  McpRuntime mcp;
+  auto server = std::make_unique<McpServer>();
+  server->name = "tracker";
+  server->config = {{"command", "npx"},
+                    {"args", {"tracker", "--token", "canary-token"}}};
+  server->error = "exited: bad canary-token";
+  mcp.Add(std::move(server));
+  const Tool tool = UagentTool([&](SelfTopic topic, const std::string& name) {
+    return DescribeSelf(topic, name, {manager, active, api, tools, mcp});
+  });
+  const auto show = [&tool](const char* topic) {
+    const ToolResult result =
+        tool.run({{"action", "show"}, {"topic", topic}}, {});
+    CHECK(result.Ok());
+    return json::parse(result.output, nullptr, false);
+  };
+  const json servers = show("mcp")["servers"];
+  CHECK(servers.size() == 1 && servers[0]["name"] == "tracker");
+  CHECK(servers[0]["state"] == "failed" && servers[0]["tools"] == 0);
+  CHECK(JsonDump(servers).find("canary") == std::string::npos);
+  const json skills = show("skills");
+  CHECK(std::ranges::any_of(skills, [](const json& skill) {
+    return skill["name"] == "notes" && skill["status"] == "available";
+  }));
+  CHECK(show("permissions")["rules"].empty());
+}
+
 TEST_CASE(TestProjectSettingsAreSavedByFolder) {
   TestWorkspace test("config-project");
   ScopedEnv no_override("UAGENT_MAX_TOOL_CALLS");
@@ -328,8 +485,6 @@ TEST_CASE(TestProjectSettingsAreSavedByFolder) {
   CHECK(saved.project.at("UAGENT_MAX_TOOL_CALLS") == "120");
   CHECK(manager.Read().sources["UAGENT_MAX_TOOL_CALLS"] == "project");
   CHECK(!PathExists((test.workspace / ".uagent").string()));
-  // A value may refer to a name saved beside it, and each project has its
-  // own.
   CHECK(ChangeSettings(test.workspace.string(), [](SettingValues& project) {
           project["TOKEN"] = "project-token";
           project["UAGENT_PROVIDERS"] = "$TOKEN";
@@ -350,7 +505,6 @@ TEST_CASE(TestProjectSettingsAreSavedByFolder) {
         }).empty());
   CHECK(!CommitConfigProposal(reset, error));
   CHECK(ReadSettings(test.workspace.string()).project.size() == 4);
-  // Another folder is not affected.
   CHECK(ReadSettings(test.root.string()).project.empty());
   // Where no folder is named (the web host's own view) there is no project
   // to save for, and never a fall-through to all conversations.
@@ -368,8 +522,6 @@ TEST_CASE(TestProjectSettingsAreSavedByFolder) {
   CHECK(named.size() == 1 && named[0].key == "UAGENT_MAX_STEPS");
 }
 
-// Get reports what each scope holds; reset clears a scope's overrides in one
-// save but never its secrets.
 TEST_CASE(TestConfigurationResetKeepsSecrets) {
   TestWorkspace test("config-reset");
   const std::string providers =
@@ -390,8 +542,7 @@ TEST_CASE(TestConfigurationResetKeepsSecrets) {
     return json();
   };
   json got = ConfigurationControl({{"operation", "get"}}, manager);
-  // Facts, typed like the default: what the user file sets, what applies and
-  // where that comes from. A secret says only that it is set.
+  // Typed like the default; a secret says only that it is set.
   const json calls = find(got, "UAGENT_MAX_TOOL_CALLS");
   CHECK(calls["set"]["user"] == 40 && calls["effective"] == 40);
   CHECK(calls["scopes"].size() == 2 && calls["scopes"][1] == "project");
@@ -401,7 +552,6 @@ TEST_CASE(TestConfigurationResetKeepsSecrets) {
   const json steps = find(got, "UAGENT_MAX_STEPS");
   CHECK(!steps.contains("set") && steps["effective"] == steps["default"]);
   CHECK(steps["source"] == "default");
-  // A model role names the setting it follows and takes its value.
   CHECK(find(got, "UAGENT_MEMORY_MODEL")["follows"] == "UAGENT_MODEL");
 
   json reset = ConfigurationControl({{"operation", "reset"}, {"scope", "user"}},
@@ -413,7 +563,6 @@ TEST_CASE(TestConfigurationResetKeepsSecrets) {
   const SettingValues kept = ReadSettings("").all;
   CHECK(kept.size() == 1 &&
         json::parse(kept.at("UAGENT_PROVIDERS")) == json::parse(providers));
-  // Nothing left to reset is not an error and writes nothing.
   json again = ConfigurationControl({{"operation", "reset"}, {"scope", "user"}},
                                     manager);
   CHECK(!again.contains("error"));

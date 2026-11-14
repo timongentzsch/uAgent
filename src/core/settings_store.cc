@@ -33,9 +33,7 @@ json EmptyDocument() {
 }
 
 // The document's shape, in this format. A malformed document is refused,
-// never read as empty: the next save would otherwise discard it. What a
-// scope holds is not judged here: a name or value that cannot be taken is
-// reported and the rest applies.
+// never read as empty: the next save would otherwise discard it.
 bool Valid(const json& document) {
   if (!document.is_object() || JsonValue(document, "format", 0) != kFormat) {
     return false;
@@ -49,8 +47,7 @@ bool Valid(const json& document) {
 }
 
 // A setting's value as the document holds it: in the setting's own type
-// where the text is of that type, and as the text otherwise (a reference to
-// a variable, or a value reading will report).
+// where the text is of that type, and as the text otherwise.
 json Typed(const ConfigDescriptor& descriptor, const std::string& text) {
   switch (descriptor.type) {
     case ConfigType::kInt:
@@ -109,9 +106,8 @@ json EncodeScope(const SettingValues& values, const json& prior = {}) {
   }
   for (const auto& [name, text] : values) {
     if (const ConfigDescriptor* descriptor = FindConfigDescriptor(name)) {
-      // A value nobody changed stays as its author wrote it: writing it in
-      // its setting's kind could turn one that was not taken into one that
-      // is.
+      // A value nobody changed stays as its author wrote it: retyping it
+      // could turn one that was not taken into one that is.
       const std::string key(descriptor->key);
       const json* held =
           prior.is_object() && prior.contains(key) ? &prior[key] : nullptr;
@@ -148,9 +144,8 @@ bool KindFits(const ConfigDescriptor& descriptor, const json& held) {
 }
 
 // A scope of the document as settings. With `problems`, what cannot be taken
-// is named there, each with `where` before it, and left out; without, every
-// value of a setting is taken as it stands. `invalid` collects the keys of
-// settings whose value was left out.
+// is named there and left out; without, every value is taken as it stands.
+// `invalid` collects the keys of settings whose value was left out.
 SettingValues DecodeScope(const json& scope, const std::string& where,
                           std::vector<std::string>* problems,
                           std::vector<std::string>* invalid = nullptr) {

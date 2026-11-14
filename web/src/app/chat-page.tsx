@@ -7,14 +7,27 @@ import type {
   Outgoing,
   Session,
   Snapshot,
+  Space,
   View,
   SlashCommand,
 } from "../shared/types.ts";
 import { queuedGuidance } from "../shared/message-view.ts";
-import { useCallback, useMemo } from "preact/hooks";
-import { api, routes } from "../state/api.ts";
+import { useCallback, useMemo, useState } from "preact/hooks";
+import { useApi } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
-import { Welcome, Button, Actions } from "../shared/ui.tsx";
+import { Button, Mark } from "../shared/ui.tsx";
+import {
+  HomeLists,
+  type Redirect,
+  Suggestion,
+} from "../features/filing/filing.tsx";
+import { ChevronDown, Gauge, LayoutGrid } from "lucide-preact";
+import "../shared/model-control.css";
+import { StartField } from "../shared/start-field.tsx";
+import { SheetButton } from "../shared/sheet.tsx";
+import ModelPicker from "../shared/model-picker.tsx";
+import { FreeStart } from "./free-start.tsx";
+import type { ModelChoice } from "./use-places.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import { SideLayout } from "../shared/side-pane.tsx";
@@ -32,9 +45,10 @@ import SideAnswer from "../features/chat/side-answer.tsx";
 // Empty lists, so an idle context value or prop never changes identity.
 const NO_ACTIVITIES: Activity[] = [];
 const NO_COMMANDS: SlashCommand[] = [];
+const NO_SPACES: Space[] = [];
+export const startFieldId = "start-field";
 
-// The transcript's nodes: the host's view, then this device's messages the
-// host has not confirmed yet.
+// The host's view, then this device's messages it has not confirmed yet.
 export function transcriptNodes(
   view: View | undefined,
   outgoing: Outgoing[],
@@ -50,7 +64,6 @@ export function transcriptNodes(
   ];
 }
 
-// The conversation's agent is using the browser: a running call links to it.
 export const isBrowsing = (snapshot?: Snapshot) =>
   !!snapshot?.state?.view?.nodes.some(
     (node) =>
@@ -60,10 +73,8 @@ export const isBrowsing = (snapshot?: Snapshot) =>
       ),
   );
 
-// The one surface that reads the selected conversation's snapshot, so a
-// streamed frame re-renders the transcript and composer, not the shell.
-// It stays mounted on the other pages: the transcript history keeps its
-// place under a page key and resumes when the conversation returns.
+// The one surface that reads the selected conversation's snapshot. It stays
+// mounted on the other pages, so the transcript history keeps its place.
 export default function ChatPage({
   active,
   historyKey,
@@ -74,6 +85,10 @@ export default function ChatPage({
   outgoing,
   loadError,
   newPlace,
+  start,
+  settings,
+  openList,
+  redirect,
   updateView,
   choose,
   side,
@@ -92,21 +107,29 @@ export default function ChatPage({
   catalogue: Catalogue;
   outgoing: Outgoing[];
   loadError: unknown;
-  // Asks for a workspace's name or a folder's path, to start a conversation.
-  newPlace: (place: "workspace" | "folder") => void;
+  newPlace: (
+    place: "conversation" | "workspace" | "folder",
+    text?: string,
+  ) => void;
+  start: (text: string, model?: ModelChoice) => Promise<unknown>;
+  settings: () => void;
+  // On a narrow screen: opens the list of every conversation.
+  openList?: () => void;
+  redirect: Redirect;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
   choose: (id: string) => Promise<void>;
   side: { question: string; id?: string; firstRequest: string } | null;
   closeSide: () => void;
   actions: MessageActions;
   setInspector: (target: InspectorTarget | null) => void;
-  // The files pane, when it is open beside the chat.
   files?: ComponentChildren;
-  // The find bar's request, for whichever conversation it was opened in.
   find: FindRequest | null;
   closeFind: () => void;
 }) {
+  const { api, routes } = useApi();
   const { store, online, report, load, setModal } = useHostContext();
+  // The model picked on the home screen for the conversation it starts.
+  const [model, setModel] = useState<ModelChoice>();
   const { setFollowing, draft, setDraft, submit } = useConversation();
   const snapshot = useSnapshots(store, (all) => all[selected]);
   const view = snapshot?.state?.view;
@@ -114,8 +137,7 @@ export default function ChatPage({
     () => transcriptNodes(view, outgoing, selected),
     [view, outgoing, selected],
   );
-  // This device's guidance waiting on the turn: beside the composer, not in
-  // the transcript, and unchanged by the frames streamed meanwhile.
+  // Queued guidance shows beside the composer, not in the transcript.
   const queued = useMemo(
     () =>
       outgoing.filter(
@@ -130,9 +152,7 @@ export default function ChatPage({
         : allNodes,
     [allNodes, queued],
   );
-  // Session-scoped surfaces: switching conversations resumes the saved
-  // scroll position (or pins a fresh one); the hook owns this, so there
-  // is no pin-on-select here to clobber the restore.
+  // The hook owns scroll restore per session: no pin-on-select here.
   const {
     scroller: transcript,
     attachScroller,
@@ -142,8 +162,7 @@ export default function ChatPage({
     reveal,
     unseen,
   } = useTranscriptHistory(setFollowing, historyKey, nodes);
-  // The shared transcript controller retains the visible node through
-  // this bounded page update; this loader only owns data and cursors.
+  // The transcript hook keeps the visible node in place; this only loads data.
   const more = view?.more;
   const before = view?.before;
   const older = useCallback(async () => {
@@ -174,15 +193,13 @@ export default function ChatPage({
         },
       };
     });
-  }, [more, before, selected, updateView, transcript]);
-  // What the composer is given keeps its identity across streamed frames.
+  }, [more, before, selected, updateView, transcript, routes.session, api]);
   const send = useCallback(
     (event: Event, queue?: boolean) => submit(event, jumpToLatest, queue),
     [submit, jumpToLatest],
   );
-  // Optimistic: pin to the end synchronously (<1 frame), refresh the
-  // snapshot in the background. jumpToLatest is idempotent and load()
-  // dedupes in flight, so rapid presses stay a single pin + a single fetch.
+  // jumpToLatest is idempotent and load() dedupes in flight, so rapid presses
+  // cost one pin and one fetch.
   const jump = useCallback(() => {
     jumpToLatest();
     load(selected).catch(report);
@@ -195,7 +212,6 @@ export default function ChatPage({
     () => setModal({ type: "browser", handoff: true }),
     [setModal],
   );
-  // The agents it started that are working, for the status control.
   const sessions = catalogue.sessions;
   const agents = useMemo(
     () =>
@@ -207,8 +223,6 @@ export default function ChatPage({
   const open = useCallback((id: string) => void choose(id), [choose]);
   if (!active) return null;
 
-  // The last turn stopped short, and nothing new has been sent since: the
-  // status control says so and offers Continue.
   const stop = snapshot?.state?.stop;
   const stopped =
     stop &&
@@ -218,9 +232,7 @@ export default function ChatPage({
     !nodes.at(-1)?.id.startsWith("outgoing-")
       ? stop.reason
       : undefined;
-  // A conversation opened by its link before the list names it is drawn the
-  // same way: its transcript from samples until it loads, its composer inert
-  // until the page is online.
+  // A linked conversation the list does not name yet is drawn as a placeholder.
   const shown =
     session ?? (opening ? { id: selected, generation: "placeholder" } : null);
   const composerFor = (item: Session) => (
@@ -247,6 +259,14 @@ export default function ChatPage({
       choose={open}
     />
   );
+  // Its only message, while its first turn has changed no file yet.
+  const asked = nodes.filter((node) => node.kind === "turn");
+  const first =
+    session?.turn_active &&
+    asked.length === 1 &&
+    !nodes.some((node) => node.kind === "work" && node.result?.edited)
+      ? asked[0].body?.text || ""
+      : "";
   return shown ? (
     <SideLayout
       pane={
@@ -267,10 +287,8 @@ export default function ChatPage({
           close={closeFind}
         />
       )}
-      {/* Remount the transcript per session: a stale surface's
-        node detaches, so queued scrolls from it can never
-        rewrite the live one, and each surface keeps its own
-        DOM state (expansion, disclosure, scroll). */}
+      {/* Remounted per session: a stale surface's queued scrolls can never
+        rewrite the live one. */}
       <LiveActivities.Provider
         value={snapshot?.state?.activities || NO_ACTIVITIES}
       >
@@ -297,40 +315,104 @@ export default function ChatPage({
           close={closeSide}
         />
       )}
+      {session && (
+        <Suggestion
+          key={session.id}
+          session={session}
+          sessions={catalogue.sessions}
+          spaces={catalogue.spaces || NO_SPACES}
+          first={first}
+          redirect={redirect}
+        />
+      )}
       {composerFor(shown)}
     </SideLayout>
   ) : (
-    <Welcome
-      level={1}
-      title="What are we working on?"
-      tips={[
-        [
-          "Folders",
-          "A folder’s name in the list opens its overview: what works, what needs you, spend and changes.",
-        ],
-        [
-          <kbd>{keysOf("search").join(" ")}</kbd>,
-          "Searches every conversation, command and setting.",
-        ],
-        [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
-      ]}
-    >
-      <p>
-        Start in a workspace or a folder on your host, or open a conversation
-        from the list.
-      </p>
-      <Actions>
-        <Button onClick={() => newPlace("workspace")} disabled={!online}>
-          New workspace…
-        </Button>
-        <Button
-          variant="primary"
-          onClick={() => newPlace("folder")}
+    <div class="home">
+      <header class="home-head">
+        <Mark className="cursor-mark" />
+        <h1>What are we working on?</h1>
+      </header>
+      <FreeStart online={online} settings={settings} />
+      <div class="home-start">
+        <StartField
+          id={startFieldId}
+          label="Start a conversation"
+          placeholder="Ask, or describe the work…"
           disabled={!online}
+          // A phone would open its keyboard over the lists.
+          autoFocus={!openList}
+          start={(text) => start(text, model)}
         >
-          New folder…
-        </Button>
-      </Actions>
-    </Welcome>
+          {(text) => (
+            <>
+              <Button
+                class="start-place"
+                title="It starts in Scratch, and µAgent suggests where it belongs once it knows. Choose another place here."
+                disabled={!online}
+                onClick={() => newPlace("conversation", text)}
+              >
+                <LayoutGrid />
+                <span>Scratch</span>
+                <ChevronDown />
+              </Button>
+              <SheetButton
+                label="Model for this conversation"
+                title="Model and effort"
+                className="model-control"
+                buttonClass="model-selector"
+                disabled={!online}
+                trigger={
+                  <>
+                    <Gauge />
+                    <span>{model?.label || "Default model"}</span>
+                    <ChevronDown />
+                  </>
+                }
+              >
+                {(close) => (
+                  <ModelPicker
+                    session={{ id: "new-conversation", generation: "" }}
+                    selection={model?.label}
+                    save={(label, picked, effort) =>
+                      setModel({ label, model: picked, effort })
+                    }
+                    close={close}
+                    online={online}
+                    running={false}
+                  />
+                )}
+              </SheetButton>
+            </>
+          )}
+        </StartField>
+      </div>
+      <HomeLists
+        sessions={catalogue.sessions}
+        spaces={catalogue.spaces || NO_SPACES}
+        choose={choose}
+        all={openList}
+      />
+      <dl class="tips">
+        {(
+          [
+            [
+              "Folders",
+              "A folder’s name in the list opens its overview: what works, what needs you, spend and changes.",
+            ],
+            [
+              <kbd>{keysOf("search").join(" ")}</kbd>,
+              "Searches every conversation, command and setting.",
+            ],
+            [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
+          ] as const
+        ).map(([lead, text], index) => (
+          <div key={index}>
+            <dt>{lead}</dt>
+            <dd>{text}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }

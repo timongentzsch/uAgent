@@ -2,8 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_CORE_STYLE_H_
 #define UAGENT_INCLUDE_CORE_STYLE_H_
-// Presentation helpers shared by the terminal renderers: styling that survives
-// a line break, and the one shape of a notice row.
+// Presentation helpers shared by the terminal renderers.
 
 #include <initializer_list>
 #include <string>
@@ -14,9 +13,8 @@
 
 namespace uagent {
 
-// Re-emit the opening sequence after every hard newline so each physical line
-// carries its own style. A terminal keeps SGR across a soft wrap, but a copied
-// transcript, and any consumer that splits on newlines, does not.
+// Reopens the style after every newline: a consumer that splits on newlines
+// does not carry SGR across them.
 inline std::string StyledBlock(std::string_view text, const char* open) {
   if (!open || !*open) return std::string(text) + "\n";
   std::string body(text);
@@ -28,8 +26,7 @@ inline std::string StyledBlock(std::string_view text, const char* open) {
   return std::string(open) + body + RST() + "\n";
 }
 
-// Parts joined by " · ", the separator every row uses. Empty parts are
-// skipped, so an optional one needs no condition of its own.
+// Parts joined by " · "; empty parts are skipped.
 std::string JoinDot(std::initializer_list<std::string_view> parts);
 
 // Where a row sits under its heading, and where its details sit under it.

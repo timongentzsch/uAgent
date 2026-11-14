@@ -46,7 +46,7 @@ void ParseSkillFrontMatter(std::istream& input, std::string* description,
   }
 }
 
-std::filesystem::path InstalledSkillsPath() {
+std::filesystem::path InstalledShare(std::string_view name) {
   namespace fs = std::filesystem;
   fs::path executable = ExecutablePath();
   if (!executable.has_parent_path()) return {};
@@ -54,7 +54,35 @@ std::filesystem::path InstalledSkillsPath() {
   fs::path resolved = fs::canonical(executable, ec);
   if (ec) resolved = fs::absolute(executable, ec);
   if (ec || resolved.parent_path().empty()) return {};
-  return resolved.parent_path().parent_path() / "share/uagent/skills";
+  const fs::path data = fs::path("share/uagent") / name;
+  auto adjacent = resolved.parent_path() / data;
+  if (PathExists(adjacent)) return adjacent;
+  return resolved.parent_path().parent_path() / data;
+}
+
+namespace {
+// Where Claude Code and Codex keep their skills, read when asked for.
+std::vector<std::string> Vendors() {
+  std::vector<std::string> vendors;
+  for (const char* agent : {"claude", "codex"}) {
+    if (ReadsAgent(agent)) vendors.push_back("." + std::string(agent));
+  }
+  return vendors;
+}
+}  // namespace
+
+std::vector<std::filesystem::path> UserSkillPaths() {
+  namespace fs = std::filesystem;
+  std::vector<fs::path> path;
+  // ".agents" is the vendor-neutral location.
+  if (const std::string home = UserHome(); !home.empty()) {
+    path.push_back(fs::path(home) / ".agents" / "skills");
+    for (const std::string& vendor : Vendors()) {
+      path.push_back(fs::path(home) / vendor / "skills");
+    }
+  }
+  path.push_back(fs::path(GlobalBase()) / "skills");
+  return path;
 }
 
 std::vector<std::filesystem::path> SkillSearchPath(
@@ -68,21 +96,8 @@ std::vector<std::filesystem::path> SkillSearchPath(
     }
     return path;
   }
-  // ".agents" is the vendor-neutral location; the others are where Claude Code
-  // and Codex keep theirs, read when asked for.
-  std::vector<std::string> vendors;
-  for (const char* agent : {"claude", "codex"}) {
-    if (ReadsAgent(agent)) vendors.push_back("." + std::string(agent));
-  }
-  std::string home = UserHome();
-  if (!home.empty()) {
-    path.push_back(fs::path(home) / ".agents" / "skills");
-    for (const std::string& vendor : vendors) {
-      path.push_back(fs::path(home) / vendor / "skills");
-    }
-  }
-  path.push_back(fs::path(GlobalBase()) / "skills");
-  fs::path installed = InstalledSkillsPath();
+  path = UserSkillPaths();
+  fs::path installed = InstalledShare("skills");
   if (!installed.empty()) path.push_back(std::move(installed));
   // Vendor-neutral folder skills apply from every ancestor. Walk from the
   // filesystem root toward cwd so the nearest repository scope wins.
@@ -96,8 +111,8 @@ std::vector<std::filesystem::path> SkillSearchPath(
   for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
     path.push_back(*it / ".agents" / "skills");
   }
-  // Tool-specific locations remain folder-local compatibility roots.
-  for (const std::string& vendor : vendors) {
+  // Tool-specific locations are read from the folder only.
+  for (const std::string& vendor : Vendors()) {
     path.push_back(cwd / vendor / "skills");
   }
   path.push_back(ProjectBase(cwd) / "skills");
@@ -163,9 +178,8 @@ std::vector<Skill> DiscoverSkills(const std::filesystem::path& cwd) {
   };
   std::vector<fs::path> seen;
   for (const fs::path& base : SkillSearchPath(cwd)) {
-    // The folder can be the home directory, and a vendor path can repeat;
-    // scanning one twice would only cost time, but it would also let a skill
-    // shadow itself and read as a precedence bug.
+    // The folder can be the home directory, and a vendor path can repeat:
+    // scanning one twice would let a skill shadow itself.
     if (std::find(seen.begin(), seen.end(), base) != seen.end()) continue;
     seen.push_back(base);
     scan(base);

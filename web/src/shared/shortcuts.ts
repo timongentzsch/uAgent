@@ -1,12 +1,9 @@
 import { useEffect } from "preact/hooks";
 import { useLatest } from "./use-latest.ts";
 
-// Every keyboard shortcut, once: the global listener below matches these,
-// and the shortcuts sheet and search show them. `keys` is
-// "Mod+K" style, Mod being ⌘ on a Mac and Ctrl elsewhere; Ctrl is Ctrl
-// everywhere, and ⌘ too on a Mac. Entries without `global` are the
-// composer's own, listed so they can be found. `outside` ones are text in
-// a field, and a dialog's or menu's own keys there: they act only outside.
+// `keys` is "Mod+K" style: Mod is ⌘ on a Mac and Ctrl elsewhere; Ctrl is
+// Ctrl everywhere, and ⌘ too on a Mac. Entries without `global` are the
+// composer's own, listed to be found; `outside` ones act only outside fields.
 export const SHORTCUTS = [
   { id: "search", keys: "Mod+K", label: "Search", global: true },
   {
@@ -86,7 +83,6 @@ const NAMES: Record<string, string> = {
   Backspace: "⌫",
 };
 
-// A shortcut's keys as they are printed on the keyboard.
 export const keysOf = (id: ShortcutId) =>
   SHORTCUTS.find((item) => item.id === id)!
     .keys.split("+")
@@ -116,9 +112,7 @@ function matches(keys: string, event: KeyboardEvent) {
   );
 }
 
-// A keydown listener runs the global shortcuts given handlers (the app's,
-// and the sidebar's while it selects); the latest handlers run, without
-// re-subscribing.
+// The latest handlers run, without re-subscribing.
 export function useShortcuts(
   handlers: Partial<Record<ShortcutId, () => void>>,
 ) {

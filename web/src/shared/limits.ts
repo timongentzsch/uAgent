@@ -1,7 +1,6 @@
 // Fixed browser memory and rendering policies. Runtime configurable native
 // limits live in the C++ config registry; these bounds protect local UI state.
 
-// Forgets the oldest-inserted entries of a Map or Set beyond `max`.
 export function dropOldest<K>(
   entries: { size: number; keys(): Iterable<K>; delete(key: K): unknown },
   max: number,
@@ -18,14 +17,13 @@ export const maxHttpExchanges = 64;
 export const maxRecalledPromptSessions = 32;
 // Prompts Up and Down recall per conversation.
 export const maxRecalledPrompts = 100;
-// Nodes a transcript keeps as older pages are read in.
 export const maxHistoryNodes = 256;
-// A row with more children than this shows its latest ones and one line
-// that opens the earlier.
+// A row with more children shows its latest ones and a line for the rest.
 export const maxShownSteps = 30;
-// Rows whose opening or closing a device remembers.
 export const maxRememberedToggles = 500;
 export const reconnectMaxDelayMs = 30_000;
+export const hostsPollMs = 2_000;
+export const hostLatencyPollMs = 5_000;
 // A reconnect shorter than this (a resumed app) shows no status change.
 export const reconnectGraceMs = 1_000;
 export const maxTranscriptBookmarks = 20;
@@ -34,13 +32,11 @@ export const maxDiagramEdges = 300;
 export const maxDiagramSvgChars = 512_000;
 export const maxDiagramCacheEntries = 24;
 export const maxHighlightChars = 32 * 1024;
-// Highlighted code blocks kept, so one that streamed in is not highlighted
-// again when its reply is rendered whole.
+// So a block that streamed in is not highlighted again when rendered whole.
 export const maxHighlightCacheEntries = 64;
-// A file opened in the files pane is highlighted whole up to this size.
 export const maxFileHighlightChars = 256 * 1024;
 
-// Cache/rendering policies, measured in JS characters rather than provider tokens.
+// Measured in JS characters, not provider tokens.
 export const maxPreparedMarkdownChars = 1_000_000;
 // Up to this size a streaming reply's finished part is parsed as a whole
 // (lists and references across blank lines stay intact); past it, only new
@@ -50,16 +46,12 @@ export const retainedBackgroundViews = 4;
 export const commandReceiptWaitMs = 30_000;
 // How long a notification's link waits for its decision to be drawn.
 export const decisionFocusWaitMs = 15_000;
-// How long a closing conversation is given to retire before delete retries.
 export const deleteRetryDelayMs = 1_000;
-// How long a copy button shows that it copied.
 export const copiedFeedbackMs = 2_000;
 // A new scheduled task's interval, and how far ahead a one-off is set.
 export const defaultScheduleSeconds = 3_600;
 
-// A scheduled task's interval is at most a year, as the host has it
-// (kSecondsPerYear); the form waits this long after an edit to ask the host
-// when the schedule next fires.
+// At most a year, as the host has it (kSecondsPerYear).
 export const maxScheduleMinutes = 525_600;
 export const schedulePreviewDebounceMs = 200;
 
@@ -71,32 +63,28 @@ export const maxSpaceNameChars = 64;
 // The workspace a conversation starts in when no folder is chosen.
 export const scratchSpace = "Scratch";
 
-// Zoom shown and stored when the device has not chosen one.
 export const defaultZoom = 100;
-// Drafts are saved once typing pauses this long, and when the page hides.
 export const draftSaveDelayMs = 500;
-// The conversation list is kept this long after it last changed.
 export const catalogueSaveDelayMs = 1_000;
-// A second press of Stop within this is the first one bouncing, not a decision.
+// A second press of Stop within this is the first one bouncing.
 export const stopGuardMs = 500;
-// The first reconnect delay; it doubles with each failure up to
-// reconnectMaxDelayMs.
+// Doubles with each failure up to reconnectMaxDelayMs.
 export const reconnectBaseDelayMs = 1_000;
 // An object URL handed to a download outlives the click by this long, for
 // browsers that start the download afterwards.
 export const downloadRevokeMs = 30_000;
 
-// A draft's attachments: how many, and the largest upload the host takes
-// (kUploadCount, kUploadBytes).
+// As the host has them (kUploadCount, kUploadBytes).
 export const maxDraftFiles = 8;
 export const maxUploadBytes = 8 * 1024 * 1024;
+// The host writes no larger text file.
+export const maxTextFileBytes = 1024 * 1024;
 
 // Mobile Safari avoids focus zoom for an editable layout font of at least 16px.
 export const focusFontFloor = 16;
 
-// Terminals the host runs at once (kWebTerminals). "Add to chat" carries at
-// most this much of one, its end, and a terminal keeps this many lines to
-// scroll back through.
+// maxTerminals is the host's kWebTerminals; "Add to chat" carries the end
+// of a terminal, at most maxTerminalChatChars.
 export const maxTerminals = 8;
 export const maxTerminalChatChars = 16_000;
 export const terminalScrollbackLines = 5_000;
@@ -104,13 +92,14 @@ export const terminalScrollbackLines = 5_000;
 // moves farther than the slop is a scroll.
 export const longPressMs = 450;
 export const longPressSlopPx = 10;
-// A touch that moves farther than this is a swipe, not a press.
 export const swipeSlopPx = 10;
 // A sheet pulled down by this share of its height closes when let go, as
 // does one pulled faster than the flick speed (pixels per millisecond).
 export const sheetCloseShare = 0.3;
 export const sheetFlickSpeed = 0.6;
-// In the installed app a swipe from this close to the left edge, carried
-// this far across, opens the conversations drawer.
 export const edgeSwipeStartPx = 24;
 export const edgeSwipeOpenPx = 60;
+// The lines a thought takes among the steps where not everything is open.
+export const thoughtLines = 2;
+// The latest conversations the home screen lists.
+export const homeRecent = 6;

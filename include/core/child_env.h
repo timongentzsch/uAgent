@@ -2,8 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_CORE_CHILD_ENV_H_
 #define UAGENT_INCLUDE_CORE_CHILD_ENV_H_
-// The environment a child process gets: which variables it loses or keeps
-// by kind of child. Used by every place that spawns one.
+// The environment a child process gets, by kind of child.
 
 #include <string>
 #include <string_view>
@@ -14,10 +13,8 @@ namespace uagent {
 
 using EnvironmentOverrides = std::vector<std::pair<std::string, std::string>>;
 
-// What a child process is told. Every child loses credentials. A program
-// that is not uagent also loses uagent's settings: they configure this
-// session, and a build or test run under them would behave as though the
-// user had set them.
+// Every child loses credentials. A program that is not uagent also loses
+// uagent's settings, which configure this session only.
 enum class ChildEnvironmentPolicy {
   kSanitized,      // a program: an MCP server, a script
   kApprovedShell,  // a command the user's allow-list may hand credentials

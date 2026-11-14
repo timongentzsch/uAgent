@@ -159,7 +159,6 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             assert_true(request["kind"] == "turn", request)
             assert_true("Attached:" not in request["body"]["text"], request["body"])
             reply = next(row for row in reversed(rows) if row.get("role") == "assistant")
-            # The answer sits under the turn the message started.
             assert_true(reply["parent"] == request["id"], rows)
             exchange = reply["http"][-1]
             captured, metadata = body_for(session, exchange, "request")

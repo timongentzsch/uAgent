@@ -73,17 +73,14 @@ enum class PresentationStatus : uint8_t {
   kWarned,
 };
 
-// A notice as every client shows it: one line, its severity, and whether it
-// is routine detail a client shows only when asked for the full picture.
+// A notice as every client shows it; `minor` is routine detail.
 struct PresentationRecord {
   PresentationStatus status = PresentationStatus::kNeutral;
   std::string title;
   bool minor = false;
 };
 
-// A user-facing notice — one line the person should see. It rides the same
-// spine as everything else so it reaches the journal and the JSONL, not only a
-// terminal that may not be attached. Severity picks the color, nothing else.
+// One line the person should see; it reaches the journal and the JSONL too.
 struct Event;
 Event NoticeEvent(PresentationStatus status, std::string text,
                   bool minor = false);
@@ -112,15 +109,11 @@ struct EventPolicy {
 };
 
 const EventPolicy& PolicyFor(EventId id);
-// The type a subscriber receives for `id` (AppEvent::type). Code that tells
-// events apart by type compares against this, so a typo cannot compile.
+// The type a subscriber receives for `id` (AppEvent::type).
 inline std::string_view AppType(EventId id) { return PolicyFor(id).app_type; }
 
-// Transport-neutral application protocol. Subscribers receive every semantic
-// event, including streaming deltas and interactive decisions. Delivery is
-// synchronous and callbacks run without the observability lock; an async
-// adapter must copy the value before returning. The binary is built without
-// exceptions, so callbacks must not throw.
+// Delivery is synchronous, without the observability lock; an async adapter
+// copies the value before returning, and callbacks must not throw.
 struct AppEvent {
   uint64_t sequence = 0;
   std::string time;
@@ -132,10 +125,8 @@ using EventSubscriber = std::function<void(const AppEvent&)>;
 
 class TurnStatus;
 
-// Bounded metadata-only session journal. It never enters model context and is
-// flushed as a private sidecar beside the existing format-3 session snapshot.
-// Locked: events are appended from whichever thread emits them, while the
-// session is saved from the main one.
+// Bounded metadata-only journal beside the session snapshot; it never enters
+// model context. Locked: any thread appends while the main one saves.
 class SessionJournal {
  public:
   void SetEnabled(bool enabled);
@@ -167,9 +158,8 @@ class SessionJournal {
   mutable bool rewrite_ UAGENT_GUARDED_BY(mutex_) = true;
 };
 
-// Directly owns the public JSONL, private debug JSONL, and bounded journal
-// sinks. Application adapters, a terminal among them, subscribe without
-// gaining access to control flow or those sink implementations.
+// Owns the public JSONL, private debug JSONL and journal sinks. Subscribers
+// gain no access to control flow or to those sinks.
 class Observability {
  public:
   Observability();
@@ -207,8 +197,7 @@ class Observability {
   bool shutdown_ UAGENT_GUARDED_BY(mutex_) = false;
 };
 
-// The active pointer is how low-level diagnostics reach the sinks. It is set
-// once by main, has no registration surface, and never owns the runtime.
+// Set once by main; the pointer never owns the runtime.
 void SetObservability(Observability* observability) noexcept;
 Observability* ActiveObservability() noexcept;
 void Emit(Event event) noexcept;

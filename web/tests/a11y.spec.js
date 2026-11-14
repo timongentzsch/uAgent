@@ -1,16 +1,19 @@
-// WCAG 2.2 AA, checked by axe-core on the surfaces a person meets: a live
-// conversation in both colour schemes, both kinds of pending decision, the
-// settings sheet and the phone drawer. axe is a test-only
-// dependency, injected into the page; the product bundle never carries it.
+// WCAG 2.2 AA, checked by axe-core on the surfaces a person meets. axe is a
+// test-only dependency, injected into the page; the bundle never carries it.
 import { test as bare } from "@playwright/test";
 import {
   test,
   expect,
   headerAction,
   online,
+  openFiles,
   selectProbeModel,
   servePending,
+  slide,
+  viewerOf,
+  writeFiles,
   SAMPLE_ASK,
+  SAMPLE_SHEET,
 } from "./fixtures.js";
 import { createRequire } from "node:module";
 import { readdir, readFile } from "node:fs/promises";
@@ -162,13 +165,9 @@ for (const scheme of ["dark", "light"])
     session,
   }) => {
     await page.emulateMedia({ colorScheme: scheme });
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`/#session=${session.id}`);
-    await headerAction(page, "Files");
+    await openFiles(page, session);
     await page.getByRole("button", { name: "shot.png" }).click();
-    await expect(
-      page.getByRole("button", { name: "View shot.png" }),
-    ).toBeVisible();
+    await expect(page.getByRole("group", { name: "shot.png" })).toBeVisible();
     await page.getByRole("combobox", { name: "Search files" }).fill("png");
     await expect(page.getByRole("option", { name: /shot\.png/ })).toBeVisible();
     expect(await violations(page)).toEqual([]);
@@ -201,6 +200,46 @@ for (const width of [390, 1280])
     await confirm.getByRole("button", { name: "Cancel" }).click();
     await expect(settings).toBeVisible();
   });
+
+test("a deck in its viewer, with its legend and find, has no violations", async ({
+  page,
+  session,
+  host,
+}) => {
+  await writeFiles(join(host.project, "decks/talk"), {
+    "Cover.html": slide("Cover", "Notes."),
+    "Plan.html": slide("Plan", "Notes."),
+  });
+  const files = await openFiles(page, session, "decks/talk/");
+  await expect(
+    files.getByRole("option", { name: "Slide 2: Plan" }),
+  ).toBeVisible();
+  await files.getByRole("button", { name: "Find" }).click();
+  await files.getByRole("searchbox").fill("plan");
+  await expect(files.getByRole("search")).toContainText("1 of 1");
+  // The slide it found, drawn.
+  await expect(viewerOf(files).stage.getByRole("heading")).toHaveText("Plan");
+  await expect(files.getByRole("group", { name: "Zoom" })).toBeVisible();
+  expect(await violations(page, ".files")).toEqual([]);
+});
+
+test("a sheet in its viewer, with its tabs, formula bar and cells in error, has no violations", async ({
+  page,
+  session,
+  host,
+}) => {
+  await writeFiles(host.project, { "plan.html": SAMPLE_SHEET });
+  const files = await openFiles(page, session, "plan.html");
+  await expect(files.getByText("2 cells in error")).toBeVisible();
+  await viewerOf(files)
+    .stage.getByRole("gridcell", { name: "Done" })
+    .first()
+    .click();
+  await expect(files.getByRole("group", { name: "Formula bar" })).toContainText(
+    "Tasks!A1",
+  );
+  expect(await violations(page, ".files")).toEqual([]);
+});
 
 test.describe("phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });

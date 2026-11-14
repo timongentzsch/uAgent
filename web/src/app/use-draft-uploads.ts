@@ -2,13 +2,11 @@ import { useCallback, useRef } from "preact/hooks";
 import type { Dispatch, StateUpdater } from "preact/hooks";
 import type { Draft, Session } from "../shared/types.ts";
 import { emptyDraft } from "../state/store.ts";
-import { requestId, uploadAttachment } from "../state/api.ts";
+import { requestId, useApi } from "../state/api.ts";
 import { dedupeName } from "../features/composer/mention.ts";
 import { maxDraftFiles, maxUploadBytes } from "../shared/limits.ts";
 
-// Files on their way into the open conversation's draft. No state of its
-// own beyond admission: the drafts are the host layer's, and each render
-// binds these to the conversation then selected.
+// No state of its own beyond admission: the drafts are the host layer's.
 export function useDraftUploads({
   session,
   online,
@@ -26,8 +24,8 @@ export function useDraftUploads({
   setDrafts: Dispatch<StateUpdater<Record<string, Draft>>>;
   report: (error: unknown) => void;
 }) {
+  const { uploadAttachment } = useApi();
   const active = useRef(new Set<string>());
-  // One conversation's draft changes; the others keep theirs.
   const updateDraft = useCallback(
     (id: string, change: (draft: Draft) => Draft) =>
       setDrafts((current) => ({
@@ -36,8 +34,7 @@ export function useDraftUploads({
       })),
     [setDrafts],
   );
-  // An annotated copy joins the draft and replaces the draft file it was
-  // drawn on; a copy of a sent image is simply attached.
+  // `replaces` is the draft file the annotation was drawn on.
   async function attachAnnotated(file: File, replaces?: string) {
     const id = selected;
     if (!(await upload([file]))) return false;
@@ -69,9 +66,8 @@ export function useDraftUploads({
       );
       return false;
     }
-    // Display names dedupe against the live draft, so two pastes never
-    // share a label. The deduped name is the upload name: server record,
-    // model payload and UI agree with no migration.
+    // Names dedupe against the live draft; the deduped name is the upload name,
+    // so server record, model payload and UI agree.
     const taken = new Set(draft.files.map((item) => item.name));
     const pendingFiles = files.map((file) => {
       const name = dedupeName(file.name || "attachment", taken);

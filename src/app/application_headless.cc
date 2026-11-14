@@ -72,9 +72,7 @@ json Application::ReportUsage(const std::string& ledger) {
   used_before_ = UsageTotals();
   if (ledger.empty()) return used;
   std::string failure;
-  json entry = used;
-  entry["parent_turn"] = EnvLong("UAGENT_INTERNAL_PARENT_TURN", int64_t{0});
-  if (!AppendPrivateLine(ledger, JsonDump(entry), failure)) {
+  if (!AppendPrivateLine(ledger, JsonDump(used), failure)) {
     fprintf(stderr, "cannot write usage ledger: %s\n", failure.c_str());
   }
   return used;
@@ -83,9 +81,8 @@ json Application::ReportUsage(const std::string& ledger) {
 int Application::FinishHeadless(std::string answer, std::string error,
                                 int exit_code) {
   Teardown(exit_code == 0 ? "headless_complete" : "headless_error");
-  // What this run spent, after teardown has taken in what its own children
-  // spent: the envelope reports it, and a child writes it for its parent on
-  // every way out.
+  // Reported after teardown has taken in what its own children spent; a
+  // child writes it for its parent on every way out.
   const json used = ReportUsage(EnvStr("UAGENT_INTERNAL_USAGE_FILE"));
   if (context_.options.json_stream || context_.options.json) {
     json stop = agent_.LastStop();
@@ -112,9 +109,8 @@ int Application::FinishHeadless(std::string answer, std::string error,
 }
 
 int Application::RunHeadless() {
-  // Saved like any conversation, so `-c -p` continues it; the memory
-  // extractor's pass over another conversation is not one of its own.
-  persist_ = EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE").empty();
+  // Saved like any conversation, so `-c -p` continues it.
+  persist_ = true;
   // Spend is reported from here on: a continued conversation's envelope
   // carries this run, not everything before it.
   used_before_ = UsageTotals();
@@ -166,9 +162,8 @@ int Application::RunHeadless() {
   };
   answer_mail();
   PublishChannelState();
-  // The agents it started are part of its answer: it waits while they owe
-  // it a report, and takes each up as a turn. One waiting on a person is
-  // not waited for.
+  // A run waits while the agents it started owe it a report, and takes each
+  // up as a turn. One waiting on a person is not waited for.
   while (!stopping() && AgentsOwe(session_file_)) {
     pollfd wake{AbortWakeFd(), POLLIN, 0};
     poll(&wake, 1, kAgentPollMs);

@@ -1,0 +1,24 @@
+/* A conversation's first message is written in the box every message is;
+   what it starts with gives way before the button that starts it. */
+.start-field {
+  display: grid;
+  text-align: left;
+}
+.start-tools > :not(.icon-button) {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.start-tools :is(.model-selector, .start-place) {
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--font-small);
+}
+.start-tools :is(.model-selector, .start-place) > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.start-tools > :last-child {
+  margin-left: auto;
+  flex: none;
+}

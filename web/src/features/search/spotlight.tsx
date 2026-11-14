@@ -16,10 +16,9 @@ import { fuzzy, matches } from "../../shared/fuzzy.ts";
 import { occurrences } from "../../shared/find.ts";
 import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
-import { api, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 
-// A row of some conversation that holds the words (GET /api/search): its
-// conversation, where, and how many of that conversation's rows hold them.
+// A row that holds the words, as GET /api/search returns it.
 type Hit = {
   session_id: string;
   title: string;
@@ -28,7 +27,6 @@ type Hit = {
   rows: number;
 };
 
-// One line of results, under the group it belongs to.
 type Row = {
   key: string;
   group: string;
@@ -42,7 +40,6 @@ type Row = {
       label: string;
       detail: string;
       shortcut?: ShortcutId;
-      // What a command does, shown after its name.
       about?: string;
     }
 );
@@ -56,7 +53,6 @@ const PREVIEW_AFTER_MS = 150;
 // How much of a previewed row shows before its first match.
 const PREVIEW_LEAD = 120;
 
-// The keys of one shortcut, as printed on the keyboard.
 function Keys({ id }: { id: ShortcutId }) {
   return (
     <span class="keys">
@@ -69,7 +65,6 @@ function Keys({ id }: { id: ShortcutId }) {
   );
 }
 
-// Text with each occurrence of the words marked.
 function Marked({ text, words }: { text: string; words: string }) {
   const parts = [];
   let from = 0;
@@ -82,7 +77,6 @@ function Marked({ text, words }: { text: string; words: string }) {
   return <>{parts}</>;
 }
 
-// The part of a text from shortly before its first match, on a word.
 function around(text: string, words: string) {
   const at = occurrences(text, words)[0] ?? 0;
   return at > PREVIEW_LEAD
@@ -90,10 +84,8 @@ function around(text: string, words: string) {
     : text;
 }
 
-// Search: conversations by name, then the messages of every conversation
-// that hold the words, grouped by place and conversation, then the app's
-// actions, commands and settings. ">" searches only those. Groups keep their
-// order while typing; the place of the open conversation comes first.
+// ">" searches only actions, commands and settings. Groups keep their order
+// while typing; the place of the open conversation comes first.
 export default function Spotlight({
   sessions,
   commands,
@@ -107,19 +99,15 @@ export default function Spotlight({
 }: {
   sessions: Session[];
   commands: SlashCommand[];
-  // The folder or workspace of the open conversation, whose hits lead.
   place?: string;
   choose: (id: string) => void;
-  // Opens a conversation at a row, with its find bar on the words.
   find: (id: string, words: string, sequence: number) => void;
-  // A new conversation in a folder.
   start: (cwd: string) => void;
-  // A slash command, as if typed in the composer.
   run: (command: SlashCommand) => void;
   settings: (scope: Scope) => void;
-  // The global shortcuts' actions, listed by their names.
   actions: Partial<Record<ShortcutId, () => void>>;
 }) {
+  const { api, routes } = useApi();
   const close = useDialogClose();
   const wide = !useCompact();
   const [query, setQuery] = useState("");
@@ -148,7 +136,7 @@ export default function Spotlight({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [words, searching]);
+  }, [words, searching, routes.search, api]);
 
   const byId = new Map(sessions.map((item) => [item.id, item]));
   const recent = [...sessions].sort(
@@ -218,9 +206,8 @@ export default function Spotlight({
     ];
   };
 
-  // Message hits: one group per place, the open conversation's first and
-  // then as the host ranked them; in each, a conversation once, its newest
-  // hits under it, and how many more it holds.
+  // One group per place, the open conversation's first, then as the host
+  // ranked them; each conversation once, with its newest hits under it.
   const messages: Row[] = [];
   if (searching && hits.words === words) {
     const where = (hit: Hit) => {
@@ -383,9 +370,8 @@ export default function Spotlight({
   );
 }
 
-// The rows around a hit, read once the selection rests on it: what was said
-// before it and the row itself, with the words marked.
 function Preview({ hit, words }: { hit: Hit; words: string }) {
+  const { api, routes } = useApi();
   const [rows, setRows] = useState<Node[] | null>(null);
   const cache = useRef(new Map<string, Node[]>());
   const id = `${hit.session_id}:${hit.sequence}`;
@@ -411,7 +397,7 @@ function Preview({ hit, words }: { hit: Hit; words: string }) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [id, hit.session_id, hit.sequence]);
+  }, [id, hit.session_id, hit.sequence, routes.session, api]);
   const who = (node: Node) =>
     node.headline
       ? [node.headline.verb, node.headline.target].filter(Boolean).join(" ")
@@ -437,7 +423,6 @@ function Preview({ hit, words }: { hit: Hit; words: string }) {
   );
 }
 
-// The `?` sheet: every shortcut, with its keys.
 export function ShortcutList() {
   return (
     <dl class="shortcut-list">

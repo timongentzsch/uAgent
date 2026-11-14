@@ -124,7 +124,7 @@ void ProviderCapabilities::SetModelFeatures(const json& features) {
   if (!features.is_object()) return;
   json merged = features;
   // Explicit route features and a negotiated rejection survive catalog
-  // refreshes. Changing route creates a fresh capability object.
+  // refreshes.
   if (model_features.is_object()) merged.update(model_features);
   model_features = std::move(merged);
   reasoning_summary =

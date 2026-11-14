@@ -34,6 +34,7 @@
 #include "include/core/runtime_config.h"
 #include "include/core/skills.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 #include "include/tools/files.h"
 
 namespace uagent {
@@ -66,6 +67,7 @@ struct RepositoryPaths {
 };
 
 RepositoryPaths Repository(const std::filesystem::path& cwd) {
+  if (RemoteWorkspace()) return {Workspace().path, Workspace().path};
   std::filesystem::path identity = RepositoryIdentity(cwd);
   std::filesystem::path label =
       identity.filename() == ".git" ? identity.parent_path() : ProjectRoot(cwd);
@@ -87,7 +89,7 @@ std::filesystem::path MemoryDirectory(const std::string& scope,
   fs::path base = fs::path(GlobalBase()) / kMemoryDir;
   if (scope == "global") return base / "global";
   std::string name = SafeFileComponent(repo.label.filename().string()) + "-" +
-                     WorkspaceId(repo.identity.string());
+                     WorkspaceId(repo.identity.string(), Workspace().host);
   return base / "projects" / name;
 }
 
@@ -121,6 +123,7 @@ std::filesystem::path ClaudeMemoryDirectory(const RepositoryPaths& repo) {
 }
 
 std::optional<std::filesystem::path> CurrentWorkspace(std::string& error) {
+  if (RemoteWorkspace()) return std::filesystem::path(Workspace().path);
   std::error_code code;
   std::filesystem::path cwd = std::filesystem::current_path(code);
   if (!code) return cwd;
@@ -215,9 +218,12 @@ ToolResult ReadMemoryFile(const MemoryEntry& memory) {
       body);
 }
 
+// `source`: the conversation a background extraction learned it from.
 ToolResult AccessMemory(const std::string& name, const std::string& scope,
                         const std::optional<std::string>& content, bool forget,
-                        const std::filesystem::path& cwd) {
+                        const std::filesystem::path& cwd,
+                        const std::string& source = "",
+                        MemoryEvent* written = nullptr) {
   namespace fs = std::filesystem;
   if (Trim(name).empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -255,7 +261,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
         scope == "project" ? path.parent_path().filename().string() : "",
         UtcStamp(),
         false};
-    WriteMemoryEvent(event, "", error);
+    WriteMemoryEvent(event, error);
     LibraryChanged();
     return ToolSuccess("forgot " + path.string());
   }
@@ -306,7 +312,6 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
                          : ToolWritePrivateFile(path.string(), *content);
   if (!saved.Ok()) return saved;
 
-  std::string source = EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE");
   std::string workspace =
       scope == "project" ? path.parent_path().filename().string() : "";
   MemoryEvent event{action,
@@ -317,10 +322,9 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
                     std::move(workspace),
                     UtcStamp(),
                     !source.empty()};
+  if (written) *written = event;
   std::string event_error;
-  std::string receipt =
-      source.empty() ? "" : EnvStr("UAGENT_INTERNAL_MEMORY_RECEIPT");
-  if (!WriteMemoryEvent(event, receipt, event_error)) {
+  if (!WriteMemoryEvent(event, event_error)) {
     DebugLog("memory_event_write_error",
              {{"error", event_error}, {"key", event.key}});
   }
@@ -337,7 +341,9 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
 static ToolResult MemoryAction(const std::string& action,
                                const std::string& key,
                                const std::optional<std::string>& content,
-                               const std::filesystem::path& cwd) {
+                               const std::filesystem::path& cwd,
+                               const std::string& source = "",
+                               MemoryEvent* written = nullptr) {
   // Models fill unused fields with "": that is the same as leaving them out.
   const bool has_text = content.has_value() && !content->empty();
   if (action == "list") {
@@ -387,7 +393,8 @@ static ToolResult MemoryAction(const std::string& action,
     return AccessMemory(name, scope, std::nullopt, false, cwd);
   }
   if (action == "set" && has_content) {
-    return AccessMemory(name, scope, RedactMemorySecrets(*content), false, cwd);
+    return AccessMemory(name, scope, RedactMemorySecrets(*content), false, cwd,
+                        source, written);
   }
   if (action == "forget" && !has_content) {
     return AccessMemory(name, scope, std::nullopt, true, cwd);
@@ -409,17 +416,32 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
   return MemoryAction(action, key, content, *cwd);
 }
 
+ToolResult ExtractedMemoryAction(const std::string& action,
+                                 const std::string& key,
+                                 const std::optional<std::string>& content,
+                                 const std::filesystem::path& cwd,
+                                 const std::string& source,
+                                 MemoryEvent* written) {
+  FileLease lease;
+  std::string error;
+  if (!AcquireLibraryWriteLease(lease, error)) {
+    return ToolFailure(ToolErrorCode::kInternal, error);
+  }
+  return MemoryAction(action, key, content, cwd, source, written);
+}
+
 namespace {
-// What a memory says, in a line for a list: its front matter's description,
-// else its first line of text.
-std::string MemorySummary(const std::string& content) {
+// What a memory says, in a line: its front matter's description, else its
+// opening sentence, which is written as a claim; the rest is elaboration.
+std::string MemorySummary(const std::string& content, size_t chars = 160) {
   std::istringstream input(content);
   std::string summary, line;
   if (content.starts_with("---")) ParseSkillFrontMatter(input, &summary);
   while (Trim(summary).empty() && std::getline(input, line)) {
     summary = line.substr(std::min(line.find_first_not_of("# "), line.size()));
+    summary.resize(std::min(summary.find(". "), summary.size()));
   }
-  return Utf8Prefix(Trim(summary), 160);
+  return Utf8Trunc(Trim(RedactMemorySecrets(std::move(summary))), chars);
 }
 }  // namespace
 
@@ -450,7 +472,7 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
     }
     value["revision"] = DocumentRevision(entry.path, content);
     if (summary) {
-      value["description"] = MemorySummary(RedactMemorySecrets(content));
+      value["description"] = MemorySummary(content);
     }
     value["bytes"] = content.size();
     value["modified"] = SnapshotFile(entry.path).modified_seconds * 1000;
@@ -569,8 +591,7 @@ std::vector<MemoryEntry> ListMemories() {
   return ListMemories(*cwd);
 }
 
-// Everything on disk: the 32-per-scope limit governs writes, and the agent
-// sees the same store as the Library.
+// Everything on disk: the per-scope limit governs writes only.
 std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
                                       size_t limit) {
   if (limit == 0) limit = kMaxCatalogueEntries;
@@ -585,7 +606,7 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
     AddMarkdownMemories(entries, fs::path(home) / ".codex" / "memories",
                         "codex", limit);
   }
-  if (!home.empty() && ReadsAgent("claude")) {
+  if (!RemoteWorkspace() && !home.empty() && ReadsAgent("claude")) {
     AddMarkdownMemories(entries, ClaudeMemoryDirectory(repo), "claude", limit);
   }
   std::sort(entries.begin(), entries.end(),
@@ -595,36 +616,20 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
   return entries;
 }
 
-// One line per memory, and for ours, enough of it to judge whether it is
-// worth fetching: a bare key says something exists and not what, and live a
-// model missed a project memory whose key did not share the question's words.
-// The index lists only this repository's project memories, so their hooks
-// cost at most one line each.
-constexpr size_t kMemoryHookChars = 96;
-
-std::string MemoryHook(const std::filesystem::path& path) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input) return {};
-  std::string head(kMemoryHookChars * 2, '\0');
-  input.read(head.data(), static_cast<std::streamsize>(head.size()));
-  head.resize(static_cast<size_t>(input.gcount()));
-  // One sentence, or one line, whichever ends first: the opening of these is
-  // written as a claim, and the rest is elaboration.
-  size_t stop = head.find_first_of("\r\n");
-  size_t sentence = head.find(". ");
-  if (sentence != std::string::npos &&
-      (stop == std::string::npos || sentence < stop)) {
-    stop = sentence;
-  }
-  if (stop != std::string::npos) head.resize(stop);
-  return Utf8Trunc(Trim(RedactMemorySecrets(std::move(head))),
-                   kMemoryHookChars);
-}
-
+// One line per memory, with enough of it to judge whether it is worth
+// fetching: a bare key says something exists and not what. Ours first, then
+// the newest, so a full budget drops the oldest.
 MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
                             const std::vector<std::string>& inlined) {
-  // Ours first: a large borrowed store must not spend the budget before them.
+  constexpr size_t kHookChars = 96;
   std::vector<MemoryEntry> entries = ListMemories(cwd);
+  auto changed = [](const MemoryEntry& memory) {
+    std::error_code error;
+    return std::filesystem::last_write_time(memory.path, error);
+  };
+  std::ranges::stable_sort(entries, [&](const auto& left, const auto& right) {
+    return changed(left) > changed(right);
+  });
   std::stable_partition(entries.begin(), entries.end(), Writable);
   MemoryIndex index;
   size_t used = 0;
@@ -634,7 +639,9 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
         inlined.end()) {
       continue;
     }
-    std::string hook = Writable(memory) ? MemoryHook(memory.path) : "";
+    std::string head, ignored;
+    ReadRegularFile(memory.path, KiB(1), head, ignored, /*prefix=*/true);
+    std::string hook = MemorySummary(head, kHookChars);
     std::string line =
         "- " + memory.key + (hook.empty() ? "" : ": " + hook) + "\n";
     std::optional<size_t> total = CheckedAdd(used, line.size());
@@ -649,17 +656,9 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
   return index;
 }
 
-// Behavioral "always-on" slice: global memories are injected whole into the
-// startup context alongside the index, capped by MemoryAlwaysBytes().
-// Global scope is the applies-everywhere bucket, so these are exactly the
-// standing preferences the agent should not have to go look up.
-//
-// Smallest first, and every entry is admitted whole or skipped: a lesson cut
-// mid-sentence is worse than an absent one. Size order fits more -- seven
-// standing preferences instead of four on the store this was measured against
-// -- and is stable, where mtime is rewritten by a consolidation pass, a
-// checkout or an editor save, any of which would silently reshuffle which
-// preferences are live.
+// Global memories go whole into the startup context, up to `max_bytes`.
+// Smallest first, each whole or skipped: size order fits more and is stable,
+// where mtime is rewritten by a checkout or an editor save.
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
                                size_t max_bytes) {
   namespace fs = std::filesystem;
@@ -668,8 +667,8 @@ MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
     if (!memory.key.starts_with("global/")) continue;
     std::error_code error;
     uintmax_t bytes = fs::file_size(memory.path, error);
-    // Unreadable size sorts last rather than first: it is the one entry whose
-    // cost is unknown, so it must not displace one that is known to fit.
+    // An unreadable size sorts last: its cost is unknown, so it must not
+    // displace one that is known to fit.
     globals.emplace_back(error ? UINTMAX_MAX : bytes, memory);
   }
   std::stable_sort(globals.begin(), globals.end(),

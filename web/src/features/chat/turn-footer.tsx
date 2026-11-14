@@ -8,9 +8,6 @@ import { formatStat } from "../../shared/display.ts";
 import { MessageActions } from "./message-actions.ts";
 import { MessageMenu } from "./message-menu.tsx";
 
-// A turn's last line: the files it changed (which open their review and its
-// Undo), what it cost, and at its end the answer's time and menu, which
-// holds the turn's statistics.
 export function TurnFooter({
   node,
   answer,

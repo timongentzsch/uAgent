@@ -18,9 +18,8 @@ inline constexpr size_t kInputHistoryEntryBytes = size_t{16} * 1024;
 inline constexpr size_t kInputBufferBytes = size_t{64} * 1024;
 inline constexpr size_t kInputPasteBytes = kInputBufferBytes;
 inline constexpr size_t kInputSequenceBytes = 64;
-// String sequences (OSC, DCS, SOS, PM, APC) carry a payload rather than a
-// fixed grammar, and an OSC 52 reply is routinely kilobytes. Past this bound
-// the sequence is abandoned, so a missing terminator cannot grow the deque.
+// String sequences (OSC, DCS, SOS, PM, APC) carry a payload; past this bound
+// one is abandoned, so a missing terminator cannot grow the deque.
 inline constexpr size_t kInputStringSequenceBytes = 4096;
 // A complete sequence is handled immediately; only a genuinely lone Escape
 // waits, long enough for fragmented PTY input under load.
@@ -66,9 +65,8 @@ class TerminalInputDecoder {
   TerminalInputToken TakeSequence(size_t count);
   // Bytes of the CSI starting `at`, once its final byte has arrived.
   size_t CompleteCsiBytes(size_t at = 0) const;
-  // ESC before a key that is itself several bytes: Meta with a UTF-8
-  // character, or Option+arrow in Terminal.app (ESC ESC [ A). One key, taken
-  // whole. 0 while it is still arriving, npos when the input is neither.
+  // ESC before a multi-byte key: Meta with a UTF-8 character, or Option+arrow
+  // in Terminal.app (ESC ESC [ A). 0 while still arriving, npos when neither.
   size_t MetaKeyBytes() const;
   // ESC ] / P / X / ^ / _ ... BEL or ST. Terminal replies, never user input:
   // their payload must not reach the buffer as typed text.

@@ -1,5 +1,3 @@
-/* With a pane the chat keeps at least --chat-min, and the pane takes its
-   width or what is left beside that minimum. */
 .side-layout {
   flex: 1;
   min-height: 0;
@@ -31,8 +29,7 @@
   width: var(--files-width, clamp(var(--popover), 45vw, var(--sheet) * 1.5));
 }
 
-/* A wide grip over the pane's 1px edge; the edge itself turns to the
-   accent while it is pointed at, focused or dragged. */
+/* A wide grip over the pane's 1px edge. */
 .resize-handle {
   position: absolute;
   top: 0;
@@ -48,7 +45,6 @@
 .resize-handle.end {
   right: calc(var(--space-6) / -2);
 }
-/* Across the top of the terminal, which it makes taller or shorter. */
 .resize-handle.top {
   top: calc(var(--space-6) / -2);
   bottom: auto;
@@ -85,8 +81,6 @@
   }
 }
 
-/* The terminal docked under the chat and the files: its height, or by
-   default half a sheet's width, leaving the chat at least as much. */
 .terminal-dock {
   position: relative;
   flex: none;
@@ -97,13 +91,15 @@
   max-height: calc(100% - var(--sheet) / 2);
   border-top: var(--border);
 }
+.terminal-dock[hidden] {
+  display: none;
+}
 .terminal-dock > :not(.resize-handle) {
   flex: 1;
   min-height: 0;
 }
-/* On a small screen the terminal takes the whole display, as the browser
-   does; the sheet follows the visible area, so the keyboard shrinks it
-   instead of covering it. */
+/* The sheet follows the visible area, so the keyboard shrinks it instead of
+   covering it. */
 dialog.terminal-sheet[data-layout="sheet"] {
   --dialog-width: var(--content-width);
   border-width: 0;

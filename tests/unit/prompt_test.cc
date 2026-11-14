@@ -19,8 +19,6 @@ namespace {
 namespace fs = std::filesystem;
 }  // namespace
 
-// The system message is the base, then the context layers, each source kept
-// for inspection; nothing replaces the base.
 TEST_CASE(TestResolvedPrompt) {
   const json context = {{{"scope", "repository"}, {"text", "project rules"}}};
   const json resolved = ResolvePrompt("base", context);
@@ -30,7 +28,6 @@ TEST_CASE(TestResolvedPrompt) {
             .contains("error"));
 }
 
-// Two files a person edits: theirs and the folder's.
 TEST_CASE(TestInstructionFiles) {
   TestWorkspace workspace("instruction-files");
   const auto cwd = workspace.workspace;
@@ -56,8 +53,6 @@ TEST_CASE(TestInstructionFiles) {
   CHECK(WriteInstructionFile(true, cwd, "Theirs.", "Run ctest.")
             .find("changed since") != std::string::npos);
   CHECK(ReadInstructionFile(InstructionPath(true, cwd)) == "Mine.");
-  // The editor edits the file the loader reads at that level, and never
-  // writes through a link.
   {
     std::ofstream(cwd / "CLAUDE.md") << "Legacy.";
   }
@@ -74,8 +69,6 @@ TEST_CASE(TestInstructionFiles) {
   CHECK(!fs::exists(cwd / "elsewhere"));
 }
 
-// What /instructions previews is what the request sends, before and after a
-// save and load.
 TEST_CASE(TestPromptRequestParity) {
   TestWorkspace workspace("prompt-request");
   Api api{RuntimeConfig{}};

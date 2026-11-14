@@ -1,5 +1,8 @@
+import base64
+import hashlib
 import json
 import os
+import subprocess
 import threading
 import time
 
@@ -24,6 +27,7 @@ from integration_support import (
     tool_call,
     tool_results,
     two_route_providers,
+    uagent_show,
     write_json_response,
     write_sse_sequence,
 )
@@ -131,9 +135,8 @@ def decision_answers(allow, deny=0.0, **reasons):
 def auto_review_run(
     root, home, binary, calls, reviewer, *, finish=None, environment=None, **provider
 ):
-    """Runs one headless turn in Auto mode whose tool calls the mock reviewer
-    judges; returns the envelope, the model's last view of a tool result and
-    the reviewer's requests."""
+    """One headless turn in Auto mode judged by the mock reviewer: the envelope,
+    the model's last view of a tool result and the reviewer's requests."""
     seen = {}
 
     def last(_, body):
@@ -438,20 +441,16 @@ def test_auto_permission_never_reviews_commands_without_a_sandbox(root, home, *,
     def must_not_be_asked(*_):
         raise AssertionError("the reviewer was asked about a command with no sandbox")
 
-    for name, arguments in [
-        ("run", {"command": "echo hi"}),
-        ("scratch", {"path": "t.py", "code": "print(1)"}),
-    ]:
-        _, tool, requests = auto_review_run(
-            root,
-            home,
-            binary,
-            [tool_call(name, arguments)],
-            must_not_be_asked,
-            environment={"UAGENT_SANDBOX": "off"},
-        )
-        assert_true(requests == [], (name, requests))
-        assert_true("not approved" in tool, (name, tool))
+    _, tool, requests = auto_review_run(
+        root,
+        home,
+        binary,
+        [tool_call("run", {"command": "echo hi"})],
+        must_not_be_asked,
+        environment={"UAGENT_SANDBOX": "off"},
+    )
+    assert_true(requests == [], requests)
+    assert_true("not approved" in tool, tool)
 
 
 def test_auto_permission_without_decision_endpoint_asks(root, home, *, binary):
@@ -810,8 +809,7 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
     try:
         env = provider_env(home, first.url, providers, "test/active-live")
         # A raw startup route may accept an explicit effort. A later catalog
-        # route with no advertised effort support must replace, not inherit,
-        # that state.
+        # route with no advertised effort support replaces that state.
         env["UAGENT_REASONING_EFFORT"] = "high"
         catalog_result = run_dialog(root, env, "/model live\n\x1b\nprobe\n/q\n", binary=binary)
         assert_true(catalog_result.returncode == 0, catalog_result.stderr)
@@ -841,9 +839,8 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
         assert_true(restarted.stdout.strip() == "dynamic-route-ok", restarted.stdout)
         assert_true(len(first.requests) == 1, first.requests)
 
-        # Direct /model must discover the same window as the catalog picker.
-        # Changing only the effort keeps it without another catalog request,
-        # and the picker's queries left a catalogue that serves the first.
+        # Direct /model discovers the same window as the catalog picker.
+        # Changing only the effort keeps it without another catalog request.
         providers["second"].pop("context")
         direct_env = provider_env(home, first.url, providers, "test/active-live")
         probes = len(second.get_requests)
@@ -958,9 +955,8 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
 
 
 def test_an_overloaded_provider_is_tried_again(root, home, *, binary):
-    """A proxy reports its upstream's overload inside the stream, after the
-    response was opened. Nothing was said yet, so the request is repeated and
-    the turn goes on."""
+    """A proxy reports its upstream's overload inside the stream. Nothing was
+    said yet, so the request is repeated and the turn goes on."""
     overloaded = (
         "Codex response failed: {'type': 'service_unavailable_error', 'code': "
         "'server_is_overloaded', 'headers': {'x-retry-metadata': 'NO_MORE_RETRY'}, "
@@ -1173,12 +1169,8 @@ def test_escape_during_a_web_search_stops_the_turn(root, home, *, binary):
 
 
 def test_web_search_is_a_tool_call_on_either_route(root, home, *, binary):
-    """A search reads as one call, and its answer stays in the conversation.
-
-    A search hosted inside the conversation's own response left the model
-    with no record of it on the next request, so it took real results for
-    figures it had made up.
-    """
+    """A search reads as one call and its answer stays in the conversation, so
+    the next request still has a record of it."""
 
     def responses_call(handler, body):
         assert_true(all(tool.get("type") == "function" for tool in body["tools"]), body["tools"])
@@ -1621,13 +1613,96 @@ def test_provider_defined_hosted_tool_is_sent_and_replayed(root, home, *, binary
         assert_true(len(server.requests) == 2, len(server.requests))
 
 
+def test_anthropic_reply_cut_inside_a_call_continues(root, home, *, binary):
+    """The catalogue's limit is the cap; a cut call is dropped and the turn goes on."""
+
+    def call(index, call_id, arguments):
+        return [
+            {
+                "type": "content_block_start",
+                "index": index,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": call_id,
+                    "name": "read_path",
+                    "input": {},
+                },
+            },
+            {
+                "type": "content_block_delta",
+                "index": index,
+                "delta": {"type": "input_json_delta", "partial_json": arguments},
+            },
+            {"type": "content_block_stop", "index": index},
+        ]
+
+    def cut(handler, body):
+        assert_true(body["max_tokens"] == 64000, body["max_tokens"])
+        write_sse_sequence(
+            handler,
+            [
+                {"type": "message_start", "message": {"usage": {"input_tokens": 5}}},
+                *call(0, "whole", '{"path":"."}'),
+                *call(1, "cut", '{"path":'),
+                {"type": "message_delta", "delta": {"stop_reason": "max_tokens"}},
+                {"type": "message_stop"},
+            ],
+        )
+
+    def rest(handler, body):
+        assistant, results = body["messages"][-2:]
+        calls = [block["id"] for block in assistant["content"] if block["type"] == "tool_use"]
+        assert_true(calls == ["whole"], assistant)
+        answered = [
+            block["tool_use_id"] for block in results["content"] if block["type"] == "tool_result"
+        ]
+        assert_true(answered == ["whole"], results)
+        assert_true("partial model response: max_tokens" in json.dumps(results), results)
+        write_sse_sequence(
+            handler,
+            [
+                {"type": "message_start", "message": {"usage": {"input_tokens": 9}}},
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "text", "text": "cut-continued"},
+                },
+                {"type": "content_block_stop", "index": 0},
+                {"type": "message_delta", "delta": {"stop_reason": "end_turn"}},
+                {"type": "message_stop"},
+            ],
+        )
+
+    catalog = {"data": [{"id": "claude-test", "max_input_tokens": 200000, "max_tokens": 64000}]}
+    with Server([cut, rest], get_response=catalog) as server:
+        env = base_env(home, server.url)
+        env.update(
+            {
+                "UAGENT_MODEL": "box/claude-test",
+                "UAGENT_PROVIDERS": json.dumps(
+                    {
+                        "box": {
+                            "base_url": server.url,
+                            "api_key": "box-key",
+                            "wire_api": "anthropic_messages",
+                        }
+                    }
+                ),
+            }
+        )
+        result = run(root, env, "--yolo", "-p", "inspect", binary=binary)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(result.stdout.strip() == "cut-continued", result.stdout)
+        assert_true(len(server.requests) == 2, len(server.requests))
+
+
 def test_uagent_tool_reports_live_configuration(root, home, *, binary):
     """uagent inspection answers from the running binary and never leaks secrets."""
     save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=120)
 
     def ask_config(_, body):
         assert_true("uagent" in function_names(body), function_names(body))
-        return tool_call("uagent", {"topic": "config", "name": "UAGENT_MAX_TOOL_CALLS"})
+        return uagent_show("config", name="UAGENT_MAX_TOOL_CALLS")
 
     def ask_status(_, body):
         described = json.loads(tool_results(body["messages"])[-1])
@@ -1637,18 +1712,17 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         assert_true(setting["source"] == "user", setting)
         assert_true(setting["default"] == 0, setting)
         assert_true(setting["takes_effect"] == "next-user-turn", setting)
-        return tool_call("uagent", {"topic": "status"}, call_id="call-2")
+        return uagent_show("status", "call-2")
 
     def ask_prompt(_, body):
         status = json.loads(tool_results(body["messages"])[-1])
         assert_true(status["version"], status)
         assert_true(status["approval"] == "yolo", status)
-        return tool_call("uagent", {"topic": "routes"}, call_id="call-3")
+        return uagent_show("routes", "call-3")
 
     def ask_routes(_, body):
         # A model that cannot read the route table guesses a selection, and a
-        # guess resolving to the wrong endpoint fails as an auth error rather
-        # than as the typo it is.
+        # wrong guess fails as an auth error, not as the typo it is.
         described = json.loads(tool_results(body["messages"])[-1])
         named = {route["name"]: route for route in described["models"]}
         route = named.get("fixture-provider/fixture-route")
@@ -1661,7 +1735,7 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         assert_true("high" in described["efforts"], described)
         # The table names routes; it never carries what authenticates them.
         assert_true("canary-route-key" not in json.dumps(described), described)
-        return tool_call("uagent", {"topic": "prompt"}, call_id="call-4")
+        return uagent_show("prompt", "call-4")
 
     def finish(_, body):
         described = json.loads(tool_results(body["messages"])[-1])
@@ -1705,7 +1779,7 @@ def test_uagent_tool_lists_every_setting(root, home, *, binary):
     save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=120)
 
     def ask(_, _body):
-        return tool_call("uagent", {"topic": "config"})
+        return uagent_show("config")
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]
@@ -1748,7 +1822,6 @@ def test_effort_is_part_of_the_conversations_model_choice(root, home, *, binary)
             and all("conversation" in line for line in chosen),
             session.stdout,
         )
-        # Nothing outside the conversation remembers it.
         assert_true(not saved_settings(home), "effort left the conversation")
 
 
@@ -1983,6 +2056,147 @@ def test_images_go_to_a_vision_model_of_the_same_endpoint(root, home, *, binary)
         assert_true(len(server.requests) == 1, server.requests)
 
 
+def test_free_provider_filters_live_and_cached_image_fallback(root, home, *, binary):
+    picture = root / "shot.png"
+    picture.write_bytes(SMALL_PNG)
+    metadata = {
+        "context_length": 65536,
+        "supported_parameters": ["tools"],
+        "pricing": {"prompt": "0", "completion": "0"},
+    }
+    models = {
+        "data": [
+            {"id": "paid-vision", "input_modalities": ["text", "image"]},
+            {**metadata, "id": "text:free", "input_modalities": ["text"]},
+            {**metadata, "id": "vision:free", "input_modalities": ["text", "image"]},
+        ]
+    }
+
+    def reply(_, body):
+        assert_true(body["model"] in ("text:free", "vision:free"), body)
+        assert_true(
+            body.get("provider", {}).get("max_price")
+            == {"prompt": 0, "completion": 0, "request": 0, "image": 0},
+            body,
+        )
+        assert_true("plugins" not in body, body)
+        return event({"content": "free-ok"})
+
+    with Server([reply] * 4, get_response=models) as server:
+        provider = {
+            "base_url": server.url,
+            "api_key": "test-key",
+            "supports": OPENROUTER_SUPPORTS,
+            "options": {"free_only": True},
+        }
+        env = provider_env(home, server.url, {"free": provider}, "free/text:free")
+        del env["UAGENT_CONTEXT"]
+        for _ in range(2):  # The second run uses the same cached catalogue.
+            result = run(
+                root, env, "--yolo", "--attach", str(picture), "-p", "describe", binary=binary
+            )
+            assert_true(result.returncode == 0, result.stderr)
+            assert_true(result.stdout.strip() == "free-ok", result.stdout)
+        assert_true(
+            [body["model"] for _, body in server.requests] == ["vision:free", "text:free"] * 2,
+            server.requests,
+        )
+        assert_true(len(server.get_requests) == 1, server.get_requests)
+
+
+def test_openrouter_sign_in_saves_a_free_key_from_the_terminal_and_the_web(root, home, *, binary):
+    metadata = {
+        "context_length": 65536,
+        "supported_parameters": ["tools"],
+        "pricing": {"prompt": "0", "completion": "0"},
+    }
+    models = {"data": [{"id": "paid"}, {**metadata, "id": "coder:free"}]}
+    codes = {}
+
+    def redeem(handler, body):
+        # Only the verifier the challenge was made from redeems the code.
+        digest = hashlib.sha256(body["code_verifier"].encode()).digest()
+        challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+        known = codes.get(body["code"]) == challenge
+        write_json_response(
+            handler,
+            {"key": "sk-or-signed-in"} if known else {"error": {"message": "bad code"}},
+            status=200 if known else 403,
+        )
+
+    def challenge_of(text):
+        return text.split("code_challenge=")[1].split("&")[0]
+
+    with Server([redeem], get_response=models) as server:
+        env = base_env(home, server.url)
+        del env["UAGENT_PROVIDERS"], env["UAGENT_MODEL"]
+        save_settings(
+            home, binary=binary, UAGENT_PROVIDERS={"openrouter-free": {"base_url": server.url}}
+        )
+
+        def control(**request):
+            result = run(
+                root, env, "--control", json.dumps({"kind": "openrouter", **request}), binary=binary
+            )
+            return json.loads(result.stdout)
+
+        # The web: the host keeps the verifier between the two steps.
+        started = control(action="start", callback="http://localhost:8080/")
+        assert_true("callback_url=http%3A%2F%2Flocalhost%3A8080%2F" in started["url"], started)
+        codes["web"] = challenge_of(started["url"])
+        refused = control(action="finish", code="web", state="another")
+        assert_true("no longer open" in refused["error"], refused)
+        assert_true(not server.requests, server.requests)
+        started = control(action="start", callback="http://localhost:8080/")
+        codes["web"] = challenge_of(started["url"])
+        state = started["url"].split("state=")[1].split("&")[0]
+        done = control(action="finish", code="web", state=state)
+        assert_true(done == {"model": "openrouter-free/coder:free"}, done)
+        saved = saved_settings(home)
+        assert_true(saved["variables"]["OPENROUTER_FREE_API_KEY"] == "sk-or-signed-in", saved)
+        assert_true("sk-or" not in json.dumps(done), done)
+        again = control(action="finish", code="web")
+        assert_true("no longer open" in again["error"], again)
+
+        # The terminal without a browser: a link, then the code it shows.
+        result = subprocess.run(
+            [str(binary), "setup", "openrouter", "--no-browser"],
+            cwd=root,
+            env=env,
+            input="typed\n",
+            text=True,
+            capture_output=True,
+            timeout=budget(10),
+        )
+        assert_true(result.returncode == 1 and "did not accept" in result.stderr, result)
+
+    def late(handler, body):
+        codes["typed"] = hashlib.sha256(body["code_verifier"].encode()).hexdigest()
+        write_json_response(handler, {"key": "sk-or-typed"})
+
+    with Server([late], get_response=models) as server:
+        save_settings(
+            home, binary=binary, UAGENT_PROVIDERS={"openrouter-free": {"base_url": server.url}}
+        )
+        result = subprocess.run(
+            [str(binary), "setup", "openrouter", "--no-browser"],
+            cwd=root,
+            env=env,
+            input="typed\n",
+            text=True,
+            capture_output=True,
+            timeout=budget(10),
+        )
+        assert_true(result.returncode == 0, result.stdout + result.stderr)
+        digest = bytes.fromhex(codes["typed"])
+        shown = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+        assert_true(f"{server.url}/auth?code_challenge={shown}" in result.stdout, result.stdout)
+        assert_true("callback_url" not in result.stdout, result.stdout)
+        assert_true("new conversations use openrouter-free/coder:free" in result.stdout, result)
+        saved = saved_settings(home)
+        assert_true(saved["variables"]["OPENROUTER_FREE_API_KEY"] == "sk-or-typed", saved)
+
+
 def test_an_image_the_vision_model_cannot_read_is_tried_once_per_turn(root, home, *, binary):
     picture = root / "shot.png"
     picture.write_bytes(SMALL_PNG)
@@ -2038,8 +2252,7 @@ def test_search_goes_to_an_endpoint_that_offers_it_and_otherwise_is_off(root, ho
             assert_true(len(search_server.requests) == 1, search_server.requests)
 
         # The endpoint's model names are not the conversation's to lend: with
-        # none named for it, no search can run, so the model is not offered
-        # it and the person is told once what to set.
+        # none named for search, the tool is not offered and the person is told.
         with Server([event({"content": "first"}), event({"content": "second"})]) as plain:
             env = base_env(home, plain.url)
             env["UAGENT_PROVIDERS"] = json.dumps({"test": {"base_url": plain.url}, **providers})

@@ -3,17 +3,7 @@
 #ifndef UAGENT_INCLUDE_CORE_SETTINGS_STORE_H_
 #define UAGENT_INCLUDE_CORE_SETTINGS_STORE_H_
 // The host's settings: one private JSON document,
-// {"format": 3, "all": {...}, "projects": {"<folder>": {...}}}. A scope names
-// each setting as the registry's `key` does and holds its value in its own
-// type: {"model": "x", "limits.maxSteps": 40, "sandbox.level": "off"}.
-// "variables" in a scope holds what a value may refer to as $NAME, kept and
-// never shown. The document may be edited by hand: what it holds that is no
-// setting, or no value a setting takes, is reported and otherwise left
-// alone.
-//
-// In the process a scope is a map from a setting's environment name to its
-// value as text, which is also how the environment and the command line
-// give one.
+// {"format": 3, "all": {...}, "projects": {"<folder>": {...}}}.
 
 #include <functional>
 #include <map>
@@ -21,11 +11,10 @@
 #include <vector>
 
 #include "include/core/config.h"
+#include "include/core/config_registry.h"
 #include "include/core/file_watch.h"
 
 namespace uagent {
-
-using SettingValues = EnvValues;
 
 inline constexpr char kSettingsFile[] = "settings.json";
 
@@ -33,44 +22,34 @@ std::string SettingsPath();
 
 struct SavedSettings {
   SettingValues all;
-  // What `folder` overrides; empty for a folder that overrides nothing.
+  // What `folder` overrides.
   SettingValues project;
-  // The document's stamp when it was read, for a later "did it change".
+  // The document's stamp when it was read.
   FileStamp stamp;
-  // Why the saved settings are not here: the document cannot be read.
-  // Nothing is saved over it until it is put right.
+  // Set when the document cannot be read; nothing is saved over it then.
   std::string error;
-  // What the document holds that was not taken: a name that is no setting, a
-  // value its setting does not take. The rest applies.
+  // What the document holds that was not taken; the rest applies.
   std::string warning;
-  // The keys of the settings whose value was not taken, for a reader that must
-  // not run on the default in their place.
+  // Keys whose value was not taken: a reader must not run on their default.
   std::vector<std::string> invalid_keys;
 };
 
-// What is saved for all conversations and for the conversations in `folder`.
-// A document in another format is not read.
+// What is saved for all conversations and for those in `folder`.
 SavedSettings ReadSettings(const std::string& folder);
 
-// One scope as the document holds it, also the values reading does not take:
-// what a change to it is compared with, and what a correction replaces.
+// One scope as the document holds it, including values reading does not take.
 SettingValues HeldSettings(const std::string& folder);
 
-// The one way a setting is saved: `change` edits one scope's map (all
-// conversations, or `folder`'s when it is not empty) while the document is
-// locked against every other writer, and the result is saved in one piece.
-// Returning an error leaves the document as it was. Returns that error, or
-// why the document could not be read or saved.
+// `change` edits one scope's map under the document's lock; an error it
+// returns leaves the document as it was. Returns the error, or empty.
 std::string ChangeSettings(
     const std::string& folder,
     const std::function<std::string(SettingValues& scope)>& change);
 
-// Everything saved, as the document spells it. `error` says why it is not
-// all there.
+// Everything saved, as the document spells it; `error` when not all of it.
 json ExportSettings(std::string& error);
 
-// The JSON Schema of the document, for an editor: written beside it as
-// settings.schema.json, which the document names.
+// The document's JSON Schema, written beside it for an editor.
 json SettingsSchema();
 inline constexpr char kSettingsSchemaFile[] = "settings.schema.json";
 

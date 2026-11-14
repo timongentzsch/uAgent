@@ -1,4 +1,4 @@
-import type { TargetedSubmitEvent } from "preact";
+import { HostLabel } from "../../shared/host-scope.tsx";
 import { useState } from "preact/hooks";
 import { CircleAlert, LayoutGrid, List, SquareTerminal } from "lucide-preact";
 import type {
@@ -7,7 +7,7 @@ import type {
   Space,
   TerminalInfo,
 } from "../../shared/types.ts";
-import { api, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { statusOf, type SessionState } from "../../state/attention.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { folderOf } from "../../shared/display.ts";
@@ -19,22 +19,18 @@ import { useResource } from "../../shared/use-resource.ts";
 import { stored } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
 import WaitingList from "../../shared/escalations.tsx";
+import { StartField } from "../../shared/start-field.tsx";
 import SessionName from "../../shared/session-name.tsx";
 import {
   Button,
   DataText,
   EmptyState,
   IconButton,
-  Input,
   Row,
   SectionTitle,
   Time,
 } from "../../shared/ui.tsx";
 import "./overview.css";
-
-// A folder or workspace at a glance, in the conversation's place: where it
-// stands, a field that starts a conversation in it, what it spent and
-// changed, what waits on you, and its conversations as cards or a list.
 
 const WORDS: Record<SessionState, string> = {
   working: "Working",
@@ -43,7 +39,7 @@ const WORDS: Record<SessionState, string> = {
   idle: "Idle",
 };
 const DAY = 24 * 60 * 60 * 1000;
-// Grid or list, chosen on this device; unset follows the screen.
+// Chosen on this device; unset follows the screen.
 const layoutKept = stored<"" | "grid" | "list">(storageKeys.overview, "");
 
 export default function FolderOverview({
@@ -60,19 +56,16 @@ export default function FolderOverview({
   space?: Space;
   sessions: Session[];
   choose: (id: string) => void;
-  // A new conversation in the folder, with its first message.
   start: (folder: string, text: string) => Promise<unknown>;
-  // The folders' terminals, and opening one; a new one while the host
-  // offers them.
   terminals?: TerminalInfo[] | null;
   showTerminal: (terminal: TerminalInfo) => void;
   newTerminal?: (folder: string) => void;
 }) {
-  const { online, report } = useHostContext();
+  const { api, routes } = useApi();
+  const { online } = useHostContext();
   const narrow = useNarrowColumn();
   const [kept, keep] = useState(layoutKept.read);
   const layout = kept || (narrow ? "list" : "grid");
-  const [text, setText] = useState("");
   const name = space?.name || folderName(folder);
   const here = sessions.filter((item) => folderOf(item) === folder);
   const roots = here
@@ -96,10 +89,6 @@ export default function FolderOverview({
   );
   const git = facts?.git;
   const shells = (terminals || []).filter((item) => item.folder === folder);
-  const submit = (event: TargetedSubmitEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    start(folder, text.trim()).then(() => setText(""), report);
-  };
   const choice = (value: "grid" | "list") => {
     keep(value);
     layoutKept.write(value);
@@ -107,6 +96,7 @@ export default function FolderOverview({
   return (
     <section class="overview" aria-label={`Overview of ${name}`}>
       <header class="overview-head">
+        <HostLabel />
         <h2>
           <DataText>{name}</DataText>
         </h2>
@@ -122,23 +112,20 @@ export default function FolderOverview({
           </DataText>
         </p>
       </header>
-      <form class="overview-start" onSubmit={submit}>
-        <Input
-          aria-label={`Start a conversation in ${name}`}
-          placeholder={`Start a conversation in ${name}…`}
-          value={text}
-          disabled={!online}
-          onInput={(event) => setText(event.currentTarget.value)}
-        />
-        <Button variant="primary" type="submit" disabled={!online}>
-          Start
-        </Button>
-        {newTerminal && (
-          <Button disabled={!online} onClick={() => newTerminal(folder)}>
-            New terminal
-          </Button>
-        )}
-      </form>
+      <StartField
+        label={`Start a conversation in ${name}`}
+        placeholder={`Start a conversation in ${name}…`}
+        disabled={!online}
+        start={(text) => start(folder, text)}
+      >
+        {() =>
+          newTerminal && (
+            <Button disabled={!online} onClick={() => newTerminal(folder)}>
+              New terminal
+            </Button>
+          )
+        }
+      </StartField>
       <dl class="overview-stats card divided" aria-label="Summary">
         <Stat
           label="Working"
@@ -165,7 +152,7 @@ export default function FolderOverview({
       {waiting > 0 && (
         <div class="overview-section">
           <SectionTitle>Needs you</SectionTitle>
-          <WaitingList sessions={here} folder={folder} choose={choose} />
+          <WaitingList sessions={here} choose={choose} />
         </div>
       )}
       {shells.length > 0 && (
@@ -249,8 +236,6 @@ function Stat({
   );
 }
 
-// One conversation: its state, the step it is on (the host's label), how
-// far its to-do list is, its agents, when it last changed and its cost.
 function Card({
   item,
   state,

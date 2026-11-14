@@ -34,9 +34,7 @@ namespace uagent {
 
 namespace {
 
-// The transport's failure vocabulary. The three entry points below return
-// three result types, but the retry classifier and the user-facing notice
-// both work from this text, so it is written once.
+// The retry classifier and the user-facing notice both read this text.
 constexpr char kCurlInitFailed[] = "curl init failed";
 constexpr char kHeaderAllocationFailed[] = "failed to allocate HTTP headers";
 
@@ -86,19 +84,17 @@ bool PublicIpv6(const unsigned char* bytes) {
   bool mapped = std::all_of(bytes, bytes + 10,
                             [](unsigned char byte) { return byte == 0; }) &&
                 bytes[10] == 0xff && bytes[11] == 0xff;
-  // The well-known NAT64 prefix embeds an IPv4 destination in the final four
-  // bytes. Classify that destination rather than allowing an IPv6 spelling to
-  // bypass the IPv4 policy.
+  // The NAT64 prefix embeds an IPv4 destination in its last four bytes, which
+  // is classified so an IPv6 spelling cannot bypass the IPv4 policy.
   bool nat64 = bytes[0] == 0 && bytes[1] == 0x64 && bytes[2] == 0xff &&
                bytes[3] == 0x9b &&
                std::all_of(bytes + 4, bytes + 12,
                            [](unsigned char byte) { return byte == 0; });
   if (mapped || nat64) return PublicIpv4(bytes + 12);
 
-  // Only currently allocated global unicast space (2000::/3), minus the two
-  // prefixes that tunnel an IPv4 destination inside it: 2001::/23 (Teredo and
-  // neighbours) and 2002::/16 (6to4), and the documentation prefix
-  // 2001:db8::/32.
+  // Only allocated global unicast (2000::/3), minus the prefixes that tunnel
+  // an IPv4 destination (2001::/23 Teredo, 2002::/16 6to4) and the
+  // documentation prefix 2001:db8::/32.
   if ((bytes[0] & 0xe0) != 0x20) return false;
   return !(bytes[0] == 0x20 &&
            ((bytes[1] == 0x01 &&
@@ -301,8 +297,6 @@ CURLcode PerformWithAbortWake(CURLM* multi, CURL* easy,
   return result;
 }
 
-// The transfer both non-streaming readers share; they differ only in how the
-// outcome is mapped afterwards.
 CURLcode RunTransfer(CURLM* multi, CURL* handle, curl_slist* headers,
                      SizedBuffer& out, int64_t timeout_s, bool abortable,
                      int64_t& status,
@@ -321,7 +315,7 @@ CURLcode RunTransfer(CURLM* multi, CURL* handle, curl_slist* headers,
     curl_easy_setopt(handle, CURLOPT_TIMEOUT_MS, CurlTimeout(remaining_ms));
   }
   curl_easy_setopt(handle, CURLOPT_ACCEPT_ENCODING,
-                   "");  // 531 KB -> 63 KB on /models
+                   "");  // every encoding libcurl supports
   CURLcode rc = abortable ? PerformWithAbortWake(multi, handle)
                           : curl_easy_perform(handle);
   curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &status);
@@ -389,9 +383,8 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
   }
   double preparation_ms = ElapsedMs(overall_started);
 
-  // timeout_s is the caller's total budget (normally the remaining turn).
-  // UAGENT_REQUEST_TIMEOUT caps one transport attempt. Keeping those clocks
-  // separate leaves room for retry backoff after a timed-out attempt.
+  // timeout_s is the caller's total budget; UAGENT_REQUEST_TIMEOUT caps one
+  // attempt, which leaves room for retry backoff after a timeout.
   int64_t attempt_limit = config.request_timeout_s;
   int64_t request_timeout = timeout_s;
   if (request_timeout <= 0) {
@@ -480,8 +473,6 @@ JsonResponse Api::Post(const std::string& path, const json& body,
                        int64_t timeout_s, int attempts,
                        std::chrono::steady_clock::time_point deadline) {
   std::string payload = JsonDump(body);
-  // Keep the per-attempt timeout distinct from the caller's absolute deadline:
-  // recovery may use remaining time without extending the complete operation.
   JsonResponse response;
   for (int attempt = 1; attempt <= attempts; ++attempt) {
     if (std::chrono::steady_clock::now() >= deadline) {
@@ -506,8 +497,7 @@ JsonResponse Api::Post(const std::string& path, const json& body,
                             {"retry_after_s", response.retry_after_s},
                             {"http_status", response.http_status},
                             {"error", response.error}});
-    // A silent backoff reads as a stalled turn. The notice is durable, so the
-    // session log explains the gap afterwards too.
+    // A silent backoff reads as a stalled turn.
     std::string seconds =
         FmtDuration(static_cast<double>(delay.count()) / 1000.0);
     Emit(NoticeEvent(PresentationStatus::kWarned,
@@ -540,11 +530,9 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
     return result;
   }
   SetAbortable(h);
-  // Validate the address libcurl is actually about to connect to. The callback
-  // runs again for every new redirect connection, so DNS rebinding and private
-  // redirect targets cannot bypass the URL's public-network boundary. Proxy
-  // environment variables are disabled because a proxy could resolve and
-  // connect to a destination this process never gets to inspect.
+  // The callback validates every address libcurl connects to, redirects
+  // included, so DNS rebinding cannot leave the public network. Proxies are
+  // off: one could connect where this process never gets to inspect.
   PublicSocketPolicy socket_policy;
   curl_easy_setopt(h, CURLOPT_PROXY, "");
   curl_easy_setopt(h, CURLOPT_OPENSOCKETFUNCTION, OpenPublicSocket);
@@ -561,9 +549,8 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
   }
   result.body = std::move(out.data);
   result.truncated = out.exceeded;
-  // Hitting the cap aborts the transfer, so libcurl reports a write error.
-  // A capped page still usually answers the question, so the bytes stand and
-  // the tool says it is partial; a real HTTP failure still wins.
+  // Hitting the cap aborts the transfer, so libcurl reports a write error;
+  // the bytes stand as a partial answer unless a real HTTP failure wins.
   if (rc != CURLE_OK && socket_policy.denied) {
     result.error = "refused non-public network destination";
   } else if (rc != CURLE_OK && !out.exceeded) {
@@ -600,8 +587,8 @@ ChatResult Api::PerformChat(const std::string& payload, int64_t timeout_s,
   bool headers_ok = headers.Add("Content-Type: application/json") &&
                     AddApiHeaders(headers, wire_api, api_key) &&
                     headers.Add("Accept: text/event-stream");
-  // Proxies use this transport hint for account affinity across every dialect.
-  // Keep it independent of OpenRouter's separate session_id body extension.
+  // Proxies use this hint for account affinity on every dialect; it is
+  // independent of the session_id body extension.
   if (!session_id.empty()) {
     headers_ok = headers_ok && headers.Add("X-Session-Id: " + session_id);
   }

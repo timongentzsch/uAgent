@@ -74,8 +74,10 @@ meets.
 - **Keyboard.** A skip link leads to the conversation. Ctrl+K (⌘K on a Mac)
   opens the command palette, `?` outside a text field lists every shortcut,
   and Alt+↑/↓ step through conversations. Menus open with the arrow keys on
-  their button, jump by first letter, and close with Tab. The composer is a
-  combobox that announces how many suggestions it has. Image markup places
+  their button, jump by first letter, and close with Tab. A row of tabs (a
+  question's steps, a sheet's tabs, Request and Response) is one Tab stop
+  and takes ←, →, Home and End. The composer is a combobox that announces
+  how many suggestions it has. Image markup places
   pins with the arrow keys and Enter. A docked pane's edge resizes it with
   the arrow keys. The remote browser screen has zoom and scroll buttons.
 - **Structure.** Sheets are native `<dialog>`s and menus are popovers, so

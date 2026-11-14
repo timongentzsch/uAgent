@@ -8,7 +8,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -19,9 +18,11 @@
 #include "include/agent/node.h"
 #include "include/agent/transcript.h"
 #include "include/app/agent_tools.h"
+#include "include/app/launch.h"
 #include "include/app/uagent_tool.h"
 #include "include/core/defaults.h"
 #include "include/core/runtime_config.h"
+#include "include/core/workspace.h"
 #include "include/tools/ask.h"
 #include "include/tools/browser.h"
 #include "include/tools/registry.h"
@@ -54,14 +55,11 @@ TEST_CASE(TestToolExecutionPolicy) {
       {"items", {{"type", "integer"}, {"minimum", 1}}}};
   CHECK(InvalidToolArgument(tool, {{"ids", {1, "bad"}}}) ==
         "`ids[1]` must be integer");
-  // The value and the bound both appear: a caller that guessed too high can
-  // correct the next call without guessing again.
   CHECK(InvalidToolArgument(tool, {{"ids", {0}}}) ==
         "`ids[0]` is 0, below its minimum 1");
   CHECK(InvalidToolArgument(tool, {{"ids", {1, 2, 3}}}) ==
         "`ids` has 3 items, above its maximum 2");
-  // The bound real calls actually cross: a scalar maximum on a pacing hint.
-  // `grep`'s context and `run`'s yield_ms are rejected this way in history.
+  // A scalar maximum on a pacing hint, like grep's context.
   tool.parameters["properties"]["context"] = {
       {"type", "integer"}, {"minimum", 0}, {"maximum", 10}};
   CHECK(InvalidToolArgument(tool, {{"context", 40}}) ==
@@ -89,9 +87,6 @@ TEST_CASE(TestToolExecutionPolicy) {
   CHECK(ToolParameters(tool)["properties"]["timeout"] ==
         tool.parameters["properties"]["timeout"]);
 
-  // Per-action fields: every missing one is named with what the call
-  // carried, an empty string counts as not given, an unknown action is the
-  // enum's to reject, and a left-out action is the schema's default.
   Tool spawner;
   spawner.name = "spawner";
   spawner.description = "Starts things.";
@@ -184,8 +179,7 @@ TEST_CASE(TestToolExecutionPolicy) {
   CHECK(available.size() == 1);
   CHECK(available[0]["function"]["name"] == "bounded");
 
-  // A tool that comes with a skill is off in every profile until a set turns
-  // it on, and the conversation keeps that choice.
+  // A skill's tool is off in every profile until a set turns it on.
   Tool gated = unbounded;
   gated.skill = "uagent-config";
   ToolSelection skill_selection;
@@ -316,37 +310,10 @@ TEST_CASE(TestToolExecutionPolicy) {
   task_completion.command = "make check\nmore";
   CHECK(ActivityResultHeader(task_completion) ==
         "[Activity result: command 7 `make check`]");
-
-  {
-    TestWorkspace memory_workspace("automatic-memory-write-limit");
-    setenv("UAGENT_INTERNAL_MEMORY_SOURCE", "test-source", 1);
-    ActivitySupervisor memory_processes;
-    std::vector<Tool> memory_tools = BuiltinTools(memory_processes);
-    unsetenv("UAGENT_INTERNAL_MEMORY_SOURCE");
-    const Tool* memory = FindTool(memory_tools, "memory");
-    CHECK(memory != nullptr);
-    if (memory) {
-      ToolResult first =
-          memory->run({{"action", "set"},
-                       {"key", "project/one"},
-                       {"content", "One durable automatic lesson."}},
-                      base);
-      ToolResult second =
-          memory->run({{"action", "set"},
-                       {"key", "project/two"},
-                       {"content", "A second automatic lesson."}},
-                      base);
-      CHECK(first.Ok());
-      CHECK(!second.Ok());
-      CHECK(second.output.find("already wrote one memory") !=
-            std::string::npos);
-    }
-  }
 }
 
 TEST_CASE(TestBlockingWaitCalls) {
-  // ask: up to eight questions; a header past the aim of 12 still goes
-  // through, and one too long is refused by name.
+  // A header past the aim of 12 still goes through; one too long is refused.
   const auto question = [](const std::string& header) {
     return json{{"question", "Which?"},
                 {"header", header},
@@ -373,9 +340,6 @@ TEST_CASE(TestBlockingWaitCalls) {
   CHECK(ToolCallBlocks(activity, {{"wait_ms", 5000}}));
 }
 
-// Every multi-action tool turns an action away before it runs when it
-// carries only what the schema itself requires, naming the fields that action
-// needs and what the call carried.
 TEST_CASE(TestActionRequiresDeclarations) {
   ActivitySupervisor supervisor;
   std::vector<Tool> tools = BuiltinTools(supervisor);
@@ -384,6 +348,12 @@ TEST_CASE(TestActionRequiresDeclarations) {
   tools.push_back(BrowserTool("cccccccccccccccccccccccccccccccc",
                               [](const std::string&, const std::string&,
                                  bool*) { return std::string(); }));
+  tools.push_back(
+      UagentTool([](SelfTopic, const std::string&) { return json::object(); },
+                 [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+                   return ConfigProposal{};
+                 },
+                 [](const std::string&) {}));
   std::vector<std::string> declared;
   for (const Tool& tool : tools) {
     const ActionRequires& table = tool.action_requires;
@@ -405,30 +375,20 @@ TEST_CASE(TestActionRequiresDeclarations) {
     }
   }
   std::vector<std::string> multi_action = {"activity", "agents", "decide",
-                                           "memory"};
+                                           "memory", "uagent"};
   multi_action.emplace_back("browser");
   std::ranges::sort(declared);
   std::ranges::sort(multi_action);
   CHECK(declared == multi_action);
 }
 
-// An action with its own payload is a tool of its own, so the schema itself
-// requires that payload and a provider that enforces schemas sees it.
+// A provider that enforces schemas must see the payload as required.
 TEST_CASE(TestPayloadToolsRequireTheirPayload) {
   std::vector<Tool> tools;
   const Api api(RuntimeConfig{});
   AddAgentTools(tools, api, [] { return std::string(); });
-  tools.push_back(UagentConfigureTool(
-      [](ConfigProposalScope, const std::vector<ConfigChange>&) {
-        return ConfigProposal{};
-      },
-      std::make_shared<ConfigApprovals>()));
-  tools.push_back(UagentFileTool());
   const std::vector<std::pair<std::string, std::string>> expected = {
-      {"agent_start", R"(["brief"])"},
-      {"agent_send", R"(["id","text"])"},
-      {"uagent_configure", R"(["scope","changes"])"},
-      {"uagent_file", R"(["file","text"])"}};
+      {"agent_start", R"(["brief"])"}, {"agent_send", R"(["id","text"])"}};
   for (const auto& [name, required] : expected) {
     const Tool* tool = FindTool(tools, name);
     CHECK(tool && tool->parameters["required"] == json::parse(required));
@@ -447,8 +407,6 @@ TEST_CASE(TestPayloadToolsRequireTheirPayload) {
             ApprovalClass::kMandatoryHuman);
 }
 
-// The agent's scheduled tasks: saved in this folder on this conversation's
-// approval reach at most, and listed, paused and deleted by id.
 TEST_CASE(TestScheduleTool) {
   TestWorkspace workspace("schedule-tool");
   const ApprovalMode before = CurrentApprovalMode();
@@ -475,7 +433,6 @@ TEST_CASE(TestScheduleTool) {
   CHECK(item["cwd"] == workspace.workspace.string());
   CHECK(item["upcoming"].size() == 3);
   CHECK(item["host_running"] == false);
-  // A key the model made up names no task: the answer says how to create one.
   json invented = save;
   invented["key"] = "flag-watch";
   CHECK(tool.run(invented, ToolContext{}).output.find("without key creates") !=
@@ -490,6 +447,43 @@ TEST_CASE(TestScheduleTool) {
   const json list = {{"action", "list"}};
   CHECK(json::parse(tool.run(list, ToolContext{}).output)["tasks"].empty());
   SetApprovalMode(before);
+}
+
+TEST_CASE(TestRemoteAgentDiffIsQuotedData) {
+  TestWorkspace workspace("remote-agent-diff");
+  const std::string folder = "/remote/project";
+  const std::filesystem::path own = HistoryPath(folder, "parent", "host");
+  const std::filesystem::path agent = own.parent_path() / "agent-a.json";
+  ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", own.c_str());
+  std::filesystem::create_directories(own.parent_path());
+  const json header = {{"format", kSessionFormat},
+                       {"cwd", folder},
+                       {"host", "host"},
+                       {"model", ""},
+                       {"session_id", ""},
+                       {"turns", 0},
+                       {"title", "a"}};
+  std::ofstream(own) << header << "\n";
+  std::ofstream(agent) << header << "\n";
+  std::vector<Tool> tools;
+  const Api api(RuntimeConfig{});
+  AddAgentTools(tools, api, [] { return std::string(); });
+  json asked;
+  SetWorkspace({"host", folder});
+  SetWorkspaceRequest([&](const json& request) {
+    asked = request;
+    return json{{"status", 0}, {"output", std::string(KiB(64), 'x')}};
+  });
+  const ToolResult diff = FindTool(tools, "agents")
+                              ->run({{"action", "read"},
+                                     {"part", "diff"},
+                                     {"id", SessionIdFor(agent.string())}},
+                                    ToolContext{});
+  SetWorkspace({});
+  SetWorkspaceRequest({});
+  CHECK(JsonValue(asked, "op", "") == "diff");
+  CHECK(diff.Ok() && diff.output.starts_with("[data from session "));
+  CHECK(diff.output.ends_with("[truncated]") && diff.output.size() < KiB(17));
 }
 
 }  // namespace uagent

@@ -49,10 +49,8 @@ def test_first_event_timeout(root, home, *, binary):
         assert_true(result.returncode == 1, result.returncode)
         assert_true("no event within 1s" in result.stderr, result.stderr)
         assert_true(len(server.requests) == 3, server.requests)
-        # The lower bound is the behaviour -- three attempts each waiting out a
-        # 1s first-event timeout -- so it is absolute. The upper bound only
-        # says the retries ended, which is a wall-clock claim about the host
-        # and scales with an instrumented build like every other deadline.
+        # The lower bound is the behaviour: three attempts each waiting out a
+        # 1s first-event timeout. The upper bound scales like every deadline.
         assert_true(3.0 < elapsed < budget(12), elapsed)
 
 
@@ -200,9 +198,8 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home, *, binary):
 
 
 def test_context_fill_follows_reported_prompt_tokens(root, home, *, binary):
-    """The provider's reported prompt counts tokens a byte estimate cannot see
-    (its own tool-use prompt), so a small conversation the provider reports as
-    nearly full is compacted instead of overflowing the window."""
+    """The provider's reported prompt counts tokens a byte estimate cannot see,
+    so a conversation it reports as nearly full is compacted in time."""
 
     def requests(reported):
         first = tool_call(
@@ -289,12 +286,11 @@ def test_absolute_compaction_ceiling(root, home, *, binary):
 def test_activity_progress_polls_do_not_trip_identical_call_guard(root, home, *, binary):
     state = {"requests": 0, "id": 0}
     trigger_prefix = root / "poll-trigger"
-    ack_prefix = root / "poll-ack"
     command = "\n".join(
         [
             f"while [ ! -f {shlex.quote(str(trigger_prefix))}-{i} ]; do sleep 0.01; done; "
             "yes x | head -c 70000; "
-            f"printf '\\nprogress-{i}\\n'; : > {shlex.quote(str(ack_prefix))}-{i}"
+            f"printf '\\nprogress-{i}\\n'"
             for i in range(1, 5)
         ]
         + ["sleep 30"]
@@ -312,12 +308,21 @@ def test_activity_progress_polls_do_not_trip_identical_call_guard(root, home, *,
         poll = state["requests"] - 1
         if poll <= 4:
             pathlib.Path(f"{trigger_prefix}-{poll}").touch()
-            ack = pathlib.Path(f"{ack_prefix}-{poll}")
-            wait_until(ack.exists, f"activity did not produce progress {poll}", timeout=3)
+            # A producer's ack can precede the supervisor draining its pipe.
+            # Poll only after the consumer has captured this batch's marker.
+            logs = home / ".uagent/activity"
+            wait_until(
+                lambda: any(f"progress-{poll}" in log.read_text() for log in logs.glob("*.log")),
+                f"activity did not capture progress {poll}",
+                timeout=3,
+            )
             return tool_call("activity", {"operation": "poll", "id": state["id"]})
-        complete = all(
-            any(f"progress-{index}" in result for result in results) for index in range(1, 5)
-        )
+        state["progress"] = [
+            index
+            for index in range(1, 5)
+            if any(f"progress-{index}" in result for result in results)
+        ]
+        complete = state["progress"] == [1, 2, 3, 4]
         return event({"content": "progress-polls-ok" if complete else "progress-polls-bad"})
 
     with Server([route]) as server:
@@ -326,7 +331,7 @@ def test_activity_progress_polls_do_not_trip_identical_call_guard(root, home, *,
         env["UAGENT_INTERNAL_AUTO_COMPACT_TOKENS"] = "0"
         result = run(root, env, "--yolo", "-p", "monitor", timeout=12, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip().endswith("progress-polls-ok"), result.stdout)
+        assert_true(result.stdout.strip().endswith("progress-polls-ok"), state)
         assert_true(len(server.requests) == 6, len(server.requests))
 
 
@@ -468,8 +473,8 @@ def test_image_fallback_reaches_another_provider(root, home, *, binary):
         assert_true("image_url" not in serialized, serialized[:200])
         assert_true("described, not seen" in serialized, serialized[:400])
         assert_true("stack trace" in serialized, serialized[:400])
-        # The conversation model is never told which way images arrived. The
-        # check spans every role: runtime context is a user turn now.
+        # The conversation model is never told which way images arrived, in
+        # any role: runtime context is a user turn.
         system = "\n".join(str(message.get("content", "")) for message in body["messages"])
         assert_true("vision model" not in system, system)
         assert_true("Image input unavailable" not in system, system)

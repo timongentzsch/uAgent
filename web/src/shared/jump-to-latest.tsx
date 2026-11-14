@@ -3,8 +3,8 @@ import { ArrowDown } from "lucide-preact";
 import { Button } from "./ui.tsx";
 import "./jump-to-latest.css";
 
-// Shown while a transcript is not following its end; the count of rows that
-// arrived meanwhile is part of the name, so it is announced too.
+// The count of rows that arrived meanwhile is part of the name, so it is
+// announced too.
 export function JumpToLatest({
   unseen,
   onClick,

@@ -133,7 +133,8 @@ Which binary and bundle a browser test drives:
   `../build/debug/uagent`.
 - Locally the host serves `web/dist` from disk, so a web edit needs
   `npm run build` but no rebuild of the binary. In CI it serves the bundle
-  embedded in the binary, as a release does.
+  embedded in the binary, as a release does, and the sheet engine the build
+  copied beside the binary (`share/uagent/sheet`).
 
 How the tests are isolated:
 
@@ -176,6 +177,9 @@ tools, model rounds, batch width, deduplication, cumulative request and result
 size, folder immutability). Results are compared with
 `benchmarks/baselines/hermetic.json`. `benchmarks/run_trace.py` holds the run
 timing and trace aggregation the eval and the audit share.
+The [benchmark snapshot](../benchmarks/README.md#current-measurements) records
+dated package sizes and local CPU samples; its SVG chart generator uses only
+the Python standard library.
 
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check
@@ -228,19 +232,22 @@ On a pull request, `.github/changes.py` selects jobs by the paths changed:
 | anything else | native and web jobs, with the additional filters below |
 
 For native changes, `clang-tidy` reads the changed translation units in one
-job. Changes to headers, top-level CMake files, `.github/`, vendored code or
-`.clang-tidy` select all units across three runners, as non-PR runs do.
+job. Changes to headers, top-level CMake files, `.github/`, vendored code,
+`.dockerignore` or `.clang-tidy` select all units across three runners, as
+non-PR runs do.
 `coverage` runs weekly and by hand only. The selection source is
 [changes.py](../.github/changes.py); [ci.yml](../.github/workflows/ci.yml) defines
 the jobs and their conditions.
 
 The Linux build jobs reuse compiled objects through ccache
-(`.github/actions/native-setup`), restored in every run and saved only from
-`master`. A newer push to a pull request cancels the older run; runs on
-`master` are never cancelled, so each merge is tested as it landed.
+(`.github/actions/native-setup`), restored in every run and saved from
+`master` and once per pull request. A newer push to a pull request cancels
+the older run; runs on `master` are never cancelled, so each merge is tested
+as it landed.
 
-A pull request skips the slowest legs (ARM64 and ThreadSanitizer) unless
-it is heavy: it touches `CMakeLists.txt`, `CMakePresets.json`, `cmake/`,
+A pull request skips the slowest legs (Linux ARM64, macOS x86_64,
+ThreadSanitizer and the remote bundle) unless it is heavy: it touches
+`CMakeLists.txt`, `CMakePresets.json`, `.dockerignore`, `cmake/`, `deploy/`,
 `third_party/`, `.github/`, `src/web/`, `src/browser/`, `include/web/` or
 `include/browser/` (`heavy` in `.github/changes.py`).
 Master, scheduled and manual runs always run them.
@@ -248,7 +255,8 @@ Master, scheduled and manual runs always run them.
 | Job | Runs |
 | --- | --- |
 | `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |
-| `build-and-test` | Release builds with Web Push on Linux x86_64 and macOS ARM64, and Linux ARM64 on master and for heavy changes; `ctest`; packaging |
+| `build-and-test` | Release builds with Web Push on Linux x86_64 and macOS ARM64, and Linux ARM64 and macOS x86_64 on master and for heavy changes; `ctest`; packaging and the target's remote payload |
+| `remote-bundle` | On master and for heavy changes: assembles the four payloads into one verified bundle, adds it to each release archive and checks the archives |
 | `sanitizers` | `sanitize` preset, `ctest` |
 | `thread-sanitizer` | On master and for heavy changes: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `coverage` | Weekly and by hand: `core` and every integration group with a branch report; fails under 67% line coverage |
@@ -256,7 +264,7 @@ Master, scheduled and manual runs always run them.
 | `clang-tidy` | clang-tidy, changed units on one runner or all units across three |
 | `web` | Biome format check and lint, Node tests, bundle and size report, a release host with Web Push |
 | `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), split across three runners |
-| `image` | On non-PR runs, or when `deploy/`, `.dockerignore` or a workflow changes: builds the container image for x86_64 and starts it under compose's seccomp profile |
+| `image` | On non-PR runs, or when `deploy/`, `.dockerignore` or a workflow changes: builds the container image for x86_64 from the tested Linux installation and starts it under compose's seccomp profile |
 | `CI result` | fails if any required job failed or was cancelled |
 
 The `master requires CI` ruleset requires `CI result`, so a red run blocks a

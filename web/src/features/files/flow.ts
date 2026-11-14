@@ -1,13 +1,16 @@
 // Where the Files pane is: exactly one view, and the views Back returns to.
-// Every way in is one step: a path from outside the pane (a reply, a card,
-// the Library) starts a fresh history that leads up to its own folder; a
-// click inside the pane pushes; stepping through slides replaces the page;
-// Back pops. Data for a view is looked up by the path it names, never "the
-// current one". The design and its route table: the "Files flow" page of
-// the docs and decks canvas.
+// A view's data is looked up by the path it names, never "the current one".
 
 import type { FileTarget } from "../../shared/types.ts";
-import { HTML, MARKDOWN, nameOf } from "../../shared/file-types.ts";
+import { HTML, MARKDOWN, nameOf, paged } from "../../shared/file-types.ts";
+import {
+  alone,
+  join,
+  kindOf,
+  type Listing,
+  pagesOf,
+  slidesOf,
+} from "./boards.ts";
 
 export type Lines = [number, number];
 export type View =
@@ -20,8 +23,10 @@ export type View =
       source?: boolean;
       diff?: boolean;
     }
-  // One page across the pane; `present` starts presenting once.
-  | { kind: "page"; path: string; present?: boolean }
+  // A page across the pane, with the legend of what it is part of (a deck's
+  // slides, a document's pages, a design's boards).
+  | { kind: "sequence"; path: string }
+  // A design's pages on a plane.
   | { kind: "canvas"; dir: string }
   // Several files share a cited name: the person picks one.
   | { kind: "pick"; name: string; paths: string[]; lines?: Lines }
@@ -34,7 +39,7 @@ export type View =
       fresh: boolean;
     }
   | { kind: "outside"; path: string };
-export type ResolveView = Extract<View, { kind: "resolve" }>;
+type ResolveView = Extract<View, { kind: "resolve" }>;
 
 export interface Flow {
   view: View;
@@ -45,7 +50,6 @@ export const START: Flow = { view: { kind: "list", dir: "" }, back: [] };
 
 export const dirOf = (path: string) =>
   path.slice(0, Math.max(0, path.lastIndexOf("/")));
-const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 
 export const push = (flow: Flow, view: View): Flow => ({
   view,
@@ -89,56 +93,76 @@ export function cite(target: FileTarget, folder: string): Flow {
   };
 }
 
+// What a path that is there shows: a page in its sequence, else the file.
+// Rendered pages and Markdown have no lines to mark: cited at lines, they
+// open as their source.
+export const opened = (path: string, lines?: Lines): View =>
+  paged(path) && !lines
+    ? { kind: "sequence", path }
+    : {
+        kind: "file",
+        path,
+        lines,
+        source: !!lines && (MARKDOWN.test(path) || HTML.test(path)),
+      };
+
+// A view opened from the list itself (the tree, search, the changes): Back
+// is the list of its folder.
+export const fromList = (view: View): Flow => ({
+  view,
+  back: [{ kind: "list", dir: folderOfView(view) }],
+});
+
 // A path clicked inside the pane: looked up in place, Back to here.
 export const follow = (flow: Flow, path: string, lines?: Lines) =>
   push(flow, { kind: "resolve", path, lines, fresh: false });
 
-interface Listing {
-  entries: { name: string; dir: boolean }[];
-}
-// What a lookup reads: a folder's entries (null when there is no such
-// folder) and the folder's paths whose name matches.
-export interface Lookup {
+// What a lookup reads: a folder's entries and what they are (null when
+// there is no such folder), and the folder's paths whose name matches.
+interface Lookup {
   list: (dir: string) => Promise<Listing | null>;
   find: (name: string) => Promise<string[]>;
 }
 
-const pagesOf = (listing: Listing) =>
-  listing.entries
-    .filter((entry) => !entry.dir && HTML.test(entry.name))
-    .map((entry) => entry.name);
+// What a folder opens as when it is more than its list: a deck at its first
+// slide, a design system on its brand book, two pages or more on their
+// canvas, one page as itself. Its sheets do not count: each opens as itself.
+export function folderView(dir: string, listing: Listing): View | undefined {
+  const pages = pagesOf(listing);
+  const at = (name: string): View => ({
+    kind: "sequence",
+    path: join(dir, name),
+  });
+  if (listing.kind === "deck") return at(slidesOf(listing)[0]);
+  if (listing.kind === "system" && pages.includes("book.html"))
+    return at("book.html");
+  if (pages.length > 1) return { kind: "canvas", dir };
+  return pages.length ? at(pages[0]) : undefined;
+}
 
 // The view a path that is there opens, and the folder's views above it.
 function landing(
   path: string,
-  pages: string[],
+  listing: Listing,
   lines?: Lines,
   diff?: boolean,
 ): { view: View; up: View[] } {
   const dir = dirOf(path);
   const list: View = { kind: "list", dir };
   if (diff) return { view: { kind: "file", path, diff: true }, up: [list] };
-  // Rendered pages and Markdown have no lines to mark: cited at lines, they
-  // open as their source.
-  if (HTML.test(path) && !lines)
-    return {
-      view: { kind: "page", path },
-      up: pages.length > 1 ? [list, { kind: "canvas", dir }] : [list],
-    };
-  return {
-    view: {
-      kind: "file",
-      path,
-      lines,
-      source: !!lines && (MARKDOWN.test(path) || HTML.test(path)),
-    },
-    up: [list],
-  };
+  // A design's page lies on its canvas; a document, a sheet and a deck's
+  // slide have none.
+  const view = opened(path, lines);
+  const board =
+    view.kind === "sequence" &&
+    !alone(kindOf(listing, nameOf(path))) &&
+    folderView(dir, listing)?.kind === "canvas";
+  return { view, up: board ? [list, { kind: "canvas", dir }] : [list] };
 }
 
-// Looks a path up and settles the flow on what it is: a folder's canvas,
-// its one page or its list; a page or a file; a pick among several files
-// named so; or the top with a note when it is nowhere.
+// Looks a path up and settles the flow on what it is: what a folder opens
+// as, or its list; a page or a file; a pick among several files named so;
+// or the top with a note when it is nowhere.
 export async function resolve(
   flow: Flow,
   target: ResolveView,
@@ -155,19 +179,16 @@ export async function resolve(
     const dir = target.path.replace(/\/+$/, "");
     const listing = await io.list(dir);
     if (!listing) return missing(target.path);
-    const pages = pagesOf(listing);
     const list: View = { kind: "list", dir };
-    if (pages.length > 1) return settle({ kind: "canvas", dir }, [list]);
-    if (pages.length === 1)
-      return settle({ kind: "page", path: join(dir, pages[0]) }, [list]);
-    return settle(list, []);
+    const view = folderView(dir, listing);
+    return view ? settle(view, [list]) : settle(list, []);
   }
   const listing = await io.list(dirOf(target.path));
   const name = nameOf(target.path);
   if (listing?.entries.some((entry) => !entry.dir && entry.name === name)) {
     const { view, up } = landing(
       target.path,
-      pagesOf(listing),
+      listing,
       target.lines,
       target.diff,
     );
@@ -194,20 +215,18 @@ export function folderOfView(view: View) {
     case "canvas":
       return view.dir;
     case "file":
-    case "page":
+    case "sequence":
       return dirOf(view.path);
     default:
       return "";
   }
 }
 
-// What Back says it returns to.
 export function backLabel(view: View) {
   switch (view.kind) {
     case "canvas":
       return "Back to the canvas";
-    case "page":
-      return `Back to ${nameOf(view.path)}`;
+    case "sequence":
     case "file":
       return `Back to ${nameOf(view.path)}`;
     case "pick":

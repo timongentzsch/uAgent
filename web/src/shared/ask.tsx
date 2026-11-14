@@ -14,12 +14,10 @@ import {
 } from "./ui.tsx";
 import { motionMs } from "./motion.ts";
 import { ImageTile } from "./attachments.tsx";
-import { routes, uploadAttachment } from "../state/api.ts";
+import { Tabs } from "./tabs.tsx";
+import { useApi } from "../state/api.ts";
 import { bytes } from "./quantities.ts";
 import { maxUploadBytes } from "./limits.ts";
-
-// The ask decision: the model's questions, one to a page, with options,
-// Other, an image each, and a review before they are sent.
 
 interface Answer {
   choices: string[];
@@ -34,9 +32,7 @@ const blank = (): Answer => ({ choices: [], other: false, text: "" });
 const answered = (answer: Answer) =>
   answer.choices.length > 0 || (answer.other && !!answer.text.trim());
 
-// The model's questions, one page each: the options, a free-text Other and
-// an optional image. Steps above the page show where you are and lead back;
-// three or more questions end on a review. Submit sends every answer at
+// Three or more questions end on a review. Submit sends every answer at
 // once, in question order.
 export default function Ask({
   id,
@@ -57,6 +53,7 @@ export default function Ask({
   cancel: () => void;
   report: Report;
 }) {
+  const { uploadAttachment } = useApi();
   const [answers, setAnswers] = useState(() => questions.map(blank));
   const update = (index: number, change: Partial<Answer>) =>
     setAnswers((current) =>
@@ -92,7 +89,6 @@ export default function Ask({
   };
   const ready =
     answers.every(answered) && !answers.some((answer) => answer.uploading);
-  // The review is a page of its own, after the last question.
   const review = questions.length >= 3;
   const last = questions.length - (review ? 0 : 1);
   const [page, setPage] = useState(0);
@@ -100,7 +96,6 @@ export default function Ask({
   const [reached, setReached] = useState(0);
   const panel = useRef<HTMLDivElement>(null);
   const advance = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // A page pushes in from the end, or from the start going back.
   const [back, setBack] = useState(false);
   const go = (to: number) => {
     clearTimeout(advance.current);
@@ -136,39 +131,27 @@ export default function Ask({
     >
       {steps.length > 1 && (
         <div class="ask-steps">
-          <div
-            class="tabs"
-            role="tablist"
-            aria-label="Questions"
-            onKeyDown={(event) => {
-              const by = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
-              const to = page + (by ?? 0);
-              if (!by || to < 0 || to > reached) return;
-              event.preventDefault();
-              go(to);
-              document.getElementById(`${id}-step-${to}`)?.focus();
-            }}
-          >
-            {steps.map((step, at) => (
-              <Button
-                size="compact"
-                id={`${id}-step-${at}`}
-                role="tab"
-                title={step}
-                aria-controls={`${id}-page`}
-                aria-selected={at === page}
-                tabIndex={at === page ? 0 : -1}
-                disabled={at > reached}
-                key={at}
-                onClick={() => go(at)}
-              >
-                {at < questions.length && complete(at) && (
-                  <Check aria-label="Answered" />
-                )}
-                {step}
-              </Button>
-            ))}
-          </div>
+          <Tabs
+            label="Questions"
+            size="compact"
+            id={`${id}-step`}
+            panel={`${id}-page`}
+            value={page}
+            to={go}
+            tabs={steps.map((step, at) => ({
+              key: at,
+              title: step,
+              disabled: at > reached,
+              label: (
+                <>
+                  {at < questions.length && complete(at) && (
+                    <Check aria-label="Answered" />
+                  )}
+                  {step}
+                </>
+              ),
+            }))}
+          />
           <small class="muted">
             {page + 1} / {steps.length}
           </small>
@@ -245,7 +228,6 @@ export default function Ask({
   );
 }
 
-// The answers so far; each leads back to its question.
 function ReviewPage({
   questions,
   answers,
@@ -296,17 +278,16 @@ function QuestionPage({
   answer: Answer;
   session: string;
   online: boolean;
-  // The only question, so no step names it.
   alone: boolean;
   update: (change: Partial<Answer>) => void;
   attach: (file?: File) => Promise<void>;
   // Moves on to the next page after a moment; absent on the last one.
   advance?: () => void;
 }) {
+  const { routes } = useApi();
   const multiple = !!item.multi_select;
   const type = multiple ? "checkbox" : "radio";
   const heading = cleanText(item.header);
-  // Options the agent showed read as cards wide enough to judge.
   const visual = item.options.some(
     (option) => option.image?.id || option.preview,
   );

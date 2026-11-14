@@ -1,10 +1,12 @@
-// What this browser keeps, by the key it is kept under: each key is named
-// once, here. The values never change, or what is already kept would be
-// lost; public/theme.js, which runs before any module, repeats theme, zoom
-// and panes.
+// Each key is named once, here. The values never change, or what is already
+// kept would be lost; public/theme.js, which runs before any module, repeats
+// theme, zoom and panes.
 export const storageKeys = {
   catalogue: "uagent-catalogue",
   spaces: "uagent-spaces",
+  pins: "uagent-pins",
+  // The remote hosts last listed, shown disconnected until the host answers.
+  hosts: "uagent-hosts",
   page: "uagent-page",
   drafts: "uagent-drafts",
   outgoing: "uagent-outgoing",
@@ -19,7 +21,10 @@ export const storageKeys = {
   time: "uagent-time",
   panes: "uagent-panes",
   detail: "uagent-detail",
+  thinking: "uagent-thinking",
   toggles: "uagent-toggles",
+  // The sidebar's view: Recent or Places.
+  list: "uagent-list",
   scheduledDraft: "uagent-scheduled-draft",
   overview: "uagent-overview-layout",
   // The folder Files last showed, by the conversation's folder.
@@ -28,3 +33,7 @@ export const storageKeys = {
   // Places of the sidebar's list remembered by path, e.g. folded ones.
   places: (name: string) => `uagent.sidebar.${name}`,
 };
+
+// Local keeps its existing keys; remote content is qualified by its owner.
+export const hostStorageKey = (key: string, host: string) =>
+  host ? `${key}:host:${host}` : key;

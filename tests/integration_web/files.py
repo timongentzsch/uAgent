@@ -18,6 +18,7 @@ def test_web_files_list_read_serve_and_find(root, home, *, binary):
     (project / "big.txt").write_text("x" + "é" * 600_000)
     (project / "blob.bin").write_bytes(b"\x00\x01binary")
     (project / "pixel.png").write_bytes(SMALL_PNG)
+    (project / "shot.avif").write_bytes(b"\0\0\0\x1cftypavif" + bytes(16))
     (project / "draw.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
     (project / "page.html").write_text("<script>alert(1)</script>")
     (project / ".mcp.json").write_text("{}")
@@ -53,6 +54,7 @@ def test_web_files_list_read_serve_and_find(root, home, *, binary):
                         "draw.svg",
                         "page.html",
                         "pixel.png",
+                        "shot.avif",
                     )
                 ],
                 value,
@@ -86,6 +88,16 @@ def test_web_files_list_read_serve_and_find(root, home, *, binary):
             assert_true(
                 headers["Content-Security-Policy"].startswith("default-src 'none'"), headers
             )
+            # The app itself may play the folder's video, from its own address only.
+            policy = client.request("/")[2]["Content-Security-Policy"]
+            assert_true(
+                policy.startswith("default-src 'none'") and "media-src 'self';" in policy, policy
+            )
+            status, _, headers = files(raw="shot.avif")
+            assert_true(
+                headers["Content-Type"] == "image/avif" and "Content-Disposition" not in headers,
+                headers,
+            )
             status, _, headers = files(raw="draw.svg")
             assert_true(headers["Content-Security-Policy"].startswith("sandbox;"), headers)
             status, body, headers = files(raw="page.html")
@@ -104,6 +116,76 @@ def test_web_files_list_read_serve_and_find(root, home, *, binary):
             assert_true(len(value["paths"]) == 200 and value["more"], value)
             assert_true(answer(list="", read="b.txt")[0] == 400, "two modes answered")
             assert_true(answer()[0] == 400, "no mode answered")
+
+
+def test_web_files_listing_says_what_a_folder_s_pages_are(root, home, *, binary):
+    project = root / "kinds"
+    slide = '<meta name="artboard" content="1920x1080 slide">'
+    screen = '<meta name="artboard" content="1440x900">'
+    paper = '<meta name="print" content="flow a4">'
+    pages = {
+        "decks/q3/01-cover.html": slide,
+        "decks/q3/02-plan.html": slide + "<meta name='slide' content='skip'>",
+        "decks/q3/03-end.html": slide + '<!-- <meta name="slide" content="skip"> -->',
+        "decks/q3/style.css": "",
+        "design/onboarding/01-welcome.html": screen,
+        "design/onboarding/notes.html": "<p>plain</p>",
+        "design/system/tokens.css": ":root{}",
+        "design/system/book.html": paper,
+        "docs/memo.html": paper,
+        "docs/slide.html": slide,
+        "plain/a.html": "<p>a</p>",
+    }
+    for name, head in pages.items():
+        (project / name).parent.mkdir(parents=True, exist_ok=True)
+        (project / name).write_text(head)
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project, activate=False)
+
+            def listed(folder):
+                status, body, _ = client.request(
+                    f"/api/sessions/{session['id']}/files?{urlencode({'list': folder})}"
+                )
+                value = json.loads(body)
+                assert_true(status == 200, value)
+                kinds = {
+                    entry["name"]: entry["kind"] for entry in value["entries"] if "kind" in entry
+                }
+                return value["kind"], kinds
+
+            # A slide's head may leave it out of what is presented, quoted either
+            # way; a meta in a comment says nothing.
+            status, body, _ = client.request(
+                f"/api/sessions/{session['id']}/files?{urlencode({'list': 'decks/q3'})}"
+            )
+            skipped = [e["name"] for e in json.loads(body)["entries"] if e.get("skip")]
+            assert_true(skipped == ["02-plan.html"], body)
+            assert_true(
+                listed("decks/q3")
+                == (
+                    "deck",
+                    dict.fromkeys(("01-cover.html", "02-plan.html", "03-end.html"), "slide"),
+                ),
+                listed("decks/q3"),
+            )
+            # One page with an artboard makes a design; other HTML is its page too.
+            assert_true(
+                listed("design/onboarding") == ("design", {"01-welcome.html": "page"}),
+                listed("design/onboarding"),
+            )
+            assert_true(
+                listed("design/system") == ("system", {"book.html": "doc"}),
+                listed("design/system"),
+            )
+            # A document is its own; the slide beside it is a deck of one.
+            assert_true(
+                listed("docs") == ("deck", {"memo.html": "doc", "slide.html": "slide"}),
+                listed("docs"),
+            )
+            assert_true(listed("plain") == ("", {}), listed("plain"))
+            assert_true(listed("") == ("", {}), listed(""))
 
 
 def test_web_files_stay_inside_the_folder(root, home, *, binary):
@@ -313,8 +395,117 @@ def test_web_files_save_a_person_s_edit_against_its_revision(root, home, *, bina
                 assert_true(status == 404, (path, status, refused))
             assert_true(not (project / "docs/new.html").exists(), "made a file")
             assert_true(elsewhere.read_text() == "outside", "wrote outside")
+            # With create, a new page and its folder, never over a file, never
+            # anything but a page, never outside.
+
+            def create(path):
+                return client.json(files, {"path": path, "text": "<table>", "create": True})[:2]
+
+            status, made = create("sheets/new/budget.html")
+            assert_true(status == 200 and made["revision"], (status, made))
+            assert_true((project / "sheets/new/budget.html").read_text() == "<table>", "not made")
+            (root / "outside").mkdir()
+            (project / "linked").symlink_to(root / "outside")
+            for path, expected in (
+                ("sheets/new/budget.html", 409),
+                ("docs/memo.html", 409),
+                ("sheets/data.csv", 404),
+                ("../made.html", 404),
+                ("linked/made.html", 404),
+            ):
+                status, refused = create(path)
+                assert_true(status == expected, (path, status, refused))
+            assert_true((project / "docs/memo.html").read_text() == "<p>agent</p>", "overwrote")
+            assert_true(not (root / "made.html").exists(), "made a file outside")
+            assert_true(not list((root / "outside").iterdir()), "wrote through a link")
             assert_true(
                 WebClient(client.port).request(files, {"path": "docs/memo.html", "text": "x"})[0]
                 == 401,
                 "anonymous save",
             )
+
+
+def test_web_files_reorder_copy_and_delete_a_folder_s_pages(root, home, *, binary):
+    project = root / "moves"
+    deck = project / "deck"
+    deck.mkdir(parents=True)
+    for name in ("01-a.html", "02-b.html", "03-c.html"):
+        (deck / name).write_text(name[3])
+    (deck / "style.css").write_text("css")
+    (project / "outside.html").write_text("outside")
+    (deck / "link.html").symlink_to(project / "outside.html")
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project, activate=False)
+            files = f"/api/sessions/{session['id']}/files"
+
+            def move(*moves, path="deck"):
+                keys = ("from", "to", "copy")
+                return client.json(
+                    files,
+                    {"path": path, "moves": [dict(zip(keys, m, strict=False)) for m in moves]},
+                )[:2]
+
+            def pages():
+                return {p.name: p.read_text() for p in deck.glob("*.html") if not p.is_symlink()}
+
+            # Two pages swap names; a copy takes the place its page leaves.
+            status, moved = move(("01-a.html", "02-a.html"), ("02-b.html", "01-b.html"))
+            assert_true(status == 200 and moved == {"moved": 2}, (status, moved))
+            status, moved = move(
+                ("02-a.html", "03-a.html", True), ("03-c.html", "04-c.html"), ("01-b.html", "")
+            )
+            assert_true(status == 200, (status, moved))
+            before = {"02-a.html": "a", "03-a.html": "a", "04-c.html": "c"}
+            assert_true(pages() == before, pages())
+            # Refused whole: a name that is taken, a page that is not there,
+            # anything but a page of this folder, a link, another folder.
+            refused = {
+                409: [(("02-a.html", "04-c.html"),), (("02-a.html", "02-a.html", True),)],
+                404: [
+                    (("02-a.html", "05-a.html"), ("09-x.html", "06-x.html")),
+                    (("link.html", ""),),
+                ],
+                400: [
+                    (("02-a.html", "../up.html"),),
+                    (("02-a.html", "sub/up.html"),),
+                    (("../outside.html", "in.html"),),
+                    (("style.css", "02-z.html"),),
+                    (("02-a.html", "notes.txt"),),
+                    (("02-a.html", ".hidden.html"),),
+                    (("02-a.html", "x.html"), ("02-a.html", "y.html")),
+                    (("02-a.html", "x.html"), ("04-c.html", "x.html")),
+                    (("02-a.html", "", True),),
+                    (),
+                ],
+            }
+            for expected, cases in refused.items():
+                for case in cases:
+                    status, answer = move(*case)
+                    assert_true(status == expected, (case, status, answer))
+            status, answer = move(("outside.html", "in.html"), path="..")
+            assert_true(status == 404, (status, answer))
+            assert_true(pages() == before, pages())
+            assert_true(
+                sorted(p.name for p in deck.iterdir())
+                == sorted([*before, "link.html", "style.css"]),
+                list(deck.iterdir()),
+            )
+            assert_true((project / "outside.html").read_text() == "outside", "moved outside")
+
+
+def test_web_folder_picker_lists_directories_on_the_main(root, home, *, binary):
+    projects = home / "Projects"
+    (projects / "nested").mkdir(parents=True)
+    (projects / "notes.txt").write_text("not a folder")
+    with web_host(binary, root, home, "http://127.0.0.1:1") as (web, code, _, _):
+        assert_true(web.request("/api/folders?path=~")[0] == 401, "folder listing was public")
+        web.pair(code)
+        status, listing, _ = web.json("/api/folders?" + urlencode({"path": str(projects)}))
+        assert_true(status == 200 and listing["path"] == str(projects.resolve()), listing)
+        assert_true([row["name"] for row in listing["entries"]] == ["nested"], listing)
+        assert_true(listing["parent"] == str(home.resolve()), listing)
+        protected = home / ".uagent/web"
+        status, _, _ = web.json("/api/folders?" + urlencode({"path": str(protected)}))
+        assert_true(status == 404, "protected application state was browsable")

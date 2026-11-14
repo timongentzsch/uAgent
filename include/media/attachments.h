@@ -32,19 +32,16 @@ std::string AttachmentMime(const std::string& name);
 // raster and HEIC magic, or an SVG document root within the scan window.
 std::string RasterMime(std::string_view bytes);
 std::string SvgMime(std::string_view bytes);
-// Container sniffing for speech and video (ID3/RIFF/FLAC/OggS, BMFF video
-// brands). Empty when inconclusive; the declared extension then decides.
+// Container sniffing; empty when inconclusive, and the extension decides.
 std::string AudioMime(std::string_view bytes);
 std::string VideoMime(std::string_view bytes);
 
 bool InspectAttachment(std::string path, Attachment& out, std::string& error);
 
-// Route capability is passed explicitly; attachment helpers do not maintain a
-// second process-global copy of negotiated provider state.
+// Silence when the route takes the kind; otherwise the model is told that
+// attachments degrade to file paths.
 const char* ModelImageInputInstruction(bool image_input_available,
                                        bool image_fallback_available);
-// Same posture for speech and video: silence when the route takes the kind,
-// otherwise tell the model attachments degrade to file paths.
 const char* ModelAudioInputInstruction(bool audio_input_available);
 const char* ModelVideoInputInstruction(bool video_input_available);
 // Short wire format for input_audio ("wav", "mp3", ...) from the MIME type.
@@ -55,7 +52,9 @@ bool IsVideoMime(const std::string& mime);
 class AttachmentQueue {
  public:
   ToolResult Add(const std::string& path, std::string source_call_id = {});
+  ToolResult Add(Attachment attachment);
   std::vector<Attachment> Take();
+  std::vector<Attachment> TakeForCall(const std::string& call_id);
 
  private:
   std::mutex mutex_;
@@ -89,22 +88,17 @@ json AttachmentContent(const std::string& prompt,
                        const std::vector<Attachment>& attachments,
                        std::string& error);
 
-// Resolved attachment records ({path,name,mime,bytes,image,id}) back into an
-// Attachment. Display-only fields stay out of the model struct.
 Attachment AttachmentFromJson(const json& item);
 // What clients show for an attachment: asset id, name, type and size, never
 // the private upload path.
 json AttachmentDisplayJson(const Attachment& attachment);
 
-// Compose a steered user message: attachment content when files ride along,
-// plain prompt text otherwise. The bool selects the message kind
-// (kAttachment vs kUser); error carries compose failures for logging.
+// A steered user message; the bool is true when files ride along.
 std::pair<json, bool> ComposeSteeredContent(const std::string& input,
                                             const json& attachments,
                                             std::string& error);
 
-// Resolve retained references into a request projection; originals stay in
-// history.
+// Resolves retained references for one request; history keeps the originals.
 bool PrepareAttachments(json& messages,
                         const ProviderCapabilities& capabilities,
                         bool vision_fallback, const std::string& route,

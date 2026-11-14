@@ -11,6 +11,7 @@
 #include "include/agent/path_policy.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 
 namespace uagent {
@@ -35,6 +36,17 @@ std::optional<std::string> OptionImageIssue(const std::string& path) {
   if (!ImageFile(path)) {
     return "an option's image must be a .png, .jpg, .gif, .webp or .svg file";
   }
+  if (RemoteWorkspace()) {
+    const json checked = WorkspaceRequest(
+        {{"op", "check"}, {"tool", "read_path"}, {"args", {{"path", path}}}});
+    if (checked.contains("error") || checked.contains("issue") ||
+        JsonValue(checked, "approval", -1) !=
+            static_cast<int>(ApprovalClass::kNone)) {
+      return "an option's image must be a readable file you made in the remote "
+             "folder";
+    }
+    return std::nullopt;
+  }
   if (PathApprovalRequired(path, CanonicalCwd()) || HiddenPath(path) ||
       PathApprovalClass(path, PathAccess::kRead) != ApprovalClass::kNone) {
     return "an option's image must be a file you made in the folder";
@@ -42,9 +54,8 @@ std::optional<std::string> OptionImageIssue(const std::string& path) {
   return std::nullopt;
 }
 
-// The questions as clients see them: each option image a stored asset
-// (with its path, for a terminal), or dropped with a note when it cannot be
-// read. Previews and alt text travel as the model wrote them.
+// The questions as clients see them: each option image a stored asset, or
+// dropped with a note when it cannot be read.
 json ShownQuestions(json questions, const AskImage& image, std::string& notes) {
   for (json& question : questions) {
     for (json& option : question["options"]) {

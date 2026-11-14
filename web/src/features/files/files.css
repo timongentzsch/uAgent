@@ -203,15 +203,12 @@
 }
 
 .files-image {
-  display: grid;
-  place-items: center;
   flex: 1;
-  padding: var(--space-12);
-  cursor: zoom-in;
+  min-height: 0;
 }
-.files-image img {
-  max-width: 100%;
-  border: var(--border);
+.files-image > video {
+  width: 100%;
+  height: 100%;
 }
 .files-binary {
   display: flex;
@@ -253,25 +250,29 @@
   }
 }
 
-/* Pages of the folder: the canvas and one page opened, both across the
-   whole pane. */
-.files-stage {
-  position: relative;
+/* Pages of the folder: a design's canvas, or one page opened with the
+   legend of what it is part of, both across the whole pane. */
+.files-stage,
+.open-page,
+.page-main,
+.canvas {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+.files-stage,
+.canvas {
+  position: relative;
+}
+.files-stage {
   background: var(--surface);
 }
-.open-page {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
 /* One row: on a narrow pane it scrolls sideways rather than wrapping. */
-.page-tools {
+.page-tools,
+.sheet-tabs {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   overflow-x: auto;
   scrollbar-width: none;
@@ -280,13 +281,220 @@
   border-bottom: var(--border);
   background: var(--bg);
 }
-.page-tools > * {
+:is(.page-tools, .sheet-tabs) > * {
   flex: none;
+}
+/* Under a sheet's grid its tabs, which scroll, and beside them what acts
+   on the sheet; over it the active cell, one line: where it is, then what
+   was typed in it, to type over. */
+.sheet-bar,
+.sheet-formula {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  border-top: var(--border);
+  background: var(--bg);
+}
+.sheet-formula {
+  padding-block: var(--space-2);
+  border-top: 0;
+  border-bottom: var(--border);
+}
+.sheet-tabs {
+  flex: 1;
+  min-width: 0;
+  padding-inline: 0;
+  border: 0;
+}
+:is(.sheet-bar, .sheet-formula) > :not(.sheet-tabs, .sheet-typed) {
+  flex: none;
+}
+/* A cell's looks in a row under what was typed in it; folded, in a sheet
+   of their own, whose button stands beside the field. */
+.sheet-formula {
+  flex-wrap: wrap;
+}
+.sheet-looks,
+.sheet-looks-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sheet-looks {
+  width: 100%;
+}
+.sheet-looks-folded {
+  display: none;
+}
+/* A fill or a text colour by name, its swatch before it. */
+[data-look]::before {
+  content: "";
+  display: inline-block;
+  width: var(--icon-s);
+  aspect-ratio: 1;
+  margin-right: var(--space-2);
+  vertical-align: var(--icon-align);
+  border: var(--border);
+}
+[data-look="fill-accent"]::before {
+  background: var(--sheet-tint);
+}
+[data-look="fill-good"]::before {
+  background: var(--sheet-good);
+}
+[data-look="fill-warn"]::before {
+  background: var(--sheet-warn);
+}
+[data-look="fill-bad"]::before {
+  background: var(--sheet-bad);
+}
+[data-look="fill-muted"]::before {
+  background: var(--surface);
+}
+[data-look="ink-good"]::before {
+  background: var(--added);
+}
+[data-look="ink-warn"]::before {
+  background: var(--warning);
+}
+[data-look="ink-bad"]::before {
+  background: var(--removed);
+}
+[data-look="ink-muted"]::before {
+  background: var(--muted);
+}
+.sheet-formula > output {
+  color: var(--muted);
+}
+.sheet-typed,
+.page-notes > .text-control {
+  flex: 1;
+  min-width: 0;
+}
+/* What a formula may take at its caret, under the field it is typed in:
+   functions to choose from, or the arguments of the one it stands in. */
+.sheet-typed {
+  position: relative;
+}
+.sheet-offer {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  max-width: 100%;
+  max-height: var(--scroll-m);
+}
+.sheet-offer[role="note"] {
+  padding: var(--space-2) var(--inset-x);
+  color: var(--muted);
+}
+.sheet-offer strong {
+  color: var(--text);
+}
+/* One line, cut short where the bar is. */
+.sheet-bar > .sheet-note {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.page-tools > .page-status {
+  flex: 0 1 auto;
+  min-width: var(--control);
+}
+:is(.sheet-note, .page-tools > .page-status) > .notice {
+  white-space: nowrap;
+}
+:is(.sheet-note, .page-tools > .page-status) > .notice > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* What asks the page something is disabled until the page has drawn. */
+.page-asks {
+  display: contents;
+}
+/* Edit cell is a phone's way to the keyboard. */
+.sheet-edit-cell {
+  display: none;
 }
 .page-body {
   flex: 1;
   min-height: 0;
   display: flex;
+}
+/* The sequence small beside the stage: each board numbered under its
+   picture, the current one ringed. */
+.page-legend {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  overflow: auto;
+  border-right: var(--border);
+  background: var(--bg);
+}
+/* As wide as its picture: the name under it takes that width, no more. */
+.page-legend-item {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: fit-content;
+}
+.page-legend-item > .page-frame {
+  outline: var(--border);
+}
+.page-legend-item[data-failed] > .page-frame {
+  outline-color: var(--removed);
+}
+/* A slide that is skipped when presenting. */
+.page-legend-item[data-skipped] > .page-frame {
+  opacity: var(--opacity-disabled);
+}
+/* One ring, round the picture, for the current one and the one pointed at:
+   the cover's own would box the name in beside it. */
+.page-legend-item > button.cover:is(:hover, :focus-visible) {
+  outline: 0;
+}
+.page-legend-item:has(
+    > .cover:is(:hover, :focus-visible, [aria-selected="true"])
+  )
+  > .page-frame {
+  outline: var(--focus-ring);
+}
+/* A slide being dragged to a new place, and the line where it would drop:
+   before a slide, or after the last. */
+.page-legend-item[data-dragging] {
+  opacity: var(--opacity-disabled);
+}
+.page-legend-item[data-drop]::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--space-2)) 0 auto;
+  border-top: var(--focus-ring);
+}
+.page-legend-item[data-drop="after"]::before {
+  inset: auto 0 calc(-1 * var(--space-2));
+}
+.page-legend-name {
+  width: 0;
+  min-width: 100%;
+  color: var(--muted);
+}
+.page-legend-name > .lucide {
+  margin-right: var(--space-1);
+}
+.page-legend-item[data-failed] > .page-legend-name > .lucide:first-child {
+  color: var(--removed);
+}
+.page-legend-item:has([aria-selected="true"]) > .page-legend-name {
+  color: var(--text);
+  font-weight: var(--weight-strong);
+}
+/* The stage, and a slide's notes under it. */
+.page-main {
+  min-width: 0;
 }
 .page-stage {
   position: relative;
@@ -295,6 +503,12 @@
   min-height: 0;
   display: flex;
   background: var(--surface);
+}
+/* Until its first page has drawn, the stage says it is opening. */
+.page-stage > .loading-indicator {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 /* The page scrolls inside the stage once zoomed past it; a fixed or wide
    page is centred while it fits (margin: auto keeps all of it in reach). */
@@ -307,18 +521,21 @@
 .page-stage:is([data-fixed], [data-wide]) .page-scroll {
   padding: var(--space-6);
 }
-.page-stage:is([data-fixed], [data-wide]) .page-holder {
-  margin: auto;
-}
+/* The first page fades in once it has drawn. */
 .page-holder {
   position: relative;
   flex: 1;
   display: flex;
+  transition: opacity var(--motion-slow) var(--ease-standard);
+}
+.page-holder[data-arriving] {
+  opacity: 0;
 }
 /* A page with a size sits on the stage with a hairline edge, drawn outside
    it so the page never covers it. */
 .page-stage:is([data-fixed], [data-wide]) .page-holder {
   flex: none;
+  margin: auto;
   outline: var(--border);
 }
 .page-holder > .page-frame {
@@ -328,38 +545,20 @@
   width: 100%;
   height: 100%;
 }
-/* An opened slide's way to the deck's previous and next, over its edges. */
-.page-step {
-  position: absolute;
-  top: 50%;
-  translate: 0 -50%;
-  background: var(--bg);
-  border: var(--border);
-}
-.page-step-back {
+/* Which board of how many, with the previous and the next: over the
+   stage's corner, as the zoom is over the other. */
+.page-count {
   left: var(--space-4);
-}
-.page-step-next {
-  right: var(--space-4);
-}
-/* Where print will start a document's next page: a hairline across it. */
-.page-break {
-  position: absolute;
-  left: 0;
-  right: 0;
-  border-top: var(--border);
-  pointer-events: none;
-  text-align: right;
-  color: var(--muted);
-  padding-right: var(--space-2);
+  bottom: var(--space-4);
 }
 .page-mark {
   position: absolute;
   pointer-events: none;
-  outline: var(--focus-ring);
+  outline: var(--page-mark);
+  mix-blend-mode: difference;
 }
 .page-mark.hover {
-  opacity: var(--opacity-disabled);
+  outline-style: dashed;
 }
 .page-tweaks {
   width: var(--pane);
@@ -371,7 +570,9 @@
   border-left: var(--border);
   background: var(--bg);
 }
-.page-tweak {
+.page-tweak,
+.page-theme,
+.page-comment {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -380,9 +581,6 @@
   min-width: var(--control);
 }
 .page-theme {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
   padding-top: var(--space-4);
   border-top: var(--border);
 }
@@ -391,15 +589,7 @@
   align-items: center;
   gap: var(--space-4);
 }
-.page-tweak-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-}
 .page-comment {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
   padding: var(--space-4);
   border-top: var(--border);
   background: var(--bg);
@@ -417,30 +607,45 @@
 .page-stage[data-presenting] .page-scroll {
   padding: 0;
 }
-.page-holder {
-  transition: opacity var(--motion-slow) var(--ease-standard);
-}
-.page-holder[data-arriving] {
-  opacity: 0;
-}
+/* As tall with a line as with a page of them: the slide above keeps its
+   size and its place from one to the next. */
 .page-notes {
+  flex: none;
   margin: 0;
-  max-height: 40%;
+  height: 30%;
   overflow-y: auto;
   padding: var(--space-6);
   border-top: var(--border);
   font-size: var(--font-title);
   white-space: pre-line;
 }
+/* Under the stage while not presenting: a line or two to read along. */
+.page-main > .page-notes {
+  display: flex;
+  gap: var(--space-4);
+  height: auto;
+  padding: var(--space-4);
+  background: var(--bg);
+  font-size: var(--font-small);
+}
+.page-main > p.page-notes {
+  height: calc(3lh + 2 * var(--space-4));
+}
 .page-present-bar {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   border-top: var(--border);
 }
-.page-present-bar > :first-child {
+/* The counter leads the bar here instead of floating over the slide. */
+.page-present-bar > .page-count {
+  position: static;
   flex: 1;
+  padding: 0;
+  border: 0;
+  background: none;
 }
 
 /* The presenter's window: now, then next and the notes beside it. */
@@ -510,59 +715,61 @@
   flex: 0 0 30%;
   margin: 0;
 }
+/* A narrow pane stacks them: the legend a filmstrip under the stage. */
 @container files (max-width: 40rem) {
   .page-body {
     flex-direction: column;
   }
+  .page-legend {
+    order: 1;
+    flex-direction: row;
+    border-right: 0;
+    border-top: var(--border);
+  }
+  /* Its button's panel lies along the bottom too. */
+  .page-tools [aria-label="Legend"] > .lucide {
+    rotate: -90deg;
+  }
+  .sheet-edit-cell {
+    display: inline-flex;
+  }
+  .sheet-looks-folded {
+    display: block;
+  }
+  .sheet-note,
+  .sheet-looks {
+    display: none;
+  }
+  .page-legend-item[data-drop]::before {
+    inset: 0 auto 0 calc(-1 * var(--space-2));
+    border-top: 0;
+    border-left: var(--focus-ring);
+  }
+  .page-legend-item[data-drop="after"]::before {
+    inset: 0 calc(-1 * var(--space-2)) 0 auto;
+  }
   .page-tweaks {
+    order: 2;
     width: auto;
     max-height: 50%;
     border-left: 0;
     border-top: var(--border);
   }
 }
-/* A deck's own tools over its canvas. */
-.canvas-deck-tools {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: var(--border);
-}
-.canvas-deck-tools > :first-child {
-  flex: 1;
-}
-.canvas {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.canvas-notice {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
+/* Pages that failed to run, over the canvas or the sequence they are in. */
+.page-notice {
   margin: 0;
   padding: var(--space-2) var(--space-4);
   border-bottom: var(--border);
   background: var(--bg);
 }
-.canvas-notice > span {
+.page-notice > .notice > span {
   flex: 1;
 }
-.canvas-stage {
-  position: relative;
+.canvas > .zoom-surface {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
-  touch-action: none;
-  cursor: grab;
-}
-.canvas-plane {
-  position: absolute;
-  inset: 0 auto auto 0;
-  transform-origin: 0 0;
+  height: auto;
 }
 .canvas-page {
   position: absolute;
@@ -571,25 +778,21 @@
 .canvas-page[data-failed] {
   border-color: var(--removed);
 }
+/* A stack: two more sheets under its first, so it reads as several. */
+.canvas-page[data-media="stack"] {
+  box-shadow:
+    var(--space-24) var(--space-24) var(--line),
+    calc(2 * var(--space-24)) calc(2 * var(--space-24)) var(--raised);
+}
+.canvas-count {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  border: var(--border);
+}
 .canvas-name {
   position: absolute;
   max-width: var(--popover);
   transform: translateY(calc(-100% - var(--space-2)));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--muted);
   pointer-events: none;
-}
-.canvas-open {
-  position: absolute;
-  inset: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-.canvas-open:hover,
-.canvas-open:focus-visible {
-  outline: var(--focus-ring);
 }

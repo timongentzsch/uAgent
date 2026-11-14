@@ -236,10 +236,9 @@ void Master::AssetRead(const Request& request, Response& response) {
 void ServeFile(Response& response, std::string bytes, const std::string& mime,
                const std::string& name, bool inline_view) {
   const bool html = mime == "text/html";
-  // Replace the app's policy rather than add to it: browsers enforce every
-  // CSP header, so the app's would block the file's own scripts and forbid
-  // the conversation from framing its preview. HTML runs its scripts in an
-  // opaque origin; anything else, SVG included, may run none at all.
+  // Replaces the app's policy: browsers enforce every CSP header, so the
+  // app's would block the file's scripts and its framing. HTML scripts run in
+  // an opaque origin; anything else, SVG included, may run none.
   response.headers.erase("Content-Security-Policy");
   response.set_header("Content-Security-Policy",
                       html ? "sandbox allow-scripts allow-forms allow-popups; "

@@ -1,7 +1,6 @@
 version: 2
 updates:
-  # Minor and patch updates come together, once a week. A major version
-  # comes on its own, so what breaks is known by name.
+  # A major version comes on its own, so what breaks is known by name.
   - package-ecosystem: npm
     directory: /web
     schedule:

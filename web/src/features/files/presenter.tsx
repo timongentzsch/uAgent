@@ -3,11 +3,12 @@ import { Button } from "../../shared/ui.tsx";
 import Frame, {
   type PageInfo,
   pageAddress,
-  pageSize,
   usePreviewBase,
 } from "../../shared/page-frame.tsx";
+import { pageSize } from "../../shared/page-size.ts";
 import { useLatest } from "../../shared/use-latest.ts";
-import { type Presenting, presentChannel } from "./present.ts";
+import { useRoom } from "../../shared/layout.ts";
+import { type Presenting, presentChannel, STEPS } from "./present.ts";
 import "./files.css";
 
 // The presenter's own window: the slide now and the next, the speaker notes
@@ -24,21 +25,13 @@ function Slide({
   onInfo?: (info: PageInfo) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
-  const [room, setRoom] = useState({ w: 0, h: 0 });
+  const room = useRoom(box);
   const [info, setInfo] = useState<PageInfo>();
-  useEffect(() => {
-    const observer = new ResizeObserver(([entry]) =>
-      setRoom({ w: entry.contentRect.width, h: entry.contentRect.height }),
-    );
-    if (box.current) observer.observe(box.current);
-    return () => observer.disconnect();
-  }, []);
   const { w, h } = pageSize(info, 1080);
   const scale = Math.min(room.w / w, room.h / h) || 0;
   return (
     <div class="presenter-slide" ref={box}>
       <Frame
-        key={path}
         src={pageAddress(base, path)}
         title={info?.title || path}
         width={w}
@@ -87,8 +80,8 @@ export default function Presenter({ deck }: { deck: Presenting }) {
   });
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
-      if (["ArrowRight", " ", "PageDown"].includes(event.key)) go.current(1);
-      if (["ArrowLeft", "PageUp"].includes(event.key)) go.current(-1);
+      const by = STEPS[event.key];
+      if (by) go.current(by);
     };
     addEventListener("keydown", keys);
     return () => removeEventListener("keydown", keys);

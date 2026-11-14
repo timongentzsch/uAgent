@@ -1,10 +1,11 @@
 import {
+  connected,
   test,
   expect,
   leaveEnd,
-  newFolder,
   openMore,
   savedConversation,
+  startInFolder,
 } from "./fixtures.js";
 
 test.describe("mobile navigation and commands", () => {
@@ -20,7 +21,7 @@ test.describe("mobile navigation and commands", () => {
   }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/");
-    await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+    await expect(connected(page)).toBeVisible();
 
     const firstTitle = `Navigation A ${testInfo.project.name}`;
     const secondTitle = `Navigation B ${testInfo.project.name}`;
@@ -50,13 +51,15 @@ test.describe("mobile navigation and commands", () => {
       await page
         .getByRole("button", { name: "Open conversations", exact: true })
         .click();
-      await page.getByRole("button", { name: new RegExp(title) }).click();
+      await page
+        .getByRole("dialog", { name: "Conversations" })
+        .getByRole("button", { name: new RegExp(title) })
+        .click();
     };
     await choose(firstTitle);
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
     await expect(page.locator(".composer .activity-button")).toHaveCount(0);
-    // On a soft keyboard return writes a new line; Send sends.
     const send = page.getByRole("button", { name: "Send", exact: true });
     await prompt.fill("/model mock/model-b");
     await prompt.press("Enter");
@@ -146,8 +149,6 @@ test.describe("mobile navigation and commands", () => {
     await prompt.press("Tab");
     await expect(prompt).toHaveValue("/compact");
     await expect(page.locator(".message.user")).toHaveCount(1);
-    // The list offers what the page has no control for: nothing for files,
-    // the model or the approval mode, which have their own.
     await prompt.fill("/");
     const offered = page.getByRole("option");
     await expect(offered.filter({ hasText: "/compact" })).toHaveCount(1);
@@ -206,14 +207,8 @@ test.describe("mobile navigation and commands", () => {
       .getByRole("button", { name: "Close conversations", exact: true })
       .tap();
     await page.getByRole("button", { name: "Open conversations" }).click();
-    await newFolder(page, fixture.project);
-    await page
-      .getByRole("dialog", { name: "New folder" })
-      .getByRole("button", { name: "Start conversation" })
-      .click();
-    await expect(page.locator(".composer .activity-button")).toHaveCount(0);
+    await startInFolder(page, fixture.project);
     await expect(page.locator(".message.user")).toHaveCount(0);
-    // An unsent draft survives a reload (an evicted installed app).
     await prompt.fill("Survives reload");
     // Saved after the next paint; reload once it is stored.
     await expect
@@ -221,15 +216,12 @@ test.describe("mobile navigation and commands", () => {
       .toContain("Survives reload");
     await page.reload();
     await expect(prompt).toHaveValue("Survives reload");
-    // Close conversation ends the runtime; typed /quit does not (it detaches a
-    // terminal).
     await page
       .locator(".conversation-head")
       .getByLabel("Conversation menu", { exact: true })
       .tap();
     await page.getByRole("menuitem", { name: "More", exact: true }).tap();
     await page.getByRole("menuitem", { name: "Close conversation" }).tap();
-    // A closed session keeps its composer: the next message starts it again.
     await expect(prompt).toBeVisible();
     await prompt.fill("/att");
   });
@@ -246,7 +238,6 @@ test.describe("in an iPhone home-screen app", () => {
   test("conversations replace their history entry", async ({ page, host }) => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, "standalone", { value: true });
-      // Every entry the app adds, by its address.
       window.pushed = [];
       const push = history.pushState.bind(history);
       history.pushState = (state, title, url) => {
@@ -269,7 +260,10 @@ test.describe("in an iPhone home-screen app", () => {
       await page
         .getByRole("button", { name: "Open conversations", exact: true })
         .click();
-      await page.getByRole("button", { name: new RegExp(title) }).click();
+      await page
+        .getByRole("dialog", { name: "Conversations" })
+        .getByRole("button", { name: new RegExp(title) })
+        .click();
       await expect(
         page.getByRole("heading", { name: title, exact: true }),
       ).toBeVisible();
@@ -278,7 +272,6 @@ test.describe("in an iPhone home-screen app", () => {
         .poll(() => page.evaluate(() => history.state?.layer ?? 0))
         .toBe(0);
     }
-    // Nothing to go back to: the drawer's entries are gone with it.
     await expect.poll(index).toBe(start);
     // The drawer adds its own entry while open; a conversation never does.
     expect(

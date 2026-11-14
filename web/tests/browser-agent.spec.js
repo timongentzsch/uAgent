@@ -1,6 +1,5 @@
-// What the agent's browser tool does to a page, in a real Chromium: the
-// scripts and key events are taken from src/browser/runtime_*.cc as they are
-// and sent the way the runtime sends them.
+// The agent's browser tool in a real Chromium: scripts and key events come
+// from src/browser/runtime_*.cc and are sent the way the runtime sends them.
 import { readFileSync } from "node:fs";
 import { test, expect } from "@playwright/test";
 
@@ -137,7 +136,6 @@ test("an element is clicked where it is now, and not when it is gone or covered"
     <button id=under>Under</button></body></html>`);
   const agent = await control(page);
   await agent.look();
-  // Far below: brought into view at once, whatever the page's scrolling.
   const far = await agent.where(2);
   expect(far.y).toBeGreaterThan(0);
   expect(far.y).toBeLessThan(600);
@@ -163,8 +161,6 @@ test("a number of an earlier look still names what that look numbered, on the sa
     <input id=email placeholder=Email>`);
   const agent = await control(page);
   expect((await agent.look()).fresh).toBe(true);
-  // A button shows up before the second field: a new look numbers that
-  // field 3, while the first look's 2 is still the same field.
   await page.evaluate(() =>
     document.getElementById("email").before(document.createElement("button")),
   );
@@ -201,7 +197,6 @@ test("a covered element names what covers it, and a moving one is clicked where 
     () => (document.getElementById("slide").style.left = "300px"),
   );
   const slide = await agent.where(2);
-  // Where it stopped, not where it was on the way.
   expect(slide).toEqual(
     await page.evaluate(() => {
       const r = document.getElementById("slide").getBoundingClientRect();
@@ -276,7 +271,6 @@ test("a look reaches into open shadow roots and frames of the site, and says how
     '[3] text "Email" (empty) (required)',
     '[4] button "Inside"',
   ]);
-  // A click lands on the element itself, through its shadow root or frame.
   const deep = await agent.where(1);
   expect(
     await page.evaluate(
@@ -392,10 +386,8 @@ test("reading keeps links whole and what was searched for in view", async ({
   expect(found.matches).toBe(252);
   const lines = found.text.split("\n");
   expect(lines).toHaveLength(200);
-  // The match is far into its line and still in what comes back.
   expect(lines[0]).toContain("needle");
   expect(lines[0].length).toBeLessThanOrEqual(300);
-  // So is the link whose name is longer than what is shown of it.
   expect(found.links).toContain("https://example.com/item?id=3");
   const rest = await agent.read(200, "needle");
   expect(rest.text.split("\n")).toHaveLength(52);

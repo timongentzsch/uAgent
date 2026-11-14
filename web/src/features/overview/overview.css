@@ -1,4 +1,3 @@
-/* A folder's overview: one scrolling column in the conversation's place. */
 .overview {
   flex: 1;
   min-height: 0;
@@ -13,18 +12,6 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
-.overview-start {
-  display: flex;
-  gap: var(--gap);
-}
-.overview-start input {
-  flex: 1;
-  min-width: 0;
-}
-.overview-start button {
-  white-space: nowrap;
-}
-/* The summary: five figures in a row, two to a row on a phone. */
 .overview-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(var(--pane-s), 1fr));
@@ -69,8 +56,6 @@
   grid-template-columns: repeat(auto-fill, minmax(var(--sidebar), 1fr));
   gap: var(--space-4);
 }
-/* One conversation: title and state, its step, its to-do, then its agents,
-   time and cost. A card on the grid, a row in the list. */
 .overview-card {
   display: grid;
   gap: var(--space-2);
@@ -89,6 +74,11 @@
   justify-content: space-between;
   gap: var(--space-3);
   min-width: 0;
+}
+/* Its two facts stay whole: the second goes under the first when short of room. */
+.overview-foot {
+  flex-wrap: wrap;
+  white-space: nowrap;
 }
 .overview-title > span:first-child {
   min-width: 0;

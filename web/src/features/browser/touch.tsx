@@ -19,9 +19,6 @@ import {
 } from "../../shared/zoom.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 
-// Direct touch on the remote screen: taps, scrolls, drags, right-clicks and
-// pinch, turned into RFB pointer events. Used by the browser dialog.
-
 type Gesture =
   | { kind: "pending"; start: Point }
   | { kind: "scroll"; travel: Point; at: Point }
@@ -31,9 +28,8 @@ type Gesture =
   | ({ kind: "two"; at: Point; time: number; moved: boolean } & Pinch)
   | { kind: "done" };
 
-// The remote screen under direct touch. `pointer` receives framebuffer
-// pixels and RFB button masks; without it (watching) touch only zooms and
-// pans this device's view. A mouse goes straight to noVNC.
+// `pointer` receives framebuffer pixels and RFB button masks; without it
+// touch only zooms and pans this device's view. A mouse goes to noVNC.
 export default function BrowserTouch({
   screen,
   target,
@@ -53,8 +49,7 @@ export default function BrowserTouch({
   const hold = useRef<number | undefined>(undefined);
   const view = useRef<ZoomView>({ scale: 1, x: 0, y: 0 });
   const send = useLatest(pointer);
-  // The screen's size, kept by the resize observer: a moving finger reads
-  // no layout for it.
+  // Kept by the resize observer, so a moving finger reads no layout.
   const size = useRef({ width: 0, height: 0 });
 
   const setView = (next: ZoomView) => {
@@ -91,10 +86,8 @@ export default function BrowserTouch({
   };
   const emit = (point: Point, ...masks: number[]) =>
     deliver(point, false, masks);
-  // A held button follows the finger past the edge and always lets go.
   const emitHeld = (point: Point, ...masks: number[]) =>
     deliver(point, true, masks);
-  // One reused ring shows where a touch landed; it stays while a hold drags.
   const feedback = (point: Point, held: boolean) => {
     const element = ring.current;
     const rect = screen.current?.getBoundingClientRect();
@@ -129,15 +122,13 @@ export default function BrowserTouch({
     clearTimeout(hold.current);
     hold.current = undefined;
   };
-  // Buttons for what a pinch and a swipe do, for anyone who cannot make
-  // them: zoom this device's view about its centre, scroll the page.
+  // What a pinch and a swipe do, for anyone who cannot make them.
   const zoomBy = (ratio: number) => {
     const { width, height } = size.current;
     const centre = { x: width / 2, y: height / 2 };
     setView(pinchView(view.current, width, height, centre, centre, ratio));
   };
   const scrollBy = (mask: number) => {
-    // The middle of the remote screen, wherever it is letterboxed.
     const rect = target.current
       ?.querySelector("canvas")
       ?.getBoundingClientRect();

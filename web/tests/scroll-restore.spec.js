@@ -1,7 +1,6 @@
-// Session return restores the saved position unfollowed: switching away
-// and back must neither pin to the bottom nor strand the reader. Seeded
-// histories keep this deterministic (no streaming or backend timing).
-import { test, expect, leaveEnd, saveHistory } from "./fixtures.js";
+// Returning to a session restores the saved position unfollowed. Seeded
+// histories keep this deterministic: no streaming or backend timing.
+import { connected, test, expect, leaveEnd, saveHistory } from "./fixtures.js";
 
 function seed(host, file, id, title) {
   const messages = Array.from({ length: 60 }, (_, index) => ({
@@ -16,7 +15,7 @@ test("returning to a session restores its position unfollowed", async ({
   host: fixture,
 }) => {
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   await seed(fixture, "a.json", "restore-a", "Restore A");
   await seed(fixture, "b.json", "restore-b", "Restore B");
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
@@ -34,7 +33,6 @@ test("returning to a session restores its position unfollowed", async ({
   await expect(page.locator(".conversation-head h1")).toContainText(
     "Restore A",
   );
-  // Unfollowed (Jump visible, not pinned) and back at the saved spot.
   await expect(
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
@@ -92,7 +90,6 @@ test.describe("phone jump to latest", () => {
         ),
       )
       .toBeLessThanOrEqual(2);
-    // A fresh gesture must still let the person leave the end immediately.
     await box.hover();
     await page.mouse.wheel(0, -300);
     await expect(jump).toBeVisible();

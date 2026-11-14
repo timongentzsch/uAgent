@@ -1,6 +1,5 @@
-// Follow-tail guarantees under live streaming growth: while pinned the
-// transcript never detaches from the end, and a reader who scrolled up
-// mid-stream is never yanked back down.
+// Follow-tail under live streaming: while pinned the transcript stays at the
+// end, and a reader who scrolled up mid-stream is never pulled back down.
 import { test, expect, online, selectProbeModel } from "./fixtures.js";
 
 async function startProbe(
@@ -27,8 +26,7 @@ const gap = (page) =>
         element.scrollHeight - element.scrollTop - element.clientHeight,
     );
 
-// The bottom gap and the content height at every frame from now until the
-// turn ends. Samples taken by the clock are fewer the slower the machine.
+// One sample per frame: samples by the clock thin out on a slow machine.
 async function framesUntilIdle(page) {
   await page.locator(".transcript").evaluate((element) => {
     const samples = (window.samples = []);
@@ -68,10 +66,7 @@ test("progressive rendering retains text while syntax highlighting loads", async
     await expect
       .poll(async () => (await stream.textContent())?.length || 0)
       .toBeGreaterThan(2000);
-    // Content stays visible while highlighting is still loading.
     await expect(stream).toContainText("print('stable copy control')");
-    // Code streams inside its block, not as raw fenced text, and offers no
-    // copy until its fence closes.
     await expect(stream.locator(".code-block").first()).toBeVisible();
     await expect(stream).not.toContainText("```");
     release();
@@ -86,10 +81,8 @@ test("progressive rendering retains text while syntax highlighting loads", async
   }
 });
 
-// A line still being written may not yet decide its block (a table row,
-// a setext underline, a bare list marker). Shown early and then undone,
-// everything above the end would drop for a frame and rise again. Nor
-// does the reply's text move when its turn ends.
+// A line still being written may not yet decide its block; shown early and
+// then undone, everything above the end would drop for a frame.
 test("streamed content only grows and stays pinned to the end", async ({
   page,
   session,
@@ -113,9 +106,8 @@ test("streamed content only grows and stays pinned to the end", async ({
   expect(shrinks).toEqual([]);
   // The reply outgrows the view, so there is an end to stay pinned to.
   expect(frames.at(-1).height - frames[0].height).toBeGreaterThan(400);
-  // A frame can land between a state apply and its pre-paint pin, so a
-  // single excursion is not detachment: what matters is that the tail
-  // recovers to the band and settles at zero when done.
+  // A frame can land between a state apply and its pre-paint pin, so a single
+  // excursion is not detachment.
   const gaps = frames.map((frame) => frame.gap);
   expect(gaps.filter((value) => value > 100).length).toBeLessThanOrEqual(2);
   expect(gaps.slice(-5).every((value) => value <= 100)).toBe(true);
@@ -126,9 +118,8 @@ test("streamed content only grows and stays pinned to the end", async ({
   ).toHaveCount(0);
 });
 
-// Following with motion on, the view glides after a long reply. WebKit
-// sets the scroller back to an older offset as streamed text lands; the
-// glide must not follow it back, so the view never steps up.
+// WebKit sets the scroller back to an older offset as streamed text lands;
+// the glide must not follow it back.
 test("a glide that follows a long reply never steps back", async ({
   page,
   session,
@@ -171,9 +162,7 @@ test("scrolled-up reader is never yanked down by streaming", async ({
 }) => {
   test.setTimeout(120000);
   await startProbe(page, session, command);
-  // Wait for real overflow (total scrollable height), then move up out
-  // of the stick band. Note: the bottom *gap* stays ~0 while pinned, so
-  // overflow — not gap — is the precondition.
+  // Overflow is the precondition: the bottom gap stays ~0 while pinned.
   await expect
     .poll(
       () =>
@@ -184,10 +173,7 @@ test("scrolled-up reader is never yanked down by streaming", async ({
     )
     .toBeGreaterThan(400);
   const jump = page.getByRole("button", { name: "Jump to latest" });
-  // Scroll up the way a reader does — repeated steps until the follow
-  // releases. Relative steps self-heal like a human finger: if a stream
-  // pin lands mid-gesture, the next step continues from wherever it
-  // landed, and the loop only exits once unfollowed.
+  // Relative steps continue from wherever a stream pin lands mid-gesture.
   for (let index = 0; index < 30; ++index) {
     if (await jump.isVisible()) break;
     await page.locator(".transcript").evaluate((element) => {
@@ -197,7 +183,6 @@ test("scrolled-up reader is never yanked down by streaming", async ({
   }
   await expect(jump).toBeVisible();
   await expect.poll(() => gap(page)).toBeGreaterThan(100);
-  // Across the rest of the stream the reader stays away from the live edge.
   const gaps = await gapsUntilIdle(page);
   // A row can briefly shrink during rich-content replacement and clamp the
   // scroll range; the saved anchor must bring the reader back once it grows.
@@ -213,7 +198,6 @@ test("background completion badges while unfollowed, cleared on jump", async ({
 }) => {
   test.setTimeout(180000);
   await startProbe(page, session, command);
-  // Build scrollable history first, then let it finish while following.
   await expect(page.locator(".composer .status-led.running")).toBeHidden({
     timeout: 60000,
   });
@@ -229,7 +213,6 @@ test("background completion badges while unfollowed, cleared on jump", async ({
   await expect(page.locator(".node-row").first()).toBeVisible({
     timeout: 30000,
   });
-  // Reader-like steps out of the stick band; the sleep is still running.
   for (let index = 0; index < 6; ++index) {
     await page.locator(".transcript").evaluate((element) => {
       element.scrollTop -= 60;
@@ -238,7 +221,6 @@ test("background completion badges while unfollowed, cleared on jump", async ({
   }
   const jump = page.getByRole("button", { name: "Jump to latest" });
   await expect(jump).toBeVisible();
-  // Completion lands blocks below while unfollowed: badge counts them.
   await expect(jump).toContainText(/\(\d+ new\)/, { timeout: 90000 });
   await jump.click();
   await expect(jump).toBeHidden();
@@ -268,8 +250,7 @@ test("wheeling back down to the end follows again mid-stream", async ({
     await page.waitForTimeout(50);
   }
   await expect(jump).toBeVisible();
-  // Real wheel steps, while content keeps growing and compensation runs:
-  // reaching the end must clear the button without a click.
+  // Real wheel steps: reaching the end clears the button without a click.
   for (let index = 0; index < 60 && (await jump.isVisible()); ++index) {
     await page.mouse.wheel(0, 400);
     await page.waitForTimeout(60);
@@ -298,7 +279,6 @@ test("a wheel at the end with no room below follows again", async ({
   await transcript.hover();
   await page.mouse.wheel(0, -300);
   await expect(jump).toBeVisible();
-  // Content below the reader shrinks away; the browser clamps the range.
   await page
     .locator(".message")
     .last()
@@ -322,7 +302,6 @@ test("a wheel up inside nested output leaves following alone", async ({
     timeout: 60000,
   });
   await expect.poll(() => gap(page)).toBeLessThan(2);
-  // A tool-output-like scroller scrolled down inside the last message.
   await page
     .locator(".message")
     .last()

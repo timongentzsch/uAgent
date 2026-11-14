@@ -1,6 +1,4 @@
-// Keyboard movement through a list of n options, shared by suggestion
-// listboxes and menus. From no selection (-1), down picks the first and up
-// the last; both wrap. Home and End jump to the ends.
+// From no selection (-1), down picks the first and up the last; both wrap.
 export function nextIndex(index: number, key: string, n: number) {
   if (key === "Home") return 0;
   if (key === "End") return n - 1;

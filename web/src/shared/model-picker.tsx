@@ -2,13 +2,10 @@ import type { SessionRef, State } from "./types.ts";
 import { useState } from "preact/hooks";
 import { useAction } from "./use-action.ts";
 import { useResource } from "./use-resource.ts";
-import { command } from "../state/api.ts";
+import { useApi } from "../state/api.ts";
 import { Field, Select, LoadError } from "./ui.tsx";
 import { SearchSelect } from "./search-select.tsx";
 import { ModelLoading, ModelActions, ModelDefaults } from "./loading.tsx";
-
-// Choosing a conversation's model and reasoning effort, or the defaults for
-// new ones, from the host's catalogue.
 
 export default function ModelPicker({
   session,
@@ -26,12 +23,12 @@ export default function ModelPicker({
   // With `save` the choice is handed back, not applied to a session: the
   // picker closes once it was taken.
   selection?: string;
-  save?: (value: string) => unknown;
+  save?: (value: string, model: string, effort: string) => unknown;
   close: () => void;
 }) {
+  const { command } = useApi();
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState(state?.effort || "default");
-  // The choice is this conversation's; saving it for all is asked for.
   // The first choice is for every conversation to come.
   const [forAll, setForAll] = useState(!save && state?.route === "");
   const action = useAction();
@@ -162,6 +159,8 @@ export default function ModelPicker({
                 [model, effort === "default" ? "" : effort]
                   .filter(Boolean)
                   .join(":"),
+                model,
+                effort,
               );
               if (taken !== false) return close();
               throw new Error("Not saved. Its row in Settings says why.");

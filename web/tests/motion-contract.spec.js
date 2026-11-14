@@ -1,7 +1,5 @@
-// What enters leaves the same way: the docked Files pane's column grows as
-// it fades in, so the chat narrows with it, and shrinks again when closed
-// (unreachable while it goes); focus returns to what opened it. With motion
-// off it simply goes.
+// What enters leaves the same way: the docked Files pane's column grows as it
+// fades in and shrinks again when closed, unreachable while it goes.
 import { test, expect, headerAction } from "./fixtures.js";
 
 // What the pane has animated since `forget`, and how its width went.
@@ -39,7 +37,6 @@ for (const motion of ["no-preference", "reduce"])
     await expect(pane).toBeVisible();
     await expect.poll(() => moved(page)).toEqual(expected);
     if (motion !== "reduce") {
-      // From nothing to its full width: the chat gives way as it grows.
       const [opened] = await page.evaluate(() => window.paneWidths);
       expect(opened[0]).toBe("0px");
       expect(Number.parseFloat(opened[1])).toBeGreaterThan(300);
@@ -47,7 +44,6 @@ for (const motion of ["no-preference", "reduce"])
     await forget(page);
     await pane.getByRole("button", { name: "Close files" }).click();
     if (motion !== "reduce") {
-      // Leaving: still drawn, but nothing in it can be reached.
       const leaving = page.locator(".side-pane[data-leaving]");
       await expect(leaving).toHaveCount(1);
       expect(await leaving.evaluate((node) => node.inert)).toBe(true);

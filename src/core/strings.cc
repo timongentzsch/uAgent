@@ -52,8 +52,7 @@ std::string AsciiLower(std::string text) {
   return text;
 }
 
-// Boyer-Moore-Horspool over ASCII-folded bytes: it skips ahead by up to the
-// query's length and copies nothing, so a large text is cheap to scan.
+// Boyer-Moore-Horspool over ASCII-folded bytes, copying nothing.
 bool ContainsCaseInsensitive(std::string_view text, std::string_view query) {
   const size_t size = query.size();
   if (size == 0) return true;
@@ -360,10 +359,8 @@ std::string OneLine(const std::string& s, size_t cap) {
   return Utf8Trunc(FirstLine(s), cap);
 }
 
-// The chrome the agent draws itself: row scaffolding and separators; the
-// spinner picks its own ASCII frames (SpinnerFrame). Model and tool text keeps
-// whatever Unicode it carries -- only what this program chose to print is
-// downgraded, and only when the locale says the terminal cannot decode it.
+// Only the chrome the agent draws itself is downgraded; model and tool text
+// keeps whatever Unicode it carries.
 std::string AsciiGlyphs(std::string_view s) {
   if (g_unicode) return std::string(s);
   static constexpr std::pair<std::string_view, std::string_view> kGlyphs[] = {
@@ -400,9 +397,7 @@ std::string AsciiGlyphs(std::string_view s) {
 // Unconditional: sanitising is a property of the sink, not of isatty. A
 // redirected transcript would otherwise keep escapes that cat(1) executes.
 std::string TerminalSafe(std::string_view s) {
-  // Almost every string handed to a terminal is already safe. One scan and a
-  // copy beats rebuilding it byte by byte, and this sits on the streaming
-  // render path where it runs once per chunk.
+  // Almost every string is already safe: one scan, then a plain copy.
   if (std::none_of(s.begin(), s.end(), [](unsigned char c) {
         return c == 0x7f || (c < 0x20 && c != '\n' && c != '\t');
       })) {
@@ -501,6 +496,37 @@ std::string Hex64(uint64_t value) {
 }
 
 }  // namespace
+
+std::string HexEncode(std::string_view data) {
+  constexpr char kDigits[] = "0123456789abcdef";
+  std::string result;
+  result.reserve(data.size() * 2);
+  for (char value : data) {
+    const auto byte = static_cast<unsigned char>(value);
+    result += kDigits[byte >> 4];
+    result += kDigits[byte & 15];
+  }
+  return result;
+}
+bool HexDecode(std::string_view data, std::string& bytes, size_t limit) {
+  if (data.size() % 2 || data.size() / 2 > limit) return false;
+  auto digit = [](char ch) {
+    return ch >= '0' && ch <= '9'   ? ch - '0'
+           : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10
+                                    : -1;
+  };
+  bytes.clear();
+  bytes.reserve(data.size() / 2);
+  for (size_t i = 0; i < data.size(); i += 2) {
+    int high = digit(data[i]), low = digit(data[i + 1]);
+    if (high < 0 || low < 0) {
+      bytes.clear();
+      return false;
+    }
+    bytes += static_cast<char>((high << 4) | low);
+  }
+  return true;
+}
 
 std::string HashHex(const std::string& data) {
   return Hex64(Fnv1aUpdate(kFnv1aOffsetBasis, data.data(), data.size()));

@@ -5,7 +5,98 @@ import {
   headerAction,
   online,
   selectProbeModel,
+  saveHistory,
 } from "./fixtures.js";
+
+test.describe("message layout", () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  test("narrow messages use the full width with metadata below the text", async ({
+    page,
+    host,
+    request,
+  }, testInfo) => {
+    await saveHistory(host, "message-layout.json", {
+      id: "message-layout",
+      title: "Message layout",
+      turns: 1,
+      messages: [
+        {
+          role: "user",
+          content:
+            "how to serve those models whats the best setup? what are they optimized for",
+        },
+        {
+          role: "assistant",
+          content: "Model serving depends on the workload.",
+        },
+      ],
+      display: {
+        ids: [1, 2],
+        facts: { "m-1": { time: "2026-11-08T10:57:00.000Z" } },
+        next: 3,
+      },
+    });
+    await request.get("/api/sessions?refresh=1");
+    await page.goto("/");
+    // Its row names its place too.
+    await page.getByRole("button", { name: /^Message layout / }).click();
+    const message = page.locator(".message.user");
+    await expect(message).toBeVisible();
+    const meta = message.locator(".message-meta");
+    const menu = meta.getByRole("button", { name: /^Actions for / });
+    for (const width of [390, 320, 600]) {
+      await page.setViewportSize({ width, height: 844 });
+      // Read both boxes in one frame while the resized viewport settles.
+      await expect
+        .poll(() =>
+          message.evaluate((node) => {
+            const body = node
+              .querySelector(".message-text")
+              .getBoundingClientRect();
+            const footer = node
+              .querySelector(".message-meta")
+              .getBoundingClientRect();
+            return (
+              footer.y >= body.bottom - 1 &&
+              Math.abs(body.width - footer.width) < 1
+            );
+          }),
+        )
+        .toBe(true);
+      await expect(meta.locator("time")).toBeVisible();
+      const target = await menu.boundingBox();
+      expect(target.width).toBeGreaterThanOrEqual(44);
+      expect(target.height).toBeGreaterThanOrEqual(44);
+      expect(
+        await message.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      ).toBe(true);
+      if (width === 390)
+        await page.screenshot({
+          path: testInfo.outputPath("phone-message.png"),
+        });
+    }
+    await menu.tap();
+    await expect(
+      page.getByRole("menuitem", { name: "Edit from here", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect
+      .poll(() =>
+        message.evaluate((node) => {
+          const body = node
+            .querySelector(".message-text")
+            .getBoundingClientRect();
+          const metadata = node
+            .querySelector(".message-meta")
+            .getBoundingClientRect();
+          return Math.abs(body.y - metadata.y) < 1 && metadata.x >= body.right;
+        }),
+      )
+      .toBe(true);
+  });
+});
 
 test("mobile chrome keeps an opaque safe area and applies appearance before app startup", async ({
   page,
@@ -49,8 +140,7 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     release();
   }
   await expect(page.getByRole("heading", { name: "µAgent" })).toBeVisible();
-  // Desktop WebKit does not expose an iPhone's system inset or status-bar paint.
-  // Exercise our safe-area layout independently of that native rendering.
+  // Desktop WebKit exposes no iPhone system inset: the safe area is set here.
   await page.evaluate(() =>
     document.documentElement.style.setProperty("--safe-top", "47px"),
   );
@@ -74,10 +164,10 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     await expect(drawer).toBeVisible();
     const drawerBox = await drawer.boundingBox();
     expect(drawerBox.y).toBe(47);
-    // The drawer runs to the bottom edge; its content stays above the inset.
     expect(drawerBox.y + drawerBox.height).toBe(844);
     const footer = await drawer
-      .getByText("Connected", { exact: true })
+      .locator("footer")
+      .getByRole("status")
       .boundingBox();
     expect(footer.y + footer.height).toBeLessThanOrEqual(844 - 34);
     expect(
@@ -91,10 +181,8 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
       .click();
     await expect(drawer).toHaveCount(0);
   }
-  // The drawer lives in the shell and runs past it into the bottom inset:
-  // iOS scrolled the shell to reveal it on focus, and the whole interface
-  // stayed shifted up. Nothing may scroll the app's frame, whatever
-  // overflows it.
+  // iOS scrolls the shell to reveal a focused drawer that runs past it, and
+  // the interface stays shifted: nothing may scroll the app's frame.
   expect(
     await page.evaluate(() =>
       ["#app", ".shell"].map((selector) => {
@@ -123,8 +211,6 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
       insetRight: box.right - close.right - gutter,
     };
   });
-  // A full-screen sheet on a phone: from the safe top to the bottom edge
-  // (its own surface runs under the home indicator).
   expect(Math.abs(geometry.top - 47)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.bottom - 844)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.insetTop - geometry.insetRight)).toBeLessThanOrEqual(
@@ -189,8 +275,6 @@ test("fresh conversation reload keeps one stable loading state", async ({
   try {
     await page.goto(`/#session=${session.id}`);
     await sawCatalogue;
-    // One transcript placeholder through the catalogue and the snapshot:
-    // loading never restarts.
     const loader = page.locator(".conversation .placeholder .message").first();
     const status = page.locator(".conversation [role=status]", {
       hasText: "Loading conversation…",
@@ -279,8 +363,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   };
   try {
     await page.goto(`${fixture.origin}/#session=${session.id}`);
-    // The viewport never forbids zoom (WCAG 1.4.4); the shell itself
-    // keeps its own pan-only touch action.
+    // The viewport never forbids zoom (WCAG 1.4.4).
     expect(
       await page.locator('meta[name="viewport"]').getAttribute("content"),
     ).not.toMatch(/user-scalable=no|maximum-scale/);
@@ -293,7 +376,6 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
         element.style.setProperty("--safe-bottom-resting", "34px"),
       );
     await expect(page.locator("#app")).toHaveCSS("padding-bottom", "34px");
-    // Status above the input; activity and totals have separate rows below.
     expect((await page.locator(".composer").boundingBox()).height).toBeLessThan(
       200,
     );
@@ -387,7 +469,6 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       name: "Conversations",
       exact: true,
     });
-    // Search from the drawer stays above the keyboard.
     await drawer.getByRole("button", { name: "Search", exact: true }).tap();
     const search = page.getByRole("dialog", { name: "Search" });
     await input(search.getByRole("combobox"), "");
@@ -579,7 +660,6 @@ test.describe("composer rows", () => {
         };
       });
     const idle = await rows();
-    // Nothing under the input.
     expect(idle.status).toBe(0);
     expect(idle.below).toBe(0);
     await prompt.fill("Queue controls probe");
@@ -636,10 +716,8 @@ test.describe("phone header", () => {
       };
     });
     expect(geometry.ellipsized).toBe(true);
-    // One line of title, one of totals, inside the header.
     expect(geometry.totals.top).toBeGreaterThanOrEqual(geometry.title.bottom);
     expect(geometry.totals.bottom).toBeLessThanOrEqual(geometry.head.bottom);
-    // Nothing under the composer's controls while idle.
     await expect(page.locator(".composer .metrics")).toHaveCount(0);
     expect(
       await page

@@ -2,10 +2,7 @@ import type { ButtonHTMLAttributes, ComponentChildren } from "preact";
 import { Button } from "./ui.tsx";
 import "./list-row.css";
 
-// A list entry that opens something: its title, a muted line under it and,
-// when it has news, an unread dot named for screen readers. The current
-// entry is marked with aria-current, which is also what styles it. A title
-// cut short shows in full on hover.
+// The current entry is marked with aria-current, which is also what styles it.
 export function ListRow({
   title,
   meta,

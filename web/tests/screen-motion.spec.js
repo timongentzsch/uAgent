@@ -1,7 +1,5 @@
-// Screens that move: a conversation opened from the drawer slides in, a phone
-// sheet is pulled down to close, and the drawer opens from the left edge.
-// Transitions run in WebKit too, the engine iPhones use; touches are dispatched
-// through Chromium's input protocol.
+// Screens that move: sliding conversations, pull-to-close sheets and the edge
+// drawer. Touches are dispatched through Chromium's input protocol.
 import {
   test,
   expect,
@@ -15,9 +13,8 @@ import {
 const phone = { width: 390, height: 844 };
 const edgeSwipeStartPx = 24;
 
-// Counts the view transitions the app starts, each as the direction it set,
-// and those that got as far as animating (`ready`), with what the transcript
-// was when the last one began.
+// Records the direction of each view transition the app starts, and of those
+// that got as far as animating (`ready`).
 const spyOnTransitions = () => {
   window.slides = [];
   window.animated = [];
@@ -119,7 +116,6 @@ test.describe("a conversation slides in", () => {
       0,
     );
     await atEnd(box);
-    // Nothing took the focus into the transcript.
     expect(
       await page.evaluate(() => document.activeElement?.closest(".transcript")),
     ).toBeNull();
@@ -128,7 +124,6 @@ test.describe("a conversation slides in", () => {
     await expect(title(page)).toContainText("Motion A");
     await slideOver(page);
     expect(await slides(page)).toEqual(["forward", "back"]);
-    // The reading place comes back, unfollowed.
     await expect(
       page.getByRole("button", { name: "Jump to latest" }),
     ).toBeVisible();
@@ -139,7 +134,7 @@ test.describe("a conversation slides in", () => {
     await expect(
       page
         .getByRole("dialog", { name: "Conversations" })
-        .locator("[aria-current]"),
+        .locator('.session[aria-current="page"]'),
     ).toContainText("Motion A");
   });
 

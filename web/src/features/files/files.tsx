@@ -7,18 +7,29 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { ChevronLeft, ChevronsDownUp, Download, File, X } from "lucide-preact";
+import {
+  ChevronLeft,
+  ChevronsDownUp,
+  Download,
+  File,
+  Pencil,
+  X,
+} from "lucide-preact";
 import { usePushDirection } from "../../shared/motion.ts";
 import type { Session } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
-import { api, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
+import { useLatest } from "../../shared/use-latest.ts";
+import { useAction } from "../../shared/use-action.ts";
 import {
   Button,
   EmptyState,
+  Notice,
   IconButton,
   LoadError,
   Placeholder,
+  Skeleton,
   Spinner,
   useDialog,
 } from "../../shared/ui.tsx";
@@ -26,19 +37,41 @@ import { Input } from "../../shared/form-controls.tsx";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { fuzzy } from "../../shared/fuzzy.ts";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
-import { ImageViewer } from "../../shared/attachments.tsx";
+import { ImageViewer, ZoomImage } from "../../shared/attachments.tsx";
 import { ResizeHandle } from "../../shared/side-pane.tsx";
 import { MarkdownFile } from "../../shared/markdown-view.tsx";
 import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
 import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
+import { bytes, plural } from "../../shared/quantities.ts";
+import { maxTextFileBytes } from "../../shared/limits.ts";
 import { stored } from "../../shared/storage.ts";
-import { storageKeys } from "../../shared/storage-keys.ts";
-import { HTML, IMAGE, MARKDOWN, nameOf } from "../../shared/file-types.ts";
+import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
+import {
+  HTML,
+  IMAGE,
+  MARKDOWN,
+  nameOf,
+  paged,
+  SHEET_FILE,
+  VIDEO,
+} from "../../shared/file-types.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import type { Node } from "../../shared/types.ts";
-import Canvas, { rows } from "./canvas.tsx";
+import {
+  boardsOf,
+  carried,
+  failures,
+  hear,
+  join,
+  kindOf,
+  type Move,
+  rewritten,
+  settled,
+  type SeenPages,
+} from "./boards.ts";
+import Plane from "./plane.tsx";
 import {
   backLabel,
   cite,
@@ -46,27 +79,30 @@ import {
   type Flow,
   follow,
   folderOfView,
+  fromList,
   type Lines,
   lineRange,
+  opened,
   pop,
   push,
   resolve,
   swap,
   type View,
 } from "./flow.ts";
-import FileTree from "./tree.tsx";
-import { pageAddress, usePreviewBase } from "../../shared/page-frame.tsx";
-import OpenPage from "./page.tsx";
+import FileTree, { type Listing, SAMPLE_LISTING } from "./tree.tsx";
+import {
+  type PageMessage,
+  pageAddress,
+  usePreviewBase,
+} from "../../shared/page-frame.tsx";
+import Sequence from "./sequence.tsx";
 import { openPresenter } from "./present.ts";
-import { applyEdit } from "./doc-edit.ts";
+import { blockSaver } from "./doc-edit.ts";
+import { tableSaver } from "./sheet-edit.ts";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
 
-interface Listing {
-  entries: { name: string; dir: boolean; size: number }[];
-  more: boolean;
-}
 interface Found {
   paths: string[];
   more: boolean;
@@ -86,27 +122,23 @@ interface FileText {
   revision?: string;
 }
 
+// A page that is text, which Source shows: not an Excel file's bytes.
+const TEXT_PAGE = /\.(html?|csv)$/i;
 // Search results shown at once; typing more narrows them.
 // A folder as it is drawn before its entries arrive (see <Placeholder>).
-const SAMPLE_LISTING: Listing = {
-  entries: [
-    { name: "src", dir: true, size: 0 },
-    { name: "tests", dir: true, size: 0 },
-    { name: "README.md", dir: false, size: 0 },
-  ],
-  more: false,
-};
 const SHOWN = 50;
 // The folders open in the tree, per conversation folder, on this device.
-const kept = stored<Record<string, string[]>>(storageKeys.filesAt, {});
+const folderStore = (host: string) =>
+  stored<Record<string, string[]>>(
+    hostStorageKey(storageKeys.filesAt, host),
+    {},
+  );
 // A path's folders from the top: `a/b` is `a` and `a/b`.
 const ancestors = (dir: string) =>
   dir
     ? dir.split("/").map((_, at, parts) => parts.slice(0, at + 1).join("/"))
     : [];
-// Typing pauses this long before the folder is searched.
 const SEARCH_DELAY_MS = 150;
-const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 
 const WRITES = new Set(["Wrote", "Edited", "Deleted"]);
 // The last file write that finished, as "<node>\n<path written>".
@@ -121,11 +153,9 @@ function lastWrite(nodes: readonly Node[] = []) {
   return "";
 }
 
-// The conversation's folder, read only: a list with search beside a viewer
-// for text and code, rendered markdown and images, pages and their canvas.
-// Where it is lives with the app (`flow`, see flow.ts), so it stays put
-// while closed or moved between the sheet and the docked pane. A turn that
-// ends may have changed the folder, so what is open is read again then.
+// Where it is lives with the app (`flow`, see flow.ts), so it stays put while
+// closed or moved between the sheet and the docked pane. What is open is read
+// again when a turn ends: the turn may have changed the folder.
 export default function Files({
   session,
   close,
@@ -144,6 +174,8 @@ export default function Files({
   // Whether the agent's browser can draw a page as a picture.
   pictures?: boolean;
 }) {
+  const { routes, api, host } = useApi();
+  const kept = useMemo(() => folderStore(host), [host]);
   // In a sheet, its header is this one: Close plays the sheet's exit, and
   // the title is where the sheet puts focus.
   const dialog = useDialog();
@@ -152,31 +184,76 @@ export default function Files({
   const turn = session.turn_active;
   const viewer = useContext(ImageViewer);
   const { view, back } = flow;
-  // The folder the view shows or sits in, and what it has open.
+  // What is typed in a page's blocks, on its way to the file.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
+  const blocks = useMemo(
+    () =>
+      blockSaver({
+        read: (path) => api<FileText>(routes.files(id, "read", path)),
+        write: (path, text, revision, keepalive) =>
+          api<{ revision: string }>(
+            routes.fileWrite(id),
+            { path, text, revision },
+            { keepalive },
+          ),
+      }),
+    [],
+  );
+  // What is typed and not yet in its file is written: a page's block, a
+  // sheet's cell. Whether all of it is.
+  const settle = (closing = false) =>
+    Promise.all([blocks.flush(closing), tables.flush(closing)]).then(
+      (written) => written.every(Boolean),
+    );
+  // A page is left once that is written. Typing that could not be keeps
+  // its page once, its notice read; the next time the person leaves it.
+  // So does a sheet that was calculating a change as the press or key that
+  // leaves began: a cell that press ends is written as it leaves.
+  const [staying, setStaying] = useState(false);
+  const calculating = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
+  useEffect(() => {
+    const began = () => {
+      calculating.current = tables.calculating();
+    };
+    for (const type of ["pointerdown", "keydown"])
+      addEventListener(type, began, true);
+    return () => {
+      for (const type of ["pointerdown", "keydown"])
+        removeEventListener(type, began, true);
+    };
+  }, []);
+  const stays = () => {
+    const stay = calculating.current && tables.stays();
+    setStaying(stay);
+    return stay;
+  };
+  const leave = (update: (flow: Flow) => Flow) =>
+    stays() ||
+    void settle().then((written) =>
+      written ? setFlow(update) : blocks.forget(),
+    );
+  const left = useLatest(settle);
+  // Left with the app itself, as far as a closing page may still write.
+  useEffect(() => {
+    const closing = () => void left.current(true);
+    addEventListener("pagehide", closing);
+    return () => {
+      removeEventListener("pagehide", closing);
+      void left.current();
+    };
+  }, [left]);
   const dir = folderOfView(view);
-  const file = view.kind === "file" || view.kind === "page" ? view.path : "";
+  const file =
+    view.kind === "file" || view.kind === "sequence" ? view.path : "";
   const changing = view.kind === "file" && !!view.diff;
   const source = view.kind === "file" && !!view.source;
   const marked = view.kind === "file" ? view.lines : undefined;
   // From the tree, search or changes (the list itself): Back is the list.
-  const fromList = (next: View) =>
-    setFlow(() => ({
-      view: next,
-      back: [{ kind: "list", dir: folderOfView(next) }],
-    }));
+  const show = (next: View) => setFlow(() => fromList(next));
   // A path clicked in a file or on a canvas: looked up, Back to here.
   const go = (path: string, lines?: Lines) =>
     setFlow((current) => follow(current, path, lines));
-  // What a path from the list opens: a page across the pane, else the file.
-  const opened = (path: string, lines?: Lines): View =>
-    HTML.test(path) && !lines
-      ? { kind: "page", path }
-      : {
-          kind: "file",
-          path,
-          lines,
-          source: !!lines && (MARKDOWN.test(path) || HTML.test(path)),
-        };
   const [expanded, setExpanded] = useState(() => {
     const saved = kept.read()[folderOf(session)];
     return new Set([...(Array.isArray(saved) ? saved : []), ...ancestors(dir)]);
@@ -196,7 +273,6 @@ export default function Files({
       if (!next.delete(path)) next.add(path);
       return next;
     });
-  // The list column's own modes: the tree or the changes, and a search.
   const [tab, setTab] = useState<"files" | "changes">(
     changing ? "changes" : "files",
   );
@@ -213,29 +289,27 @@ export default function Files({
   const written = useSnapshots(store, (all) =>
     lastWrite(all[id]?.state?.view?.nodes),
   );
-  // Each page's version: a write to it reloads its frame.
+  // Each page's version: a write to it reloads its frame, and so does one
+  // to a file pages share, unless the page has none (`shared` false).
   const [versions, setVersions] = useState<Record<string, number>>({});
   const preview = usePreviewBase(id);
-  const pageUrl = (path: string) =>
+  const pageUrl = (path: string, shared = true) =>
     preview.value &&
-    `${pageAddress(preview.value.base, path)}?v=${versions[path] ?? 0}.${versions[""] ?? 0}`;
+    `${pageAddress(preview.value.base, path)}?${SHEET_FILE.test(path) ? "sheet&" : ""}v=${versions[path] ?? 0}${shared ? `.${versions[""] ?? 0}` : ""}`;
   const url = (path: string) => routes.files(id, "raw", path);
+  const list = (dir: string) => api<Listing>(routes.files(id, "list", dir));
+  // A file is read once what was typed in it is written.
+  const readFile = (path: string) =>
+    settle().then(() => api<FileText>(routes.files(id, "read", path)));
   // Tagged with its folder: another folder's listing stays shown until this
   // one answers, and is never taken for it.
   const listing = useResource(
-    () =>
-      api<Listing>(routes.files(id, "list", dir)).then((value) => ({
-        ...value,
-        dir,
-      })),
+    () => list(dir).then((value) => ({ ...value, dir })),
     [id, dir, turn, written],
   );
   const here = listing.value?.dir === dir ? listing.value : undefined;
   // The tree's top, read as the folder in context is.
-  const root = useResource(
-    () => api<Listing>(routes.files(id, "list", "")),
-    [id, turn, written],
-  );
+  const root = useResource(() => list(""), [id, turn, written]);
   const search = query.trim();
   const found = useResource<Found | undefined>(
     (signal) =>
@@ -256,16 +330,14 @@ export default function Files({
   const deleted =
     changing && changes.some((c) => c.path === file && c.state === "D");
   const image = view.kind === "file" && IMAGE.test(file) && !changing;
-  const page = view.kind === "page";
-  // The canvas, or one page, across the whole pane.
+  const video = view.kind === "file" && VIDEO.test(file) && !changing;
+  const page = view.kind === "sequence";
+  // The canvas, or one page in its sequence, across the whole pane.
   const stage = view.kind === "canvas" || page;
   const content = useResource(
     () =>
-      view.kind === "file" && !image && !changing
-        ? api<FileText>(routes.files(id, "read", file)).then((value) => ({
-            ...value,
-            path: file,
-          }))
+      view.kind === "file" && !image && !video && !changing
+        ? readFile(file).then((value) => ({ ...value, path: file }))
         : undefined,
     [id, file, turn, changing, view.kind],
   );
@@ -357,7 +429,7 @@ export default function Files({
     let current = true;
     void resolve(flow, view, {
       list: (dir) =>
-        api<Listing>(routes.files(id, "list", dir)).catch((error) => {
+        list(dir).catch((error) => {
           if (failure(error).status === 404) return null;
           throw error;
         }),
@@ -388,7 +460,7 @@ export default function Files({
   // A folder or page that went away (deleted, moved) leaves its view.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed or changed listing
   useEffect(() => {
-    if (view.kind === "list" && dir && listing.error)
+    if ((view.kind === "list" || stage) && dir && listing.error)
       if (failure(listing.error).status === 404)
         setFlow((current) =>
           swap(current, {
@@ -410,7 +482,7 @@ export default function Files({
         }),
       );
   }, [listing.error, here]);
-  // A cited change that is no longer one opens as the file.
+  // A cited path with no change to show opens as the file.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed diff
   useEffect(() => {
     if (changing && diff.error && failure(diff.error).status === 404)
@@ -420,9 +492,113 @@ export default function Files({
           : current,
       );
   }, [diff.error]);
-  const pages = (here?.entries ?? [])
-    .filter((entry) => !entry.dir && HTML.test(entry.name))
-    .map((entry) => entry.name);
+  // What the folder's pages said they are, and from that the boards the
+  // view shows: a design's on its canvas, or what the open page is part of.
+  const [seen, setSeen] = useState<SeenPages>({});
+  const heard = (path: string) => (message: PageMessage) =>
+    setSeen((all) => hear(all, path, message));
+  const kind = here && page ? kindOf(here, nameOf(file)) : "design";
+  // A design's folders may be decks lying on its canvas: read with the
+  // canvas, a dozen at most, and tagged with the folder they are of.
+  const canvas = view.kind === "canvas";
+  const folders = useResource(
+    () =>
+      canvas && here
+        ? Promise.all(
+            here.entries
+              .filter((entry) => entry.dir)
+              .slice(0, 12)
+              .map(({ name }) =>
+                list(join(dir, name)).then((inner) => [name, inner] as const),
+              ),
+          ).then((inner) => ({ dir, inner: Object.fromEntries(inner) }))
+        : undefined,
+    [id, canvas, here],
+  );
+  const boards = useMemo(
+    () =>
+      here && stage
+        ? boardsOf(
+            dir,
+            here,
+            seen,
+            page ? nameOf(file) : undefined,
+            folders.value?.dir === dir ? folders.value.inner : undefined,
+          )
+        : [],
+    [here, stage, page, dir, seen, file, folders.value],
+  );
+  const failed = failures(boards, seen, kind);
+  // A deck's slides renamed, copied or deleted by hand: the folder is read
+  // again and the view follows to `show` in one step, so the slide is never
+  // taken for gone. Refused (the agent changed the folder), nothing was moved.
+  const arranging = useAction({ report: () => listing.retry() });
+  const arrange = (
+    moves: Move[],
+    show: string,
+    add?: { name: string; text: string },
+  ) =>
+    arranging.run(async () => {
+      await settle();
+      // Room first: a slide made and then refused its place would be left.
+      if (moves.length) await api(routes.fileWrite(id), { path: dir, moves });
+      if (add)
+        await api(routes.fileWrite(id), {
+          path: join(dir, add.name),
+          text: add.text,
+          create: true,
+        }).catch((error) => {
+          // Nothing was changed only where nothing made room.
+          if (!moves.length) throw error;
+          throw new Error(
+            `The slides after it were renumbered, but the new slide was not made: ${failure(error).message}`,
+          );
+        });
+      listing.setValue({ ...(await list(dir)), dir });
+      setSeen((all) => carried(all, dir, moves));
+      setFlow((current) =>
+        swap(
+          current,
+          show
+            ? { kind: "sequence", path: join(dir, show) }
+            : { kind: "list", dir },
+        ),
+      );
+    });
+  // A slide's file rewritten by hand; the folder is read again for what
+  // the slide's head now says.
+  const rewrite = (path: string, change: (source: string) => string) =>
+    arranging.run(async () => {
+      const { text, revision } = await readFile(path);
+      await api(routes.fileWrite(id), { path, text: change(text), revision });
+      listing.setValue({ ...(await list(dir)), dir });
+    });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: said of the folder it happened in
+  useEffect(() => arranging.setError(null), [dir]);
+  // A sheet's edits saved into its file. One that is not (the agent wrote
+  // the file meanwhile) draws the sheet again from the file, and the pane
+  // says why.
+  const [unsaved, setUnsaved] = useState<unknown>();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
+  const tables = useMemo(
+    () =>
+      tableSaver({
+        read: (path) => api<FileText>(routes.files(id, "read", path)),
+        write: (held, keepalive) =>
+          api<{ revision: string }>(routes.fileWrite(id), held, { keepalive }),
+        failed(error, path) {
+          setUnsaved(error);
+          setSeen((all) => rewritten(all, path));
+          setVersions((all) => ({ ...all, [path]: (all[path] ?? 0) + 1 }));
+        },
+      }),
+    [],
+  );
+  // Said of the file it happened in.
+  useEffect(() => {
+    setUnsaved(undefined);
+    setStaying(false);
+  }, [file]);
   // A write reloads the page it changed.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
   useEffect(() => {
@@ -430,24 +606,74 @@ export default function Files({
     if (!target) return;
     const cited = cite({ path: target }, folderOf(session)).view;
     const path = cited.kind === "resolve" ? cited.path : "";
-    // A page, or what pages share (a stylesheet, an image): all reload.
-    const key = path && HTML.test(path) ? path : "";
-    if (path) setVersions((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
+    if (!path) return;
+    // A page, or what pages share (a stylesheet, an image, the data a page
+    // reads): all reload. An Excel or CSV file is both.
+    const shared = !HTML.test(path);
+    const keys = [...(paged(path) ? [path] : []), ...(shared ? [""] : [])];
+    setVersions((all) => ({
+      ...all,
+      ...Object.fromEntries(keys.map((key) => [key, (all[key] ?? 0) + 1])),
+    }));
+    // An open sheet is drawn anew only by a write to itself: it has no
+    // styles or scripts of its own, and a reload ends its undo.
+    const alone = kind === "sheet" && path !== file;
+    setSeen((all) => ({
+      ...rewritten(all, shared ? "" : path),
+      ...(alone && all[file] && { [file]: all[file] }),
+    }));
+    if (kind === "sheet" && path === file) tables.renew();
   }, [written]);
   const titled =
     view.kind === "canvas"
       ? dir
-      : view.kind === "resolve" || view.kind === "pick"
-        ? view.kind === "pick"
-          ? view.name
-          : view.path
-        : file;
+      : view.kind === "pick"
+        ? view.name
+        : view.kind === "resolve"
+          ? view.path
+          : file;
   const folderName = nameOf(folderOf(session)) || "Files";
   const fileError = content.error ? failure(content.error) : undefined;
   const above = back[back.length - 1];
+  // The file itself, saved or shared.
+  const download = {
+    href: `${url(file)}&download=1`,
+    download: nameOf(file),
+    onClick: shareOrDownload,
+  };
+  // Paths to pick from, under the search field.
+  const matches = (paths: string[], pick: (path: string) => void) => (
+    <SuggestionList
+      id="files-results"
+      class="files-results"
+      label="Matching files"
+      prefix="files-result"
+      items={paths}
+      index={index}
+      pick={pick}
+      keyOf={(path) => path}
+    >
+      {(path) => (
+        <>
+          <span class="files-name truncate">{nameOf(path)}</span>
+          <span class="files-dir">{dirOf(path)}</span>
+        </>
+      )}
+    </SuggestionList>
+  );
+  // What the stage waits for: the pages' address, then the folder, which
+  // says what a page is part of.
+  const pending = !preview.value ? preview : !here ? listing : undefined;
 
   return (
-    <section class="files" aria-label="Files" data-showing={side}>
+    <section
+      class="files"
+      aria-label="Files"
+      data-showing={side}
+      // A click in the pane leaves focus in it (Safari focuses no button),
+      // so the keys of what it shows are its own.
+      tabIndex={-1}
+    >
       <header class="files-head">
         {above && (
           <IconButton
@@ -459,7 +685,7 @@ export default function Files({
                 : "files-back files-back-canvas"
             }
             label={backLabel(above)}
-            onClick={() => setFlow(pop)}
+            onClick={() => leave(pop)}
           >
             <ChevronLeft />
           </IconButton>
@@ -485,24 +711,35 @@ export default function Files({
           <span class="files-dir small">{formatStat(counts)}</span>
         )}
 
-        {file && !changing && (MARKDOWN.test(file) || HTML.test(file)) && (
+        {file && !changing && (MARKDOWN.test(file) || TEXT_PAGE.test(file)) && (
           <Button
             variant="secondary"
             aria-pressed={source}
             onClick={() =>
-              setFlow((current) =>
+              leave((current) =>
                 swap(
                   current,
                   page
                     ? { kind: "file", path: file, source: true }
-                    : source && HTML.test(file)
-                      ? { kind: "page", path: file }
+                    : source && paged(file)
+                      ? { kind: "sequence", path: file }
                       : { kind: "file", path: file, source: !source },
                 ),
               )
             }
           >
             Source
+          </Button>
+        )}
+        {image && (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              viewer({ src: url(file), name: nameOf(file), edit: true })
+            }
+          >
+            <Pencil />
+            Annotate
           </Button>
         )}
         {addToChat && chosen && file && !changing && (
@@ -522,9 +759,7 @@ export default function Files({
         {file && !deleted && (
           <a
             class="file-button quiet icon-button"
-            href={`${url(file)}&download=1`}
-            download={nameOf(file)}
-            onClick={shareOrDownload}
+            {...download}
             aria-label={`Download ${nameOf(file)}`}
             title={`Download ${nameOf(file)}`}
           >
@@ -532,91 +767,132 @@ export default function Files({
           </a>
         )}
         {closeFiles && (
-          <IconButton label="Close files" onClick={closeFiles}>
+          <IconButton
+            label="Close files"
+            onClick={() => stays() || closeFiles()}
+          >
             <X />
           </IconButton>
         )}
       </header>
       {stage && (
         <div class="files-stage">
-          {!preview.value ? (
-            preview.error ? (
-              <LoadError error={preview.error} retry={preview.retry} />
+          {arranging.error != null && (
+            <p class="page-notice">
+              <Notice tone="error">
+                {[404, 409].includes(failure(arranging.error).status ?? 0)
+                  ? "The deck's folder changed meanwhile, so nothing was changed."
+                  : failure(arranging.error).message}
+              </Notice>
+            </p>
+          )}
+          {staying && (
+            <p class="page-notice">
+              <Notice tone="warning">
+                The sheet is still calculating a change. Leave again to keep it
+                as it stands; it is calculated when the sheet is next opened.
+              </Notice>
+            </p>
+          )}
+          {unsaved != null && (
+            <p class="page-notice">
+              <Notice tone="error">
+                {failure(unsaved).status === 409
+                  ? "The last change was not saved: the file changed meanwhile. The sheet is shown as the file is now."
+                  : `The last change was not saved: ${failure(unsaved).message}`}
+              </Notice>
+            </p>
+          )}
+          {failed.count > 0 && (
+            <p class="page-notice">
+              <Notice
+                tone="warning"
+                action={
+                  addToChat && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        void settle();
+                        addToChat(failed.text);
+                      }}
+                    >
+                      Ask agent to fix
+                    </Button>
+                  )
+                }
+              >
+                {kind === "sheet"
+                  ? `${plural(failed.count, "cell")} in error`
+                  : `${plural(failed.count, "page")} failed to run`}
+              </Notice>
+            </p>
+          )}
+          {pending ? (
+            pending.error ? (
+              <LoadError error={pending.error} retry={pending.retry} />
             ) : (
               <Spinner label="Opening the pages…" />
             )
           ) : page ? (
-            <OpenPage
+            <Sequence
+              // A sheet's viewer keeps nothing of another page's.
+              key={kind}
               path={file}
-              src={pageUrl(file)!}
-              siblings={rows(pages).flatMap(([, names]) =>
-                names.map((name) => join(dir, name)),
-              )}
+              kind={kind}
+              boards={boards}
+              page={(path) => pageUrl(path, kind !== "sheet")!}
+              heard={heard}
               go={(path) =>
-                setFlow((current) => swap(current, { kind: "page", path }))
+                leave((current) => swap(current, { kind: "sequence", path }))
               }
               addToChat={addToChat}
-              base={preview.value.base}
-              picture={
-                pictures
-                  ? (w, h, scale) =>
-                      `${routes.files(id, "png", file)}&w=${w}&h=${h}&scale=${scale}`
-                  : undefined
+              base={preview.value!.base}
+              drawn={
+                pictures ? (as, path) => routes.files(id, as, path) : undefined
               }
-              pdf={pictures ? routes.files(id, "pdf", file) : undefined}
               presenter={(slides, at) =>
-                openPresenter({ session: id, slides, at })
+                openPresenter({ session: id, slides, at }, settle())
               }
-              save={async (edit) => {
-                const read = await api<FileText>(
-                  routes.files(id, "read", file),
-                );
-                const text = read.revision ? applyEdit(read.text, edit) : null;
-                if (text === null)
-                  throw new Error(
-                    "The document changed since it was shown. Reopen it to edit.",
-                  );
-                await api(routes.fileWrite(id), {
-                  path: file,
-                  text,
-                  revision: read.revision,
-                });
-              }}
-              presentAtOpen={view.kind === "page" && !!view.present}
-              presented={() =>
-                setFlow((current) =>
-                  current.view.kind === "page"
-                    ? swap(current, { ...current.view, present: false })
-                    : current,
-                )
-              }
-              view={viewer}
-              read={(path) =>
-                api<FileText>(routes.files(id, "read", path)).then(
-                  (value) => value.text,
-                )
-              }
-            />
-          ) : !here ? (
-            <Spinner label="Opening the pages…" />
-          ) : (
-            <Canvas
-              dir={dir}
-              names={pages}
-              page={(path) => pageUrl(path)!}
-              open={(path) => setFlow((current) => push(current, opened(path)))}
-              addToChat={addToChat}
-              present={(path) =>
-                setFlow((current) =>
-                  push(current, { kind: "page", path, present: true }),
-                )
-              }
-              deckPdf={
-                pictures
-                  ? (w, h) =>
-                      `${routes.files(id, "pdf", `${dir}/`)}&w=${w}&h=${h}`
+              uneditable={
+                (here?.entries.find((entry) => entry.name === nameOf(file))
+                  ?.size ?? 0) > maxTextFileBytes
+                  ? `Too large to edit here: over ${bytes(maxTextFileBytes)}`
                   : undefined
               }
+              save={(edit) =>
+                "table" in edit
+                  ? tables.save(file, edit).then(() => setUnsaved(undefined))
+                  : blocks.save(file, edit)
+              }
+              settle={settle}
+              forget={blocks.forget}
+              typing={(edit, calculating) => {
+                tables.hold(file, edit, calculating);
+                if (!calculating) setStaying(false);
+              }}
+              saveAs={async (text) => {
+                const path = join(
+                  dir,
+                  nameOf(file).replace(/\.[^.]+$/, ".html"),
+                );
+                await api(routes.fileWrite(id), { path, text, create: true });
+                listing.setValue({ ...(await list(dir)), dir });
+                setFlow((current) => push(current, { kind: "sequence", path }));
+              }}
+              arrange={kind === "deck" ? arrange : undefined}
+              rewrite={rewrite}
+              arranging={arranging.busy}
+              view={viewer}
+              read={(path) => readFile(path).then((value) => value.text)}
+            />
+          ) : (
+            <Plane
+              dir={dir}
+              boards={boards}
+              sized={boards.every((board) => settled(board, seen))}
+              page={(path) => pageUrl(path)!}
+              heard={heard}
+              open={(path) => setFlow((current) => push(current, opened(path)))}
             />
           )}
         </div>
@@ -656,7 +932,6 @@ export default function Files({
           <div class="files-search-row">
             <Input
               type="search"
-              class="files-search"
               aria-label="Search files"
               placeholder="Search files…"
               role="combobox"
@@ -680,7 +955,7 @@ export default function Files({
                 )
                   setIndex(nextIndex(index, event.key, results.length));
                 else if (event.key === "Enter" && results[index])
-                  fromList(opened(results[index]));
+                  show(opened(results[index]));
                 else return;
                 event.preventDefault();
                 event.stopPropagation();
@@ -696,57 +971,25 @@ export default function Files({
             )}
           </div>
           {view.kind === "list" && view.note && (
-            <p class="files-note small" role="status">
-              {view.note}
+            <p class="files-note small">
+              <Notice tone="warning">{view.note}</Notice>
             </p>
           )}
           {view.kind === "pick" && !search ? (
             <>
               <p class="files-note small">
-                {`${view.paths.length} files are named ${nameOf(view.name)}.`}
-                {view.lines
-                  ? ` Pick one to open it at line ${view.lines[0]}.`
-                  : " Pick one to open it."}
+                <Notice tone="info">
+                  {`${view.paths.length} files are named ${nameOf(view.name)}.`}
+                  {view.lines
+                    ? ` Pick one to open it at line ${view.lines[0]}.`
+                    : " Pick one to open it."}
+                </Notice>
               </p>
-              <SuggestionList
-                id="files-results"
-                class="files-results"
-                label="Matching files"
-                prefix="files-result"
-                items={view.paths}
-                index={index}
-                pick={(path) =>
-                  setFlow((current) => follow(current, path, view.lines))
-                }
-                keyOf={(path) => path}
-              >
-                {(path) => (
-                  <>
-                    <span class="files-name truncate">{nameOf(path)}</span>
-                    <span class="files-dir">{dirOf(path)}</span>
-                  </>
-                )}
-              </SuggestionList>
+              {matches(view.paths, (path) => go(path, view.lines))}
             </>
           ) : search ? (
             <>
-              <SuggestionList
-                id="files-results"
-                class="files-results"
-                label="Matching files"
-                prefix="files-result"
-                items={results}
-                index={index}
-                pick={(path) => fromList(opened(path))}
-                keyOf={(path) => path}
-              >
-                {(path) => (
-                  <>
-                    <span class="files-name truncate">{nameOf(path)}</span>
-                    <span class="files-dir">{dirOf(path)}</span>
-                  </>
-                )}
-              </SuggestionList>
+              {matches(results, (path) => show(opened(path)))}
               {found.error ? (
                 <LoadError error={found.error} retry={found.retry} />
               ) : found.value && !results.length ? (
@@ -755,7 +998,9 @@ export default function Files({
                 (found.value?.more ||
                   (found.value && found.value.paths.length > SHOWN)) && (
                   <p class="files-note small">
-                    Some entries may not be listed. Keep typing to narrow.
+                    <Notice tone="info">
+                      Some entries may not be listed. Keep typing to narrow.
+                    </Notice>
                   </p>
                 )
               )}
@@ -771,7 +1016,7 @@ export default function Files({
                         class="entry tree-row"
                         aria-current={change.path === file ? "true" : undefined}
                         onClick={() =>
-                          fromList({
+                          show({
                             kind: "file",
                             path: change.path,
                             diff: true,
@@ -790,7 +1035,9 @@ export default function Files({
                 <EmptyState>No uncommitted changes</EmptyState>
               )}
               {changed.value?.more && (
-                <p class="files-note small">Some changes may not be listed.</p>
+                <p class="files-note small">
+                  <Notice tone="info">Some changes may not be listed.</Notice>
+                </p>
               )}
             </>
           ) : (
@@ -809,12 +1056,11 @@ export default function Files({
                     dir={dir}
                     file={file}
                     toggle={toggle}
-                    open={(path) => fromList(opened(path))}
-                    canvas={(path) =>
-                      setFlow(() => ({
-                        view: { kind: "canvas", dir: path },
-                        back: [{ kind: "list", dir: path }],
-                      }))
+                    open={(path) => show(opened(path))}
+                    openFolder={(path) =>
+                      setFlow(() =>
+                        cite({ path: `${path}/` }, folderOf(session)),
+                      )
                     }
                   />
                 </Placeholder>
@@ -847,51 +1093,47 @@ export default function Files({
               {`${view.path} is outside this conversation's folder, so it can't be shown here.`}
             </EmptyState>
           ) : view.kind === "resolve" ? (
-            <Spinner label={`Looking for ${nameOf(view.path)}…`} />
+            <Skeleton label={`Looking for ${nameOf(view.path)}…`} />
           ) : !file ? (
             <EmptyState>Choose a file to read it here.</EmptyState>
           ) : changing ? (
             diff.error ? (
               <LoadError error={diff.error} retry={diff.retry} />
             ) : !diffText ? (
-              <Spinner label="Reading the changes…" />
+              <Skeleton rows={6} label="Reading the changes…" />
             ) : (
               <>
                 <DiffView text={diffText.text} counts={counts} />
                 {diffText.more && (
                   <p class="files-note files-cut">
-                    Showing the first part of this change.
+                    <Notice tone="info">
+                      Showing the first part of this change.
+                    </Notice>
                   </p>
                 )}
               </>
             )
           ) : image ? (
-            <Button
-              variant="quiet"
-              class="files-image"
-              aria-label={`View ${nameOf(file)}`}
-              onClick={() => viewer({ src: url(file), name: nameOf(file) })}
-            >
-              <img src={url(file)} alt={nameOf(file)} />
-            </Button>
+            <div class="files-image">
+              <ZoomImage key={url(file)} src={url(file)} name={nameOf(file)} />
+            </div>
+          ) : video ? (
+            // From the preview address: the file route only downloads one.
+            <div class="files-image">
+              <video controls src={pageUrl(file)} />
+            </div>
           ) : fileError ? (
             fileError.status === 415 ? (
               <div class="files-binary">
                 <File />
                 <p>{nameOf(file)} is not text, so it can't be shown here.</p>
-                <a
-                  href={`${url(file)}&download=1`}
-                  download={nameOf(file)}
-                  onClick={shareOrDownload}
-                >
-                  Download
-                </a>
+                <a {...download}>Download</a>
               </div>
             ) : (
               <LoadError error={content.error} retry={content.retry} />
             )
           ) : !text ? (
-            <Spinner label="Reading the file…" />
+            <Skeleton rows={6} label="Reading the file…" />
           ) : (
             <>
               {markdown ? (
@@ -904,19 +1146,14 @@ export default function Files({
                   dangerouslySetInnerHTML={{ __html: code }}
                 />
               ) : (
-                <Spinner label="Highlighting…" />
+                <Skeleton rows={6} label="Highlighting…" />
               )}
               {text.more && (
                 <p class="files-note files-cut">
-                  Showing the first part of this file.{" "}
-                  <a
-                    href={`${url(file)}&download=1`}
-                    download={nameOf(file)}
-                    onClick={shareOrDownload}
-                  >
-                    Download it
-                  </a>{" "}
-                  for the rest.
+                  <Notice tone="info">
+                    Showing the first part of this file.{" "}
+                    <a {...download}>Download it</a> for the rest.
+                  </Notice>
                 </p>
               )}
             </>

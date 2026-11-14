@@ -8,9 +8,9 @@
 #include <vector>
 
 #include "include/app/asset_store.h"
+#include "include/app/workspace_files.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
-#include "include/core/limits.h"
 #include "include/core/private_store.h"
 #include "src/web/master_internal.h"
 
@@ -19,108 +19,8 @@ namespace {
 
 namespace fs = std::filesystem;
 
-// At most this many designs a place lists, the newest.
-constexpr size_t kPlaceDesigns = 50;
-
 int64_t Modified(const fs::path& path) {
   return SnapshotFile(path.string()).modified_seconds * 1000;
-}
-
-// The meta tag named `name` in a page's head, as written; empty when none.
-std::string MetaTag(const std::string& head, const std::string& name) {
-  const size_t at = head.find("name=\"" + name + "\"");
-  const size_t open = at == std::string::npos ? at : head.rfind('<', at);
-  const size_t close = at == std::string::npos ? at : head.find('>', at);
-  return open == std::string::npos || close == std::string::npos
-             ? std::string()
-             : head.substr(open, close - open);
-}
-
-// The designs in `root` (see the design skill): folders with a page that
-// declares an artboard, a deck when every page is a slide; documents, each
-// page on paper (print flow) its own; and design systems, folders with a
-// tokens.css, whose own pages are theirs. Each names up to four of its
-// pages, for thumbnails.
-void AddDesigns(const fs::path& root, json& items) {
-  struct Folder {
-    std::vector<std::string> pages, docs;
-    int64_t modified = 0;
-    bool artboard = false, system = false;
-    size_t slides = 0;
-  };
-  std::map<std::string, Folder> folders;
-  bool more = false;
-  for (const std::string& path : Candidates(root, more)) {
-    const fs::path relative(path);
-    const bool tokens = relative.filename() == "tokens.css";
-    if ((!tokens && relative.extension() != ".html") ||
-        !Shown(root / relative)) {
-      continue;
-    }
-    Folder& folder = folders[relative.parent_path().string()];
-    folder.modified = std::max(folder.modified, Modified(root / relative));
-    if (tokens) {
-      folder.system = true;
-      continue;
-    }
-    const std::string head =
-        ReadFile((root / relative).string(), KiB(4)).value_or("");
-    if (MetaTag(head, "print").find("\"flow") != std::string::npos) {
-      folder.docs.push_back(path);
-      continue;
-    }
-    const std::string artboard = MetaTag(head, "artboard");
-    folder.pages.push_back(path);
-    folder.artboard = folder.artboard || !artboard.empty();
-    folder.slides += artboard.find(" slide\"") != std::string::npos;
-  }
-  struct Found {
-    int64_t modified;
-    json item;
-  };
-  std::vector<Found> found;
-  const auto item = [&](const char* kind, const std::string& dir,
-                        std::vector<std::string> pages, int64_t modified) {
-    std::ranges::sort(pages);
-    const size_t count = pages.size();
-    pages.resize(std::min<size_t>(count, 4));
-    return Found{modified,
-                 {{"kind", kind},
-                  {"key", root.string() + "/" + dir},
-                  {"name", dir.empty() ? root.filename().string() : dir},
-                  {"path", dir},
-                  {"place", root.string()},
-                  {"count", count},
-                  {"pages", std::move(pages)},
-                  {"modified", modified}}};
-  };
-  for (auto& [dir, folder] : folders) {
-    // A system's component previews and book are its own, not designs.
-    const bool inside = std::ranges::any_of(folders, [&](const auto& other) {
-      return other.second.system && other.first != dir &&
-             (other.first.empty() || dir.starts_with(other.first + "/"));
-    });
-    if (folder.system) {
-      folder.pages.insert(folder.pages.end(), folder.docs.begin(),
-                          folder.docs.end());
-      found.push_back(item("system", dir, folder.pages, folder.modified));
-      continue;
-    }
-    if (inside) continue;
-    if (folder.artboard) {
-      const bool deck = folder.slides == folder.pages.size();
-      found.push_back(
-          item(deck ? "deck" : "design", dir, folder.pages, folder.modified));
-    }
-    for (const std::string& doc : folder.docs) {
-      found.push_back(item("doc", doc, {doc}, Modified(root / doc)));
-    }
-  }
-  std::ranges::sort(found, [](const Found& a, const Found& b) {
-    return a.modified > b.modified;
-  });
-  if (found.size() > kPlaceDesigns) found.resize(kPlaceDesigns);
-  for (Found& entry : found) items.push_back(std::move(entry.item));
 }
 
 // The files the agent shared in the conversation at `session_path`.
@@ -145,10 +45,8 @@ void AddShared(const std::string& session, const std::string& session_path,
 
 }  // namespace
 
-// Everything the Library lists, from every place a conversation works in
-// and every workspace: memories and skills (from one control process),
-// designs and design systems in the folders, and files shared in
-// conversations. Each item names its place; "" is every place's.
+// Everything the Library lists, from every place a conversation works in and
+// every workspace. Each item names its place; "" is every place's.
 void Master::Library(const Request&, Response& response) {
   const json catalogue = host_.Catalogue();
   std::map<std::string, json> places;
@@ -164,6 +62,10 @@ void Master::Library(const Request&, Response& response) {
     const std::string cwd = JsonValue(session, "cwd", "");
     const std::string id = JsonValue(session, "id", "");
     if (cwd.empty()) continue;
+    if (!JsonValue(session, "host", "").empty()) {
+      AddShared(id, host_.AssetPath(id), cwd, items);
+      continue;
+    }
     json& place = places[cwd];
     if (place.is_null()) {
       place = {{"path", cwd},
@@ -182,7 +84,9 @@ void Master::Library(const Request&, Response& response) {
   for (auto& [path, place] : places) {
     paths.push_back(path);
     listed.push_back(std::move(place));
-    AddDesigns(path, items);
+    for (json& design : workspace_files::Designs(path)) {
+      items.push_back(std::move(design));
+    }
   }
   json library = host_.Manage(
       {{"kind", "library"}, {"action", "list"}, {"places", paths}});
@@ -196,9 +100,8 @@ void Master::Library(const Request&, Response& response) {
                    {"limits", std::move(library["limits"])}});
 }
 
-// Deletes one artifact the Library lists: a design's, deck's or design
-// system's folder, a doc's file, or a file shared in a conversation. Only
-// what the place's listing names now goes, and never a place itself.
+// Deletes one artifact the Library lists. Only what the place's listing
+// names now goes, and never a place itself.
 void Master::LibraryDelete(const Request& request, Response& response) {
   const json body = json::parse(request.body, nullptr, false);
   const std::string kind = JsonValue(body, "kind", "");
@@ -217,12 +120,13 @@ void Master::LibraryDelete(const Request& request, Response& response) {
   const json catalogue = host_.Catalogue();
   const auto names = [&](const char* list, const char* field) {
     return std::ranges::any_of(catalogue[list], [&](const json& each) {
-      return JsonValue(each, field, "") == place;
+      return JsonValue(each, "host", "").empty() &&
+             JsonValue(each, field, "") == place;
     });
   };
   json listed = json::array();
   if (!place.empty() && (names("spaces", "path") || names("sessions", "cwd"))) {
-    AddDesigns(place, listed);
+    listed = workspace_files::Designs(place);
   }
   const auto found = std::ranges::find_if(listed, [&](const json& item) {
     return JsonValue(item, "kind", "") == kind &&
@@ -236,7 +140,8 @@ void Master::LibraryDelete(const Request& request, Response& response) {
     return;
   }
   std::error_code ec;
-  if (kind == "doc") {
+  // A document and a sheet are one file; the others are their folder.
+  if (kind == "doc" || kind == "sheet") {
     fs::remove(fs::path(place) / path, ec);
   } else {
     fs::remove_all(fs::path(place) / path, ec);

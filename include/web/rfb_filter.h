@@ -16,9 +16,8 @@ namespace uagent::web {
 // input can be allowed and blocked mid-stream without losing message framing.
 class RfbInputFilter {
  public:
-  // Appends the complete messages to forward. Display messages always pass;
-  // keys, pointer and clipboard pass only while `input` is allowed. Returns
-  // false on a malformed or unsupported message.
+  // Appends the complete messages to forward: display messages always, keys,
+  // pointer and clipboard only while `input`. False on one it cannot parse.
   bool Push(std::string_view data, std::string& output, bool input);
   // Messages that lift every key and button that forwarded input still holds.
   std::string Release();

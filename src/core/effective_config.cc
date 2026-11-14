@@ -16,6 +16,7 @@
 #include "include/core/runtime_config.h"
 #include "include/core/settings_store.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 
 extern char** environ;
 
@@ -23,8 +24,7 @@ namespace uagent {
 namespace {
 
 // One saved scope laid over what is below it. A value may refer to another
-// name in its own scope or in the environment as $NAME; only names the
-// registry knows become settings.
+// name in its own scope or in the environment as $NAME.
 void MergeScope(const SettingValues& saved, const char* source,
                 const RuntimeConfig::Values& process,
                 EffectiveConfigSnapshot& snapshot) {
@@ -65,7 +65,7 @@ ConfigManager ConfigManager::Capture(RuntimeConfig::Values cli,
     process[value.substr(0, equal)] = value.substr(equal + 1);
   }
   return ConfigManager(std::move(process), std::move(cli),
-                       folder ? std::move(*folder) : CanonicalCwd());
+                       folder ? std::move(*folder) : Workspace().Key());
 }
 
 ConfigManager::ConfigManager(RuntimeConfig::Values process,

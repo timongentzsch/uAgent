@@ -65,8 +65,11 @@ std::vector<json> WithStructure(std::vector<json> nodes, const json& facts) {
   for (const json& node : nodes) held.insert(JsonValue(node, "id", ""));
   std::vector<json> out;
   std::function<void(const std::string&)> ensure = [&](const std::string& id) {
-    if (!id.starts_with("w-") || !held.insert(id).second) return;
-    json node = WorkNode(id.substr(2), JsonValue(facts, id.c_str(), kNone));
+    if (!HoldsOthers(id) || !held.insert(id).second) return;
+    const json& known = JsonValue(facts, id.c_str(), kNone);
+    json node = id.starts_with(kGroupPrefix)
+                    ? GroupNode(id, known)
+                    : WorkNode(id.substr(kWorkPrefix.size()), known);
     ensure(JsonValue(node, "parent", ""));
     out.push_back(std::move(node));
   };
@@ -104,7 +107,7 @@ json TranscriptView::Page(uint64_t before) const {
     for (auto node = made.rbegin(); node != made.rend() && !more; ++node) {
       if (!ids.insert(JsonValue(*node, "id", "")).second) continue;
       if (const std::string parent = JsonValue(*node, "parent", "");
-          parent.starts_with("w-") || parent.starts_with("g-")) {
+          HoldsOthers(parent)) {
         ids.insert(parent);
       }
       bytes += JsonDump(*node).size();
@@ -114,9 +117,8 @@ json TranscriptView::Page(uint64_t before) const {
       if (page.back()["kind"] == "turn") whole = page.size();
     }
   }
-  // The page ends on a whole turn. A turn larger than a page keeps its head,
-  // the message that started it, as the live view does (view_reducer.cc):
-  // its steps are drawn under it.
+  // The page ends on a whole turn; a turn larger than a page keeps its head,
+  // the message that started it, as the live view does (view_reducer.cc).
   bool head = false;
   if (more && whole) {
     page.resize(whole);

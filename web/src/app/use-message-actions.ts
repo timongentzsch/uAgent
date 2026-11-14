@@ -25,10 +25,7 @@ import { useLatest } from "../shared/use-latest.ts";
 import type { SnapshotStore } from "../state/snapshot-store.ts";
 import { transcriptNodes } from "./chat-page.tsx";
 
-// What a message's controls do: retry, continue, branch, recall or insert
-// guidance, and open what a row links to: an agent's conversation, the
-// work it names in the inspector, or a file a message cites.
-// Every row reads them through one context value, so they stay the same
+// Every row reads these through one context value, so they stay the same
 // functions and read the latest state through a ref.
 export function useMessageActions({
   online,
@@ -82,8 +79,6 @@ export function useMessageActions({
     deliver,
     busy,
   });
-  // A failed message sends again as a new request; Continue resumes a
-  // stopped turn. Both leave the composer's draft alone.
   const retrySend = useCallback(
     (node: Node) => {
       const { online, selected, deliver, busy } = latest.current;
@@ -103,8 +98,7 @@ export function useMessageActions({
     if (online && !busy)
       void deliver(selected, { text: "continue", files: [] });
   }, []);
-  // From a message's menu: edit it in a fork (fork before it), or keep it
-  // and its reply (fork before the next message of yours).
+  // `edit` forks before the message; otherwise before the next one of yours.
   const branchFrom = useCallback(
     (node: Pick<Node, "id">, edit: boolean) => {
       const { forkAndOpen, outgoing, selected, report } = latest.current;
@@ -125,10 +119,8 @@ export function useMessageActions({
     },
     [snapshots],
   );
-  // Recall returns queued guidance to the composer while it is still
-  // queued. Delivered guidance belongs to the turn; dropping the row is
-  // then the only correct move. A send that failed returns the same way,
-  // with nothing to withdraw from the host.
+  // Only guidance still queued returns to the composer; delivered guidance
+  // belongs to the turn, and its row is dropped.
   const recallGuidance = useCallback(
     async (node: Node) => {
       const { online, selected, act, report } = latest.current;

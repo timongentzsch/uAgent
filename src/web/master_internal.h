@@ -2,12 +2,7 @@
 
 #ifndef UAGENT_SRC_WEB_MASTER_INTERNAL_H_
 #define UAGENT_SRC_WEB_MASTER_INTERNAL_H_
-// Module-private split of the web host. The Master class is declared here and
-// defined across master.cc (startup, routes, settings), master_auth.cc
-// (pairing and devices), master_command.cc (commands and receipts),
-// master_stream.cc (snapshots, events, uploads, assets), master_files.cc
-// (the files in a conversation's folder), master_library.cc (the Library's
-// listing) and master_terminal.cc (terminals).
+// The web host's Master class, defined across the master*.cc files.
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #define CPPHTTPLIB_NO_DEFAULT_USER_AGENT
@@ -20,16 +15,19 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <filesystem>
+#include <functional>
 #include <list>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include "include/app/session_host.h"
+#include "include/app/terminal.h"
 #include "include/browser/browser.h"
 #include "include/core/file_watch.h"
 #include "include/core/settings_store.h"
@@ -37,7 +35,7 @@
 #include "include/core/time.h"
 #include "include/web/protocol.h"
 #include "include/web/push.h"
-#include "include/web/terminal.h"
+#include "include/web/remote_hosts.h"
 
 // The web host's private names live in uagent::web::master, so the helpers
 // below (Reply, Error, ...) cannot clash with any other symbol in the binary.
@@ -47,26 +45,31 @@ using Clock = std::chrono::steady_clock;
 using Request = httplib::Request;
 using Response = httplib::Response;
 
-// Read by the signal handler and by the delayed restart thread, written by
-// Run(): a lock-free atomic is safe in both, where sig_atomic_t is not
-// across threads.
+// Read by the signal handler and the delayed restart thread, written by
+// Run(): a lock-free atomic is safe in both, sig_atomic_t not across threads.
 extern std::atomic<int> shutdown_fd;
 
 void Reply(Response& response, const json& value, int status = 200);
 void Error(Response& response, const std::string& error, int status = 400);
 bool EqualSecret(std::string_view a, std::string_view b);
+inline constexpr char kHostDisconnected[] =
+    "Host is disconnected. Choose Connect or Reconnect.";
+// `request` answered by the remote execution context `target` names, or the
+// error of a disconnected host, which has none.
+json RemoteCall(const json& target, json request);
 // A file's bytes under a policy that lets none of it act on this origin:
 // shown in the browser when `inline_view`, else saved as `name`.
 void ServeFile(Response& response, std::string bytes, const std::string& mime,
                const std::string& name, bool inline_view);
 
-// Whether the Files pane and the Library may show `path`: what the file tools
-// may read, nothing hidden from them and none of µAgent's own configuration.
-bool Shown(const std::filesystem::path& path);
-// The files under `root`, by path from it, unchecked by Shown; `more` when
-// the list is cut.
-std::vector<std::string> Candidates(const std::filesystem::path& root,
-                                    bool& more);
+// Serves one viewer of a shell over its socket until either side ends; the
+// output that ended it says whether the shell did.
+TerminalOutput RelayTerminal(
+    httplib::ws::WebSocket& socket,
+    const std::function<std::optional<TerminalOutput>()>& read,
+    const std::function<bool(const std::string&)>& write,
+    const std::function<bool(uint16_t, uint16_t)>& resize,
+    const std::function<void()>& wake);
 
 // Browser instances "0" to "4", each watched by at most one viewer.
 inline constexpr size_t kViewerInstances = 5;
@@ -86,6 +89,7 @@ class Master {
 
  private:
   void RegisterApiRoutes();
+  void RegisterRemoteRoutes();
   void RegisterBrowserRoutes();
   void RegisterTerminalRoutes();
   // The folders' shells, as every device lists them; null with the terminal
@@ -95,6 +99,7 @@ class Master {
   bool RegisterAssetRoutes(std::string& error);
   const std::string* ExpectedOrigin(const Request& request) const;
   static std::string ConfiguredDetail();
+  static bool ConfiguredThinking();
   void PublishSettings();
   std::string Pair() UAGENT_REQUIRES(mutex_);
   json PublicDevices() const UAGENT_REQUIRES(mutex_);
@@ -109,6 +114,9 @@ class Master {
   void Events(const Request&, Response&);
   void Upload(const Request&, Response&, const httplib::ContentReader&);
   void AssetRead(const Request&, Response&);
+  // A files operation on a conversation's folder, on the host it is on.
+  json WorkspaceFiles(const WorkspaceIdentity& workspace,
+                      const std::string& session, json operation);
   void Files(const Request&, Response&);
   void FileWrite(const Request&, Response&);
   // A conversation's folder, read only, for sandboxed pages that carry no
@@ -117,7 +125,7 @@ class Master {
   // The preview address of a session's folder, minted once; empty when
   // the session is unknown.
   std::string PreviewBase(const std::string& id);
-  void Picture(const Request&, Response&, const std::filesystem::path& root);
+  void Picture(const Request&, Response&, const WorkspaceIdentity& workspace);
   void Preview(const Request&, Response&);
   void Library(const Request&, Response&);
   void LibraryDelete(const Request&, Response&);
@@ -137,10 +145,8 @@ class Master {
       SnapshotFile(SettingsPath());
   Pipe host_wake_;
   std::vector<Device> devices_ UAGENT_GUARDED_BY(mutex_);
-  // Preview tokens by session id; they last until the host stops or a
-  // device is revoked.
-  // The preview grants, by session, under their own lock: the host asks
-  // for one while starting a runtime, outside any lock of ours.
+  // Preview tokens by session id, lasting until the host stops or a device
+  // is revoked. Their own lock: the host asks for one while starting a runtime.
   std::mutex previews_mutex_;
   std::map<std::string, std::string> previews_
       UAGENT_GUARDED_BY(previews_mutex_);
@@ -183,8 +189,19 @@ class Master {
   void PinsCommand(CommandCall& call);
   void RestartConversations(CommandCall& call);
   void RestartHost(CommandCall& call);
+  void UpdateCommand(CommandCall& call);
   void ConfigCommand(CommandCall& call);
   void TerminalCommand(CommandCall& call);
+  // A remote host's shells; false when the command or socket names none, so
+  // it is a local one.
+  bool RemoteTerminalCommand(CommandCall& call);
+  bool RemoteTerminalSocket(const std::string& id,
+                            httplib::ws::WebSocket& socket);
+  // The folder shells saved before a restart.
+  void LoadRemoteTerminals();
+  // Ends a remote shell and drops its record, even with its host out of
+  // reach; with `unviewed`, only a page's shell no socket ever showed.
+  void ForgetRemoteTerminal(const std::string& id, bool unviewed = false);
   void SessionCommand(CommandCall& call);
   json BrowserControl(const json& command, const std::string& device,
                       const std::string& request_id, std::string& error);
@@ -194,11 +211,21 @@ class Master {
   // Set by a restart from the settings: MasterMain re-execs after shutdown.
   std::atomic<bool> reexec_{false};
   std::unique_ptr<PushSender> push_;
+  std::unique_ptr<RemoteHosts> remotes_;
   browser::ServiceProcess browser_process_;
   std::array<std::atomic<bool>, kViewerInstances> viewer_active_{};
   // Null while web.terminal is off.
   std::unique_ptr<Terminals> terminals_;
+  // The update a person started: whether its installer still runs, and what
+  // the last one printed and why it failed.
+  std::mutex update_mutex_;
+  json update_ UAGENT_GUARDED_BY(update_mutex_) = json::object();
+  std::jthread updater_;
+  std::jthread update_checker_;
   std::atomic<size_t> terminal_sockets_{0};
+  mutable std::mutex remote_terminals_mutex_;
+  json remote_terminals_ UAGENT_GUARDED_BY(remote_terminals_mutex_) =
+      json::array();
 };
 
 }  // namespace uagent::web::master

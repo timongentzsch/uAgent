@@ -10,10 +10,10 @@ import type {
   TerminalInfo,
   TerminalNotice,
 } from "../../shared/types.ts";
-import { manage, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { folderName } from "../../shared/folder-label.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
-import { Button, IconButton, Spinner } from "../../shared/ui.tsx";
+import { Button, IconButton, Notice, Spinner } from "../../shared/ui.tsx";
 import { KeyBar, keepFocus, type BarKey } from "../../shared/key-bar.tsx";
 import { coarsePointer } from "../../shared/layout.ts";
 import { useLatest } from "../../shared/use-latest.ts";
@@ -25,13 +25,9 @@ import {
   terminalScrollbackLines,
 } from "../../shared/limits.ts";
 
-// Terminals: shells the host runs for this user, each an xterm.js view on a
-// socket. A folder's terminal fills the page in the conversation's place;
-// the panel under the chat holds the page's own, which end with it. Loaded
-// the first time one opens. The agent never sees a terminal; "Add to chat"
-// puts text into the composer.
+// Shells the host runs for this user, each an xterm.js view on a socket.
+// The agent never sees a terminal; "Add to chat" puts text in the composer.
 
-// What the panel asks of the open tab.
 interface View {
   text: () => string;
   focus: () => void;
@@ -61,7 +57,6 @@ const APPLE = /Mac|iPhone|iPad/.test(navigator.platform);
 const kebab = (name: string) =>
   name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 
-// The terminal drawn in the app's tokens and type, light or dark.
 function lookOf(element: Element) {
   const style = getComputedStyle(element);
   const token = (name: string) => style.getPropertyValue(`--${name}`).trim();
@@ -80,8 +75,7 @@ function lookOf(element: Element) {
   };
 }
 
-// The bar's keys as a terminal reads them; arrows follow the cursor mode a
-// full-screen program sets.
+// Arrows follow the cursor mode a full-screen program sets.
 function sequence(key: BarKey, application: boolean) {
   const arrow = application ? "\x1bO" : "\x1b[";
   return {
@@ -94,8 +88,7 @@ function sequence(key: BarKey, application: boolean) {
   }[key];
 }
 
-// Text for the composer: the end of it, fenced longer than any run of
-// backticks inside.
+// The end of the text, fenced longer than any run of backticks inside.
 function fenced(text: string) {
   const kept = text.slice(-maxTerminalChatChars);
   const longest = Math.max(
@@ -109,8 +102,7 @@ function fenced(text: string) {
 // Where a shell runs: the home folder ("") is ~.
 const where = (cwd: string) => (cwd ? folderName(cwd) : "~");
 
-// One shell: its screen, the touch key bar under it, and a socket that
-// reattaches until the shell ends or another device takes it.
+// The socket reattaches until the shell ends or another device takes it.
 function TerminalView({
   id,
   active = true,
@@ -122,6 +114,7 @@ function TerminalView({
   register?: (id: string, view: View | null) => void;
   ended?: (id: string) => void;
 }) {
+  const { routes } = useApi();
   const box = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const fit = useRef<FitAddon | null>(null);
@@ -130,9 +123,7 @@ function TerminalView({
   const [code, setCode] = useState(-1);
   // Bumped to take the shell back from another device.
   const [attempt, setAttempt] = useState(0);
-  // The key bar's Ctrl, held for the next key.
   const [ctrl, setCtrl] = useState(false);
-  // Whether the shell has the keyboard, for the bar's keyboard key.
   const [typing, setTyping] = useState(false);
   const send = (data: string | Uint8Array<ArrayBuffer>) => {
     if (socket.current?.readyState === WebSocket.OPEN)
@@ -291,7 +282,7 @@ function TerminalView({
       socket.current?.close();
       socket.current = null;
     };
-  }, [id, attempt]);
+  }, [id, attempt, routes.terminal]);
 
   // A tab shown again takes the room it now has, and the keys.
   useEffect(() => {
@@ -304,23 +295,25 @@ function TerminalView({
     <div class="terminal-tabpanel" id={`terminal-${id}`} hidden={!active}>
       <div class="terminal-view" ref={box} />
       {state !== "live" && (
-        <p class="terminal-note small" role="status">
-          {state === "connecting" ? (
-            "Reconnecting…"
-          ) : state === "ended" ? (
-            code < 0 ? (
-              "The shell ended."
-            ) : (
-              `The shell exited with code ${code}.`
-            )
-          ) : (
-            <>
-              Open on another device.{" "}
-              <Button variant="quiet" onClick={() => setAttempt(attempt + 1)}>
-                Use here
-              </Button>
-            </>
-          )}
+        <p class="terminal-note small">
+          <Notice
+            tone="info"
+            action={
+              state === "replaced" && (
+                <Button variant="quiet" onClick={() => setAttempt(attempt + 1)}>
+                  Use here
+                </Button>
+              )
+            }
+          >
+            {state === "connecting"
+              ? "Reconnecting…"
+              : state === "replaced"
+                ? "Open on another device."
+                : code < 0
+                  ? "The shell ended."
+                  : `The shell exited with code ${code}.`}
+          </Notice>
         </p>
       )}
       {active && coarsePointer() && (
@@ -353,7 +346,6 @@ function TerminalView({
   );
 }
 
-// A terminal's name, and the folder it runs in or how it stands, dimmed.
 function Place({
   name,
   cwd,
@@ -377,8 +369,7 @@ type PageTerminal = Omit<TerminalInfo, "title" | "started"> & {
   number: number;
 };
 
-// A folder's terminal, in the conversation's place: its folder, Close, and
-// the shell, which runs on when this page leaves it.
+// The shell runs on when this page leaves it.
 export function FolderTerminal({
   terminal,
   close,
@@ -400,22 +391,25 @@ export function FolderTerminal({
   );
 }
 
-// The page's own terminals, as tabs under the chat; closing the panel or
-// the page ends them.
+// These shells end with their tab or the page; hidden, they run on.
 export default function TerminalPanel({
   cwd,
   addToChat,
+  shown,
+  hide,
   close,
   report,
 }: {
-  // Where a new terminal starts: the conversation's folder, or the home
-  // folder ("").
+  // Where a new terminal starts; "" is the home folder.
   cwd: string;
-  // Puts text into the open conversation's composer; none without one.
   addToChat?: (text: string) => void;
+  shown: boolean;
+  hide: () => void;
+  // Its last tab closed.
   close: () => void;
   report: Report;
 }) {
+  const { manage } = useApi();
   const [tabs, setTabs] = useState<PageTerminal[]>([]);
   const [active, setActive] = useState("");
   const [ended, setEnded] = useState<string[]>([]);
@@ -454,7 +448,6 @@ export default function TerminalPanel({
     else if (active === id) setActive(kept[kept.length - 1].id);
   };
 
-  // A new shell when the panel opens.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs once
   useEffect(() => {
     void open();
@@ -516,7 +509,7 @@ export default function TerminalPanel({
             Close terminal
           </MenuItem>
         </Menu>
-        <IconButton label="Hide the terminal" onClick={close}>
+        <IconButton label="Hide the terminal" onClick={hide}>
           <ChevronDown />
         </IconButton>
       </div>
@@ -524,7 +517,7 @@ export default function TerminalPanel({
         <TerminalView
           key={tab.id}
           id={tab.id}
-          active={tab.id === active}
+          active={shown && tab.id === active}
           register={(id, view) => {
             if (view) views.current.set(id, view);
             else views.current.delete(id);

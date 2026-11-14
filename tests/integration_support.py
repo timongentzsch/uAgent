@@ -41,10 +41,8 @@ OPENROUTER_SUPPORTS = [
 ]
 
 
-# A sanitized or coverage-instrumented binary starts and renders several times
-# slower than a plain one, which turns every wall-clock budget below into a
-# coin flip on a shared runner. Those jobs raise the multiplier instead of each
-# deadline being retuned by hand.
+# Sanitized and coverage builds run several times slower: their jobs raise
+# this multiplier instead of each deadline being retuned.
 TIMEOUT_SCALE = float(os.environ.get("UAGENT_TEST_TIMEOUT_SCALE", "1"))
 # Guards against a hang, well clear of what a scripted answer takes on a busy
 # runner. A case that is about a deadline sets its own.
@@ -128,9 +126,8 @@ class Server:
         self.responders = list(responders)
         if not self.responders:
             raise ValueError("Server requires at least one responder")
-        # A single callable is an explicit router and may handle any number of
-        # requests. A response sequence is finite: exhausting it is a test
-        # failure rather than silently replaying its final response.
+        # A single callable routes any number of requests. A response sequence
+        # is finite: exhausting it fails the test instead of replaying the last.
         self.repeat_last = repeat_last or (
             len(self.responders) == 1 and callable(self.responders[0])
         )
@@ -243,6 +240,10 @@ def base_env(home, url):
             "UAGENT_STREAM_TIMEOUT": timeout_setting(STREAM_TIMEOUT_SECONDS),
             # A background title request would consume scripted responses.
             "UAGENT_TITLE_MODEL": "off",
+            # What these tests were written against: each step one line, and
+            # thinking shown.
+            "UAGENT_DETAIL": "default",
+            "UAGENT_THINKING": "1",
         }
     )
     return env
@@ -316,18 +317,14 @@ def run_pty(
     binary,
 ):
     """Bare payloads await a composer repaint, which can happen during a turn.
-
-    Use (payload, response_marker) before exiting or inspecting an answer,
-    and (payload, response_marker, b"Ready", None) before starting another turn.
-    """
+    Use (payload, response_marker) before exiting or inspecting an answer, and
+    (payload, response_marker, b"Ready", None) before starting another turn."""
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, columns, 0, 0))
     if configure_terminal is not None:
         configure_terminal(slave)
-    # A session of its own isolates the child from the runner's signals, but it
-    # also orphans its process group, and the kernel discards stop signals sent
-    # to an orphaned group. A suspend case therefore needs a plain process
-    # group inside this session, the way a shell's job control provides one.
+    # A session of its own orphans the child's process group, and the kernel
+    # discards stop signals sent to one: a suspend case needs a plain group.
     placement = {"process_group": 0} if suspend else {"start_new_session": True}
     process = subprocess.Popen(
         [str(binary), *args],
@@ -395,9 +392,8 @@ def run_pty(
         try:
             before_payload()
         except BaseException:
-            # Callback assertions must not strand an interactive child. A
-            # leaked raw-mode process spins after its PTY owner disappears and
-            # can starve every sanitizer case that follows.
+            # Callback assertions must not strand an interactive child: a
+            # leaked raw-mode process spins once its PTY owner is gone.
             process.kill()
             process.wait()
             os.close(master)
@@ -461,8 +457,7 @@ def run_pty(
     if after_exit is not None:
         after_exit(master)
     os.close(master)
-    # Killed for never printing what the next input waits for: said as that,
-    # not left to read as a bad exit code.
+    # Killed for never printing what the next input waits for.
     if stuck and awaited is not None:
         raise AssertionError(f"never printed {awaited!r}; last output: {bytes(output[-800:])!r}")
     return process.returncode, bytes(output)
@@ -478,11 +473,7 @@ def assert_true(value, message):
 
 
 def assert_token_budget_stop(root, home, server, *args, binary):
-    """Run headless to a session-token-budget stop and return the envelope.
-
-    Three cases share the same invocation and the same two assertions about how
-    it ends; only the flags before them and the accounting after them differ.
-    """
+    """Run headless to a session-token-budget stop and return the envelope."""
     result = run(root, base_env(home, server.url), *args, "--json", binary=binary)
     envelope = json.loads(result.stdout)
     assert_true(result.returncode == 1, envelope)
@@ -547,7 +538,6 @@ def signal_process_group(pid, signal_number=signal.SIGTERM):
 
 
 def live_process_states(pids):
-    """Return process states for PIDs that still represent live processes."""
     states = {}
     for pid in pids:
         result = subprocess.run(
@@ -586,8 +576,7 @@ def saved_settings(home, folder=None):
 
 def setting_keys(home, binary):
     """A setting's name in the settings file, by its name in the environment,
-    from the schema the build under test writes beside the file. The binary
-    writes it when it loads a valid document, so a fresh home gets an empty one."""
+    from the schema the build under test writes beside the file."""
     path = settings_path(home)
     schema = path.with_name("settings.schema.json")
     if not schema.exists():
@@ -628,7 +617,6 @@ def save_settings(home, folder=None, *, binary, **values):
 
 
 def wait_until(predicate, message, timeout=30, interval=0.02):
-    """Poll until predicate() holds, or fail the test with message."""
     deadline = time.monotonic() + budget(timeout)
     while time.monotonic() < deadline:
         if predicate():
@@ -649,11 +637,8 @@ def write_session(
     display=None,
     **header,
 ):
-    """Write one saved session the way the agent persists it.
-
-    The format-3 envelope lives here alone: a schema change is one edit, and a
-    fixture cannot drift into a shape the agent would never write.
-    """
+    """Write one saved session the way the agent persists it. The format-3
+    envelope lives here alone, so a schema change is one edit."""
     fields = {
         "format": 3,
         "cwd": str(pathlib.Path(cwd).resolve()),
@@ -696,11 +681,6 @@ def function_names(body):
     return {tool["name"] for tool in function_tools(body)}
 
 
-# The tools that inspect and change µAgent itself, which a conversation is
-# offered only once it opens the uagent-config skill.
-CONFIG_TOOLS = {"uagent", "uagent_configure", "uagent_file"}
-
-
 def config_skill_env(env):
     """The source tree's skills: a build tree has no installed ones beside it."""
     env["UAGENT_SKILL_PATH"] = str(pathlib.Path(__file__).resolve().parent.parent / "skills")
@@ -709,10 +689,20 @@ def config_skill_env(env):
 
 def open_config_skill(_, body):
     """A model's first step towards configuring µAgent: open the skill that
-    unlocks the tools."""
+    unlocks the uagent tool, which a conversation is not offered before."""
     names = function_names(body)
-    assert_true(not CONFIG_TOOLS & names, names)
+    assert_true("uagent" not in names, names)
     return tool_call("skill", {"name": "uagent-config"}, call_id="call-skill")
+
+
+def uagent_show(topic, call_id="call-1", **more):
+    return tool_call("uagent", {"action": "show", "topic": topic, **more}, call_id=call_id)
+
+
+def uagent_set(key, value):
+    """A uagent call that saves one setting for all conversations."""
+    changes = [{"key": key, "operation": "set", "value": value}]
+    return tool_call("uagent", {"action": "set", "scope": "user", "changes": changes})
 
 
 def large_json_command():
@@ -781,10 +771,7 @@ def wait_until_stopped(pid, timeout=10):
 
 
 def wait_for_echo(master, wanted, timeout=10):
-    """Wait for the line discipline to reach a state, rather than sleeping.
-
-    A fixed sleep is what makes a terminal test flaky on a loaded machine.
-    """
+    """Wait for the line discipline to reach a state, rather than sleeping."""
     deadline = time.monotonic() + budget(timeout)
     while time.monotonic() < deadline:
         lflag = termios.tcgetattr(master)[3]

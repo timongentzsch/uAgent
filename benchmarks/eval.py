@@ -1,18 +1,8 @@
 #!/usr/bin/env python3
 """Scenario-driven behavioral evaluation for µAgent.
 
-A scenario is one declarative JSON file under `benchmarks/scenarios/`: the
-workspace fixture, the prompt, a scripted provider, and the checks that define a
-good run. Scores and round counts are compared against committed baselines, so a
-change that makes the agent spend more rounds, drop a batch, stop deduplicating
-or lose its answer fails a gate instead of being argued about.
-
-The suite scripts the provider, so it measures *harness* behavior — the part
-this repository owns — not model quality.
-
-    python3 benchmarks/eval.py build/debug/uagent --check
-    python3 benchmarks/eval.py build/debug/uagent --update
-    python3 benchmarks/eval.py build/debug/uagent --scenario CASE
+A scenario under `benchmarks/scenarios/` scripts the provider and names its
+checks; scores and round counts are compared against committed baselines.
 """
 
 from __future__ import annotations
@@ -46,16 +36,10 @@ from run_trace import (  # noqa: E402
     measured_command,
     peak_rss,
     read_trace,
+    trace_metrics,
 )
-from run_trace import trace_metrics as run_trace_metrics  # noqa: E402
-from session_metrics import provenance_cohort, safe_provenance  # noqa: E402
 
 # isort: on
-
-
-def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
-    """Trajectory aggregates with this harness's provenance redaction applied."""
-    return run_trace_metrics(records, provenance_fn=safe_provenance, cohort_fn=provenance_cohort)
 
 
 def validate_predicates(when: Any) -> None:
@@ -124,10 +108,7 @@ def snapshot(root: Path) -> dict[str, str]:
 
 class Script:
     """Answer each request with the first rule whose `when` clause matches.
-
-    A request no rule claims is a scenario bug, not a passing run: it is
-    recorded and reported rather than silently answered.
-    """
+    A request no rule claims is recorded as a scenario bug."""
 
     def __init__(self, rules: list[dict[str, Any]], capture: dict[str, str]) -> None:
         for rule in rules:
@@ -225,11 +206,8 @@ def as_list(value: Any) -> list[str]:
 
 
 def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) -> dict[str, str]:
-    # A scenario declares its inputs; it never inherits them. Run from inside a
-    # live session the shell carries that session's route --
-    # UAGENT_INTERNAL_WIRE_API alone makes the binary speak a dialect this
-    # mock does not serve -- and every case fails for a reason the scenario
-    # is not about. Names this function sets below are reapplied deliberately.
+    # A scenario never inherits its inputs: a live session's UAGENT_ variables
+    # would make the binary speak a dialect this mock does not serve.
     env = {key: value for key, value in os.environ.items() if not key.startswith("UAGENT_")}
     env.update(
         {
@@ -308,9 +286,8 @@ def run_case(
         try:
             env = case_environment(scenario, variant, arguments, mock)
             env["HOME"] = str(home)
-            # Beside HOME rather than above it: the runner's own TMPDIR is an
-            # ancestor of this case's ~/.uagent, and the sandbox will not grant
-            # a writable root that contains the agent's own state.
+            # Beside HOME: the runner's TMPDIR is an ancestor of ~/.uagent, and
+            # the sandbox grants no writable root that holds the agent's state.
             scratch = root / "tmp"
             scratch.mkdir(exist_ok=True)
             env["TMPDIR"] = str(scratch)
@@ -408,8 +385,6 @@ def run_case(
             "score": sum(1 for value in checks.values() if value),
             "checks_total": len(checks),
             "passed": all(checks.values()),
-            # The failure-category vector says what broke, which a pass rate
-            # alone never does.
             "failures": [name for name, ok in checks.items() if not ok],
             "bytes_per_check": round(
                 metrics["cumulative_estimated_context_bytes"]

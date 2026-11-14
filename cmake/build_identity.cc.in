@@ -1,0 +1,4 @@
+#include "include/core/build.h"
+namespace uagent {
+std::string_view BuildIdentity() { return "@UAGENT_BUILD_ID@"; }
+}

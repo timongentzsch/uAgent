@@ -1,4 +1,4 @@
-import { readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { cp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { extname, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
@@ -29,6 +29,23 @@ async function files(directory) {
 
 const assets = (await files(next)).sort();
 await writeFile(resolve(next, ".assets"), `${assets.join("\n")}\n`);
+
+// The sheet engine and the page code that draws a sheet with it are
+// installed beside the binary (CMakeLists.txt), not embedded in it: they
+// are copied after the list of embedded assets is written, with the
+// engine's licences.
+const sheet = resolve(next, "share/sheet");
+const engine = resolve(root, "node_modules/@ironcalc/wasm-xlsx");
+await cp(resolve(root, "sheet"), sheet, { recursive: true });
+for (const name of [
+  "wasm.js",
+  "wasm_bg.wasm",
+  "snippets",
+  "LICENSE-MIT",
+  "LICENSE-Apache-2.0",
+  "THIRD-PARTY-NOTICES.md",
+])
+  await cp(resolve(engine, name), resolve(sheet, name), { recursive: true });
 
 // The binary embeds the `.gz` beside each text asset and serves it as is;
 // images and fonts are already compressed and stay raw.

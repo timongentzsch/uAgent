@@ -2,8 +2,6 @@
 
 #ifndef UAGENT_INCLUDE_CLI_OPTIONS_H_
 #define UAGENT_INCLUDE_CLI_OPTIONS_H_
-// Command-line options: what the flags mean, how they are parsed and the
-// usage text.
 
 #include <map>
 #include <span>
@@ -37,16 +35,16 @@ struct Options {
   std::string prompt;
   std::string control;
   std::vector<std::string> attach_paths;
-  // Session role from the runtime launch: {agent} for an agent
-  // (session_role.h), empty for an ordinary session.
+  // Session role from the runtime launch; empty for an ordinary session.
   uagent::json session = uagent::json::object();
   uagent::json AgentRole() const { return AgentOf(session); }
-  // From the runtime launch, where the web host serves this session's
-  // folder: the address its browser opens a page of the folder at.
+  // From the runtime launch: the address the web host serves this session's
+  // folder at.
   std::string preview;
-  // UAGENT_* values named on the command line; they outrank the environment
-  // and both config files. --budget and --no-memory land here too.
-  // Setting names to values, as RuntimeConfig::Values spells it.
+  uagent::json execution = nullptr;
+  std::string host;
+  // Settings named on the command line; they outrank the environment and
+  // both config files. --budget and --no-memory land here too.
   std::map<std::string, std::string> overrides;
 };
 

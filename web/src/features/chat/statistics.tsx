@@ -4,7 +4,7 @@ import { count } from "../../shared/quantities.ts";
 import type { StatisticsModal, Snapshot, State } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { useResource } from "../../shared/use-resource.ts";
-import { Button, LoadError, Time } from "../../shared/ui.tsx";
+import { Button, LoadError, Notice, Time } from "../../shared/ui.tsx";
 import { contextSummary } from "../../state/context-summary.ts";
 import {
   Rows,
@@ -30,7 +30,6 @@ export default function Statistics({
   held?: Snapshot;
   loadSnapshot: (id: string) => Promise<Snapshot>;
   online: boolean;
-  // Opens the raw context, for the conversation open on the page.
   showContext?: () => void;
 }) {
   const {
@@ -133,7 +132,6 @@ function StatisticsContent({
       : [
           [
             "Context",
-            // The value opens what it summarises.
             showContext ? (
               <Button
                 variant="quiet"
@@ -192,10 +190,10 @@ function StatisticsContent({
   return (
     <StatisticsLayout unit={unit} scope={scope} change={setScope}>
       {missingTurn ? (
-        <p role="status">
+        <Notice tone="info">
           This {unit?.toLowerCase()} is outside the loaded history. Load its
           retained messages and try again, or select Conversation.
-        </p>
+        </Notice>
       ) : (
         <>
           {!node && fork && (

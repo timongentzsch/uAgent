@@ -2,12 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_SESSION_COMMAND_H_
 #define UAGENT_INCLUDE_APP_SESSION_COMMAND_H_
-// Typed worker commands. The host forwards control frames as JSON; the worker
-// parses each frame once into a SessionCommand and switches on its kind, so a
-// misspelled kind is one enumerator miss away from a compile error instead of
-// a silent fallthrough to "unsupported command". Field extraction never
-// fails: absent fields read as empty. Bodies live in
-// src/app/session_command.cc.
+// Typed worker commands: the worker parses each control frame once into a
+// SessionCommand. Absent fields read as empty.
 
 #include <deque>
 #include <map>
@@ -20,10 +16,8 @@
 
 namespace uagent::session {
 
-// Every command kind a client can send. The host runs close and the
-// saved-session kinds (create, delete, move, activate) itself; the rest are
-// forwarded to the worker, which answers anything it does not run as
-// "unsupported command".
+// The host runs close and the saved-session kinds (create, delete, move,
+// activate) itself and forwards the rest to the worker.
 enum class SessionCommandKind {
   kClose,
   kInterrupt,
@@ -32,6 +26,8 @@ enum class SessionCommandKind {
   kRecall,
   kInsert,
   kRename,
+  // Answers a suggested place with "here".
+  kKeep,
   kRefresh,
   kPermissions,
   kActivity,
@@ -70,11 +66,8 @@ struct SessionCommand {
   json raw;
 };
 
-// Validates the envelope identity (session/generation/request shape) and
-// extracts the fields. Returns false for frames this worker must drop
-// silently: wrong session/generation, or a malformed request id. An
-// unrecognized kind is NOT a parse failure — it flows through as kUnknown so
-// the caller answers "unsupported command" with an outcome.
+// False for frames the worker drops silently: wrong session or generation,
+// or a malformed request id. An unrecognized kind parses, as kUnknown.
 bool ParseSessionCommand(const json& command, const std::string& session_id,
                          const std::string& generation, SessionCommand& out);
 
@@ -84,9 +77,8 @@ enum class ReceiptVerdict {
   kReject,  // Same id, different content: caller drops silently.
 };
 
-// Bounded request-id dedup for retried worker commands. The cap evicts the
-// oldest completed receipt first; when every receipt is still pending the
-// check refuses, applying backpressure instead of forgetting a live command.
+// Bounded request-id dedup for retried worker commands. The oldest completed
+// receipt is evicted first; with every receipt pending, Check refuses.
 class ReceiptLog {
  public:
   ReceiptVerdict Check(const json& command, const std::string& request,

@@ -28,10 +28,8 @@ std::string LocalDay();
 // `at` in the host's time zone, formatted by strftime.
 std::string LocalTime(std::time_t at, const char* format);
 
-// Children are separate processes, so they append what they spent here for
-// the session that started them to fold into its own totals. Named by that
-// session's id, so what a child reports after its parent's process is gone
-// counts when the session runs again; pruned with the other background files.
+// Where child processes append what they spent, for the session that started
+// them to fold into its totals. Named by that session's id.
 std::string UsageLedger(const std::string& session_id);
 
 class DebugSink {
@@ -63,8 +61,7 @@ class DebugSink {
   int64_t seq_ = 0;
 };
 
-// The trace of the running process. The concrete sinks are owned by the
-// active Observability instance created by main.
+// The trace of the running process.
 DebugSink& Debug();
 
 class JsonEventStream {

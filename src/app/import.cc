@@ -34,19 +34,16 @@ namespace uagent {
 namespace {
 namespace fs = std::filesystem;
 
-// Skills sit one or two folders below the root in real trees
-// (~/.claude/skills/synced/<id>/<name>), so the search goes a little deeper
-// than a flat directory.
+// Real trees keep skills one or two folders below the root
+// (~/.claude/skills/synced/<id>/<name>).
 constexpr int kImportSkillDepth = 4;
 constexpr size_t kImportReadBytes = KiB(512);
-// A listing is one JSON line the control process must pass on within its 1 MiB
-// output limit; the walk stops at either bound, however many roots it spans.
+// A listing is one JSON line within the control process's 1 MiB output limit.
 constexpr size_t kMaxImportItems = 512;
 constexpr size_t kMaxImportBytes = KiB(512);
 constexpr size_t kMaxImportEntries = 16384;
 
-// What one listing may still visit and return, across every root: each
-// directory entry looked at, in a search or inside a skill, is charged here.
+// What one listing may still visit and return, across every root.
 struct Budget {
   size_t entries = kMaxImportEntries;
   size_t items = kMaxImportItems;
@@ -212,9 +209,8 @@ std::string Squash(const std::string& text) {
   return out;
 }
 
-// Why the folder's license forbids copying it, or why it cannot be told. The
-// terms may be written in the front matter's `license:` field, or in a file
-// that field names, or in the usual files.
+// Why the folder's license forbids copying it, or why it cannot be told: the
+// terms are in the `license:` field, a file it names, or the usual files.
 std::string LicenseBlock(const fs::path& root, const std::string& manifest) {
   // The wording Anthropic's skill licenses use, and the plain forms of it.
   constexpr std::string_view kPhrases[] = {"retain copies of these materials",
@@ -330,9 +326,8 @@ void CollectDirectory(const fs::path& root, const fs::path& dir, int depth,
   }
 }
 
-// Everything a skill folder holds, within the bounds a skill is read with:
-// hidden files too, but never `.git`, and nothing that cannot be copied is
-// passed over in silence.
+// Everything a skill folder holds, hidden files too but never `.git`;
+// nothing that cannot be copied is passed over in silence.
 SkillFolder CollectSkillFolder(const fs::path& dir, const std::string& manifest,
                                Budget& budget) {
   SkillFolder folder;
@@ -474,9 +469,8 @@ json MemoryItem(const std::string& source, const fs::path& path,
   return item;
 }
 
-// What can be imported, within one traversal budget. `only` limits which
-// sources are walked at all, and `wanted` which candidates become items
-// before they count against the cap.
+// What can be imported, within one traversal budget. `only` limits the
+// sources walked, `wanted` the candidates that count against the cap.
 json ListItems(const fs::path& cwd, const std::string& only,
                const Wanted& wanted, bool& truncated) {
   json items = json::array();

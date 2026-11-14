@@ -8,20 +8,30 @@ import {
   FolderOpen,
   Image,
 } from "lucide-preact";
-import { api, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
-import { Button, LoadError } from "../../shared/ui.tsx";
+import { Button, LoadError, Notice } from "../../shared/ui.tsx";
+import { DataText, Placeholder } from "../../shared/placeholder.tsx";
 import { HTML, IMAGE, MARKDOWN } from "../../shared/file-types.ts";
+import { join, type Listing as Pages } from "./boards.ts";
+import { folderView } from "./flow.ts";
 
-// The conversation's folder as a tree, as VS Code's Explorer draws one: a
-// folder opens in place, rows are dense with indent guides, an icon says a
-// file's type. A folder of two pages or more offers its canvas on its row.
+// The conversation's folder as a tree, as VS Code's Explorer draws one. A
+// folder that is a deck, a design or a design system offers Open on its row.
 
-interface Listing {
-  entries: { name: string; dir: boolean }[];
+export interface Listing extends Pages {
   more: boolean;
 }
-export interface TreeProps {
+// What a folder is drawn from while it loads.
+export const SAMPLE_LISTING: Listing = {
+  entries: [
+    { name: "src", dir: true },
+    { name: "tests", dir: true },
+    { name: "README.md", dir: false },
+  ],
+  more: false,
+};
+interface TreeProps {
   session: string;
   // Read again when a turn starts or ends, or a file is written.
   version: string;
@@ -31,10 +41,10 @@ export interface TreeProps {
   file: string;
   toggle: (path: string) => void;
   open: (path: string) => void;
-  canvas: (dir: string) => void;
+  openFolder: (dir: string) => void;
+  list?: (path: string, signal: AbortSignal) => Promise<Listing>;
 }
 
-const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 const CODE = /\.(css|js|mjs|ts|tsx|json)$/i;
 const icon = (name: string) =>
   HTML.test(name) || CODE.test(name) ? (
@@ -77,7 +87,9 @@ function Entries({
       )}
       {listing.more && (
         <li class="files-note small">
-          Some entries may not be listed. Search to find the rest.
+          <Notice tone="info">
+            Some entries may not be listed. Search to find the rest.
+          </Notice>
         </li>
       )}
     </>
@@ -111,7 +123,9 @@ function FileRow({
       >
         <span class="tree-twisty" />
         {icon(name)}
-        <span class="files-name truncate">{name}</span>
+        <span class="files-name truncate">
+          <DataText>{name}</DataText>
+        </span>
       </Button>
     </li>
   );
@@ -126,17 +140,22 @@ function FolderNode({
   name: string;
   props: TreeProps;
 }) {
+  const { api, routes } = useApi();
   const open = props.expanded.has(path);
   const listing = useResource(
-    () =>
+    (signal) =>
       open
-        ? api<Listing>(routes.files(props.session, "list", path))
+        ? props.list
+          ? props.list(path, signal)
+          : api<Listing>(routes.files(props.session, "list", path), undefined, {
+              signal,
+            })
         : undefined,
-    [props.session, path, open, props.version],
+    [props.session, path, open, props.version, props.list],
   );
-  const pages = (listing.value?.entries ?? []).filter(
-    (entry) => !entry.dir && HTML.test(entry.name),
-  ).length;
+  // What the folder opens as; a folder that is nothing but holds one page
+  // has that page as a row and needs no Open.
+  const opens = listing.value && folderView(path, listing.value);
   return (
     <li>
       <div class="tree-folder">
@@ -152,27 +171,34 @@ function FolderNode({
         >
           <ChevronRight class="tree-twisty" />
           {open ? <FolderOpen /> : <Folder />}
-          <span class="files-name truncate">{name}</span>
+          <span class="files-name truncate">
+            <DataText>{name}</DataText>
+          </span>
         </Button>
-        {open && pages > 1 && (
+        {open && opens && (listing.value?.kind || opens.kind === "canvas") && (
           <Button
             variant="quiet"
             size="compact"
-            class="tree-action"
-            onClick={() => props.canvas(path)}
+            onClick={() => props.openFolder(path)}
           >
-            Canvas
+            Open
           </Button>
         )}
       </div>
       {open &&
         (listing.error ? (
           <LoadError error={listing.error} retry={listing.retry} />
-        ) : listing.value ? (
-          <ul role="group">
-            <Entries path={path} props={props} listing={listing.value} />
-          </ul>
-        ) : null)}
+        ) : (
+          <Placeholder label={`Opening ${name}…`} when={!listing.value}>
+            <ul role="group">
+              <Entries
+                path={path}
+                props={props}
+                listing={listing.value ?? SAMPLE_LISTING}
+              />
+            </ul>
+          </Placeholder>
+        ))}
     </li>
   );
 }
@@ -206,13 +232,15 @@ function walk(event: KeyboardEvent, props: TreeProps) {
   event.preventDefault();
 }
 
-export default function FileTree(props: TreeProps & { root: Listing }) {
+export default function FileTree(
+  props: TreeProps & { root: Listing; rootPath?: string },
+) {
   return (
     <ul
       class="files-tree dense"
       onKeyDown={(event) => walk(event as unknown as KeyboardEvent, props)}
     >
-      <Entries path="" props={props} listing={props.root} />
+      <Entries path={props.rootPath || ""} props={props} listing={props.root} />
     </ul>
   );
 }

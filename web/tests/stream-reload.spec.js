@@ -1,6 +1,12 @@
 // Reloading while an answer streams must pick the stream up where the saved
 // view left off: the page stays responsive and the answer completes once.
-import { test, expect, online, selectProbeModel } from "./fixtures.js";
+import {
+  connected,
+  test,
+  expect,
+  online,
+  selectProbeModel,
+} from "./fixtures.js";
 
 test("reload mid-stream resumes the answer without freezing", async ({
   page,
@@ -19,7 +25,6 @@ test("reload mid-stream resumes the answer without freezing", async ({
     .toBeGreaterThan(1500);
 
   await page.reload();
-  // The main thread keeps painting while the stream catches up.
   const gaps = page.evaluate(
     () =>
       new Promise((resolve) => {
@@ -39,7 +44,6 @@ test("reload mid-stream resumes the answer without freezing", async ({
     { timeout: 20_000 },
   );
   await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
-  // Exactly one answer, and its streamed text is not doubled.
   await expect(answer).toHaveCount(1);
   const text = (await answer.textContent()) || "";
   expect(text.split("Stable opening paragraph").length - 1).toBe(1);
@@ -61,7 +65,7 @@ test("an event stream refused mid-restart reconnects on its own", async ({
     refused++ < 2 ? route.fulfill({ status: 502, body: "" }) : route.continue(),
   );
   await page.goto(`/#session=${session.id}`);
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   expect(refused).toBeGreaterThan(2);
 });
 
@@ -87,11 +91,9 @@ test("a reconnect reopens the event stream at its cursor and reads nothing again
     .poll(() => requests.some((path) => path.startsWith("/api/events?cursor=")))
     .toBe(true);
   await online(page);
-  // The catalogue and the open conversation are the ones already held.
   expect(requests.filter((path) => path.startsWith("/api/sessions"))).toEqual(
     [],
   );
-  // Events still arrive on the resumed stream.
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Hello there");
   await page.getByRole("button", { name: "Send", exact: true }).click();

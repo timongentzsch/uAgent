@@ -1,10 +1,8 @@
 import { useRef, useState } from "preact/hooks";
 
-// An action with its outcome: `run` resolves true when the work
-// succeeded, `busy` is true while it runs, and `error` holds the last
-// failure until the next run starts (or `setError` sets or clears it).
-// By default, overlap resolves false without starting work, even before render.
-// Independent reads can opt into concurrency; busy then covers every pending call.
+// `run` resolves true when the work succeeded; `error` holds the last
+// failure until the next run starts. Overlap resolves false without starting
+// work, unless `concurrent`; busy then covers every pending call.
 export function useAction({
   concurrent = false,
   report,

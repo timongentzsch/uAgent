@@ -8,7 +8,7 @@ selected files, tool results and attachments to the configured endpoint;
 treat that endpoint as trusted infrastructure. Use a container, VM or
 restricted account for untrusted code.
 
-![What each part can reach: paired devices reach the web host; only the session runtime holds the model key and talks to the endpoint; commands and MCP servers run in the OS sandbox, write only the folder, temporary files and caches, and cannot reach your other folders, ~/.uagent, credential stores, the browser profile or secrets in the environment; the runtime acts in Chrome and receives ordinary field values, with sensitive fields masked](docs/images/boundaries.svg)
+![Provider keys and provider HTTP stay on the main; local and remote commands use their OS sandbox, authenticated SSH carries execution requests, and remote shared accounts retain ordinary filesystem permissions](docs/images/boundaries.svg)
 
 ## What the agent may do without asking
 
@@ -41,12 +41,16 @@ In every mode:
   in a delegated child:
   - writing µAgent's configuration through the file tools: the saved
     settings, the trust store, `~/.uagent/config/permissions.json`, your
-    instruction files in `~/.uagent`, and any `.mcp.json`;
-  - reading any of those through the file tools, except the trust store and
-    the instruction files, which hold no credential;
+    instruction files in `~/.uagent`, your own skills (`~/.uagent/skills`,
+    `~/.agents/skills` and the Claude Code and Codex folders µAgent reads),
+    and any `.mcp.json`;
+  - reading any of those through the file tools, except the trust store, the
+    instruction files and the skills, which hold no credential;
   - reading, through the file tools, one of your folders that the sandbox
     closes to commands (see **Reads** below);
-  - the `uagent_configure` and `uagent_file` tools;
+  - the `uagent` tool's `set`, `write` and `command`: a slash command the
+    agent asks for runs only as the exact line you approved, when the turn
+    ends, and never for an agent or a headless run;
   - `run(sandbox=false)`, and `run(root=true)`.
 
 An **agent**, a conversation another one started, acts for you unattended.
@@ -56,7 +60,7 @@ control); the saved setting does not reach it. One started with `edits` none
 runs at the `readonly` level with no tool that edits, whatever its settings
 say, and so do the agents it starts. Any other runs at the `default` level,
 or `relaxed` while it is in yolo. While that sandbox is enforced and it is
-in auto, its `run` and `scratch` commands and its file changes inside the
+in auto, its `run` commands and its file changes inside the
 folder run without review; everything else goes through its approval mode.
 What would ask a person goes to its parent first, which decides or passes it
 to you, and to you after five minutes. Once you write to the agent yourself,
@@ -108,7 +112,7 @@ never goes to the parent.
   receive a centralized secret-deny environment; only class-specific
   credentials are re-added. Approved `run` commands can opt in exact
   variables with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to MCP
-  servers, delegated agents or `scratch`. `UAGENT_SANDBOX_HIDE_ENV` adds
+  servers or delegated agents. `UAGENT_SANDBOX_HIDE_ENV` adds
   names that no child inherits, whatever the allowlist says.
 - A `run(tty=true)` activity keeps a writable PTY for the harness lifetime.
   `activity(operation=write, chars=...)` sends raw bytes with the original
@@ -132,6 +136,30 @@ never goes to the parent.
   shell gets the same secret-deny environment as the agent's commands.
   The agent never reads a terminal, but output you send with "Add to chat"
   enters model context and may contain secrets read by that shell.
+- The same pairing and the same switch let a paired device start an update
+  from Settings → About: the host downloads the release GitHub names, runs
+  its installer as you and restarts. The agent cannot start one.
+
+## Remote execution
+
+The main owns provider settings, model keys, approvals and conversation history.
+Model HTTP requests go directly from the main to the configured endpoint.
+Only file, Git, command and terminal operations cross the SSH gateway boundary;
+provider configuration and keys are not sent to the remote executable. A
+provider's `localhost` address therefore means the main machine.
+
+Multiple mains reuse one installed executable with separate authenticated
+execution processes. Each request authenticates; the RPC credential arrives
+over SSH stdin, not argv or environment. SSH children receive a filtered
+environment, with agent and environment forwarding disabled. The gateway
+does not load or save remote application configuration or history.
+
+Remote commands use the remote OS sandbox and account. Paired-device terminals
+are that account's unsandboxed shell. Sharing an SSH account shares ordinary
+filesystem permissions; it does not isolate users from each other's files.
+The remote account and administrators can inspect remote execution data and
+process memory, while provider keys remain on the main. See
+[remote ownership and limits](docs/REMOTE_HOSTS.md#ownership-and-isolation).
 
 ## Browser automation
 
@@ -158,7 +186,7 @@ cookies.
 
 ## Sandboxing
 
-The OS confines the commands the agent runs (`run`, `scratch`) and the stdio
+The OS confines the commands the agent runs (`run`) and the stdio
 MCP servers it starts: `sandbox-exec` (Seatbelt) on macOS, Landlock on
 Linux. The sandbox is on by default, in every approval mode.
 
@@ -343,7 +371,8 @@ unconfined, and a changed entry asks again like any other change to the file.
 
 **Not confined by the sandbox:** the built-in file tools (approval and path
 checks govern them; they reach `.mcp.json`, and the `uagent` tool reaches the
-saved settings, with mandatory human approval for each change), an MCP
+saved settings, `.mcp.json`, your stylesheet, system message, instructions
+and skills, with mandatory human approval for each change), an MCP
 server that opts out, and the µAgent process of a memory extraction (its
 commands are confined).
 
@@ -374,6 +403,27 @@ Besides `off`, these operations or fallback conditions can run unconfined:
 On macOS, a sandbox profile larger than 64 KiB, and on Linux a policy larger
 than 96 KiB (very many writable roots or closed folders), refuses the
 command rather than running it under a truncated one.
+
+## The container
+
+The [Compose appliance](deploy/compose.yaml) runs the web host, the agent, its
+terminal and its Chrome as one nonroot user. What it does and does not bound:
+
+- **Files and processes.** Only the workspaces folder and a data volume are
+  mounted; the root filesystem is read-only, every capability but `SYS_CHROOT`
+  is dropped, `no-new-privileges` is set and the number of processes is
+  limited. No Docker socket and nothing of the host's home is mounted.
+- **Not the network.** Egress is the Docker host's: commands and the agent's
+  browser reach the host's services, the LAN and a cloud metadata address
+  unless the host's firewall says otherwise. [Browser](docs/BROWSER.md#isolation)
+  says how to restrict it.
+- **One trust level inside.** The command sandbox is on there as anywhere, so
+  agent commands do not read the saved keys or the browser's profiles. The web
+  terminal is yours and is not sandboxed: it reads both.
+- **User namespaces.** The seccomp profile lets any process in the container
+  create one, as Chrome's sandbox requires.
+- **What you build there runs here.** The workspaces folder is yours on the
+  host too; a script the agent wrote runs with your rights when you run it.
 
 ## Sensitive data
 

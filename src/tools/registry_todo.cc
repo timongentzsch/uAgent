@@ -34,8 +34,7 @@ void RegisterTodoTool(std::vector<Tool>& tools) {
             result.todo = a["items"];
             return result;
           }));
-  // The list changes nothing outside the conversation, so it needs no
-  // capability.
+  // The list changes nothing outside the conversation: no capability needed.
   todo.capabilities = 0;
   todo.category = "collaborate";
   todo.headline = [](const json& a) {

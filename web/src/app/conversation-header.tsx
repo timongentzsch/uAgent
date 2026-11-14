@@ -15,13 +15,15 @@ import {
 } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
 import { useCompact, useNarrowColumn } from "../shared/layout.ts";
+import { useHosts, useMultipleHosts } from "../state/sources.ts";
 import { useHostContext } from "../state/host-context.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { isBrowsing } from "./chat-page.tsx";
 import type { Page } from "./app.tsx";
+import type { DetailControl } from "./menus.tsx";
+import { Tabs } from "../shared/tabs.tsx";
+import { capitalize } from "../shared/display.ts";
 
-// What a narrow column's header says under the title: the composer's totals,
-// which it leaves out.
 function Totals({
   session,
   outgoing,
@@ -45,10 +47,6 @@ function Totals({
   );
 }
 
-// The page's title and what acts on the open conversation: the browser, its
-// files, Settings on a small screen and the conversation's menu. A narrow
-// column keeps the title with the totals and the menu, which takes the rest; the
-// browser stays while the agent uses it.
 export default function ConversationHeader({
   page,
   selected,
@@ -64,17 +62,16 @@ export default function ConversationHeader({
   openDrawer,
   choose,
   settings,
+  detail,
   menu,
 }: {
   page: Page;
   selected: string;
   session?: Session;
-  // The conversation that started this one, when listed.
   parent?: Session;
   opening: boolean;
   booting: boolean;
   browserAvailable: boolean;
-  // Present while the host offers terminals.
   terminal?: { open: boolean; toggle: () => void };
   filesOpen: boolean;
   setFilesOpen: (open: boolean) => void;
@@ -82,6 +79,7 @@ export default function ConversationHeader({
   openDrawer: () => void;
   choose: (id: string) => void;
   settings: () => void;
+  detail: DetailControl;
   menu: (
     item: Session,
     withDetail?: boolean,
@@ -89,13 +87,16 @@ export default function ConversationHeader({
   ) => ComponentChildren;
 }) {
   const { store, setModal } = useHostContext();
+  const hosts = useHosts();
+  const multipleHosts = useMultipleHosts();
+  const executionHost =
+    hosts.sources.find((source) => source.id === (session?.host || ""))?.name ||
+    "Local";
   const compact = useCompact();
   const narrow = useNarrowColumn();
-  // The browser icon shows when this conversation's agent is using it.
   const browsing = useSnapshots(store, (all) => isBrowsing(all[selected]));
   const openBrowser = () => setModal({ type: "browser" });
-  // In a narrow column the conversation's menu holds the header's other actions;
-  // without a conversation there is no menu, and Settings keeps its button.
+  // A narrow column's conversation menu holds the header's other actions.
   const inMenu = narrow && page === "chat" && !!(session || opening);
   const titleOf = (item: Session) => item.title || "Conversation";
   const phoneItems = inMenu && {
@@ -125,32 +126,41 @@ export default function ConversationHeader({
         </IconButton>
       )}
       <div>
-        <h1
-          title={
-            session
-              ? [titleOf(session), session.cwd].filter(Boolean).join("\n")
-              : undefined
-          }
-        >
-          {page === "library" ? (
-            "Library"
-          ) : page === "scheduled" ? (
-            "Scheduled"
-          ) : page === "folder" ? (
-            "Overview"
-          ) : page === "terminal" ? (
-            "Terminal"
-          ) : session ? (
-            titleOf(session)
-          ) : opening ? (
-            <span class="text-skeleton" aria-hidden="true">
-              Loading conversation
+        <div class="head-identity">
+          <h1
+            title={
+              session
+                ? [titleOf(session), session.cwd].filter(Boolean).join("\n")
+                : undefined
+            }
+          >
+            {page === "library" ? (
+              "Library"
+            ) : page === "scheduled" ? (
+              "Scheduled"
+            ) : page === "folder" ? (
+              "Overview"
+            ) : page === "terminal" ? (
+              "Terminal"
+            ) : session ? (
+              titleOf(session)
+            ) : opening ? (
+              <span class="text-skeleton" aria-hidden="true">
+                Loading conversation
+              </span>
+            ) : (
+              "µAgent"
+            )}
+          </h1>
+          {multipleHosts && page === "chat" && session && (
+            <span
+              class="execution-host small muted truncate"
+              title="Execution host"
+            >
+              {executionHost}
             </span>
-          ) : (
-            "µAgent"
           )}
-        </h1>
-        {/* An agent leads back to the conversation that started it. */}
+        </div>
         {page === "chat" && parent && (
           <p class="head-subtitle small">
             <Button variant="quiet" onClick={() => choose(parent.id)}>
@@ -160,6 +170,27 @@ export default function ConversationHeader({
         )}
         {inMenu && session && <Totals session={session} outgoing={outgoing} />}
       </div>
+      {!inMenu && page === "chat" && session && (
+        <>
+          <Tabs
+            label="Detail"
+            size="compact"
+            tabs={detail.levels.map((level) => ({
+              key: level,
+              label: capitalize(level),
+            }))}
+            value={detail.level}
+            to={detail.change}
+          />
+          <Button
+            size="compact"
+            aria-pressed={detail.thinking}
+            onClick={() => detail.showThinking(!detail.thinking)}
+          >
+            Thinking
+          </Button>
+        </>
+      )}
       {browserAvailable && (!inMenu || browsing) && (
         <IconButton
           label={browsing ? "Open browser, agent working" : "Open browser"}
@@ -180,7 +211,6 @@ export default function ConversationHeader({
           <Terminal />
         </IconButton>
       )}
-      {/* Held in place while the session loads, inert. */}
       {!inMenu && page === "chat" && (session || opening) && (
         <IconButton
           label="Files"
@@ -202,7 +232,6 @@ export default function ConversationHeader({
         (session ? (
           menu(session, true, phoneItems || undefined)
         ) : opening ? (
-          // Inert until the session is known.
           <IconButton label="Conversation menu" disabled>
             <Ellipsis />
           </IconButton>

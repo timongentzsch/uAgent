@@ -10,12 +10,35 @@
 
 #include "include/app/launch.h"
 #include "include/app/session.h"
+#include "include/app/session_host.h"
 #include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/tools/files.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+
+TEST_CASE(TestWorkerRestartWaitsForActivityAndApprovals) {
+  session::HostSession worker;
+  CHECK(!worker.RestartBusy());
+  worker.turn_active = true;
+  CHECK(worker.RestartBusy());
+  worker.turn_active = false;
+  worker.command_busy = true;
+  CHECK(worker.RestartBusy());
+  worker.command_busy = false;
+  worker.pending = {{"request_id", "approval"}};
+  CHECK(worker.RestartBusy());
+  worker.pending = nullptr;
+  worker.active_exchanges["tool"] = json::object();
+  CHECK(worker.RestartBusy());
+  worker.active_exchanges.clear();
+  CHECK(!worker.RestartBusy());
+  worker.state["activities"] = json::array({{{"status", "running"}}});
+  CHECK(worker.RestartBusy());
+  worker.state["activities"][0]["status"] = "finished";
+  CHECK(!worker.RestartBusy());
+}
 
 // A worker reports the executable it started from in its hello, so a host can
 // recycle workers left running across an upgrade.
@@ -85,8 +108,7 @@ TEST_CASE(TestCloseRuntimeWaitsForTheRuntime) {
   unlink(address.c_str());
 }
 
-// A command a client sends just before it closes is taken, also when it
-// closes with frames unread, which resets the socket.
+// Closing with frames unread resets the socket; the command is taken anyway.
 TEST_CASE(TestACommandSentBeforeClosingIsTaken) {
   TestWorkspace test("send-and-close");
   const std::string path = (test.workspace / "s.json").string();
@@ -141,8 +163,6 @@ TEST_CASE(TestSessionFramePartitions) {
   }));
   CHECK(calls == 1);
 
-  // The blocking adapter drains buffered frames, obeys a wake descriptor,
-  // and terminates on a deadline without requiring a socket or provider.
   session::Pipe stream, stop;
   REQUIRE(stream.Open());
   REQUIRE(stop.Open());

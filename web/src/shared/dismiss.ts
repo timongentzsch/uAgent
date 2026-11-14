@@ -2,9 +2,8 @@ import { useLayoutEffect } from "preact/hooks";
 import { useLatest } from "./use-latest.ts";
 
 // Open layers (dialogs, sheets, inner pages) as one stack bound to browser
-// history, so the system back gesture closes the topmost layer as it does in
-// a native app. Each layer owns one history entry carrying its depth; session
-// navigation (the #session= hash) keeps its own entries and listener.
+// history: back closes the topmost. Each layer owns one history entry
+// carrying its depth; session navigation keeps its own entries.
 interface Layer {
   depth: number;
   close: () => void;
@@ -40,9 +39,7 @@ const depthOf = (state: unknown) => (state as Entry)?.layer ?? 0;
 const seqOf = (state: unknown) => (state as Entry)?.seq;
 let seq = Date.now();
 let at = seqOf(history.state);
-// Whether the latest move through history went to an older entry.
 export let wentBack = false;
-// The state for any new entry the app pushes (a session, a layer).
 export const entry = (layer?: number) => ({ layer, seq: (at = ++seq) });
 
 // A reload or deep link can land on a layer entry with nothing open.
@@ -76,9 +73,8 @@ addEventListener("popstate", (event) => {
 });
 
 // Layers closed by the interface leave their entries behind; one pass after
-// the render removes them together, in a single history step. It only acts
-// while the current entry is one of ours: a session opened from inside a
-// layer has pushed its own entry, which must stay.
+// the render removes them in a single history step, only while the current
+// entry is a layer's: a session opened from inside one has pushed its own.
 let syncing = 0;
 function sync() {
   if (syncing) return;

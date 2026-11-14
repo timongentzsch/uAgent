@@ -16,6 +16,7 @@
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/workspace.h"
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
 #include "include/tools/memory.h"
@@ -36,11 +37,10 @@ int Application::RunChannel() {
   }
   SaveSession(true);
   used_before_ = UsageTotals();
-  if (AgentDepth() == 0 && api_.config.memory_enabled &&
+  if (!RemoteWorkspace() && AgentDepth() == 0 && api_.config.memory_enabled &&
       api_.config.memory_generate) {
     std::string error = StartMemoryExtractor(
-        runtime_.processes, api_, CanonicalAccessPath(CanonicalCwd()),
-        session_file_);
+        agent_, api_, CanonicalAccessPath(CanonicalCwd()), session_file_);
     if (!error.empty()) {
       DebugLog("memory_extract_start_error", {{"error", error}});
     }
@@ -69,8 +69,7 @@ int Application::RunChannel() {
   if (agent_.DeliverMail()) SaveSession(false);
   PublishChannelState();
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {
-    // Background work's result arrives on its own; an idle session also
-    // takes it up at once, as a turn, since it started the work to hear back.
+    // An idle session takes background work's result up at once, as a turn.
     agent_.DrainActivities(input->wake);
     agent_.DeliverMail();
     agent_.AccountSideUsage();
@@ -79,6 +78,8 @@ int Application::RunChannel() {
     json result;
     if (input->title) {
       agent_.Rename(std::move(*input->title));
+    } else if (input->keep) {
+      agent_.KeepHere();
     } else if (!input->control.is_null()) {
       AppSession session = Session();
       result = SessionControl(session, input->control);
@@ -95,6 +96,7 @@ int Application::RunChannel() {
         ReportUsage(UsageLedger(JsonValue(agent, "parent", "")));
       }
     }
+    RunQueuedCommands();
     SaveSession(input->title.has_value());
     if (!input->title && !input->control.is_null()) {
       channel_->CompleteControl(input->request_id, result);
@@ -114,8 +116,8 @@ void Application::PublishChannelState(bool checkpoint) {
     state["view"] = agent_.DisplaySnapshot();
     state["system_prompt"] = agent_.LastSentPrompt();
     state["http"] = agent_.HttpExchanges();
-    // An agent's last answer whole, for the report to its parent: the
-    // view holds a long one's opening only. Well inside what one mail holds.
+    // An agent's last answer whole, for the report to its parent: the view
+    // holds only a long one's opening.
     if (!context_.options.AgentRole().empty()) {
       constexpr size_t kAnswerBytes = kMailBytes / 4;
       std::string answer = agent_.LastText();
@@ -142,6 +144,7 @@ void Application::PublishChannelState(bool checkpoint) {
   state["todo"] = todo_ = agent_.Todo();
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
   state["title"] = Utf8Prefix(agent_.FirstUserText(), kUserTitleChars);
+  state["suggestion"] = suggestion_ = agent_.Suggestion();
   state["stop"] = agent_.LastStop();
   if (channel_) channel_->PublishState(state, checkpoint);
 }

@@ -1,8 +1,6 @@
-// How well `query` matches `text`, lower being better, or -1 when it does
-// not: its letters in order (a subsequence), ranked prefix first, then a
-// word's start, then by how tightly the letters sit. Letters spread wider
-// than twice the query do not match, so a long text does not match every
-// word.
+// Lower is better, -1 is no match: the query's letters in order, ranked
+// prefix first, then a word's start, then by tightness. Letters spread wider
+// than twice the query do not match.
 export function fuzzyScore(query: string, text: string) {
   const needle = query.trim().toLowerCase();
   const haystack = text.toLowerCase();

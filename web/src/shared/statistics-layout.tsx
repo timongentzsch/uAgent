@@ -10,7 +10,6 @@ import {
 } from "./quantities.ts";
 import "./statistics-layout.css";
 
-// Labelled values, the one shape every statistics scope lists.
 export type Row = [string, ComponentChildren];
 export function Rows({ rows }: { rows: Row[] }) {
   return (
@@ -41,8 +40,7 @@ export function UsageRows({ usage }: { usage?: Usage }) {
   );
 }
 
-// Code loading, data loading and loaded statistics share the same toolbar;
-// a unit (the turn or message opened) adds its scope beside Session.
+// Code loading, data loading and loaded statistics share the same toolbar.
 export function StatisticsLayout({
   unit,
   scope,

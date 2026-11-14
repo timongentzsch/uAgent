@@ -1,3 +1,4 @@
+import type { RefObject } from "preact";
 import { useEffect, useLayoutEffect, useState } from "preact/hooks";
 import { defaultZoom } from "./limits.ts";
 // The interface zoom in steps, as a browser offers it: choosing one rescales
@@ -5,6 +6,23 @@ import { defaultZoom } from "./limits.ts";
 export const zoomSteps = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
 const conversationMeasure = 1040;
 export const zoomChanged = "uagent:zoom";
+
+// The room inside an element: measured as it mounts, so nothing in it is
+// drawn before its room is known, and again whenever that changes.
+export function useRoom(box: RefObject<HTMLElement | null>) {
+  const [room, setRoom] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    setRoom({ w: element.clientWidth, h: element.clientHeight });
+    const observer = new ResizeObserver(([entry]) =>
+      setRoom({ w: entry.contentRect.width, h: entry.contentRect.height }),
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [box]);
+  return room;
+}
 
 // A touch screen: the on-screen keyboard, no hover.
 export const coarsePointer = () => matchMedia("(pointer: coarse)").matches;
@@ -141,13 +159,9 @@ export function observeViewport(update: () => void) {
   };
 }
 
-// Mobile keyboards shrink the visual viewport without moving layout: a
-// focused field can end up under the keyboard even though its surface
-// fits the visible window. Reveal it inside its own scroll container
-// (dialog body, management editor) — never the transcript (the scroll
-// stick owns it) and never the document (which must stay at scroll 0).
-// Runs on focus and on every viewport change: real keyboards arrive
-// after focus, and mocked viewports (tests) after the fill.
+// Mobile keyboards shrink the visual viewport without moving layout, so a
+// focused field can end up under the keyboard. Reveal it inside its own scroll
+// container, never the transcript (the scroll stick owns it) or the document.
 function revealFocusedField() {
   const active = document.activeElement;
   if (!(active instanceof HTMLElement) || active === document.body) return;
@@ -192,12 +206,9 @@ export function trackViewport() {
       Math.abs((viewport?.width || innerWidth) - root.clientWidth) <=
         VIEWPORT_ROUNDING_PX &&
       bounds.height < root.clientHeight - VIEWPORT_ROUNDING_PX;
-    // WebKit may retain landscape visual-viewport dimensions/offsets in a
-    // standalone app. At rest the CSS layout viewport is authoritative; keep
-    // visual geometry for keyboards and actual browser pinch zoom. In a tab,
-    // the keyboard's height reported again with no keyboard, unpanned, is
-    // that same leftover; any other change (a collapsing toolbar, a pan) is
-    // real.
+    // WebKit may retain landscape visual-viewport geometry in a standalone
+    // app: at rest the CSS layout viewport is authoritative. In a tab, the
+    // keyboard's height reported again with no keyboard is that same leftover.
     const stale =
       !keyboard &&
       (viewport?.scale || 1) === 1 &&
@@ -220,9 +231,8 @@ export function trackViewport() {
         `--viewport-${key}`,
         `${value}px`,
       );
-    // No transcript scrollIntoView here: the transcript hook owns its
-    // scroll; stealing it on focus caused jumps. Dialog and management surfaces reveal their focused
-    // field inside their own body instead (see revealFocusedField).
+    // No transcript scrollIntoView here: the transcript hook owns its scroll.
+    // Other surfaces reveal their focused field in their own body.
     revealFocusedField();
   });
   return () => {
@@ -231,7 +241,6 @@ export function trackViewport() {
   };
 }
 
-// Whether a media query matches, kept current.
 export function useMedia(query: string) {
   const [matches, setMatches] = useState(() => matchMedia(query).matches);
   useEffect(() => {

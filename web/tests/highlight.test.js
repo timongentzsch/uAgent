@@ -15,7 +15,6 @@ test("a file's language comes from its name, then its extension", () => {
 test("each highlighted line stands alone", () => {
   const lines = highlightLines("/* one\ntwo */\nint x;\n", "a.cc");
   assert.equal(lines.length, 3);
-  // The comment's span closes on its first line and opens again on the next.
   assert.match(lines[0], /^<span class="hljs-comment">\/\* one<\/span>$/);
   assert.match(lines[1], /^<span class="hljs-comment">two \*\/<\/span>$/);
   assert.match(lines[2], /hljs-type/);

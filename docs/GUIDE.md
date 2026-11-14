@@ -2,14 +2,53 @@
 
 From a first conversation to several running at once. Each section says what
 to do and links to the reference with the detail. The [README](../README.md)
-has the install and a one-screen quick start.
+has the overview and a one-screen quick start.
 
 Terms: a **conversation** is what you talk in (its file and its running
 process are a *session*); an **agent** is a conversation another one
 started to do part of its work; an **activity** is a command that keeps
 running in the background; **approval** is being asked before an action.
 
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | sh
+```
+
+It installs the latest release and asks where µAgent runs. Run it again to
+update, or use Settings → About in the [web interface](WEB.md#settings).
+From a checkout, `./install.sh` builds that checkout instead; an
+unpublished one needs its
+[remote bundle](REMOTE_HOSTS.md#installers-and-containers) or
+`UAGENT_LOCAL_ONLY=1`.
+
+| Choice | What you get |
+| --- | --- |
+| In a container (offered where Docker runs) | The published image with the web interface, the agent's browser and the terminal. Of this machine's files it sees only the folder you give it (`~/uagent-workspaces`), which the installer opens to the container's user (UID 10001) with `setfacl`, and starts with Docker. |
+| Here | The release under `~/.local`, checked against its checksum. It offers to put `~/.local/bin` on your `PATH` and to run the web interface as [a service at login](WEB.md). |
+
+| Variable | Effect |
+| --- | --- |
+| `UAGENT_INSTALL=container\|here` | Choose without being asked |
+| `UAGENT_VERSION=X.Y.Z` | Install that release, not the latest |
+| `UAGENT_PREFIX=DIR` | Install there, not under `~/.local` |
+| `UAGENT_NONINTERACTIVE=1` | Ask nothing, as without a terminal: install here unless `UAGENT_INSTALL=container`, and leave keys, `PATH` and services alone |
+
+Releases are built for Linux with glibc 2.38 or newer and macOS 15 or newer,
+on x86_64 and ARM64. On another system, or where the release does not start,
+the installer builds that release's source: it needs git, CMake 3.21+, a C++20
+compiler, libcurl 7.66+, zlib and Node.js, and fetches the release's remote
+bundle.
+
+To remove the service, run `systemctl --user disable --now uagent-web` and
+delete `~/.config/systemd/user/uagent-web.service` (Linux), or run
+`launchctl bootout gui/$(id -u)/com.github.timongentzsch.uagent.web` and delete
+`~/Library/LaunchAgents/com.github.timongentzsch.uagent.web.plist` (macOS).
+
 ## A first conversation
+
+The installer offers provider setup. Run `uagent setup` to configure or change
+it later; [free-model setup](#free-model-setup) is an optional starting point.
 
 ```sh
 cd my-project
@@ -30,6 +69,7 @@ command with its arguments.
 | Ctrl+X Ctrl+E | Edit the draft in `$VISUAL` or `$EDITOR` |
 | Ctrl+A, Ctrl+E, Ctrl+W, Ctrl+K, Ctrl+U | Line editing as in a shell |
 | Ctrl+B | Move the running command to the background |
+| Ctrl+O | Step to the next detail level and draw the conversation again |
 | Ctrl+C | Stop a running turn; twice while idle, leave |
 | Ctrl+D on an empty draft | Leave |
 
@@ -57,7 +97,8 @@ stays in the model id, so an endpoint's routing suffix (OpenRouter's
   choice as `/model NAME --default` does. `-p` and `--json` never choose for
   you: they exit with an error that names your providers.
 - Background work uses your conversation's model unless you name one: the
-  title (`title.model`, or `off`), memory extraction and agents. Image
+  title and where an unfiled conversation belongs (`title.model`, or `off`),
+  memory extraction (`memory.model`) and agents. Image
   reading does too when that model accepts images; otherwise it uses the
   first model of the same endpoint that does, or tells you to set
   `image.model`.
@@ -67,12 +108,54 @@ stays in the model id, so an endpoint's routing suffix (OpenRouter's
 - The `auto` approval reviewer needs a provider that declares `decisions`
   (one at openrouter.ai does). With none, Auto mode asks you.
 
-`uagent setup` asks for an OpenRouter, OpenAI and Anthropic key (Enter skips
-one), checks each against its endpoint, and saves them for all conversations
-with a default model it suggests from the first endpoint that has a key. Each
+`uagent setup` offers free-model setup first. Decline it to enter OpenRouter,
+OpenAI or Anthropic keys (Enter skips one). It checks each against its endpoint
+and saves them for all conversations, with a default model suggested from the
+first endpoint that has a key. Each
 key becomes a provider named `openrouter`, `openai` or `anthropic` that refers
 to it as a variable, so `anthropic/claude-sonnet-5-5` names a model there.
 Run it again to change them; a start with no provider offers it.
+
+### Free-model setup
+
+Sign in instead of copying a key: `uagent setup openrouter` opens OpenRouter in
+this machine's browser, you approve, and µAgent receives a key of your own. Over
+SSH, in a container or with `--no-browser` it prints a link to open on any
+device and asks for the code that page shows; the code works once, for ten
+minutes, and only with a secret that stays on this host. Without a terminal it
+takes the code from standard input and the first eligible model. The web
+interface offers the same on its home screen while no provider is set up. An
+OpenRouter account is still needed.
+
+Or choose the free option in `uagent setup`, create an
+[OpenRouter API key](https://openrouter.ai/keys), and select a model. Setup checks
+the key and queries OpenRouter's model catalogue, reusing a cached response for
+up to 24 hours. It lists `:free` variants with tool calling, at least 65,536
+context tokens, and zero prices in every advertised pricing field. The list is
+metadata-based, not a coding-quality ranking; no model names are hardcoded.
+
+Either way creates a separate `openrouter-free` provider with `options.free_only: true`
+and a key reference to `OPENROUTER_FREE_API_KEY`. Other providers are preserved.
+Choosing a model makes it the default for new conversations. If the key cannot
+be validated or no eligible models are available, setup leaves settings
+unchanged; installation itself can still finish.
+
+The preset filters catalogue discovery, including automatic image-model
+selection, and sends zero price caps for prompt, completion, request and image
+charges. It disables hosted search, hosted PDF parsing and automatic paid
+approval-review fallback. An unavailable free model reports an error; it does
+not fall back to a paid one. Explicit models for titles, images, search or
+review remain your settings and may incur charges through other providers.
+This preset is for OpenRouter's Chat Completions endpoint, not a universal
+billing limit for arbitrary providers or manually modified configurations.
+
+Free models have rate limits, changing availability and provider-specific data
+policies. Review [OpenRouter's free-model information](https://openrouter.ai/collections/free-models)
+and [price routing](https://openrouter.ai/docs/guides/routing/provider-selection#max-price).
+A free API price does not remove infrastructure costs or make a model suitable
+for sensitive code.
+
+### Provider configuration
 
 In the web, Settings → All conversations → Providers lists them; Add a
 provider starts from OpenRouter, OpenAI, Anthropic or Ollama, or any other
@@ -259,6 +342,12 @@ for five minutes. One web host serves every folder's conversations, and a
 conversation open in a terminal is the same one in the browser.
 [Web interface](WEB.md) covers phones, other machines and notifications;
 [The agent's browser](BROWSER.md) covers the Chrome the agent can drive.
+
+For a folder on another machine, use **Remote hosts → Add host**, then choose that
+**Host** in **New conversation** or **New folder** and browse to a folder.
+The main still owns model keys, settings and history. The bottom Remote hosts panel
+reports connectivity and measured round trip; it does not switch the whole
+application. [Remote hosts](REMOTE_HOSTS.md) covers SSH setup and limits.
 
 ## Agents
 

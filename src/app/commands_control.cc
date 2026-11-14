@@ -22,6 +22,7 @@
 #include "include/core/runtime_config.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
 #include "src/app/commands_internal.h"
@@ -43,9 +44,8 @@ json ApprovalState(const EffectiveConfigSnapshot& configured, bool agent) {
       JsonValue(configured.sources, kApprovalKey, "") == "conversation";
   ApprovalMode effective = parsed(configured.Get(kApprovalKey));
   ApprovalMode inherited = parsed(configured.Inherited(kApprovalKey));
-  // An agent works unattended for its parent: it reviews (Auto) unless a
-  // mode is chosen for its own conversation, as its start does for a
-  // parent that asks; the saved setting does not reach it.
+  // An agent reviews (Auto) unless a mode is chosen for its own conversation;
+  // the saved setting does not reach it.
   if (agent) {
     inherited = ApprovalMode::kAuto;
     if (!chosen) effective = inherited;
@@ -118,12 +118,12 @@ static std::string ChooseForConversation(AppSession& session,
 }
 
 namespace {
-// Forks the conversation, or shares it.
 json ForkOrShare(AppSession& session, const json& request) {
   const std::string kind = JsonValue(request, "kind", "");
   if (session.session_file.empty()) {
     if (kind != "fork") return {{"error", "session has no file yet"}};
-    session.session_file = HistoryPath(CanonicalCwd(), MakeSessionId());
+    session.session_file =
+        HistoryPath(Workspace().path, MakeSessionId(), Workspace().host);
   }
   std::string error;
   if (!session.Save(error)) return {{"error", error}};
@@ -134,7 +134,6 @@ json ForkOrShare(AppSession& session, const json& request) {
                             JsonValue(request, "message_id", ""));
 }
 
-// Configuration changes; the conversation's own scope is applied here.
 json ConfigureSession(AppSession& session, const json& request) {
   ConfigManager& manager = session.context.config_manager;
   json effects = json::array();
@@ -162,8 +161,6 @@ json ConfigureSession(AppSession& session, const json& request) {
   return reply;
 }
 
-// The model chosen in the interface becomes the session's, and maybe the
-// default.
 json SelectModelControl(AppSession& session, const json& request) {
   std::string value = JsonValue(request, "model", "");
   ModelSelection selection = ParseModelSelection(value);
@@ -233,6 +230,9 @@ json SessionControl(AppSession& session, const json& request) {
 }
 
 json ActivityControl(ActivitySupervisor& processes, const json& request) {
+  if (RemoteWorkspace()) {
+    return WorkspaceRequest({{"op", "activity_control"}, {"request", request}});
+  }
   std::string operation = JsonValue(request, "operation", "list");
   if (operation == "background") {
     return processes.RequestForegroundBackground()

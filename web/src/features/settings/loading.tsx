@@ -1,8 +1,6 @@
 import { Group, Placeholder, Row } from "../../shared/ui.tsx";
 import "./settings.css";
 
-// Registry settings before they load, drawn from sample data (see
-// <Placeholder>).
 export function SettingRowsLoading() {
   return (
     <Placeholder label="Loading configuration…">

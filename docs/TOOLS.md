@@ -33,14 +33,12 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `edit_file` | apply ordered exact replacements atomically | full toolset |
 | `delete_file` | delete a regular file and show the removed content | full toolset |
 | `run` | run a supervised shell command, optionally with a PTY or detached; its required `description` is what the row shows | always |
-| `scratch` | write and run a one-off script in `.uagent/scratch`: `.py` under uv (or `python3` when it declares no dependencies), `.sh` under `sh`, `.js`/`.mjs` under `node`; writing the script needs no approval, running it does and shows the script; it runs in the workspace, and the result names what it left in the workspace root | `uv`, `python3`, `node` or `sh` on `PATH` |
 | `activity` | list, poll, wait for, write to, resize or stop activities | always |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
-| `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions, the web stylesheet) | once the `uagent-config` skill is open |
-| `uagent_configure`, `uagent_file` | change settings, or replace an instructions file or the web UI's stylesheet, by an exact diff a person approves | once the `uagent-config` skill is open, where a person can approve |
+| `uagent` | `show` this build (status, flags, commands, config, tools, prompt, routes, instructions, the web stylesheet, MCP servers, permission rules, skills); `set` settings, or `write` an instructions file, the web UI's stylesheet, the system message's changes, the folder's `.mcp.json` or a skill, by an exact diff a person approves; `command` queues one slash command (`/model NAME`, `/compact`, `/permissions auto`; not a client's navigation, nor `/init`, `/review` or `/diff`), which runs when the turn ends once a person approved the exact line | once the `uagent-config` skill is open; `set` and `write` only where a person can approve, `command` only in a conversation of your own there, not in an agent's |
 | `web_fetch` | read one public http(s) URL as text | always |
 | `schedule` | list, save, pause, resume, delete or run scheduled tasks; a task runs in this folder on this conversation's model, with no wider approval mode than this conversation's; see [Management](MANAGEMENT.md#scheduled-tasks) | a session with a client |
-| `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
+| `present` | hand the user what was made, as a card in the conversation: a document, deck, design or design system (its folder or page, as its pages say what they are) opens in Files from the folder and stays live; any other file is snapshotted into the session's assets to open or download (HTML runs sandboxed, PDFs and images open inline) | a session with a client |
 | `web_search` | cited web search through a search an endpoint runs | a search can run on the conversation's route (see below) |
 | `todo` | replace the conversation's to-do list (up to 24 items, each pending or done; the first not done is the current step); it is kept with the conversation and carried on every request while it has items | always |
 | `agent_start` | start agents, each a conversation of its own on a brief; see [Agents](#agents) | unless this agent is `agents.depth` levels deep |
@@ -64,7 +62,8 @@ and turn budgets apply in every approval mode.
 
 ## Approval
 
-Reading and searching inside the folder needs no approval. Calls that
+Reading and searching inside the folder needs no approval, and neither does
+reading a skill's files, wherever µAgent finds skills. Calls that
 change files, run commands, use the network or touch a path outside the
 folder follow the approval mode: `ask` (the default), `auto`, `yolo`
 (also `/yolo` or `--yolo`) or `plan` (also `/plan`), set with `/permissions`
@@ -101,10 +100,15 @@ theirs.
 - `grep` defaults to regex content matches. `literal=true` searches exact
   text, `mode=files` matches file names and `mode=matching_files` returns the
   paths whose contents match; both path modes ignore `context`.
+- `.uagent/scratch` in the folder holds the agent's own one-off scripts.
+  Writing one needs no approval and the folder ignores itself in git; the
+  system message's [Scratch section](INSTRUCTIONS.md#the-system-message)
+  says how they are run, and the approval of the `run` that starts one shows
+  the script.
 - `/changes` lists the files the last turn's `write_file`, `edit_file` and
   `delete_file` calls changed, and `/undo [FILE]` puts them back. Changes
   made by shell commands are not tracked.
-- `run`, `scratch` and `grep` run inside the OS sandbox: writes are limited
+- `run` and `grep` run inside the OS sandbox: writes are limited
   to the folder, temporary directories and package caches, and the hidden
   stores (the browser profile, µAgent's settings and other tools' credential
   stores) cannot be read; the file tools refuse them too.
@@ -236,10 +240,14 @@ stopped), a state (running, ok, failed, cancelled) and a body to open.
 Nothing in it names a tool, provider or model; an MCP or unknown tool reads
 "Called NAME".
 
-Each call is one row, and the work line is the only fold. It counts what it
-holds: "Worked 6 steps · edited 1 file · 1 error". A tool declares the calls that only look at earlier work
-`routine` (an `activity` list, an `agents` list): their rows
-show at full detail only.
+Each call is one row. The work line folds a turn's work and counts it by
+kind: "Worked 3 reads, 1 search, 2 edits, 1 command, 2 notes · 1 error". A
+note is what the agent said between calls. Two or more calls in a row that
+only look (a read, a search, a web fetch, a memory lookup) sit under one
+group row, "Explored 3 files, 1 search"; a call that does more, or a note,
+ends the run. A tool declares the calls that only look at earlier work
+`routine` (an `activity` list, an `agents` list): their rows show at full
+detail only.
 
 The terminal and the web draw the same tree. The detail level,
 `UAGENT_DETAIL`, only sets how deep it starts open, and the model never
@@ -247,10 +255,22 @@ reads it:
 
 | Level | Depth | Shows |
 | --- | --- | --- |
-| `minimal` | 0 | each turn's work as one line (the current step while it runs) |
-| `default` | 1 | the work's steps, each one closed line |
+| `minimal` | 0 | each turn's work as one line (the current step while it runs); a new install starts here |
+| `default` | 1 | the work's steps, each one closed line, a run of looking as one |
 | `full` | all | every row open, routine rows included |
 
-`/detail LEVEL` changes it for every terminal, and a browser starts at it;
-Detail in a web conversation's menu sets that browser's own level.
+What the agent says while it works shows as it says it at every level. Once
+the turn has ended those notes stay between the steps at `default` and
+`full`, and fold into the work line at `minimal`; a terminal keeps what it
+printed and folds them when it draws the turn again.
+
+Thinking is its own switch, `UAGENT_THINKING`, off at first: off, it is drawn
+nowhere; on, each thought is text among the steps, fainter than a reply and
+in italics, with no row of its own: its first two lines at `default`, whole
+at `full`, and counted in the work line. In a browser a folded work shows
+its latest thought on one line while it runs.
+
+`/detail LEVEL` changes it for every terminal, and Ctrl+O steps to the next
+one; a browser starts at it. The level and **Thinking** in a web
+conversation's header (its menu on a narrow screen) set that browser's own.
 `--detail LEVEL` pins one terminal for one run.

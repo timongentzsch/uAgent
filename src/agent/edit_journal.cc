@@ -14,6 +14,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 namespace {
@@ -23,8 +24,7 @@ constexpr size_t kUndoFileBytes = MiB(2);
 constexpr uint64_t kUndoSessionBytes = MiB(64);
 constexpr size_t kSummaryFiles = 50;
 
-// Whether `path` still holds what a turn left: bytes hashing to `hash`, or
-// nothing at all for an empty hash.
+// An empty hash means the turn left no file.
 bool Holds(const std::string& path, const std::string& hash) {
   std::error_code ec;
   if (hash.empty()) {
@@ -36,6 +36,19 @@ bool Holds(const std::string& path, const std::string& hash) {
 }
 
 }  // namespace
+
+std::string RestoreFile(const std::string& path, const std::string& after_hash,
+                        bool existed, const std::string& before,
+                        uint32_t mode) {
+  if (!Holds(path, after_hash)) return "changed since";
+  if (!existed) {
+    std::error_code ec;
+    return !std::filesystem::remove(path, ec) && ec ? ec.message() : "";
+  }
+  const ToolResult write =
+      ToolAtomicWrite(path, before, static_cast<mode_t>(mode), true);
+  return write.Ok() ? "" : write.output;
+}
 
 void EditJournal::Open(std::string directory) {
   directory_ = std::move(directory);
@@ -110,7 +123,7 @@ json EditJournal::Files(int64_t turn) {
       ReadRegularFile(Blob(turn, entry.path), kUndoFileBytes, before, error);
     }
     if (!entry.after_hash.empty()) {
-      ReadRegularFile(entry.path, EditFileBytes(), after, error);
+      ReadWorkspaceFile(entry.path, EditFileBytes(), after, error);
     }
     const auto old_lines = DiffLines(before);
     const auto new_lines = DiffLines(after);
@@ -136,24 +149,23 @@ json EditJournal::Revert(int64_t turn, const std::string& path) {
   std::erase_if(found->second, [&](const Entry& entry) {
     const std::string shown = DisplayPath(entry.path);
     if (!path.empty() && path != shown && path != entry.path) return false;
-    std::string reason, error;
+    std::string reason, before;
+    const uint32_t mode = entry.before_mode.value_or(kPrivateFileMode);
     if (!entry.undoable) {
       reason = "not kept (binary or too large)";
-    } else if (!Holds(entry.path, entry.after_hash)) {
-      reason = "changed since";
-    } else if (!entry.existed) {
-      std::error_code ec;
-      if (!std::filesystem::remove(entry.path, ec) && ec) reason = ec.message();
-    } else {
-      std::string before;
-      ToolResult write =
-          ReadRegularFile(Blob(turn, entry.path), kUndoFileBytes, before, error)
-              ? ToolAtomicWrite(entry.path, before,
-                                static_cast<mode_t>(entry.before_mode.value_or(
-                                    kPrivateFileMode)),
-                                true)
-              : ToolFailure(ToolErrorCode::kNotFound, error);
-      if (!write.Ok()) reason = write.output;
+    } else if (!entry.existed ||
+               ReadRegularFile(Blob(turn, entry.path), kUndoFileBytes, before,
+                               reason)) {
+      reason = RemoteWorkspace()
+                   ? JsonValue(WorkspaceRequest({{"op", "undo"},
+                                                 {"path", entry.path},
+                                                 {"hash", entry.after_hash},
+                                                 {"existed", entry.existed},
+                                                 {"before", HexEncode(before)},
+                                                 {"mode", mode}}),
+                               "error", "")
+                   : RestoreFile(entry.path, entry.after_hash, entry.existed,
+                                 before, mode);
     }
     if (!reason.empty()) {
       conflicts.push_back({{"path", shown}, {"reason", reason}});

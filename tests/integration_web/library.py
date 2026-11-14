@@ -41,7 +41,7 @@ def test_web_library_lists_everything_by_place(root, home, *, binary):
     def responder(_, body):
         if any(message.get("role") == "tool" for message in body["messages"]):
             return event({"content": "shared"})
-        return tool_call("artifact", {"path": "report.html"})
+        return tool_call("present", {"path": "report.html"})
 
     with Server([responder]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):

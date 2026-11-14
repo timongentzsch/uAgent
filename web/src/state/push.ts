@@ -1,7 +1,6 @@
 import { api, routes } from "./api.ts";
 
-// Background push for this device: the browser's subscription, and the host
-// told about it. `key` is the host's VAPID public key, base64url.
+// `key` is the host's VAPID public key, base64url.
 export async function subscribePush(key: string) {
   const registration = await navigator.serviceWorker.ready;
   const subscription =

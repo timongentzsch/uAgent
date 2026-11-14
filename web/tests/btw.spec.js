@@ -37,8 +37,7 @@ for (const width of [320, 1280]) {
         .click();
     await expect(side).toContainText("SIDE-FOLLOWUP-COMPLETE");
     await expect(side).toContainText("SIDE-TOOL-COMPLETE");
-    // Repeating /btw in the main composer follows up only on the side.
-    // The local command must not fall through to the parent's submit path.
+    // A repeated /btw must not fall through to the parent's submit path.
     await expect(
       side.locator("header").getByText("Ready", { exact: true }),
     ).toBeVisible();

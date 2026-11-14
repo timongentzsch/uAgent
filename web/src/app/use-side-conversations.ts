@@ -2,13 +2,11 @@ import { useCallback } from "preact/hooks";
 import type { Report, Session, Snapshot } from "../shared/types.ts";
 import { stored, useStored } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
-import { command, requestId } from "../state/api.ts";
-
-// The /btw side conversations of the shell: one per conversation, kept in
-// local storage across reloads. Used by the shell and the chat page.
+import { requestId, useApi } from "../state/api.ts";
 
 type Side = { question: string; id?: string; firstRequest: string };
 
+// Session ids and side conversations are main-owned, across execution hosts.
 const kept = stored<Record<string, Side>>(
   storageKeys.sideConversations,
   {},
@@ -19,8 +17,6 @@ const kept = stored<Record<string, Side>>(
   },
 );
 
-// The /btw side conversation of each conversation: started from a question,
-// kept across reloads once it has its own session, and asked again there.
 export function useSideConversations({
   selected,
   load,
@@ -32,6 +28,7 @@ export function useSideConversations({
   refresh: () => Promise<void>;
   report: Report;
 }) {
+  const { command } = useApi();
   const [sides, setSides] = useStored(kept);
   const side = sides[selected] || null;
   const closeSide = useCallback(
@@ -43,7 +40,6 @@ export function useSideConversations({
       }),
     [selected],
   );
-  // Asks the parent's side conversation, starting it with the first one.
   async function ask(parent: Session, argument: string) {
     const existing = sides[parent.id];
     if (existing && !existing.id)
@@ -95,7 +91,6 @@ export function useSideConversations({
       report(failure);
     });
   }
-  // Logging out forgets them all.
   const clearSides = () => setSides({});
   return { side, closeSide, ask, clearSides };
 }

@@ -159,8 +159,7 @@ void McpDrainInbound(McpServer& s) {
   std::string line;
   while (McpTakeLine(s, line)) {
     json message = json::parse(line, nullptr, false);
-    // At this boundary no client request is outstanding. Non-request
-    // messages are stale responses and can be discarded safely.
+    // No client request is outstanding here, so any response is stale.
     if (!message.is_discarded()) McpHandleMessage(s, message);
   }
 }
@@ -213,8 +212,8 @@ json McpAwaitUntil(McpServer& s, int64_t id, int64_t timeout_s,
   if (!s.alive) return McpErrorReply("server exited" + McpStderrHint(s.name));
   bool cancelled = cancellable && AbortRequested();
   if (cancelled) ClearAbort();
-  // Notify a responsive server, but never add the normal write timeout after
-  // the request's budget is already exhausted.
+  // A short deadline: the request's budget is spent, so the notice must not
+  // add the normal write timeout.
   McpSend(s, -1, "notifications/cancelled",
           {{"requestId", id},
            {"reason", cancelled ? "user cancelled" : "request timed out"}},

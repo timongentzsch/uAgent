@@ -2,7 +2,7 @@
 #ifndef UAGENT_INCLUDE_UI_ASK_PICKER_H_
 #define UAGENT_INCLUDE_UI_ASK_PICKER_H_
 // The terminal's answer to an ask tool: a raw-mode picker and a typed-line
-// fallback. Used by the terminal client when a decision asks questions.
+// fallback.
 
 #include <functional>
 #include <optional>
@@ -13,14 +13,9 @@
 namespace uagent {
 class LiveRegion;
 
-// Answers an ask tool's questions in a raw-mode terminal, one at a time:
-// up and down move, space toggles an option of a multi-select question,
-// enter chooses (on Other it asks for their own words), i attaches an image
-// by path, escape cancels. Returns the reply fields {text, attachments}, or
-// null when cancelled or when `live` says the decision was answered
-// elsewhere. It draws in `region`, in the composer's place; input is read
-// from stdin. `wake` turns readable when `live` may have changed or the
-// terminal was resized; between keys and wakes the picker sleeps.
+// Answers an ask tool's questions in a raw-mode terminal, drawn in `region`.
+// Returns {text, attachments}, or null when cancelled or answered elsewhere
+// (`live`). `wake` turns readable when `live` may have changed.
 json PickAskAnswers(const json& questions, LiveRegion& region, int wake,
                     const std::function<bool()>& live);
 
@@ -30,9 +25,8 @@ std::optional<std::string> PickSecret(const std::string& prompt,
                                       LiveRegion& region, int wake,
                                       const std::function<bool()>& live);
 
-// The same answers from one typed line, for a terminal without raw input:
-// one part per question, split by ";", where option numbers ("1" or "1,3")
-// choose and anything else is the person's own words.
+// The same from one typed line, for a terminal without raw input: parts
+// split by ";"; option numbers ("1" or "1,3") choose, the rest is free text.
 std::string AskAnswersFromLine(const json& questions, const std::string& line);
 }  // namespace uagent
 #endif

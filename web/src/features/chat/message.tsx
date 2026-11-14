@@ -1,4 +1,4 @@
-import DesignCards from "./design-card.tsx";
+import { ArtifactCard } from "./artifact-card.tsx";
 import "../../shared/attachments.css";
 import "./message.css";
 import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
@@ -18,19 +18,17 @@ import { useStored } from "../../shared/storage.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { MessageActions } from "./message-actions.ts";
 import { X } from "lucide-preact";
-import { Button, IconButton, Time } from "../../shared/ui.tsx";
+import { Button, IconButton, Notice, Time } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
-import { routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useNodeReader } from "../../state/node-reader.ts";
 import { isRow } from "../../shared/tree.ts";
 import { TurnFooter } from "./turn-footer.tsx";
 import { SharedFile } from "./bodies.tsx";
 
-// Inline @-mention reference. Resolves against the message's own files so
-// a renamed file shows its current name; a removed one degrades to muted
-// text instead of a broken image. No files (replies echoing the syntax):
-// the splitter never emits mentions, so this stays unreachable.
+// Resolves against the message's own files: a renamed file shows its
+// current name, a removed one degrades to muted text.
 function MentionFile({
   id,
   alt,
@@ -56,8 +54,7 @@ function MentionFile({
   );
 }
 
-// Who wrote a message and when, e.g. "You, 10:32": its accessible name and
-// its menu's. Smart and absolute styles only, so it needs no ticking.
+// Smart and absolute time styles only, so it needs no ticking.
 function useRowName(who: string, time?: string) {
   const [prefs] = useStored(devicePrefs.time);
   const date = time ? new Date(time) : null;
@@ -66,7 +63,6 @@ function useRowName(who: string, time?: string) {
   return `${who}, ${formatMoment(date, { ...prefs, style })}`;
 }
 
-// Who wrote a message in your place, for its accessible name.
 const AUTHORS: Record<string, string> = {
   agent: "Agent report",
   activity: "Background result",
@@ -77,10 +73,6 @@ const AUTHORS: Record<string, string> = {
 // the file itself (a reference, a vision-model description).
 const AS_SENT = new Set(["Image", "Document", "Text", "Audio", "Video"]);
 
-// A node drawn whole rather than as a row: your message, with its time and
-// menu on its first line; a reply or the files the agent handed you, which
-// have no header line (an answer's time and menu sit at the end of its
-// turn's footer); files a call brought into context; and a turn's footer.
 export function MessageView({
   node,
   answer,
@@ -101,7 +93,6 @@ export function MessageView({
   );
 }
 
-// Files a call's result brought into context, under that call.
 function BroughtFiles({
   node,
   online,
@@ -111,6 +102,7 @@ function BroughtFiles({
   online: boolean;
   session: SessionRef;
 }) {
+  const { routes } = useApi();
   const assets = routes.assets(session.id);
   if (!node.files?.length) return null;
   return online ? (
@@ -129,6 +121,7 @@ function Message({
   online: boolean;
   session: SessionRef;
 }) {
+  const { routes } = useApi();
   const {
     read,
     report,
@@ -139,11 +132,9 @@ function Message({
     open,
     openFile,
   } = useContext(MessageActions);
-  // The whole text loads when asked for by Show full message.
   const [wantFull, setWantFull] = useState(false);
   const reply = node.role === "assistant";
-  // What woke the conversation in your place has your message's line, not
-  // its bubble.
+  // A message with an origin (what woke the conversation) has no bubble.
   const chrome = reply ? "response" : node.origin ? "mail" : "user inverse";
   const load = useNodeReader(session, read);
   const truncated = node.body?.truncated;
@@ -204,12 +195,7 @@ function Message({
         {name}
       </h3>
       {reply ? (
-        <>
-          {words}
-          {openFile && !node.streaming && text && (
-            <DesignCards session={session.id} text={text} open={openFile} />
-          )}
-        </>
+        words
       ) : (
         <div class="message-line">
           <div class="message-text">
@@ -274,12 +260,20 @@ function Message({
       {online && !!node.files?.length && (
         <AttachmentList files={node.files} href={(id) => `${assets}${id}`} />
       )}
-      {/* Files the agent handed you, previewed where that is safe. */}
-      {node.parts?.map(
-        (part, index) =>
-          part.kind === "file" && (
-            <SharedFile key={index} file={part} href={`${assets}${part.id}`} />
-          ),
+      {node.parts?.map((part, index) =>
+        part.kind === "file" ? (
+          <SharedFile key={index} file={part} href={`${assets}${part.id}`} />
+        ) : (
+          part.kind === "artifact" &&
+          openFile && (
+            <ArtifactCard
+              key={index}
+              session={session.id}
+              part={part}
+              open={openFile}
+            />
+          )
+        ),
       )}
       {truncated && (
         <Button disabled={expanding} onClick={() => setWantFull(full === null)}>
@@ -291,18 +285,23 @@ function Message({
         </Button>
       )}
       {(node.error || (resend && unsent(node))) && (
-        <p role="alert" class={unsent(node) ? "failure unsent" : undefined}>
+        <Notice
+          tone="error"
+          action={
+            resend &&
+            unsent(node) && (
+              <Button
+                size="compact"
+                disabled={!online}
+                onClick={() => resend(node)}
+              >
+                Retry
+              </Button>
+            )
+          }
+        >
           {node.error || node.status}
-          {resend && unsent(node) && (
-            <Button
-              size="compact"
-              disabled={!online}
-              onClick={() => resend(node)}
-            >
-              Retry
-            </Button>
-          )}
-        </p>
+        </Notice>
       )}
       {(node.unavailable_images || 0) > 0 && (
         <p class="muted">
@@ -314,9 +313,8 @@ function Message({
   );
 }
 
-// Prepare only the bounded completed page about to be mounted. The same
-// parser cache is read synchronously by Markdown on its first render; a
-// conversation's messages cite files, so they render with references.
+// Prepares only the page about to be mounted; Markdown reads the same
+// parser cache synchronously on its first render.
 export async function prepareHistoryNodes(nodes: Node[]) {
   const texts = new Set<string>();
   for (const node of nodes) {

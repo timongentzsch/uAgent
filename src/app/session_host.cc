@@ -131,10 +131,11 @@ void SessionHost::LoadDrafts() {
     session->id = JsonValue(draft, "id", "");
     session->path = JsonValue(draft, "path", "");
     session->cwd = JsonValue(draft, "cwd", "");
+    session->host = JsonValue(draft, "host", "");
     const std::filesystem::path path(session->path);
     if (!OpaqueId(session->id) || session->id != SessionIdFor(session->path) ||
         path.parent_path() != std::filesystem::path(UagentDir(kHistoryDir)) /
-                                  WorkspaceId(session->cwd) ||
+                                  WorkspaceId(session->cwd, session->host) ||
         !path.filename().string().starts_with("web-") ||
         path.extension() != ".json") {
       continue;
@@ -187,6 +188,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
       continue;
     }
     session.cwd = item.cwd;
+    session.host = item.host;
     session.parent = item.parent;
     session.model = item.model;
     session.cost = item.cost;
@@ -194,6 +196,10 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.todo = item.todo;
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
+    // A running conversation says its own, which its file lags behind.
+    if (session.pid <= 0 || session.exited) {
+      session.suggestion = item.suggestion;
+    }
     // The catalogue stated the file already; its time is the one it read.
     session.updated =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -257,13 +263,14 @@ void SessionHost::RefreshPresence() {
 }
 
 json SessionHost::RestartRunning(const std::string& cwd,
-                                 const std::string& only) {
+                                 const std::string& only,
+                                 const std::string& host) {
   UniqueLock lock(mutex_);
   std::vector<std::shared_ptr<HostSession>> idle;
   int64_t deferred = 0;
   for (const auto& [id, session] : sessions_) {
     if (session->pid <= 0 || session->exited || session->closing ||
-        (!cwd.empty() && session->cwd != cwd) ||
+        (!cwd.empty() && (session->cwd != cwd || session->host != host)) ||
         (!only.empty() && id != only)) {
       continue;
     }
@@ -299,18 +306,18 @@ bool SessionHost::Contains(const std::string& id) const {
 }
 
 json SessionHost::Metadata(const HostSession& session) const {
-  // Waiting on a person: a decision routed to an agent's parent is not.
-  // What it waits on is named from the decision in memory, for the inbox
-  // row.
+  // A decision routed to an agent's parent does not wait on a person.
   const bool waits = WaitsOnPerson(session.pending);
   return {
       {"id", session.id},
       {"task_id", session.task_id},
       {"run_id", session.run_id},
       {"cwd", session.cwd},
+      {"host", session.host},
       {"parent", session.parent},
       {"model", session.model},
       {"title", session.title},
+      {"suggestion", session.suggestion},
       {"generation", session.generation},
       {"status", SessionStatusName(session.status)},
       {"presence", session.pid > 0 && !session.exited ? "active" : ""},

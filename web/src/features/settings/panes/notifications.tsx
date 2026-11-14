@@ -4,8 +4,6 @@ import { command } from "../../../state/api.ts";
 import { subscribePush, unsubscribePush } from "../../../state/push.ts";
 import { useSettings } from "../context.ts";
 
-// Notifications for this device: background push where the host offers it,
-// otherwise notifications while this view stays connected.
 export function NotificationsPane() {
   const {
     catalogue,

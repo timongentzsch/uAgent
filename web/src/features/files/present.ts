@@ -1,6 +1,5 @@
-// Presenting a deck in two windows: the slides in one, the presenter's view
-// (now, next, notes, a clock) in another. One BroadcastChannel keeps them on
-// the same slide; either moves both.
+// Presenting a deck in two windows, the slides and the presenter's view: one
+// BroadcastChannel keeps them on the same slide, and either moves both.
 
 export interface Presenting {
   session: string;
@@ -9,16 +8,31 @@ export interface Presenting {
   at: string;
 }
 
+// What a key steps a deck by, in either window.
+export const STEPS: Record<string, number | undefined> = {
+  ArrowRight: 1,
+  PageDown: 1,
+  " ": 1,
+  ArrowLeft: -1,
+  PageUp: -1,
+};
+
 const HASH = "#presenter=";
 export const presentChannel = () => new BroadcastChannel("uagent-present");
 
-// Opens the presenter's view in a window of its own.
-export function openPresenter(deck: Presenting) {
-  window.open(
-    `${location.pathname}${HASH}${encodeURIComponent(JSON.stringify(deck))}`,
+// Opened in the press that asks for it; it goes to the deck once `ready`
+// (what was typed in a slide is in its file).
+export function openPresenter(deck: Presenting, ready: Promise<unknown>) {
+  const made = window.open(
+    "",
     "uagent-presenter",
     "popup,width=1280,height=800",
   );
+  const address = new URL(
+    `${location.pathname}${HASH}${encodeURIComponent(JSON.stringify(deck))}`,
+    location.href,
+  );
+  void ready.then(() => made?.location.replace(address));
 }
 
 // The deck this window presents for, when it is a presenter's view.

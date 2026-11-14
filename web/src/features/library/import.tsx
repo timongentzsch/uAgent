@@ -1,4 +1,4 @@
-import { manage } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import type { ImportItem } from "../../shared/types.ts";
 import { useState } from "preact/hooks";
 import {
@@ -7,7 +7,7 @@ import {
   LoadError,
   Modal,
   Row,
-  Spinner,
+  Skeleton,
 } from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
 import { useResource } from "../../shared/use-resource.ts";
@@ -22,6 +22,7 @@ export default function ImportDialog({
   kind: "memory" | "skills";
   close: () => void;
 }) {
+  const { manage } = useApi();
   const only = kind === "skills" ? "skill" : "memory";
   const list = () =>
     manage("import", { cwd, action: "list", only }).then(
@@ -50,7 +51,7 @@ export default function ImportDialog({
   return (
     <Modal title="Import from Claude Code and Codex" close={close}>
       {!items && !error ? (
-        <Spinner label="Looking for importable items…" />
+        <Skeleton label="Looking for importable items…" />
       ) : items?.length ? (
         items.map((item) => {
           const note =

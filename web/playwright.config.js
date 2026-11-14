@@ -1,7 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
-// Playwright colors worker output by default. Preserve this repository's
-// plain test logs without passing Node the conflicting NO_COLOR/FORCE_COLOR
-// pair that emits one warning per worker.
+// Plain worker logs. Passing Node both NO_COLOR and FORCE_COLOR emits one
+// warning per worker.
 delete process.env.NO_COLOR;
 process.env.FORCE_COLOR = "0";
 import { devServerUrl } from "./tests/dev-server.js";
@@ -12,9 +11,8 @@ export default defineConfig({
   // Each test has a host and ports of its own, so they run side by side.
   workers: process.env.CI ? 2 : 4,
   fullyParallel: true,
-  // Deadlines, not delays: a test waits for an event and these only bound
-  // how long. A turn against the real host takes seconds on a busy runner,
-  // so the defaults leave room for one and the specs name no shorter ones.
+  // Deadlines, not delays: a turn against the real host takes seconds on a
+  // busy runner.
   timeout: 60000,
   expect: { timeout: 15000 },
   // No retries: a test that passes only sometimes has found a race.
@@ -37,7 +35,7 @@ export default defineConfig({
     {
       name: "webkit",
       testMatch:
-        "**/{action,btw,guidance-queue,phone-layout,reload,mobile-navigation,loading-surfaces,session-state,ui-quality,browser,model-picker,ask,menu,image-viewer,dismiss,history-anchor,scroll-restore,scroll-stick,search,screen-motion,canvas,management,selection}.spec.js",
+        "**/{action,btw,guidance-queue,phone-layout,reload,mobile-navigation,loading-surfaces,session-state,ui-quality,browser,model-picker,ask,menu,image-viewer,dismiss,history-anchor,scroll-restore,scroll-stick,search,screen-motion,canvas,sheet,sheet-edit,sheet-files,sheet-rules,sheet-suggest,management,selection,hosts,doc-edit}.spec.js",
       use: { ...devices["Desktop Safari"] },
     },
   ],

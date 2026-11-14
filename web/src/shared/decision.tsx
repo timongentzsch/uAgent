@@ -1,11 +1,11 @@
 import type { Pending, Act, CommandInputs, Report } from "./types.ts";
 import { failure } from "./types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Actions, Button, cleanText, Input, Textarea } from "./ui.tsx";
+import { Actions, Button, cleanText, Input, Notice, Textarea } from "./ui.tsx";
 import Ask from "./ask.tsx";
 import { AttachmentList } from "./attachments.tsx";
 import DiffView from "./diff-view.tsx";
-import { routes } from "../state/api.ts";
+import { useApi } from "../state/api.ts";
 import "./decision.css";
 
 // The approval's own answers (the host's choice table); anything else it
@@ -33,6 +33,7 @@ export default function Decision({
   online: boolean;
   report: Report;
 }) {
+  const { routes } = useApi();
   const options = (pending.options ?? []).map((item) =>
     typeof item === "string"
       ? { value: item, label: item }
@@ -40,7 +41,6 @@ export default function Decision({
   );
   const offers = (value: string) =>
     options.some((item) => item.value === value);
-  // The host names its choices, for the terminal and here alike.
   const labelOf = (value: string) =>
     options.find((item) => item.value === value)?.label ?? value;
   // Letter-keyed answers are one choice each, as the terminal's key hints
@@ -56,7 +56,6 @@ export default function Decision({
   const [guidance, setGuidance] = useState("");
   const [always, setAlways] = useState(false);
   const [sending, setSending] = useState(false);
-  // A reply that did not reach the host stays here, with Retry.
   const [failed, setFailed] = useState<{
     message: string;
     fields: Answer;
@@ -90,10 +89,8 @@ export default function Decision({
       />
     </label>
   );
-  // Each new decision (this panel is keyed by it) takes focus, so a
-  // keyboard lands on what the agent waits for; only someone typing
-  // elsewhere keeps their place. The composer's input, held read-only
-  // below a pending decision, is not a place being typed in.
+  // Each new decision takes focus, unless someone is typing elsewhere. The
+  // composer's input, held read-only below a pending decision, does not count.
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     const focused = document.activeElement;
@@ -117,13 +114,11 @@ export default function Decision({
     /^[+-]/m.test(preview) &&
     (/^@@ /m.test(preview) || /\(\+\d+ -\d+\)$/.test(preview.split("\n")[0]));
   const card = !!approval && keyed;
-  // Anything past the three answers folds under More options.
   const extra = options.filter((item) => !CARD.has(item.value));
   const more = offers(ALWAYS) || offers(GUIDANCE) || extra.length > 0;
   return (
     <section class="card decision enters" aria-label="Pending decision">
       <div class="decision-head">
-        {/* Announced at once, with what it is about. */}
         <div role="alert">
           <h2 ref={heading} tabIndex={-1}>
             {title}
@@ -155,7 +150,6 @@ export default function Decision({
               ) : (
                 <pre class="decision-command plain">{preview}</pre>
               )}
-              {/* Where it runs and what it risks share one line. */}
               {(cwd || !!approval.risks?.length) && (
                 <div class="decision-where">
                   {cwd && (
@@ -194,16 +188,20 @@ export default function Decision({
         </div>
       )}
       {failed && (
-        <p class="failure" role="alert">
-          {failed.message}{" "}
-          <Button
-            size="compact"
-            disabled={idle}
-            onClick={() => void answer(failed.fields)}
-          >
-            Retry
-          </Button>
-        </p>
+        <Notice
+          tone="error"
+          action={
+            <Button
+              size="compact"
+              disabled={idle}
+              onClick={() => void answer(failed.fields)}
+            >
+              Retry
+            </Button>
+          }
+        >
+          {failed.message}
+        </Notice>
       )}
       {asking ? (
         <Ask
@@ -224,8 +222,7 @@ export default function Decision({
             void send(guidance);
           }}
         >
-          {/* The three answers in one row of equal buttons, the usual one
-              last, nearest the thumb. */}
+          {/* The usual answer comes last, nearest the thumb. */}
           <div class="decision-answers">
             {offers(DENY) && (
               <Button disabled={idle} onClick={() => void send(DENY)}>

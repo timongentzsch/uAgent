@@ -19,8 +19,7 @@
 
 namespace uagent {
 
-// Give stdio EOF a brief chance to perform the protocol's polite shutdown
-// before escalating to signals, then again before the kill.
+// Stdio EOF is the protocol's polite stop; each signal follows after a grace.
 inline constexpr auto kMcpEofGrace = std::chrono::milliseconds(200);
 inline constexpr auto kMcpTermGrace = std::chrono::milliseconds(300);
 inline constexpr auto kMcpKillGrace = std::chrono::milliseconds(500);
@@ -37,11 +36,10 @@ void McpShutdown(McpServer& server);
 struct McpServer {
   std::string name;
   pid_t pid = -1;
-  // in: we write (the server's stdin) · out: we read (its stdout)
+  // in: the server's stdin, written here · out: its stdout, read here
   Fd in, out;
   bool alive = false;
-  // 2026-07-28 is stateless at the protocol layer. µAgent intentionally has
-  // no legacy initialize lifecycle or downgrade state.
+  // Protocol 2026-07-28 is stateless: no initialize lifecycle is kept here.
   std::string rbuf;  // partial line from the server
   int64_t next_id = 1;
   json config;
@@ -56,8 +54,7 @@ struct McpServer {
   json startup_tools = json::array();
   std::string startup_cursor;
   std::set<std::string> startup_cursors;
-  // Why a configured server is not running: invalid config, skipped, or the
-  // start failure. Kept for the settings overview; empty while it runs.
+  // Why a configured server is not running; empty while it runs.
   std::string error;
   // Copies the server's stderr into its bounded log until the pipe closes.
   // Last member: replaced or destroyed, it stops and joins first.
@@ -65,7 +62,7 @@ struct McpServer {
 
   ~McpServer() { Shutdown(); }
 
-  // Closing our ends is the polite stop signal for a stdio server.
+  // Closing both ends is the polite stop signal for a stdio server.
   void CloseTransport();
 
   // Signals target the whole group (-pid): servers spawn their own workers.
@@ -74,17 +71,11 @@ struct McpServer {
   // True once the child is gone and dropped from the SIGINT kill list.
   bool Reaped();
 
-  // Also called the moment a server is detected dead/wedged, so fds close and
-  // the child is reaped immediately, not at program exit.
+  // Also called when a server is found dead or wedged, to close fds and reap.
   void Shutdown() { McpShutdown(*this); }
 };
 
-// One shutdown ladder for one or many servers: close every transport first so
-// they all observe EOF together, then escalate in lockstep. Batching is the
-// reason ShutdownAll cannot simply loop over one-server shutdowns.
-
-// Explicit session owner. Destruction closes every transport and reaps every
-// server before curl and the rest of the process runtime are torn down.
+// Owns every session: destruction reaps every server before curl is torn down.
 class McpRuntime {
  public:
   McpRuntime() = default;
@@ -100,8 +91,7 @@ class McpRuntime {
     return servers_;
   }
 
-  // Swaps in a fresh server and returns it, now owned here; the old one shuts
-  // down as it is destroyed. An unknown `old` leaves the fresh one appended.
+  // Swaps in `fresh` for `old`, which shuts down; an unknown `old` appends.
   McpServer& Replace(const McpServer& old, std::unique_ptr<McpServer> fresh) {
     for (auto& server : servers_) {
       if (server.get() == &old) {
@@ -113,10 +103,11 @@ class McpRuntime {
     return *servers_.back();
   }
 
+  // Closes every transport first so all see EOF together, then escalates in
+  // lockstep: not a loop over one-server shutdowns.
   void ShutdownAll();
 
-  // A control between turns changed the tool registry; the next refresh
-  // reports it so policy and schemas are rebuilt.
+  // A control between turns changed the registry; the next refresh reports it.
   bool registry_changed = false;
 
  private:
@@ -129,20 +120,15 @@ void McpError(const std::string& name, const std::string& msg);
 
 std::string McpLogPath(const std::string& name);
 
-// Where a failing server's own diagnostics went. Appended to every error the
-// model or user sees, so the next step is always obvious.
+// Where a failing server's own diagnostics went, appended to every error.
 std::string McpStderrHint(const std::string& name);
 
-// Append one available chunk of server stdout to the read buffer. Returns
-// false when the server closed or the response cap was hit. McpWrite's
-// opportunistic drain tolerates EOF, so it passes eof_is_fatal=false.
+// Appends one available chunk of stdout; false on close or the response cap.
 bool McpFillBuffer(McpServer& s, bool eof_is_fatal = true);
 
-// Take one complete newline-terminated message out of the read buffer.
 bool McpTakeLine(McpServer& s, std::string& line);
 
-// `wrapper` is the sandbox's argv words in front of the command (empty: the
-// server runs unconfined).
+// `wrapper` is the sandbox's argv before the command; empty runs unconfined.
 bool McpSpawn(McpServer& s, const std::vector<std::string>& wrapper,
               const std::string& cmd, const std::vector<std::string>& args,
               const std::vector<std::pair<std::string, std::string>>& env,

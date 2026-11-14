@@ -27,13 +27,13 @@
 #include "include/core/sandbox.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 #include "include/providers/providers.h"
 
 namespace uagent {
 namespace {
-// With no explicit output cap, reserve one quarter of the advertised window
-// for the response. This is a compaction policy, not a token measurement.
+// With no output cap, a quarter of the window is reserved for the response.
 constexpr int64_t kDefaultResponseReserveDivisor = 4;
 // Whether any message carries an image, as a part or as a staged attachment.
 bool HoldsImage(const json& messages) {
@@ -111,11 +111,8 @@ void Agent::AnnounceDeliveries(const json& deliveries) {
       conversation_.RecordDisplay(id, {{"deliveries", values}});
       updated.push_back(id);
     }
-    // Notices dedupe against explicit announcement receipts, not the
-    // evictable display facts: under fact pressure the gallery row can
-    // be dropped and re-recorded every step, which re-printed this line
-    // after every tool result. Only the first delivery and later
-    // delivery changes (Image -> File reference) announce.
+    // Notices dedupe against announcement receipts, not the evictable display
+    // facts: only the first delivery and later changes announce.
     if (conversation_.AnnouncedDeliveries(id) == values) continue;
     conversation_.RecordAnnouncedDeliveries(id, values);
     for (const json& delivery : values) {
@@ -153,11 +150,10 @@ void Agent::DebugModelRequest(int64_t request, int64_t step,
                  {"schema_bytes", schema_bytes},
                  {"parallel_tools", api_.capabilities.parallel_tools},
                  {"include_usage", api_.capabilities.stream_usage_option}};
-  // An experiment that changed the prompt has to be visible in the same
-  // record as the request it shaped, or a report cannot be attributed.
-  std::string overlay_digest;
-  PromptOverlay(&overlay_digest);
-  if (!overlay_digest.empty()) record["prompt_overlay"] = overlay_digest;
+  // A changed prompt shows in the same record as the request it shaped.
+  if (!prompt_overlay_digest_.empty()) {
+    record["prompt_overlay"] = prompt_overlay_digest_;
+  }
   if (request_messages || projected) {
     record["messages"] = messages;
     record["message_bytes"] = message_bytes;
@@ -261,9 +257,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   }
   const json* chosen = projected.is_null() ? &source : &projected;
   // The to-do list changes between requests, so it rides on the request's
-  // tail and never enter the stored conversation:
-  // rewriting history there would move display rows and spoil the cached
-  // prefix.
+  // tail: rewriting stored history would spoil the cached prefix.
   json tailed;
   if (std::string context = request_messages ? "" : RequestContext();
       !context.empty()) {
@@ -363,8 +357,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     call.occurrence_id = OccurrenceId(result.response_id, call.id);
     call.detail_id = DetailId(result.response_id, call.id);
   }
-  ++revision_;  // Preserve failed attempts and their accounting after the user
-                // checkpoint.
+  ++revision_;  // Failed attempts and their accounting are kept too.
   if (!api_.http_exchanges.empty()) {
     conversation_.RecordDisplay("http-latest", {{"http", api_.http_exchanges}});
     // Failed calls have no assistant message to own their capture.
@@ -691,8 +684,7 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
 }
 
 std::string Agent::PromptBase() const {
-  return ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
-                            nullptr) +
+  return ApplyPromptOverlay(SystemPromptBase(), prompt_overlay_, nullptr) +
          CapabilityPrompt(tools_, &tool_selection_);
 }
 
@@ -722,17 +714,9 @@ json Agent::PromptPreview() const {
   return result;
 }
 
-// One system message carries every static baseline fact. The OpenAI convention
-// allows a single system message and only at index zero; strict chat templates
-// reject a second one outright, so folder instructions are folded in here
-// instead of riding as a separate message.
-//
-// Memory is not folded in. It is the one part of the baseline that differs
-// between two sessions on the same build, and message zero is the prefix a
-// provider caches: a different folder would otherwise re-bill the whole
-// prompt. It also carries no authority — the prompt says so — and the system
-// message is where authority lives, so it rides with the runtime context
-// instead. It is read once at start: a memory saved now reaches new sessions.
+// One system message carries every static fact: strict chat templates reject
+// a second one. Memory is not folded in: it differs between folders, and
+// message zero is the prefix a provider caches.
 json Agent::SysMsg() const {
   return {{"role", "system"}, {"content", SystemPrompt()}};
 }
@@ -750,7 +734,7 @@ void Agent::RefreshSystemMessage(bool force) {
 
 std::string Agent::RuntimeContextText() const {
   std::string content =
-      EnvironmentContext(LocalDay(), CanonicalCwd(),
+      EnvironmentContext(LocalDay(), Workspace().path,
                          ApprovalModeName(CurrentApprovalMode()),
                          SandboxWorkspaceRefusal()) +
       ModelImageInputInstruction(api_.capabilities.image_input,
@@ -789,13 +773,12 @@ std::string Agent::RequestContext() const {
                             TodoText(todo);
 }
 
-// What the model reads beyond the stored conversation: `context`, rebuilt
-// for this request, after the stored messages, which are never rewritten,
-// so the cached prefix holds.
+// `context` goes after the stored messages, which are never rewritten, so
+// the cached prefix holds.
 json Agent::WithRequestContext(json messages, std::string context) const {
-  // The context below changes every request, so automatic caching's moving
-  // breakpoint would land on it and never read the stored history back: end
-  // the cached prefix on the last stored message instead.
+  // The context changes every request, so automatic caching's moving
+  // breakpoint would land on it: the cached prefix ends on the last stored
+  // message instead.
   if (!messages.empty() && messages.back().is_object()) {
     messages.back()[kCacheBreakpointField] = true;
   }
@@ -807,9 +790,8 @@ json Agent::WithRequestContext(json messages, std::string context) const {
   return messages;
 }
 
-// A changed context (a new day, another approval mode) is appended as a new
-// note; the old one stays where it is, so the history before it keeps its
-// bytes and the provider's prompt cache still covers it.
+// A changed context is appended as a new note; the old one stays, so the
+// history before it keeps its bytes and the prompt cache still covers it.
 void Agent::EnsureRuntimeContext() {
   std::string content = RuntimeContextText();
   if (conversation_.LastText(MessageKind::kRuntimeContext) == content) return;
@@ -818,7 +800,7 @@ void Agent::EnsureRuntimeContext() {
 }
 
 std::string Agent::ProjectInstructionText() const {
-  return "# AGENTS.md instructions for " + CanonicalCwd() +
+  return "# AGENTS.md instructions for " + Workspace().path +
          "\n\n<INSTRUCTIONS>\n" + project_instructions_.text +
          "\n</INSTRUCTIONS>";
 }

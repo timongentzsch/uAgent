@@ -86,7 +86,6 @@ test("SSE projection preserves frames, metadata and lexical JSON without data pr
 });
 
 test("a turn's tokens add every disjoint usage bucket", () => {
-  // Live on Claude: 4 uncached + 17,600 cache write + 196 out, once shown as 200.
   assert.equal(
     tokens({
       input: 4,
@@ -283,38 +282,41 @@ test("call details and statistics name the upstream that served each call", () =
   assert.deepEqual(servedByRows(), []);
 });
 
-// What a fresh transcript draws of `nodes` at a detail level, one line per
-// thing drawn, as node.tsx lays it out: a row as its headline and result
-// word (⌄ open, › closed, · nothing to open), its open body as "| text" and
-// its parts in brackets, a message as its text ("you: " for yours), with
-// what opens under a row indented beneath it.
-function outline(nodes, detail, max = Infinity) {
+// One line per thing a fresh transcript draws: a row as its headline and
+// result (⌄ open, › closed, · nothing to open), its body as "| text", its
+// parts in brackets, a message as its text ("you: " for yours). Thinking is
+// drawn unless `thinking` says it is switched off.
+function outline(nodes, detail, max = Infinity, thinking = true) {
   const level = depthOf(detail);
   const lines = [];
   const walk = (branches, depth, indent) => {
-    for (const { branch } of layout(branches, level)) {
+    for (const { branch } of layout(branches, level, thinking)) {
       const { node } = branch;
       if (!isRow(node)) {
         lines.push(
           indent +
             (node.kind === "footer"
               ? "footer"
-              : `${node.role === "assistant" ? "" : "you: "}${
-                  node.body?.text ??
-                  (node.parts || [])
-                    .map((part) => `[${part.kind} ${part.name}]`)
-                    .join(" ")
-                }`),
+              : node.kind === "thinking"
+                ? `~ ${node.body.text}`
+                : `${node.role === "assistant" ? "" : "you: "}${
+                    node.body?.text ??
+                    (node.parts || [])
+                      .map((part) => `[${part.kind} ${part.name}]`)
+                      .join(" ")
+                  }`),
         );
         continue;
       }
-      const kids = branch.kids.filter((kid) => visible(kid.node, level));
+      const kids = branch.kids.filter((kid) =>
+        visible(kid.node, level, thinking),
+      );
       const openable =
         node.body || kids.length || node.parts || node.kind === "call";
       const open = openable && opens(depth, level);
       const word = node.result?.word ? ` · ${node.result.word}` : "";
       const mark = !openable ? "·" : open ? "⌄" : "›";
-      lines.push(`${indent}${mark} ${headlineOf(node)}${word}`);
+      lines.push(`${indent}${mark} ${headlineOf(node, thinking)}${word}`);
       if (!open) continue;
       if (node.body) lines.push(`${indent}  | ${node.body.text}`);
       for (const part of node.parts || [])
@@ -328,7 +330,6 @@ function outline(nodes, detail, max = Infinity) {
   return lines;
 }
 
-// Each golden turn at the three depths: minimal, default and full.
 const depths = (nodes) =>
   Object.fromEntries(
     ["minimal", "default", "full"].map((level) => [
@@ -352,7 +353,7 @@ test("a chain of calls opens one level per depth", () => {
   assert.deepEqual(middle, [
     ask,
     `⌄ ${worked}`,
-    "  › Thinking",
+    "  ~ look first",
     "  › Read fli/search.py · 120 lines · 5ms",
     "  › Read fli/models.py · 88 lines · 5ms",
     "  › Edited src/parser.ts · +2 −1 · 5ms",
@@ -361,8 +362,7 @@ test("a chain of calls opens one level per depth", () => {
   assert.deepEqual(full, [
     ask,
     `⌄ ${worked}`,
-    "  ⌄ Thinking",
-    "    | look first",
+    "  ~ look first",
     "  ⌄ Read fli/search.py · 120 lines · 5ms",
     "    | alpha",
     "  ⌄ Read fli/models.py · 88 lines · 5ms",
@@ -371,6 +371,27 @@ test("a chain of calls opens one level per depth", () => {
     "    | - const line = 0;\n+ let line = 1;\n+ const column = 0;",
     ...end,
   ]);
+  // Switched off, a thought is drawn at no level, and nothing else changes.
+  assert.deepEqual(
+    outline(golden.chain, "full", Infinity, false),
+    full.filter((line) => !/look first/.test(line)),
+  );
+});
+
+test("a work counts its thoughts only where thinking is shown", () => {
+  const work = {
+    id: "w-m-1",
+    parent: "m-1",
+    kind: "work",
+    headline: { verb: "Worked", target: "2 reads, 1 note" },
+    result: { thoughts: 2 },
+  };
+  assert.equal(headlineOf(work, true), "Worked 2 reads, 1 note, 2 thoughts");
+  assert.equal(headlineOf(work, false), "Worked 2 reads, 1 note");
+  assert.equal(
+    headlineOf({ ...work, result: { thoughts: 1 } }, true),
+    "Worked 2 reads, 1 note, 1 thought",
+  );
 });
 
 test("failed, cancelled, denied and rejected calls read as their words", () => {
@@ -503,8 +524,7 @@ test("guidance read mid-turn shows where it was read, at every depth", () => {
     "  ⌄ Ran du /home · 5ms",
     ...end,
   ]);
-  // Live, each work arrives after its first call, and every node lands
-  // where the saved page has it.
+  // Live, each work arrives after its first call.
   const [turn, first, df, guidance, second, du, ...rest] = golden.steered;
   const live = [turn, df, first, guidance, du, second, ...rest]
     .map((node) => ({ kind: "node", node }))
@@ -555,16 +575,13 @@ test("a node lands where the host puts it", () => {
   const call = { id: "t-a", parent: "w-m-1", kind: "call", sequence: 2 };
   let nodes = placeNode([], patch(turn));
   nodes = placeNode(nodes, patch(call));
-  // A parent sent after a node under it goes before it.
   nodes = placeNode(nodes, patch({ id: "w-m-1", parent: "m-1", kind: "work" }));
   assert.deepEqual(
     nodes.map((node) => node.id),
     ["m-1", "w-m-1", "t-a"],
   );
-  // A late saved node goes in sequence order.
   nodes = placeNode(nodes, patch({ id: "m-0", parent: null, sequence: 0 }));
   assert.equal(nodes[0].id, "m-0");
-  // Streamed text appends to the node it names; an unknown one is dropped.
   const reply = {
     id: "r",
     parent: "m-1",
@@ -589,7 +606,6 @@ test("a changed node makes anew only the branches on its path", () => {
     body: { kind: "markdown", text: "Nothing worked at all." },
   });
   const after = grow(changed);
-  // The other turn, and the changed turn's work and footer, are the same.
   assert.equal(after[0], before[0]);
   assert.notEqual(after[1], before[1]);
   assert.equal(after[1].kids[0], before[1].kids[0]);

@@ -1,6 +1,5 @@
-// The golden turns, as the host sends them (tests/unit/transcript_tree_test.cc
-// records the same turns and checks the nodes it makes). Each turn has ids of
-// its own, so turns can be put together into one conversation.
+// The golden turns as the host sends them; tests/unit/transcript_tree_test.cc
+// records the same. Each turn has ids of its own, so turns can be combined.
 
 const summary = (duration_ms, extra = {}) => ({
   turn: 1,
@@ -25,7 +24,6 @@ const turn = (id, sequence, text) => ({
   time: "2026-10-28T16:00:00.000Z",
   body: { kind: "text", text },
 });
-// The work replying to a message of yours sits under it.
 const work = (message, state, counts, word) => ({
   id: `w-${message}`,
   parent: message,
@@ -79,7 +77,6 @@ export const chain = [
     parent: "w-m-12",
     kind: "thinking",
     sequence: 13,
-    headline: { verb: "Thinking", target: "" },
     body: { kind: "text", text: "look first" },
   },
   call("t-a", "w-m-12", 14, "ok", "Read", "fli/search.py", "120 lines · 5ms", {
@@ -265,7 +262,26 @@ export const arrivals = [
 ];
 
 // Two pages of history: the older one is read in front of the newer.
+// A turn at work whose latest step is a long thought.
+export const pondering = [
+  turn("m-40", 40, "rename it everywhere"),
+  work("m-40", "running"),
+  call("t-p", "w-m-40", 41, "ok", "Read", "src/names.ts", "40 lines · 5ms"),
+  {
+    id: "r-9-1-1:thinking",
+    parent: "w-m-40",
+    kind: "thinking",
+    sequence: 42,
+    body: {
+      kind: "text",
+      text: Array.from(
+        { length: 12 },
+        (_, at) => `Reason ${at + 1}: the name is used in more places.`,
+      ).join(" "),
+    },
+  },
+];
+
 export const pages = [plain, chain];
 
-// A conversation with calls, a failure, guidance and an answer.
 export const conversation = [...chain, ...failed, ...steered];

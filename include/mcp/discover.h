@@ -30,8 +30,7 @@ bool McpFetchToolDefinitions(McpServer& s,
                              std::chrono::steady_clock::time_point deadline,
                              json& listed);
 
-// Build a complete replacement before touching the shared registry. A failed
-// refresh therefore leaves every previously usable tool in place.
+// Builds the whole replacement first, so a failed refresh keeps the old tools.
 void McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
                            const RuntimeConfig& config, const json& listed);
 
@@ -41,21 +40,15 @@ bool McpLoadServerTools(std::vector<Tool>& tools, McpServer& server,
 
 bool McpSendStartupToolPage(McpServer& server);
 
-// Keep one tools/list request outstanding across short startup windows. A
-// healthy slow optional server neither blocks startup nor loses its eventual
-// reply to a newer request ID.
+// Keeps one tools/list request outstanding across short startup windows.
 bool McpAdvanceStartupTools(std::vector<Tool>& tools, McpServer& server,
                             const RuntimeConfig& config);
 
-// Advance one optional server without consuming its discovery reply in the
-// idle-notification drain. A failed aggregate startup deadline leaves the
-// state pending; the next turn resumes the same request for another bounded
-// opportunity.
+// Advances one optional server's startup; a missed deadline leaves it pending.
 bool McpAdvanceStartup(std::vector<Tool>& tools, McpServer& server,
                        const RuntimeConfig& config);
 
-// Apply notifications only between tool batches, when the agent holds no Tool
-// pointers. Failed refreshes retain the prior registry and retry later.
+// Call only between tool batches, when the agent holds no Tool pointers.
 bool McpRefreshTools(std::vector<Tool>& tools, McpRuntime& runtime,
                      const RuntimeConfig& config,
                      std::chrono::steady_clock::time_point turn_deadline =

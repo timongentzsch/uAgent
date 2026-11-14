@@ -98,10 +98,8 @@ TEST_CASE(TestProjectInstructionDiscovery) {
   CHECK(capped_memory.truncated);
   CHECK(capped_memory.text.size() <= 24);
 
-  // Under the cap the smaller global memory wins -- more standing preferences
-  // fit that way -- and an entry that no longer fits is dropped whole rather
-  // than cut mid-sentence. Made the newest as well as the largest, so an mtime
-  // order would reach the opposite answer.
+  // Under the cap the smaller global memory wins. The larger is also the
+  // newest, so an mtime order would reach the opposite answer.
   CHECK(ToolWriteFile((home / ".uagent/memory/global/newer.md").string(),
                       std::string(200, 'n'))
             .output.starts_with("wrote "));
@@ -124,12 +122,9 @@ TEST_CASE(TestProjectInstructionDiscovery) {
   CHECK(global < root_agent && root_agent < child_override);
   CHECK(loaded.text.find("remembered-evidence") == std::string::npos);
   CHECK(loaded.memory_index.find("global/lesson") != std::string::npos);
-  // The index carries a global's opening clause, never a project memory's.
   CHECK(loaded.memory_index.find("global/lesson: remembered-evidence") !=
         std::string::npos);
 
-  // ...but it is used when the directory has no AGENTS file and Claude is
-  // one of the agents read from.
   fs::path only_claude = repo / "claude-only";
   fs::create_directories(only_claude);
   CHECK(ToolWriteFile((only_claude / "CLAUDE.md").string(), "claude-fallback")

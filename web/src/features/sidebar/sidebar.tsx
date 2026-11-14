@@ -1,3 +1,12 @@
+import { filingTag, unfiled } from "../../shared/filing.ts";
+import { useHosts, type Source } from "../../state/sources.ts";
+import {
+  Fold,
+  SharedShortcuts,
+  OtherPlaces,
+  HostList,
+  unpinned,
+} from "./hosts.tsx";
 import { ConnectionStatus } from "../../shared/connection-status.tsx";
 import { Fragment, type ComponentChildren } from "preact";
 import { useCallback, useEffect, useMemo, useRef } from "preact/hooks";
@@ -8,12 +17,12 @@ import {
   Plus,
   RefreshCw,
   Settings,
+  House,
   Library,
   CalendarClock,
   Search,
   CircleAlert,
   TriangleAlert,
-  Inbox,
   Terminal,
 } from "lucide-preact";
 import { useHostContext } from "../../state/host-context.ts";
@@ -26,25 +35,28 @@ import {
   EmptyState,
   updateChecked,
 } from "../../shared/ui.tsx";
-import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
+import FolderLabel, {
+  folderName,
+  ownName,
+} from "../../shared/folder-label.tsx";
 import { folderOf } from "../../shared/display.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { Menu, MenuItem, useLongPress } from "../../shared/menu.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { plural } from "../../shared/quantities.ts";
-import { statusOf, type SessionState } from "../../state/attention.ts";
-import { SheetButton } from "../../shared/sheet.tsx";
-import WaitingList from "../../shared/escalations.tsx";
-import { collapsed, useFolding } from "./folding.ts";
+import { statusOf, waiting, type SessionState } from "../../state/attention.ts";
+import { collapsed, folded, opened, placeKey, useFolding } from "./folding.ts";
+import { DAYS, dayOf } from "./days.ts";
 import { PinItem } from "./pins.tsx";
 import type { SelectionApi } from "../../shared/selection.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 import { useShortcuts } from "../../shared/shortcuts.ts";
+import { useStored } from "../../shared/storage.ts";
+import { devicePrefs } from "../../shared/device-prefs.ts";
 import { RowCheck, SelectionBar } from "../../shared/selection-bar.tsx";
 import "./sidebar.css";
 
-// Before the catalogue arrives, the list draws these (see <Placeholder>).
 const SAMPLE: Session[] = [
   "A conversation title",
   "Another title about this long",
@@ -56,24 +68,20 @@ const SAMPLE: Session[] = [
   updated: Date.now(),
 }));
 
-// What a row says of its conversation, at its right edge: it waits on you,
-// it failed, or it works (the LED breathes). An idle one says nothing.
 const STATES: Partial<
-  Record<SessionState, { label: string; Icon?: typeof Inbox }>
+  Record<SessionState, { label: string; Icon?: typeof CircleAlert }>
 > = {
   waiting: { label: "Needs your input", Icon: CircleAlert },
   failed: { label: "Failed", Icon: TriangleAlert },
   working: { label: "Working" },
 };
 
-// A conversation and its agents at work (or waiting on you), listed beneath
-// it. A finished agent leaves the list: its report in the conversation opens
-// it, and search finds it.
+// A conversation and its agents at work; a finished agent leaves the list.
 type Entry = { item: Session; agents: Entry[] };
 
-// The list's places in its order, newest first, each with its
-// conversations. An agent whose parent is not listed is an ordinary row. A
-// workspace is a place whether or not anything is in it yet.
+// Places newest first. An agent whose parent is not listed is an ordinary
+// row; a workspace is a place whether or not anything is in it yet. What
+// waits on a decision is listed apart, under Needs you.
 function groupSessions(
   sessions: Session[],
   spaces: Space[] = [],
@@ -88,32 +96,38 @@ function groupSessions(
     (a, b) => (b.updated || 0) - (a.updated || 0),
   );
   const listed = new Set(sorted.map((item) => item.id));
+  const needs = new Set(waiting(sessions).map((item) => item.id));
   const entry = (item: Session): Entry => ({
     item,
     agents: sorted
       .filter(
         (agent) =>
-          agent.parent === item.id && statusOf(agent, online) !== "idle",
+          agent.parent === item.id &&
+          !needs.has(agent.id) &&
+          statusOf(agent, online) !== "idle",
       )
       .map(entry),
   });
   for (const item of sorted)
-    if (!item.parent || !listed.has(item.parent))
+    if ((!item.parent || !listed.has(item.parent)) && !needs.has(item.id))
       place(folderOf(item)).push(entry(item));
   for (const space of spaces) place(space.path);
-  return groups;
+  return {
+    groups,
+    needs: sorted.filter((item) => needs.has(item.id)).map(entry),
+  };
 }
 
-// The rows a conversation shows, in order: itself, then its agents at work.
 const rowsOf = ({ item, agents }: Entry): Session[] => [
   item,
   ...agents.flatMap(rowsOf),
 ];
 
-// The pinned conversations, folders and terminals in pin order, then the
-// other places under the word for their kind, workspaces first: one is
-// µAgent's to keep and remove, the other a directory of yours. A pinned
-// conversation or folder is listed once, among the pinned.
+const newest = (a: { item: Session }, b: { item: Session }) =>
+  (b.item.updated || 0) - (a.item.updated || 0);
+
+// Pinned rows in pin order, then the other places by kind, workspaces
+// first. A pinned conversation or folder is listed once, among the pinned.
 type Place = [string, Entry[]];
 type Pinned = { entry: Entry } | { place: Place } | { terminal: TerminalInfo };
 
@@ -124,11 +138,12 @@ function arrange(
   pins: Pin[] = [],
   terminals: TerminalInfo[] = [],
 ) {
-  const groups = [...groupSessions(sessions, spaces, online)];
+  const { groups: grouped, needs } = groupSessions(sessions, spaces, online);
+  const groups = [...grouped];
   const space = (path: string) => spaces.some((item) => item.path === path);
   const pinned = (kind: Pin["kind"], id: string) =>
     pins.some((pin) => pin.kind === kind && pin.id === id);
-  const entries = groups.flatMap(([, entries]) => entries);
+  const entries = [...needs, ...groups.flatMap(([, entries]) => entries)];
   const places = groups
     .map(
       ([path, entries]): Place => [
@@ -150,6 +165,8 @@ function arrange(
   const rest = places.filter(([path]) => !pinned("folder", path));
   return {
     top,
+    needs: needs.filter((entry) => !pinned("session", entry.item.id)),
+    recent: rest.flatMap(([, entries]) => entries).sort(newest),
     kinds: (
       [
         ["Workspaces", rest.filter(([path]) => space(path))],
@@ -159,26 +176,99 @@ function arrange(
   };
 }
 
+type View = "recent" | "places";
+
+// A place shows its last week, at least its three newest and the open
+// conversation; the rest wait behind "N older".
+function placeRows(entries: Entry[], key: string, selected: string) {
+  const old = entries.filter(
+    (entry, index) =>
+      index > 2 &&
+      dayOf(entry.item.updated) > 2 &&
+      !rowsOf(entry).some((item) => item.id === selected),
+  );
+  const fresh = entries.filter((entry) => !old.includes(entry));
+  return { fresh, old, open: opened.has(key) };
+}
+const olderKey = (host: string, path: string) =>
+  `$older:${placeKey(host, path)}`;
+
+// The ids of the rows the list shows, in order: what a Shift run, ⌘A and
+// Alt+↑/↓ follow. In Places a workspace is a row of its own.
+function orderOf(
+  { top, needs, recent, kinds }: ReturnType<typeof arrange>,
+  view: View,
+  host: string,
+  single: boolean,
+  selected: string,
+  spaces: Space[] = [],
+) {
+  const rows = (entries: Entry[]) =>
+    entries.flatMap(rowsOf).map((item) => item.id);
+  const place = ([path, entries]: Place) => {
+    const { fresh, old, open } = placeRows(
+      entries,
+      olderKey(host, path),
+      selected,
+    );
+    return [
+      ...(view === "places" && spaces.some((space) => space.path === path)
+        ? [path]
+        : []),
+      ...(collapsed.has(placeKey(host, path))
+        ? []
+        : rows(open ? [...fresh, ...old] : fresh)),
+    ];
+  };
+  return [
+    ...(folded("$pinned") ? [] : top).flatMap((pinned) =>
+      "entry" in pinned
+        ? rows([pinned.entry])
+        : "place" in pinned
+          ? place(pinned.place)
+          : [],
+    ),
+    ...rows(needs),
+    ...(view === "recent"
+      ? DAYS.flatMap((day, index) =>
+          folded(`$day:${day}`, index === DAYS.length - 1)
+            ? []
+            : rows(
+                recent.filter((entry) => dayOf(entry.item.updated) === index),
+              ),
+        )
+      : single || !folded(`$host:${host}`)
+        ? kinds.flatMap(([, places]) => places.flatMap(place))
+        : []),
+  ];
+}
+
 // The rows in the order the list shows them: what Alt+↑/↓ steps through.
 export const sessionOrder = (
   sessions: Session[],
   spaces: Space[] | undefined,
-  online = true,
-  pins: Pin[] = [],
-) => {
-  const { top, kinds } = arrange(sessions, spaces, online, pins);
-  const rows = ([path, entries]: Place) =>
-    collapsed.has(path) ? [] : entries.flatMap(rowsOf);
-  return [
-    ...top.flatMap((pinned) =>
-      "entry" in pinned
-        ? rowsOf(pinned.entry)
-        : "place" in pinned
-          ? rows(pinned.place)
-          : [],
-    ),
-    ...kinds.flatMap(([, places]) => places.flatMap(rows)),
-  ];
+  online: boolean,
+  pins: Pin[],
+  host: string,
+  single: boolean,
+  selected: string,
+) =>
+  orderOf(
+    arrange(sessions, spaces, online, pins),
+    devicePrefs.list.read(),
+    host,
+    single,
+    selected,
+    spaces,
+  ).flatMap((id) => sessions.find((item) => item.id === id) || []);
+
+// What Recent shows on a row's right: the workspace's name or the folder's
+// own, after its host's where that is another one.
+const tagOf = (item: Session, spaces: Space[] = [], host = "") => {
+  const path = folderOf(item);
+  const place =
+    spaces.find((space) => space.path === path)?.name || ownName(path);
+  return host ? `${host} · ${place}` : place;
 };
 
 type SessionRowProps = {
@@ -186,25 +276,26 @@ type SessionRowProps = {
   selected: boolean;
   unread: boolean;
   online: boolean;
+  // Its place, shown instead of its time.
+  tag?: string;
   choose: (id: string) => void;
-  menu: (session: Session) => ComponentChildren;
-  // Picked to act on with others; while picking, its checkbox shows.
-  picked: boolean;
-  selecting: boolean;
-  pick: (id: string, event: MouseEvent) => boolean;
-  toggle: (id: string) => void;
+  // Absent on another host's row.
+  menu?: (session: Session) => ComponentChildren;
+  picked?: boolean;
+  selecting?: boolean;
+  pick?: (id: string, event: MouseEvent) => boolean;
+  toggle?: (id: string) => void;
 };
 
-// One conversation in the list, on one line: its title and its state. The
-// time and the menu show while the row is pointed at or focused.
 function SessionRow({
   item,
   selected,
   unread,
   online,
+  tag,
   choose,
   menu,
-  picked,
+  picked = false,
   selecting,
   pick,
   toggle,
@@ -217,42 +308,46 @@ function SessionRow({
         <RowCheck
           picked={picked}
           label={`Select ${item.title || "Untitled"}`}
-          toggle={() => toggle(item.id)}
+          toggle={() => toggle?.(item.id)}
         />
       )}
       <ListRow
         class="session"
-        onClick={(event) => pick(item.id, event) || choose(item.id)}
+        onClick={(event) => pick?.(item.id, event) || choose(item.id)}
         aria-current={selected ? "page" : undefined}
-        title={<SessionName item={item} />}
-        unread={unread && "Unread messages"}
+        data-unread={unread || undefined}
+        title={
+          <>
+            <span
+              class={`session-state ${state}`}
+              role={shown && "img"}
+              aria-label={shown?.label}
+            >
+              {shown &&
+                (shown.Icon ? (
+                  <shown.Icon aria-hidden />
+                ) : (
+                  <StatusLed state="running" />
+                ))}
+            </span>
+            <SessionName item={item} />
+            {unread && <span role="img" aria-label="Unread messages" />}
+          </>
+        }
       >
-        {item.updated ? (
+        {tag !== undefined ? (
+          <span class="session-tag truncate">{tag}</span>
+        ) : item.updated ? (
           <span class="session-time">
-            <Time value={item.updated} />
+            <Time value={item.updated} brief />
           </span>
         ) : null}
-        {shown && (
-          <span
-            class={`session-state ${state}`}
-            role="img"
-            aria-label={shown.label}
-          >
-            {shown.Icon ? (
-              <shown.Icon aria-hidden />
-            ) : (
-              <StatusLed state="running" />
-            )}
-          </span>
-        )}
       </ListRow>
-      {menu(item)}
+      {menu?.(item)}
     </div>
   );
 }
 
-// One folder terminal in the list, as a conversation is: its name and start
-// time, and the same menu on hover or focus.
 function TerminalRow({
   terminal,
   selected,
@@ -278,7 +373,7 @@ function TerminalRow({
         }
       >
         <span class="session-time">
-          <Time value={terminal.started} />
+          <Time value={terminal.started} brief />
         </span>
       </ListRow>
       {menu(terminal)}
@@ -295,14 +390,9 @@ type SidebarProps = {
   navigate: (page: "chat" | "library" | "scheduled") => void;
   scheduledUnread: boolean;
   sessions: Session[];
-  // How many of them wait on a decision.
-  needsYou: number;
   spaces: Space[];
-  // The pinned conversations, folders and terminals, in order.
   pins: Pin[];
-  // What can be done to a workspace: rename it, delete it.
   spaceMenu: (space: Space, conversations: number) => ComponentChildren;
-  // Conversations and workspaces picked to act on together, and the act.
   selection: SelectionApi;
   act: (
     action: "move" | "close" | "delete",
@@ -314,30 +404,22 @@ type SidebarProps = {
   choose: (id: string) => void;
   menu: (session: Session) => ComponentChildren;
   settings: () => void;
-  // Asks for a workspace's name or a folder's path, then starts there.
   create: (place: "workspace" | "folder") => void;
-  // A new conversation in a place, and the place's overview.
   start: (cwd: string) => void;
-  // A new conversation in the Scratch workspace, with no folder chosen.
-  startScratch: () => void;
+  home: () => void;
   overview: (cwd: string) => void;
-  // The place whose overview is open.
   shownPlace: string;
-  // The folders' terminals, the one shown, and opening one; a new one only
-  // while the host offers them.
   terminals?: TerminalInfo[] | null;
   shownTerminal?: string;
   terminalMenu: (terminal: TerminalInfo) => ComponentChildren;
   showTerminal: (terminal: TerminalInfo) => void;
   newTerminal?: (folder: string) => void;
-  // Search over every conversation, command and setting.
   search: () => void;
 };
 
 function SidebarView({
   loading,
   sessions,
-  needsYou,
   spaces,
   pins,
   spaceMenu,
@@ -350,7 +432,7 @@ function SidebarView({
   settings,
   create,
   start,
-  startScratch,
+  home,
   overview,
   shownPlace,
   terminals,
@@ -364,36 +446,22 @@ function SidebarView({
   search,
 }: SidebarProps) {
   const { online, connection, refresh } = useHostContext();
+  const hosts = useHosts();
+  const host = hosts.active;
+  const several = hosts.sources.length > 1;
+  const [view, setView] = useStored(devicePrefs.list);
   useFolding();
   const rows = useRef<HTMLElement>(null);
   useLongPress(rows, ".session-row, .place-head");
-  // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
   const all = drawing ? SAMPLE : sessions;
-  // Grouped again only when the list, the places or the search change, not
-  // for a selection, an unread mark or a fold.
-  const { top, kinds } = useMemo(
+  // Not regrouped for a selection, an unread mark or a fold.
+  const arranged = useMemo(
     () => arrange(all, drawing ? [] : spaces, online, pins, terminals || []),
     [all, drawing, spaces, online, pins, terminals],
   );
-  // What can be picked, in the order the list shows it: each workspace,
-  // then the conversations of each place that is open.
-  const pickable = ([path, entries]: Place) => [
-    ...(spaces.some((space) => space.path === path) ? [path] : []),
-    ...(collapsed.has(path) ? [] : entries.flatMap(rowsOf).map((s) => s.id)),
-  ];
-  const order = (() => {
-    return [
-      ...top.flatMap((pinned) =>
-        "entry" in pinned
-          ? rowsOf(pinned.entry).map((item) => item.id)
-          : "place" in pinned
-            ? pickable(pinned.place)
-            : [],
-      ),
-      ...kinds.flatMap(([, places]) => places.flatMap(pickable)),
-    ];
-  })();
+  const { top, needs, recent, kinds } = arranged;
+  const order = orderOf(arranged, view, host, !several, selected, spaces);
   // A conversation or workspace gone (deleted, moved) leaves the selection.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on a changed list
   useEffect(() => {
@@ -430,20 +498,20 @@ function SidebarView({
         }
       : {},
   );
-  // How many conversations each place holds, whatever the search shows.
   const counts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of all)
       counts.set(folderOf(item), (counts.get(folderOf(item)) || 0) + 1);
     return counts;
   }, [all]);
-  const row = (item: Session) => (
+  const row = (item: Session, filing?: string) => (
     <SessionEntry
       key={item.id}
       item={item}
       selected={item.id === selected}
       unread={unread.has(item.id)}
       online={online}
+      tag={filing ?? (view === "recent" ? tagOf(item, spaces) : undefined)}
       choose={choose}
       menu={menu}
       picked={selection.ids.has(item.id)}
@@ -452,7 +520,6 @@ function SidebarView({
       toggle={toggle}
     />
   );
-  // A conversation's rows: itself, then its agents at work beneath it.
   const conversation = ({ item, agents }: Entry) => (
     <Fragment key={item.id}>
       {row(item)}
@@ -467,6 +534,18 @@ function SidebarView({
       )}
     </Fragment>
   );
+  // Another host's row opens that host at the conversation.
+  const remoteRow = (source: Source, item: Session) => (
+    <SessionEntry
+      key={`${source.id}:${item.id}`}
+      item={item}
+      selected={false}
+      unread={false}
+      online={source.phase === "connected"}
+      tag={tagOf(item, source.state.catalogue.spaces, source.name)}
+      choose={(id) => hosts.open(source.id, id)}
+    />
+  );
   const terminalRow = (terminal: TerminalInfo) => (
     <TerminalRow
       key={terminal.id}
@@ -477,13 +556,21 @@ function SidebarView({
     />
   );
   const kept = new Map(spaces.map((space) => [space.path, space]));
+  // A folder goes by its own name, with its parent's only where two share it.
+  const folderNames = [
+    ...top.flatMap((pinned) => ("place" in pinned ? [pinned.place] : [])),
+    ...kinds.flatMap(([, places]) => places),
+  ]
+    .filter(([path]) => !kept.has(path))
+    .map(([path]) => ownName(path));
   const place = ([cwd, entries]: Place) => {
     const space = kept.get(cwd);
     const name = space?.name || folderName(cwd);
-    const folded = collapsed.has(cwd);
-    const conversations = entries.flatMap(function all(entry): Session[] {
-      return [entry.item, ...entry.agents.flatMap(all)];
-    });
+    const shut = collapsed.has(placeKey(host, cwd));
+    const conversations = entries.flatMap(rowsOf);
+    const every = conversations.every((item) => selection.ids.has(item.id));
+    const some = conversations.some((item) => selection.ids.has(item.id));
+    const checks = selection.selecting && view === "places";
     const shells = (terminals || []).filter(
       (item) =>
         item.folder === cwd &&
@@ -493,30 +580,46 @@ function SidebarView({
     const attention = conversations.filter((item) =>
       ["waiting", "failed"].includes(statusOf(item, online)),
     ).length;
+    const older = olderKey(host, cwd);
+    const { fresh, old, open } = placeRows(entries, older, selected);
+    const own = ownName(cwd);
     return (
       <section key={cwd}>
         <div
           class="place-head entry"
           data-picked={selection.ids.has(cwd) || undefined}
         >
-          {selection.selecting && space && (
+          {checks && space && (
             <RowCheck
               picked={selection.ids.has(cwd)}
               label={`Select the workspace ${name}`}
               toggle={() => toggle(cwd)}
             />
           )}
+          {checks && !space && conversations.length > 0 && (
+            <RowCheck
+              picked={every}
+              mixed={!every && some}
+              label={`Select the conversations of ${name}`}
+              toggle={() =>
+                selection.set(
+                  conversations.map((item) => item.id),
+                  !every,
+                )
+              }
+            />
+          )}
           <IconButton
             label={`Conversations of ${name}`}
-            aria-expanded={!folded}
-            aria-current={folded && holdsOpen ? "true" : undefined}
+            aria-expanded={!shut}
+            aria-current={shut && holdsOpen ? "true" : undefined}
             onClick={(event) => {
               // Focus stays on the header, not in the rows it takes away.
               event.currentTarget.focus();
-              collapsed.set(cwd, !folded);
+              collapsed.set(placeKey(host, cwd), !shut);
             }}
           >
-            {folded ? <ChevronRight /> : <ChevronDown />}
+            {shut ? <ChevronRight /> : <ChevronDown />}
           </IconButton>
           <h2>
             <Button
@@ -524,22 +627,31 @@ function SidebarView({
               title={`Overview of ${name}`}
               disabled={drawing}
               aria-current={shownPlace === cwd ? "page" : undefined}
-              onClick={(event) => (space && pick(cwd, event)) || overview(cwd)}
+              onClick={(event) =>
+                (space && view === "places" && pick(cwd, event)) ||
+                overview(cwd)
+              }
             >
               <FolderLabel path={cwd} space={!!space}>
-                {space?.name}
+                {space?.name ||
+                  (folderNames.filter((other) => other === own).length > 1
+                    ? undefined
+                    : own)}
               </FolderLabel>
-              {folded && conversations.length > 0 && (
+              {conversations.length > 0 && (
                 <span
-                  class={`place-count${attention ? " attention" : ""}`}
-                  aria-label={
-                    attention
-                      ? `${attention} need attention`
-                      : plural(conversations.length, "conversation")
-                  }
+                  class="place-count"
+                  aria-label={plural(conversations.length, "conversation")}
                 >
-                  ({attention || conversations.length})
+                  {conversations.length}
                 </span>
+              )}
+              {shut && attention > 0 && (
+                <span
+                  class="status-led unread attention"
+                  role="img"
+                  aria-label={`${attention} need attention`}
+                />
               )}
             </Button>
           </h2>
@@ -555,7 +667,7 @@ function SidebarView({
             <MenuItem
               disabled={!online}
               onClick={() => {
-                collapsed.set(cwd, false);
+                collapsed.set(placeKey(host, cwd), false);
                 start(cwd);
               }}
             >
@@ -575,37 +687,114 @@ function SidebarView({
             </Menu>
           )}
         </div>
-        {!folded && (
+        {!shut && (
           <div class="place-body">
             {shells.map(terminalRow)}
-            {entries.map(conversation)}
+            {fresh.map(conversation)}
+            {old.length > 0 && (
+              <Button
+                variant="quiet"
+                class="section-fold caption"
+                aria-expanded={open}
+                onClick={() => opened.set(older, !open)}
+              >
+                {open ? <ChevronDown /> : <ChevronRight />}
+                {old.length} older
+              </Button>
+            )}
+            {open && old.map(conversation)}
           </div>
         )}
       </section>
     );
   };
+  // Only what has a suggestion: the rest of Scratch is under its workspace.
+  const toFile = drawing ? [] : unfiled(all, spaces);
   const group = (kind: string, rows: ComponentChildren[]) => (
     <div key={kind} class="list-group" role="group" aria-label={kind}>
       <p class="section-title caption">{kind}</p>
       {rows}
     </div>
   );
-  const list = [
-    ...(top.length
+  const activePins = top.map((pinned) =>
+    "entry" in pinned
+      ? conversation(pinned.entry)
+      : "place" in pinned
+        ? place(pinned.place)
+        : terminalRow(pinned.terminal),
+  );
+  // Recent: every host's conversations, newest first, by day.
+  const latestRows =
+    view === "recent"
       ? [
-          group(
-            "Pinned",
-            top.map((pinned) =>
-              "entry" in pinned
-                ? conversation(pinned.entry)
-                : "place" in pinned
-                  ? place(pinned.place)
-                  : terminalRow(pinned.terminal),
+          ...recent.map((entry) => ({ entry, source: undefined })),
+          ...hosts.sources
+            .filter((source) => source.id !== host)
+            .flatMap((source) =>
+              unpinned(source).map((item) => ({
+                entry: { item, agents: [] },
+                source,
+              })),
             ),
-          ),
+        ].sort((a, b) => newest(a.entry, b.entry))
+      : [];
+  const empty = !activePins.length &&
+    !needs.length &&
+    !(view === "recent" ? latestRows.length : kinds.length) && (
+      <EmptyState key="empty">
+        No conversations yet. New starts one in a workspace or folder on this
+        host.
+      </EmptyState>
+    );
+  const placesOf = (source: Source) => {
+    if (source.id !== host)
+      return <OtherPlaces key={source.id} source={source} />;
+    const shown = [
+      ...kinds.map(([kind, shown]) => group(kind, shown.map(place))),
+      empty,
+    ];
+    return several ? (
+      <Fold key={source.id} name={`$host:${host}`} label={source.name}>
+        {shown}
+      </Fold>
+    ) : (
+      <Fragment key={source.id}>{shown}</Fragment>
+    );
+  };
+  const list = [
+    <SharedShortcuts key="pinned" activePins={activePins} />,
+    needs.length > 0 && group("Needs you", needs.map(conversation)),
+    toFile.length > 0 &&
+      group(
+        "To file",
+        toFile.map((item) => row(item, filingTag(item, spaces) ?? "")),
+      ),
+    ...(view === "recent"
+      ? [
+          ...DAYS.map((day, index) => {
+            const rows = latestRows.filter(
+              ({ entry }) => dayOf(entry.item.updated) === index,
+            );
+            return (
+              rows.length > 0 && (
+                <Fold
+                  key={day}
+                  name={`$day:${day}`}
+                  label={day}
+                  closed={index === DAYS.length - 1}
+                >
+                  {rows.map(({ entry, source }) =>
+                    source
+                      ? remoteRow(source, entry.item)
+                      : conversation(entry),
+                  )}
+                </Fold>
+              )
+            );
+          }),
+          empty,
         ]
-      : []),
-    ...kinds.map(([kind, shown]) => group(kind, shown.map(place))),
+      : hosts.sources.map(placesOf)),
   ];
   return (
     <>
@@ -621,53 +810,41 @@ function SidebarView({
         >
           <Mark />
         </a>
-        <IconButton label="Search" onClick={search}>
-          <Search />
-        </IconButton>
-        <Menu
-          label="New"
-          trigger={
-            <>
-              New
-              <ChevronDown />
-            </>
-          }
-        >
-          <MenuItem disabled={!online} onClick={startScratch}>
-            Conversation
-          </MenuItem>
-          <MenuItem disabled={!online} onClick={() => create("workspace")}>
-            Workspace…
-          </MenuItem>
-          <MenuItem disabled={!online} onClick={() => create("folder")}>
-            Folder…
-          </MenuItem>
-        </Menu>
+        <ListActions
+          search={search}
+          home={home}
+          create={create}
+          online={online}
+        />
       </div>
-      {needsYou > 0 && (
-        <SheetButton
-          label={`${needsYou} need${needsYou === 1 ? "s" : ""} you`}
-          heading="Needs you"
-          className="needs-you"
-          trigger={
-            <>
-              <Inbox />
-              {needsYou} need{needsYou === 1 ? "s" : ""} you
-            </>
-          }
-        >
-          {(close) => (
-            <WaitingList
-              sessions={all}
-              choose={(id) => {
-                close();
-                choose(id);
-              }}
-            />
-          )}
-        </SheetButton>
-      )}
-      <div class="sidebar-sections">
+      <div class="sidebar-sections segmented" role="group" aria-label="List">
+        {(
+          [
+            ["recent", "Recent"],
+            ["places", "Places"],
+          ] as const
+        ).map(([name, label]) => (
+          <Button
+            key={name}
+            variant="secondary"
+            aria-pressed={view === name}
+            onClick={() => setView(name)}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+      <nav
+        ref={rows}
+        aria-label="Conversations"
+        data-selecting={selection.selecting || undefined}
+      >
+        <Placeholder label="Loading conversations…" when={drawing}>
+          {list}
+        </Placeholder>
+      </nav>
+      <HostList />
+      <div class="sidebar-pages">
         <Button
           variant="quiet"
           class="entry"
@@ -694,22 +871,6 @@ function SidebarView({
           )}
         </Button>
       </div>
-      <nav
-        ref={rows}
-        aria-label="Conversations"
-        data-selecting={selection.selecting || undefined}
-      >
-        <Placeholder label="Loading conversations…" when={drawing}>
-          {list.length ? (
-            list
-          ) : (
-            <EmptyState>
-              No conversations yet. New starts one in a workspace or in a folder
-              on your host.
-            </EmptyState>
-          )}
-        </Placeholder>
-      </nav>
       {selection.selecting ? (
         <footer>
           <SelectionBar selection={selection}>
@@ -751,6 +912,59 @@ function SidebarView({
           </IconButton>
         </footer>
       )}
+    </>
+  );
+}
+
+// Search and New: in the list's head, and in the header of the sheet that
+// holds the list on a narrow screen, where New is its icon.
+export function ListActions({
+  search,
+  home,
+  create,
+  online,
+  brief = false,
+}: {
+  search: () => void;
+  home: () => void;
+  create: (place: "workspace" | "folder") => void;
+  online: boolean;
+  brief?: boolean;
+}) {
+  return (
+    <>
+      <IconButton label="Home" onClick={home}>
+        <House />
+      </IconButton>
+      <IconButton label="Search" onClick={search}>
+        <Search />
+      </IconButton>
+      <Menu
+        label="New"
+        trigger={
+          brief ? (
+            <>
+              <Plus />
+              <span class="sr-only">New</span>
+            </>
+          ) : (
+            <>
+              New
+              <ChevronDown />
+            </>
+          )
+        }
+      >
+        <MenuItem disabled={!online} onClick={home}>
+          Conversation
+        </MenuItem>
+        <MenuItem disabled={!online} onClick={() => create("workspace")}>
+          Workspace…
+        </MenuItem>
+        <MenuItem disabled={!online} onClick={() => create("folder")}>
+          Folder…
+        </MenuItem>
+      </Menu>
     </>
   );
 }

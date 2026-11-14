@@ -42,12 +42,12 @@ struct ApplicationInput {
   // Who wrote the text when not the person (Steering::Message::origin).
   json origin{};
   std::optional<std::string> title{};
+  // Keeps the conversation where it is (Agent::KeepHere).
+  bool keep = false;
 };
 
-// Transport-neutral input half of the application protocol. A terminal, a
-// JSON-RPC app server, or an in-process GUI can supply commands and answer
-// interactive decisions while Observability::Subscribe supplies every output
-// event. Returning nullopt closes the session.
+// Transport-neutral input half of the application protocol. NextInput
+// returning nullopt closes the session.
 class ApplicationChannel {
  public:
   virtual ~ApplicationChannel() = default;
@@ -57,9 +57,7 @@ class ApplicationChannel {
   virtual int WakeFd() const { return -1; }
   virtual std::string SessionPath() const { return {}; }
   virtual std::string InitialTitle() const { return {}; }
-  // Checkpoints run at serialized application boundaries, after saving. A
-  // live (non-checkpoint) publish carries the same state mid-turn so the
-  // client's accounting moves while the turn runs.
+  // A checkpoint follows a save; a live publish carries the state mid-turn.
   virtual void PublishState(const json&, bool /*checkpoint*/) {}
   virtual void CompleteControl(const std::string&, const json&) {}
   // Only thread-safe, non-model activity operations may use this entry point.
@@ -96,8 +94,7 @@ struct AppContext {
   ProviderSetup provider;
   ToolPolicy tool_policy;
   std::vector<Tool> tools;
-  // The name this session holds the shared browser under, when it has the
-  // browser tool: what a finished turn gives the browser back by.
+  // The name this session holds the shared browser under.
   std::string browser_lease;
   // What "allow for this conversation" granted; it dies with the session.
   std::vector<PermissionRule> session_rules;
@@ -105,8 +102,11 @@ struct AppContext {
   // this machine); wiped when the turn ends.
   std::mutex root_passwords_mutex;
   std::map<std::string, std::shared_ptr<std::string>> root_passwords;
+  // Slash commands a person approved for the agent, run when the turn ends.
+  std::vector<std::string> commands;
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
+  std::jthread remote_watch;
 };
 
 struct BootstrapResult {
@@ -123,8 +123,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
 int RunApplication(AppContext& context);
 
-// `stop` is additive: the schema string is what consumers match on, and a
-// field they do not know is cheaper for them than a version they must handle.
+// `stop` is additive: consumers match on the schema string, which stays v1.
 inline json HeadlessResult(std::string answer, std::string error, json trace,
                            const Usage& usage, json routes, int exit_code,
                            json stop = nullptr) {

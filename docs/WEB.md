@@ -33,15 +33,16 @@ address. Or open the URL and type the code.
   shell that installed it, so agent commands find the same tools, and an
   update restarts it. `uagent --web` then only prints a pairing code.
 
-The sidebar lists this OS user's conversations by place: **Workspaces**
-first, then **Folders**. A place's name opens its overview, the chevron
+The sidebar groups this main's conversations by execution host, then by place:
+**Workspaces** on Local and **Folders** on Local or a remote host. A place's name opens its overview, the chevron
 before it folds the place away (remembered per browser) and **+** starts a
 conversation there. Each conversation is followed by its agents: those at
-work or waiting with their state, the finished ones folded into one "N
-agents" line that opens in place (remembered per browser). **Pin** in the
+work or waiting with their state; finished agents remain accessible from
+their reports and search. **To file**, above them, lists the conversations
+in Scratch that have a suggested place. **Recent** is collapsible. **Pin** in the
 menu of a conversation, workspace or folder moves it to a **Pinned** section
 at the top, in the order pinned; **Unpin** returns it. The pins belong to
-the host, so every paired device shows the same. Browsing saved history
+the main, so every paired device shows the same, including remote conversations. Browsing saved history
 starts no model and runs no command.
 
 On a touch screen only the open row draws its ⋯; a long press on any row opens
@@ -59,9 +60,47 @@ conversation, and the conversations as cards (a list on a phone; the toggle
 is remembered per browser), each with its state (Working, Needs you,
 Stopped, Idle), current step, to-do progress, agents, last change and cost.
 
-**New** at the top of the sidebar starts a conversation in a
-**Workspace…** (a name, new or existing) or a **Folder…** (a directory on
-the host).
+The home screen starts work from one box: type into it and the conversation
+starts in the **Scratch** workspace on Local, with nothing to choose. Under
+the text the box names where it starts and which model it starts with:
+**Scratch** keeps what you typed and asks for a host and a folder instead,
+and the model beside it picks one for this conversation. **New** at the top
+of the sidebar opens the home screen with the box ready. On a narrow screen
+the box is docked at the bottom, under the latest conversations from every
+place, and **All** opens the whole list. Conversation and folder actions
+choose a **Host** and browse its folders; typing a path remains optional.
+
+While the host has no provider, the home screen offers **Sign in with
+OpenRouter** for its [free models](GUIDE.md#free-model-setup). Opened on
+`localhost` or over HTTPS, OpenRouter sends the browser back signed in; on any
+other address it shows a code to paste. The key is saved on the host and never
+reaches the page. **I have an API key** opens Settings.
+
+µAgent suggests where a conversation in Scratch belongs, and never moves it
+by itself:
+
+- **With your first message**, the title's model also sees your 30 newest
+  conversations. If the message carries one of them on, a bar above the
+  input offers **Continue there** (the message is sent in that conversation
+  and the new one is removed) or **New in** its folder (the conversation
+  starts over there). The offer holds while the first turn runs and has
+  changed no file.
+- **When a turn ends**, files it changed inside a folder you already work in
+  name that folder, or two. If it changed none and nothing was suggested
+  yet, the model is asked once: it may name a place, two, a new workspace by
+  name, or nothing.
+- The suggestion shows above the input, as a row under **Suggested moves**
+  on the home screen, and under **To file** in the sidebar. **Move to…**
+  (**Move** on the home screen) moves the conversation as
+  **Move to…** in its menu does (**Create and move** makes the workspace
+  first), **Other place…** opens that dialog, and **Keep in Scratch**
+  answers for good. Move waits for a running turn to end.
+- With `title.model` set to `off` only the changed files suggest. Named
+**Workspaces** belong to Local. An existing conversation or folder supplies its
+host, shown beside the conversation title. There is no application-wide host
+switch. The bottom **Remote hosts** panel shows status and measured main-to-host SSH
+round trip, with **Add host**, **Reconnect** and **Disconnect** in host details.
+[Remote hosts](REMOTE_HOSTS.md) explains setup and recovery.
 
 - A **workspace** is a folder the host keeps under `~/.uagent/spaces/`,
   created the first time its name is used. Use one for work that belongs to
@@ -73,70 +112,161 @@ the host).
   conversations, and µAgent never removes it.
 
 **Files** (the folder button in a conversation's header) shows the
-conversation's folder beside the chat, or as a sheet on a small screen. It
-never writes. The folder is a tree, as VS Code's Explorer draws one: a folder
-opens in place, the arrow keys walk and open it, and the folders left open
-are kept per folder on this device. Search finds a file by name anywhere in
-the folder. Code opens
-with line numbers and highlighting, Markdown rendered with its images
-(**Source** shows the text), and an image at full size on a click; an HTML page runs live
-(**Source** shows its code); any other file offers a download. In a git repository, **Changes** lists what differs
-from the last commit, with its count, and opens each as a diff; it is read
-only too. What is open is read again when a turn ends.
+conversation's folder beside the chat, or as a sheet on a small screen. The
+folder is a tree, as VS Code's Explorer draws one: a folder opens in place,
+the arrow keys walk and open it, and the folders left open are kept per
+folder on this device. Search finds a file by name anywhere in the folder.
+Code opens with line numbers and highlighting, Markdown rendered with its
+images (**Source** shows the text), a picture where it can be zoomed, a film
+to play; an HTML page runs live (**Source** shows its code); any other file
+offers a download. In a git repository, **Changes** lists what differs from
+the last commit, with its count, and opens each as a diff. What is open is
+read again when a turn ends. Files changes the folder only where this guide
+says so: a document's or a slide's text and a slide's notes edited in place,
+a deck's slides moved, duplicated, added, skipped or deleted, a sheet's
+cells edited, and a sheet saved from an
+Excel or CSV file.
 
-A folder of two pages or more offers **Canvas** on its row: its pages side by side,
-each live, the way the `design` skill writes a design. Pages named
-`NN-screen[--state].html` form a row per step `NN` (`02-sign-in.html` and
-`02-sign-in--error.html` share row 02); pages without a step form the first. The canvas is a plane: drag or scroll to
-pan; pinch, a trackpad pinch or ⌘/Ctrl with the wheel zooms at the pointer;
-− and + zoom, **Fit** shows every page. A page declares its size with
-`<meta name="artboard" content="1440x900">`, or only a width for a page as tall
-as its content. A click opens a page across the pane; **Back** returns to the
-canvas. There, **Select** picks an element: a comment on it is added to your
+### Artifacts
+
+What the agent makes as HTML with the `artifact` skill opens live in Files,
+each page in a sandboxed frame that reaches neither the app nor its API. A
+page's head says what it is:
+
+| Artifact | In the folder | Opens as |
+| --- | --- | --- |
+| Document | one page with `<meta name="print" content="flow a4">` | the page, beside a legend of its pages |
+| Deck | a folder of pages with `<meta name="artboard" content="1920x1080 slide">`, one file per slide in name order | the slide, beside a legend of the slides |
+| Design | a folder of pages with `<meta name="artboard" content="1440x900">` (or a width only, for a page as tall as it reads) | a canvas |
+| Design system | a folder with a `tokens.css` | its brand book, `book.html` |
+| Sheet | one page with `<meta name="sheet">` and a `<table data-sheet>` per tab | a spreadsheet grid, its tabs under it |
+
+**The viewer.** A page opens across the pane with what it is part of in a
+legend beside it (under it, as a filmstrip, in a narrow pane): a deck's
+slides or a document's pages as numbered thumbnails, a design's pages. A
+counter with previous and next sits on
+the page; the arrow keys, Page Up and Down, Home and End step through it,
+by slide or by page. **Find** looks through every slide or the whole
+document. **Select** picks an element: a comment on it is added to your
 message as a line naming the page, the element and its text, and the pane
 stays open for the next one. **Tweaks** tries the levers the page declares
-(colours, ranges, choices, switches) at once; **Keep** adds them as a line for
-the agent to write, **Reset** reloads the page. **Present** shows it over the
-whole app (full screen where the browser allows), the arrow keys, Space and
-Page Down stepping through the folder's pages; **End** or Esc stop.
-**Download** in the pane's header saves the page's HTML source; **Export**
-saves it in another format: a PDF, at its artboard's size or, for a document,
-on its paper, and where the [agent's browser](BROWSER.md) runs, a PNG at twice
-its size (or copied as an image); a doc also as Markdown. The agent's browser
-prints and draws in a context of its own with no profile or cookies; without
-it, PDF opens the page alone to print. **Draw on it** opens that picture
-straight in the image viewer's markup. An opened page starts at its fit and zooms as the canvas does (−, +, Fit,
-or ⌘/Ctrl with the wheel and a pinch, over the page too), scrolling once it
-is larger than the pane. A page that fails says so, and **Ask agent to fix** puts its errors in
-your message. A page the agent writes reloads as the write finishes. A folder
-of one page opens that page; a page that names only its width (an A4
-document, such as a design system's book) fits across the pane and scrolls
-inside, as a PDF does. A design a reply names (`design/landing/`, or a page)
-shows under the reply as a card with its first page live and small; **Open**
-shows it in the pane.
+(colours, ranges, choices, switches) and a design system's themes at once;
+**Keep** adds them as a line for the agent. **Present** shows the page over
+the whole app (full screen where the browser allows). **Export** saves a
+PDF, at the artboard's size or on a document's paper, and where the
+[agent's browser](BROWSER.md) runs, a PNG at twice its size (or copied as an
+image); **Draw on it** opens that picture in the image viewer's markup. The
+page starts at its fit and zooms with −, + and Fit, ⌘/Ctrl with the wheel or
+a pinch. A page that fails is marked in the legend, and **Ask agent to fix**
+puts its errors in your message. A page the agent writes reloads as the
+write finishes.
 
-A **deck** is a folder of slides, pages declared with
-`<meta name="artboard" content="1920x1080 slide">` (16:9 unless you ask for
-another size), one file per slide in name order. Its canvas lays the slides out
-in order, numbered, with **Present** and the deck's PDF, a sheet a slide. A
-slide's last `<aside>` is its speaker notes: never drawn, shown under the slide
-on a phone held upright or with N, and in **Presenter view**, a window of its
-own with the slide now and the next, the notes and a clock. Either window
-moves both.
+**A deck** is 16:9 unless you ask for another size. A slide's last `<aside>`
+is its speaker notes: shown under the slide, never on it, and in **Presenter
+view**, a window of its own with the slide now and the next, the notes and a
+clock; either window moves both. With **Edit** on, the notes are typed
+under the slide, a line to a paragraph. Drag a slide in the legend to a new place, or use **Slide
+actions** beside the counter (also a right click on a slide) to move it
+earlier or later, duplicate it, add a slide after it in the deck's style,
+skip it or delete it; the files are renamed to keep the order. A skipped
+slide is dimmed in the legend and left out of Present, Presenter view and
+the deck's PDF. Export offers the deck's PDF, a sheet a slide.
 
-A **doc** is one page on paper, `<meta name="print" content="flow a4">` (A4
-unless you ask for Letter, Legal, A3, A5, landscape or a size in millimetres):
-as wide as its paper, with lines where print will start each page (an
-estimate; the PDF is exact). **Edit** lets you type in its headings,
-paragraphs, list items and table cells; each block is saved to the file as you
-leave it, unless the agent changed that block meanwhile. **Export** gives it as
-PDF or Markdown. The Library lists decks and docs with designs.
+**A document** is on A4 unless you ask for Letter, Legal, A3, A5, landscape
+or a size in millimetres, with margins of 25 mm unless you ask for narrow,
+moderate, wide or your own. It is shown a sheet of its paper at a time; the
+browser breaks the pages as it does for print, so they are the PDF's but
+for what browsers do differently (Safari leaves a heading at the foot of a
+page). A link to a place in it turns to that page. Export gives it as PDF or
+Markdown, and the page shown as a picture.
 
-A design system's brand book is a page the agent writes beside its
-`tokens.css`, `book.html`: A4 pages art-directed in the system's own colours
-and type, on its canvas like any page, and printed to PDF a sheet a page. A
-page that links a `tokens.css` shows its themes and colours under
-**Tweaks**, to try at once; **Keep theme** adds them as a line for the agent.
+**Edit**, on a document or a slide, lets you type in its headings,
+paragraphs, list items and table cells. Its own tools come under the
+others: **Bold** (⌘/Ctrl B), **Italic** (⌘/Ctrl I) and **Link** (an http,
+https or mailto address, or `#` and the id of a place in the page) for what
+you have selected, and **Style**, which makes the block a
+paragraph, a heading or an item of a bulleted or numbered list. In a
+document **Insert** puts a paragraph, a heading, a list, a table or a
+divider after the block, with words to type over. What you
+type is saved to the file when you pause, and before the pane goes anywhere
+else, exports or opens a window; the legend follows once you leave the
+block. A block the agent changed meanwhile, or whose neighbours it changed,
+is not written over: the pane says so until that block is saved, keeps what
+you typed on the page, and stays on it the first time you turn away. Close
+the tab within that pause and the last words reach the file only if the
+pane has already read or saved it and it is under about 48 KB. A file over
+1 MB is not edited here. The first save writes the file as a browser reads
+it: attribute quotes double, entities such as `&mdash;` as their
+characters, and the closing tags and `<tbody>` that were left out; its
+line endings and a byte order mark stay as they were.
+
+**A design's canvas** shows everything its folder holds: the pages, each
+live, and also its pictures and films at their own size, and a document or a
+deck in it as a stack with a count. Pages named `NN-screen[--state].html`
+form a row per step `NN` (`02-sign-in.html` and `02-sign-in--error.html`
+share row 02); what has no step forms the first row. The canvas is a plane:
+drag or scroll to pan; pinch, a trackpad pinch or ⌘/Ctrl with the wheel
+zooms at the pointer; − and + zoom, **Fit** shows everything. A click opens
+a page in the viewer, a picture or a film as its file, a stack as its
+document or deck; **Back** returns to the canvas.
+
+**A design system's brand book** is a page the agent writes beside its
+`tokens.css`: A4 pages art-directed in the system's own colours and type,
+printed to PDF a sheet a page. A page that links a `tokens.css` shows its
+themes and colours under Tweaks; **Keep theme** adds them as a line for the
+agent.
+
+**A sheet** is a workbook in one page: each table is a tab, a cell holds
+what a person would type, and the grid shows what the formulas come to. The
+engine that calculates ([IronCalc](https://www.ironcalc.com), WebAssembly)
+is installed with µAgent and loaded by the page, never by the app; it
+calculates in a worker of the page, so a formula it never finishes cannot
+hold the app still. A sheet it has not finished calculating in 20 seconds is
+shown as written, and a change it has not is refused, saying so. The bar
+above the grid shows what the selected cell holds; typing replaces it, and
+Enter, F2 or a double click edits it in place. A formula being typed, there
+or in the bar, is offered the functions its letters name (the arrows choose,
+Enter or Tab takes one) and shown the arguments of the one it stands in.
+Arrows, Tab and Enter move;
+copy, cut and paste work with other spreadsheets; ⌘/Ctrl+D fills down and
+⌘/Ctrl+Z undoes. A header's ▾ sorts by its column or shows only the rows
+that contain some text; a row's number or a column's letter inserts and
+deletes; a right click offers all of these. Every change is saved into the
+file, where only that tab's table is rewritten; if the agent changed the
+file meanwhile, the change is not saved and the sheet is shown as the file
+is now. The bar under the grid holds the tabs (⌘/Ctrl with Page Up and Down
+changes tab), what a selection of numbers comes to, **Undo**, **Redo** and
+**Comment**, which adds the selected range (`Costs!C2:C6`) to your message.
+Cells in error are listed with **Ask agent to fix**. A grid is as large as
+its table: a new row or column is inserted, not typed past the edge.
+
+A sheet has rules, which fill, embolden or strike the cells or rows that
+meet a condition (done, overdue, below zero). The agent writes them, and
+**Conditional formatting…** in a cell's or a column's menu lists those of
+the column in words and adds, changes or removes one. It also has charts:
+bars, stacked bars, lines or a pie drawn over the grid from a range, redrawn
+as its cells change. **Chart** adds one from a selection; its menu changes
+its kind or deletes it, and the mouse moves and resizes it.
+Rows or columns selected whole are grouped from their menus: a bracket
+beside the row numbers or over the letters shows each group, nested up to
+seven deep, and its button on the row or column after it folds or opens it;
+the file keeps which are folded.
+
+An `.xlsx` or `.csv` file opens in the same grid, read-only. **Save as
+sheet** writes it as a sheet beside the file, which is then edited like any
+other. Export gives a sheet as an Excel workbook, with its rules, or its
+open tab as CSV, as the cells show; a folded group's rows and columns go
+out hidden, and the groups themselves do not. From an Excel file come the
+cells, their formulas, number and date patterns, column widths and merged
+cells; groups, fonts, borders, fills and the file's own charts and
+conditional formats do not. A
+CSV file's cells are kept as written: only a plain number, a date or TRUE
+and FALSE is read as more than text, so a phone number or a code with
+leading zeros stays what it was.
+
+What the agent hands over with `present` shows under its reply as a card
+with its cover live and small, what it is and how much it holds; **Open**
+shows it in the pane. The Library lists every artifact of every folder.
 
 ![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](images/files.gif)
 
@@ -159,6 +289,7 @@ settings saved for all conversations and the environment, never a folder's.
 | | `UAGENT_WEB_NOTIFICATION_DETAIL` | on (background notifications name the conversation) |
 | | `UAGENT_WEB_TERMINAL` | on ([the terminal](#terminal)) |
 | | `UAGENT_WEB_TERMINAL_IDLE_MINUTES` | `60` (1–10080) |
+| | `UAGENT_WEB_UPDATE_CHECK` | off (ask GitHub for a newer release once a day) |
 
 Save one from a terminal session with `/config user KEY=VALUE`, or set it in
 the host's environment. Each applies when the web host next starts.
@@ -232,7 +363,7 @@ opt in with `-DUAGENT_WEB_PUSH=ON` and need OpenSSL 3.
 
 ## Terminal
 
-A terminal is your own shell on the host. There are two kinds, up to eight
+A terminal is your own shell on the conversation's execution host. There are two kinds, up to eight
 shells at once:
 
 - **A folder's terminal** starts from **+ → Terminal** on a folder or
@@ -247,8 +378,8 @@ shells at once:
   on a Mac) opens a panel under the chat and Files, in tabs like VS Code's
   terminal. **+** starts another, in the open conversation's folder, or in
   your home folder when no conversation is open. Its shells belong to this page:
-  they end when their tab or the panel closes or the page is left or
-  reloaded, and are never listed.
+  hidden, the panel keeps them running; they end when their tab closes or
+  the page is left or reloaded, and are never listed.
 
 - **It is your shell, unsandboxed.** It runs as you, your login shell
   (`$SHELL`, else `/bin/sh`) with `TERM=xterm-256color`, and can do whatever
@@ -265,8 +396,12 @@ shells at once:
   the list and is shown its recent output; one device at a time types into
   it, and the one it moved from offers **Use here**. It ends when you close
   it, when it exits, or when no device has had it open and it printed
-  nothing for `UAGENT_WEB_TERMINAL_IDLE_MINUTES`. Stopping the web host ends
-  every shell; nothing is written to disk.
+  nothing for `UAGENT_WEB_TERMINAL_IDLE_MINUTES` (Local) or 24 hours (remote).
+  Stopping the web host ends
+  its Local shells; no shell output is written to disk. Remote shells live in
+  the execution gateway; the main saves only their identities, so they can
+  survive SSH loss or a same-build main restart.
+  Reconnect to reattach; a remote restart or build upgrade loses their handles.
 - **Turn it off** with `/config user UAGENT_WEB_TERMINAL=off`, or in
   Settings → All conversations; it applies when the web host restarts. The
   routes then refuse and the terminals are gone.
@@ -448,7 +583,8 @@ before Submit.
   picked with the reason. The Library picks the same way.
 - **Move to…** in a conversation's menu (not an agent's, and not before the
   first message) moves it, with the agents it started, to another folder or
-  workspace: pick a place from the list or type a folder's path, and Move.
+  workspace on Local: pick a place from the list or type a folder's path, and Move.
+  Moving remote conversations or moving between hosts is unavailable.
   Its files stay in the old folder, an agent working in a worktree of its
   own keeps it, and memories stay with the old folder; the conversation says
   so in a note the model reads in its next request. The dialog names what
@@ -483,7 +619,8 @@ Settings are grouped by what they affect:
 | **All conversations** | Instructions, global MCP servers (`~/.mcp.json`), every saved setting |
 | **This folder** (the open conversation's) | Folder instructions, its MCP servers (`.mcp.json`), *Allowed actions*, the settings it overrides |
 | **This browser** | Appearance, Animations, Clock, Timestamps, Zoom |
-| **Host** | Update, Install, Notifications, Paired devices |
+| **Host** | Install, Notifications, Paired devices |
+| **About** | This build, how it was installed, updates |
 
 - The first two list every setting under its group, with a box that filters
   them by name or variable. A switch or a choice applies as it changes; text
@@ -497,6 +634,15 @@ Settings are grouped by what they affect:
 - A change that needs a restart offers it: running conversations restart once
   idle and keep their history, and the web host re-executes itself for its
   own settings.
+- **About** names the version and how µAgent was installed. **Check for
+  updates** has the host ask GitHub for the newest release (it asks unasked
+  only with `UAGENT_WEB_UPDATE_CHECK`, once a day) and shows its notes. An
+  install made by the installer offers **Update**: the host runs that
+  release's installer, which replaces the files, and restarts itself;
+  conversations keep running and restart once idle. A container, a checkout
+  and an install in a folder the host cannot write show the command to run
+  instead, and where. Only a person starts an update: the agent sees that
+  one exists, and the button is absent where the terminal is turned off.
 - **MCP servers** shows each server's state and tools and, when it failed,
   its reason and stderr tail. **Retry** starts a failed server again; the
   switch sets `disabled` in the file that defines the server and applies at
@@ -573,17 +719,22 @@ or a revoked device clears local UI state.
 - A folder's pages open from a preview address, `/preview/<token>/…`, that a
   device gets for a conversation; it lasts until the host stops or a device
   is revoked. It serves only web files (pages, stylesheets, scripts, data,
-  fonts, media) with the same refusals as above, carries no cookie, and is
-  the one place a request with `Origin: null` is accepted, for reading. Each
-  page runs sandboxed in an opaque origin, so it reaches neither the app nor
-  the API, and its policy lets it load only from its own address and Google
-  Fonts, so it cannot send its address anywhere.
+  fonts, media, `.csv` and `.xlsx`) with the same refusals as above, carries
+  no cookie, and is the one place a request with `Origin: null` is accepted,
+  for reading. Each page runs sandboxed in an opaque origin, so it reaches
+  neither the app nor the API, and its policy lets it load only from its own
+  address and Google Fonts, so it cannot send its address anywhere. Under
+  `~sheet/` of that address the host serves the sheet engine installed with
+  it, the same for every folder; the policy allows WebAssembly for it, and a
+  worker the page makes from its own blob, which keeps the page's policy.
 - The page runs under a content security policy that allows only its own
   scripts, connections and frames. Attached HTML opens sandboxed in an opaque
   origin.
 - A paired device can open [a terminal](#terminal): a shell of yours on the
   host, unsandboxed. Turn it off with `UAGENT_WEB_TERMINAL=off` where a
-  paired device should not have that.
+  paired device should not have that. The same switch decides whether a
+  paired device may start an update, which downloads a release from GitHub
+  and runs its installer as you.
 
 ## Development
 

@@ -1,8 +1,14 @@
 # Operations
 
-Settings, limits, budgets, recovery and failure triage. µAgent is a local,
-single-user CLI for macOS and Linux; [Security](../SECURITY.md) describes
-what it confines.
+Settings, limits, budgets, recovery and failure triage. A main µAgent instance
+on macOS or Linux owns one user's state and serves terminal and paired web
+clients. Projects can execute locally or over SSH; [Security](../SECURITY.md)
+describes what it confines.
+
+Remote folders use the main's same settings, providers, models and keys.
+The gateway owns execution only; it needs no remote application setup.
+[Remote hosts](REMOTE_HOSTS.md) covers SSH, manual reconnect, measured round
+trip and the distinction between transport loss and remote-process restart.
 
 ## Settings
 
@@ -42,10 +48,18 @@ environment name the same way, inside a JSON value such as
 written.
 
 Change settings with `/config`, the web's Settings, the agent's
-`uagent_configure` tool (you approve the exact change) or an editor;
+`uagent` tool (you approve the exact change) or an editor;
 `settings.schema.json` beside the file lets an editor complete and check it.
 An unknown name, or a value its setting does not take, is reported and
 skipped; the rest applies, and the file keeps what you wrote.
+
+The agent can also ask to run a slash command for you, such as `/model NAME`,
+`/permissions auto` or `/compact` (the `uagent` tool's `command`). You approve
+the exact line, in every approval mode, and it runs when the turn ends:
+after the messages you queued for then, before a turn that background work or
+an agent's report starts. A turn you stop, or one that fails, runs none of
+them and says so. Its output is shown to you as a typed command's is, not to
+the agent, and agents that are running keep their settings.
 
 ```text
 /config                                  what is set, and where from
@@ -84,7 +98,7 @@ session limit.
 | turn generated tokens / reported cost | unlimited | `UAGENT_MAX_TURN_TOKENS`, `UAGENT_MAX_TURN_COST` |
 | identical consecutive tool calls that end a turn | 12 (the model is warned at 3 and 6) | `UAGENT_REPEATED_CALL_STOP` (at least 7) |
 | session generated tokens / reported cost | unlimited | `UAGENT_SESSION_TOKEN_BUDGET` (`--token-budget`), `UAGENT_SESSION_BUDGET` (`--budget`) |
-| one tool call | 30 s; `run`, `scratch`, `activity` and `agent_start` are bounded by the turn | `UAGENT_TOOL_TIMEOUT` |
+| one tool call | 30 s; `run`, `activity` and `agent_start` are bounded by the turn | `UAGENT_TOOL_TIMEOUT` |
 | tool result / parallel batch | 8,000 / 16,000 characters | `UAGENT_TOOL_RESULT_CHARS` (batch is twice the result cap) |
 | `read_path` | 1,000 lines, at most 10,000 lines or 32 KiB | `UAGENT_READ_FILE_LINES` (default only), `UAGENT_READ_FILE_KB` |
 | `edit_file` / diff | files up to 10 MiB | `UAGENT_EDIT_FILE_MB` |
@@ -152,6 +166,15 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
   billing, and is measured again after compaction or a model switch.
 - Compaction reserves a quarter of the context window for the response, or
   `UAGENT_MAX_TOKENS` when that is smaller.
+- A route on the `anthropic_messages` wire must name a response cap. It is
+  `UAGENT_MAX_TOKENS` when set, else the most the model writes according to
+  the provider's catalogue or the route's `max_output_tokens` model feature,
+  else 8192. A route that declares both `context` and `features` is not
+  looked up in the catalogue, so it states `max_output_tokens` there itself.
+- A response cut off by its cap continues. Cut text goes on where it
+  stopped. Complete tool calls run, an unfinished one is dropped, and the
+  model is told to send the rest in smaller replies. A second cut with
+  nothing complete ends the turn.
 
 ## Recovery
 

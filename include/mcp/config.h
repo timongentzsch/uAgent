@@ -25,8 +25,7 @@
 
 namespace uagent {
 
-// Config fields the loader understands; anything else is reported and
-// ignored. A constexpr table keeps this out of per-TU dynamic init.
+// Config fields the loader understands; any other is reported and ignored.
 inline constexpr std::string_view kKnown[] = {"type",
                                               "command",
                                               "args",
@@ -155,8 +154,7 @@ inline bool McpResolveRoots(const json& conf, json& roots, std::string& error) {
   return true;
 }
 
-// A trusted ./.mcp.json then ~/.mcp.json — the folder layer wins.
-// The credential/config loader never imports a folder .env.
+// A trusted ./.mcp.json, then ~/.mcp.json: the folder layer wins.
 inline json McpLoadConfig(const json& trusted_project) {
   auto read = [](const std::string& path) -> json {
     std::error_code ec;

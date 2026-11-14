@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "include/agent/transcript.h"
+#include "include/app/execution.h"
 #include "include/app/launch.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
@@ -64,7 +65,8 @@ std::shared_ptr<HostSession> SessionHost::StartScheduledRun(
   const std::string id = JsonValue(run, "id", "");
   std::string error;
   auto session = CreateSession(cwd, JsonValue(run, "session_path", ""),
-                               JsonValue(run, "title", "Scheduled run"), error);
+                               JsonValue(run, "title", "Scheduled run"), error,
+                               JsonValue(run, "host", ""));
   if (!session) {
     RecordRun({id, "failed", error});
     return {};
@@ -209,9 +211,8 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
     if (stopping_) return wait;
     std::vector<std::shared_ptr<HostSession>> recovery;
     if (!recovered) recovered = RecoverSchedules(recovery);
-    // External writers (CLI schedule save/run) change the store under us:
-    // refresh before the tick so their runs are claimed this iteration,
-    // and announce the change like the invalidation path does.
+    // External writers (the CLI) change the store: refresh before the tick
+    // so their runs are claimed in this iteration.
     if (RefreshScheduleCacheLocked()) {
       Record("", "",
              {{"kind", "scheduled.changed"}, {"scheduled", scheduled_view_}},
@@ -228,26 +229,49 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
       const json* queued = FindRun(before, id);
       const bool starting =
           queued && JsonValue(*queued, "status", "") == "starting";
-      const std::string failure =
+      std::string failure =
           starting &&
                   JsonValue(definition, "environment", "local") == "worktree"
-              ? CreateWorktree(JsonValue(definition, "cwd", ""),
-                               JsonValue(run, "cwd", ""))
+              ? (!JsonValue(run, "host", "").empty()
+                     ? "Remote worktrees are unavailable."
+                     : CreateWorktree(JsonValue(definition, "cwd", ""),
+                                      JsonValue(run, "cwd", "")))
               : "";
-      // A check decides, before any model is asked, whether this run has
-      // anything to do.
+      // A check decides, before any model is asked, whether the run has work.
       const std::string check = JsonValue(definition, "check", "");
-      const json checked =
-          starting && failure.empty() && !check.empty()
-              ? RunScheduleCheck(JsonValue(run, "cwd", ""), check)
-              : json{{"exit", 0}};
+      json checked = {{"exit", 0}};
+      const std::string host = JsonValue(run, "host", "");
+      if (starting && failure.empty() && !host.empty()) {
+        const json target =
+            remote_target_ ? remote_target_(host, JsonValue(run, "cwd", ""),
+                                            JsonValue(run, "session_id", ""))
+                           : json();
+        if (target.is_null()) {
+          failure =
+              "Remote host is disconnected. Reconnect before running this "
+              "task.";
+        } else {
+          execution::Client remote(execution::TargetFromJson(target));
+          if (!remote.Open(failure)) {
+            if (failure.empty()) failure = "Remote execution could not start.";
+          } else if (!check.empty()) {
+            checked = remote.Call(
+                {{"op", "schedule_check"},
+                 {"command", check},
+                 {"mode", JsonValue(definition, "permissions", "ask")}});
+          }
+          // A quiet or failed check has no session runtime to own the forward.
+          remote.Release();
+        }
+      } else if (starting && failure.empty() && !check.empty()) {
+        checked = RunScheduleCheck(JsonValue(run, "cwd", ""), check);
+      }
       const json current = starting ? ReadSchedules() : before;
       lock.lock();
       if (stopping_) return wait;
       const json* latest = FindRun(current, id);
-      // Stop/forget may land while Git runs. A stopped preparation must never
-      // launch a runtime or overwrite the interruption with a preparation
-      // error.
+      // Stop or forget may land while Git runs: a stopped preparation never
+      // launches a runtime or overwrites the interruption with an error.
       if (!latest || JsonValue(*latest, "status", "") != "starting") {
         if (latest && JsonValue(*latest, "status", "") == "stopping") {
           RecordRun({id, "interrupted", "Stopped before the session started."});
@@ -289,7 +313,7 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
     // A restart asked for during a turn happens once that turn has ended.
     std::vector<std::shared_ptr<HostSession>> restarting;
     for (const auto& [id, session] : sessions_) {
-      if (session->restart && !session->turn_active && session->pid > 0 &&
+      if (session->restart && !session->RestartBusy() && session->pid > 0 &&
           !session->exited && !session->closing) {
         restarting.push_back(session);
       }
@@ -319,8 +343,7 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
     std::lock_guard lock(mutex_);
     for (json event : RefreshInvalidationsLocked(projects)) {
       if (JsonValue(event, "kind", "") == "scheduled.changed") {
-        // A write landed during the tick above: re-loop immediately so the
-        // fresh cache is claimed instead of sleeping through it.
+        // A write landed during the tick: loop again at once to claim it.
         wait.deadline =
             std::min(wait.deadline, std::chrono::steady_clock::now());
       }

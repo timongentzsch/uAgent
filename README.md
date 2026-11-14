@@ -3,153 +3,127 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a native coding agent sandboxed to your project folder. It
-keeps one conversation across terminal, script and phone, and drives a real
-Chrome that you can watch and take over.
+A native coding agent for local and SSH projects, with terminal and web interfaces.
 
-![Bars comparing µAgent, Claude Code, Codex CLI and omp: install on disk 6.4, 294, 446 and 1064 MB; idle session memory 29, 161, 290 and 314 MB; CPU per headless turn 12, 436, 139 and 1329 ms; peak memory per headless turn 16.5, 222, 291 and 391 MB](docs/images/footprint.svg)
+Keep conversations, settings and model credentials on your main machine. Work on
+local files or execute on a remote host, and follow the same conversation from a
+terminal, desktop browser or phone. Device pairing and SSH provide access without
+a µAgent account or relay service; model providers may require their own accounts.
 
-Medians of five runs in a 2-CPU, 4 GB Docker container on 2026-10-28, all four
-answering through the same Claude Haiku 5.5 endpoint;
-[the method](benchmarks/README.md#footprint-comparison) has the versions and
-every metric.
+![Terminal and phone working on a stock reservation feature](docs/images/terminal.gif)
 
-## Built to be light
+*Recorded terminal and web UI with a scripted model response; file edits, tests
+and approvals run through µAgent.*
 
-- **One C++20 binary,** no runtime to install. Each conversation is one
-  process; the terminal and the web host attach to it over a Unix socket.
-- **The web interface is embedded,** with optional renderers loaded on demand,
-  compressed API responses and resumable event streams. `npm run size` in
-  `web/` reports the current bundle and first-load sizes.
-- **Chrome starts only when the agent first uses it,** and stops on request.
-- **Fewer tokens:** the prompt cache serves 77–94% of input on both OpenAI and
-  Anthropic routes, compaction reads the cached conversation instead of
-  resending it, and a browser result for the page just seen carries only what
-  changed.
+## Features
 
-![The terminal and the web host attach over a Unix socket to one session runtime process per conversation; a browser or phone reaches the web host over HTTP and SSE; the web host starts the agent's browser, Chrome and Xvnc with one signed-in profile, on first use and streams its live screen to paired devices; the runtime's browser tool drives Chrome over a private socket; a script runs one turn in its own headless process; the agent loop runs tools in a sandbox and calls Chat Completions, OpenAI Responses or Anthropic Messages endpoints over HTTPS](docs/images/architecture.svg)
+- **Remote execution, main-owned state.** Select an SSH host when opening a
+  project. µAgent installs a small execution gateway; files, Git, commands and
+  terminals run there. Provider requests and keys stay on the main.
+- **One conversation across devices.** Continue in the terminal or paired web
+  app, including approvals from a phone. No conversation export or restart.
+- **Browser automation with manual takeover.** Watch Chrome and take control
+  when needed, in the container install or on Linux with Chrome and TigerVNC.
+  Password-manager fills are masked in the agent's browser tools; see the
+  [security boundaries](docs/BROWSER.md#isolation).
+- **Provider choice.** Use local or hosted models through OpenAI-compatible
+  Chat Completions, OpenAI Responses or Anthropic Messages APIs. Sign in to
+  OpenRouter for its current free models that support tools, with no key to
+  copy.
+- **Parallel work and review.** Delegate tasks and inspect agent reports,
+  progress, spend and changes in the folder overview.
+- **Start first, file later.** Type into one box on the home screen; the
+  conversation starts in Scratch and µAgent suggests the folder or workspace it
+  belongs in.
+- **Files, terminal and artifacts in the web app.** Browse and diff a folder,
+  open a terminal, and work on sheets, slide decks, documents and a design
+  canvas the agent writes.
+- **Execution controls and reusable context.** OS sandboxing, approval modes,
+  plan mode, undo, skills, memory, MCP and scheduled tasks, with a Library of
+  what is saved across folders.
+- **Scriptable.** `uagent -p` runs one turn headless, with JSON output for
+  scripts.
 
-## What it does
+## Comparison
 
-- **Drives a real browser, without seeing your passwords.** A persistent
-  Chrome profile that you watch and take over from any paired device. Sign-ins
-  come from Chrome's password manager: the agent asks Chrome to fill the saved
-  login and learns only whether the field was filled. It cannot type into a
-  password field or read what one holds, screenshots draw passwords as dots,
-  Chrome's password pages are blocked, and sandboxed commands cannot open the
-  profile. Codes, captchas and payments are handed to you. See
-  [the agent's browser](docs/BROWSER.md#isolation).
-- **Stays in its folder.** Commands run under the OS sandbox (Seatbelt on
-  macOS, Landlock on Linux): they write only inside the folder, your other
-  folders stay closed, cloud and git credential stores (`~/.aws`, `~/.kube`,
-  `~/.netrc`, …) stay hidden, and the agent asks before it changes a file,
-  runs a command or uses the network. In yolo, commands may also read
-  anywhere and write your home folder, never `~/.uagent` or the credential
-  stores. `/undo` restores what the last turn changed. See
-  [Security](SECURITY.md).
-- **One conversation, every device.** Start in the terminal, continue on your
-  phone (an installable web app with notifications), or run a turn from a
-  script with `uagent -p "..." --json`.
-- **Works in parallel.** A conversation starts agents, conversations of
-  their own that research or change code and report back, listed beneath it;
-  a folder's overview shows what works, what needs you, spend and changes.
-- **Remembers and repeats.** Memory, skills, scheduled tasks and MCP servers,
-  managed from the terminal or the web.
-- **Any endpoint.** Chat Completions, OpenAI Responses and Anthropic Messages,
-  local or hosted.
+Remote access, multiple providers and parallel agents are available in other
+coding tools too. The distinction here is the combination of a native runtime,
+paired interfaces and a built-in execution-only SSH gateway.
 
-![What each part can reach: paired devices reach the web host; only the session runtime holds the model key and talks to the endpoint; commands and MCP servers run in the OS sandbox, write only the folder, temporary files and caches, and cannot reach your other folders, ~/.uagent, credential stores, the browser profile or secrets in the environment; the runtime acts in Chrome and receives ordinary field values, with sensitive fields masked](docs/images/boundaries.svg)
+| Tool | Relevant difference |
+| --- | --- |
+| µAgent | The main runs the agent and provider calls; SSH hosts execute project operations without provider configuration. |
+| [OpenCode](https://opencode.ai/docs/cli/web/) | Its documented remote setup runs the agent server on the remote host and connects terminal/web clients to it; it also supports pairing and SSH forwarding. |
+| [Claude Code Remote Control](https://code.claude.com/docs/en/remote-control) | Continues a local session through Claude's web/mobile interfaces; requires a Claude account with an eligible subscription. |
 
-![The terminal on the left and the web interface on a phone on the right showing the same conversation: a request to add a docstring, the approval for the edit, and the streaming answer](docs/images/terminal.gif)
+Comparison checked 2026-11-10 against the linked documentation. It describes
+these workflows, not every plugin or deployment option.
 
-![The web interface on a desktop and on a phone while the agent signs in to a demo dashboard in Ask mode: the phone approves each browser action, Chrome fills in the saved login, the agent asks for a 6-digit code, and the phone enters it](docs/images/browser-login.gif)
+## Resource use
 
-## Install
+A C++20 executable with its web interface embedded. No JavaScript runtime is
+required to run µAgent. Chrome starts when browser work needs it.
 
-Linux and macOS, in one line:
+![Idle memory and CPU per headless turn compared with Claude Code, Codex CLI and omp](docs/images/comparison.svg)
+
+The same small task, model endpoint and container limits. Five-run medians,
+measured 2026-11-10 on µAgent 1.8.0: **26.4 MiB idle memory** and **17 ms CPU per headless turn**
+for µAgent. This measures agent overhead, not model quality or response speed.
+The current Linux ARM64 complete installation is **22.6 MB** (measured
+2026-11-12), including remote gateways and the sheet engine.
+[Versions, raw results and method](benchmarks/README.md#footprint-comparison).
+
+## Get started
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | sh
 ```
 
-It asks where µAgent should run, then for your OpenRouter, OpenAI and
-Anthropic keys (any of them) and a default model:
-
-- **In a container** (recommended where Docker runs): the published image
-  with the web interface, the agent's browser and the terminal, isolated from
-  this machine's files and logins. It sees only the folder you give it
-  (`~/uagent-workspaces`), keeps its keys on its own volume and starts with
-  Docker.
-- **Here:** the release for Linux x86_64 or arm64 with glibc 2.38 or newer
-  (Ubuntu 24.04, Debian 13, Fedora 39, Arch and later) or macOS 15 or newer on
-  Apple silicon, checked against its checksum and that it starts, and
-  installed under `~/.local` with its skills; it
-  offers to put `~/.local/bin` on your `PATH` and to keep the web interface
-  running as a service that starts when you log in (systemd or launchd). On
-  Linux it can include the agent's browser; on macOS that runs only in the
-  container. Older systems (Ubuntu 22.04, Debian 12, RHEL 9), musl
-  distributions, Intel Macs and other machines build from source instead, or
-  run the container.
-
-Run the same line again to update. `UAGENT_INSTALL=container|here` chooses
-without asking, `UAGENT_VERSION=1.6.0` installs that release,
-`UAGENT_PREFIX` installs elsewhere than `~/.local`, and without a terminal (or
-with `UAGENT_NONINTERACTIVE=1`) it asks nothing. To remove the service:
-`systemctl --user disable --now uagent-web` (Linux) or `launchctl bootout
-gui/$(id -u)/com.github.timongentzsch.uagent.web` (macOS), then delete its
-unit or plist.
-
-From a checkout, `./install.sh` does the same with that checkout: it builds
-the image or the binary itself. Releases ship archives (`bin/uagent`; keep
-`bin` and `share` together) with Sigstore-signed checksums, and the image as
-`ghcr.io/timongentzsch/uagent`.
-
-Building needs CMake 3.21+, a C++20 compiler, libcurl 7.66+, zlib and
-Node.js for the web interface. `-DUAGENT_WEB_PUSH=ON` adds Web Push (needs
-OpenSSL 3).
-
-## Quick start
+Choose a local or container install, then connect a provider. The optional free
+OpenRouter setup requires an OpenRouter account: sign in from the home screen or
+with `uagent setup openrouter`, with no key to copy. It lists eligible models
+from the current catalogue. Open a project:
 
 ```sh
-uagent setup    # API keys and a default model; the installer runs it once
 cd my-project
-uagent          # Enter sends, Esc stops, / lists commands
+uagent
 ```
 
-A start with no provider asks to run setup. `UAGENT_PROVIDERS` and
-`UAGENT_MODEL` work without saving anything.
+Use `uagent --web` to pair your browser or phone. Add an SSH host under
+**Remote hosts**, then select it when starting a conversation or opening a folder.
+The main must be reachable from your device, for example over your LAN or VPN.
 
-- **Approvals:** answer `y` (once), `s` (this conversation), `a` (always in
-  this repository) or `n`.
-- **Models:** `/model QUERY` searches what your key offers; add `--default`
-  to keep it.
-- **Come back:** `/quit` leaves it running; `uagent -c` continues the latest.
-- **Phone:** `uagent --web` prints a pairing link.
-- **The folder at a glance:** `/overview`, or the folder's name in the web.
+Linux and macOS, x86_64 and ARM64.
+[Setup and platform requirements](docs/GUIDE.md#install) ·
+[Free-model limits](docs/GUIDE.md#free-model-setup) ·
+[Remote hosts and current limits](docs/REMOTE_HOSTS.md)
 
-The [guide](docs/GUIDE.md) covers the rest in order; `uagent --help` lists
-every flag.
+## Remote projects
+
+![Devices connect to the main; the main calls providers and sends execution to SSH hosts](docs/images/remote-workflow.svg)
+
+Multiple main instances can reuse the same remote executable with separate
+execution processes. The gateway stores no application configuration or provider
+keys. Sharing an SSH account still shares its ordinary filesystem permissions.
+[Connection, recovery and supported tools](docs/REMOTE_HOSTS.md).
 
 ## Documentation
 
-[Guide](docs/GUIDE.md) ·
-[Web interface](docs/WEB.md) ·
-[The agent's browser](docs/BROWSER.md) ·
-[Tools](docs/TOOLS.md) ·
-[Memory, skills and schedules](docs/MANAGEMENT.md) ·
-[Skills](skills/README.md) ·
-[Operations](docs/OPERATIONS.md) ·
-[Persistence](docs/PERSISTENCE.md) ·
-[Accessibility](docs/ACCESSIBILITY.md) ·
-[Security](SECURITY.md) ·
-[Architecture](docs/ARCHITECTURE.md) ·
-[Prompt caching](docs/CACHING.md) ·
-[Changelog](CHANGELOG.md)
+| Task | Reference |
+| --- | --- |
+| Start a conversation, choose a model, use terminal commands | [Guide](docs/GUIDE.md) |
+| Pair devices and use the web interface, files, terminal and artifacts | [Web interface](docs/WEB.md) |
+| See what each tool does and how calls are approved | [Tools](docs/TOOLS.md) |
+| Connect SSH hosts and recover interrupted work | [Remote hosts](docs/REMOTE_HOSTS.md) |
+| Use browser automation and manual takeover | [Browser](docs/BROWSER.md) |
+| Manage context and recurring tasks | [Memory, skills and schedules](docs/MANAGEMENT.md) |
+| Configure limits, budgets and recovery | [Operations](docs/OPERATIONS.md) |
+| Understand ownership and trust boundaries | [Architecture](docs/ARCHITECTURE.md) · [Security](SECURITY.md) |
 
 ## Development
 
-The tests need no API key or network: C++ unit tests, Python integration
-tests against a mock provider and Playwright browser tests, run in CI on
-Linux x86_64 and arm64 and macOS arm64 with sanitizers and clang-tidy.
-[Contributing](CONTRIBUTING.md) covers building and checks;
-[Testing](docs/TESTING.md) covers running one test.
+C++20 and a Preact web interface, with native unit/integration tests and
+Chromium/WebKit coverage. Tests use mock providers and need no API key.
+
+[Contributing](CONTRIBUTING.md) · [Testing](docs/TESTING.md) ·
+[Benchmarks and raw measurements](benchmarks/README.md) · [Changelog](CHANGELOG.md)

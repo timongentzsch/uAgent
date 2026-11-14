@@ -45,9 +45,8 @@ export async function animateOut(element: HTMLElement | null) {
 }
 
 // Keeps `value` on screen until its exit has played: render what this
-// returns, with the ref on the element that leaves. Only whether there is a
-// value matters, so a caller may pass a new object every render; one that
-// comes back while it leaves stays.
+// returns, with the ref on the element that leaves. Only whether there is
+// a value matters; one that comes back while it leaves stays.
 export function useExit<T, E extends HTMLElement = HTMLElement>(
   value: T,
 ): [T, RefObject<E | null>] {
@@ -73,11 +72,9 @@ export function useExit<T, E extends HTMLElement = HTMLElement>(
   return [value || (gone ? value : last.current), ref];
 }
 
-// Which way a list-and-detail view last moved, from whether its detail is
-// shown: "forward" into it, "back" to the list, and nothing until it first
-// moves, so no view pushes when it first appears. Give the container
-// data-direction="back" when it is "back", and its two sides the class
-// `push` once it has a value: where both sides stay on screen nothing moves.
+// "forward" into the detail, "back" to the list, and nothing until it first
+// moves, so no view pushes when it first appears. The container takes
+// data-direction="back", its two sides the class `push` once it has a value.
 export function usePushDirection(detail: boolean) {
   const last = useRef<{ detail: boolean; direction?: "forward" | "back" }>({
     detail,
@@ -89,10 +86,9 @@ export function usePushDirection(detail: boolean) {
 
 let sliding: { run: ViewTransition; to: string } | undefined;
 
-// Runs the change to conversation `to` as a slide of the transcript in from
-// the side it came from (styles/primitives.css names it for the run), where
-// the list is a drawer and the browser can; elsewhere the change happens at
-// once. A different change that arrives while one slides ends that one.
+// Slides the transcript of conversation `to` in from the side it came from,
+// where the list is a drawer and the browser can; elsewhere the change is
+// immediate. A different change that arrives while one slides ends that one.
 export function slide(back: boolean, to: string, change: () => void) {
   if (sliding?.to === to) return;
   sliding?.run.skipTransition();

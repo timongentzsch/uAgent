@@ -4,17 +4,15 @@ import { Button } from "./ui.tsx";
 import type { SelectionApi } from "./selection.ts";
 import "./selection-bar.css";
 
-// What a list draws while it selects (see selection.ts): each row's
-// checkbox, and the bar with the count, Clear (Done in select mode) and what
-// can be done to all of them.
-
 export function RowCheck({
   picked,
+  mixed,
   label,
   toggle,
 }: {
   picked: boolean;
-  // "Select …", the row's name.
+  // Some of what it stands for is picked.
+  mixed?: boolean;
   label: string;
   toggle: () => void;
 }) {
@@ -23,6 +21,7 @@ export function RowCheck({
       type="checkbox"
       class="row-check"
       checked={picked}
+      indeterminate={mixed}
       aria-label={label}
       onChange={toggle}
     />
@@ -44,6 +43,9 @@ export function SelectionBar({
           {selection.mode ? "Done" : "Clear"}
         </Button>
       </div>
+      {selection.mode && (
+        <span class="selection-hint small">Click or tap rows to select</span>
+      )}
       <div class="selection-actions">{children}</div>
     </div>
   );

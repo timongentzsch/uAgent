@@ -9,6 +9,7 @@ import {
   Group,
   Input,
   Modal,
+  Notice,
   Row,
   Select,
   Switch,
@@ -34,8 +35,6 @@ const WIRES: [string, string, string][] = [
   ["anthropic_messages", "Anthropic", "Messages (Anthropic)"],
 ];
 
-// Where a new provider may start from: its name, address and API, each still
-// editable. Nothing is sent until its key is added and it is saved.
 type Preset = { label: string; name: string; base_url: string; wire: string };
 const PRESETS: Preset[] = [
   {
@@ -64,7 +63,6 @@ const PRESETS: Preset[] = [
   },
 ];
 
-// Where a provider's key comes from, as its row says it.
 const keyOf = (entry: Provider) => {
   const key = text(entry.api_key);
   return key.startsWith("$") ? `key from ${key}` : key ? "key set" : "no key";
@@ -79,9 +77,6 @@ const wireOf = (entry: Provider) => text(entry.wire_api) || "chat_completions";
 const isObject = (value: JSONValue): value is Provider =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
-// The providers as a list of their own: one row each, edited in a sheet, and
-// Add in the caption; with none yet, the presets to start from. A model is
-// then chosen as provider/model.
 export function ProvidersField({
   label,
   footer,
@@ -91,19 +86,16 @@ export function ProvidersField({
   save,
 }: {
   label: string;
-  // What the setting is for, who decides instead, or why a save failed.
   footer: ComponentChildren;
   // What this scope holds, keys hidden; absent when it holds none.
   value?: JSONValue;
-  // Why its last save was refused.
   error?: string;
   disabled: boolean;
   // Saves the whole set, or removes the setting when it is empty.
   save: (text: string) => Promise<boolean>;
 }) {
   const held: Providers = value && isObject(value) ? (value as Providers) : {};
-  // The provider whose sheet is open, by name; "" while adding one, from a
-  // preset or none.
+  // The provider whose sheet is open, by name; "" while adding one.
   const [open, setOpen] = useState<{ name: string; preset?: Preset }>();
   const empty = !Object.keys(held).length;
   return (
@@ -180,9 +172,8 @@ export function ProvidersField({
   );
 }
 
-// One provider, saved as a whole with the rest unchanged and in their
-// order. A key left empty keeps the one saved. A hosted tool is defined as
-// the endpoint's API documents it and sent as written.
+// Saved as a whole with the rest unchanged and in their order. A key left
+// empty keeps the one saved.
 function ProviderForm({
   name: before,
   preset,
@@ -193,7 +184,6 @@ function ProviderForm({
 }: {
   // Empty for a new provider.
   name: string;
-  // What a new one starts from.
   preset?: Preset;
   held: Providers;
   error?: string;
@@ -217,7 +207,6 @@ function ProviderForm({
   };
   const [search, setSearch] = useState(listed.includes("web_search"));
   const [tools, setTools] = useState(listed.filter(isObject));
-  // The definition open for editing, as typed, and why it was refused.
   const [definition, setDefinition] = useState<{
     index: number;
     text: string;
@@ -237,7 +226,6 @@ function ProviderForm({
       index,
       text: tools[index] ? formatJSON(JSON.stringify(tools[index])) : "",
     });
-  // The open definition taken into the list, or refused and left open.
   const take = () => {
     if (!definition) return tools;
     let tool: JSONValue = null;
@@ -300,11 +288,7 @@ function ProviderForm({
           })
         }
       />
-      {definition.problem && (
-        <small class="setting-error" role="alert">
-          {definition.problem}
-        </small>
-      )}
+      {definition.problem && <Notice tone="error">{definition.problem}</Notice>}
       <Actions>
         <Button
           onClick={() => {
@@ -426,11 +410,7 @@ function ProviderForm({
       {other.length > 0 && (
         <small class="muted">Also in the file: {other.join(", ")}</small>
       )}
-      {refused && error && (
-        <p class="setting-error" role="alert">
-          {error}
-        </p>
-      )}
+      {refused && error && <Notice tone="error">{error}</Notice>}
       <Actions>
         {before && (
           <Button

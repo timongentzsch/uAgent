@@ -7,7 +7,7 @@ import {
   type Report,
   type Session,
 } from "../../shared/types.ts";
-import { api, command, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { sessionById } from "../../state/attention.ts";
 import { useExit } from "../../shared/motion.ts";
 import { coarsePointer } from "../../shared/layout.ts";
@@ -17,6 +17,7 @@ import {
   Button,
   IconButton,
   Input,
+  Notice,
   Select,
   Textarea,
 } from "../../shared/ui.tsx";
@@ -27,10 +28,6 @@ import { hideTouchCursor, sendPointer, setViewOnly } from "./rfb.ts";
 import { BrowserFrame, BrowserTools } from "./frame.tsx";
 import { useLatest } from "../../shared/use-latest.ts";
 import { KeyBar, keepFocus } from "../../shared/key-bar.tsx";
-
-// The agent's browser as a dialog: a live noVNC view of the host's Chrome,
-// who holds control, profiles, clipboard and keys. Loaded on first open,
-// and only when the host reports a browser.
 
 const VIEWER_RECONNECT_DELAY_MS = 1_000;
 const CLIPBOARD_PASTE_DELAY_MS = 150;
@@ -99,8 +96,7 @@ const SPECIAL_KEYS: Record<string, [string, number]> = {
   ArrowRight: ["→", X11_KEYSYM.right],
 };
 
-// The remote display for one Chrome launch. Control changes only toggle
-// input on the same connection; a new display remounts this.
+// Control changes toggle input on the same connection; a new display remounts.
 function Screen({
   instance,
   viewer,
@@ -120,6 +116,7 @@ function Screen({
   setConnection: (phase: ConnectionPhase) => void;
   children: ComponentChildren;
 }) {
+  const { routes } = useApi();
   const target = useRef<HTMLDivElement>(null);
   const viewOnly = useLatest(readOnly);
   useEffect(() => {
@@ -166,7 +163,7 @@ function Screen({
       viewer.current?.disconnect();
       viewer.current = null;
     };
-  }, [instance, report, viewer, setConnection]);
+  }, [instance, report, viewer, setConnection, routes.browserViewer]);
   useEffect(() => {
     if (viewer.current) setViewOnly(viewer.current, readOnly);
   }, [readOnly, viewer]);
@@ -211,6 +208,7 @@ export default function BrowserPanel({
   handoff?: boolean;
   sessionId?: string;
 }) {
+  const { api, routes, command } = useApi();
   const [instance, setInstance] = useState("0");
   const [status, setStatus] = useState<BrowserStatus>({});
   const [busy, setBusy] = useState(false);
@@ -277,7 +275,7 @@ export default function BrowserPanel({
       inFlight.current = request;
       return request;
     },
-    [instance, report],
+    [instance, report, routes.browserStatus, api],
   );
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -351,7 +349,6 @@ export default function BrowserPanel({
   };
   const control = (action: "takeover" | "stop" | "setup_profile") =>
     run(() => send(action));
-  // Done answers the agent's request; the sheet then returns to the chat.
   const done = async () => {
     const answered = status.waiting;
     keyboard.current?.blur();
@@ -363,8 +360,6 @@ export default function BrowserPanel({
     setCard(null);
     keyboard.current?.blur();
   }, [live]);
-  // Opening the browser for the agent's request takes control in the same
-  // tap, once.
   // biome-ignore lint/correctness/useExhaustiveDependencies: takes over once (tookOver), whichever render's control runs
   useEffect(() => {
     if (
@@ -440,9 +435,8 @@ export default function BrowserPanel({
     rfb.addEventListener("clipboard", copied);
     return () => rfb.removeEventListener("clipboard", copied);
   }, [connection]);
-  // Copy in Chrome, then hand the text to this device. The promise keeps the
-  // tap's user activation alive while the remote clipboard arrives; without
-  // clipboard access the card shows the text, selected, for the system menu.
+  // The promise keeps the tap's user activation alive while the remote
+  // clipboard arrives; without clipboard access the card shows the text.
   const copy = async (letter: "c" | "x" | null = "c") => {
     if (!live) return;
     const copied = nextRemoteCopy();
@@ -481,15 +475,11 @@ export default function BrowserPanel({
   };
   const actions = useLatest({ copy, paste, chord });
 
-  // Desktop shortcuts inside the viewer: paste carries this device's
-  // clipboard to Chrome first, copy brings Chrome's clipboard back, and on
-  // Apple keyboards Command stands in for Ctrl.
   useEffect(() => {
     const element = screen.current;
     if (!element || !driving) return;
     const handle = (event: KeyboardEvent) => {
-      // Local overlay fields keep native editing. Only the hidden remote
-      // keyboard input participates in forwarding shortcuts to Chrome.
+      // Overlay fields keep native editing; only the hidden input forwards.
       if (isTextEntry(event.target) && event.target !== keyboard.current)
         return;
       if (APPLE && event.key === "Meta") {
@@ -522,8 +512,8 @@ export default function BrowserPanel({
     };
   }, [driving, viewing]);
 
-  // Live typing from the on-screen keyboard. Hardware keys arrive as keydown;
-  // soft keyboards report text through beforeinput or a finished composition.
+  // Hardware keys arrive as keydown; soft keyboards report text through
+  // beforeinput or a finished composition.
   const keyboardInput = (event: InputEvent) => {
     if (event.isComposing || event.inputType === "insertCompositionText")
       return;
@@ -574,7 +564,6 @@ export default function BrowserPanel({
       }
     });
   };
-  // Status, page, profiles and stopping share one menu on the status pill.
   const statusMenu = (
     <SheetButton
       label={`${detail}. Browser status and profiles`}
@@ -751,14 +740,18 @@ export default function BrowserPanel({
     </SheetButton>
   );
 
-  // One message at most sits on the screen's top edge.
-  const banner =
-    status.error ||
-    (driving && status.profile_setup
-      ? "Sign in to your sites. Done reopens this profile for the agent with your saved logins."
-      : !driving && status.waiting && viewing
-        ? "The agent is waiting for you. Take over to continue."
-        : "");
+  const banner = status.error ? (
+    <Notice tone="error">{status.error}</Notice>
+  ) : driving && status.profile_setup ? (
+    <Notice tone="info">
+      Sign in to your sites. Done reopens this profile for the agent with your
+      saved logins.
+    </Notice>
+  ) : !driving && status.waiting && viewing ? (
+    <Notice tone="info">
+      The agent is waiting for you. Take over to continue.
+    </Notice>
+  ) : null;
   const overlay = !status.ok
     ? "Loading browser…"
     : otherDevice
@@ -769,20 +762,22 @@ export default function BrowserPanel({
           : "Chrome is stopped. Take over to start it and sign in to sites; the agent uses your logins."
         : "";
 
-  const [bannerShown, bannerRef] = useExit<string, HTMLParagraphElement>(
+  const [bannerShown, bannerRef] = useExit<typeof banner, HTMLParagraphElement>(
     banner,
   );
   const [toastShown, toastRef] = useExit<string, HTMLParagraphElement>(toast);
   const overlays = (
     <>
       {bannerShown && (
-        <p ref={bannerRef} class="browser-banner enters" role="status">
+        <p ref={bannerRef} class="browser-banner enters">
           {bannerShown}
         </p>
       )}
       {toastShown && (
-        <p ref={toastRef} class="browser-toast enters" role="status">
-          {toastShown}
+        <p ref={toastRef} class="browser-toast enters">
+          <Notice tone={toastShown === "Copied" ? "info" : "error"}>
+            {toastShown}
+          </Notice>
         </p>
       )}
       {card && (

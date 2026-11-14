@@ -16,6 +16,7 @@ from integration_support import (
     detached_pid,
     event,
     live_process_states,
+    run,
     signal_process_group,
     tool_call,
     wait_until,
@@ -116,6 +117,56 @@ def test_library_revisions_scopes_and_external_copy(root, home, *, binary):
         "symlink followed",
     )
     assert_true(not (root / "SKILL.md").exists(), "wrote outside managed skill directory")
+
+
+def test_the_system_message_is_edited_by_section(root, home, *, binary):
+    workspace = root / "prompt"
+    workspace.mkdir()
+
+    def call(server, **fields):
+        return control(binary, workspace, base_env(home, server), "instructions", **fields)
+
+    def asked(expected):
+        """Whether a new conversation's system message holds every `expected` text."""
+
+        def verify(_, body):
+            prompt = body["messages"][0].get("content", "")
+            return event({"content": "yes" if all(t in prompt for t in expected) else prompt})
+
+        with Server([verify]) as server:
+            result = run(workspace, base_env(home, server.url), "-p", "reply", binary=binary)
+            return result.stdout.strip()
+
+    none = "http://127.0.0.1:1"
+    shown = call(none)["prompt"]
+    names = [section["name"] for section in shown["sections"]]
+    assert_true(
+        names
+        == ["## Evidence", "## Tools", "## Scratch", "## Changes", "## Delegation", "## Answer"],
+        names,
+    )
+    scratch = shown["sections"][2]["text"]
+    assert_true(shown["saved"] == "" and ".uagent/scratch" in scratch, shown)
+    assert_true(asked([scratch]) == "yes", "the built-in section is not sent")
+
+    mine = json.dumps({"replace": {"## Scratch": "Use bun for one-off scripts."}, "append": "TAIL"})
+    saved = call(none, action="set", scope="prompt", text=mine, base="")["prompt"]
+    assert_true(saved["saved"] == mine and saved["sections"] == shown["sections"], saved)
+    assert_true(asked(["Use bun for one-off scripts.", "TAIL"]) == "yes", "not applied")
+    assert_true(scratch not in asked(["never-there"]), "the built-in section stayed")
+    # Refused: a section the base does not have, a file changed since it was
+    # read, anything but the object.
+    for text, base in (
+        (json.dumps({"replace": {"## Mine": "x"}}), mine),
+        (json.dumps({"append": "LOST"}), ""),
+        ("[]", mine),
+    ):
+        refused = call(none, action="set", scope="prompt", text=text, base=base)
+        assert_true("error" in refused, refused)
+    assert_true(call(none)["prompt"]["saved"] == mine, "a refused change was kept")
+    # Empty text is the built-in message again.
+    reset = call(none, action="set", scope="prompt", text="", base=mine)["prompt"]
+    assert_true(reset["saved"] == "" and asked([scratch]) == "yes", reset)
 
 
 def test_import_from_claude_code_and_codex(root, home, *, binary):
@@ -399,7 +450,6 @@ def test_scheduled_run_completes_beside_a_detached_server(root, home, *, binary)
 
             try:
                 wait_until(completed, lambda: client.command("schedule", action="list"), timeout=20)
-                # The run completed beside its server, not after it.
                 assert_true(live_process_states([server["pid"]]), "the server was stopped")
             finally:
                 signal_process_group(server.get("pid"), signal.SIGKILL)

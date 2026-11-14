@@ -221,10 +221,8 @@ TEST_CASE(TestBrowserProfiles) {
 }
 
 namespace {
-// The fake X server, VNC and Chrome from tests/fixtures, put on PATH first in
-// a workspace of their own, with no display of the machine's own. The
-// browser's data lives in a short directory, so the display's socket fits an
-// address on every platform, and goes with the fake.
+// The fake X server, VNC and Chrome from tests/fixtures, put first on PATH.
+// The data directory is short so the display's socket fits an address.
 struct FakeBrowser {
   explicit FakeBrowser(const std::string& name)
       : workspace("browser-" + name),
@@ -540,9 +538,8 @@ TEST_CASE(TestBrowserProfileSignIn) {
             .value("mode", "") == "idle");
 }
 
-// Closing the controlling viewer hands the browser back, watching never takes
-// control, and an agent call made meanwhile fails at once instead of waiting.
-// An idle browser stops only while no human holds it.
+// Closing the controlling viewer hands the browser back; an agent call made
+// while a human holds it fails at once instead of waiting.
 TEST_CASE(TestBrowserHandBackOnClose) {
   FakeBrowser fake("handback");
   constexpr const char* kDevice = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -658,8 +655,7 @@ TEST_CASE(TestBrowserViewportPresets) {
   fake.runtime.Shutdown();
 }
 
-// A preview page is drawn as a PNG at a size, or printed as a PDF on its
-// own paper, in a throwaway context; any other address is refused.
+// Only a preview page is captured, and in a throwaway context.
 TEST_CASE(TestBrowserCapturePngAndPdf) {
   FakeRuntime fake("capture");
   const std::string page = "http://127.0.0.1:1/preview/token/docs/memo.html";
@@ -689,6 +685,54 @@ TEST_CASE(TestBrowserCapturePngAndPdf) {
   }
   CHECK(options.value("preferCSSPageSize", false));
   CHECK(options.value("printBackground", false));
+  fake.runtime.Shutdown();
+}
+
+// A page of the folder is read where it is drawn at the artboard it states:
+// in the tab that is seen if that is its size, else in a throwaway one at
+// the same address, whose dialog nobody is there to answer.
+TEST_CASE(TestBrowserPageProblems) {
+  FakeRuntime fake("problems");
+  const auto profile = fake.data / "profile";
+  const std::string page = "http://127.0.0.1:1/preview/token/decks/a/01.html";
+  const json ask = {{"op", "problems"}, {"url", page}};
+  const auto sent = [&](const std::string& method) {
+    std::vector<json> commands;
+    std::ifstream log(profile / "cdp.jsonl");
+    for (std::string line; std::getline(log, line);) {
+      json command = json::parse(line);
+      if (command.value("method", "") == method) commands.push_back(command);
+    }
+    return commands;
+  };
+  CHECK(!fake.Act({{"op", "open"}, {"url", page}}).contains("error"));
+  // A page that states nothing has nothing to say.
+  CHECK(fake.Act(ask).value("count", 1) == 0);
+  std::ofstream(profile / "page-checked") << R"({"w":800,"h":600,"fits":true})";
+  CHECK(fake.Act(ask).value("lines", "") ==
+        "warning: uagent page: seen at its own size\n");
+  CHECK(sent("Target.createBrowserContext").empty());
+
+  std::ofstream(profile / "page-checked")
+      << R"({"w":1920,"h":1080,"fits":false})";
+  std::ofstream(profile / "dialog-on-navigate") << "alert";
+  const json apart = fake.Act(ask);
+  CHECK(apart.value("lines", "") ==
+        "warning: uagent page: seen at 1920x1080\n");
+  CHECK(apart.value("count", 0) == 1);
+  CHECK(!apart.contains("dialog"));
+  const json drawn = sent("Page.navigate").back();
+  CHECK(drawn.value("sessionId", "") == "attached-new");
+  CHECK(drawn["params"].value("url", "") == page);
+  const std::vector<json> closed = sent("Page.handleJavaScriptDialog");
+  CHECK(closed.size() == 1);
+  CHECK(closed[0].value("sessionId", "") == "attached-new");
+  CHECK(!closed[0]["params"].value("accept", true));
+  CHECK(sent("Target.closeTarget").size() == 1);
+  CHECK(sent("Target.disposeBrowserContext").size() == 1);
+  // The seen tab is where it was, and still the one that is acted on.
+  CHECK(sent("Page.navigate").size() == 2);
+  CHECK(fake.Act({{"op", "console"}}).value("count", 0) == 3);
   fake.runtime.Shutdown();
 }
 
@@ -724,10 +768,8 @@ TEST_CASE(TestBrowserSecretMaskAndBack) {
   std::ofstream(fake.data / "profile" / "close-tab").close();
   CHECK(fake.Act({{"op", "back"}}).value("error", "") ==
         "the previous page is not HTTP(S)");
-  // A key reaches Chrome whole, with its code and what it types: by name
-  // alone Enter sends no form. replace selects what the field holds first.
-  // A new tab leaves the open page alone, and a tab that is not the current
-  // one can be closed.
+  // A key reaches Chrome whole, with its code and what it types: by name alone
+  // Enter sends no form. replace selects what the field holds first.
   CHECK(!fake.Act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
   CHECK(fake.Act({{"op", "press"}, {"key", "F5"}}).value("error", "") ==
         "unsupported key");
@@ -749,11 +791,9 @@ TEST_CASE(TestBrowserSecretMaskAndBack) {
             .value("error", "") == "that element is gone; look again");
   CHECK(!fake.Act({{"op", "click"}, {"element", 1}, {"view_id", view}})
              .contains("error"));
-  // An earlier look at the same page still names its elements, so one look
-  // serves several actions; a point needs the latest look, and another page
-  // takes none of the earlier ones.
-  // A look is kept by use: a batch of more actions on it than looks are
-  // kept, each followed by the look its result brings, never pushes it out.
+  // An earlier look at the same page still names its elements; a point needs
+  // the latest look, and another page takes none of the earlier ones. A look
+  // is kept by use, so a batch of actions on it never pushes it out.
   for (int action = 0; action < 10; ++action) {
     CHECK(fake.Act({{"op", "observe"}, {"image", false}}).contains("view_id"));
     CHECK(!fake.Act({{"op", "click"}, {"element", 1}, {"view_id", view}})
@@ -838,11 +878,8 @@ TEST_CASE(TestBrowserSecretMaskAndBack) {
 }
 
 // A page's dialog holds the page until it is answered: the click that opened
-// it returns at once, a look reports it, even after a visit to another tab,
-// and only Enter or Escape (with text typed first for a prompt) reach it. A
-// plea to stay is accepted unasked only when the agent is leaving the page.
-// A password field takes no typed text, nor does another site's frame. A
-// list or a date field is set, never typed into, or says what it takes.
+// it returns at once, a look reports it, and only Enter or Escape reach it.
+// A password field takes no typed text, nor does another site's frame.
 TEST_CASE(TestBrowserDialogsAndPasswordFields) {
   namespace fs = std::filesystem;
   FakeRuntime fake("dialog");
@@ -941,9 +978,8 @@ TEST_CASE(TestBrowserDialogsAndPasswordFields) {
   CHECK(!typed);
 }
 
-// A file field takes a file; a button's chooser is held back and its field
-// takes it; a click that opens a chooser says so; what a page downloads lands
-// in the folder the action names and is told when it ends.
+// A button's chooser is held back and its field takes the file; a download
+// lands in the folder the action names and is told when it ends.
 TEST_CASE(TestBrowserUploadsAndDownloads) {
   namespace fs = std::filesystem;
   FakeRuntime fake("files");
@@ -1009,11 +1045,9 @@ TEST_CASE(TestBrowserUploadsAndDownloads) {
   CHECK(into == "/work/downloads");
 }
 
-// The site an approval covers: scheme and host as a browser compares them.
-// console reads what the page's console holds with Runtime events on for
-// that read alone; network tells a tab's requests since its document began.
-// A click can be right or double, a drag drops what the page held back, a
-// key can come with modifiers, and history goes forward as well as back.
+// The site an approval covers is scheme and host as a browser compares them.
+// console reads with Runtime events on for that read alone; network tells a
+// tab's requests since its document began.
 TEST_CASE(TestBrowserConsoleNetworkAndPointer) {
   FakeRuntime fake("pointer");
   const auto profile = fake.data / "profile";
@@ -1149,8 +1183,7 @@ TEST_CASE(TestBrowserRequestSurvivesASignal) {
   CHECK(answer.value("ok", false));
 }
 
-// The tool's own part: several steps in one call, in order, and a page that
-// is only read. The service runs here, in front of the stand-in Chrome.
+// The service runs here, in front of the stand-in Chrome.
 TEST_CASE(TestBrowserToolQueue) {
   namespace fs = std::filesystem;
   ServedBrowser fake("bq");
@@ -1225,7 +1258,6 @@ TEST_CASE(TestBrowserToolSteps) {
     const size_t at = output.find("View ID: ") + 9;
     return output.substr(at, output.find(' ', at) - at);
   };
-  // An action answers with the page as text, and no picture.
   ToolResult opened =
       tool.run({{"action", "open"}, {"url", "https://example.com/"}}, {});
   CHECK(opened.Ok());
@@ -1248,7 +1280,6 @@ TEST_CASE(TestBrowserToolSteps) {
         "type \"kestrel\" into [1] text \"Search\" (empty) then press Enter "
         "on https://example.com/\nRemembered, it covers any browser type on "
         "https://example.com.");
-  // A row of another look is not named as this page's.
   CHECK(tool.approval_preview(
                 {{"action", "click"}, {"element", 1}, {"view_id", "older"}})
             .starts_with("click element [1] of a look that is not the latest"));
@@ -1271,7 +1302,6 @@ TEST_CASE(TestBrowserToolSteps) {
             {{"action", "open"}, {"url", "https://example.com/a?b"}}) ==
         tool.approval_subject(
             {{"action", "open"}, {"url", "https://example.com/c"}}));
-  // A field in one call: clicked, its content replaced, the key pressed.
   ToolResult filled = tool.run({{"action", "type"},
                                 {"element", 1},
                                 {"view_id", view(opened.output)},
@@ -1279,7 +1309,6 @@ TEST_CASE(TestBrowserToolSteps) {
                                 {"replace", true},
                                 {"key", "Enter"}},
                                {});
-  // What was done comes first; then the page, here unchanged, and the look.
   CHECK(
       filled.output.starts_with("click done.\ntype done.\npress done.\n"
                                 "No change on the page.\nView ID: "));
@@ -1322,7 +1351,6 @@ TEST_CASE(TestBrowserToolSteps) {
             .find("while a prompt dialog says \"Really prompt?\" and its "
                   "answer reads \"final\"") != std::string::npos);
   CHECK(tool.run({{"action", "press"}, {"key", "Escape"}}, {}).Ok());
-  // A page that is only read: opened, then the lines asked for.
   ToolResult read = tool.run(
       {{"action", "open"}, {"url", "https://example.com/"}, {"find", "clip"}},
       {});
@@ -1335,6 +1363,19 @@ TEST_CASE(TestBrowserToolSteps) {
   const fs::path page = fake.workspace.root / "chart.html";
   std::ofstream(page) << "<p>CHART_MARKUP</p>";
   CHECK(tool.run({{"action", "open"}, {"path", page.string()}}, {}).Ok());
+  // In the folder the host serves it opens at its address there, and is told
+  // what is wrong with it as a window of its artboard's size draws it.
+  {
+    const ScopedEnv served("UAGENT_INTERNAL_PREVIEW",
+                           fs::canonical(fake.workspace.root).string() +
+                               "\nhttp://127.0.0.1:1/preview/token/");
+    const fs::path checked = fake.data / "profile" / "page-checked";
+    std::ofstream(checked) << R"({"w":1920,"h":1080,"fits":false})";
+    CHECK(tool.run({{"action", "open"}, {"path", page.string()}}, {})
+              .output.ends_with("\nProblems on this page:\n"
+                                "warning: uagent page: seen at 1920x1080\n"));
+    fs::remove(checked);
+  }
   CHECK(!tool.run({{"action", "open"}, {"url", "file://" + page.string()}}, {})
              .Ok());
   const fs::path notes = fake.workspace.root / "notes.txt";
@@ -1546,7 +1587,6 @@ TEST_CASE(TestBrowserPageMemory) {
             "\"\n";
   }
   PageMemory memory;
-  // The first result of a page is whole.
   CHECK(memory.Show("https://a.test/", page) == page);
   // Small changes on the same page show only themselves, a `…` line between
   // two that are apart.
@@ -1559,7 +1599,6 @@ TEST_CASE(TestBrowserPageMemory) {
         "-[30] link \"row 30\"\n+[30] link \"thirty\"");
   // It is compared with the page as it was shown, not with the diff.
   CHECK(memory.Show("https://a.test/", changed) == "No change on the page.");
-  // Another address is another page.
   CHECK(memory.Show("https://b.test/", changed) == changed);
   // A result no shorter than the text is the text.
   const std::string small = "URL: https://b.test/\nOK\n";

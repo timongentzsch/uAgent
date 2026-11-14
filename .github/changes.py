@@ -30,38 +30,53 @@ HEAVY_DIRS = (
     "include/browser/",
     ".github/",
     "cmake/",
+    "deploy/",
     "third_party/",
 )
 
 
 def heavy(paths):
-    """Whether a pull request also runs the legs that master always runs,
-    ThreadSanitizer and Linux ARM64: for the build, the workflows and the
-    web host and browser."""
+    """Whether a pull request also runs ThreadSanitizer and Linux ARM64,
+    which master always runs."""
     return any(
-        path.startswith(HEAVY_DIRS) or path in ("CMakeLists.txt", "CMakePresets.json")
+        path.startswith(HEAVY_DIRS)
+        or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore")
         for path in paths
     )
 
 
-def build_matrix(with_arm):
-    """The Release builds of build-and-test; ARM64 only where it is run."""
+def bundle(paths):
+    """Whether a pull request also builds Intel macOS and assembles the
+    complete installation from all four builds, which master always does:
+    only when what builds, packages or installs it changed. The other three
+    builds cover that architecture and that system between them."""
+    return any(
+        path.startswith((".github/", "cmake/", "deploy/"))
+        or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore", "install.sh")
+        for path in paths
+    )
+
+
+def build_matrix(with_arm, with_intel):
+    """The Release builds of build-and-test: Linux ARM64 and Intel macOS only
+    where they are run. Intel macOS is the slowest of them by far."""
     legs = [
         {"target": "linux-x86_64", "runner": "ubuntu-24.04", "arch": "x86_64"},
         {"target": "linux-arm64", "runner": "ubuntu-24.04-arm", "arch": "aarch64"},
         {"target": "macos-arm64", "runner": "macos-15", "arch": "arm64"},
+        {"target": "macos-x86_64", "runner": "macos-15-intel", "arch": "x86_64"},
     ]
-    return json.dumps({"include": legs if with_arm else [legs[0], legs[2]]})
+    chosen = [True, with_arm or with_intel, True, with_intel]
+    return json.dumps({"include": [leg for leg, run in zip(legs, chosen, strict=True) if run]})
 
 
 def tidy(paths):
-    """What clang-tidy reads on a pull request: the changed translation
-    units, or "all" when a header, the build or the rules changed, since any
-    unit may include or obey those. Master reads everything."""
+    """What clang-tidy reads on a pull request: the changed units, or "all"
+    when a header, the build or the rules changed. Master reads everything."""
     wide = any(
         path.endswith((".h", ".hpp", ".clang-tidy"))
         or path.startswith((".github/", "third_party/"))
-        or path in ("CMakeLists.txt", "CMakePresets.json")
+        or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore")
         for path in paths
     )
     units = [
@@ -73,10 +88,8 @@ def tidy(paths):
 
 
 def tidy_files(entries, units, shard="0/1"):
-    """The run-clang-tidy.py patterns for what tidy() chose, from the entries
-    of compile_commands.json. "all" deals the first-party units round robin
-    and keeps the `shard` ("index/count") share; a changed unit this build
-    does not compile is not in the list."""
+    """The run-clang-tidy.py patterns for what tidy() chose. "all" deals the
+    units round robin and keeps the `shard` ("index/count") share."""
     files = sorted(
         {
             entry["file"]
@@ -101,24 +114,29 @@ if __name__ == "__main__" and sys.argv[1:2] == ["--tidy-files"]:
 elif __name__ == "__main__":
     base = os.environ.get("CI_BASE_SHA")
     if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" and base:
-        # No rename detection: both the old and the new path are listed.
-        # Against the working tree, which in CI is HEAD and before a push
-        # (.github/ci-local.sh) includes what is not committed yet.
+        # No rename detection: both the old and the new path are listed. The
+        # working tree is compared, so ci-local.sh sees uncommitted changes.
         changed = subprocess.check_output(
             ["git", "diff", "--name-only", "--no-renames", "-z", base]
         )
         paths = [os.fsdecode(path) for path in changed.split(b"\0") if path]
-        is_heavy = heavy(paths)
         result = {
             **classify(paths),
             "tidy": tidy(paths),
-            "heavy": is_heavy,
+            "heavy": heavy(paths),
+            "bundle": bundle(paths),
             "image": image(paths),
         }
     else:
-        is_heavy = True
-        result = {"native": True, "web": True, "tidy": "all", "heavy": True, "image": True}
-    result["matrix"] = build_matrix(is_heavy)
+        result = {
+            "native": True,
+            "web": True,
+            "tidy": "all",
+            "heavy": True,
+            "bundle": True,
+            "image": True,
+        }
+    result["matrix"] = build_matrix(result["heavy"], result["bundle"])
     output = "".join(
         f"{name}={value if isinstance(value, str) else str(value).lower()}\n"
         for name, value in result.items()

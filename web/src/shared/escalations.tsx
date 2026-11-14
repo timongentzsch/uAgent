@@ -1,40 +1,29 @@
 import { useEffect } from "preact/hooks";
 import { useResource } from "./use-resource.ts";
 import type { Act, Pending, Session } from "./types.ts";
-import { api, command, routes } from "../state/api.ts";
+import { useApi } from "../state/api.ts";
 import { useHostContext } from "../state/host-context.ts";
-import { Button, LoadError, Spinner } from "./ui.tsx";
+import { Button, LoadError, Skeleton } from "./ui.tsx";
 import Decision from "./decision.tsx";
 import { waiting } from "../state/attention.ts";
 import SessionName from "./session-name.tsx";
-import { folderName } from "./folder-label.tsx";
 import "./escalations.css";
 
-// Decisions sessions are waiting on: a folder's conversations in its
-// overview, or every folder's in the sidebar's inbox. Each is the session's
-// own pending decision, answered in the session, so answering here or there
-// is the same act and the first answer wins.
+// Each is the session's own pending decision, answered in the session, so
+// answering here or there is the same act and the first answer wins.
 export default function WaitingList({
   sessions,
-  folder,
   choose,
 }: {
   sessions: Session[];
-  // One folder's conversations; every conversation when absent.
-  folder?: string;
   choose: (id: string) => void;
 }) {
-  const decisions = waiting(sessions, folder);
+  const decisions = waiting(sessions);
   if (!decisions.length) return null;
   return (
     <section class="escalations" aria-label="Decisions waiting on you">
       {decisions.map((item) => (
-        <Escalation
-          key={item.id}
-          item={item}
-          where={folder === undefined}
-          choose={choose}
-        />
+        <Escalation key={item.id} item={item} choose={choose} />
       ))}
     </section>
   );
@@ -43,6 +32,7 @@ export default function WaitingList({
 // The decision a session waits on: undefined while it loads, null once the
 // session no longer waits.
 function usePendingDecision(item: Session) {
+  const { api, routes } = useApi();
   const resource = useResource(
     () =>
       api<{ pending?: Pending | null }>(routes.session(item.id)).then(
@@ -59,19 +49,17 @@ function usePendingDecision(item: Session) {
 
 function Escalation({
   item,
-  where,
   choose,
 }: {
   item: Session;
-  // Name the folder and the question: the list spans folders.
-  where: boolean;
   choose: (id: string) => void;
 }) {
+  const { command } = useApi();
   const { online, report } = useHostContext();
   const { value: pending, error, retry } = usePendingDecision(item);
   if (pending === null) return null;
   const act: Act = (kind, fields) => command(kind, item, fields);
-  const loading = <Spinner label="Loading decision…" surface />;
+  const loading = <Skeleton label="Loading decision…" />;
   return (
     <div class="escalation">
       <Button
@@ -80,13 +68,6 @@ function Escalation({
         onClick={() => choose(item.id)}
       >
         <SessionName item={item} />
-        {where && (
-          <span class="escalation-where">
-            {" "}
-            · {folderName(item.cwd)}
-            {item.pending_prompt && ` · ${item.pending_prompt}`}
-          </span>
-        )}
       </Button>
       {error ? (
         <LoadError error={error} retry={retry} />

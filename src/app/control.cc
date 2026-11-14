@@ -5,11 +5,13 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "include/agent/prompt.h"
 #include "include/app/library.h"
 #include "include/app/permissions.h"
 #include "include/app/schedule.h"
+#include "include/app/setup.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
 #include "include/core/effective_config.h"
@@ -33,26 +35,41 @@ json ManagementControl(const json& request) {
     ConfigureProvider(api);
     return {{"configured", !api.base_url.empty()}};
   }
+  if (kind == "openrouter") return OpenRouterControl(request);
   if (kind == "schedule") return ScheduleControl(request);
   if (kind == "permission_rules") return PermissionRulesControl(request);
   if (kind == "instructions") {
     // A person edits these directly; an agent asks through uagent.
     const std::string cwd = CanonicalCwd();
     if (JsonValue(request, "action", "show") == "set") {
-      bool project = false;
-      if (!ParseInstructionScope(JsonValue(request, "scope", ""), project)) {
-        return {{"error", "scope is user or project"}};
-      }
+      const std::string scope = JsonValue(request, "scope", "");
+      const std::string text = JsonValue(request, "text", "");
       std::optional<std::string> base;
-      if (const std::string* text = JsonStringRef(request, "base")) {
-        base = *text;
+      if (const std::string* shown = JsonStringRef(request, "base")) {
+        base = *shown;
       }
-      const std::string error = WriteInstructionFile(
-          project, cwd, JsonValue(request, "text", ""), base);
+      bool project = false;
+      std::string error;
+      if (scope == "prompt") {
+        // The system message's changed sections; empty text restores it.
+        if (!text.empty()) {
+          error = PromptOverlayIssue(json::parse(text, nullptr, false));
+        }
+        if (error.empty()) error = WriteSavedPrompt(text, base);
+      } else if (ParseInstructionScope(scope, project)) {
+        error = WriteInstructionFile(project, cwd, text, base);
+      } else {
+        error = "scope is user, project or prompt";
+      }
       if (!error.empty()) return {{"error", error}};
     }
     json shown = InstructionFiles(cwd);
-    shown["base"] = SystemPromptBase();
+    json sections = json::array();
+    for (const std::string_view name : PromptSections()) {
+      sections.push_back({{"name", name}, {"text", PromptSectionText(name)}});
+    }
+    shown["prompt"] = {{"sections", std::move(sections)},
+                       {"saved", ReadSavedPrompt()}};
     return shown;
   }
   return LibraryControl(request, JsonValue(request, "cwd", CanonicalCwd()));

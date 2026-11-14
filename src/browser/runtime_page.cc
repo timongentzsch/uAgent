@@ -16,28 +16,18 @@ namespace uagent::browser {
 namespace {
 // One cheap snapshot of the document; equal consecutive snapshots of a
 // loaded page mean it settled. The document identity changes on navigation.
+// A page of the folder that is still drawing itself (a sheet being
+// calculated, web/public/design-helper.js) counts as loading.
 constexpr const char* kProbeScript =
     "(()=>{const t=document.body?document.body.innerText:'';let h=0;"
     "for(let i=0;i<Math.min(t.length,4096);i++)h=(h*31+t.charCodeAt(i))|0;"
-    "return {ready:document.readyState,doc:String(performance.timeOrigin),"
+    "return {ready:'uagentBusy' in document.documentElement.dataset?"
+    "'loading':document.readyState,doc:String(performance.timeOrigin),"
     "sig:t.length+':'+h+':'+document.getElementsByTagName('*').length}})()";
 
-// The page, for a look (named `look`) or for reading. Both get its address,
-// title, how long its text is, and narrow, high-signal evidence of a bot
-// wall: an error status, a challenge title, a large visible challenge frame,
-// or a short page that asks for human verification. Advisory only; the agent
-// decides.
-//
-// A look also gets what can be acted on, numbered and kept on the page under
-// the look's name, for its last eight looks (`fresh` when it held none), so
-// an action can name one by look and number: in the document, its open
-// shadow roots and the frames of its own site. A field shows the start of
-// what it holds, except a secret one (a password, a one-time code, a card),
-// which says only whether it holds text; a control says when it is disabled,
-// required, expanded or not.
-//
-// Reading gets text from `offset`, or with `find` the lines that contain it
-// (from match `offset` on) and the links that do.
+// The page for a look or for reading: address, title, text length and
+// advisory evidence of a bot wall. A look also numbers what can be acted on,
+// kept on the page under the look's name; a secret field shows no value.
 std::string PageScript() {
   const std::string chars = std::to_string(kPageTextChars);
   return std::string(R"js(((offset, find, look) => {
@@ -201,9 +191,8 @@ json Runtime::PageTargets() {
   return pages;
 }
 
-// One short look after an action: follows the single tab it opened, lists
-// any others, and snapshots the document so the caller can wait for it to
-// settle without holding the service for the whole wait.
+// One short look after an action: follows the single tab it opened and
+// snapshots the document, so the caller can wait for it to settle.
 json Runtime::Probe() {
   json pages = PageTargets();
   if (pages.contains("error")) return pages;
@@ -288,9 +277,8 @@ json Runtime::Observe(bool image) {
   if (!viewport || width < 1 || width > 10000 || height < 1 || height > 10000) {
     return {{"error", "Chrome did not report its viewport"}};
   }
-  // Capture exactly the visible CSS viewport at one image pixel per CSS
-  // pixel, so screenshot coordinates are click coordinates. The clip is in
-  // device-independent pixels relative to the document.
+  // Exactly the visible CSS viewport at one image pixel per CSS pixel, so
+  // screenshot coordinates are click coordinates.
   double zoom = JsonValue(*viewport, "zoom", 1.0);
   if (zoom <= 0) zoom = 1;
   std::string picture;
@@ -348,6 +336,9 @@ constexpr size_t kListedLines = 100;
 // holds.
 constexpr size_t kKeptRequests = 200;
 constexpr size_t kLineBytes = 500;
+// How long a page's own check is waited for: within the pipe's read limit,
+// so that what it states is read.
+constexpr int kCheckedMs = kCdpIoMs / 2;
 
 // The lines that contain `find`, whatever their case, the latest
 // kListedLines of them, and how many there were.
@@ -407,19 +398,18 @@ void Logged(const std::string& event, const json& params,
   lines.push_back(Utf8Prefix(std::move(line), kLineBytes));
 }
 
-// Chrome replays what the page's console holds when its Runtime events are
-// turned on, so they are on only for this read: a page can notice them,
-// and a person's browser never has them on.
-json Runtime::Console(const json& command) {
-  std::vector<std::string> lines;
-  logged_ = &lines;
-  json enabled = Call("Runtime.enable", json::object(), page_session_);
-  Call("Runtime.disable", json::object(), page_session_);
+// Chrome replays the console when Runtime events are turned on, so they are
+// on only for this read: a page can notice them.
+json Runtime::Console(const std::string& session, const std::string& find) {
+  std::pair<std::string, std::vector<std::string>> read{session, {}};
+  logged_ = &read;
+  json enabled = Call("Runtime.enable", json::object(), session);
+  Call("Runtime.disable", json::object(), session);
   logged_ = nullptr;
   if (auto reason = CdError(enabled); !reason.empty()) {
     return {{"error", reason}};
   }
-  return Listed(lines, JsonValue(command, "find", ""));
+  return Listed(read.second, find);
 }
 
 json Runtime::Network(const json& command) {
@@ -503,7 +493,9 @@ json Runtime::Finished() {
   }
   return ended;
 }
-json Runtime::Capture(const json& command) {
+
+json Runtime::Apart(const json& command,
+                    const std::function<json(const std::string&)>& read) {
   const std::string url = JsonValue(command, "url", "");
   const int width = std::clamp(JsonValue(command, "width", 0), 1, 8000);
   const int height = std::clamp(JsonValue(command, "height", 0), 1, 8000);
@@ -520,10 +512,15 @@ json Runtime::Capture(const json& command) {
   if (context.empty()) {
     return {{"error", "Chrome made no context: " + CdError(reply)}};
   }
+  // A window of its own, which Chrome draws only where it is on the screen:
+  // one pixel of it is, in the screen's last corner.
   const json created =
       Call("Target.createTarget", {{"url", "about:blank"},
                                    {"browserContextId", context},
-                                   {"background", true}});
+                                   {"background", true},
+                                   {"newWindow", true},
+                                   {"left", kScreenWidth - 1},
+                                   {"top", kScreenHeight - 1}});
   const json* opened = JsonObject(created, "result");
   const std::string target = opened ? JsonValue(*opened, "targetId", "") : "";
   const json attach = target.empty()
@@ -532,43 +529,79 @@ json Runtime::Capture(const json& command) {
                                  {{"targetId", target}, {"flatten", true}});
   const json* attached =
       target.empty() ? nullptr : JsonObject(attach, "result");
-  const std::string session =
-      attached ? JsonValue(*attached, "sessionId", "") : "";
-  json shot;
-  if (!session.empty()) {
+  json answer = {{"error", "Chrome opened no tab: " + CdError(attach)}};
+  if (attached) {
+    apart_ = JsonValue(*attached, "sessionId", "");
+    // Its dialogs are told of, to be closed.
+    Call("Page.enable", json::object(), apart_);
     Call("Emulation.setDeviceMetricsOverride",
          {{"width", width},
           {"height", height},
           {"deviceScaleFactor", scale},
           {"mobile", false}},
-         session);
-    Call("Page.navigate", {{"url", url}}, session);
-    // Loaded, its fonts in, or ten seconds.
-    Call("Runtime.evaluate",
-         {{"expression",
-           "new Promise(done => { const go = () => document.fonts.ready.then("
-           "() => done(true)); document.readyState === 'complete' ? go() : "
-           "addEventListener('load', go); setTimeout(() => done(false), "
-           "10000); })"},
-          {"awaitPromise", true}},
-         session);
-    shot = JsonValue(command, "pdf", false)
-               ? Call("Page.printToPDF",
-                      {{"printBackground", true}, {"preferCSSPageSize", true}},
-                      session)
-               : Call("Page.captureScreenshot", {{"format", "png"}}, session);
+         apart_);
+    Call("Page.navigate", {{"url", url}}, apart_);
+    answer = read(apart_);
+    apart_.clear();
   }
   if (!target.empty()) Call("Target.closeTarget", {{"targetId", target}});
   Call("Target.disposeBrowserContext", {{"browserContextId", context}});
-  const json* result = JsonObject(shot, "result");
-  const std::string data = result ? JsonValue(*result, "data", "") : "";
-  if (data.empty()) {
-    return {{"error", "Chrome drew no picture: " +
-                          (session.empty() ? "no tab, " + CdError(attach)
-                                           : CdError(shot))}};
-  }
-  return {{"ok", true},
-          {JsonValue(command, "pdf", false) ? "pdf" : "png", data}};
+  return answer;
+}
+
+json Runtime::Awaited(const std::string& session, const std::string& promise,
+                      int ms) {
+  const json reply = Call(
+      "Runtime.evaluate",
+      {{"expression",
+        "new Promise(done => { const go = () => Promise.resolve(" + promise +
+            ").then(done, () => done(null)); document.readyState === "
+            "'complete' ? go() : addEventListener('load', go); setTimeout(() "
+            "=> done(null), " +
+            std::to_string(ms) + "); })"},
+       {"awaitPromise", true},
+       {"returnByValue", true}},
+      session);
+  const json* value = RemoteValue(reply);
+  return value ? *value : json();
+}
+
+json Runtime::Capture(const json& command) {
+  const bool pdf = JsonValue(command, "pdf", false);
+  return Apart(command, [&](const std::string& session) -> json {
+    // Loaded, its fonts in and a sheet calculated, or ten seconds.
+    Awaited(session, "document.fonts.ready.then(() => window.uagentReady)",
+            10000);
+    const json shot =
+        pdf ? Call("Page.printToPDF",
+                   {{"printBackground", true}, {"preferCSSPageSize", true}},
+                   session)
+            : Call("Page.captureScreenshot", {{"format", "png"}}, session);
+    const json* result = JsonObject(shot, "result");
+    const std::string data = result ? JsonValue(*result, "data", "") : "";
+    if (data.empty()) {
+      return {{"error", "Chrome drew no picture: " + CdError(shot)}};
+    }
+    return {{"ok", true}, {pdf ? "pdf" : "png", data}};
+  });
+}
+
+// The page states, once it has checked itself, the window its artboard asks
+// for and whether its own is that (web/public/design-helper.js). Where it is
+// not, a throwaway tab that is says what is wrong, and the seen one is left
+// as it is.
+json Runtime::Problems(const json& command) {
+  constexpr const char* kChecked = "window.uagentChecked";
+  constexpr const char* kSaid = "uagent page: ";
+  const json wants = Awaited(page_session_, kChecked, kCheckedMs);
+  if (JsonValue(wants, "fits", true)) return Console(page_session_, kSaid);
+  return Apart({{"url", JsonValue(command, "url", "")},
+                {"width", JsonValue(wants, "w", 0)},
+                {"height", JsonValue(wants, "h", 0)}},
+               [&](const std::string& session) {
+                 Awaited(session, kChecked, kCheckedMs);
+                 return Console(session, kSaid);
+               });
 }
 
 }  // namespace uagent::browser

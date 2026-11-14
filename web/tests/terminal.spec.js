@@ -2,6 +2,8 @@
 // "Add to chat" puts a terminal's text into the composer and sends nothing.
 import { test, expect, headerAction } from "./fixtures.js";
 
+test.use({ places: true });
+
 test("terminal tabs run commands and add their text to the chat", async ({
   page,
   session,
@@ -11,8 +13,6 @@ test("terminal tabs run commands and add their text to the chat", async ({
   await headerAction(page, "Terminal");
   const dock = page.getByRole("region", { name: "Terminal" });
   const shown = dock.locator(".terminal-tabpanel:not([hidden])");
-  // Opening the panel starts a shell in the conversation's folder, its tab
-  // the bar's title.
   await expect(dock.locator("[aria-current] .terminal-place")).toHaveText(
     /^Terminal 1 · /,
   );
@@ -30,7 +30,6 @@ test("terminal tabs run commands and add their text to the chat", async ({
   await page.keyboard.type("echo second-$((2*3))\n");
   await expect(shown.locator(".xterm-rows")).toContainText("second-6");
 
-  // Back on the first tab, what it shows goes into the draft, unsent.
   await dock.getByRole("button", { name: /^Terminal 1 · / }).click();
   await expect(shown.locator(".xterm-rows")).toContainText("first-42");
   await dock.getByRole("button", { name: "Terminal menu" }).click();
@@ -42,13 +41,24 @@ test("terminal tabs run commands and add their text to the chat", async ({
   await expect(composer).not.toHaveValue(/second-6/);
   await expect(composer).toBeFocused();
 
-  // The page's own shells end with the panel; it opens again with a new one.
+  // Hidden, its shells run on: shown again it has what they printed, and
+  // the keys.
+  await dock.getByRole("button", { name: "Hide the terminal" }).click();
+  await expect(dock).toBeHidden();
   await headerAction(page, "Terminal");
+  await expect(shown.locator(".xterm-rows")).toContainText("first-42");
+  await expect(shown.getByRole("textbox")).toBeFocused();
+  await page.keyboard.type("echo back-$((3*3))\n");
+  await expect(shown.locator(".xterm-rows")).toContainText("back-9");
+
+  // Its last tab closed, the panel goes, and the next one starts anew.
+  for (const number of [2, 1])
+    await dock
+      .getByRole("button", { name: `Close Terminal ${number}` })
+      .click();
   await expect(dock).toHaveCount(0);
   await headerAction(page, "Terminal");
-  await expect(dock.locator("[aria-current] .terminal-place")).toHaveText(
-    /^Terminal 1 · /,
-  );
+  await expect(dock.locator(".terminal-tab")).toHaveCount(1);
   await expect(shown.locator(".xterm-rows")).not.toContainText("first-42");
 });
 
@@ -104,7 +114,6 @@ test("a folder's terminal opens in the page, keeps running and closes", async ({
   await shell.locator(".xterm").click();
   await page.keyboard.type("echo kept-$((5*5))\n");
   await expect(shell.locator(".xterm-rows")).toContainText("kept-25");
-  // Listed under its folder: away and back, it shows what it printed.
   await page
     .locator(".session", { hasText: session.title || "" })
     .first()
@@ -114,7 +123,6 @@ test("a folder's terminal opens in the page, keeps running and closes", async ({
   await row.click();
   await expect(shell.locator(".xterm-rows")).toContainText("kept-25");
   await expect(row).toHaveAttribute("aria-current", "page");
-  // Closing it ends the shell and shows the folder's overview.
   await shell.getByRole("button", { name: "Close terminal" }).click();
   await expect(
     page.getByRole("region", { name: /^Overview of / }),
@@ -143,7 +151,6 @@ test("a folder's terminal has a name and a menu to rename, pin and close it", as
   });
   await expect(row.locator(".session-time")).toHaveCount(1);
 
-  // The name is the person's to change.
   await row
     .getByRole("button", { name: "Terminal menu for Terminal 1" })
     .click();
@@ -153,7 +160,6 @@ test("a folder's terminal has a name and a menu to rename, pin and close it", as
   const renamed = nav.locator(".session-row", { hasText: "Build" });
   await expect(renamed).toHaveCount(1);
 
-  // Pinned, it leaves its folder for the top; closing it removes the pin.
   await renamed
     .getByRole("button", { name: "Terminal menu for Build" })
     .click();
@@ -176,9 +182,7 @@ test("a folder's terminal has a name and a menu to rename, pin and close it", as
 });
 
 // iOS can keep reporting the keyboard's smaller visual viewport after the
-// keyboard closes, until the page scrolls, and a terminal never scrolls the
-// page. In the installed app and in a browser tab alike the sheet returns to
-// full height once nothing is being typed into.
+// keyboard closes, until the page scrolls; a terminal never scrolls it.
 for (const installed of [true, false])
   test(`on a phone ${installed ? "the installed app's" : "a tab's"} terminal regrows when the keyboard closes`, async ({
     page,
@@ -214,6 +218,34 @@ for (const installed of [true, false])
       .toBeGreaterThan(800);
   });
 
+test("on a phone the hidden terminal's shell runs on, however it was hidden", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Terminal");
+  const sheet = page.getByRole("dialog", { name: "Terminal" });
+  const rows = sheet.locator(".xterm-rows");
+  await expect(rows).toContainText(/\S/);
+  await sheet.locator(".xterm").click();
+  await page.keyboard.type("echo kept-$((4*4))\n");
+  await expect(rows).toContainText("kept-16");
+  // Its own button, then the step back: each plays the sheet's exit.
+  for (const hide of [
+    () => sheet.getByRole("button", { name: "Hide the terminal" }).click(),
+    () => page.goBack(),
+  ]) {
+    await hide();
+    await expect(sheet).toBeHidden();
+    await headerAction(page, "Terminal");
+    await expect(rows).toContainText("kept-16");
+  }
+  await sheet.locator(".xterm").click();
+  await page.keyboard.type("echo again-$((2*2))\n");
+  await expect(rows).toContainText("again-4");
+});
+
 test.describe("on a touch phone", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -231,7 +263,6 @@ test.describe("on a touch phone", () => {
     await expect(sheet.locator(".terminal-place")).toHaveText("Terminal 1 · ~");
     await expect(sheet.locator(".terminal-tab")).toHaveCount(1);
     await expect(page.locator(".terminal-dock")).toHaveCount(0);
-    // Every control in the bar has a name.
     for (const button of await sheet.locator(".terminal-bar button").all())
       await expect(button).toHaveAccessibleName(/\S/);
     const box = async (selector) => sheet.locator(selector).boundingBox();
@@ -251,9 +282,8 @@ test.describe("on a touch phone", () => {
     expect(Math.abs(view.y + view.height - keys.y)).toBeLessThanOrEqual(1);
     expect(screen.y + screen.height).toBeLessThanOrEqual(keys.y);
     expect(screen.x + screen.width).toBeLessThanOrEqual(view.x + view.width);
-    // What a row leaves over depends on the size, so a fit that counts its
-    // padding as room overflows at only some: a full row's worth of heights,
-    // and the common phone widths.
+    // What a row leaves over depends on the size: a full row's worth of
+    // heights, and the common phone widths.
     const sizes = [
       ...Array.from({ length: 12 }, (_, step) => [390, 844 - step * 2]),
       ...[375, 393, 402, 412, 430].map((width) => [width, 844]),
@@ -279,7 +309,6 @@ test.describe("on a touch phone", () => {
       );
     }
     await page.setViewportSize({ width: 390, height: 844 });
-    // The keys share the width without clipping.
     for (const key of await sheet.locator(".key-bar > button").all()) {
       const rect = await key.boundingBox();
       expect(rect.x).toBeGreaterThanOrEqual(0);
@@ -296,7 +325,6 @@ test.describe("on a touch phone", () => {
     const sheet = page.getByRole("dialog", { name: "Terminal" });
     await expect(sheet.locator(".xterm-rows")).toContainText(/\S/);
     const input = sheet.locator(".xterm-helper-textarea");
-    // A touch screen does not focus the terminal on its own.
     await expect(input).not.toBeFocused();
     await sheet.getByRole("button", { name: "Show the keyboard" }).tap();
     await expect(input).toBeFocused();

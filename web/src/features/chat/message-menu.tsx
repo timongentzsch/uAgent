@@ -1,9 +1,7 @@
 import type { Exchange, Node } from "../../shared/types.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 
-// The one menu of a message: your message's (continue in a fork from it),
-// and an answer's at the end of its turn's footer (the turn's and the
-// reply's statistics). Items hide when their handler is missing.
+// Items hide when their handler is missing.
 export function MessageMenu({
   label,
   node,
@@ -14,12 +12,9 @@ export function MessageMenu({
 }: {
   label: string;
   node: Node;
-  // The answer whose footer holds this menu.
   reply?: Node;
   statistics?: (node: Node) => void;
   http?: (exchanges: Exchange[]) => void;
-  // Your own messages: continue in a fork from here, editing this message
-  // (edit) or keeping it and its reply.
   branch?: (node: Pick<Node, "id">, edit: boolean) => void;
 }) {
   const exchanges = reply?.http || node.http;

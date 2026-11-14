@@ -30,6 +30,9 @@ Paths are under `~/.uagent` unless shown otherwise.
 | worktrees of scheduled runs and agents | `worktrees/<id>` |
 | session links | `links/*` |
 | web host discovery, devices and push keys, pinned conversations and folders | `web/*` (`web/pins.json`) |
+| saved SSH hosts, each main's private remote client identity and each host's latest SSH connection log | `web/hosts.json`, `web/client-<host-id>.json`, `web/ssh-<host-id>.log` |
+| remote terminal identities, for same-build reattachment | `web/remote-terminals.json` |
+| installed remote executables, resources and bundle manifest | `remote/builds/<build-id>/*` on the remote; `share/uagent/remote/<build-id>/*` beside the main installation |
 | settings, for all conversations and per folder | `config/settings.json` (and its `.lock`) |
 | folder trust, permission rules, first-run welcome shown | `config/trusted-projects.json`, `config/permissions.json`, `config/welcomed` |
 | your instructions | `AGENTS.md` |
@@ -40,8 +43,13 @@ Paths are under `~/.uagent` unless shown otherwise.
 | workspaces, and the name each goes by | `spaces/<folder>`, `spaces/<folder>/.uagent/name` |
 | scratch scripts | `<folder>/.uagent/scratch/*` |
 
-`<folder-hash>` is a hash of the folder's path; each session file's header
-records its `cwd`, title, `cost` and to-do progress (`todo`). Live
+`<folder-hash>` hashes the folder's path and, for a remote folder, its host
+identity. Local folder hashes are unchanged. Remote conversations, settings,
+memory, pins and schedules are persisted on the main; the execution gateway
+has no application history or settings store. Remote files and installed
+executables persist, while request receipts and process output are volatile.
+Each session file's header records its `cwd`, execution `host` (empty for Local),
+title, `cost` and to-do progress (`todo`). Live
 activities (IDs, PTYs, incremental output) exist only in memory and end with
 the process.
 

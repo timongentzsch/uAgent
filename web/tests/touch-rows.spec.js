@@ -1,5 +1,5 @@
-// On a touch screen a list row draws its ⋯ only while it is the open one;
-// a long press opens any row's menu.
+// A conversation's row keeps its width for its title on a touch screen: its
+// menu opens on a long press, and stays reachable by keyboard.
 import { test, expect, online, savedConversation } from "./fixtures.js";
 
 const LONG_PRESS_MS = 450;
@@ -13,7 +13,6 @@ test.beforeEach(({ browserName }) =>
   test.skip(browserName !== "chromium", "Chromium touch input"),
 );
 
-// Two conversations in the drawer: the open one and another.
 async function twoRows(page, host, session) {
   await savedConversation(host, page.request, "Other row");
   await page.clock.install();
@@ -38,7 +37,7 @@ async function twoRows(page, host, session) {
   return { drawer, row, menuOf, touch, at };
 }
 
-test("only the open row draws its ⋯, and every row's stays reachable", async ({
+test("a touch row shows no menu button, and its menu keeps keyboard access", async ({
   page,
   host,
   session,
@@ -46,14 +45,11 @@ test("only the open row draws its ⋯, and every row's stays reachable", async (
   const { menuOf } = await twoRows(page, host, session);
   const open = page.locator(".sidebar .session-row:has([aria-current])");
   await expect(open).toHaveCount(1);
-  await expect(open.locator(".action-menu")).toHaveCSS("opacity", "1");
-  const hidden = menuOf("Other row");
-  await expect(hidden.locator("..")).toHaveCSS("opacity", "0");
-  // A key press makes the next focus a keyboard's, which draws the button.
-  await page.keyboard.press("Shift");
-  await hidden.focus();
-  await expect(hidden).toBeFocused();
-  await expect(hidden.locator("..")).toHaveCSS("opacity", "1");
+  await expect(open.locator(".action-menu")).toHaveCSS("opacity", "0");
+  const other = menuOf("Other row");
+  await expect(other.locator("..")).toHaveCSS("opacity", "0");
+  await other.focus();
+  await expect(other).toBeFocused();
 });
 
 test("a long press opens the row's menu and releasing does not open the conversation", async ({
@@ -66,10 +62,13 @@ test("a long press opens the row's menu and releasing does not open the conversa
   await page.clock.runFor(LONG_PRESS_MS + 50);
   const menu = page.getByRole("menu", { name: "Conversation menu" });
   await expect(menu).toHaveCount(0);
-  // The row says it is held, so the person knows to lift.
   await expect(row("Other row")).toHaveAttribute("data-held", "");
   await touch("touchEnd");
   await expect(menu).toBeVisible();
+  // Its items take a tap: the button it hangs from shows no more at rest.
+  await menu
+    .getByRole("menuitem", { name: "Select", exact: true })
+    .click({ trial: true });
   await expect(row("Other row")).not.toHaveAttribute("data-held", "");
   await expect(page).toHaveURL(new RegExp(`#session=${session.id}`));
   await expect(row("Other row").locator("[aria-current]")).toHaveCount(0);
@@ -99,30 +98,33 @@ test("a short tap opens the conversation and no menu", async ({
   await expect(page.getByRole("menu")).toHaveCount(0);
 });
 
-test("a place's header opens its own menu, and shows no system menu", async ({
-  page,
-  host,
-  session,
-}) => {
-  const { drawer, touch } = await twoRows(page, host, session);
-  const head = drawer.locator(".place-head").first();
-  const name = head.locator("h2 button");
-  const box = await name.boundingBox();
-  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  const prevented = await name.evaluate((node) => {
-    const event = new MouseEvent("contextmenu", {
-      bubbles: true,
-      cancelable: true,
+test.describe("in Places", () => {
+  test.use({ places: true });
+  test("a place's header opens its own menu, and shows no system menu", async ({
+    page,
+    host,
+    session,
+  }) => {
+    const { drawer, touch } = await twoRows(page, host, session);
+    const head = drawer.locator(".place-head").first();
+    const name = head.locator("h2 button");
+    const box = await name.boundingBox();
+    const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const prevented = await name.evaluate((node) => {
+      const event = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+      });
+      node.dispatchEvent(event);
+      return event.defaultPrevented;
     });
-    node.dispatchEvent(event);
-    return event.defaultPrevented;
+    expect(prevented).toBe(true);
+    await touch("touchStart", at);
+    await page.clock.runFor(LONG_PRESS_MS + 50);
+    await touch("touchEnd");
+    await expect(
+      page.getByRole("menu", { name: /^Folder menu for/ }),
+    ).toBeVisible();
+    await expect(name).not.toHaveAttribute("aria-current", "page");
   });
-  expect(prevented).toBe(true);
-  await touch("touchStart", at);
-  await page.clock.runFor(LONG_PRESS_MS + 50);
-  await touch("touchEnd");
-  await expect(
-    page.getByRole("menu", { name: /^Folder menu for/ }),
-  ).toBeVisible();
-  await expect(name).not.toHaveAttribute("aria-current", "page");
 });

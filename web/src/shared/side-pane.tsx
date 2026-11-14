@@ -4,18 +4,12 @@ import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { devicePrefs, type Pane } from "./device-prefs.ts";
 import { motionEase, motionMs, useExit } from "./motion.ts";
 
-// Docked panes (the sidebar, files) beside the chat and the
-// terminal under it: their resize handle and the layout that sizes each pane.
-
 const rem = () =>
   Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
 
-// The edge of a docked pane: drag it, or focus it and use the arrow keys
-// (Shift for bigger steps), to resize the pane; Enter or a double-click
-// puts the default back. The size is a custom property on the root, kept
-// per device and restored before the first paint (public/theme.js). `edge`
-// is the side of the pane the handle sits on: a side sets its width, the
-// top its height.
+// Drag it, or focus it and use the arrow keys, to resize; Enter or a
+// double-click puts the default back. The size is a root custom property in
+// rem, restored before the first paint (public/theme.js).
 export function ResizeHandle({
   pane,
   label,
@@ -105,14 +99,9 @@ export function ResizeHandle({
   );
 }
 
-// A conversation with a pane docked beside it (the files): the chat keeps
-// the rest of the row. The chat sits in the same
-// place with or without a pane, so opening one only narrows it: a new
-// parent would remount the transcript and load its history again. The
-// pane's column grows to its width as it fades in, so the chat narrows with
-// it rather than before it; the pane's content keeps that width and is
-// uncovered from the edge, so it never lays out narrower on the way.
-// Closing plays the same back, and returns focus to what opened the pane.
+// The chat sits in the same place with or without a pane: a new parent
+// would remount the transcript and load its history again. The pane's
+// content keeps its width while its column grows, so it never reflows.
 export function SideLayout({
   pane,
   children,

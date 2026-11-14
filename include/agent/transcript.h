@@ -2,10 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_TRANSCRIPT_H_
 #define UAGENT_INCLUDE_AGENT_TRANSCRIPT_H_
-// A conversation's transcript as nodes (node.h): built from its records
-// (transcript_tree.cc), held as a bounded view the one reducer patches
-// (view_reducer.cc), and read in pages, searched and looked up by node id
-// (transcript_query.cc).
+// A conversation's transcript as nodes (node.h): built from its records, held
+// as a bounded view one reducer patches, and paged, searched and looked up.
 
 #include <cstdint>
 #include <map>
@@ -26,35 +24,27 @@ struct TranscriptEntry {
   std::string kind;
 };
 
-// The nodes one record makes, oldest first; with `calls`, an assistant
-// message's calls too.
+// Oldest first; with `calls`, an assistant message's calls too.
 void EntryNodes(const Conversation& conversation, uint64_t sequence,
                 const TranscriptEntry& entry, bool calls,
                 std::vector<json>& out);
-// What a person reads of a record: a tool result's output without the
-// model's hints, a message of yours without its "Attached:" trailer; with
-// `reasoning`, a reply's thinking.
+// A record as a person reads it: no model hints, no "Attached:" trailer.
 std::string EntryText(const json& facts, uint64_t sequence, const json& message,
                       bool reasoning = false);
-// The nodes of the conversation's last message as it is published; its
-// calls arrive as they run.
+// The last message's nodes as published; its calls arrive as they run.
 std::vector<json> LastNodes(const Conversation& conversation);
 
-// Borrows a conversation that must stay alive and unchanged after the first
-// query. The index is built only when a query needs it.
+// The borrowed conversation must outlive it, unchanged after the first query.
 class TranscriptView {
  public:
   explicit TranscriptView(const Conversation& conversation);
-  // The nodes before sequence `before` (0: the latest) within the view's
-  // bounds, ending on whole turns unless one turn is larger than a page.
+  // The nodes before sequence `before` (0: the latest), ending on whole turns.
   json Page(uint64_t before = 0) const;
   // A node's text in full, by its id, a page from `offset`.
   json Detail(const std::string& id, size_t offset = 0) const;
   // A call's exact retained arguments and result, by its node id.
   json Exchange(const std::string& id, size_t offset = 0) const;
-  // The nodes a reader sees whose text contains `query`, ignoring ASCII case,
-  // oldest first, at most `limit`: each its id, sequence, kind, how often it
-  // contains the query and a snippet around the first time.
+  // Nodes whose text contains `query`, ignoring ASCII case, oldest first.
   json Search(const std::string& query, size_t limit) const;
 
  private:
@@ -64,24 +54,16 @@ class TranscriptView {
   mutable std::map<uint64_t, TranscriptEntry> entries_;
 };
 
-// Presentation projection only: no system prompts, opaque provider replay,
-// base64 images, or arbitrary-path links. Full retained details are paged.
+// Presentation only: no system prompt, provider replay, base64 or path link.
 json ConversationView(const Conversation& conversation, uint64_t before = 0);
 // A user message's text without the "Attached:" path trailer the model sees.
 std::string StripAttachedTrailer(const std::string& text);
-// Upserts a checkpoint's nodes and bounds the view once. Returns how many of
-// the oldest nodes went; `patches`, when given, receives the {kind:"node"}
-// frames of the nodes that are new or different, in view order.
+// Returns how many of the oldest nodes went; `patches` receives the changes.
 size_t MergeNodes(json& view, const json& nodes, json* patches = nullptr);
-// The one reducer of a session's view: every holder of a view (worker, host,
-// terminal) folds events through it. False means the event is live-only.
-// `patches`, when given, receives the {kind:"node"} frames that bring
-// another copy of the view to the same state: whole nodes, or an append to a
-// streamed body.
+// The one reducer of a session's view; false means the event is live-only.
 bool ApplySessionEvent(json& state, const std::string& type, const json& data,
                        json* patches = nullptr);
-// One page of a long text from `offset`, cut at UTF-8 boundaries, with where
-// the next starts and whether there is more.
+// One page of `text` from `offset`, cut at UTF-8 boundaries.
 json PageText(const std::string& text, size_t offset);
 json FindHttpExchange(const json& value, const std::string& id);
 // The HTTP exchanges of the latest model request, from the display facts.

@@ -26,7 +26,15 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { ChevronRight, X, Check, Copy } from "lucide-preact";
+import {
+  ChevronRight,
+  X,
+  Check,
+  Copy,
+  CircleAlert,
+  TriangleAlert,
+  Info,
+} from "lucide-preact";
 import { markPath } from "./mark.ts";
 import { animateOut, motionMs } from "./motion.ts";
 import { useDismiss } from "./dismiss.ts";
@@ -45,8 +53,6 @@ import { formatFullMoment, formatMoment, useNow } from "./time.ts";
 import { devicePrefs } from "./device-prefs.ts";
 import { useStored } from "./storage.ts";
 
-// Whether any prop changed identity: the update check of a view whose
-// parent renders more often than its props change.
 const propsChanged = (prior: object, next: object) =>
   Object.entries(next).some(
     ([key, value]) => (prior as Record<string, unknown>)[key] !== value,
@@ -77,9 +83,14 @@ export function updateChecked<P extends object>(
   };
 }
 
-// Every timestamp in the app: formatted by the viewer's time preferences,
-// with the full moment on hover. `value` is an ISO string or epoch ms.
-export function Time({ value }: { value?: string | number }) {
+// `value` is an ISO string or epoch ms.
+export function Time({
+  value,
+  brief,
+}: {
+  value?: string | number;
+  brief?: boolean;
+}) {
   const [prefs] = useStored(devicePrefs.time);
   const now = useNow(prefs.style !== "absolute");
   if (value == null || value === "") return null;
@@ -87,13 +98,13 @@ export function Time({ value }: { value?: string | number }) {
   if (Number.isNaN(date.getTime())) return null;
   return (
     <time dateTime={date.toISOString()} title={formatFullMoment(date, prefs)}>
-      <DataText>{formatMoment(date, prefs, now)}</DataText>
+      <DataText>{formatMoment(date, prefs, now, undefined, brief)}</DataText>
     </time>
   );
 }
 async function copyText(text: string) {
   if (navigator.clipboard) return navigator.clipboard.writeText(text);
-  // Clipboard API requires HTTPS; tailnet HTTP still supports user-initiated copy.
+  // The Clipboard API needs HTTPS; over HTTP a user-initiated copy still works.
   const field = document.createElement("textarea");
   field.value = text;
   field.readOnly = true;
@@ -173,7 +184,6 @@ export function Field({
     </label>
   );
 }
-// A setting that is on or off, as a native switch. Applies on change.
 export function Switch({
   label,
   checked,
@@ -206,7 +216,6 @@ export function ValueSelect(props: SelectHTMLAttributes<HTMLSelectElement>) {
   return <Select {...props} class="value-select" />;
 }
 
-// The one caption over a group of rows or a section.
 export function SectionTitle({ children }: { children: ComponentChildren }) {
   return (
     <h3 class="section-title caption">
@@ -215,7 +224,6 @@ export function SectionTitle({ children }: { children: ComponentChildren }) {
   );
 }
 
-// Rows on one inset card, with an optional caption and a help line below.
 // `action` acts on the whole group (Add) and ends its caption.
 export function Group({
   title,
@@ -244,9 +252,7 @@ export function Group({
   );
 }
 
-// One setting or destination: an icon, a label (and detail line), then its
-// value or control. With `onClick` the whole row is the button and shows a
-// chevron.
+// With `onClick` the whole row is the button and shows a chevron.
 export function Row({
   icon,
   label,
@@ -265,7 +271,6 @@ export function Row({
   onClick?: () => void;
   disabled?: boolean;
   destructive?: boolean;
-  // The destination shown beside the list (a two-column layout).
   current?: boolean;
   // A disclosure: detail opens in place below the row.
   expanded?: boolean;
@@ -303,8 +308,6 @@ export function Row({
   );
 }
 
-// A view with nothing in it yet: what it is for and what to try first. The
-// tips are there while it is empty and gone with the first content.
 export function Welcome({
   level = 2,
   title,
@@ -335,7 +338,6 @@ export function Welcome({
   );
 }
 
-// Nothing to show yet: one line, and what to do about it.
 export function EmptyState({
   children,
   action,
@@ -351,8 +353,6 @@ export function EmptyState({
   );
 }
 
-// Asks before something that cannot be taken back: what will happen, then
-// Cancel and the action, named by what it does.
 export function ConfirmModal({
   title,
   children,
@@ -384,7 +384,6 @@ export function ConfirmModal({
   );
 }
 
-// A dialog's or form's buttons, trailing and in reading order.
 export function Actions({ children }: { children: ComponentChildren }) {
   return <div class="dialog-actions">{children}</div>;
 }
@@ -400,10 +399,9 @@ function useDelayed(delayMs: number) {
   return visible;
 }
 
-// Loading draws by one rule: a view whose shape is known draws itself from
-// sample data (see <Placeholder>); text of unknown length draws these lines;
-// a <Spinner> is left for an action's progress, or a surface whose shape
-// cannot be known, such as one whose code is still on its way.
+// A view whose shape is known draws itself from sample data (see
+// <Placeholder>); text of unknown length draws these lines; a <Spinner> is
+// for an action's progress, or a surface whose shape cannot be known.
 export function Skeleton({
   rows = 3,
   label = "Loading…",
@@ -415,7 +413,7 @@ export function Skeleton({
 }) {
   if (!useDelayed(delayMs)) return null;
   return (
-    <div class="skeleton" role="status" aria-busy="true">
+    <div class="skeleton" role="status" aria-label={label} aria-busy="true">
       <small class="loading-label">{label}</small>
       <div aria-hidden="true">
         {Array.from({ length: rows }, (_, index) => (
@@ -449,6 +447,32 @@ export function Spinner({
     </div>
   );
 }
+const toneIcons = { error: CircleAlert, warning: TriangleAlert, info: Info };
+
+// Every message to the person. Only its text is the live region, so an
+// action beside it is not read out with it.
+export function Notice({
+  tone,
+  children,
+  action,
+  id,
+}: {
+  tone: keyof typeof toneIcons;
+  children: ComponentChildren;
+  action?: ComponentChildren;
+  id?: string;
+}) {
+  const Icon = toneIcons[tone];
+  return (
+    <span class="notice" data-tone={tone}>
+      <Icon />
+      <span id={id} role={tone === "error" ? "alert" : "status"}>
+        {children}
+      </span>
+      {action}
+    </span>
+  );
+}
 export function LoadError({
   error,
   retry,
@@ -457,10 +481,12 @@ export function LoadError({
   retry?: () => void;
 }) {
   return (
-    <div class="load-error">
-      <p role="alert">{failure(error).message}</p>
-      {retry && <Button onClick={retry}>Retry</Button>}
-    </div>
+    <Notice
+      tone="error"
+      action={retry && <Button onClick={retry}>Retry</Button>}
+    >
+      {failure(error).message}
+    </Notice>
   );
 }
 // Contains a render failure to its subtree: one malformed event or message
@@ -496,7 +522,6 @@ export function Button({
   variant?: "primary" | "secondary" | "quiet" | "destructive";
   size?: "default" | "compact" | "icon";
   busy?: boolean;
-  // The element, for a caller that places or focuses against it (a menu).
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
@@ -520,7 +545,6 @@ export function IconButton({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   label: string;
-  // Quiet unless it is the surface's main action (Send).
   variant?: "primary" | "quiet";
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
@@ -537,8 +561,7 @@ export function IconButton({
   );
 }
 
-// What a dialog's header needs, for content that draws its own (a settings
-// sheet whose title and back button follow its navigation).
+// For content that draws its own header (a settings sheet with Back).
 const DialogContext = createContext<{
   title: string;
   titleId: string;
@@ -548,11 +571,9 @@ const DialogContext = createContext<{
 
 // The close of the dialog around the caller: plays its exit, as Close does.
 export const useDialogClose = () => useContext(DialogContext)!.close;
-// The dialog around the caller, if any, for content that draws its header.
 export const useDialog = () => useContext(DialogContext);
 
-// The one dialog header: title, optional leading control (Back) and actions,
-// then Close. Modal renders it unless its content renders its own.
+// Modal renders it unless its content renders its own.
 export function DialogHeader({
   title,
   leading,
@@ -590,19 +611,20 @@ export function Modal({
   actions,
   header = true,
   swipeable = true,
+  hidden = false,
 }: {
   title: string;
   children: ComponentChildren;
   close: () => void;
+  // Closed with its content kept: what runs in it runs on.
+  hidden?: boolean;
   className?: string;
-  // Its width, one of the --dialog-* sizes. "s": a sheet of a few actions or
-  // one control (see SheetButton), which rises from the bottom on a phone
-  // instead of filling the screen.
+  // One of the --dialog-* widths. "s" is a sheet of a few actions, which
+  // rises from the bottom on a phone instead of filling the screen.
   size?: "s" | "m" | "l" | "xl";
   // "sheet": full height at the right edge (full screen on a phone).
   // "spotlight": centered high in the window, as tall as its content.
   layout?: "content" | "panel" | "sheet" | "spotlight";
-  // Header controls beside Close, for actions on the dialog's subject.
   actions?: ComponentChildren;
   // False when the content renders its own DialogHeader and .dialog-body.
   header?: boolean;
@@ -612,10 +634,9 @@ export function Modal({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const phone = usePhone();
-  // A tap on the scrim closes every dialog, as it does a native sheet. The
-  // scrim targets the dialog element, as does its own padding, so the point
-  // decides; a press that began inside (a text selection dragged out) does
-  // not count.
+  // A tap on the scrim closes. The scrim targets the dialog element, as does
+  // its own padding, so the point decides; a press that began inside (a text
+  // selection dragged out) does not count.
   const pressedScrim = useRef(false);
   const onScrim = (event: MouseEvent) => {
     const dialog = ref.current;
@@ -641,18 +662,24 @@ export function Modal({
     // A parent that replaced this dialog meanwhile owns its state now.
     void animateOut(ref.current).then(() => mounted.current && close());
   };
-  useDismiss(true, requestClose);
+  useDismiss(!hidden, requestClose);
   useSheetSwipe(ref, requestClose, layout === "sheet" && swipeable && phone);
   useLayoutEffect(() => {
-    const prior = document.activeElement;
     const dialog = ref.current;
-    dialog?.showModal();
+    if (hidden || !dialog) return;
+    const prior = document.activeElement;
+    // Shown again, it is as it was before its exit played.
+    mounted.current = true;
+    leaving.current = false;
+    dialog.inert = false;
+    dialog.removeAttribute("data-leaving");
+    dialog.showModal();
     // Start at the dialog's title instead of highlighting its first action.
     // Tab still reaches Close; native modality and focus restoration remain.
     heading.current?.focus({ preventScroll: true });
     return () => {
       mounted.current = false;
-      dialog?.close();
+      dialog.close();
       const target =
         prior instanceof HTMLElement && prior.isConnected
           ? prior
@@ -664,7 +691,7 @@ export function Modal({
       if (restored instanceof HTMLElement)
         restored.focus({ preventScroll: true });
     };
-  }, []);
+  }, [hidden]);
   return (
     <dialog
       ref={ref}
@@ -719,8 +746,7 @@ async function preloadDeferred<P extends object>(
   return module.default;
 }
 
-// Code loaded on first use (diagrams, annotation, the browser viewer); the
-// caller owns the surface and its placeholder.
+// The caller owns the surface and its placeholder.
 export function Deferred<P extends object>({
   load,
   fallback,

@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import type { Session, Space } from "../../shared/types.ts";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { folderOf } from "../../shared/display.ts";
 import { matches } from "../../shared/fuzzy.ts";
 import { plural } from "../../shared/quantities.ts";
@@ -15,6 +15,7 @@ import {
   Group,
   Input,
   LoadError,
+  Notice,
 } from "../../shared/ui.tsx";
 
 // The conversation and the agents under it, which a move takes along.
@@ -25,9 +26,6 @@ function familyOf(sessions: Session[], item: Session) {
   return family;
 }
 
-// The dialog body that moves conversations (one, or the sidebar's
-// selection) to another folder or workspace: a place picked from the list
-// or typed as a path.
 export default function MoveConversation({
   moving,
   sessions,
@@ -35,17 +33,16 @@ export default function MoveConversation({
   online,
   close,
 }: {
-  // As the catalogue holds them now, so the dialog follows what runs.
   moving: Session[];
   sessions: Session[];
   spaces: Space[];
   online: boolean;
   close: () => void;
 }) {
+  const { command } = useApi();
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState("");
   const { run, busy, error } = useAction();
-  // The place they all are in, if one.
   const places = new Set(moving.map(folderOf));
   const current = places.size === 1 ? [...places][0] : "";
   const family = moving.flatMap((item) => familyOf(sessions, item));
@@ -128,11 +125,11 @@ export default function MoveConversation({
         {`. Files stay ${current ? `in ${current}` : "where they are"}, and memories stay with the old ${current ? "folder" : "folders"}.`}
       </p>
       {running.length > 0 && (
-        <p role="status">
+        <Notice tone="warning">
           It cannot move while{" "}
           {running.map((item) => `“${item.title}”`).join(", ")}{" "}
           {running.length === 1 ? "is" : "are"} running.
-        </p>
+        </Notice>
       )}
       {error && <LoadError error={error} />}
       <Actions>

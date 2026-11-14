@@ -4,12 +4,10 @@ import {
   DEV_SERVER_URL,
   openMore,
 } from "./fixtures.js";
-import { agents, arrivals, conversation } from "./golden-turns.js";
+import { agents, arrivals, conversation, pondering } from "./golden-turns.js";
 
-// The transcript tree on the Vite-served app with a mocked host: a saved
-// conversation of calls, a failure, guidance and an answer, at each
-// detail level, on a phone and a desktop. Set UAGENT_SHOTS to a folder to
-// keep a screenshot of each.
+// The transcript tree on the dev page with a mocked host, at each detail
+// level. Set UAGENT_SHOTS to a folder to keep a screenshot of each.
 test.use({ serviceWorkers: "block" });
 
 const ID = "a".repeat(32);
@@ -26,6 +24,7 @@ const SESSION = {
 async function open(page, level, nodes = conversation) {
   await page.addInitScript((detail) => {
     localStorage.setItem("uagent-detail", detail);
+    localStorage.setItem("uagent-thinking", "show");
     globalThis.EventSource = class extends EventTarget {
       readyState = 1;
       constructor() {
@@ -67,7 +66,9 @@ async function open(page, level, nodes = conversation) {
     return json({ error: "Not in this mock" }, 404);
   });
   await page.goto(new URL(`/#session=${ID}`, DEV_SERVER_URL).href);
-  await expect(page.locator('[data-message-id="r-3-2-1"]')).toBeVisible();
+  await expect(
+    page.locator(`[data-message-id="${nodes[0].id}"]`),
+  ).toBeVisible();
 }
 
 const rows = (page) => page.locator(".transcript .node-row");
@@ -107,12 +108,11 @@ for (const [device, viewport] of [
       const shown = rows(page);
       // Minimal shows each turn's work as one line; default opens it.
       await expect(shown).toHaveCount(
-        { minimal: 4, default: 14, full: 14 }[level],
+        { minimal: 4, default: 13, full: 13 }[level],
       );
       const measured = await gaps(page);
       expect(measured.length).toBeGreaterThan(0);
       expect(new Set(measured).size, JSON.stringify(measured)).toBe(1);
-      // Every row is one line of the same height.
       const heights = await shown.evaluateAll((items) =>
         items.map((row) => Math.round(row.getBoundingClientRect().height)),
       );
@@ -141,7 +141,6 @@ test("a long result word gives way to the headline on a phone", async ({
       })),
     ),
   );
-  // The headline reads whole and is the wider; the word is the one cut.
   expect(headline.cut).toBe(false);
   expect(headline.width).toBeGreaterThan(word.width);
   expect(word.cut).toBe(true);
@@ -149,7 +148,6 @@ test("a long result word gives way to the headline on a phone", async ({
     "text-overflow",
     "ellipsis",
   );
-  // Opened, the row says the whole of why.
   await row.click();
   await expect(rejected.locator(".node-body")).toContainText(
     "path is outside the folder: /etc is not inside /project",
@@ -164,7 +162,6 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await work.focus();
   await page.keyboard.press("ArrowRight");
   await expect(work).toHaveAttribute("aria-expanded", "true");
-  // → again moves to the first row under it; ← closes it from there back.
   await page.keyboard.press("ArrowRight");
   const first = page.locator('[data-message-id="t-f"] > .node-row');
   await expect(first).toBeFocused();
@@ -173,7 +170,6 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await page.keyboard.press("Space");
   await expect(work).toHaveAttribute("aria-expanded", "false");
   await page.keyboard.press("Enter");
-  // The row stays open after a reload; choosing a level forgets it.
   await page.reload();
   await expect(work).toHaveAttribute("aria-expanded", "true");
   await expect(
@@ -186,7 +182,7 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await openMore(page);
   await page.getByRole("menuitem", { name: /^Detail/ }).click();
   await page.getByRole("menuitemradio", { name: "Full" }).click();
-  await expect(rows(page)).toHaveCount(14);
+  await expect(rows(page)).toHaveCount(13);
   await page
     .locator(".conversation-head")
     .getByLabel("Conversation menu", { exact: true })
@@ -195,6 +191,106 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await page.getByRole("menuitem", { name: /^Detail/ }).click();
   await page.getByRole("menuitemradio", { name: "Minimal" }).click();
   await expect(work).toHaveAttribute("aria-expanded", "false");
+});
+
+test("a thought is text among the steps: one line under a folded work, two and the rest on asking at default, whole at full", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await open(page, "minimal", pondering);
+  const thought = page.locator(".thought");
+  const text = thought.locator(".node-text");
+  const lines = async () => {
+    const { height, line } = await text.evaluate((node) => ({
+      height: node.getBoundingClientRect().height,
+      line: parseFloat(getComputedStyle(node).lineHeight),
+    }));
+    return Math.round(height / line);
+  };
+  // Not a row: nothing to open, no box round it, and set apart by its face.
+  await expect(thought.locator(".node-row")).toHaveCount(0);
+  await expect(text).toHaveCSS("font-style", "italic");
+  await expect(text).toHaveCSS("border-top-width", "0px");
+  // Folded, the work still says what it is thinking, on one line.
+  await expect(
+    page.locator('[data-message-id="w-m-40"] > .node-row'),
+  ).toHaveAttribute("aria-expanded", "false");
+  expect(await lines()).toBe(1);
+  const head = page.locator(".conversation-head");
+  await head.getByRole("tab", { name: "Default" }).click();
+  await expect(thought).toHaveCount(1);
+  expect(await lines()).toBe(2);
+  await thought.getByRole("button", { name: "More" }).click();
+  expect(await lines()).toBeGreaterThan(2);
+  await thought.getByRole("button", { name: "Less" }).click();
+  expect(await lines()).toBe(2);
+  await head.getByRole("tab", { name: "Full" }).click();
+  await expect(thought.getByRole("button", { name: "More" })).toHaveCount(0);
+  expect(await lines()).toBeGreaterThan(2);
+});
+
+test("the header sets the level and shows or hides thinking", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await open(page, "full");
+  await expect(rows(page)).toHaveCount(13);
+  const head = page.locator(".conversation-head");
+  const thinking = head.getByRole("button", { name: "Thinking", exact: true });
+  await expect(thinking).toHaveAttribute("aria-pressed", "true");
+  // A thought is text among the rows, so hiding it leaves them as they were.
+  await expect(page.locator('[data-kind="thinking"]')).toHaveCount(1);
+  await thinking.click();
+  await expect(thinking).toHaveAttribute("aria-pressed", "false");
+  await expect(rows(page)).toHaveCount(13);
+  await expect(page.locator('[data-kind="thinking"]')).toHaveCount(0);
+  await head.getByRole("tab", { name: "Minimal" }).click();
+  await expect(
+    page.locator('[data-message-id="w-m-22"] > .node-row'),
+  ).toHaveAttribute("aria-expanded", "false");
+});
+
+test("what the agent says while it works shows under a folded work", async ({
+  page,
+}) => {
+  // open() waits for r-3-2-1, here the note.
+  const running = [
+    {
+      id: "m-1",
+      parent: null,
+      kind: "turn",
+      body: { kind: "text", text: "q" },
+    },
+    {
+      id: "w-m-1",
+      parent: "m-1",
+      kind: "work",
+      state: "running",
+      headline: { verb: "", target: "1 read" },
+    },
+    {
+      id: "t-1",
+      parent: "w-m-1",
+      kind: "call",
+      state: "ok",
+      headline: { verb: "Read", target: "a.txt" },
+    },
+    {
+      id: "r-3-2-1",
+      parent: "w-m-1",
+      kind: "message",
+      role: "assistant",
+      body: { kind: "markdown", text: "Looking at the host first." },
+    },
+  ];
+  await open(page, "minimal", running);
+  const work = page.locator('[data-message-id="w-m-1"]');
+  await expect(work.locator("> .node-row")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(work).toContainText("Looking at the host first.");
+  await expect(page.locator('[data-message-id="t-1"]')).toHaveCount(0);
 });
 
 test("an agent's link opens its conversation", async ({ page }) => {

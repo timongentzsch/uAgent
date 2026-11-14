@@ -99,9 +99,8 @@ using RouteUsage = std::map<std::string, Usage>;
 
 bool HasUsage(const Usage& usage);
 
-// Statistics are additive nonnegative counters and durations. These helpers
-// are shared by parent and child accounting so nested
-// work cannot gain a different merge or delta rule at each process boundary.
+// Statistics are additive nonnegative counters and durations. Parent and
+// child accounting share these helpers, so both merge by one rule.
 int64_t NonnegativeJsonInteger(const json& value);
 
 int64_t NumericStatistic(const json& object, std::string_view key);
@@ -129,11 +128,6 @@ RouteUsage RouteUsageFromJson(const json& value);
 
 class UsageAccumulator {
  public:
-  void Add(const Usage& usage) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    unassigned_.Merge(usage);
-  }
-
   void Add(const std::string& route, const Usage& usage, int64_t turn = 0,
            const json& statistics = json::object()) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -147,9 +141,8 @@ class UsageAccumulator {
     routes_[route].Merge(usage);
   }
 
-  // Usage, route attribution, parent-turn attribution and child statistics
-  // are one accounting record. Taking them under one lock prevents a producer
-  // from landing between separate drains and losing its route or turn.
+  // One lock for usage, routes, turns and statistics: separate drains would
+  // let a producer land between them and lose its route or turn.
   AccumulatedUsage TakeAll() {
     std::lock_guard<std::mutex> lock(mutex_);
     AccumulatedUsage result;

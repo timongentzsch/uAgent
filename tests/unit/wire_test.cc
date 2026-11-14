@@ -4,6 +4,7 @@
 
 #include <map>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -366,8 +367,7 @@ TEST_CASE(TestWireStreams) {
 }
 
 // A search the provider runs is visible progress, not a round this agent owes
-// a result for. Both halves matter: the lifecycle has to reach a presenter,
-// and the search must never reach the tool loop.
+// a result for: it reaches a presenter and never the tool loop.
 TEST_CASE(TestWireStreamHostedSearch) {
   ChatResult result;
   std::map<int, ToolCall> calls;
@@ -495,6 +495,41 @@ TEST_CASE(TestWireStreamHostedSearch) {
   CHECK(anthropic_result.replay["content"][1]["type"] ==
         "web_search_tool_result");
 
+  // A reply cut inside a call keeps the calls before it; the cut one is in
+  // neither the calls nor the replay, where no result would answer it.
+  ChatResult cut_result;
+  std::map<int, ToolCall> cut_calls;
+  WireStreamState cut_state;
+  auto cut_event = [&](const json& value) {
+    DecodeWireStreamEvent(WireApi::kAnthropicMessages, JsonDump(value),
+                          cut_result, cut_calls, cut_state);
+  };
+  for (const auto& [index, id, input] :
+       {std::tuple{0, "whole", R"({"path":"a"})"},
+        std::tuple{1, "cut", R"({"path":)"}}) {
+    cut_event({{"type", "content_block_start"},
+               {"index", index},
+               {"content_block",
+                {{"type", "tool_use"},
+                 {"id", id},
+                 {"name", "read_path"},
+                 {"input", json::object()}}}});
+    cut_event(
+        {{"type", "content_block_delta"},
+         {"index", index},
+         {"delta", {{"type", "input_json_delta"}, {"partial_json", input}}}});
+    cut_event({{"type", "content_block_stop"}, {"index", index}});
+  }
+  cut_event(
+      {{"type", "message_delta"}, {"delta", {{"stop_reason", "max_tokens"}}}});
+  cut_event({{"type", "message_stop"}});
+  CollectToolCalls(cut_calls, cut_result);
+  CHECK(cut_result.stop_cause == ResponseStopCause::kLength);
+  REQUIRE(cut_result.tool_calls.size() == 1);
+  CHECK(cut_result.tool_calls[0].id == "whole");
+  REQUIRE(cut_result.replay["content"].size() == 1);
+  CHECK(cut_result.replay["content"][0]["id"] == "whole");
+
   // An error record in place of results is a failed search.
   ChatResult error_result;
   std::map<int, ToolCall> error_calls;
@@ -516,9 +551,8 @@ TEST_CASE(TestWireStreamHostedSearch) {
         false);
 }
 
-// A tool the provider runs, defined in `hosted_tools`, is sent as written
-// with an agent's own tools, reported while it runs, and kept for replay;
-// its streamed input is never mistaken for a call to run here.
+// A tool the provider runs, defined in `hosted_tools`, is sent as written and
+// kept for replay; its streamed input is never a call to run here.
 TEST_CASE(TestWireHostedToolDefinitions) {
   Api api(RuntimeConfig{});
   api.model = "hosted-test";
@@ -623,7 +657,6 @@ TEST_CASE(TestWireHostedToolDefinitions) {
 
 // Usage and citation payloads are provider-controlled, and under
 // -fno-exceptions an operator[] chain through a scalar aborts the process.
-// Wrong-typed fields must decode into a sane result instead.
 TEST_CASE(TestWireStreamMalformedValues) {
   ChatResult responses_result;
   std::map<int, ToolCall> responses_calls;
@@ -686,8 +719,7 @@ TEST_CASE(TestWireStreamMalformedValues) {
        {"index", 1},
        {"content_block",
         {{"type", "text"}, {"text", ""}, {"citations", "not-an-array"}}}});
-  // A wrong-typed citations field is left alone; a scalar citation is
-  // dropped.
+  // A wrong-typed citations field is left alone; a scalar citation is dropped.
   anthropic_event({{"type", "content_block_delta"},
                    {"index", 1},
                    {"delta",
@@ -983,6 +1015,14 @@ TEST_CASE(TestWireSideRequestKnobs) {
   CHECK(api.BuildRequestBody(messages, json::array())["max_tokens"] == 64);
   api.wire_api = WireApi::kAnthropicMessages;
   CHECK(api.BuildRequestBody(messages, json::array())["max_tokens"] == 64);
+  // The Messages wire requires a cap: unset, it is the most the model writes,
+  // and a fixed one only where nothing states that.
+  api.max_output_tokens = 0;
+  CHECK(api.BuildRequestBody(messages, json::array())["max_tokens"] == 8192);
+  api.capabilities.SetModelFeatures({{"max_output_tokens", 64000}});
+  CHECK(api.BuildRequestBody(messages, json::array())["max_tokens"] == 64000);
+  api.wire_api = WireApi::kChatCompletions;
+  CHECK(!api.BuildRequestBody(messages, json::array()).contains("max_tokens"));
 }
 
 }  // namespace uagent

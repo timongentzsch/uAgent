@@ -9,13 +9,13 @@ import { Button, DialogHeader, Group, Row } from "../../shared/ui.tsx";
 import { SettingsContext, type SettingsProps } from "./context.ts";
 import Configuration from "./configuration.tsx";
 import { McpServers } from "./mcp.tsx";
+import { AboutPane } from "./panes/about.tsx";
 import { DevicesPane } from "./panes/devices.tsx";
 import { DisplayPane } from "./panes/display.tsx";
 import { PermissionsPane } from "./panes/permissions.tsx";
 import { SettingsNav } from "./settings-nav.tsx";
 import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 
-// The shell: which scope is open, the list of scopes, and its page.
 export default function Settings(props: SettingsProps) {
   const { session, online, catalogue, mcp: servers } = props;
   // Null until a scope is picked: a phone shows the list first, and a
@@ -70,6 +70,7 @@ export default function Settings(props: SettingsProps) {
     ),
     browser: <DisplayPane />,
     host: <DevicesPane />,
+    about: <AboutPane />,
   };
   return (
     <SettingsContext.Provider value={props}>

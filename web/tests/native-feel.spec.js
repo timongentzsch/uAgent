@@ -1,6 +1,5 @@
 // What makes the installed app feel native: a press fills at once, switches
-// are the platform's, a file goes to the share sheet on a touch device, and
-// the screen stays on while a turn runs.
+// are the platform's, files go to the share sheet, the screen stays on.
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -59,7 +58,6 @@ test("a press fills a shared control at once and fades on release", async ({
   await page.mouse.up();
   await expect.poll(() => background(quiet)).toBe(rest);
 
-  // The primary control has its own colour; the composer's Send is one.
   await page.getByLabel("Message or guidance").fill("a draft");
   const send = page.getByRole("button", { name: "Send", exact: true });
   await expect(send).toBeEnabled();
@@ -76,11 +74,8 @@ test("a press fills a shared control at once and fades on release", async ({
   await page.mouse.up();
 });
 
-test("a switch is a native switch with a name, a click and a key", async ({
-  page,
-  session,
-}) => {
-  await page.goto(`/#session=${session.id}`);
+// Opens Settings on the Memory switch of all conversations.
+async function memorySwitch(page) {
   await headerAction(page, "Settings");
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   await settings
@@ -90,16 +85,21 @@ test("a switch is a native switch with a name, a click and a key", async ({
   await settings
     .getByRole("searchbox", { name: "Find a setting" })
     .fill("memory");
-  const memory = settings.getByRole("switch", {
-    name: "Memory",
-    exact: true,
-  });
+  return settings.getByRole("switch", { name: "Memory", exact: true });
+}
+
+test("a switch is a native switch with a name, a click and a key", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  const memory = await memorySwitch(page);
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   await expect(memory).toHaveJSProperty("tagName", "INPUT");
   await expect(memory).toHaveAttribute("switch");
   const before = await memory.isChecked();
   await memory.click();
   await expect(memory).toBeChecked({ checked: !before });
-  // Either way the knob sits inside the track, the same gap from each end.
   for (const checked of [true, false]) {
     await memory.setChecked(checked);
     await expect
@@ -118,7 +118,6 @@ test("a switch is a native switch with a name, a click and a key", async ({
   await memory.focus();
   await page.keyboard.press("Space");
   await expect(memory).toBeChecked({ checked: before });
-  // A forced palette still draws the knob apart from its track.
   await page.emulateMedia({ forcedColors: "active" });
   const switches = settings.locator('.switch input[role="switch"]');
   for (const index of [0, (await switches.count()) - 1]) {
@@ -129,6 +128,37 @@ test("a switch is a native switch with a name, a click and a key", async ({
     expect(knob).not.toBe("rgba(0, 0, 0, 0)");
     expect(knob).not.toBe(track);
   }
+});
+
+test("a switch flipped twice saves in that order, however slow the first save", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  let memory = await memorySwitch(page);
+  const before = await memory.isChecked();
+  // The first save reaches the host late, as it does when the host is busy.
+  const { promise: held, resolve: release } = Promise.withResolvers();
+  const { promise: both, resolve: answered } = Promise.withResolvers();
+  let sent = 0;
+  let done = 0;
+  await page.route("**/api/command", async (route) => {
+    if (!route.request().postData()?.includes('"apply"'))
+      return route.continue();
+    if (++sent === 1) await held;
+    const response = await route.fetch();
+    await route.fulfill({ response });
+    if (++done === 2) answered();
+  });
+  await memory.click();
+  await memory.click();
+  await expect(memory).toBeChecked({ checked: before });
+  release();
+  await both;
+  // Read again from the host: what is saved is what was picked last.
+  await page.keyboard.press("Escape");
+  memory = await memorySwitch(page);
+  await expect(memory).toBeChecked({ checked: before });
 });
 
 test.describe("on a touch screen", () => {

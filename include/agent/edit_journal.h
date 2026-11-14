@@ -2,12 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_EDIT_JOURNAL_H_
 #define UAGENT_INCLUDE_AGENT_EDIT_JOURNAL_H_
-// What each turn's file tools changed, kept so a person can put the files back.
-// Per turn and file it keeps the bytes from before the turn's first change and
-// a hash of what the turn left; a file is restored only while it still holds
-// that, so an undo never overwrites a later change. Shell commands are not
-// journaled: only the edit, write and delete tools report a FileEffect.
-// Stored beside the session as <session>.json.edits/.
+// What each turn's edit, write and delete tools changed, kept for undo. A file
+// is restored only while it still holds what the turn left.
 
 #include <cstdint>
 #include <map>
@@ -20,20 +16,22 @@
 
 namespace uagent {
 
+// Restores only while `path` still hashes to `after_hash`; why not, or empty.
+std::string RestoreFile(const std::string& path, const std::string& after_hash,
+                        bool existed, const std::string& before, uint32_t mode);
+
 class EditJournal {
  public:
   // Journals nothing until a directory is set; loads what it holds.
   void Open(std::string directory);
-  // Where a session keeps what belongs to its edits; empty until opened.
+  // Empty until opened.
   const std::string& Directory() const { return directory_; }
   void Record(int64_t turn, const FileEffect& effect);
-  // [{path, added, removed, undoable}] for a turn summary, capped, and saves
-  // the index. Empty for a turn that changed no file.
+  // [{path, added, removed, undoable}], capped; also saves the index.
   json Files(int64_t turn);
   // The most recent turn that changed a file, 0 when none.
   int64_t LastTurn() const;
-  // Puts `turn`'s files (or only `path`) back. {"restored": [paths],
-  // "conflicts": [{path, reason}]}; restored files leave the journal.
+  // {restored: [paths], conflicts: [{path, reason}]}; an empty `path` is all.
   json Revert(int64_t turn, const std::string& path);
 
  private:

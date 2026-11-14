@@ -7,10 +7,6 @@ import {
 import { motionEase, motionMs } from "../shared/motion.ts";
 import { useLatest } from "../shared/use-latest.ts";
 
-// Scrolling for the transcript: following the end, keeping the reader's row
-// in place while history loads or rows change height, and restoring a
-// position when a conversation is reopened.
-
 type Anchor = {
   node: HTMLElement;
   message: string;
@@ -22,12 +18,9 @@ type Anchor = {
 
 const BOTTOM_BAND = 2;
 const MOVE = 1;
-// A wheel event's scroll lands after it, over one scroll event or an animated
-// run of them (Linux WebKit). WebKit cancels that scroll when scrollTop is
-// written meanwhile, so compensation waits for the wheel's first scroll and
-// then for the scrolling to go quiet. Quiet is counted in painted frames: a
-// busy machine stretches the scroll and this wait alike, where a fixed time
-// ends mid-scroll.
+// WebKit cancels a wheel's scroll when scrollTop is written meanwhile, so
+// compensation waits for the wheel's first scroll and then for quiet, counted
+// in painted frames: a busy machine stretches the scroll and this wait alike.
 const WHEEL_SETTLE_MS = 250;
 const WHEEL_SETTLE_FRAMES = 15;
 const WHEEL_QUIET_FRAMES = 5;
@@ -266,9 +259,8 @@ export function useTranscriptHistory(
     };
   }, [stopGlide, writeTop]);
 
-  // Eases the view to the end, retargeting as the end moves (a reply that
-  // streams), and settling in about --motion-glide. It stops when following
-  // does.
+  // Eases the view to the end, retargeting as the end moves, and settles in
+  // about --motion-glide. It stops when following does.
   const glide = useCallback(() => {
     if (gliding.current) return;
     const tau = motionMs("glide") / 3;
@@ -327,9 +319,8 @@ export function useTranscriptHistory(
   }, [glide, pin, writeTop]);
 
   // A reader who moves down into the end follows again: by scrolling there,
-  // or by a wheel, swipe or key that finds no more room below. Only the
-  // reader's own downward intent counts, so a shrink that clamps the range
-  // (see reconcile) never re-follows on its own.
+  // or by a wheel, swipe or key that finds no more room below. A shrink that
+  // clamps the range (see reconcile) never re-follows on its own.
   const resumeAtEnd = useCallback(() => {
     const element = scroller.current;
     if (following.current || !element || !atEnd(element)) return false;

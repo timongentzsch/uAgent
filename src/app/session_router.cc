@@ -11,6 +11,7 @@
 #include "include/agent/transcript.h"
 #include "include/app/config_proposal.h"
 #include "include/app/control.h"
+#include "include/app/execution.h"
 #include "include/app/launch.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
@@ -25,6 +26,7 @@
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/core/usage.h"
+#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
 
@@ -54,9 +56,8 @@ bool ValidSpaceName(const std::string& name) {
          name.find('/') == std::string::npos;
 }
 
-// `path` as a workspace's folder, or nothing when it is not one. The folder
-// that holds the workspaces is µAgent's own: one that is a link leads to
-// directories that are not workspaces, and holds none.
+// `path` as a workspace's folder, if it is one. A workspaces folder that is a
+// link leads to directories that are not workspaces, and holds none.
 std::optional<fs::path> SpaceAt(const std::string& path) {
   std::error_code error;
   if (fs::is_symlink(UagentDir(kSpacesDir), error)) return std::nullopt;
@@ -105,7 +106,6 @@ std::string SpaceFolder(const std::string& name, std::string& error) {
       return JsonValue(space, "path", "");
     }
   }
-  // A folder of its own: the name made safe, numbered when that is taken.
   const std::string safe = SafeFileComponent(name);
   std::string folder = UagentDir(kSpacesDir) + "/" + safe;
   for (int n = 2; PathExists(folder); ++n) {
@@ -145,7 +145,7 @@ json SessionHost::SpaceControl(const json& command, const std::string& device,
 }
 
 json SessionHost::SetPins(const json& command, std::string& error) {
-  const json pins = command.value("pins", json());
+  json pins = command.value("pins", json());
   if (!ValidPins(pins)) {
     error =
         "pins is a list of at most " + std::to_string(kMaxPins) +
@@ -153,6 +153,17 @@ json SessionHost::SetPins(const json& command, std::string& error) {
     return json::object();
   }
   std::lock_guard lock(mutex_);
+  if (command.contains("host")) {
+    const std::string host = JsonValue(command, "host", "");
+    for (json& pin : pins) pin["host"] = host;
+    for (const json& pin : pins_) {
+      if (JsonValue(pin, "host", "") != host) pins.push_back(pin);
+    }
+    if (!ValidPins(pins)) {
+      error = "pin limit reached";
+      return json::object();
+    }
+  }
   if (!WritePrivateFile(directory_ + "/" + kPinsFile, JsonDump(pins), error)) {
     return json::object();
   }
@@ -164,9 +175,14 @@ json SessionHost::SetPins(const json& command, std::string& error) {
 // The host belongs to no folder: a request names the folder it is about,
 // and without one only what is saved for all is in reach.
 json SessionHost::Configure(const json& command) {
-  const auto folder = CanonicalDirectory(JsonValue(command, "cwd", ""));
-  auto manager =
-      ConfigManager::Capture({}, folder ? folder->string() : std::string());
+  const std::string path = JsonValue(command, "cwd", "");
+  const std::string host = JsonValue(command, "host", "");
+  const auto folder =
+      host.empty() ? CanonicalDirectory(path) : std::optional<fs::path>();
+  const std::string key =
+      host.empty() ? (folder ? folder->string() : std::string())
+                   : (path.empty() ? "" : WorkspaceIdentity{host, path}.Key());
+  auto manager = ConfigManager::Capture({}, key);
   return ConfigurationControl(command, manager);
 }
 
@@ -197,13 +213,11 @@ std::string SessionHost::DeleteSpace(const std::string& path,
                                      const std::string& device) {
   const auto space = SpaceAt(path);
   if (!space) return "no such workspace";
-  // Its conversations go the way one goes: closed when it runs, then
-  // removed. Agents that work elsewhere belong to it by where they are
-  // saved.
+  // Agents that work elsewhere belong to it by where they are saved.
   const fs::path history =
       fs::path(UagentDir(kHistoryDir)) / WorkspaceId(space->string());
   const auto belongs = [&](const HostSession& session) {
-    return session.cwd == space->string() ||
+    return (session.host.empty() && session.cwd == space->string()) ||
            fs::path(session.path).parent_path() == history;
   };
   const auto next = [&]() -> json {
@@ -246,12 +260,13 @@ std::string SessionHost::DeleteSpace(const std::string& path,
 std::optional<std::filesystem::path> SessionHost::NamedFolder(
     const json& command, std::string& error) {
   std::string folder = JsonValue(command, "cwd", "");
+  // A remote folder is one its gateway resolved (ExecuteCommand).
+  if (!JsonValue(command, "host", "").empty()) return fs::path(folder);
   if (const std::string space = Trim(JsonValue(command, "space", ""));
       !space.empty()) {
     const size_t before = Spaces().size();
     folder = SpaceFolder(space, error);
     if (folder.empty()) return std::nullopt;
-    // A new one is listed wherever the workspaces are.
     if (const json spaces = Spaces(); spaces.size() != before) {
       Record("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}}, false);
     }
@@ -263,21 +278,50 @@ std::optional<std::filesystem::path> SessionHost::NamedFolder(
 
 SessionCommandResult SessionHost::ExecuteCommand(
     json command, const std::string& device, const std::string& request_id) {
-  UniqueLock lock(mutex_);
   SessionCommandResult result;
   result.outcome = {{"request_id", request_id}, {"accepted", true}};
   const SessionCommandKind kind =
       ParseSessionCommandKind(JsonValue(command, "kind", ""));
+  const std::string host = JsonValue(command, "host", "");
+  if (kind == SessionCommandKind::kCreate && !host.empty()) {
+    if (!JsonValue(command, "space", "").empty()) {
+      result.error =
+          "Choose an existing remote folder; named remote workspaces are not "
+          "supported yet.";
+      return result;
+    }
+    json target;
+    const std::string folder = JsonValue(command, "cwd", "");
+    {
+      std::lock_guard lock(mutex_);
+      if (remote_target_) {
+        target = remote_target_(host, "~", HashHex("folder-browser"));
+      }
+    }
+    if (target.is_null()) {
+      result.error =
+          "Remote host is disconnected. Choose Connect or Reconnect.";
+      return result;
+    }
+    execution::Client remote(execution::TargetFromJson(target));
+    const json identity = remote.Call({{"op", "folder"}, {"path", folder}});
+    if (!JsonStringRef(identity, "cwd")) {
+      result.error = JsonValue(identity, "error",
+                               "Choose an accessible remote directory.");
+      return result;
+    }
+    command["cwd"] = identity["cwd"];
+  }
+  UniqueLock lock(mutex_);
   if (kind == SessionCommandKind::kCreate) {
-    // A workspace is a folder of µAgent's own, made by naming it: a
-    // conversation that belongs to no folder still gets a workspace commands
-    // can write.
+    // A conversation that belongs to no folder still gets a workspace
+    // commands can write.
     const auto resolved = NamedFolder(command, result.error);
     if (!resolved) return result;
     const std::filesystem::path& cwd = *resolved;
     auto session = CreateSession(
-        cwd.string(), HistoryPath(cwd.string(), "web-" + RandomToken(16)), "",
-        result.error);
+        cwd.string(), HistoryPath(cwd.string(), "web-" + RandomToken(16), host),
+        "", result.error, host);
     if (session) {
       result.wake = true;
       result.outcome["session"] = Metadata(*session);
@@ -299,6 +343,12 @@ SessionCommandResult SessionHost::ExecuteCommand(
   }
   if (session->LifecycleBusy()) {
     result.error = "conversation update in progress";
+    return result;
+  }
+  if (kind == SessionCommandKind::kMove &&
+      (!session->host.empty() || !host.empty())) {
+    result.error =
+        "Moving remote conversations between folders is not supported yet.";
     return result;
   }
   if (kind == SessionCommandKind::kMove) {
@@ -342,6 +392,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     return result;
   }
   if ((kind == SessionCommandKind::kRename ||
+       kind == SessionCommandKind::kKeep ||
        kind == SessionCommandKind::kDelete) &&
       session->pid <= 0) {
     if (JsonValue(command, "generation", "") != session->generation) {
@@ -365,6 +416,11 @@ SessionCommandResult SessionHost::ExecuteCommand(
     SessionStoreStatus stored;
     if (kind == SessionCommandKind::kDelete) {
       result.error = DeleteConversation(session->path, draft_path);
+    } else if (kind == SessionCommandKind::kKeep) {
+      stored = SessionStore::Edit(session->path, [](SessionRecord& record) {
+        record.metadata.suggestion = KeptSuggestion();
+        return true;
+      });
     } else if (PathExists(session->path)) {
       stored = SessionStore::Rename(session->path, title);
     } else {
@@ -386,16 +442,19 @@ SessionCommandResult SessionHost::ExecuteCommand(
       sessions_.erase(session->id);
       Record(session->id, "", {{"kind", "deleted"}}, !session->run_id.empty());
     } else if (result.error.empty()) {
-      session->title = title;
-      session->draft_title = title;
+      if (kind == SessionCommandKind::kKeep) {
+        session->suggestion = KeptSuggestion();
+      } else {
+        session->title = title;
+        session->draft_title = title;
+      }
       session->updated = NowMillis();
       PublishMetadata(session->id, *session);
     }
     return result;
   }
-  // A command that names no runtime is for the conversation, whichever
-  // runtime serves it: a saved one's is started (it stopped for having
-  // nothing to do), and one that started meanwhile is used as it is.
+  // A command that names no runtime is for the conversation: a saved one's
+  // runtime is started, and one that started meanwhile is used as it is.
   if (ForwardsToWorker(kind) && JsonValue(command, "generation", "").empty()) {
     if (!ActivateLocked(session, result.error, lock, true)) return result;
     command["generation"] = session->generation;

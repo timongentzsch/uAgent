@@ -18,21 +18,15 @@ struct RuntimeConfig;
 bool McpStartConfigured(McpServer& server, int64_t& discovery_id,
                         std::string& error);
 
-// Spawn configured servers, handshake, and append one Tool per server tool.
-// Spawns everything first and handshakes second, so slow server boots
-// (npx downloads, node startup) overlap instead of adding up.
+// Spawns every configured server before any handshake, so slow boots overlap.
 std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
                         const RuntimeConfig& config,
                         const json& trusted_project = nullptr);
 
-// Every configured server with its scope, state, tool count and, when it is
-// not running, why. Published with the conversation state.
+// Every configured server with its scope, state, tool count and error.
 json McpStatus(const McpRuntime& runtime, const std::vector<Tool>& tools);
 
-// Between turns: `mcp_restart` starts a server again, `mcp_enable` edits
-// `disabled` in the file that defines it and starts or stops it now. A
-// folder file is only edited while it still matches the trusted copy, and
-// trust is re-recorded for exactly that edit.
+// Between turns: `mcp_restart` a server, or `mcp_enable` edits its `disabled`.
 json McpControl(const json& request, std::vector<Tool>& tools,
                 McpRuntime& runtime, const RuntimeConfig& config);
 

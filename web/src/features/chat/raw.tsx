@@ -10,16 +10,14 @@ import {
   Field,
   Select,
   LoadError,
-  Spinner,
+  Skeleton,
   Time,
 } from "../../shared/ui.tsx";
-import { readPages, command, routes } from "../../state/api.ts";
+import { Tabs } from "../../shared/tabs.tsx";
+import { useApi } from "../../state/api.ts";
 import { formatBody } from "../../shared/format.ts";
 import { servedBy } from "../../shared/display.ts";
 import { formatEventStream } from "./raw-capture.ts";
-
-// The full body of a tool call, a context or an HTTP exchange, read from the
-// host in pages. Opened from a row's menu and from the inspector.
 
 export default function Raw({
   session,
@@ -32,6 +30,7 @@ export default function Raw({
   prepare,
   part = "request",
 }: RawOptions & { latest?: Exchange[]; instructions?: () => void }) {
+  const { command, readPages, routes } = useApi();
   const http = context || exchanges !== undefined;
   const [captured, setCaptured] = useState(exchanges || []);
   const [attempt, setAttempt] = useState(
@@ -138,38 +137,17 @@ export default function Raw({
           </p>
         )}
         {(http || tool) && (
-          <div
-            class="tabs"
-            role="tablist"
-            aria-label="Exchange"
-            onKeyDown={(event) => {
-              if (
-                !["ArrowLeft", "ArrowRight"].includes(event.key) ||
-                info?.preview
-              )
-                return;
-              event.preventDefault();
-              const next = tab === "request" ? "response" : "request";
-              setTab(next);
-              document.getElementById(`${prefix}-${next}`)?.focus();
-            }}
-          >
-            {(["request", "response"] as const).map((name) => (
-              <Button
-                type="button"
-                id={`${prefix}-${name}`}
-                role="tab"
-                aria-controls={`${prefix}-body`}
-                tabIndex={tab === name ? 0 : -1}
-                aria-selected={tab === name}
-                disabled={name === "response" && info?.preview}
-                key={name}
-                onClick={() => setTab(name)}
-              >
-                {name === "request" ? "Request" : "Response"}
-              </Button>
-            ))}
-          </div>
+          <Tabs
+            label="Exchange"
+            id={prefix}
+            panel={`${prefix}-body`}
+            value={tab}
+            to={setTab}
+            tabs={[
+              { key: "request", label: "Request" },
+              { key: "response", label: "Response", disabled: info?.preview },
+            ]}
+          />
         )}
         {info?.state === "receiving" && tab === "response" && (
           <p class="muted small">Receiving · captured so far</p>
@@ -199,7 +177,7 @@ export default function Raw({
         {read.error ? (
           <LoadError error={read.error} retry={read.retry} />
         ) : body === undefined ? (
-          <Spinner label="Loading full body…" surface />
+          <Skeleton rows={6} label="Loading full body…" />
         ) : !text.trim() ? (
           <p class="muted">No content recorded.</p>
         ) : (

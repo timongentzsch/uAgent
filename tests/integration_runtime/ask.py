@@ -91,9 +91,7 @@ def test_ask_answered_elsewhere_closes_the_picker(root, home, *, binary):
 
         def answer(_):
             # A client that joins now hears the question open throughout what
-            # it is sent: a state frame from before the question, replayed
-            # after the snapshot, made a joining terminal take its answer for
-            # a new message.
+            # it is sent, state frames replayed after the snapshot included.
             history = home / ".uagent" / "history"
             session = max(history.glob("*/*.json"), key=lambda path: path.stat().st_mtime)
             joined = SessionClient(runtime_directory(home) / f"{fnv1a64(str(session))}.sock")
@@ -149,7 +147,6 @@ def test_ask_takes_their_own_words_and_an_image(root, home, *, binary):
         result = tool_results(final["messages"])[0]
         assert_true("in their words: DuckDB please" in result, result)
         assert_true("Metrics; an image" in result, result)
-        # The image itself reaches the model with the next request.
         assert_true("image_url" in json.dumps(final["messages"]), json.dumps(final)[-600:])
 
 

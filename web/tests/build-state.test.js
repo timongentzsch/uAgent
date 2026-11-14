@@ -26,6 +26,8 @@ test("install rebuilds changed frontend inputs and reuses unchanged dependencies
       "web/src",
       "web/public",
       "web/scripts",
+      "web/sheet",
+      "web/node_modules/@ironcalc/wasm-xlsx/snippets",
     ])
       await mkdir(resolve(root, path), { recursive: true });
     await copyFile(
@@ -46,6 +48,20 @@ test("install rebuilds changed frontend inputs and reuses unchanged dependencies
     await writeFile(resolve(web, "package-lock.json"), "{}");
     await writeFile(resolve(web, "src/app.tsx"), "first source");
     await writeFile(resolve(web, "public/icon.svg"), "first icon");
+    await writeFile(resolve(web, "sheet/sheet.js"), "first sheet");
+    // The engine as its package ships it, which the promotion copies.
+    for (const file of [
+      "wasm.js",
+      "wasm_bg.wasm",
+      "snippets/inline0.js",
+      "LICENSE-MIT",
+      "LICENSE-Apache-2.0",
+      "THIRD-PARTY-NOTICES.md",
+    ])
+      await writeFile(
+        resolve(web, "node_modules/@ironcalc/wasm-xlsx", file),
+        file,
+      );
     await writeFile(resolve(web, "vite.config.js"), "first config");
     const command = `#!/usr/bin/env node
 const fs = require("node:fs");
@@ -83,6 +99,7 @@ const { pathToFileURL } = require("node:url");
           UAGENT_PREFIX: resolve(root, "prefix"),
           INSTALL_TEST_LOG: log,
           UAGENT_NONINTERACTIVE: "1",
+          UAGENT_LOCAL_ONLY: "1",
           ...extra,
         },
       });
@@ -110,6 +127,7 @@ const { pathToFileURL } = require("node:url");
       "public/icon.svg",
       "vite.config.js",
       "scripts/build-state.js",
+      "sheet/sheet.js",
     ]) {
       await appendFile(resolve(web, input), "\n// changed\n");
       run = await install();
@@ -174,6 +192,20 @@ const { pathToFileURL } = require("node:url");
     assert.deepEqual(
       JSON.parse(await readFile(resolve(web, "dist/.build-inputs.json"))),
       await buildState(web),
+    );
+    // The sheet engine is promoted with the bundle, outside the list of
+    // what the binary embeds.
+    assert.equal(
+      await readFile(resolve(web, "dist/share/sheet/wasm_bg.wasm"), "utf8"),
+      "wasm_bg.wasm",
+    );
+    assert.match(
+      await readFile(resolve(web, "dist/share/sheet/sheet.js"), "utf8"),
+      /^first sheet/,
+    );
+    assert.equal(
+      await readFile(resolve(web, "dist/.assets"), "utf8"),
+      "index.html\n",
     );
   } finally {
     await rm(root, { recursive: true, force: true });

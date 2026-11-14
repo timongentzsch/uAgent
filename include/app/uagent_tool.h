@@ -2,12 +2,10 @@
 
 #ifndef UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
 #define UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
-// The uagent tools: the model inspects this build, proposes (never applies)
-// a change to its settings, instructions or stylesheet, and manages
-// scheduled tasks.
+// The uagent tool, by which the model inspects this build and proposes
+// changes to it, and the schedule tool for scheduled tasks.
 
 #include <functional>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -17,30 +15,25 @@
 
 namespace uagent {
 
-// Builds a proposal from live state. Supplied by the application so the tool
-// never holds a stale snapshot of the configuration layers.
+// Builds a proposal from live state, never from a stale snapshot.
 using ConfigProposalFactory = std::function<ConfigProposal(
     ConfigProposalScope, const std::vector<ConfigChange>&)>;
 
 using SelfDescriptionProvider =
     std::function<json(SelfTopic, const std::string&)>;
-using ConfigApprovals = ApprovedProposals<ConfigProposal>;
 
-// Inspects this build; offered everywhere.
-Tool UagentTool(SelfDescriptionProvider describe);
+// Takes an approved slash command line, which runs as the turn ends.
+using CommandQueue = std::function<void(const std::string&)>;
 
-// The two writing tools, offered only where a person can approve. Each
-// prepares and previews; the mandatory-human approval lane decides, and only
-// what was approved is written. There is deliberately no commit argument the
-// model can set.
-Tool UagentConfigureTool(const ConfigProposalFactory& prepare,
-                         const std::shared_ptr<ConfigApprovals>& store);
-// Replaces an instructions file or the web UI's stylesheet.
-Tool UagentFileTool();
+// show inspects; set and write only prepare and preview, and the human
+// approval lane decides: there is no commit argument the model can set.
+// Without `prepare` the tool only shows; `queue` takes an approved command.
+Tool UagentTool(SelfDescriptionProvider describe,
+                ConfigProposalFactory prepare = nullptr,
+                CommandQueue queue = nullptr);
 
-// Scheduled tasks for this folder, approved like any other change: a task
-// runs on `model` (the conversation's, read at each call) with no more
-// approval reach than the conversation that saved it.
+// Scheduled tasks for this folder. A task runs on `model` (read at each
+// call) with no more approval reach than the conversation that saved it.
 Tool ScheduleTool(std::function<std::string()> model);
 
 }  // namespace uagent

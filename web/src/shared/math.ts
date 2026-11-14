@@ -1,8 +1,6 @@
 import type MarkdownIt from "markdown-it";
 import { katex } from "@mdit/plugin-katex";
 import "./math.css";
-// The math plugin for the Markdown renderer, loaded on the first reply that
-// has a formula.
 
 export function install(markdown: InstanceType<typeof MarkdownIt>) {
   markdown.use(katex, {

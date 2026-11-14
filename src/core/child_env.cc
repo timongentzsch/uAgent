@@ -24,8 +24,7 @@ std::string KeyOf(std::string_view entry) {
   return std::string(entry.substr(0, equals));
 }
 
-// A comma-separated setting as a list of names. Parsed once per child rather
-// than once per inherited variable.
+// A comma-separated setting as a list of names.
 std::vector<std::string> NameList(const ConfigDescriptor& setting) {
   std::vector<std::string> names;
   for (std::string entry : SplitPathList(StringSetting(setting), ',')) {

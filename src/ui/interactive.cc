@@ -31,12 +31,8 @@ bool InteractiveOutput::Start() {
   read_ = std::move(read_end);
   // From here stdout is the pipe, so signal handlers must not write there.
   SetSignalTerminalFd(saved_.Get());
-  // Buffered, deliberately: unbuffered turned every putchar of the streaming
-  // markdown renderer into its own write(2). Line buffering rather than fully
-  // buffered, because callers outside this layer print notices with plain
-  // printf and rely on them reaching the pipe when the line ends; only the
-  // mid-line streaming path (flushed once per received frame) and Stop() need
-  // explicit flushes.
+  // Line buffered: unbuffered makes every putchar of the markdown renderer a
+  // write(2), and callers' printf notices must reach the pipe at line end.
   static char buffer[KiB(64)];
   setvbuf(stdout, buffer, _IOLBF, sizeof buffer);
   return true;

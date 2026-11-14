@@ -10,8 +10,9 @@ import {
   Plus,
   Presentation,
   ScrollText,
+  Table,
 } from "lucide-preact";
-import { api, manage, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import type {
   FileTarget,
   LibraryItem,
@@ -32,6 +33,7 @@ import {
 } from "../../shared/ui.tsx";
 import { usePushDirection } from "../../shared/motion.ts";
 import { bytes, plural } from "../../shared/quantities.ts";
+import { artifactSize } from "../../shared/artifact.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { matches } from "../../shared/fuzzy.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
@@ -46,10 +48,9 @@ import LibraryDocument from "./document.tsx";
 import LibraryArtifact from "./artifact.tsx";
 import "./management.css";
 
-// The Library: everything kept across every folder and workspace, in one
-// list grouped by place, as the sidebar groups conversations. A rail
-// filters it by kind and place; an item opens beside the list (over it on
-// a phone). Nothing is stored here: each item stays where it lives.
+// The Library: everything kept across every folder and workspace, in one list
+// grouped by place. A rail filters it by kind and place; an item opens beside
+// the list. Nothing is stored here: each item stays where it lives.
 
 const RAIL: [string, [LibraryKind | "", string][]][] = [
   ["", [["", "Everything"]]],
@@ -59,6 +60,7 @@ const RAIL: [string, [LibraryKind | "", string][]][] = [
       ["design", "Designs"],
       ["deck", "Decks"],
       ["doc", "Docs"],
+      ["sheet", "Sheets"],
       ["system", "Design systems"],
       ["file", "Shared files"],
     ],
@@ -75,6 +77,7 @@ const ICON: Record<LibraryKind, FunctionComponent> = {
   design: LayoutDashboard,
   deck: Presentation,
   doc: ScrollText,
+  sheet: Table,
   system: Palette,
   file: FileText,
   memory: Brain,
@@ -84,6 +87,7 @@ const NAME: Record<LibraryKind, string> = {
   design: "design",
   deck: "deck",
   doc: "doc",
+  sheet: "sheet",
   system: "design system",
   file: "shared file",
   memory: "memory",
@@ -96,6 +100,7 @@ const GOES: Record<LibraryKind, string> = {
   deck: "deleted from the project, folder and all",
   system: "deleted from the project, folder and all",
   doc: "deleted from the project",
+  sheet: "deleted from the project",
   file: "deleted",
   memory: "forgotten",
   skill: "forgotten; supporting files stay",
@@ -121,15 +126,15 @@ const SAMPLE = ["An item name", "A longer item name here", "A name"].map(
 const detail = (item: LibraryItem) =>
   item.kind === "system"
     ? "tokens.css"
-    : item.kind === "design"
-      ? `${item.count} ${item.count === 1 ? "page" : "pages"}`
-      : item.kind === "deck"
-        ? `${item.count} ${item.count === 1 ? "slide" : "slides"}`
-        : item.kind === "doc"
-          ? "on paper"
-          : item.kind === "file"
-            ? bytes(item.bytes ?? 0)
-            : item.description || item.source;
+    : item.kind === "doc"
+      ? "on paper"
+      : item.kind === "file"
+        ? bytes(item.bytes ?? 0)
+        : item.kind === "design" ||
+            item.kind === "deck" ||
+            item.kind === "sheet"
+          ? artifactSize(item.kind, item.count ?? 0)
+          : item.description || item.source;
 // The control a memory or skill is managed through.
 const control = (kind?: LibraryKind) =>
   kind === "skill" ? ("skills" as const) : ("memory" as const);
@@ -151,6 +156,7 @@ export default function Library({
   openFiles: (place: LibraryPlace, target: FileTarget) => void;
   choose: (session: string) => void;
 }) {
+  const { api, routes, manage } = useApi();
   const listing = useResource(
     (signal) =>
       online

@@ -26,65 +26,38 @@ struct ShellCommandResult {
 
 struct ShellCommand {
   std::string command;
-  // Run this program directly, through no shell; `command` then only names
-  // the activity.
+  // Run directly, through no shell; `command` then only names the activity.
   std::vector<std::string> argv = {};
   std::string shell = "bash";
   bool background = false;
   bool detach = false;
   bool immediate = false;
   bool tty = false;
-  // Confined by the OS sandbox when the session enforces one. Default-on so
-  // that a call site added later is confined without anyone remembering to ask
-  // for it; the two harness spawns that run uagent itself opt out explicitly.
+  // Confined by the OS sandbox when the session enforces one. On by default,
+  // so a new call site is confined unless it opts out.
   bool sandbox = true;
   int64_t yield_ms = 0;
   int64_t max_output_chars = 0;
-  ActivityKind activity_kind = ActivityKind::kCommand;
   std::string activity_label = {};
-  std::string receipt_path = {};
-  std::string source_id = {};
   EnvironmentOverrides environment = {};
   ChildEnvironmentPolicy environment_policy =
       ChildEnvironmentPolicy::kSanitized;
-  // A command from RootCommand: the activity answers `nonce`, sudo's prompt,
-  // with `secret` (see ActivitySession).
+  // From RootCommand: the activity answers sudo's prompt `nonce` with `secret`.
   std::string nonce = {};
   std::shared_ptr<std::string> secret = nullptr;
 };
 
-// `command` as root through `sudo -S -p nonce`, on `host` over ssh when one
-// is named. -k makes sudo prompt even with cached credentials, so the prompt
-// always comes and the password line never reaches the command. Without a
-// nonce it is `sudo -n`, for a user sudo lets in without a password: it
-// fails rather than prompting if one is needed after all.
+// `command` under sudo, over ssh when `host` is named; `sudo -n` with no nonce.
 std::string RootCommand(const std::string& command, const std::string& host,
                         bool tty, const std::string& nonce);
 
-// True when sudo, on `host` over ssh when one is named, needs no password
-// from this user (NOPASSWD, or credentials it still holds).
+// Whether sudo, on `host` over ssh when named, asks this user for no password.
 bool PasswordlessSudo(const std::string& host);
 
 ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                                    const ToolContext& context,
                                    ShellCommand command);
 
-bool PythonScriptHasDependencies(const std::string& source);
-// argv as the receipt and the call row show it: quoted only where a shell
-// would need it, because neither is re-executed.
-std::string ScratchArgvLabel(const json& args);
-// The script a scratch path names, confined to <workspace>/.uagent/scratch.
-// The prefix is optional: "x.py" and ".uagent/scratch/x.py" are one file.
-std::optional<std::filesystem::path> ScratchScriptPath(
-    const std::filesystem::path& workspace, const std::string& relative_path,
-    std::string& error);
-// Runs a script the agent wrote there with the file tools: .py under uv (its
-// PEP 723 header names the dependencies), .sh under sh.
-ToolResult ToolRunScratch(ActivitySupervisor& supervisor,
-                          const std::filesystem::path& workspace,
-                          const std::string& relative_path,
-                          const json& args = {},
-                          const ToolContext& context = {});
 struct GrepOptions {
   std::string glob{};
   int64_t context_lines = 0;

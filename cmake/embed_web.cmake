@@ -1,12 +1,20 @@
-# Embed the built public bundle. The frontend promotes a complete bundle
-# atomically and writes its file list last, so CMake never glob-reads a Vite
-# directory while it is being emptied and rebuilt.
-set(_web_root "${CMAKE_CURRENT_SOURCE_DIR}/web/dist")
-set(_web_manifest "${_web_root}/.assets")
-if(NOT EXISTS "${_web_manifest}")
-  message(FATAL_ERROR "web/dist is empty or missing: run `npm run build` in web/ to generate the PWA bundle")
+# The frontend promotes a complete bundle and writes its file list last, so
+# reading the list never sees a Vite directory that is being rebuilt.
+option(UAGENT_EMBED_WEB "Embed the browser application in the executable" ON)
+set(_web_generated "${CMAKE_CURRENT_BINARY_DIR}/web_assets.cc")
+if(NOT UAGENT_EMBED_WEB)
+  # The preview helper is a runtime resource, not the browser application.
+  set(_web_root "${CMAKE_CURRENT_SOURCE_DIR}/web/public")
+  set(_web_paths "design-helper.js")
+  set(_web_manifest "${_web_root}/design-helper.js")
+else()
+  set(_web_root "${CMAKE_CURRENT_SOURCE_DIR}/web/dist")
+  set(_web_manifest "${_web_root}/.assets")
+  if(NOT EXISTS "${_web_manifest}")
+    message(FATAL_ERROR "web/dist is empty or missing: run `npm run build` in web/ to generate the PWA bundle")
+  endif()
+  file(STRINGS "${_web_manifest}" _web_paths)
 endif()
-file(STRINGS "${_web_manifest}" _web_paths)
 set(_web_gzip_manifest "${_web_root}/.gzip-manifest.json")
 set(_web_gzip_made "{}")
 if(EXISTS "${_web_gzip_manifest}")
@@ -41,7 +49,6 @@ endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_web_manifest}")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_web_assets}
                                                       ${_web_compressed})
-set(_web_generated "${CMAKE_CURRENT_BINARY_DIR}/web_assets.cc")
 file(WRITE "${_web_generated}" "#include \"include/web/assets.h\"\nnamespace uagent::web {\n")
 set(_web_rows "")
 set(_web_index 0)

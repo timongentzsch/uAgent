@@ -44,8 +44,7 @@ void NormalizeRole(json& message, MessageKind kind) {
       message["role"] = "system";
       return;
     // Harness-injected context. Only the baseline at index zero may be
-    // `system`: the OpenAI convention expects a single leading system message,
-    // and strict chat templates reject a later one outright.
+    // `system`: strict chat templates reject a later one.
     case MessageKind::kRuntimeContext:
     case MessageKind::kInternal:
       message["role"] = "user";
@@ -280,9 +279,8 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
   constexpr size_t kFactBytes = KiB(64);
   constexpr size_t kFactCount = 4096;
   constexpr size_t kDisplayBytes = MiB(4);
-  // Below this size a fact is control data (delivery receipts, links), not
-  // pressure: the count bound still needs a victim when only tiny facts are
-  // left, and then the oldest key goes as before.
+  // Below this size a fact is control data (delivery receipts, links): when
+  // only such facts are left, the count bound evicts the oldest key.
   constexpr size_t kTinyFactBytes = 512;
   if (key.empty() || !facts.is_object()) return;
   auto existing = display_facts_.find(key);
@@ -300,14 +298,9 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
   display_bytes_ = SaturatingAdd(display_bytes_, bytes);
   display_facts_[key] = std::move(facts);
   fact_bytes_[key] = bytes;
-  // Metadata is independently bounded. Evict the largest fact first: fat
-  // tool rows yield the most headroom, while tiny control receipts
-  // (attachment deliveries) survive pressure that would otherwise delete them
-  // by key order and re-trigger their notices on every later step. The fact
-  // just written never goes: a fresh response would otherwise lose the id
-  // that rejoins its live row. Nor does what the conversation is rather
-  // than shows: its chosen settings, its to-do list and where it was forked
-  // from.
+  // The largest fact goes first, so tiny control receipts survive pressure.
+  // Never the fact just written, whose id rejoins its live row, nor what the
+  // conversation is: its settings, its to-do list, where it was forked from.
   const auto evictable = [&key](const std::string& name) {
     return name != key && name != "session-settings" && name != "todo" &&
            name != "fork-origin" && name != "side-origin";
@@ -387,13 +380,8 @@ void Conversation::PushWithDisplayId(json message, MessageKind kind,
 }
 
 void Conversation::Set(size_t index, json message, MessageKind kind) {
-  // The four callers all rewrite message zero, which exists for as long as a
-  // baseline does -- but Erase already clamps rather than trusting a computed
-  // index, and an unchecked write here is the one that reads out of bounds.
   if (index >= messages_.size()) return;
   NormalizeRole(message, kind);
-  // Byte-identical replacement changes nothing observable: leave the cached
-  // prefix untouched instead of rewriting message zero on every refresh.
   if (messages_[index] == message && kinds_[index] == kind) return;
   messages_[index] = std::move(message);
   kinds_[index] = kind;
@@ -616,9 +604,8 @@ size_t Conversation::PruneAttachments(size_t begin, const std::string& route) {
       content =
           ContentText(message, "") + "\n[attachments omitted after processing]";
     }
-    // Reclassified in place: the message stays where it is and only stops
-    // being an attachment, so this is the one kind write that has no message
-    // write beside it. Bounded by the messages_/kinds_ pairing.
+    // Reclassified in place: the one kind write with no message write beside
+    // it.
     if (kinds_[index] == MessageKind::kAttachment) {
       kinds_[index] =
           index == begin ? MessageKind::kUser : MessageKind::kInternal;

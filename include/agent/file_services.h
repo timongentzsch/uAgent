@@ -2,12 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_FILE_SERVICES_H_
 #define UAGENT_INCLUDE_AGENT_FILE_SERVICES_H_
-// Policy-checked atomic file writes shared by session persistence,
-// asset stores and the file tools. The path policy
-// refuses symlinks and non-regular files; the write itself is crash-safe via
-// AtomicWriteFile. Tool handlers and domain writers use these rather than
-// reaching past each other's layers. Bodies live in
-// src/agent/file_services.cc.
+// Policy-checked atomic file writes: the path policy refuses symlinks and
+// non-regular files.
 
 #include <sys/types.h>
 

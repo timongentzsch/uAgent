@@ -1,5 +1,7 @@
 // The native host owns this versioned wire contract. Unknown JSON stays at the
 // HTTP boundary; components share these projections instead of redefining them.
+import type { ArtifactType } from "./artifact.ts";
+
 export type JSONValue =
   | null
   | boolean
@@ -88,6 +90,10 @@ interface ResultFacts {
   added?: number;
   removed?: number;
   items?: number;
+  // On a turn's work: how many files it has changed, and how often it
+  // thought.
+  edited?: number;
+  thoughts?: number;
   unit?: string;
   outcome?: string;
   reason?: string;
@@ -107,7 +113,17 @@ export type ToolPart =
   | { kind: "code"; text: string; language?: string; label?: string }
   | { kind: "fields"; rows: [string, string][] }
   | FilePart
+  | ArtifactPart
   | LinkPart;
+// Pages in the folder the agent presented: opened in Files, never copied.
+export interface ArtifactPart {
+  kind: "artifact";
+  type: ArtifactType;
+  // Its folder (`decks/q3/`) or its page; `cover` is the page shown small.
+  path: string;
+  cover: string;
+  count: number;
+}
 export interface FilePart {
   kind: "file";
   id: string;
@@ -178,7 +194,15 @@ interface AgentFacts {
 export interface Node {
   id: string;
   parent: string | null;
-  kind: "turn" | "message" | "work" | "call" | "thinking" | "notice" | "footer";
+  kind:
+    | "turn"
+    | "message"
+    | "work"
+    | "group"
+    | "call"
+    | "thinking"
+    | "notice"
+    | "footer";
   sequence?: number;
   time?: string;
   state?: RowState;
@@ -210,6 +234,8 @@ export interface Node {
   usage?: Usage;
   usage_reported?: boolean;
   memory?: MemoryNote;
+  // On the row of a move: the folder the conversation came from.
+  moved?: { from: string };
   activity_id?: number;
   command?: string;
   summary?: TurnSummary;
@@ -370,7 +396,20 @@ type SessionStatus =
   | "failed"
   | "updating"
   | "deleting";
+// Where a conversation in Scratch belongs, as its host suggests: a folder,
+// a conversation there to continue, or a workspace to create by name.
+export interface PlaceOption {
+  cwd?: string;
+  session?: string;
+  workspace?: string;
+}
 export interface Session {
+  host?: string;
+  suggestion?: {
+    options?: PlaceOption[];
+    reason?: string;
+    dismissed?: boolean;
+  } | null;
   task_id?: string;
   id: string;
   generation?: string;
@@ -483,6 +522,7 @@ export interface Space {
 // A conversation (by id), a folder (by path) or a folder's terminal (by id)
 // kept at the top of the list.
 export interface Pin {
+  host?: string;
   kind: "session" | "folder" | "terminal";
   id: string;
 }
@@ -491,8 +531,10 @@ export interface Catalogue {
   spaces?: Space[];
   pins?: Pin[];
   commands?: SlashCommand[];
-  // The detail level a device starts at until it chooses its own.
+  // The detail level, and whether thinking shows, until a device chooses
+  // its own.
   detail?: string;
+  thinking?: boolean;
   scheduled?: ScheduledState;
   // The folders' shells; null while paired devices may open none
   // (web.terminal).
@@ -598,7 +640,7 @@ export type HostEvent = HostEnvelope &
       }
     // moved_to: the id it has now, when it was moved rather than removed.
     | { kind: "deleted"; moved_to?: string }
-    | { kind: "settings.changed"; level: string }
+    | { kind: "settings.changed"; level: string; thinking?: boolean }
     | { kind: "pins.changed"; pins: Pin[] }
     | { kind: "spaces.changed"; spaces: Space[] }
     | { kind: "terminals.changed"; terminals: TerminalInfo[] | null }
@@ -706,7 +748,9 @@ export interface InstructionFile {
 export interface InstructionStack {
   files: InstructionFile[];
   also_loaded: string[];
-  base: string;
+  // The system message: its sections' built-in text, and the file of a
+  // person's changes as it is saved ("" when there is none).
+  prompt: { sections: { name: string; text: string }[]; saved: string };
 }
 export interface CommandResults {
   browser: {
@@ -721,11 +765,14 @@ export interface CommandResults {
   schedule: ScheduleResult;
   models: ModelCatalogue;
   model: ModelCatalogue;
+  provider: { configured: boolean };
+  openrouter: { url: string; model?: string };
   config: Configuration;
   restart_conversations: { restarting: number; deferred: number };
   space: { spaces: Space[] };
   pins: { pins: Pin[] };
   restart_host: { restarting: boolean };
+  update: UpdateState;
   tools: ToolCatalogue;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
@@ -740,6 +787,7 @@ export interface CommandResults {
   activate: never;
   close: never;
   rename: never;
+  keep: never;
   delete: never;
   logout: never;
   submit: never;
@@ -801,6 +849,13 @@ export interface CommandInputs {
     schedule?: ScheduleRule;
   };
   models: { cwd?: string };
+  provider: object;
+  openrouter: {
+    action: "start" | "finish";
+    callback?: string;
+    code?: string;
+    state?: string;
+  };
   model: {
     operation: string;
     model?: string;
@@ -818,6 +873,7 @@ export interface CommandInputs {
   space: { action: string; cwd: string; name: string };
   pins: { pins: Pin[] };
   restart_host: None;
+  update: { action: "show" | "check" | "apply"; version?: string };
   tools: {
     operation: string;
     name?: string;
@@ -838,7 +894,9 @@ export interface CommandInputs {
   share: None;
   side: { operation: string; text: string };
   // The folder or workspace to move to, by its path on the host.
-  move: { cwd: string };
+  move: { cwd?: string; space?: string };
+  // Answers a suggested place with "here".
+  keep: None;
   // A workspace by its name (`space`), in place of `cwd`.
   create: { cwd?: string; space?: string };
   activate: None;
@@ -935,7 +993,7 @@ export type AppModal =
   | { type: "instructions" }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
-  | { type: "new"; place: "workspace" | "folder" }
+  | { type: "new"; place: "conversation" | "workspace" | "folder" }
   // `sessions`: several moved at once, from the sidebar's selection.
   | { type: "move"; session: Session; sessions?: Session[] }
   | { type: "delete-many"; sessions: Session[]; spaces: Space[] }
@@ -974,14 +1032,7 @@ export interface LibraryItem {
   pages?: string[];
   session?: string;
 }
-export type LibraryKind =
-  | "memory"
-  | "skill"
-  | "design"
-  | "deck"
-  | "doc"
-  | "system"
-  | "file";
+export type LibraryKind = "memory" | "skill" | "file" | ArtifactType;
 // A folder or workspace the Library lists, with its latest conversation.
 export interface LibraryPlace {
   path: string;
@@ -1028,6 +1079,7 @@ export interface ScheduleRule {
   timezone?: string;
 }
 export interface ScheduledTask {
+  host?: string;
   id: string;
   revision: string;
   name: string;
@@ -1087,6 +1139,7 @@ export type InspectorTarget =
 // its view). A folder's shell has a name and a start time; the page's own
 // has neither.
 export interface TerminalInfo {
+  host?: string;
   id: string;
   cwd: string;
   folder: string;
@@ -1105,3 +1158,21 @@ export type TerminalControl = { type: "resize"; rows: number; cols: number };
 export type TerminalNotice =
   | { type: "exit"; code: number }
   | { type: "replaced" };
+
+// This build, the newest release last read from GitHub, and what updating
+// this install takes: `apply` when the host can run it, else `command`.
+export interface UpdateState {
+  version: string;
+  install: string;
+  latest?: string;
+  notes?: string;
+  url?: string;
+  checked_ms?: number;
+  available: boolean;
+  apply: boolean;
+  blocked: string;
+  command: string;
+  installing?: boolean;
+  output?: string;
+  error?: string;
+}

@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 """Runs the labelled cases against a decision model and sweeps the thresholds.
-
-By hand, never in CI: it spends a little money and needs a key.
-
-    OPENROUTER_API_KEY=... python3 tests/reviewer_eval/run.py --model MODEL
-
-The request is the one src/app/permissions.cc sends (questions.json is the
-shared contract, serialized with sorted keys as the binary does). The key is
-read from the environment and is never printed or written.
-"""
+By hand, never in CI: it needs OPENROUTER_API_KEY and spends a little money."""
 
 import argparse
 import concurrent.futures as futures
@@ -112,9 +104,8 @@ def report(rows, labels, name):
     if not safe:
         print("  no point with zero unsafe allows")
         return
-    # Where the allow bar alone keeps every risky case out, the veto is a
-    # second layer; take those points when there are any. Then the fewest
-    # false asks, then the strictest: the highest allow bar, the lowest veto bar.
+    # Points where the allow bar alone keeps every risky case out come first;
+    # then the fewest false asks, the highest allow bar, the lowest veto bar.
     layered = [item for item in safe if score(good, labels, item[1], deny, 2)[0] == 0]
     safe = layered or safe
     best = min(safe, key=lambda item: (item[0][1], -item[1], item[2]))

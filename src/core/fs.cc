@@ -34,10 +34,9 @@
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
-// The throwing overload aborts under -fno-exceptions on a lookup error
-// (EACCES on a parent, ELOOP). A path we cannot look up is not there.
 bool PathExists(const std::filesystem::path& path) {
   std::error_code ignored;
   return std::filesystem::exists(path, ignored);
@@ -66,9 +65,8 @@ std::string Tilde(const std::string& path) {
   return path;
 }
 
-// ~/.uagent. Falls back to a per-uid temp directory when the account has no
-// home, never to a folder-controlled location.
 std::string GlobalBase() {
+  if (!ExecutionStateDirectory().empty()) return ExecutionStateDirectory();
   std::string home = UserHome();
   return home.empty()
              ? "/tmp/uagent-" + std::to_string(getuid()) + "/" + kWorkspaceDir
@@ -80,14 +78,10 @@ std::string RuntimeDir() {
          HashHex(GlobalBase());
 }
 
-// The directory a folder opts into. Named once: several modules need it,
-// and a reader and a writer disagreeing about it would silently lose data.
 std::filesystem::path ProjectBase(const std::filesystem::path& cwd) {
   return cwd / kWorkspaceDir;
 }
 
-// mkstemp over a pattern string. `path` always receives the expanded template,
-// including on failure - callers name it in their error message.
 int CreateTempFile(const std::string& pattern, std::string& path) {
   std::vector<char> buffer(pattern.begin(), pattern.end());
   buffer.push_back('\0');
@@ -118,9 +112,6 @@ int ScopedTempFile::ReleaseFd() {
   return fd_.Release();
 }
 
-// Read at most `cap` bytes from an open stream - one byte further, so a
-// longer source is detectable - cut back to a UTF-8 boundary. Returns
-// whether the source had more to give.
 bool ReadBounded(std::istream& input, size_t cap, std::string& out) {
   // Grows with what is actually there, not with the cap.
   out.clear();
@@ -132,6 +123,12 @@ bool ReadBounded(std::istream& input, size_t cap, std::string& out) {
   const bool more = out.size() > cap;
   out = Utf8Prefix(std::move(out), cap);
   return more;
+}
+
+std::string ExpandHome(std::string path) {
+  if (path.empty() || path == "~") return UserHome();
+  if (path.starts_with("~/")) return UserHome() + path.substr(1);
+  return path;
 }
 
 std::optional<std::filesystem::path> CanonicalDirectory(
@@ -201,7 +198,11 @@ bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
 }
 
 bool EnsurePrivateDirectory(const std::string& path) {
-  std::filesystem::path current = GlobalBase();
+  const std::string runtime = RuntimeDir();
+  std::filesystem::path current =
+      path == runtime || path.starts_with(runtime + "/") ? runtime
+                                                         : GlobalBase();
+  const auto root = current;
   auto relative = std::filesystem::path(path).lexically_relative(current);
   if (relative.empty() || relative.is_absolute()) return false;
   for (const auto& part : relative) {
@@ -221,6 +222,11 @@ bool EnsurePrivateDirectory(const std::string& path) {
   }
   CreatePrivateDirectories(path);
   struct stat info{};
+  if (root == runtime &&
+      (lstat(root.c_str(), &info) != 0 || !S_ISDIR(info.st_mode) ||
+       info.st_uid != geteuid() || (info.st_mode & kGroupOtherModeBits) != 0)) {
+    return false;
+  }
   return lstat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode) &&
          info.st_uid == geteuid() && (info.st_mode & kGroupOtherModeBits) == 0;
 }
@@ -485,10 +491,9 @@ bool AtomicWriteFile(const std::string& path, const std::string& content,
                 (errno == EEXIST ? "; use edit_file or overwrite=true" : ""));
   }
   if (!overwrite) unlink(temp.c_str());
-  // The rename is already atomic; syncing the directory is what makes it
-  // durable, so a crash cannot leave the entry pointing at nothing. A failure
-  // here means the new contents may not survive power loss, not that the
-  // replacement was lost, so it is reported without unlinking the new file.
+  // Syncing the directory makes the rename durable. A failure here means the
+  // new contents may not survive power loss, not that the replacement was
+  // lost, so it is reported without unlinking the new file.
   Fd directory(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
   if (directory && fsync(directory.Get()) != 0) {
     error = "replaced " + path +
@@ -544,7 +549,9 @@ std::string CanonicalCwd() {
       std::filesystem::weakly_canonical(std::filesystem::current_path(), ec);
   return ec ? std::filesystem::current_path().string() : path.string();
 }
-std::string WorkspaceId(const std::string& root) { return HashHex(root); }
+std::string WorkspaceId(const std::string& root, const std::string& host) {
+  return HashHex(WorkspaceIdentity{host, root}.Key());
+}
 std::string ReadFileTail(const std::string& path, int64_t bytes,
                          int64_t* start) {
   if (start) *start = 0;
@@ -625,11 +632,9 @@ bool TakePrivateText(const std::string& path, std::string& content,
 std::filesystem::path CanonicalAccessPath(const std::string& path) {
   std::error_code ec;
   std::filesystem::path p = path.empty() ? "." : path;
-  // Made absolute before resolving, because the two standard libraries
-  // disagree about a relative path whose target does not exist: libc++
-  // returns it absolute, libstdc++ returns it unchanged and reports no
-  // error. Every caller compares the answer against an absolute root, so a
-  // relative one reads as outside the folder.
+  // Made absolute before resolving: for a relative path whose target does not
+  // exist, libc++ returns it absolute and libstdc++ unchanged, and callers
+  // compare the answer against an absolute root.
   std::filesystem::path rooted = std::filesystem::absolute(p, ec);
   if (ec) return p.lexically_normal();
   auto canonical = std::filesystem::weakly_canonical(rooted, ec);

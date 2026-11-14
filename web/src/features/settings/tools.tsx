@@ -10,17 +10,15 @@ import {
   DataText,
   Input,
   LoadError,
+  Notice,
   Placeholder,
   Select,
 } from "../../shared/ui.tsx";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { capitalize } from "../../shared/display.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { matches } from "../../shared/fuzzy.ts";
-
-// The Tools dialog: which tools a conversation may call, by profile or one
-// by one, and what they cost in schema bytes.
 
 const labels: Record<string, string> = {
   workspace: "Files",
@@ -34,7 +32,6 @@ const labels: Record<string, string> = {
 
 const categoryOrder = Object.keys(labels);
 
-// What the list draws while the catalogue loads (see <Placeholder>).
 const SAMPLE: ToolCatalogue = {
   profile: "default",
   base_profile: "default",
@@ -68,6 +65,7 @@ export default function Tools({
   busy: boolean;
   changed: () => void;
 }) {
+  const { command } = useApi();
   const {
     value: catalogue,
     error,
@@ -163,9 +161,9 @@ export default function Tools({
         reuse.
       </p>
       {busy && (
-        <p class="card tools-busy" role="status">
+        <Notice tone="warning">
           Finish the current turn before changing tools.
-        </p>
+        </Notice>
       )}
       {error && <LoadError error={error} />}
       <Input

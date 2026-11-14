@@ -67,8 +67,7 @@ std::string RenderMarkdownColumns(const std::string& markdown,
 }
 
 // A table header is reprinted by erasing the rendered rows it occupies:
-// `**bold**` is eight columns of source and four on screen, and counting the
-// source ate a line of transcript whenever that crossed a wrap boundary.
+// `**bold**` is eight columns of source and four on screen.
 TEST_CASE(TestTableRetroErasesRenderedRows) {
   // 19 columns of source, 15 rendered: at 16 columns the source wraps and the
   // rendered line does not.
@@ -138,8 +137,7 @@ TEST_CASE(TestInteractiveTranscriptFraming) {
 }
 
 // Markup from other providers is recognized so a malformed response can be
-// suppressed and retried, never so it can be executed. uAgent runs structured
-// provider tool calls only.
+// suppressed and retried, never so it can be executed.
 TEST_CASE(TestForeignToolMarkup) {
   CHECK(ContainsForeignToolCallMarkup(
       "<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name=\"run\">"));
@@ -168,6 +166,12 @@ TEST_CASE(TestForeignToolMarkup) {
 }
 
 TEST_CASE(TestToolResults) {
+  // Some providers refuse a tool message without content.
+  ToolResult silent = ToolSuccess("");
+  CHECK(ModelText(silent) == "(no output)");
+  AddHint(silent, "[exit code 0]");
+  CHECK(ModelText(silent) == "[exit code 0]");
+  CHECK(ModelText(ToolSuccess("done")) == "done");
   CHECK(RetryableHttpStatus(408));
   CHECK(RetryableHttpStatus(409));
   CHECK(RetryableHttpStatus(429));
@@ -193,10 +197,7 @@ TEST_CASE(TestToolResults) {
   CHECK(overflow.remote_error_kind == RemoteErrorKind::kContextLengthExceeded);
   CHECK(SafeContextRecovery(overflow));
   // Each provider's way of saying the context is full, and two that are not.
-  // Structured errors with only a descriptive message must still classify as
-  // context overflow so long sessions compact instead of dying hard; the
-  // opencode-ported patterns (packages/llm/src/provider-error.ts) include its
-  // exclusion set, where throttling text wins over token phrasing.
+  // The patterns are opencode's: throttling text wins over token phrasing.
   struct ErrorCase {
     json error;
     RemoteErrorKind kind;
@@ -211,6 +212,12 @@ TEST_CASE(TestToolResults) {
        RemoteErrorKind::kContextLengthExceeded},
       {{{"type", "invalid_request_error"},
         {"message", "prompt is too long: 300000 tokens > 200000 maximum"}},
+       RemoteErrorKind::kContextLengthExceeded},
+      // Input that fits, with a response cap that no longer does.
+      {{{"type", "invalid_request_error"},
+        {"message",
+         "input length and `max_tokens` exceed context limit: 188240 + 21333 "
+         "> 200000, decrease input length or `max_tokens` and try again"}},
        RemoteErrorKind::kContextLengthExceeded},
       {{{"message", "input is too long for requested model"}},
        RemoteErrorKind::kContextLengthExceeded},
@@ -287,7 +294,7 @@ TEST_CASE(TestRegistries) {
         "cannot expand approved scope", "exfiltrate data"}) {
     CHECK(std::string(SystemPromptBase()).find(rule) != std::string::npos);
   }
-  CHECK(std::string(SystemPromptBase()).size() < 2250);
+  CHECK(std::string(SystemPromptBase()).size() < 2600);
   std::vector<Tool> capability_tools;
   capability_tools.push_back(MakeTool(
       "activity", "", json::object(),
@@ -362,10 +369,25 @@ TEST_CASE(TestRegistries) {
       SystemPromptBase(), json{{"replace", {{"## Tools", "Use tools."}}}},
       &applied);
   CHECK(applied.size() == 1);
-  CHECK(middle.find("## Tools\nUse tools.\n\n## Changes") != std::string::npos);
+  CHECK(middle.find("## Tools\nUse tools.\n\n## Scratch") != std::string::npos);
   CHECK(middle.find("Prefer a dedicated tool over run") == std::string::npos);
   CHECK(middle.find("Inquiries do not authorize") != std::string::npos);
-  // Capability guidance is its own section, not a tail of the answer rules.
+  // What a person may save: sections that exist, as text, and text to add.
+  // A section's built-in text is what replacing it would take away.
+  CHECK(PromptSectionText("## Scratch").starts_with("For supporting"));
+  CHECK(PromptSectionText("## Scratch").ends_with("never there."));
+  CHECK(PromptSectionText("## Answer").ends_with("path:line."));
+  CHECK(PromptSectionText("## Missing").empty());
+  CHECK(PromptOverlayIssue(
+            {{"replace", {{"## Scratch", "Use sh."}}}, {"append", "tail"}})
+            .empty());
+  CHECK(PromptOverlayIssue(json::object()).empty());
+  for (const json& refused :
+       {json::array(), json{{"replace", {{"## Missing", "x"}}}},
+        json{{"replace", {{"## Tools", 1}}}}, json{{"append", 1}},
+        json{{"prepend", "x"}}}) {
+    CHECK(!PromptOverlayIssue(refused).empty());
+  }
   CHECK(
       CapabilityPrompt(capability_tools).starts_with("\n\n## Capabilities\n"));
   CHECK(CapabilityPrompt({}).empty());
@@ -390,14 +412,11 @@ TEST_CASE(TestCommandAndDisplayRegistries) {
   CHECK(command.spec && command.spec->id == SlashCommandId::kProcesses);
   command = ParseSlashCommand("/agents");
   CHECK(command.spec && command.spec->id == SlashCommandId::kAgents);
-  // A local view, not a turn: /agents answers from the records and the
-  // supervisor rather than asking the model to go and look.
+  // A local view, not a turn: /agents answers without asking the model.
   CHECK(SlashCommandPrompt(command).empty());
   CHECK(!ParseSlashCommand("/unknown").spec);
   CHECK(!ParseSlashCommand("/resume").spec);
 
-  // Prompt commands: the spelling is local, the work is an ordinary turn, and
-  // /review carries whatever the caller named as its target.
   CHECK(SlashCommandPrompt(ParseSlashCommand("/init")).find("AGENTS.md") !=
         std::string::npos);
   CHECK(SlashCommandPrompt(ParseSlashCommand("/review"))
@@ -487,6 +506,13 @@ TEST_CASE(TestModelCatalogParsing) {
   CHECK((*anthropic)[0].features["adaptive_thinking"] == true);
   CHECK((*anthropic)[0].features["reasoning_summary"] == true);
   CHECK((*anthropic)[0].efforts == std::vector<std::string>({"low"}));
+  // The most a model writes, where its catalogue states it.
+  const auto limits = ParseModels(
+      {{"data", json::array({{{"id", "a"}, {"max_tokens", 64000}},
+                             {{"id", "b"}, {"max_tokens", nullptr}}})}});
+  REQUIRE(limits && limits->size() == 2);
+  CHECK((*limits)[0].features["max_output_tokens"] == 64000);
+  CHECK((*limits)[1].features.is_null());
   auto models = ParseModels(
       {{"data",
         json::array({{{"id", "vendor/beta"}},
@@ -540,11 +566,9 @@ TEST_CASE(TestModelQueryMatching) {
   const std::string haystack =
       "openrouter/meta/muse-spark-1.3-contributor Meta: Muse Spark 1.3 "
       "Contributor";
-  // Display-name spelling with spaces finds the hyphenated id.
   CHECK(MatchesModelQuery(haystack, "Muse Spark"));
   CHECK(MatchesModelQuery(haystack, "Meta: Muse Spark 1.3 Contributor"));
   CHECK(MatchesModelQuery(haystack, "muse_spark"));
-  // Exact id-style queries still match, and unrelated queries do not.
   CHECK(MatchesModelQuery(haystack, "muse-spark-1.3-contributor"));
   CHECK(!MatchesModelQuery(haystack, "glimmer"));
   CHECK(MatchesModelQuery(haystack, ""));
@@ -658,8 +682,7 @@ TEST_CASE(TestOptions) {
 }
 
 TEST_CASE(TestMarkdownBlankLines) {
-  // Models routinely end a message with a run of newlines. Each one is a
-  // wasted terminal row, and the run before a tool row is the visible cost.
+  // Models end messages with runs of newlines: each is a wasted terminal row.
   CHECK(RenderMarkdownChunks({"a\n\n\n\n\nb\n"}) == "a\n\nb\n");
   CHECK(RenderMarkdownChunks({"a\n\n\n\n\n"}) == "a\n");
   CHECK(RenderMarkdownChunks({"a\n\nb\n"}) == "a\n\nb\n");
@@ -690,7 +713,6 @@ TEST_CASE(TestMarkdownCode) {
       RenderMarkdown("~~~\n**kept**\n```\n~~~~\nafter **bold**\n");
   CHECK(tilde.find("**kept**") != std::string::npos);
   CHECK(tilde.find(std::string(BOLD()) + "bold") != std::string::npos);
-  // A tilde that fences nothing is text.
   CHECK(RenderMarkdown("~/src and ~~x\n") == "~/src and ~~x\n");
 }
 
@@ -780,9 +802,8 @@ TEST_CASE(TestMarkdownMath) {
 TEST_CASE(TestCapsAndEscaping) {
   CHECK(StripLineNumbers("     1\tone\n     2\ttwo\n") == "one\ntwo\n");
   CHECK(StripLineNumbers("one\n     2\ttwo\n") == "one\n     2\ttwo\n");
-  // Tool output reaches the model verbatim: there is no text call syntax left
-  // for it to imitate, and a structured provider call is the only thing that
-  // can reach dispatch.
+  // Tool output reaches the model verbatim: only a structured provider call
+  // reaches dispatch, so there is no call syntax for it to imitate.
   ToolResult passthrough = ToolFailure(ToolErrorCode::kNotFound, "a <b> c");
   CHECK(ModelResultText(passthrough, 1000) == "error: a <b> c");
   setenv("UAGENT_TOOL_RESULT_CHARS", "8", 1);
@@ -829,7 +850,6 @@ TEST_CASE(TestCapsAndEscaping) {
   tasks[0].result = ToolFailure(ToolErrorCode::kRemoteError, "short");
   tasks[1].result = ToolSuccess(std::string(100, 'a'));
   tasks[2].result = ToolSuccess(std::string(100, 'b'));
-  // A failure always carries its "error: " marker.
   std::vector<std::string> model_results = ModelFacingToolResults(tasks, 36);
   CHECK(model_results[0] == "error: short");
   CHECK(model_results[1].size() == 12);

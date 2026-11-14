@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <iterator>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -39,10 +40,10 @@
 #include "include/core/skills.h"
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
+#include "include/core/workspace.h"
 
-// Everything that has to ask the host what it can enforce, and the Linux
-// trampoline that enforces it. The platform split lives inside this file so
-// that sandbox.h stays ifdef-free and sandbox.cc stays pure.
+// Everything that asks the host what it can enforce, and the Linux trampoline
+// that enforces it.
 
 namespace uagent {
 namespace {
@@ -59,24 +60,18 @@ std::string SelfExecutablePath() {
 
 #if defined(__linux__)
 
-// Landlock has no libc wrappers, and <linux/landlock.h> is missing on distros
-// whose headers predate a kernel that supports it -- so the numbers live here
-// instead, and the probe below decides which of them this kernel understands.
-// The struct is declared with every field any ABI we handle knows about; the
-// size passed to the kernel is what selects the ABI, which is why the create
-// call sends the prefix an older kernel expects rather than the whole thing.
+// Landlock has no libc wrappers, and <linux/landlock.h> is missing where the
+// headers predate the kernel, so the numbers live here. The size passed to
+// the kernel selects the ABI.
 constexpr int kCreateRuleset = 444;
 constexpr int kAddRule = 445;
 constexpr int kRestrictSelf = 446;
 constexpr uint32_t kRulesetVersion = 1U << 0;
 constexpr uint32_t kRulePathBeneath = 1;
 
-// Read, directory-read and execute are deliberately absent: an access right
-// left out of handled_access_fs is never checked, which leaves reads exactly as
-// unrestricted as the macOS profile's (allow default) leaves them -- except
-// under a hidden or unreadable path, below. It also keeps every rule below
-// grantable, since allowed_access must be a subset of what the ruleset
-// handles.
+// Read, directory-read and execute are left out: a right absent from
+// handled_access_fs is never checked, so reads stay unrestricted. It also
+// keeps every rule grantable: allowed_access must be a subset of the handled.
 constexpr uint64_t kWriteAccess = (1ULL << 1) |   // WRITE_FILE
                                   (1ULL << 4) |   // REMOVE_DIR
                                   (1ULL << 5) |   // REMOVE_FILE
@@ -87,17 +82,13 @@ constexpr uint64_t kWriteAccess = (1ULL << 1) |   // WRITE_FILE
                                   (1ULL << 10) |  // MAKE_FIFO
                                   (1ULL << 11) |  // MAKE_BLOCK
                                   (1ULL << 12);   // MAKE_SYM
-// Renaming and hard-linking across two directories. Handling it costs nothing
-// and granting it restores what ABI 1 forbids outright, so a `mv` between two
-// writable roots keeps working.
+// Renaming and hard-linking across two directories. Granting it restores what
+// ABI 1 forbids outright, so a `mv` between two writable roots keeps working.
 constexpr uint64_t kAccessRefer = 1ULL << 13;
 constexpr uint64_t kAccessTruncate = 1ULL << 14;
-// IOCTL_DEV (bit 15) is never handled: the tty ioctls an interactive command
-// issues are not writes to confine, and handling the bit would break them.
-// Reading a file, and from ABI 9 connecting to a unix socket, are handled
-// only to hide or close paths, and granted everywhere else. Listing stays
-// unhandled: a name is not a secret, and handling it would make every ancestor
-// of a hidden path unlistable.
+// IOCTL_DEV (bit 15) is never handled: that would break a terminal's ioctls.
+// Reading a file, and from ABI 9 connecting to a unix socket, are handled only
+// to hide or close paths. Listing stays unhandled, so ancestors stay listable.
 constexpr uint64_t kAccessReadFile = 1ULL << 2;
 constexpr uint64_t kAccessResolveUnix = 1ULL << 16;
 // The rights a rule on a non-directory may carry: EXECUTE, WRITE_FILE,
@@ -133,17 +124,15 @@ uint64_t HandledFsAccess(int abi) {
   return handled;
 }
 
-// Reports the reason and leaves the caller to exit without executing, which is
-// the only safe response: a command that reaches execvp() past a failure here
-// is a command running with no confinement at all.
+// Reports the reason; the caller exits without executing, since a command run
+// past a failure here would run unconfined.
 bool Fatal(const char* what) {
   fprintf(stderr, "uagent: sandbox: %s failed (errno %d)\n", what, errno);
   return false;
 }
 
-// Grants `access` beneath `root`, except beneath any `skipped` path. Landlock
-// has no deny form, so a root holding a skipped path is granted child by
-// child, recursing only down the one branch that leads to it. Rules bind to
+// Grants `access` beneath `root`, except beneath any `skipped` path: Landlock
+// has no deny form, so such a root is granted child by child. Rules bind to
 // inodes, so renaming a skipped directory later does not uncover it.
 bool AddRulesExcept(int ruleset, const std::string& root, uint64_t access,
                     const std::vector<std::string>& skipped) {
@@ -155,10 +144,8 @@ bool AddRulesExcept(int ruleset, const std::string& root, uint64_t access,
   // Not followed: a symlink's target is granted, or not, where it really is.
   Fd parent(open(root.c_str(), O_PATH | O_NOFOLLOW | O_CLOEXEC));
   struct stat info{};
-  // A root that does not exist grants nothing, which is stricter than the
-  // policy asked for and so cannot open a hole. Skipping it keeps optional
-  // roots -- an unset $TMPDIR, a cache dir nobody has created yet -- from
-  // turning into a refusal to run.
+  // A root that does not exist grants nothing, which is stricter than asked;
+  // skipping it keeps an optional root from becoming a refusal to run.
   if (!parent || fstat(parent.Get(), &info) != 0 || S_ISLNK(info.st_mode)) {
     return true;
   }
@@ -192,9 +179,8 @@ bool ApplyLandlock(const SandboxPolicy& policy) {
   if (abi < 0) return Fatal("landlock probe");
   if (!policy.allow_network && abi < 4) return Fatal("network confinement");
 
-  // Reading, and from ABI 9 connecting to a unix socket, are handled only to
-  // close paths: granted everywhere except beneath a hidden or unreadable
-  // one, and again inside the readable folders of an unreadable one.
+  // Reads are granted everywhere except beneath a hidden or unreadable path,
+  // and again inside the readable folders of an unreadable one.
   const uint64_t reads =
       policy.hidden.empty() && policy.unreadable.empty()
           ? 0
@@ -211,9 +197,8 @@ bool ApplyLandlock(const SandboxPolicy& policy) {
   Fd ruleset(static_cast<int>(syscall(kCreateRuleset, &attr, attr_size, 0U)));
   if (!ruleset) return Fatal("landlock_create_ruleset");
 
-  // A writable root that holds a hidden or withheld path is granted around it
-  // too. A withheld path that holds the root is no reason to skip it: that is
-  // a root granted inside one, such as the terminal logs.
+  // A writable root that holds a hidden or withheld path is granted around
+  // it. A withheld path that holds the root does not skip it.
   for (const std::string& root : policy.writable_roots) {
     std::vector<std::string> skipped = policy.hidden;
     for (const std::string& path : policy.withheld) {
@@ -234,9 +219,8 @@ bool ApplyLandlock(const SandboxPolicy& policy) {
       }
     }
   }
-  // No net rule is ever added: handling the two TCP access rights with no rule
-  // granting them is itself the deny, and an allow-network policy handles
-  // nothing, so there is no port left to permit.
+  // No net rule is ever added: handling the two TCP access rights with no
+  // rule granting them is itself the deny.
 
   // Must precede restrict_self, and blocks the setuid escape a confined
   // process would otherwise keep. It is also why `ping` stops working.
@@ -273,18 +257,15 @@ namespace {
 
 // A configured path may start with ~/. Relative paths otherwise are the
 // caller's to refuse or resolve.
-std::string ExpandHome(std::string path) {
+std::string ExpandSandboxHome(std::string path) {
   const std::string home = UserHome();
   if (path.starts_with("~/") && !home.empty()) path = home + path.substr(1);
   return path;
 }
 
 // Closed: the visible entries of the home folder, of ~/.uagent/spaces and of
-// the folder that holds the folder, whose other entries are other
-// projects. Open inside them: the skill folders, sandbox.read,
-// kReadableHomePaths, and the folders the environment points a command at --
-// its PATH, and a variable naming a folder (GOPATH, ANDROID_HOME, ...), where
-// a bin folder brings its parent, which holds the rest of its tool.
+// the folder's parent. Open inside them: the skill folders, sandbox.read,
+// kReadableHomePaths and the folders the environment points a command at.
 void CollectReads(SandboxInputs* inputs) {
   namespace fs = std::filesystem;
   auto canonical = [](const std::string& path) {
@@ -317,7 +298,7 @@ void CollectReads(SandboxInputs* inputs) {
   }
   for (const std::string& raw :
        SplitPathList(StringSetting(Cfg("UAGENT_SANDBOX_READ")))) {
-    open.push_back(canonical(ExpandHome(raw)));
+    open.push_back(canonical(ExpandSandboxHome(raw)));
   }
   for (char** entry = ProcessEnvironment(); entry && *entry; ++entry) {
     const std::string_view text(*entry);
@@ -370,10 +351,8 @@ void Relax(SandboxInputs* inputs) {
   inputs->read_roots.clear();
 }
 
-// Every configured value the sandbox reads, resolved to the canonical absolute
-// paths seatbelt and Landlock both match on. macOS makes this mandatory rather
-// than tidy: /tmp there is a symlink to /private/tmp, and a profile naming the
-// symlink confines nothing.
+// Every configured value the sandbox reads, as canonical absolute paths: a
+// profile naming a symlink, such as macOS's /tmp, confines nothing.
 SandboxInputs CollectInputs(SandboxPreset preset) {
   auto canonical = [](const std::string& path) {
     return path.empty() ? std::string() : CanonicalAccessPath(path).string();
@@ -397,10 +376,8 @@ SandboxInputs CollectInputs(SandboxPreset preset) {
   }
 #endif
   inputs.terminal_logs = canonical(UagentDir(kTerminalLogsDir));
-  // Canonicalised component by component rather than passed through raw: a
-  // root written as ~/.uagent/.. is not textually inside ~/.uagent, so the
-  // ancestor screen would let it past and both mechanisms would then resolve
-  // it back to the home directory.
+  // Canonicalised, not passed through raw: ~/.uagent/.. is not textually
+  // inside ~/.uagent, so the ancestor screen would let it past.
   for (const std::string& raw :
        SplitPathList(StringSetting(Cfg("UAGENT_SANDBOX_WRITE")))) {
     std::string root = canonical(raw);
@@ -439,9 +416,8 @@ SandboxInputs CollectInputs(SandboxPreset preset) {
   return inputs;
 }
 
-// A delegated child runs under the policy of the session that started it,
-// whole: composing its own from the configuration could add a root, lose an
-// exclusion, or turn a refusal into a policy that runs commands. Anything
+// A delegated child runs under the whole policy of the session that started
+// it: composing its own could add a root or lose an exclusion. Anything
 // unreadable refuses.
 SandboxStatus InheritedStatus(const std::string& text) {
   SandboxStatus status;
@@ -465,10 +441,8 @@ SandboxStatus InheritedStatus(const std::string& text) {
   return status;
 }
 
-// The status at the configured level and, when it is enforced, the inputs it
-// was composed from: yolo's and plan mode's statuses are composed from them,
-// so they follow the configuration the session started with, not one changed
-// since.
+// The status at the configured level and the inputs it was composed from:
+// yolo's and plan mode's follow the configuration the session started with.
 struct ConfiguredSandbox {
   SandboxStatus status;
   SandboxPreset preset = SandboxPreset::kDefault;
@@ -484,10 +458,9 @@ ConfiguredSandbox BuildStatus() {
     status = InheritedStatus(inherited);
     return configured;
   }
-  // A level somebody wrote down that names no level -- a typo, or `strict`,
-  // which is gone -- must not quietly become the default, which opens the
-  // network a stricter level would have closed. A saved one is dropped by the
-  // settings reader, which reports its key.
+  // A level somebody wrote down that names no level must not quietly become
+  // the default, which opens the network a stricter level would have closed.
+  // A saved one is dropped by the settings reader, which reports its key.
   SandboxPreset preset = SandboxPreset::kDefault;
   const std::string level = StringSetting(Cfg("UAGENT_SANDBOX"));
   const std::vector<std::string> dropped =
@@ -509,10 +482,8 @@ ConfiguredSandbox BuildStatus() {
   if (!EnvStr("UAGENT_INTERNAL_SANDBOX_UNAVAILABLE").empty()) {
     status.level = SandboxLevel::kUnavailable;
   }
-  // A value here is a value somebody wrote down: the settings hold what was
-  // saved, the environment or a flag supplied, and never the registry
-  // defaults. That is the whole of the provenance the two unenforceable
-  // tiers need.
+  // A value here is one somebody wrote down, never a registry default: that
+  // is what tells kRefused from kDegraded.
   const bool requested = !SettingText(Cfg("UAGENT_SANDBOX")).empty();
   if (status.level == SandboxLevel::kUnavailable) {
     status.mode = requested ? SandboxMode::kRefused : SandboxMode::kDegraded;
@@ -526,9 +497,7 @@ ConfiguredSandbox BuildStatus() {
   }
   SandboxInputs inputs = CollectInputs(preset);
   // Denying the network on a host that can only confine writes would be a
-  // policy nobody is enforcing. Unlike the tier above this refuses whatever
-  // asked for it: a default cannot ask for a network denial, so anything that
-  // reaches here was written down by somebody.
+  // policy nobody enforces; only a written-down setting can ask for it.
   if (!inputs.allow_network &&
       status.level != SandboxLevel::kFilesystemAndNetwork) {
     status.mode = SandboxMode::kRefused;
@@ -600,6 +569,36 @@ const char* MechanismName() {
 }  // namespace
 
 const SandboxStatus& SandboxRuntime() {
+  if (RemoteWorkspace()) {
+    // Immutable once per mode, exactly like the local policy cache. Failure
+    // refuses rather than describing the main's unrelated sandbox.
+    static const SandboxStatus kUnavailable = [] {
+      SandboxStatus status;
+      status.mode = SandboxMode::kRefused;
+      status.reason = "Remote sandbox is unavailable.";
+      return status;
+    }();
+    static std::mutex mutex;
+    static std::map<ApprovalMode, SandboxStatus> cache;
+    std::lock_guard lock(mutex);
+    const auto mode = CurrentApprovalMode();
+    if (const auto found = cache.find(mode); found != cache.end()) {
+      return found->second;
+    }
+    const json value = json::parse(
+        JsonValue(WorkspaceRequest({{"op", "sandbox"}}), "inheritance", ""),
+        nullptr, false);
+    const int reported = JsonValue(value, "mode", -1);
+    SandboxStatus status;
+    if (reported < 0 || reported > static_cast<int>(SandboxMode::kRefused) ||
+        !SandboxPolicyFromJson(value.value("policy", json()), &status.policy)) {
+      return kUnavailable;
+    }
+    status.mode = static_cast<SandboxMode>(reported);
+    status.reason = JsonValue(value, "reason", "");
+    status.preset = JsonValue(value, "preset", "");
+    return cache.emplace(mode, std::move(status)).first->second;
+  }
   static const ConfiguredSandbox kConfigured = BuildStatus();
   // Each composed on first use, once and thread-safely, like the one above.
   switch (CurrentApprovalMode()) {
@@ -625,6 +624,10 @@ std::string SandboxInheritance() {
 }
 
 json SandboxDiagnosticJson() {
+  if (RemoteWorkspace()) {
+    return WorkspaceRequest({{"op", "sandbox"}})
+        .value("diagnostic", json::object());
+  }
   const SandboxStatus& status = SandboxRuntime();
   switch (status.mode) {
     case SandboxMode::kOff:
@@ -693,18 +696,13 @@ std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
   policy.hidden = HiddenPaths();
 #if defined(__APPLE__)
   std::string profile = SeatbeltProfile(policy);
-  // An oversized profile renders empty rather than truncated, and a truncated
-  // profile is a weaker one. No wrapper here would mean no confinement, so the
-  // caller is told to refuse instead.
+  // An oversized profile renders empty; no wrapper would mean no confinement,
+  // so the caller is told to refuse.
   if (profile.empty()) return {};
   return {"/usr/bin/sandbox-exec", "-p", std::move(profile)};
 #elif defined(__linux__)
-  // The trampoline re-execs *this* image, so it asks the kernel which image
-  // that is instead of trusting argv[0]. argv[0] is recorded by Bootstrap and
-  // is therefore empty in any process that does not run it -- the unit test
-  // binary among them, whose every sandboxed spawn then tried to exec "" --
-  // and even in the agent it can be a bare `uagent` resolved from PATH, which
-  // is not a path exec can use. /proc/self/exe is neither.
+  // The trampoline re-execs this image, so it asks the kernel which image
+  // that is: argv[0] can be empty or a bare name resolved from PATH.
   std::string self = SelfExecutablePath();
   if (self.empty()) return {};
   // One argv word has a kernel limit of its own, below the limit on all of
@@ -741,7 +739,7 @@ std::vector<std::string> CandidateHiddenPaths() {
   // A listed path may start with ~/. Relative paths name nothing: they would
   // resolve against whatever folder the session happens to be in.
   auto absolute = [](const std::string& raw) {
-    const std::string path = ExpandHome(raw);
+    const std::string path = ExpandSandboxHome(raw);
     return path.empty() || path.front() != '/'
                ? std::string()
                : CanonicalAccessPath(path).string();
@@ -751,6 +749,15 @@ std::vector<std::string> CandidateHiddenPaths() {
   // settings hold the API keys.
   std::vector<std::string> candidates = {browser, GlobalBase() + "/web",
                                          GlobalBase() + "/" + kConfigDir};
+  // A gateway's socket and lease, and the account's own uAgent. Its state
+  // stays readable: a result names the output it spilled there.
+  if (!ExecutionStateDirectory().empty()) {
+    const auto gateway =
+        std::filesystem::path(ExecutionStateDirectory()).parent_path();
+    candidates.push_back((gateway / "socket").string());
+    candidates.push_back((gateway / "owner").string());
+    if (!home.empty()) candidates.push_back(home + "/" + kWorkspaceDir);
+  }
   if (!home.empty()) {
     for (std::string_view store : kHiddenCredentialStores) {
       candidates.push_back(home + "/" + std::string(store));
@@ -805,8 +812,8 @@ std::vector<std::string> SandboxUnenforcedWrites(const SandboxStatus& status) {
 
 int SandboxChildMain(int argc, char** argv) {
 #if defined(__linux__)
-  // argv[0] is the binary, argv[1] the flag that routed us here, argv[2] the
-  // policy and argv[3] the `--` before the command.
+  // argv[0] is the binary, argv[1] the routing flag, argv[2] the policy and
+  // argv[3] the `--` before the command.
   SandboxPolicy policy;
   if (argc < 3 ||
       !SandboxPolicyFromJson(json::parse(argv[2], nullptr, false), &policy)) {

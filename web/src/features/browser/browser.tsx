@@ -17,6 +17,7 @@ import {
   Button,
   IconButton,
   Input,
+  InputRow,
   Notice,
   Select,
   Textarea,
@@ -723,7 +724,11 @@ export default function BrowserPanel({
           )}
         </div>
         {addingProfile && (
-          <form class="browser-profile-create" onSubmit={createProfile}>
+          <InputRow
+            as="form"
+            class="browser-profile-create"
+            onSubmit={createProfile}
+          >
             <Input
               aria-label="New Chrome profile name"
               value={newProfile}
@@ -734,7 +739,7 @@ export default function BrowserPanel({
             <Button type="submit" disabled={busy || !newProfile.trim()}>
               Create and use
             </Button>
-          </form>
+          </InputRow>
         )}
       </div>
     </SheetButton>

@@ -84,12 +84,7 @@
    folder indents, a guide line marking its depth, as VS Code draws one. */
 /* The search, and Collapse all beside it. */
 .files-search-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.files-search-row > .text-control {
-  flex: 1;
+  --input-row-min: calc(var(--pane-s) / 2);
 }
 .files-tree,
 .files-tree ul,

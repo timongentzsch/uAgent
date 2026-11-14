@@ -431,16 +431,9 @@
     white-space: nowrap;
   }
   .find-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
     padding: var(--space-2) var(--space-4);
     border-bottom: var(--border);
     background: var(--surface);
-  }
-  .find-bar > :first-child {
-    flex: 1;
-    min-width: 0;
   }
   .find-count {
     font-variant-numeric: tabular-nums;
@@ -962,13 +955,36 @@
     display: grid;
     gap: var(--gap);
   }
-  .dialog-actions,
+  .cluster,
   .editor-actions {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
     gap: var(--gap);
     flex-wrap: wrap;
+  }
+  .cluster[data-align="end"],
+  .editor-actions {
+    justify-content: flex-end;
+  }
+  .cluster[data-align="between"] {
+    justify-content: space-between;
+  }
+  /* A field shares its row with controls while both fit; the controls take
+     the next row before the field is squeezed. */
+  .input-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .input-row > * {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .input-row > :is(.text-control, label) {
+    flex: 999 1 var(--input-row-min, var(--pane));
   }
   .segmented,
   .tabs {

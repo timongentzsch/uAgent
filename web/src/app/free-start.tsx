@@ -1,5 +1,12 @@
 import { useEffect, useState } from "preact/hooks";
-import { Button, Input, LoadError, Notice } from "../shared/ui.tsx";
+import {
+  Button,
+  Cluster,
+  Input,
+  InputRow,
+  LoadError,
+  Notice,
+} from "../shared/ui.tsx";
 import { useAction } from "../shared/use-action.ts";
 import { useResource } from "../shared/use-resource.ts";
 import { useApi } from "../state/api.ts";
@@ -72,8 +79,8 @@ export function FreeStart({
         Sign in with OpenRouter. Free models cost nothing and have daily limits.
       </p>
       {approve ? (
-        <form
-          class="free-start-code"
+        <InputRow
+          as="form"
           onSubmit={(event) => {
             event.preventDefault();
             void finish(code);
@@ -97,9 +104,9 @@ export function FreeStart({
           >
             Finish sign-in
           </Button>
-        </form>
+        </InputRow>
       ) : (
-        <div class="free-start-actions">
+        <Cluster>
           <Button
             variant="primary"
             busy={busy}
@@ -109,7 +116,7 @@ export function FreeStart({
             Sign in with OpenRouter
           </Button>
           <Button onClick={settings}>I have an API key</Button>
-        </div>
+        </Cluster>
       )}
       {error ? <LoadError error={error} /> : null}
     </section>

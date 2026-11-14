@@ -9,10 +9,12 @@ import { copiedFeedbackMs } from "./limits.ts";
 import {
   Component,
   createContext,
+  h,
   type ComponentChildren,
   type ComponentType,
   type FunctionComponent,
   type ButtonHTMLAttributes,
+  type HTMLAttributes,
   type Ref,
   type RefObject,
   type SelectHTMLAttributes,
@@ -384,8 +386,49 @@ export function ConfirmModal({
   );
 }
 
+// A row of controls that wraps when it runs out of room.
+export function Cluster({
+  align = "start",
+  class: className = "",
+  children,
+  ...props
+}: HTMLAttributes<HTMLDivElement> & {
+  align?: "start" | "end" | "between";
+}) {
+  return (
+    <div
+      {...props}
+      class={`cluster ${className}`.trim()}
+      data-align={align === "start" ? undefined : align}
+    >
+      {children}
+    </div>
+  );
+}
 export function Actions({ children }: { children: ComponentChildren }) {
-  return <div class="dialog-actions">{children}</div>;
+  return (
+    <Cluster align="end" class="dialog-actions">
+      {children}
+    </Cluster>
+  );
+}
+// A field and the controls beside it. They share the row only while both
+// fit: the controls take the next row before the field is squeezed.
+export function InputRow({
+  as = "div",
+  class: className = "",
+  children,
+  rowRef,
+  ...props
+}: HTMLAttributes<HTMLElement> & {
+  as?: "div" | "form";
+  rowRef?: Ref<HTMLElement>;
+}) {
+  return h(
+    as,
+    { ...props, ref: rowRef, class: `input-row ${className}`.trim() },
+    children,
+  );
 }
 // A loading indicator that lives for a single frame IS the flash: it shows
 // once `delayMs` has passed, so fast resolves draw nothing.

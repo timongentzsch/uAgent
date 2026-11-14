@@ -423,6 +423,10 @@ terminal and its Chrome as one nonroot user. What it does and does not bound:
 - **One trust level inside.** The command sandbox is on there as anywhere, so
   agent commands do not read the saved keys or the browser's profiles. The web
   terminal is yours and is not sandboxed: it reads both.
+- **Chrome.** It is not in the image: the container fetches Google's stable
+  package onto the data volume, accepts it only when its checksum is in the
+  index signed by Google's packaging key (shipped in the image), and looks
+  for a newer one daily.
 - **User namespaces.** The seccomp profile lets any process in the container
   create one, as Chrome's sandbox requires.
 - **What you build there runs here.** The workspaces folder is yours on the

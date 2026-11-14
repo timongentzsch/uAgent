@@ -24,7 +24,7 @@ unpublished one needs its
 
 | Choice | What you get |
 | --- | --- |
-| In a container (offered where Docker runs) | The published image with the web interface, the agent's browser and the terminal. Of this machine's files it sees only the folder you give it (`~/uagent-workspaces`), which the installer opens to the container's user (UID 10001) with `setfacl`, and starts with Docker. |
+| In a container (offered where Docker runs) | The published image with the web interface, the agent's browser and the terminal. It sees only the folder you give it (`~/uagent-workspaces`) which the installer opens to the container's user (UID 10001) with `setfacl`, and reaches public network addresses only, not this machine's or your LAN's. It starts with Docker. |
 | Here | The release under `~/.local`, checked against its checksum. It offers to put `~/.local/bin` on your `PATH` and to run the web interface as [a service at login](WEB.md). |
 
 | Variable | Effect |

@@ -439,6 +439,19 @@ jobs:
         run: docker buildx build -f deploy/Dockerfile --build-arg UAGENT_INSTALL_STAGE=prebuilt --load -t uagent-image .
       - name: Start it
         run: docker run --rm --security-opt seccomp=deploy/seccomp-chrome.json uagent-image uagent --version
+      - name: Keep the agent off private addresses
+        run: |
+          docker tag uagent-image ghcr.io/timongentzsch/uagent:ci
+          mkdir -p workspaces
+          export UAGENT_VERSION=ci
+          docker compose -f deploy/compose.yaml up -d --no-build --wait
+          # A second µAgent on the same network: private, and listening.
+          docker run -d --name probe --network uagent_default uagent-image
+          probe=$(docker inspect probe --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+          timeout 60 sh -c 'until docker exec probe curl -fs -o /dev/null http://127.0.0.1:8080/; do sleep 1; done'
+          CHECK_LISTENER="$probe:8080" deploy/check-network.sh
+          docker rm -f probe
+          docker compose -f deploy/compose.yaml down -v
 
   checks:
     name: CI result

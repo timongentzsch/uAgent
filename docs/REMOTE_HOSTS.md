@@ -147,3 +147,6 @@ in `/data/agent/.ssh`. Supply a dedicated key owned by UID 10001 with mode 0600,
 or mount an SSH agent socket and set `SSH_AUTH_SOCK`. Mount only the keys/config
 needed for these hosts. Check access as that user with
 `docker compose exec uagent ssh -o BatchMode=yes ALIAS true`.
+A host on your LAN or tailnet must be named in `UAGENT_NETWORK_ALLOW`
+(`192.168.1.20:22`); the container reaches [no private address](BROWSER.md#isolation)
+otherwise.

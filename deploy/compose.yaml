@@ -3,12 +3,41 @@
 name: uagent
 
 services:
+  # Owns the network the agent's container joins, and what may leave it:
+  # root and NET_ADMIN live here, out of the agent's reach.
+  network:
+    image: ghcr.io/timongentzsch/uagent:${UAGENT_VERSION:-latest}
+    build: &build
+      context: ..
+      dockerfile: deploy/Dockerfile
+    user: "0:0"
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/uagent-firewall"]
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+    pids_limit: 64
+    ports:
+      - "127.0.0.1:${UAGENT_WEB_PORT:-8080}:${UAGENT_WEB_PORT:-8080}"
+    environment:
+      UAGENT_NETWORK: ${UAGENT_NETWORK:-private}
+      UAGENT_NETWORK_ALLOW: ${UAGENT_NETWORK_ALLOW:-}
+    healthcheck:
+      test: ["CMD-SHELL", "[ \"$$UAGENT_NETWORK\" = open ] || nft list table inet uagent >/dev/null"]
+      interval: 30s
+      start_interval: 1s
+      start_period: 20s
+      timeout: 5s
+      retries: 2
+
   uagent:
     # A release publishes this image; a checkout builds it (up --build).
     image: ghcr.io/timongentzsch/uagent:${UAGENT_VERSION:-latest}
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+    build: *build
     restart: unless-stopped
     read_only: true
     security_opt:
@@ -22,8 +51,11 @@ services:
     pids_limit: ${UAGENT_PIDS_LIMIT:-4096}
     mem_limit: ${UAGENT_MEM_LIMIT:-0}
     cpus: ${UAGENT_CPUS:-0}
-    ports:
-      - "127.0.0.1:${UAGENT_WEB_PORT:-8080}:${UAGENT_WEB_PORT:-8080}"
+    network_mode: "service:network"
+    depends_on:
+      network:
+        condition: service_healthy
+        restart: true
     environment:
       UAGENT_WEB_PORT: ${UAGENT_WEB_PORT:-8080}
     volumes:

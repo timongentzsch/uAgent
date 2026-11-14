@@ -168,6 +168,12 @@ including action admission and management flows. A failed test is not retried.
 Four workers run locally and two in CI. Traces and screenshots of failures are
 kept in `web/test-results`.
 
+The films under `docs/images/` are recorded from the running client, so they
+can be made again when it changes: `web/recordings/*.rec.js` are Playwright
+scripts against the same fixture host, and `npm run record` (with
+`UAGENT_TEST_BINARY` and ffmpeg) films them and writes each as a GIF. Pass a
+name, as in `npm run record -- files`, for one of them.
+
 ## Behavioral evaluation
 
 `benchmarks/eval.py` runs declarative scenarios from

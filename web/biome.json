@@ -18,6 +18,7 @@
       "src/**",
       "tests/**",
       "scripts/**",
+      "recordings/**",
       "public/*.js",
       "sheet/*.js",
       "*.js",

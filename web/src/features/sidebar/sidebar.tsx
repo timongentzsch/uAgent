@@ -817,51 +817,22 @@ function SidebarView({
           online={online}
         />
       </div>
-      <div class="sidebar-tabs">
-        <div class="sidebar-sections segmented" role="group" aria-label="List">
-          {(
-            [
-              ["recent", "Recent"],
-              ["places", "Places"],
-            ] as const
-          ).map(([name, label]) => (
-            <Button
-              key={name}
-              variant="secondary"
-              aria-pressed={view === name}
-              onClick={() => setView(name)}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
-        <div class="sidebar-sections">
+      <div class="sidebar-sections segmented" role="group" aria-label="List">
+        {(
+          [
+            ["recent", "Recent"],
+            ["places", "Places"],
+          ] as const
+        ).map(([name, label]) => (
           <Button
-            variant="quiet"
-            class="entry"
-            aria-current={page === "library" ? "page" : undefined}
-            onClick={() => navigate("library")}
+            key={name}
+            variant="secondary"
+            aria-pressed={view === name}
+            onClick={() => setView(name)}
           >
-            <Library />
-            Library
+            {label}
           </Button>
-          <Button
-            variant="quiet"
-            class="entry"
-            aria-current={page === "scheduled" ? "page" : undefined}
-            onClick={() => navigate("scheduled")}
-          >
-            <CalendarClock />
-            Scheduled
-            {scheduledUnread && (
-              <span
-                class="status-led unread"
-                role="img"
-                aria-label="Unread scheduled results"
-              />
-            )}
-          </Button>
-        </div>
+        ))}
       </div>
       <nav
         ref={rows}
@@ -873,6 +844,33 @@ function SidebarView({
         </Placeholder>
       </nav>
       <HostList />
+      <div class="sidebar-pages">
+        <Button
+          variant="quiet"
+          class="entry"
+          aria-current={page === "library" ? "page" : undefined}
+          onClick={() => navigate("library")}
+        >
+          <Library />
+          Library
+        </Button>
+        <Button
+          variant="quiet"
+          class="entry"
+          aria-current={page === "scheduled" ? "page" : undefined}
+          onClick={() => navigate("scheduled")}
+        >
+          <CalendarClock />
+          Scheduled
+          {scheduledUnread && (
+            <span
+              class="status-led unread"
+              role="img"
+              aria-label="Unread scheduled results"
+            />
+          )}
+        </Button>
+      </div>
       {selection.selecting ? (
         <footer>
           <SelectionBar selection={selection}>

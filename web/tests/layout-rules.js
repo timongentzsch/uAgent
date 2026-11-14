@@ -29,7 +29,8 @@ for (const declaration of declarations) {
   rules.get(key).set.set(declaration.property, declaration.value);
 }
 const scoped = [...rules.values()].filter(
-  (rule) => !central(file(rule)) && !file(rule).startsWith("sheet/"),
+  (rule) =>
+    !central(file(rule)) && !file(rule).startsWith("sheet/") && !rule.excused,
 );
 
 // Text cut with an ellipsis is .truncate.
@@ -89,15 +90,23 @@ export const breakpoints = () => {
   return [...found].sort();
 };
 
-// A screen's bars and rows of controls are Bar, Cluster and Actions.
+// A screen's bars and rows of controls are Bar, Cluster and Actions; one
+// that is not says why in a `raw:` comment on its line or the one above.
 export const wrappers = () => {
   const found = [];
+  const excuse = /\/[/*]\s*raw:/;
   for (const path of tree("src", [".tsx"])) {
     if (!/^(?:features|app)\//.test(path)) continue;
-    for (const [, name] of readFileSync(join("src", path), "utf8").matchAll(
+    const text = readFileSync(join("src", path), "utf8");
+    const lines = text.split("\n");
+    for (const match of text.matchAll(
       /<(?:div|header|footer|form|span|section|nav)\b[^>]*?\bclass="[^"]*?\b([\w-]+-(?:actions|bar|toolbar|head))\b/g,
-    ))
-      found.push(`${path} ${name}`);
+    )) {
+      // The line the element opens on, from 0.
+      const line = text.slice(0, match.index).split("\n").length - 1;
+      if (!excuse.test(lines[line]) && !excuse.test(lines[line - 1] || ""))
+        found.push(`${path} ${match[1]}`);
+    }
   }
   return unique(found);
 };

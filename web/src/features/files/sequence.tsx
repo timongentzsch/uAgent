@@ -724,6 +724,7 @@ export default function Sequence({
     moves.length && arrange?.(moves, shownAfter(moves, names, index));
   const stepper = useRef<HTMLDivElement>(null);
   const counter = (boards.length > 1 || arrange) && !sheet && (
+    // raw: floats over the page, not along an edge of a pane.
     <div
       class="float-toolbar page-count"
       role="group"
@@ -1163,6 +1164,7 @@ export default function Sequence({
                 the slide does not move from one to the next. */}
             {presenting && notesShown && <p class="page-notes">{notes}</p>}
             {presenting && (
+              // raw: laid over a slide while presenting.
               <div class="page-present-bar">
                 {counter}
                 <Button

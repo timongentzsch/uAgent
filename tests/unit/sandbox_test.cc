@@ -124,6 +124,13 @@ TEST_CASE(TestSandboxPolicy) {
   CHECK(Rejected(guarded, "/home/u/.uagent/config"));
   CHECK(Rejected(guarded, "/home/u/.uagent/config/x"));
 
+  // A folder offered twice, as the temporary folder under both of its
+  // names, is refused once.
+  SandboxInputs twice = BaseInputs();
+  twice.tmpdir = twice.user_tmpdir = "/home/u";
+  CHECK(BuildSandboxPolicy(twice).rejected ==
+        std::vector<std::string>{"/home/u"});
+
   // Relative roots are rejected rather than resolved: this code never touches
   // the filesystem, so it cannot know what one would resolve to.
   SandboxInputs relative = BaseInputs();

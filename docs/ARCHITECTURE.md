@@ -56,9 +56,9 @@ settings, `Bar` for a row of a title and controls along an edge of a pane,
 field with controls beside it, which wrap before the field is squeezed, and
 `.truncate` for text that is cut short. A feature's stylesheet says what is
 its own. `web/tests/layout.test.js` holds this: hand-written truncation,
-button sizes, flexed fields and bar-like wrappers fail unless listed in
-`layout-baseline.json`, which only shrinks, and the set of container and
-media breakpoints is fixed.
+button sizes, flexed fields and bar-like wrappers fail unless a comment
+beginning `raw:` above them says why they are their own, and the set of
+container and media breakpoints is fixed.
 
 The registry owns tool contracts, configuration descriptors own settings, route
 capabilities own provider behavior, and the runtime owns conversation state.

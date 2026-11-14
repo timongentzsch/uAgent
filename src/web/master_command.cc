@@ -8,6 +8,7 @@
 #include "include/app/session_host.h"
 #include "include/app/update.h"
 #include "include/browser/browser.h"
+#include "include/core/capture.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
@@ -262,8 +263,21 @@ void Master::UpdateCommand(CommandCall& call) {
           WakeDescriptor(shutdown_fd);
         });
   }
+  if (action == "chrome") {
+    // The container's updater, once more and now; it writes what it finds.
+    bool running = chrome_checking_.exchange(true);
+    if (!running) {
+      chrome_updater_ = std::jthread([this] {
+        CaptureProcess({"chrome-update"}, 900);
+        chrome_checking_ = false;
+      });
+    }
+  }
   json state = action == "check" ? CheckForUpdate(options_.terminal)
                                  : UpdateState(options_.terminal);
+  if (state.contains("chrome")) {
+    state["chrome"]["checking"] = chrome_checking_.load();
+  }
   {
     std::lock_guard lock(update_mutex_);
     state.update(update_);

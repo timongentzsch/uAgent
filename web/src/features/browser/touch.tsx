@@ -315,6 +315,7 @@ export default function BrowserTouch({
     >
       <div class="browser-rfb" ref={target} />
       <span class="browser-touch" ref={ring} aria-hidden="true" />
+      {/* raw: floats over the page, not along an edge of a pane. */}
       <div
         class="float-toolbar browser-view-controls"
         role="group"

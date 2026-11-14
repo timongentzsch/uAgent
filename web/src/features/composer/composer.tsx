@@ -467,6 +467,7 @@ function Composer({
             ))}
           </div>
         )}
+        {/* raw: the draft's own row, which joins the draft's line only above a width. */}
         <div
           class="composer-actions message-actions"
           data-held={!!pending || undefined}

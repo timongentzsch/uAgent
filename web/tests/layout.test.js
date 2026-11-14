@@ -1,14 +1,12 @@
-// Layout is built from the shared pieces in shared/ui.tsx. What predates
-// them is listed in layout-baseline.json, which only shrinks: a finding not
-// listed fails, and so does a listing that is no longer found.
+// Layout is built from the shared pieces in shared/ui.tsx. A feature's rule
+// or element that is its own all the same says why, in a comment that begins
+// "raw:" above it; anything else found here fails.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import * as found from "./layout-rules.js";
 
-const baseline = JSON.parse(readFileSync("tests/layout-baseline.json", "utf8"));
 const held = (name, hint) =>
-  test(name, () => assert.deepEqual(found[hint](), baseline[hint]));
+  test(name, () => assert.deepEqual(found[hint](), []));
 
 held("text is cut short by .truncate", "truncations");
 held("a button's size comes from its variant or its list", "buttonSizes");

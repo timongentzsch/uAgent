@@ -35,13 +35,22 @@ const BLOCKED: Record<string, string> = {
 };
 const POLL_MS = 2000;
 
+// What the container's updater last wrote, as a sentence.
+const chromeLabel = (status: string) => {
+  const [state, ...rest] = status.split(" ");
+  const detail = rest.join(" ");
+  if (state === "ready") return `Chrome ${detail}`;
+  if (state === "downloading") return `Downloading Chrome ${detail}…`;
+  return `Chrome could not be fetched: ${detail}`;
+};
+
 export function AboutPane() {
   const { manage } = useApi();
   const { update, updateBlocked } = useSettings();
   const action = useAction();
   const [state, setState] = useState<UpdateState>();
   const [open, setOpen] = useState<"notes" | "confirm">();
-  const ask = (act: "show" | "check" | "apply", version?: string) =>
+  const ask = (act: "show" | "check" | "apply" | "chrome", version?: string) =>
     manage("update", { action: act, version }).then(setState);
   // biome-ignore lint/correctness/useExhaustiveDependencies: read once
   useEffect(() => {
@@ -49,7 +58,7 @@ export function AboutPane() {
   }, []);
   // The host restarts when its installer is done: asked until it answers
   // again.
-  const installing = state?.installing;
+  const installing = state?.installing || state?.chrome?.checking;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `ask` is new each render
   useEffect(() => {
     if (!installing) return;
@@ -134,6 +143,28 @@ export function AboutPane() {
         )}
       </Group>
       {action.error != null && <LoadError error={action.error} />}
+      {state?.chrome && (
+        <Group
+          title="Chrome"
+          footer={
+            <>
+              Checked <Time value={state.chrome.checked_ms} />. The container
+              fetches Google's stable Chrome, checks it against Google's signed
+              index and takes a newer one the next time the browser starts.
+            </>
+          }
+        >
+          <Row label={chromeLabel(state.chrome.status)}>
+            <Button
+              busy={state.chrome.checking}
+              disabled={action.busy}
+              onClick={() => action.run(() => ask("chrome"))}
+            >
+              Check now
+            </Button>
+          </Row>
+        </Group>
+      )}
       {update && (
         <Group
           title="This page"

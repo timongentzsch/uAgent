@@ -37,6 +37,7 @@
   min-width: 0;
 }
 
+/* raw: the two lines of one label, stacked. */
 .activity-text strong,
 .activity-text small {
   display: block;
@@ -132,6 +133,7 @@
   padding-left: var(--space-3);
   font-size: var(--font-small);
 }
+/* raw: the text DataText draws, which takes no class. */
 .activity-state > span {
   min-width: 0;
   overflow: hidden;

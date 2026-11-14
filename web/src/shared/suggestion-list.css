@@ -4,6 +4,7 @@
   inset-inline: 0;
   max-height: min(var(--pane), var(--scroll-m));
 }
+/* raw: the second line of a row the list draws from what it is given. */
 .command-suggestions small {
   overflow: hidden;
   text-overflow: ellipsis;

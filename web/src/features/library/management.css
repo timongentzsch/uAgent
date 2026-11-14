@@ -110,6 +110,7 @@
   flex: 1;
 }
 /* The Library: a rail of kinds and places, the list, and an item beside. */
+/* raw: the search grows to a sheet's width and no further. */
 .library .management-toolbar > .text-control:first-child {
   flex: 1;
   max-width: var(--sheet);

@@ -103,6 +103,7 @@
   flex: 1;
   min-width: 0;
 }
+/* raw: a row of the tree: full width, as tall as a row, left aligned. */
 .tree-row,
 .files-results button {
   width: 100%;
@@ -355,6 +356,7 @@
 .sheet-formula > output {
   color: var(--muted);
 }
+/* raw: a formula or a note fills a bar that holds nothing wider. */
 .sheet-typed,
 .page-notes > .text-control {
   flex: 1;

@@ -217,6 +217,7 @@ export function OtherPlaces({ source }: { source: Source }) {
             folded = collapsed.has(key);
           return (
             <section key={path}>
+              {/* raw: a list's heading row, folded and selected as rows are. */}
               <div class="place-head entry">
                 <IconButton
                   label={`Conversations of ${source.name}: ${name}`}

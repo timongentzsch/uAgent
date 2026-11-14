@@ -586,6 +586,7 @@ function SidebarView({
     const own = ownName(cwd);
     return (
       <section key={cwd}>
+        {/* raw: a list's heading row, folded and selected as rows are. */}
         <div
           class="place-head entry"
           data-picked={selection.ids.has(cwd) || undefined}

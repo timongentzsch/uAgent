@@ -12,6 +12,7 @@
   gap: var(--gap);
 }
 /* A header runs to 24 characters and there are up to nine steps. */
+/* raw: a step's tab, cut short as a button at a width in characters. */
 .ask-steps button {
   max-width: 22ch;
   overflow: hidden;

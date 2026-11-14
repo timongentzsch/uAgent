@@ -84,6 +84,7 @@
   grid-auto-flow: column;
   gap: var(--space-2);
 }
+/* raw: three answers share a narrow card's width. */
 .decision-answers > button {
   min-width: 0;
   padding-inline: var(--space-2);

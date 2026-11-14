@@ -95,6 +95,7 @@
   display: grid;
   gap: var(--space-1);
 }
+/* raw: the text DataText draws, which takes no class. */
 .overview-todo > :last-child {
   overflow: hidden;
   text-overflow: ellipsis;

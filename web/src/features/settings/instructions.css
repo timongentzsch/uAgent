@@ -20,6 +20,7 @@
   flex-shrink: 0;
 }
 /* One line, ending visible: the file name matters most. */
+/* raw: cut at its start, right to left, which .truncate does not do. */
 .instruction-card > header small {
   min-width: 0;
   overflow: hidden;

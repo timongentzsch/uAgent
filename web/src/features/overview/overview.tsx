@@ -96,6 +96,7 @@ export default function FolderOverview({
   };
   return (
     <section class="overview" aria-label={`Overview of ${name}`}>
+      {/* raw: the overview's heading, a block and not a bar. */}
       <header class="overview-head">
         <HostLabel />
         <h2>

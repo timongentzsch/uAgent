@@ -51,6 +51,7 @@
 .setting-field .row-value {
   gap: var(--space-3);
 }
+/* raw: a value of fixed width at the end of a settings row. */
 .setting-field .row-value > .text-control:not(.select) {
   width: var(--pane);
 }
@@ -81,6 +82,7 @@
     min-width: 0;
     max-width: none;
   }
+  /* raw: a value of fixed width at the end of a settings row. */
   .setting-field .row-value > .text-control:not(.select) {
     flex: 1;
     width: auto;

@@ -1002,8 +1002,8 @@
   dialog[data-layout="sheet"] > .dialog-body {
     flex: 1;
   }
-  /* Centred in the upper part of the window; a phone pins it to the top,
-     clear of the keyboard. */
+  /* Centred in the upper part of the window; on a phone a panel as wide as
+     the screen allows, high enough to clear the keyboard. */
   dialog[data-layout="spotlight"] {
     --dialog-width: var(--spotlight);
     top: calc(
@@ -1020,12 +1020,9 @@
   }
   @media (max-width: 600px) {
     dialog[data-layout="spotlight"] {
-      top: calc(var(--viewport-top) + var(--safe-top));
-      left: calc(var(--viewport-left) + var(--safe-left));
-      transform: none;
-      width: var(--content-width);
-      max-height: var(--content-height);
-      border-width: 0 0 1px;
+      top: calc(var(--viewport-top) + var(--safe-top) + var(--pad));
+      width: calc(var(--content-width) - 2 * var(--pad));
+      max-height: calc(var(--content-height) - 2 * var(--pad));
     }
   }
   dialog[data-layout="sheet"] {

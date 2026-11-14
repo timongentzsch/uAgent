@@ -32,7 +32,7 @@ export function StartField({
     Promise.resolve(start(text.trim())).then(() => setText(""), report);
   };
   return (
-    <form class="start-field" onSubmit={submit}>
+    <form class="start-field message-box" onSubmit={submit}>
       <MessageInput
         id={id}
         rows={1}
@@ -44,7 +44,7 @@ export function StartField({
         submit={submit}
         onInput={(event) => setText(event.currentTarget.value)}
       />
-      <div class="start-tools">
+      <div class="start-tools message-actions">
         {children?.(text.trim())}
         <IconButton
           label="Start"

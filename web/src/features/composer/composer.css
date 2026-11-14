@@ -9,12 +9,6 @@
   overflow: visible;
   container: composer / inline-size;
 }
-.composer > form {
-  position: relative;
-  gap: 0;
-  border: var(--border-field);
-  background: var(--raised);
-}
 /* A one-line draft shares its row with the controls until it wraps. */
 @container composer (min-width: 40rem) {
   .composer > form:not(:has(> .message-input[data-multiline])) {
@@ -33,22 +27,6 @@
     padding-block: 0;
   }
 }
-.composer > form > .message-input {
-  --input-min-height: max(var(--control-l), calc(1.5em + var(--space-4)));
-  --input-padding-y: var(--space-3);
-}
-.composer > form > .message-input > textarea {
-  border: 0;
-  background: transparent;
-}
-/* The draft and its controls are one box, so the box takes the ring. */
-.composer > form:has(> .message-input > textarea:focus-visible) {
-  outline: var(--focus-ring);
-  outline-offset: var(--focus-offset);
-}
-.composer > form > .message-input > textarea:focus-visible {
-  outline: none;
-}
 .composer .attachments {
   flex-wrap: nowrap;
   max-height: none;
@@ -58,14 +36,6 @@
 .composer .file-chip {
   flex: none;
   max-width: var(--pane);
-}
-.composer-actions {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  min-width: 0;
 }
 /* A pending decision holds the input; Permissions can still settle it. */
 .composer-actions[data-held] > :not(.permission-control) {

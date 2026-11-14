@@ -303,7 +303,7 @@ function Composer({
         recall={recall}
         insert={insert}
       />
-      <form onSubmit={send}>
+      <form class="message-box" onSubmit={send}>
         {suggestions.list}
         {mentionOpen && (
           <SuggestionList
@@ -467,7 +467,10 @@ function Composer({
             ))}
           </div>
         )}
-        <div class="composer-actions" data-held={!!pending || undefined}>
+        <div
+          class="composer-actions message-actions"
+          data-held={!!pending || undefined}
+        >
           <label class="file-button icon-button" title="Attach files">
             <Paperclip />
             <Input

@@ -243,33 +243,29 @@
 .connection .status-led {
   margin-right: var(--space-3);
 }
+/* The two lists and the two pages are one row of four. */
 .sidebar-tabs {
-  display: contents;
-}
-/* In the sheet a narrow screen holds the list in: Search and New are in
-   the sheet's header, and the two pages join the two lists as one row. */
-.drawer .sidebar-head {
-  display: none;
-}
-.drawer .sidebar-tabs {
   display: flex;
   gap: var(--space-2);
 }
-.drawer .sidebar-tabs > .sidebar-sections {
+.sidebar-tabs > .sidebar-sections {
   display: contents;
 }
-.drawer .sidebar-tabs > .segmented > button {
-  order: -1;
-}
-.drawer .sidebar-tabs button {
-  flex: 1 1 0;
+/* Each as wide as its word needs, so the longest is not the one cut. */
+.sidebar-tabs button {
+  flex: 1 1 auto;
   min-width: 0;
   padding-inline: var(--space-2);
 }
-.drawer .sidebar-tabs button:not([aria-pressed="true"]) {
+.sidebar-tabs button:not([aria-pressed="true"], [aria-current]) {
   background: var(--raised);
 }
-.drawer .sidebar-tabs .lucide {
+.sidebar-tabs .lucide {
+  display: none;
+}
+/* In the sheet a narrow screen holds the list in, Home, Search and New are
+   in the sheet's header. */
+.drawer .sidebar-head {
   display: none;
 }
 /* A row there is its title, whole, over its time or place. Its menu opens

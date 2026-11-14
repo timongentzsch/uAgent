@@ -160,6 +160,12 @@ if [ "$choice" = container ]; then
         workspaces=$answer
       fi
       mkdir -p "$workspaces"
+      # The container's agent is UID 10001; you keep access to what it makes.
+      if [ "$os" = Linux ] && [ "$(id -u)" != 10001 ] &&
+         ! { has setfacl && setfacl -m u:10001:rwx -m d:u:10001:rwx \
+               -m "d:u:$(id -u):rwx" "$workspaces" 2>/dev/null; }; then
+        echo "The agent cannot write to $workspaces: give UID 10001 read and write access to it." >&2
+      fi
       printf 'UAGENT_VERSION=%s\nUAGENT_WORKSPACES=%s\n' "$version" "$workspaces" >"$deploy/.env"
     fi
   fi

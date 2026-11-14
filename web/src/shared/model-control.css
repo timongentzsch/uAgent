@@ -7,11 +7,6 @@
   max-width: 100%;
   font-size: var(--font-small);
 }
-.model-selector > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 @container column (max-width: 43rem) {
   .model-selector > .lucide:first-child {
     display: none;

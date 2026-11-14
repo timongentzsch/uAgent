@@ -658,7 +658,7 @@ export default function Files({
       {(path) => (
         <>
           <span class="files-name truncate">{nameOf(path)}</span>
-          <span class="files-dir">{dirOf(path)}</span>
+          <span class="files-dir truncate">{dirOf(path)}</span>
         </>
       )}
     </SuggestionList>

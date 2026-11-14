@@ -14,7 +14,7 @@ function SettingRows() {
     <Group>
       {["Conversation model", "Reasoning effort", "API address"].map((name) => (
         <Row key={name} label={name}>
-          <span class="setting-summary">Not set</span>
+          <span class="setting-summary truncate">Not set</span>
         </Row>
       ))}
     </Group>

@@ -80,9 +80,6 @@
   min-width: 0;
 }
 .attachment-card strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-weight: var(--weight-strong);
 }
 .mention-image {

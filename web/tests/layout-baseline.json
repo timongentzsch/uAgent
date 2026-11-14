@@ -1,24 +1,12 @@
 {
   "truncations": [
-    "features/browser/browser.css .browser-status > span",
-    "features/chat/message.css .turn-summary",
     "features/composer/composer.css .metrics > button",
-    "features/files/files.css .files-results .files-dir",
-    "features/overview/overview.css .overview-title > span:first-child",
     "features/overview/overview.css .overview-todo > :last-child",
-    "features/search/spotlight.css .spotlight-label",
     "features/settings/instructions.css .instruction-card > header small",
-    "features/settings/settings.css .setting-summary",
-    "features/terminal/terminal.css .terminal-place",
-    "shared/activity.css .activity-button > span",
     "shared/activity.css .activity-state > span",
     "shared/activity.css .activity-text strong, .activity-text small",
     "shared/ask.css .ask-steps button",
-    "shared/attachments.css .attachment-card strong",
     "shared/attachments.css .file-chip > span",
-    "shared/decision.css .decision-folder",
-    "shared/model-control.css .model-selector > span",
-    "shared/start-field.css .start-tools :is(.model-selector, .start-place) > span",
     "shared/suggestion-list.css .command-suggestions small"
   ],
   "buttonSizes": [

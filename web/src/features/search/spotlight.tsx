@@ -339,7 +339,7 @@ export default function Spotlight({
               <span class="spotlight-more small">{row.label}</span>
             ) : (
               <>
-                <span class="spotlight-label">
+                <span class="spotlight-label truncate">
                   {row.label}
                   {"about" in row && row.about && ` — ${row.about}`}
                 </span>

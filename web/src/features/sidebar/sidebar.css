@@ -267,7 +267,7 @@
 .drawer .session :is(.session-time, .session-tag) {
   max-width: none;
   margin-left: calc(var(--icon-s) + var(--space-2));
-  font-size: var(--font-caption, var(--font-small));
+  font-size: var(--font-small);
   text-align: left;
 }
 @media (pointer: coarse) {

@@ -121,17 +121,7 @@
   padding: 0 var(--space-3);
   font-size: var(--font-small);
 }
-.activity-button > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.activity-button > svg {
-  flex: none;
-  width: var(--icon);
-  height: var(--icon);
-}
+.activity-button > svg,
 .activity-state {
   display: flex;
   align-items: center;

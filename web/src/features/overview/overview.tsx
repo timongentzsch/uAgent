@@ -267,7 +267,7 @@ function Card({
       onClick={open}
     >
       <span class="overview-title">
-        <span>
+        <span class="truncate">
           <SessionName item={item} />
         </span>
         <span class="overview-state small">

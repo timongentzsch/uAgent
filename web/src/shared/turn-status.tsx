@@ -118,7 +118,7 @@ function ActivityButtonView({
         trigger={
           <>
             <StatusLed state="running" />
-            <span>
+            <span class="truncate">
               <DataText>
                 {running && <span class="working">Working</span>}
                 {running && details && " · "}

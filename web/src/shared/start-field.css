@@ -13,11 +13,6 @@
   max-width: 100%;
   font-size: var(--font-small);
 }
-.start-tools :is(.model-selector, .start-place) > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .start-tools > :last-child {
   margin-left: auto;
   flex: none;

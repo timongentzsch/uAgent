@@ -76,10 +76,6 @@
   white-space: nowrap;
 }
 .overview-title > span:first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-weight: var(--weight-strong);
 }
 .overview-state {

@@ -163,7 +163,7 @@ function FileCard({
     <>
       <FileText />
       <span>
-        <strong>{cleanText(name)}</strong>
+        <strong class="truncate">{cleanText(name)}</strong>
         <small>{children ?? fileType(name, size)}</small>
       </span>
     </>

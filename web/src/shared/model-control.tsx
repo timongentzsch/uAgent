@@ -21,7 +21,7 @@ function ModelControl(
       trigger={
         <>
           <Gauge />
-          <span>
+          <span class="truncate">
             <DataText>{label}</DataText>
           </span>
           <ChevronDown />

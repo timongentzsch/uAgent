@@ -472,7 +472,8 @@ def test_web_about_says_which_chrome_a_container_holds_and_looks_again(root, hom
     # What the container's updater leaves on the data volume, and an updater
     # standing in for it that finds a newer Chrome. The browser's folder has
     # to be private and short enough for its sockets.
-    data = pathlib.Path(tempfile.mkdtemp(prefix="ub-", dir="/tmp"))
+    # Resolved: on macOS /tmp is a link, which a private folder may not pass.
+    data = pathlib.Path(tempfile.mkdtemp(prefix="ub-", dir="/tmp")).resolve()
     try:
         (data / "chrome").mkdir()
         status = data / "chrome/status"

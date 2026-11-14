@@ -135,12 +135,22 @@ if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes
   [ "$answer" = 2 ] || choice=container
 fi
 
+# The container's agent is UID 10001; you keep access to what it makes.
+workspace_folder() {
+  mkdir -p "$1"
+  if [ "$os" = Linux ] && [ "$(id -u)" != 10001 ] &&
+     ! { has setfacl && setfacl -m u:10001:rwx -m d:u:10001:rwx \
+           -m "d:u:$(id -u):rwx" "$1" 2>/dev/null; }; then
+    echo "The agent cannot write to $1: give UID 10001 read and write access to it." >&2
+  fi
+}
+
 # A release's container is its published image, run from the compose files
 # of the same release; a checkout builds its own.
 if [ "$choice" = container ]; then
   if [ "$mode" = source ]; then
     deploy=$root/deploy
-    mkdir -p "$root/workspaces"
+    workspace_folder "$root/workspaces"
   else
     release_version
     deploy=$data/container/deploy
@@ -159,13 +169,7 @@ if [ "$choice" = container ]; then
            [ -n "$answer" ]; then
         workspaces=$answer
       fi
-      mkdir -p "$workspaces"
-      # The container's agent is UID 10001; you keep access to what it makes.
-      if [ "$os" = Linux ] && [ "$(id -u)" != 10001 ] &&
-         ! { has setfacl && setfacl -m u:10001:rwx -m d:u:10001:rwx \
-               -m "d:u:$(id -u):rwx" "$workspaces" 2>/dev/null; }; then
-        echo "The agent cannot write to $workspaces: give UID 10001 read and write access to it." >&2
-      fi
+      workspace_folder "$workspaces"
       printf 'UAGENT_VERSION=%s\nUAGENT_WORKSPACES=%s\n' "$version" "$workspaces" >"$deploy/.env"
     fi
   fi

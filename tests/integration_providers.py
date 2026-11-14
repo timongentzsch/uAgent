@@ -1,5 +1,8 @@
+import base64
+import hashlib
 import json
 import os
+import subprocess
 import threading
 import time
 
@@ -2099,6 +2102,99 @@ def test_free_provider_filters_live_and_cached_image_fallback(root, home, *, bin
             server.requests,
         )
         assert_true(len(server.get_requests) == 1, server.get_requests)
+
+
+def test_openrouter_sign_in_saves_a_free_key_from_the_terminal_and_the_web(root, home, *, binary):
+    metadata = {
+        "context_length": 65536,
+        "supported_parameters": ["tools"],
+        "pricing": {"prompt": "0", "completion": "0"},
+    }
+    models = {"data": [{"id": "paid"}, {**metadata, "id": "coder:free"}]}
+    codes = {}
+
+    def redeem(handler, body):
+        # Only the verifier the challenge was made from redeems the code.
+        digest = hashlib.sha256(body["code_verifier"].encode()).digest()
+        challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+        known = codes.get(body["code"]) == challenge
+        write_json_response(
+            handler,
+            {"key": "sk-or-signed-in"} if known else {"error": {"message": "bad code"}},
+            status=200 if known else 403,
+        )
+
+    def challenge_of(text):
+        return text.split("code_challenge=")[1].split("&")[0]
+
+    with Server([redeem], get_response=models) as server:
+        env = base_env(home, server.url)
+        del env["UAGENT_PROVIDERS"], env["UAGENT_MODEL"]
+        save_settings(
+            home, binary=binary, UAGENT_PROVIDERS={"openrouter-free": {"base_url": server.url}}
+        )
+
+        def control(**request):
+            result = run(
+                root, env, "--control", json.dumps({"kind": "openrouter", **request}), binary=binary
+            )
+            return json.loads(result.stdout)
+
+        # The web: the host keeps the verifier between the two steps.
+        started = control(action="start", callback="http://localhost:8080/")
+        assert_true("callback_url=http%3A%2F%2Flocalhost%3A8080%2F" in started["url"], started)
+        codes["web"] = challenge_of(started["url"])
+        refused = control(action="finish", code="web", state="another")
+        assert_true("no longer open" in refused["error"], refused)
+        assert_true(not server.requests, server.requests)
+        started = control(action="start", callback="http://localhost:8080/")
+        codes["web"] = challenge_of(started["url"])
+        state = started["url"].split("state=")[1].split("&")[0]
+        done = control(action="finish", code="web", state=state)
+        assert_true(done == {"model": "openrouter-free/coder:free"}, done)
+        saved = saved_settings(home)
+        assert_true(saved["variables"]["OPENROUTER_FREE_API_KEY"] == "sk-or-signed-in", saved)
+        assert_true("sk-or" not in json.dumps(done), done)
+        again = control(action="finish", code="web")
+        assert_true("no longer open" in again["error"], again)
+
+        # The terminal without a browser: a link, then the code it shows.
+        result = subprocess.run(
+            [str(binary), "setup", "openrouter", "--no-browser"],
+            cwd=root,
+            env=env,
+            input="typed\n",
+            text=True,
+            capture_output=True,
+            timeout=budget(10),
+        )
+        assert_true(result.returncode == 1 and "did not accept" in result.stderr, result)
+
+    def late(handler, body):
+        codes["typed"] = hashlib.sha256(body["code_verifier"].encode()).hexdigest()
+        write_json_response(handler, {"key": "sk-or-typed"})
+
+    with Server([late], get_response=models) as server:
+        save_settings(
+            home, binary=binary, UAGENT_PROVIDERS={"openrouter-free": {"base_url": server.url}}
+        )
+        result = subprocess.run(
+            [str(binary), "setup", "openrouter", "--no-browser"],
+            cwd=root,
+            env=env,
+            input="typed\n",
+            text=True,
+            capture_output=True,
+            timeout=budget(10),
+        )
+        assert_true(result.returncode == 0, result.stdout + result.stderr)
+        digest = bytes.fromhex(codes["typed"])
+        shown = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+        assert_true(f"{server.url}/auth?code_challenge={shown}" in result.stdout, result.stdout)
+        assert_true("callback_url" not in result.stdout, result.stdout)
+        assert_true("new conversations use openrouter-free/coder:free" in result.stdout, result)
+        saved = saved_settings(home)
+        assert_true(saved["variables"]["OPENROUTER_FREE_API_KEY"] == "sk-or-typed", saved)
 
 
 def test_an_image_the_vision_model_cannot_read_is_tried_once_per_turn(root, home, *, binary):

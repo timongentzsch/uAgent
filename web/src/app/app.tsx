@@ -863,6 +863,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       loadError={loadErrors[selected]}
                       newPlace={newPlace}
                       start={startUnfiled}
+                      settings={settings}
                       openList={compact ? openDrawer : undefined}
                       redirect={redirect}
                       updateView={updateView}

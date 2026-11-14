@@ -24,7 +24,7 @@ unpublished one needs its
 
 | Choice | What you get |
 | --- | --- |
-| In a container (offered where Docker runs) | The published image with the web interface, the agent's browser and the terminal. It sees only the folder you give it (`~/uagent-workspaces`), which the installer opens to the container's user (UID 10001) with `setfacl`, and starts with Docker. |
+| In a container (offered where Docker runs) | The published image with the web interface, the agent's browser and the terminal. Of this machine's files it sees only the folder you give it (`~/uagent-workspaces`), which the installer opens to the container's user (UID 10001) with `setfacl`, and starts with Docker. |
 | Here | The release under `~/.local`, checked against its checksum. It offers to put `~/.local/bin` on your `PATH` and to run the web interface as [a service at login](WEB.md). |
 
 | Variable | Effect |
@@ -118,14 +118,23 @@ Run it again to change them; a start with no provider offers it.
 
 ### Free-model setup
 
-Choose the free option in `uagent setup`, create an
+Sign in instead of copying a key: `uagent setup openrouter` opens OpenRouter in
+this machine's browser, you approve, and µAgent receives a key of your own. Over
+SSH, in a container or with `--no-browser` it prints a link to open on any
+device and asks for the code that page shows; the code works once, for ten
+minutes, and only with a secret that stays on this host. Without a terminal it
+takes the code from standard input and the first eligible model. The web
+interface offers the same on its home screen while no provider is set up. An
+OpenRouter account is still needed.
+
+Or choose the free option in `uagent setup`, create an
 [OpenRouter API key](https://openrouter.ai/keys), and select a model. Setup checks
 the key and queries OpenRouter's model catalogue, reusing a cached response for
 up to 24 hours. It lists `:free` variants with tool calling, at least 65,536
 context tokens, and zero prices in every advertised pricing field. The list is
 metadata-based, not a coding-quality ranking; no model names are hardcoded.
 
-This creates a separate `openrouter-free` provider with `options.free_only: true`
+Either way creates a separate `openrouter-free` provider with `options.free_only: true`
 and a key reference to `OPENROUTER_FREE_API_KEY`. Other providers are preserved.
 Choosing a model makes it the default for new conversations. If the key cannot
 be validated or no eligible models are available, setup leaves settings
@@ -335,7 +344,7 @@ conversation open in a terminal is the same one in the browser.
 [The agent's browser](BROWSER.md) covers the Chrome the agent can drive.
 
 For a folder on another machine, use **Remote hosts → Add host**, then choose that
-**Host** in **New conversation** or **New folder** and browse its Files tree.
+**Host** in **New conversation** or **New folder** and browse to a folder.
 The main still owns model keys, settings and history. The bottom Remote hosts panel
 reports connectivity and measured round trip; it does not switch the whole
 application. [Remote hosts](REMOTE_HOSTS.md) covers SSH setup and limits.

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "include/app/openrouter_signin.h"
 #include "include/core/json.h"
 #include "tests/unit/test_support.h"
 
@@ -132,6 +133,21 @@ TEST_CASE(TestSetupFreeCatalogue) {
   missing = eligible;
   missing.erase("supported_parameters");
   CHECK(parse(missing)->empty());
+}
+
+// RFC 7636, appendix B.
+TEST_CASE(TestSignInChallenge) {
+  CHECK(PkceChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk") ==
+        "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+  const SignIn pasted = BeginSignIn("https://openrouter.ai/api/v1", "");
+  CHECK(pasted.url.starts_with("https://openrouter.ai/auth?code_challenge=" +
+                               PkceChallenge(pasted.verifier)));
+  CHECK(pasted.url.find("callback_url") == std::string::npos);
+  const SignIn sent = BeginSignIn("https://openrouter.ai/api/v1",
+                                  "http://localhost:9/callback");
+  CHECK(sent.url.ends_with(
+      "&state=" + sent.state +
+      "&callback_url=http%3A%2F%2Flocalhost%3A9%2Fcallback"));
 }
 
 TEST_CASE(TestSetupSuggestsModel) {

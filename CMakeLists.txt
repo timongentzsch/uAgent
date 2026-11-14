@@ -283,6 +283,7 @@ add_library(
   src/cli/cli.cc
   src/app/session_server.cc
   src/app/session_worker.cc
+  src/app/openrouter_signin.cc
   src/app/setup.cc
   src/app/transient_batcher.cc
   src/app/session_terminal.cc

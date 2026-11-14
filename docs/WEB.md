@@ -70,6 +70,12 @@ the box is docked at the bottom, under the latest conversations from every
 place, and **All** opens the whole list. Conversation and folder actions
 choose a **Host** and browse its folders; typing a path remains optional.
 
+While the host has no provider, the home screen offers **Sign in with
+OpenRouter** for its [free models](GUIDE.md#free-model-setup). Opened on
+`localhost` or over HTTPS, OpenRouter sends the browser back signed in; on any
+other address it shows a code to paste. The key is saved on the host and never
+reaches the page. **I have an API key** opens Settings.
+
 µAgent suggests where a conversation in Scratch belongs, and never moves it
 by itself:
 

@@ -765,6 +765,8 @@ export interface CommandResults {
   schedule: ScheduleResult;
   models: ModelCatalogue;
   model: ModelCatalogue;
+  provider: { configured: boolean };
+  openrouter: { url: string; model?: string };
   config: Configuration;
   restart_conversations: { restarting: number; deferred: number };
   space: { spaces: Space[] };
@@ -847,6 +849,13 @@ export interface CommandInputs {
     schedule?: ScheduleRule;
   };
   models: { cwd?: string };
+  provider: object;
+  openrouter: {
+    action: "start" | "finish";
+    callback?: string;
+    code?: string;
+    state?: string;
+  };
   model: {
     operation: string;
     model?: string;

@@ -23,15 +23,26 @@ and approvals run through µAgent.*
 - **One conversation across devices.** Continue in the terminal or paired web
   app, including approvals from a phone. No conversation export or restart.
 - **Browser automation with manual takeover.** Watch Chrome and take control
-  when needed. Password-manager fills are masked in the agent's browser tools;
-  see the [security boundaries](docs/BROWSER.md#isolation).
+  when needed, in the container install or on Linux with Chrome and TigerVNC.
+  Password-manager fills are masked in the agent's browser tools; see the
+  [security boundaries](docs/BROWSER.md#isolation).
 - **Provider choice.** Use local or hosted models through OpenAI-compatible
-  Chat Completions, OpenAI Responses or Anthropic Messages APIs. Setup can
-  discover current free OpenRouter models that support tools.
+  Chat Completions, OpenAI Responses or Anthropic Messages APIs. Sign in to
+  OpenRouter for its current free models that support tools, with no key to
+  copy.
 - **Parallel work and review.** Delegate tasks and inspect agent reports,
   progress, spend and changes in the folder overview.
+- **Start first, file later.** Type into one box on the home screen; the
+  conversation starts in Scratch and µAgent suggests the folder or workspace it
+  belongs in.
+- **Files, terminal and artifacts in the web app.** Browse and diff a folder,
+  open a terminal, and work on sheets, slide decks, documents and a design
+  canvas the agent writes.
 - **Execution controls and reusable context.** OS sandboxing, approval modes,
-  undo, skills, memory, MCP and scheduled tasks.
+  plan mode, undo, skills, memory, MCP and scheduled tasks, with a Library of
+  what is saved across folders.
+- **Scriptable.** `uagent -p` runs one turn headless, with JSON output for
+  scripts.
 
 ## Comparison
 
@@ -56,10 +67,10 @@ required to run µAgent. Chrome starts when browser work needs it.
 ![Idle memory and CPU per headless turn compared with Claude Code, Codex CLI and omp](docs/images/comparison.svg)
 
 The same small task, model endpoint and container limits. Five-run medians,
-measured 2026-11-10: **26.4 MiB idle memory** and **17 ms CPU per headless turn**
+measured 2026-11-10 on µAgent 1.8.0: **26.4 MiB idle memory** and **17 ms CPU per headless turn**
 for µAgent. This measures agent overhead, not model quality or response speed.
-The Linux ARM64 complete installation is **22.6 MB**, including remote gateways
-and the sheet engine.
+The current Linux ARM64 complete installation is **22.6 MB** (measured
+2026-11-12), including remote gateways and the sheet engine.
 [Versions, raw results and method](benchmarks/README.md#footprint-comparison).
 
 ## Get started
@@ -69,8 +80,9 @@ curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install
 ```
 
 Choose a local or container install, then connect a provider. The optional free
-OpenRouter setup requires an OpenRouter account and API key; it lists eligible
-models from the current catalogue. Open a project:
+OpenRouter setup requires an OpenRouter account: sign in from the home screen or
+with `uagent setup openrouter`, with no key to copy. It lists eligible models
+from the current catalogue. Open a project:
 
 ```sh
 cd my-project
@@ -100,7 +112,8 @@ keys. Sharing an SSH account still shares its ordinary filesystem permissions.
 | Task | Reference |
 | --- | --- |
 | Start a conversation, choose a model, use terminal commands | [Guide](docs/GUIDE.md) |
-| Pair devices and use the web interface | [Web interface](docs/WEB.md) |
+| Pair devices and use the web interface, files, terminal and artifacts | [Web interface](docs/WEB.md) |
+| See what each tool does and how calls are approved | [Tools](docs/TOOLS.md) |
 | Connect SSH hosts and recover interrupted work | [Remote hosts](docs/REMOTE_HOSTS.md) |
 | Use browser automation and manual takeover | [Browser](docs/BROWSER.md) |
 | Manage context and recurring tasks | [Memory, skills and schedules](docs/MANAGEMENT.md) |

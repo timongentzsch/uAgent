@@ -404,6 +404,27 @@ On macOS, a sandbox profile larger than 64 KiB, and on Linux a policy larger
 than 96 KiB (very many writable roots or closed folders), refuses the
 command rather than running it under a truncated one.
 
+## The container
+
+The [Compose appliance](deploy/compose.yaml) runs the web host, the agent, its
+terminal and its Chrome as one nonroot user. What it does and does not bound:
+
+- **Files and processes.** Only the workspaces folder and a data volume are
+  mounted; the root filesystem is read-only, every capability but `SYS_CHROOT`
+  is dropped, `no-new-privileges` is set and the number of processes is
+  limited. No Docker socket and nothing of the host's home is mounted.
+- **Not the network.** Egress is the Docker host's: commands and the agent's
+  browser reach the host's services, the LAN and a cloud metadata address
+  unless the host's firewall says otherwise. [Browser](docs/BROWSER.md#isolation)
+  says how to restrict it.
+- **One trust level inside.** The command sandbox is on there as anywhere, so
+  agent commands do not read the saved keys or the browser's profiles. The web
+  terminal is yours and is not sandboxed: it reads both.
+- **User namespaces.** The seccomp profile lets any process in the container
+  create one, as Chrome's sandbox requires.
+- **What you build there runs here.** The workspaces folder is yours on the
+  host too; a script the agent wrote runs with your rights when you run it.
+
 ## Sensitive data
 
 Sessions and debug logs may contain source, prompts, commands, output and

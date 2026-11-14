@@ -11,6 +11,7 @@
 #include "include/app/library.h"
 #include "include/app/permissions.h"
 #include "include/app/schedule.h"
+#include "include/app/setup.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
 #include "include/core/effective_config.h"
@@ -34,6 +35,7 @@ json ManagementControl(const json& request) {
     ConfigureProvider(api);
     return {{"configured", !api.base_url.empty()}};
   }
+  if (kind == "openrouter") return OpenRouterControl(request);
   if (kind == "schedule") return ScheduleControl(request);
   if (kind == "permission_rules") return PermissionRulesControl(request);
   if (kind == "instructions") {

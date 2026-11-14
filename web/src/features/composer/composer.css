@@ -9,21 +9,34 @@
   overflow: visible;
   container: composer / inline-size;
 }
-/* A one-line draft shares its row with the controls until it wraps. */
+/* A one-line draft shares its row with the controls while both fit; the
+   controls take the next row before the draft is squeezed. */
 @container composer (min-width: 40rem) {
   .composer > form:not(:has(> .message-input[data-multiline])) {
-    grid-template-columns: minmax(0, 1fr) auto;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
+  }
+  .composer > form:not(:has(> .message-input[data-multiline])) > * {
+    flex: 0 0 100%;
+    min-width: 0;
   }
   .composer
     > form:not(:has(> .message-input[data-multiline]))
-    > :not(.message-input) {
-    grid-column: 1 / -1;
+    > .message-input
+    ~ :not(.composer-actions) {
+    order: 1;
+  }
+  .composer
+    > form:not(:has(> .message-input[data-multiline]))
+    > .message-input {
+    flex: 999 1 var(--pane);
   }
   .composer
     > form:not(:has(> .message-input[data-multiline]))
     > .composer-actions {
-    grid-area: 1 / 2;
+    flex: 1 1 auto;
+    max-width: 100%;
     padding-block: 0;
   }
 }

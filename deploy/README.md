@@ -23,7 +23,7 @@ Setup, the Compose variables and the isolation model are in
 | Path | Contents |
 | --- | --- |
 | `Dockerfile` | Builds the web UI and the native binary, then a Debian image with Chrome and a nonroot `agent` user |
-| `compose.yaml` | The service: read-only root, loopback-only port, data volume, workspaces mount, health check |
+| `compose.yaml` | The service: read-only root, no capabilities but `SYS_CHROOT`, no new privileges, a process limit, loopback-only port, data volume, workspaces mount, health check |
 | `chrome-policy.json` | Managed Chrome policy; [Browser](../docs/BROWSER.md) says what it blocks |
 | `seccomp-chrome.json` | Seccomp profile that lets Chrome create its own user namespace |
 | `footprint.sh` | Snapshot of the running container, for comparing before and during browser use |

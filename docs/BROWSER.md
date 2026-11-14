@@ -10,7 +10,7 @@ container, or a Linux host without Chrome and TigerVNC), the agent has no
 browser and reads pages with `web_fetch` only.
 
 The optional [Compose stack](../deploy/compose.yaml) builds one image with
-the web host, Chrome Stable and TigerVNC; a Linux host with the same
+the web host and TigerVNC, and fetches Chrome Stable when it starts; a Linux host with the same
 programs installed runs it [without Docker](#without-docker).
 
 ```sh

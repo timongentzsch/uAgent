@@ -118,17 +118,20 @@ test("the start box is the composer's own box, and the list leads back to it fro
       return [style.border, style.backgroundColor];
     });
   const composer = await look(page.locator(".composer > form"));
-  // The two lists and the two pages share one row.
-  const tabs = page.locator(".sidebar-tabs button");
-  await expect(tabs).toHaveText(["Recent", "Places", "Library", "Scheduled"]);
-  const tops = await tabs.evaluateAll((all) =>
-    all.map((tab) => Math.round(tab.getBoundingClientRect().top)),
+  // The two pages sit under the list, over the connection line.
+  const pages = page.locator(".sidebar-pages button");
+  await expect(pages).toHaveText(["Library", "Scheduled"]);
+  const edge = (selector, side) =>
+    page
+      .locator(selector)
+      .first()
+      .evaluate((node, side) => node.getBoundingClientRect()[side], side);
+  expect(await edge(".sidebar-pages", "top")).toBeGreaterThanOrEqual(
+    await edge(".sidebar nav", "bottom"),
   );
-  expect(new Set(tops).size).toBe(1);
-  for (const tab of await tabs.all())
-    expect(
-      await tab.evaluate((node) => node.scrollWidth <= node.clientWidth),
-    ).toBe(true);
+  expect(await edge(".sidebar-pages", "bottom")).toBeLessThanOrEqual(
+    await edge(".sidebar footer", "top"),
+  );
   await page
     .locator(".sidebar")
     .getByRole("button", { name: "Home", exact: true })

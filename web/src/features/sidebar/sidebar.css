@@ -243,25 +243,15 @@
 .connection .status-led {
   margin-right: var(--space-3);
 }
-/* The two lists and the two pages are one row of four. */
-.sidebar-tabs {
+.sidebar-pages {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--gap);
+  border-top: var(--border);
+  padding-top: var(--space-2);
 }
-.sidebar-tabs > .sidebar-sections {
-  display: contents;
-}
-/* Each as wide as its word needs, so the longest is not the one cut. */
-.sidebar-tabs button {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding-inline: var(--space-2);
-}
-.sidebar-tabs button:not([aria-pressed="true"], [aria-current]) {
-  background: var(--raised);
-}
-.sidebar-tabs .lucide {
-  display: none;
+.sidebar-pages button {
+  flex: 1;
+  font-size: var(--font-small);
 }
 /* In the sheet a narrow screen holds the list in, Home, Search and New are
    in the sheet's header. */

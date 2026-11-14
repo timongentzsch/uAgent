@@ -22,6 +22,8 @@ export interface Listing {
     dir: boolean;
     kind?: string;
     size?: number;
+    // The size its artboard names, [w, h]; 0 for a height left open.
+    artboard?: [number, number];
     count?: number;
     skip?: boolean;
   }[];
@@ -41,6 +43,8 @@ export interface Board {
   count?: number;
   w: number;
   h: number;
+  // The size its file names for it, known before it has drawn.
+  named?: { w: number; h: number };
   // Its place among the boards of one file, from 0: a document's page, a
   // sheet's tab. The file's address with "#" and its number shows it.
   at?: number;
@@ -271,8 +275,11 @@ export function boardsOf(
   const board = (file: string, like?: PageInfo): Board => {
     const path = join(dir, file);
     const { w, h } = pageSize(seen[path]?.info ?? like);
+    const [width, height] =
+      listing.entries.find((entry) => entry.name === file)?.artboard ?? [];
     return {
       path,
+      ...(width ? { named: { w: width, h: height || 0 } } : {}),
       title: seen[path]?.info?.title || file,
       media: "page",
       w,

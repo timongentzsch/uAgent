@@ -7,6 +7,7 @@
     "test": "node --test tests/*.test.js",
     "test:browser": "playwright test",
     "test:spec": "playwright test --project=chromium -x",
+    "record": "node recordings/record.js",
     "format": "biome format --write",
     "format:check": "biome format",
     "size": "node scripts/size.js",

@@ -413,10 +413,13 @@ terminal and its Chrome as one nonroot user. What it does and does not bound:
   mounted; the root filesystem is read-only, every capability but `SYS_CHROOT`
   is dropped, `no-new-privileges` is set and the number of processes is
   limited. No Docker socket and nothing of the host's home is mounted.
-- **Not the network.** Egress is the Docker host's: commands and the agent's
-  browser reach the host's services, the LAN and a cloud metadata address
-  unless the host's firewall says otherwise. [Browser](docs/BROWSER.md#isolation)
-  says how to restrict it.
+- **The network.** Rules loaded by a separate root-only container refuse
+  every private address (the host, the LAN, a tailnet, other containers, a
+  cloud metadata address) to everything in the agent's container; public
+  addresses stay open, so a compromised agent can still send what it reads
+  to the internet. `UAGENT_NETWORK_ALLOW` names exceptions and
+  `UAGENT_NETWORK=open` turns the rules off; see
+  [Browser](docs/BROWSER.md#isolation).
 - **One trust level inside.** The command sandbox is on there as anywhere, so
   agent commands do not read the saved keys or the browser's profiles. The web
   terminal is yours and is not sandboxed: it reads both.

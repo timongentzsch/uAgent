@@ -386,6 +386,34 @@ export function ConfirmModal({
   );
 }
 
+// A row of a title and controls along an edge of its pane: one height and
+// padding per density, wherever it is.
+export function Bar({
+  as = "div",
+  density,
+  edge,
+  title,
+  class: className = "",
+  children,
+  ...props
+}: Omit<HTMLAttributes<HTMLElement>, "title"> & {
+  as?: "div" | "header" | "footer";
+  density?: "dense" | "flush";
+  edge?: "top" | "bottom";
+  title?: ComponentChildren;
+}) {
+  return h(
+    as,
+    {
+      ...props,
+      class: `bar ${className}`.trim(),
+      "data-density": density,
+      "data-edge": edge,
+    },
+    title != null && <strong class="bar-title truncate">{title}</strong>,
+    children,
+  );
+}
 // A row of controls that wraps when it runs out of room.
 export function Cluster({
   align = "start",

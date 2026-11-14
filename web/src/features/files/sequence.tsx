@@ -21,6 +21,7 @@ import {
   SlidersHorizontal,
 } from "lucide-preact";
 import {
+  Bar,
   Actions,
   Button,
   ConfirmModal,
@@ -770,7 +771,7 @@ export default function Sequence({
           <Notice tone="error">{failure.text}</Notice>
         </p>
       )}
-      <div class="page-tools">
+      <Bar density="dense" edge="bottom" class="page-tools">
         {boards.length > 1 &&
           !sheet &&
           toggle(
@@ -848,9 +849,9 @@ export default function Sequence({
           <ExternalLink />
         </IconButton>
         {!editable && status}
-      </div>
+      </Bar>
       {mode === "edit" && (
-        <div class="page-tools">
+        <Bar density="dense" edge="bottom" class="page-tools">
           <FormatTools
             caret={caret}
             format={(format) =>
@@ -861,7 +862,7 @@ export default function Sequence({
             link={() => setLinking(!linking)}
           />
           {status}
-        </div>
+        </Bar>
       )}
       {linking && caret && (
         <LinkField

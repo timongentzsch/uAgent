@@ -6,10 +6,7 @@
   height: var(--control-m);
 }
 .sidebar-head {
-  display: flex;
-  align-items: center;
-  gap: var(--gap);
-  min-height: var(--control-l);
+  padding: 0;
 }
 .sidebar-head .brand {
   margin-right: auto;
@@ -346,11 +343,6 @@
 }
 .host-phase {
   flex: none;
-}
-.host-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
 }
 @media (pointer: coarse) {
   .sidebar .host-row,

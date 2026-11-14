@@ -22,6 +22,7 @@ import {
   Undo2,
 } from "lucide-preact";
 import {
+  Bar,
   Actions,
   Button,
   ConfirmModal,
@@ -507,7 +508,7 @@ export function SheetBar({
       `Sum ${number(summary.sum)} · Average ${number(summary.average)} · Count ${summary.count}`,
   ].filter(Boolean);
   return (
-    <div class="sheet-bar">
+    <Bar density="dense" edge="top" class="sheet-bar">
       <div class="sheet-tabs" ref={list}>
         <Tabs
           label="Tabs"
@@ -560,6 +561,6 @@ export function SheetBar({
           Comment
         </Button>
       )}
-    </div>
+    </Bar>
   );
 }

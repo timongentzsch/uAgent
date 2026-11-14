@@ -50,6 +50,10 @@
     --control-m: calc(32rem / 14);
     --control-l: calc(36rem / 14);
     --touch: calc(44rem / 14);
+    /* A bar: a row of a title and controls along an edge of its pane. */
+    --bar-min: var(--touch);
+    --bar-pad-x: var(--space-4);
+    --bar-pad-y: var(--space-2);
     --icon-l: calc(20rem / 14);
     --logo: calc(48rem / 14);
     /* An attachment's thumbnail height; its width is 4:3. */

@@ -23,6 +23,7 @@ import { useResource } from "../../shared/use-resource.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 import { useAction } from "../../shared/use-action.ts";
 import {
+  Bar,
   Button,
   EmptyState,
   Notice,
@@ -675,7 +676,7 @@ export default function Files({
       // so the keys of what it shows are its own.
       tabIndex={-1}
     >
-      <header class="files-head">
+      <Bar as="header" edge="bottom" class="files-head">
         {above && (
           <IconButton
             // Beside the list on a wide pane, a file needs no way back to
@@ -775,7 +776,7 @@ export default function Files({
             <X />
           </IconButton>
         )}
-      </header>
+      </Bar>
       {stage && (
         <div class="files-stage">
           {arranging.error != null && (

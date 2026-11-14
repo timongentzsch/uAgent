@@ -27,6 +27,7 @@ import {
 } from "lucide-preact";
 import { useHostContext } from "../../state/host-context.ts";
 import {
+  Bar,
   Mark,
   Time,
   Button,
@@ -798,7 +799,7 @@ function SidebarView({
   ];
   return (
     <>
-      <div class="sidebar-head">
+      <Bar density="dense" class="sidebar-head">
         <a
           class="brand"
           href="#"
@@ -816,7 +817,7 @@ function SidebarView({
           create={create}
           online={online}
         />
-      </div>
+      </Bar>
       <div class="sidebar-sections segmented" role="group" aria-label="List">
         {(
           [

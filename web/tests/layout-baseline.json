@@ -48,31 +48,15 @@
   "wrappers": [
     "app/chat-page.tsx home-head",
     "app/conversation-header.tsx conversation-head",
-    "features/browser/browser.tsx browser-card-actions",
-    "features/browser/frame.tsx browser-bar",
     "features/browser/touch.tsx float-toolbar",
     "features/composer/composer.tsx composer-actions",
-    "features/files/files.tsx files-head",
-    "features/files/presenter.tsx presenter-bar",
     "features/files/sequence.tsx float-toolbar",
     "features/files/sequence.tsx page-present-bar",
-    "features/files/sheet.tsx sheet-bar",
     "features/filing/filing.tsx filing-actions",
-    "features/library/artifact.tsx editor-head",
-    "features/library/artifact.tsx library-actions",
     "features/library/document.tsx document-toolbar",
-    "features/library/document.tsx editor-actions",
-    "features/library/document.tsx editor-head",
-    "features/library/library.tsx management-toolbar",
     "features/overview/overview.tsx overview-head",
-    "features/scheduled/scheduled.tsx editor-actions",
-    "features/scheduled/scheduled.tsx editor-head",
-    "features/scheduled/scheduled.tsx management-toolbar",
     "features/settings/tools.tsx tool-choice-head",
-    "features/sidebar/hosts.tsx host-actions",
     "features/sidebar/hosts.tsx place-head",
-    "features/sidebar/sidebar.tsx place-head",
-    "features/sidebar/sidebar.tsx sidebar-head",
-    "features/terminal/terminal.tsx terminal-bar"
+    "features/sidebar/sidebar.tsx place-head"
   ]
 }

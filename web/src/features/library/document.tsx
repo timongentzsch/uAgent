@@ -6,6 +6,8 @@ import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
 import { useApi } from "../../state/api.ts";
 import type { LibraryItem, LibraryPlace } from "../../shared/types.ts";
 import {
+  Cluster,
+  Bar,
   Actions,
   Button,
   ConfirmModal,
@@ -243,7 +245,7 @@ export default function LibraryDocument({
   const memory = kind === "memory";
   return (
     <fieldset disabled={busy} class="library-document">
-      <div class="editor-head">
+      <Bar density="flush" class="editor-head">
         <Button variant="quiet" onClick={close}>
           <ChevronLeft />
           Back
@@ -313,7 +315,7 @@ export default function LibraryDocument({
             )}
           </Menu>
         )}
-      </div>
+      </Bar>
       {!item.key ? (
         <div class="field-row">
           <Field label="Name">
@@ -413,7 +415,7 @@ export default function LibraryDocument({
         </dl>
       </details>
       {item.writable && editing && (
-        <div class="editor-actions">
+        <Cluster align="end" class="editor-actions">
           <small class="muted">Saved changes apply to new conversations.</small>
           <Button
             onClick={() => {
@@ -439,7 +441,7 @@ export default function LibraryDocument({
           >
             Save
           </Button>
-        </div>
+        </Cluster>
       )}
       {dialog === "delete" && (
         <ConfirmModal

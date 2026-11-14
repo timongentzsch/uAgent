@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { ClipboardPaste, Copy, Keyboard } from "lucide-preact";
-import { Button, IconButton } from "../../shared/ui.tsx";
+import { Bar, Button, IconButton } from "../../shared/ui.tsx";
 import { coarsePointer } from "../../shared/layout.ts";
 import "./browser.css";
 
@@ -15,7 +15,9 @@ export function BrowserFrame({
   return (
     <section class="browser-panel">
       {screen}
-      <div class="browser-bar">{bar}</div>
+      <Bar density="dense" edge="top" class="browser-bar">
+        {bar}
+      </Bar>
     </section>
   );
 }

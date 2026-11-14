@@ -36,11 +36,6 @@
   display: grid;
   gap: var(--space-3);
 }
-.overview-caption {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 .overview-caption .section-title {
   flex: 1;
   margin: 0;

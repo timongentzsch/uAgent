@@ -955,19 +955,44 @@
     display: grid;
     gap: var(--gap);
   }
-  .cluster,
-  .editor-actions {
+  .cluster {
     display: flex;
     align-items: center;
     gap: var(--gap);
     flex-wrap: wrap;
   }
-  .cluster[data-align="end"],
-  .editor-actions {
+  .cluster[data-align="end"] {
     justify-content: flex-end;
   }
   .cluster[data-align="between"] {
     justify-content: space-between;
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    min-height: var(--bar-min);
+    padding: var(--bar-pad-y) var(--bar-pad-x);
+  }
+  .bar[data-density="dense"] {
+    --bar-min: var(--control-l);
+    --bar-pad-y: 0;
+  }
+  /* Inside a pane that pads its content already. */
+  .bar[data-density="flush"] {
+    min-height: 0;
+    padding: 0;
+  }
+  .bar[data-edge="bottom"] {
+    border-bottom: var(--border);
+  }
+  .bar[data-edge="top"] {
+    border-top: var(--border);
+  }
+  .bar-title {
+    flex: 1;
+    min-width: 0;
   }
   /* A field shares its row with controls while both fit; the controls take
      the next row before the field is squeezed. */

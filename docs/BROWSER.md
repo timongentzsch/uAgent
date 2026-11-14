@@ -34,6 +34,12 @@ code, run `docker compose -f deploy/compose.yaml exec uagent uagent --web`.
 - The `uagent-data` volume holds `/data/agent` (history, pairing, settings)
   and `/data/browser` (Chrome profiles). Back up the whole volume to keep
   every login.
+- The image holds no Chrome. When the container starts it fetches Google's
+  stable package onto the data volume (about 140 MB), checks it against the
+  repository index Google signs, and checks again daily; a newer one is
+  unpacked beside the one in use and taken the next time the browser starts.
+  Until the first download is done the browser says it is still downloading.
+  A failed check keeps the Chrome that is there.
 - Chrome and Xvnc stay stopped until the browser is first used.
 - Set `TZ` and `LANGUAGE` (for example `TZ=Europe/Berlin` and
   `LANGUAGE=de`) in `.env.appliance`: pages see that clock and language
@@ -54,6 +60,7 @@ code, run `docker compose -f deploy/compose.yaml exec uagent uagent --web`.
 | `UAGENT_TMPFS_SIZE` | `512m` | `/tmp` tmpfs size |
 | `UAGENT_NETWORK` | `private` | `open` lets the agent reach whatever the Docker host reaches |
 | `UAGENT_NETWORK_ALLOW` | none | Private addresses the agent may reach: `host`, `host:port` or a CIDR, separated by spaces |
+| `UAGENT_CHROME` | `auto` | `off` leaves the Chrome on the data volume as it is: none is fetched or updated |
 | `UAGENT_PIDS_LIMIT` | `4096` | Most processes and threads the container may hold |
 | `UAGENT_MEM_LIMIT` | none | Memory limit, such as `4g`; size it with `deploy/footprint.sh` |
 | `UAGENT_CPUS` | none | CPU limit, such as `4` |

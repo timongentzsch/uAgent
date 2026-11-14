@@ -295,6 +295,33 @@ struct FakeRuntime : FakeBrowser {
 };
 }  // namespace
 
+// A container fetches Chrome after it starts: until it is there, an action
+// says so, not that the browser broke.
+TEST_CASE(TestBrowserWaitsForChrome) {
+  namespace fs = std::filesystem;
+  FakeRuntime fake("fetch");
+  const fs::path bin = fake.workspace.root / "bin";
+  fs::remove(bin / "google-chrome-stable");
+  ScopedEnv only("PATH", bin.string());
+  const auto says = [](const std::string& text, std::string_view part) {
+    return text.find(part) != std::string::npos;
+  };
+  const auto status = [&](const std::string& text) {
+    fs::create_directories(fake.data / "chrome");
+    std::string error;
+    CHECK(WritePrivateFile((fake.data / "chrome/status").string(), text + "\n",
+                           error));
+    return fake.Act({{"op", "observe"}, {"image", false}}).value("error", "");
+  };
+  CHECK(says(status("downloading 157.0.1-1"),
+             "Chrome 157.0.1-1 is still downloading"));
+  CHECK(says(status("failed the index is not signed by Google's key"),
+             "could not be downloaded: the index is not signed"));
+  fs::remove(fake.data / "chrome/status");
+  CHECK(says(fake.Act({{"op", "observe"}, {"image", false}}).value("error", ""),
+             "Google Chrome is not installed"));
+}
+
 // Scheduling is independent of page execution: FIFO admission, explicit
 // cancellation, fencing and expiry can be exercised without starting Chrome.
 TEST_CASE(TestBrowserScheduling) {

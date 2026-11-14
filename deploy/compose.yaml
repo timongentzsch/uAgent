@@ -58,6 +58,7 @@ services:
         restart: true
     environment:
       UAGENT_WEB_PORT: ${UAGENT_WEB_PORT:-8080}
+      UAGENT_CHROME: ${UAGENT_CHROME:-auto}
     volumes:
       - uagent-data:/data
       - ${UAGENT_WORKSPACES:-../workspaces}:/workspaces

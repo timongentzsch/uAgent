@@ -29,18 +29,28 @@ FROM ${UAGENT_INSTALL_STAGE} AS installation
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
     bash ca-certificates curl git ripgrep openssh-client tini tigervnc-standalone-server \
-    xauth nftables fonts-liberation fonts-dejavu-core fonts-noto-core \
+    xauth nftables gpgv fonts-liberation fonts-dejavu-core fonts-noto-core \
     fonts-noto-color-emoji libcurl4 \
+    # What Chrome needs of the system, without Chrome: chrome-update fetches
+    # that onto the data volume, where it can be replaced.
     && touch /etc/default/google-chrome \
     && curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb -o /tmp/chrome.deb \
     && apt-get install -y --no-install-recommends /tmp/chrome.deb \
-    && rm -f /tmp/chrome.deb \
+    && dpkg --remove --force-depends google-chrome-stable \
+    && rm -rf /tmp/chrome.deb /opt/google /etc/default/google-chrome \
     && rm -rf /var/lib/apt/lists/*
 # The install, not the bare binary: the bundled skills sit beside it.
 COPY --from=installation /opt/uagent/ /usr/local/
 RUN echo container >/usr/local/share/uagent/install
 COPY deploy/chrome-policy.json /etc/opt/chrome/policies/managed/uagent.json
 COPY deploy/firewall.sh /usr/local/bin/uagent-firewall
+COPY deploy/chrome-update.sh /usr/local/bin/chrome-update
+COPY deploy/start.sh /usr/local/bin/uagent-start
+COPY deploy/google-chrome.asc /tmp/google-chrome.asc
+# gpgv reads the key as bytes: the armour's base64, without its checksum line.
+RUN awk '/^-----END/ { on = 0 } on && !/^=/ { print } /^$/ { on = 1 }' \
+      /tmp/google-chrome.asc | base64 -d >/usr/local/share/uagent/google-chrome.gpg \
+    && rm /tmp/google-chrome.asc
 RUN groupadd --gid 10001 agent && useradd --uid 10001 --gid 10001 \
     --home-dir /data/agent --shell /bin/bash agent \
     && mkdir -p /data/agent /data/browser /workspaces \
@@ -48,8 +58,9 @@ RUN groupadd --gid 10001 agent && useradd --uid 10001 --gid 10001 \
     && chmod 0700 /data/agent /data/browser
 USER agent
 ENV HOME=/data/agent UAGENT_BROWSER_DATA=/data/browser \
-    UAGENT_WEB_BIND=0.0.0.0 UAGENT_WEB_PORT=8080
+    UAGENT_WEB_BIND=0.0.0.0 UAGENT_WEB_PORT=8080 \
+    PATH=/data/browser/chrome/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WORKDIR /workspaces
 EXPOSE 8080
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/usr/local/bin/uagent", "--web"]
+CMD ["/usr/local/bin/uagent-start"]

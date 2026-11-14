@@ -14,6 +14,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -24,6 +25,7 @@
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/private_store.h"
+#include "include/core/strings.h"
 #include "include/transport/session.h"
 #include "src/browser/runtime_internal.h"
 
@@ -282,6 +284,20 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   if (Alive(chrome_pid_) && Alive(vnc_pid_)) return true;
   Stop(true);
   std::string base = directory_;
+  // The container fetches Chrome onto the data volume once it has started.
+  if (!ExecutableOnPath("google-chrome-stable")) {
+    const std::string fetch =
+        Trim(ReadFile(base + "/chrome/status", 256).value_or(""));
+    constexpr std::string_view kDownloading = "downloading ";
+    constexpr std::string_view kFailed = "failed ";
+    error = fetch.starts_with(kDownloading)
+                ? "Chrome " + fetch.substr(kDownloading.size()) +
+                      " is still downloading; try again in a minute"
+            : fetch.starts_with(kFailed) ? "Chrome could not be downloaded: " +
+                                               fetch.substr(kFailed.size())
+                                         : "Google Chrome is not installed";
+    return false;
+  }
   std::string profile = ProfilePath();
   if (!EnsureDataDirectory(profile)) {
     error = "cannot create persistent Chrome profile";

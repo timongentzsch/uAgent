@@ -451,6 +451,9 @@ jobs:
           timeout 60 sh -c 'until docker exec probe curl -fs -o /dev/null http://127.0.0.1:8080/; do sleep 1; done'
           CHECK_LISTENER="$probe:8080" deploy/check-network.sh
           docker rm -f probe
+          # Chrome is fetched, checked against Google's signed index and run.
+          timeout 600 sh -c 'until docker compose -f deploy/compose.yaml exec -T uagent grep -q "^ready " /data/browser/chrome/status 2>/dev/null; do sleep 5; done'
+          docker compose -f deploy/compose.yaml exec -T uagent google-chrome-stable --version
           docker compose -f deploy/compose.yaml down -v
 
   checks:

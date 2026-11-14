@@ -200,6 +200,7 @@ export default function Tools({
                     }
                   />
                   <span>
+                    {/* raw: a label's first line, inside its text. */}
                     <span class="tool-choice-head">
                       <strong>
                         <DataText>{tool.title}</DataText>

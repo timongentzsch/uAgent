@@ -28,23 +28,31 @@ for (const { path, css: raw } of sheets) {
     comment.replace(/[^\n]/g, " "),
   );
   const rules = [];
+  // A rule under a comment that begins "raw:" says why it is as it is.
+  const excused = [];
   let start = 0;
   for (let at = 0; at < css.length; at++) {
     const char = css[at];
     if (char !== "{" && char !== "}" && char !== ";") continue;
     const text = css.slice(start, at);
-    if (char === "{") rules.push(text.trim());
-    else {
+    if (char === "{") {
+      rules.push(text.trim());
+      excused.push(/\/\*\s*raw:/.test(raw.slice(start, at)));
+    } else {
       const colon = text.indexOf(":");
       if (colon > 0 && text.trim())
         declarations.push({
           where: `${path}:${css.slice(0, start + text.search(/\S/)).split("\n").length}`,
           rule: rules.join(" "),
           selector: rules.filter((rule) => !rule.startsWith("@")).join(" "),
+          excused: excused.some(Boolean),
           property: text.slice(0, colon).trim(),
           value: text.slice(colon + 1).trim(),
         });
-      if (char === "}") rules.pop();
+      if (char === "}") {
+        rules.pop();
+        excused.pop();
+      }
     }
     start = at + 1;
   }

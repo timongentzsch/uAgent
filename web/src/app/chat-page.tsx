@@ -329,6 +329,7 @@ export default function ChatPage({
     </SideLayout>
   ) : (
     <div class="home">
+      {/* raw: the home screen's heading, a block and not a bar. */}
       <header class="home-head">
         <Mark className="cursor-mark" />
         <h1>What are we working on?</h1>

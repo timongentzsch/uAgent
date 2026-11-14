@@ -76,6 +76,7 @@
 .permission-control {
   flex-shrink: 0;
 }
+/* raw: beside the model in the draft's row, in its text size. */
 .permission-control > button {
   font-size: var(--font-small);
   padding-inline: var(--space-3);
@@ -94,6 +95,7 @@
 .status-line:has(button) {
   min-height: var(--control-slim);
 }
+/* raw: every control of the status line is as slim as the line. */
 .status-line button {
   min-height: var(--control-slim);
   padding-block: 0;
@@ -129,6 +131,7 @@
   flex: 0 1 auto;
   min-width: 0;
 }
+/* raw: a line of figures among text: slim, in the line's own size, and cut short as a button, which .truncate's block box would break. */
 .metrics > button {
   font-size: inherit;
   min-height: var(--control-slim);
@@ -162,6 +165,7 @@
     gap: var(--space-1);
     padding-inline: var(--space-2);
   }
+  /* raw: beside the model in the draft's row, in its text size. */
   .permission-control > button {
     min-width: var(--control);
     padding-inline: var(--space-2);
@@ -239,6 +243,7 @@
   margin-left: auto;
 }
 @container column (max-width: 43rem) {
+  /* raw: touch targets in the queue. */
   .queue-controls button {
     min-height: var(--touch);
     padding-inline: var(--space-3);

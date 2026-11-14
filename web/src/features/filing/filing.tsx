@@ -133,6 +133,7 @@ export function Suggestion({
       </Button>
     ))
   );
+  // raw: inside a row's line of text, where a block cannot go.
   if (compact) return <span class="filing-actions">{buttons}</span>;
   return (
     <section class="filing card" aria-label="Suggested place">

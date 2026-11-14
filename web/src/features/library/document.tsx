@@ -350,6 +350,7 @@ export default function LibraryDocument({
           Changed on disk. Your draft is retained.
         </Notice>
       )}
+      {/* raw: one segmented control, not a bar of several. */}
       <div class="segmented document-toolbar">
         {item.writable && !editing && (
           <Button onClick={() => setEditing(true)}>

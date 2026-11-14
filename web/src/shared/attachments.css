@@ -10,6 +10,7 @@
   padding-block: var(--space-2);
   text-decoration: none;
 }
+/* raw: a chip's name, wherever a chip is drawn. */
 .file-chip > span {
   min-width: 0;
   overflow: hidden;

@@ -11,6 +11,7 @@
 .sidebar-head .brand {
   margin-right: auto;
 }
+/* raw: the list's head is set in the small size. */
 .sidebar-head button {
   font-size: var(--font-small);
 }
@@ -38,6 +39,7 @@
   font-size: var(--font-body);
   font-weight: var(--weight-strong);
 }
+/* raw: a heading that folds its list: the heading's own text, full width. */
 .sidebar h2 button {
   width: 100%;
   justify-content: flex-start;
@@ -230,6 +232,7 @@
   gap: var(--gap);
   padding: 0;
 }
+/* raw: two equal halves of the list's tabs. */
 .sidebar-sections button {
   flex: 1;
   font-size: var(--font-small);
@@ -246,6 +249,7 @@
   border-top: var(--border);
   padding-top: var(--space-2);
 }
+/* raw: two equal halves of the list's foot. */
 .sidebar-pages button {
   flex: 1;
   font-size: var(--font-small);

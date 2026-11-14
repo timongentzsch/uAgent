@@ -6,6 +6,7 @@
   overflow-x: auto;
   scrollbar-width: none;
 }
+/* raw: keys share the bar's width equally. */
 .key-bar > button {
   flex: 1 1 0;
   min-width: 0;

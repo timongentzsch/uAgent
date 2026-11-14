@@ -119,6 +119,7 @@ export default function ConversationHeader({
     ),
   };
   return (
+    // raw: the frame's own header: its room is the app's to give.
     <header class="conversation-head">
       {compact && (
         <IconButton label="Open conversations" onClick={openDrawer}>

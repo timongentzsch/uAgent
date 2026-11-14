@@ -59,6 +59,44 @@ def decide(handler):
     write_json_response(handler, {"answers": answers, "usage": {"input_tokens": 9, "cost": 0.0001}})
 
 
+# The turn web/recordings/terminal.rec.js films: read, edit, test, answer,
+# each after a moment, as a model takes one.
+FILM = "Reserve stock when an order is placed"
+
+
+def film(done):
+    time.sleep(1.2)
+    if "film-read" not in done:
+        return tool_call("read_path", {"path": "src/inventory.cc"}, call_id="film-read")
+    if "film-edit" not in done:
+        return tool_call(
+            "edit_file",
+            {
+                "path": "src/inventory.cc",
+                "edits": [
+                    {
+                        "old": "  // TODO: hold the stock for this order.\n  return true;",
+                        "new": "  Stock& stock = stock_.at(item);\n"
+                        "  if (count > stock.on_hand - stock.reserved) return false;\n"
+                        "  stock.reserved += count;\n"
+                        "  return true;",
+                    }
+                ],
+            },
+            call_id="film-edit",
+        )
+    if "film-test" not in done:
+        return tool_call(
+            "run", {"command": "make test", "description": "Run the tests"}, call_id="film-test"
+        )
+    return event(
+        {
+            "content": "An order now reserves its stock: `Inventory::Reserve` holds the "
+            "items and refuses when too few are left. The three tests pass."
+        }
+    )
+
+
 def answer(handler, body):
     if "questions" in body:
         return decide(handler)
@@ -69,6 +107,8 @@ def answer(handler, body):
     if "Title this coding session" in json.dumps(body):
         # "File me probe" fits nothing by its words: its place is asked for
         # once its turn has ended.
+        if FILM in prompt:
+            return event({"content": "Reserve stock for an order"})
         late = "File me probe" in prompt
         fits = "\nfits: 1 continues" if "<conversations>" in prompt and not late else ""
         titled.set()
@@ -101,6 +141,8 @@ def answer(handler, body):
                 ]
             }
         )
+    if FILM in prompt:
+        return film({message.get("tool_call_id") for message in body["messages"]})
     unselected = prompt in ("Retained follow-up", "Filing probe", "File me probe")
     expected_model = "model-a" if unselected else "model-b"
     assert body.get("model") == expected_model, body.get("model")
@@ -293,7 +335,11 @@ def answer(handler, body):
 
 
 with (
-    tempfile.TemporaryDirectory(prefix="uagent-browser-") as temporary,
+    # A film's project sits outside the temporary folder the sandbox grants,
+    # which would otherwise be said in the terminal being filmed.
+    tempfile.TemporaryDirectory(
+        prefix="uagent-browser-", dir=os.environ.get("UAGENT_FIXTURE_ROOT")
+    ) as temporary,
     Server(
         [answer],
         get_response={

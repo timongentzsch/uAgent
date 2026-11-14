@@ -72,7 +72,7 @@ export function BrowserLoading() {
         <>
           <div class="sheet-control browser-status-menu">
             <Button variant="quiet" class="browser-status" disabled>
-              <span>Browser</span>
+              <span class="truncate">Browser</span>
             </Button>
           </div>
           <BrowserTools disabled />

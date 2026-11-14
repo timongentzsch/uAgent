@@ -109,7 +109,9 @@ export function SettingField({
     onKeyDown: keys,
   };
   const control = setting.locked ? (
-    <span class="setting-summary">{shown(setting.effective) || "Set"}</span>
+    <span class="setting-summary truncate">
+      {shown(setting.effective) || "Set"}
+    </span>
   ) : setting.type === "boolean" ? (
     <Switch
       label={setting.label}
@@ -141,7 +143,10 @@ export function SettingField({
       title="Model, variant and effort"
       disabled={disabled}
       trigger={
-        <span class="setting-summary" data-default={held ? undefined : ""}>
+        <span
+          class="setting-summary truncate"
+          data-default={held ? undefined : ""}
+        >
           {held || below}
         </span>
       }

@@ -49,6 +49,17 @@ recovery boundaries and current feature limits.
 | `web/src/` | Browser event projection and presentation: `app/` shell and its hooks, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting |
 | `tests/`, `benchmarks/` | Behavioral contracts and measurement |
 
+The web client lays screens out from a few pieces in `web/src/shared/ui.tsx`,
+styled once in `shared/styles/primitives.css`: `Group` and `Row` for lists of
+settings, `Bar` for a row of a title and controls along an edge of a pane,
+`Cluster` (and `Actions`) for a wrapping row of controls, `InputRow` for a
+field with controls beside it, which wrap before the field is squeezed, and
+`.truncate` for text that is cut short. A feature's stylesheet says what is
+its own. `web/tests/layout.test.js` holds this: hand-written truncation,
+button sizes, flexed fields and bar-like wrappers fail unless listed in
+`layout-baseline.json`, which only shrinks, and the set of container and
+media breakpoints is fixed.
+
 The registry owns tool contracts, configuration descriptors own settings, route
 capabilities own provider behavior, and the runtime owns conversation state.
 Clients never interpret shell text to infer permission or mutation authority.

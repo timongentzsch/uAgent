@@ -584,7 +584,7 @@ export default function BrowserPanel({
                   : "idle"
             }
           />
-          <span>
+          <span class="truncate">
             {state}
             {profileName !== "Default" && ` · ${profileName}`}
           </span>

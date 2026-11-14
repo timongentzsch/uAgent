@@ -803,16 +803,20 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
       return [x, y, width, height].map(Math.round);
     });
   const reading = files.locator(".page-stage");
+  // Drawn, not the skeleton it waits behind, which fills the stage.
+  await expect(
+    reading.locator(".page-holder > .page-frame:not([data-waiting])"),
+  ).toBeVisible();
   const first = await placed(reading);
   await files.getByRole("button", { name: "Next slide" }).click();
   await expect(count).toHaveText("2 / 3");
-  expect(await placed(reading)).toEqual(first);
+  await expect.poll(() => placed(reading)).toEqual(first);
   await files.getByRole("button", { name: "Next slide" }).click();
   await expect(count).toHaveText("3 / 3");
   await expect(files.locator(".page-main > .page-notes")).toContainText(
     "None for this slide",
   );
-  expect(await placed(reading)).toEqual(first);
+  await expect.poll(() => placed(reading)).toEqual(first);
   await files.getByRole("button", { name: "Previous slide" }).click();
   await files.getByRole("button", { name: "Previous slide" }).click();
   await expect(count).toHaveText("1 / 3");
@@ -832,12 +836,12 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
   await app.keyboard.press("ArrowRight");
   await expect(stage.getByText("2 / 3")).toBeVisible();
   await expect(stage.locator(".page-notes")).toHaveText("Three steps.");
-  expect(await placed(stage)).toEqual(shown);
+  await expect.poll(() => placed(stage)).toEqual(shown);
   // Presenting too, a slide with none keeps the notes' room.
   await app.keyboard.press("ArrowRight");
   await expect(stage.getByText("3 / 3")).toBeVisible();
   await expect(stage.locator(".page-notes")).toHaveText("");
-  expect(await placed(stage)).toEqual(shown);
+  await expect.poll(() => placed(stage)).toEqual(shown);
   await app.keyboard.press("ArrowLeft");
   await expect(stage.getByText("2 / 3")).toBeVisible();
   // Space on the focused Next presses it: one slide on, not a second for

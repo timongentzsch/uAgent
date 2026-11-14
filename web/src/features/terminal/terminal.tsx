@@ -356,7 +356,7 @@ function Place({
   ended?: boolean;
 }) {
   return (
-    <span class="terminal-place" title={cwd}>
+    <span class="terminal-place truncate" title={cwd}>
       {name}
       <span class="muted"> · {ended ? "ended" : where(cwd)}</span>
     </span>

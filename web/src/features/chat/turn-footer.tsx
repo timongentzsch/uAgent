@@ -46,7 +46,7 @@ export function TurnFooter({
             .join(" · ")}
         </Button>
       )}
-      <span class="turn-summary">
+      <span class="turn-summary truncate">
         {files.length > 0 && "· "}
         {summary.usage_reported !== false && (
           <span>{count(tokens(summary.usage))} tokens · </span>

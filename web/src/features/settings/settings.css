@@ -1,7 +1,4 @@
 .setting-summary {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--text);
 }
 .setting-summary[data-default] {

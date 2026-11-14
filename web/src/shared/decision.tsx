@@ -161,7 +161,7 @@ export default function Decision({
               {(cwd || !!approval.risks?.length) && (
                 <div class="decision-where">
                   {cwd && (
-                    <p class="decision-folder" title={cwd}>
+                    <p class="decision-folder truncate" title={cwd}>
                       in {cwd}
                     </p>
                   )}

@@ -353,7 +353,7 @@ export default function ChatPage({
                 onClick={() => newPlace("conversation", text)}
               >
                 <LayoutGrid />
-                <span>Scratch</span>
+                <span class="truncate">Scratch</span>
                 <ChevronDown />
               </Button>
               <SheetButton
@@ -365,7 +365,9 @@ export default function ChatPage({
                 trigger={
                   <>
                     <Gauge />
-                    <span>{model?.label || "Default model"}</span>
+                    <span class="truncate">
+                      {model?.label || "Default model"}
+                    </span>
                     <ChevronDown />
                   </>
                 }

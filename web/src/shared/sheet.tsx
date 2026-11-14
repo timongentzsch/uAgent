@@ -33,7 +33,7 @@ export function SheetButton({
   children: Content;
   className?: string;
   buttonClass?: string;
-  size?: "default" | "icon";
+  size?: "default" | "compact" | "icon";
   sheetClass?: string;
   disabled?: boolean;
   // Opens the sheet when it becomes true: a control that needs an answer

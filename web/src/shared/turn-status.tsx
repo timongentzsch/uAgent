@@ -113,6 +113,7 @@ function ActivityButtonView({
       <SheetButton
         label={summary}
         heading="Activity"
+        size="compact"
         buttonClass="activity-button"
         sheetClass="activity-sheet"
         trigger={

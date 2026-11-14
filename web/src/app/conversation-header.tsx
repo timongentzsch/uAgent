@@ -174,7 +174,6 @@ export default function ConversationHeader({
         <>
           <Tabs
             label="Detail"
-            size="compact"
             tabs={detail.levels.map((level) => ({
               key: level,
               label: capitalize(level),
@@ -183,7 +182,6 @@ export default function ConversationHeader({
             to={detail.change}
           />
           <Button
-            size="compact"
             aria-pressed={detail.thinking}
             onClick={() => detail.showThinking(!detail.thinking)}
           >

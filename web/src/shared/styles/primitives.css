@@ -200,6 +200,12 @@
     background: var(--accent);
     color: var(--on-accent);
   }
+  /* A button among text: a status line, a message's footer, a header. */
+  .compact-button {
+    min-height: var(--control-slim);
+    padding-inline: var(--space-3);
+    font-size: var(--font-small);
+  }
   .icon-button {
     display: inline-flex;
     align-items: center;

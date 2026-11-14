@@ -27,6 +27,7 @@ import {
   EmptyState,
   Notice,
   IconButton,
+  InputRow,
   LoadError,
   Placeholder,
   Skeleton,
@@ -929,7 +930,7 @@ export default function Files({
               </Button>
             </div>
           )}
-          <div class="files-search-row">
+          <InputRow class="files-search-row">
             <Input
               type="search"
               aria-label="Search files"
@@ -969,7 +970,7 @@ export default function Files({
                 <ChevronsDownUp />
               </IconButton>
             )}
-          </div>
+          </InputRow>
           {view.kind === "list" && view.note && (
             <p class="files-note small">
               <Notice tone="warning">{view.note}</Notice>

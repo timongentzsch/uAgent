@@ -11,7 +11,7 @@ import {
 } from "lucide-preact";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import type { PageMessage } from "../../shared/page-frame.tsx";
-import { Button, IconButton, Input } from "../../shared/ui.tsx";
+import { Button, IconButton, Input, InputRow } from "../../shared/ui.tsx";
 import { INSERTS, KINDS, kindOf, LINK } from "./doc-edit.ts";
 
 // What is selected in the block being edited, as its page says it
@@ -153,7 +153,8 @@ export function LinkField({
   useEffect(() => field.current?.focus(), []);
   const valid = LINK.test(address.trim());
   return (
-    <form
+    <InputRow
+      as="form"
       class="find-bar"
       aria-label="Link"
       onSubmit={(event) => {
@@ -181,6 +182,6 @@ export function LinkField({
       <Button disabled={!href} onClick={() => apply("")}>
         Remove
       </Button>
-    </form>
+    </InputRow>
   );
 }

@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronUp, X } from "lucide-preact";
 import { useEffect, useRef } from "preact/hooks";
-import { IconButton, Input } from "./ui.tsx";
+import { IconButton, Input, InputRow } from "./ui.tsx";
 
 // What is searched, and how an occurrence is shown, is the caller's.
 export function FindField({
@@ -22,7 +22,7 @@ export function FindField({
   step: (by: number) => void;
   close: () => void;
 }) {
-  const bar = useRef<HTMLDivElement>(null);
+  const bar = useRef<HTMLElement>(null);
   // Focused as it opens. A frame later: a menu that opened the bar gives
   // focus back to its button as it closes.
   useEffect(() => {
@@ -34,7 +34,7 @@ export function FindField({
     return () => cancelAnimationFrame(frame);
   }, []);
   return (
-    <div class="find-bar" role="search" aria-label={label} ref={bar}>
+    <InputRow class="find-bar" role="search" aria-label={label} rowRef={bar}>
       <Input
         type="search"
         aria-label={label}
@@ -66,6 +66,6 @@ export function FindField({
       <IconButton label="Close find" onClick={close}>
         <X />
       </IconButton>
-    </div>
+    </InputRow>
   );
 }

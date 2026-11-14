@@ -106,13 +106,7 @@
   justify-content: flex-start;
 }
 .decision-guidance {
-  display: flex;
   align-items: end;
-  gap: var(--gap);
-}
-.decision-guidance > label {
-  flex: 1;
-  min-width: 0;
 }
 .decision-always {
   display: flex;

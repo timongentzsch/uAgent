@@ -1,7 +1,15 @@
 import type { Pending, Act, CommandInputs, Report } from "./types.ts";
 import { failure } from "./types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Actions, Button, cleanText, Input, Notice, Textarea } from "./ui.tsx";
+import {
+  Actions,
+  Button,
+  cleanText,
+  Input,
+  InputRow,
+  Notice,
+  Textarea,
+} from "./ui.tsx";
 import Ask from "./ask.tsx";
 import { AttachmentList } from "./attachments.tsx";
 import DiffView from "./diff-view.tsx";
@@ -286,12 +294,12 @@ export default function Decision({
                   </Actions>
                 )}
                 {reply === GUIDANCE && (
-                  <div class="decision-guidance">
+                  <InputRow class="decision-guidance">
                     {guidanceInput}
                     <Button type="submit" variant="primary" disabled={idle}>
                       Send guidance
                     </Button>
-                  </div>
+                  </InputRow>
                 )}
               </div>
             </details>

@@ -6,6 +6,7 @@ import {
   ConfirmModal,
   Group,
   Input,
+  InputRow,
   LoadError,
   Notice,
   Row,
@@ -92,7 +93,7 @@ export default function Configuration({
           folder={scope === "project" ? folder : undefined}
         />
       )}
-      <div class="group-block configuration-bar">
+      <InputRow class="group-block configuration-bar">
         <Input
           type="search"
           aria-label="Find a setting"
@@ -104,7 +105,7 @@ export default function Configuration({
         <Button variant="quiet" onClick={() => setAsFile(!asFile)}>
           {asFile ? "Show the form" : "Show the file"}
         </Button>
-      </div>
+      </InputRow>
       {asFile && (
         <Group
           title="settings.json"

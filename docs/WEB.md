@@ -33,21 +33,17 @@ address. Or open the URL and type the code.
   shell that installed it, so agent commands find the same tools, and an
   update restarts it. `uagent --web` then only prints a pairing code.
 
-The sidebar lists this main's conversations in one of two ways, chosen by
-**Recent** and **Places** at its top and remembered per browser:
+The sidebar lists this main's conversations as **Recent** or **Places**,
+chosen at its top and remembered per browser:
 
-- **Recent**, where a new browser starts, lists every host's conversations
-  newest first under **Today**, **Yesterday**, **This week** and **Earlier**
-  (folded at first). A row names its workspace or folder, and its host where
-  that is another one.
-- **Places** groups them by place: **Workspaces** on Local and **Folders** on
+- **Recent**, the default, lists every host's conversations newest first, by
+  day. A row names its place, and its host where that is another one.
+- **Places** groups them into **Workspaces** on Local and **Folders** on
   Local or a remote host, under each host's name once there are several. A
   place's name opens its overview, the chevron before it folds the place away
-  (remembered per browser), the header ends with how many conversations it
-  holds and **+** starts a conversation there. A place shows the
-  conversations of its last week, its three newest at least; **N older**
-  opens the rest. A folded place shows a dot while something in it needs
-  attention.
+  (remembered per browser), the header counts its conversations and **+**
+  starts one there. Beyond its newest three, conversations older than a week
+  wait behind **N older**.
 
 Each conversation is followed by its agents: those at work or waiting with
 their state; finished agents remain accessible from their reports and
@@ -78,15 +74,13 @@ The home screen starts work from one box: type into it and the conversation
 starts in the **Scratch** workspace on Local, with nothing to choose. Under
 the text the box names where it starts and which model it starts with:
 **Scratch** keeps what you typed and asks for a host and a folder instead,
-and the model beside it picks one for this conversation. **New** at the top
-of the sidebar opens the home screen with the box ready (**Conversation**),
-or names a **Workspace…** or a **Folder…** to start in. On a narrow screen
-the box is docked at the bottom, under the latest conversations from every
-place, and **All** opens the whole list. Conversation and folder actions
-choose a **Host** and browse its folders: the path is a row of crumbs that
-each lead back, a click chooses a folder and its arrow or a double click
-goes in, the folders used lately on that host lead the home view, and
-**Hidden folders** shows dot folders. The pencil types a path instead.
+and the model beside it picks one for this conversation. **New** →
+**Conversation** at the top of the sidebar opens the home screen with the box
+ready. On a narrow screen the box is docked at the bottom, under the latest
+conversations from every place, and **All** opens the whole list.
+Conversation and folder actions choose a **Host** and browse its folders by
+crumbs and a list (**Hidden folders** shows dot folders); the pencil types a
+path instead.
 
 While the host has no provider, the home screen offers **Sign in with
 OpenRouter** for its [free models](GUIDE.md#free-model-setup). Opened on
@@ -257,13 +251,10 @@ is now. The bar under the grid holds the tabs (⌘/Ctrl with Page Up and Down
 changes tab), what a selection of numbers comes to, **Undo**, **Redo** and
 **Comment**, which adds the selected range (`Costs!C2:C6`) to your message.
 Cells in error are listed with **Ask agent to fix**. The grid runs on past
-the table, to a spreadsheet's last row and column (1,048,576 and XFD):
-typing there extends the table in the file, and a cell so far out that the
-file would hold every row between is refused. The format row and a cell's
-menu set bold, italic, wrapping, alignment, a text colour and a fill from
-the sheet's five, and a number format; **Merge cells** makes a selection
-one cell, keeping its top-left value (it asks first when the others hold
-something), and **Freeze** holds the rows or columns up to the cell in view.
+the table to a spreadsheet's last row and column; typing there extends the
+table in the file. The format row and a cell's menu set bold, italic,
+wrapping, alignment, colours and a number format, merge a selection into
+one cell (keeping its top-left value) and freeze rows or columns.
 
 A sheet has rules, which fill, embolden or strike the cells or rows that
 meet a condition (done, overdue, below zero). The agent writes them, and

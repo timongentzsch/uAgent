@@ -33,17 +33,31 @@ address. Or open the URL and type the code.
   shell that installed it, so agent commands find the same tools, and an
   update restarts it. `uagent --web` then only prints a pairing code.
 
-The sidebar groups this main's conversations by execution host, then by place:
-**Workspaces** on Local and **Folders** on Local or a remote host. A place's name opens its overview, the chevron
-before it folds the place away (remembered per browser) and **+** starts a
-conversation there. Each conversation is followed by its agents: those at
-work or waiting with their state; finished agents remain accessible from
-their reports and search. **To file**, above them, lists the conversations
-in Scratch that have a suggested place. **Recent** is collapsible. **Pin** in the
-menu of a conversation, workspace or folder moves it to a **Pinned** section
-at the top, in the order pinned; **Unpin** returns it. The pins belong to
-the main, so every paired device shows the same, including remote conversations. Browsing saved history
-starts no model and runs no command.
+The sidebar lists this main's conversations in one of two ways, chosen by
+**Recent** and **Places** at its top and remembered per browser:
+
+- **Recent**, where a new browser starts, lists every host's conversations
+  newest first under **Today**, **Yesterday**, **This week** and **Earlier**
+  (folded at first). A row names its workspace or folder, and its host where
+  that is another one.
+- **Places** groups them by place: **Workspaces** on Local and **Folders** on
+  Local or a remote host, under each host's name once there are several. A
+  place's name opens its overview, the chevron before it folds the place away
+  (remembered per browser), the header ends with how many conversations it
+  holds and **+** starts a conversation there. A place shows the
+  conversations of its last week, its three newest at least; **N older**
+  opens the rest. A folded place shows a dot while something in it needs
+  attention.
+
+Each conversation is followed by its agents: those at work or waiting with
+their state; finished agents remain accessible from their reports and
+search. Above either list, **Needs you** holds what waits on a decision and
+**To file** the conversations in Scratch that have a suggested place. **Pin**
+in the menu of a conversation, workspace or folder moves it to a **Pinned**
+section at the top, in the order pinned; **Unpin** returns it. The pins
+belong to the main, so every paired device shows the same, including remote
+conversations. **Library** and **Scheduled** sit under the list. Browsing
+saved history starts no model and runs no command.
 
 On a touch screen only the open row draws its ⋯; a long press on any row opens
 its menu when you lift, once the row has marked itself held. A screen reader
@@ -65,10 +79,14 @@ starts in the **Scratch** workspace on Local, with nothing to choose. Under
 the text the box names where it starts and which model it starts with:
 **Scratch** keeps what you typed and asks for a host and a folder instead,
 and the model beside it picks one for this conversation. **New** at the top
-of the sidebar opens the home screen with the box ready. On a narrow screen
+of the sidebar opens the home screen with the box ready (**Conversation**),
+or names a **Workspace…** or a **Folder…** to start in. On a narrow screen
 the box is docked at the bottom, under the latest conversations from every
 place, and **All** opens the whole list. Conversation and folder actions
-choose a **Host** and browse its folders; typing a path remains optional.
+choose a **Host** and browse its folders: the path is a row of crumbs that
+each lead back, a click chooses a folder and its arrow or a double click
+goes in, the folders used lately on that host lead the home view, and
+**Hidden folders** shows dot folders. The pencil types a path instead.
 
 While the host has no provider, the home screen offers **Sign in with
 OpenRouter** for its [free models](GUIDE.md#free-model-setup). Opened on
@@ -238,8 +256,14 @@ file meanwhile, the change is not saved and the sheet is shown as the file
 is now. The bar under the grid holds the tabs (⌘/Ctrl with Page Up and Down
 changes tab), what a selection of numbers comes to, **Undo**, **Redo** and
 **Comment**, which adds the selected range (`Costs!C2:C6`) to your message.
-Cells in error are listed with **Ask agent to fix**. A grid is as large as
-its table: a new row or column is inserted, not typed past the edge.
+Cells in error are listed with **Ask agent to fix**. The grid runs on past
+the table, to a spreadsheet's last row and column (1,048,576 and XFD):
+typing there extends the table in the file, and a cell so far out that the
+file would hold every row between is refused. The format row and a cell's
+menu set bold, italic, wrapping, alignment, a text colour and a fill from
+the sheet's five, and a number format; **Merge cells** makes a selection
+one cell, keeping its top-left value (it asks first when the others hold
+something), and **Freeze** holds the rows or columns up to the cell in view.
 
 A sheet has rules, which fill, embolden or strike the cells or rows that
 meet a condition (done, overdue, below zero). The agent writes them, and
@@ -481,12 +505,13 @@ work shows at full detail only.
 
 Decisions waiting on you are counted once, across every folder:
 
-- The count heads the sidebar ("2 need you") and opens every waiting
-  decision, with its folder and question, to answer there or open in place.
-- It also shows in the tab title ("(2) µAgent") and, where the browser
+- The sidebar lists the conversations and agents that wait under **Needs
+  you**, above the others; a pinned one stays among the pinned. A place's
+  overview shows its waiting decisions with their questions, to answer there.
+- The count shows in the tab title ("(2) µAgent") and, where the browser
   supports it, on the installed app's badge.
-- Answering there or in the conversation is the same act; the first answer
-  wins.
+- Answering in the overview or in the conversation is the same act; the
+  first answer wins.
 
 An approval opens above the input, which stays in place, read-only, until it
 is answered; the **Approval** control stays usable. The card shows what the
@@ -606,7 +631,7 @@ before Submit.
 
 - Agents are listed under the conversation that started them, and an agent
   links back to it under its title.
-- What needs you is above the input and in the sidebar's "need you" count.
+- What needs you is above the input and under **Needs you** in the sidebar.
 - An agent's approvals and questions go to its parent first. Once you write
   in the agent's own chat, those of that turn come to you directly. Its
   approval control offers every mode, yolo included.
@@ -644,6 +669,8 @@ Settings are grouped by what they affect:
   and an install in a folder the host cannot write show the command to run
   instead, and where. Only a person starts an update: the agent sees that
   one exists, and the button is absent where the terminal is turned off.
+  A container also names [its Chrome](BROWSER.md) and when it last looked
+  for a newer one, with **Check now**.
 - **MCP servers** shows each server's state and tools and, when it failed,
   its reason and stderr tail. **Retry** starts a failed server again; the
   switch sets `disabled` in the file that defines the server and applies at

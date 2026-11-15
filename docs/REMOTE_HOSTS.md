@@ -25,8 +25,8 @@ flowchart LR
    remote folder or conversation starts or reuses its isolated execution process.
 4. Choose **New conversation** or **New folder**, select its **Host**, then browse
    to a folder. You can also type a path or `~`.
-   Conversations appear under their host and name it in the header. Pins work
-   across hosts; **Recent** is collapsible.
+   Conversations name their host in the header and in the sidebar: beside the
+   place in **Recent**, as a heading in **Places**. Pins work across hosts.
 
 A remote host always runs the main's own build: when the main is updated, the
 next connection copies the new executable there, and the host reads

@@ -176,20 +176,22 @@ export default function FolderOverview({
       <div class="overview-section">
         <Bar density="flush" class="overview-caption">
           <SectionTitle>Conversations</SectionTitle>
-          <IconButton
-            label="Show as cards"
-            aria-pressed={layout === "grid"}
-            onClick={() => choice("grid")}
-          >
-            <LayoutGrid />
-          </IconButton>
-          <IconButton
-            label="Show as a list"
-            aria-pressed={layout === "list"}
-            onClick={() => choice("list")}
-          >
-            <List />
-          </IconButton>
+          <div class="segmented" role="group" aria-label="Layout">
+            <IconButton
+              label="Show as cards"
+              aria-pressed={layout === "grid"}
+              onClick={() => choice("grid")}
+            >
+              <LayoutGrid />
+            </IconButton>
+            <IconButton
+              label="Show as a list"
+              aria-pressed={layout === "list"}
+              onClick={() => choice("list")}
+            >
+              <List />
+            </IconButton>
+          </div>
         </Bar>
         {roots.length ? (
           <ul

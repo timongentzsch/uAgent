@@ -1017,11 +1017,11 @@
   .input-row > :is(.text-control, label) {
     flex: 999 1 var(--input-row-min, var(--pane));
   }
+  /* One control of several buttons: they touch. */
   .segmented,
   .tabs {
     display: flex;
     align-items: center;
-    gap: var(--gap);
     flex-wrap: wrap;
   }
   /* Pressed buttons are drawn by button[aria-pressed]; a tab list's

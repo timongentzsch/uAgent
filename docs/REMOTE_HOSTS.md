@@ -66,10 +66,8 @@ their own OS identities. Sharing an account shares that account's ordinary file
 permissions; it does not create filesystem isolation between people.
 
 The gateway receives execution arguments, a narrow sandbox preset and a private
-RPC credential, supplied over SSH stdin. It receives no provider configuration,
-model catalogue or provider keys. RPC credentials are held in memory remotely and
-are required on every request. They are not placed in remote argv or environment.
-SSH helpers use a filtered environment and disable agent/environment forwarding.
+RPC credential, and no provider configuration, model catalogue or provider keys.
+[Security](../SECURITY.md#remote-execution) says how the credential travels.
 
 The remote gateway does not load or save application settings, history, memory,
 pins or schedules. Workspace edits and installed executables persist; process

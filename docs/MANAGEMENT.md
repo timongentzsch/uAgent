@@ -53,9 +53,9 @@ found.
   context.
 
 **Import** (in the web UI, the Library's Import button; in the terminal,
-`/skills import` and `/memory import`) lists the skills under
-`~/.claude/skills`, `~/.codex/skills` and the folder's `.claude` and
-`.codex` folders, and this folder's Claude Code memories, whether or not
+`/skills import` and `/memory import`) lists the skills Claude Code and
+Codex keep ([where](../skills/README.md#import-from-claude-code-and-codex))
+and this folder's Claude Code memories, whether or not
 `UAGENT_OTHER_AGENTS` names the agent. Each entry says that it already
 exists, or why it cannot be imported: its license forbids copying, it is
 over the size limits, or it belongs to another folder. Nothing is

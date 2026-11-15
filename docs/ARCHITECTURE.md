@@ -347,9 +347,7 @@ Runtime getters, CLI flags, `/config`, the web's Settings, diagnostics and
 the `uagent` tool all read that source.
 
 A value comes from the registry's default or one of the scopes
-[Operations](OPERATIONS.md#settings) lists, the later winning: all
-conversations and this folder (both in `~/.uagent/config/settings.json`),
-the environment, the command line and this conversation (its session).
+[Operations](OPERATIONS.md#settings) lists, the later winning.
 Only the model (`UAGENT_MODEL`, with its effort) and the approval mode
 (`UAGENT_APPROVAL`) can be set for one conversation: `/model`, `/effort`,
 `/permissions`, `/yolo` and `/plan` set them there, and `--model` or `--yolo` sets them

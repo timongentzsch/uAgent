@@ -30,19 +30,22 @@ Snapshot: **2026-11-12**, production commit `f3489142`, runtime build
 `4d62d764…9c9dd52`. [Raw results](results/2026-11-12.json) retain package
 hashes, five native benchmark samples per case, the hermetic summary and web
 asset sizes. These are dated measurements, not floating claims about a later
-checkout. [CI artifacts](https://github.com/timongentzsch/uAgent/actions/runs/43114586678)
-supply all four native installations; local CPU measurements use an Apple M1
-Pro, macOS 27.0.1 and Apple clang 21.0.0, Release `-O3`, Web Push enabled.
+checkout. Local CPU measurements use an Apple M1 Pro, macOS 27.0.1 and Apple
+clang 21.0.0, Release `-O3`, Web Push enabled.
+
+Package and web sizes were measured again on **2026-11-15** for 1.9.0, commit
+`54a8c66a`, from the three installations of
+[CI run 43712546879](https://github.com/timongentzsch/uAgent/actions/runs/43712546879)
+([raw](results/packages-2026-11-15.json)).
 
 | Target | Main binary | Complete installation | Remote binary | Remote transfer with resources |
 | --- | ---: | ---: | ---: | ---: |
-| Linux x86_64 | 7.35 MB | 23.48 MB | 4.82 MB | 2.31 MB |
-| Linux ARM64 | 6.50 MB | 22.62 MB | 3.94 MB | 2.10 MB |
-| macOS x86_64 | 11.64 MB | 27.76 MB | 9.12 MB | 3.95 MB |
-| macOS ARM64 | 10.66 MB | 26.79 MB | 8.12 MB | 4.25 MB |
+| Linux x86_64 | 7.52 MB | 20.04 MB | 4.96 MB | 2.37 MB |
+| Linux ARM64 | 6.63 MB | 19.15 MB | 4.07 MB | 2.15 MB |
+| macOS ARM64 | 10.81 MB | 23.33 MB | 8.25 MB | 4.32 MB |
 
 MB is 1,000,000 bytes. Complete installation sums unpacked regular-file sizes,
-including documentation, skills and **all four compressed gateway payloads**.
+including documentation, skills and **the three compressed gateway payloads**.
 Remote binary excludes those resources; transfer includes the selected binary,
 skills and licenses in one compressed archive. Filesystem allocation and system
 libraries are not counted. No remote performance comparison between platforms
@@ -59,8 +62,8 @@ directly; no generated tool-reference file or personal profile is required.
 
 The chart measures local payload serialization, not model or network latency.
 All five core runs use the same built-in workload without a personal session.
-The web bundle's first JS/CSS fetch is **158,588 compressed bytes**; all shipped
-web assets total **2,299,152 compressed bytes**, including optional renderers.
+The web bundle's first JS/CSS fetch is **174,276 compressed bytes**; all shipped
+web assets total **2,330,660 compressed bytes**, including optional renderers.
 The sheet engine is installed beside the app and counted with the installation.
 
 Reproduce the local measurements and charts from the repository root:

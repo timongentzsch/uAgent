@@ -613,7 +613,8 @@ before Submit.
 - The conversation menu has **Find in conversation**, **Pin**, **Rename**
   and **Move to…**; under **More** come **Fork conversation**,
   **Statistics**, **Tools**, **Export transcript**, **Detail**, **Compact**,
-  **Restart**, **Close conversation** and **Delete**. Tools
+  **Restart**, **Close conversation** and **Delete**. The context line in
+  Statistics opens the raw context the model was sent. Tools
   controls the active schema. Close a live runtime before deleting its
   history; files in the folder are unaffected.
 

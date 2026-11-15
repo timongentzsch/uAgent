@@ -41,6 +41,9 @@ and approvals run through µAgent.*
 - **Execution controls and reusable context.** OS sandboxing, approval modes,
   plan mode, undo, skills, memory, MCP and scheduled tasks, with a Library of
   what is saved across folders.
+- **A contained install.** In the container install the agent, its terminal
+  and its browser reach public addresses only: not your machine, LAN or
+  tailnet. [What it bounds](SECURITY.md#the-container).
 - **Scriptable.** `uagent -p` runs one turn headless, with JSON output for
   scripts.
 
@@ -92,6 +95,8 @@ uagent
 Use `uagent --web` to pair your browser or phone. Add an SSH host under
 **Remote hosts**, then select it when starting a conversation or opening a folder.
 The main must be reachable from your device, for example over your LAN or VPN.
+Settings → About checks for a new release and updates an installed µAgent in
+place.
 
 Linux (x86_64 and ARM64) and macOS (Apple silicon).
 [Setup and platform requirements](docs/GUIDE.md#install) ·

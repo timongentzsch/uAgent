@@ -373,7 +373,7 @@ def test_remote_bundle_requires_all_matching_payloads(root, home, *, binary):
     build = subprocess.check_output([binary, "--build-id"], env=env, text=True).strip()
     # The checker validates archive bytes; installation checks their contents.
     manifest = {"build": build, "targets": {}}
-    for target in ("linux-x86_64", "linux-arm64", "macos-x86_64", "macos-arm64"):
+    for target in ("linux-x86_64", "linux-arm64", "macos-arm64"):
         content = target.encode()
         (bundle / f"{target}.tar.gz").write_bytes(content)
         manifest["targets"][target] = {
@@ -391,7 +391,7 @@ def test_remote_bundle_requires_all_matching_payloads(root, home, *, binary):
     check(manifest, True)
     check({**manifest, "build": "different-build"}, False)
     check({**manifest, "targets": []}, False)
-    check({**manifest, "targets": dict(list(manifest["targets"].items())[:3])}, False)
+    check({**manifest, "targets": dict(list(manifest["targets"].items())[:-1])}, False)
     for target in manifest["targets"]:
         payload = bundle / f"{target}.tar.gz"
         content = payload.read_bytes()
@@ -416,7 +416,7 @@ def test_remote_bundle_user_setting_and_environment_precedence(root, home, *, bi
         archive.addfile(member, io.BytesIO(script))
     content = payload.getvalue()
     manifest = {"build": build, "targets": {}}
-    for target in ("linux-x86_64", "linux-arm64", "macos-x86_64", "macos-arm64"):
+    for target in ("linux-x86_64", "linux-arm64", "macos-arm64"):
         (bundle / f"{target}.tar.gz").write_bytes(content)
         manifest["targets"][target] = {
             "bytes": len(content),

@@ -34,8 +34,8 @@ unpublished one needs its
 | `UAGENT_PREFIX=DIR` | Install there, not under `~/.local` |
 | `UAGENT_NONINTERACTIVE=1` | Ask nothing, as without a terminal: install here unless `UAGENT_INSTALL=container`, and leave keys, `PATH` and services alone |
 
-Releases are built for Linux with glibc 2.38 or newer and macOS 15 or newer,
-on x86_64 and ARM64. On another system, or where the release does not start,
+Releases are built for Linux with glibc 2.38 or newer, on x86_64 and ARM64,
+and for macOS 15 or newer on Apple silicon. On another system, or where the release does not start,
 the installer builds that release's source: it needs git, CMake 3.21+, a C++20
 compiler, libcurl 7.66+, zlib and Node.js, and fetches the release's remote
 bundle.

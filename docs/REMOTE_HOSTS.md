@@ -47,8 +47,8 @@ machine, run `ssh ALIAS` to verify the fingerprint. If key access is missing, ru
 `ssh-copy-id user@machine`, then verify `ssh ALIAS` again. Never copy keys into the
 browser or disable host verification.
 
-Linux requires glibc 2.38 or later; macOS requires version 15 or later. Both
-support x86_64 and ARM64. Linux also needs the standard C++ runtime, libcurl,
+Linux requires glibc 2.38 or later, on x86_64 or ARM64; macOS requires
+version 15 or later on Apple silicon. Linux also needs the standard C++ runtime, libcurl,
 OpenSSL 3 and zlib. Remote setup needs no compiler, sudo or network download.
 Managed executables and resources live in immutable build directories under
 `~/.uagent/remote/builds/`. The user's normal uAgent CLI stays in place.
@@ -123,8 +123,8 @@ transported as bytes.
 
 ## Installers and containers
 
-A remote-ready installation contains a manifest and four verified payloads in
-`share/uagent/remote/BUILD_ID/`. Native CI assembles all four from identical
+A remote-ready installation contains a manifest and three verified payloads in
+`share/uagent/remote/BUILD_ID/`. Native CI assembles all three from identical
 runtime inputs and includes the complete bundle in each release archive.
 The remote executable omits the web app and carries its bundled resources.
 

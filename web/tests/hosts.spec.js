@@ -349,7 +349,7 @@ for (const phase of ["connected", "connecting"]) {
 // Wherever a host says why it is not connected, that is an error notice.
 test("a host's connection error is drawn as an error", async ({ page }) => {
   const error =
-    "A complete four-target remote bundle for this exact build is required.";
+    "A complete three-target remote bundle for this exact build is required.";
   await offlineHost(page, "disconnected", false, error);
   await page.goto("/");
   const red = await page.evaluate(() => {

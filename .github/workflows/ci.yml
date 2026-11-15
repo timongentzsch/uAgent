@@ -71,8 +71,8 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # Linux ARM64 is left to master unless the change is heavy, and Intel
-      # macOS unless it changes what builds or packages (.github/changes.py).
+      # Linux ARM64 is left to master unless the change is heavy or changes
+      # what builds or packages (.github/changes.py).
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     # A shared runner can pause a PTY case past its deadline, which reads as a
@@ -97,9 +97,6 @@ jobs:
           flags=()
           if [[ "$RUNNER_OS" = macOS ]]; then
             openssl_prefix=$(brew --prefix openssl@3)
-            # Intel runners also expose Homebrew headers through CPATH.
-            # Mark that path as external even when CMake omits it as implicit.
-            export CXXFLAGS="${CXXFLAGS:-} -isystem $(brew --prefix)/include"
             flags+=("-DOPENSSL_ROOT_DIR=$openssl_prefix" "-DOPENSSL_INCLUDE_DIR=$openssl_prefix/include" -DOPENSSL_USE_STATIC_LIBS=TRUE -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0)
           fi
           cmake --preset ci-release -B build "${flags[@]}"
@@ -167,7 +164,7 @@ jobs:
           build=$(python3 -c 'import json; print(json.load(open("remote-bundle/manifest.json"))["build"])')
           version=$(sed -nE 's/^project\(uagent VERSION ([^ ]+).*/\1/p' CMakeLists.txt)
           archive="uagent-$version-remote-$build.tar.gz"
-          tar -C remote-bundle -czf "dist/$archive" manifest.json linux-x86_64.tar.gz linux-arm64.tar.gz macos-x86_64.tar.gz macos-arm64.tar.gz
+          tar -C remote-bundle -czf "dist/$archive" manifest.json linux-x86_64.tar.gz linux-arm64.tar.gz macos-arm64.tar.gz
           (cd dist && cmake -E sha256sum "$archive" > "$archive.sha256")
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

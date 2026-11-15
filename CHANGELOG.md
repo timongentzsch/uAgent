@@ -2,6 +2,10 @@
 
 ## v1.9.0 - 2026-11-15
 
+### Upgrade notes
+
+- **Intel Macs are no longer built for.** Releases and the remote bundle cover Linux on x86_64 and ARM64 and macOS on Apple silicon. The installer offers an Intel Mac no archive, and one is refused as a remote host.
+
 ### Changes
 
 - **The container keeps its own Chrome current.** The image no longer holds a Chrome that ages until the next release. The container fetches Google's stable package onto the data volume when it starts, accepts it only when it matches the index Google signs, checks again daily and switches the next time the browser starts; until the first download is done the browser says so. Settings → About names the Chrome in use and when it was last checked, with **Check now**. `UAGENT_CHROME=off` turns that off.

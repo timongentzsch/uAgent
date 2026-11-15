@@ -332,8 +332,7 @@ std::optional<json> CheckRemoteBundle(const std::string& directory,
         "required.";
     return std::nullopt;
   }
-  for (const char* target :
-       {"linux-x86_64", "linux-arm64", "macos-arm64"}) {
+  for (const char* target : {"linux-x86_64", "linux-arm64", "macos-arm64"}) {
     const std::string path = directory + "/" + target + ".tar.gz";
     const json record = manifest["targets"].value(target, json::object());
     const std::string expected = JsonValue(record, "sha256", "");

@@ -391,7 +391,7 @@ def test_remote_bundle_requires_all_matching_payloads(root, home, *, binary):
     check(manifest, True)
     check({**manifest, "build": "different-build"}, False)
     check({**manifest, "targets": []}, False)
-    check({**manifest, "targets": dict(list(manifest["targets"].items())[:3])}, False)
+    check({**manifest, "targets": dict(list(manifest["targets"].items())[:-1])}, False)
     for target in manifest["targets"]:
         payload = bundle / f"{target}.tar.gz"
         content = payload.read_bytes()

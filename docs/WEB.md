@@ -610,9 +610,10 @@ before Submit.
   page, on every device, follows it there with its draft. A move is refused
   while mail waits for the conversation or an agent of it, or another
   program holds one of them (a terminal that has it open).
-- The conversation menu has **Find in conversation**, **Fork conversation**,
-  **Move to…**, **Rename**, **Statistics**, **Tools**, **Export transcript**, **Detail**,
-  **Compact**, **Restart**, **Close conversation** and **Delete**. Tools
+- The conversation menu has **Find in conversation**, **Pin**, **Rename**
+  and **Move to…**; under **More** come **Fork conversation**,
+  **Statistics**, **Tools**, **Export transcript**, **Detail**, **Compact**,
+  **Restart**, **Close conversation** and **Delete**. Tools
   controls the active schema. Close a live runtime before deleting its
   history; files in the folder are unaffected.
 

@@ -24,13 +24,12 @@ Text after the key is the content; `@FILE` reads it from a file.
 A memory is a short Markdown note of at most 2 KiB; a scope takes up to 32
 new ones, and files you put there yourself are all read. Global memories are
 read into every top-level session, smallest first, while they fit in 2 KiB
-together. Every other memory is listed with its key, its first sentence and,
-when opened, the date it was saved; the agent opens one with its `memory`
-tool when the topic fits; the list names the newest first, each with its
-description or opening sentence. It writes a memory when you ask, correct it
-or state a standing preference, into the note that already covers the topic
-when there is one. A background extractor adds lessons from finished
-sessions unless `UAGENT_MEMORY_GENERATE=0`: when a conversation starts, one
+together. Every other memory is listed, newest first, with its key and its
+description or opening sentence; the agent opens one with its `memory` tool
+when the topic fits, and then sees the date it was saved. It writes a memory
+when you ask, correct it or state a standing preference, into the note that
+already covers the topic when there is one. A background extractor adds
+lessons from finished sessions unless `UAGENT_MEMORY_GENERATE=0`: when a conversation starts, one
 request to the memory model reads an older one of the folder, idle for
 `memory.idleHours`, and saves at most one note, shown in the conversation
 only when it saved or failed. A conversation in Scratch with an unanswered

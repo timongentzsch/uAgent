@@ -385,7 +385,7 @@ conversation, a restart and a fork; the web shows it above the input.
 
 ## A folder at a glance
 
-In the web, a folder's name in the sidebar opens its overview: what needs
+In the web, a folder's name under **Places** in the sidebar opens its overview: what needs
 you, answered in place, and the folder's conversations with their state,
 current step, to-do progress and cost, beside what they spent and changed
 today ([Web interface](WEB.md#quick-start)). `/overview` prints the same in

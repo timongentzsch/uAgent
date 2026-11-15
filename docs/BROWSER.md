@@ -60,7 +60,7 @@ code, run `docker compose -f deploy/compose.yaml exec uagent uagent --web`.
 | `UAGENT_SHM_SIZE` | `256m` | Chrome shared memory |
 | `UAGENT_TMPFS_SIZE` | `512m` | `/tmp` tmpfs size |
 | `UAGENT_NETWORK` | `private` | `open` lets the agent reach whatever the Docker host reaches |
-| `UAGENT_NETWORK_ALLOW` | none | Private addresses the agent may reach: `host`, `host:port` or a CIDR, separated by spaces |
+| `UAGENT_NETWORK_ALLOW` | none | Private addresses the agent may reach: `host`, `host:port` or a CIDR, separated by spaces or commas |
 | `UAGENT_CHROME` | `auto` | `off` leaves the Chrome on the data volume as it is: none is fetched or updated |
 | `UAGENT_PIDS_LIMIT` | `4096` | Most processes and threads the container may hold |
 | `UAGENT_MEM_LIMIT` | none | Memory limit, such as `4g`; size it with `deploy/footprint.sh` |

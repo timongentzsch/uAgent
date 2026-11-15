@@ -11,7 +11,7 @@ Clients submit commands and project its events. Local UI state owns navigation,
 editing and interaction. See [Architecture](ARCHITECTURE.md),
 [Persistence](PERSISTENCE.md) and [Web](WEB.md) for the surrounding contracts.
 
-## Review decisions
+## Ownership decisions
 
 | Area | Decision | Why |
 | --- | --- | --- |
@@ -27,13 +27,6 @@ editing and interaction. See [Architecture](ARCHITECTURE.md),
 | Generic resource loading | Retain `useResource` and caller identity checks | Keeping the previous value is useful during refresh; resource identity must still be checked when switching files. |
 | Activity, turn and MCP lifecycles | Retain their existing enums and owners | These are already explicit. Their I/O, cancellation and delivery dimensions cannot safely be flattened into one enum. |
 | Transcript scrolling and gesture input | Retain independent interaction dimensions | Following, restoring, touching and gliding overlap. A large Cartesian-product enum would add states and obscure browser-specific invariants. |
-
-The review used a repository-wide source inventory, state-field and transition
-searches, duplicate-block and symbol-reference scans, then caller and test
-review for the changed boundaries. Scans are candidate discovery, not a proof
-that every path is exercised. No unused exported TypeScript symbol was
-identified by the reference scan. Similar-looking provider adapters, parsers
-and cancellation loops were not treated as equivalent without evidence.
 
 ## Runtime and protocol machines
 
@@ -111,8 +104,6 @@ mixed machine has both.
 For changes to these owners, test transitions and observable invariants rather
 than matching the implementation's private flags. Use the existing native
 unit/integration suites and browser scenarios listed in [Testing](TESTING.md).
-The cleanup adds action-admission, receipt-precedence, wheel-binding and
-successive zoom-anchor regressions; Files checks preserve unpressed ARIA state.
 
 Do not replace independent dimensions with a universal state-machine framework.
 An enum is useful when alternatives are mutually exclusive. A queue, scoped

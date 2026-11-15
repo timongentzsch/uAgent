@@ -20,7 +20,7 @@ can reach. No approval mode turns the sandbox off, but yolo raises the
 | Mode | Set with | Effect |
 | --- | --- | --- |
 | `ask` (default) | `/permissions ask` | a person approves each mutating, process, network, cost-bearing or untrusted MCP call, and each read outside the folder |
-| `auto` | `/permissions auto`, `UAGENT_APPROVAL=auto` | a decision model allows or denies the calls the sandbox contains; what it cannot decide, every call that leaves the sandbox or the folder, and every `run` or `scratch` call while the sandbox is off or not enforced go to a person, and are denied when nobody can answer |
+| `auto` | `/permissions auto`, `UAGENT_APPROVAL=auto` | a decision model allows or denies the calls the sandbox contains; what it cannot decide, every call that leaves the sandbox or the folder, and every `run` call while the sandbox is off or not enforced go to a person, and are denied when nobody can answer |
 | `yolo` | `--yolo`, `/yolo`, `/permissions yolo` | those calls run unasked; commands stay sandboxed, at the `relaxed` level where the level is `default` |
 | `plan` | `/plan`, `/permissions plan` | only reads run: commands at the `readonly` level and calls on the conversation's plan file; every other change is refused, and reads outside the folder ask as in `ask` |
 
@@ -119,8 +119,8 @@ never goes to the parent.
   process's permissions, so treat every write, interrupt and resize as
   process control. Input to non-TTY activities is rejected. Detached
   persistent activities keep logs but no reattachable stdin.
-- Automatic memory extraction processes at most one idle saved session. Its
-  child receives the configured model credential and only the memory tool.
+- Automatic memory extraction reads at most one idle saved session, in one
+  model request without tools.
   Transcript text and event previews are redacted for known credential forms
   before model requests and memory writes. Codex and Claude memories are
   read-only, untrusted evidence. Redaction is defense in depth, not a
@@ -210,7 +210,7 @@ effect (`relaxed (yolo)`). `readonly`, `relaxed` and `off`, set explicitly,
 stay as they are. Plan mode runs commands at `readonly (plan)` whatever the
 level, except `off`, where it runs none.
 
-A value that is no level (`strict` included, which is gone) is not read as
+A value that is no level is not read as
 `default`: commands are refused until it is fixed, so a typo cannot open the
 network a stricter level would have closed.
 
@@ -228,8 +228,7 @@ Paths in `sandbox.read`, `sandbox.hide` and `sandbox.reveal` are absolute or sta
 `~/`. All of these settings take effect at the next start of the
 conversation (`/restart`). `/status` names the mechanism and `/context`
 lists every writable root. The agent can call `run(sandbox=false)` for one
-command, which a person must approve. `--yolo` stops the questions and
-raises `default` to `relaxed`; it never turns the sandbox off.
+command, which a person must approve.
 
 **Writes** are what the sandbox restricts. A confined command may write:
 
@@ -249,7 +248,7 @@ raises `default` to `relaxed`; it never turns the sandbox off.
 Everything else is refused. `~/.uagent` is never granted, and a requested
 root is rejected, and reported at startup, when it is `/`, `~/.uagent` or
 one of its ancestors, or lies inside `~/.uagent/config`. That keeps the
-saved settings, trust store, collaborator records and detached-activity records
+saved settings, trust store and detached-activity records
 out of reach. The `relaxed` level opens the home folder around `~/.uagent`:
 its terminal logs, and a workspace under `~/.uagent/spaces`, stay writable;
 nothing else in it is. On Linux, Landlock can only grant, so the home folder
@@ -372,9 +371,8 @@ unconfined, and a changed entry asks again like any other change to the file.
 **Not confined by the sandbox:** the built-in file tools (approval and path
 checks govern them; they reach `.mcp.json`, and the `uagent` tool reaches the
 saved settings, `.mcp.json`, your stylesheet, system message, instructions
-and skills, with mandatory human approval for each change), an MCP
-server that opts out, and the µAgent process of a memory extraction (its
-commands are confined).
+and skills, with mandatory human approval for each change) and an MCP
+server that opts out.
 
 Besides `off`, these operations or fallback conditions can run unconfined:
 

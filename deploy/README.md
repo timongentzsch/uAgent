@@ -1,7 +1,7 @@
 # Deploy
 
-The optional Docker appliance: one image with the web host and a Chrome the
-agent can drive. From the repository root:
+The optional Docker appliance: the web host in a container, with a Chrome
+the agent can drive fetched when it starts. From the repository root:
 
 ```sh
 docker compose -f deploy/compose.yaml up --build -d

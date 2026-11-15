@@ -67,7 +67,7 @@ to change it. On disk:
   `config/settings.schema.json` beside it for editors.
 - A document that cannot be parsed is refused, never read as empty: the error
   names the file to fix or remove, and nothing is saved over it.
-- The format is 3, written since v1.5.0; an earlier format is not read.
+- The format is 3; no other is read.
 
 ## Sessions
 

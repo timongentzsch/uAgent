@@ -155,8 +155,8 @@ state. A changed runtime generation invalidates pending commands; recovery
 never repeats a tool or an uncertain submission by itself.
 
 The web host's HTTP pool idles at four threads and grows to one per open event
-stream, browser viewer or terminal socket (at most 16), plus twelve for
-requests, so long-lived connections cannot starve the API.
+stream (at most 4), browser viewer (5) and terminal socket (16), plus twelve
+for requests, so long-lived connections cannot starve the API.
 
 Closing a client detaches it. Closing the runtime cancels work, saves state
 and reaps session-owned children. An internal writer lease keeps two runtimes

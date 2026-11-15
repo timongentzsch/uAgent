@@ -1,4 +1,4 @@
-"""Build and verify the four native payloads shipped with every remote-ready install."""
+"""Build and verify the three native payloads shipped with every remote-ready install."""
 
 import argparse
 import hashlib
@@ -14,7 +14,6 @@ import tempfile
 TARGETS = {
     "linux-x86_64": "glibc 2.38",
     "linux-arm64": "glibc 2.38",
-    "macos-x86_64": "macOS 15",
     "macos-arm64": "macOS 15",
 }
 
@@ -120,7 +119,7 @@ def assemble(args):
     }
     builds = {record["build"] for record in records.values()}
     if len(builds) != 1:
-        raise ValueError("the four payloads have different runtime identities")
+        raise ValueError("the three payloads have different runtime identities")
     build = next(iter(builds))
     args.out.mkdir(parents=True, exist_ok=True)
     for target, record in records.items():
@@ -144,7 +143,7 @@ def assemble(args):
                     archive.add(package, arcname=package.name)
             path.with_name(path.name + ".sha256").write_text(f"{digest(path)}  {path.name}\n")
     print(
-        f"verified four-target bundle {build}: {sum(record['bytes'] for record in records.values())} compressed bytes"
+        f"verified three-target bundle {build}: {sum(record['bytes'] for record in records.values())} compressed bytes"
     )
 
 

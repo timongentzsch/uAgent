@@ -94,8 +94,8 @@ bool Install(const Host& host, const std::string& bundle, std::string& error) {
   const bool arm = platform.find("\narm64") != std::string::npos ||
                    platform.find("\naarch64") != std::string::npos;
   const bool intel = platform.find("\nx86_64") != std::string::npos;
-  if ((!mac && !linux) || (!arm && !intel)) {
-    error = "Remote hosts require Linux or macOS on ARM64 or x86_64.";
+  if (!(linux && (arm || intel)) && !(mac && arm)) {
+    error = "Remote hosts require Linux on ARM64 or x86_64, or macOS on ARM64.";
     return false;
   }
   // Refuse unsupported loaders before transferring or launching a payload.
@@ -326,14 +326,14 @@ std::optional<json> CheckRemoteBundle(const std::string& directory,
   json manifest = ReadJsonFile(directory + "/manifest.json", MiB(1));
   if (JsonValue(manifest, "build", "") != BuildIdentity() ||
       !manifest.contains("targets") || !manifest["targets"].is_object() ||
-      manifest["targets"].size() != 4) {
+      manifest["targets"].size() != 3) {
     error =
-        "A complete four-target remote bundle for this exact build is "
+        "A complete three-target remote bundle for this exact build is "
         "required.";
     return std::nullopt;
   }
   for (const char* target :
-       {"linux-x86_64", "linux-arm64", "macos-x86_64", "macos-arm64"}) {
+       {"linux-x86_64", "linux-arm64", "macos-arm64"}) {
     const std::string path = directory + "/" + target + ".tar.gz";
     const json record = manifest["targets"].value(target, json::object());
     const std::string expected = JsonValue(record, "sha256", "");

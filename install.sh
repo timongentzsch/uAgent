@@ -44,7 +44,6 @@ case $os-$(uname -m) in
   Linux-x86_64) target=linux-x86_64 ;;
   Linux-aarch64 | Linux-arm64) target=linux-arm64 ;;
   Darwin-arm64) target=macos-arm64 ;;
-  Darwin-x86_64) target=macos-x86_64 ;;
   *) target= ;;
 esac
 # What the release archives are built against (the CI runners): an older
@@ -260,9 +259,9 @@ if [ "$mode" = source ]; then
         expected=$(cut -d' ' -f1 < "$tmp/bundle.sha256")
         actual=$(cmake -E sha256sum "$tmp/$bundle_name" | cut -d' ' -f1)
         [ "$expected" = "$actual" ] || { echo "remote bundle checksum differs; nothing was installed" >&2; exit 1; }
-        # Only the manifest and four compressed payloads belong at this level.
+        # Only the manifest and three compressed payloads belong at this level.
         tar -tzf "$tmp/$bundle_name" | while IFS= read -r member; do
-          case $member in manifest.json|linux-x86_64.tar.gz|linux-arm64.tar.gz|macos-x86_64.tar.gz|macos-arm64.tar.gz) ;;
+          case $member in manifest.json|linux-x86_64.tar.gz|linux-arm64.tar.gz|macos-arm64.tar.gz) ;;
             *) echo "remote bundle holds an unexpected file: $member; nothing was installed" >&2; exit 1 ;;
           esac
         done

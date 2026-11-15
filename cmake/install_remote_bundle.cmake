@@ -11,7 +11,7 @@ if(NOT EXISTS "${BUNDLE}/manifest.json")
 endif()
 execute_process(COMMAND "${BINARY}" --check-remote-bundle "${BUNDLE}"
                 COMMAND_ERROR_IS_FATAL ANY)
-set(files manifest.json linux-x86_64.tar.gz linux-arm64.tar.gz macos-x86_64.tar.gz macos-arm64.tar.gz)
+set(files manifest.json linux-x86_64.tar.gz linux-arm64.tar.gz macos-arm64.tar.gz)
 if(NOT DEFINED DESTINATION)
   return()
 endif()

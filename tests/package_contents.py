@@ -86,7 +86,7 @@ def main():
             fail("one complete remote bundle is required")
         with tarfile.open(archive, "r:gz") as package:
             manifest = json.load(package.extractfile(manifests[0]))
-            targets = {"linux-x86_64", "linux-arm64", "macos-x86_64", "macos-arm64"}
+            targets = {"linux-x86_64", "linux-arm64", "macos-arm64"}
             if (
                 set(manifest["targets"]) != targets
                 or manifests[0].split("/")[-2] != manifest["build"]

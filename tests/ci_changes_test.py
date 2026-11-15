@@ -67,17 +67,13 @@ class ChangeSelectionTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertTrue(heavy([*plain, path]))
 
-    def test_the_matrix_holds_the_slow_builds_only_when_asked_for(self):
-        def targets(with_arm, with_intel):
-            matrix = json.loads(build_matrix(with_arm, with_intel))
+    def test_the_matrix_holds_the_slow_build_only_when_asked_for(self):
+        def targets(with_arm):
+            matrix = json.loads(build_matrix(with_arm))
             return [leg["target"] for leg in matrix["include"]]
 
-        self.assertEqual(targets(False, False), ["linux-x86_64", "macos-arm64"])
-        self.assertEqual(targets(True, False), ["linux-x86_64", "linux-arm64", "macos-arm64"])
-        # The complete installation is assembled from all four.
-        self.assertEqual(
-            targets(False, True), ["linux-x86_64", "linux-arm64", "macos-arm64", "macos-x86_64"]
-        )
+        self.assertEqual(targets(False), ["linux-x86_64", "macos-arm64"])
+        self.assertEqual(targets(True), ["linux-x86_64", "linux-arm64", "macos-arm64"])
 
     def test_only_what_builds_or_packages_asks_for_the_complete_installation(self):
         self.assertFalse(bundle(["src/web/master.cc", "include/web/master.h", "web/src/a.tsx"]))

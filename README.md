@@ -93,7 +93,7 @@ Use `uagent --web` to pair your browser or phone. Add an SSH host under
 **Remote hosts**, then select it when starting a conversation or opening a folder.
 The main must be reachable from your device, for example over your LAN or VPN.
 
-Linux and macOS, x86_64 and ARM64.
+Linux (x86_64 and ARM64) and macOS (Apple silicon).
 [Setup and platform requirements](docs/GUIDE.md#install) ·
 [Free-model limits](docs/GUIDE.md#free-model-setup) ·
 [Remote hosts and current limits](docs/REMOTE_HOSTS.md)

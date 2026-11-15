@@ -46,10 +46,9 @@ def heavy(paths):
 
 
 def bundle(paths):
-    """Whether a pull request also builds Intel macOS and assembles the
-    complete installation from all four builds, which master always does:
-    only when what builds, packages or installs it changed. The other three
-    builds cover that architecture and that system between them."""
+    """Whether a pull request also assembles the complete installation from
+    all three builds, which master always does: only when what builds,
+    packages or installs it changed."""
     return any(
         path.startswith((".github/", "cmake/", "deploy/"))
         or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore", "install.sh")
@@ -57,16 +56,15 @@ def bundle(paths):
     )
 
 
-def build_matrix(with_arm, with_intel):
-    """The Release builds of build-and-test: Linux ARM64 and Intel macOS only
-    where they are run. Intel macOS is the slowest of them by far."""
+def build_matrix(with_arm):
+    """The Release builds of build-and-test: Linux ARM64 only where it is
+    run."""
     legs = [
         {"target": "linux-x86_64", "runner": "ubuntu-24.04", "arch": "x86_64"},
         {"target": "linux-arm64", "runner": "ubuntu-24.04-arm", "arch": "aarch64"},
         {"target": "macos-arm64", "runner": "macos-15", "arch": "arm64"},
-        {"target": "macos-x86_64", "runner": "macos-15-intel", "arch": "x86_64"},
     ]
-    chosen = [True, with_arm or with_intel, True, with_intel]
+    chosen = [True, with_arm, True]
     return json.dumps({"include": [leg for leg, run in zip(legs, chosen, strict=True) if run]})
 
 
@@ -136,7 +134,7 @@ elif __name__ == "__main__":
             "bundle": True,
             "image": True,
         }
-    result["matrix"] = build_matrix(result["heavy"], result["bundle"])
+    result["matrix"] = build_matrix(result["heavy"] or result["bundle"])
     output = "".join(
         f"{name}={value if isinstance(value, str) else str(value).lower()}\n"
         for name, value in result.items()

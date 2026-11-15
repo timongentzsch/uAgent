@@ -251,7 +251,7 @@ The Linux build jobs reuse compiled objects through ccache
 the older run; runs on `master` are never cancelled, so each merge is tested
 as it landed.
 
-A pull request skips the slowest legs (Linux ARM64, macOS x86_64,
+A pull request skips the slowest legs (Linux ARM64,
 ThreadSanitizer and the remote bundle) unless it is heavy: it touches
 `CMakeLists.txt`, `CMakePresets.json`, `.dockerignore`, `cmake/`, `deploy/`,
 `third_party/`, `.github/`, `src/web/`, `src/browser/`, `include/web/` or
@@ -261,7 +261,7 @@ Master, scheduled and manual runs always run them.
 | Job | Runs |
 | --- | --- |
 | `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |
-| `build-and-test` | Release builds with Web Push on Linux x86_64 and macOS ARM64, and Linux ARM64 and macOS x86_64 on master and for heavy changes; `ctest`; packaging and the target's remote payload |
+| `build-and-test` | Release builds with Web Push on Linux x86_64 and macOS ARM64, and Linux ARM64 on master and for heavy changes; `ctest`; packaging and the target's remote payload |
 | `remote-bundle` | On master and for heavy changes: assembles the four payloads into one verified bundle, adds it to each release archive and checks the archives |
 | `sanitizers` | `sanitize` preset, `ctest` |
 | `thread-sanitizer` | On master and for heavy changes: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |

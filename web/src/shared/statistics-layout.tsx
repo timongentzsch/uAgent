@@ -55,7 +55,7 @@ export function StatisticsLayout({
   return (
     <>
       {unit && (
-        <div class="dialog-actions" role="group" aria-label="Statistics scope">
+        <div class="segmented" role="group" aria-label="Statistics scope">
           {(["turn", "session"] as const).map((value) => (
             <Button
               key={value}

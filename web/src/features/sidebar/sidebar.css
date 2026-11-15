@@ -228,8 +228,6 @@
   padding: var(--space-2) var(--space-4);
 }
 .sidebar-sections {
-  display: flex;
-  gap: var(--gap);
   padding: 0;
 }
 /* raw: two equal halves of the list's tabs. */

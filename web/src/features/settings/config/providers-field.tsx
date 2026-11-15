@@ -321,7 +321,7 @@ function ProviderForm({
           title="Start from"
           footer="Fills the fields below; each stays editable."
         >
-          <Actions>
+          <div class="segmented" role="group" aria-label="Start from">
             {PRESETS.map((from) => (
               <Button
                 key={from.name}
@@ -331,7 +331,7 @@ function ProviderForm({
                 {from.label}
               </Button>
             ))}
-          </Actions>
+          </div>
         </Group>
       )}
       <Field

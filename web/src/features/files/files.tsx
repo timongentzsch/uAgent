@@ -914,7 +914,7 @@ export default function Files({
             edge="end"
           />
           {changed.value?.repository && (
-            <div class="files-modes">
+            <div class="segmented" role="group" aria-label="List">
               <Button
                 variant="secondary"
                 aria-pressed={tab === "files"}

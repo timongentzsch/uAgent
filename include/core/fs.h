@@ -4,8 +4,6 @@
 #define UAGENT_INCLUDE_CORE_FS_H_
 // Agent directories and crash-safe file writing. Global state stays under
 // ~/.uagent; explicitly folder-scoped files use the folder's .uagent.
-// Bodies live in src/core/fs.cc so widely-included helpers do not recompile
-// in every translation unit.
 
 #include <fcntl.h>
 #include <pwd.h>
@@ -37,12 +35,14 @@
 namespace uagent {
 
 // The throwing overload aborts under -fno-exceptions on a lookup error
-// (EACCES on a parent, ELOOP). A path we cannot look up is not there.
+// (EACCES on a parent, ELOOP). A path that cannot be looked up is not there.
 bool PathExists(const std::filesystem::path& path);
 
 std::string UserHome();
 
 std::string Tilde(const std::string& path);
+// Resolve a user-entered directory, including ~ and an empty home path.
+std::string ExpandHome(std::string path);
 
 // ~/.uagent. Falls back to a per-uid temp directory when the account has no
 // home, never to a folder-controlled location.
@@ -51,30 +51,21 @@ std::string GlobalBase();
 // limited to 104 bytes on macOS, independently of HOME.
 std::string RuntimeDir();
 
-// The directory a folder opts into. Named once: several modules need it,
-// and a reader and a writer disagreeing about it would silently lose data.
+// The directory a folder opts into.
 std::filesystem::path ProjectBase(const std::filesystem::path& cwd);
 
-// Create a directory inside the private user state tree without following
-// directory symlinks, and verify its ownership and mode.
+// Creates a private directory, following no symlink; checks owner and mode.
 bool EnsurePrivateDirectory(const std::string& path);
 
-// The agent's directory layout. Named where a second file also spells the
-// name: a writer, a reader and the pruner disagreeing would strand data
-// somewhere nothing looks. Single-use names stay literal at their one site.
+// The agent's directory layout: the names more than one file spells.
 inline constexpr const char* kMemoryDir = "memory";
 inline constexpr const char* kHistoryDir = "history";
 inline constexpr const char* kWorktreesDir = "worktrees";
 inline constexpr const char* kSessionsDir = "sessions";
 inline constexpr const char* kActivityDir = "activity";
 inline constexpr const char* kTerminalsDir = "terminals";
-// Detached logs sit one level below their records rather than beside them. A
-// record names the log to remove and the process group to kill, so a writer
-// that can reach the records directory can forge one and redirect both. The
-// logs are the only part a command's own output has to reach, so they are the
-// only part that can be made writable. Readers need no split: every one of
-// them follows the full path stored in the record, and the record scan is
-// non-recursive and filters .json, so it does not see this subdirectory.
+// Below the records, not beside them: a record names a log to remove and a
+// group to kill, so only the logs directory can be made writable.
 inline constexpr const char* kTerminalLogsDir = "terminals/logs";
 inline constexpr const char* kArtifactsDir = "artifacts";
 inline constexpr const char* kMcpDir = "mcp";
@@ -83,27 +74,25 @@ inline constexpr const char* kConfigDir = "config";
 inline constexpr const char* kMailDir = "mail";
 // Named workspaces, one folder each.
 inline constexpr const char* kSpacesDir = "spaces";
+// The workspace a conversation starts in until it is filed.
+inline constexpr const char* kUnfiledSpace = "Scratch";
 inline constexpr const char* kWebDir = "web";
-// Imports build in a staging folder that the pruner empties when one was
-// killed.
+// Imports build here; the pruner empties what a killed import left.
 inline constexpr const char* kStagingDir = "staging";
 // Session drafts sit in the sessions folder of a host, beside its records.
 inline constexpr const char* kDraftsDir = "drafts";
 inline constexpr const char* kPinsFile = "pins.json";
-// What a workspace keeps for itself, under its root; the home folder's own
-// directory carries the same name. The agent's scripts live in kScratchDir.
+// What a workspace keeps for itself, under its root.
 inline constexpr const char* kWorkspaceDir = ".uagent";
 inline constexpr const char* kScratchDir = "scratch";
 inline std::filesystem::path ScratchDir(
     const std::filesystem::path& workspace) {
   return workspace / kWorkspaceDir / kScratchDir;
 }
-// A lease on a store's directory: the web host's, and the writers of the
-// scheduled-task and library stores. The scheduler reads the host's by name.
+// Leases on a store's directory; the scheduler reads the host's by name.
 inline constexpr const char* kMasterLockFile = "master.lock";
 inline constexpr const char* kWriteLockFile = "write.lock";
-// Files beside a session record (<id>.json) that its writers create and the
-// pruner must recognise; one list, so a new sidecar cannot be left behind.
+// Sidecars of a session record (<id>.json), which the pruner must recognise.
 inline constexpr const char* kSessionLockSuffix = ".lock";
 inline constexpr const char* kSessionJournalSuffix = ".events.jsonl";
 inline constexpr const char* kSessionAssetsSuffix = ".assets";
@@ -113,13 +102,10 @@ inline constexpr const char* kSessionPlanSuffix = ".plan.md";
 // Remembered approval rules under kConfigDir; they grant future authority.
 inline constexpr const char* kPermissionStoreFile = "permissions.json";
 
-// mkstemp over a pattern string. `path` always receives the expanded template,
-// including on failure — callers name it in their error message.
+// mkstemp; `path` receives the expanded template even on failure.
 int CreateTempFile(const std::string& pattern, std::string& path);
 
-// RAII mkstemp: owns the file descriptor and unlinks the path on destruction
-// unless released. Replaces the hand-rolled Fd-plus-unlink dances, where an
-// early return could either leak the file or unlink one the caller kept.
+// RAII mkstemp: unlinks the path on destruction unless released.
 class ScopedTempFile {
  public:
   explicit ScopedTempFile(const std::string& pattern);
@@ -132,8 +118,7 @@ class ScopedTempFile {
   const std::string& Path() const { return path_; }
   // Close early; the path is still unlinked on destruction unless released.
   void Close();
-  // Keep the file and hand over its path. Discard the result only when the
-  // path is already held elsewhere.
+  // Keeps the file and hands over its path.
   std::string Release();
   // Hand over the descriptor; the file persists and the path is forgotten.
   int ReleaseFd();
@@ -146,31 +131,25 @@ class ScopedTempFile {
   bool keep_ = false;
 };
 
-// Read at most `cap` bytes from an open stream — one byte further, so a longer
-// source is detectable — cut back to a UTF-8 boundary. Returns whether the
-// source had more to give.
+// Reads at most `cap` bytes, cut back to a UTF-8 boundary; returns whether
+// the source had more to give.
 bool ReadBounded(std::istream& input, size_t cap, std::string& out);
 
 // `path` resolved, when it is an existing directory.
 std::optional<std::filesystem::path> CanonicalDirectory(
     const std::filesystem::path& path);
 
-// A file's first `cap` bytes (cut to UTF-8), or nothing when it cannot be
-// opened. For files the caller trusts; private state uses ReadRegularFile.
+// A file's first `cap` bytes, cut to UTF-8; for files the caller trusts.
 std::optional<std::string> ReadFile(const std::string& path, size_t cap);
 
-// Private state and web assets must never follow a final symlink or read a
-// device/FIFO. A prefix read is useful for cheap catalogue headers.
-// A regular file this user owns, opened read-only without following a final
-// symlink; empty when it is anything else or larger than `cap` bytes. `size`
-// receives its size.
+// A regular file this user owns, opened without following a final symlink;
+// empty when it is anything else or larger than `cap` bytes.
 Fd OpenOwnedRegular(const std::string& path, size_t cap,
                     size_t* size = nullptr);
 bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
                      std::string& error, bool prefix = false);
 
-// Atomic shared writer for settings, trust state and tools. A temp
-// file in the target directory makes replacement crash-safe.
+// Atomic replace through a temp file in the target directory.
 bool AtomicWriteFile(const std::string& path, const std::string& content,
                      mode_t create_mode, bool preserve_mode, std::string& error,
                      bool overwrite = true);
@@ -178,20 +157,14 @@ bool AtomicWriteFile(const std::string& path, const std::string& content,
 bool WritePrivateFile(const std::string& path, const std::string& content,
                       std::string& error);
 
-// create_directories() applies the ambient umask, so hardening only the leaf
-// leaves every directory it had to create along the way world-traversable.
-// Every private path is built through here so the whole chain is owner-only.
+// Owner-only for the whole chain: create_directories() follows the umask.
 void CreatePrivateDirectories(const std::filesystem::path& dir);
 
 std::string MakePrivateDir(const std::string& base, const char* sub);
 
-// ~/.uagent/<sub>, created on demand. History, sessions, logs, the trust store,
-// and settings stay global: a folder must not be able to relocate — or
-// grant itself — any of them.
+// ~/.uagent/<sub>, created on demand. Global on purpose: a folder must not be
+// able to relocate, or grant itself, history, sessions, trust or settings.
 std::string UagentDir(const char* sub);
-
-// Artifact pruning walks whole directory trees; it lives in src/core/fs.cc so
-// that every includer of this header stops compiling the walk.
 
 // Delete `<session>.events.jsonl` journals whose session file is gone.
 void PruneSessionJournalOrphans(const std::string& dir);
@@ -201,23 +174,21 @@ void MaintainArtifacts();
 // MaintainArtifacts at most once a day, however many sessions start.
 void MaintainArtifactsDaily();
 
-// Restrict to [A-Za-z0-9_-] and cap the length. The cap differs by consumer:
-// file components and protocol-visible tool names have different limits.
+// Restrict to [A-Za-z0-9_-] and cap the length.
 std::string SanitizeComponent(std::string value, size_t cap);
 
 std::string SafeFileComponent(std::string value);
 
 std::string CanonicalCwd();
 
-// Unique per process and per call. The counter it needs is process-wide
-// mutable state, so the definition lives in src/core/fs.cc.
+// Unique per process and per call.
 std::string UniqueSeed();
 // The same, hashed and named as a session.
 std::string MakeSessionId();
 // OS randomness for credentials and opaque identities. Empty on failure.
 std::string RandomToken(size_t bytes = 24);
 
-std::string WorkspaceId(const std::string& root);
+std::string WorkspaceId(const std::string& root, const std::string& host = {});
 
 bool LockFileExclusive(int fd);
 
@@ -229,9 +200,8 @@ std::string ReadFileTail(const std::string& path, int64_t bytes,
 bool AppendPrivateLine(const std::string& path, const std::string& line,
                        std::string& error);
 
-// Atomically drain a small private append-only file. Truncating the locked
-// inode instead of unlinking it keeps writers that opened before the lock from
-// appending to an unreachable file.
+// Atomically drains a small private append-only file. The locked inode is
+// truncated, not unlinked, so earlier openers never append to a lost file.
 bool TakePrivateText(const std::string& path, std::string& content,
                      std::string& error);
 

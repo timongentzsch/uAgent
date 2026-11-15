@@ -1,4 +1,5 @@
-// Runs before the stylesheet and app load; an external file keeps the CSP free of inline JS.
+// Runs before the stylesheet and the app load; an external file keeps the
+// CSP free of inline JS.
 (() => {
   let t,
     z = 100;

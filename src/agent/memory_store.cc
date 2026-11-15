@@ -28,10 +28,8 @@
 
 namespace uagent {
 
-// Assignment keywords whose value is redacted. Keywords are matched literally
-// (escaped before they reach the pattern): -fno-exceptions makes a malformed
-// std::regex fatal, and an arbitrary pattern invites catastrophic backtracking
-// over every memory body.
+// Keywords are matched literally: -fno-exceptions makes a malformed std::regex
+// fatal, and an arbitrary pattern invites catastrophic backtracking.
 const std::vector<std::string>& RedactKeywords() {
   static const std::vector<std::string> kKeywords = [] {
     std::vector<std::string> all = CredentialKeyStems();
@@ -45,10 +43,8 @@ const std::vector<std::string>& RedactKeywords() {
   return kKeywords;
 }
 
-// Vendor token shapes. The marker is the literal the pre-scan below searches
-// for (lowercase -- that scan folds case), the pattern is what gets redacted.
-// The pair lives in one row so a new vendor cannot reach the regex without
-// also reaching the gate that decides whether the regex ever runs.
+// The marker is the lowercase literal the pre-scan searches for. One row
+// holds both, so a new vendor reaches the gate together with its pattern.
 struct TokenShape {
   const char* marker;
   const char* pattern;
@@ -67,10 +63,8 @@ constexpr TokenShape kTokenShapes[] = {
     {"aiza", R"(AIza[0-9A-Za-z_-]{35})"},
 };
 
-// Cheap gate for the redactor: text that mentions no credential at all is
-// the common case and needs none of the three regex passes. The keyword markers
-// are derived from RedactKeywords() rather than restated, so a keyword can no
-// longer be gated out of existence -- `passwd` was missed that way once.
+// Text that mentions no credential needs none of the regex passes. Markers
+// derive from RedactKeywords(), so no keyword can be gated out.
 bool MentionsSecret(std::string_view text) {
   static const std::vector<std::string> kMarkers = [] {
     std::vector<std::string> all = RedactKeywords();
@@ -158,29 +152,8 @@ bool AppendBoundedMemoryEvent(const std::string& line, std::string& error) {
   return true;
 }
 
-bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
-                      std::string& error) {
-  std::string serialized = JsonDump(MemoryEventJson(event));
-  bool appended = AppendBoundedMemoryEvent(serialized, error);
-  if (receipt_path.empty()) return appended;
-  std::string receipt_error;
-  bool receipt =
-      WritePrivateFile(receipt_path, serialized + "\n", receipt_error);
-  if (!receipt) {
-    if (!error.empty()) error += "; ";
-    error += "receipt: " + receipt_error;
-  }
-  return appended && receipt;
-}
-
-bool ReadMemoryReceipt(const std::string& path, MemoryEvent& event,
-                       std::string& error) {
-  json value = ReadJsonFile(path, kMemoryEventLineBytes);
-  if (value.is_discarded() || !ParseMemoryEvent(value, event)) {
-    error = "invalid memory receipt";
-    return false;
-  }
-  return true;
+bool WriteMemoryEvent(const MemoryEvent& event, std::string& error) {
+  return AppendBoundedMemoryEvent(JsonDump(MemoryEventJson(event)), error);
 }
 
 std::vector<MemoryEvent> LoadMemoryEvents(size_t limit) {
@@ -198,8 +171,7 @@ std::vector<MemoryEvent> LoadMemoryEvents(size_t limit) {
   return events;
 }
 
-// Escapes every ECMAScript metacharacter so a configured keyword is matched as
-// a literal: no user input reaches the pattern as syntax.
+// Escapes ECMAScript metacharacters, so a keyword is never pattern syntax.
 std::string RegexLiteral(std::string_view keyword) {
   std::string escaped;
   escaped.reserve(keyword.size() * 2);

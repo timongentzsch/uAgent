@@ -2,9 +2,132 @@ import { test as base, expect } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 export { expect };
+
+// What the Files pane's tests put into a conversation's folder: a page with
+// an artboard (which makes a design), a slide with its notes in its last
+// aside, a document on paper, and a sheet, each tab a table of typed rows.
+export const artboard = (title, body, size = "1440x900") =>
+  `<!doctype html><html><head><title>${title}</title>` +
+  `<meta name="artboard" content="${size}"></head><body>${body}</body></html>`;
+export const slide = (title, notes = "", body = "") =>
+  artboard(
+    title,
+    `<h1>${title}</h1>${body}${notes ? `<aside>${notes}</aside>` : ""}`,
+    "1920x1080 slide",
+  );
+export const paper = (title, body, sheet = "a5", head = "") =>
+  `<!doctype html><html><head><title>${title}</title>` +
+  `<meta name="print" content="flow ${sheet}">${head}</head><body>${body}</body></html>`;
+
+export const sheet = (title, tabs) =>
+  `<!doctype html>\n<meta charset="utf-8">\n<meta name="sheet" content="1">\n` +
+  `<title>${title}</title>\n${Object.entries(tabs)
+    .map(
+      ([name, rows]) =>
+        // A row is its cells; one that is a tag itself (its <col>s, a <tr>
+        // with a class) is written whole, and a chart after the table.
+        `<table data-sheet="${name}">\n${rows
+          .filter((row) => !row.startsWith("<figure"))
+          .map((row) => (/^<(col|tr)\b/.test(row) ? row : `<tr>${row}`))
+          .join(
+            "\n",
+          )}\n${["</table>", ...rows.filter((row) => row.startsWith("<figure"))].join("\n")}`,
+    )
+    .join("\n")}\n`;
+// A plan of three tabs: counts and a total over its tasks, a header band
+// under the summary, a value read from another tab, and two cells in error.
+export const SAMPLE_SHEET = sheet("Launch plan", {
+  Tasks: [
+    "<td>Done<td>=COUNTIF(B4:B6,A1)<td>",
+    "<td><td><td>",
+    "<th>Task<th>Status<th>Cost",
+    "<td>Write the plan<td>Done<td>1200",
+    "<td>Book the venue<td>Done<td>8400.5",
+    "<td>Brief the press<td>To do<td>=1/0",
+    '<td>Total<td><td data-format="#,##0.00">=SUM(C4:C5)',
+  ],
+  Inputs: [
+    "<th>Name<th>Value",
+    "<td>Budget<td>=Tasks!C7*2",
+    "<td>Rate<td>=NOPE(1)",
+  ],
+  Notes: ["<td>Nothing yet"],
+});
+
+// Writes files into a folder by their paths in it, making its folders.
+export async function writeFiles(root, files) {
+  for (const [name, content] of Object.entries(files)) {
+    await mkdir(dirname(join(root, name)), { recursive: true });
+    await writeFile(join(root, name), content);
+  }
+}
+
+// The conversation in a desktop's window, or a phone's.
+export async function openSession(page, session, { phone } = {}) {
+  await page.setViewportSize(
+    phone ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+  );
+  await page.goto(`/#session=${session.id}`);
+}
+
+// The conversation with Files open at a place in its folder: each folder of
+// `path` opened in the tree, then its last part: a file, or with a closing
+// slash the folder's own Open. Returns the pane.
+export async function openFiles(page, session, path = "", options = {}) {
+  await openSession(page, session, options);
+  await headerAction(page, "Files");
+  const files = page.getByRole(options.phone ? "dialog" : "region", {
+    name: "Files",
+  });
+  for (const name of path.split("/").filter(Boolean))
+    await files.getByRole("button", { name, exact: true }).click();
+  if (path.endsWith("/"))
+    await files
+      .locator(`.tree-folder:has([data-path="${path.slice(0, -1)}"])`)
+      .getByRole("button", { name: "Open", exact: true })
+      .click();
+  return files;
+}
+
+// A sheet written as sheets/plan.html (or at `options.path`, as text or as a
+// workbook's bytes) and opened in the pane: its page, its tabs, its formula
+// bar, a cell of a tab by its name ("B2"), and the file as it is on disk.
+export async function openSheet(page, session, project, source, options) {
+  const path = options?.path ?? "sheets/plan.html";
+  await writeFiles(project, { [path]: source });
+  const files = await openFiles(page, session, path, options);
+  const { stage } = viewerOf(files);
+  const bar = files.getByRole("group", { name: "Formula bar" });
+  const columnOf = (name) =>
+    [...name].reduce((n, letter) => n * 26 + letter.charCodeAt(0) - 64, 0);
+  return {
+    files,
+    stage,
+    bar,
+    field: bar.getByRole("combobox", { name: "Cell contents" }),
+    tabs: files.getByRole("tablist", { name: "Tabs" }).getByRole("tab"),
+    cell: (tab, ref) => {
+      const [, name, row] = /^([A-Z]+)(\d+)$/.exec(ref);
+      return stage.locator(
+        `table[data-sheet="${tab}"] [data-row="${row}"][data-column="${columnOf(name)}"]`,
+      );
+    },
+    saved: (at = path) => readFile(join(project, at), "utf8"),
+  };
+}
+
+// The viewer's stage (its page) and its counter, in the pane.
+export const viewerOf = (files) => ({
+  stage: files.frameLocator(".page-stage iframe:not([inert])"),
+  count: files.getByRole("group", { name: "Step" }).locator("output"),
+});
+
+// The serving host connection, independent of remote-host status rows.
+export const connected = (page) =>
+  page.getByRole("status").filter({ hasText: /^Connected$/ });
 
 // Cold lazy-module tests stay independent of precaching: a valid, empty
 // service worker never serves a chunk from cache.
@@ -49,19 +172,18 @@ export async function leaveEnd(box) {
   });
 }
 
-// New ▾ Folder…: asks for a path on the host, ready to start a conversation.
-export async function newFolder(page, path) {
+// New ▾ Folder…, a path on the host, Start: a conversation with its runtime.
+// The dialog stays over it until it has loaded: typing before then is lost.
+export async function startInFolder(page, path) {
   await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("menuitem", { name: "Folder…" }).click();
+  await page.getByRole("button", { name: "Type a path" }).click();
   await page.getByLabel("Folder on the host").fill(path);
-}
-
-// newFolder, then starts the conversation and waits for its runtime.
-export async function startInFolder(page, path) {
-  await newFolder(page, path);
-  await page
+  const dialog = page.getByRole("dialog", { name: "New folder" });
+  await dialog
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
+  await expect(dialog).toBeHidden();
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
 }
 
@@ -86,7 +208,7 @@ export async function selectProbeModel(
 export async function saveHistory(
   host,
   file,
-  { id, title, turns, messages, kinds, cwd, display },
+  { id, title, turns, messages, kinds, cwd, display, suggestion },
 ) {
   const directory = `${host.home}/.uagent/history`;
   await mkdir(directory, { recursive: true });
@@ -97,6 +219,7 @@ export async function saveHistory(
     session_id: id,
     title,
     turns,
+    ...(suggestion ? { suggestion } : {}),
   };
   const state = {
     messages,
@@ -106,6 +229,7 @@ export async function saveHistory(
     context_tokens: 0,
     context_window: 0,
     usage: {},
+    route_usage: {},
     last_sent_prompt: "",
     display: display || {},
     delivered_mail: [],
@@ -158,11 +282,9 @@ export const showList = (page) =>
     ).toHaveCount(1, { timeout: 1000 });
   }).toPass();
 
-// What a wider header shows as a button beside the title (Settings, Files,
-// Open browser, Edit instructions) and a narrow column keeps in the
-// conversation's menu (Settings, in the list's footer). A button's name may
-// say more after it ("Open browser, agent working"). Without a conversation
-// there is no menu and the header keeps Settings.
+// What a wider header shows as a button beside the title and a narrow column
+// keeps in the conversation's menu. A button's name may say more after it
+// ("Open browser, agent working"). With no conversation there is no menu.
 export async function headerAction(page, name) {
   const head = page.locator(".conversation-head");
   const menu = head.getByRole("button", { name: "Conversation menu" });
@@ -288,8 +410,12 @@ export const test = base.extend({
   noModel: [false, { option: true }],
   // A host in Auto approval whose decision model is wary of sending data.
   autoReview: [false, { option: true }],
+  // A host whose model titles conversations and places unfiled ones.
+  titles: [false, { option: true }],
+  // A device that chose Places for the list, for tests about places.
+  places: [false, { option: true }],
   page: failOnPageErrors,
-  host: async ({ noModel, autoReview }, use, testInfo) => {
+  host: async ({ noModel, autoReview, titles }, use, testInfo) => {
     const path = testInfo.outputPath("host.json");
     const child = spawn("python3", [
       "../tests/web_host.py",
@@ -303,6 +429,7 @@ export const test = base.extend({
       path,
       ...(noModel ? ["--no-model"] : []),
       ...(autoReview ? ["--auto-review"] : []),
+      ...(titles ? ["--titles"] : []),
     ]);
     const exited = once(child, "exit");
     let output = "",
@@ -352,7 +479,7 @@ export const test = base.extend({
     }
   },
   baseURL: async ({ host }, use) => use(host.origin),
-  storageState: async ({ host, paired }, use) => {
+  storageState: async ({ host, paired, places }, use) => {
     if (!paired) return use(undefined);
     const response = await fetch(`${host.origin}/api/auth`, {
       method: "POST",
@@ -377,7 +504,14 @@ export const test = base.extend({
           sameSite: "Strict",
         },
       ],
-      origins: [],
+      origins: places
+        ? [
+            {
+              origin: host.origin,
+              localStorage: [{ name: "uagent-list", value: "places" }],
+            },
+          ]
+        : [],
     });
   },
   command: async ({ host, request }, use) => {
@@ -430,4 +564,14 @@ export async function openRow(scope, text) {
   if ((await row.getAttribute("aria-expanded")) === "false") await row.click();
   await expect(row).toHaveAttribute("aria-expanded", "true");
   return row.locator("..");
+}
+
+// The page opened alone from the pane, once it is at its address.
+export async function openAlone(app, files) {
+  const [alone] = await Promise.all([
+    app.waitForEvent("popup"),
+    files.getByRole("button", { name: "Open alone" }).click(),
+  ]);
+  await alone.waitForURL(/\/preview\//);
+  return alone;
 }

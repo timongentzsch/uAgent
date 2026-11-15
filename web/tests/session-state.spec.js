@@ -1,4 +1,5 @@
 import {
+  connected,
   test,
   expect,
   online,
@@ -22,6 +23,7 @@ test("late snapshots and retired streams cannot replace current session state", 
     status: "idle",
     presence: "active",
     incoming: 0,
+    updated: Date.now(),
   }));
   const snapshot = (metadata, context = 1000, cursor = 10) => ({
     v: 2,
@@ -75,6 +77,7 @@ test("late snapshots and retired streams cannot replace current session state", 
           devices: [],
         },
       });
+    if (path === "/api/hosts") return route.fulfill({ json: { hosts: [] } });
     if (path === "/api/browser/status")
       return route.fulfill({ status: 404, json: { error: "Not found" } });
     if (path === "/api/user.css")
@@ -108,7 +111,7 @@ test("late snapshots and retired streams cannot replace current session state", 
       { index, epoch, cursor },
     );
   await ready(0, 10);
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   await page
     .getByRole("button", { name: "Show full message", exact: true })
     .click();
@@ -180,8 +183,8 @@ test("late snapshots and retired streams cannot replace current session state", 
     globalThis.testStreams[0].onerror(new Event("error")),
   );
   await expect(context).toHaveAttribute("title", /Estimated context: 12,000 /);
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await expect(page.locator(".error-banner")).toHaveCount(0);
+  await expect(connected(page)).toBeVisible();
+  await expect(page.locator(".banner")).toHaveCount(0);
 });
 
 test("tool rows and memory receipts survive reload and mobile rotation", async ({
@@ -196,27 +199,25 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  // The turn's work opens on its calls, as a terminal shows them.
   const rows = page.locator(".transcript .node-row");
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  // The reply's thinking is a step of the work too.
-  await expect(rows).toHaveText([
-    /^Worked.*2 steps/,
-    /^Read \./,
-    /^Read \./,
-    /^Thinking/,
-  ]);
-  // The conversation menu sets how deep the tree opens: every call at full,
-  // the whole turn's work as one line at minimal.
+  // The two reads are one row at default, and their own under it at full.
+  await expect(rows).toHaveText([/^Worked 2 reads/, /^Explored 2 files/]);
+  // A thought is text among them, not a row to open.
+  await expect(page.locator(".thought .node-text")).toBeVisible();
   await chooseDetail(page, "Full");
-  await expect(rows).toHaveCount(4);
+  await expect(rows).toHaveText([
+    /^Worked 2 reads/,
+    /^Explored 2 files/,
+    /^Read \./,
+    /^Read \./,
+  ]);
   await chooseDetail(page, "Minimal");
-  await expect(rows).toHaveText([/^Worked.*2 steps/]);
+  await expect(rows).toHaveText([/^Worked 2 reads/]);
   await chooseDetail(page, "Default");
-  await expect(rows).toHaveCount(4);
-  // Tables keep their layout and scroll instead of squeezing a column.
+  await expect(rows).toHaveCount(2);
   const table = page.locator(".message .table-scroll > table");
   await expect(table).toHaveCount(1);
   await expect(table).toHaveCSS("display", "table");
@@ -243,10 +244,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   // The turn ends first: a reply arriving moves the row under a click on it.
   await expect(page.locator(".turn-footer")).toHaveCount(2);
   await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
-  // The receipt opens to a link to the memory.
   await openRow(page, "Saved memory project/browser-proof");
-  // Its detail reads top-down: key, one caption, then the memory itself
-  // directly below (not floated to the middle of the sheet).
   await page.getByRole("button", { name: "Open memory" }).first().click();
   const memory = page.getByRole("dialog", { name: "Memory" });
   await expect(memory).toBeVisible();
@@ -266,10 +264,8 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
   await page.reload();
-  // Retained history replays through the live pipeline: the same calls and
-  // the receipt, none still running, and the row opened here stays open.
   await expect(
-    page.locator(".node-row", { hasText: /^Read \./ }).first(),
+    page.locator(".node-row", { hasText: /^Explored 2 files/ }).first(),
   ).toBeVisible();
   await expect(page.locator(".transcript .node.running")).toHaveCount(0);
   await expect(
@@ -325,7 +321,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
     });
   });
   await page.goto(fixture.origin);
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   await selectProbeModel(command, session);
   await page.goto(`/#session=${session.id}`);
   await expect(page).toHaveURL(new RegExp(session.id));
@@ -336,15 +332,8 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   await prompt.press("Enter");
   await expect(page.locator(".composer .status-led.running")).toBeVisible();
 
-  // The reply's thinking is a row of the turn's work; a never-opened row
-  // draws no body.
-  const thinkingRow = page.locator(".node-row", { hasText: "Thinking" });
-  await expect(thinkingRow).toBeVisible();
-  const thinking = thinkingRow.locator("..");
-  await expect(thinking.locator(".node-body")).toHaveCount(0);
-  // Dispatched: the reply streaming moves the page under a real click, and
-  // whether a click lands is not what this holds to.
-  await thinkingRow.dispatchEvent("click");
+  // A thought shows as text as it streams, with nothing to open.
+  const thinking = page.locator(".thought");
   await expect(thinking.locator(".node-text")).toBeVisible();
 
   const opening = page
@@ -364,10 +353,8 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
     window.__stableCopyControl = node;
   });
   await stableTable.evaluate((node) => {
-    // How much of the answer shows: all of it, or only its settled blocks.
-    // The block still streaming can show raw syntax for a moment (a
-    // reference before its definition, a half-written marker), so only the
-    // blocks before it are held to the end. A reference counts as its label.
+    // The block still streaming can show raw syntax for a moment, so `settled`
+    // counts only the blocks before it. A reference counts as its label.
     window.__answerLength = (settled = false) => {
       const blocks = [
         ...(document.querySelector(".message.response > .markdown")?.children ||
@@ -467,16 +454,13 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
             node.textContent?.includes("Stable opening paragraph"),
           )?.parentElement,
         selected: getSelection().toString(),
-        thinking: [...document.querySelectorAll(".node-row")]
-          .find((row) => row.textContent?.includes("Thinking"))
-          ?.getAttribute("aria-expanded"),
+        thinking: !!document.querySelector(".thought .node-text"),
         copy:
           window.__stableCopyControl ===
           document.querySelector('.message.response [aria-label*="Cop"]'),
         table:
           window.__stableMarkdownTable ===
           document.querySelector(".message.response table"),
-        // Nothing that settled while streaming is gone at the end.
         kept: window.__answerLength() >= window.__maximumAnswerLength,
         removals: window.__stableRemovalCount,
       })),
@@ -484,7 +468,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
     .toEqual({
       same: true,
       selected,
-      thinking: "true",
+      thinking: true,
       copy: true,
       table: true,
       kept: true,
@@ -525,8 +509,6 @@ test("compaction never opens an unsolicited viewer", async ({
     .click();
   await composer.fill("Background activity probe");
   await composer.press("Enter");
-  // A command left running in the background keeps its own row, which
-  // takes the result when the command ends: one row, after a reload too.
   const row = page.locator(".node.ok > .node-row", {
     hasText: "BROWSER_ACTIVITY",
   });

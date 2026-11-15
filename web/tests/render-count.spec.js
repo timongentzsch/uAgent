@@ -1,11 +1,11 @@
 import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
 
-// The Vite-served app (a development page) on a mocked
-// host: a saved conversation, a long sidebar and a streamed reply. Counts
-// renders with the dev-only src/render-count.ts, so a regression that
-// re-renders the shell or every row per streamed frame fails here.
+// The dev page on a mocked host; src/render-count.ts counts renders, so a
+// re-render of the shell or of every row per streamed frame fails here.
 const EPOCH = "render-epoch";
 const ID = "a".repeat(32);
+// Changed within the last day, so Recent lists every row open.
+const NOW = Date.now();
 const session = (id, index) => ({
   id,
   generation: `g-${id}`,
@@ -13,10 +13,9 @@ const session = (id, index) => ({
   cwd: `/project-${index % 4}`,
   status: "idle",
   presence: "active",
-  updated: 1_700_000_000_000 - index * 60_000,
+  updated: NOW - index * 60_000,
 });
-// A conversation with a working agent under it, whose rows the stream must
-// leave alone.
+// A working agent, whose rows the stream must leave alone.
 const PARENT = { ...session("c".repeat(32), 90), cwd: "/project-1" };
 const AGENT = {
   ...session("d".repeat(32), 91),
@@ -28,7 +27,7 @@ const SESSIONS = [
   session(ID, 0),
   PARENT,
   AGENT,
-  ...Array.from({ length: 40 }, (_, index) =>
+  ...Array.from({ length: 1000 }, (_, index) =>
     session((index + 1).toString(16).padStart(32, "b"), index + 1),
   ),
 ];
@@ -41,9 +40,8 @@ const HISTORY = Array.from({ length: 120 }, (_, index) => ({
   sequence: index + 1,
 }));
 
-// Opens the saved conversation on the mocked host. In the page, testSend
-// sends the host's next event for it, and testSince counts the renders and
-// storage writes (by key) since testMark.
+// In the page, testSend sends the host's next event; testSince counts the
+// renders and storage writes (by key) since testMark.
 async function open(page) {
   await page.route("**/sw.js", (route) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
@@ -61,7 +59,6 @@ async function open(page) {
         devices: [],
         commands: [],
       });
-    // Every conversation holds the searched word once.
     if (path === "/api/search")
       return json({
         hits: SESSIONS.map(({ id, title }) => ({
@@ -84,7 +81,8 @@ async function open(page) {
   });
   await page.addInitScript(
     ({ epoch, cursor, id, generation }) => {
-      // The host's event stream, driven by the test.
+      // The level these counts were taken at: every step a row.
+      localStorage.setItem("uagent-detail", "default");
       globalThis.EventSource = class extends EventTarget {
         readyState = 1;
         constructor() {
@@ -124,9 +122,8 @@ async function open(page) {
         writes[key] = (writes[key] || 0) + 1;
         return setItem.call(this, key, value);
       };
-      // What the page still does after it first shows (lists and settings
-      // that arrive late on a busy machine) is not the test's doing:
-      // counting starts once nothing has rendered for half a second.
+      // Late lists and settings still render after the first paint: counting
+      // starts once nothing has rendered for half a second.
       let marked;
       globalThis.testMark = async () => {
         for (let still = 0, seen = ""; still < 25; await testFrame()) {
@@ -167,8 +164,6 @@ async function open(page) {
 const measured = (type, counts) =>
   test.info().annotations.push({ type, description: JSON.stringify(counts) });
 
-// The turn's reply streams sixty frames, with a tool call of its work every
-// tenth.
 const streamReply = (page) =>
   page.evaluate(async () => {
     testSend({
@@ -189,7 +184,6 @@ const streamReply = (page) =>
         kind: "message",
         role: "assistant",
         streaming: true,
-        // A reply arrives whole with its first text, then appends.
         body: { kind: "markdown", text: "Reply: " },
         sequence: testSequence,
       },
@@ -200,7 +194,6 @@ const streamReply = (page) =>
         id: "reply",
         append: { text: `word${index} ` },
       });
-      // Every tenth frame a tool call starts and finishes: whole rows.
       if (index % 10 === 9)
         for (const state of ["running", "ok"])
           testSend({
@@ -233,21 +226,16 @@ test("streaming renders only what changed", async ({ page }) => {
     "word59",
   );
   measured("streamed", counts);
-  // The shell and its sidebar sit out the stream; each frame renders the
-  // conversation once and only the node it touched: the reply, or a call
-  // of the work.
+  // Each frame renders the conversation once and only the node it touched.
   expect(counts.App || 0).toBe(0);
   expect(counts.SidebarView || 0).toBe(0);
   expect(counts.SessionRow || 0).toBe(0);
   expect(counts.ChatPage).toBeLessThanOrEqual(62);
   expect(counts.MessageView).toBeLessThanOrEqual(62);
   expect(counts.RowLine).toBeLessThanOrEqual(6 * 2 + 1);
-  // The composer and its controls show nothing a streamed node changes.
   for (const name of ["Composer", "ModelControl", "ActivityButtonView"])
     expect(counts[name] || 0, name).toBe(0);
 
-  // Work the turn started in the background, then twenty of its progress
-  // ticks: they change no node, so no node renders.
   await page.evaluate(async () => {
     testSend({
       kind: "node",
@@ -287,19 +275,15 @@ test("streaming renders only what changed", async ({ page }) => {
   );
   expect(ticks.RowLine || 0).toBe(0);
   expect(ticks.MessageView || 0).toBe(0);
-  // The sidebar renders that session's row, not the other forty.
   expect(ticks.SessionRow).toBeGreaterThan(0);
   expect(ticks.SessionRow).toBeLessThanOrEqual(20);
 
-  // A search list the person scrolled stays where they left it while
-  // events keep re-rendering the app behind it. Every conversation holds
-  // "word" (the mock above): more hits than the panel shows at once.
+  // Every conversation holds "word": more hits than the panel shows at once.
   await page.keyboard.press("ControlOrMeta+k");
   const palette = page.getByRole("dialog", { name: "Search" });
   await palette.getByRole("combobox").fill("word");
   const results = palette.getByRole("listbox", { name: "Results" });
   await expect(results.locator(".spotlight-snippet").first()).toBeVisible();
-  // The panel ends inside the window, however long the list.
   const bottom = await palette.evaluate(
     (dialog) => dialog.getBoundingClientRect().bottom,
   );
@@ -346,7 +330,6 @@ test("typing renders the composer, not the transcript or the list", async ({
   expect(renders.Composer).toBeGreaterThan(0);
   expect(renders.App || 0).toBeLessThanOrEqual(20);
   expect(renders.ChatPage || 0).toBeLessThanOrEqual(20);
-  // Nor the controls under the input, which show nothing typed.
   for (const name of [
     "SidebarView",
     "Chat",
@@ -355,7 +338,6 @@ test("typing renders the composer, not the transcript or the list", async ({
     "ActivityButtonView",
   ])
     expect(renders[name] || 0, name).toBe(0);
-  // The draft is saved once typing pauses, not per key.
   expect(writes["uagent-drafts"] || 0).toBe(0);
   await expect
     .poll(() => page.evaluate(() => testSince().writes["uagent-drafts"]))
@@ -367,8 +349,6 @@ test("state frames and an open dialog leave the shell alone", async ({
 }) => {
   await open(page);
   const turn = { ...SESSIONS[0], status: "running", turn_active: true };
-  // A turn's state frames: the same metadata each time, then twenty
-  // turn-status frames that change only the caption.
   const frames = await page.evaluate(async (metadata) => {
     await testMark();
     for (let index = 0; index < 20; index++) {
@@ -403,7 +383,6 @@ test("state frames and an open dialog leave the shell alone", async ({
     expect(frames.activity[name] || 0, name).toBeLessThanOrEqual(20);
   expect(frames.activity.Composer || 0).toBeLessThanOrEqual(40);
 
-  // Settings stays open while the reply streams behind it.
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(
     page.getByRole("heading", { name: "Settings", exact: true }),

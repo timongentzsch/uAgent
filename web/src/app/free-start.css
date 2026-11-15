@@ -1,0 +1,9 @@
+.free-start {
+  display: grid;
+  gap: var(--space-3);
+  border: var(--border);
+  padding: var(--space-4);
+}
+.free-start p {
+  margin: 0;
+}

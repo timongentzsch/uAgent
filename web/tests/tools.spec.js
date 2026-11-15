@@ -38,7 +38,7 @@ test("tool catalogue shows its schema size and persists selection", async ({
   await expect(enabled).not.toBeChecked();
 });
 
-test("a shared file previews inline in the conversation, sandboxed", async ({
+test("a presented file previews inline in the conversation, sandboxed", async ({
   page,
   session,
   command,
@@ -47,16 +47,14 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
   await page.goto(`/#session=${session.id}`);
   await online(page);
   const prompt = page.getByLabel("Message or guidance");
-  await prompt.fill("Artifact probe");
+  await prompt.fill("Report probe");
   await prompt.press("Enter");
-  // At full every call is open: the write shows its diff and the share its
-  // preview.
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
   await chooseDetail(page, "Full");
   await expect(page.locator(".node .diff").first()).toContainText(
-    "ARTIFACT_REPORT",
+    "PRESENTED_REPORT",
   );
   const file = page.locator(".transcript .node-file");
   await expect(file).toContainText("report.html");
@@ -66,7 +64,7 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
     "allow-scripts allow-forms allow-popups",
   );
   await expect(
-    page.frameLocator(".node-file iframe").getByText("ARTIFACT_REPORT"),
+    page.frameLocator(".node-file iframe").getByText("PRESENTED_REPORT"),
   ).toBeVisible();
   // An opaque origin: the file's scripts can never read this device's session.
   const preview = page.frames().find((item) => item.url().includes("/assets/"));
@@ -87,11 +85,9 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
     "href",
     /\?download=1$/,
   );
-  // Minimal shows the turn's work as one line, which holds the write; the
-  // file it handed you stays in sight, as the turn's own.
   await chooseDetail(page, "Minimal");
   await expect(page.locator(".transcript .node-row")).toHaveText([
-    /^Worked 2 steps/,
+    /^Worked 1 edit, 1 step/,
   ]);
   await expect(page.locator(".node .diff")).toHaveCount(0);
   await expect(file).toHaveCount(1);
@@ -116,7 +112,6 @@ test("a call that names no tool reads as what it called, never as its JSON", asy
   const row = page.locator(".node.failed > .node-row");
   await expect(row).toContainText("Called Read Paths /etc");
   await expect(row).not.toContainText("{");
-  // A reload reads the same from what was saved.
   await page.reload();
   await expect(row).toContainText("Called Read Paths /etc");
 });
@@ -134,7 +129,6 @@ test("a to-do list reads as its progress and stays above the composer", async ({
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Todo probe");
   await prompt.press("Enter");
-  // The call's row counts what is done; opened, it is the list.
   const call = await openRow(page, "Updated to-dos");
   await expect(call.locator(".node-row")).toContainText("1/3 done");
   await expect(call).toContainText("[pending] Fix the lexer");
@@ -147,7 +141,6 @@ test("a to-do list reads as its progress and stays above the composer", async ({
     "text-decoration-line",
     "line-through",
   );
-  // Kept with the conversation: a reload shows it again.
   await page.reload();
   await expect(todo.getByRole("listitem")).toHaveCount(3);
 });
@@ -163,13 +156,11 @@ test("a long diff shows whole on its row, live and after a reload", async ({
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Long diff probe");
   await prompt.press("Enter");
-  // The counts are the row's result; the diff, opened, is its lines alone.
   const write = await openRow(page, "Wrote long.txt");
   await expect(write.locator(".node-row")).toContainText("+2001 −0");
   const diff = write.locator(".diff");
   await expect(diff.locator("span")).toHaveCount(2001);
   await expect(diff.locator("span").last()).toHaveText("+LAST_DIFF_LINE");
-  // This device keeps the row open across a reload.
   await page.reload();
   await expect(diff.locator("span")).toHaveCount(2001);
   await expect(diff.locator("span").last()).toHaveText("+LAST_DIFF_LINE");
@@ -197,7 +188,6 @@ test("files read as tiles and cards, tool images sit on their row, and every ima
       buffer: Buffer.from("%PDF-1.4"),
     },
   ]);
-  // Before sending: one strip, never a second line.
   const strip = page.locator(".composer .attachments");
   await expect(strip.locator(".file-chip")).toHaveCount(2);
   // Uploaded, not merely listed: Enter does nothing while one is under way.
@@ -208,11 +198,9 @@ test("files read as tiles and cards, tool images sit on their row, and every ima
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Image probe");
   await prompt.press("Enter");
-  // Sent: the image as a tile, the PDF as a card naming its type.
   const sent = page.locator(".message.user .attachment-list");
   await expect(sent.locator(".attachment-tile")).toHaveCount(1);
   await expect(sent.locator(".attachment-card")).toContainText("PDF");
-  // The image read_path added to context opens with that call's row.
   const read = await openRow(page, "shot.png");
   await expect(read.locator(".attachment-tile")).toHaveCount(1);
   await expect(
@@ -221,7 +209,6 @@ test("files read as tiles and cards, tool images sit on their row, and every ima
   await read.locator(".attachment-tile").click();
   const viewer = page.getByRole("dialog", { name: "shot.png" });
   await expect(viewer.locator("img")).toBeVisible();
-  // A click on the image is for zooming; one beside it closes the viewer.
   await viewer.locator("img").click();
   await expect(viewer).toBeVisible();
   const surface = await viewer
@@ -231,8 +218,6 @@ test("files read as tiles and cards, tool images sit on their row, and every ima
   await expect(viewer).toHaveCount(0);
 });
 
-// Settings lists the open conversation's MCP servers by the file that defines
-// them; the switch edits that file and applies to the conversation at once.
 test("MCP servers show their state and switch on and off", async ({
   page,
   host,
@@ -277,7 +262,6 @@ test("MCP servers show their state and switch on and off", async ({
     .getByRole("button", { name: "All conversations", exact: true })
     .click();
 
-  // Each scope lists the servers its own file defines.
   const global = settings.getByRole("region", { name: "MCP servers" });
   await expect(global).toContainText("~/.mcp.json");
   const probe = global.getByRole("button", { name: /probe/ });
@@ -301,7 +285,6 @@ test("MCP servers show their state and switch on and off", async ({
     /exited|failed/i,
   );
 
-  // The project's own servers are in its section, by its file.
   await settings
     .locator(".settings-nav")
     .getByRole("button", { name: /^This folder/ })

@@ -22,15 +22,18 @@ import {
   useState,
 } from "preact/hooks";
 import { emptyDraft, hasContent } from "../state/store.ts";
-import { command, manage } from "../state/api.ts";
+import { useApi, localApi } from "../state/api.ts";
 import { ConversationContext, HostContext } from "../state/host-context.ts";
 import { Modal, ErrorBoundary, Deferred, Spinner } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
-import { useDismiss } from "../shared/dismiss.ts";
+import { settled, useDismiss } from "../shared/dismiss.ts";
 import { slide } from "../shared/motion.ts";
 import { useEdgeSwipe } from "../shared/swipe.ts";
-import Sidebar, { sessionOrder } from "../features/sidebar/sidebar.tsx";
+import Sidebar, {
+  ListActions,
+  sessionOrder,
+} from "../features/sidebar/sidebar.tsx";
 import { livePins } from "../features/sidebar/pins.tsx";
 import { ConversationMenu, TerminalMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
@@ -43,13 +46,14 @@ import { useLatest } from "../shared/use-latest.ts";
 import { stored, tabStorage } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
 
-import { useHost } from "../state/use-host.ts";
+import HostsShell, { type HostAppProps } from "./hosts.tsx";
+import { useHosts } from "../state/sources.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { DetailContext } from "../features/chat/node.tsx";
 import { detailLevels } from "../shared/tree.ts";
 import { devicePrefs } from "../shared/device-prefs.ts";
 import { useStored } from "../shared/storage.ts";
-import ChatPage from "./chat-page.tsx";
+import ChatPage, { startFieldId } from "./chat-page.tsx";
 import ConversationHeader from "./conversation-header.tsx";
 import Modals, { PreferencesContext } from "./modals.tsx";
 import Toasts from "./toasts.tsx";
@@ -72,7 +76,6 @@ import { useSelection } from "../shared/selection.ts";
 import { presenterDeck } from "../features/files/present.ts";
 import Spotlight, { ShortcutList } from "../features/search/spotlight.tsx";
 
-// The terminal's code (xterm.js) is fetched the first time it opens.
 const terminalPanel = () => import("../features/terminal/terminal.tsx");
 const presenterView = () => import("../features/files/presenter.tsx");
 const folderTerminal = () =>
@@ -80,21 +83,12 @@ const folderTerminal = () =>
     default: module.FolderTerminal,
   }));
 
-// Own scroll restoration from the first paint. history restoration only
-// covers the document; the early opt-out in index.html (<head>, before any
-// module) keeps the browser from restoring the inner transcript scroller
-// after our mount pin (the mobile reload jump). Repeated here as a
-// backstop for mounts that precede it. The transcript hook owns all
-// scrolling from here on.
+// The browser must not restore the inner transcript scroller after the mount
+// pin. index.html opts out first; this is the backstop.
 if (typeof history !== "undefined") history.scrollRestoration = "manual";
 
-// The shell: navigation, header, toasts and dialogs. It never reads a whole
-// snapshot, only what it selects from one (the session's metadata, whether
-// its agent browses, whether any turn waits), so a streamed frame re-renders
-// the conversation (<ChatPage>), not the shell and its sidebar.
 const NO_SPACES: Space[] = [];
 export type Page = "chat" | "library" | "scheduled" | "folder" | "terminal";
-// The page this tab showed, so a reload comes back to it.
 const keptPage = stored<Page>(
   storageKeys.page,
   "chat",
@@ -103,33 +97,26 @@ const keptPage = stored<Page>(
   { where: tabStorage },
 );
 
-function App() {
+// The shell never reads a whole snapshot, only what it selects from one, so
+// a streamed frame re-renders <ChatPage>, not the shell and its sidebar.
+function App({ host, bindResult, reading }: HostAppProps) {
+  const hosts = useHosts();
+  const { command, manage } = useApi();
   const [page, setPage] = useState<Page>(keptPage.read);
+  useEffect(() => reading(page === "chat"), [page, reading]);
   useEffect(() => keptPage.write(page), [page]);
-  // The folder or workspace whose overview the folder page shows, and the
-  // folder terminal the terminal page shows.
   const [place, setPlace] = useState("");
   const [shell, setShell] = useState<TerminalInfo | null>(null);
-  // Which Library tab /memory or /skills asked for.
   const [libraryKind, setLibraryKind] = useState<LibraryKind | "">("");
-  // Library and Scheduled sit above the conversation: back returns to it.
   useDismiss(page !== "chat", () => setPage("chat"));
-  // What opens over the page: the conversations drawer, the app's dialogs,
-  // the palette or shortcuts sheet, the image viewer, the inspector and the
-  // /btw card.
   const [drawer, setDrawer] = useState(false);
-  // The conversation's files: beside the chat, or a sheet on a small screen.
   const [filesOpen, setFilesOpen] = useState(false);
-  // Where each conversation's Files pane is, kept while it is closed or
-  // moves between the sheet and the docked pane (features/files/flow.ts).
   const [flows, setFlows] = useState<Record<string, Flow>>({});
   const setFlow = useCallback(
     (id: string, update: (flow: Flow) => Flow) =>
       setFlows((all) => ({ ...all, [id]: update(all[id] ?? START) })),
     [],
   );
-  // A path cited in a conversation opens there, with a fresh history. The
-  // open conversation and its folder, as of this render.
   const selectedRef = useRef("");
   const folderRef = useRef("");
   const openFile = useCallback(
@@ -139,16 +126,13 @@ function App() {
     },
     [setFlow],
   );
-  // The terminal under the chat.
-  const [terminalOpen, setTerminalOpen] = useState(false);
+  // Hidden (false), its panel stays and its shells run on; none started
+  // without a value.
+  const [terminalShown, setTerminalShown] = useState<boolean>();
   const [modal, setModal] = useState<AppModal | null>(null);
-  // Search (Mod+K) or the shortcuts sheet (?).
   const [overlay, setOverlay] = useState<"search" | "shortcuts" | null>(null);
-  // The open conversation's find bar: its words, and the row to start at
-  // when search opened it there; `at` makes a repeated request a new one.
   const [find, setFind] = useState<FindRequest | null>(null);
   const closeFind = useCallback(() => setFind(null), []);
-  // The one image viewer every tile opens.
   const [viewed, setViewed] = useState<ViewedImage | null>(null);
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   const open = useCallback((value: AppModal) => {
@@ -162,13 +146,13 @@ function App() {
   const [notice, setNotice] = useState("");
   // The banner shows one line: a new notice replaces an older error.
   useEffect(() => {
-    if (notice) setError("");
-  }, [notice]);
+    if (notice) host.setError("");
+  }, [notice, host.setError]);
   const onResult = useCallback((value: JSONValue, inspect: boolean) => {
     if (inspect) setModal({ type: "raw", value });
     else setNotice(typeof value === "string" ? value : JSON.stringify(value));
   }, []);
-  const host = useHost(onResult, page === "chat");
+  useEffect(() => bindResult(onResult), [bindResult, onResult]);
   const {
     managementVersion,
     authenticated,
@@ -177,7 +161,6 @@ function App() {
     loadErrors,
     catalogue,
     listed,
-    attention,
     upsertSession,
     snapshots,
     selected,
@@ -205,10 +188,9 @@ function App() {
   // when it appears.
   const shown = authenticated !== false;
   const compact = useCompact(shown);
-  // The drawer belongs to the compact layout; a wider window drops it.
   useEffect(() => setDrawer(false), [compact]);
-  useEdgeSwipe(compact, () => setDrawer(true));
-  // The files sit beside the chat while its column has room, else in a sheet.
+  const openDrawer = useCallback(() => setDrawer(true), []);
+  useEdgeSwipe(compact, openDrawer);
   const filesSheet = useNarrowColumn(shown) || compact;
   const { side, closeSide, ask, clearSides } = useSideConversations({
     selected,
@@ -218,11 +200,9 @@ function App() {
   });
   const [busy, setBusy] = useState(false);
   const [notificationMode, setNotificationMode] = useState(false);
-  // How much of the agent's work shows on this device, for every
-  // conversation: its own level once chosen, else the host's. Choosing one
-  // forgets the rows opened or closed here, so each starts at the new depth.
+  // Choosing a level forgets the rows opened or closed on this device.
   const [chosen, setChosen] = useStored(devicePrefs.detail);
-  const detail = chosen || catalogue.detail || "default";
+  const detail = chosen || catalogue.detail || detailLevels[0];
   const levels = detailLevels as readonly string[];
   const changeDetail = useCallback(
     (level: string) => {
@@ -231,17 +211,31 @@ function App() {
     },
     [setChosen],
   );
-  // A path asked for in another conversation (from the Library) opens there
-  // once it is the one shown.
+  const [thinkingChosen, chooseThinking] = useStored(devicePrefs.thinking);
+  const thinking = thinkingChosen
+    ? thinkingChosen === "show"
+    : !!catalogue.thinking;
+  const display = useMemo(() => ({ detail, thinking }), [detail, thinking]);
+  // What the header and the conversation menu change it with.
+  const detailControl = useMemo(
+    () => ({
+      levels,
+      level: detail,
+      change: changeDetail,
+      thinking,
+      showThinking: (shown: boolean) => chooseThinking(shown ? "show" : "hide"),
+    }),
+    [levels, detail, changeDetail, thinking, chooseThinking],
+  );
+  // A path asked for in another conversation opens once that one is shown.
   const revealNext = useRef<FileTarget | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: on each conversation chosen
   useEffect(() => {
     if (revealNext.current) openFile(revealNext.current, selected);
     revealNext.current = null;
   }, [selected]);
-  // Every event that changes a session changes its catalogue entry too, so
-  // the shell reads the entry and renders once per change; a snapshot's
-  // metadata stands in only for a session the catalogue does not list yet.
+  // The catalogue entry changes with every session event; a snapshot's
+  // metadata stands in only for a session not listed yet.
   const listedSession = sessionById(catalogue.sessions, selected);
   const metadata = useSnapshots(snapshots, (all) =>
     listedSession ? undefined : all[selected]?.metadata,
@@ -249,21 +243,17 @@ function App() {
   const session = listedSession || metadata;
   selectedRef.current = selected;
   folderRef.current = session ? folderOf(session) : "";
-  // The list leaves out empty conversations but the open one, also behind
-  // the Library or a terminal. Which one is open matters only while it is
-  // empty, so choosing among the others does not filter the list again.
+  // Only an empty open conversation is passed on, so choosing among the
+  // others does not filter the list again.
   const keep = listedSession?.turns === 0 ? selected : "";
   const rows = useMemo(
     () => shownSessions(listed, keep, online),
     [listed, keep, online],
   );
-  // Until the catalogue answers, the shell renders with placeholders in the
-  // places data will fill; a conversation in the URL keeps its surfaces.
+  // Until the catalogue answers, placeholders fill the shell.
   const booting = authenticated === null;
   const opening = booting && !!selected;
   const draft = drafts[selected] || emptyDraft();
-  // Uploads belong to their conversation: one in flight elsewhere never
-  // holds this composer.
   const uploading = draft.files.some((file) => file.pending);
   const running = !!session && isRunning(session, online);
   useWakeLock(running);
@@ -280,27 +270,44 @@ function App() {
     (value: Draft, id = selected) => updateDraft(id, () => value),
     [updateDraft, selected],
   );
+  // Commands on their way, by request id. One that acts on another (a
+  // queued message taken back or inserted) waits for that one's answer: the
+  // host may not know it yet, and would say it was already delivered.
+  const going = useRef(new Map<string, Promise<unknown>>());
   const act: Act = useCallback(
     async <K extends CommandKind>(kind: K, fields?: CommandFields<K>) => {
       if (!online)
         throw new Error("Reconnect and refresh before sending commands.");
-      if (fields?.request_id) correlate(fields.request_id);
-      return command(kind, session, fields);
+      const { request_id, target_id } = (fields ?? {}) as {
+        request_id?: string;
+        target_id?: string;
+      };
+      if (request_id) correlate(request_id);
+      await going.current.get(target_id ?? "");
+      const sent = command(kind, session, fields);
+      if (request_id)
+        going.current.set(
+          request_id,
+          sent.catch(() => {}).finally(() => going.current.delete(request_id)),
+        );
+      return sent;
     },
-    [online, session, correlate],
+    [online, session, correlate, command],
   );
   const choose = useCallback(
-    async (id: string) => {
+    async (id: string, owner = hosts.active) => {
       setNotice("");
       setPage("chat");
       const change = () => {
-        setSelected(id);
+        // `owner` names the host of a conversation the list does not hold yet.
+        if (id) hosts.open(owner, id);
+        else setSelected("", owner);
         setDrawer(false);
       };
       if (id === selected) change();
       else slide(false, id, change);
     },
-    [selected, setSelected],
+    [selected, setSelected, hosts.open, hosts.active],
   );
   const { browserAvailable, install, setInstall, update, attach } = useBoot({
     upload,
@@ -310,12 +317,10 @@ function App() {
     authenticated,
     online,
   });
-  // The update banner holds its reload while a turn waits on a decision.
   const waiting = useSnapshots(
     snapshots,
     (all) => !!update && Object.values(all).some((item) => item.pending),
   );
-  // Why an update must wait: unsent work (an upload is one) or a decision.
   const updateBlocked = Object.values(drafts).some(hasContent)
     ? "Send or copy unsent drafts first."
     : waiting
@@ -332,10 +337,22 @@ function App() {
     setModal,
     setBusy,
   });
-  const { startConversation, newPlace, startIn, startScratch, projects } =
-    places;
-  // A path in a place's Files pane, asked for from the Library: in the
-  // place's latest conversation, or a new one where it has none.
+  const {
+    startConversation,
+    newPlace,
+    startIn,
+    startUnfiled,
+    redirect,
+    projects,
+  } = places;
+  // The home screen, ready to type on.
+  const home = useCallback(() => {
+    void choose("").then(() =>
+      requestAnimationFrame(() =>
+        document.getElementById(startFieldId)?.focus(),
+      ),
+    );
+  }, [choose]);
   const showInPlace = useCallback(
     (place: LibraryPlace, target: FileTarget) => {
       setFilesOpen(true);
@@ -396,14 +413,13 @@ function App() {
     choose,
     openFile,
   });
-  // The host context and the conversation menus must keep their functions;
-  // they read the latest ones through a ref.
+  // Read through a ref, so the host context and the menus keep their functions.
   const latest = useLatest({ showContext, forkAndOpen });
   async function logout() {
     try {
       const registration = await navigator.serviceWorker?.getRegistration();
       await (await registration?.pushManager?.getSubscription())?.unsubscribe();
-      await command("logout");
+      await localApi.command("logout");
       clearSides();
       reset();
       setModal(null);
@@ -412,14 +428,10 @@ function App() {
     }
   }
 
-  // Forks any conversation from its menu, as /fork does the open one.
   const fork = useCallback(
     (item: Session) => latest.current.forkAndOpen(item).catch(report),
     [report],
   );
-  // The open conversation's menu also holds the level its transcript shows.
-  // Conversations and workspaces picked in the list, and what is done to
-  // them all at once (features/sidebar, shared/selection.ts).
   const selection = useSelection();
   const latestSelection = useLatest(selection);
   const actOnSelection = useCallback(
@@ -439,7 +451,7 @@ function App() {
           await refresh();
         })();
     },
-    [open, report, refresh],
+    [open, report, refresh, command],
   );
   const conversationMenu = useCallback(
     (
@@ -457,15 +469,7 @@ function App() {
         }
         notify={setNotice}
         open={open}
-        detail={
-          withDetail
-            ? {
-                levels,
-                level: detail,
-                change: changeDetail,
-              }
-            : undefined
-        }
+        detail={withDetail ? detailControl : undefined}
         more={extra?.more}
         select={
           withDetail ? undefined : () => latestSelection.current.start(item.id)
@@ -474,22 +478,55 @@ function App() {
         {extra?.top}
       </ConversationMenu>
     ),
-    [online, fork, load, report, open, detail, levels, changeDetail],
+    [online, fork, load, report, open, detailControl],
   );
-  // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
-    const order = sessionOrder(rows, catalogue.spaces, online, pins);
+    const order = sessionOrder(
+      rows,
+      catalogue.spaces,
+      online,
+      pins,
+      hosts.active,
+      hosts.sources.length < 2,
+      selected,
+    );
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
   };
   const terminalAvailable = !!catalogue.terminals;
+  const terminalStarted = terminalAvailable && terminalShown !== undefined;
   const showTerminal = useCallback((terminal: TerminalInfo) => {
     setShell(terminal);
     setPage("terminal");
     setDrawer(false);
   }, []);
-  // A folder's new terminal, shown at once.
+  const { destination } = hosts;
+  const followedDestination = useRef<typeof destination>(null);
+  useEffect(() => {
+    if (
+      !destination ||
+      destination.id !== hosts.active ||
+      followedDestination.current === destination
+    )
+      return;
+    const terminal = catalogue.terminals?.find(
+      (item) => item.id === destination.terminal,
+    );
+    if (destination.terminal && !terminal) return;
+    followedDestination.current = destination;
+    // After a step back still under way (out of the drawer it was picked
+    // in), so a page or dialog this opens gets an entry of its own.
+    settled(() => {
+      setDrawer(false);
+      if (destination.create) newPlace(destination.create);
+      else if (terminal) showTerminal(terminal);
+      else if (destination.place) {
+        setPlace(destination.place);
+        setPage("folder");
+      } else if (destination.session) setPage("chat");
+    });
+  }, [destination, hosts.active, showTerminal, catalogue.terminals, newPlace]);
   const newTerminal = useCallback(
     (folder: string) =>
       void manage("terminal", { action: "open", cwd: folder, folder }).then(
@@ -499,13 +536,15 @@ function App() {
         },
         report,
       ),
-    [showTerminal, report],
+    [showTerminal, report, manage],
   );
-  const toggleTerminal = useCallback(() => setTerminalOpen((on) => !on), []);
-  // What the terminal or the files hand the conversation: added to its
-  // draft, never sent. On a small screen they cover the chat, so they step
-  // aside; the terminal's shells keep running and reattach when it opens.
-  // A design's comments keep it open, for the next one.
+  const toggleTerminal = useCallback(() => setTerminalShown((on) => !on), []);
+  const hideTerminal = useCallback(
+    () => setTerminalShown((on) => on && false),
+    [],
+  );
+  // Added to the draft, never sent. What covers the chat on a small screen
+  // steps aside, unless `keep`.
   const addToChat = useCallback(
     (text: string, keep = false) => {
       updateDraft(selected, (current) => ({
@@ -513,14 +552,13 @@ function App() {
         text: current.text ? `${current.text}\n${text}` : text,
       }));
       if (keep) return;
-      if (compact) setTerminalOpen(false);
+      if (compact) hideTerminal();
       if (filesSheet) setFilesOpen(false);
       focusComposer();
     },
-    [updateDraft, selected, compact, filesSheet],
+    [updateDraft, selected, compact, filesSheet, hideTerminal],
   );
   const toChat = page === "chat" && session && online ? addToChat : undefined;
-  // Beside the chat, or in a sheet that closes itself.
   const files = session && (
     <Files
       key={session.id}
@@ -538,12 +576,13 @@ function App() {
       fallback={<Spinner label="Opening the terminal…" />}
       cwd={session ? folderOf(session) : ""}
       addToChat={toChat}
-      close={() => setTerminalOpen(false)}
+      shown={!!terminalShown}
+      hide={hideTerminal}
+      close={() => setTerminalShown(undefined)}
       report={report}
     />
   );
   const shortcutActions = {
-    // ⌘K again closes it, as Spotlight's own key does.
     search: () =>
       setOverlay((current) => (current === "search" ? null : "search")),
     // Only over an open conversation; elsewhere the browser's own find.
@@ -556,7 +595,6 @@ function App() {
     next: () => step("ArrowDown"),
     terminal: terminalAvailable ? toggleTerminal : undefined,
   };
-  // Only for a paired device: the pairing screen has nothing to find.
   useShortcuts(authenticated ? shortcutActions : {});
   const navigate = useCallback((value: typeof page) => {
     setPage(value);
@@ -567,14 +605,13 @@ function App() {
     setPage("folder");
     setDrawer(false);
   }, []);
-  // Ends a folder's terminal; the one shown gives way to its folder.
   const closeTerminal = useCallback(
     (terminal: TerminalInfo) =>
       void manage("terminal", { action: "close", id: terminal.id }).then(() => {
         if (page === "terminal" && shell?.id === terminal.id)
           overview(terminal.folder);
       }, report),
-    [page, shell, overview, report],
+    [page, shell, overview, report, manage],
   );
   const terminalMenu = useCallback(
     (terminal: TerminalInfo) => (
@@ -641,7 +678,6 @@ function App() {
         !!catalogue.scheduled?.runs?.some((run) => unread.has(run.session_id))
       }
       sessions={rows}
-      needsYou={attention}
       spaces={catalogue.spaces || NO_SPACES}
       pins={pins}
       spaceMenu={places.spaceMenu}
@@ -654,7 +690,7 @@ function App() {
       settings={settings}
       create={newPlace}
       start={startIn}
-      startScratch={startScratch}
+      home={home}
       overview={overview}
       shownPlace={page === "folder" ? place : ""}
       terminals={catalogue.terminals}
@@ -669,7 +705,7 @@ function App() {
   return (
     <HostContext.Provider value={hostContext}>
       <ConversationContext.Provider value={conversation}>
-        <DetailContext.Provider value={detail}>
+        <DetailContext.Provider value={display}>
           <ImageViewer.Provider value={setViewed}>
             <Toasts
               error={error}
@@ -685,8 +721,7 @@ function App() {
               <Pairing paired={refresh} report={report} />
             ) : (
               <>
-                {/* First stop for a keyboard: past the sessions list. The hash
-                routes sessions, so the link moves focus itself. */}
+                {/* The hash routes sessions: the link moves focus itself. */}
                 <a
                   class="skip-link"
                   href="#conversation"
@@ -718,6 +753,15 @@ function App() {
                         title="Conversations"
                         className="sidebar drawer"
                         close={() => setDrawer(false)}
+                        actions={
+                          <ListActions
+                            search={openSearch}
+                            home={home}
+                            create={newPlace}
+                            online={online}
+                            brief
+                          />
+                        }
                       >
                         {sidebar}
                       </Modal>
@@ -725,6 +769,7 @@ function App() {
                   )}
                   <main class="conversation" id="conversation" tabIndex={-1}>
                     <ConversationHeader
+                      detail={detailControl}
                       page={page}
                       selected={selected}
                       session={session}
@@ -733,14 +778,14 @@ function App() {
                       browserAvailable={browserAvailable}
                       terminal={
                         terminalAvailable
-                          ? { open: terminalOpen, toggle: toggleTerminal }
+                          ? { open: !!terminalShown, toggle: toggleTerminal }
                           : undefined
                       }
                       filesOpen={filesOpen}
                       setFilesOpen={setFilesOpen}
                       outgoing={outgoing}
                       parent={sessionById(catalogue.sessions, session?.parent)}
-                      openDrawer={() => setDrawer(true)}
+                      openDrawer={openDrawer}
                       choose={choose}
                       settings={settings}
                       menu={conversationMenu}
@@ -768,7 +813,7 @@ function App() {
                     )}
                     {page === "folder" && (
                       <FolderOverview
-                        key={place}
+                        key={`${hosts.active}:${place}`}
                         folder={place}
                         space={catalogue.spaces?.find(
                           (item) => item.path === place,
@@ -817,6 +862,10 @@ function App() {
                       outgoing={outgoing}
                       loadError={loadErrors[selected]}
                       newPlace={newPlace}
+                      start={startUnfiled}
+                      settings={settings}
+                      openList={compact ? openDrawer : undefined}
+                      redirect={redirect}
                       updateView={updateView}
                       choose={choose}
                       side={side}
@@ -827,8 +876,12 @@ function App() {
                       find={find}
                       closeFind={closeFind}
                     />
-                    {terminalOpen && terminalAvailable && !compact && (
-                      <section class="terminal-dock" aria-label="Terminal">
+                    {terminalStarted && !compact && (
+                      <section
+                        class="terminal-dock"
+                        aria-label="Terminal"
+                        hidden={!terminalShown}
+                      >
                         <ResizeHandle
                           pane="terminal"
                           label="Resize the terminal"
@@ -837,17 +890,17 @@ function App() {
                         {terminal}
                       </section>
                     )}
-                    {terminalOpen && terminalAvailable && compact && (
-                      // A docked strip under the chat is too small to type in
-                      // once the keyboard is up: on a small screen the
-                      // terminal takes the whole display, as the browser does.
+                    {terminalStarted && compact && (
+                      // A docked strip is too small to type in once the
+                      // keyboard is up.
                       <Modal
                         title="Terminal"
                         layout="sheet"
                         className="terminal-sheet"
                         header={false}
                         swipeable={false}
-                        close={() => setTerminalOpen(false)}
+                        hidden={!terminalShown}
+                        close={hideTerminal}
                       >
                         {terminal}
                       </Modal>
@@ -869,7 +922,9 @@ function App() {
               >
                 {overlay === "search" ? (
                   <Spotlight
-                    sessions={listed}
+                    sessions={hosts.sources.flatMap(
+                      (source) => source.state.listed,
+                    )}
                     commands={catalogue.commands || []}
                     place={session && folderOf(session)}
                     choose={choose}
@@ -926,7 +981,6 @@ function App() {
 }
 lockPageZoom();
 applyDevicePrefs();
-// A presenter's window shows the deck's presenter view, not the app.
 const presenting = presenterDeck();
 render(
   <ErrorBoundary>
@@ -937,7 +991,7 @@ render(
         deck={presenting}
       />
     ) : (
-      <App />
+      <HostsShell App={App} />
     )}
   </ErrorBoundary>,
   document.getElementById("app")!,

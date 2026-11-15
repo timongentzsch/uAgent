@@ -18,19 +18,17 @@
 
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
+#include "include/core/turn_status.h"
 
 namespace uagent {
 
-// Separate questions: NO_COLOR and TERM=dumb suppress colour without
-// suppressing cursor control, spinners or image protocols, and CLICOLOR_FORCE
-// asks for colour down a pipe.
+// NO_COLOR and TERM=dumb suppress colour but not cursor control, spinners or
+// image protocols; CLICOLOR_FORCE asks for colour down a pipe.
 extern bool g_tty;
 extern bool g_color;
-// Bold, dim and italic are not colour, so NO_COLOR keeps them on a terminal
-// that can show them. Colour, where it is on, brings them along.
+// Bold, dim and italic: NO_COLOR keeps them, and colour brings them along.
 extern bool g_attributes;
-// A terminal whose locale cannot decode UTF-8 renders the row scaffolding as
-// mojibake, so the glyphs fall back to ASCII at the point they are written.
+// Off where the locale cannot decode UTF-8: glyphs fall back to ASCII.
 extern bool g_unicode;
 // The plain profile, for screen readers and transcripts: append-only rows that
 // open with a spoken label, ASCII glyphs, no cursor control and no animation.
@@ -43,21 +41,17 @@ bool ResolveAttributesEnabled(bool tty);
 bool ResolveUnicodeEnabled();
 // Narrows what InitializeProcess resolved, once the configuration is known.
 void ApplyTerminalProfile(bool plain);
-// Conversation text is always UTF-8, so width measurement needs a multibyte
-// LC_CTYPE even when the environment names none. False when none exists.
+// Width measurement needs a multibyte LC_CTYPE; false when none exists.
 bool EnsureUtf8Ctype();
 // True while the REPL owns a pinned composer, which paints its own status row
-// and must not be raced by the spinner thread. State-free header: the flag
-// itself lives in src/core/term.cc, like the activity registry below.
+// and must not be raced by the spinner thread.
 void SetPersistentComposer(bool active);
 bool PersistentComposer();
 inline constexpr char kTerminalRestore[] = "\033[0m\033[39m\033[49m";
-// Separate from TERMINAL_RESTORE, which RST() emits mid-stream as a pure SGR
-// reset.
+// Separate from kTerminalRestore, which RST() emits mid-stream as an SGR reset.
 inline constexpr char kTerminalModeReset[] = "\033[?2004l";
 inline constexpr char kBracketedPasteOn[] = "\033[?2004h";
-// Cursor control, not colour, so no gate: only a terminal's own paths, the
-// live region and a table rewritten in place, write it.
+// Cursor control, not colour, so no gate: only a terminal's own paths write it.
 inline constexpr char kEraseLine[] = "\033[2K";
 inline constexpr char kEraseRight[] = "\033[K";
 inline constexpr char kEraseBelow[] = "\033[J";
@@ -118,14 +112,7 @@ class TerminalStatusLabel {
   uint64_t id_;
 };
 
-// What a model round calls itself while it waits. It names no work -- it is
-// the placeholder every other label is more informative than -- so a status
-// row with something concrete to say may spend those columns on that instead.
-// One spelling, because that decision is a comparison against this string.
-inline constexpr const char* kWaitingStatus = "Working";
-
-// The spinner the working row and a blocking call both animate: braille, or
-// |/-\\ where the locale cannot show it, one frame per period.
+// Braille frames, or ASCII ones where the locale cannot show them.
 inline constexpr auto kSpinnerPeriod = std::chrono::milliseconds(100);
 inline const char* SpinnerFrame(size_t tick) {
   static constexpr const char* kFrames[] = {"⠋", "⠙", "⠹", "⠸", "⠼",
@@ -134,8 +121,7 @@ inline const char* SpinnerFrame(size_t tick) {
   return g_unicode ? kFrames[tick % 10] : kAscii[tick % 4];
 }
 
-// Animates while a call blocks with nothing to print. stop() is idempotent and
-// wakes the thread immediately — it runs on the first-streamed-byte path.
+// Animates while a call blocks with nothing to print. Stop() is idempotent.
 class TerminalSpinner {
  public:
   explicit TerminalSpinner(bool enabled = true) { Start(enabled); }
@@ -176,7 +162,6 @@ class TerminalSpinner {
   TerminalSpinner(const TerminalSpinner&) = delete;
   TerminalSpinner& operator=(const TerminalSpinner&) = delete;
 
-  // Rename the live row when its observed operation changes.
   void SetLabel(const std::string& label) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -214,8 +199,7 @@ class TerminalSpinner {
   std::thread thread_;
 };
 
-// Code and math in the default foreground: colour was dropped on purpose, and
-// these mark where it would apply.
+// Default foreground; these mark where a colour would apply.
 inline const char* CODE() { return Sgr("\033[39m"); }     // inline `code`
 inline const char* CodeBlk() { return Sgr("\033[39m"); }  // fenced block body
 inline const char* MATH() { return Sgr("\033[39m"); }     // LaTeX

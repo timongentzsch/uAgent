@@ -25,14 +25,12 @@ test("bare slash commands open their screens", async ({ page, session }) => {
   await page.keyboard.press("Escape");
   await expect(settings).toHaveCount(0);
 
-  // The Library replaces the conversation; its row brings it back.
   const conversation = page.getByRole("button", { name: /\(no messages\)/ });
   for (const [command, tab] of [
     ["/skills", "Skills"],
     ["/memory", "Memories"],
   ]) {
     await run(command);
-    // The Library opens filtered to that kind.
     await expect(
       page
         .getByRole("navigation", { name: "Library filters" })
@@ -42,7 +40,6 @@ test("bare slash commands open their screens", async ({ page, session }) => {
     await expect(composer).toBeEnabled();
   }
 
-  // A client-only command the page cannot run never reaches the runtime.
   await run("/clear");
   await expect(
     page.getByText("/clear works only in a terminal."),

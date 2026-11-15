@@ -56,9 +56,8 @@ void McpShutdownGroup(const std::vector<McpServer*>& servers) {
     kill(-server->pid, SIGKILL);
     kill(server->pid, SIGKILL);
   }
-  // A child in uninterruptible kernel sleep may ignore SIGKILL for an
-  // unbounded period. Leave its pid for a later shutdown/reap attempt instead
-  // of wedging the current turn or process teardown.
+  // A child in uninterruptible kernel sleep may ignore SIGKILL: its pid stays
+  // for a later reap rather than wedging teardown.
   wait_all(kMcpKillGrace);
 }
 
@@ -147,20 +146,17 @@ bool McpSpawn(McpServer& s, const std::vector<std::string>& wrapper,
   int inp[2], outp[2];  // inp: us -> server stdin, outp: server stdout -> us
   if (pipe(inp) != 0) return false;
   Fd in_read(inp[0]), in_write(inp[1]);
-  // Every early return from here closes all four ends.
   if (pipe(outp) != 0) return false;
   Fd out_read(outp[0]), out_write(outp[1]);
-  // parent ends must not leak into later-spawned servers (a leaked write end
-  // would keep a sibling's stdin open forever, defeating EOF shutdown)
+  // A parent end leaked into a later server would keep a sibling's stdin open
+  // forever and defeat EOF shutdown.
   fcntl(in_write.Get(), F_SETFD, FD_CLOEXEC);
   fcntl(out_read.Get(), F_SETFD, FD_CLOEXEC);
-  // nonblocking writes: a blocking write() of a large request would ignore
-  // the drain in mcp_write and reintroduce the two-full-pipes deadlock
+  // Nonblocking: a blocking write of a large request would skip McpWrite's
+  // drain and deadlock on two full pipes.
   fcntl(in_write.Get(), F_SETFL, O_NONBLOCK);
-  // stderr goes through the same rotating log pump detached terminals use, so
-  // only the log is bounded. A file-size rlimit would instead have capped
-  // every file the server and its children write. A thread of this process
-  // pumps it: the log is only read after the server is gone or on a failure.
+  // stderr goes through a log pump so only the log is bounded: a file-size
+  // rlimit would cap every file the server and its children write.
   Fd errfd;
   std::jthread log_thread;
   int errp[2];
@@ -177,9 +173,8 @@ bool McpSpawn(McpServer& s, const std::vector<std::string>& wrapper,
   }
   if (!errfd) errfd.Reset(open("/dev/null", O_WRONLY | O_CLOEXEC));
   ChildEnvironment child_environment(env);
-  // Build every allocation-backed child input before fork. µAgent is
-  // multithreaded here, so the child may only use async-signal-safe operations
-  // before exec; allocator locks inherited from another thread can deadlock.
+  // Everything that allocates is built before fork: the child of a
+  // multithreaded process may only make async-signal-safe calls before exec.
   std::vector<char*> argv;
   argv.reserve(wrapper.size() + args.size() + 2);
   for (const std::string& word : wrapper) {
@@ -197,8 +192,7 @@ bool McpSpawn(McpServer& s, const std::vector<std::string>& wrapper,
     return false;
   }
   if (pid == 0) {
-    // Between fork and exec: explicit moves only, and every path ends in
-    // _exit, so no destructor is relied upon.
+    // Every path from here ends in exec or _exit: no destructor is relied upon.
     setpgid(0, 0);  // own group: terminal Ctrl+C must not kill the server
     dup2(in_read.Get(), 0);
     dup2(out_write.Get(), 1);

@@ -6,3 +6,35 @@
   resize: none;
   overflow: auto;
 }
+/* The box a message is written in, wherever one is: the draft, then a row
+   of what it is sent with and the button that sends it. */
+.message-box {
+  position: relative;
+  gap: 0;
+  border: var(--border-field);
+  background: var(--raised);
+}
+.message-box > .message-input {
+  --input-min-height: max(var(--control-l), calc(1.5em + var(--space-4)));
+  --input-padding-y: var(--space-3);
+}
+.message-box > .message-input > textarea {
+  border: 0;
+  background: transparent;
+}
+/* The draft and its controls are one box, so the box takes the ring. */
+.message-box:has(> .message-input > textarea:focus-visible) {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+.message-box > .message-input > textarea:focus-visible {
+  outline: none;
+}
+.message-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  min-width: 0;
+}

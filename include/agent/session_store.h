@@ -22,9 +22,7 @@
 
 namespace uagent {
 
-// Session-file header field names (written and validated by SessionStore in
-// session_store.cc; ui/sessions.h reads a lenient subset of the same fields
-// for the resume picker). Shared here so the two views cannot drift.
+// Session-file header fields, shared with the picker's reader (ui/sessions.h).
 inline constexpr const char* kSessionHeaderCwd = "cwd";
 inline constexpr const char* kSessionHeaderModel = "model";
 inline constexpr const char* kSessionHeaderSessionId = "session_id";
@@ -33,21 +31,17 @@ inline constexpr const char* kSessionHeaderTitle = "title";
 inline constexpr const char* kSessionHeaderParent = "parent_session_id";
 inline constexpr const char* kSessionHeaderForkTurn = "forked_at_turn";
 inline constexpr const char* kSessionHeaderForkTime = "forked_at_time";
-// Present only on an agent: who started it and how (AgentOf in
-// session_role.h).
+// Present only on an agent (AgentOf in session_role.h).
 inline constexpr const char* kSessionHeaderAgent = "agent";
-// Optional lineage: empty/zero when this session was never forked. Unknown
-// to older readers, which ignore extra header fields.
 inline constexpr int64_t kSessionFormat = 3;
 inline constexpr size_t kSessionHeaderBytes = size_t{16} * 1024;
 inline constexpr size_t kSessionReadBytes = size_t{64} * 1024 * 1024;
 
-// kWorkspace: this folder's own conversations, which `-c` and resume pick
-// from: no agent, which is opened from its parent.
+// kWorkspace: this folder's own conversations, without agents.
 enum class SessionScope { kWorkspace, kAll };
 
 struct SessionInfo {
-  std::string path, cwd, title, model;
+  std::string path, cwd, title, model, session_id;
   bool custom_title = false;
   int64_t turns = 0;
   uint64_t incoming = 0;
@@ -59,30 +53,37 @@ struct SessionInfo {
   std::string error;
   std::string parent;  // the session id of whoever started it, for an agent
   bool memory = true;
+  std::string host = {};
+  json suggestion = nullptr;
 };
 
-// Every valid conversation saved in the directory of `path`, it included,
-// newest first: a folder's own and the agents its conversations started,
-// which are saved beside their parent wherever they run.
+// The suggestion of a conversation that was told to stay where it is.
+inline json KeptSuggestion() { return {{"dismissed", true}}; }
+// A suggestion (Agent::Suggestion) still waiting for its answer.
+inline bool OpenSuggestion(const json& suggestion) {
+  const json* options = JsonArray(suggestion, "options");
+  return options && !options->empty() &&
+         !JsonValue(suggestion, "dismissed", false);
+}
+
+// Every valid conversation saved in the directory of `path`, newest first.
 std::vector<SessionInfo> SessionsBeside(const std::string& path);
 
-// The session file, beside the agent at `path`, of its parent `parent` (a
-// session id), or empty when there is none (any more).
+// The session file of `parent` (a session id) beside `path`; empty for none.
 std::string AgentParentPath(const std::string& path, const std::string& parent);
 
-// The first line of a session file when it is a valid header, else an empty
-// object. Bounded: it never reads the transcript.
+// The first line when it is a valid header, else {}; reads no transcript.
 json SessionHeader(const std::string& path);
 
-// A read-only catalogue: bounded headers, one known directory level, no links.
 // The writer lease file that guards a session file.
 std::string SessionLockPath(const std::string& path);
+
+// Read-only: bounded headers, one known directory level, no links.
 
 std::vector<SessionInfo> ListSessions(
     SessionScope scope = SessionScope::kWorkspace);
 
-// Reuse valid headers while their file identity, size and timestamp match.
-// One owner serializes scans; each scan prunes missing or unreadable entries.
+// Reuses headers while their file identity, size and timestamp match.
 class SessionCatalogue {
  public:
   std::vector<SessionInfo> List(SessionScope scope = SessionScope::kWorkspace);
@@ -107,6 +108,7 @@ enum class SessionStoreError {
 
 struct SessionMetadata {
   std::string cwd;
+  std::string host = {};
   std::string model;
   std::string session_id;
   int64_t turns = 0;
@@ -118,6 +120,7 @@ struct SessionMetadata {
   json agent = json::object();
   // False for a conversation run with memory off: nothing learns from it.
   bool memory = true;
+  json suggestion = nullptr;
 };
 
 struct SessionState {
@@ -131,11 +134,9 @@ struct SessionState {
   RouteUsage route_usage;
   std::string last_sent_prompt;
   json display = json::object();
-  // Ids of the latest mailbox messages taken into the transcript, so one
-  // delivered again after a crash is recognised (see core/mailbox.h).
+  // Ids of the latest mail taken into the transcript (see core/mailbox.h).
   json delivered_mail = json::array();
 
-  // Transfer the loaded transcript into its sole runtime owner.
   bool RestoreConversation(Conversation& conversation) &&;
 };
 
@@ -156,19 +157,16 @@ struct SessionLoadResult {
   std::optional<SessionRecord> record;
 };
 
-// A session's id as clients and runtimes name it: its session file's path,
-// hashed as spelled. MailboxIdFor resolves links first, so the two agree only
-// for a path without them.
+// The session file's path, hashed as spelled. MailboxIdFor resolves links
+// first, so the two agree only for a path without them.
 inline std::string SessionIdFor(const std::string& path) {
   return HashHex(path);
 }
 
 bool ValidSessionTitle(const std::string& title);
-// What the rule is, for the error that rejects a title.
 std::string InvalidSessionTitleMessage();
 
-// What the last save wrote, so a save of the same bytes to the same untouched
-// file writes nothing.
+// What the last save wrote, to skip a save of the same bytes.
 struct SavedFile {
   std::string path;
   size_t digest = 0;
@@ -178,9 +176,7 @@ struct SavedFile {
 
 class SessionStore {
  public:
-  // A live conversation is borrowed only for this synchronous serialization.
-  // With `saved`, a save whose bytes match the last one, on a file nobody has
-  // touched since, leaves the file alone.
+  // Borrows `conversation` for the call; `saved` lets an unchanged save skip.
   static SessionStoreStatus Save(const std::string& path,
                                  const SessionRecord& record,
                                  const Conversation* conversation = nullptr,
@@ -188,31 +184,21 @@ class SessionStore {
   static SessionLoadResult Load(const std::string& path,
                                 const std::string& expected_cwd);
   static SessionLoadResult Inspect(const std::string& path);
-  // Copies the session, whole or before a user message: the Nth
-  // (`fork_turn`) or the one shown as `message_id` ("m-<id>"). A cut fork
-  // returns that message's text as "prompt", so it can be edited and sent.
-  // An owning runtime may pass a published snapshot instead of reading its
-  // on-disk checkpoint; asset copying and lineage still follow the same path.
+  // Whole, or cut before a user message, whose text returns as "prompt".
   static json Fork(const std::string& path, const std::string& title = "",
                    bool source_owned = false, int64_t fork_turn = 0,
                    const std::string& message_id = "",
                    const SessionRecord* snapshot = nullptr);
-  // Renders the saved session as markdown for /share. Pure transcript view:
-  // user and assistant text plus truncated tool results; system, internal
-  // and runtime-context messages never leave the session file.
+  // Markdown for /share, without system, internal or runtime-context messages.
   static std::string ShareMarkdown(const SessionRecord& record);
-  // Writes ShareMarkdown next to the session file and returns the sibling
-  // path ({{"shared", true}, {"path", ...}}) or {{"error", ...}}. The caller
-  // owns the session: the live worker that just saved it holds its lease.
+  // {shared, path} or {error}; the caller holds the session's lease.
   static json Share(const std::string& path);
   static SessionStoreStatus Rename(const std::string& path,
                                    const std::string& title);
-  // Calls `visit` on every string of the transcript: messages, archive and
-  // display.
+  // Calls `visit` on every string of messages, archive and display.
   static void VisitStrings(SessionState& state,
                            const std::function<void(json&)>& visit);
-  // Changes the saved session at `path` under its lease. `edit` returns
-  // whether it changed the record; one that did not is not saved.
+  // Edits under the session's lease; saved only when `edit` returns true.
   static SessionStoreStatus Edit(
       const std::string& path, const std::function<bool(SessionRecord&)>& edit);
   static SessionStoreStatus Remove(const std::string& path,

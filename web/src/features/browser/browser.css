@@ -1,8 +1,4 @@
-/* The browser has one geometry: the remote screen takes all the space and
-   one bar sits below it. Status, notices and the clipboard card overlay the
-   screen; nothing is ever inserted into this flow, so no state moves it. */
-/* On a compact screen the browser takes the whole display, landscape too.
-   Clip, not hidden: focusing an overlay field must never scroll the body. */
+/* Clip, not hidden: focusing an overlay field must never scroll the body. */
 dialog.browser-view[data-layout="sheet"] {
   --dialog-width: var(--content-width);
   border-width: 0;
@@ -44,8 +40,6 @@ dialog.browser-view[data-layout="sheet"] {
   cursor: default !important;
 }
 
-/* Overlays on the screen: a centred message, a top banner, a bottom toast
-   and the clipboard card. None of them take layout space. */
 .browser-overlay {
   position: absolute;
   inset: 0;
@@ -69,8 +63,14 @@ dialog.browser-view[data-layout="sheet"] {
   background: var(--screen-scrim);
   color: var(--screen-ink);
   font-size: var(--font-small);
-  text-align: center;
   pointer-events: none;
+}
+.browser-banner > .notice {
+  justify-content: center;
+}
+/* The palette's red is for its own surfaces; the screen is dark in both. */
+:is(.browser-banner, .browser-toast) [data-tone="error"] > * {
+  color: var(--screen-error);
 }
 .browser-banner {
   --from: 0 calc(-1 * var(--rise));
@@ -81,7 +81,6 @@ dialog.browser-view[data-layout="sheet"] {
   width: fit-content;
   margin-inline: auto;
 }
-/* Zoom and scroll without gestures, in the screen's top corner. */
 .browser-view-controls {
   top: var(--gap);
   right: var(--gap);
@@ -98,13 +97,7 @@ dialog.browser-view[data-layout="sheet"] {
   --input-min-height: calc(2 * var(--control-l));
   --input-max-height: var(--scroll-s);
 }
-.browser-card-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--gap);
-}
 
-/* Where a touch landed; it stays while a hold drags. */
 .browser-touch {
   position: absolute;
   top: 0;
@@ -119,16 +112,8 @@ dialog.browser-view[data-layout="sheet"] {
   pointer-events: none;
 }
 
-/* The bar: status and profiles on the left, tools, then the one action. It
-   keeps its height while typing, when the special keys take its place. */
+/* Keeps its height while the special keys take its place. */
 .browser-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  height: calc(var(--control) + 2 * var(--gap));
-  padding: var(--gap) var(--inset-x);
-  border-top: var(--border);
   background: var(--bg);
 }
 .browser-status-menu {
@@ -142,12 +127,6 @@ dialog.browser-view[data-layout="sheet"] {
   justify-content: flex-start;
   gap: var(--space-4);
   padding-inline: var(--space-4);
-}
-.browser-status > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .browser-status > svg {
   flex-shrink: 0;
@@ -163,15 +142,8 @@ dialog.browser-view[data-layout="sheet"] {
   gap: var(--gap);
   min-width: 0;
 }
-.browser-profile-controls,
 .browser-profile-create {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--gap);
-}
-.browser-profile-create .text-control {
-  flex: 1 1 calc(var(--pane) / 2);
-  min-width: 0;
+  --input-row-min: calc(var(--pane) / 2);
 }
 
 /* Focus target that opens the on-screen keyboard: focusable, invisible and

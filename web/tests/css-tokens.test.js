@@ -1,53 +1,10 @@
-// The look lives in the tokens of shared/styles/tokens.css: colours, the type,
-// spacing and size scales, weights, stripes and motion. Every other
-// declaration names a token, so the whole look changes in one place. Values
-// are read whole, however many lines they run over.
+// The look lives in the tokens of shared/styles/tokens.css: every other
+// declaration names a token, so the whole look changes in one place.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-
-function* tree(dir, extensions, base = "") {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(base, entry.name);
-    if (entry.isDirectory())
-      yield* tree(join(dir, entry.name), extensions, path);
-    else if (extensions.some((end) => entry.name.endsWith(end))) yield path;
-  }
-}
-
-// Every declaration in the stylesheets: where it is, the selector (and
-// at-rules) it sits in, its property and its value.
-const declarations = [];
-const sheets = [...tree("src", [".css"])].map((path) => ({
-  path,
-  css: readFileSync(join("src", path), "utf8"),
-}));
-for (const { path, css: raw } of sheets) {
-  const css = raw.replace(/\/\*[\s\S]*?\*\//g, (comment) =>
-    comment.replace(/[^\n]/g, " "),
-  );
-  const rules = [];
-  let start = 0;
-  for (let at = 0; at < css.length; at++) {
-    const char = css[at];
-    if (char !== "{" && char !== "}" && char !== ";") continue;
-    const text = css.slice(start, at);
-    if (char === "{") rules.push(text.trim());
-    else {
-      const colon = text.indexOf(":");
-      if (colon > 0 && text.trim())
-        declarations.push({
-          where: `${path}:${css.slice(0, start + text.search(/\S/)).split("\n").length}`,
-          rule: rules.join(" "),
-          property: text.slice(0, colon).trim(),
-          value: text.slice(colon + 1).trim(),
-        });
-      if (char === "}") rules.pop();
-    }
-    start = at + 1;
-  }
-}
+import { declarations, page, sheets, tree } from "./stylesheets.js";
 
 // A token block: the palettes (the root and the inverse surface) and the
 // root's scales. Only a custom property there may hold a literal.
@@ -59,16 +16,21 @@ function bare(value) {
   while (/var\([^()]*\)/.test(out)) out = out.replace(/var\([^()]*\)/g, "");
   return out;
 }
-const strays = (stray) =>
+const strays = (stray, pages = false) =>
   declarations
-    .filter((declaration) => !token(declaration) && stray(declaration))
+    .filter(
+      (declaration) =>
+        (pages || !page(declaration)) &&
+        !token(declaration) &&
+        stray(declaration),
+    )
     .map(({ where, property, value }) => `${where}: ${property}: ${value}`);
 
-test("colour literals stay in the palettes", () => {
+test("colour literals stay in the palettes, a sheet page's too", () => {
   const COLOUR =
     /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|color-mix)\(|^(?:white|black)\b/i;
   assert.deepEqual(
-    strays(({ value }) => COLOUR.test(value)),
+    strays(({ value }) => COLOUR.test(value), true),
     [],
   );
 });
@@ -104,10 +66,9 @@ test("edges and focus rings use their tokens", () => {
 // A length written out: px or rem, other than zero and a hairline.
 const LENGTH = /(?<![\w.-])(?!0px\b|1px\b)[\d.]+(?:px|rem)\b/;
 
-// Spacing, type and line height come from the scales, so a screen cannot
-// drift a pixel from its neighbours: no length, and no bare line-height
-// number (1 collapses an icon's box). Markdown headings scale in em with
-// the prose around them.
+// Spacing, type and line height come from the scales: no length, and no bare
+// line-height number (1 collapses an icon's box). Markdown headings scale in
+// em with the prose around them.
 test("spacing, font sizes and line heights use the scale tokens", () => {
   const SCALED =
     /^(?:padding|margin|gap|row-gap|column-gap|font-size|line-height)\b/;
@@ -126,11 +87,9 @@ test("spacing, font sizes and line heights use the scale tokens", () => {
   );
 });
 
-// Sizes, places and stripes come from the size tokens (--control-s, --pane,
-// --dialog-m, --touch, --stripe and the like), so an icon or a control is
-// the same size wherever it appears. A length in em follows the element's
-// own font size, which is the scale there, so em is not counted. A custom
-// property outside the token blocks is held to the same rule.
+// Sizes, places and stripes come from the size tokens. A length in em follows
+// the element's own font size, which is the scale there, so em is not counted.
+// A custom property outside the token blocks is held to the same rule.
 test("sizes, positions and border widths use the size tokens", () => {
   const SIZED =
     /^(?:(?:min-|max-)?(?:width|height)|grid-template-\w+|flex(?:-basis)?|top|right|bottom|left|inset(?:-[\w-]+)?|translate|border(?:-[\w-]+)?|outline|--[\w-]+)$/;
@@ -142,10 +101,9 @@ test("sizes, positions and border widths use the size tokens", () => {
   );
 });
 
-// Weights, letter spacing, the focus ring's offset, an icon's alignment and
-// dimming are tokens: --weight-*, --tracking-*, --focus-offset,
-// --icon-align and --opacity-disabled. Stacking is a token too: a literal
-// z-index is a layer one screen picked alone.
+// Weights, letter spacing, the focus ring's offset, an icon's alignment,
+// dimming and stacking are tokens: a literal z-index is a layer one screen
+// picked alone.
 test("weights, tracking, offsets, opacity and stacking use their tokens", () => {
   const WRITTEN = {
     "font-weight": /\d|bold|lighter/,

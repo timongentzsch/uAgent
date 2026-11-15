@@ -32,8 +32,7 @@ std::string AttachmentDeliveryRows(const json& deliveries) {
     if (name.empty() && kind.empty()) continue;
     if (name.empty()) name = "attachment";
     if (kind.empty()) kind = "attached";
-    // Chrome downgrades on non-UTF-8 terminals; the file name is user
-    // content and stays byte-preserved.
+    // The file name is user content and stays byte-preserved.
     rows += std::string(DIM()) + "  " + TerminalSafe(name) +
             AsciiGlyphs(" · ") + TerminalSafe(kind) + RST() + "\n";
   }
@@ -151,9 +150,6 @@ struct TerminalPresenter::State {
     std::string style = std::string(RST()) + MUTED() + ITAL();
     if (!in_reasoning) {
       if (content_started && line_open) markdown.FeedPlain("\n");
-      markdown.Control(RST());
-      markdown.Control(DIM());
-      markdown.FeedPlain(RowMark(Mark::kNote) + "Thinking\n");
       line_open = false;
       in_reasoning = true;
     }
@@ -207,7 +203,8 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       // A reply starts on a line of its own.
       if (std::exchange(line_open_, false)) fputs("\n", stdout);
       // Thinking streams where it is open, at every level of the tree.
-      state_ = std::make_unique<State>(detail_->depth == kDepthAll, spoke_);
+      state_ = std::make_unique<State>(thinking_ && detail_->depth == kDepthAll,
+                                       spoke_);
       break;
     case EventId::kReasoningDelta:
       if (state_ && state_->full_reasoning && spinner_) spinner_->Stop();
@@ -230,7 +227,7 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
         if (spinner_) spinner_->Stop();
       } else {
         const std::string label =
-            TerminalSafe(JsonValue(event.data, "turn_status", "Working"));
+            TerminalSafe(JsonValue(event.data, "turn_status", kWaitingStatus));
         if (!spinner_) spinner_ = std::make_unique<TerminalSpinner>(false);
         spinner_->SetLabel(label);
         spinner_->Start();

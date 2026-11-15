@@ -290,7 +290,6 @@ test.describe("touch interaction", () => {
       const search = settings.getByRole("searchbox", {
         name: "Find a setting",
       });
-      // A setting's own field is in its row.
       await search.fill("timeout");
       await expect(
         settings.getByRole("spinbutton", { name: "Tool timeout" }),

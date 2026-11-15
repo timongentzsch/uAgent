@@ -492,8 +492,7 @@ def test_an_agent_that_may_not_edit_only_reads(root, home, *, binary):
 
 def test_agents_started_in_a_row_stop_at_three_and_depth_is_bounded(root, home, *, binary):
     """A parent answering every report with another message gets three turns
-    of its agent, then is told to ask the person; an agent at agents.depth
-    starts none of its own."""
+    of its agent; an agent at agents.depth starts none of its own."""
 
     def route(_, body):
         if brief_of(body):
@@ -527,9 +526,8 @@ def test_agents_started_in_a_row_stop_at_three_and_depth_is_bounded(root, home, 
 
 
 def test_a_start_without_its_brief_is_turned_away_and_stops_the_turn(root, home, *, binary):
-    """A start missing its brief never reaches the tool: each time the model
-    is told what it needs and what its call carried, and the third such round
-    ends the turn, which then answers from what it has."""
+    """A start missing its brief never reaches the tool: the model is told
+    what it needs, and the third such round ends the turn."""
     responses = [tool_call("agent_start", {}) for _ in range(3)]
     responses.append(event({"content": "answered-after-the-loop"}))
     with Server(responses) as server:

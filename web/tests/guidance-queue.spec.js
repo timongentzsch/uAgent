@@ -32,6 +32,16 @@ for (const width of [320, 390, 1280]) {
     await expect(page.locator(".message.user", { hasText: text })).toHaveCount(
       0,
     );
+    // Once drawn, the queued intent is durable even on an immediate reload.
+    expect(
+      await page.evaluate(
+        (text) =>
+          JSON.parse(sessionStorage.getItem("uagent-outgoing") || "[]").find(
+            (item) => item.body?.text === text,
+          )?.status,
+        text,
+      ),
+    ).toBe("Queued for after this turn");
     await page.reload();
     await online(page);
     await expect(tray).toContainText(text);
@@ -107,6 +117,75 @@ for (const width of [320, 390, 1280]) {
     await expect(page.locator(".turn-footer")).toHaveCount(1);
   });
 }
+
+// The host takes the command, and its answer never reaches the page whole.
+for (const [how, lose] of [
+  ["dropped", (route) => route.abort()],
+  ["cut short", (route) => route.fulfill({ status: 200, body: "" })],
+])
+  test(`a queued message whose answer is ${how} stays queued across a reload`, async ({
+    page,
+    session,
+  }) => {
+    const prompt = await start(page, session);
+    await page.route("**/api/command", async (route) => {
+      await route.fetch();
+      await lose(route);
+    });
+    const text = "Queued as the connection drops.";
+    await prompt.fill(text);
+    const lost = page.waitForEvent("requestfinished", (request) =>
+      request.url().endsWith("/api/command"),
+    );
+    const failed = page.waitForEvent("requestfailed");
+    await page.getByRole("button", { name: "Queue next" }).click();
+    await Promise.race([lost, failed]);
+    await page.unroute("**/api/command");
+    const tray = page.getByRole("region", { name: "Queued messages" });
+    await expect(tray).toContainText(text);
+    await page.reload();
+    await online(page);
+    await expect(tray).toContainText(text);
+    await expect(page.locator(".message.user", { hasText: text })).toHaveCount(
+      0,
+    );
+  });
+
+// The row is shown as queued before the host has said so: taking it back
+// then must not reach the host before the message itself has.
+test("guidance taken back before its send is answered is taken back once it is", async ({
+  page,
+  session,
+}) => {
+  const prompt = await start(page, session);
+  let answer;
+  await page.route("**/api/command", async (route) => {
+    if (route.request().postDataJSON().kind === "steer")
+      await new Promise((go) => (answer = go));
+    await route.continue();
+  });
+  await prompt.fill("Held on its way");
+  await page
+    .getByRole("button", { name: "Send guidance", exact: true })
+    .click();
+  const tray = page.getByRole("region", { name: "Queued messages" });
+  await expect(tray).toContainText("Held on its way");
+  await expect.poll(() => typeof answer).toBe("function");
+  await tray.getByRole("button", { name: "Edit", exact: true }).click();
+  answer();
+  await expect(tray).toHaveCount(0);
+  await expect(prompt).toHaveValue("Held on its way");
+  // The host holds nothing of it: the turn goes on without it.
+  await page.unroute("**/api/command");
+  await page.reload();
+  await expect(page.locator(".message.response")).toContainText(
+    "Waiting for guidance",
+  );
+  await expect(page.locator(".message.user")).toHaveCount(1);
+  await expect(
+    page.getByRole("region", { name: "Queued messages" }),
+  ).toHaveCount(0);
+});
 
 test("queued guidance can be edited with its attachments without replacing a draft", async ({
   page,
@@ -190,7 +269,7 @@ test("a refused insertion keeps the queued message available", async ({
     });
   });
   await tray.getByRole("button", { name: "Insert now" }).click();
-  await expect(page.locator(".error-banner")).toContainText(
+  await expect(page.locator(".banner")).toContainText(
     "Insertion refused for test",
   );
   await expect(tray).toContainText("Keep this queued");

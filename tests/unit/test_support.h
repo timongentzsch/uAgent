@@ -50,11 +50,7 @@ inline void UseOpenRouterDialect(Api& api) {
   api.base_url = url;
 }
 
-// Scale a millisecond deadline for an instrumented build, mirroring the Python
-// harness's budget(). A sanitizer leg starts and renders several times slower
-// than a plain one, so a fixed PTY round-trip budget there is a coin flip; CI
-// raises the multiplier for those jobs rather than each deadline being retuned
-// by hand.
+// Scales a deadline for an instrumented build; CI raises the multiplier there.
 inline int64_t BudgetMs(int64_t milliseconds) {
   const char* scale = std::getenv("UAGENT_TEST_TIMEOUT_SCALE");
   const double factor = scale ? std::strtod(scale, nullptr) : 1.0;
@@ -213,9 +209,8 @@ inline std::string SaveSettings(const SettingValues& values,
 #define CHECK_OK(result) \
   ::uagent::CheckOk((result), #result, __FILE__, __LINE__)
 
-// CHECK for a condition the rest of the test body dereferences: a failed CHECK
-// keeps going, so `CHECK(opt.has_value()); use(*opt);` crashes the whole binary
-// instead of reporting one failed case. REQUIRE reports and leaves.
+// For a condition the rest of the body dereferences: a failed CHECK keeps
+// going and would crash the binary, REQUIRE reports and leaves the case.
 #define REQUIRE(expression)                                              \
   do {                                                                   \
     if (!::uagent::Check((expression), #expression, __FILE__, __LINE__)) \

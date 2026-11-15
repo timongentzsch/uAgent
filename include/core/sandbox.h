@@ -2,16 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_SANDBOX_H_
 #define UAGENT_INCLUDE_CORE_SANDBOX_H_
-// Pure policy composition for the OS sandbox: which roots a command may write
-// to, whether it may reach the network, and how that renders into the two
-// enforcement mechanisms. Nothing here touches the host -- probing and
-// enforcement live in sandbox_posix.cc -- so every rule below is testable on
-// either platform.
-//
-// Paths in and out are canonical absolute paths. Canonicalisation is the
-// caller's job because it is the part that reads the filesystem, and because
-// seatbelt matches the resolved path only: a profile naming /tmp confines
-// nothing on macOS, where /tmp is a symlink to /private/tmp.
+// Pure policy composition for the OS sandbox; nothing here touches the host.
+// Paths in and out are canonical: seatbelt matches the resolved path only.
 
 #include <cstddef>
 #include <string>
@@ -23,227 +15,144 @@
 namespace uagent {
 
 struct SandboxPolicy {
-  // Deduplicated and sorted, with any root nested inside another folded away,
-  // so the rendered profile is a function of the set rather than of the order
-  // the roots happened to be discovered in.
+  // Deduplicated and sorted, with any root nested inside another folded away.
   std::vector<std::string> writable_roots;
-  // Paths carved back out of a writable root. Seatbelt only: Landlock grants
-  // rights per path with no deny form, so a Linux policy that needs a hole has
-  // to not grant the parent in the first place.
+  // Carved back out of a writable root. Seatbelt only: Landlock cannot deny.
   std::vector<std::string> denied_writes;
-  // Paths inside a writable root that no write may reach, except through a
-  // root nested inside them: the relaxed level opens the home folder and
-  // withholds ~/.uagent, yet still grants its terminal logs and a workspace
-  // kept there. Seatbelt denies them; Landlock grants the root around them.
+  // No write may reach these, except through a root nested inside them.
   std::vector<std::string> withheld;
-  // HiddenPaths(), filled in when a wrapper is built: never read, written or
-  // connected to.
+  // HiddenPaths(): never read, written or connected to.
   std::vector<std::string> hidden;
-  // The home folder's visible entries (~/Software, ~/Documents, ...) that no
-  // command may read, and the folders inside them it still may: the
-  // folder, and what commands use there. Reads elsewhere stay open.
+  // Home-folder entries no command may read, and the folders in them it may.
   std::vector<std::string> unreadable;
   std::vector<std::string> readable;
   bool allow_network = true;
-  // The readonly level: commands may write only temporary files, so nothing
-  // they do outlasts them. Said to the model when a write is refused.
+  // The readonly level: commands may write only temporary files.
   bool read_only = false;
 };
 
-// What a policy is composed from. Supplied by the caller rather than read from
-// the environment here, so that composition stays pure and one test can cover
-// host shapes the test machine does not have.
+// What a policy is composed from, supplied by the caller.
 struct SandboxInputs {
   std::string workspace;
-  // ~/.uagent. Never writable, and neither is any ancestor of it: that is what
-  // keeps the config, the trust store and the detached-process records out of
-  // reach of a command that can otherwise write freely.
+  // ~/.uagent. Never writable, and neither is any ancestor of it.
   std::string global_base;
   std::string tmpdir;  // $TMPDIR; empty when unset
-  // macOS's own per-user temp folder, where its tools cache (xcrun, behind
-  // /usr/bin/git) whatever $TMPDIR says; empty elsewhere.
+  // macOS's per-user temp folder, which its tools use whatever $TMPDIR says.
   std::string user_tmpdir;
   // Package-manager caches (kPackageCaches in include/core/defaults.h).
   std::vector<std::string> tool_caches;
-  // ~/.uagent/terminals/logs -- the one deliberate exception inside
-  // global_base, because a detached process's own log pump writes there.
+  // ~/.uagent/terminals/logs: the one exception inside global_base.
   std::string terminal_logs;
   std::vector<std::string> extra_roots;  // UAGENT_SANDBOX_WRITE, one per entry
-  // The home folder, when the relaxed level makes it writable; empty otherwise.
-  // global_base stays withheld from it.
+  // The home folder when the relaxed level makes it writable, else empty.
   std::string open_home;
   bool allow_network = true;
-  // The readonly level: only the temporary roots and the terminal logs are
-  // offered, whatever else is listed here.
+  // The readonly level: only temporary roots and the terminal logs are offered.
   bool read_only = false;
-  // The folders closed to reads at a level that confines them (readonly,
-  // default), empty otherwise: the person's own -- the home folder's
-  // entries not named with a dot and the workspaces in ~/.uagent/spaces --
-  // and the folder's neighbours, as other folders in /workspaces are.
+  // Folders closed to reads at a level that confines them (readonly, default).
   std::vector<std::string> closed_folders;
-  // What stays readable inside them besides the folder and the writable
-  // roots: what the environment points at, sandbox.read and
-  // kReadableHomePaths.
+  // What stays readable inside them besides the folder and the writable roots.
   std::vector<std::string> read_roots;
-  // A linked git worktree's own git directory and the shared repository's
-  // objects, refs and logs: the writes a commit there needs.
+  // A linked worktree's git directories: the writes a commit there needs.
   std::vector<std::string> git_roots;
-  // The folder already is a repository (its .git is a directory), so its
-  // config and hooks exist and must not be rewritten; before `git init` they
-  // cannot be denied without denying the init itself.
+  // The folder is a repository, so its config and hooks must not be rewritten.
   bool git_repository = false;
 };
 
-// The `sandbox.level` setting: what a command may do before the individual
-// overrides (sandbox.network, sandbox.write, sandbox.hide, sandbox.reveal)
-// apply. Not SandboxLevel, which is what the host can enforce.
-// readonly is plan mode's and a read-only agent's: its commands may look but
-// change nothing, the folder and the network included, whatever the overrides
-// say.
+// The `sandbox.level` setting, before the individual overrides apply. Not
+// SandboxLevel, which is what the host can enforce.
 enum class SandboxPreset { kReadOnly, kDefault, kRelaxed, kOff };
 
-// readonly, default, relaxed and off. False for anything else, leaving
-// *preset alone.
+// False for anything but readonly, default, relaxed and off; *preset is kept.
 bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset);
 
-// The level a session's commands run at while its approval mode is yolo:
-// default is raised to relaxed; readonly, relaxed and off stay as they are.
+// The level under yolo: default is raised to relaxed, the others stay.
 SandboxPreset YoloSandboxPreset(SandboxPreset configured);
 
 struct SandboxPolicyResult {
   SandboxPolicy policy;
-  // Roots dropped by the rules above, as they were offered, so the startup
-  // notice can name what was asked for and not granted.
+  // Roots the policy rules dropped, as they were offered.
   std::vector<std::string> rejected;
 };
 
 SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs);
 
-// A profile beyond this is refused rather than truncated: a truncated profile
-// is a weaker profile, and it would arrive without saying so.
+// A larger profile is refused: truncating it would weaken it.
 inline constexpr size_t kSeatbeltProfileLimit = size_t{64} * 1024;
 
-// SBPL for `sandbox-exec -p`. Empty when the policy exceeds the limit.
-//
-// Seatbelt takes the last matching rule, so the order is load-bearing:
-// (allow default) keeps reads and exec unrestricted, (deny file-write*) then
-// removes every write, and the per-root allows and their deny-overrides add
-// back exactly what the policy names.
+// SBPL for `sandbox-exec -p`; empty when the policy exceeds the limit.
 std::string SeatbeltProfile(const SandboxPolicy& policy);
 
-// The policy as one JSON object: how a child agent inherits it, and how the
-// Linux trampoline receives it as a single argv word, so that no quoting rule
-// sits between the parent and the trampoline.
+// The policy as one JSON object, for a child agent and the Linux trampoline.
 json SandboxPolicyJson(const SandboxPolicy& policy);
-// Reads what SandboxPolicyJson wrote. False leaves *policy unspecified; the
-// trampoline treats that as fatal rather than as an empty policy, which would
-// be no confinement at all.
+// False leaves *policy unspecified; the trampoline treats that as fatal.
 bool SandboxPolicyFromJson(const json& value, SandboxPolicy* policy);
 
-// True when `path` is `root` or lies beneath it. Both must be canonical and
-// absolute; comparison is textual so that it cannot touch the filesystem.
+// Whether `path` is `root` or beneath it; textual, so both must be canonical.
 bool SandboxPathWithin(std::string_view path, std::string_view root);
 
-// True when a confined command may write `path`: it is a writable root or
-// lies beneath one.
+// Whether `path` is a writable root or lies beneath one.
 bool SandboxWritable(const SandboxPolicy& policy, std::string_view path);
 
-// True when a confined command may read `path`: it lies in none of
-// policy.unreadable, or in one of policy.readable.
+// Whether `path` is in none of policy.unreadable, or in one of policy.readable.
 bool SandboxReadable(const SandboxPolicy& policy, std::string_view path);
 
-// What a confined command may write, in words, for a reader who met the limit
-// as a bare "Permission denied": the model after a failed command, the person
-// at startup. A folder the policy does not grant is named first, with what
-// still works there, because every other sentence about the sandbox assumes
-// the folder is writable; and with what does not, when it holds one of
-// policy.hidden.
+// What a confined command may write, in words, for whoever meets the limit.
 std::string SandboxWritesNote(const SandboxPolicy& policy,
                               std::string_view workspace);
 
-// What this host can actually enforce. Filesystem-only is the Landlock ABI 1-3
-// case: writes confine, the network toggle does not, so a policy that denies
-// the network on such a host is refusing rather than pretending.
+// What this host can enforce. Landlock ABI 1-3 confines writes, not the
+// network.
 enum class SandboxLevel { kUnavailable, kFilesystem, kFilesystemAndNetwork };
 
-// Probes the host once and caches the answer. Cheap either way -- one syscall
-// on Linux, one access() on macOS -- but every spawn asks, and the answer
-// cannot change while the process runs.
+// Probes the host once and caches the answer.
 SandboxLevel SandboxSupported();
 
-// Linux trampoline: the argv word after the program name is --sandbox-child,
-// followed by SandboxPolicyJson as one word, then `--`, then the command to
-// run. Applies the policy to itself and execs the command, so on
-// success it never returns. Every failure -- a malformed argv, a rejected
-// ruleset, a missing command -- returns without executing anything, because a
-// command that ran here would be a command that ran unconfined.
+// Linux trampoline: argv is the program, --sandbox-child, the policy JSON, `--`
+// and the command. Every failure returns without executing the command.
 int SandboxChildMain(int argc, char** argv);
 
-// How this session's spawns are actually treated.
-//
-// kDegraded and kRefused are the same host -- one that cannot enforce -- split
-// by who asked for the sandbox. A default that bricked every old kernel would
-// be a bad default, so a setting nobody touched degrades loudly and keeps
-// working; a setting somebody wrote down is a requirement, and quietly not
-// meeting it would be the one outcome worse than refusing.
+// kDegraded and kRefused are both a host that cannot enforce: a setting nobody
+// touched degrades loudly and keeps working, one somebody wrote down refuses.
 enum class SandboxMode { kOff, kEnforced, kDegraded, kRefused };
 
 struct SandboxStatus {
   SandboxMode mode = SandboxMode::kOff;
   SandboxLevel level = SandboxLevel::kUnavailable;
   SandboxPolicy policy;
-  // Roots BuildSandboxPolicy refused, so startup can name what was asked for
-  // and not granted.
+  // Roots BuildSandboxPolicy refused.
   std::vector<std::string> rejected;
   // Why the mode is kDegraded or kRefused. Empty otherwise.
   std::string reason;
-  // The sandbox.level in effect, as /status names it: "default", or
-  // "relaxed (yolo)" where yolo raised it, "readonly (plan)" in plan mode. A
-  // child carries its parent's.
+  // The sandbox.level in effect, as /status names it: "relaxed (yolo)".
   std::string preset;
 };
 
-// Reads the configuration, composes the policy and probes the host once, and
-// composes it once more the first time another approval mode asks: at the
-// default level relaxed for yolo, and readonly for plan mode. Returns the one
-// for the approval mode now: every spawn asks, so a mode switched mid-session
-// holds from the next command. No status is ever rebuilt, so the reference
-// stays good.
+// The status for the approval mode now: a mode switched mid-session holds from
+// the next command. No status is rebuilt, so the reference stays valid.
 const SandboxStatus& SandboxRuntime();
 
-// That status as the value of UAGENT_INTERNAL_SANDBOX, which makes a child
-// agent run under exactly it, whatever its own approval mode.
+// That status as UAGENT_INTERNAL_SANDBOX's value, which a child runs under.
 std::string SandboxInheritance();
 
-// One object describing how this session confines its commands: mode,
-// mechanism, the writable roots, and anything asked for that was not granted.
-// Shared by session_ready, /status and /context so all three cannot drift.
+// How this session confines its commands: mode, mechanism, roots, refusals.
 json SandboxDiagnosticJson();
 
-// SandboxWritesNote for `status` and this session's folder. The hidden paths
-// are counted on Linux only: seatbelt denies them by rule, so nothing goes
-// stale.
+// SandboxWritesNote for `status` and this session's folder.
 std::string SandboxNote(const SandboxStatus& status);
 
-// SandboxNote when this session's commands cannot write its own folder;
-// empty otherwise. A home directory is the usual case: it holds ~/.uagent, so
-// it is never granted.
+// SandboxNote when this session's commands cannot write its own folder.
 std::string SandboxWorkspaceRefusal();
 
-// The argv words to put in front of `<shell> -c <command>`, hiding
-// HiddenPaths() too. Empty when the status does not enforce.
+// The argv prefix for `<shell> -c <command>`; empty when nothing is enforced.
 std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status);
 
 // What sandboxed commands cannot read and the file tools refuse, canonical and
-// existing: the browser profile, the web host's state, uAgent's settings, the
-// cloud and gpg credential stores, ~/.netrc and Docker's login. sandbox.hide
-// adds to that and sandbox.reveal takes from it. ~/.ssh and the GitHub CLI
-// login stay readable: git over ssh and `gh` are agent work.
+// existing; sandbox.hide adds to it and sandbox.reveal takes from it.
 std::vector<std::string> HiddenPaths();
 
-// The paths of status.policy.denied_writes that this host cannot deny, which a
-// caller guards with a SandboxWatch instead: all of them where Landlock is the
-// mechanism, none under Seatbelt.
+// The denied_writes this host cannot deny (all under Landlock, none under
+// Seatbelt), which a caller guards with a SandboxWatch instead.
 std::vector<std::string> SandboxUnenforcedWrites(const SandboxStatus& status);
 
 }  // namespace uagent

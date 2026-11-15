@@ -6284,6 +6284,9 @@ template <typename T> inline ssize_t handle_EINTR(T fn) {
 
 inline ssize_t read_socket(socket_t sock, void *ptr, size_t size, int flags) {
   return handle_EINTR([&]() {
+    // The upstream liveness probe peeks after a zero-time readiness check
+    // while serializing this client's socket, not shared application state.
+    // NOLINTNEXTLINE(clang-analyzer-unix.BlockInCriticalSection)
     return recv(sock,
 #ifdef _WIN32
                 static_cast<char *>(ptr), static_cast<int>(size),

@@ -16,8 +16,7 @@
 namespace uagent::session {
 namespace {
 
-// Unacknowledged worker commands held at once; beyond this the oldest
-// completed receipt is evicted, and a log with nothing completable refuses.
+// Unacknowledged worker commands held at once.
 constexpr size_t kMaxOutcomes = 512;
 // How long SendCommand waits for the worker's outcome before returning the
 // pending receipt; the late outcome still resolves it via ResolveOutcome.

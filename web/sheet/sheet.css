@@ -1,0 +1,572 @@
+/* The grid a sheet page is drawn as. The app sends its own tokens over
+   these fallbacks, so a sheet follows the look around it. */
+:root {
+  --sheet-ground: #fff;
+  --sheet-ink: #111;
+  --sheet-muted: #666;
+  --sheet-line: #d8d8d8;
+  --sheet-edge: #f3f3f3;
+  --sheet-head: #ececec;
+  --sheet-accent: #1a56db;
+  --sheet-tint: color-mix(in srgb, var(--sheet-accent) 14%, var(--sheet-ground));
+  --sheet-error: #b42318;
+  --sheet-pick: color-mix(in srgb, var(--sheet-accent) 12%, transparent);
+  --sheet-series-0: var(--sheet-accent);
+  --sheet-series-1: color-mix(in srgb, var(--sheet-accent) 55%, var(--sheet-ground));
+  --sheet-series-2: color-mix(in srgb, var(--sheet-accent) 25%, var(--sheet-ground));
+  --sheet-series-3: var(--sheet-error);
+  --sheet-series-4: color-mix(in srgb, var(--sheet-error) 45%, var(--sheet-ground));
+  --sheet-good: #dcf5e3;
+  --sheet-warn: #fdf0c8;
+  --sheet-bad: #fbdcdc;
+  --sheet-ink-good: #116329;
+  --sheet-ink-warn: #855600;
+  --sheet-font: 13px/1.35 system-ui, sans-serif;
+}
+body {
+  margin: 0;
+  background: var(--sheet-ground);
+  color: var(--sheet-ink);
+  font: var(--sheet-font);
+}
+/* A chart as written is drawn anew over the grid, or it follows no table
+   and is not drawn. One left open holds tables, and shows them. */
+figure[data-chart] {
+  margin: 0;
+}
+figure[data-chart]:not(:has(table)) {
+  display: none;
+}
+table[data-sheet] {
+  /* Each column as wide as the page worked out: the grid scrolls, it is
+     never squeezed, and a column is as wide whatever part of it is drawn. */
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+table[data-sheet] :is(th, td) {
+  box-sizing: border-box;
+  height: 24px;
+  padding: 2px 8px;
+  border: solid var(--sheet-line);
+  border-width: 0 1px 1px 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  background: var(--sheet-ground);
+}
+/* In the pane the table is a window on the grid: the cells in view, laid
+   where they belong in an area as large as the grid has been reached. */
+.sheet-window {
+  position: absolute;
+}
+.sheet-area {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+/* What lies past the stretch of the grid the area stands for is cut: it
+   would make the page longer. */
+.sheet-stretch {
+  overflow: clip;
+}
+table[data-sheet] .sheet-wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+table[data-sheet] :is(.sheet-number, .sheet-right) {
+  text-align: right;
+}
+table[data-sheet] .sheet-left {
+  text-align: left;
+}
+table[data-sheet] .sheet-center {
+  text-align: center;
+}
+table[data-sheet] .sheet-error {
+  color: var(--sheet-error);
+}
+table[data-sheet] .sheet-link {
+  color: var(--sheet-accent);
+  text-decoration: underline;
+}
+/* Letters across the top and numbers down the side, held in view: the
+   numbers at the left, the letters at the top, the corner at both. What is
+   held lies over what scrolls under it: rows over columns, the letters over
+   all. */
+table[data-sheet] .sheet-edge {
+  position: sticky;
+  z-index: 1;
+  min-width: 40px;
+  padding: 2px 6px;
+  background: var(--sheet-edge);
+  color: var(--sheet-muted);
+  text-align: center;
+  font-size: 11px;
+}
+table[data-sheet] .sheet-edge:first-child {
+  left: 0;
+}
+table[data-sheet] .sheet-letters .sheet-edge {
+  top: 0;
+  z-index: 4;
+}
+table[data-sheet] .sheet-letters .sheet-edge:first-child {
+  z-index: 6;
+}
+/* The groups' gutter, a lane of 16px (grid.js LANE) for each level, beside
+   the row numbers and over the letters: a line along a group, its button on
+   the row or column after it. */
+table[data-sheet] tbody .sheet-edge {
+  padding-left: calc(6px + var(--sheet-gutter-x, 0px));
+}
+table[data-sheet] .sheet-letters .sheet-edge {
+  padding-top: calc(2px + var(--sheet-gutter-y, 0px));
+}
+.sheet-lanes {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: flex;
+  align-items: center;
+}
+.sheet-letters .sheet-lanes {
+  inset: 0 0 auto;
+  flex-direction: column;
+}
+.sheet-lane {
+  flex: 0 0 16px;
+  align-self: stretch;
+}
+.sheet-along {
+  background: linear-gradient(var(--sheet-muted), var(--sheet-muted)) center /
+    1px 100% no-repeat;
+}
+.sheet-letters .sheet-along {
+  background-size: 100% 1px;
+}
+.sheet-fold {
+  flex: 0 0 14px;
+  height: 14px;
+  width: 14px;
+  margin: 1px;
+  padding: 0;
+  border: 1px solid var(--sheet-muted);
+  border-radius: 0;
+  background: var(--sheet-ground);
+  color: var(--sheet-ink);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* The header band, and the rows frozen with it. */
+table[data-sheet] .sheet-head :where(th, td):where(:not(.sheet-edge)) {
+  background: var(--sheet-head);
+  font-weight: 600;
+}
+table[data-sheet] .sheet-frozen :is(th, td) {
+  position: sticky;
+  top: var(--sheet-top);
+  z-index: 2;
+}
+table[data-sheet] .sheet-frozen :is(.sheet-edge, .sheet-pinned) {
+  z-index: 3;
+}
+table[data-sheet] tr.total :is(th, td):not(.sheet-edge) {
+  border-top: 1px solid var(--sheet-ink);
+  font-weight: 600;
+}
+table[data-sheet] [data-fill="accent"] {
+  background: var(--sheet-tint);
+}
+table[data-sheet] [data-fill="good"] {
+  background: var(--sheet-good);
+}
+table[data-sheet] [data-fill="warn"] {
+  background: var(--sheet-warn);
+}
+table[data-sheet] [data-fill="bad"] {
+  background: var(--sheet-bad);
+}
+table[data-sheet] [data-fill="muted"] {
+  background: var(--sheet-edge);
+  color: var(--sheet-muted);
+}
+table[data-sheet] [data-ink="good"] {
+  color: var(--sheet-ink-good);
+}
+table[data-sheet] [data-ink="warn"] {
+  color: var(--sheet-ink-warn);
+}
+table[data-sheet] [data-ink="bad"] {
+  color: var(--sheet-error);
+}
+table[data-sheet] [data-ink="muted"] {
+  color: var(--sheet-muted);
+}
+/* The selection: its box tinted over whatever fills the cells, its active
+   cell ringed. */
+table[data-sheet] :is(.sheet-in, .sheet-read) {
+  box-shadow: inset 0 0 0 100vmax var(--sheet-pick);
+}
+table[data-sheet] [aria-selected="true"] {
+  outline: 2px solid var(--sheet-accent);
+  outline-offset: -2px;
+}
+table[data-sheet] :is(td, th) {
+  cursor: cell;
+}
+table[data-sheet] .sheet-edge {
+  cursor: pointer;
+}
+/* Columns held in view beside the row numbers. */
+table[data-sheet] .sheet-pinned {
+  position: sticky;
+  z-index: 1;
+}
+table[data-sheet] .sheet-letters .sheet-pinned {
+  z-index: 5;
+}
+/* A header cell's menu, and the mark of a cell edited through a list. */
+table[data-sheet] .sheet-more {
+  margin-left: 4px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--sheet-muted);
+  font: inherit;
+  cursor: pointer;
+}
+table[data-sheet] .sheet-more::before,
+table[data-sheet] .sheet-options::after {
+  content: "▾";
+  color: var(--sheet-muted);
+}
+table[data-sheet] .sheet-options::after {
+  margin-left: 4px;
+}
+/* A column a filter is on. */
+table[data-sheet] .sheet-more[aria-pressed="true"]::before {
+  content: "▼";
+  color: var(--sheet-accent);
+}
+/* The field that takes what is typed: unseen on the active cell until it
+   edits it. A list of options lies there the same way. */
+.sheet-editor {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 6px;
+  border: 2px solid var(--sheet-accent);
+  border-radius: 0;
+  outline: none;
+  background: var(--sheet-ground);
+  color: var(--sheet-ink);
+  font: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+.sheet-editor[data-editing] {
+  z-index: 7;
+  min-width: 120px;
+  opacity: 1;
+  pointer-events: auto;
+}
+.sheet-menu {
+  position: fixed;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  max-height: 100vh;
+  box-sizing: border-box;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--sheet-ink);
+  background: var(--sheet-ground);
+}
+.sheet-menu > * {
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.sheet-menu > input {
+  margin: 4px;
+  border: 1px solid var(--sheet-line);
+}
+.sheet-menu > :is(:hover, :focus) {
+  outline: none;
+  background: var(--sheet-edge);
+}
+/* What a formula may take at its caret, by the cell typed in: the functions
+   to choose from, or the arguments of the one it stands in. */
+.sheet-suggest {
+  position: absolute;
+  z-index: 8;
+  box-sizing: border-box;
+  max-width: min(440px, 100vw);
+  max-height: min(208px, var(--sheet-room, 208px));
+  overflow-y: auto;
+  border: 1px solid var(--sheet-ink);
+  background: var(--sheet-ground);
+  color: var(--sheet-muted);
+}
+.sheet-suggest b {
+  color: var(--sheet-ink);
+  font-weight: 600;
+}
+.sheet-suggest[role="note"],
+.sheet-suggest > [role="option"] {
+  padding: 6px 8px;
+}
+.sheet-suggest > [role="option"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sheet-suggest > :is(:hover, [aria-selected="true"]) {
+  background: var(--sheet-edge);
+}
+.sheet-menu > hr {
+  margin: 4px 0;
+  padding: 0;
+  border-top: 1px solid var(--sheet-line);
+}
+/* A command's keys, the mark of one that is on, of a list that opens, and
+   of the way back from it, none of them part of its name; a colour's
+   swatch before its name. */
+.sheet-menu > button {
+  display: flex;
+  gap: 8px;
+}
+.sheet-menu > [data-keys]::after {
+  content: attr(data-keys) / "";
+  margin-left: auto;
+  color: var(--sheet-muted);
+}
+.sheet-menu > [aria-checked="true"]::after {
+  content: "✓" / "";
+  margin-left: auto;
+}
+.sheet-menu > [aria-haspopup]::after {
+  content: "›" / "";
+  margin-left: auto;
+}
+.sheet-menu-back::before {
+  content: "‹" / "";
+}
+.sheet-menu > [data-swatch]::before {
+  content: "";
+  width: 1em;
+  height: 1em;
+  align-self: center;
+  border: 1px solid var(--sheet-line);
+  background: var(--sheet-swatch);
+}
+[data-swatch="fill-accent"] {
+  --sheet-swatch: var(--sheet-tint);
+}
+[data-swatch="fill-good"] {
+  --sheet-swatch: var(--sheet-good);
+}
+[data-swatch="fill-warn"] {
+  --sheet-swatch: var(--sheet-warn);
+}
+[data-swatch="fill-bad"] {
+  --sheet-swatch: var(--sheet-bad);
+}
+[data-swatch="fill-muted"] {
+  --sheet-swatch: var(--sheet-edge);
+}
+[data-swatch="ink-good"] {
+  --sheet-swatch: var(--sheet-ink-good);
+}
+[data-swatch="ink-warn"] {
+  --sheet-swatch: var(--sheet-ink-warn);
+}
+[data-swatch="ink-bad"] {
+  --sheet-swatch: var(--sheet-error);
+}
+[data-swatch="ink-muted"] {
+  --sheet-swatch: var(--sheet-muted);
+}
+/* The edge of a column's letter, to drag it wider or narrower by, and the
+   line that shows where it will stand. */
+.sheet-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+}
+.sheet-guide {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: 8;
+  border-left: 1px solid var(--sheet-accent);
+}
+table[data-sheet] input[type="checkbox"] {
+  margin: 0;
+  vertical-align: middle;
+}
+/* What a rule gives the cells it matches, or a cell's own class. */
+table[data-sheet] .sheet-bold {
+  font-weight: 600;
+}
+table[data-sheet] .sheet-italic {
+  font-style: italic;
+}
+table[data-sheet] .sheet-strike {
+  text-decoration: line-through;
+}
+/* A chart lies over the grid, on the cell it names, and under what is held
+   and the row numbers. */
+.sheet-chart {
+  position: absolute;
+  z-index: 0;
+  pointer-events: auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--sheet-line);
+  background: var(--sheet-ground);
+  cursor: move;
+}
+.sheet-chart > figcaption {
+  min-height: 1lh;
+  padding-right: 24px;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A chart picked: ringed, its tools at its top, a handle at each corner
+   that sizes it from there. */
+.sheet-chart[data-picked] {
+  outline: 2px solid var(--sheet-accent);
+  outline-offset: -1px;
+}
+.sheet-chart-tools {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 4px;
+}
+.sheet-chart-tools > button {
+  padding: 0 6px;
+  border: 1px solid var(--sheet-line);
+  background: var(--sheet-ground);
+  color: var(--sheet-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.sheet-size {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px;
+  border: 1px solid var(--sheet-accent);
+  background: var(--sheet-ground);
+  cursor: nwse-resize;
+}
+.sheet-size:is([data-corner="nw"], [data-corner="ne"]) {
+  top: 0;
+}
+.sheet-size:is([data-corner="sw"], [data-corner="se"]) {
+  bottom: 0;
+}
+.sheet-size:is([data-corner="nw"], [data-corner="sw"]) {
+  left: 0;
+}
+.sheet-size:is([data-corner="ne"], [data-corner="se"]) {
+  right: 0;
+}
+.sheet-size:is([data-corner="ne"], [data-corner="sw"]) {
+  cursor: nesw-resize;
+}
+.sheet-chart > svg {
+  flex: 1;
+  min-height: 0;
+}
+.sheet-chart > p {
+  margin: auto;
+}
+/* What went wrong, in the app's error tone: a file not read, a chart not
+   drawn. */
+.sheet-notice,
+.sheet-chart > p {
+  color: var(--sheet-error);
+}
+.sheet-chart line {
+  stroke: var(--sheet-line);
+}
+.sheet-chart line[data-zero="true"] {
+  stroke: var(--sheet-muted);
+}
+.sheet-chart text {
+  fill: var(--sheet-muted);
+  font-size: 11px;
+  text-anchor: middle;
+}
+.sheet-chart text[data-axis="y"] {
+  text-anchor: end;
+  dominant-baseline: middle;
+}
+.sheet-chart [data-series="0"] {
+  --series: var(--sheet-series-0);
+}
+.sheet-chart [data-series="1"] {
+  --series: var(--sheet-series-1);
+}
+.sheet-chart [data-series="2"] {
+  --series: var(--sheet-series-2);
+}
+.sheet-chart [data-series="3"] {
+  --series: var(--sheet-series-3);
+}
+.sheet-chart [data-series="4"] {
+  --series: var(--sheet-series-4);
+}
+.sheet-chart :is(rect, path) {
+  fill: var(--series);
+  stroke: var(--sheet-ground);
+}
+.sheet-chart polyline {
+  fill: none;
+  stroke: var(--series);
+  stroke-width: 2;
+}
+.sheet-chart > ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--sheet-muted);
+  font-size: 11px;
+}
+.sheet-chart li::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  background: var(--series);
+}

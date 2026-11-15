@@ -17,8 +17,7 @@
 namespace uagent {
 
 // Session runtime: turn execution, persistence, config reload and the
-// consumer entry points (headless, channel). Terminal and browser
-// clients are projections over the events and state this produces.
+// headless and channel entry points.
 class Application {
  public:
   explicit Application(AppContext& context);
@@ -31,17 +30,15 @@ class Application {
   void ReloadConfigAtTurnBoundary();
   void RunTurns(const std::string& input, json content = nullptr,
                 const json& images = json::array());
-  // Puts plan mode's plan to the person as a turn ends; returns the message
-  // their answer starts the next turn with, or nothing.
+  // Returns the message the person's answer starts the next turn with.
   std::string PresentPlan();
   void LogSessionEnd(const char* reason) const;
   void Teardown(const char* reason);
   int FinishHeadless(std::string answer, std::string error, int exit_code);
   // The session's totals now: what ReportUsage counts from.
   json UsageTotals() const;
-  // What the session spent since `used_before_`, which it counts from again
-  // after: appended to `ledger`, when given, for the parent session that
-  // drains it. A child reports when it ends, an agent at each turn's end.
+  // What the session spent since `used_before_`, appended to `ledger` for the
+  // parent that drains it. A child reports when it ends, an agent each turn.
   json ReportUsage(const std::string& ledger);
   int RunHeadless();
   // Empty, or why the named conversation could not be continued.
@@ -52,6 +49,9 @@ class Application {
   void RunPrompt(const std::string& input);
   json InterfaceState() const;
   void ProcessInput(std::string input);
+  // Runs the slash commands a person approved for the agent, after the
+  // messages queued for after the turn. An incomplete turn drops them.
+  void RunQueuedCommands();
   int RunChannel();
   void PublishChannelState(bool checkpoint = true);
   AppContext& context_;
@@ -62,9 +62,7 @@ class Application {
   std::string session_file_;
   uint64_t saved_revision_;
   bool persist_ = false;
-  // What the session had already used when this run began or last reported:
-  // a continued conversation reports, and a child's parent is owed, only
-  // what was added since.
+  // What the session had used when this run began or last reported.
   json used_before_;
   // The settings problem last reported, so that one is said once.
   std::string config_problem_;
@@ -77,6 +75,7 @@ class Application {
   uint64_t message_subscription_ = 0;
   // The to-do list clients were last sent.
   json todo_ = json::array();
+  json suggestion_ = nullptr;
   std::string input_error_;
   ApplicationChannel* channel_ = nullptr;
 };

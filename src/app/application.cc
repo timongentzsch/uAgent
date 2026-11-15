@@ -26,6 +26,7 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
+#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 #include "include/providers/providers.h"
 #include "include/tools/tool.h"
@@ -48,11 +49,14 @@ Application::Application(AppContext& context)
                          !session_file_.empty());
   message_subscription_ =
       context_.observability.Subscribe([this](const AppEvent& event) {
+        // A suggested place reaches clients with the first event after it was
+        // taken, and a changed to-do list as it changes, not as the turn ends.
+        if (channel_ && agent_.Suggestion() != suggestion_) {
+          PublishChannelState(false);
+        }
         if (event.type != AppType(EventId::kMessageChanged)) {
           return;
         }
-        // A changed to-do list reaches clients as it changes, not as the turn
-        // ends.
         if (channel_ && agent_.Todo() != todo_) PublishChannelState(false);
         // A message of yours is saved as it arrives.
         const json& node = event.data["node"];
@@ -148,9 +152,8 @@ void Application::RunTurns(const std::string& input, json content,
                            const json& images) {
   EnsureSessionPath();
   ReloadConfigAtTurnBoundary();
-  // Search an endpoint offers but no model is named for is withheld from the
-  // model, so the person hears why once, when the route stops running it;
-  // not when they turned the tool off themselves.
+  // Search without a model named for it is withheld from the model: the
+  // person hears why once, unless they turned the tool off themselves.
   const Tool* search = FindTool(context_.tools, "web_search");
   const std::vector<std::string> enabled = agent_.EnabledTools();
   const bool unnamed =
@@ -189,9 +192,8 @@ void Application::RunTurns(const std::string& input, json content,
   if (channel_ || !session_file_.empty()) PublishChannelState(false);
 }
 
-// Every turn in plan mode ends with its plan shared in the conversation and
-// put to the person: approved, the conversation leaves plan mode and carries
-// it out; with feedback, planning goes on.
+// A turn in plan mode ends with its plan put to the person: approved, the
+// conversation leaves plan mode; with feedback, planning goes on.
 std::string Application::PresentPlan() {
   const std::string path = PlanFile();
   std::string plan, error;
@@ -265,9 +267,8 @@ std::string Application::ResumeAtStartup() {
     }
   }
   if (!source.empty() && PathExists(source)) {
-    // An agent's sandbox, budget and approval default are applied by its
-    // runtime; continued without one it would have none, and lose its role on
-    // saving.
+    // An agent's sandbox, budget and approval default come from its runtime:
+    // continued without one it would have none, and lose its role on saving.
     if (!channel_ && !AgentOf(SessionHeader(source)).empty()) {
       return "that session is an agent; continue it in its conversation, or "
              "name another session";
@@ -295,10 +296,10 @@ void Application::SaveSession(bool force) {
 void Application::EnsureSessionPath() {
   if (persist_ && session_file_.empty()) {
     session_file_ = HistoryPath(
-        CanonicalCwd(), UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId());
+        Workspace().path, UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId(),
+        Workspace().host);
   }
-  // Peer sessions address this process by its session file; exporting it
-  // here covers the constructor path, resume, and first save alike.
+  // Peer sessions address this process by its session file.
   if (!session_file_.empty()) {
     ::setenv("UAGENT_INTERNAL_SESSION_PATH", session_file_.c_str(), 1);
   }
@@ -386,6 +387,23 @@ void Application::ProcessInput(std::string input) {
     return;
   }
   RunPrompt(input);
+}
+
+void Application::RunQueuedCommands() {
+  std::vector<std::string>& commands = context_.commands;
+  if (commands.empty()) return;
+  if (JsonValue(agent_.LastStop(), "reason", "") != "completed") {
+    for (const std::string& line : std::exchange(commands, {})) {
+      Emit(NoticeEvent(PresentationStatus::kWarned,
+                       "not run, the turn did not complete: " + line));
+    }
+    return;
+  }
+  // All that is queued, less what was meant for the turn itself.
+  if (SteeringState().QueuedCount() > SteeringState().SteerCount()) return;
+  for (std::string& line : std::exchange(commands, {})) {
+    ProcessInput(std::move(line));
+  }
 }
 
 int RunApplication(AppContext& context) { return Application(context).Run(); }

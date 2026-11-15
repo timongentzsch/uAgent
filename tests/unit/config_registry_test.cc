@@ -23,17 +23,13 @@
 namespace uagent {
 namespace {
 
-// Every runtime getter must read its default from the registry. Pairing the
-// getter with its setting name here is what makes a silent drift impossible:
-// changing one without the other fails this test.
+// Pairs each getter with its setting, so the default cannot drift from it.
 struct GetterCheck {
   const char* environment;
   int64_t (*getter)();
 };
 
-// Every boolean-in-nature setting, so one declared as a string -- which no
-// validator would then normalize and whose getter would have to restate the
-// default -- fails here rather than drifting quietly.
+// Every boolean setting, so one declared as a string fails here.
 constexpr const char* kBoolSettings[] = {
     "UAGENT_SANDBOX_NET",
 };
@@ -108,7 +104,6 @@ TEST_CASE(TestConfigRegistryContract) {
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
     CHECK(!descriptor.environment.empty());
     CHECK(names.insert(descriptor.environment).second);
-    // Listed under a group people can find it in.
     CHECK(std::any_of(std::begin(kConfigCategories),
                       std::end(kConfigCategories),
                       [&](const ConfigCategory& category) {
@@ -118,14 +113,11 @@ TEST_CASE(TestConfigRegistryContract) {
     if (descriptor.type == ConfigType::kInt) {
       CHECK(descriptor.minimum <= descriptor.maximum);
       const int64_t* value = std::get_if<int64_t>(&descriptor.default_value);
-      // A fixed default must itself be inside the bounds it advertises.
       CHECK(!value ||
             (*value >= descriptor.minimum && *value <= descriptor.maximum));
     }
   }
 
-  // Every setting has one name in the settings file, spelled as a path of
-  // words, and none takes the name the file keeps for variables.
   std::set<std::string_view> keys;
   // A struct member added without a table entry in env.cc would keep its
   // hard-coded default; every field shows in the diagnostic instead.
@@ -151,19 +143,15 @@ TEST_CASE(TestConfigRegistryContract) {
     CHECK(fields.count(it.key()) > 0 || it.key() == "auto_compact_pct" ||
           it.key() == "auto_compact_tokens");
   }
-  // FromValues reads a renamed field through the same tables.
   CHECK(RuntimeConfig::FromValues({{"UAGENT_APPROVAL", "yolo"}}).approval ==
         "yolo");
 
-  // A notification names its conversation unless the person turns that off,
-  // and only for the whole host: no folder decides it.
   const ConfigDescriptor* detail =
       FindConfigDescriptor("UAGENT_WEB_NOTIFICATION_DETAIL");
   REQUIRE(detail != nullptr);
   CHECK(std::get<bool>(detail->default_value));
   CHECK(detail->scopes == kScopeUser);
 
-  // Every getter returns exactly the registered default when unset.
   for (const GetterCheck& check : kIntGetters) {
     const ConfigDescriptor* descriptor =
         FindConfigDescriptor(check.environment);
@@ -186,7 +174,6 @@ TEST_CASE(TestConfigRegistryContract) {
     if (declared) CHECK(BoolSetting(*descriptor) == *declared);
   }
 
-  // Bounds are enforced, not merely documented.
   {
     ScopedEnv attachment("UAGENT_ATTACHMENT_MB", "99999999999999999");
     CHECK(AttachmentLimitMb() ==
@@ -196,18 +183,15 @@ TEST_CASE(TestConfigRegistryContract) {
   CHECK(AttachmentLimitMb() ==
         FindConfigDescriptor("UAGENT_ATTACHMENT_MB")->minimum);
 
-  // The diagnostic that feeds /context, /config KEY and uagent never
-  // carries a credential.
+  // The diagnostic feeds /context and /config: it never carries a credential.
   ScopedEnv route_key(
       "UAGENT_PROVIDERS",
       R"({"p":{"base_url":"https://p.test/v1","api_key":"canary-secret-value"}})");
   CHECK(JsonDump(RuntimeConfig::FromEnvironment().DiagnosticJson())
             .find("canary-secret-value") == std::string::npos);
 
-  // Direct runtime lookups are occasionally necessary at bootstrap, but they
-  // still belong to the registry unless their name explicitly marks
-  // process-internal plumbing. Scan the production source so a new bypass
-  // fails here instead of silently escaping diagnostics and generated docs.
+  // A direct lookup in production source names a registered setting, unless its
+  // name marks process-internal plumbing.
   const std::filesystem::path source_root = UAGENT_TEST_SOURCE_DIR;
   for (const char* directory : {"src", "include"}) {
     for (const auto& entry : std::filesystem::recursive_directory_iterator(
@@ -238,8 +222,7 @@ TEST_CASE(TestConfigRegistryContract) {
   CHECK(DirectRuntimeSettingLookups("EnvStr(dynamic_name)").empty());
 }
 
-// The bug this pins: before strict parsing, every spelling except "0" read as
-// true, so UAGENT_MEMORY=false switched memory *on*.
+// With a loose parse UAGENT_MEMORY=false switches memory on.
 TEST_CASE(TestStrictBooleanSettings) {
   bool value = false;
   for (const char* spelling : {"1", "true", "TRUE", "Yes", "on"}) {
@@ -252,8 +235,6 @@ TEST_CASE(TestStrictBooleanSettings) {
     CHECK(ParseBool(spelling, value));
     CHECK(!value);
   }
-  // An unreadable spelling reports failure and leaves the caller's default in
-  // place — the same contract ParseInt64 and ParseFiniteDouble keep.
   for (const char* spelling : {"", "2", "maybe", "0x0", "true story"}) {
     value = true;
     CHECK(!ParseBool(spelling, value));
@@ -279,7 +260,6 @@ TEST_CASE(TestStrictBooleanSettings) {
     CHECK(BoolSetting(*memory));  // falls back to the registered default
   }
 
-  // Config-file path: the same spellings through RuntimeConfig::FromValues.
   CHECK(!RuntimeConfig::FromValues({{"UAGENT_MEMORY", "off"}}).memory_enabled);
   CHECK(RuntimeConfig::FromValues({{"UAGENT_MEMORY", "ON"}}).memory_enabled);
   CHECK(RuntimeConfig::FromValues({{"UAGENT_MEMORY", "wat"}}).memory_enabled);
@@ -296,8 +276,7 @@ TEST_CASE(TestSelfDescriptionSchemas) {
     CHECK(!setting.contains("active"));
   }
 
-  // Flag and command registries drive both parsing and help, so every
-  // documented entry must round-trip through the parser.
+  // The registries drive both parsing and help: every entry must parse.
   json flags = CliSchemaJson();
   CHECK(!flags.empty());
   for (const json& flag : flags) {
@@ -325,7 +304,6 @@ TEST_CASE(TestSelfDescriptionSchemas) {
   }
 }
 
-// A mistyped command names its nearest neighbour, never a far-off guess.
 TEST_CASE(TestNearestSlashCommand) {
   CHECK(NearestSlashCommand("/modle") == "/model");
   CHECK(NearestSlashCommand("/modle gpt-5") == "/model");

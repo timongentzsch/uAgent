@@ -4,12 +4,12 @@
   inset-inline: 0;
   max-height: min(var(--pane), var(--scroll-m));
 }
+/* raw: the second line of a row the list draws from what it is given. */
 .command-suggestions small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A group's label, never an option. */
 .suggestion-group {
   padding: var(--space-3) var(--space-4) var(--space-1);
 }

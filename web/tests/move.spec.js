@@ -9,6 +9,8 @@ import {
   withoutServiceWorker,
 } from "./fixtures.js";
 
+test.use({ places: true });
+
 test.beforeEach(({ command, session }) => selectProbeModel(command, session));
 
 const idOf = (page) =>
@@ -50,11 +52,9 @@ test("a conversation moves to a typed folder and the page follows it", async ({
 
   const destination = testInfo.outputPath("elsewhere");
   await mkdir(destination, { recursive: true });
-  // Words not yet sent stay with the conversation.
   await page.getByLabel("Message or guidance").fill("Words not yet sent");
   const dialog = await openMove(page);
   await expect(dialog).toContainText("Moves the conversation. Files stay in");
-  // Where it is now is listed, and cannot be chosen.
   await expect(dialog.getByRole("button", { name: /Current/ })).toBeDisabled();
   const move = dialog.getByRole("button", { name: "Move", exact: true });
   await expect(move).toBeDisabled();
@@ -65,7 +65,6 @@ test("a conversation moves to a typed folder and the page follows it", async ({
   await expect(folders.locator(".folder-own")).toHaveText("elsewhere");
   await expect(folders.locator(".session")).toHaveCount(1);
   await expect.poll(() => idOf(page)).not.toBe(session.id);
-  // Still the open conversation, with what it said.
   await expect(page.locator(".message.response")).toContainText(
     "Verified response",
   );
@@ -73,11 +72,15 @@ test("a conversation moves to a typed folder and the page follows it", async ({
   await expect(page.getByLabel("Message or guidance")).toHaveValue(
     "Words not yet sent",
   );
-  // Another device follows it to the same address.
   await expect.poll(() => idOf(other)).toBe(idOf(page));
   await expect(other.locator(".message.response")).toContainText(
     "Verified response",
   );
+
+  // The move's own row, open as a turn's work is, takes it back.
+  await page.getByRole("button", { name: "Move back" }).click();
+  await expect(folders).not.toContainText("elsewhere");
+  await expect(folders.locator(".session")).toHaveCount(1);
 });
 
 test("a running turn keeps the conversation where it is, and the dialog says so", async ({
@@ -98,7 +101,6 @@ test("a running turn keeps the conversation where it is, and the dialog says so"
   await expect(dialog).toContainText("running");
   const move = dialog.getByRole("button", { name: "Move", exact: true });
   await expect(move).toBeDisabled();
-  // Stopped, the dialog follows without being opened again.
   await command("interrupt", {
     session_id: session.id,
     generation: session.generation,

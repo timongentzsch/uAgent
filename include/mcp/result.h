@@ -26,8 +26,7 @@
 
 namespace uagent {
 
-// tools/call response -> bounded model-readable text. Binary images are saved
-// and queued separately; their base64 never enters the tool result history.
+// tools/call response -> bounded text; image base64 never enters the history.
 inline ToolResult McpResultText(const McpServer& s, const json& resp,
                                 const std::string& source_call_id = {}) {
   if (!resp.contains("result")) {
@@ -91,7 +90,6 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp,
   return result;
 }
 
-// cap without splitting a UTF-8 codepoint
 inline std::string McpCapDesc(std::string d) {
   return Utf8Trunc(std::move(d), kMcpDescriptionChars);
 }

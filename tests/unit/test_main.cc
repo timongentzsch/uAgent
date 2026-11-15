@@ -68,10 +68,8 @@ int RunTests(int argc, char** argv) {
     return 0;
   }
 
-  // Display-width tests assert UTF-8 semantics (CJK wide, · narrow): they
-  // need a UTF-8 CTYPE locale to be meaningful. Prefer explicit UTF-8
-  // names (hermetic under a bare C ambient, as on dev machines); fall
-  // back to the ambient locale, mirroring production's contract.
+  // Display-width tests need a UTF-8 CTYPE locale; explicit names keep the run
+  // hermetic under a bare C ambient.
   if (!std::setlocale(LC_CTYPE, "C.UTF-8")) {
     if (!std::setlocale(LC_CTYPE, "en_US.UTF-8")) {
       std::setlocale(LC_CTYPE, "");
@@ -110,12 +108,8 @@ int RunTests(int argc, char** argv) {
 }  // namespace uagent
 
 int main(int argc, char** argv) {
-  // Linux confines a spawn by re-execing the *calling* binary as the Landlock
-  // trampoline, and for these cases that binary is this one rather than
-  // uagent. Without the same dispatch src/main.cc does, every sandboxed spawn
-  // re-enters the argument parser, is rejected as unknown, and never execs the
-  // command -- which is how the whole suite's process-driving cases failed on
-  // Linux while passing on macOS, where seatbelt wraps an external program.
+  // Linux re-execs the calling binary as the Landlock trampoline, so this one
+  // needs the same dispatch as src/main.cc.
   if (argc > 2 && std::string(argv[1]) == "--sandbox-child") {
     return uagent::SandboxChildMain(argc, argv);
   }

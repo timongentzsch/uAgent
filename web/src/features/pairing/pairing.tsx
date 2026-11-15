@@ -2,7 +2,7 @@ import { useAction } from "../../shared/use-action.ts";
 import { useEffect, useState } from "preact/hooks";
 import { api, routes } from "../../state/api.ts";
 import { failure } from "../../shared/types.ts";
-import { Button, Mark, Input } from "../../shared/ui.tsx";
+import { Button, Mark, Input, Notice } from "../../shared/ui.tsx";
 import "./pairing.css";
 
 // The code a pairing link carries (`uagent --web` prints <origin>/#pair=…);
@@ -47,7 +47,6 @@ export default function Pairing({
       });
       await paired();
     });
-  // A pairing link connects without typing.
   // biome-ignore lint/correctness/useExhaustiveDependencies: tries the link's code once, on mount
   useEffect(() => {
     const linked = linkedCode();
@@ -85,9 +84,9 @@ export default function Pairing({
           />
         </label>
         {expired && (
-          <p id="pairing-expired" role="alert" class="pairing-expired">
+          <Notice tone="error" id="pairing-expired">
             Expired — run <code>uagent --web</code> again for a new code.
-          </p>
+          </Notice>
         )}
         <Button
           type="submit"

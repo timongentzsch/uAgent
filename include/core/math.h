@@ -8,10 +8,7 @@
 #include <string_view>
 #include <utility>
 namespace uagent {
-// Pure transliteration: LaTeX math → Unicode. No SGR and no renderer state,
-// so the same table serves the streaming renderer and any later consumer.
-// Sorted, because MathCommand binary-searches it: an entry out of order is
-// not slow but missing (shipped that way, neither Phi nor Pi resolved).
+// Sorted: MathCommand binary-searches it, so an entry out of order is missing.
 inline constexpr std::pair<std::string_view, std::string_view> kMathCommands[] =
     {
         {"Delta", "Δ"},      {"Gamma", "Γ"},     {"Lambda", "Λ"},

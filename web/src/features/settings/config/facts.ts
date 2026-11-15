@@ -4,8 +4,7 @@ import type {
   JSONValue,
 } from "../../../shared/types.ts";
 
-// A scope where a setting is saved from Settings: a conversation's own
-// choices are made in the conversation.
+// A conversation's own choices are made in the conversation, not Settings.
 export type SavedScope = Exclude<ConfigScope, "conversation">;
 
 // How a saved secret shows in its empty field: there, and never read back.
@@ -14,12 +13,10 @@ export const REDACTED = "••••••••";
 export const secret = (setting: ConfigSetting) =>
   setting.sensitivity !== "public";
 
-// A setting whose value is a list of items (the named providers), edited
-// as a list of its own unless something else decides it.
+// A setting whose value is a list of items (the named providers).
 export const itemized = (setting: ConfigSetting) =>
   setting.sensitivity === "composite-secret" && !setting.locked;
 
-// A held value as a line of text; the providers by their names.
 export const shown = (value?: JSONValue) =>
   value == null || value === ""
     ? ""
@@ -35,7 +32,6 @@ export const shown = (value?: JSONValue) =>
 export const raw = (value?: JSONValue) =>
   value == null ? "" : typeof value === "boolean" ? `${+value}` : String(value);
 
-// Whether this folder's value wins over the one saved at `scope`.
 const overridden = (setting: ConfigSetting, scope: SavedScope) =>
   scope === "user" && setting.set?.project !== undefined;
 
@@ -56,8 +52,6 @@ export function inherited(
   );
 }
 
-// What a field says under its name, only when there is something to say:
-// who decides instead, what it overrides, or that a restart is due.
 export function note(
   setting: ConfigSetting,
   scope: SavedScope,

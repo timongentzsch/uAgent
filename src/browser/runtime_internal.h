@@ -2,11 +2,8 @@
 
 #ifndef UAGENT_SRC_BROWSER_RUNTIME_INTERNAL_H_
 #define UAGENT_SRC_BROWSER_RUNTIME_INTERNAL_H_
-// Module-private split of the browser runtime. The Runtime class itself is in
-// include/browser/runtime.h; its methods are defined across runtime.cc
-// (lifecycle, dispatch, page selection), runtime_control.cc (profiles and
-// hand-over), runtime_act.cc (page actions) and runtime_page.cc (reading and
-// observing). What more than one of them needs is declared here.
+// What more than one of the runtime*.cc files needs; the Runtime class itself
+// is in include/browser/runtime.h.
 
 #include <sys/types.h>
 
@@ -21,22 +18,13 @@ constexpr const char* kHumanControls =
     "the user controls the browser. Call request_human to wait for their "
     "hand-back, or continue without the browser";
 
-// Every script of ours runs in a world of its own, as an extension's content
-// script does: the page sees none of its globals (the numbered elements, the
-// mask) and cannot replace them, only the DOM both share.
+// Every script runs in a world of its own, as an extension's content script
+// does: the page sees none of its globals and cannot replace them.
 constexpr const char* kWorld = "uagent";
 
-// Draws every password field as dots in every screenshot, including one a
-// site's reveal toggle has switched to text: an input that ever was a
-// password stays tagged. Autofill still works, since only drawing changes.
-// Set through the CSSOM, which a page's CSP does not govern, and set again
-// whenever the page rewrites the style or drops the tag. Each write is
-// guarded, since the observer sees its own writes too. Installed on each
-// new document and run once more before a capture, for a page that loaded
-// before the attach; that run looks again into open shadow roots and frames
-// of the site made since, since attaching a root is no mutation to observe.
-// Not covered: closed shadow roots, and frames of other sites, which run out
-// of process and would need Target.setAutoAttach to reach.
+// Draws every password field as dots in screenshots, also one a reveal toggle
+// switched to text. Set through the CSSOM, which a page's CSP does not govern.
+// Not covered: closed shadow roots and frames of other sites.
 constexpr const char* kSecretScript =
     "(()=>{if(window.__uagentSecret)return window.__uagentSecret();"
     "const T='data-uagent-secret',P='-webkit-text-security';"
@@ -83,8 +71,7 @@ inline const json* RemoteValue(const json& reply) {
   return remote ? JsonObject(*remote, "value") : nullptr;
 }
 std::string ProfileName(std::string name);
-// A line for what a console event says: a message the page logged, or an
-// error it did not catch, with where it came from.
+// Appends a line for a console event: a logged message or an uncaught error.
 void Logged(const std::string& event, const json& params,
             std::vector<std::string>& lines);
 

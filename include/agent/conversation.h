@@ -34,8 +34,7 @@ struct ToolTracePruneResult {
   size_t reclaimed_chars = 0;
 };
 
-// A message the person wrote (a prompt or guidance, with or without files),
-// not files attached on request mid-turn, which share its role and kind.
+// A message the person wrote, not files attached mid-turn in the same role.
 bool IsUserMessage(const json& message, MessageKind kind);
 
 class Conversation {
@@ -46,8 +45,7 @@ class Conversation {
   size_t EstimatedBytes() const;
   // Captured on the conversation thread; readers keep an immutable revision.
   std::shared_ptr<const json> SharedArchive();
-  // The archive as JSON text, joined from each segment's serialization kept
-  // since it was archived: a save never re-dumps the archive.
+  // Joined from each segment's kept serialization: a save never re-dumps it.
   std::string ArchiveText() const;
   const std::vector<MessageKind>& Kinds() const { return kinds_; }
   json DisplayMetadata() const;
@@ -56,10 +54,7 @@ class Conversation {
   const std::vector<uint64_t>& DisplayIds() const { return display_ids_; }
   const json& DisplayFacts() const { return display_facts_; }
   void RecordDisplay(const std::string& key, json facts);
-  // Delivery receipts already announced as terminal notices. Display facts
-  // are evictable, so they cannot dedupe the per-request receipt: this small
-  // map (display id -> last announced deliveries array) survives fact
-  // eviction and session restore, and only the request path writes it.
+  // Deliveries already announced, by display id; outlives fact eviction.
   json AnnouncedDeliveries(const std::string& id) const;
   void RecordAnnouncedDeliveries(std::string id, json values);
   json RecordEntry(json facts);
@@ -80,18 +75,13 @@ class Conversation {
   void RefreshBaseline(json system);
 
   void Push(json message, MessageKind kind);
-  // Same as Push, but the message keeps a pre-existing display id (the
-  // post-compaction re-push). The id counter advances past it so fresh
-  // mints stay unique.
+  // Push keeping an existing display id; the counter advances past it.
   void PushWithDisplayId(json message, MessageKind kind, uint64_t id);
   void Set(size_t index, json message, MessageKind kind);
   void Erase(size_t begin, size_t end);
-  // Drops the Nth user message and everything after it (message-exclusive,
-  // so it can be edited and sent again). False when out of range, leaving
-  // the conversation untouched.
+  // Drops the Nth user message and all after it; false when out of range.
   bool TruncateBeforeUserTurn(int64_t turn);
-  // The 1-based number of the user message shown as `m-<display id>`, 0 when
-  // it is not a user message or no longer live (compacted away).
+  // 1-based number of user message `m-<display id>`; 0 when it is not live.
   int64_t UserMessageNumber(uint64_t display_id) const;
   // The text of the Nth user message, as it was sent.
   std::string UserMessageText(int64_t turn) const;
@@ -118,22 +108,15 @@ class Conversation {
  private:
   bool AddArchiveSegment(json segment, int64_t archive_cap);
 
-  // Parallel by index and the same length, always. Every mutator below writes
-  // both, Restore rejects a mismatched pair off disk, and the read paths index
-  // kinds_ with a bound taken from messages_ -- so a new mutator that touches
-  // one array has to touch the other. The pair is kept rather than merged into
-  // one vector of {message, kind} because Messages() is handed straight to the
-  // request path as a reference; a merged store would have to materialize a
-  // json array per model request.
+  // Parallel by index and always the same length. Not merged into one vector:
+  // Messages() is handed to the request path by reference.
   json messages_ = json::array();
   std::vector<MessageKind> kinds_;
   std::vector<uint64_t> display_ids_;
   json display_facts_ = json::object();
-  // Serialized sizes of display_facts_ entries, kept in lockstep so fact
-  // eviction can drop the largest entry without re-serializing the store.
+  // Serialized size of each display_facts_ entry, for evicting the largest.
   std::map<std::string, size_t> fact_bytes_;
-  // Last announced attachment deliveries per display id. Tiny (a few rows
-  // of name/delivery/path), bounded below, never evicted for space.
+  // Last announced deliveries per display id; bounded, never evicted for space.
   json announced_deliveries_ = json::object();
   json statistics_ = {{"complete", true}};
   uint64_t next_display_id_ = 1;
@@ -145,11 +128,9 @@ class Conversation {
   int64_t dropped_segments_ = 0;
 };
 
-// A to-do list's items ({text, status}) as the model reads them, one per line:
-// "- [pending] Fix the lexer".
+// One item per line as the model reads it: "- [pending] Fix the lexer".
 std::string TodoText(const json& items);
-// How far a to-do list is, for a listing: {done, total, current}, the
-// current being the first item not done; null for an empty list.
+// {done, total, current (the first item not done)}; null for an empty list.
 json TodoProgress(const json& items);
 
 json MessageKindsJson(const std::vector<MessageKind>& kinds);

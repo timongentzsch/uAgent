@@ -66,12 +66,14 @@ std::string Plain(std::string_view drawn) {
   return plain;
 }
 
-// What a terminal draws of `nodes` at the three levels, depth 0, 1 and all.
+// What a terminal that shows thinking draws of `nodes` at the three levels,
+// depth 0, 1 and all.
 std::vector<std::string> Drawings(const json& nodes) {
   std::vector<std::string> drawings;
   for (const char* level : {"minimal", "default", "full"}) {
     TerminalPresenter presenter;
     presenter.SetDetail(DetailFor(level));
+    presenter.ShowThinking(true);
     drawings.push_back(
         Plain(CaptureStdout([&] { presenter.Draw({{"nodes", nodes}}); })));
   }
@@ -295,14 +297,12 @@ TEST_CASE(TestGoldenChainOfCalls) {
   turn.Reply("r-1-2-1", "Fixed.");
   turn.Footer(124000, "complete");
   const auto page = Lines(ConversationView(turn.History())["nodes"]);
-  // The work folds what the turn did; the answer and the footer close the
-  // turn.
   CHECK((
       page ==
       std::vector<std::string>{
           "turn m-2 < - \"fix it\"",
           "work w-m-2 < m-2 [ok] Worked 3 steps · edited 1 file · 2m 4s",
-          "thinking r-1-1-1:thinking < w-m-2 Thinking \"look first\"",
+          "thinking r-1-1-1:thinking < w-m-2 \"look first\"",
           "call " + a + " < w-m-2 [ok] Read a.txt · 1 line · 5ms " +
               "\"alpha\"",
           "call " + b + " < w-m-2 [ok] Read b.txt · 1 line · 5ms " + "\"beta\"",
@@ -313,7 +313,7 @@ TEST_CASE(TestGoldenChainOfCalls) {
       }));
   CHECK(Lines(turn.Live()) == page);
   // The terminal opens the work at depth 1 and everything at depth all; an
-  // open node adds its body's tail, and closed thinking says nothing.
+  // open node adds its body's tail, and a thought is text among the steps.
   CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
          std::vector<std::string>{
              "> fix it\n"
@@ -321,14 +321,14 @@ TEST_CASE(TestGoldenChainOfCalls) {
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
              "> fix it\n"
              "  · Worked 3 steps · edited 1 file · 2m 4s\n"
+             "    look first\n"
              "    · Read a.txt · 1 line · 5ms\n"
              "    · Read b.txt · 1 line · 5ms\n"
              "    · Edited b.txt · +1 −1 · 5ms\n"
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
              "> fix it\n"
              "  · Worked 3 steps · edited 1 file · 2m 4s\n"
-             "    · Thinking\n"
-             "      │ look first\n"
+             "    look first\n"
              "    · Read a.txt · 1 line · 5ms\n"
              "      │ alpha\n"
              "    · Read b.txt · 1 line · 5ms\n"
@@ -337,6 +337,39 @@ TEST_CASE(TestGoldenChainOfCalls) {
              "      │ edited b.txt\n"
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
          }));
+  // Where thinking is switched off, as a new install has it, no level draws a
+  // thought, and the rest of the turn is as it was.
+  {
+    TerminalPresenter quiet;
+    quiet.SetDetail(DetailFor("full"));
+    const std::string drawn = Plain(CaptureStdout([&] {
+      quiet.Draw({{"nodes", ConversationView(turn.History())["nodes"]}});
+    }));
+    CHECK(drawn.find("look first") == std::string::npos);
+    CHECK(drawn.find("· Read a.txt · 1 line · 5ms\n") != std::string::npos);
+  }
+  // A long thought is cut to its first lines where only its work is open,
+  // and whole where everything is.
+  {
+    json nodes = ConversationView(turn.History())["nodes"];
+    std::string lengthy;
+    for (int at = 0; at < 60; ++at) lengthy += "reason ";
+    lengthy += "the end";
+    for (json& node : nodes) {
+      if (JsonValue(node, "kind", "") == "thinking") {
+        node["body"]["text"] = lengthy;
+      }
+    }
+    const auto drawn = [&](const char* level) {
+      TerminalPresenter shown;
+      shown.SetDetail(DetailFor(level));
+      shown.ShowThinking(true);
+      return Plain(CaptureStdout([&] { shown.Draw({{"nodes", nodes}}); }));
+    };
+    CHECK(drawn("default").find("    reason reason") != std::string::npos);
+    CHECK(drawn("default").find("the end") == std::string::npos);
+    CHECK(drawn("full").find("the end") != std::string::npos);
+  }
   // Live, a step is drawn once it ends, in the tree's order, and the work's
   // line once the turn does: after the answer, which streamed.
   CHECK(turn.Watched() ==
@@ -394,7 +427,6 @@ TEST_CASE(TestGoldenFailedCalls) {
              "footer m-9 < m-2",
          }));
   CHECK(Lines(turn.Live()) == page);
-  // Each call's state marks its row, and the host's words say why.
   const std::string calls =
       "    ✗ Read a.txt · failed · 5ms\n"
       "    · Ran make · cancelled · 5ms\n"
@@ -421,49 +453,53 @@ TEST_CASE(TestGoldenFailedCalls) {
 TEST_CASE(TestGoldenFileHandedOver) {
   Recorder turn;
   turn.Say("make a report");
-  turn.Reply("r-1-1-1", "", "", {{"s", "share"}});
+  turn.Reply("r-1-1-1", "", "", {{"s", "present"}});
   const json file = {{"kind", "file"},
                      {"id", "0123456789abcdef"},
                      {"name", "report.html"},
                      {"mime", "text/html"},
                      {"bytes", 2048}};
+  const json deck = {{"kind", "artifact"},
+                     {"type", "deck"},
+                     {"path", "decks/q3/"},
+                     {"cover", "decks/q3/01-cover.html"},
+                     {"count", 12}};
   const json link = {
       {"kind", "link"}, {"to", "activity"}, {"id", 7}, {"label", "Open"}};
-  const std::string s =
-      turn.Call("r-1-1-1", "s", "share",
-                {{"verb", {"Sharing", "Shared"}}, {"target", "report.html"}},
-                "ok", {}, "", json::array({file, link}));
+  const std::string s = turn.Call(
+      "r-1-1-1", "s", "present",
+      {{"verb", {"Presenting", "Presented"}}, {"target", "report.html"}}, "ok",
+      {}, "", json::array({file, deck, link}));
   turn.Result("s", s);
   turn.Step({{"items", 1}, {"errors", 0}, {"edited", 0}});
   turn.Reply("r-1-2-1", "Here it is.");
   turn.Footer(2000, "complete");
   const json view = ConversationView(turn.History());
   const auto page = Lines(view["nodes"]);
-  // The file is the turn's, so it shows at every depth; the call keeps its
-  // other parts.
+  // What was handed over is the turn's, so it shows at every depth; the
+  // call keeps its other parts.
   CHECK((page == std::vector<std::string>{
                      "turn m-2 < - \"make a report\"",
                      "work w-m-2 < m-2 [ok] Worked 1 step · 2.0s",
-                     "call " + s + " < w-m-2 [ok] Shared report.html · 5ms",
+                     "call " + s + " < w-m-2 [ok] Presented report.html · 5ms",
                      "message " + s + ":files < m-2",
                      "message r-1-2-1 < m-2 \"Here it is.\"",
                      "footer m-6 < m-2",
                  }));
   CHECK(Lines(turn.Live()) == page);
   CHECK(view["nodes"][2]["parts"] == json::array({link}));
-  CHECK(view["nodes"][3]["parts"] == json::array({file}));
-  // The terminal lists the file under the turn at every depth; an open call
-  // adds the parts it kept.
+  CHECK(view["nodes"][3]["parts"] == json::array({file, deck}));
   const std::string work = "> make a report\n  · Worked 1 step · 2.0s\n";
-  const std::string call = "    · Shared report.html · 5ms\n";
+  const std::string call = "    · Presented report.html · 5ms\n";
+  const std::string handed = "  ↳ report.html · 2 kB\n  ↳ decks/q3/ · deck\n";
   const std::string rest =
-      "  ↳ report.html · 2 kB\nuagent\nHere it is.\n0 in · 0 out · 2.0s\n";
+      handed + "uagent\nHere it is.\n0 in · 0 out · 2.0s\n";
   CHECK((Drawings(view["nodes"]) ==
          std::vector<std::string>{work + rest, work + call + rest,
                                   work + call + "      ↳ Open · 7\n" + rest}));
   CHECK(turn.Watched() ==
-        "> make a report\n" + call +
-            "  ↳ report.html · 2 kB\nuagent\nHere it is.\n"
+        "> make a report\n" + call + handed +
+            "uagent\nHere it is.\n"
             "  · Worked 1 step · 2.0s\n0 in · 0 out · 2.0s\n");
 }
 
@@ -472,8 +508,7 @@ TEST_CASE(TestGoldenBlankReplyAndMcpCall) {
   turn.Say("look it up");
   // A reply that holds only blank text is no node, live or saved.
   turn.Reply("r-1-1-1", " \n", "", {{"m", "mcp__docs__search"}});
-  // A tool without a headline of its own reports no facts: it reads as
-  // "Called <title>", with its state and how long it took.
+  // A tool without a headline of its own reads as "Called <title>".
   const std::string m =
       turn.Call("r-1-1-1", "m", "mcp__docs__search",
                 {{"verb", {"Calling Search", "Called Search"}}}, "ok", {}, "");
@@ -489,7 +524,6 @@ TEST_CASE(TestGoldenBlankReplyAndMcpCall) {
                      "footer m-6 < m-2",
                  }));
   CHECK(Lines(turn.Live()) == page);
-  // Blank replies draw nothing, live or saved; the call reads as its title.
   const std::string work = "  · Worked 1 step · 1.5s\n";
   const std::string call = "    · Called Search · 5ms\n";
   const std::string footer = "0 in · 0 out · 1.5s\n";
@@ -615,8 +649,7 @@ TEST_CASE(TestGoldenPagesEndOnWholeTurns) {
   CHECK(seen == 180);
 }
 
-// A turn larger than a page keeps its head on the first page, so its steps
-// have a turn to sit under, and older pages continue after the head.
+// Its steps need a turn to sit under; older pages continue after the head.
 TEST_CASE(TestGoldenPageOfOneLongTurnKeepsItsHead) {
   Recorder turns;
   turns.Say("one long task");
@@ -636,7 +669,6 @@ TEST_CASE(TestGoldenPageOfOneLongTurnKeepsItsHead) {
   CHECK(older["nodes"].front()["id"] == nodes.front()["id"]);
 }
 
-// A compaction says what it kept and how long it took.
 TEST_CASE(TestCompactionNoticeSaysWhatWent) {
   const json node = EntryNode({{"kind", "compaction"},
                                {"id", "a-1"},
@@ -648,4 +680,51 @@ TEST_CASE(TestCompactionNoticeSaysWhatWent) {
   CHECK(node["result"]["word"] == "120 → 40 messages · 1.2s");
 }
 
+}  // namespace uagent
+
+namespace uagent {
+TEST_CASE(TestWorkCountsByKindAndLooksGroup) {
+  CHECK(StepKind("Read") == "read");
+  CHECK(StepKind("Searching file names for") == "search");
+  CHECK(StepKind("Fetched") == "fetch");
+  CHECK(StepKind("Edited") == "edit");
+  CHECK(StepKind("Ran") == "command");
+  CHECK(StepKind("Asked") == "step");
+  CHECK(Explores("fetch") && !Explores("command"));
+
+  const json work = WorkNode(
+      "m-1",
+      {{"items", 7},
+       {"kinds", {{"read", 3}, {"search", 1}, {"edit", 2}, {"command", 1}}},
+       {"notes", 2},
+       {"thoughts", 1},
+       {"errors", 1},
+       {"outcome", "complete"},
+       {"duration_ms", 48000}});
+  CHECK(work["headline"]["target"] ==
+        "3 reads, 1 search, 2 edits, 1 command, 2 notes · 1 error");
+  // Thoughts are counted beside the words: a client says them only where it
+  // shows thinking.
+  CHECK(work["result"]["thoughts"] == 1);
+  // A conversation saved before kinds were counted says how many steps.
+  CHECK(WorkNode("m-1", {{"items", 2},
+                         {"edited", 1},
+                         {"outcome", "complete"}})["headline"]["target"] ==
+        "2 steps · edited 1 file");
+
+  json facts = {{"work", "w-m-1"},
+                {"kinds", {{"read", 3}, {"search", 2}, {"fetch", 1}}}};
+  json group = GroupNode("g-c1", facts);
+  CHECK(group["kind"] == "group" && group["parent"] == "w-m-1");
+  CHECK(group["state"] == "running");
+  CHECK(group["headline"] == json({{"verb", "Exploring"},
+                                   {"target", "3 files, 2 searches, 1 page"}}));
+  facts.update({{"outcome", "complete"}, {"duration_ms", 3000}});
+  group = GroupNode("g-c1", facts);
+  CHECK(group["state"] == "ok" && group["headline"]["verb"] == "Explored");
+  // A call of the run sits under its group, any other under the work.
+  CHECK(CallNode({{"detail_id", "c2"}, {"group", "g-c1"}}, "w-m-1")["parent"] ==
+        "g-c1");
+  CHECK(CallNode({{"detail_id", "c9"}}, "w-m-1")["parent"] == "w-m-1");
+}
 }  // namespace uagent

@@ -1,11 +1,22 @@
 import "./node.css";
 import { Component, createContext } from "preact";
 import type { TargetedKeyboardEvent } from "preact";
-import { useCallback, useContext, useMemo, useState } from "preact/hooks";
+import {
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/hooks";
 import { ChevronRight } from "lucide-preact";
 import { Button, ErrorBoundary } from "../../shared/ui.tsx";
 import { devicePrefs } from "../../shared/device-prefs.ts";
-import { maxRememberedToggles, maxShownSteps } from "../../shared/limits.ts";
+import {
+  maxRememberedToggles,
+  maxShownSteps,
+  thoughtLines,
+} from "../../shared/limits.ts";
 import { plural } from "../../shared/quantities.ts";
 import { useElapsed } from "../../shared/time.ts";
 import { useLatest } from "../../shared/use-latest.ts";
@@ -21,13 +32,21 @@ import {
   layout,
   opens,
   visible,
+  detailLevels,
 } from "../../shared/tree.ts";
 import type { Node, SessionRef } from "../../shared/types.ts";
 import { NodeBody } from "./bodies.tsx";
 import { MessageView } from "./message.tsx";
 
-// The detail level transcripts start at on this device.
-export const DetailContext = createContext("default");
+// How much of the agent's work is drawn: the level, and whether thinking is.
+export interface Display {
+  detail: string;
+  thinking: boolean;
+}
+export const DetailContext = createContext<Display>({
+  detail: detailLevels[0],
+  thinking: false,
+});
 
 // Rows a person opened or closed here, kept by conversation and node id.
 let toggled: Record<string, boolean> | undefined;
@@ -52,16 +71,13 @@ interface Scope {
   // How many rows deep the drawn nodes are, and the level's depth.
   depth: number;
   level: number;
+  thinking: boolean;
   online: boolean;
   session: SessionRef;
 }
 
-// The transcript: the host's nodes as one tree, open to the level's depth.
-// Each node is drawn by its own component, which renders again only when its
-// node, or for a row what is under it, changed: a streamed frame renders the
-// one node it touched. Keys hold the conversation and level: a new level
-// draws every row from its own start, and a reused element never carries
-// another conversation's state for the same id.
+// Keys hold the conversation and level: a new level draws every row afresh,
+// and a reused element never carries another conversation's state.
 export function Transcript({
   nodes,
   online,
@@ -71,24 +87,24 @@ export function Transcript({
   online: boolean;
   session: SessionRef;
 }) {
-  const detail = useContext(DetailContext);
+  const { detail, thinking } = useContext(DetailContext);
   const level = depthOf(detail);
   const roots = useMemo(() => grow(nodes), [nodes]);
   return (
     <Nodes
-      items={layout(roots, level)}
-      scope={`${session.id}:${detail}:`}
+      items={layout(roots, level, thinking)}
+      scope={`${session.id}:${detail}:${thinking}:`}
       depth={0}
       level={level}
+      thinking={thinking}
       online={online}
       session={session}
     />
   );
 }
 
-// A message you sent keeps one row from the moment you send it: the row this
-// device shows at once and the host's that replaces it share a key, so the
-// row is updated in place rather than rebuilt.
+// The row this device shows at once and the host's that replaces it share
+// a key, so the row is updated in place rather than rebuilt.
 const rowKey = (node: Node) =>
   !node.parent && node.request_id ? `request:${node.request_id}` : node.id;
 
@@ -135,6 +151,13 @@ class NodeView extends Component<NodeProps> {
       <ErrorBoundary>
         {isRow(node) ? (
           <RowNode {...props} />
+        ) : node.kind === "thinking" ? (
+          <Thought
+            node={node}
+            lines={props.level === Infinity ? undefined : thoughtLines}
+            online={props.online}
+            session={props.session}
+          />
         ) : (
           <MessageView
             node={node}
@@ -148,14 +171,60 @@ class NodeView extends Component<NodeProps> {
   }
 }
 
-// A row: one line that opens to its body and the rows under it. It starts
-// open when it is less deep than the level, unless this device remembers
+// A thought reads as text among the steps, fainter than a reply: whole where
+// everything is open, else its first lines and a way to the rest.
+function Thought({
+  node,
+  lines,
+  online,
+  session,
+}: {
+  node: Node;
+  lines?: number;
+  online: boolean;
+  session: SessionRef;
+}) {
+  const [whole, setWhole] = useState(false);
+  const [cut, setCut] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const held = !!lines && !whole;
+  useLayoutEffect(() => {
+    const text = box.current?.querySelector(".node-text");
+    if (held && text) setCut(text.scrollHeight > text.clientHeight + 1);
+  }, [held, node]);
+  return (
+    <div
+      ref={box}
+      class="node thought"
+      data-kind="thinking"
+      data-message-id={node.id}
+      data-sequence={node.sequence}
+      data-held={held || undefined}
+      style={held ? { "--lines": lines } : undefined}
+    >
+      <NodeBody node={node} online={online} session={session} />
+      {!!lines && (cut || whole) && (
+        <Button
+          variant="quiet"
+          class="node-action small"
+          aria-expanded={whole}
+          onClick={() => setWhole(!whole)}
+        >
+          {whole ? "Less" : "More"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// Starts open when less deep than the level, unless this device remembers
 // the person opening or closing it.
 function RowNode({
   branch,
   since,
   depth,
   level,
+  thinking,
   online,
   session,
   scope,
@@ -172,7 +241,19 @@ function RowNode({
     setOpen(value);
     remember(latest.current.key, value);
   }, []);
-  const kids = branch.kids.filter((kid) => visible(kid.node, level));
+  const kids = branch.kids.filter((kid) => visible(kid.node, level, thinking));
+  // What the agent says while it works shows as it says it, whatever is
+  // folded; once the turn has ended it is among the work's steps.
+  const said =
+    !open && node.kind === "work" && node.state === "running"
+      ? kids.filter((kid) => kid.node.role === "assistant")
+      : [];
+  // So does its latest thought, on one line, while it is the latest thing.
+  const working = !open && node.kind === "work" && node.state === "running";
+  const thought =
+    working && kids.at(-1)?.node.kind === "thinking"
+      ? kids.at(-1)?.node
+      : undefined;
   const openable =
     !!node.body ||
     kids.length > 0 ||
@@ -192,9 +273,24 @@ function RowNode({
         open={open}
         openable={openable}
         toggle={toggle}
+        thinking={thinking}
         step={!open && node.state === "running" ? currentStep(branch) : ""}
         since={node.time ?? since}
       />
+      {said.length > 0 && (
+        <Nodes
+          items={said.map((kid) => ({ branch: kid }))}
+          depth={depth + 1}
+          level={level}
+          thinking={thinking}
+          online={online}
+          session={session}
+          scope={scope}
+        />
+      )}
+      {thought && (
+        <Thought node={thought} lines={1} online={online} session={session} />
+      )}
       {open && openable && (
         <div class="node-open">
           <NodeBody node={node} online={online} session={session} />
@@ -204,6 +300,7 @@ function RowNode({
               since={node.time ?? since}
               depth={depth + 1}
               level={level}
+              thinking={thinking}
               online={online}
               session={session}
               scope={scope}
@@ -215,8 +312,7 @@ function RowNode({
   );
 }
 
-// The rows under an open row. A long list shows its latest rows and one
-// line that opens the earlier ones.
+// A long list shows its latest rows and one line that opens the earlier ones.
 function Kids({
   kids,
   since,
@@ -246,7 +342,7 @@ function Kids({
         </Button>
       )}
       <Nodes
-        items={layout(shown, props.level, since)}
+        items={layout(shown, props.level, props.thinking, since)}
         scope={scope}
         {...props}
       />
@@ -278,14 +374,12 @@ function arrows(
   if (target instanceof HTMLElement) target.focus();
 }
 
-// A row's one line: its headline, then its result word. A failed row reads
-// red, a running one pulses, a running call counts its time (a turn's time is
-// the status line's), and a closed running row says what it is doing now.
 class NodeRow extends Component<{
   node: Node;
   open: boolean;
   openable: boolean;
   toggle: (next?: boolean) => void;
+  thinking: boolean;
   step: string | undefined;
   since?: string;
 }> {
@@ -295,6 +389,7 @@ class NodeRow extends Component<{
       next.node !== prior.node ||
       next.open !== prior.open ||
       next.openable !== prior.openable ||
+      next.thinking !== prior.thinking ||
       next.step !== prior.step ||
       next.since !== prior.since
     );
@@ -309,6 +404,7 @@ function RowLine({
   open,
   openable,
   toggle,
+  thinking,
   step,
   since,
 }: NodeRow["props"]) {
@@ -316,7 +412,9 @@ function RowLine({
     node.state === "running" && node.kind !== "work",
     since ? Date.parse(since) : undefined,
   );
-  const headline = [headlineOf(node), step].filter(Boolean).join(" · ");
+  const headline = [headlineOf(node, thinking), step]
+    .filter(Boolean)
+    .join(" · ");
   const word = [node.result?.word, elapsed].filter(Boolean).join(" · ");
   const content = (
     <>

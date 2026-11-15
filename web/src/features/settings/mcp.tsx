@@ -2,12 +2,9 @@ import { useState } from "preact/hooks";
 import type { McpServer, Session } from "../../shared/types.ts";
 import { Button, Group, LoadError, Row, Switch } from "../../shared/ui.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useAction } from "../../shared/use-action.ts";
 import { plural } from "../../shared/quantities.ts";
-
-// MCP servers of the open conversation, grouped by the file that defines
-// them, with a switch each.
 
 const SUMMARY: Record<McpServer["state"], string> = {
   ready: "Ready",
@@ -16,9 +13,7 @@ const SUMMARY: Record<McpServer["state"], string> = {
   failed: "Failed",
 };
 
-// The open conversation's servers that one file defines: the one for all
-// conversations or its folder's, so a switch edits the file its section
-// names.
+// The servers one file defines, so a switch edits the file its section names.
 export function McpServers({
   scope,
   session,
@@ -30,11 +25,18 @@ export function McpServers({
   servers?: McpServer[];
   online: boolean;
 }) {
+  const { command } = useApi();
   const [open, setOpen] = useState("");
   const [busy, setBusy] = useState("");
   // The switch shows the requested value while the server starts or stops.
   const [wanted, setWanted] = useState<boolean | null>(null);
   const { run, error } = useAction();
+  if (scope === "project" && session?.host)
+    return (
+      <Group>
+        <Row label="Project MCP is unavailable for remote folders" />
+      </Group>
+    );
   if (!session)
     return (
       <Group footer="Servers start with a conversation, so their state is that conversation's.">

@@ -2,10 +2,8 @@
 
 #ifndef UAGENT_SRC_TOOLS_REGISTRY_INTERNAL_H_
 #define UAGENT_SRC_TOOLS_REGISTRY_INTERNAL_H_
-// Module-private split of the built-in tool registry. BuiltinTools (see
-// include/tools/registry.h) only orders the families; each family below owns
-// its schemas, handlers and approval wiring verbatim. Families share nothing
-// except the Tool vocabulary, so a file-tool change recompiles one TU.
+// The tool families BuiltinTools orders; each owns its schemas, handlers and
+// approval wiring.
 
 #include <filesystem>
 #include <vector>

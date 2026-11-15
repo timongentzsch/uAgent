@@ -4,7 +4,11 @@ import type {
   InspectorTarget,
   Session,
 } from "../shared/types.ts";
-import { folderOf } from "../shared/display.ts";
+import { ApiContext, hostApi } from "../state/api.ts";
+import { useHosts } from "../state/sources.ts";
+import HostField from "../shared/host-field.tsx";
+import FolderPicker from "../features/files/folder-picker.tsx";
+import { folderOf, projectsOf } from "../shared/display.ts";
 import { plural } from "../shared/quantities.ts";
 import { maxSpaceNameChars } from "../shared/limits.ts";
 import { createContext, type ComponentProps } from "preact";
@@ -16,6 +20,7 @@ import {
   Button,
   EmptyState,
   Input,
+  Notice,
 } from "../shared/ui.tsx";
 import { ImageViewerDialog, type ViewedImage } from "../shared/attachments.tsx";
 import { BrowserLoading } from "../features/browser/frame.tsx";
@@ -34,10 +39,8 @@ import { useConversation, useHostContext } from "../state/host-context.ts";
 import { sessionById } from "../state/attention.ts";
 import type { Places } from "./use-places.tsx";
 
-// Only a host with a browser opens this dialog, so its code is fetched then.
 const browserDialog = () => import("../features/browser/browser.tsx");
 
-// What Settings shows and changes of the shell's own state.
 type Preferences = Pick<
   ComponentProps<typeof Settings>,
   | "install"
@@ -49,12 +52,9 @@ type Preferences = Pick<
   | "notifications"
   | "logout"
 >;
-// Provided by the shell, read only by Settings.
 export const PreferencesContext = createContext<Preferences | null>(null);
 
-// The app's dialogs over the shell. Each selects from the snapshots only
-// what it shows, while it is open, so a streamed frame re-renders none of
-// them unless that changed.
+// Each dialog selects from the snapshots only what it shows, while open.
 export default function Modals({
   modal,
   inspector,
@@ -80,14 +80,33 @@ export default function Modals({
   catalogue: Catalogue;
   compact: boolean;
   managementVersion: number;
-  // The places to start in, and the New dialog's fields.
   places: Pick<
     Places,
-    "projects" | "folder" | "setFolder" | "space" | "setSpace" | "create"
+    | "projects"
+    | "folder"
+    | "setFolder"
+    | "space"
+    | "setSpace"
+    | "create"
+    | "newHost"
+    | "setNewHost"
   >;
 }) {
   const preferences = useContext(PreferencesContext)!;
-  const { projects, folder, setFolder, space, setSpace, create } = places;
+  const {
+    projects,
+    folder,
+    setFolder,
+    space,
+    setSpace,
+    create,
+    newHost,
+    setNewHost,
+  } = places;
+  const hosts = useHosts();
+  const newSource =
+    hosts.sources.find((source) => source.id === newHost) || hosts.sources[0];
+  const executionOnline = !newHost || newSource.phase === "connected";
   const {
     store,
     online,
@@ -102,8 +121,7 @@ export default function Modals({
   const activities = useSnapshots(store, (all) =>
     inspector ? all[selected]?.state?.activities : undefined,
   );
-  // What the page holds of the conversation, older pages included: a turn
-  // the person loaded is in it, and fetching again would drop those pages.
+  // What the page holds, older pages included: fetching again would drop them.
   const held = useSnapshots(store, (all) =>
     modal?.type === "statistics" ? all[modal.session_id] : undefined,
   );
@@ -258,10 +276,40 @@ export default function Modals({
       )}
       {modal?.type === "new" && (
         <Modal
-          title={modal.place === "workspace" ? "New workspace" : "New folder"}
+          title={
+            modal.place === "workspace"
+              ? "New workspace"
+              : modal.place === "conversation"
+                ? "New conversation"
+                : "New folder"
+          }
           close={close}
         >
           <form onSubmit={create}>
+            <HostField
+              value={newHost}
+              change={(id) => {
+                setNewHost(id);
+                setFolder("");
+              }}
+              localOnly={modal.place === "workspace"}
+            />
+            {!executionOnline && (
+              <Button
+                type="button"
+                disabled={!online}
+                busy={
+                  newSource.phase === "connecting" ||
+                  newSource.phase === "reconnecting"
+                }
+                onClick={() =>
+                  void hosts.action("connect", newHost).catch(report)
+                }
+              >
+                Connect to {newSource.name}
+              </Button>
+            )}
+            {newSource.error && <Notice tone="error">{newSource.error}</Notice>}
             {modal.place === "workspace" ? (
               <>
                 <label>
@@ -278,7 +326,7 @@ export default function Modals({
                   />
                 </label>
                 <datalist id="new-conversation-spaces">
-                  {(catalogue.spaces || []).map((item) => (
+                  {(newSource.state.catalogue.spaces || []).map((item) => (
                     <option key={item.path} value={item.name} />
                   ))}
                 </datalist>
@@ -288,39 +336,26 @@ export default function Modals({
                 </p>
               </>
             ) : (
-              <>
-                <label>
-                  Folder on the host
-                  <Input
-                    autoFocus
-                    list="new-conversation-folders"
-                    value={folder}
-                    onInput={(event) => setFolder(event.currentTarget.value)}
-                    placeholder="/path/to/folder"
-                    required
-                    autoComplete="off"
-                  />
-                </label>
-                <datalist id="new-conversation-folders">
-                  {projects
-                    .filter(
-                      (path) =>
-                        !catalogue.spaces?.some((item) => item.path === path),
-                    )
-                    .map((path) => (
-                      <option key={path} value={path} />
-                    ))}
-                </datalist>
-                <p class="muted">
-                  A folder is a directory of yours, in Git or not.
-                </p>
-              </>
+              <ApiContext.Provider value={hostApi(newHost)}>
+                <FolderPicker
+                  key={newHost}
+                  value={folder}
+                  change={setFolder}
+                  online={online && executionOnline}
+                  projects={projectsOf(newSource.state.catalogue.sessions)}
+                />
+              </ApiContext.Provider>
             )}
             <Actions>
               <Button
                 type="submit"
                 variant="primary"
-                disabled={busy || !online}
+                disabled={
+                  busy ||
+                  !online ||
+                  !executionOnline ||
+                  (modal.place !== "workspace" && !folder.trim())
+                }
               >
                 {modal.place === "workspace"
                   ? "Open workspace"

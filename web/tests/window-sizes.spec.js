@@ -1,8 +1,7 @@
-// The layout follows the room the app has: the list beside the conversation
-// where it fits, a drawer where it does not, and nothing clipped or
-// scrolling sideways down to a narrow Split View window. Sizes are those a
-// foldable phone may report; the logic never names a device.
+// The layout follows the room the app has, down to a narrow Split View
+// window. Sizes are those a foldable phone may report; no device is named.
 import {
+  connected,
   test,
   expect,
   headerAction,
@@ -20,12 +19,11 @@ const sizes = [
   [1440, 900],
 ];
 
-// Opens a long conversation from the list, on a wide window so the list is
-// there to click.
+// On a wide window, so the list is there to click.
 async function openLong(page, host) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   const messages = Array.from({ length: 60 }, (_, index) => ({
     role: index % 2 ? "assistant" : "user",
     content: `Sized message ${index}. ` + "Filler text here. ".repeat(8),
@@ -63,7 +61,6 @@ async function resize(page, width, height) {
   return list;
 }
 
-// Every region and control is inside the window, and no box scrolls sideways.
 async function expectFitting(page, width) {
   const problems = await page.evaluate((width) => {
     const found = [];
@@ -133,7 +130,6 @@ test("resizing across every threshold keeps the draft, the place and the page", 
   const box = page.locator(".transcript");
   await leaveEnd(box);
   const mounted = await box.elementHandle();
-  // The row the reader is on: the first one fully in view.
   const anchor = () =>
     box.evaluate((node) => {
       const view = node.getBoundingClientRect();
@@ -152,7 +148,6 @@ test("resizing across every threshold keeps the draft, the place and the page", 
     await resize(page, width, height);
     await expect(input).toHaveValue("a draft that stays");
     expect(await mounted.evaluate((node) => node.isConnected)).toBe(true);
-    // Still reading, not pinned to the end.
     await expect(
       page.getByRole("button", { name: "Jump to latest" }),
     ).toBeVisible();
@@ -260,7 +255,6 @@ test("a drawer left open when the list fits closes and leaves Back consistent", 
   await expect(page.locator("aside.sidebar")).toBeVisible();
   // The drawer's history entry is gone with it.
   await expect.poll(layer).toBe(0);
-  // One Back leaves the conversation, as it would had no drawer been opened.
   const opened = await page.evaluate(() => location.hash);
   await page.goBack();
   await expect.poll(() => page.evaluate(() => location.hash)).not.toBe(opened);
@@ -324,7 +318,6 @@ test("a narrow column's header is as tall with the totals as without", async ({
     await expect(page.locator(".head-totals")).toHaveCount(1);
     const top = async () => (await page.locator(".transcript").boundingBox()).y;
     const [withTotals, below] = [await height(), await top()];
-    // Back leaves the conversation: no totals, the same header.
     await page.goBack();
     await expect(page.locator(".head-totals")).toHaveCount(0);
     expect(await height()).toBe(withTotals);

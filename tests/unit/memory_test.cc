@@ -21,8 +21,6 @@ void WriteGlobal(const std::filesystem::path& dir, const std::string& name,
 
 }  // namespace
 
-// The always-on slice is the only memory every request pays for, so which
-// entries it admits is worth pinning. Nothing covered these loaders before.
 TEST_CASE(TestMemoryAlwaysOnSelection) {
   namespace fs = std::filesystem;
   const char* prior_home = getenv("HOME");
@@ -39,8 +37,7 @@ TEST_CASE(TestMemoryAlwaysOnSelection) {
   WriteGlobal(globals, "enormous", 4000);
 
   // The largest entry is also the newest, so an mtime order and a size order
-  // disagree. A consolidation pass or an editor save rewrites mtimes; it must
-  // not decide which standing preferences reach the model.
+  // disagree.
   auto now = fs::file_time_type::clock::now();
   fs::last_write_time(globals / "enormous.md", now, ec);
   fs::last_write_time(globals / "small_a.md", now - std::chrono::hours(48), ec);
@@ -54,14 +51,11 @@ TEST_CASE(TestMemoryAlwaysOnSelection) {
   CHECK(always.truncated);
   CHECK(always.text.size() <= 400);
 
-  // Ordering is content-derived, so touching a file changes nothing.
   fs::last_write_time(globals / "small_a.md", now + std::chrono::hours(1), ec);
   MemoryIndex touched = LoadAlwaysOnMemory(root, 400);
   CHECK(touched.text == always.text);
 
-  // The index carries every memory regardless, so what the slice drops is
-  // still reachable -- and each line says enough to judge whether it is worth
-  // fetching, which a bare key does not.
+  // The index lists what the slice drops, each with its opening clause.
   {
     std::ofstream out(globals / "hooked.md");
     out << "Prefer the measured number. Everything after this is elaboration "
@@ -73,7 +67,6 @@ TEST_CASE(TestMemoryAlwaysOnSelection) {
         std::string::npos);
   CHECK(index.text.find("elaboration") == std::string::npos);
   CHECK(!index.truncated);
-  // A hook never costs the index its budget: the cap still binds.
   MemoryIndex tight = LoadMemoryIndex(root, 40);
   CHECK(tight.truncated);
   CHECK(tight.text.size() <= 40);
@@ -86,9 +79,8 @@ TEST_CASE(TestMemoryAlwaysOnSelection) {
   fs::remove_all(root, ec);
 }
 
-// The agent and the Library read one store. The 32-per-scope limit governs
-// writes only: live, the model saw 32 of 37 hand-placed files, and a memory
-// edited past 2 KiB was listed but could not be read or deleted.
+// The agent and the Library read one store; the 32-per-scope limit governs
+// writes only.
 TEST_CASE(TestMemoryOneView) {
   namespace fs = std::filesystem;
   const char* prior_home = getenv("HOME");

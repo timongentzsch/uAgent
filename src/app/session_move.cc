@@ -33,8 +33,7 @@ constexpr int64_t kMoveFormat = 1;
 constexpr size_t kMoveFiles = 256;
 constexpr size_t kMoveJournalBytes = KiB(256);
 
-// What sits beside a saved session: everything named <file>.* (its lease,
-// journal, assets, edits and plan), and its shared copy.
+// Everything named <file>.* beside a saved session, and its shared copy.
 std::vector<fs::path> Sidecars(const fs::path& file) {
   std::vector<fs::path> found;
   const std::string prefix = file.filename().string() + ".";
@@ -76,11 +75,11 @@ std::string MoveFiles(const MovedFile& file) {
   return Rename(from, to);
 }
 
-// The note, once: as a message the model reads in its next request, and as a
-// row. Nothing runs, so nothing wakes. False, with `failed` set, when the
-// transcript cannot take it.
-bool AddNote(SessionRecord& record, const std::string& note,
-             const std::string& to_cwd, std::string& failed) {
+// Adds the note once, as a message for the next request and as a row; nothing
+// wakes. False, with `failed` set, when the transcript cannot take it.
+bool AddNote(SessionRecord& record, const SessionMove& move,
+             std::string& failed) {
+  const std::string& note = move.note;
   SessionState& state = record.state;
   if (state.message_kinds.back() == MessageKind::kInternal &&
       JsonValue(state.messages.back(), "content", "") == note) {
@@ -94,7 +93,8 @@ bool AddNote(SessionRecord& record, const std::string& note,
   }
   conversation.Push(HarnessMessage(note), MessageKind::kInternal);
   conversation.RecordEntry(
-      {{"view", {{"verb", {"Moving", "Moved"}}, {"target", to_cwd}}},
+      {{"view", {{"verb", {"Moving", "Moved"}}, {"target", move.to_cwd}}},
+       {"moved", {{"from", move.from_cwd}}},
        {"state", "ok"},
        {"body_kind", "text"},
        {"text", note},
@@ -105,11 +105,9 @@ bool AddNote(SessionRecord& record, const std::string& note,
   return true;
 }
 
-// Makes the moved session at `move.files[index].to` agree with where it is.
-// An agent that worked in the old folder works in the new one; one that
-// worked elsewhere (its own worktree) keeps its folder. Asset and edit paths
-// follow their files, and the ids of the moved sessions, which the page and
-// the model name agents by, follow their new paths.
+// Makes the moved session at `move.files[index].to` agree with where it is:
+// agents of the old folder work in the new one, others keep theirs, and asset
+// paths, edit paths and the moved sessions' ids follow.
 std::string Rewrite(const SessionMove& move, size_t index,
                     const std::map<std::string, std::string>& ids) {
   const MovedFile& file = move.files[index];
@@ -127,6 +125,7 @@ std::string Rewrite(const SessionMove& move, size_t index,
         if (CanonicalAccessPath(metadata.cwd) ==
             CanonicalAccessPath(move.from_cwd)) {
           metadata.cwd = move.to_cwd;
+          metadata.suggestion = nullptr;
           changed = true;
         }
         if (const auto parent =
@@ -144,7 +143,7 @@ std::string Rewrite(const SessionMove& move, size_t index,
             }
           }
         });
-        if (index == 0 && AddNote(record, move.note, move.to_cwd, failed)) {
+        if (index == 0 && AddNote(record, move, failed)) {
           changed = true;
         }
         return changed && failed.empty();
@@ -288,7 +287,6 @@ std::vector<SessionInfo> FamilyIn(std::vector<SessionInfo> listed,
   return family;
 }
 
-// Whether a turn, or an answer to a person, keeps its runtime busy.
 bool Busy(const HostSession& session) {
   return session.turn_active || session.command_busy ||
          !session.pending.is_null();

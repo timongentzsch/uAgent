@@ -1,14 +1,12 @@
 import { useState } from "preact/hooks";
 import type { SessionRef, TurnFile } from "../../shared/types.ts";
-import { failure } from "../../shared/types.ts";
-import { Actions, Button } from "../../shared/ui.tsx";
+import { Actions, Button, LoadError, Notice } from "../../shared/ui.tsx";
 import { useAction } from "../../shared/use-action.ts";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { formatStat } from "../../shared/display.ts";
 
-// A turn's changed files, each with its Undo, and each opening its diff
-// in the Files pane where there is one. The host puts a file back only
-// while it still holds what the turn left; otherwise it says why.
+// The host puts a file back only while it still holds what the turn left;
+// otherwise it says why.
 export default function TurnReview({
   files,
   turn,
@@ -20,6 +18,7 @@ export default function TurnReview({
   session: SessionRef;
   show?: (path: string) => void;
 }) {
+  const { command } = useApi();
   const [restored, setRestored] = useState<string[]>([]);
   const [kept, setKept] = useState<Record<string, string>>({});
   const { run, busy, error } = useAction();
@@ -86,16 +85,15 @@ export default function TurnReview({
               <small>Not kept</small>
             )}
             {kept[file.path] && (
-              <p class="failure" role="alert">
+              <Notice tone="error">
                 Kept {file.path}: {kept[file.path]}
-              </p>
+              </Notice>
             )}
           </li>
         ))}
       </ul>
-      {(note || !!error) && (
-        <p role="status">{note || failure(error).message}</p>
-      )}
+      {note && <Notice tone="info">{note}</Notice>}
+      {!!error && <LoadError error={error} />}
       <Actions>
         <Button
           variant="destructive"

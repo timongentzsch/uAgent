@@ -1,7 +1,11 @@
-import { Folder, Monitor, SlidersHorizontal, Smartphone } from "lucide-preact";
+import {
+  Folder,
+  Info,
+  Monitor,
+  SlidersHorizontal,
+  Smartphone,
+} from "lucide-preact";
 
-// What a setting affects is where it is found: the four scopes, each one
-// row, with what it reaches said once over its page.
 export const SCOPES = [
   [
     "user",
@@ -29,5 +33,6 @@ export const SCOPES = [
     Smartphone,
     () => "This host and the browsers paired with it.",
   ],
+  ["about", "About", Info, () => "This µAgent and its updates."],
 ] as const;
 export type Scope = (typeof SCOPES)[number][0];

@@ -2,9 +2,8 @@
   line-height: var(--leading-prose);
   min-width: 0;
 }
-/* One rhythm between a reply's blocks (one per top-level element), whatever
-   they are: each is --gap below the one before, a heading --pad. The blocks
-   keep no margins of their own, so nothing collapses or adds up. */
+/* One rhythm between a reply's blocks: they keep no margins of their own, so
+   nothing collapses or adds up. */
 .markdown
   :is(
     p,
@@ -167,11 +166,9 @@
   }
 }
 
-/* A path a message cites (see markdown.ts): its code, underlined as every
-   link is, opens the file in the Files pane. It is a button, so the base
-   button's box is undone and it runs on with the text. Browsers keep a
-   button whole on its line, so a long path breaks inside it instead of
-   widening the chat. */
+/* A button, so the base button's box is undone and it runs on with the text.
+   Browsers keep a button whole on its line, so a long path breaks inside it
+   instead of widening the chat. */
 .markdown .file-ref {
   display: inline;
   max-width: 100%;

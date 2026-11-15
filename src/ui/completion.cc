@@ -15,9 +15,8 @@ namespace uagent {
 
 namespace {
 
-// What a partially typed "/word" could still become; aliases stay hidden.
-// The letters may be spread out ("/mdl" finds /model), but a name that starts
-// with what was typed ranks first.
+// Aliases stay hidden. The letters may be spread out ("/mdl" finds /model),
+// but a name that starts with what was typed ranks first.
 Suggestions SlashMatches(const std::string& buffer) {
   Suggestions found{0, buffer.size(), {}, true};
   if (buffer.empty() || buffer[0] != '/' ||
@@ -39,9 +38,7 @@ Suggestions SlashMatches(const std::string& buffer) {
 }
 
 // A path is completed one segment at a time, from the directory the token
-// already names -- the way a shell does it. Listing one directory per keypress
-// needs no index, no cache to invalidate and no subprocess, and it cannot
-// offer a build tree the repository ignores unless the typist walked into one.
+// already names, as a shell does: no index, no cache, no subprocess.
 Suggestions PathMatches(const std::string& buffer, size_t cursor) {
   Suggestions found{cursor, cursor, {}};
   size_t at = buffer.rfind('@', cursor == 0 ? 0 : cursor - 1);

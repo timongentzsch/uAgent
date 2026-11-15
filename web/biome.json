@@ -18,7 +18,9 @@
       "src/**",
       "tests/**",
       "scripts/**",
+      "recordings/**",
       "public/*.js",
+      "sheet/*.js",
       "*.js",
       "*.json",
       "!package-lock.json"

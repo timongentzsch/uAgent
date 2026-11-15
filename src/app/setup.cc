@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -18,6 +19,9 @@
 
 #include "include/api/client.h"
 #include "include/app/control.h"
+#include "include/app/openrouter_signin.h"
+#include "include/core/capture.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 #include "include/providers/providers.h"
@@ -28,15 +32,15 @@ namespace {
 constexpr char kProviders[] = "UAGENT_PROVIDERS";
 constexpr char kModel[] = "UAGENT_MODEL";
 
-// The three endpoints setup knows, in the order a default model is chosen
-// from. OpenRouter's key is a setting of its own; the others are variables a
-// provider of that name refers to.
+// The endpoints setup knows, in the order a default model is chosen from.
+// OpenRouter's key is a setting of its own; the others are variables.
 struct Known {
   const char* name;
   const char* label;
   const char* variable;
   const char* base_url;
   WireApi wire;
+  bool free_only = false;
 };
 constexpr Known kKnown[] = {
     {"anthropic", "Anthropic", "ANTHROPIC_API_KEY",
@@ -45,10 +49,13 @@ constexpr Known kKnown[] = {
      WireApi::kResponses},
     {"openrouter", "OpenRouter", "OPENROUTER_API_KEY",
      "https://openrouter.ai/api/v1", WireApi::kChatCompletions},
+    {"openrouter-free", "OpenRouter Free", "OPENROUTER_FREE_API_KEY",
+     "https://openrouter.ai/api/v1", WireApi::kChatCompletions, true},
 };
 
 template <typename Keys>
 auto& KeyOf(Keys& keys, std::string_view name) {
+  if (name == "openrouter-free") return keys.openrouter_free;
   if (name == "anthropic") return keys.anthropic;
   if (name == "openai") return keys.openai;
   return keys.openrouter;
@@ -114,16 +121,35 @@ KeyCheck CheckKey(const Known& known, const std::string& key) {
   api.base_url = known.base_url;
   api.api_key = key;
   api.wire_api = known.wire;
+  DeclareHost(api);
+  if (known.free_only) api.options["free_only"] = true;
   KeyCheck check;
   // OpenRouter lists its models to anyone; its key endpoint is what refuses
   // a wrong key.
-  if (std::string_view(known.name) == "openrouter") {
+  if (std::string_view(known.name) == "openrouter" || known.free_only) {
     JsonResponse response = api.Get("/key", false, 10);
     if (response.http_status == 401 || response.http_status == 403) {
       check.accepted = false;
       check.reason = "rejected (" + std::to_string(response.http_status) + ")";
       return check;
     }
+    if (!response.error.empty() || response.http_status != 200) {
+      check.reason =
+          response.error.empty() ? "key check unavailable" : response.error;
+      return check;
+    }
+  }
+  if (known.free_only) {
+    auto models = CachedModels(api);
+    if (!models) models = QueryModels(api, /*abortable=*/false, 15);
+    if (!models) {
+      check.reason =
+          "could not fetch the free-model catalogue; try setup again";
+      return check;
+    }
+    check.accepted = true;
+    for (const ModelInfo& info : *models) check.models.push_back(info.id);
+    return check;
   }
   JsonResponse response =
       api.Get(std::string_view(known.name) == "anthropic" ? "/models?limit=1000"
@@ -219,11 +245,63 @@ std::string ChooseModel(const std::vector<std::string>& ids,
   }
 }
 
+constexpr char kSignInFile[] = "openrouter-signin.json";
+constexpr int kSignInSeconds = 600;
+
+std::string Held(const SavedSettings& saved, const std::string& name) {
+  auto found = saved.all.find(name);
+  return found == saved.all.end() ? std::string() : found->second;
+}
+
+// The free endpoint's address: a saved provider keeps its own.
+std::string FreeBaseUrl(const SavedSettings& saved, const Known& free) {
+  const json providers = json::parse(Held(saved, kProviders), nullptr, false);
+  return JsonValue(JsonValue(providers, free.name, json::object()), "base_url",
+                   free.base_url);
+}
+
+const Known& FreeKnown() {
+  return *std::ranges::find(kKnown, true, &Known::free_only);
+}
+
+// Saves `key` as the free provider with the default model `choose` takes
+// from what the endpoint lists (suggested, current): the error, or empty
+// with `model` set.
+std::string SaveFreeKey(const std::string& key, auto choose,
+                        std::string& model) {
+  const SavedSettings saved = ReadSettings("");
+  if (!saved.error.empty()) return saved.error;
+  Known free = FreeKnown();
+  const std::string base = FreeBaseUrl(saved, free);
+  free.base_url = base.c_str();
+  const KeyCheck check = CheckKey(free, key);
+  if (check.accepted != true || check.models.empty()) {
+    return "no usable free coding models: " +
+           (check.reason.empty() ? "none listed with tools and 64K context"
+                                 : check.reason);
+  }
+  const std::string prefix = std::string(free.name) + "/";
+  std::string current = Held(saved, kModel);
+  if (std::ranges::none_of(check.models, [&](const std::string& id) {
+        return current == prefix + id;
+      })) {
+    current.clear();
+  }
+  model = choose(check.models, check.models.front(), current);
+  if (model.empty()) model = current;
+  if (!model.empty() && !model.starts_with(prefix)) model = prefix + model;
+  return ChangeSettings("", [&](SettingValues& scope) {
+    ApplySetupKeys({.openrouter_free = key}, scope);
+    if (!model.empty()) scope[kModel] = model;
+    return std::string();
+  });
+}
+
 }  // namespace
 
 void ApplySetupKeys(const SetupKeys& keys, SettingValues& scope) {
   if (keys.openrouter.empty() && keys.openai.empty() &&
-      keys.anthropic.empty()) {
+      keys.anthropic.empty() && keys.openrouter_free.empty()) {
     return;
   }
   json providers = json::object();
@@ -243,6 +321,7 @@ void ApplySetupKeys(const SetupKeys& keys, SettingValues& scope) {
       provider["wire_api"] = WireApiName(known.wire);
     }
     provider["api_key"] = std::string("$") + known.variable;
+    if (known.free_only) EnsureObject(provider, "options")["free_only"] = true;
   }
   scope[kProviders] = JsonDump(providers);
 }
@@ -280,6 +359,10 @@ bool ProviderConfigured() {
   return JsonValue(reply, "configured", true);
 }
 
+namespace {
+int OpenRouterSetup(bool browser);
+}  // namespace
+
 int RunSetup() {
   if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) {
     fprintf(stderr, "uagent setup needs a terminal\n");
@@ -299,10 +382,26 @@ int RunSetup() {
       "Press Enter to skip one. What you type is hidden.\n",
       SettingsPath().c_str());
 
+  const bool free_only = Confirm(
+      "Set the default to a free OpenRouter model (account/API key required)?",
+      held(kModel).empty());
+  if (free_only) {
+    printf(
+        "Create a key: https://openrouter.ai/keys\n"
+        "Free models have usage limits and provider-specific data policies.\n"
+        "Review them at https://openrouter.ai/collections/free-models\n"
+        "Paid models, hosted search and PDF parsing are excluded from this "
+        "provider.\n");
+    if (Confirm("Sign in with OpenRouter instead of typing a key?",
+                held(FreeKnown().variable).empty())) {
+      return OpenRouterSetup(/*browser=*/true);
+    }
+  }
   SetupKeys keys;
   // The key each endpoint will use, new or kept, and what it lists.
   std::vector<std::pair<const Known*, KeyCheck>> usable;
   for (const Known& known : kKnown) {
+    if (known.free_only != free_only) continue;
     const std::string existing = held(known.variable);
     const char* exported = std::getenv(known.variable);
     std::string hint;
@@ -318,6 +417,13 @@ int RunSetup() {
     const std::string effective = key.empty() ? existing : key;
     if (effective.empty()) continue;
     KeyCheck check = CheckKey(known, effective);
+    if (free_only && (check.accepted != true || check.models.empty())) {
+      printf(
+          "  No usable free coding models: %s. Saved settings are unchanged.\n",
+          check.reason.empty() ? "none listed with tools and 64K context"
+                               : check.reason.c_str());
+      return 1;
+    }
     if (check.accepted == false) {
       printf("  ✗ %s\n", check.reason.c_str());
       if (key.empty() || !Confirm("  Keep it anyway?", false)) continue;
@@ -330,7 +436,7 @@ int RunSetup() {
     usable.emplace_back(&known, std::move(check));
   }
   if (!keys.openrouter.empty() || !keys.openai.empty() ||
-      !keys.anthropic.empty()) {
+      !keys.anthropic.empty() || !keys.openrouter_free.empty()) {
     const std::string error = ChangeSettings("", [&](SettingValues& scope) {
       ApplySetupKeys(keys, scope);
       return std::string();
@@ -352,6 +458,12 @@ int RunSetup() {
   const auto& [known, check] = usable.front();
   const std::string prefix = std::string(known->name) + "/";
   std::string current = held(kModel);
+  if (free_only &&
+      std::ranges::none_of(check.models, [&](const std::string& id) {
+        return current == prefix + id;
+      })) {
+    current.clear();
+  }
   printf("\nDefault model, from %s:\n", known->label);
   std::string chosen = ChooseModel(
       check.models, SuggestModel(known->name, check.models), current);
@@ -372,8 +484,131 @@ int RunSetup() {
   return 0;
 }
 
-int SetupMain() {
-  const int status = RunSetup();
+json OpenRouterControl(const json& request) {
+  const std::string pending = UagentDir("") + kSignInFile;
+  const SavedSettings saved = ReadSettings("");
+  if (!saved.error.empty()) return {{"error", saved.error}};
+  const std::string base = FreeBaseUrl(saved, FreeKnown());
+  std::string error;
+  if (JsonValue(request, "action", "") == "start") {
+    const SignIn start = BeginSignIn(base, JsonValue(request, "callback", ""));
+    if (!WritePrivateFile(
+            pending,
+            JsonDump({{"verifier", start.verifier},
+                      {"state", start.state},
+                      {"at", static_cast<int64_t>(time(nullptr))}}),
+            error)) {
+      return {{"error", error}};
+    }
+    return {{"url", start.url}};
+  }
+  const json held =
+      json::parse(ReadFile(pending, 4096).value_or(""), nullptr, false);
+  unlink(pending.c_str());
+  const std::string state = JsonValue(request, "state", "");
+  if (!held.is_object() ||
+      time(nullptr) - JsonValue(held, "at", int64_t{0}) > kSignInSeconds ||
+      (!state.empty() && state != JsonValue(held, "state", ""))) {
+    return {{"error", "this sign-in is no longer open; start it again"}};
+  }
+  const std::string key =
+      RedeemSignIn(base, Trim(JsonValue(request, "code", "")),
+                   JsonValue(held, "verifier", ""), error);
+  std::string model;
+  if (error.empty()) {
+    error = SaveFreeKey(
+        key,
+        [](const auto&, const std::string& suggested,
+           const std::string& current) {
+          return current.empty() ? suggested : current;
+        },
+        model);
+  }
+  if (!error.empty()) return {{"error", error}};
+  return {{"model", model}};
+}
+
+namespace {
+
+// Signs in on this terminal: through this machine's browser where there is
+// one, otherwise by a link to open anywhere and the code it shows.
+int OpenRouterSetup(bool browser) {
+  const SavedSettings saved = ReadSettings("");
+  if (!saved.error.empty()) {
+    fprintf(stderr, "uagent setup: %s\n", saved.error.c_str());
+    return 1;
+  }
+  const std::string base = FreeBaseUrl(saved, FreeKnown());
+  const bool terminal = isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
+#ifdef __APPLE__
+  const char* opener = "open";
+  const bool display = true;
+#else
+  const char* opener = "xdg-open";
+  const bool display = std::getenv("DISPLAY") || std::getenv("WAYLAND_DISPLAY");
+#endif
+  std::string callback, code;
+  const int listener =
+      browser && terminal && display && !std::getenv("SSH_CONNECTION")
+          ? ListenForSignIn(callback)
+          : -1;
+  const SignIn start = BeginSignIn(base, callback);
+  if (listener >= 0) {
+    printf(
+        "Opening OpenRouter to sign in. If no browser opened:\n  %s\n"
+        "Waiting for approval…\n",
+        start.url.c_str());
+    fflush(stdout);
+    CaptureProcess({opener, start.url}, 10);
+    code = AcceptSignIn(listener, start.state, kSignInSeconds);
+  } else {
+    printf(
+        "Open this on any device and approve:\n  %s\n\n"
+        "Code from that page: ",
+        start.url.c_str());
+    fflush(stdout);
+    code = Trim(terminal ? ReadHidden() : ReadLine());
+  }
+  if (code.empty()) {
+    fprintf(stderr, "uagent setup: no code arrived; nothing is changed\n");
+    return 1;
+  }
+  std::string error, model;
+  const std::string key = RedeemSignIn(base, code, start.verifier, error);
+  if (error.empty()) {
+    printf("Signed in.\n");
+    error = SaveFreeKey(
+        key,
+        [&](const std::vector<std::string>& ids, const std::string& suggested,
+            const std::string& current) {
+          if (!terminal) return current.empty() ? suggested : current;
+          printf("\nFree models with tool calling:\n");
+          return ChooseModel(ids, suggested, current);
+        },
+        model);
+  }
+  if (!error.empty()) {
+    fprintf(stderr, "uagent setup: %s\n", error.c_str());
+    return 1;
+  }
+  printf("Saved; new conversations use %s.\n", model.c_str());
+  return 0;
+}
+
+}  // namespace
+
+int SetupMain(int argc, char** argv) {
+  int status = 2;
+  const std::string_view what = argc > 2 ? argv[2] : "";
+  const std::string_view flag = argc > 3 ? argv[3] : "";
+  if (argc == 2) {
+    status = RunSetup();
+  } else if (what == "openrouter" && argc <= 4 &&
+             (flag.empty() || flag == "--no-browser")) {
+    status = OpenRouterSetup(flag.empty());
+  } else {
+    fprintf(stderr, "usage: uagent setup [openrouter [--no-browser]]\n");
+  }
   if (status == 0) printf("Start with: uagent\n");
   return status;
 }

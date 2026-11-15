@@ -38,8 +38,7 @@ TEST_CASE(TestGrepTool) {
   CHECK(result.output.find("one.cpp") != std::string::npos);
   CHECK(result.output.find("two.txt") == std::string::npos);
   CHECK(ModelText(result).find("more available") == std::string::npos);
-  // The count is a fact and its header the model's hint; a person reads the
-  // matches alone.
+  // The count header is the model's hint; a person reads the matches alone.
   CHECK(result.facts.items == 3 && result.facts.unit == "line");
   CHECK(!result.output.starts_with('['));
   {
@@ -163,8 +162,6 @@ TEST_CASE(TestGrepTool) {
     CHECK(!run->validate({{"command", "cmake --build build"}}));
     CHECK(!run->validate({{"command", "python3 -m unittest"}}));
     CHECK(!run->validate({{"command", "sudo -n true"}}));
-    // The row reads as what the call does; the command shows when it opens,
-    // and whoever approves or summarizes a call reads the command.
     const json described = {{"command", "make test"},
                             {"description", "Run the unit tests\nand more"}};
     const json row = ToolView(run, described);
@@ -190,23 +187,22 @@ TEST_CASE(TestGrepTool) {
   CHECK(grep != nullptr);
   CHECK(!file_search.contains("context"));
   CHECK(grep && !FindToolArgumentIssue(*grep, file_search));
-  // What uAgent wrote for the model is read without asking; anything else
-  // outside the folder still asks, and so does writing where uAgent wrote.
+  // What uAgent wrote for the model and a skill's files are read without
+  // asking; anything else outside the folder still asks, and so does
+  // writing either.
   const std::string spilled = UagentDir(kArtifactsDir) + "/output-test";
+  const std::string reference = GlobalBase() + "/skills/notes/reference.md";
   const Tool* read = FindTool(lean_tools, "read_path");
-  CHECK(read && !read->needs_approval({{"path", spilled}}));
+  for (const std::string& free : {spilled, reference}) {
+    CHECK(read && !read->needs_approval({{"path", free}}));
+    CHECK(grep && !grep->needs_approval({{"pattern", "x"}, {"path", free}}));
+  }
   CHECK(read && read->needs_approval({{"path", "/etc/hosts"}}));
-  CHECK(grep && !grep->needs_approval({{"pattern", "x"}, {"path", spilled}}));
   auto full_tools = BuiltinTools(supervisor, root);
   const Tool* write = FindTool(full_tools, "write_file");
-  CHECK(write && write->needs_approval({{"path", spilled}}));
-  const Tool* python = FindTool(lean_tools, "scratch");
-  CHECK(python != nullptr);
-  CHECK(python && ToolDescription(*python).find(
-                      "never code the user asked for") != std::string::npos);
-  CHECK(python &&
-        python->parameters.value("additionalProperties", true) == false);
-  CHECK(python && python->parameters["required"] == json::array({"path"}));
+  for (const std::string& kept : {spilled, reference}) {
+    CHECK(write && write->needs_approval({{"path", kept}}));
+  }
   const Tool* memory = FindTool(lean_tools, "memory");
   CHECK(memory != nullptr);
   if (memory) {
@@ -221,15 +217,12 @@ TEST_CASE(TestGrepTool) {
                       {{"action", "forget"}, {"key", "project/lesson"}}));
     CHECK(memory->parameters["required"] == json::array({"action"}));
   }
-  CHECK(python && python->timeout_s == 0);
   CHECK(FindTool(lean_tools, "wait_background") == nullptr);
   const Tool* activity = FindTool(lean_tools, "activity");
   CHECK(activity != nullptr);
   CHECK(activity && activity->blocking_wait_default_ms == 0);
-  // Waiting on an activity holds nothing, so the per-call budget that stops a
-  // runaway command must not truncate it: the schema offers five minutes and
-  // the caller's wait_ms is what decides. Same exemption as run and scratch,
-  // which at least occupy a process.
+  // Waiting on an activity holds nothing, so no per-call budget truncates it:
+  // the caller's wait_ms decides.
   CHECK(activity && activity->timeout_s == 0);
   CHECK(activity &&
         activity->parameters["properties"]["wait_ms"]["maximum"] == 300000);
@@ -276,7 +269,6 @@ TEST_CASE(TestGrepTool) {
                         *activity, {{"operation", "poll"}, {"id", "bad"}}) ==
                         "`id` must be integer");
 
-  // Each operation reads as what it did.
   for (const auto& [arguments, summary] :
        std::vector<std::pair<json, std::string>>{
            {{{"operation", "poll"}, {"id", 3}}, "Checked activity 3"},
@@ -296,8 +288,6 @@ TEST_CASE(TestGrepTool) {
   CHECK(overshoot["wait_ms"] == 300000);
   CHECK(overshoot["id"] == 3);
   CHECK(activity && InvalidToolArgument(*activity, overshoot).empty());
-  // The reduction carries both numbers: a caller that asked for more than it
-  // got can tell which limit answered it.
   CHECK(clamped.size() == 1 &&
         clamped[0] == "wait_ms to 300000 of 900000 requested");
   const Tool* grep_tool = FindTool(lean_tools, "grep");
@@ -307,7 +297,6 @@ TEST_CASE(TestGrepTool) {
   if (grep_tool) ClampToolArguments(*grep_tool, wide, &clamped);
   CHECK(wide["context"] == 10);
   CHECK(clamped.size() == 1 && clamped[0] == "context to 10 of 40 requested");
-  // A hint already inside its bound is not a reduction and says nothing.
   json in_range = {{"pattern", "x"}, {"context", 3}};
   clamped.clear();
   if (grep_tool) ClampToolArguments(*grep_tool, in_range, &clamped);
@@ -323,8 +312,7 @@ TEST_CASE(TestGrepTool) {
   json fractional = {{"command", "ls"}, {"yield_ms", 1.5}};
   if (run_tool) ClampToolArguments(*run_tool, fractional);
   CHECK(run_tool && !InvalidToolArgument(*run_tool, fractional).empty());
-  // Stopping an activity is one more operation on the tool that already owns
-  // the id, not a second name for the same domain.
+  // Stopping is an operation of the activity tool, not a tool of its own.
   CHECK(FindTool(lean_tools, "activity_stop") == nullptr);
   json materialized_stop = raw_poll;
   materialized_stop["operation"] = "stop";

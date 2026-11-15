@@ -3,7 +3,6 @@
 #ifndef UAGENT_INCLUDE_CORE_LEASE_H_
 #define UAGENT_INCLUDE_CORE_LEASE_H_
 // A file lease held by an open descriptor, for one owner among processes.
-// Used by sessions, schedules and the browser service.
 
 #include <fcntl.h>
 #include <sys/file.h>
@@ -60,9 +59,7 @@ class FileLease {
             (errno == EWOULDBLOCK || errno == EAGAIN)
                 ? "already owned by another session: " + path
                 : "cannot acquire ownership: " + std::string(strerror(errno));
-        // Name the live holder when it published itself; the descriptor lock
-        // stays the sole authority, this only turns opaque conflicts into
-        // actionable ones on every surface.
+        // Advisory: the descriptor lock stays the sole authority.
         if (errno == EWOULDBLOCK || errno == EAGAIN) {
           std::string holder = LiveOwner(path);
           if (!holder.empty()) error += " (live owner: " + holder + ")";
@@ -87,8 +84,7 @@ class FileLease {
       std::string identity = ProcessIdentity(pid);
       std::string owner =
           identity.empty() ? "" : std::to_string(pid) + " " + identity;
-      // Presence is advisory. The descriptor lock remains the sole writer
-      // authority even if the optional identity cannot be published.
+      // Advisory: failing to publish the identity does not affect ownership.
       if (ftruncate(fd_.Get(), 0) == 0 && !owner.empty()) {
         ssize_t written = pwrite(fd_.Get(), owner.data(), owner.size(), 0);
         if (written != static_cast<ssize_t>(owner.size())) {
@@ -99,10 +95,9 @@ class FileLease {
     return true;
   }
 
-  // Published "pid identity" of the live holder, or empty when no live
-  // owner can be confirmed. Advisory only; never used as authority.
-  // Never acquire a probe lock: even a brief shared lock can reject a real
-  // writer racing to resume. A crash needs no cleanup.
+  // Published "pid identity" of the live holder, or empty when none can be
+  // confirmed. Advisory only. Takes no probe lock: even a brief shared lock
+  // can reject a real writer racing to resume.
   static std::string LiveOwner(const std::string& path) {
     Fd file(open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
     struct stat info{};
@@ -133,8 +128,7 @@ class FileLease {
   }
 
   // Whether the lease is missing or names an owner that no longer runs. One
-  // that names nobody (its holder did not publish, as runtimes before this
-  // rule) is not known to be gone.
+  // that names nobody is not known to be gone.
   static bool OwnerGone(const std::string& path) {
     struct stat info{};
     if (lstat(path.c_str(), &info) != 0) return true;

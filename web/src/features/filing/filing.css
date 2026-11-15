@@ -1,0 +1,51 @@
+.filing {
+  margin: 0 var(--column-inset) var(--gap);
+  padding: var(--pad);
+}
+.filing p {
+  margin: var(--space-2) 0;
+}
+.filing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+/* A list of the home screen: a caption, then rows of a title over a line
+   about it, with the time or what can be done at the row's end. */
+.home-list {
+  text-align: left;
+}
+.home-list > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.home-list ul {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.home-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-width: 0;
+  padding-right: var(--pad);
+}
+.home-list li > .list-row {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding-block: var(--space-3);
+}
+/* Each line as wide as the row and no wider, so a long one is cut. */
+.home-list .row-text {
+  grid-template-columns: minmax(0, 1fr);
+}
+.home-list time {
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+.home-list li > :not(:first-child) {
+  flex: none;
+}

@@ -23,7 +23,6 @@ for (const width of [1200, 390]) {
 
     const decision = page.getByRole("region", { name: "Pending decision" });
     await expect(decision.getByText("Approve the plan?")).toBeVisible();
-    // The plan opens from the decision, and stays in the conversation.
     await expect(
       decision.getByRole("link", { name: /plan\.md/ }),
     ).toBeVisible();
@@ -42,7 +41,6 @@ for (const width of [1200, 390]) {
     ).toBe(false);
     await page.screenshot({ path: testInfo.outputPath("plan-decision.png") });
 
-    // Keep planning sends feedback; the next turn puts the plan again.
     await decision.getByRole("button", { name: "Keep planning" }).click();
     await decision.getByLabel("Guidance").fill("Add tests too");
     await decision.getByRole("button", { name: "Send guidance" }).click();

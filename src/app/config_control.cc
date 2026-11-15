@@ -16,8 +16,7 @@
 namespace uagent {
 namespace {
 // The settings file as a person may be shown it: every secret hidden, and
-// with it any text under a name that is no setting, which may be a key
-// someone mistyped the name of.
+// any text under a name that is no setting, which may be a mistyped key.
 json ShownDocument() {
   std::string ignored;
   json document = ExportSettings(ignored);

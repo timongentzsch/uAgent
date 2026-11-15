@@ -1,12 +1,10 @@
 import type { ComponentChildren } from "preact";
 import { ClipboardPaste, Copy, Keyboard } from "lucide-preact";
-import { Button, IconButton } from "../../shared/ui.tsx";
+import { Bar, Button, IconButton } from "../../shared/ui.tsx";
 import { coarsePointer } from "../../shared/layout.ts";
 import "./browser.css";
 
-// The browser's fixed geometry, shared by its loading state and the live
-// panel: the remote screen takes all the space, one bar sits below. State
-// changes only change what fills these slots, never their size.
+// State changes only change what fills these slots, never their size.
 export function BrowserFrame({
   screen,
   bar,
@@ -17,7 +15,9 @@ export function BrowserFrame({
   return (
     <section class="browser-panel">
       {screen}
-      <div class="browser-bar">{bar}</div>
+      <Bar density="dense" edge="top" class="browser-bar">
+        {bar}
+      </Bar>
     </section>
   );
 }
@@ -37,8 +37,7 @@ export function BrowserTools({
   const keepFocus = (event: Event) => event.preventDefault();
   return (
     <>
-      {/* Touch devices type through the on-screen keyboard; a mouse and
-          keyboard reach Chrome directly. */}
+      {/* A mouse and keyboard reach Chrome directly. */}
       {coarsePointer() && (
         <IconButton
           label="Keyboard"
@@ -73,7 +72,7 @@ export function BrowserLoading() {
         <>
           <div class="sheet-control browser-status-menu">
             <Button variant="quiet" class="browser-status" disabled>
-              <span>Browser</span>
+              <span class="truncate">Browser</span>
             </Button>
           </div>
           <BrowserTools disabled />

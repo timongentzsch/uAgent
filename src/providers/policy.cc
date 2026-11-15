@@ -170,6 +170,11 @@ RouteResolution ResolveReviewRoute(const Api& api,
     }
   }
   RouteResolution resolved;
+  if (api.FreeOnly() && setting.empty()) {
+    resolved.none =
+        "free-only provider has no automatic paid approval reviewer";
+    return resolved;
+  }
   if (!chosen) {
     resolved.none =
         "no provider serves decision models; one at openrouter.ai does";
@@ -196,7 +201,7 @@ std::string ComposeSelection(const std::string& scope, const std::string& model,
 std::string RouteSelection(const Route& route,
                            const std::vector<Endpoint>& providers) {
   if (route.model.empty()) return {};
-  return ComposeSelection(ProviderScope(route.base_url, providers), route.model,
+  return ComposeSelection(ProviderScope(route, providers), route.model,
                           route.reasoning_effort);
 }
 
@@ -287,9 +292,8 @@ ProviderSetup ConfigureProvider(Api& api) {
     if (configured_context > 0) api.ctx_window = configured_context;
     route_metadata_validated = true;
   }
-  // Command-line/config suffixes are the most specific route policy. Apply
-  // them after a named route so they override its defaults without becoming
-  // part of the model ID sent over the active wire API.
+  // A suffix overrides a named route's defaults without becoming part of
+  // the model id sent over the wire.
   ApplySelectionPolicy(api, requested);
   if (requested.effort.empty() && !configured_effort.empty() &&
       SupportsReasoningEffort(api, configured_effort)) {

@@ -3,10 +3,8 @@ import { useId, useLayoutEffect, useRef } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 import { Button } from "./ui.tsx";
 
-// Options under a field that keeps focus and names the active option
-// (`${prefix}-${position}`) as its active descendant; the active option
-// stays in view. By default they pop up over the composer. A list that
-// follows typing enters softly and closes at once, in step with the text.
+// The field keeps focus and names the active option (`${prefix}-${position}`)
+// as its active descendant; the active option stays in view.
 export function SuggestionList<T>({
   id,
   label,
@@ -82,7 +80,6 @@ export function SuggestionList<T>({
   );
 }
 
-// Items split where their group label changes, each run with its position.
 function runs<T>(items: T[], groupOf?: (item: T) => string | undefined) {
   const out: { label?: string; start: number; run: T[] }[] = [];
   items.forEach((item, position) => {

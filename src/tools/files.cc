@@ -376,7 +376,7 @@ std::string EditRecoveryHint(const std::string& data,
     }
   }
   size_t begin = match == 0 ? 0 : data.rfind('\n', match - 1) + 1;
-  // Include two preceding lines, then at most five numbered lines / 1200 chars.
+  // Two preceding lines of context, then at most five numbered lines.
   for (int i = 0; i < 2 && begin > 0; ++i) {
     begin = begin <= 1 ? 0 : data.rfind('\n', begin - 2) + 1;
   }
@@ -463,9 +463,8 @@ struct EditRun {
   int64_t already_applied = 0;
 };
 
-// Apply `edits` to `data`, or return the refusal the caller should report.
-// The approval preview and the edit itself both come through here, so what a
-// human approves is what gets written.
+// Applies `edits` to `data`, or returns the refusal to report. The approval
+// preview and the edit both come through here.
 std::optional<ToolResult> ApplyEdits(std::string& data, const std::string& path,
                                      const std::vector<FileEdit>& edits,
                                      EditRun& run) {

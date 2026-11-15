@@ -9,10 +9,8 @@ import {
   Switch,
 } from "./ui.tsx";
 
-// Loading states that must exist before their feature's code: each draws the
-// feature's own primitives from sample data (see <Placeholder>).
+// Loading states that must exist before their feature's code loads.
 
-// The model form before its catalogue, also its code's fallback.
 export function ModelLoading({
   close,
   defaults = true,
@@ -44,7 +42,6 @@ export function ModelLoading({
   );
 }
 
-// Shared by the loaded form and its placeholder, including wrapped detail text.
 export function ModelDefaults({
   checked,
   disabled,

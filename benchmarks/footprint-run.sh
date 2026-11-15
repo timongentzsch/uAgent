@@ -1,9 +1,6 @@
 #!/bin/bash
 # Runs the footprint comparison inside footprint.Dockerfile's image. Every
-# tool talks to one endpoint that serves Claude Haiku 5.5 on the OpenAI
-# Responses route at $PROXY_URL/v1 and $PROXY_URL/openai/v1 and on Anthropic
-# Messages at $PROXY_URL/anthropic; the key comes in as PROXY_KEY. The
-# settings written here live only in the container.
+# tool talks to the one endpoint at PROXY_URL, with the key in PROXY_KEY.
 set -euo pipefail
 : "${PROXY_URL:?set PROXY_URL}" "${PROXY_KEY:?set PROXY_KEY}"
 model=${MODEL:-claude-haiku-5-5}

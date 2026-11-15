@@ -137,7 +137,6 @@ def test_command_help(root, home, *, binary):
         assert_true("use conversation controls" not in result.stdout, result.stdout)
         assert_true("unknown command /wat; use /help" in result.stdout, result.stdout)
         assert_true("unknown command /recap; use /help" in result.stdout, result.stdout)
-        # A near miss names the command it most likely meant.
         assert_true("unknown command /modle; did you mean /model?" in result.stdout, result.stdout)
         assert_true("commands\n" in result.stdout, result.stdout)
         assert_true("  /attach PATH" in result.stdout, result.stdout)
@@ -189,7 +188,8 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             binary=binary,
         )
         assert_true(code == 0, verbose)
-        assert_true(b"\xc2\xb7 Thinking" in verbose, verbose)
+        # A thought is text in its own face, with no row naming it.
+        assert_true(b"\xc2\xb7 Thinking" not in verbose, verbose)
         reasoning_style = b"\x1b[0m\x1b[39m\x1b[49m\x1b[90m\x1b[3m"
         assert_true(reasoning_style + b"latest line" in verbose, verbose)
         assert_true(verbose.find(b"first line") < verbose.find(b"Final answer"), verbose)
@@ -302,9 +302,8 @@ def test_plain_mode_writes_labelled_lines_without_cursor_control(root, home, *, 
 
 
 def test_undo_puts_back_what_the_last_turn_changed(root, home, *, binary):
-    # /changes lists the turn's files and /undo restores them whole: an edit
-    # reverts, a created file goes, a deleted one comes back. A file changed
-    # since is kept, and says why.
+    # /changes lists the turn's files and /undo restores them whole. A file
+    # changed since is kept, and says why.
     (root / "edited.txt").write_text("one\n")
     (root / "gone.txt").write_text("keep me\n")
     (root / "later.txt").write_text("first\n")
@@ -632,9 +631,8 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
             base_env(home, server.url),
             [
                 (b"go\n", b"Allow run?"),
-                # The idle status carries the route in schema form, then the
-                # approval mode, and the context window beside what is used.
-                # The answer may arrive in the same frame.
+                # The idle status carries the route, the approval mode and the
+                # context window. The answer may arrive in the same frame.
                 (b"y\n", b"Ready \xc2\xb7 test/test \xc2\xb7 Ask \xc2\xb7 ", b"est. ctx", None),
                 (b"probe", b"probe"),  # input broker is accepting drafts
                 b"\x7f" * 5,
@@ -843,14 +841,8 @@ class Screen:
 
 
 def test_streaming_paragraph_taller_than_the_screen(root, home, *, binary):
-    """A paragraph taller than the screen streams without duplicating itself.
-
-    Each repaint used to erase and rewrite the whole unfinished paragraph:
-    bytes per token grew with its length, and once it outgrew the screen the
-    erase could not reach its top, so scrollback filled with copies. Rows the
-    live region cannot hold go to scrollback once; bold a row opened carries
-    over to the next.
-    """
+    """A paragraph taller than the screen streams without duplicating itself:
+    rows the live region cannot hold go to scrollback once."""
     words = [f"w{index:03d}abc" + ("界" if index % 7 == 3 else "") for index in range(250)]
     bold = range(100, 130)
     tokens = [
@@ -897,11 +889,8 @@ def test_streaming_paragraph_taller_than_the_screen(root, home, *, binary):
 
 
 def test_streaming_code_spans_cost_what_plain_text_costs(root, home, *, binary):
-    """Inline code streams for about the bytes plain text does.
-
-    A redrawn row replayed every style the paragraph had used before it, so
-    bytes per token grew with the number of code spans streamed so far.
-    """
+    """Inline code streams for about the bytes plain text does: bytes per token
+    do not grow with the code spans streamed so far."""
     tokens = [(f"`c{index:03d}` " if index % 3 == 0 else f"w{index:03d} ") for index in range(600)]
 
     def streamed(handler, _):
@@ -1040,11 +1029,8 @@ def test_resize_while_the_ask_picker_is_open(root, home, *, binary):
 
 
 def test_rows_written_over_the_composer_survive_the_next_repaint(root, home, *, binary):
-    """A picker's answer and a decision's prompt stay in scrollback.
-
-    Both replace the composer's rows for a while; once the composer is back,
-    no repaint may treat their rows as its own.
-    """
+    """A picker's answer and a decision's prompt replace the composer's rows:
+    once it is back, no repaint treats their rows as its own."""
     question = {
         "question": "Which database?",
         "header": "Database",
@@ -1113,10 +1099,8 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, bin
         )
         assert_true(code == 0, output)
         assert_true(output.count(b"status-redraw-ok") == 1, output)
-        # Real response output starts with its actor header; its pipe write
-        # may arrive separately from the text and legitimately repaint input.
-        # The welcome names the program too: the header is the one after
-        # the draft.
+        # A response opens with its actor header. The welcome names the program
+        # too, so the header is the first "uagent" after the draft.
         response_at = output.index(b"uagent", output.index(b"pending draft"))
         assert_true(output[:response_at].count(b"pending draft") == 1, output)
 
@@ -1136,9 +1120,8 @@ def test_suspend_restores_and_rearms_terminal(root, home, *, binary):
         seen["running"] = termios.tcgetattr(master)[3]
         process.send_signal(signal.SIGTSTP)
         seen["stop_signal"] = wait_until_stopped(process.pid)
-        # Cooked by the time it is stopped, and raw again once resumed. The
-        # repaint itself stays in the PTY for the harness to collect: reading
-        # it here would take those bytes out of the asserted transcript.
+        # Cooked by the time it is stopped, raw again once resumed. The repaint
+        # stays in the PTY: reading it here would take it out of the transcript.
         seen["stopped"] = wait_for_echo(master, wanted=True)
         process.send_signal(signal.SIGCONT)
         seen["resumed"] = wait_for_echo(master, wanted=False)
@@ -1147,20 +1130,16 @@ def test_suspend_restores_and_rearms_terminal(root, home, *, binary):
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            # An idle SIGINT asks first now, so ending the session is two
-            # presses; the second one detaches with the signal exit status.
+            # An idle SIGINT asks first; the second press detaches with the
+            # signal exit status.
             [
                 (lambda process: process.send_signal(signal.SIGINT), b"Ctrl+C again to detach"),
                 lambda process: process.send_signal(signal.SIGINT),
             ],
             configure_terminal=cooked,
             suspend=suspend,
-            # run_pty runs one deadline across the whole interaction, and the
-            # suspend handshake here spends it before a key is typed:
-            # wait_until_stopped plus two wait_for_echo calls each scale to the
-            # default on their own. Under a loaded sanitizer run the payload
-            # phase then ran out and the child was killed, which reads as a
-            # wrong exit code rather than the timeout it is.
+            # One deadline spans the whole interaction, and the suspend
+            # handshake spends part of it before a key is typed.
             timeout=30,
             binary=binary,
         )
@@ -1244,14 +1223,8 @@ def test_input_redraw_survives_terminal_resize_and_delete(root, home, *, binary)
 
 
 def test_input_redraw_backspaces_across_a_wide_glyph_wrap(root, home, *, binary):
-    """A wrap boundary that falls inside double-width text.
-
-    The composer maps the cursor to a row by subtracting each row's display
-    width, so a row that ends one column short of the terminal -- which is
-    what a two-column glyph that will not fit forces -- is where that
-    arithmetic and the byte offsets disagree. WrapLines is unit-tested on
-    wide text; this is the caret walking back over it.
-    """
+    """A wrap boundary inside double-width text: a row that ends one column
+    short of the terminal is where display widths and byte offsets disagree."""
     # 74 columns of ASCII plus three wide glyphs, against 77 usable columns:
     # the first row takes one glyph and stops at 76, the rest wrap.
     original = "a" * 74 + "\u65e5\u672c\u8a9e"
@@ -1279,13 +1252,8 @@ def test_input_redraw_backspaces_across_a_wide_glyph_wrap(root, home, *, binary)
 
 
 def test_resize_replaces_the_status_row_instead_of_appending(root, home, *, binary):
-    """Repeated resizes must not stack status rows down the scrollback.
-
-    A resize repaints the pinned region, and the status row sits *above* the
-    cursor. Erasing only downward leaves it on screen, so every repaint adds
-    another copy — the failure this pins. The rule the stream can prove is:
-    no status row is ever written without erasing the previous region first.
-    """
+    """Repeated resizes must not stack status rows down the scrollback: no
+    status row is written without erasing the previous region first."""
 
     def answer(_, __):
         return event({"content": "RESIZE-MARKER"})
@@ -1308,10 +1276,8 @@ def test_resize_replaces_the_status_row_instead_of_appending(root, home, *, bina
         text = output.decode(errors="replace")
         assert_true(code == 0, text)
         assert_true(b"RESIZE-MARKER" in output, text)
-        # The region is erased only after walking up to its top row. Erasing
-        # downward from the cursor (`\r\x1b[J`) leaves the status row above it
-        # on screen, so each repaint would append another copy — the failure
-        # this pins. Every resize must produce a walk-up-then-erase.
+        # The status row sits above the cursor, so erasing downward from it
+        # (`\r\x1b[J`) leaves a copy: every resize walks up, then erases.
         assert_true(b"\r\x1b[J" not in output, output[-200:])
         walks = re.findall(rb"\x1b\[\d+A\x1b\[J", output)
         assert_true(len(walks) >= 1, len(walks))
@@ -1376,11 +1342,8 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
 
 
 def test_input_slash_suggestions_and_tab_completion(root, home, *, binary):
-    """Typing a command shows what it could still become; Tab commits it.
-
-    The rows hang below the draft inside the composer's own block, so they are
-    erased with it and never reach scrollback.
-    """
+    """Typing a command shows what it could still become; Tab commits it. The
+    rows are part of the composer's block and never reach scrollback."""
     with Server([event({"content": "unused"})]) as server:
         code, output = run_pty(
             root,
@@ -1397,17 +1360,13 @@ def test_input_slash_suggestions_and_tab_completion(root, home, *, binary):
         # Both candidates are offered, with the same description /help prints.
         assert_true(b"/config  show changed settings" in output, output)
         assert_true(b"/context  show current model request" in output, output)
-        # Tab commits the shared prefix.
         assert_true(b"/con" in output, output)
         assert_true(not server.get_requests, server.get_requests)
 
 
 def test_input_slash_menu_moves_with_arrows(root, home, *, binary):
     """Arrows walk the command menu; Tab and Enter take the highlighted row.
-
-    Scattered letters still find a command, and Enter on a partial name only
-    completes it, so a half-typed command never reaches the runtime.
-    """
+    Enter on a partial name only completes it: it never reaches the runtime."""
     with Server([event({"content": "unused"})]) as server:
         code, output = run_pty(
             root,
@@ -1455,12 +1414,8 @@ def test_status_row_names_mode_and_turn_keys(root, home, *, binary):
 
 
 def test_input_at_path_suggestions_and_tab_completion(root, home, *, binary):
-    """`@` completes a path a segment at a time, the way a shell does.
-
-    Naming a file costs the draft a few keystrokes; describing one costs the
-    agent a grep and a read round to find what was meant. The rows are the same
-    block the slash suggestions use, so they are erased with the draft.
-    """
+    """`@` completes a path a segment at a time, the way a shell does, in the
+    block the slash suggestions use."""
     (root / "alpha").mkdir()
     (root / "alpha" / "inner.txt").write_text("x", encoding="utf-8")
     (root / "alphabet.txt").write_text("x", encoding="utf-8")
@@ -1493,22 +1448,16 @@ def test_input_at_path_suggestions_and_tab_completion(root, home, *, binary):
             binary=binary,
         )
         assert_true(code == 0, output)
-        # Both candidates are offered; a dotfile nobody asked for is not.
         assert_true(b"@alpha/" in output, output)
         assert_true(b"@alphabet.txt" in output, output)
         assert_true(b".hidden.txt" not in output, output)
-        # An unrelated sibling is never a candidate for this prefix.
         assert_true(b"beta.txt" not in output, output)
         assert_true(b"path-ok" in output, output)
 
 
 def test_input_ctrl_x_ctrl_e_round_trips_through_an_editor(root, home, *, binary):
     """Ctrl+X Ctrl+E hands the draft to $EDITOR and takes back what it saved.
-
-    The terminal has to come back cooked for the editor and raw for the
-    composer afterwards, which is the part that strands a session when it is
-    wrong -- so the case keeps typing after the round trip.
-    """
+    The case keeps typing afterwards: the composer must be raw again."""
     editor = root / "fake-editor.sh"
     # Appends rather than replaces, so the assertion proves both directions:
     # the draft reached the file and the file came back.

@@ -28,7 +28,7 @@
 
 namespace uagent {
 
-enum class ActivityKind : uint8_t { kCommand, kMemory, kDetached };
+enum class ActivityKind : uint8_t { kCommand, kDetached };
 enum class ActivityState : uint8_t {
   kStarting,
   kRunning,
@@ -45,25 +45,22 @@ struct ActivitySession {
   pid_t pid = -1;
   bool tty = false;
 
-  // Closed by ActivitySupervisor's I/O thread as soon as the activity reaches
-  // a terminal state. Tools duplicate input_fd before writing, because this
-  // owner may close underneath them.
+  // Closed by the I/O thread once the activity is terminal: tools duplicate
+  // input_fd before writing.
   Fd output_fd;
   Fd input_fd;
   Fd log_fd;
   int64_t log_limit = 0;
   int64_t logged_bytes = 0;
   // A root command's sudo prompt (RootCommand), answered once from `secret`
-  // by the I/O thread and cut from the output. A second prompt means the
-  // password was wrong: the secret is wiped, so its next use asks again.
+  // by the I/O thread; a second prompt wipes the secret as wrong.
   std::string nonce;
   std::shared_ptr<std::string> secret;
   std::string nonce_carry;
   int prompts = 0;
 
-  // `mutex` covers the mutable state below. `interaction` is coarser, taken
-  // first when both are needed, and serialises whole tool interactions
-  // (write stdin, then collect the reply).
+  // `mutex` covers the state below. `interaction` is taken first and
+  // serialises whole tool interactions (write stdin, then collect the reply).
   mutable std::mutex interaction;
   mutable std::mutex mutex;
   ActivityState state UAGENT_GUARDED_BY(mutex) = ActivityState::kStarting;
@@ -80,13 +77,10 @@ struct ActivitySession {
   bool secret_rejected UAGENT_GUARDED_BY(mutex) = false;
 };
 
-// Cuts `session.nonce` out of a chunk of its output and answers it: the first
-// prompt with the secret, a second (a wrong password) by wiping the secret.
-// Returns what the output shows; the I/O thread is its only caller.
+// Cuts `session.nonce` out of `chunk` and answers it; I/O thread only.
 std::string AnswerRootPrompt(ActivitySession& session, std::string_view chunk);
 
-// Call while holding ActivitySession::mutex. Rejects illegal regressions and
-// makes the process lifecycle's state graph explicit in one place.
+// Rejects illegal regressions of the lifecycle's state graph.
 bool TransitionActivityLocked(ActivitySession& session, ActivityState next)
     UAGENT_REQUIRES(session.mutex);
 
@@ -97,17 +91,14 @@ struct Activity {
   int64_t id = 0;
   std::shared_ptr<ActivitySession> session{};
   std::string display_label{};
-  std::string receipt_path{};
-  std::string source_id{};
   // Put right when the activity ends, where the sandbox could not deny its
   // writes.
   std::shared_ptr<const SandboxWatch> watch{};
   int64_t started_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::system_clock::now().time_since_epoch())
                            .count();
-  // Set where the activity is constructed rather than where it is registered:
-  // the two differ by a spawn, and the status row is reporting how long the
-  // child has been alive, not how long the supervisor has known about it.
+  // Set at construction, not registration: the status row reports how long
+  // the child has been alive.
   std::chrono::steady_clock::time_point started =
       std::chrono::steady_clock::now();
 
@@ -130,9 +121,7 @@ class ActivityReservation {
   ActivityReservation& operator=(const ActivityReservation&) = delete;
 
   std::optional<int64_t> Register(Activity job);
-  // The activity id this reservation will commit under, known before the
-  // activity exists so its log can be named after it rather than after a
-  // reusable pid.
+  // Known before the activity exists, to name its log (pids are reused).
   int64_t Id() const { return id_; }
 
  private:
@@ -170,24 +159,19 @@ class ActivitySupervisor {
   std::string Owner() const;
   bool IsLive(int64_t id) const;
   std::optional<Activity> Find(int64_t id) const;
-  // Retaining a terminal activity keeps inspection continuous while its result
-  // is consumed exactly once. Removal and retention share the same lock.
+  // `retain` keeps a terminal activity inspectable after its result is taken.
   std::optional<Activity> Take(int64_t id, bool retain = false);
   std::vector<Activity> Snapshot() const;
   std::vector<Activity> TakeAllForShutdown();
-  // Commands a stop ended, which report no completion: their rows take
-  // their end from here (Agent::DrainActivities).
+  // Commands a stop ended report no completion: their rows end from here.
   void Stopped(EndedCommand ended);
   std::vector<EndedCommand> TakeStopped();
 
   uint64_t Generation() const;
   void Wake();
-  // Mirror supervisor state changes to one application-owned nonblocking pipe.
-  // The caller must clear the descriptor before closing it.
+  // Mirrors changes to a borrowed nonblocking pipe; clear it before closing.
   void SetNotifyFd(int fd);
-  // Whether a finished activity wakes the session that started it: a
-  // conversation runtime takes up a result as a turn; a headless run's answer
-  // is final.
+  // True for a conversation runtime; a headless run's answer is final.
   bool WakesSession() const;
   void WaitForChange(uint64_t generation) const;
   bool WaitForChange(uint64_t generation,
@@ -214,8 +198,7 @@ class ActivitySupervisor {
   std::vector<Activity> retained_ UAGENT_GUARDED_BY(mutex_);
   std::vector<std::shared_ptr<ActivitySession>> io_sessions_
       UAGENT_GUARDED_BY(mutex_);
-  // A stop_callback writes the wake pipe, so request_stop() both flags the
-  // loop and unblocks its poll().
+  // A stop_callback writes the wake pipe, so request_stop() unblocks poll().
   std::jthread io_thread_;
   Fd wake_read_;
   Fd wake_write_;

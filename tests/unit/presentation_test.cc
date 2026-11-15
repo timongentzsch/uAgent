@@ -34,11 +34,8 @@ TurnStatusView Working(std::chrono::milliseconds elapsed) {
   return view;
 }
 
-// Render the idle row at a known width. TerminalColumns() probes TIOCGWINSZ on
-// both standard descriptors before it falls back to COLUMNS, so both have to
-// be something that is not a terminal -- otherwise this passes under ctest,
-// where they are pipes, and silently measures the developer's window when the
-// binary is run by hand.
+// TerminalColumns() probes TIOCGWINSZ on both standard descriptors before
+// COLUMNS, so neither may be a terminal for the width to be known.
 class FixedWidth {
  public:
   explicit FixedWidth(int columns) {
@@ -110,33 +107,25 @@ std::string Drawn(const std::vector<json>& calls,
 
 }  // namespace
 
-// A node's row is its headline and the host's words, marked and coloured by
-// its state; opened, it adds its body's last lines. The terminal reads
-// nothing else of a call.
 TEST_CASE(TestTreeRows) {
   json record = Record("c1", "agent_start", "failed",
                        "connection error: Couldn't connect to server\n"
                        "body-must-not-enter-row");
   record["view"] = {{"verb", {"Starting agent", "Started agent"}},
                     {"target", "x"}};
-  // A failed call's row says so; what it printed stays in its body, which
-  // only an open row shows.
   std::string drawn = Drawn({CallNode(record, "w-m-1")});
   CHECK(drawn.find("    ✗ Started agent x · failed\n") != std::string::npos);
   CHECK(drawn.find("body-must-not-enter-row") == std::string::npos);
   CHECK(Drawn({CallNode(record, "w-m-1")}, "full").find("      │ ") !=
         std::string::npos);
 
-  // Closed, a call is one line, whatever its output says; only the recorded
-  // state marks a failure.
+  // Only the recorded state marks a failure, whatever the output says.
   json command = Record("c2", "run", "ok", "error: printed by command");
   command["view"] = {{"verb", {"Running", "Ran"}}, {"target", "make\nmore"}};
   drawn = Drawn({CallNode(command, "w-m-1")});
   CHECK(drawn.find("    · Ran make\n") != std::string::npos);
   CHECK(drawn.find("printed by command") == std::string::npos);
   CHECK(drawn.find("more") == std::string::npos);
-  // Opened, a long output shows its end, where a command says how it went,
-  // without the command's own colouring.
   command["body_kind"] = "tail";
   command["truncated"] = true;
   command["tail"] = "98\n\x1b[31m99\x1b[0m\n100\n101\n";
@@ -165,7 +154,6 @@ TEST_CASE(TestTreeRows) {
   CHECK(StatusBarLine("thinking · 2s").find("thinking - 2s") !=
         std::string::npos);
 
-  // Plain mode speaks each row's kind instead of drawing its glyph.
   g_plain = true;
   CHECK(Drawn({CallNode(content, "w-m-1")}).find("failed: Ran µ") !=
         std::string::npos);
@@ -196,8 +184,6 @@ TEST_CASE(TestTreeRows) {
   CHECK(DisplayWidth("\xe4\xb8\xad") == 2);
 }
 
-// Live, a node is drawn once its step has ended, as a resumed one is drawn;
-// a whole drawing shows a running node as it stands, and its end once more.
 TEST_CASE(TestTreeDrawsLiveAsResumed) {
   json record = Record("c1", "read_path", "running", "");
   record["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
@@ -211,7 +197,6 @@ TEST_CASE(TestTreeDrawsLiveAsResumed) {
   TerminalPresenter presenter;
   std::string drawn = CaptureStdout([&] { presenter.Draw(view); });
   CHECK(drawn.find("  → 0 steps\n    → Reading a.txt\n") != std::string::npos);
-  // Nothing settled: nothing more.
   CHECK(CaptureStdout([&] { presenter.Update(view, work); }).empty());
   record["state"] = "ok";
   record["output"] = "alpha";
@@ -245,14 +230,10 @@ TEST_CASE(TestTreeDrawsLiveAsResumed) {
 }
 
 TEST_CASE(TestToolViews) {
-  // The generic view: short scalars are fields, long text is code, nested
-  // values are indented JSON.
   json view = ToolView(nullptr, {{"path", "a.txt"},
                                  {"limit", 20},
                                  {"body", "one\ntwo"},
                                  {"edits", json::array({{{"old", "x"}}})}});
-  // A call without a headline of its own is "Called <tool>", and an
-  // argument too long for a line never stands in for its target.
   CHECK(view["verb"] == json::array({"Calling tool", "Called tool"}));
   CHECK(view["target"] == "a.txt");
   CHECK(!view.contains("output"));
@@ -262,16 +243,13 @@ TEST_CASE(TestToolViews) {
   CHECK(input[1]["kind"] == "code" && input[1]["label"] == "body" &&
         input[1]["text"] == "one\ntwo");
   CHECK(input[2]["language"] == "json");
-  // A shell line is shown verbatim, never as escaped JSON.
   Tool run;
   run.present = [](const json& a) {
     return json::array({CommandPart(JsonValue(a, "command", ""))});
   };
   const std::string command = R"(psql -c "SELECT 'x'")";
   CHECK(ToolView(&run, {{"command", command}})["input"][0]["text"] == command);
-  // Unparseable arguments still render, as the raw text.
   CHECK(ToolView(nullptr, json("{broken"))["input"][0]["text"] == "{broken");
-  // A to-do list reads as its progress; its result shows the list.
   ActivitySupervisor supervisor;
   const std::vector<Tool> tools = BuiltinTools(supervisor);
   const json todo = ToolView(FindTool(tools, "todo"),
@@ -290,22 +268,17 @@ TEST_CASE(TestModelHints) {
   CHECK(result.hint == "[collaborator agent-1; resume]\n[clamped x]");
   CHECK(ModelText(result) ==
         "done\n[collaborator agent-1; resume]\n[clamped x]");
-  // A hint alone does not open on an empty line.
   ToolResult started = ToolSuccess("");
   AddHint(started, "[started] subagent agent-1");
   CHECK(ModelText(started) == "[started] subagent agent-1");
-  // A captured log's locator follows the hints, whatever cut the output.
   result.artifact = ToolArtifact{"/tmp/log.txt", 99};
   CHECK(ModelText(result).ends_with(ArtifactHint(*result.artifact)));
   CHECK(ArtifactHint(*result.artifact).starts_with(kCapturedLogMarker));
 }
 
-// One function words a result from its facts, in a fixed order of what
-// matters most, then its duration.
 TEST_CASE(TestResultWord) {
   auto word = [](const ResultFacts& facts, std::string_view state = "ok",
                  double ms = -1) { return ResultWord(facts, state, ms); };
-  // A tool that reports no facts reads as its duration alone, or its state.
   CHECK((word({}, "ok", 1400) == "1.4s"));
   CHECK((word({}) == ""));
   CHECK((word({}, "failed", 20) == "failed · 20ms"));
@@ -317,7 +290,6 @@ TEST_CASE(TestResultWord) {
   CHECK((word({.exit = ResultFacts::Exit{.signal = 9}}, "failed") == "killed"));
   CHECK((word({.exit = ResultFacts::Exit{.code = 2}}, "failed", 1400) ==
          "exit 2 · 1.4s"));
-  // A clean exit says nothing beyond the time it took.
   CHECK((word({.exit = ResultFacts::Exit{}}, "ok", 1400) == "1.4s"));
   CHECK((word({.added = 3, .removed = 1}) == "+3 −1"));
   CHECK((word({.added = 0, .removed = 0, .no_change = true}) == "no change"));
@@ -332,7 +304,6 @@ TEST_CASE(TestResultWord) {
       (word({.exit = ResultFacts::Exit{.code = 1}, .items = 3, .unit = "line"},
             "failed") == "exit 1"));
   CHECK((word({.items = 0, .unit = "line"}, "failed") == "0 lines"));
-  // The row carries the facts it was worded from.
   const json result = ResultJson(
       {.exit = ResultFacts::Exit{.code = 2}, .items = 4, .unit = "line"},
       "failed", 10);
@@ -366,10 +337,8 @@ TEST_CASE(TestDiffLineColoring) {
   g_color = prior;
 }
 
-// A search the provider runs is the one long wait the status row could not
-// explain: without this it reads as ordinary thinking for as many seconds as
-// the search takes. The row is ephemeral on purpose -- several searches a turn
-// would otherwise each leave a permanent line behind.
+// A search the provider runs would read as ordinary thinking without this
+// row. It is ephemeral: several searches a turn leave no lines behind.
 TEST_CASE(TestHostedSearchStatusRow) {
   const bool prior = g_tty;
   g_tty = true;
@@ -391,7 +360,6 @@ TEST_CASE(TestHostedSearchStatusRow) {
   CHECK(CurrentTerminalStatus() == "Using web_search");
   send(EventId::kHostedToolActivity, {{"id", "a"}, {"phase", "completed"}});
   CHECK(CurrentTerminalStatus() == "Using web_search");
-  // A tool the provider runs is named while it runs.
   send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "failed"}});
   send(EventId::kHostedToolActivity,
        {{"id", "c"}, {"tool", "code_execution"}, {"phase", "started"}});
@@ -406,6 +374,7 @@ TEST_CASE(TestHostedSearchStatusRow) {
   const std::string corrected = CaptureStdout([&] {
     TerminalPresenter verbose;
     verbose.SetDetail(DetailFor("full"));
+    verbose.ShowThinking(true);
     verbose.Consume(AppEvent{1, "", "response.started", json::object()});
     verbose.Consume(
         AppEvent{2, "", "response.reasoning.delta", {{"text", "original"}}});
@@ -423,9 +392,8 @@ TEST_CASE(TestHostedSearchStatusRow) {
   g_tty = prior;
 }
 
-// The working row used to be assembled inside the REPL loop, where nothing
-// could reach it. These pin the parts that are pure arithmetic on the view:
-// the frame clock, which counters appear, and the label/counter split.
+// The parts that are pure arithmetic on the view: the frame clock, which
+// counters appear, and the label/counter split.
 TEST_CASE(TestTurnStatusBar) {
   bool prior = g_tty;
   bool prior_color = g_color;
@@ -440,19 +408,15 @@ TEST_CASE(TestTurnStatusBar) {
   CHECK(second.starts_with("⠙"));
   CHECK(wrapped.starts_with("⠋"));
   CHECK(first != second);
-  // Plain mode holds it still.
   g_motion = false;
   CHECK(
       TurnStatusBar(Working(std::chrono::milliseconds(100))).starts_with("⠋"));
   g_motion = true;
 
-  // Elapsed renders at one decimal; context always shows.
   CHECK(TurnStatusBar(Working(std::chrono::milliseconds(1500))).find("1.5s") !=
         std::string::npos);
   CHECK(first.find("ctx 12k/1.3M") != std::string::npos);
 
-  // Headroom reads as a percentage on the idle row; an unknown window has no
-  // percentage to state and says nothing rather than guessing.
   CHECK(ContextLeftSummary(0, 1000) == "100% left");
   CHECK(ContextLeftSummary(250, 1000) == "75% left");
   CHECK(ContextLeftSummary(2000, 1000) == "0% left");
@@ -464,8 +428,6 @@ TEST_CASE(TestTurnStatusBar) {
   CHECK(unknown_bar.find("ctx 12k") != std::string::npos);
   CHECK(unknown_bar.find("ctx 12k/") == std::string::npos);
 
-  // The working row names the route exactly as the idle row does, and an
-  // unset route adds no segment.
   TurnStatusView routed = Working(std::chrono::milliseconds(1500));
   routed.model = "openrouter/deepseek/deepseek-v4-flash:high";
   std::string routed_bar = TurnStatusBar(routed);
@@ -475,7 +437,6 @@ TEST_CASE(TestTurnStatusBar) {
         std::string::npos);
   CHECK(first.find("openrouter") == std::string::npos);
 
-  // Counters are omitted at zero rather than rendered as "act:0".
   CHECK(first.find("act:") == std::string::npos);
   CHECK(first.find("steer:") == std::string::npos);
 
@@ -488,8 +449,6 @@ TEST_CASE(TestTurnStatusBar) {
     std::string loaded = TurnStatusBar(busy);
     CHECK(loaded.find("act:2") != std::string::npos);
     CHECK(loaded.find("steer:3") != std::string::npos);
-    // The keys that act on the turn close the row; one foreground command
-    // reads as the bare hint, more than one is counted.
     CHECK(loaded.ends_with(" · Esc stop · Ctrl+B background"));
     busy.foreground = 2;
     CHECK(TurnStatusBar(busy).find("Ctrl+B background 2 commands") !=
@@ -503,7 +462,6 @@ TEST_CASE(TestTurnStatusBar) {
     CHECK(narrow.find("steer:3") != std::string::npos);
   }
 
-  // Interrupting replaces the idle "Working" label.
   TurnStatusView interrupting = Working(std::chrono::milliseconds(0));
   interrupting.interrupting = true;
   CHECK(TurnStatusBar(interrupting).find("Interrupting") != std::string::npos);
@@ -513,10 +471,6 @@ TEST_CASE(TestTurnStatusBar) {
   g_color = prior_color;
 }
 
-// The idle row drops segments by priority when the window is too narrow. The
-// order is the whole point -- it is what decides that a user on a small
-// terminal keeps the route and loses the cache hit rate rather than the other
-// way round -- and until now nothing measured it.
 TEST_CASE(TestStatusBarDropsByPriority) {
   bool prior = g_tty;
   bool prior_color = g_color;
@@ -535,8 +489,7 @@ TEST_CASE(TestStatusBarDropsByPriority) {
   view.detail = "full";
   view.background = 1;
 
-  // Wide enough for everything: the full row is the baseline the narrower
-  // widths are read against.
+  // The full row is the baseline the narrower widths are read against.
   std::string wide;
   {
     FixedWidth columns(200);
@@ -558,7 +511,6 @@ TEST_CASE(TestStatusBarDropsByPriority) {
   CHECK(medium.find(" · full") == std::string::npos);
   CHECK(medium.find("anthropic/claude-sonnet-4-5") != std::string::npos);
   CHECK(DisplayWidth(medium) <= 80);
-  // Route, approval mode, headroom and spend are the last to go.
   CHECK(medium.starts_with(
       "anthropic/claude-sonnet-4-5 · Ask · 99% left · $0.4200"));
 

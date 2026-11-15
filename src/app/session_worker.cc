@@ -35,12 +35,12 @@
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/core/turn_status.h"
+#include "include/core/workspace.h"
 
 namespace uagent::session {
 namespace {
-// Host-claimed command["attachments"] entries ({path,id,name,mime,image})
-// become worker Attachment records plus transcript display images (path
-// omitted: display facts reach the client). Submit and steer share it.
+// Host-claimed command["attachments"] entries become Attachment records and
+// transcript display images without their paths, which would reach the client.
 bool ResolveCommandAttachments(const json& command,
                                std::vector<Attachment>& attachments,
                                json& images, std::string& error) {
@@ -69,9 +69,8 @@ bool ResolveCommandAttachments(const json& command,
   return true;
 }
 
-// An ask's answers as its tool reads them: each answer's attachment_id
-// becomes the path of the file the host claimed under that id. A path a
-// client names itself is dropped, so an answer can only point at an upload.
+// An ask's answers as its tool reads them: each attachment_id becomes the path
+// the host claimed under it. A path a client names itself is dropped.
 std::string AskAnswers(const json& command, const std::string& text,
                        std::string& error) {
   json answers = json::parse(text, nullptr, false);
@@ -146,8 +145,7 @@ class WorkerChannel final : public ApplicationChannel {
     if (event.type == AppType(EventId::kApprovalRequested)) {
       std::lock_guard lock(mutex_);
       // An agent's approval that Auto could not settle goes to its parent
-      // first, unless the person started or wrote into this turn and is
-      // there to answer it; one reserved for a person never does.
+      // first, unless the person is in this turn or it is reserved for one.
       if (link_ && !person_turn_ &&
           !JsonValue(data, "mandatory_human", false)) {
         data["route"] = kRouteParent;
@@ -211,9 +209,7 @@ class WorkerChannel final : public ApplicationChannel {
         return std::nullopt;
       }
       // A signal is no input, so it counts as a quiet wait: an agent's exit
-      // (SIGCHLD) used to start the idle period over, keeping its parent up one
-      // more period per agent. What a child's end means reaches the wake
-      // pipe by itself.
+      // (SIGCHLD) does not start the idle period over.
       if (ready <= 0) {
         if (link_) {
           std::lock_guard lock(mutex_);
@@ -390,9 +386,7 @@ class WorkerChannel final : public ApplicationChannel {
     }
   }
 
-  // How long a session waits with nothing to do before it stops. An agent
-  // stops as its turn ends: what it is for, a message or mail, starts it
-  // again.
+  // An agent stops as its turn ends: a message or mail starts it again.
   std::chrono::milliseconds Idle() const {
     return link_ ? kAgentIdle : IdlePeriod();
   }
@@ -455,7 +449,7 @@ class WorkerChannel final : public ApplicationChannel {
   void BeginTurn() UAGENT_REQUIRES(mutex_) {
     state_["error"] = "";
     state_.erase("stop");
-    state_["turn_status"] = "Working";
+    state_["turn_status"] = kWaitingStatus;
     state_["phase"] = "working";
     state_["turn_started_ms"] = NowMillis();
   }
@@ -471,10 +465,8 @@ class WorkerChannel final : public ApplicationChannel {
            checkpoint ? std::exchange(active_command_, "") : ""},
           {"checkpoint", checkpoint}});
   }
-  // A control waits its turn behind the input already there (a settings
-  // screen sends several at once, and the first may arrive while the
-  // runtime starts); only a running turn refuses it. True when the control
-  // was taken; otherwise reports into error. The caller holds mutex_.
+  // A control waits behind the input already there (a settings screen sends
+  // several at once); only a running turn refuses it. True when taken.
   bool QueueIdleControl(const std::string& request, const json& control,
                         std::string& error) UAGENT_REQUIRES(mutex_) {
     if (turn_active_) {
@@ -492,8 +484,8 @@ class WorkerChannel final : public ApplicationChannel {
     SendState();
     return true;  // Completion carries the catalog or validated selection.
   }
-  // Moves the next waiting control into the input slot. The caller holds
-  // mutex_ and has seen the slot empty.
+  // Moves the next waiting control into the input slot, which the caller has
+  // seen empty.
   void NextControlLocked() UAGENT_REQUIRES(mutex_) {
     if (controls_.empty()) return;
     input_ = ApplicationInput{.request_id = controls_.front().first,
@@ -599,6 +591,16 @@ class WorkerChannel final : public ApplicationChannel {
           SendState();
         }
         break;
+      case SessionCommandKind::kKeep:
+        if (input_) {
+          error = "keep requires an empty input queue";
+        } else {
+          input_ = ApplicationInput{.keep = true};
+          busy_ = true;
+          wake_.Wake();
+          SendState();
+        }
+        break;
       case SessionCommandKind::kRefresh:
         SendState();
         break;
@@ -642,13 +644,11 @@ class WorkerChannel final : public ApplicationChannel {
     return true;
   }
 
-  // Whether `id` no longer names the decision waiting for an answer. The
-  // caller holds mutex_.
+  // Whether `id` no longer names the decision waiting for an answer.
   bool StaleLocked(const std::string& id) const UAGENT_REQUIRES(mutex_) {
     return pending_.empty() || id != pending_ || reply_;
   }
 
-  // Answers the pending decision. The caller holds mutex_.
   void ReplyLocked(const SessionCommand& parsed, std::string& error)
       UAGENT_REQUIRES(mutex_) {
     if (StaleLocked(parsed.interaction_id)) {
@@ -676,12 +676,9 @@ class WorkerChannel final : public ApplicationChannel {
     wake_.Wake();
   }
 
-  // Guidance only: the turn reads it at its next steering check and passive
-  // waits yield on the queued message. Requesting a foreground abort here
-  // would report every steer as an interruption. Files ride the same queue:
-  // the turn composes them into the steered user message, so steering sees
-  // what the composer showed; `queue` holds it for when the turn ends
-  // instead ("Queue next"). The caller holds mutex_.
+  // Guidance only: the turn reads it at its next steering check; a foreground
+  // abort here would report every steer as an interruption. Files ride the
+  // same queue, and `queue` holds it for when the turn ends.
   void SteerLocked(const SessionCommand& parsed, std::string& error)
       UAGENT_REQUIRES(mutex_) {
     if (!turn_active_ || parsed.text.empty() ||
@@ -729,7 +726,7 @@ class WorkerChannel final : public ApplicationChannel {
   }
 
   // A message during a turn is guidance, as a steer is; otherwise it takes
-  // the one-slot input queue. The caller holds mutex_.
+  // the one-slot input queue.
   void SubmitLocked(const SessionCommand& parsed, std::string& error)
       UAGENT_REQUIRES(mutex_) {
     if (turn_active_ && !parsed.text.empty() && !parsed.text.starts_with("/")) {
@@ -829,8 +826,23 @@ int WorkerMain(int argc, char** argv) {
   json launch = json::parse(bytes, nullptr, false);
   if (!launch.is_object()) return kWorkerBadLaunch;
   // Before anyone can connect: a runtime that cannot work never answers.
-  if (chdir(argv[2]) != 0) return kWorkerNoWorkspace;
   Options options = OptionsFromLaunch(launch);
+  struct RemoteCwd {
+    std::string path;
+    ~RemoteCwd() {
+      if (!path.empty()) rmdir(path.c_str());
+    }
+  } remote_cwd;
+  if (options.host.empty()) {
+    if (chdir(argv[2]) != 0) return kWorkerNoWorkspace;
+  } else {
+    remote_cwd.path = RuntimeDir() + "/remote-cwd/" + argv[4];
+    if (!EnsurePrivateDirectory(remote_cwd.path) ||
+        chdir(remote_cwd.path.c_str()) != 0) {
+      return kWorkerNoWorkspace;
+    }
+    SetWorkspace({options.host, argv[2]});
+  }
   // An agent's role is fixed at its start and afterwards read back from its
   // own header.
   json agent = AgentOf(SessionHeader(argv[3]));
@@ -839,11 +851,8 @@ int WorkerMain(int argc, char** argv) {
   }
   if (!agent.empty()) options.session = {{"agent", agent}};
   // An agent runs sandboxed, at its depth and within its budget however its
-  // runtime is started again, so a restart never widens it: neither a
-  // sandbox policy nor a depth inherited through the environment stands in
-  // for its own. One that may not edit only reads (bootstrap.cc). Its
-  // approval mode defaults to Auto where the mode is resolved
-  // (PermissionControl).
+  // runtime is started again: nothing inherited through the environment
+  // stands in for its own, so a restart never widens it.
   ::unsetenv("UAGENT_INTERNAL_DEPTH");
   if (!agent.empty()) {
     ::unsetenv("UAGENT_INTERNAL_SANDBOX");

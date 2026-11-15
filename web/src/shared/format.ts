@@ -1,5 +1,5 @@
-// Keep lexical numbers and keys. Readable mode decodes string values for display;
-// it is a text projection, never a serialization or a replacement for Source.
+// Keeps lexical numbers and keys. Readable mode decodes string values for
+// display: a text projection, never a serialization.
 export function formatJSON(text: string, readable = false, nesting = 0) {
   JSON.parse(text);
   const tokens =
@@ -49,7 +49,6 @@ export function formatBody(text = "", readable = false) {
   }
 }
 
-// Text as HTML that shows it, for markup assembled by hand.
 export function escapeHTML(value: string) {
   return value.replace(
     /[&<>]/g,

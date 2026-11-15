@@ -1,6 +1,5 @@
-// A design system's colours read back from its tokens.css, per theme, for
-// the Theme section under Tweaks. The file the pages load is the only
-// source; nothing is compiled from it.
+// A design system's colours read back from its tokens.css, per theme, for the
+// Theme section under Tweaks. The file the pages load is the only source.
 
 export interface Tokens {
   // In file order: the first block's (its [data-theme], else "default"),
@@ -22,7 +21,7 @@ export function readTokens(css: string): Tokens {
   const plain = css.replace(/@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "");
   for (const [, head, body] of plain.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selector = head.replace(/\/\*[\s\S]*?\*\//g, "").trim();
-    // A theme block, as the design skill writes them; anything fancier
+    // A theme block, as the artifact skill writes them; anything fancier
     // (:not(), media queries) is not one.
     if (selector.includes(":not(")) continue;
     const theme = /\[data-theme="?([\w-]+)"?\]/.exec(selector)?.[1];

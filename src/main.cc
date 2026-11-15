@@ -25,11 +25,13 @@ extern char** environ;
 #include "include/app/bootstrap.h"
 #include "include/app/config_proposal.h"
 #include "include/app/control.h"
+#include "include/app/execution.h"
 #include "include/app/session.h"
 #include "include/app/setup.h"
 #include "include/browser/browser.h"
 #include "include/cli/cli.h"
 #include "include/cli/options.h"
+#include "include/core/build.h"
 #include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/events.h"
@@ -41,17 +43,14 @@ extern char** environ;
 #include "include/core/usage.h"
 #include "include/tools/memory.h"
 #include "include/web/protocol.h"
+#include "include/web/remote_hosts.h"
 
 namespace uagent {
 namespace {
 
-// Cheap, once-per-process defences for a tool that holds API keys in memory:
-// keep the heap out of core files, block same-user ptrace where the platform
-// offers it for free, and drop loader-injection variables before any child
-// process inherits them. None of this costs anything at run time.
-//
-// macOS PT_DENY_ATTACH is deliberately not used: it would break running µAgent
-// under a debugger, which matters for a tool people build from source.
+// Defences for a process that holds API keys in memory: no core files, no
+// same-user ptrace where the platform offers it, no loader-injection
+// variables for children. PT_DENY_ATTACH is not used: it breaks debuggers.
 void HardenProcess() {
   rlimit no_core{};
   setrlimit(RLIMIT_CORE, &no_core);
@@ -103,8 +102,7 @@ void ResolveTerminalProfile(const Options& options) {
   ApplyTerminalProfile(on("UAGENT_PLAIN"));
 }
 
-// Report a startup failure in whichever shape the caller asked for. Emit is a
-// no-op when the event stream never started, so no extra guard is needed.
+// Emit is a no-op when the event stream never started.
 int Fail(bool json_stream, bool json_envelope, const std::string& error,
          int exit_code) {
   json envelope = HeadlessResult("", error, json::array(), Usage{},
@@ -119,8 +117,7 @@ int Fail(bool json_stream, bool json_envelope, const std::string& error,
   return exit_code;
 }
 
-// --show-system-prompt: build the session far enough to print the prompt it
-// would send.
+// --show-system-prompt: builds the session far enough to print its prompt.
 int ShowSystemPrompt(Options options, char* executable,
                      Observability& observability) {
   if (options.web || !options.prompt.empty() || options.json_stream ||
@@ -155,8 +152,6 @@ int WebMain(const Options& options, char** argv) {
     fprintf(stderr, "--web cannot inherit session execution options\n");
     return 2;
   }
-  // User configuration only. No folder configuration, MCP, trust prompt,
-  // agent or process supervisor in the master.
   for (const auto& [key, value] : options.overrides) {
     if (key != "UAGENT_WEB_PORT" && key != "UAGENT_WEB_ORIGIN") {
       fprintf(stderr,
@@ -200,16 +195,17 @@ int WebMain(const Options& options, char** argv) {
   const ConfigDescriptor& idle = Cfg("UAGENT_WEB_TERMINAL_IDLE_MINUTES");
   int64_t idle_minutes = std::get<int64_t>(idle.default_value);
   ParseInt64(setting("UAGENT_WEB_TERMINAL_IDLE_MINUTES").c_str(), idle_minutes);
+  bool update_check = false;
+  ParseBool(setting("UAGENT_WEB_UPDATE_CHECK"), update_check);
   return web::MasterMain(
       {static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
        setting("UAGENT_WEB_PUSH_CONTACT"), notification_detail, bind,
        setting("UAGENT_BROWSER_DATA"), terminal_on,
-       std::clamp(idle_minutes, idle.minimum, idle.maximum)},
+       std::clamp(idle_minutes, idle.minimum, idle.maximum),
+       setting("UAGENT_REMOTE_BUNDLE"), update_check},
       argv);
 }
 
-// A headless run: one prompt, its answer as text, a JSON envelope or an event
-// stream.
 int HeadlessMain(Options options, char* executable,
                  Observability& observability) {
   const bool json_stream = options.json_stream;
@@ -224,9 +220,7 @@ int HeadlessMain(Options options, char* executable,
   int code = boot.Ok()
                  ? RunApplication(*boot.context)
                  : Fail(json_stream, json_envelope, boot.error, boot.exit_code);
-  SettleMemoryClaim(code == 0);
-  // Direct owners stop in deterministic reverse order: application/runtime,
-  // then observational sinks, then process-level signal state at exit.
+  // Owners stop in reverse order: runtime, then sinks, then signal state.
   boot.context.reset();
   observability.Shutdown();
   return code;
@@ -235,9 +229,12 @@ int HeadlessMain(Options options, char* executable,
 }  // namespace
 
 int Main(int argc, char** argv) {
-  // Both hidden modes are re-execs of this binary that must do their one job
-  // before any of the startup below runs: the sandbox trampoline in particular
-  // has to confine itself while it is still the only thing in the process.
+  if (argc == 2 && std::string_view(argv[1]) == "--build-id") {
+    printf("%s\n", std::string(BuildIdentity()).c_str());
+    return 0;
+  }
+  // Both hidden modes are re-execs that run before any startup below: the
+  // sandbox trampoline has to confine itself while it is alone in the process.
   if (argc > 2 && std::string(argv[1]) == "--sandbox-child") {
     return SandboxChildMain(argc, argv);
   }
@@ -249,10 +246,22 @@ int Main(int argc, char** argv) {
   }
   InitializeProcess();
   SetExecutablePath(argv[0]);
+  if (argc > 1 && (std::string_view(argv[1]) == "--execution-start" ||
+                   std::string_view(argv[1]) == "--execution-worker")) {
+    return execution::Main(argc, argv);
+  }
+  if (argc == 3 && std::string_view(argv[1]) == "--check-remote-bundle") {
+    std::string error;
+    if (web::CheckRemoteBundle(argv[2], error)) return 0;
+    fprintf(stderr, "%s\n", error.c_str());
+    return 2;
+  }
   if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
     return session::WorkerMain(argc, argv);
   }
-  if (argc == 2 && std::string_view(argv[1]) == "setup") return SetupMain();
+  if (argc >= 2 && std::string_view(argv[1]) == "setup") {
+    return SetupMain(argc, argv);
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--browser-service") {
     return browser::ServiceMain(3);
   }

@@ -1,6 +1,5 @@
-// While you follow a conversation, what arrives glides in: the view eases
-// to the end, a new row fades in where it lands (never on load), and your
-// sent message rises from the input. With motion off, all of it is instant.
+// While a conversation is followed, what arrives glides in: the view eases to
+// the end, a new row fades in (never on load), a sent message rises.
 import { test, expect, online, selectProbeModel } from "./fixtures.js";
 
 // Rows that fade in, and the sent message's rise, from the next send on.
@@ -65,7 +64,6 @@ test("what arrives glides in, and nothing animates on load", async ({
   await page.goto(`/#session=${session.id}`);
   await online(page);
   await send(page, "Exploration probe");
-  // A reload draws the same rows without fading them in.
   await page.reload();
   await online(page);
   await watch(page);

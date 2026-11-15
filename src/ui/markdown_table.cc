@@ -12,9 +12,8 @@
 namespace uagent {
 namespace {
 
-// ANSI escapes are zero-width to DisplayWidth, and TerminalSafe has already
-// removed any raw escape the model could have emitted, so the rendered string
-// measures exactly like its visible text.
+// ANSI escapes are zero-width to DisplayWidth and TerminalSafe removed any
+// raw escape, so the rendered string measures like its visible text.
 std::string RenderCell(const std::string& text, size_t& visible_columns) {
   std::string output;
   bool bold = false, italic = false, code = false;

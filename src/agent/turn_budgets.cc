@@ -15,15 +15,12 @@
 #include "src/agent/turn_internal.h"
 
 namespace uagent {
-// Every ordinary turn failure records the same terminal state and notice.
 void Agent::FailTurn(TurnExecution& state, std::string message) {
   last_error_ = std::move(message);
   state.stop.outcome = TurnOutcome::kError;
   Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
 }
 
-// Every bound the turn enforces ends the same way: record why, mark the turn,
-// and say so in red.
 void Agent::FailBudget(TurnExecution& state, TurnStopReason reason,
                        std::string message) {
   last_error_ = std::move(message);
@@ -136,9 +133,8 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
         "tool call limit reached (" + std::to_string(max_tool_calls) + ")");
     return false;
   }
-  // Valid repetition is counted here and advised on by ExecuteToolCalls once
-  // the results are in; deterministic schema/policy rejections use a separate
-  // lower bound because the same request cannot start succeeding.
+  // Valid repetition is advised on by ExecuteToolCalls once results are in;
+  // deterministic rejections use a lower bound: they cannot start succeeding.
   for (const ToolCall& call : calls) {
     const Tool* tool = FindTool(tools_, call.name);
     json arguments = json::parse(call.args, nullptr, false);

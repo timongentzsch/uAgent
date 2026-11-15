@@ -30,12 +30,9 @@ InteractiveReadHandler& ReadHandler() {
   return handler;
 }
 
-// Startup prompts run before the persistent raw-mode composer is mounted. A
-// prior interrupted terminal application can leave ICRNL disabled, in which
-// case a real Enter arrives as an ordinary carriage return and getline waits
-// forever while the terminal echoes "^M". Temporarily establish the minimum
-// cooked-mode contract needed by the fallback line reader, then preserve the
-// caller's original mode for the persistent composer or shell to own.
+// Startup prompts run before the raw-mode composer is mounted. An
+// interrupted application can leave ICRNL off, so Enter arrives as a bare
+// carriage return and getline waits forever; this sets cooked mode in scope.
 class ScopedCookedInput {
  public:
   ScopedCookedInput() {
@@ -262,10 +259,8 @@ std::string InputPrompt() {
 
 std::string UserEchoRow(const std::string& prompt, const std::string& text) {
   // InputPrompt ends in RST(), which clears the background, so the band is
-  // re-armed after it. A row the text wraps onto fills itself; one it ends
-  // with a real newline does not, so each newline closes and reopens the band.
-  // The composer echoes a glyph instead of a newline, so that loop only does
-  // anything on the reprint path, where the raw text is passed through.
+  // re-armed after it. A wrapped row fills itself; one ended by a real newline
+  // does not, so each newline closes and reopens the band.
   std::string row = "\r" + std::string(InputBg()) + prompt + InputBg();
   for (size_t at = 0; at < text.size(); ++at) {
     if (text[at] == '\n') {
@@ -276,8 +271,7 @@ std::string UserEchoRow(const std::string& prompt, const std::string& text) {
       row += text[at];
     }
   }
-  // Terminals already stamp scrollback lines; the stored per-message time
-  // stays in the display facts for the browser.
+  // The stored per-message time is shown by the browser, not here.
   return row + EraseToEol() + RST();
 }
 

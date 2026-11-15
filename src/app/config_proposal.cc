@@ -26,8 +26,6 @@ namespace {
 constexpr auto kProposalLifetime =
     std::chrono::minutes(kProposalLifetimeMinutes);
 
-// A neighbouring line in the diff may assign a secret this change does not
-// touch, so both sides are sanitized before any hunk is built.
 bool EnvironmentReference(const std::string& value) {
   size_t begin = 0;
   size_t end = value.size();
@@ -159,10 +157,9 @@ std::string SanitizeCompositeValue(const std::string& value) {
   return changed ? JsonDump(parsed) : value;
 }
 
-// A providers value a person edited, with each key they left hidden put back
-// from what is held: under the provider's name, or the name it had when the
-// screen renamed it (`renamed_from`, which is not stored). Empty with `error`
-// when a hidden key has nothing behind it.
+// A providers value a person edited, with each hidden key put back from what
+// is held under the provider's name or its `renamed_from`. Empty with
+// `error` when a hidden key has nothing behind it.
 static std::string KeepHiddenKeys(const std::string& value,
                                   const std::string& held, std::string& error) {
   json providers = json::parse(value, nullptr, false);
@@ -184,9 +181,8 @@ static std::string KeepHiddenKeys(const std::string& value,
 }
 
 // The providers a tool call names, merged into what is held: each replaces
-// the entry of its name and null removes one, so the others, and the keys
-// the agent is never shown, stay as they are. Empty with `error` when the
-// held value is not an object (a reference to a variable).
+// the entry of its name, null removes one, the rest stay. Empty with `error`
+// when the held value is not an object.
 static std::string MergeProviders(const std::string& value,
                                   const std::string& held, std::string& error) {
   json merged =

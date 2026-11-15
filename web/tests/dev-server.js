@@ -1,7 +1,5 @@
-// The Vite dev server the render-count spec loads the app from, on a port
-// taken from this checkout's path, so runs in two checkouts seldom meet.
-// When they do the second fails to start its server: one is never reused,
-// since it may serve another tree.
+// The dev server's port comes from this checkout's path, so runs in two
+// checkouts seldom meet. A server is never reused: it may serve another tree.
 const here = new URL("..", import.meta.url).pathname;
 let hash = 0;
 for (const letter of here) hash = (hash * 31 + letter.charCodeAt(0)) % 1000;

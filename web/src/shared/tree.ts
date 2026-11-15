@@ -1,6 +1,6 @@
-// The transcript as the host sends it: a list of nodes that name their
-// parent, drawn as one tree. A detail level is only how deep the tree starts
-// open; nothing here knows a tool, a provider or a model.
+// The transcript as the host sends it: nodes that name their parent, drawn
+// as one tree. Nothing here knows a tool, a provider or a model.
+import { plural } from "./quantities.ts";
 import type { NodePatch, Node } from "./types.ts";
 
 // A node and the nodes under it, oldest first.
@@ -24,12 +24,18 @@ export const isRow = (node: Node) => !!node.headline;
 // Whether a row `depth` rows deep starts open at a level `level` deep.
 // Routine rows show only when everything does.
 export const opens = (depth: number, level: number) => depth < level;
-export const visible = (node: Node, level: number) =>
-  !node.routine || level === Infinity;
+// Thinking shows only where it is switched on, at any level.
+export const visible = (node: Node, level: number, thinking: boolean) =>
+  (!node.routine || level === Infinity) &&
+  (node.kind !== "thinking" || thinking);
 
-// A row's headline as one line: "Ran npm test".
-export const headlineOf = (node: Node) =>
-  [node.headline?.verb, node.headline?.target].filter(Boolean).join(" ");
+// A row's headline as one line: "Ran npm test". A work counts its thoughts
+// where thinking is shown.
+export const headlineOf = (node: Node, thinking = false) =>
+  [node.headline?.verb, node.headline?.target].filter(Boolean).join(" ") +
+  (thinking && node.result?.thoughts
+    ? `, ${plural(node.result.thoughts, "thought")}`
+    : "");
 
 // The newest row under a row: what a closed running row says it is doing.
 export function currentStep(branch: Branch): string | undefined {
@@ -37,10 +43,9 @@ export function currentStep(branch: Branch): string | undefined {
   return step && headlineOf(step.node);
 }
 
-// Where each node of a list is drawn, in order: a row with what opens under
-// it, any other node followed by the nodes under it, at its own level. A
-// footer carries its turn's answer, whose time and menu it shows; a running
-// row counts from the time of what it is under.
+// Where each node of a list is drawn, in order. A footer carries its turn's
+// answer, whose time and menu it shows; a running row counts from the time
+// of what it is under.
 export interface Item {
   branch: Branch;
   answer?: Node;
@@ -49,13 +54,14 @@ export interface Item {
 export function layout(
   branches: Branch[],
   level: number,
+  thinking: boolean,
   since?: string,
 ): Item[] {
   const answer = branches.findLast(
     (branch) => branch.node.role === "assistant",
   )?.node;
   return branches
-    .filter((branch) => visible(branch.node, level))
+    .filter((branch) => visible(branch.node, level, thinking))
     .flatMap((branch) =>
       isRow(branch.node)
         ? [{ branch, since }]
@@ -64,13 +70,12 @@ export function layout(
               branch,
               answer: branch.node.kind === "footer" ? answer : undefined,
             },
-            ...layout(branch.kids, level, branch.node.time ?? since),
+            ...layout(branch.kids, level, thinking, branch.node.time ?? since),
           ],
     );
 }
 
-// A long list of rows: the earlier ones folded into one line, and the
-// latest `max` shown.
+// The earlier rows folded away, and the latest `max` shown.
 export function fold(kids: Branch[], max: number): [Branch[], Branch[]] {
   const earlier = Math.max(0, kids.length - max);
   return [kids.slice(0, earlier), kids.slice(earlier)];
@@ -110,10 +115,9 @@ export function grow(nodes: Node[]): Branch[] {
   return roots.map(branch);
 }
 
-// One patch applied to the held nodes. A new node goes before the first
-// node under it, else in sequence order (a late saved node never strands
-// older content after newer), else last: the host's own rule
-// (view_reducer.cc), so both hold the same order.
+// A new node goes before the first node under it, else in sequence order,
+// else last: the host's own rule (view_reducer.cc), so both hold the same
+// order.
 export function placeNode(nodes: Node[], patch: NodePatch): Node[] {
   const id = patch.node?.id ?? patch.id;
   // Streaming patches the newest nodes: search from the end.

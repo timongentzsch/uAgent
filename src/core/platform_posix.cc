@@ -258,9 +258,8 @@ bool ProcMountShowsEveryProcess(std::string_view mountinfo) {
   return shown;
 }
 
-// Strictly conservative: "no live member" is answered only on positive
-// evidence, and anything unexpected (a read error, nothing found, a hidden or
-// foreign /proc) answers "alive", which is what the group probe alone says.
+// Conservative: anything unexpected (a read error, nothing found, a hidden or
+// foreign /proc) answers "alive".
 bool ProcessGroupHasLiveMember(pid_t group) {
 #ifdef __APPLE__
   int query[] = {CTL_KERN, KERN_PROC, KERN_PROC_PGRP, group};

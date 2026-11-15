@@ -27,7 +27,6 @@ test("Shift-click adds the run from the anchor, either way, across places", () =
     "b",
     "c",
   ]);
-  // It adds to what is picked; the anchor stays for the next run.
   const more = ranged(toggled(toggled(NONE, "/ws"), "c"), "d", order);
   assert.deepEqual(ids(more), ["/folder", "/ws", "c", "d"]);
   assert.equal(more.anchor, "c");
@@ -35,7 +34,6 @@ test("Shift-click adds the run from the anchor, either way, across places", () =
 
 test("Shift-click with nothing picked picks that row", () => {
   assert.deepEqual(ids(ranged(NONE, "b", order)), ["b"]);
-  // A row the list no longer shows changes nothing.
   assert.equal(ranged(NONE, "gone", order), NONE);
 });
 
@@ -44,7 +42,6 @@ test("rows that went away leave the selection", () => {
   assert.deepEqual(ids(kept(picked, order)), ["a", "b"]);
   const same = { ...NONE, ids: new Set(["a"]) };
   assert.equal(kept(same, order), same);
-  // All picked gone: selecting ends, select mode with it.
   assert.equal(
     kept({ ...NONE, ids: new Set(["gone"]), mode: true }, order),
     NONE,

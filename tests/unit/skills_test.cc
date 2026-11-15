@@ -102,7 +102,6 @@ TEST_CASE(TestSkillDiscovery) {
               "---\nname: release\ndescription: how to cut a release\n"
               "requires-tools: run, grep\nargument-hint: <version>\n---\n\n"
               "Run $ARGUMENTS checks from ${SKILL_DIR}, then tag.\n");
-  // No front matter, so nothing to advertise: skipped rather than guessed at.
   write_skill(home / ".uagent/skills/broken", "no front matter here\n");
   skills = LoadSkills(workspace);
   CHECK(skills.size() == 1);
@@ -112,8 +111,7 @@ TEST_CASE(TestSkillDiscovery) {
   CHECK(skills[0].argument_hint == "<version>");
   CHECK(skills[0].dir == (home / ".uagent/skills/release").string());
 
-  // The body arrives without its front matter and names its own directory, so
-  // relative references inside it resolve.
+  // The body names its own directory so relative references in it resolve.
   SkillReadResult body = ReadSkillBody(skills[0]);
   CHECK(body.ok);
   CHECK(body.output.find("Run  checks from " + skills[0].dir) !=
@@ -123,7 +121,6 @@ TEST_CASE(TestSkillDiscovery) {
   // Compaction finds a read skill by this opening.
   CHECK(body.output.starts_with(kSkillMarker));
 
-  // A workspace skill of the same name shadows the global one.
   write_skill(
       workspace / ".uagent/skills/release",
       "---\nname: whatever\ndescription: this repo's release steps\n---\n\n"
@@ -168,8 +165,7 @@ TEST_CASE(TestSkillDiscovery) {
     }
   }
 
-  // An explicit path replaces the defaults outright, so a user can narrow the
-  // catalogue to exactly what they want to pay for.
+  // An explicit path replaces the defaults outright.
   setenv("UAGENT_SKILL_PATH", (home / ".claude/skills").c_str(), 1);
   skills = LoadSkills(workspace);
   CHECK(skills.size() == 1);
@@ -197,7 +193,6 @@ TEST_CASE(TestSkillDiscovery) {
     return skill.name == "vendor-only";
   }));
 
-  // Individual skills can be hidden without replacing every discovery root.
   setenv("UAGENT_SKILL_EXCLUDE", "vendor-only, missing", 1);
   skills = LoadSkills(workspace);
   CHECK(skills.size() == 2);
@@ -217,14 +212,12 @@ TEST_CASE(TestSkillDiscovery) {
   CHECK(many.front().name == "skill-1");
   CHECK(many.back().name == "skill-" + std::to_string(MaxSkills()));
 
-  // Discovery descriptions are bounded before the tool returns them.
   write_skill(
       workspace / ".uagent/skills/verbose",
       "---\ndescription: " + std::string(kSkillDescriptionBytes + 1, 'x') +
           "\n---\n\nBody.\n");
   skills = LoadSkills(workspace);
   for (const Skill& s : skills) {
-    // The over-long one says so; short ones are left alone.
     CHECK(s.description.ends_with("…") == (s.name == "verbose"));
     CHECK(s.description.size() <= kSkillDescriptionBytes + strlen("…"));
   }
@@ -241,8 +234,7 @@ TEST_CASE(TestSkillDiscovery) {
   CHECK(catalogue.find("skill-63") != std::string::npos);
   CHECK(catalogue.find(':') == std::string::npos);
 
-  // Like Codex and OpenCode, the model sees bounded metadata up front while
-  // exact selection still defers the full body.
+  // The model sees bounded metadata up front; selection defers the body.
   skills = LoadSkills(workspace);
   Tool tool = SkillTool(skills, {});
   CHECK(tool.name == "skill");
@@ -277,9 +269,8 @@ TEST_CASE(TestSkillDiscovery) {
   CHECK(misspelled.output.find("did you mean vendor-only?") !=
         std::string::npos);
 
-  // A skill written during the session is not in the catalogue the request
-  // advertises, which stays fixed to keep the prompt prefix cacheable. Asking
-  // for it by name still has to work, or authoring one would need a restart.
+  // The advertised catalogue stays fixed to keep the prompt prefix cacheable; a
+  // skill written during the session is still found by name.
   setenv("UAGENT_SKILL_PATH", (home / ".claude/skills").c_str(), 1);
   Tool frozen = SkillTool(LoadSkills(workspace), {"run"});
   CHECK(!frozen.run({{"name", "just-written"}}, {}).Ok());
@@ -325,8 +316,7 @@ TEST_CASE(TestImportFromOtherAgents) {
         "The Python class `Task` and `Read` it.\n");
   CHECK(RewriteToolReferences("Call `exec_command` or the Task tool.\n") ==
         "Call `run` or the agent_start tool.\n");
-  // Front matter lists come out as the plain comma list the loader reads,
-  // whether written quoted, as an array or as a block.
+  // Quoted, array or block: lists come out as the comma list the loader reads.
   const std::string lists = RewriteToolReferences(
       "---\ndescription: d\nallowed-tools: \"Bash, Read\"\n"
       "tools: [Bash, \"Read\", Grep]\n"
@@ -512,7 +502,6 @@ TEST_CASE(TestImportBoundaries) {
   CHECK(fs::is_empty(test.root / "stolen"));
   fs::remove(managed);
 
-  // Only the sources asked for are walked, and a listing is bounded.
   CHECK(ImportControl({{"action", "list"}, {"only", "memory"}},
                       test.workspace)["items"]
             .empty());
@@ -543,7 +532,6 @@ TEST_CASE(TestImportTruncation) {
   json named =
       ImportControl({{"action", "run"}, {"key", "s99"}}, test.workspace);
   CHECK(named["imported"].size() == 1);
-  // "all" says it stopped short, and a repeat reaches what it left.
   json first =
       ImportControl({{"action", "run"}, {"key", "all"}}, test.workspace);
   CHECK(first["imported"].size() == 512);

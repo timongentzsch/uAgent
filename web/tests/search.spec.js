@@ -1,6 +1,6 @@
 // Search: words in any conversation from Mod+K, and a find bar that steps
 // through every occurrence in the open one.
-import { test, expect, saveHistory } from "./fixtures.js";
+import { connected, test, expect, saveHistory } from "./fixtures.js";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -29,8 +29,7 @@ async function seed(page, host) {
         },
       ],
     },
-    // The message holds the model's hint too; a person reads, and search
-    // finds, the output its facts keep.
+    // The message holds the model's hint too; search finds what its facts keep.
     {
       role: "tool",
       tool_call_id: "call-1",
@@ -52,7 +51,7 @@ async function seed(page, host) {
     },
   };
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   await saveHistory(host, "needle.json", {
     id: "needle",
     title: "Needle",
@@ -82,8 +81,6 @@ test("search finds words in another conversation and opens it at them", async ({
       name: "Search conversations, messages, commands and settings",
     })
     .fill("quokka");
-  // Grouped by place, then by conversation: its name once, its hits under
-  // it, each with the words marked.
   const group = search.getByRole("group").filter({ hasText: "Needle" });
   await expect(group.getByRole("option").first()).toContainText("Needle");
   await expect(group.getByRole("option").first()).toContainText("3 matches");
@@ -92,7 +89,6 @@ test("search finds words in another conversation and opens it at them", async ({
     .filter({ hasText: "Where did the quokka go?" });
   await expect(hit.locator("mark")).toHaveText("quokka");
   await hit.click();
-  // The row is pages back: they load until it is there, in view.
   const bar = findBar(page);
   await expect(bar.getByRole("searchbox")).toHaveValue("quokka");
   await expect(bar).toContainText("1 of 4");
@@ -119,7 +115,6 @@ test("the find bar steps through every occurrence and opens folded rows", async 
   const field = bar.getByRole("searchbox");
   await expect(field).toBeFocused();
   await field.fill("QUOKKA");
-  // It starts on the newest: the command's output, opened to show it.
   await expect(bar).toContainText("4 of 4");
   await expect(page.getByText("found a quokka here")).toBeInViewport();
   await field.press("Shift+Enter");
@@ -129,7 +124,6 @@ test("the find bar steps through every occurrence and opens folded rows", async 
   ).toBeInViewport();
   await field.press("Enter");
   await field.press("Enter");
-  // Past the last it wraps to the first, a page back.
   await expect(bar).toContainText("1 of 4");
   await expect(
     page.locator(".transcript .message").filter({ hasText: "Where did" }),
@@ -138,7 +132,6 @@ test("the find bar steps through every occurrence and opens folded rows", async 
   await field.press("Escape");
   await expect(bar).toHaveCount(0);
   await expect.poll(() => marked(page, "find")).toBe(false);
-  // Mod+F opens it again over the conversation.
   await page.keyboard.press(`${mod}+f`);
   await expect(findBar(page).getByRole("searchbox")).toBeFocused();
 });
@@ -159,7 +152,7 @@ test("the find bar keeps focus on words the transcript does not show", async ({
   host,
 }) => {
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   // The host counts the link's address; the message shows only its text.
   await saveHistory(host, "burrow.json", {
     id: "burrow",
@@ -177,20 +170,17 @@ test("the find bar keeps focus on words the transcript does not show", async ({
   await expect(field).toBeFocused();
   await field.pressSequentially("numbat");
   await expect(findBar(page)).toContainText("1 of 1");
-  // Landing on its row opens no menu there, so typing goes on in the field.
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(field).toBeFocused();
 });
 
-// Spotlight's own shape and keys: centered high, every hit marked, places in
-// their order, more under a conversation, ">" for commands, Esc stepping back.
 test("search is a centered panel that groups, marks and steps back", async ({
   page,
   host,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   const far = `${"Ordinary words go on for a while. ".repeat(8)}a wombat`;
   await saveHistory(host, "far.json", {
     id: "far",
@@ -238,17 +228,13 @@ test("search is a centered panel that groups, marks and steps back", async ({
   await expect(
     search.getByRole("option", { name: /Write one more/ }),
   ).toHaveCount(0);
-  // Every hit shows its mark, however far into its message the words are.
   const hits = search.locator(".spotlight-snippet");
   await expect(hits).toHaveCount(4);
   for (const hit of await hits.all())
     await expect(hit.locator("mark")).toHaveText("wombat");
   await expect(search).toContainText("3 more in this conversation");
-  // The selected hit (under the first conversation) shows its neighbourhood
-  // beside the list.
   await field.press("ArrowDown");
   await expect(search.getByLabel("Preview").locator("mark")).not.toHaveCount(0);
-  // ">" lists only actions, commands and settings.
   await field.fill(">shortcut");
   await expect(search.getByRole("group").first()).toContainText(
     "Actions & commands",
@@ -260,13 +246,11 @@ test("search is a centered panel that groups, marks and steps back", async ({
   await expect(search.getByText("No command matches.")).toBeVisible();
   await field.fill(">approval");
   await expect(permissions).toHaveCount(1);
-  // Esc clears first, then closes.
   await field.press("Escape");
   await expect(field).toHaveValue("");
   await expect(search).toBeVisible();
   await field.press("Escape");
   await expect(search).toHaveCount(0);
-  // A phone has no preview.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.keyboard.press(`${mod}+k`);
   await search.getByRole("combobox").fill("wombat");

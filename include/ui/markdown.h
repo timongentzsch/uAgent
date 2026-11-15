@@ -2,8 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_UI_MARKDOWN_H_
 #define UAGENT_INCLUDE_UI_MARKDOWN_H_
-// Streaming Markdown-to-ANSI state. The parser implementation is compiled once
-// in src/ui/markdown.cc; the terminal presenter owns this value type.
+// Streaming Markdown-to-ANSI state.
 
 #include <cstddef>
 #include <string>
@@ -29,9 +28,8 @@ class MdStream {
   std::string math_text;
   int star = 0;
   bool linestart = true;
-  // Blank lines are withheld until text follows: a run of them collapses to
-  // one, and a run at the end of the stream disappears. Models routinely end
-  // a message with several, and each one is a wasted terminal row.
+  // Blank lines are withheld until text follows: a run collapses to one, and
+  // a run at the end of the stream disappears.
   size_t blank_held = 0;
   std::string pre;
   // Rendered bytes waiting for one write, drained at every entry point's exit.
@@ -72,8 +70,7 @@ class MdStream {
   void ReplayMath();
   void EndLine();
   void ReleaseBlanks();
-  // prev_raw and prev_rows describe the same line and are always reset
-  // together.
+  // prev_raw and prev_rows describe the same line and reset together.
   void ForgetPreviousLine();
   void RetroTable();
   // A table that never ends is rendered in pieces rather than held.

@@ -32,11 +32,9 @@ void AddStreamAnnotation(const json& annotation, ChatResult& result) {
   result.semantic_progress = true;
 }
 
-// OpenAI-compatible streams number parallel tool calls with `index`. A
-// provider that omits it would otherwise pile every fragment into slot 0 and
-// yield one call whose arguments merge two schemas, so key on the call id
-// instead: a known id continues its slot, an unseen id opens the next one, and
-// an anonymous fragment continues the newest slot.
+// A provider that omits `index` would pile every fragment into slot 0, so
+// slots key on the call id: a known id continues its slot, an unseen id
+// opens the next, an anonymous fragment continues the newest.
 int StreamToolSlot(const std::map<int, ToolCall>& calls,
                    const std::string& id) {
   if (calls.empty()) return 0;
@@ -104,8 +102,7 @@ std::string AddReasoningDetails(const json& details, ChatResult& result) {
 
 void ApplyStreamError(const json& error, ChatResult& result,
                       std::string fallback) {
-  // A provider may send the error as a bare string; it is classified and
-  // shown like an object's message.
+  // A provider may send the error as a bare string.
   result.retryable =
       ApplyRemoteError(error, result) || BarrenStreamError(result);
   result.error = error.is_string()
@@ -113,13 +110,11 @@ void ApplyStreamError(const json& error, ChatResult& result,
                      : JsonValue(error, "message", std::move(fallback));
 }
 
-// OpenAI Chat Completions and compatible providers.
 WireStreamDelta DecodeChatCompletionsEvent(
     const json& value, ChatResult& result,
     std::map<int, ToolCall>& tool_calls) {
   WireStreamDelta delta;
-  // OpenRouter picks the upstream per request and names it on every chunk,
-  // errors included: the one way to trace a fault to who caused it.
+  // OpenRouter names the upstream it picked on every chunk, errors included.
   if (result.generation_id.empty()) {
     result.generation_id = JsonValue(value, "id", "");
   }
@@ -138,8 +133,7 @@ WireStreamDelta DecodeChatCompletionsEvent(
     return delta;
   }
   // Some providers inject the bare {"type":"…error","message":"…"} shape
-  // rather than the documented envelope. Falling through would drop it as an
-  // unrecognized frame and end the stream with no diagnosis at all.
+  // rather than the documented envelope.
   if (!value.contains("choices") && envelope->contains("message") &&
       (*envelope)["message"].is_string() &&
       JsonValue(*envelope, "type", "").ends_with("error")) {
@@ -295,9 +289,8 @@ int HostedToolRank(HostedToolPhase phase) {
   return -1;
 }
 
-// What a search is tracked under. Providers always name one, but a stream
-// that omits the id still has a stable slot, and correlating by position is
-// what keeps a nameless search from merging with the next one.
+// What a search is tracked under: its id, or its slot when the stream omits
+// one, so a nameless search never merges with the next.
 std::string HostedToolKey(const std::string& id, int slot) {
   return id.empty() ? "#" + std::to_string(slot) : id;
 }
@@ -308,9 +301,8 @@ HostedToolPhase SearchStopPhase(std::string_view status) {
              : HostedToolPhase::kCompleted;
 }
 
-// Record one step of a hosted search, reporting it only when it advances that
-// search. Counting rides the same key, so a provider repeating a terminal
-// event neither doubles the request count nor the step the presenter sees.
+// Records one step of a hosted search, reporting and counting it only when
+// it advances that search: providers repeat terminal events.
 void MarkHostedTool(WireStreamDelta& delta, HostedToolState& state,
                     const std::string& key, std::string id,
                     HostedToolPhase phase, int64_t source_count,
@@ -502,9 +494,8 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
     if (item_type == "web_search_call") {
       const json* action = JsonObject(*item, "action");
       std::string id = JsonValue(*item, "id", "");
-      // The key reads `id` and the same call then moves it. Argument
-      // evaluation order is unspecified, so the key is built first rather
-      // than racing the move.
+      // The key reads `id` before the call moves it: argument evaluation order
+      // is unspecified.
       std::string key = HostedToolKey(id, ResponsesSlot(value, state, calls));
       MarkHostedTool(delta, state.hosted, key, std::move(id),
                      type.ends_with(".added")
@@ -731,8 +722,7 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
                event_delta->contains("citation")) {
       const json& citation = (*event_delta)["citation"];
       if (citation.is_object()) {
-        // The block's shape is the provider's: a "citations" that arrived as
-        // anything but an array has no push_back to call.
+        // A "citations" that arrived as anything but an array has no push_back.
         json& citations = block.block["citations"];
         if (citations.is_null()) citations = json::array();
         if (citations.is_array()) citations.push_back(citation);
@@ -749,11 +739,7 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
                         "", true);
     }
     if (JsonValue(block.block, "type", "") == "tool_use") {
-      ToolCall& call = calls[index];
-      if (call.args.empty() && block.block.contains("input")) {
-        call.args = JsonDump(block.block["input"]);
-      }
-      json parsed = json::parse(call.args, nullptr, false);
+      json parsed = json::parse(calls[index].args, nullptr, false);
       if (!parsed.is_discarded()) block.block["input"] = std::move(parsed);
     } else if (!block.input.empty()) {
       json parsed = json::parse(block.input, nullptr, false);

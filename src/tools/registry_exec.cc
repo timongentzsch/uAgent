@@ -2,6 +2,7 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -22,7 +23,6 @@ namespace uagent {
 void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace,
                        const RootPassword& root_password) {
-  // The limits in the schemas are filled in from their constants.
   json run_schema = json::parse(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "description":{"type":"string",
@@ -91,9 +91,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
               // only the remote end is root.
               if (host.empty()) spec.sandbox = false;
             } else if (root_password) {
-              // Its own sudo, wherever bash meets it (a pipe, $(…), a bash
-              // script), says what to use instead of waiting on a prompt
-              // nobody answers: no reading of the command text.
+              // A bash function named sudo says what to use, wherever bash
+              // meets it, instead of waiting on a prompt nobody answers.
               spec.environment.emplace_back(
                   "BASH_FUNC_sudo%%",
                   "() { echo 'use run root=true (host=user@machine for "
@@ -111,20 +110,17 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
         {"type", "string"},
         {"description", "with root: user@machine to run it on over ssh"}};
   }
-  // The hatch exists only where there is something to escape. Advertising it
-  // unconditionally would spend schema tokens on an argument that does nothing,
-  // and invite the model to reach for it on a host that never confined
-  // anything. `scratch` and `grep` get none: neither has a use for one.
+  // Offered only where there is a sandbox to leave: elsewhere the argument
+  // would do nothing.
   if (SandboxRuntime().mode != SandboxMode::kOff) {
     run.parameters["properties"]["sandbox"] =
         json{{"type", "boolean"},
              {"description",
               "false runs outside the OS sandbox; always asks a person"}};
   }
-  // Mandatory rather than mutating: an approval a person did not give is an
-  // approval this must not have. Yolo, remembered grants and headless
-  // sessions all fall to a denial, so a delegated child cannot unconfine
-  // itself, or become root, no matter what it was launched with.
+  // Mandatory, not mutating: yolo, remembered grants and headless sessions
+  // all end in a denial, so a delegated child cannot unconfine itself or
+  // become root.
   run.approval_class = [confined = SandboxRuntime().mode !=
                                    SandboxMode::kOff](const json& a) {
     return JsonValue(a, "root", false) ||
@@ -132,8 +128,6 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                ? ApprovalClass::kMandatoryHuman
                : ApprovalClass::kNone;
   };
-  // What that means, said where it is approved: the sandbox is all that
-  // keeps a command from these.
   run.mandatory_reason = [](const json& a) -> std::string {
     if (!JsonValue(a, "root", false)) {
       return "runs without the OS sandbox: it can reach saved logins, "
@@ -182,79 +176,33 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
     return parts;
   };
 
-  // Offer only installed runtimes; each extension checks its interpreter.
-  if (ExecutableOnPath("uv") || ExecutableOnPath("python3") ||
-      ExecutableOnPath("node") || ExecutableOnPath("sh")) {
-    json scratch_schema = json::parse(
-        R"json({"type":"object","additionalProperties":false,"properties":{
-                    "path":{"type":"string","minLength":1,
-                      "description":"the script's path relative to .uagent/scratch"},
-                    "code":{"type":"string","minLength":1,
-                      "description":"the script's text: written to path, then run"},
-                    "args":{"type":"array","items":{"type":"string"},"maxItems":32,
-                      "description":"argv for this run, read from sys.argv or $@"}},
-                    "required":["path"]})json");
-    json& scratch_properties = scratch_schema["properties"];
-    scratch_properties["code"]["maxLength"] = kToolTextArgChars;
-    scratch_properties["args"]["items"]["maxLength"] = kToolArgChars;
-    Tool& python = AddTool(
-        tools,
-        MakeTool(
-            "scratch",
-            "Run a one-off script under .uagent/scratch, never code the "
-            "user asked for: a .py with a PEP 723 `# /// script` header runs "
-            "under isolated uv (its packages go in that header, never pip), a "
-            ".sh under sh, .js/.mjs under installed node. "
-            "Give code to write the script and run it in this call; without "
-            "code the file at path runs "
-            "again, with new args, instead of a long pipeline resent through "
-            "run.",
-            std::move(scratch_schema),
-            [&supervisor, workspace](const json& a,
-                                     const ToolContext& context) {
-              if (a.contains("code")) {
-                std::string error;
-                const auto script = ScratchScriptPath(
-                    workspace, JsonValue(a, "path", ""), error);
-                if (!script ||
-                    !AtomicWriteFile(script->string(), JsonValue(a, "code", ""),
-                                     kSharedFileMode, /*preserve_mode=*/false,
-                                     error)) {
-                  return ToolFailure(ToolErrorCode::kInvalidArguments, error);
-                }
-              }
-              return ToolRunScratch(
-                  supervisor, workspace, JsonValue(a, "path", ""),
-                  JsonValue(a, "args", json(nullptr)), context);
-            }));
-    python.mutating = true;
-    python.capabilities = Capability(ToolCapability::kExecute) |
-                          Capability(ToolCapability::kMutate);
-    python.headline = [](const json& a) {
-      return Headline{
-          "Running", "Ran",
-          JsonValue(a, "path", "") +
-              ScratchArgvLabel(JsonValue(a, "args", json(nullptr)))};
-    };
-    python.present = [](const json& a) {
-      return json::array(
-          {CommandPart(JsonValue(a, "path", "") +
-                       ScratchArgvLabel(JsonValue(a, "args", json(nullptr))))});
-    };
-    // Running is what a person approves, so they read what will run.
-    python.approval_preview = [workspace](const json& a) {
-      if (a.contains("code")) {
-        return Utf8Trunc(JsonValue(a, "code", ""), kPreviewChars);
-      }
-      std::string error;
-      const auto script =
-          ScratchScriptPath(workspace, JsonValue(a, "path", ""), error);
-      if (!script) return error;
-      return Utf8Trunc(ReadFile(*script, kPreviewChars + 1).value_or(""),
-                       kPreviewChars);
-    };
-    python.timeout_s = 0;  // bounded by the turn; no model-driven polling
-  }
+  // Running is what a person approves, so a script the agent wrote for it
+  // is shown under the command that starts it.
+  run.approval_preview = [workspace](const json& a) {
+    std::string preview = JsonValue(a, "command", "");
+    const std::filesystem::path scratch =
+        CanonicalAccessPath(ScratchDir(workspace).string());
+    std::filesystem::path script;
+    size_t named = 0;
+    for (size_t at = 0; at < preview.size();) {
+      const size_t end =
+          std::min(preview.find_first_of(" \t\n", at), preview.size());
+      std::string word = preview.substr(at, end - at);
+      std::erase_if(word, [](char c) { return c == '\'' || c == '"'; });
+      at = end + 1;
+      if (word.find(".uagent/scratch/") == std::string::npos) continue;
+      script = CanonicalAccessPath((workspace / word).string());
+      ++named;
+    }
+    std::error_code ec;
+    if (named != 1 || !PathWithin(script, scratch) ||
+        !std::filesystem::is_regular_file(script, ec)) {
+      return preview;
+    }
+    return preview + "\n\n" + script.filename().string() + ":\n" +
+           Utf8Trunc(ReadFile(script, kPreviewChars + 1).value_or(""),
+                     kPreviewChars);
+  };
 }
 
 }  // namespace uagent

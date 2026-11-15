@@ -3,13 +3,10 @@ import type { ComponentChildren } from "preact";
 import { plural } from "./quantities.ts";
 import { Actions, Button } from "./ui.tsx";
 
-// The one confirmation for deleting what a list has selected (the sidebar's
-// and the Library's): it names them, says what goes and what stays, then
-// deletes each the way its own menu does, one after another. What could not
-// be deleted is said, with why, and stays selected.
+// Deletes each entry the way its own menu does, one after another. What
+// could not be deleted is said, with why, and stays selected.
 
 export interface Doomed {
-  // The selection's id for it.
   key: string;
   name: string;
   remove: () => Promise<unknown>;

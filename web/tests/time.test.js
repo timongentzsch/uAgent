@@ -35,6 +35,15 @@ test("smart stamps grow from a clock to a date as they age", () => {
   assert.ok(older.includes("2024"), older);
 });
 
+test("a brief stamp says the clock today and only the day once that is past", () => {
+  const prefs = { clock: "24", style: "smart" };
+  const brief = (date) => formatMoment(date, prefs, now, undefined, true);
+  assert.equal(brief(at(0)), clock24(at(0)));
+  for (const days of [1, 3, 40])
+    assert.ok(!brief(at(days)).includes(clock24(at(days))), brief(at(days)));
+  assert.ok(formatMoment(at(1), prefs, now).startsWith(brief(at(1))));
+});
+
 test("the clock preference forces 12 or 24 hours", () => {
   const evening = at(0, 20, 5);
   assert.ok(

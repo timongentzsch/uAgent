@@ -1,10 +1,10 @@
 # Changing µAgent configuration
 
-`uagent_configure` persists a setting. It accepts only
+`uagent` with action `set` persists a setting. It accepts only
 registered setting names, shows the user an exact diff, and commits nothing
 until they approve it. `--yolo` does not apply. An approved preview is good
 for five minutes. A headless or delegated run cannot commit at all: `uagent`
-still inspects, `uagent_configure` is not offered, and the answer is a proposal for the
+offers only `show` there, and the answer is a proposal for the
 user to apply themselves with `/config user KEY=VALUE` or
 `/config project KEY=VALUE`.
 
@@ -15,13 +15,13 @@ else was saved meanwhile and skips the approval.
 
 ## Procedure
 
-1. Read the current effective value and its source with `uagent`, topic
-   `config`, `name` set to the exact setting. Report which layer currently
+1. Read the current effective value and its source with `show` `config`,
+   `name` set to the exact setting. Report which layer currently
    wins: a command-line flag, a process variable or the conversation's own
    choice keeps shadowing a saved setting after it is changed.
 2. Check the `takes_effect` field. Saying a change is live when it needs a
    restart is the failure this step exists to prevent.
-3. Call `uagent_configure` with `scope` `user` for all
+3. Call `set` with `scope` `user` for all
    conversations, or `project` for the conversations in this folder. Pass
    `changes` with one entry per setting: `key`, `operation` (`set` or
    `unset`) and, for `set`, `value` as a string. Web host settings
@@ -37,11 +37,22 @@ preview shows the reference and redacts any existing literal credential.
 the others are kept, and `{"name":null}` removes one. Ask
 the user to enter direct credentials, and never echo one that is already set.
 
+## This conversation only
+
+A conversation's own model, effort and approval mode are not saved settings:
+the user chooses them with `/model`, `/effort`, `/permissions` or
+`/config conversation KEY=VALUE`. In the user's own conversation, `uagent`
+with action `command` and that `line` runs one for them: they approve the
+exact line (`--yolo` does not apply), and it runs when the turn ends, so the
+change holds from the next turn. Agents that are already running keep the
+settings they started with.
+
 ## Layers
 
 ```text
 this conversation     its own model and approval mode (/model, /permissions,
-                      /config conversation KEY=VALUE); not set by this tool
+                      /config conversation KEY=VALUE); action command runs
+                      one of those, set does not reach this layer
 command line          --model, --budget, --no-memory, ...
 process environment   exported UAGENT_* variables
 this folder           saved for this folder

@@ -2,9 +2,8 @@
 
 #ifndef UAGENT_SRC_APP_BOOTSTRAP_INTERNAL_H_
 #define UAGENT_SRC_APP_BOOTSTRAP_INTERNAL_H_
-// Module-private split of the bootstrap: bootstrap.cc builds a session,
-// bootstrap_tools.cc assembles its tools and approvals.cc decides what it
-// may run.
+// Module-private parts of the bootstrap, shared by bootstrap.cc,
+// bootstrap_tools.cc and approvals.cc.
 
 #include <filesystem>
 #include <string>

@@ -1,6 +1,5 @@
-// Sending: the message you sent is one row from the tap on, the transcript
-// never shrinks before the answer starts, and "Working" is said once, by the
-// status line under the input.
+// Sending: the sent message is one row from the tap on, the transcript never
+// shrinks before the answer starts, and "Working" is said once.
 import { test, expect, online, selectProbeModel } from "./fixtures.js";
 
 for (const [name, viewport] of [

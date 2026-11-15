@@ -5,7 +5,6 @@ import { test, expect, online } from "./fixtures.js";
 async function open(page, session) {
   await page.goto(`/#session=${session.id}`);
   await online(page);
-  // A plain grey screenshot stand-in, large enough to hold the marks.
   const png = await page.evaluate(async () => {
     const canvas = new OffscreenCanvas(320, 200);
     const ctx = canvas.getContext("2d");
@@ -74,7 +73,6 @@ test("mouse strokes, undo and a noted pin attach as a replacing copy", async ({
   await canvas.click({ position: { x: box.width * 0.7, y: box.height * 0.7 } });
   const note = viewer.getByLabel("Note for pin 1");
   await note.fill("make this blue");
-  // Escape closes the bubble, not the viewer.
   await note.press("Escape");
   await expect(note).toHaveCount(0);
   await expect(viewer).toBeVisible();
@@ -167,9 +165,8 @@ test.describe("touch", () => {
     await zoom.getByRole("button", { name: "Fit" }).click();
     await expect(zoom.locator("output")).toHaveText(level);
 
-    // The toolbar is not what this test covers; right after a synthetic
-    // multi-finger sequence, CI's emulated gesture detector can swallow a
-    // button tap. The canvas itself is still driven by touch.
+    // After a synthetic multi-finger sequence CI's emulated gesture detector
+    // can swallow a button tap, so the toolbar is clicked.
     const pin = viewer.getByRole("button", { name: "Pin" });
     await pin.click();
     await expect(pin).toHaveAttribute("aria-pressed", "true");

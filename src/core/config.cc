@@ -76,7 +76,7 @@ std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
 }
 
 std::string ExpandProcessEnv(const std::string& value) {
-  // A saved setting may be referred to like a variable: it is no longer one.
+  // A saved setting may be referred to like a variable, though it is not one.
   EnvValues settings = CurrentSettings();
   settings["__uagent_value"] = value;
   std::set<std::string> resolving;

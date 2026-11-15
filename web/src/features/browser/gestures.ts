@@ -1,16 +1,11 @@
 import { longPressMs } from "../../shared/limits.ts";
 import type { Point } from "../../shared/zoom.ts";
 
-// The touch vocabulary in one place, in CSS pixels of the device: a tap
-// clicks, a drag scrolls, a hold then drag holds the left button, a
-// two-finger tap right-clicks and a pinch zooms this device's view.
 export const BROWSER_GESTURE = Object.freeze({
   movementSlopPx: 8,
-  // A hold is the app's one long press.
   holdMs: longPressMs,
   tapMs: 300,
-  // One wheel notch per this much finger travel; one notch scrolls Chrome
-  // about 100px, so a notch per 40px feels a little faster than the finger.
+  // Finger travel per wheel notch; a notch scrolls Chrome about 100px.
   wheelStepPx: 40,
 });
 
@@ -22,8 +17,7 @@ export const WHEEL = {
   right: 1 << 6,
 };
 
-// Turns accumulated finger travel into whole wheel notches, natural-scroll
-// style (the content follows the finger), and returns the unspent travel.
+// Whole wheel notches, natural-scroll style, and the unspent travel.
 export function wheelNotches(travel: Point) {
   const step = BROWSER_GESTURE.wheelStepPx;
   const whole = (value: number) => Math.trunc(value / step);

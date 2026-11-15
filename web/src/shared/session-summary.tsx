@@ -3,8 +3,6 @@ import { cost, plural } from "./quantities.ts";
 import { contextLeft } from "../state/context-summary.ts";
 import { Button, DataText, updateChecked } from "./ui.tsx";
 
-// What the composer's one field says of a conversation: context left, turns,
-// cost and guidance waiting. It opens the statistics.
 function SessionSummaryView({
   state,
   queued,

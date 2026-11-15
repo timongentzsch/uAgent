@@ -21,8 +21,7 @@ namespace uagent {
 inline constexpr char kWireReplayField[] = "_uagent_wire_replay";
 // Harness-only metadata: a successful, untruncated read's [path, first, last].
 inline constexpr char kReadRangeField[] = "_uagent_read_range";
-// Harness-only metadata: an explicit prompt-cache breakpoint ends this message
-// (a request whose own tail changes every time sets it on the message before).
+// Harness-only metadata: a prompt-cache breakpoint ends this message.
 inline constexpr char kCacheBreakpointField[] = "_uagent_cache_breakpoint";
 
 struct WireRequest {
@@ -46,13 +45,11 @@ struct WireRequest {
   bool forbid_tool_calls = false;
 };
 
-// Whether a response's replay holds the call or result of a tool the
-// provider ran other than its web search, whose findings the answer carries.
+// Whether a replay holds a provider-run tool other than its web search.
 bool ReplayHoldsHostedTool(const json& replay);
 json EncodeWireRequest(WireApi wire_api, const WireRequest& request);
 
-// Shares the wire encoders above, retaining only unchanged per-message
-// encodings and the current tool set. No caller-maintained revision is needed.
+// Reuses unchanged per-message encodings and the current tool set.
 class WireRequestCache {
  public:
   json Encode(WireApi wire_api, const WireRequest& request);
@@ -82,10 +79,8 @@ enum class HostedToolPhase : uint8_t {
   kFailed,
 };
 
-// One lifecycle step of a tool the *provider* ran. Deliberately not a
-// ToolCall: nothing here is dispatched, approved, or answered locally, and
-// routing a provider's own search through the tool loop would make it look
-// like a round this agent still owes a result for.
+// One lifecycle step of a tool the provider ran. Not a ToolCall: nothing
+// here is dispatched, approved or answered locally.
 struct HostedToolDelta {
   // The provider's name for it: web_search, code_execution, ...
   std::string tool = "web_search";
@@ -116,15 +111,11 @@ void AddReasoningDelta(WireStreamDelta& delta, std::string part,
                        std::string kind, std::string text,
                        bool complete = false, bool snapshot = false);
 
-// The observable payload of a hosted-tool step. The query is deliberately
-// absent: it would be the one piece of model-chosen prose on a spine whose
-// other transient events carry none, and nothing downstream needs it.
+// The observable payload of a hosted-tool step, without the model's query.
 json HostedToolJson(const HostedToolDelta& delta);
 
-// Both providers report a finished search more than once -- Responses as
-// `web_search_call.completed` and again as `output_item.done` -- so phases are
-// tracked per search and only forward steps are reported. Searches are counted
-// through the same key, which is what keeps one search worth one request.
+// Providers report a finished search more than once, so phases are tracked
+// per search and only forward steps are reported or counted.
 struct HostedToolState {
   std::map<std::string, HostedToolPhase> phases;
   int64_t web_searches = 0;

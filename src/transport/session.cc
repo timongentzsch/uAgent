@@ -53,8 +53,7 @@ bool WriteFrame(int fd, std::string line) {
   line += '\n';
   auto deadline = std::chrono::steady_clock::now() + kConnectTimeout;
   size_t offset = 0;
-  // The socket is non-blocking: write at once, and wait only while it is
-  // full.
+  // The socket is non-blocking: wait only while it is full.
   while (offset < line.size()) {
     ssize_t count = write(fd, line.data() + offset, line.size() - offset);
     if (count > 0) {

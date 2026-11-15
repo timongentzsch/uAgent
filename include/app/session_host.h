@@ -34,6 +34,7 @@
 #include "include/core/file_watch.h"
 #include "include/core/json.h"
 #include "include/core/thread_annotations.h"
+#include "include/core/workspace.h"
 
 namespace uagent::session {
 
@@ -89,13 +90,13 @@ struct HostSession {
   std::string run_id, task_id, launch_prompt, run_result;
   bool run_checkpoint = false, stop_sent = false;
   json launch = json::object();
+  std::string host;
   std::string id, path, cwd, title, draft_title, generation, error, binary;
   SessionStatus status = SessionStatus::kSaved;
-  // `parent` names the session that started an agent; `model` is the one
-  // the file names.
+  // `parent` is the session that started an agent, `model` the file's.
   std::string parent, model;
-  // Its spend, turns and to-do progress as last saved, until its runtime
-  // says.
+  json suggestion = nullptr;
+  // Spend, turns and to-do progress as last saved, until its runtime says.
   double cost = 0;
   int64_t turns = 0;
   json todo = nullptr;
@@ -120,8 +121,17 @@ struct HostSession {
   // Settings that need a restart changed: recycle this runtime once idle.
   bool restart = false;
 
-  // A lifecycle operation owns the session; ordinary commands and catalogue
-  // refreshes must leave it alone. Callers hold the host mutex.
+  bool RestartBusy() const {
+    if (const json* activities = JsonArray(state, "activities")) {
+      for (const json& activity : *activities) {
+        if (ActivityRuns(activity)) return true;
+      }
+    }
+    return turn_active || command_busy || !pending.is_null() ||
+           !active_exchanges.empty() || LifecycleBusy();
+  }
+
+  // A lifecycle operation owns the session. Callers hold the host mutex.
   bool LifecycleBusy() const {
     return closing || status == SessionStatus::kUpdating ||
            status == SessionStatus::kDeleting;
@@ -152,14 +162,11 @@ struct SnapshotResult {
   int status = 200;
 };
 
-// The spaces (workspaces): folders µAgent keeps for conversations that
-// belong to none of the user's folders, each under the name its user gave it.
-// [{path, name}], by name.
+// Folders µAgent keeps for conversations of no user folder: [{path, name}].
 json Spaces();
 // Whether `pins` is a list of at most kMaxPins {kind: session|folder, id}.
 bool ValidPins(const json& pins);
-// The folder of the space called `name`, made when there is none. Empty
-// with `error` when the name cannot be one or the folder cannot be made.
+// The folder of the space `name`, made when missing. Empty with `error`.
 std::string SpaceFolder(const std::string& name, std::string& error);
 
 struct SessionCommandResult {
@@ -193,16 +200,13 @@ class SessionHost {
   // Finishes the moves a stopped host left unfinished, before anything reads
   // the catalogue. Returns why any could not be finished.
   std::vector<std::string> RecoverMoves();
-  // Follows the history on disk: sessions created elsewhere (agents)
-  // appear, and those deleted elsewhere go, each published. A scan
-  // within a second of the last is deferred to RescanDue(), never dropped.
+  // Rescans the history on disk; a scan within a second of the last waits.
   bool RefreshCatalogue(bool force = false);
   std::optional<std::chrono::steady_clock::time_point> RescanDue() const;
   void RefreshPresence();
-  // Marks running runtimes (all, those in `cwd`, or the one named `only`)
-  // for a fresh start that keeps their history: idle ones now, busy ones
-  // when their turn ends.
-  json RestartRunning(const std::string& cwd, const std::string& only = "");
+  // Restarts runtimes (all, in `cwd`, or `only`): idle now, busy at turn end.
+  json RestartRunning(const std::string& cwd, const std::string& only = "",
+                      const std::string& host = "");
   json CommandOutcome(const std::string& worker_request,
                       const std::string& client_request) const {
     return outcomes_.CommandOutcome(worker_request, client_request);
@@ -213,17 +217,12 @@ class SessionHost {
   HostWaitState RunSchedules(bool& recovered);
   void Shutdown();
   json Catalogue() const;
-  // What the host answers itself, for the settings screens: management of
-  // the library, schedules and the like (announced as management.changed
-  // when something changed); a workspace's name or its end, answered with
-  // the spaces after it (announced as spaces.changed); and the settings
-  // saved for a folder or for all.
+  // The settings screens' requests that the host answers itself.
   json Manage(const json& command);
   json SpaceControl(const json& command, const std::string& device,
                     std::string& error);
   json Configure(const json& command);
-  // Where the web host serves a session's folder (its origin and preview
-  // path), given to each runtime it starts; none outside the web host.
+  // Where the web host serves a session's folder; unset outside the web host.
   void SetPreview(std::function<std::string(const std::string&)> preview) {
     preview_ = std::move(preview);
   }
@@ -232,10 +231,16 @@ class SessionHost {
   std::string AssetPath(const std::string& id) const;
   // The folder a conversation works in.
   std::string Folder(const std::string& id) const;
+  WorkspaceIdentity WorkspaceOf(const std::string& id) const;
+  json Execution(const std::string& id) const;
+  using RemoteTarget = std::function<json(
+      const std::string&, const std::string&, const std::string&)>;
+  void SetRemoteTarget(RemoteTarget target) {
+    remote_target_ = std::move(target);
+  }
   AssetStoreResult StoreAsset(const std::string& session_id,
                               const std::string& bytes, std::string name);
-  // Deletes a file the agent shared in a conversation, its record and its
-  // bytes; the error, empty when it went.
+  // Deletes a file the agent shared, record and bytes. Returns the error.
   std::string DeleteShared(const std::string& session_id,
                            const std::string& asset);
   SnapshotResult Snapshot(const std::string& id, const SnapshotQuery& query);
@@ -244,18 +249,13 @@ class SessionHost {
                                       const std::string& request_id);
 
  private:
-  // A space is renamed by its label, its folder and so every conversation
-  // in it staying what they are. Deleting one closes and removes its
-  // conversations, then the folder with everything in it. Each returns why
-  // it could not, or nothing.
+  // Changes the label only: folder and conversations stay. Returns the error.
   std::string RenameSpace(const std::string& path, const std::string& name);
-  // The folder a command names, by `cwd` or by the `space` it is called (made
-  // when there is none); `error` says why not.
+  // The folder a command names by `cwd` or `space` (made when missing).
   std::optional<std::filesystem::path> NamedFolder(const json& command,
                                                    std::string& error)
       UAGENT_REQUIRES(mutex_);
-  // Moves a conversation and the agents saved beside it to the history of
-  // `folder`, then answers `moved`. Returns why it could not, or nothing.
+  // Moves a conversation and its agents to the history of `folder`.
   std::string MoveConversation(const std::shared_ptr<HostSession>& top,
                                const std::filesystem::path& folder,
                                const std::string& device, json& moved);
@@ -268,8 +268,7 @@ class SessionHost {
   std::string epoch_;
   std::function<std::string(const std::string&)> preview_;
   std::string executable_, directory_;
-  // Ordered event log and attachment quotas live in their own components;
-  // the host keeps the lock, the wakeup signal and session identity.
+  // replay_ runs under mutex_; assets_ has a lock of its own.
   ReplayLog replay_;
   AssetStore assets_;
   mutable std::mutex mutex_;
@@ -290,10 +289,8 @@ class SessionHost {
     TranscriptView view{conversation};
     size_t parsed_bytes = 0;
   };
-  // Up to three immutable transcripts, most recently used first. The 32 MiB
-  // budget counts what the parsed transcript holds, not its file's size, and
-  // permits one oversized entry. Readers can finish after an entry is evicted.
-  // Loading and rendering never hold the cache or host mutex.
+  // Up to three immutable transcripts within 32 MiB of parsed size, most
+  // recent first. Loading and rendering never hold the cache or host mutex.
   std::vector<std::shared_ptr<const SavedHistory>> history_
       UAGENT_GUARDED_BY(history_mutex_);
   std::shared_ptr<const SavedHistory> ReadHistory(const std::string& path);
@@ -314,17 +311,14 @@ class SessionHost {
   };
   std::vector<RunUpdate> run_updates_ UAGENT_GUARDED_BY(mutex_);
   void RecordRun(const RunUpdate& update) UAGENT_REQUIRES(mutex_);
-  // Every event goes through here, with mutex_ held: appended to the log, and
-  // whatever waits on the log wakes. A stream left asleep sends it only at
-  // its next heartbeat.
+  // Appends to the log and wakes its waiters. Callers hold mutex_.
   void Record(const std::string& session, const std::string& generation,
               json value, bool run_owned);
   bool PublishMetadata(const std::string& id, HostSession& session);
-  std::shared_ptr<HostSession> CreateSession(const std::string& cwd,
-                                             const std::string& path,
-                                             const std::string& title,
-                                             std::string& error)
-      UAGENT_REQUIRES(mutex_);
+  std::shared_ptr<HostSession> CreateSession(
+      const std::string& cwd, const std::string& path, const std::string& title,
+      std::string& error, const std::string& host = {}) UAGENT_REQUIRES(mutex_);
+  RemoteTarget remote_target_;
   Connection OpenRuntime(const HostSession& session, bool create,
                          std::string& error) const;
   // False when the frame changed nothing a browser shows.
@@ -339,9 +333,7 @@ class SessionHost {
       UAGENT_REQUIRES(mutex_);
   bool RecoverSchedules(std::vector<std::shared_ptr<HostSession>>& activate)
       UAGENT_REQUIRES(mutex_);
-  // Stamp-checked re-read of the schedule store. External writers (CLI,
-  // other hosts) change the file under us; the tick must see their runs.
-  // Callers hold mutex_.
+  // Stamp-checked: the CLI and other hosts write the schedule store too.
   bool RefreshScheduleCacheLocked() UAGENT_REQUIRES(mutex_);
   std::vector<json> RefreshInvalidationsLocked(
       const std::vector<std::string>& projects) UAGENT_REQUIRES(mutex_);
@@ -349,13 +341,10 @@ class SessionHost {
   std::vector<std::string> InvalidationPaths(
       const std::vector<std::string>& projects) const;
   json Metadata(const HostSession& session) const;
-  // What GET /api/sessions/{id} answers: `state` with the session's identity
-  // and the replay cursor it is current to.
+  // GET /api/sessions/{id}: `state` with identity and replay cursor.
   json SnapshotBody(const HostSession& session, json state) const;
   json LiveSnapshot(const HostSession& session) const;
-  // Snapshot's three answers: an HTTP exchange's stored body, a row's detail
-  // the live view still holds (none when it holds none), and what the saved
-  // history has.
+  // Snapshot's answers: a stored HTTP body, a live row's detail, saved history.
   SnapshotResult HttpSnapshot(HostSession& session, const SnapshotQuery& query);
   std::optional<SnapshotResult> LiveDetail(HostSession& session,
                                            const SnapshotQuery& query);
@@ -364,28 +353,23 @@ class SessionHost {
   std::shared_ptr<HostSession> StartScheduledRun(const json& run,
                                                  const std::string& checked)
       UAGENT_REQUIRES(mutex_);
-  // `lock` is the caller's lock on mutex_, passed only for condition-variable
-  // waits. These helpers release and retake mutex_ itself, so the analysis
-  // sees the unlocked interval; they hand it back held, as `lock` expects.
+  // `lock` is the caller's lock on mutex_. These helpers release and retake
+  // mutex_ itself, so the analysis sees the unlocked interval.
   bool ActivateLocked(const std::shared_ptr<HostSession>& session,
                       std::string& error, UniqueLock& lock, bool create)
       UAGENT_REQUIRES(mutex_);
-  // Graceful binary-upgrade recycle: when the executable on disk is newer
-  // than the attached worker's spawn record, close it and report true so
-  // the caller spawns fresh. False keeps the worker: fresh record, or a
-  // worker that ignores close (fail open, retried on the next touch).
+  // True after closing a worker older than the executable on disk, so the
+  // caller spawns fresh. A worker that ignores close is kept.
   bool RecycleStaleWorkerLocked(const std::shared_ptr<HostSession>& session,
                                 UniqueLock& lock) UAGENT_REQUIRES(mutex_);
   void Received(HostSession* session, json frame);
   void DeactivateLocked(HostSession& session) UAGENT_REQUIRES(mutex_);
-  // Whether `session` is still the catalogue's entry for its id. Callers
-  // hold mutex_.
+  // Whether `session` is still the catalogue's entry for its id.
   bool IsCurrentLocked(const HostSession* session) const
       UAGENT_REQUIRES(mutex_);
   // Publishes a lifecycle frame ({"kind", ...}) with the session's metadata.
   void PublishLifecycle(const HostSession& session, json frame);
-  // Persists a draft's identity, so it outlives the host until its first
-  // save. False when it cannot be written.
+  // Persists a draft's identity so it outlives the host; false on failure.
   bool WriteDraft(const HostSession& session, const std::string& title,
                   int64_t updated) const;
 };

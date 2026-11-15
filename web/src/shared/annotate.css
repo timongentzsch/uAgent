@@ -1,4 +1,3 @@
-/* Markup: the image fits the stage, the tools float in a pill below it. */
 .image-view > .annotator {
   flex-direction: column;
 }
@@ -21,8 +20,7 @@
 .annotator[data-tool="pin"] canvas {
   cursor: copy;
 }
-/* The note bubble sits beside its pin (--x, --y: the pin in the stage),
-   kept inside the stage at any zoom. */
+/* --x, --y: the pin in the stage; kept inside the stage at any zoom. */
 .annotator-note {
   --note-width: min(var(--pane), calc(100% - 2 * var(--space-4)));
   position: absolute;

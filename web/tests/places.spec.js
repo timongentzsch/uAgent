@@ -1,7 +1,8 @@
-// A workspace is µAgent's own place for conversations: listed apart from the
-// folders, under a name that can be changed, and removable with what is in it.
-// A place is a header over its rows, which fold away and are remembered.
+// A workspace is µAgent's own place for conversations, listed apart from the
+// folders. A place is a header over its rows, which fold and are remembered.
 import { test, expect, online, savedConversation } from "./fixtures.js";
+
+test.use({ places: true });
 
 test("a workspace is listed apart from folders, renamed and deleted", async ({
   page,
@@ -22,7 +23,6 @@ test("a workspace is listed apart from folders, renamed and deleted", async ({
   await expect(workspaces.locator(".session")).toHaveCount(1);
   await expect(folders.locator(".session")).toHaveCount(1);
 
-  // Renamed, it is the same place with the same conversation in it.
   await workspaces
     .getByRole("button", { name: "Menu for the workspace Trip to Rome" })
     .click();
@@ -32,7 +32,6 @@ test("a workspace is listed apart from folders, renamed and deleted", async ({
   await expect(workspaces.getByRole("heading")).toContainText("Rome 2027");
   await expect(workspaces.locator(".session")).toHaveCount(1);
 
-  // Deleting says what goes with it, and leaves the folder's alone.
   await workspaces
     .getByRole("button", { name: "Menu for the workspace Rome 2027" })
     .click();
@@ -61,22 +60,21 @@ test("a place folds to its header with a count, remembered, and + starts a conve
     expanded: true,
   });
   await expect(folders.locator(".session")).toHaveCount(1);
-  // A folder goes by its own name, then the directory it is in.
+  await expect(folders.locator(".place-count")).toHaveText("1");
+  // Its own name; no other listed folder shares it, so no parent.
   const path = host.project.split("/").filter(Boolean);
   await expect(folders.locator(".folder-own")).toHaveText(path.at(-1));
-  await expect(folders.locator(".folder-parent")).toHaveText(path.at(-2));
+  await expect(folders.locator(".folder-parent")).toHaveCount(0);
 
   await header.click();
   await expect(folders.locator(".session")).toHaveCount(0);
-  await expect(folders.locator(".place-count")).toHaveText("(1)");
-  // The open conversation is inside: the header is marked as its row was.
+  await expect(folders.locator(".place-count")).toHaveText("1");
   await expect(
     folders.getByRole("button", {
       name: /^Conversations of /,
       expanded: false,
     }),
   ).toHaveAttribute("aria-current", "true");
-  // The fold is remembered.
   await page.reload();
   await expect(folders.locator(".session")).toHaveCount(0);
   // Alt+↓ steps through the rows shown, and none is.
@@ -84,14 +82,21 @@ test("a place folds to its header with a count, remembered, and + starts a conve
   await page.keyboard.press("Alt+ArrowDown");
   expect(page.url()).toBe(at);
 
-  // + opens the fold, and starts a conversation in the place.
   await folders.getByRole("button", { name: /^New in / }).click();
   await page.getByRole("menuitem", { name: "Conversation" }).click();
   await expect(folders.locator(".session")).toHaveCount(2);
-  await expect(folders.locator(".place-count")).toHaveCount(0);
+  // Each place counts its own (macOS lists /var and /private/var apart).
+  await expect
+    .poll(async () =>
+      (await folders.locator(".place-count").allInnerTexts()).reduce(
+        (sum, count) => sum + Number(count),
+        0,
+      ),
+    )
+    .toBe(2);
 });
 
-test("New conversation starts in the Scratch workspace, and a second joins it", async ({
+test("New opens the home screen, and what is typed there starts in Scratch", async ({
   page,
   session,
 }) => {
@@ -99,22 +104,24 @@ test("New conversation starts in the Scratch workspace, and a second joins it", 
   await page.goto(`/#session=${session.id}`);
   await online(page);
   const workspaces = page.getByRole("group", { name: "Workspaces" });
-  for (let started = 0; started < 2; started++) {
-    const before = page.url();
+  const field = page.getByLabel("Start a conversation");
+  for (let started = 1; started <= 2; started++) {
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "Conversation" }).click();
-    // The one it left, still empty, is left out of the list.
-    await expect(workspaces.locator(".session")).toHaveCount(1);
-    // The page has gone to it: typing before this reaches the one it left.
-    await expect(page).not.toHaveURL(before);
+    // Nothing is created until something is said.
+    await expect(field).toBeFocused();
+    await expect(workspaces.locator(".session")).toHaveCount(started - 1);
+    // The words the scripted provider answers on a new conversation's model.
+    await field.fill("Retained follow-up");
+    await field.press("Enter");
     await expect(
       workspaces.locator('.session[aria-current="page"]'),
     ).toHaveCount(1);
+    await expect(workspaces.locator(".session")).toHaveCount(started);
     await expect(workspaces.getByRole("heading")).toHaveCount(1);
     await expect(workspaces.getByRole("heading")).toContainText("Scratch");
-    await expect(page.locator(".composer .activity-button")).toHaveCount(0);
+    await expect(page.locator(".message.user")).toContainText(
+      "Retained follow-up",
+    );
   }
-  await online(page);
-  await page.locator(".composer textarea").fill("hello");
-  await expect(page.locator(".composer textarea")).toHaveValue("hello");
 });

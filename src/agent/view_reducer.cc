@@ -28,8 +28,7 @@ json::iterator Find(json& nodes, std::string_view id) {
 
 // Upserts one node without bounding the view; true when it is new or
 // different. A new node goes before the first node under it, else in
-// sequence position (a late saved node never strands older content after
-// newer), else last, as a client holding the view places it too.
+// sequence position, else last, as a client holding the view places it.
 bool Upsert(json& nodes, const json& node) {
   const std::string_view id = Field(node, "id");
   auto found = Find(nodes, id);
@@ -63,10 +62,9 @@ bool Upsert(json& nodes, const json& node) {
   return changed;
 }
 
-// Drops the oldest nodes past the view's bounds, in one walk of the view,
-// and then up to the next turn, so the view starts where one does; returns
-// how many went. A newest turn larger than the view keeps its head, the
-// message that started it, over its latest steps.
+// Drops the oldest nodes past the view's bounds, then up to the next turn;
+// returns how many went. A newest turn larger than the view keeps its head,
+// the message that started it, over its latest steps.
 size_t BoundView(json& view) {
   json& nodes = view["nodes"];
   size_t bytes = JsonEstimatedBytes(nodes);
@@ -200,8 +198,9 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
   const auto upsert = [&](const json& node) {
     if (Upsert(nodes, node)) changed.emplace_back(Field(node, "id"));
     const std::string_view parent = Field(node, "parent");
-    if (parent.starts_with("w-") && Find(nodes, parent) == nodes.end()) {
-      Upsert(nodes, WorkNode(std::string(parent.substr(2)), json::object()));
+    if (parent.starts_with(kWorkPrefix) && Find(nodes, parent) == nodes.end()) {
+      Upsert(nodes, WorkNode(std::string(parent.substr(kWorkPrefix.size())),
+                             json::object()));
       changed.emplace_back(parent);
     }
   };

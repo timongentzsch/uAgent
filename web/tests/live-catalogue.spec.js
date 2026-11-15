@@ -1,6 +1,6 @@
 // Sessions created or deleted outside this browser (a conversation starting or
 // deleting its agents) reach the list on their own, without a refresh.
-import { test, expect, saveHistory } from "./fixtures.js";
+import { connected, test, expect, saveHistory } from "./fixtures.js";
 import { rm } from "node:fs/promises";
 
 test("the session list follows sessions created and deleted elsewhere", async ({
@@ -8,7 +8,7 @@ test("the session list follows sessions created and deleted elsewhere", async ({
   host,
 }) => {
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   const messages = [
     { role: "user", content: "Made elsewhere" },
     { role: "assistant", content: "Done" },

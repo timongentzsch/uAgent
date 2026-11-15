@@ -12,9 +12,8 @@
 #include "include/core/json.h"
 
 namespace uagent::browser {
-// Admission, fairness and ownership live here; page operations stay in Runtime.
-// Execute is safe for concurrent callers. Waiting is a short acquire/poll,
-// never a sleeping service thread or a held runtime lock.
+// Execute is safe for concurrent callers: waiting is a short acquire/poll,
+// never a held runtime lock.
 class Broker {
  public:
   using Now = std::function<std::chrono::steady_clock::time_point()>;

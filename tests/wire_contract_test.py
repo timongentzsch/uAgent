@@ -1,17 +1,5 @@
 """Wire-kind contract: browser frames stay in sync with their handlers.
-
-The session plane publishes string-kind frames (state, outcome, metadata,
-...); the browser's host-data layer (web/src/state/) switches on them, and
-the terminal does the same through its own projections. A renamed or added
-frame kind on one side without the other is a silent protocol break, so the
-contract is enforced here rather than by inspection.
-
-Two planes share the same spelling: DOCUMENTED_INTERNAL kinds (hello,
-refresh, submit, ...) are transport/scheduler traffic between the native
-router, worker and supervisor and must never gain a browser handler without
-an explicit contract change. Everything else published from the
-browser-bound session units must be a BROWSER_FRAMES member.
-"""
+A frame kind renamed or added on one side only is a silent protocol break."""
 
 import re
 import unittest
@@ -64,9 +52,8 @@ BROWSER_FRAMES = frozenset(
     }
 )
 
-# Transport/scheduler-plane traffic with no browser handler. Adding a
-# web/src/state handler for one of these (or a new kind entirely) means the
-# layering changed: update this contract, not just the code.
+# Transport and scheduler traffic with no browser handler. A web/src/state
+# handler for one of these means the layering changed: update this contract.
 DOCUMENTED_INTERNAL = frozenset(
     {
         "close",
@@ -142,10 +129,8 @@ class WireContractTest(unittest.TestCase):
         self.assertEqual(missing, [])
 
     def test_nodes_carry_no_private_paths(self):
-        # Every node goes to browsers; a path into the private store does
-        # not. The host keeps a diff's path itself (change_paths) and reads
-        # an exchange from the saved conversation. A builder may ask whether
-        # a record has one, never copy it into a node.
+        # Every node goes to browsers; a path into the private store does not.
+        # A builder may ask whether a record has one, never copy it into a node.
         written = re.compile(r'[{\[,]\s*"(change_path|exchange_path)"')
         builders = (
             "include/agent/node.h",
@@ -183,9 +168,8 @@ class WireContractTest(unittest.TestCase):
         )
 
     def test_terminal_socket_messages_match_the_host(self):
-        # A terminal socket's text frames: typed in the web's unions, built
-        # and read by the host's relay. A type on one side only is ignored
-        # on the other without a word.
+        # A terminal socket's text frames are typed in the web's unions and
+        # built by the host's relay: a type on one side only is ignored.
         types = (ROOT / "web/src/shared/types.ts").read_text(encoding="utf-8")
         relay = (ROOT / "src/web/master_terminal.cc").read_text(encoding="utf-8")
         web = set()

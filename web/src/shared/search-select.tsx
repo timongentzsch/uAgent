@@ -6,9 +6,6 @@ import "./search-select.css";
 import { matches } from "./fuzzy.ts";
 import { nextIndex, plainKey } from "./listbox-nav.ts";
 
-// A select with a search box, for long lists such as models, which may be
-// grouped under headings.
-
 type SearchOption = {
   value: string;
   label: string;

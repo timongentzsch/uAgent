@@ -2,10 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_UI_LIVE_REGION_H_
 #define UAGENT_INCLUDE_UI_LIVE_REGION_H_
-// The rows at the bottom of the terminal that still change: the streaming
-// tail, the status row and the composer, or a picker in its place. Above them
-// is scrollback, written once. Flush repaints only the rows that changed, as
-// one synchronized write.
+// The rows at the bottom of the terminal that still change; above them is
+// scrollback, written once. Flush repaints only the rows that changed.
 
 #include <cstddef>
 #include <string>
@@ -19,8 +17,7 @@ class LiveRegion {
  public:
   explicit LiveRegion(const InteractiveOutput& output) : output_(output) {}
 
-  // Finished text for scrollback. Text that finishes the tail starts with it,
-  // as the transcript commits it; what the tail already scrolled away is not
+  // Finished text for scrollback; what the tail already scrolled away is not
   // written twice.
   void Commit(std::string text);
   void SetTail(std::string text);
@@ -30,8 +27,7 @@ class LiveRegion {
   // Stands in for the composer while a picker asks; empty gives it back.
   void SetOverlay(std::string text);
   void Flush();
-  // Erases the region before something else owns the screen; the next Flush
-  // draws it anew wherever the cursor then is.
+  // Erases the region before something else owns the screen.
   void Clear();
 
  private:

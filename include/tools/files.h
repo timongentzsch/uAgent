@@ -45,14 +45,11 @@ struct FileEdit {
 
 ToolResult ToolEditFile(const std::string& path,
                         const std::vector<FileEdit>& edits);
-// Apply `edits` to `data` in memory exactly as ToolEditFile would, returning
-// the refusal it would report. A caller that has to predict an edit — the
-// approval prompt — shows what will happen instead of its own guess at it.
+// Applies `edits` to `data` as ToolEditFile would; returns its refusal, if any.
 std::optional<ToolResult> ApplyFileEdits(std::string& data,
                                          const std::string& path,
                                          const std::vector<FileEdit>& edits);
-// Whether a file reads as text: no binary type by its name, no control bytes
-// in its first block.
+// No binary type by its name and no control bytes in its first block.
 bool LikelyTextFile(const std::filesystem::path& path);
 ToolResult ToolListDir(const std::string& path, int64_t offset = 1,
                        int64_t limit = 0, bool include_small_files = false);

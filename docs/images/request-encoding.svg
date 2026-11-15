@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="284" viewBox="0 0 920 284" role="img">
+<title>Request payload serialization</title>
+<desc>2026-11-12 · measured commit f3489142 · 1,000 serializations · ms · median of 5 Release runs · Apple M1 Pro · Shared zero-based scale · local CPU work; excludes provider and network latency</desc>
+<style>
+  :root { --bg:#fff; --text:#111; --muted:#555; --line:#ccc; --bar:#767676; }
+  @media (prefers-color-scheme:dark) {
+    :root { --bg:#000; --text:#f5f5f5; --muted:#a3a3a3; --line:#404040; --bar:#8a8a8a; }
+  }
+  .bg { fill:var(--bg); }
+  text { fill:var(--text); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:13px; font-variant-numeric:tabular-nums; }
+  .headline { font-size:22px; font-weight:700; }
+  .title { font-size:14px; font-weight:700; }
+  .note { font-size:11px; fill:var(--muted); }
+  .bar { fill:var(--bar); }
+  .bar.primary { fill:var(--text); }
+  .rule { stroke:var(--line); }
+</style>
+<rect class="bg" width="920" height="284"/>
+<text x="24" y="40" class="headline" text-anchor="start">Request payload serialization</text>
+<path class="rule" d="M24 58H896"/>
+<text x="24" y="88" class="title" text-anchor="start">Full payload, ms</text>
+<text x="24" y="124" class="" text-anchor="start">Chat Completions</text>
+<rect class="bar" x="182" y="110" width="120.96" height="20"/>
+<text x="310.96" y="124" class="" text-anchor="start">169.3</text>
+<text x="24" y="156" class="" text-anchor="start">Responses</text>
+<rect class="bar" x="182" y="142" width="202.00" height="20"/>
+<text x="392.00" y="156" class="" text-anchor="start">282.7</text>
+<text x="24" y="188" class="" text-anchor="start">Anthropic Messages</text>
+<rect class="bar" x="182" y="174" width="180.72" height="20"/>
+<text x="370.72" y="188" class="" text-anchor="start">252.9</text>
+<text x="476" y="88" class="title" text-anchor="start">Cached payload, ms</text>
+<text x="476" y="124" class="" text-anchor="start">Chat Completions</text>
+<rect class="bar primary" x="634" y="110" width="17.59" height="20"/>
+<text x="659.59" y="124" class="" text-anchor="start">24.6</text>
+<text x="476" y="156" class="" text-anchor="start">Responses</text>
+<rect class="bar primary" x="634" y="142" width="25.47" height="20"/>
+<text x="667.47" y="156" class="" text-anchor="start">35.6</text>
+<text x="476" y="188" class="" text-anchor="start">Anthropic Messages</text>
+<rect class="bar primary" x="634" y="174" width="37.02" height="20"/>
+<text x="679.02" y="188" class="" text-anchor="start">51.8</text>
+<text x="24" y="266" class="note" text-anchor="start">Shared zero-based scale · local CPU work; excludes provider and network latency</text>
+<text x="24" y="248" class="note" text-anchor="start">1,000 serializations · ms · median of 5 Release runs · Apple M1 Pro</text>
+<text x="24" y="230" class="note" text-anchor="start">2026-11-12 · measured commit f3489142</text>
+</svg>

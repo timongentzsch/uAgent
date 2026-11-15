@@ -124,7 +124,6 @@ void TerminalInputDecoder::Feed(std::string_view data) {
   Feed(reinterpret_cast<const unsigned char*>(data.data()), data.size());
 }
 
-// Compare the first `count` pending bytes against `sequence`.
 bool TerminalInputDecoder::MatchesFirst(std::string_view sequence,
                                         size_t count) const {
   return std::equal(pending_.begin(),
@@ -149,9 +148,8 @@ size_t TerminalInputDecoder::CompleteCsiBytes(size_t at) const {
       pending_[at + 1] != '[') {
     return 0;
   }
-  // Look for the final byte only within the sequence bound: an over-long
-  // CSI is cut at the bound however the bytes arrive, so a final byte past
-  // it must not complete the sequence when everything came in one read.
+  // The final byte counts only within the sequence bound: an over-long CSI
+  // is cut there however the bytes arrive.
   const size_t end = std::min(pending_.size(), at + kInputSequenceBytes);
   for (size_t index = at + 2; index < end; ++index) {
     if (pending_[index] >= 0x40 && pending_[index] <= 0x7e) return index + 1;

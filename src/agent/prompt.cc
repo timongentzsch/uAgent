@@ -2,6 +2,7 @@
 
 #include "include/agent/prompt.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -13,19 +14,17 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/project.h"
 #include "include/core/strings.h"
 
 namespace uagent {
 namespace {
 
-// An overlay is a small declarative document, not a second prompt source: it is
-// bounded, parsed strictly, and ignored when absent or malformed.
-constexpr size_t kPromptOverlayBytes = KiB(64);
+// An overlay is bounded, and ignored when absent or malformed.
+constexpr size_t kPromptOverlayBytes = kSavedPromptBytes;
 
-// Lean base prompt — tool semantics live in the tool schemas, which are sent
-// anyway. Sectioned because a constraint buried mid-paragraph is the one a
-// model drops; each rule carries its reason, because a model generalizes
-// from the reason and not from a bare rule.
+// Tool semantics live in the tool schemas. Sectioned, and each rule carries
+// its reason: a model generalizes from the reason, not from a bare rule.
 constexpr const char kBase[] =
     "You are a coding agent working in this folder for the user. Every "
     "model round costs them time and money, so finish in as few rounds as "
@@ -40,14 +39,19 @@ constexpr const char kBase[] =
     "only what no tool can answer.\n\n"
     "## Tools\nPrefer a dedicated tool over run: its result is smaller and "
     "structured. Call tools only through the tool interface; a call written "
-    "in prose does nothing. Omit unused optional arguments. Use scratch for "
-    "supporting computation; it runs Python in isolated uv, where bare python "
-    "or pip in run would use whatever is on PATH. Python the user asked for "
-    "belongs in tested files in the folder. Use root only for privileged work "
-    "the user authorized. Use a named or matching skill: read it fully, say "
-    "so, "
-    "resolve its relative paths from its folder and reuse its assets; if it "
-    "is unavailable, say so and fall back safely.\n\n"
+    "in prose does nothing. Omit unused optional arguments. Use root only "
+    "for privileged work the user authorized. Use a named or matching skill: "
+    "read it fully, say so, resolve its relative paths from its folder and "
+    "reuse its assets; if it is unavailable, say so and fall back safely.\n\n"
+    "## Scratch\nFor supporting computation, write a script under "
+    ".uagent/scratch with write_file (no approval there) and start it with "
+    "run: `UV_NO_PROGRESS=1 MPLBACKEND=Agg uv run --quiet --no-project "
+    "--script FILE.py`, never pip or bare python; `sh FILE.sh`; `node "
+    "FILE.mjs`. Only a script that imports packages names them, in its first "
+    "lines: `# /// script`, `# dependencies = [\"NAME\"]`, `# ///`. Run the "
+    "file again with new arguments instead of resending a long pipeline. Code "
+    "the user asked for belongs in tested files in the folder, never there."
+    "\n\n"
     "## Changes\nInquiries do not authorize folder changes; change files "
     "when asked. Before changing a nested path, check it for a nearer "
     "AGENTS.override.md or AGENTS.md. Make the smallest focused "
@@ -64,8 +68,21 @@ constexpr const char kBase[] =
     "failed or you could not verify something, say so plainly. Write "
     "Markdown, with math in $…$ or $$…$$; cite code as path:line.";
 
-constexpr std::string_view kSections[] = {
-    "## Evidence", "## Tools", "## Changes", "## Delegation", "## Answer"};
+constexpr std::string_view kSections[] = {"## Evidence",   "## Tools",
+                                          "## Scratch",    "## Changes",
+                                          "## Delegation", "## Answer"};
+
+// Where a section's body lies in `prompt`: after its heading's line, up to
+// the next heading or the end. Empty when the prompt has no such section.
+std::pair<size_t, size_t> SectionBody(std::string_view prompt,
+                                      std::string_view name) {
+  const size_t heading = prompt.find(name);
+  const size_t line =
+      heading == std::string_view::npos ? heading : prompt.find('\n', heading);
+  if (line == std::string_view::npos) return {0, 0};
+  const size_t end = prompt.find("\n\n## ", line);
+  return {line + 1, end == std::string_view::npos ? prompt.size() : end};
+}
 
 }  // namespace
 
@@ -73,6 +90,28 @@ const char* SystemPromptBase() { return kBase; }
 
 std::vector<std::string_view> PromptSections() {
   return {std::begin(kSections), std::end(kSections)};
+}
+
+std::string_view PromptSectionText(std::string_view name) {
+  const auto [from, to] = SectionBody(kBase, name);
+  return std::string_view(kBase).substr(from, to - from);
+}
+
+std::string PromptOverlayIssue(const json& overlay) {
+  if (!overlay.is_object()) return "the system message file is a JSON object";
+  for (const auto& [key, value] : overlay.items()) {
+    if (key == "append" && value.is_string()) continue;
+    if (key != "replace" || !value.is_object()) {
+      return "it takes replace, an object of sections, and append, a string";
+    }
+    for (const auto& [name, text] : value.items()) {
+      if (!text.is_string() ||
+          std::ranges::find(kSections, name) == std::end(kSections)) {
+        return "no section is named " + name;
+      }
+    }
+  }
+  return "";
 }
 
 std::string ApplyPromptOverlay(std::string prompt, const json& overlay,
@@ -83,13 +122,9 @@ std::string ApplyPromptOverlay(std::string prompt, const json& overlay,
     for (std::string_view name : kSections) {
       auto entry = replace.find(std::string(name));
       if (entry == replace.end() || !entry->is_string()) continue;
-      size_t heading = prompt.find(name);
-      if (heading == std::string::npos) continue;
-      size_t body = prompt.find('\n', heading);
-      if (body == std::string::npos) continue;
-      size_t end = prompt.find("\n\n## ", body);
-      if (end == std::string::npos) end = prompt.size();
-      prompt.replace(body + 1, end - body - 1, entry->get<std::string>());
+      const auto [from, to] = SectionBody(prompt, name);
+      if (to == 0) continue;
+      prompt.replace(from, to - from, entry->get<std::string>());
       if (applied) applied->emplace_back(name);
     }
   }
@@ -103,7 +138,7 @@ std::string ApplyPromptOverlay(std::string prompt, const json& overlay,
 
 json PromptOverlay(std::string* digest) {
   std::string path = PromptOverlayPath();
-  if (path.empty()) return json::object();
+  if (path.empty()) path = SavedPromptPath().string();
   const std::optional<std::string> body = ReadFile(path, kPromptOverlayBytes);
   if (!body) return json::object();
   if (digest) *digest = TruncatedHash(*body, kDigestChars);
@@ -111,9 +146,8 @@ json PromptOverlay(std::string* digest) {
   return parsed.is_object() ? parsed : json::object();
 }
 
-// Only what the tool's own schema does not already say. A sentence that
-// appears in both is charged twice on every request and read where the tool
-// is not being chosen; the schema sits next to the call and wins.
+// Only what the tool's own schema does not already say: a sentence in both
+// is charged twice on every request.
 std::string CapabilityPrompt(const std::vector<Tool>& tools,
                              const ToolSelection* selection) {
   std::string prompt;
@@ -151,9 +185,8 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools,
   return prompt.empty() ? prompt : "\n\n## Capabilities\n" + prompt;
 }
 
-// Whether a mutation needs the user's consent changes how much a turn should
-// attempt on its own, so the approval mode is a host fact the model reads here,
-// at the tail, where a change is appended rather than rewriting the prefix.
+// The approval mode changes how much a turn should attempt on its own. It is
+// read at the tail, where a change is appended instead of rewriting the prefix.
 std::string EnvironmentContext(const std::string& date, const std::string& cwd,
                                const std::string& approval,
                                const std::string& sandbox) {

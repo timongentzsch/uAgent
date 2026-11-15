@@ -2,9 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_TOOLS_WEB_SEARCH_H_
 #define UAGENT_INCLUDE_TOOLS_WEB_SEARCH_H_
-// One model-facing search tool: a side request on a route that can search,
-// using that route's own search, answered as an ordinary tool result. The route
-// is selected independently of the conversation's.
+// The search tool: a side request on a route that can search, selected
+// independently of the conversation's.
 
 #include <optional>
 #include <string>
@@ -23,12 +22,9 @@ inline constexpr char kWebSearchNoModel[] =
     "web_search has no model to run on: set webSearch.model "
     "(UAGENT_WEB_SEARCH_MODEL)";
 
-// Whether the conversation's endpoint or a configured one declares search; the
-// tool is registered then, and offered while SelectWebSearchRoute finds a
-// route.
+// Whether the conversation's endpoint or a configured one declares search.
 bool OffersWebSearch(const Api& api, const std::vector<Endpoint>& providers);
-// The route a search runs on, with the effort `webSearch.model` names; nothing
-// when search is off or no endpoint can run it.
+// The route a search runs on; nothing when search is off or cannot run.
 std::optional<Route> SelectWebSearchRoute(
     const Api& api, const std::vector<Endpoint>& providers);
 Tool WebSearchTool(Api& api, UsageAccumulator& usage,

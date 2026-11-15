@@ -423,7 +423,6 @@
 				"write",
 				"writev",
 				"clone",
-				"setns",
 				"unshare"
 			],
 			"action": "SCMP_ACT_ALLOW"

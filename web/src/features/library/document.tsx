@@ -2,10 +2,12 @@ import { useAction } from "../../shared/use-action.ts";
 import { useLayoutEffect, useMemo, useState } from "preact/hooks";
 import { ChevronLeft, Pencil } from "lucide-preact";
 import { tabDrafts } from "../../shared/storage.ts";
-import { storageKeys } from "../../shared/storage-keys.ts";
-import { manage } from "../../state/api.ts";
+import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
+import { useApi } from "../../state/api.ts";
 import type { LibraryItem, LibraryPlace } from "../../shared/types.ts";
 import {
+  Cluster,
+  Bar,
   Actions,
   Button,
   ConfirmModal,
@@ -13,8 +15,9 @@ import {
   Input,
   LoadError,
   Modal,
+  Notice,
   Select,
-  Spinner,
+  Skeleton,
   Textarea,
   Time,
 } from "../../shared/ui.tsx";
@@ -103,12 +106,14 @@ export default function LibraryDocument({
   opened?: (key: string, place: string) => void;
   changed: () => void;
 }) {
+  const { manage, host } = useApi();
   const fresh = "new" in entry;
   // The listing's copy, newer when it changed on disk.
   const listed = fresh ? undefined : entry;
   const drafts = useMemo(
-    () => tabDrafts<Draft>(storageKeys.library(kind, cwd)),
-    [kind, cwd],
+    () =>
+      tabDrafts<Draft>(hostStorageKey(storageKeys.library(kind, cwd), host)),
+    [kind, cwd, host],
   );
   const key = fresh ? "" : entry.key;
   const loaded = useResource(
@@ -235,12 +240,12 @@ export default function LibraryDocument({
   );
   if (loaded.error)
     return <LoadError error={loaded.error} retry={loaded.retry} />;
-  if (!item) return <Spinner label="Loading document…" surface />;
+  if (!item) return <Skeleton rows={6} label="Loading document…" />;
   const off = (listed?.status || item.status) === "disabled";
   const memory = kind === "memory";
   return (
     <fieldset disabled={busy} class="library-document">
-      <div class="editor-head">
+      <Bar density="flush" class="editor-head">
         <Button variant="quiet" onClick={close}>
           <ChevronLeft />
           Back
@@ -310,7 +315,7 @@ export default function LibraryDocument({
             )}
           </Menu>
         )}
-      </div>
+      </Bar>
       {!item.key ? (
         <div class="field-row">
           <Field label="Name">
@@ -329,18 +334,23 @@ export default function LibraryDocument({
         </p>
       )}
       {stale && (
-        <p role="status">
-          Changed on disk. Your draft is retained.{" "}
-          <Button
-            onClick={() => {
-              forget();
-              loaded.retry();
-            }}
-          >
-            Reload
-          </Button>
-        </p>
+        <Notice
+          tone="warning"
+          action={
+            <Button
+              onClick={() => {
+                forget();
+                loaded.retry();
+              }}
+            >
+              Reload
+            </Button>
+          }
+        >
+          Changed on disk. Your draft is retained.
+        </Notice>
       )}
+      {/* raw: one segmented control, not a bar of several. */}
       <div class="segmented document-toolbar">
         {item.writable && !editing && (
           <Button onClick={() => setEditing(true)}>
@@ -406,7 +416,7 @@ export default function LibraryDocument({
         </dl>
       </details>
       {item.writable && editing && (
-        <div class="editor-actions">
+        <Cluster align="end" class="editor-actions">
           <small class="muted">Saved changes apply to new conversations.</small>
           <Button
             onClick={() => {
@@ -432,7 +442,7 @@ export default function LibraryDocument({
           >
             Save
           </Button>
-        </div>
+        </Cluster>
       )}
       {dialog === "delete" && (
         <ConfirmModal

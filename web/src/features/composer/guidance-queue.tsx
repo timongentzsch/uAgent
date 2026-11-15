@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import type { Outgoing } from "../../shared/types.ts";
 import { outgoingStatus } from "../../shared/message-view.ts";
-import { Button } from "../../shared/ui.tsx";
+import { Cluster, Button } from "../../shared/ui.tsx";
 import { plural } from "../../shared/quantities.ts";
 
 // Pending input stays with the composer. Only the host's delivered message
@@ -50,7 +50,7 @@ export default function GuidanceQueue({
                 {item.files.map((file) => file.name).join(", ")}
               </p>
             )}
-            <div class="queue-controls">
+            <Cluster align="between" class="queue-controls">
               <small class="muted">
                 {item.status === outgoingStatus.next
                   ? "After this turn"
@@ -82,7 +82,7 @@ export default function GuidanceQueue({
                   </Button>
                 )}
               </div>
-            </div>
+            </Cluster>
           </article>
         ))}
       </div>

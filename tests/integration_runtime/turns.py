@@ -21,8 +21,8 @@ def test_plain_turn(root, home, *, binary):
 
 
 def test_the_offered_tools_hold_while_background_work_starts(root, home, *, binary):
-    """The tool array is part of the cached prompt: starting background work
-    once added `activity` mid-turn and rewrote the cache (9.6k tokens live)."""
+    """The tool array is part of the cached prompt, so starting background
+    work adds no tool mid-turn."""
     offered = []
 
     def route(_, body):
@@ -80,8 +80,9 @@ def test_partial_stop_policy_continues_prose_and_salvages_calls(root, home, *, b
             for message in body["messages"]
             if message.get("role") == "user"
         ]
+        # Cut text is continued where it stopped.
         valid = "partial answer" in assistants and any(
-            "partial model response: length" in note for note in notes
+            "partial model response: length] Continue exactly" in note for note in notes
         )
         return event({"content": "continued-ok" if valid else "continued-bad"})
 
@@ -98,7 +99,13 @@ def test_partial_stop_policy_continues_prose_and_salvages_calls(root, home, *, b
 
     def completed_after_call(_, body):
         results = tool_results(body["messages"])
-        valid = len(results) == 1 and "cutoff-call" in json.dumps(body["messages"])
+        sent = json.dumps(body["messages"])
+        # The model hears of the cut along with the salvaged call's result.
+        valid = (
+            len(results) == 1
+            and "cutoff-call" in sent
+            and "partial model response: length] The reply was cut off" in sent
+        )
         return event({"content": "call-salvaged" if valid else "call-lost"})
 
     with Server([cutoff_call, completed_after_call]) as server:
@@ -106,6 +113,21 @@ def test_partial_stop_policy_continues_prose_and_salvages_calls(root, home, *, b
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "call-salvaged", result.stdout)
         assert_true(len(server.requests) == 2, len(server.requests))
+
+    # A reply stopped by the input limit keeps its calls and gets no note:
+    # smaller replies would not help it.
+    input_call = tool_call("read_path", {"path": "."}, call_id="input-call")
+    input_call["choices"][0]["finish_reason"] = "context_length"
+
+    def completed_after_input_limit(_, body):
+        sent = json.dumps(body["messages"])
+        valid = len(tool_results(body["messages"])) == 1 and "partial model response" not in sent
+        return event({"content": "input-salvaged" if valid else "input-noted"})
+
+    with Server([input_call, completed_after_input_limit]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "input-salvaged", result.stdout)
 
     unknown_call = tool_call("read_path", {"path": "."}, call_id="unknown-call")
     unknown_call["choices"][0]["finish_reason"] = "provider_new_reason"
@@ -116,8 +138,10 @@ def test_partial_stop_policy_continues_prose_and_salvages_calls(root, home, *, b
             for message in body["messages"]
             if message.get("role") == "user"
         ]
+        # What an unknown stop took is not known: the reply is only continued.
         valid = not tool_results(body["messages"]) and any(
-            "partial model response: provider_new_reason" in note for note in notes
+            "partial model response: provider_new_reason] Continue exactly" in note
+            for note in notes
         )
         return event({"content": "unknown-recovered" if valid else "unknown-unsafe"})
 
@@ -146,9 +170,10 @@ def test_empty_partial_stop_continues_once_then_fails(root, home, *, binary):
     )
 
     def again(_, body):
-        # Nothing arrived to keep, so no empty assistant message is replayed:
-        # the model is only told to carry on.
-        assert_true("partial model response: length" in json.dumps(body["messages"]), body)
+        # Nothing arrived to keep, so no empty assistant message is replayed
+        # and there is no text to continue: the model is told of the cut.
+        sent = json.dumps(body["messages"])
+        assert_true("partial model response: length] The reply was cut off" in sent, body)
         assert_true(body["messages"][-2]["role"] != "assistant", body["messages"])
         return empty_thinking
 
@@ -222,11 +247,8 @@ def test_foreign_tool_markup_recovers_as_prose(root, home, *, binary):
         assert_true("repeatedly returned invalid tool markup" in result.stderr, result.stderr)
         assert_true(len(repeated.requests) == 2, len(repeated.requests))
 
-    # A bracketed marker followed by JSON is call syntax this harness does not
-    # execute -- there is no parser for it at all. It is recognized only so the
-    # turn can ask for a real call instead of printing the markup as an answer,
-    # and the arguments here would be valid and auto-approved if anything ran
-    # them.
+    # A bracketed marker followed by JSON is call syntax this harness never
+    # executes. It is recognized only so the turn can ask for a real call.
     marker = home / "bracket-markup-must-not-run"
     own_markup = (
         "[uagent_tool_call]"

@@ -17,8 +17,10 @@
 #include "include/core/time.h"
 
 namespace uagent {
-std::string HistoryPath(const std::string& cwd, const std::string& name) {
-  return UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd) + "/" + name + ".json";
+std::string HistoryPath(const std::string& cwd, const std::string& name,
+                        const std::string& host) {
+  return UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd, host) + "/" + name +
+         ".json";
 }
 
 LaunchPaths PlanLaunch(const std::string& project, bool worktree,
@@ -38,6 +40,11 @@ CapturedProcess HostGit(const std::string& dir, std::vector<std::string> args) {
                                    "core.fsmonitor=false"};
   argv.insert(argv.end(), args.begin(), args.end());
   return CaptureProcess(argv, 30);
+}
+
+CapturedProcess WorkTreeDiff(const std::string& dir) {
+  return HostGit(dir, {"diff", "--no-ext-diff", "--no-textconv", "--stat",
+                       "--patch", "HEAD"});
 }
 
 std::string CreateWorktree(const std::string& project, const std::string& cwd) {
@@ -189,13 +196,16 @@ std::string DeleteConversation(const std::string& path,
   // Every worktree is looked at before anything goes, so a refusal leaves
   // the whole tree as it was.
   for (const SessionInfo& info : doomed) {
-    if (!LaunchWorktree(info.cwd) || !PathExists(info.cwd)) continue;
+    if (!info.host.empty() || !LaunchWorktree(info.cwd) ||
+        !PathExists(info.cwd)) {
+      continue;
+    }
     if (std::string kept = WorktreeKeepsWork(info.cwd); !kept.empty()) {
       return named(info, kept);
     }
   }
   for (const SessionInfo& info : doomed) {
-    if (LaunchWorktree(info.cwd)) {
+    if (info.host.empty() && LaunchWorktree(info.cwd)) {
       if (std::string kept = RemoveWorktree(info.cwd); !kept.empty()) {
         return named(info, kept);
       }

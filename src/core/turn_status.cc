@@ -109,7 +109,7 @@ json TurnStatus::Project() const {
             : phase == "responding" ? "Responding"
             : phase == "finishing"  ? "Finishing"
             : phase == "idle"       ? kIdleStatus
-                                    : "Working";
+                                    : kWaitingStatus;
   }
   return {{"phase", phase}, {"turn_status", label}};
 }

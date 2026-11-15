@@ -6,7 +6,9 @@ import {
   ConfirmModal,
   Group,
   Input,
+  InputRow,
   LoadError,
+  Notice,
   Row,
 } from "../../shared/ui.tsx";
 import { SettingRowsLoading } from "./loading.tsx";
@@ -16,9 +18,6 @@ import { SettingField } from "./config/setting-field.tsx";
 import { useConfiguration } from "./config/use-configuration.ts";
 import "./configuration.css";
 import { matches } from "../../shared/fuzzy.ts";
-
-// The registry settings of the open scope (all conversations or this folder),
-// grouped by category with search and a reset for the whole scope.
 
 const WHOLE = {
   user: {
@@ -37,8 +36,6 @@ const WHOLE = {
   },
 } as const;
 
-// Everything that can be saved at `scope`, under its groups, each setting
-// edited in place. The box narrows the same rows.
 export default function Configuration({
   scope,
   folder,
@@ -47,9 +44,7 @@ export default function Configuration({
   sessions,
 }: {
   scope: SavedScope;
-  // The open conversation's folder, whose overrides show.
   folder?: string;
-  // Counts every saved change, whoever made it.
   version: number;
   online: boolean;
   sessions: Session[];
@@ -58,7 +53,6 @@ export default function Configuration({
   const whole = WHOLE[scope];
   const [query, setQuery] = useState("");
   const [confirm, setConfirm] = useState(false);
-  // The same settings as the file holds them, for reading.
   const [asFile, setAsFile] = useState(false);
   const find = (name: string) =>
     config.settings.find((setting) => setting.name === name);
@@ -86,8 +80,8 @@ export default function Configuration({
     <section class="configuration">
       {failed}
       {config.problem && (
-        <p class="group-footer small setting-error" role="alert">
-          {config.problem}
+        <p class="group-footer">
+          <Notice tone="error">{config.problem}</Notice>
         </p>
       )}
       {config.restart.length > 0 && (
@@ -99,7 +93,7 @@ export default function Configuration({
           folder={scope === "project" ? folder : undefined}
         />
       )}
-      <div class="group-block configuration-bar">
+      <InputRow class="group-block configuration-bar">
         <Input
           type="search"
           aria-label="Find a setting"
@@ -111,7 +105,7 @@ export default function Configuration({
         <Button variant="quiet" onClick={() => setAsFile(!asFile)}>
           {asFile ? "Show the form" : "Show the file"}
         </Button>
-      </div>
+      </InputRow>
       {asFile && (
         <Group
           title="settings.json"
@@ -135,6 +129,7 @@ export default function Configuration({
           const field = (setting: ConfigSetting) => (
             <SettingField
               key={setting.name}
+              reload={config.retry}
               setting={setting}
               scope={scope}
               folder={folder}

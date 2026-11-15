@@ -1,7 +1,5 @@
 // Where code may reach: a feature stands on shared/ and state/ alone, state/
-// is the data layer under every screen, and shared/ is what features have in
-// common. An import against that grain couples two screens, or the data to the
-// UI, and is moved down to where both can take it instead.
+// is the data layer, and shared/ is what features have in common.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";

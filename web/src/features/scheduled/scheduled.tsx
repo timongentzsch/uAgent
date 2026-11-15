@@ -1,8 +1,10 @@
+import { useHosts } from "../../state/sources.ts";
+import HostField from "../../shared/host-field.tsx";
 import { useAction } from "../../shared/use-action.ts";
 import { usePushDirection } from "../../shared/motion.ts";
 import { tabDrafts, useStored } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
-import { manage } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import {
   defaultScheduleSeconds,
   maxScheduleMinutes,
@@ -16,6 +18,8 @@ import type {
 import { useEffect, useState } from "preact/hooks";
 import { Plus, Play, Square, ChevronLeft } from "lucide-preact";
 import {
+  Cluster,
+  Bar,
   Button,
   ConfirmModal,
   EmptyState,
@@ -23,6 +27,7 @@ import {
   IconButton,
   Select,
   LoadError,
+  Notice,
   Input,
   Textarea,
   Placeholder,
@@ -35,12 +40,16 @@ import { ProjectField } from "../../shared/project-field.tsx";
 import { formatMoment } from "../../shared/time.ts";
 import { devicePrefs } from "../../shared/device-prefs.ts";
 import { ListRow } from "../../shared/list-row.tsx";
-import { capitalize, permissionLabels } from "../../shared/display.ts";
+import {
+  capitalize,
+  permissionLabels,
+  projectsOf,
+} from "../../shared/display.ts";
 
-// The Scheduled page: tasks that run on a timetable or once, their next runs
-// and results, and the editor for one task.
+const drafts = tabDrafts<ScheduledTask>(storageKeys.scheduledDraft);
 
-const blank = (cwd: string): ScheduledTask => ({
+const blank = (cwd: string, host = ""): ScheduledTask => ({
+  host,
   id: "",
   revision: "",
   name: "",
@@ -49,7 +58,7 @@ const blank = (cwd: string): ScheduledTask => ({
   cwd,
   model: "",
   permissions: "ask",
-  environment: "worktree",
+  environment: host ? "local" : "worktree",
   enabled: true,
   schedule: {
     type: "weekly",
@@ -58,7 +67,7 @@ const blank = (cwd: string): ScheduledTask => ({
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   },
 });
-const drafts = tabDrafts<ScheduledTask>(storageKeys.scheduledDraft);
+
 const taskActive = (state: string) =>
   ["queued", "starting", "running", "waiting", "stopping"].includes(state);
 function localInput(at?: number) {
@@ -95,10 +104,14 @@ export default function Scheduled({
   choose: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
 }) {
+  const { manage, host } = useApi();
   const [task, setTask] = useState(drafts.open.read);
+  const taskSessions = useHosts().sources.find(
+    (source) => source.id === (task?.host || ""),
+  )?.state.catalogue.sessions;
+  const taskProjects = taskSessions ? projectsOf(taskSessions) : projects;
   const moved = usePushDirection(!!task);
   const [prefs] = useStored(devicePrefs.time);
-  // A run's moment by the viewer's time preferences, in its task's zone.
   const moment = (seconds?: number, zone?: string) =>
     seconds
       ? formatMoment(new Date(seconds * 1000), prefs, undefined, zone)
@@ -116,6 +129,7 @@ export default function Scheduled({
           value.prompt,
           value.check,
           value.cwd,
+          value.host,
           value.model,
           value.permissions,
           value.environment,
@@ -185,14 +199,13 @@ export default function Scheduled({
       }
       await refresh();
     });
-  // Until the tasks arrive, the list is drawn from these (see <Placeholder>).
   const shown = scheduled ?? SAMPLE_SCHEDULE;
   const runs = [...(scheduled?.runs || [])]
     .reverse()
     .filter((run) => !task?.id || run.task_id === task.id);
   return (
     <div class="management">
-      <div class="management-toolbar">
+      <Bar edge="bottom" class="management-toolbar">
         <p class="muted">
           Runs while the uAgent host is open. Your browser can close.
         </p>
@@ -200,13 +213,13 @@ export default function Scheduled({
           variant="primary"
           disabled={!online || busy}
           onClick={() => {
-            chooseTask(blank(cwd || projects[0] || ""));
+            chooseTask(blank(cwd || projects[0] || "", host));
           }}
         >
           <Plus />
           New task
         </Button>
-      </div>
+      </Bar>
       {scheduled?.error ? (
         <LoadError error={scheduled.error} retry={refresh} />
       ) : (
@@ -255,7 +268,7 @@ export default function Scheduled({
             >
               {task && (
                 <>
-                  <div class="editor-head">
+                  <Bar density="flush" class="editor-head">
                     <Button variant="quiet" onClick={() => setTask(null)}>
                       <ChevronLeft />
                       All runs
@@ -279,12 +292,14 @@ export default function Scheduled({
                         </MenuItem>
                       </Menu>
                     )}
-                  </div>
+                  </Bar>
                   {changed && (
-                    <p role="status">
-                      This task changed. Your draft is retained.{" "}
-                      <Button onClick={discard}>Reload</Button>
-                    </p>
+                    <Notice
+                      tone="warning"
+                      action={<Button onClick={discard}>Reload</Button>}
+                    >
+                      This task changed. Your draft is retained.
+                    </Notice>
                   )}
                   <div class="field-row">
                     <Field label="Name">
@@ -295,9 +310,16 @@ export default function Scheduled({
                         }
                       />
                     </Field>
+                    <HostField
+                      label="Execution host"
+                      value={task.host || ""}
+                      change={(host) =>
+                        edit({ host, cwd: "", environment: "local" })
+                      }
+                    />
                     <ProjectField
                       value={task.cwd}
-                      projects={projects}
+                      projects={taskProjects}
                       change={(cwd) => edit({ cwd })}
                     />
                   </div>
@@ -455,7 +477,9 @@ export default function Scheduled({
                           })
                         }
                       >
-                        <option value="worktree">Git worktree</option>
+                        <option value="worktree" disabled={!!task.host}>
+                          Git worktree
+                        </option>
                         <option value="local">Local folder</option>
                       </Select>
                     </Field>
@@ -505,7 +529,7 @@ export default function Scheduled({
                       />
                     )}
                   </SheetButton>
-                  <div class="editor-actions">
+                  <Cluster align="end" class="editor-actions">
                     <Button disabled={busy} onClick={discard}>
                       Cancel
                     </Button>
@@ -542,7 +566,7 @@ export default function Scheduled({
                     >
                       Save
                     </Button>
-                  </div>
+                  </Cluster>
                 </>
               )}
               {error && <LoadError error={error} />}

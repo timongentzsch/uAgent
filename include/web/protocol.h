@@ -40,6 +40,10 @@ struct WebOptions {
   // without output.
   bool terminal = false;
   int64_t terminal_idle_minutes = 0;
+  // Optional complete gateway bundle, resolved from user configuration.
+  std::string remote_bundle;
+  // Ask GitHub for the newest release once a day, unasked.
+  bool update_check = false;
 };
 // argv is the host's own command line: a restart from the settings re-execs
 // it after a clean shutdown.

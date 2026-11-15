@@ -10,7 +10,7 @@ container, or a Linux host without Chrome and TigerVNC), the agent has no
 browser and reads pages with `web_fetch` only.
 
 The optional [Compose stack](../deploy/compose.yaml) builds one image with
-the web host, Chrome Stable and TigerVNC; a Linux host with the same
+the web host and TigerVNC, and fetches Chrome Stable when it starts; a Linux host with the same
 programs installed runs it [without Docker](#without-docker).
 
 ```sh
@@ -34,6 +34,13 @@ code, run `docker compose -f deploy/compose.yaml exec uagent uagent --web`.
 - The `uagent-data` volume holds `/data/agent` (history, pairing, settings)
   and `/data/browser` (Chrome profiles). Back up the whole volume to keep
   every login.
+- The image holds no Chrome. When the container starts it fetches Google's
+  stable package onto the data volume (about 140 MB), checks it against the
+  repository index Google signs, and checks again daily; a newer one is
+  unpacked beside the one in use and taken the next time the browser starts.
+  Until the first download is done the browser says it is still downloading.
+  A failed check keeps the Chrome that is there. Settings → About names the
+  Chrome in use and when it was last checked, and **Check now** looks again.
 - Chrome and Xvnc stay stopped until the browser is first used.
 - Set `TZ` and `LANGUAGE` (for example `TZ=Europe/Berlin` and
   `LANGUAGE=de`) in `.env.appliance`: pages see that clock and language
@@ -52,6 +59,12 @@ code, run `docker compose -f deploy/compose.yaml exec uagent uagent --web`.
 | `UAGENT_WORKSPACES` | `../workspaces` | Host directory mounted at `/workspaces` |
 | `UAGENT_SHM_SIZE` | `256m` | Chrome shared memory |
 | `UAGENT_TMPFS_SIZE` | `512m` | `/tmp` tmpfs size |
+| `UAGENT_NETWORK` | `private` | `open` lets the agent reach whatever the Docker host reaches |
+| `UAGENT_NETWORK_ALLOW` | none | Private addresses the agent may reach: `host`, `host:port` or a CIDR, separated by spaces or commas |
+| `UAGENT_CHROME` | `auto` | `off` leaves the Chrome on the data volume as it is: none is fetched or updated |
+| `UAGENT_PIDS_LIMIT` | `4096` | Most processes and threads the container may hold |
+| `UAGENT_MEM_LIMIT` | none | Memory limit, such as `4g`; size it with `deploy/footprint.sh` |
+| `UAGENT_CPUS` | none | CPU limit, such as `4` |
 
 Run `deploy/footprint.sh` before opening Chrome, during a viewer session and
 after **Stop browser** to compare image size, packages, processes and
@@ -231,9 +244,27 @@ several paired devices.
 
 - The service exposes neither a CDP nor a VNC TCP port. The agent reaches
   Chrome over inherited pipes, the viewer over the authenticated web host.
-- Chrome's sandbox needs a narrow [seccomp profile](../deploy/seccomp-chrome.json) that
-  permits user namespace creation. Compose applies it without privileged mode
-  and without disabling the sandbox. If the host disables unprivileged user
+- The agent reaches public addresses and no private ones: not the Docker
+  host, your LAN or tailnet, other containers or a cloud metadata address.
+  That holds for its commands, its terminal and its browser alike. A second
+  container, `network`, owns the network namespace both share and loads the
+  rules ([`firewall.sh`](../deploy/firewall.sh)); root and `NET_ADMIN` exist
+  only there. If the rules do not load, the agent's container does not start.
+  Name what the agent needs in `UAGENT_NETWORK_ALLOW` in `deploy/.env`, for
+  example `UAGENT_NETWORK_ALLOW=192.168.1.20:22 llm:8000` for an SSH host and
+  a model endpoint; a container named there must share a network with
+  `network`. DNS goes to the resolver Docker forwards to, which may be on
+  your LAN. `UAGENT_NETWORK=open` turns the rules off.
+  `deploy/check-network.sh` checks a running stack from the agent's side.
+- The agent's container holds one capability, `SYS_CHROOT` (Chrome's sandbox
+  calls `chroot` inside its own namespace), with `no-new-privileges`, a
+  read-only root filesystem, a `noexec` `/tmp` and a limit on the number of
+  processes. Memory and CPU are unlimited unless you set them.
+- Chrome's sandbox needs a [seccomp profile](../deploy/seccomp-chrome.json):
+  Docker's default with `clone` and `unshare` allowed, so user namespaces can
+  be created. That applies to every process in the container, the agent's
+  commands included, not to Chrome alone. Compose applies it without
+  privileged mode and without disabling the sandbox. If the host disables unprivileged user
   namespaces, takeover fails and the browser stays stopped.
 - With the command sandbox on, agent commands cannot read the browser data
   directory (saved logins, cookies) or connect to its sockets, and the file
@@ -317,7 +348,8 @@ What the container adds that a native setup lacks:
 
 - Chrome runs as your own user, with your file access, next to the web host
   and the agent's commands. The image uses a separate nonroot UID, a seccomp
-  profile for Chrome's sandbox and a container boundary.
+  profile for Chrome's sandbox and a container boundary around its files,
+  processes and network.
 - The managed policy applies only if you install it as above, and then to
   every Chrome on that machine, including your own.
 - The profiles hold your saved logins. The command sandbox keeps agent

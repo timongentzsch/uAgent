@@ -4,18 +4,17 @@ import type {
   ConfigChange,
   Configuration,
 } from "../../../shared/types.ts";
-import { manage } from "../../../state/api.ts";
+import { useApi } from "../../../state/api.ts";
 import type { SavedScope } from "./facts.ts";
 
-// What is saved at `scope` and the two ways to change it. The host answers:
-// it holds what is saved for all conversations and, named a folder, for that
-// folder. It reads again whenever anyone saves (`version`). One instance
-// serves one folder: its owner remounts it for another.
+// Reads again whenever anyone saves (`version`). One instance serves one
+// folder: its owner remounts it for another.
 export function useConfiguration(
   scope: SavedScope,
   folder: string | undefined,
   version: number,
 ) {
+  const { manage } = useApi();
   const where = folder ? { cwd: folder } : {};
   // Loads and saves answer in any order; only an answer to a request made
   // after the one last shown is shown.
@@ -38,13 +37,20 @@ export function useConfiguration(
       (failure) => request >= shown.current && setError(failure),
     );
   }, [version, attempt]);
-  // Saves in flight, and the setting the last failure belongs to.
   const [busy, setBusy] = useState(0);
   const [failed, setFailed] = useState<{ key: string; error: unknown }>();
   // Collected while settings are open, so several saves offer one restart.
   const [restart, setRestart] = useState<string[]>([]);
-  const run = async (key: string, fields: CommandInputs["config"]) => {
+  // One save at a time, in the order made: each is checked against what was
+  // saved before it, so a second one sent early is refused or lands first.
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  const run = (key: string, fields: CommandInputs["config"]) => {
     setBusy((count) => count + 1);
+    const done = saving.current.then(() => send(key, fields));
+    saving.current = done;
+    return done;
+  };
+  const send = async (key: string, fields: CommandInputs["config"]) => {
     setFailed(undefined);
     const request = ++asked.current;
     try {

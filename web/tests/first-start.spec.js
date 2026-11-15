@@ -27,7 +27,6 @@ test("a conversation with no model starts at the picker", async ({
     page.getByRole("button", { name: "Model and effort", exact: true }),
   ).toContainText("model-b");
 
-  // A conversation started after it already has the model.
   let { session: next } = await command("create", { cwd: host.project });
   ({ session: next } = await command("activate", { session_id: next.id }));
   await expect

@@ -2,12 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_API_TOOL_PROTOCOL_H_
 #define UAGENT_INCLUDE_API_TOOL_PROTOCOL_H_
-// Recognizing tool-call markup this harness does not execute. µAgent runs
-// structured provider tool calls only; a model that emits some other
-// provider's call syntax as content is producing a malformed response, and
-// this is how that is detected so the turn loop can suppress it and recover
-// rather than print it as an answer. Detection is deliberately broader than
-// execution, and nothing here turns markup into a call.
+// Detects tool-call markup the harness does not execute, so the turn loop
+// can suppress it. Nothing here turns markup into a call.
 
 #include <algorithm>
 #include <cctype>
@@ -35,10 +31,8 @@ inline bool IsForeignToolCallOpener(std::string_view opener) {
          normalized.find("call", tool + 4) != std::string::npos;
 }
 
-// A `[...]` marker counts only when arguments follow it immediately. Prose
-// says "[tool call] failed" and means it; a model emitting call syntax always
-// puts its JSON straight after the marker. An angle-bracket span needs no such
-// guard because `<...tool...call...>` is already markup.
+// A `[...]` marker counts only when arguments follow it immediately: prose
+// says "[tool call] failed" and means it.
 inline bool BracketedToolCallMarker(std::string_view text, size_t open) {
   size_t close = text.find(']', open + 1);
   if (close == std::string_view::npos || close - open > 256) return false;
@@ -46,9 +40,8 @@ inline bool BracketedToolCallMarker(std::string_view text, size_t open) {
   return IsForeignToolCallOpener(text.substr(open, close - open + 1));
 }
 
-// Classify only the leading non-whitespace bytes: a provider-emitted foreign
-// protocol starts at the response boundary. `complete` resolves a final
-// partial marker without making incremental SSE chunks flash on screen.
+// Only the leading non-whitespace bytes: foreign call syntax starts at the
+// response boundary. `complete` resolves a final partial marker.
 inline LeadingToolMarkup ClassifyLeadingToolMarkup(std::string_view content,
                                                    bool complete = false) {
   size_t start = content.find_first_not_of(" \t\r\n");
@@ -57,8 +50,7 @@ inline LeadingToolMarkup ClassifyLeadingToolMarkup(std::string_view content,
   }
   std::string_view visible = content.substr(start);
   if (visible.front() == '[') {
-    // Undecided until the arguments arrive: the guard needs the byte after
-    // the closing bracket, and a stream can stop anywhere.
+    // Undecided until the byte after the closing bracket arrives.
     if (BracketedToolCallMarker(visible, 0)) return LeadingToolMarkup::kCall;
     size_t close = visible.find(']');
     if (!complete &&
@@ -83,9 +75,7 @@ inline LeadingToolMarkup ClassifyLeadingToolMarkup(std::string_view content,
              : LeadingToolMarkup::kProse;
 }
 
-// The same question asked of a whole message rather than its opening bytes.
-// Markdown code examples are ignored, so a page documenting `<tool_call>`
-// stays prose.
+// The same for a whole message; Markdown code examples are ignored.
 inline bool ContainsForeignToolCallMarkup(const std::string& content) {
   bool fenced = false;
   bool inline_code = false;

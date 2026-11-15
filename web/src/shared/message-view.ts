@@ -20,7 +20,6 @@ export const outgoingStatus = {
 export const holdable = (draft: Draft) =>
   !!draft.text.trim() && !draft.files.length && !draft.text.startsWith("/");
 
-// A message of yours the host refused, or never confirmed receiving.
 export const unsent = (node: { status?: string }) =>
   node.status === outgoingStatus.refused ||
   node.status === outgoingStatus.unconfirmed;
@@ -56,10 +55,8 @@ type TextPart = { text: string } | { mention: { id: string; alt: string } };
 
 const kMentionToken = /!\[([^\]\n]*)\]\(attachment:([A-Za-z0-9_-]+)\)/g;
 
-// Split @-mention tokens out of user text for inline rendering. Fenced code
-// blocks are opaque: discussing the token syntax must not resolve it.
-// Unresolvable ids (chip removed, or a quoted token) degrade to muted text
-// in MentionFile instead of rendering as broken references.
+// Fenced code blocks are opaque: discussing the token syntax must not
+// resolve it. Unresolvable ids degrade to muted text in MentionFile.
 export function splitMentionTokens(text: string): TextPart[] {
   if (text.indexOf("attachment:") < 0) return [{ text }];
   const parts: TextPart[] = [];

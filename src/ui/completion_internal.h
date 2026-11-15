@@ -10,9 +10,8 @@
 
 namespace uagent {
 
-// One completion candidate and the span of the draft it replaces. Two sources
-// share this: slash commands, which replace the whole line, and `@paths`,
-// which replace only the token under the cursor.
+// One completion candidate. Slash commands replace the whole line, `@paths`
+// only the token under the cursor.
 struct Suggestion {
   std::string name;
   std::string description;

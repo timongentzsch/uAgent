@@ -5,6 +5,24 @@ the provider adapters, the tool executor and, optionally, the web assets.
 There is no server-side language runtime and no dynamically loaded plugin
 layer.
 
+## Remote execution
+
+The main owns the agent loop, providers, settings and persistent conversation
+state for both Local and remote workspaces. Provider HTTP runs on the main.
+`WorkspaceIdentity` pairs a host id with a logical folder; Local history ids stay
+unchanged. Remote session workers use a private local cwd and forward filesystem,
+Git and process operations through `execution::Client`.
+
+`--execution-start` and `--execution-worker` enter before application bootstrap.
+One immutable installed executable serves independent main clients through
+isolated per-runtime processes. Authenticated RPC runs over OpenSSH Unix-socket
+forwarding. Startup supplies the execution credential and sandbox preset through
+stdin; no provider configuration crosses that boundary. Results include bounded
+binary attachments and cached mutation receipts. Shared PTY shells live in
+`app/terminal.cc`. The gateway owns no application
+configuration, history or scheduler. See [Remote hosts](REMOTE_HOSTS.md) for
+recovery boundaries and current feature limits.
+
 ## Boundaries
 
 | Path | Owns |
@@ -14,6 +32,7 @@ layer.
 | `src/app/` | Bootstrap (`bootstrap.cc`; tool assembly in `bootstrap_tools.cc`, approval decisions in `approvals.cc`), session transport and lifecycle |
 | `src/app/session_*.cc` | The session runtime, its terminal client and the web host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
+| `src/app/execution*.cc`, `workspace_files.cc`, `terminal.cc` | Execution RPC, remote client/worker lifetime, file operations and PTY shells; provider state stays in the main runtime |
 | `src/app/folder_overview.cc`, `launch.cc` | A folder at a glance (spend, changes, git) for the web's overview and `/overview`, and where a launched session runs |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, session links and search, supervision services (activities, child agent), mail delivery, the edit journal behind `/undo`, memory store and the transcript view every client draws |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
@@ -26,9 +45,20 @@ layer.
 | `src/media/` | Attachment encoding and display projections |
 | `src/transport/` | Session frames and SSE framing |
 | `src/ui/` | Terminal input and presentation; the Markdown renderer is `markdown.cc` with `markdown_math.cc` and `markdown_table.cc` |
-| `src/web/` | Authenticated HTTP/SSE adapter (`master*.cc`), embedded assets, the browser viewer (`browser_viewer.cc`, `rfb_filter.cc`), the terminal's shells (`terminal.cc`) and optional push (`push.cc`; `no_push.cc` when `UAGENT_WEB_PUSH=OFF`) |
+| `src/web/` | Authenticated HTTP/SSE adapter (`master*.cc`), SSH connection/bundle management (`remote_hosts.cc`), embedded assets, browser viewer (`browser_viewer.cc`, `rfb_filter.cc`), terminal WebSocket adapters (`master_terminal.cc`, `master_remote_terminal.cc`) and optional push (`push.cc`; `no_push.cc` when `UAGENT_WEB_PUSH=OFF`) |
 | `web/src/` | Browser event projection and presentation: `app/` shell and its hooks, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting |
 | `tests/`, `benchmarks/` | Behavioral contracts and measurement |
+
+The web client lays screens out from a few pieces in `web/src/shared/ui.tsx`,
+styled once in `shared/styles/primitives.css`: `Group` and `Row` for lists of
+settings, `Bar` for a row of a title and controls along an edge of a pane,
+`Cluster` (and `Actions`) for a wrapping row of controls, `InputRow` for a
+field with controls beside it, which wrap before the field is squeezed, and
+`.truncate` for text that is cut short. A feature's stylesheet says what is
+its own. `web/tests/layout.test.js` holds this: hand-written truncation,
+button sizes, flexed fields and bar-like wrappers fail unless a comment
+beginning `raw:` above them says why they are their own, and the set of
+container and media breakpoints is fixed.
 
 The registry owns tool contracts, configuration descriptors own settings, route
 capabilities own provider behavior, and the runtime owns conversation state.
@@ -69,7 +99,7 @@ request is answered plain.
 
 ## Session runtime and clients
 
-![The terminal and the web host attach over a Unix socket to one session runtime process per conversation; a browser or phone reaches the web host over HTTP and SSE; the web host starts the agent's browser, Chrome and Xvnc with one signed-in profile, on first use and streams its live screen to paired devices; the runtime's browser tool drives Chrome over a private socket; a script runs one turn in its own headless process; the agent loop runs tools in a sandbox and calls Chat Completions, OpenAI Responses or Anthropic Messages endpoints over HTTPS](images/architecture.svg)
+![The main owns session runtimes, providers, keys and history; terminal and paired browser clients attach to it, while authenticated SSH routes only files, Git, commands and terminals to a shared remote execution gateway](images/architecture.svg)
 
 Each interactive conversation has one runtime process, and a private Unix
 socket is its command and event boundary. The terminal and the web host attach
@@ -125,8 +155,8 @@ state. A changed runtime generation invalidates pending commands; recovery
 never repeats a tool or an uncertain submission by itself.
 
 The web host's HTTP pool idles at four threads and grows to one per open event
-stream, browser viewer or terminal socket (at most 16), plus twelve for
-requests, so long-lived connections cannot starve the API.
+stream (at most 4), browser viewer (5) and terminal socket (16), plus twelve
+for requests, so long-lived connections cannot starve the API.
 
 Closing a client detaches it. Closing the runtime cancels work, saves state
 and reaps session-owned children. An internal writer lease keeps two runtimes
@@ -246,13 +276,15 @@ Provider-reported partial usage is combined with the confirmed session total
 for live display; final usage replaces it through the normal accounting path.
 Unknown cost stays unknown. Every model call is charged to a route keyed
 `authority|purpose-or-provider|model|effort`: the conversation's own calls
-under their provider, and titles, compaction, memory extraction, image
-analysis, web search and permission review under their purpose, so `/cost`
-names what each one spent. Turn statistics describe one turn; compaction has
-its own display record and never appears as another turn. Memory extraction
-and agents report what they spend to their parent session's ledger, which
-the parent folds into its totals: memory extraction when it ends, an agent
-at each of its turns' end. Spend reported after the parent's turn ended is
+under their provider, and titles, placement, compaction, memory extraction,
+image analysis, web search and permission review under their purpose, so
+`/cost` names what each one spent. The title, the placement of an unfiled
+conversation and memory extraction are side requests (`Agent::StartSide`):
+one request each on its own thread, whose reply the agent takes at its next
+drain. Turn statistics describe one turn; compaction has
+its own display record and never appears as another turn. Agents report
+what they spend to their parent session's ledger, which the parent folds
+into its totals at each of their turns' end. Spend reported after the parent's turn ended is
 added to that turn and journaled as `turn.usage_amended`, since
 `turn.completed` is written once.
 Durations and time to first token describe the attempt that answered; retry
@@ -315,9 +347,7 @@ Runtime getters, CLI flags, `/config`, the web's Settings, diagnostics and
 the `uagent` tool all read that source.
 
 A value comes from the registry's default or one of the scopes
-[Operations](OPERATIONS.md#settings) lists, the later winning: all
-conversations and this folder (both in `~/.uagent/config/settings.json`),
-the environment, the command line and this conversation (its session).
+[Operations](OPERATIONS.md#settings) lists, the later winning.
 Only the model (`UAGENT_MODEL`, with its effort) and the approval mode
 (`UAGENT_APPROVAL`) can be set for one conversation: `/model`, `/effort`,
 `/permissions`, `/yolo` and `/plan` set them there, and `--model` or `--yolo` sets them

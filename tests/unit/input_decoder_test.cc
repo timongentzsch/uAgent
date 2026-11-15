@@ -69,8 +69,7 @@ TEST_CASE(TestTerminalInputDecoder) {
   CHECK(token && token->text == "\x1b\x1b[1;2A");
   CHECK(!decoder.Next());
 
-  // Escape twice waits for the byte that decides whether a Meta key follows,
-  // however the reads split it; with nothing after it, it is Escape.
+  // Escape twice waits for the byte that decides whether a Meta key follows.
   decoder.Feed("\x1b\x1b");
   CHECK(!decoder.Next());
   decoder.Feed("OA");
@@ -108,7 +107,6 @@ TEST_CASE(TestTerminalInputDecoder) {
   CHECK(token && token->overflow);
   CHECK(token && token->text.size() == kInputPasteBytes);
 
-  // An oversized ordinary burst is discarded, then the next read is usable.
   TerminalInputDecoder overflow_decoder;
   overflow_decoder.Feed(std::string(kInputBufferBytes - 1, 'x'));
   overflow_decoder.Feed("xx");
@@ -121,8 +119,7 @@ TEST_CASE(TestTerminalInputDecoder) {
   CHECK(token && token->kind == TerminalInputTokenKind::kText);
   CHECK(token && token->text == "z");
 
-  // Terminal replies are not user input: the payload must not be typed into
-  // the composer.
+  // A terminal reply's payload must not be typed into the composer.
   decoder.Feed("\x1b]0;window title\x07");
   token = decoder.Next();
   CHECK(token && token->kind == TerminalInputTokenKind::kSequence);
@@ -147,7 +144,6 @@ TEST_CASE(TestTerminalInputDecoder) {
   CHECK(token && token->text == "\x1b]52;c;YWJj\x07");
   CHECK(!decoder.Next());
 
-  // Unterminated: bounded, dropped, and never emitted as text.
   decoder.Feed("\x1b]52;c;" + std::string(kInputStringSequenceBytes, 'A'));
   CHECK(!decoder.Next());
   decoder.Feed("z");

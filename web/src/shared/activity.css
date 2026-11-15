@@ -1,6 +1,3 @@
-/* The status control under the input, its activity sheet, and the
-   inspector sheet. */
-
 .turn-status {
   display: inline-flex;
   align-items: center;
@@ -40,6 +37,7 @@
   min-width: 0;
 }
 
+/* raw: the two lines of one label, stacked. */
 .activity-text strong,
 .activity-text small {
   display: block;
@@ -48,7 +46,6 @@
   text-overflow: ellipsis;
 }
 
-/* Inspector: one column, zero child margins, sections carry the labels. */
 .activity-view > .dialog-body {
   display: flex;
   flex-direction: column;
@@ -66,7 +63,6 @@
   flex: 1;
 }
 
-/* A tool's input/output scrolls as a whole (it enters as a .push). */
 .activity-page {
   overflow: auto;
 }
@@ -83,9 +79,8 @@
   gap: var(--space-2);
 }
 
-/* What an activity returned (its output or the memory it saved) takes the
-   remaining height as a column: content starts at the top (a grid would
-   stretch its rows and float it mid-sheet). */
+/* A column, not a grid: a grid would stretch its rows and float the content
+   mid-sheet. */
 .activity-detail > .activity-result {
   flex: 1;
   min-height: 0;
@@ -107,7 +102,6 @@
   overflow-wrap: anywhere;
 }
 
-/* Full command, scrollable in place instead of abbreviated. */
 .detail-command {
   white-space: pre;
   overflow-wrap: normal;
@@ -124,22 +118,13 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  min-height: var(--control-slim);
-  padding: 0 var(--space-3);
-  font-size: var(--font-small);
 }
-.activity-button > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.activity-button > svg {
+.activity-button > svg,
+.activity-state > svg {
   flex: none;
   width: var(--icon);
   height: var(--icon);
 }
-/* Needs you, or stopped short: the state and its one action. */
 .activity-state {
   display: flex;
   align-items: center;
@@ -148,11 +133,7 @@
   padding-left: var(--space-3);
   font-size: var(--font-small);
 }
-.activity-state > svg {
-  flex: none;
-  width: var(--icon);
-  height: var(--icon);
-}
+/* raw: the text DataText draws, which takes no class. */
 .activity-state > span {
   min-width: 0;
   overflow: hidden;

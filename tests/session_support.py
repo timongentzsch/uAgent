@@ -54,9 +54,8 @@ class SessionClient:
 
 
 def remove_runtime(home):
-    """Remove the directory the runtimes of `home` kept their sockets and
-    locks in. It lives in /tmp under a name made from the home's, so removing
-    a test's home does not take it along."""
+    """Remove the directory of `home`'s runtime sockets and locks. It lives
+    in /tmp under a name made from the home's: removing the home leaves it."""
     shutil.rmtree(runtime_directory(home), ignore_errors=True)
 
 
@@ -78,9 +77,8 @@ def close_sessions(home):
 
 
 def stop_sessions(home, settle=0.0):
-    """Close every runtime of `home`. With `settle`, keep closing those a
-    finishing session starts meanwhile (an agent waking its parent)
-    until none has appeared for that many seconds, within a short bound."""
+    """Close every runtime of `home`. With `settle`, also those a finishing
+    session starts meanwhile, until none appears for that many seconds."""
     close_sessions(home)
     if not settle:
         return

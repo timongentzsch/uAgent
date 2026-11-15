@@ -1,8 +1,6 @@
 import { ValueSelect } from "./ui.tsx";
 import { zoomSteps } from "./layout.ts";
 
-// The zoom choice in Settings → This browser.
-
 export function ZoomSelect({
   zoom,
   change,

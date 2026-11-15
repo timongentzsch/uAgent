@@ -13,11 +13,10 @@ import type {
 import { retainedBackgroundViews, maxHttpExchanges } from "../shared/limits.ts";
 import { mergeNodes, placeNode } from "../shared/tree.ts";
 
-// Pure updates to snapshots, drafts and the catalogue for each kind of
-// event. They keep object identity when nothing changed so views skip frames.
+// Pure updates; they keep object identity when nothing changed, so views
+// skip frames.
 
 export const emptyDraft = (): Draft => ({ text: "", files: [] });
-// Unsent work: text or a file, uploaded or still uploading.
 export const hasContent = (draft: Draft) =>
   !!(draft.text || draft.files.length);
 
@@ -149,7 +148,6 @@ export function patchCatalogue(
   return changed ? { ...prior, sessions } : prior;
 }
 
-// Flat records with the same fields and values.
 function sameFields(a: object, b: object) {
   const keys = Object.keys(a);
   return (
@@ -202,10 +200,8 @@ export function outgoingAfter(item: Outgoing, outcome: Outcome) {
   return outcome.pending ? outgoingStatus.awaiting : outgoingStatus.sent;
 }
 
-// A row the host sent replaces the outgoing one for its request. Unchanged
-// state keeps its identity, so the shell skips the frame.
-// Drops this device's messages that a view now shows as the host's own. It
-// runs in the frame that draws that view, so the row is never missing.
+// Drops this device's messages that a view now shows as the host's own, in
+// the frame that draws that view, so the row is never missing.
 export function confirmOutgoing(
   items: Outgoing[],
   views: Record<string, Snapshot>,
@@ -229,8 +225,8 @@ export function isIncoming(event: HostEvent) {
   );
 }
 
-// Keep the selected history and at most four active worker views. Browsing saved
-// sessions must not accumulate full transcripts in the browser indefinitely.
+// The selected history and a bounded number of active views stay, so
+// browsing saved sessions does not accumulate full transcripts.
 export function retainedViews(
   views: Record<string, Snapshot>,
   selected: string,

@@ -56,7 +56,6 @@ test("duplicate uploads dedupe, rename and @-mention send cleanly", async ({
   await prompt.press("Enter");
 
   const transcript = page.locator(".transcript");
-  // Tiles carry the renamed label; the server path trailer never shows.
   await expect(
     transcript.getByRole("button", { name: /^View chart/ }).first(),
   ).toBeVisible({ timeout: 30000 });
@@ -185,7 +184,6 @@ test("a file dropped on the transcript attaches instead of navigating", async ({
     hasText: "dropped.png",
   });
   await expect(chips).toHaveCount(1);
-  // Without a connection nothing can be attached, and the page says so.
   await context.setOffline(true);
   await expect(
     page.getByRole("button", { name: "Send", exact: true }),

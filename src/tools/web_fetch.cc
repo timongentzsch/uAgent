@@ -80,10 +80,8 @@ std::string_view TagName(const std::string& html, size_t open) {
   return std::string_view(html).substr(at, end - at);
 }
 
-// Skip past a `<name ...>...</name>` pair, or past the opening tag alone when
-// the document never closes it. The search is case-insensitive in place: a
-// page can carry dozens of these, and lowercasing a copy of it for each one
-// would cost more than the whole conversion.
+// Skips past a `<name ...>...</name>` pair, or past the opening tag alone
+// when it is never closed. Case-insensitive in place: no lowercased copy.
 size_t SkipElement(const std::string& html, size_t open,
                    std::string_view name) {
   std::string close = "</" + std::string(name);
@@ -98,9 +96,8 @@ size_t SkipElement(const std::string& html, size_t open,
                             : static_cast<size_t>(found - html.begin()));
 }
 
-// One space per whitespace run, one blank line per newline run, no trailing
-// spaces, entities decoded in the same pass. A page's indentation is markup,
-// not meaning.
+// One space per whitespace run, one blank line per newline run, entities
+// decoded: a page's indentation is markup, not meaning.
 std::string Tidy(const std::string& text) {
   std::string out;
   out.reserve(text.size());
@@ -145,8 +142,7 @@ std::string Verbatim(const std::string& text) {
 }
 
 // The `>` that closes the tag opened at `open`, ignoring any inside a quoted
-// attribute value. Pages embed JSON in attributes, and stopping at the first
-// `>` would spill the remainder of it into the text as markup.
+// attribute value: pages embed JSON in attributes.
 size_t TagEnd(const std::string& html, size_t open) {
   char quote = '\0';
   for (size_t at = open + 1; at < html.size(); ++at) {
@@ -255,17 +251,14 @@ ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
   }
   bool html = page.content_type.find("html") != std::string::npos;
   if (!html && !Textual(page.content_type)) {
-    // This tool turns markup into text and nothing else. Whether the
-    // route can read the bytes some other way is not knowable here, so
-    // the remedy names the tools that always work rather than a
-    // capability that may not be there.
+    // Whether the route can read the bytes another way is not knowable
+    // here, so the remedy names the tool that always works.
     return ToolFailure(
         ToolErrorCode::kUnavailable,
         "web_fetch cannot read " +
             (page.content_type.empty() ? "this content type"
                                        : page.content_type) +
-            "; download it and extract its text locally with run or "
-            "scratch");
+            "; download it and extract its text locally with run");
   }
   // Non-markup arrives readable; reflowing it would only destroy the
   // indentation that carries meaning in JSON, XML and plain text.
@@ -301,9 +294,7 @@ Tool WebFetchTool(Api& api) {
         }
         Api side(api.config);
         // Capped like an attachment: a document worth fetching is usually
-        // one worth handing to the model, and a 2 MiB cap truncated an
-        // ordinary arXiv paper. Longer pages are read up to it and marked
-        // partial.
+        // one worth handing to the model. Longer pages are marked partial.
         WebResponse page = side.GetUrl(
             url, context.RemainingSeconds(api.config.tool_timeout_s),
             static_cast<size_t>(AttachmentLimitMb()) * kMiB);

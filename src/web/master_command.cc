@@ -6,7 +6,9 @@
 #include <utility>
 
 #include "include/app/session_host.h"
+#include "include/app/update.h"
 #include "include/browser/browser.h"
+#include "include/core/capture.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
@@ -22,7 +24,6 @@ namespace {
 constexpr size_t kRegularCommandBytes = KiB(64);
 }  // namespace
 
-// A receipt still pending asks the host whether its worker has answered.
 void Master::RefreshReceipt(Receipt& receipt, const std::string& request_id) {
   if (!receipt.worker_request.empty() &&
       JsonValue(receipt.outcome, "pending", false)) {
@@ -112,6 +113,8 @@ void Master::Command(const Request& request, Response& response) {
       {"skills", false, &Master::ManagementCommand},
       {"schedule", false, &Master::ManagementCommand},
       {"models", false, &Master::ManagementCommand},
+      {"openrouter", false, &Master::ManagementCommand},
+      {"provider", false, &Master::ManagementCommand},
       {"permission_rules", false, &Master::ManagementCommand},
       {"instructions", false, &Master::ManagementCommand},
       {"import", false, &Master::ManagementCommand},
@@ -119,6 +122,7 @@ void Master::Command(const Request& request, Response& response) {
       {"pins", false, &Master::PinsCommand},
       {"restart_conversations", false, &Master::RestartConversations},
       {"restart_host", false, &Master::RestartHost},
+      {"update", false, &Master::UpdateCommand},
       {"config", false, &Master::ConfigCommand},
       {"terminal", false, &Master::TerminalCommand}};
   const auto* route = std::ranges::find(kRoutes, kind, &Route::kind);
@@ -208,7 +212,6 @@ void Master::ManagementCommand(CommandCall& call) {
   call.error = JsonValue(call.outcome["result"], "error", "");
 }
 
-// A workspace's own: its name, and its end with everything in it.
 void Master::SpaceCommand(CommandCall& call) {
   call.outcome["result"] =
       host_.SpaceControl(call.command, call.device, call.error);
@@ -223,7 +226,8 @@ void Master::PinsCommand(CommandCall& call) {
 void Master::RestartConversations(CommandCall& call) {
   call.outcome["result"] =
       host_.RestartRunning(JsonValue(call.command, "cwd", std::string()),
-                           JsonValue(call.command, "target_id", std::string()));
+                           JsonValue(call.command, "target_id", std::string()),
+                           JsonValue(call.command, "host", ""));
 }
 
 // The stop loop lets this reply go out before it stops the server.
@@ -231,6 +235,54 @@ void Master::RestartHost(CommandCall& call) {
   reexec_ = true;
   call.outcome["result"] = {{"restarting", true}};
   WakeDescriptor(shutdown_fd);
+}
+
+// The newest release, asked for with `check`; `apply` runs its installer
+// beside the host, which restarts itself when the files are replaced.
+void Master::UpdateCommand(CommandCall& call) {
+  const std::string action = JsonValue(call.command, "action", "show");
+  if (action == "apply") {
+    std::lock_guard lock(update_mutex_);
+    if (JsonValue(update_, "installing", false)) {
+      call.error = "an update is already being installed";
+      return;
+    }
+    update_ = {{"installing", true}};
+    updater_ =
+        std::jthread([this, version = JsonValue(call.command, "version", "")] {
+          std::string error;
+          std::string output = ApplyUpdate(version, options_.terminal, error);
+          {
+            std::lock_guard done(update_mutex_);
+            update_ = {{"installing", false},
+                       {"output", std::move(output)},
+                       {"error", error}};
+          }
+          if (!error.empty()) return;
+          reexec_ = true;
+          WakeDescriptor(shutdown_fd);
+        });
+  }
+  if (action == "chrome") {
+    // The container's updater, once more and now; it writes what it finds.
+    bool running = chrome_checking_.exchange(true);
+    if (!running) {
+      chrome_updater_ = std::jthread([this] {
+        CaptureProcess({"chrome-update"}, 900);
+        chrome_checking_ = false;
+      });
+    }
+  }
+  json state = action == "check" ? CheckForUpdate(options_.terminal)
+                                 : UpdateState(options_.terminal);
+  if (state.contains("chrome")) {
+    state["chrome"]["checking"] = chrome_checking_.load();
+  }
+  {
+    std::lock_guard lock(update_mutex_);
+    state.update(update_);
+  }
+  call.outcome["result"] = std::move(state);
 }
 
 void Master::ConfigCommand(CommandCall& call) {

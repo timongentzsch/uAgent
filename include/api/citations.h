@@ -60,8 +60,7 @@ inline std::string CitationMarkdown(const json& annotations) {
   return out;
 }
 
-// What one search answer may spend on evidence: enough sources to corroborate
-// a claim, enough of each to judge it, and no more context than that is worth.
+// Enough sources to corroborate a claim and enough of each to judge it.
 inline constexpr size_t kEvidenceEntries = 5;
 inline constexpr size_t kEvidenceExcerptChars = 800;
 

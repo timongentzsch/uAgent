@@ -10,10 +10,8 @@
 
 namespace uagent {
 
-// Each accumulator holds model-supplied text that only ends when the model
-// says so. Past these bounds the stream degrades to plain output rather than
-// growing: the line stops being measured, the math span replays as literal
-// text, the table renders the rows it has.
+// Model-supplied text ends only when the model says so. Past these bounds
+// the stream degrades to plain output rather than growing.
 inline constexpr size_t kMdLineBytes = size_t{1} << 20;
 inline constexpr size_t kMdMathBytes = size_t{64} * 1024;
 inline constexpr size_t kMdTableRows = 2000;

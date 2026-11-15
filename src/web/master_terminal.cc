@@ -7,8 +7,8 @@
 #include <thread>
 #include <utility>
 
+#include "include/app/terminal.h"
 #include "include/core/limits.h"
-#include "include/web/terminal.h"
 #include "src/web/master_internal.h"
 
 namespace uagent::web::master {
@@ -20,7 +20,11 @@ constexpr auto kRelayWait = std::chrono::seconds(30);
 
 json Master::TerminalList() const {
   if (!terminals_) return nullptr;
-  json list = json::array();
+  json list;
+  {
+    std::lock_guard lock(remote_terminals_mutex_);
+    list = remote_terminals_;
+  }
   for (const TerminalInfo& terminal : terminals_->List()) {
     list.push_back({{"id", terminal.id},
                     {"cwd", terminal.cwd},
@@ -31,7 +35,6 @@ json Master::TerminalList() const {
   return list;
 }
 
-// One socket for each shell a paired device may open.
 void Master::RegisterTerminalRoutes() {
   server_.WebSocket(
       R"(/api/terminals/([a-f0-9]{16,64}))",
@@ -40,9 +43,6 @@ void Master::RegisterTerminalRoutes() {
       });
 }
 
-// Binary frames carry the shell's output out and the device's input in; a
-// text frame is a control message, a resize in or an end out. A newer
-// socket for the same shell replaces this one.
 void Master::TerminalSocket(const Request& request,
                             httplib::ws::WebSocket& socket) {
   const std::string device = WebSocketDevice(request);
@@ -54,7 +54,12 @@ void Master::TerminalSocket(const Request& request,
   // kWebTerminalSockets of them, apart from those for requests.
   if (terminal_sockets_.fetch_add(1) >= kWebTerminalSockets) {
     --terminal_sockets_;
+    ForgetRemoteTerminal(request.matches[1].str(), true);
     socket.close(httplib::ws::CloseStatus::PolicyViolation);
+    return;
+  }
+  if (RemoteTerminalSocket(request.matches[1].str(), socket)) {
+    --terminal_sockets_;
     return;
   }
   const std::unique_ptr<TerminalViewer> viewer =
@@ -65,20 +70,43 @@ void Master::TerminalSocket(const Request& request,
     --terminal_sockets_;
     return;
   }
+  RelayTerminal(
+      socket, [&] { return std::optional(viewer->Read(kRelayWait)); },
+      [&](const std::string& input) {
+        viewer->Write(input);
+        return true;
+      },
+      [&](uint16_t rows, uint16_t cols) {
+        viewer->Resize(rows, cols);
+        return true;
+      },
+      [&] { viewer->Wake(); });
+  --terminal_sockets_;
+}
+
+// Binary frames carry the shell's output out and the device's input in; a
+// text frame is a control message. A newer socket for the same shell replaces
+// this one; `wake` ends a `read` that waits.
+TerminalOutput RelayTerminal(
+    httplib::ws::WebSocket& socket,
+    const std::function<std::optional<TerminalOutput>()>& read,
+    const std::function<bool(const std::string&)>& write,
+    const std::function<bool(uint16_t, uint16_t)>& resize,
+    const std::function<void()>& wake) {
   std::atomic<bool> stopped{false};
+  TerminalOutput last;
   std::thread relay([&] {
     while (!stopped) {
-      const TerminalOutput out = viewer->Read(kRelayWait);
-      if (!out.bytes.empty() &&
-          !socket.send(out.bytes.data(), out.bytes.size())) {
+      const std::optional<TerminalOutput> out = read();
+      if (!out || (!out->bytes.empty() &&
+                   !socket.send(out->bytes.data(), out->bytes.size()))) {
         break;
       }
-      if (out.ended) {
-        socket.send(JsonDump({{"type", "exit"}, {"code", out.code}}));
-        break;
-      }
-      if (out.replaced) {
-        socket.send(JsonDump({{"type", "replaced"}}));
+      if (out->ended || out->replaced) {
+        last = *out;
+        socket.send(JsonDump(out->ended
+                                 ? json{{"type", "exit"}, {"code", out->code}}
+                                 : json{{"type", "replaced"}}));
         break;
       }
     }
@@ -93,23 +121,23 @@ void Master::TerminalSocket(const Request& request,
       break;
     }
     if (result == httplib::ws::ReadResult::Binary) {
-      viewer->Write(data);
+      if (!write(data)) break;
       continue;
     }
     const json message = json::parse(data, nullptr, false);
     const int64_t rows = JsonValue(message, "rows", int64_t{0});
     const int64_t cols = JsonValue(message, "cols", int64_t{0});
     if (JsonValue(message, "type", "") != "resize" || rows < 1 || cols < 1 ||
-        rows > kPtyMaxDimension || cols > kPtyMaxDimension) {
+        rows > kPtyMaxDimension || cols > kPtyMaxDimension ||
+        !resize(static_cast<uint16_t>(rows), static_cast<uint16_t>(cols))) {
       break;
     }
-    viewer->Resize(static_cast<uint16_t>(rows), static_cast<uint16_t>(cols));
   }
   stopped = true;
-  viewer->Wake();
+  wake();
   socket.close();
   relay.join();
-  --terminal_sockets_;
+  return last;
 }
 
 // Opens a shell in a directory (the home folder without one), of a folder or
@@ -119,6 +147,7 @@ void Master::TerminalCommand(CommandCall& call) {
     call.error = "the terminal is turned off (web.terminal)";
     return;
   }
+  if (RemoteTerminalCommand(call)) return;
   const std::string action = JsonValue(call.command, "action", "");
   json result;
   if (action == "open") {

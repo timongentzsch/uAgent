@@ -11,7 +11,6 @@ interface Attention {
   title?: string;
   reason?: string;
 }
-// What raised a notice, as the host names it.
 const reasons: Record<string, string> = {
   approval: "Needs your approval",
   question: "Has a question for you",

@@ -267,7 +267,8 @@ SnapshotResult SessionHost::SavedSnapshot(std::shared_ptr<HostSession> session,
              {"http", LatestHttp(conversation.DisplayFacts())}};
     // The model and approval mode it resumes with, read as its runtime
     // will: its own choices over the settings of its folder.
-    ConfigManager config = ConfigManager::Capture({}, record.metadata.cwd);
+    ConfigManager config = ConfigManager::Capture(
+        {}, WorkspaceIdentity{record.metadata.host, record.metadata.cwd}.Key());
     RestoreChoices(JsonValue(conversation.DisplayFacts(), "session-settings",
                              json::object()),
                    config);

@@ -64,9 +64,8 @@ std::string SaveSelectedModel(AppSession& session, const std::string& selected,
   return reply.output;
 }
 
-// The interactive catalog picker: lists the matches with its question, so a
-// client shows them above the prompt while the command is still running.
-// Its only caller is /model, so it stays here rather than in a header.
+// Lists the matches with its question, so a client shows them above the
+// prompt while the command still runs.
 std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
                                         const std::vector<Endpoint>& providers,
                                         CommandReply& reply) {
@@ -78,7 +77,9 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
   std::string listing;
   for (size_t i = 0; i < search.matches.size(); ++i) {
     const ModelCandidate& candidate = search.matches[i];
-    bool active = candidate.route.base_url == api.base_url &&
+    bool active = ProviderScope(candidate.route, providers) ==
+                      ProviderScope(api, providers) &&
+                  candidate.route.base_url == api.base_url &&
                   candidate.route.model == api.model;
     if (active) {
       current =
@@ -109,9 +110,8 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
     listing += supported + "\n";
     std::string route_label =
         active ? RouteSelection(api, providers)
-               : ComposeSelection(
-                     ProviderScope(candidate.route.base_url, providers),
-                     candidate.route.model, effort);
+               : ComposeSelection(ProviderScope(candidate.route, providers),
+                                  candidate.route.model, effort);
     std::string option_label = candidate.route.route_name;
     if (!candidate.info.name.empty() &&
         candidate.info.name != candidate.info.id) {
@@ -154,7 +154,6 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
   return std::move(search.matches[static_cast<size_t>(selected - 1)]);
 }
 
-// Searches every provider's catalog for `query` and applies the user's pick.
 void PickFromCatalog(AppSession& session, const std::string& query,
                      bool as_default, CommandReply& reply) {
   std::string suffix = query == "all" ? "" : " for " + TerminalSafe(query);
@@ -170,9 +169,8 @@ void PickFromCatalog(AppSession& session, const std::string& query,
     return;
   }
   if (search.matches.empty()) {
-    // A dead sidecar (e.g. an unreachable local proxy) must not disguise a
-    // plain non-match as an outage: only blame the catalogs when every
-    // queried one failed.
+    // The catalogs are blamed only when every queried one failed: one dead
+    // sidecar must not turn a plain non-match into an outage.
     const bool catalogs_down =
         search.queried > 0 && search.unavailable.size() >= search.queried;
     Emit(NoticeEvent(PresentationStatus::kFailed,

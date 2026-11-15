@@ -2,11 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_ASSET_STORE_H_
 #define UAGENT_INCLUDE_APP_ASSET_STORE_H_
-// Session attachment storage: quota-scanned asset directories plus the
-// claim/commit handshake that hands asset records to worker commands.
-// The host owns session identity (paths, liveness); this class owns bytes,
-// quotas and record commits under its own mutex, so attachment backpressure
-// never serializes on the host lock. Bodies live in src/app/asset_store.cc.
+// Session attachment storage: quotas and the claim/commit handshake, under
+// its own mutex so uploads never serialize on the host lock.
 
 #include <chrono>
 #include <functional>
@@ -21,8 +18,7 @@
 
 namespace uagent::session {
 
-// Upload quotas: one file, one message's files, one session's assets, and
-// all sessions' together.
+// Upload quotas: one file, one message, one session, all sessions.
 inline constexpr size_t kUploadBytes = MiB(8);
 inline constexpr size_t kUploadCount = 8;
 inline constexpr size_t kSessionAssetBytes = MiB(64);
@@ -43,31 +39,22 @@ struct AssetClaim {
 
 class AssetStore {
  public:
-  // Persists one upload into session_path + ".assets". The caller checks
-  // session liveness before and after; uncommitted uploads older than a day
-  // are reaped by the quota scan, so a lost race only costs bytes, not truth.
-  // `committed`: kept for the session's life (a shared artifact) rather
-  // than waiting for a message to claim it. `tool_copy`: a display copy of a
-  // file a tool read (a screenshot); these share half the session's budget,
-  // oldest evicted first, so they never crowd out the user's own files.
-  // `shared`: a file the agent handed the person, which the Library lists.
+  // Persists one upload into session_path + ".assets". `committed`: kept for
+  // the session's life. `tool_copy`: a display copy, evicted oldest first.
+  // `shared`: listed in the Library.
   AssetStoreResult Store(const std::string& session_path,
                          const std::string& bytes, std::string name,
                          bool committed = false, bool tool_copy = false,
                          bool shared = false);
-  // Resolves attachment id claims into command["attachments"], runs gate
-  // (the host's session-liveness check) before committing anything, then
-  // size-checks and commits. gate's non-empty return aborts uncommitted.
-  // Committed records land in receipt for Unclaim on dispatch failure.
+  // Resolves attachment ids into command["attachments"]. A non-empty `gate`
+  // result aborts before any commit; `receipt` takes what Unclaim rolls back.
   std::string Claim(const std::string& session_path, const json& ids,
                     json& command, const std::function<std::string()>& gate,
                     AssetClaim& receipt);
   void Unclaim(AssetClaim& receipt);
-  // Guards a session-file mutation (rename/delete) that attachment scans
-  // must not interleave with. Replaces direct use of the old host asset
-  // mutex at the one call site that mutates session files outside Store.
+  // Guards a session-file rename or delete against attachment scans.
   std::unique_lock<std::mutex> GuardMutation();
-  // A deleted session's quota contribution is gone with its directory.
+  // Forces the next Store to rescan the quotas, after a session was deleted.
   void Invalidate();
 
  private:
@@ -76,9 +63,8 @@ class AssetStore {
   size_t bytes_ UAGENT_GUARDED_BY(mutex_) = 0;
 };
 
-// The record of the asset at `stem` (its path without an extension), null
-// when there is none, and the extension its bytes are kept under: empty
-// when the record names one its type cannot have.
+// The record at `stem` (path without extension), null when none; `extension`
+// is empty when the record names one its type cannot have.
 struct AssetRecord {
   json record;
   std::string extension;

@@ -70,9 +70,8 @@ constexpr EventPolicy kPolicies[] = {
      nullptr, EventRedaction::kNone},
     {EventId::kAnswerDelta, "response.answer.delta", nullptr, nullptr, nullptr,
      EventRedaction::kNone},
-    // A tool the provider ran, not one this agent did: no journal type, so it
-    // never enters the session record or model context, and no query text, so
-    // the public stream carries the fact of a search and not its subject.
+    // A tool the provider ran: no journal type, so it never enters the session
+    // record or model context, and no query text on the public stream.
     {EventId::kHostedToolActivity, "response.hosted_tool", "hosted_tool",
      "response.hosted_tool", nullptr, EventRedaction::kPublicProjection},
     {EventId::kResponseFinished, "response.finished", nullptr, nullptr, nullptr,
@@ -230,8 +229,7 @@ json JournalProjection(const Event& event) {
     case EventId::kToolResult:
       copy({"turn", "step", "occurrence_id", "name", "status",
             "completion_status"});
-      // Which failure, not just that one happened: a journal that cannot name
-      // the category cannot tell the next iteration what to fix.
+      // Which failure, not just that one happened.
       copy({"error_code", "issue_code", "issue_field", "activity_operation",
             "no_change", "activity_terminal", "duration_ms", "result_chars",
             "artifact_path", "artifact_bytes"});
@@ -433,9 +431,8 @@ Event NoticeEvent(PresentationStatus status, std::string text, bool minor) {
 }
 
 void Observability::Emit(Event event) noexcept {
-  // Acquire before assigning sequence numbers so concurrent producers deliver
-  // AppEvents in sequence order. Sink state remains protected separately and
-  // is never held while application callbacks run.
+  // Held before assigning sequence numbers, so concurrent producers deliver in
+  // sequence order; the sink mutex is never held while callbacks run.
   std::lock_guard<std::recursive_mutex> delivery(delivery_mutex_);
   std::vector<std::pair<uint64_t, EventSubscriber>> subscribers;
   AppEvent app_event;

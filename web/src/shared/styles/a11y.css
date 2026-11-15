@@ -1,7 +1,5 @@
-/* What a person's settings ask for overrides everything: less motion and a
-   forced palette. Unlayered, like the feature sheets, as it always was. */
-/* Animations off: the device asks for less motion, or Settings does
-   (applyMotion sets the attribute for both). */
+/* Unlayered: what a person's settings ask for overrides every layer. */
+/* applyMotion sets the attribute for the device's setting and the app's. */
 :root[data-motion="off"] {
   --motion-fast: 0ms;
   --motion-base: 0ms;

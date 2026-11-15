@@ -1,4 +1,5 @@
 import {
+  connected,
   test,
   expect,
   online,
@@ -10,12 +11,12 @@ import {
 } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
-test("instructions are one stack, edited in place, in a stable dialog", async ({
+test("the system message is edited by section and reset to the built-in text", async ({
   page,
   host: fixture,
 }) => {
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
   await startInFolder(page, fixture.project);
   const composer = page.getByLabel("Message or guidance");
   await composer.fill("/instructions");
@@ -24,7 +25,46 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     name: "Instructions",
     exact: true,
   });
-  // Top to bottom in the order a session reads it.
+  const message = dialog.locator("details");
+  await message.locator("summary").click();
+  const scratch = message.getByLabel("Scratch", { exact: true });
+  const builtIn = await scratch.inputValue();
+  expect(builtIn).toContain(".uagent/scratch");
+  const card = message.locator(".instruction-card", {
+    has: page.getByLabel("Scratch", { exact: true }),
+  });
+  await expect(card.locator("small")).toHaveText("Built-in");
+  await scratch.fill("Run one-off scripts with bun.");
+  await card.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(card.locator("small")).toHaveText("Changed");
+  await expect(message.locator("summary")).toHaveText(
+    "System message · 1 changed",
+  );
+  const file = `${fixture.home}/.uagent/config/prompt.json`;
+  expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+    replace: { "## Scratch": "Run one-off scripts with bun." },
+  });
+  await card.getByRole("button", { name: "Reset", exact: true }).click();
+  await expect(scratch).toHaveValue(builtIn);
+  await expect(card.locator("small")).toHaveText("Built-in");
+  await expect(message.locator("summary")).toHaveText("System message");
+  expect(await readFile(file, "utf8")).toBe("");
+});
+
+test("instructions are one stack, edited in place, in a stable dialog", async ({
+  page,
+  host: fixture,
+}) => {
+  await page.goto("/");
+  await expect(connected(page)).toBeVisible();
+  await startInFolder(page, fixture.project);
+  const composer = page.getByLabel("Message or guidance");
+  await composer.fill("/instructions");
+  await composer.press("Enter");
+  const dialog = page.getByRole("dialog", {
+    name: "Instructions",
+    exact: true,
+  });
   await expect(dialog.getByLabel("Yours · every conversation")).toBeEnabled();
   const headings = await dialog
     .locator(
@@ -32,7 +72,14 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     )
     .allTextContents();
   expect(headings).toEqual([
-    "Built-in base",
+    "System message",
+    "Evidence",
+    "Tools",
+    "Scratch",
+    "Changes",
+    "Delegation",
+    "Answer",
+    "After the last section",
     "Yours · every conversation",
     "Folder · every conversation",
   ]);
@@ -72,8 +119,6 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
       `${viewport.width}px`,
     );
     const body = dialog.locator(".dialog-body");
-    // A sheet runs from the safe top to the bottom edge, its content above
-    // the home indicator.
     const bounds = await dialog.boundingBox();
     expect(bounds.y).toBeGreaterThanOrEqual(safeTop);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
@@ -99,7 +144,6 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     ).toBe(true);
   }
   await page.setViewportSize({ width: 1280, height: 800 });
-  // The request view links back to the instructions.
   await dialog.getByRole("button", { name: "Close instructions" }).click();
   await openRawContext(page);
   await page
@@ -116,7 +160,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
 }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(connected(page)).toBeVisible();
 
   await startInFolder(page, fixture.project);
   const prompt = page.getByLabel("Message or guidance");
@@ -158,8 +202,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       metrics[name].composer.y + metrics[name].composer.height,
     ).toBeLessThanOrEqual(metrics[name].viewport.height + 1);
     if (await page.locator(".message.user").count()) {
-      // Rows off screen may still report the pre-resize layout for a frame,
-      // so wait for the two to settle like the composer check above.
+      // Rows off screen may report the pre-resize layout for a frame.
       await expect
         .poll(async () => {
           const user = await page
@@ -195,11 +238,9 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     name: "Model and effort",
     exact: true,
   });
-  // The sheet takes focus on its heading; the search waits to be chosen.
   await expect(
     picker.getByRole("heading", { name: "Model and effort", exact: true }),
   ).toBeFocused();
-  // It is a sheet at the window's right edge, not a panel beside its button.
   await expect
     .poll(async () => {
       const box = await picker.boundingBox();
@@ -229,7 +270,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     settings.getByRole("heading", { name: "Settings", exact: true }),
   ).toBeFocused();
-  // The first section loaded: what applies to all conversations.
   await expect(settings.getByText("Detail", { exact: true })).toBeVisible();
   await settings
     .locator(".settings-nav")
@@ -312,7 +352,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       right: appBounds.right - parseFloat(appStyle.paddingRight) - bounds.right,
     };
   });
-  // Edge to edge on a phone, at any zoom: a sheet, not an inset card.
   expect(Math.abs(dialogGutter.left)).toBeLessThan(1);
   expect(Math.abs(dialogGutter.right)).toBeLessThan(1);
   expect(
@@ -376,9 +415,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       await registration.unregister();
   });
   await page.reload();
-  // While history is held the transcript shows the announced loading
-  // mirror (many decorative shimmer bars share .skeleton, so pin the
-  // singular status region instead of the strict-violating class).
+  // Many shimmer bars share .skeleton; the status region is the only one.
   await expect(page.locator(".transcript [role='status']")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "What are we working on?" }),
@@ -430,9 +467,7 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   await expect(
     reply.getByRole("button", { name: "Copied!", exact: true }),
   ).toBeVisible();
-  // The reply's thinking is a row of the turn's work, quieter than the
-  // reply once opened.
-  const thinking = (await openRow(page, "Thinking")).locator(".node-text");
+  const thinking = page.locator(".thought .node-text");
   await expect(thinking).toContainText("I checked the supplied evidence.");
   const thinkingColor = await thinking.evaluate(
     (element) => getComputedStyle(element).color,
@@ -451,7 +486,6 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   );
   await page.emulateMedia({ colorScheme: "light" });
 
-  // An answer's time and menu end its turn's footer.
   await page
     .locator(".turn-footer")
     .last()
@@ -481,7 +515,6 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
     name: "HTTP request/response",
     exact: true,
   });
-  // The real controls stay present while the body's data loads.
   await expect(
     raw
       .locator(".raw-body")
@@ -616,8 +649,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await page.goto(`/#session=${session.id}`);
   const tool = page.locator('[data-message-id="t-fixture"]');
   await expect(tool).toBeVisible();
-  // A call has no header and no time: its line is its top edge. Atomic
-  // read: the stream can shift rows between two boundingBox calls.
+  // One atomic read: the stream can shift rows between two boundingBox calls.
   await expect(tool.locator("header, time")).toHaveCount(0);
   const edges = await tool.evaluate((element) => {
     const line = element.querySelector(".node-row");
@@ -625,8 +657,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
     return { nodeY: node.y, lineY: line?.getBoundingClientRect().y ?? -1 };
   });
   expect(edges.lineY).toBe(edges.nodeY);
-  // However long the headline grows, it takes the ellipsis and the result
-  // word stays on one line.
   const toggle = tool.locator(".node-row");
   await expect(toggle.locator(".node-headline")).toHaveCSS(
     "text-overflow",
@@ -666,8 +696,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       return top;
     }),
   ).toBe(0);
-  // A call at the top of the tree starts open on the preview it holds; the
-  // whole output loads only when asked for.
   const body = tool.locator(".node-body");
   await expect(body).toContainText("short preview");
   await expect(tool.locator(".katex")).toHaveCount(0);
@@ -675,10 +703,10 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   const row = page
     .locator(".session-row")
     .filter({ has: page.locator(".session[aria-current]") });
-  // One line: the time and the menu show while the row is pointed at.
-  await expect(row.locator("time")).toBeHidden();
+  // Pointed at, the row's menu takes its place's name.
+  await expect(row.locator(".session-tag")).toBeVisible();
   await row.hover();
-  await expect(row.locator("time")).toBeVisible();
+  await expect(row.locator(".session-tag")).toBeHidden();
   const menu = row.getByRole("button", {
     name: "Conversation menu",
     exact: true,
@@ -698,14 +726,11 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await tool.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(body).toContainText("END OF FULL RESULT");
   expect(requests).toBe(3);
-  // The input reads as typed: the command verbatim, never escaped JSON, and
-  // its fields as label and value.
   await expect(tool.locator(".node-command")).toHaveText(
     `psql -c "SELECT 'x'"`,
   );
   await expect(tool.locator(".node-fields")).toContainText("a test query");
   await expect(tool.locator(".katex")).toHaveCount(0);
-  // Closed, nothing of it is drawn; opened again, it holds its preview.
   await toggle.click();
   await expect(body).toHaveCount(0);
   await toggle.click();

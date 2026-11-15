@@ -179,9 +179,8 @@ def test_project_instructions_precede_first_turn(root, home, *, binary):
 
 
 def test_statistics_count_calls_per_serving_provider(root, home, *, binary):
-    # A router picks the upstream per call and names it on each chunk. The
-    # session counts each upstream's calls and the tool calls rejected from
-    # its responses, so a provider that drops arguments stands out.
+    # A router names the upstream on each chunk. The session counts each one's
+    # calls and rejected tool calls, so one that drops arguments stands out.
     usage = {"prompt_tokens": 3, "completion_tokens": 1}
     rejected = tool_call("read_path", {}, usage=usage)
     rejected.update(id="gen-1", provider="Wafer")
@@ -217,12 +216,8 @@ def test_statistics_count_calls_per_serving_provider(root, home, *, binary):
 
 
 def test_session_journal_records_digests_not_argument_values(root, home, *, binary):
-    """The journal must say what happened without saying what was in it.
-
-    Argument values stay out by design, which also meant a later reader could
-    not tell an identical repeated call from a new one, or say which failure a
-    tool hit. A digest and the error code answer both and leak neither.
-    """
+    """The journal says what happened without saying what was in it: a digest
+    tells a repeated call from a new one, an error code names the failure."""
     secret = root / "canary-argument-name.txt"
     secret.write_text("body\n", encoding="utf-8")
 
@@ -260,7 +255,6 @@ def test_session_journal_records_digests_not_argument_values(root, home, *, bina
 
     digests = [call.get("arguments_digest", "") for call in calls]
     assert_true(all(len(digest) == 12 for digest in digests), digests)
-    # The repeat matches; the different path does not.
     assert_true(digests[0] == digests[1], digests)
     assert_true(digests[2] != digests[0], digests)
 
@@ -268,7 +262,6 @@ def test_session_journal_records_digests_not_argument_values(root, home, *, bina
     assert_true(len(failed) == 1, results)
     assert_true(failed[0].get("error_code") == "not_found", failed)
 
-    # The value itself never reaches the journal, digest or not.
     assert_true("canary-argument-name" not in text, "argument value leaked")
     assert_true("absent.txt" not in text, "argument value leaked")
 
@@ -356,9 +349,8 @@ def test_input_steering_yields_activity_wait(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                # Wait for the activity tool CALL row, not a bare "activity":
-                # the banner and the run result mention it before the model
-                # has issued the wait, so steering would land a round early.
+                # Wait for the activity tool's call row: the banner and the run
+                # result say "activity" earlier, a round before the wait.
                 (b"start\n", b"Waiting for activities"),
                 (b"change course\n", b"steering-wait-ok"),
                 b"/q\n",
@@ -379,8 +371,7 @@ def test_input_steering_yields_activity_wait(root, home, *, binary):
             ),
             server.requests,
         )
-        # Same wall-clock claim as the run_pty deadline above it, so the same
-        # scaling: an instrumented build is slower without being wrong.
+        # A wall-clock claim, scaled like the run_pty deadline above it.
         assert_true(elapsed < budget(8), elapsed)
 
 

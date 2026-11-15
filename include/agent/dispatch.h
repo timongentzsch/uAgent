@@ -49,21 +49,17 @@ struct CallTask {
 
 int64_t ResultCharLimit(const CallTask& task);
 
-// The model's text for `result` within `cap`: the output is cut, its hints
-// are kept.
+// `result` for the model within `cap`: the output is cut, its hints are kept.
 std::string ModelResultText(const ToolResult& result, int64_t cap);
 
-// Preserve small results and divide the remaining model-facing budget evenly
-// across larger siblings. The original per-tool-capped strings remain intact
-// for diagnostics and terminal output.
+// Small results stay whole; larger siblings share the rest of the budget.
 std::vector<std::string> ModelFacingToolResults(
     const std::vector<CallTask>& tasks, int64_t budget = -1);
 
 json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
                     int64_t step);
 
-// Settles the call's outcome facts from how the loop ended it, then emits its
-// result.
+// Settles the call's outcome facts from how the loop ended it, then emits.
 void EmitToolResultObservation(CallTask& task, const ToolCall& call,
                                int64_t turn, int64_t step);
 
@@ -71,8 +67,7 @@ json ToolCallData(const ToolCall& call, int64_t turn, int64_t step);
 
 void CancelCall(CallTask& task);
 
-// `diffs` is the file template (ending in XXXXXX) a long diff is stored
-// whole in; empty keeps it in the result.
+// `diffs`: the XXXXXX file template for a long diff; empty keeps it inline.
 void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                  int64_t step, const ToolContext& context,
                  int64_t global_timeout_s, const std::string& diffs);

@@ -15,29 +15,20 @@
 
 namespace uagent {
 
-// State shared with signal handlers. A handler may run on another thread, so
-// these are lock-free atomics, which are also async-signal-safe.
+// Shared with signal handlers: lock-free atomics, which are async-signal-safe.
 using SignalFlag = std::atomic<int>;
 extern SignalFlag g_streaming;
 extern SignalFlag g_terminal_resized;
-// argv[0], so the agent can re-invoke itself for a child. A bare name is
-// resolved by the child's shell via PATH; a relative one still works because
-// fork keeps the cwd.
+// argv[0], so the agent can re-invoke itself for a child.
 void SetExecutablePath(std::string path);
 const std::string& ExecutablePath();
 
-// Identity of a file on disk: device, inode, size and modification time. A
-// rebuild or reinstall replaces the executable, and the running process keeps
-// the old inode, so comparing this against the value captured at startup is
-// how a session knows it is no longer the build it was launched from.
+// Identity of a file on disk: device, inode, size and modification time.
 std::string FileIdentity(const std::string& path);
 
-// True once the executable has been replaced since startup. Reports once per
-// change: the answer is a prompt to restart, not a repeating complaint.
+// True once per replacement of the executable since startup.
 bool ExecutableReplaced();
 
-// The signal and steering domains use lock-free atomics so worker-thread clear
-// operations cannot race signal observation.
 extern std::atomic_flag g_signal_abort;
 extern std::atomic<bool> g_thread_abort;
 inline constexpr int kMcpMax = 64;  // tracked MCP server processes
@@ -46,13 +37,11 @@ extern SignalFlag g_mcp_pids[kMcpMax];
 inline constexpr int kActivityMax = 64;
 extern SignalFlag g_activity_pids[kActivityMax];
 
-// Pid slot tables read by the signal handler. Parallel tool workers claim slots
-// concurrently, so writers serialise here; the handler only ever reads.
+// Claims or frees a pid slot. Writers serialise here; the handler only reads.
 void TrackPid(SignalFlag* slots, int count, pid_t pid, bool add);
 
-// A request running beside the main turn (such as title generation) must
-// neither see nor clear the turn's abort: while a LocalAbort is alive, its
-// thread cancels through its own flag and leaves the shared abort state alone.
+// While a LocalAbort is alive, its thread cancels through its own flag and
+// neither sees nor clears the turn's abort (title generation, for one).
 extern thread_local std::atomic<bool>* g_local_abort;
 class LocalAbort {
  public:
@@ -75,43 +64,36 @@ inline bool AbortRequested() {
 
 void RequestAbort();
 void ClearAbort();
-// Wakes condition-variable process waits without requesting an abort, so
-// queued steering pairs with Wake() the same way Escape does.
+// Wakes condition-variable process waits without requesting an abort.
 void WakeProcessWaits();
 // An idle SIGINT, read once: the first half of the quit gesture.
 bool TakeIdleInterrupt();
-// Armed only while an interactive session is idle; elsewhere SIGINT still
-// kills.
+// Armed only while an interactive session is idle; otherwise SIGINT kills.
 void SetQuitGesture(bool enabled);
-// Persistent runtimes unwind through application teardown on TERM/HUP. A
-// delegated child does too, so that what it spent is reported, but stops
-// what it started at once: its parent does not wait long for it.
+// Persistent runtimes unwind through application teardown on TERM/HUP. With
+// `stop_started`, a delegated child also stops what it started at once.
 void SetGracefulShutdown(bool enabled, bool stop_started = false);
 bool ShutdownRequested();
 // Drain a stale abort byte only while the flag is clear, then re-arm if a
 // concurrent request arrived during the drain.
 void NormalizeAbortWake();
 
-// Pollable signal bridges. Initialize before handlers are installed. SIGCHLD
-// writes both the shared child-event pipe and every registered subsystem wake
-// descriptor; writes are nonblocking and coalescing is intentional.
+// Pollable signal bridges; initialize before handlers are installed. SIGCHLD
+// writes the child-event pipe and every registered wake descriptor.
 void InitializeSignalNotifications();
 int AbortWakeFd();
 int ChildSignalFd();
 // Single-consumer process-wide child-event stream used by MCP shutdown.
 void DrainChildSignal();
 bool RegisterChildWakeFd(int fd, bool add);
-// Optional UI wake destination. SIGWINCH writes here after setting the resize
-// flag so an otherwise idle event loop redraws immediately.
+// SIGWINCH writes here, so an idle event loop redraws.
 void SetTerminalWakeFd(int fd);
 
-// Terminal modes the fatal-signal and suspend handlers hand back, published by
-// the composer while raw mode is armed. Without them a signal exit leaves the
-// user's shell with ECHO and ICANON cleared.
+// Terminal modes the fatal-signal and suspend handlers restore; without them
+// a signal exit leaves the shell with ECHO and ICANON cleared.
 void ArmTerminalModes(const termios& cooked, const termios& raw);
 void DisarmTerminalModes();
-// Where a handler writes its restoring escapes. The REPL redirects stdout into
-// a pipe it drains itself, so it publishes the saved terminal descriptor here.
+// Where a handler writes its restoring escapes: the REPL's stdout is a pipe.
 void SetSignalTerminalFd(int fd);
 
 void SigintHandler(int signal_number);
@@ -121,8 +103,8 @@ void InstallSigwinchHandler();
 // them and asks the event loop for a repaint.
 void InstallSuspendHandlers();
 
-// Run fn with Ctrl+C wired to cancel it instead of exiting the program. The
-// caller owns the abort flag because an outer operation may need to observe it.
+// Runs fn with Ctrl+C wired to cancel it. The abort flag stays set for the
+// caller, since an outer operation may need to observe it.
 template <class F>
 inline bool RunCancellable(F&& fn) {
   const bool shared = g_local_abort == nullptr;

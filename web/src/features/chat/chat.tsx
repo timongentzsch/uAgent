@@ -9,6 +9,7 @@ import { useResource } from "../../shared/use-resource.ts";
 import { useContext } from "preact/hooks";
 import {
   LoadError,
+  Notice,
   Placeholder,
   Welcome,
   updateChecked,
@@ -21,12 +22,8 @@ import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
 import "./chat.css";
 
-// The transcript: the conversation's rows, older history and the placeholder
-// shown before the snapshot. Used by the chat page.
-
 export { prepareHistoryNodes } from "./message.tsx";
 
-// A request and its reply, the shape a conversation opens with.
 const SAMPLE: Node[] = [
   {
     id: "placeholder-request",
@@ -51,7 +48,6 @@ const SAMPLE: Node[] = [
   },
 ];
 
-// The transcript before its snapshot: its own rows, drawn from sample text.
 function TranscriptPlaceholder({ session }: { session: SessionRef }) {
   return (
     <Placeholder label="Loading conversation…">
@@ -86,8 +82,7 @@ function Chat({
   const { online, load: loadSnapshot, report } = useHostContext();
   const { openFile } = useContext(MessageActions);
   const olderPage = useAction({ concurrent: true });
-  // Prepares the history once its snapshot arrives, not on every streamed
-  // frame.
+  // Prepared once per snapshot, not on every streamed frame.
   const { value: preparedKey } = useResource(
     () =>
       snapshot
@@ -109,7 +104,6 @@ function Chat({
         (!snapshot && !loadError) || (snapshot && !prepared) || undefined
       }
       ref={attachScroller}
-      // Delegated: a file a message cites opens in the Files pane.
       onClick={(event) => {
         const cited = (event.target as Element).closest<HTMLElement>(
           ".file-ref",
@@ -135,10 +129,10 @@ function Chat({
           load={() => olderPage.run(() => preserveWhile(older).catch(report))}
         />
         {snapshot?.live_truncated && (
-          <p class="retention small">
+          <Notice tone="info">
             The live preview exceeded its buffer. Retained history refreshes
             when this turn saves.
-          </p>
+          </Notice>
         )}
         {!!loadError && <LoadError error={loadError} retry={retry} />}
         {/* A failed first load shows only its error. */}
@@ -153,7 +147,7 @@ function Chat({
               [<kbd>@</kbd>, "Refers to a file you dropped or pasted in."],
               [
                 <kbd>Esc</kbd>,
-                "Stops a turn. Undo under a finished turn puts back the files it changed.",
+                "Stops a turn. The file count under a finished turn opens its changes, where Undo puts them back.",
               ],
             ]}
           >
@@ -163,15 +157,9 @@ function Chat({
         {snapshot && prepared && (
           <Transcript nodes={nodes} online={online} session={session} />
         )}
-        {session.error && (
-          <p class="failure" role="alert">
-            {session.error}
-          </p>
-        )}
+        {session.error && <Notice tone="error">{session.error}</Notice>}
         {snapshot?.state?.error && (
-          <p class="failure" role="alert">
-            {snapshot.state.error}
-          </p>
+          <Notice tone="error">{snapshot.state.error}</Notice>
         )}
       </div>
     </div>

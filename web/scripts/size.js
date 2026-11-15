@@ -51,9 +51,11 @@ for (const path of await readdir(root, {
   if (!path.isFile()) continue;
   const url = pathToFileURL(join(path.parentPath, path.name));
   const name = url.href.slice(root.href.length);
-  // The .gz beside each text asset, and the manifest of them, are the embed's.
+  // The .gz beside each text asset, and the manifest of them, are the embed's;
+  // share/ is installed beside the app, not served as its bundle.
   if (
     name.startsWith(".vite/") ||
+    name.startsWith("share/") ||
     name.endsWith(".gz") ||
     name === ".gzip-manifest.json" ||
     name === "THIRD_PARTY_NOTICES.md"
@@ -77,7 +79,6 @@ for (const path of await readdir(root, {
       sizes.precache[key] += size[key];
   }
 }
-// CI records these measurements for reviewers to compare. Fixed byte ceilings
-// would reject useful layout or correctness work even when the delivered shell
-// remains small.
+// Measurements for reviewers to compare: a fixed byte ceiling would reject
+// useful work even while the delivered shell stays small.
 console.log(JSON.stringify({ bytes: sizes }, null, 2));

@@ -2,9 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_TRACE_H_
 #define UAGENT_INCLUDE_AGENT_TRACE_H_
-// Shared state and data for live, resumed, and archived traces. Terminal
-// rendering of this data lives in ui/presentation.h; the agent only
-// supplies facts.
+// Trace data only; terminal rendering lives in ui/presentation.h.
 
 #include <algorithm>
 #include <cstdint>

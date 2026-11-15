@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "include/agent/activity.h"
-#include "include/app/artifact.h"
+#include "include/app/present.h"
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"
@@ -89,8 +89,6 @@ TEST_CASE(TestAttachmentEncoding) {
                            &deliveries));
   CHECK(deliveries[0]["delivery"] == "Document");
   CHECK(JsonDump(request).find("file_data") != std::string::npos);
-  // Every model call of a turn sends it the same; once the file changes,
-  // its new bytes go.
   const json attached =
       json::array({{{"role", "user"},
                     {"content", AttachmentContent("read", {pdf}, error)}}});
@@ -110,8 +108,7 @@ TEST_CASE(TestAttachmentEncoding) {
   CHECK(std::string(ModelImageInputInstruction(false, false))
             .find("Image input unavailable") != std::string::npos);
 
-  // Re-reading an unchanged file in the same request references the first
-  // copy: one payload, one delivery row, no repeat rendering per step.
+  // An unchanged file read twice in one request references the first copy.
   error.clear();
   json twin = json::array(
       {{{"role", "user"},
@@ -138,9 +135,8 @@ TEST_CASE(TestAttachmentEncoding) {
   }
   CHECK(image_parts == 1);
 
-  // The media read has no per-turn call cap, so this queue ceiling is what
-  // bounds a runaway caller -- including an MCP server, which queues images
-  // with no model call to budget against.
+  // The media read has no per-turn call cap: the queue ceiling bounds a runaway
+  // caller, an MCP server included.
   ActivitySupervisor attachment_processes;
   std::vector<Tool> attachment_tools = BuiltinTools(attachment_processes, root);
   const Tool* attach_tool = FindTool(attachment_tools, "read_path");
@@ -156,7 +152,6 @@ TEST_CASE(TestAttachmentEncoding) {
   CHECK(!refused_queue.Ok());
   CHECK(refused_queue.output.find("too many attachments pending") !=
         std::string::npos);
-  // Draining the queue for the next request clears the ceiling again.
   std::vector<Attachment> drained = Attachments().Take();
   CHECK(drained.size() == MaxPendingAttachments());
   CHECK(drained[0].source_call_id == "call_attach_1");
@@ -195,10 +190,8 @@ TEST_CASE(TestAttachmentEncoding) {
   fs::remove_all(root, ec);
 }
 
-// HEIC stills and SVG diagrams enter the image pipeline; MP4 video,
-// HTML, and mislabeled files must not. Sniffing and inspection need no
-// converter, so this stays deterministic on every platform. Conversion
-// itself reuses the exercised PreparedImage machinery.
+// HEIC stills and SVG diagrams enter the image pipeline; MP4 video, HTML and
+// mislabeled files do not. Sniffing and inspection need no converter.
 TEST_CASE(TestVectorAndHeicAttachments) {
   // HEIC shares the ISO BMFF ftyp box with MP4: the brand decides.
   const std::string box = std::string("\x00\x00\x00\x18", 4) + "ftyp";
@@ -245,7 +238,7 @@ TEST_CASE(TestVectorAndHeicAttachments) {
   CHECK(InspectAttachment(diagram.string(), attachment, error));
   CHECK(attachment.image);
   CHECK(attachment.mime == "image/svg+xml");
-  // A long prolog hides <svg past the old 32-byte sniff window.
+  // A long prolog hides <svg past a 32-byte sniff window.
   fs::path prolog = root / "prolog.svg";
   CHECK(ToolWriteFile(prolog.string(), "<?xml version=\"1.0\"?>\n<!--" +
                                            std::string(300, 'x') +
@@ -267,7 +260,6 @@ TEST_CASE(TestVectorAndHeicAttachments) {
   CHECK(InspectAttachment(photo.string(), attachment, error));
   CHECK(attachment.image);
   CHECK(attachment.mime == "image/heic");
-  // MP4 bytes never enter the image pipeline, whatever the name.
   fs::path clip = root / "clip.mp4";
   CHECK(ToolWriteFile(clip.string(), box + "isom" + pad + pad).Ok());
   error.clear();
@@ -327,8 +319,7 @@ TEST_CASE(TestAudioVideoAttachments) {
   CHECK(InspectAttachment(clip.string(), attachment, error));
   CHECK(attachment.mime == "video/mp4");
   CHECK(!attachment.image);
-  // Magic wins over the declared type the way it does for images: a PNG
-  // renamed .mp3 stays an image and never enters the speech pipeline.
+  // Magic wins over the declared type: a PNG renamed .mp3 stays an image.
   fs::path spoof = root / "spoof.mp3";
   CHECK(
       ToolWriteFile(spoof.string(), std::string("\x89PNG\r\n\x1a\n", 8) +
@@ -387,7 +378,6 @@ TEST_CASE(TestAudioVideoAttachments) {
   CHECK(deliveries[0]["delivery"] == "Video");
   CHECK(JsonValue(request[0]["content"][1]["video_url"], "url", "")
             .starts_with("data:video/mp4;base64,"));
-  // Without the flags both kinds degrade to file paths, like images.
   capabilities.SetInputModalities(json::array({"text"}),
                                   WireApi::kChatCompletions);
   request = prepare(song, "deaf");
@@ -404,8 +394,6 @@ TEST_CASE(TestAudioVideoAttachments) {
   fs::remove_all(root, cleanup);
 }
 
-// write_file's `from` copies an attachment of this conversation into the
-// folder, byte for byte, and refuses any other file.
 TEST_CASE(TestWriteFileCopiesAttachments) {
   namespace fs = std::filesystem;
   fs::path root = fs::temp_directory_path() / "uagent-copy-attachments";
@@ -442,6 +430,19 @@ TEST_CASE(TestWriteFileCopiesAttachments) {
                    {"content", "plain"}},
                   context)
             .Ok());
+  // An empty `from` is none: the content is written, and without content
+  // the call is refused as one that names neither.
+  const json filled = {{"path", (root / "work/filled.txt").string()},
+                       {"content", "plain"},
+                       {"from", ""}};
+  CHECK(write->run(filled, context).Ok());
+  CHECK(ReadFile((root / "work/filled.txt").string(), 1024).value_or("") ==
+        "plain");
+  CHECK(!write->approval_preview(filled).starts_with("a copy of"));
+  CHECK(!write
+             ->run({{"path", (root / "work/empty.txt").string()}, {"from", ""}},
+                   context)
+             .Ok());
   fs::remove_all(root);
 }
 

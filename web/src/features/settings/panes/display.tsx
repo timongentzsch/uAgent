@@ -5,9 +5,6 @@ import { defaultTimePrefs, type TimePrefs } from "../../../shared/time.ts";
 import { devicePrefs } from "../../../shared/device-prefs.ts";
 import { useStored } from "../../../shared/storage.ts";
 
-// Settings → This browser: theme, motion, zoom and time format, all kept on
-// this device only.
-
 const { theme: themePref, motion: motionPref, zoom: zoomPref } = devicePrefs;
 const TIMESTAMPS: Record<TimePrefs["style"], string> = {
   smart: "Time today, the date when older.",
@@ -20,14 +17,12 @@ export function DisplayPane() {
   const [motion, setMotion] = useStored(motionPref);
   const [timePrefs, setTimePrefs] = useStored(devicePrefs.time);
   const [zoom, setZoom] = useStored(zoomPref);
-  // How many differ from their defaults.
   const changed =
     Number(theme !== themePref.fallback) +
     Number(motion !== motionPref.fallback) +
     Number(zoom !== zoomPref.fallback) +
     Number(timePrefs.clock !== defaultTimePrefs.clock) +
     Number(timePrefs.style !== defaultTimePrefs.style);
-  // One row per choice: its name, its options, and where it is kept.
   const choice = (
     label: string,
     value: string,

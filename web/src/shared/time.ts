@@ -70,13 +70,16 @@ const day = (value: Date) =>
 const capitalize = (text: string) =>
   text.charAt(0).toLocaleUpperCase() + text.slice(1);
 
+// `brief`, for a list's narrow column, a day past says no clock.
 export function formatMoment(
   value: Date,
   prefs: TimePrefs,
   now = new Date(),
   timeZone?: string,
+  brief = false,
 ): string {
   const clock = { hour: "numeric", minute: "2-digit" } as const;
+  const past = brief ? {} : clock;
   if (prefs.style === "relative") return formatRelative(value, now);
   const days = Math.round((day(now) - day(value)) / 86_400_000);
   // A moment in a named zone is written out: "today" is the viewer's day.
@@ -87,11 +90,13 @@ export function formatMoment(
       timeZone: timeZone || undefined,
     });
   if (days === 0) return format(value, prefs, clock);
-  if (days === 1)
-    return `${capitalize(relative.format(-1, "day"))} ${format(value, prefs, clock)}`;
-  if (days < 7) return format(value, prefs, { weekday: "short", ...clock });
+  if (days === 1) {
+    const yesterday = capitalize(relative.format(-1, "day"));
+    return brief ? yesterday : `${yesterday} ${format(value, prefs, clock)}`;
+  }
+  if (days < 7) return format(value, prefs, { weekday: "short", ...past });
   if (value.getFullYear() === now.getFullYear())
-    return format(value, prefs, { month: "short", day: "numeric", ...clock });
+    return format(value, prefs, { month: "short", day: "numeric", ...past });
   return format(value, prefs, { dateStyle: "medium" });
 }
 

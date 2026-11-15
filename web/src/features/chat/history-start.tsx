@@ -1,8 +1,6 @@
 import type { View } from "../../shared/types.ts";
-import { Button } from "../../shared/ui.tsx";
+import { Button, Notice } from "../../shared/ui.tsx";
 import "./chat.css";
-
-// The top of a transcript: the button that loads older rows.
 
 export default function HistoryStart({
   view,
@@ -29,9 +27,9 @@ export default function HistoryStart({
         </Button>
       )}
       {(view?.dropped_segments || 0) > 0 && (
-        <p class="retention small">
+        <Notice tone="info">
           {view?.dropped_segments} older segments are outside retention.
-        </p>
+        </Notice>
       )}
     </>
   );

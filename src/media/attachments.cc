@@ -85,8 +85,7 @@ constexpr std::pair<const char*, const char*> kTypes[] = {
 
 }  // namespace
 
-// Empty for anything that is not an image: callers use that to reject
-// non-image content outright.
+// Empty for anything that is not an image.
 std::string ImageExtension(const std::string& mime) {
   if (!std::string_view(mime).starts_with("image/")) return "";
   for (const auto& [suffix, value] : kTypes) {
@@ -113,9 +112,8 @@ std::string RasterMime(std::string_view bytes) {
       bytes.substr(8, 4) == "WEBP") {
     return kWebpMime;
   }
-  // HEIC/HEIF stills share the ISO BMFF `ftyp` header with MP4 video, so
-  // the brand allowlist is the whole check: still-photo brands in, video
-  // brands (isom, mp41, avc1, ...) out. The brand sits at offset 8.
+  // HEIC/HEIF stills share the ISO BMFF `ftyp` header with MP4 video, so the
+  // brand at offset 8 decides: still-photo brands in, video brands out.
   if (bytes.size() >= 12 && bytes.substr(4, 4) == "ftyp") {
     const std::string_view brand = bytes.substr(8, 4);
     for (std::string_view still : {"heic", "heix", "hevc", "hevx", "heim",
@@ -126,10 +124,8 @@ std::string RasterMime(std::string_view bytes) {
   return {};
 }
 
-// Video twin of the still check above: the same ftyp box with a video
-// brand means a video container. Extension-declared videos with unlisted
-// brands still pass below on the declared type; only image magic wins over
-// a video claim, never the reverse.
+// The same ftyp box with a video brand is a video container. Only image
+// magic wins over a video claim, never the reverse.
 std::string VideoMime(std::string_view bytes) {
   if (bytes.size() >= 12 && bytes.substr(4, 4) == "ftyp") {
     const std::string_view brand = bytes.substr(8, 4);
@@ -141,8 +137,8 @@ std::string VideoMime(std::string_view bytes) {
   return {};
 }
 
-// Speech containers have real magic too: ID3 tags, RIFF/WAVE, FLAC, OggS.
-// Anything else rides on the declared extension, same as documents.
+// ID3 tags, RIFF/WAVE, FLAC, OggS; anything else rides on the declared
+// extension.
 std::string AudioMime(std::string_view bytes) {
   if (bytes.size() >= 3 && bytes.starts_with("ID3")) return "audio/mpeg";
   if (bytes.size() >= 12 && bytes.starts_with("RIFF") &&
@@ -154,10 +150,8 @@ std::string AudioMime(std::string_view bytes) {
   return {};
 }
 
-// SVG has no magic number: scan the prolog (BOM, whitespace, <?...?>,
-// <!--...-->, <!DOCTYPE...>) for the <svg root element, at most
-// kAttachmentSniffBytes in. Anything else -- including bare <?xml without
-// svg, HTML, or plain text -- is not an SVG document.
+// SVG has no magic number: the prolog (BOM, whitespace, <?...?>, <!--...-->,
+// <!DOCTYPE...>) is scanned for the <svg root within kAttachmentSniffBytes.
 std::string SvgMime(std::string_view bytes) {
   const size_t end = std::min(bytes.size(), kAttachmentSniffBytes);
   size_t pos = 0;
@@ -267,9 +261,8 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
     return false;
   }
   std::string prefix, error_read;
-  // One head read covers the raster/HEIC signatures as well as the SVG
-  // prolog scan below; vector documents may legitimately start with
-  // kilobytes of XML declarations before <svg.
+  // One head read covers the raster signatures and the SVG prolog scan: a
+  // vector document may start with kilobytes of XML declarations.
   if (!ReadRegularFile(path, kAttachmentSniffBytes, prefix, error_read, true)) {
     error = error_read;
     return false;
@@ -303,10 +296,8 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
   return true;
 }
 
-// Whether images arrive natively or through a configured vision route is a
-// host detail, not something the model should plan around: with either one in
-// place the prompt says nothing at all, and only a session that can do neither
-// is told to expect file paths.
+// With native input or a vision route in place the prompt says nothing;
+// only a session that can do neither is told to expect file paths.
 const char* ModelImageInputInstruction(bool image_input_available,
                                        bool image_fallback_available) {
   if (image_input_available || image_fallback_available) return "";
@@ -363,9 +354,8 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
   std::vector<unsigned char> block(KiB(48));
   uintmax_t read_bytes = 0;
   size_t held = 0;  // bytes of an incomplete triple carried into the next read
-  // Stop at end of file rather than reading once more to discover it: a short
-  // read already sets the flag, and reading a failed stream leaves its
-  // position indeterminate.
+  // Stops at end of file rather than reading once more: reading a failed
+  // stream leaves its position indeterminate.
   while (!feof(file.get()) && !ferror(file.get())) {
     size_t n = fread(block.data() + held, 1, block.size() - held, file.get());
     if (n == 0) break;
@@ -525,11 +515,9 @@ bool TextMime(const std::string& mime) {
          mime == "application/xml";
 }
 
-// SVG has no wire-safe bytes: rasterize once to PNG, then run the normal
-// inspect/resize/encode flow on the raster. ImageMagick first on both
-// platforms (its built-in renderer needs no daemon); QuickLook covers
-// stock macOS when ImageMagick is missing or its SVG coder is locked
-// down. Providers never see raw SVG.
+// SVG has no wire-safe bytes: it is rasterized once to PNG. ImageMagick
+// first; QuickLook covers stock macOS when ImageMagick is missing or its SVG
+// coder is locked down.
 bool RasterizeVector(const std::string& path, const std::string& out,
                      std::string& error) {
   auto raster = CaptureProcess({"magick", "-limit", "memory", "128MiB",
@@ -568,9 +556,8 @@ std::string AttachmentFingerprint(const Attachment& attachment) {
          std::to_string(nanos);
 }
 
-// Encoded payloads by kind and file fingerprint, least recently used first.
-// An attachment goes with every model call of its turn; reading, resizing
-// and encoding it again for each is work the first call already did.
+// Encoded payloads by kind and file fingerprint, least recently used first:
+// an attachment goes with every model call of its turn.
 struct Payload {
   std::string key, mime, data;
 };
@@ -634,13 +621,10 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   const std::string key = "image|" + fingerprint;
   std::string cached;
   if (CachedPayload(key, mime, cached)) return cached;
-  // Platform helpers keep image decoders out of the harness binary. No shell,
-  // bounded lifetime, original retained. Linux uses ImageMagick when installed.
-  // Vector originals rasterize first: neither inspector below reads SVG,
-  // and the raster re-enters the normal inspect/resize/encode flow.
+  // Platform helpers keep image decoders out of the harness binary: no shell,
+  // bounded lifetime, original retained. A vector original rasterizes first.
   std::string path = attachment.path;
-  // Scratch files live exactly as long as this function: every early return
-  // below would otherwise unlink them by hand.
+  // Scratch files live exactly as long as this function.
   ScopedTempFile raster_file(
       (std::filesystem::temp_directory_path() / "uagent-svg-XXXXXX").string());
   ScopedTempFile temporary_file(
@@ -684,10 +668,8 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
     error = "image could not be decoded";
     return "";
   }
-  // HEIC/HEIF data URIs are rejected by most vision endpoints, so they
-  // always normalize through the converter below instead of passing
-  // through like small PNGs do. A missing converter then fails loudly
-  // here instead of degrading the whole route on a provider rejection.
+  // Most vision endpoints reject HEIC/HEIF data URIs, so they always go
+  // through the converter; a missing one fails here, not at the provider.
   const bool normalize = mime == "image/heic" || mime == "image/heif";
   if (width > MaxImageDimension() || height > MaxImageDimension() ||
       attachment.bytes > kImageBytes || normalize) {
@@ -745,12 +727,8 @@ bool PrepareAttachments(json& messages,
            (type == "image_url" && !capabilities.image_input &&
             !vision_fallback);
   };
-  // Fingerprints of parts already prepared in this request. Re-reading an
-  // unchanged file (the model re-reading an attached screenshot, the same
-  // path queued twice in one step) must reference the first copy instead
-  // of duplicating payload and re-rendering the attachment row on every
-  // agent step. Path, size and mtime catch edits; a changed file prepares
-  // normally with its own delivery row.
+  // Fingerprints of parts already prepared in this request: an unchanged file
+  // seen again references the first copy instead of duplicating its payload.
   std::map<std::string, std::string> delivered;
   for (size_t index = 0; index < messages.size(); ++index) {
     json& message = messages[index];
@@ -858,8 +836,7 @@ bool PrepareAttachments(json& messages,
             delivery = "Audio";
           }
         } else if (IsVideoMime(attachment.mime) && capabilities.video_input) {
-          // Local files ride as base64 data URLs, mirroring image_url;
-          // remote URLs stay provider-specific and are out of scope.
+          // Local files ride as base64 data URLs, as image_url does.
           std::string data =
               EncodedFile(attachment, limit, detail,
                           "data:" + attachment.mime + ";base64,");
@@ -885,8 +862,6 @@ bool PrepareAttachments(json& messages,
         // Where it is kept, so a tool can copy it (write_file's `from`).
         prepared.push_back(
             {{"type", "text"}, {"text", "[Attached: " + path + "]"}});
-        // Successful first delivery: later identical parts in this request
-        // reference it (see above) instead of duplicating payload.
         const std::string fingerprint = AttachmentFingerprint(attachment);
         if (!fingerprint.empty()) delivered[fingerprint] = name;
       }
@@ -910,6 +885,11 @@ ToolResult AttachmentQueue::Add(const std::string& path,
   if (!InspectAttachment(path, attachment, error)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments, error);
   }
+  attachment.source_call_id = std::move(source_call_id);
+  return Add(std::move(attachment));
+}
+
+ToolResult AttachmentQueue::Add(Attachment attachment) {
   std::string result =
       "attached " + attachment.name + "; queued for the next request";
   std::lock_guard<std::mutex> lock(mutex_);
@@ -920,7 +900,6 @@ ToolResult AttachmentQueue::Add(const std::string& path,
                        "too many attachments pending for one step (" +
                            std::to_string(MaxPendingAttachments()) + ")");
   }
-  attachment.source_call_id = std::move(source_call_id);
   pending_.push_back(std::move(attachment));
   return ToolSuccess(std::move(result));
 }
@@ -928,6 +907,21 @@ ToolResult AttachmentQueue::Add(const std::string& path,
 std::vector<Attachment> AttachmentQueue::Take() {
   std::lock_guard<std::mutex> lock(mutex_);
   return std::exchange(pending_, {});
+}
+
+std::vector<Attachment> AttachmentQueue::TakeForCall(
+    const std::string& call_id) {
+  std::lock_guard lock(mutex_);
+  std::vector<Attachment> result;
+  for (auto it = pending_.begin(); it != pending_.end();) {
+    if (it->source_call_id == call_id) {
+      result.push_back(std::move(*it));
+      it = pending_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  return result;
 }
 
 AttachmentQueue& Attachments() {

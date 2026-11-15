@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
-# Runs before a push what CI rejects and a macOS checkout does not show:
-# formatting, style, and GCC 13 with warnings as errors
-# plus clang-tidy on the changed sources, inside the Ubuntu image CI uses.
-#
-#   .github/ci-local.sh [BASE]   # BASE defaults to origin/master
-#
-# Needs uv and Docker.
-# The container keeps its build tree in a named volume, so a second run only
-# recompiles what changed.
+# Runs before a push what CI rejects and a macOS checkout does not show, in
+# the Ubuntu image CI uses: .github/ci-local.sh [BASE]
 set -euo pipefail
 root=$(git rev-parse --show-toplevel)
 cd "$root"
@@ -16,7 +9,6 @@ base=${1:-origin/master}
 echo "== clang-format, cpplint, ruff"
 .github/lint.sh
 
-# What clang-tidy reads, chosen as for a pull request against BASE.
 units=$(GITHUB_EVENT_NAME=pull_request CI_BASE_SHA=$base python3 .github/changes.py |
   sed -n 's/^tidy=//p')
 

@@ -17,10 +17,6 @@ import {
 import { useResource } from "./use-resource.ts";
 import { escapeHTML } from "./format.ts";
 
-// Renders Markdown into the transcript and the Files pane: the finished text
-// as cached blocks, a streaming reply as head and tail, and the lazy loading
-// of the renderer and its math, highlight and diagram parts.
-
 type Renderer = typeof import("./markdown.ts");
 let renderer: Promise<Renderer> | undefined;
 // Once loaded, streaming renders synchronously in the same frame as the text.
@@ -42,8 +38,7 @@ const retained = (text: string, blocks: MarkdownBlock[]) =>
 const preparedKey = (text: string, refs = false) =>
   refs ? `\u0001${text}` : text;
 
-// Completed pages are parsed before they become visible. Keep the same
-// bounded result for the message component's first render; streaming text
+// Completed pages are parsed before they become visible; streaming text
 // never enters this cache.
 export async function prepareMarkdown(
   text: string,
@@ -68,9 +63,8 @@ export async function prepareMarkdown(
   return blocks;
 }
 
-// Warm the renderer chunk outside the critical path. Called while a turn
-// streams (and once at boot), so the plain-to-markdown switch at
-// completion only pays the parse, never the chunk download.
+// Warms the renderer chunk outside the critical path, so the switch to
+// markdown at completion pays only the parse, never the download.
 export function prefetchMarkdown(text = "") {
   void loadRenderer();
   if (/\$|\\[([]/.test(text)) void import("./math.ts");
@@ -316,9 +310,7 @@ function RenderedMarkdown({
     return blocks;
   }, [text, live, loaded, refs]);
   useEffect(() => {
-    // Full render runs when the block completes (and on retry): the
-    // streaming frames already loaded the renderer chunks, so completion
-    // only pays the parse.
+    // The full render runs when the block completes, and on retry.
     if (streaming) return;
     const state = pending.current;
     if (state.running) return;

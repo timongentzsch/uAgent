@@ -1,10 +1,5 @@
 """Layer guard: a translation unit includes only its own layer or lower ones.
-
-CMake links the libraries as core <- api <- toolcore <- agent <- tools <- app
-<- web. Static-library ordering hides an upward include until the symbol it
-names moves, so the order is checked here. KNOWN lists the remaining upward
-edges; removing one is progress, adding one fails this test.
-"""
+Static linking hides an upward include until the symbol it names moves."""
 
 import re
 import subprocess

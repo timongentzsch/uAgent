@@ -1,14 +1,5 @@
-"""OS sandbox: what an agent-run command may and may not write.
-
-Every case here asserts the filesystem, not the message: a command that fails
-for the wrong reason still leaves the file absent, and a command that succeeds
-in spite of the sandbox leaves it present whatever it printed.
-
-The workspace is a subdirectory of the case root rather than the case root
-itself, so that every "outside" path here can live in the case root: that is
-neither the workspace nor under any other default root, so a write to one is
-denied on both platforms.
-"""
+"""OS sandbox: what an agent-run command may and may not write. Every case
+asserts the filesystem, not the message: a file is absent or present."""
 
 import json
 import os
@@ -64,10 +55,6 @@ def test_sandbox_keeps_spawning_after_binary_replacement(root, home, *, binary):
     with Server(
         [
             upgrade,
-            tool_call(
-                "scratch",
-                {"path": "upgrade.py", "code": "open('scratch-ran', 'w').write('ok')"},
-            ),
             event({"content": "done"}),
         ]
     ) as server:
@@ -82,7 +69,6 @@ def test_sandbox_keeps_spawning_after_binary_replacement(root, home, *, binary):
         )
     assert_true(result.returncode == 0, result.stderr)
     assert_true((workspace(root) / "shell-ran").exists(), result.stdout)
-    assert_true((workspace(root) / "scratch-ran").exists(), result.stdout)
     assert_true(not outside.exists(), "sandbox was bypassed after replacement")
 
 
@@ -125,12 +111,8 @@ def tool_output(root, env, command, headless=False, *, binary, **arguments):
 
 
 def sandbox_enforced(root, home, *, binary):
-    """True when this host actually confines writes.
-
-    Probing by behaviour rather than by platform: the answer on Linux depends
-    on the kernel, and a suite that assumed enforcement would report a missing
-    Landlock as a sandbox escape.
-    """
+    """True when this host confines writes, probed by behaviour: on Linux the
+    answer depends on the kernel, not on the platform."""
     probe = root / "sandbox-probe"
     # Inside the workspace first: a command that never ran escaped nothing,
     # and is not the sandbox holding.
@@ -144,9 +126,8 @@ def sandbox_enforced(root, home, *, binary):
 
 
 def require_sandbox(root, home, *, binary):
-    """A case about confinement proves nothing where nothing confines: it is
-    skipped there, and fails where UAGENT_TEST_REQUIRE_SANDBOX says the host
-    must enforce."""
+    """A case about confinement is skipped where nothing confines, and fails
+    where UAGENT_TEST_REQUIRE_SANDBOX says the host must enforce."""
     if sandbox_enforced(root, home, binary=binary):
         return
     assert_true(
@@ -156,9 +137,8 @@ def require_sandbox(root, home, *, binary):
 
 
 def test_yolo_keeps_the_sandbox_and_only_its_setting_lifts_it(root, home, *, binary):
-    """Yolo means nobody is asked, in either startup form. It raises the
-    default level to relaxed, which still confines writes outside the home
-    folder; only the sandbox setting lifts the sandbox."""
+    """Yolo asks nobody and raises the default level to relaxed, which still
+    confines writes outside the home; only the sandbox setting lifts it."""
     require_sandbox(root, home, binary=binary)
     for source, sandbox in (("cli", "default"), ("config", "default"), ("cli", "off")):
         outside = root / f"yolo-{source}-{sandbox}.txt"
@@ -179,8 +159,7 @@ def test_yolo_keeps_the_sandbox_and_only_its_setting_lifts_it(root, home, *, bin
 
 def test_an_agent_runs_in_its_own_sandbox_whatever_its_parents(root, home, *, binary):
     """An agent that may edit runs its commands in the default sandbox, one
-    that may not in the read-only one, even under a parent that runs
-    unconfined."""
+    that may not in the read-only one, even under an unconfined parent."""
     require_sandbox(root, home, binary=binary)
     ws = workspace(root)
     for edits in ("folder", "none"):
@@ -215,71 +194,61 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
     sudo = executables / "sudo"
     sudo.write_text('#!/bin/sh\nprintf "SUDO_FIXTURE\\n"\nexec "$@"\n')
     sudo.chmod(0o755)
-    for tool in ("run", "scratch"):
-        for mode in ("yolo", "confined", "approved", "denied"):
-            if mode == "approved" and tool == "scratch":
-                continue  # scratch has no per-command escape hatch
-            if mode in ("yolo", "confined", "approved") and not enforced:
-                continue
-            outside = root / f"{tool}-{mode}.txt"
-            command = "sudo sh -c " + shlex.quote(f"echo written > {shlex.quote(str(outside))}")
-            if tool == "scratch":
-                script = ws / ".uagent" / "scratch" / f"{mode}.sh"
-                script.parent.mkdir(parents=True, exist_ok=True)
-                script.write_text(command + "\n")
-            arguments = {"command": command} if tool == "run" else {"path": f"{mode}.sh"}
-            if mode == "approved":
-                arguments["sandbox"] = False
-            seen = []
+    for mode in ("yolo", "confined", "approved", "denied"):
+        if mode in ("yolo", "confined", "approved") and not enforced:
+            continue
+        outside = root / f"run-{mode}.txt"
+        command = "sudo sh -c " + shlex.quote(f"echo written > {shlex.quote(str(outside))}")
+        arguments = {"command": command}
+        if mode == "approved":
+            arguments["sandbox"] = False
+        seen = []
 
-            def finish(_, body, seen=seen):
-                seen.extend(
-                    str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"
-                )
-                return event({"content": "policy-ok"})
-
-            with Server([tool_call(tool, arguments), finish]) as server:
-                env = sandbox_env(home, server.url)
-                env["PATH"] = str(executables) + ":" + env["PATH"]
-                flags = ("--yolo",) if mode == "yolo" else ()
-                if mode == "approved":
-                    # A person is there, so root=true is offered and the
-                    # command's own sudo points at it instead of running.
-                    code, transcript = run_pty(
-                        ws,
-                        env,
-                        [(b"go\n", b"Allow run?  [y] Allow"), (b"y\n", b"policy-ok"), b"", b"/q\n"],
-                        timeout=30,
-                        binary=binary,
-                    )
-                    assert_true(code == 0, transcript)
-                else:
-                    result = run_dialog(
-                        ws,
-                        env,
-                        "n\n" if mode == "denied" else "y\n",
-                        *flags,
-                        "-p",
-                        "run the fixture",
-                        timeout=30,
-                        binary=binary,
-                    )
-                    assert_true(result.returncode == 0, (tool, mode, result.stdout, result.stderr))
-            output = "\n".join(seen)
-            assert_true("privileged commands are unavailable" not in output, output)
-            ran = mode not in ("denied", "approved")
-            assert_true(("SUDO_FIXTURE" in output) == ran, (tool, mode, output))
-            assert_true(
-                ("use run root=true" in output) == (mode == "approved"), (tool, mode, output)
+        def finish(_, body, seen=seen):
+            seen.extend(
+                str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"
             )
-            # Yolo spares the question, not the confinement.
-            assert_true(not outside.exists(), (tool, mode, output))
+            return event({"content": "policy-ok"})
+
+        with Server([tool_call("run", arguments), finish]) as server:
+            env = sandbox_env(home, server.url)
+            env["PATH"] = str(executables) + ":" + env["PATH"]
+            flags = ("--yolo",) if mode == "yolo" else ()
+            if mode == "approved":
+                # A person is there, so root=true is offered and the
+                # command's own sudo points at it instead of running.
+                code, transcript = run_pty(
+                    ws,
+                    env,
+                    [(b"go\n", b"Allow run?  [y] Allow"), (b"y\n", b"policy-ok"), b"", b"/q\n"],
+                    timeout=30,
+                    binary=binary,
+                )
+                assert_true(code == 0, transcript)
+            else:
+                result = run_dialog(
+                    ws,
+                    env,
+                    "n\n" if mode == "denied" else "y\n",
+                    *flags,
+                    "-p",
+                    "run the fixture",
+                    timeout=30,
+                    binary=binary,
+                )
+                assert_true(result.returncode == 0, (mode, result.stdout, result.stderr))
+        output = "\n".join(seen)
+        assert_true("privileged commands are unavailable" not in output, output)
+        ran = mode not in ("denied", "approved")
+        assert_true(("SUDO_FIXTURE" in output) == ran, (mode, output))
+        assert_true(("use run root=true" in output) == (mode == "approved"), (mode, output))
+        # Yolo spares the question, not the confinement.
+        assert_true(not outside.exists(), (mode, output))
 
 
 def test_yolo_toggle_raises_the_level_from_the_next_command(root, home, *, binary):
-    """Interactive /yolo stops the questions and raises the default level to
-    relaxed from the next command: a closed folder opens, writes outside the
-    home folder stay confined. Turned off, the default level is back."""
+    """Interactive /yolo raises the default level to relaxed from the next
+    command: a closed folder opens, writes outside the home stay confined."""
     require_sandbox(root, home, binary=binary)
     sibling = home / "Projects" / "other" / "notes.txt"
     sibling.parent.mkdir(parents=True)
@@ -329,9 +298,8 @@ def test_yolo_toggle_raises_the_level_from_the_next_command(root, home, *, binar
 
 
 def test_yolo_raises_the_default_level_to_relaxed(root, home, *, binary):
-    """Under yolo a default-level command reads your other folders and writes
-    the home folder, but not ~/.uagent or a credential store; a level written
-    down as readonly stays as it is."""
+    """Under yolo a default-level command reads other folders and writes the
+    home folder, but not ~/.uagent or a credential store; readonly stays."""
     require_sandbox(root, home, binary=binary)
     plant_credentials(home)
     sibling = home / "Projects" / "other" / "notes.txt"
@@ -372,7 +340,6 @@ def test_yolo_raises_the_default_level_to_relaxed(root, home, *, binary):
 
 
 def test_sandbox_confines_writes_to_the_workspace(root, home, *, binary):
-    """Inside the workspace writes land; outside it they do not."""
     require_sandbox(root, home, binary=binary)
     inside, outside = workspace(root) / "inside.txt", root / "outside.txt"
     # No trailing `true`: the shell's exit status has to carry the failure, or
@@ -408,10 +375,7 @@ def test_sandbox_opens_the_package_cache_not_the_data_directory(root, home, *, b
 
 def test_sandbox_protects_agent_state(root, home, *, binary):
     """A shell command cannot reach the saved settings or the trust store.
-
-    The unsandboxed control is the point of the case: without it a passing
-    assertion could just mean the command was malformed.
-    """
+    The unsandboxed control shows the command itself is well formed."""
     require_sandbox(root, home, binary=binary)
     target = settings_path(home)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -425,8 +389,7 @@ def test_sandbox_protects_agent_state(root, home, *, binary):
 
 def test_sandbox_hides_the_web_hosts_devices(root, home, *, binary):
     """A paired device's token would let a command act as the person at a
-    browser: commands cannot read the web host's state, and the file tools
-    refuse it. The unsandboxed control shows the command itself works."""
+    browser: commands cannot read the web host's state, nor the file tools."""
     require_sandbox(root, home, binary=binary)
     devices = home / ".uagent" / "web" / "devices.json"
     devices.parent.mkdir(parents=True, exist_ok=True)
@@ -445,11 +408,8 @@ def test_sandbox_hides_the_web_hosts_devices(root, home, *, binary):
 
 
 def test_a_link_made_in_the_same_batch_does_not_reach_the_saved_settings(root, home, *, binary):
-    """A call is approved for what it reaches when the batch is prepared. A
-    call before it can make its path a link to something else: what it needs
-    is decided again when it runs, and it is refused. So for the saved
-    settings, which only a person may touch, and for any file outside the
-    folder, which is a different question from one inside it."""
+    """A call is approved for what it reaches when the batch is prepared; a
+    call before it can relink its path, so it is decided again as it runs."""
     ws = workspace(root)
     settings = settings_path(home)
     settings.parent.mkdir(parents=True, exist_ok=True)
@@ -499,11 +459,9 @@ def test_a_link_made_in_the_same_batch_does_not_reach_the_saved_settings(root, h
 
 
 def test_sandbox_reads_only_the_workspace_among_your_folders(root, home, *, binary):
-    """The home folder's visible entries, the workspaces in ~/.uagent/spaces
-    and the workspace's neighbours are closed: a command reads none of them
-    but the workspace, and a file tool asks a
-    person, refusing where nobody can answer. Dot-folders and everything
-    outside the home folder stay readable, and sandbox.read opens a folder."""
+    """The home folder's visible entries, the spaces and the workspace's
+    neighbours are closed to commands; a file tool asks a person. Dot-folders
+    and everything outside the home stay readable; sandbox.read opens one."""
     require_sandbox(root, home, binary=binary)
     sibling = home / "Projects" / "other" / "notes.txt"
     sibling.parent.mkdir(parents=True)
@@ -590,8 +548,7 @@ def git(*arguments, cwd):
 
 def test_sandbox_lets_a_linked_worktree_use_its_repository(root, home, *, binary):
     """A worktree's git directories sit beside the main checkout, in a folder
-    the sandbox closes. git status, add and commit work in the worktree, and
-    the main checkout stays closed."""
+    the sandbox closes: git works in the worktree, the checkout stays closed."""
     require_sandbox(root, home, binary=binary)
     main = root / "main-repo"
     main.mkdir()
@@ -630,10 +587,7 @@ def git_log(repo):
 
 def browser_reach(root, env, profile, *, binary, approve=False, yolo=False):
     """What a command could get at in the browser profile, as marker names.
-
-    Each probe writes its marker only on success, into the workspace, so a
-    probe that was stopped for any reason reads as unreached.
-    """
+    A probe writes its marker only on success: a stopped one reads unreached."""
     ws = workspace(root)
     for marker in ws.glob("reach-*"):
         marker.unlink()
@@ -679,11 +633,8 @@ def landlock_abi():
 
 
 def test_sandbox_hides_the_browser_profile(root, home, *, binary):
-    """A sandboxed command cannot read the browser profile; nothing else changes.
-
-    A person-approved sandbox=false and a disabled sandbox lift it, as they
-    lift the sandbox itself; yolo does not.
-    """
+    """A sandboxed command cannot read the browser profile. A person-approved
+    sandbox=false and a disabled sandbox lift that; yolo does not."""
     require_sandbox(root, home, binary=binary)
     # Canonical, because both mechanisms match the resolved path.
     profile = pathlib.Path(os.path.realpath(root)) / "browser"
@@ -727,12 +678,8 @@ def test_sandbox_hides_the_browser_profile(root, home, *, binary):
 
 
 def test_sandbox_detached_log_writes_but_records_do_not(root, home, *, binary):
-    """The A4 split, from the sandbox side.
-
-    A detached job's own log pump has to write under ~/.uagent/terminals/logs,
-    so that directory is a writable root. The records beside it are not: a
-    forged record would misdirect the kill and the expiry unlink that read it.
-    """
+    """A detached job's log pump writes under ~/.uagent/terminals/logs, but the
+    records beside it stay closed: a forged one would misdirect the kill."""
     require_sandbox(root, home, binary=binary)
     forged = home / ".uagent" / "terminals" / "99999.json"
     logs = home / ".uagent" / "terminals" / "logs"
@@ -764,12 +711,7 @@ def test_sandbox_extra_roots_are_granted_and_screened(root, home, *, binary):
 
 
 def tcp_reachable(root, home, allow, *, binary, **settings):
-    """Whether a sandboxed command can open a TCP connection to a live socket.
-
-    The listener is local and the marker is a file, so a run that never got as
-    far as connecting is indistinguishable from one that was denied -- which is
-    the assertion either way.
-    """
+    """Whether a sandboxed command can open a TCP connection to a live socket."""
     marker = (
         workspace(root)
         / f"net-{allow}-{len(settings)}-{settings.get('UAGENT_SANDBOX_NET', '')}.txt"
@@ -818,11 +760,7 @@ def test_sandbox_names_itself_when_a_lookup_fails_offline(root, home, *, binary)
 
 
 def test_sandbox_refuses_when_it_cannot_enforce(root, home, *, binary):
-    """Explicitly configured on, host cannot enforce: the command must not run.
-
-    The degraded tier -- on only by registry default -- is not reachable while
-    that default is off, so it is covered where the default flips.
-    """
+    """Explicitly configured on, host cannot enforce: the command must not run."""
     written = workspace(root) / "should-not-exist.txt"
     env = sandbox_env(home, "", UAGENT_INTERNAL_SANDBOX_UNAVAILABLE="1")
     output = tool_output(root, env, f"echo x > {written}", binary=binary)
@@ -855,10 +793,8 @@ def test_sandbox_escape_hatch_runs_unconfined_when_approved(root, home, *, binar
         code, output = run_pty(
             workspace(root),
             sandbox_env(home, server.url),
-            # Wait for the question, not the headline that precedes it: the
-            # composer is still reading until `Confirm` takes over, so a "y"
-            # typed on the headline is captured as steering and the child then
-            # blocks on an answer that has already been consumed.
+            # Wait for the question, not the headline before it: until `Confirm`
+            # takes over, the composer captures a typed "y" as steering.
             [(b"go\n", b"Allow run?  [y] Allow"), (b"y\n", b"hatch-ok"), b"", b"/q\n"],
             timeout=30,
             binary=binary,
@@ -872,10 +808,7 @@ def test_sandbox_escape_hatch_runs_unconfined_when_approved(root, home, *, binar
 
 def test_sandbox_protects_project_authority(root, home, *, binary):
     """The workspace is writable, but not the file that grants authority.
-
-    Seatbelt denies the write. Landlock has no deny form, so there the file is
-    put back when the command ends, and the model is told.
-    """
+    Seatbelt denies the write; Landlock cannot, so the file is put back."""
     require_sandbox(root, home, binary=binary)
     ws = workspace(root)
     (ws / ".uagent").mkdir(exist_ok=True)
@@ -885,15 +818,12 @@ def test_sandbox_protects_project_authority(root, home, *, binary):
     assert_true(not mcp.exists(), "a command wrote the project .mcp.json")
     if sys.platform != "darwin":
         assert_true("restored .mcp.json" in output, f"the restore was silent: {output}")
-    # The carve-out is that file, not the folder's own scratch space.
     assert_true(scratch.exists(), "the carve-out took the .uagent directory")
 
 
 def test_sandbox_keeps_repository_config_and_hooks(root, home, *, binary):
-    """A command may commit, but not plant config or hooks your own git runs.
-
-    Denied under Seatbelt; under Landlock undone when the command ends, and said.
-    """
+    """A command may commit, but not plant config or hooks your own git runs:
+    denied under Seatbelt, undone under Landlock when the command ends."""
     import subprocess
 
     require_sandbox(root, home, binary=binary)
@@ -917,12 +847,8 @@ def test_sandbox_keeps_repository_config_and_hooks(root, home, *, binary):
 
 
 def test_sandbox_reports_itself(root, home, *, binary):
-    """The two surfaces that answer "what is confining me": /status and startup.
-
-    A root that was asked for and not granted has to be said out loud at
-    startup. Finding out from a command that failed hours later is the same
-    information arriving too late to act on.
-    """
+    """/status and startup answer what is confining: a root that was asked
+    for and not granted is said at startup."""
     require_sandbox(root, home, binary=binary)
     with Server([event({"content": "ready-ok"})]) as server:
         code, output = run_pty(
@@ -954,12 +880,8 @@ def test_status_lists_the_folders_opened_for_reading(root, home, *, binary):
 
 
 def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
-    """A home directory holds ~/.uagent, so it is never a writable root.
-
-    The model has to read that before it plans, and again with the roots when
-    a command fails: left to the kernel's "Permission denied" it spends a
-    round per guess finding out where it may write.
-    """
+    """A home directory holds ~/.uagent, so it is never a writable root. The
+    model reads that before it plans, and again when a command fails."""
     require_sandbox(root, home, binary=binary)
     # The web host's state is hidden from commands. Landlock can only read
     # around it, so on Linux this workspace also goes stale for a running one.
@@ -1033,12 +955,8 @@ def test_sandbox_grants_a_space_and_not_the_state_beside_it(root, home, *, binar
 
 
 def test_sandbox_degrades_when_it_cannot_enforce_by_default(root, home, *, binary):
-    """On by default, host cannot enforce: run unconfined and say so.
-
-    The refusal above is for a session that asked for the sandbox by name. A
-    session that only inherited the default gets the opposite answer, because
-    shipping a default that bricks an old kernel is worse than the exposure.
-    """
+    """On by default, host cannot enforce: run unconfined and say so. Only a
+    session that asked for the sandbox by name is refused."""
     written = root / "degraded.txt"
     env = base_env(home, "")
     env["UAGENT_INTERNAL_SANDBOX_UNAVAILABLE"] = "1"
@@ -1098,9 +1016,8 @@ def readable(root, env, path, *, binary):
 
 
 def test_sandbox_hides_credential_stores_by_default(root, home, *, binary):
-    """Commands cannot read the cloud and settings credentials; ssh and the
-    GitHub CLI login stay readable, as does a store nobody listed. The
-    unsandboxed control shows each command itself works."""
+    """Commands cannot read the cloud and settings credentials; ssh, the GitHub
+    CLI login and a store nobody listed stay readable."""
     require_sandbox(root, home, binary=binary)
     plant_credentials(home)
     env = sandbox_env(home, "")
@@ -1172,8 +1089,7 @@ def test_file_tools_refuse_the_hidden_set(root, home, *, binary):
 
 
 def test_sandbox_levels(root, home, *, binary):
-    """relaxed opens the home folder except
-    ~/.uagent and the hidden stores."""
+    """relaxed opens the home folder except ~/.uagent and the hidden stores."""
     require_sandbox(root, home, binary=binary)
     plant_credentials(home)
     project = home / "project"
@@ -1210,9 +1126,8 @@ def test_sandbox_levels(root, home, *, binary):
 
 
 def test_a_level_that_is_no_level_refuses_rather_than_opening_the_network(root, home, *, binary):
-    """`strict` is gone, and neither it nor a typo may quietly become the
-    default, which allows the network: in the environment or saved, commands
-    are refused with what to set instead."""
+    """A level that is none, a typo included, never becomes the default, which
+    allows the network: commands are refused with what to set instead."""
     require_sandbox(root, home, binary=binary)
     for level in ("strict", "0", "loose"):
         env = sandbox_env(home, "", UAGENT_SANDBOX=level)
@@ -1286,9 +1201,8 @@ def mcp_writes(root, home, entry, *, binary):
 
 
 def test_mcp_servers_are_confined_unless_they_opt_out(root, home, *, binary):
-    """A stdio server runs under the sandbox: it cannot write outside the
-    workspace. `"sandbox": false` in its entry lifts that, after the project is
-    trusted."""
+    """A stdio server runs under the sandbox and cannot write outside the
+    workspace; `"sandbox": false` in a trusted project's entry lifts that."""
     require_sandbox(root, home, binary=binary)
     assert_true(
         not mcp_writes(root, home, {}, binary=binary), "an MCP server wrote outside the workspace"

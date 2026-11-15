@@ -10,13 +10,11 @@
 
 namespace uagent {
 // {spend: {today, week}, changed: {files, added, removed}, git: {branch,
-// uncommitted}}, from the turns its conversations finished in the last 7
-// days and the files those of today changed; `git` only where the folder is
-// a repository. Read from disk and git, never the network, and kept for a
-// few seconds.
-json FolderFacts(const std::string& folder);
-// The same, with how many conversations there are, work and need you, and
-// which need you, as lines of text.
+// uncommitted}}; `git` only for a repository. Read from disk and git, never
+// the network, and cached for a few seconds.
+json FolderFacts(const std::string& folder, const std::string& host = "");
+json FolderGitFacts(const std::string& folder);
+// The same as text, with the conversations that work and those that need you.
 std::string FolderOverviewText(const std::string& folder);
 }  // namespace uagent
 #endif

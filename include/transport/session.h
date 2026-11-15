@@ -30,12 +30,10 @@ inline constexpr int kSocketBacklog = 16;
 inline constexpr auto kConnectTimeout = std::chrono::seconds(2);
 inline constexpr auto kConnectPollInterval = std::chrono::milliseconds(100);
 inline constexpr auto kWorkerShutdownTimeout = std::chrono::seconds(5);
-// How long a runtime that is still alive may take to answer its first
-// connection. One that ends sooner is not waited for at all.
+// How long a live runtime may take to answer its first connection.
 inline constexpr auto kRuntimeStartTimeout = std::chrono::seconds(30);
 
-// Why a runtime ended before it could be reached, as its exit status, so the
-// one who started it can say so instead of waiting.
+// Why a runtime ended before it could be reached, as its exit status.
 enum WorkerExit : int {
   kWorkerBadLaunch = 64,
   // Another runtime holds the session: one still leaving, or one arriving.
@@ -43,8 +41,7 @@ enum WorkerExit : int {
   kWorkerNoWorkspace = 66,
   // It holds the session and cannot open its socket; waiting changes nothing.
   kWorkerCannotListen = 67,
-  // It could not start (no provider, unreadable settings): it left why in
-  // WorkerErrorPath(launch) for the one who started it.
+  // It could not start; the reason is in WorkerErrorPath(launch).
   kWorkerBootFailed = 68,
 };
 // Where a runtime that cannot start leaves its reason, beside its launch file.
@@ -67,8 +64,7 @@ void StampFrame(json& frame, const std::string& id,
                 const std::string& generation);
 bool WriteFrame(int fd, const json& frame);
 bool WriteFrame(int fd, std::string line);
-// The same incremental, bounded decoder serves worker commands and client
-// events. Callback false terminates decoding at a complete frame.
+// Incremental, bounded decoder; a false callback stops at a complete frame.
 class FrameBuffer {
  public:
   explicit FrameBuffer(size_t limit = kFrameBytes) : limit_(limit) {}

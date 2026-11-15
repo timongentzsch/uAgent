@@ -2,8 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_TOOLS_WEB_FETCH_H_
 #define UAGENT_INCLUDE_TOOLS_WEB_FETCH_H_
-// One model-facing tool for reading a known URL, for when search summarised
-// a page instead of answering from it.
+// The tool that reads a known URL, for when search only summarised the page.
 
 #include <string>
 
@@ -12,12 +11,10 @@
 
 namespace uagent {
 
-// Markup to the text a reader would see: script, style and comments dropped,
-// block boundaries kept as newlines, entities decoded. Exposed for tests.
+// Markup to the text a reader would see, block boundaries as newlines.
 std::string HtmlToText(const std::string& html);
 
-// What a fetched page gives the model: its text, a PDF attached for the next
-// step, or why not. Exposed for tests.
+// What a fetched page gives the model: its text, an attached PDF, or why not.
 ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
                            const std::string& call_id);
 

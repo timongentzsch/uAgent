@@ -71,9 +71,8 @@ TEST_CASE(TestOpenRouterServerSearch) {
   CHECK(usage.cost_reported);
   CHECK(UsageFromJson(UsageJson(usage)).cost_reported);
 
-  // Provider and persisted usage are untrusted accounting inputs. Negative
-  // values cannot reduce a budget, and huge totals saturate instead of
-  // wrapping into negative numbers.
+  // Provider and persisted usage are untrusted: negative values cannot reduce a
+  // budget, and huge totals saturate instead of wrapping.
   Usage hostile;
   hostile.Add({{"prompt_tokens", -10},
                {"completion_tokens", -20},
@@ -100,12 +99,9 @@ TEST_CASE(TestOpenRouterServerSearch) {
   CHECK(restored.input == 0 && restored.output == 0);
   CHECK(restored.cost == 0 && restored.web_searches == 0);
 
-  // Every OpenAI-compatible spelling must land on the same invariant: `input`
-  // excludes cache reads and writes, so their sum is the whole prompt, and
-  // the hit percentage is the cached share of it. Chat Completions and
-  // Responses report cached tokens inside the prompt total; Anthropic-style
-  // reports them beside an input count that already excludes them, and
-  // subtracting there would under-report fresh tokens.
+  // In every spelling `input` excludes cache reads and writes. Chat Completions
+  // and Responses count cached tokens inside the prompt total; Anthropic-style
+  // reports them beside an input count that already excludes them.
   struct UsageCase {
     const char* spelling;
     json payload;
@@ -117,7 +113,6 @@ TEST_CASE(TestOpenRouterServerSearch) {
     int64_t cache_hit_percent;
   };
   const std::vector<UsageCase> usage_cases = {
-      // The percentage is defined as zero before anything is counted.
       {"nothing counted", json::object(), 0, 0, 0, 0, 0, 0},
       // Compatibility providers occasionally report detail counts larger than
       // the parent totals; the result is clamped, never negative.
@@ -221,8 +216,6 @@ TEST_CASE(TestOpenRouterServerSearch) {
   unnamed_api.api_key = "inference-key";
   unnamed_api.model = "conversation-model";
   CHECK(!SelectWebSearchRoute(unnamed_api, {seeker}).has_value());
-  // So the tool and its prompt line are withheld there, and offered again on
-  // a route that can search.
   UsageAccumulator unnamed_usage;
   const std::vector<Tool> unnamed_tools = {
       WebSearchTool(unnamed_api, unnamed_usage, {seeker})};
@@ -245,7 +238,6 @@ TEST_CASE(TestOpenRouterServerSearch) {
   CHECK(SelectWebSearchRoute(inherit_api, {})->model == "vendor/model");
   inherit_api.features = {};
   CHECK(!SelectWebSearchRoute(inherit_api, {}).has_value());
-  // `off` refuses every candidate.
   RuntimeConfig disabled_config = search_config;
   disabled_config.web_search_backend = "off";
   Api disabled_api(disabled_config);
@@ -287,7 +279,6 @@ TEST_CASE(TestOpenRouterServerSearch) {
   CanonicalizeToolArguments(search_tool, bare_query);
   CHECK(bare_query["queries"] == json::array({"only one"}));
   CHECK(!FindToolArgumentIssue(search_tool, bare_query));
-  // A list of something else is still refused.
   Tool objects = search_tool;
   objects.parameters["properties"]["queries"]["items"] = {{"type", "object"}};
   json bare_object = {{"queries", "only one"}};
@@ -310,8 +301,7 @@ TEST_CASE(TestOpenRouterServerSearch) {
         ToolErrorCode::kInvalidArguments);
 
   // Address policy is enforced on libcurl's resolved connection target, not
-  // only on the URL spelling. Cover private, link-local, documentation, IPv6,
-  // IPv4-mapped and NAT64 forms without depending on a listening service.
+  // only on the URL spelling.
   for (std::string_view url : {
            "http://127.0.0.1/",
            "http://10.0.0.1/",
@@ -326,36 +316,26 @@ TEST_CASE(TestOpenRouterServerSearch) {
     CHECK(denied.error == "refused non-public network destination");
   }
 
-  // Markup out, reading order in: dropped elements take their content with
-  // them, block edges become line breaks, and inline tags do not split words.
   CHECK(HtmlToText("<p>one</p><p>two</p>") == "one\n\ntwo");
   CHECK(HtmlToText("<style>p{color:red}</style><p>kept</p>") == "kept");
   CHECK(HtmlToText("<script>if (a < b) doc('</p>')</script>text") == "text");
   CHECK(HtmlToText("<!-- note --><b>bo</b>ld") == "bold");
   CHECK(HtmlToText("a &amp; b &lt;c&gt; &#39;d&#39;") == "a & b <c> 'd'");
-  // Source layout adds nothing: a block break is one blank line at most,
-  // however many newlines and tags produced it.
   CHECK(HtmlToText("<p>a</p>\n\n\n\n<p>b</p>") == "a\n\nb");
   CHECK(HtmlToText("  spaced   \t out  ") == "spaced out");
-  // An unterminated tag ends the document rather than leaking markup.
   CHECK(HtmlToText("visible<div class=") == "visible");
   CHECK(HtmlToText("<style>only</style>").empty());
-  // A `>` inside a quoted attribute does not end the tag. Pages carry JSON in
-  // attributes, and stopping early spilled the remainder out as text.
+  // A `>` inside a quoted attribute does not end the tag.
   CHECK(HtmlToText(R"(<div data-mw='{"parts":["]}'>text</div>)") == "text");
   CHECK(HtmlToText("<a href=\"?a=1&amp;b=2\">link</a>") == "link");
-  // Cells are columns, not lines: without a separator the figures either side
-  // of a boundary ran together into one unreadable number.
+  // Cells are columns: a separator keeps adjacent figures apart.
   CHECK(HtmlToText("<tr><td>US</td><td>1,000</td><td>2,000</td></tr>") ==
         "| US | 1,000 | 2,000");
-  // Headings carry their depth, so the outline survives the conversion.
   CHECK(HtmlToText("<h2>Title</h2><p>body</p>") == "## Title\n\nbody");
   CHECK(HtmlToText("<h6>deep</h6>") == "###### deep");
-  // Site furniture is not what a reader came for.
   CHECK(HtmlToText("<nav>menu</nav><p>real</p><footer>legal</footer>") ==
         "real");
-  // Indentation inside <pre> is the meaning: collapsing it broke every
-  // Python block that came back through this tool.
+  // Indentation inside <pre> is the meaning: it is never collapsed.
   CHECK(HtmlToText("<pre>def f():\n    return 1\n</pre>") ==
         "def f():\n    return 1");
   CHECK(HtmlToText("<pre><span>if x:</span>\n    pass</pre>") ==
@@ -364,8 +344,7 @@ TEST_CASE(TestOpenRouterServerSearch) {
         "before\n\n  kept  \n\nafter");
 
   {
-    // What a fetched page gives the model. A missing page says to search
-    // for it; models guessed deep links and fetched them again and again.
+    // A missing page says to search for it, so a model stops guessing links.
     TestWorkspace workspace("fetched-page");
     WebResponse missing;
     missing.error = "HTTP 404";
@@ -378,8 +357,6 @@ TEST_CASE(TestOpenRouterServerSearch) {
     refused.http_status = 403;
     CHECK(ReadFetchedPage("https://example.com/", refused, "c")
               .output.find("guessing") == std::string::npos);
-    // A PDF reaches the model's next step as a document, under the call
-    // that fetched it.
     WebResponse pdf;
     pdf.content_type = "application/pdf";
     pdf.body = "%PDF-1.4\n%%EOF\n";

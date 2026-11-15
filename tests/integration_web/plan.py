@@ -22,13 +22,13 @@ def plan_path(messages):
     return found[-1] if found else ""
 
 
-def last_prompt(messages):
-    """The latest of PROMPTS the person sent, and the tool results since."""
+def last_prompt(messages, prompts=PROMPTS):
+    """The latest of `prompts` the person sent, and the tool results since."""
     for index in range(len(messages) - 1, -1, -1):
         if messages[index].get("role") != "user":
             continue
         text = json.dumps(messages[index].get("content"))
-        for prompt in PROMPTS:
+        for prompt in prompts:
             if prompt in text:
                 return prompt, tool_results(messages[index + 1 :])
     return "", []
@@ -44,9 +44,7 @@ def settled(marker, count=1):
 
 def test_plan_mode_reads_then_puts_its_plan_to_the_person(root, home, *, binary):
     """In plan mode only reads and the plan file are allowed; each turn ends
-    with the plan shared and three choices: keep planning starts a planning
-    turn with the feedback, either approval leaves plan mode in that mode and
-    starts the work. A turn that writes no plan ends with a notice."""
+    with the plan shared and three choices, or a notice when it wrote none."""
     project = root / "plan-project"
     project.mkdir()
     kept = project / "keep.txt"

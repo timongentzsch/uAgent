@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# The checks CI runs on every change that need no build: clang-format and
-# cpplint for C++, Ruff for Python, and the source contracts. Needs uv.
+# The checks CI runs on every change that need no build.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 uvx --from clang-format==22.1.8 clang-format --dry-run --Werror \

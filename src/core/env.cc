@@ -181,10 +181,8 @@ bool ApprovalIsYolo() { return CurrentApprovalMode() == ApprovalMode::kYolo; }
 
 namespace {
 
-// The typed tables now carry only what a descriptor cannot: which RuntimeConfig
-// member each setting writes. The descriptor pointer is resolved at compile
-// time, so config load does no lookup and a binding naming an unregistered
-// setting fails to build.
+// The typed tables carry what a descriptor cannot: which RuntimeConfig member
+// each setting writes. A binding naming an unregistered setting fails to build.
 template <typename T>
 struct FieldBinding {
   const ConfigDescriptor* descriptor;

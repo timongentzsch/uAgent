@@ -10,11 +10,9 @@ import {
 } from "./limits.ts";
 import { useLatest } from "./use-latest.ts";
 
-// A sheet (the caller says when that is a phone's) follows a finger pulling it down from its top (its
-// header, or its body while that is not scrolled) and closes the way its
-// Close button does when let go far or fast enough; short of that it springs
-// back. The drag is the --swipe offset, which styles/primitives.css turns
-// into the sheet's translate for as long as it has data-dragging.
+// A sheet follows a finger pulling it down from its top and closes when let
+// go far or fast enough; short of that it springs back. The drag is the
+// --swipe offset, which styles/primitives.css turns into its translate.
 export function useSheetSwipe(
   ref: RefObject<HTMLDialogElement | null>,
   close: () => void,

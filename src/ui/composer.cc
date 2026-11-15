@@ -24,10 +24,8 @@ namespace uagent {
 
 namespace {
 
-// Map the bytes the composer has to show inline and, when asked, report where
-// `offset` lands in the mapped text. The mapping is per byte, so mapping the
-// prefix and the remainder separately equals mapping the whole string; that
-// spares the caller a second full mapping pass just to locate the caret.
+// Maps the bytes the composer shows inline; `mapped_offset` receives where
+// `offset` lands. The mapping is per byte, so the prefix maps on its own.
 std::string DisplayText(std::string_view text, size_t offset = 0,
                         size_t* mapped_offset = nullptr) {
   auto map = [](std::string_view part) {
@@ -111,7 +109,6 @@ constexpr SequenceBinding kSequenceBindings[] = {
     {"\x1b[13;2u", SequenceAction::kInsertNewline},
 };
 
-// One character back/forward from a boundary, over the shared scanners.
 size_t PreviousUtf8(const std::string& text, size_t at) {
   return at == 0 ? 0 : Utf8BoundaryBefore(text, at - 1);
 }
@@ -173,10 +170,6 @@ void RawComposer::ResetDraftState() {
   selected_ = 0;
 }
 
-// Readline's spelling, so the gesture is already in the fingers of anyone who
-// edits a long shell command the same way. The composer holds 64 KiB and
-// renders newlines as a glyph, which is writable but not somewhere to compose
-// a long prompt.
 bool RawComposer::EditTextExternally(std::string& text) {
   region_.Clear();
   Stop();
@@ -243,8 +236,7 @@ InteractiveInputEvent RawComposer::Read() {
       continue;
     }
     // Both spellings submit: a piped script sends the bare newline. With the
-    // menu open, Enter takes the highlighted command unless the draft already
-    // names one exactly.
+    // menu open, Enter takes the highlighted one unless the draft names one.
     if ((ch == '\r' || ch == '\n') && !ParseSlashCommand(buffer_).spec &&
         CompletionMatches(buffer_, cursor_).menu) {
       Complete();
@@ -263,6 +255,9 @@ InteractiveInputEvent RawComposer::Read() {
     }
     if (ch == Ctrl('B')) {
       return {InteractiveInputKind::kBackground, buffer_};
+    }
+    if (ch == Ctrl('O')) {
+      return {InteractiveInputKind::kDetail, buffer_};
     }
     if (ch == Ctrl('D') && buffer_.empty()) {
       return {InteractiveInputKind::kEof, {}};

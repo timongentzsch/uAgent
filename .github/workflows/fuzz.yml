@@ -1,6 +1,5 @@
-# Finding a new input takes minutes per fuzzer, so the search runs here on its
-# own schedule and hands back whatever it reached as the next run's starting
-# point.
+# Finding a new input takes minutes per fuzzer, so the search runs on its own
+# schedule.
 name: Fuzz
 
 on:
@@ -33,16 +32,13 @@ jobs:
         run: >-
           cmake --build --preset fuzz
           --target uagent_fuzz_${{ matrix.fuzzer }} --parallel 4
-      # -max_total_time bounds the search; a crash still fails the step, and
-      # -print_final_stats records how far the run got in the log.
       - name: Fuzz
         run: |
           cp -r tests/fuzz/corpus/${{ matrix.fuzzer }} /tmp/corpus
           build/fuzz/uagent_fuzz_${{ matrix.fuzzer }} \
             -max_total_time=300 -print_final_stats=1 -artifact_prefix=/tmp/corpus/ /tmp/corpus
-      # The grown corpus is an artifact rather than a commit: promoting inputs
-      # back into tests/fuzz/corpus/ is a human decision, since every one of
-      # them is replayed by every later CI smoke run.
+      # An artifact, not a commit: every input in tests/fuzz/corpus/ is
+      # replayed by each CI smoke run, so promoting one is a human decision.
       - name: Upload corpus
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

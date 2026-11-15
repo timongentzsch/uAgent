@@ -24,12 +24,8 @@
 
 namespace uagent::browser {
 namespace {
-// Where an element is now, brought into view and the same over two frames,
-// since a page may animate it there (a hidden tab draws no frames and is not
-// waited for). Nothing when it left the page or has no size; whether it is
-// still moving after ten frames; and what lies on top when something else
-// would take the click, so the model can deal with that. `held` leaves it
-// where it is, and says when it is out of view there.
+// Where an element is once it is still over two frames, or why it cannot be
+// acted on: gone, still moving, covered. `held` does not bring it into view.
 constexpr const char* kElementScript = R"js((async (e, held) => {
   if (!e || !e.isConnected) return null;
   if (!held) {
@@ -88,19 +84,16 @@ constexpr const char* kElementScript = R"js((async (e, held) => {
   return {x: Math.round(x), y: Math.round(y)};
 }))js";
 
-// The element a look numbered, as the page holds it (runtime_page.cc). The
-// look becomes the last one used, as in looks_, so the looks its actions add
-// do not push it out.
+// The element a look numbered, as the page holds it. The look becomes the
+// last one used, so the looks its actions add do not push it out.
 std::string Numbered(const std::string& look, int number) {
   return "(((m, k) => { const kept = m?.get(k); if (kept) { m.delete(k); "
          "m.set(k, kept); } return kept; })(window.__uagentLooks, " +
          JsonDump(look) + ") || [])[" + std::to_string(number - 1) + "]";
 }
 
-// Whether the field typed text reaches is one the screenshots mask
-// (kSecretScript), followed into shadow roots and frames: "frame" for a
-// frame of another site and "unknown" for anything but a known text field,
-// such as one inside a closed shadow root, since neither can be told.
+// Whether the focused field is one the screenshots mask (kSecretScript):
+// "frame" in a frame of another site, "unknown" for no known text field.
 constexpr const char* kSecretFieldScript = R"js((() => {
   let e = document.activeElement;
   for (;;) {
@@ -119,12 +112,8 @@ constexpr const char* kSecretFieldScript = R"js((() => {
     e.type === 'password' || /password/i.test(e.getAttribute('autocomplete') || ''));
 })())js";
 
-// A select, or a date, time or color field, takes no typed text: Chrome
-// draws it as a list or as segments, so inserted text lands nowhere and
-// typing would report a value it never set. The focused one (followed as
-// kSecretFieldScript does) is set as the page's own script would set it, and
-// told of it through input and change; a value it refuses is said, with the
-// form it takes. Anything else gives null and is typed into.
+// A select, or a date, time or color field, takes no typed text: the focused
+// one is set as the page's own script would. Null for any other field.
 constexpr const char* kControlScript = R"js((text) => {
   let e = document.activeElement;
   for (;;) {
@@ -169,8 +158,8 @@ constexpr const char* kControlScript = R"js((text) => {
   return {set: true};
 })js";
 
-// types what `text` says: the name alone reaches the page's own listeners
-// and nothing else, so Enter would not send a form nor Backspace delete.
+// A key's name alone reaches the page's own listeners and nothing else, so
+// Enter would not send a form nor Backspace delete.
 struct Key {
   const char* name;
   int code;
@@ -183,10 +172,8 @@ constexpr Key kKeys[] = {
     {"ArrowRight", 39, ""}, {"PageUp", 33, ""},    {"PageDown", 34, ""},
     {"Home", 36, ""},       {"End", 35, ""}};
 
-// Text is typed key by key, as a keyboard would: fields that listen for keys
-// (autocomplete, masked and code inputs) see each one, and with no pause
-// between keys a short field still fills at once. Longer text, and text with
-// a character no key types (a control, an emoji), goes in at once instead.
+// Text is typed key by key, so fields that listen for keys see each one.
+// Longer text, or text with a character no key types, goes in at once.
 constexpr size_t kKeyedChars = 256;
 std::vector<std::string> KeyedCharacters(const std::string& text) {
   std::vector<std::string> keys;
@@ -212,10 +199,8 @@ bool Coordinate(const json& command, const char* name, int& result) {
 // X keysyms.
 constexpr uint32_t kKeyEscape = 0xFF1B, kKeyDown = 0xFF54, kKeyTab = 0xFF09;
 
-// Presses keys on the browser's display, as a person at it would, each with
-// the wait in milliseconds that follows it. Chrome's own lists (the saved
-// logins it offers) take keys from there only, never from the debugging
-// channel, which reaches the page alone.
+// Presses keys on the display, each with the wait in ms that follows it.
+// Chrome's own lists take no keys from the debugging channel.
 bool PressOnDisplay(const std::string& socket,
                     std::initializer_list<std::pair<uint32_t, int>> keys) {
   Fd rfb = ConnectUnix(socket);
@@ -269,7 +254,6 @@ bool PressOnDisplay(const std::string& socket,
 }
 }  // namespace
 
-// One action on the attached page.
 json Runtime::Act(const std::string& op, const json& command) {
   // Remember the tabs that exist before an action, so the probes after it
   // can tell which tab the action itself opened.
@@ -294,9 +278,8 @@ json Runtime::Act(const std::string& op, const json& command) {
           .empty()) {
     download_path_ = into;
   }
-  // A number names what any look at this page numbered, which is still that
-  // element, also after actions since; a point is one of the latest look's
-  // alone, and only until an action changes the page.
+  // A number names what any look at this page numbered, also after actions
+  // since; a point is the latest look's alone, until an action changes it.
   const std::string view = JsonValue(command, "view_id", "");
   const int element = JsonValue(command, "element", 0);
   const auto unseen = [&]() -> std::string {
@@ -499,8 +482,7 @@ json Runtime::Act(const std::string& op, const json& command) {
       if (!CdError(reply).empty()) break;
     }
   } else if (op == "drag") {
-    // It starts at element (or x and y), brought into view, and ends at
-    // to_element (or to_x and to_y) wherever that then is.
+    // The start is brought into view; the end is taken wherever it then is.
     int x = -1, y = -1, to_x = -1, to_y = -1;
     const int to = JsonValue(command, "to_element", 0);
     if (element > 0) {
@@ -520,10 +502,8 @@ json Runtime::Act(const std::string& op, const json& command) {
     }
     if (outside(x, y) || outside(to_x, to_y)) return {{"error", kOutside}};
     observation_.clear();
-    // A slider or a sortable list follows the pointer. The page's own
-    // drag-and-drop would hand the drag to the system, which never sees
-    // these events: Chrome holds it back instead, and it is dropped where
-    // the pointer ends.
+    // The page's own drag-and-drop would go to the system, which never sees
+    // these events: Chrome holds it back, to be dropped where the pointer ends.
     dragged_ = nullptr;
     Call("Input.setInterceptDrags", {{"enabled", true}}, page_session_);
     const auto pointer = [&](const char* type, int at_x, int at_y, int held) {
@@ -595,8 +575,7 @@ json Runtime::Act(const std::string& op, const json& command) {
     }
     observation_.clear();
     if (JsonValue(command, "replace", false)) {
-      // What the field holds becomes the selection, which the text replaces.
-      // Unselected, the text would be added to it instead.
+      // Selected, what the field holds is replaced; unselected, it is added to.
       json chosen = Call(
           "Input.dispatchKeyEvent",
           {{"type", "rawKeyDown"}, {"commands", json::array({"selectAll"})}},
@@ -629,13 +608,9 @@ json Runtime::Act(const std::string& op, const json& command) {
       if (!CdError(reply).empty()) break;
     }
   } else if (op == "fill_saved") {
-    // The first login Chrome offers under the focused field. A look at the
-    // page closes Chrome's list, so it is closed by now: Escape makes sure,
-    // Down opens it, and after the moment Chrome ignores input to a list it
-    // has just shown, Down and Tab choose. Tab, since with no list it only
-    // moves on, where Return would send the form. How long the field's text
-    // is, before and after, says whether Chrome filled it; the text itself
-    // is never read.
+    // The first login Chrome offers under the focused field: Escape closes its
+    // list, Down opens it, Down and Tab choose. Tab, since with no list Return
+    // would send the form. Only the length of the field's text is ever read.
     json field = Evaluate({{"expression", "document.activeElement"}});
     const json* held = RemoteObject(field);
     const std::string id = held ? JsonValue(*held, "objectId", "") : "";
@@ -776,12 +751,8 @@ json Runtime::Act(const std::string& op, const json& command) {
   return {{"ok", true}};
 }
 
-// A dialog takes the keys a person would give it: Enter accepts, Escape
-// dismisses, and text typed before Enter answers a prompt. A look reports
-// it, since the page behind it cannot be read until it closes.
 // An action approved for one site is done on that site only: the page may
-// have moved since it was approved, by itself or by a person. `url` is the
-// page's when known; else the attached tab is asked.
+// have moved since. `url` is the page's when known; else the tab is asked.
 json Runtime::Elsewhere(const json& command, std::string url) {
   // On a page that is no web site, the look it was approved on is the page,
   // as long as it shows the same document.
@@ -806,6 +777,8 @@ json Runtime::Elsewhere(const json& command, std::string url) {
                         "again"}};
 }
 
+// A dialog takes the keys a person would give it: Enter accepts, Escape
+// dismisses, and text typed before Enter answers a prompt.
 json Runtime::Dialog(const std::string& op, const json& command) {
   json& open = *OpenDialog();
   if (op == "type" || op == "press") {

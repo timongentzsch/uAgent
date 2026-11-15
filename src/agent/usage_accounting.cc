@@ -17,19 +17,15 @@
 
 namespace uagent {
 
-// Every model response is billed the same way: parse the provider's usage
-// block once, then charge it to the session and to a route. Work that is not
-// the conversation itself (compaction, a memory extractor's whole run) names
-// its purpose in the provider's place, as titles and searches do.
+// `purpose` names side work (compaction, extraction) in the provider's place.
 Usage Agent::AccountModelUsage(const json& reported,
                                const std::string& purpose) {
   Usage usage;
   usage.Add(reported);
   MergeSessionUsage(usage);
-  const std::string& tag = purpose.empty() ? usage_purpose_ : purpose;
-  route_usage_[tag.empty() ? ActiveRoute()
-                           : RouteKey(api_.base_url, tag, api_.model,
-                                      api_.reasoning_effort)]
+  route_usage_[purpose.empty() ? ActiveRoute()
+                               : RouteKey(api_.base_url, purpose, api_.model,
+                                          api_.reasoning_effort)]
       .Merge(usage);
   return usage;
 }
@@ -61,7 +57,6 @@ void Agent::DrainChildUsage() {
     json entry = json::parse(line, nullptr, false);
     if (entry.is_object() && entry.contains("usage")) {
       Usage child = UsageFromJson(entry["usage"]);
-      const int64_t parent_turn = JsonValue(entry, "parent_turn", int64_t{0});
       const json statistics =
           SideStatistics(JsonValue(entry, "statistics", json::object()));
       bool first = true;
@@ -69,17 +64,15 @@ void Agent::DrainChildUsage() {
         for (const auto& [route, value] : routes->items()) {
           // Statistics describe the whole child and therefore belong on one
           // record, even when its usage spans several provider routes.
-          side_usage_.Add(route, UsageFromJson(value), parent_turn,
+          side_usage_.Add(route, UsageFromJson(value), 0,
                           first ? statistics : json::object());
           first = false;
         }
       }
       if (first) {
         side_usage_.Add(JsonValue(entry, "route", "delegated/unknown"), child,
-                        parent_turn, statistics);
+                        0, statistics);
       }
-    } else {
-      side_usage_.Add(UsageFromJson(entry));
     }
   }
 }

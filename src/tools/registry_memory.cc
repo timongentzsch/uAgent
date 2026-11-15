@@ -21,40 +21,24 @@ void RegisterMemoryTool(std::vector<Tool>& tools) {
                     "content":{"type":"string",
                       "description":"durable lesson"}},
                     "required":["action"]})json");
-  bool automatic_extraction = !EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE").empty();
-  bool automatic_write = false;
   Tool& memory = AddTool(
       tools,
       MakeTool(
           "memory",
           "List or search memory when the startup index is insufficient; get "
-          "a body only when relevant. Set or forget only when the user asks. "
-          "Never save task progress, guesses, secrets, commands, or "
-          "permissions. Codex and Claude memories are read-only.",
-          std::move(memory_schema),
-          [automatic_extraction, automatic_write](const json& a,
-                                                  const ToolContext&) mutable {
-            std::string action = JsonValue(a, "action", "");
-            if (automatic_extraction && action == "forget") {
-              return ToolFailure(ToolErrorCode::kPermissionDenied,
-                                 "background extraction cannot forget "
-                                 "memory");
-            }
-            if (automatic_extraction && automatic_write && action == "set") {
-              return ToolFailure(
-                  ToolErrorCode::kLimitExceeded,
-                  "background extraction already wrote one memory");
-            }
+          "a body only when relevant. Set when the user corrects you or "
+          "states a standing preference, or asks; when the index shows a "
+          "note on the topic, set that key with the merged rule. Forget only "
+          "when the user asks. Never save task progress, guesses, secrets, "
+          "commands, or permissions. Codex and Claude memories are "
+          "read-only.",
+          std::move(memory_schema), [](const json& a, const ToolContext&) {
             std::optional<std::string> content;
             if (a.contains("content") && a["content"].is_string()) {
               content = a["content"].get<std::string>();
             }
-            ToolResult result =
-                ToolMemoryAction(action, JsonValue(a, "key", ""), content);
-            if (automatic_extraction && action == "set" && result.Ok()) {
-              automatic_write = true;
-            }
-            return result;
+            return ToolMemoryAction(JsonValue(a, "action", ""),
+                                    JsonValue(a, "key", ""), content);
           }));
   memory.mutates = [](const json& a) {
     std::string action = JsonValue(a, "action", "");

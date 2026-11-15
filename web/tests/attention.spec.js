@@ -1,6 +1,5 @@
-// What needs you, across folders: the sidebar's inbox answers any folder's
-// decision, the tab title counts them, a notification's link lands on the
-// decision itself, and a conversation's agents sit beneath it.
+// What needs you, across folders: the sidebar's Needs you, the tab title's
+// count, a notification's link to the decision, and a conversation's agents.
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test, expect, selectProbeModel } from "./fixtures.js";
@@ -27,7 +26,7 @@ async function waitingElsewhere(host, command, request) {
   return session;
 }
 
-test("a decision in another folder is answered from the inbox", async ({
+test("a decision in another folder waits under Needs you, listed once in either view", async ({
   page,
   host,
   session,
@@ -35,41 +34,45 @@ test("a decision in another folder is answered from the inbox", async ({
   request,
 }) => {
   const other = await waitingElsewhere(host, command, request);
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#session=${session.id}`);
-  const inbox = page.getByRole("button", { name: "1 needs you" });
-  await expect(inbox).toBeVisible();
-  // The tab title carries the same count.
+  const nav = page.getByRole("navigation", { name: "Conversations" });
+  const needs = nav.getByRole("group", { name: "Needs you" });
   await expect(page).toHaveTitle("(1) µAgent");
-  await inbox.click();
-  const sheet = page.getByRole("dialog", { name: "Needs you" });
-  const waiting = sheet.getByRole("region", {
-    name: "Decisions waiting on you",
-  });
-  // Named with its folder and what it asks.
-  await expect(waiting).toContainText("elsewhere");
-  if (other.pending_prompt)
-    await expect(waiting).toContainText(other.pending_prompt);
-  await waiting.getByRole("button", { name: "Allow once" }).click();
-  await expect(inbox).toHaveCount(0);
-  await expect(page).toHaveTitle("µAgent");
-  // The conversation open before stays open.
-  expect(new URL(page.url()).hash).toBe(`#session=${session.id}`);
-});
+  for (const view of ["Recent", "Places"]) {
+    await page.getByRole("button", { name: view, exact: true }).click();
+    await expect(needs.locator(".session")).toHaveCount(1);
+    await expect(
+      needs.getByRole("img", { name: "Needs your input" }),
+    ).toBeVisible();
+    await expect(nav.locator(".session")).toHaveCount(2);
+  }
+  // Its folder holds nothing else, so Places has no place for it.
+  await expect(
+    nav.getByRole("button", { name: /^Conversations of .*elsewhere$/ }),
+  ).toHaveCount(0);
 
-test("the inbox opens a waiting session", async ({
-  page,
-  host,
-  session,
-  command,
-  request,
-}) => {
-  const other = await waitingElsewhere(host, command, request);
-  await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "1 needs you" }).click();
-  const sheet = page.getByRole("dialog", { name: "Needs you" });
-  await sheet.locator(".escalation-thread").click();
-  await expect(sheet).toHaveCount(0);
-  expect(new URL(page.url()).hash).toBe(`#session=${other.id}`);
+  // Pinned, it is listed among the pinned alone.
+  const pinned = nav.getByRole("group", { name: "Pinned" });
+  for (const [from, item] of [
+    [needs, "Pin"],
+    [pinned, "Unpin"],
+  ]) {
+    await from.locator(".session-row").hover();
+    await from.getByRole("button", { name: "Conversation menu" }).click();
+    await page.getByRole("menuitem", { name: item, exact: true }).click();
+    await expect(from).toHaveCount(0);
+    await expect(nav.locator(".session")).toHaveCount(2);
+  }
+
+  await needs.locator(".list-row").click();
+  await expect(page).toHaveURL(new RegExp(`#session=${other.id}$`));
+  await page.getByRole("button", { name: "Allow once" }).click();
+  await expect(needs).toHaveCount(0);
+  await expect(page).toHaveTitle("µAgent");
+  await expect(
+    nav.getByRole("button", { name: /^Conversations of .*elsewhere$/ }),
+  ).toHaveCount(1);
 });
 
 test("a notification's link opens the session at its decision", async ({
@@ -81,7 +84,6 @@ test("a notification's link opens the session at its decision", async ({
   const other = await waitingElsewhere(host, command, request);
   await page.goto(`/#session=${other.id}&decision=attention-1`);
   await expect(page.locator(".conversation .decision h2")).toBeFocused();
-  // The address keeps only the session.
   await expect
     .poll(() => new URL(page.url()).hash)
     .toBe(`#session=${other.id}`);

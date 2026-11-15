@@ -1,20 +1,6 @@
 #!/usr/bin/env python3
 """Measure real µAgent trajectories without retaining prompts or tool values.
-
-Every session sidecar records privacy-safe tool, turn and resource metadata.
-This report groups sessions by the canonical ``session.ready`` provenance,
-then derives recovery and repetition labels offline: runtime telemetry records
-facts, never a judgement about whether a trajectory was good.
-
-Usage:
-    python3 benchmarks/session_metrics.py [--history DIR] [--since YYYY-MM-DD]
-    python3 benchmarks/session_metrics.py --cohort 3f22a10c9c73
-    python3 benchmarks/session_metrics.py --json /tmp/sessions.json
-
-A journal without provenance is not reported. Failure text
-is read only from the adjacent transcript and folded before aggregation; raw
-arguments, outputs, routes, commands and credentials never enter the report.
-"""
+Arguments, outputs, routes, commands and credentials never enter the report."""
 
 import argparse
 import collections

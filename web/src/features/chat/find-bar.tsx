@@ -1,14 +1,12 @@
-import { ChevronDown, ChevronUp, X } from "lucide-preact";
 import type { RefObject } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Node, View } from "../../shared/types.ts";
-import { IconButton, Input } from "../../shared/ui.tsx";
+import { FindField } from "../../shared/find-field.tsx";
 import { highlights, occurrences, rangesIn } from "../../shared/find.ts";
-import { api, routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 
-// What opens the find bar: the conversation, its words, and the row to
-// start at when search opened it there. `at` makes a repeat a new request.
+// `at` makes a repeated request a new one.
 export type FindRequest = {
   session: string;
   words: string;
@@ -27,18 +25,14 @@ const rowOf = (root: Element, sequence: number) =>
   root.querySelector(`[data-sequence="${sequence}"]`) ||
   root.querySelector(`[data-sequences~="${sequence}"]`);
 
-// Whether a range or row shows inside the transcript's box.
 function inView(target: Element | Range, box: Element) {
   const shown = box.getBoundingClientRect();
   const rect = target.getBoundingClientRect();
   return rect.top >= shown.top && rect.bottom <= shown.bottom;
 }
 
-// Find in the open conversation, as a PDF viewer finds: every occurrence
-// marked, the current one stronger, Enter and Shift+Enter step down and
-// up through all of them. The host counts the rows of the whole
-// conversation; rows this page holds that the host has not saved yet are
-// counted here.
+// The host counts the rows of the whole conversation; rows this page holds
+// that the host has not saved yet are counted here.
 export function FindBar({
   request,
   view,
@@ -51,45 +45,27 @@ export function FindBar({
   request: FindRequest;
   view?: View;
   nodes: Node[];
-  // The transcript, whose text is searched and marked.
   root: RefObject<HTMLElement | null>;
-  // Loads the page of rows before the oldest one shown.
   older: () => Promise<void>;
-  // Scrolls a row or an occurrence into view.
   reveal: (target: Element | Range) => void;
   close: () => void;
 }) {
+  const { api, routes } = useApi();
   const [words, setWords] = useState(request.words);
   const [saved, setSaved] = useState<{
     words: string;
     rows: { sequence: number; count: number }[];
   }>({ words: "", rows: [] });
   const [current, setCurrent] = useState(-1);
-  // A row to land on once the counts arrive (from search), and a page of
-  // older rows on its way.
   const target = useRef(request.sequence);
   const loading = useRef(false);
-  // A move to an occurrence scrolls to it once, and keeps it in view for a
-  // moment while the transcript settles a page it loaded around it; rows
-  // streaming in later only re-mark, so they do not pull the view back.
+  // A move scrolls to its occurrence once and holds it while a loaded page
+  // settles; rows streaming in later only re-mark.
   const moves = useRef(0);
   const revealed = useRef(-1);
   const holdUntil = useRef(0);
-  const bar = useRef<HTMLDivElement>(null);
   const query = words.trim();
 
-  // A frame later: a menu that opened the bar gives focus back to its
-  // button as it closes.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      const field = bar.current?.querySelector("input");
-      field?.focus({ preventScroll: true });
-      field?.select();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [request.at]);
-
-  // The host reads the saved conversation once typing pauses.
   useEffect(() => {
     if (query.length < 2) return;
     const controller = new AbortController();
@@ -106,7 +82,7 @@ export function FindBar({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, request.session]);
+  }, [query, request.session, routes.search, api]);
 
   const spots = useMemo(() => {
     if (query.length < 2 || saved.words !== query) return [];
@@ -123,9 +99,7 @@ export function FindBar({
       );
   }, [saved, nodes, query]);
 
-  // New words counted: land on the row search chose, else on the newest
-  // occurrence, which is nearest the end a conversation is read from. Rows
-  // that stream in later are added after it and do not move it.
+  // Lands on the row search chose, else on the newest occurrence.
   // biome-ignore lint/correctness/useExhaustiveDependencies: lands once per host answer; rows streaming in must not move the current occurrence
   useEffect(() => {
     if (!spots.length) return setCurrent(-1);
@@ -139,10 +113,7 @@ export function FindBar({
     setCurrent(at >= 0 ? at : spots.length - 1);
   }, [saved]);
 
-  // Marks every occurrence the transcript shows and brings the current one
-  // into view, opening a closed row or loading an older page first. The
-  // page and its loaders are read as they are now, not as a reason to
-  // look again.
+  // The page and its loaders are read as they are, not as a reason to rerun.
   const page = useLatest({ view, older, reveal });
   useEffect(() => {
     const { view, older, reveal } = page.current;
@@ -209,51 +180,17 @@ export function FindBar({
   };
 
   return (
-    <div
-      class="find-bar"
-      role="search"
-      aria-label="Find in this conversation"
-      ref={bar}
-    >
-      <Input
-        type="search"
-        aria-label="Find in this conversation"
-        placeholder="Find in this conversation…"
-        value={words}
-        onInput={(event) => setWords(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.isComposing) return;
-          if (event.key === "Enter") step(event.shiftKey ? -1 : 1);
-          else if (event.key === "Escape") close();
-          else return;
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      />
-      <span class="find-count small" aria-live="polite">
-        {spots.length
-          ? `${Math.max(current, 0) + 1} of ${spots.length}`
-          : query.length >= 2 && saved.words === query
-            ? "No matches"
-            : ""}
-      </span>
-      <IconButton
-        label="Previous match"
-        disabled={!spots.length}
-        onClick={() => step(-1)}
-      >
-        <ChevronUp />
-      </IconButton>
-      <IconButton
-        label="Next match"
-        disabled={!spots.length}
-        onClick={() => step(1)}
-      >
-        <ChevronDown />
-      </IconButton>
-      <IconButton label="Close find" onClick={close}>
-        <X />
-      </IconButton>
-    </div>
+    <FindField
+      label="Find in this conversation"
+      words={words}
+      setWords={setWords}
+      count={
+        spots.length ||
+        (query.length >= 2 && saved.words === query ? 0 : undefined)
+      }
+      current={Math.max(current, 0)}
+      step={step}
+      close={close}
+    />
   );
 }

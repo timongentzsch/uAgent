@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """Compare the footprint of coding-agent CLIs the same way for each.
 
-Measures, for every tool given: size on disk, `--version` start-up, an idle
-interactive session in a pseudo-terminal, and one tiny headless turn. Runs are
-interleaved round-robin across tools so background load affects all of them.
-Processes are attributed by PID only: the started process, its descendants, and new detached
-(parent PID 1) processes started from the tool's executable path. The headless turn calls the
-tool's real model provider with a one-word prompt. Claude Code and Codex CLI run without MCP
-servers, plugins, hooks or helpers from the machine's configuration (see BARE_FLAGS).
+Measures size on disk, `--version` start-up, an idle interactive session in a
+pseudo-terminal, and one tiny headless turn against the tool's real provider.
 """
 
 import argparse
@@ -29,6 +24,8 @@ import tempfile
 import termios
 import time
 
+from charts import bars
+
 PROMPT = "Reply with the single word: ok"
 IDLE_SECONDS = 10
 QUIET_SECONDS = 2
@@ -36,10 +33,9 @@ SETTLE_LIMIT = 20
 HEADLESS_TIMEOUT = 180
 FIRST_SCREEN_QUIET = 0.5
 SYSTEM_PREFIXES = ("/usr/lib/", "/System/", "/lib/", "/lib64/", "/usr/lib64/")
-# Flags that keep each tool's own processes only: no MCP servers, plugins, hooks or helpers
-# from the machine's configuration. They apply to the idle and the headless measurement.
-# Codex has no such flag for its interactive UI, so these apply there; its headless turn uses
-# `exec --ignore-user-config` (auth is kept) because `-c mcp_servers={}` does not drop them.
+# Flags that keep each tool's own processes only: no MCP servers, plugins,
+# hooks or helpers from the machine's configuration. Codex's headless turn uses
+# `exec --ignore-user-config`: `-c mcp_servers={}` does not drop them there.
 BARE_FLAGS = {
     "uagent": [],
     "claude": [
@@ -70,7 +66,6 @@ BARE_FLAGS = {
     ],
     "omp": ["--no-extensions", "--no-skills", "--no-rules", "--no-lsp", "--no-title"],
 }
-# Keys that ask each tool's interactive UI to quit.
 QUIT_KEYS = {"uagent": b"/quit\r", "claude": b"/exit\r", "codex": b"/exit\r", "omp": b"/exit\r"}
 
 
@@ -101,12 +96,8 @@ def process_table():
 
 
 class Attribution:
-    """The PIDs one launch is responsible for, found by comparing process tables.
-
-    Every started process is tracked so it can be stopped, but only those running the tool's
-    own executables (command line starting with a marker) are measured: an MCP server or plugin
-    helper the machine's configuration makes the tool spawn is not the tool.
-    """
+    """The PIDs one launch is responsible for. All are tracked to be stopped;
+    only those running the tool's own executables are measured."""
 
     def __init__(self, root_pid, markers):
         self.root = root_pid
@@ -383,11 +374,11 @@ def measure_headless(tool, project):
         process.stdout.close()
         left = kill_recorded(sorted(attribution.pids))
     reaped = (usage.ru_utime + usage.ru_stime) * 1000
-    # Detached helpers are not in the reaped usage; add the CPU time last seen for them.
+    # Detached helpers are not in the reaped usage: add their last CPU time.
     detached = sum(c for pid, c in attribution.last.items() if pid not in attribution.descendants)
     return {
         "wall_ms": wall * 1000,
-        "cpu_ms": reaped,
+        "cpu_ms": reaped + detached * 1000,
         "detached_cpu_ms_seen": detached * 1000,
         "peak_rss_kib": peak,
         "tree_at_peak": tree,
@@ -524,98 +515,56 @@ def table(tools, report):
     row("Non-system shared libraries", lambda n: str(size(n, "non_system_libraries")))
     row("`--version` wall, median / p90 (ms)", lambda n: stat_pair(report[n], "version", "wall_ms"))
     row("`--version` CPU, median / p90 (ms)", lambda n: stat_pair(report[n], "version", "cpu_ms"))
-    row("Idle session RSS, process tree (MB)", lambda n: field(report[n], "idle", "rss_kib", 1024))
+    row("Idle session RSS, process tree (MiB)", lambda n: field(report[n], "idle", "rss_kib", 1024))
     row("Idle session CPU over 10 s (ms)", lambda n: field(report[n], "idle", "idle_cpu_ms"))
     row("Idle processes counted", lambda n: field(report[n], "idle", "process_count"))
     row("Time to first screen (ms)", lambda n: field(report[n], "idle", "first_screen_ms"))
     row("Headless turn CPU (ms)", lambda n: field(report[n], "headless", "cpu_ms"))
-    row("Headless turn peak RSS (MB)", lambda n: field(report[n], "headless", "peak_rss_kib", 1024))
+    row(
+        "Headless turn peak RSS (MiB)", lambda n: field(report[n], "headless", "peak_rss_kib", 1024)
+    )
     row("Headless turn wall (ms), model-bound", lambda n: field(report[n], "headless", "wall_ms"))
     header = "| Metric | " + " | ".join(names) + " |\n|---|" + "---|" * len(names)
     return header + "\n" + "\n".join(rows)
 
 
 DISPLAY_NAMES = {"uagent": "µAgent", "claude": "Claude Code", "codex": "Codex CLI", "omp": "omp"}
-CHART_STYLE = """
-  .bg { fill: #ffffff; }
-  text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1f2328; }
-  .title { font-size: 13px; font-weight: 600; }
-  .name { font-size: 12px; }
-  .value { font-size: 12px; font-variant-numeric: tabular-nums; }
-  .note { font-size: 10px; fill: #656d76; }
-  .bar { fill: #b4bac1; }
-  .bar.uagent { fill: #0a69da; }
-  @media (prefers-color-scheme: dark) {
-    .bg { fill: #0d1117; }
-    text { fill: #e6edf3; }
-    .note { fill: #8b949e; }
-    .bar { fill: #4a525c; }
-    .bar.uagent { fill: #4493f8; }
-  }
-"""
 
 
 def panel_values(tools, report, metric, key, divisor):
     """One median per tool, or None where the tool could not be measured."""
     values = {}
     for tool in tools:
-        entry = report[tool["name"]]
-        samples = [entry["size"][key]] if metric == "size" else [s.get(key) for s in entry[metric]]
-        value = median(samples)
+        value = median([s.get(key) for s in report[tool["name"]][metric]])
         values[tool["name"]] = None if value is None else value / divisor
     return values
 
 
 def chart_svg(tools, report):
-    panels = (
-        ("Install on disk, MB", panel_values(tools, report, "size", "install_bytes", 1e6), 1),
-        ("Idle session memory, MB", panel_values(tools, report, "idle", "rss_kib", 1024), 1),
-        ("CPU per headless turn, ms", panel_values(tools, report, "headless", "cpu_ms", 1), 0),
+    panels = [
         (
-            "Peak memory per headless turn, MB",
-            panel_values(tools, report, "headless", "peak_rss_kib", 1024),
-            1,
-        ),
-    )
-    panel_width, panel_height = 380, 30 + 28 * len(tools)
-    width, height = 800, 2 * panel_height + 60
-    label_width, bar_width = 84, 220
-    out = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
-        f'width="{width}" height="{height}" role="img" aria-label="Footprint of the agents">',
-        f"<style>{CHART_STYLE}</style>",
-        f'<rect class="bg" width="{width}" height="{height}"/>',
+            title,
+            [
+                (DISPLAY_NAMES[name], value, name == "uagent")
+                for name, value in panel_values(tools, report, metric, key, divisor).items()
+            ],
+            places,
+        )
+        for title, metric, key, divisor, places in (
+            ("Idle session memory, MiB", "idle", "rss_kib", 1024, 1),
+            ("CPU per headless turn, ms", "headless", "cpu_ms", 1, 0),
+        )
     ]
-    for index, (title, values, places) in enumerate(panels):
-        left = 20 + (index % 2) * (panel_width + 20)
-        top = 20 + (index // 2) * (panel_height + 15)
-        out.append(f'<text class="title" x="{left}" y="{top + 12}">{title}</text>')
-        peak = max([v for v in values.values() if v is not None] or [1]) or 1
-        for row, tool in enumerate(tools):
-            name = tool["name"]
-            y = top + 26 + row * 28
-            out.append(f'<text class="name" x="{left}" y="{y + 13}">{DISPLAY_NAMES[name]}</text>')
-            value = values[name]
-            if value is None:
-                out.append(f'<text class="value" x="{left + label_width}" y="{y + 13}">n/a</text>')
-                continue
-            length = max(1, value / peak * bar_width)
-            css = "bar uagent" if name == "uagent" else "bar"
-            out.append(
-                f'<rect class="{css}" x="{left + label_width}" y="{y}" '
-                f'width="{length:.1f}" height="18" rx="2"/>'
-            )
-            out.append(
-                f'<text class="value" x="{left + label_width + length + 6:.1f}" y="{y + 13}">'
-                f"{value:.{places}f}</text>"
-            )
     machine = report["_machine"]
-    out.append(
-        f'<text class="note" x="20" y="{height - 8}">medians, {machine["chip"]}, '
-        f"{machine['date']}; see benchmarks/README.md</text>"
+    return bars(
+        "Memory and CPU usage",
+        panels,
+        [
+            f"{machine['date']} · medians of {machine['runs']['session']} runs · {machine['chip']}",
+            "Same model endpoint · CPU excludes model/network waiting · lower is better",
+            "Versions, workload and limitations: benchmarks/README.md",
+        ],
     )
-    out.append("</svg>")
-    return "\n".join(out) + "\n"
 
 
 def stat_pair(entry, metric, key):
@@ -654,8 +603,18 @@ def main():
     parser.add_argument("--session-runs", type=int, default=5, help="idle and headless runs")
     parser.add_argument("--skip", action="append", default=[], choices=["idle", "headless"])
     parser.add_argument("--chart", type=pathlib.Path, help="also write an SVG bar chart here")
+    parser.add_argument(
+        "--from-report", type=pathlib.Path, help="render saved measurements without running tools"
+    )
     parser.add_argument("--output", type=pathlib.Path, default=pathlib.Path("footprint.json"))
     args = parser.parse_args()
+    if args.from_report:
+        report = json.loads(args.from_report.read_text())
+        tools = [{"name": name} for name in DISPLAY_NAMES if name in report]
+        print(table(tools, report))
+        if args.chart:
+            args.chart.write_text(chart_svg(tools, report))
+        return
     tools = build_tools(args)
     for tool in tools:
         tool["path"] = tool["path"].absolute()
@@ -695,11 +654,17 @@ def main():
     }
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(table(tools, report))
-    if args.chart:
-        args.chart.write_text(chart_svg(tools, report))
     for tool in tools:
         for error in report[tool["name"]]["errors"]:
             print(f"{tool['name']}: {error}", file=sys.stderr)
+    if any(
+        entry["errors"] or any(not sample["ok"] for sample in entry["headless"])
+        for name, entry in report.items()
+        if not name.startswith("_")
+    ):
+        raise SystemExit("Incomplete comparison; inspect the JSON report before publishing.")
+    if args.chart:
+        args.chart.write_text(chart_svg(tools, report))
 
 
 if __name__ == "__main__":

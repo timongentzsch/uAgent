@@ -12,7 +12,6 @@
 #include "include/core/json.h"
 
 namespace uagent {
-// Private HTTP bodies stay on disk. Only bounded metadata enters app events.
 class HttpExchange {
  public:
   HttpExchange(bool enabled, std::string_view request, json metadata);

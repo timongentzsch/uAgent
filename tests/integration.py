@@ -23,10 +23,8 @@ import integration_ui
 import integration_web
 from integration_support import Skipped, budget
 
-# No case takes a tenth of this on a plain build (the slowest about 9 s).
-# Scaled like every test deadline, and at the sanitizers' scale still below
-# the limit CTest gives a whole group, so a case that hangs fails here, under
-# its name, with where it hung.
+# Scaled like every test deadline and still below the limit CTest gives a
+# whole group, so a case that hangs fails here, under its name.
 CASE_SECONDS = 120
 
 
@@ -110,8 +108,7 @@ def select(arguments):
 
 def remove_suite(root):
     """Remove the suite's directory once no runtime writes into it: a
-    session that finished at the end of a case can still start another (an
-    agent waking its parent) after that case's cleanup."""
+    finished session can still start another after its case's cleanup."""
     from session_support import close_sessions, remove_runtime, runtime_directory
 
     homes = list(root.glob("*.home"))
@@ -142,10 +139,7 @@ def remove_suite(root):
 
 def run_shards(arguments, names):
     """The selection dealt round-robin to `jobs` runners of this script, each
-    with a suite directory of its own; a case is already isolated by its
-    home and its ports. A runner writes to a file, so none waits on another
-    for its output to be read; each is shown, with how it ended, when all
-    are done."""
+    with a suite directory of its own and its output in a file."""
     jobs = min(arguments.jobs, len(names))
     runners = []
     try:
@@ -207,11 +201,8 @@ def main():
     temp = tempfile.mkdtemp(prefix="uagent-integration-")
     try:
         root = pathlib.Path(temp)
-        # A temp directory of its own, beside the case homes rather than above
-        # them. The runner's own TMPDIR is an ancestor of everything under
-        # `root`, including each case's ~/.uagent, so leaving it in place would
-        # make the sandbox drop it as a writable root and warn about it in
-        # every session the suite starts.
+        # Beside the case homes: the runner's TMPDIR is an ancestor of each
+        # case's ~/.uagent, which the sandbox drops as a writable root.
         tmpdir = root / "tmp"
         tmpdir.mkdir()
         os.environ["TMPDIR"] = str(tmpdir)
@@ -239,11 +230,8 @@ def run_case(root, name, binary):
 
     print(f"running {name}", flush=True)
     case_root = root / name
-    # HOME is a sibling of the case workspace, not a child of it. A
-    # workspace containing ~/.uagent is an ancestor of the agent's own
-    # state, which the sandbox refuses to grant as a writable root --
-    # so nesting them would leave every case running with nothing it
-    # could write, which is not how a real session is laid out.
+    # HOME is a sibling of the workspace: the sandbox refuses a workspace
+    # that contains ~/.uagent as a writable root.
     home = root / (name + ".home")
     case_root.mkdir(parents=True)
     home.mkdir(parents=True)
@@ -256,7 +244,6 @@ def run_case(root, name, binary):
         print(f"passed {name} ({time.monotonic() - started:.3f}s)", flush=True)
         return "passed"
     except Skipped as reason:
-        # Said as what it is: a case that did not run proved nothing.
         print(f"skipped {name}: {reason}", flush=True)
         return "skipped"
     except Exception:

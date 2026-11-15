@@ -24,7 +24,6 @@ for (const [label, viewport, touch] of [
     }) => {
       await page.goto(`/#session=${session.id}`);
       await online(page);
-      // A small picture, and a phone screenshot far taller than the screen.
       const [small, tall] = await page.evaluate(() =>
         Promise.all(
           [
@@ -52,7 +51,6 @@ for (const [label, viewport, touch] of [
       const dialog = page.getByRole("dialog", { name: "sample.png" });
       const image = dialog.getByRole("img", { name: "sample.png" });
       await expect(image).toBeVisible();
-      // Full bleed: the viewer is the screen, with no frame around it.
       const box = await dialog.boundingBox();
       expect([box.x, box.y, box.width, box.height].map(Math.round)).toEqual([
         0,
@@ -60,7 +58,6 @@ for (const [label, viewport, touch] of [
         viewport.width,
         viewport.height,
       ]);
-      // Natural size when it fits; scaled down (never up) when it does not.
       const shown = await image.boundingBox();
       expect(shown.width).toBeLessThanOrEqual(400 + 0.5);
       expect(Math.abs(shown.width / shown.height - 4 / 3)).toBeLessThan(0.01);
@@ -69,7 +66,6 @@ for (const [label, viewport, touch] of [
       const zoomed = async () =>
         (await image.boundingBox()).width / shown.width;
       if (touch) {
-        // Pinch zooms the image; a double-tap returns it to fit.
         await pointer(surface, "pointerdown", 1, center[0] - 20, center[1]);
         await pointer(surface, "pointerdown", 2, center[0] + 20, center[1]);
         await pointer(surface, "pointermove", 1, center[0] - 60, center[1]);
@@ -77,8 +73,7 @@ for (const [label, viewport, touch] of [
         await pointer(surface, "pointerup", 1, center[0] - 60, center[1]);
         await pointer(surface, "pointerup", 2, center[0] + 60, center[1]);
         expect(await zoomed()).toBeGreaterThan(2.5);
-        // Real taps (captured, so later events target the surface) on the
-        // image double-tap back to fit instead of closing the viewer.
+        // Real taps are captured, so later events target the surface.
         await page.touchscreen.tap(...center);
         await page.touchscreen.tap(...center);
         await expect.poll(zoomed).toBeCloseTo(1, 1);
@@ -94,7 +89,6 @@ for (const [label, viewport, touch] of [
         await expect.poll(zoomed).toBeCloseTo(1, 1);
         await expect(dialog).toBeVisible();
       }
-      // A tap on the empty space around the image closes the viewer.
       const view = await surface.boundingBox();
       if (touch) {
         await pointer(surface, "pointerdown", 5, view.x + 4, view.y + 4);
@@ -103,11 +97,16 @@ for (const [label, viewport, touch] of [
       await expect(dialog).toHaveCount(0);
       if (touch) return;
 
-      // The tall one fits whole, and the controls and keys zoom it too.
       await page.getByRole("button", { name: "View tall.png" }).click();
       const viewer = page.getByRole("dialog", { name: "tall.png" });
       const screenshot = viewer.getByRole("img", { name: "tall.png" });
       await expect(screenshot).toBeVisible();
+      const controls = viewer.getByRole("group", { name: "Zoom" });
+      const level = controls.locator("output");
+      // Image decoding and the fit observer follow the initial paint.
+      await expect
+        .poll(async () => Number((await level.textContent()).replace("%", "")))
+        .toBeLessThan(100);
       const fitted = await screenshot.boundingBox();
       const frame = await viewer
         .getByRole("group", { name: "tall.png" })
@@ -116,8 +115,6 @@ for (const [label, viewport, touch] of [
       expect(fitted.y + fitted.height).toBeLessThanOrEqual(
         frame.y + frame.height + 0.5,
       );
-      const controls = viewer.getByRole("group", { name: "Zoom" });
-      const level = controls.locator("output");
       const scaled = async () =>
         (await screenshot.boundingBox()).width / fitted.width;
       // The level is against the real size: 2400px shown in a shorter frame.
@@ -141,6 +138,24 @@ for (const [label, viewport, touch] of [
       await expect.poll(scaled).toBeCloseTo(1, 1);
       await page.keyboard.press("ControlOrMeta+=");
       await expect.poll(scaled).toBeCloseTo(1.25, 1);
+      // A trackpad pinch as Safari sends it zooms at the pointer too.
+      await page.keyboard.press("ControlOrMeta+0");
+      await expect.poll(scaled).toBeCloseTo(1, 1);
+      await viewer.getByRole("group", { name: "tall.png" }).evaluate((node) => {
+        const { left, top, width, height } = node.getBoundingClientRect();
+        for (const [type, scale] of [
+          ["gesturestart", 1],
+          ["gesturechange", 1.5],
+          ["gesturechange", 2],
+        ])
+          node.dispatchEvent(
+            Object.assign(
+              new Event(type, { bubbles: true, cancelable: true }),
+              { scale, clientX: left + width / 2, clientY: top + height / 2 },
+            ),
+          );
+      });
+      await expect.poll(scaled).toBeCloseTo(2, 1);
     });
   });
 }

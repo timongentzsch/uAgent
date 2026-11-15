@@ -1,6 +1,5 @@
-// What a file is by its name: the language it is highlighted in, whether it
-// is an image or Markdown, and whether a name is a file at all. Small and
-// eager, so the renderer can tell a cited path without the highlighter.
+// Small and eager, so the renderer can tell a cited path without the
+// highlighter.
 
 const NAMED: Record<string, string> = {
   "CMakeLists.txt": "cmake",
@@ -39,16 +38,19 @@ const EXTENSIONS: Record<string, string> = {
   yml: "yaml",
   zsh: "bash",
 };
-export const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
+export const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
+export const VIDEO = /\.(mp4|webm|mov)$/i;
 export const MARKDOWN = /\.(md|markdown)$/i;
 export const HTML = /\.html?$/i;
+// Excel and CSV files open as sheets, read-only.
+export const SHEET_FILE = /\.(xlsx|csv)$/i;
+// What opens as a page in the viewer, not as text.
+export const paged = (path: string) => HTML.test(path) || SHEET_FILE.test(path);
 // Files with no language that are still plainly files.
 const PLAIN = /\.(txt|csv|log|lock|pdf)$/i;
 
-// A path's last part: the file or folder it names.
 export const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
-// A file's language, by its name or else its extension.
 export function languageFor(path: string) {
   const name = nameOf(path);
   const dot = name.lastIndexOf(".");
@@ -63,4 +65,4 @@ export function languageFor(path: string) {
 // or `1.2.3` is not.
 export const knownFile = (path: string) =>
   !!languageFor(path) ||
-  [IMAGE, MARKDOWN, PLAIN].some((kind) => kind.test(nameOf(path)));
+  [IMAGE, VIDEO, MARKDOWN, PLAIN].some((kind) => kind.test(nameOf(path)));

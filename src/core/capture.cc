@@ -17,8 +17,34 @@
 #include "include/core/platform.h"
 #include "include/core/time.h"
 namespace uagent {
+std::vector<std::string> SshCommand(const std::string& control,
+                                    const std::string& address, bool master) {
+  std::vector<std::string> args = {"ssh",
+                                   "-S",
+                                   control,
+                                   "-o",
+                                   "BatchMode=yes",
+                                   "-o",
+                                   "StrictHostKeyChecking=yes",
+                                   "-o",
+                                   "ConnectTimeout=10",
+                                   "-o",
+                                   "ForwardAgent=no",
+                                   "-o",
+                                   "SendEnv=-*"};
+  if (master) {
+    args.insert(args.end(),
+                {"-M", "-N", "-o", "ControlPersist=no", "-o",
+                 "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3"});
+  } else {
+    args.insert(args.end(), {"-o", "ControlMaster=no"});
+  }
+  args.push_back(address);
+  return args;
+}
 CapturedProcess CaptureProcess(const std::vector<std::string>& arguments,
-                               int timeout_seconds, const std::string& body) {
+                               int timeout_seconds, const std::string& body,
+                               char* const* environment) {
   CapturedProcess result;
   if (arguments.empty()) {
     result.error = "empty helper command";
@@ -41,6 +67,7 @@ CapturedProcess CaptureProcess(const std::vector<std::string>& arguments,
   fcntl(output.Get(), F_SETFL, fcntl(output.Get(), F_GETFL) & ~O_NONBLOCK);
   pid_t child = -1;
   const int spawned = SpawnProcess({.argv = arguments,
+                                    .environment = environment,
                                     .group = SpawnSpec::Group::kOwn,
                                     .fds = {{STDOUT_FILENO, output.Get()},
                                             {STDERR_FILENO, output.Get()},

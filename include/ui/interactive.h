@@ -30,8 +30,8 @@ struct InteractiveOutputUpdate {
   bool changed = false;
 };
 
-// Decodes immutable records and append-only stream fragments from the stdout
-// pipe. Unframed output keeps the historical newline-delimited behavior.
+// Decodes records and append-only stream fragments from the stdout pipe;
+// unframed output is newline-delimited.
 class InteractiveTranscript {
  public:
   InteractiveOutputUpdate Feed(std::string_view bytes, bool finish = false);
@@ -47,8 +47,8 @@ class InteractiveTranscript {
   std::string tail_;
 };
 
-// Terminal presentation writes complete records atomically. Markdown appends to
-// the replaceable tail; a newline, following record, or loop finish commits it.
+// A record is written atomically; a tail is replaceable until a newline, a
+// following record or the loop's finish commits it.
 void WriteTerminalRecord(std::string_view text) noexcept;
 void WriteTerminalTail(std::string_view text) noexcept;
 
@@ -66,8 +66,7 @@ class InteractiveOutput {
 
   int ReadFd() const { return read_.Get(); }
   // The real terminal, for a child that has to own the screen: stdout is the
-  // pipe here, so handing a subprocess the usual descriptors would send its
-  // rendering into the transcript instead of to the user.
+  // pipe here.
   int TerminalFd() const { return saved_.Get(); }
 
  private:
@@ -91,7 +90,6 @@ class RawComposer {
   void Mount(std::string prompt, std::string initial = {},
              bool keep_history = true);
 
-  // Clear the current input line.
   void Clear();
 
   InteractiveInputEvent Read();
@@ -130,9 +128,8 @@ class RawComposer {
   void History(int direction);
   // A fresh draft: history browsing starts over from the newest entry.
   void ResetDraftState();
-  // Hand the draft to $VISUAL/$EDITOR and take back what it saved. False when
-  // no editor is configured or the round trip failed, leaving the draft as it
-  // was.
+  // False when no editor is configured or the round trip failed; the draft
+  // is then left as it was.
   bool EditExternally();
 
   const InteractiveOutput& output_;
@@ -154,9 +151,8 @@ class RawComposer {
   std::string note_;
   // Ctrl+X seen, waiting to learn whether it opens the editor.
   bool editor_prefix_ = false;
-  // View's last layout and what it was made of. A paint with nothing typed
-  // reuses it: wrapping the draft and listing an @path's directory cost more
-  // than the rest of the paint.
+  // View's last layout and what it was made of; a paint with nothing typed
+  // reuses it.
   struct Shown {
     std::string prompt, buffer, note;
     size_t cursor = 0, selected = 0, columns = 0;

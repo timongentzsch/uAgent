@@ -395,8 +395,11 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
             return tool_call("read_path", {"path": "large.txt"}, call_id="full-read")
         return event({"content": "Foreground done"})
 
+    # The file is large so that its exchange is paged, and the window larger
+    # still, so the read stays clear of compacting.
+    window = {"UAGENT_CONTEXT": "65536"}
     with Server([answer]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+        with web_host(binary, root, home, provider.url, extra_env=window) as (client, code, _, _):
             client.pair(code)
             session = client.create(project)
             client.command("submit", session, text="/yolo")
@@ -562,22 +565,31 @@ def push_log(client, listing, kind, field):
 
 def test_web_detail_is_one_level_pushed_to_every_browser(root, home, *, binary):
     with Server([event({"content": "unused"})]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+        # The saved level, not the one the other tests pin.
+        unpinned = {"UAGENT_DETAIL": None, "UAGENT_THINKING": None}
+        with web_host(binary, root, home, provider.url, extra_env=unpinned) as (
+            client,
+            code,
+            _,
+            _,
+        ):
             client.pair(code)
             listing = client.json("/api/sessions")[1]
-            # The level a browser starts at comes from the host.
-            assert_true(listing["detail"] == "default", listing["detail"])
+            # The level a browser starts at comes from the host, which starts
+            # at the least, with thinking hidden.
+            assert_true(listing["detail"] == "minimal", listing["detail"])
+            assert_true(listing["thinking"] is False, listing["thinking"])
             pushed = push_log(client, listing, "settings.changed", "level")
             client.command(
                 "config",
                 operation="apply",
                 scope="user",
-                changes=[{"key": "UAGENT_DETAIL", "value": "minimal"}],
+                changes=[{"key": "UAGENT_DETAIL", "value": "default"}],
             )
-            wait_until(lambda: pushed == ["minimal"], f"change was not pushed: {pushed}")
+            wait_until(lambda: pushed == ["default"], f"change was not pushed: {pushed}")
             # A terminal saves to the same place: browsers follow.
             save_settings(home, binary=binary, UAGENT_DETAIL="full")
-            wait_until(lambda: pushed == ["minimal", "full"], f"change not pushed: {pushed}")
+            wait_until(lambda: pushed == ["default", "full"], f"change not pushed: {pushed}")
             assert_true(client.json("/api/sessions")[1]["detail"] == "full", "stale level")
             # The reader ends with the host; closing here would wait on it.
 

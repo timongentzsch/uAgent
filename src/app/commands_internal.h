@@ -2,9 +2,8 @@
 
 #ifndef UAGENT_SRC_APP_COMMANDS_INTERNAL_H_
 #define UAGENT_SRC_APP_COMMANDS_INTERNAL_H_
-// Slash-command handlers shared by the command translation units.
-// RunSlashCommand (commands.cc) dispatches; model, session and control
-// units define. Public entry points stay in include/app/commands.h.
+// Slash-command handlers shared by the command translation units;
+// RunSlashCommand (commands.cc) dispatches.
 
 #include <string>
 

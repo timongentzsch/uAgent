@@ -145,8 +145,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
 }
 
 // Validates one call, publishes its activity row and asks for approval. A
-// call that may run leaves with task.execute set; any other already has its
-// result.
+// call that may run leaves with task.execute set; any other has its result.
 void Agent::PrepareCall(const ToolCall& call, CallTask& task,
                         TurnExecution& state, StepState& loop) {
   int64_t& tool_count = state.metrics.tool_count;
@@ -219,10 +218,9 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
            "call_limit", issue);
     valid = false;
   }
-  // A call reads as what it would have done ("Ran cd …"), even when it was
-  // refused; the error says why. One that names no tool, or sends no object,
-  // reads as "Called <name>" with its first short string argument, never as
-  // the JSON it sent.
+  // A call reads as what it would have done ("Ran cd …"), even when refused.
+  // One that names no tool, or sends no object, reads as "Called <name>",
+  // never as the JSON it sent.
   Tool named;
   named.name = call.name;
   task.label =
@@ -255,6 +253,11 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
               {"view", std::move(view)},
               {"time", UtcStamp()}};
   if (tool && tool->routine && tool->routine(arguments)) row["routine"] = true;
+  const std::string kind(StepKind(JsonValue(task.headline, "verb", "")));
+  ++work_.kinds[kind];
+  if (const std::string group = JoinRun(call.detail_id, kind); !group.empty()) {
+    row["group"] = group;
+  }
   conversation_.RecordDisplay(call.detail_id, row);
   Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
   call_event.data["work"] = WorkId(reply_to_);
@@ -299,17 +302,61 @@ void Agent::PublishWork(const std::vector<CallTask>& tasks) {
       work_.edited.insert(JsonValue(task.headline, "target", ""));
     }
   }
-  const json counts = {{"items", work_.steps},
-                       {"errors", work_.errors},
-                       {"edited", work_.edited.size()}};
+  const json counts = {
+      {"items", work_.steps},          {"errors", work_.errors},
+      {"edited", work_.edited.size()}, {"kinds", work_.kinds},
+      {"notes", work_.notes},          {"thoughts", work_.thoughts}};
   conversation_.RecordDisplay(WorkId(reply_to_), counts);
   Emit(
       Event{EventId::kMessageChanged, {{"node", WorkNode(reply_to_, counts)}}});
 }
 
+std::string Agent::JoinRun(const std::string& call, std::string_view kind) {
+  Work::Run& run = work_.run;
+  if (!Explores(kind)) {
+    EndRun();
+    return "";
+  }
+  ++run.kinds[std::string(kind)];
+  if (run.first.empty()) {
+    run.first = call;
+    run.started = std::chrono::steady_clock::now();
+    return "";
+  }
+  if (run.group.empty()) {
+    // The second look makes the run a group, and takes the first under it.
+    run.group = GroupId(run.first);
+    conversation_.RecordDisplay(run.first, {{"group", run.group}});
+    PublishRun(false);
+    Emit(Event{EventId::kMessageChanged,
+               {{"node", {{"id", run.first}, {"parent", run.group}}}}});
+  } else {
+    PublishRun(false);
+  }
+  return run.group;
+}
+
+void Agent::PublishRun(bool ended) {
+  const Work::Run& run = work_.run;
+  json facts = {{"work", WorkId(reply_to_)}, {"kinds", run.kinds}};
+  if (ended) {
+    facts["outcome"] = "complete";
+    facts["duration_ms"] = ElapsedMs(run.started);
+  }
+  conversation_.RecordDisplay(run.group, facts);
+  Emit(
+      Event{EventId::kMessageChanged, {{"node", GroupNode(run.group, facts)}}});
+}
+
+void Agent::EndRun() {
+  if (!work_.run.group.empty()) PublishRun(true);
+  work_.run = {};
+}
+
 void Agent::CloseWork(const std::string& outcome) {
   const std::string id = WorkId(reply_to_);
   if (id.empty()) return;
+  EndRun();
   conversation_.RecordDisplay(
       id, {{"outcome", outcome}, {"duration_ms", ElapsedMs(work_.started)}});
   Emit(Event{
@@ -326,6 +373,11 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   std::vector<CallTask> tasks(calls.size());
   rejections.clear();
   activity_polls.clear();
+  // A call may wait on a person for as long as they like: what a side
+  // request said by now shows while it does, not after the answer.
+  if (TakeSideReplies()) {
+    ++revision_;
+  }
   for (size_t index = 0; index < calls.size(); ++index) {
     PrepareCall(calls[index], tasks[index], state, loop);
   }
@@ -359,9 +411,8 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                                  {"parallel", parallel},
                                  {"concurrency_limit", width}});
   }
-  // A long diff is kept with the session's edits, where it lasts as long as
-  // the conversation; a run without a session file keeps it with the
-  // retained exchanges.
+  // A long diff is kept with the session's edits, or, without a session
+  // file, with the retained exchanges.
   const std::string diffs = edits_.Directory().empty()
                                 ? UagentDir(kArtifactsDir) + "/exchange-XXXXXX"
                                 : edits_.Directory() + "/diff-XXXXXX";

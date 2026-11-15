@@ -1,5 +1,4 @@
-// Attachment display names and @-mention tokens. UI-free so node tests
-// cover the naming and parsing rules directly.
+// UI-free, so node tests cover the naming and parsing rules directly.
 import { matches } from "../../shared/fuzzy.ts";
 
 export function dedupeName(
@@ -24,7 +23,6 @@ interface MentionMatch {
   query: string;
 }
 
-// @-mention over attached files: the word at the caret starting with @.
 // The @ must open the word (start or whitespace before it), so emails and
 // paths never trigger the menu.
 export function matchMention(text: string, caret: number): MentionMatch | null {
@@ -37,9 +35,8 @@ export function matchMention(text: string, caret: number): MentionMatch | null {
   return { start, end: cursor, query: text.slice(start + 1, cursor) };
 }
 
-// Inline token stored verbatim in the draft text (survives the server echo).
-// The alt text is cosmetic — render looks the asset up by id — so bracket
-// characters that would break markdown image syntax are flattened here.
+// The alt text is cosmetic (render looks the asset up by id), so bracket
+// characters that would break markdown image syntax are flattened.
 export function encodeMention(name: string, id: string): string {
   const alt =
     name

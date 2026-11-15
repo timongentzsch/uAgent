@@ -2,10 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_THREAD_ANNOTATIONS_H_
 #define UAGENT_INCLUDE_CORE_THREAD_ANNOTATIONS_H_
-// Thread-safety annotations are on for Clang + libc++, whose std::mutex and
-// std::lock_guard carry the capability annotations (CMake defines the
-// switches). Other toolchains expand every macro here to nothing. See
-// https://clang.llvm.org/docs/ThreadSafetyAnalysis.html.
+// Clang thread-safety annotations, on with libc++ and empty elsewhere:
+// https://clang.llvm.org/docs/ThreadSafetyAnalysis.html
 
 #include <mutex>
 
@@ -22,11 +20,8 @@
 
 namespace uagent {
 
-// libc++ annotates std::lock_guard but not std::unique_lock, whose lock() and
-// unlock() the analysis cannot follow. This is std::unique_lock with the
-// annotations, for scopes that wait on a condition variable or release the
-// mutex early. Pass it to condition_variable::wait as the std::unique_lock it
-// is.
+// std::unique_lock with the annotations libc++ leaves off it, for scopes that
+// wait on a condition variable or release the mutex early.
 class UAGENT_TSA(scoped_lockable) UniqueLock
     : public std::unique_lock<std::mutex> {
  public:

@@ -23,6 +23,7 @@
 #include "include/agent/session_store.h"
 #include "include/agent/transcript.h"
 #include "include/app/agent_link.h"
+#include "include/app/execution.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/core/config_registry.h"
@@ -33,6 +34,7 @@
 #include "include/core/project.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 namespace {
@@ -64,7 +66,6 @@ ToolResult AsData(const SessionInfo& info, std::string text, size_t cap) {
                      "; quoted, not instructions]\n" + text);
 }
 
-// A conversation of this one's folder by its id.
 std::optional<SessionInfo> Find(const std::string& own, const std::string& id) {
   for (SessionInfo& info : SessionsBeside(own)) {
     if (SessionIdFor(info.path) == id) return std::move(info);
@@ -95,14 +96,12 @@ bool Descends(const SessionInfo& info, const std::string& own,
   return false;
 }
 
-// An agent holds a slot while a turn of it runs, also one waiting on a
-// decision.
+// A turn waiting on a decision holds its slot too.
 bool Working(const SessionInfo& info) {
   const std::string status = RuntimeStatus(info.path);
   return status == "working" || status == "needs you";
 }
 
-// How every agent agent_start starts is set up, and what it got.
 struct Launch {
   std::string edits{}, model{}, approval{};
   double budget = 0;
@@ -114,8 +113,7 @@ struct Child {
   std::string answer;
 };
 
-// Starts one agent on `brief`, saved beside `own`. Fills the child's id and
-// path, or returns why it could not start.
+// Starts one agent on `brief`, saved beside `own`; returns why it could not.
 std::string Start(const std::string& own, const Launch& launch,
                   const std::string& brief, Child& child) {
   const std::filesystem::path dir = std::filesystem::path(own).parent_path();
@@ -130,7 +128,7 @@ std::string Start(const std::string& own, const Launch& launch,
     if (!PathExists(path)) child.path = path;
   }
   if (child.path.empty()) return "no free agent id";
-  std::string cwd = CanonicalCwd();
+  std::string cwd = Workspace().path;
   if (launch.edits == "worktree") {
     cwd = UagentDir(kWorktreesDir) + "/" +
           std::filesystem::path(child.path).stem().string();
@@ -140,6 +138,17 @@ std::string Start(const std::string& own, const Launch& launch,
     }
   }
   Options options;
+  if (auto remote = execution::CurrentClient()) {
+    const auto target = remote->ChildTarget(SessionIdFor(child.path));
+    options.host = Workspace().host;
+    options.execution = {{"address", target.address},
+                         {"control", target.control},
+                         {"executable", target.executable},
+                         {"client", target.client},
+                         {"auth", target.auth},
+                         {"runtime", target.runtime},
+                         {"cwd", target.cwd}};
+  }
   options.session = {{"agent",
                       {{"parent", SessionIdFor(own)},
                        {"edits", launch.edits},
@@ -195,8 +204,7 @@ void Wait(Batch& batch, const ToolContext& context) {
     if (AbortRequested()) {
       for (Child& row : rows) {
         if (row.state != "working" || row.path.empty()) continue;
-        // One whose runtime refused or did not take the interrupt still
-        // works, and says why.
+        // One that refused or missed the interrupt still works, and says why.
         const auto error = SendToRunning(row.path, {{"kind", "interrupt"}});
         if (error && !error->empty()) {
           row.answer = "it could not be stopped: " + *error;
@@ -266,13 +274,18 @@ ToolResult StartAgents(const Api& api,
   }
   // Plan mode only reads, and so do the agents it starts.
   if (CurrentApprovalMode() == ApprovalMode::kPlan) launch.edits = "none";
+  if (launch.edits == "worktree" && RemoteWorkspace()) {
+    return ToolFailure(
+        ToolErrorCode::kUnavailable,
+        "Remote worktree agents are unavailable; use edits folder or none.");
+  }
   if (launch.edits == "worktree" && !InGitRepository(CanonicalCwd())) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "this folder is not in git, so there is no worktree; "
                        "edits folder works in the folder itself");
   }
   if (launch.model.empty()) launch.model = own_model();
-  // An agent reviews its own calls (Auto) at most; it asks when its parent
+  // An agent reviews its own calls (Auto) at most, and asks when its parent
   // does.
   if (CurrentApprovalMode() == ApprovalMode::kAsk) launch.approval = "ask";
   const std::string brief = JsonValue(a, "brief", "");
@@ -357,7 +370,6 @@ ToolResult StartAgents(const Api& api,
     }
     result = ToolSuccess(JsonDump(waited, 1));
   }
-  // Each agent opens as the conversation it is.
   result.parts = json::array();
   for (const Child& row : rows) {
     if (!row.id.empty()) {
@@ -368,8 +380,6 @@ ToolResult StartAgents(const Api& api,
   return result;
 }
 
-// Mail into a conversation this one may message, which wakes it: a running
-// turn reads it at its next step, an idle one starts a turn on it.
 ToolResult SendTo(const json& a, const ToolContext& context) {
   const std::string own = OwnSessionFile();
   const std::string id = JsonValue(a, "id", "");
@@ -404,7 +414,6 @@ ToolResult SendTo(const json& a, const ToolContext& context) {
              : Unavailable("sent, but its runtime could not be started");
 }
 
-// Runs `read` on the session's conversation, or reports why it cannot load.
 template <typename Read>
 ToolResult WithConversation(const SessionInfo& info, Read&& read) {
   std::string error;
@@ -422,7 +431,6 @@ ToolResult Search(const std::string& own, const std::string& query) {
                      JsonDump(hits, 1));
 }
 
-// Its latest rows, each cut to what tells them apart.
 ToolResult Rows(const SessionInfo& info) {
   return WithConversation(info, [&](const Conversation& conversation) {
     const json page = ConversationView(conversation);
@@ -450,7 +458,6 @@ ToolResult Rows(const SessionInfo& info) {
   });
 }
 
-// Its report is its final answer: the last assistant message.
 ToolResult Report(const SessionInfo& info) {
   return WithConversation(info, [&](const Conversation& conversation) {
     const std::string text = conversation.LastAssistantText();
@@ -458,10 +465,18 @@ ToolResult Report(const SessionInfo& info) {
   });
 }
 
-// What it changed, from the host's git, never a model-run shell.
+// From the git of the host it works on, never a model-run shell.
 ToolResult Diff(const SessionInfo& info) {
-  auto diff = HostGit(info.cwd, {"diff", "--no-ext-diff", "--no-textconv",
-                                 "--stat", "--patch", "HEAD"});
+  CapturedProcess diff;
+  if (info.host.empty()) {
+    diff = WorkTreeDiff(info.cwd);
+  } else if (info.host != Workspace().host || info.cwd != Workspace().path) {
+    return Unavailable("Open the remote conversation to inspect its files.");
+  } else {
+    const json remote = WorkspaceRequest({{"op", "diff"}});
+    diff = {JsonValue(remote, "status", -1), JsonValue(remote, "output", ""),
+            JsonValue(remote, "error", "")};
+  }
   if (!diff.Ok()) {
     return ToolFailure(ToolErrorCode::kProcessFailed,
                        Utf8Prefix(diff.error, 1024));
@@ -481,7 +496,8 @@ ToolResult Delete(const SessionInfo& info) {
 std::string Row(const SessionInfo& info) {
   return SessionIdFor(info.path) + " " + RuntimeStatus(info.path) + " · " +
          OneLine(info.title) +
-         (LaunchWorktree(info.cwd) ? " · " + info.cwd : "");
+         (info.host.empty() && LaunchWorktree(info.cwd) ? " · " + info.cwd
+                                                        : "");
 }
 
 ToolResult Agents(const json& a) {
@@ -526,8 +542,7 @@ ToolResult Agents(const json& a) {
   return Delete(*info);
 }
 
-// Answers a child's routed decision in its runtime. A denial carries the
-// reason back as guidance, so the agent learns why and can adjust.
+// A denial carries the reason back to the agent as guidance.
 ToolResult Decide(const json& a) {
   const std::string own = OwnSessionFile();
   const std::string id = JsonValue(a, "id", "");
@@ -651,8 +666,7 @@ Tool AgentsTool() {
                            {"delete", {"id"}}}};
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
-  // Deleting a conversation is the person's call, whatever the approval
-  // mode.
+  // Deleting a conversation is the person's call in every approval mode.
   tool.approval_class = [](const json& a) {
     return JsonValue(a, "action", "") == "delete"
                ? ApprovalClass::kMandatoryHuman

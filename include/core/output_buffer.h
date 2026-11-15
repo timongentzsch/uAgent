@@ -20,7 +20,6 @@ inline std::string OmittedMarker(size_t bytes) {
   return "\n... [" + std::to_string(bytes) + " bytes omitted] ...\n";
 }
 
-// Bounded process output preserving a stable prefix and the newest suffix.
 class HeadTailBuffer {
  public:
   explicit HeadTailBuffer(size_t max_bytes = size_t{1024} * 1024)
@@ -66,9 +65,7 @@ class HeadTailBuffer {
            tail_.substr(tail_start);
   }
 
-  // The newest non-empty line, for a status row that has one row to spend on
-  // a process still running. Scans backwards over a bounded window instead of
-  // building Snapshot(), which is a megabyte the caller would throw away.
+  // The newest non-empty line, from a bounded scan rather than a Snapshot().
   std::string TailLine(size_t cap = 160) const {
     std::string line = LastLine(Tail(), cap);
     return line.empty() ? LastLine(head_, cap) : line;
@@ -87,10 +84,8 @@ class HeadTailBuffer {
     return c == '\n' || c == '\r' || c == ' ' || c == '\t';
   }
 
-  // Trailing blanks are skipped rather than answered with an empty line: a
-  // process that just printed a newline has not stopped saying what it was
-  // saying. The window bounds a producer that emits one enormous line or a
-  // great many blank ones -- the cost stays the same either way.
+  // Trailing blanks are skipped, so a process that just printed a newline
+  // still shows its line. The window bounds one enormous line or many blanks.
   static std::string LastLine(std::string_view text, size_t cap) {
     static constexpr size_t kWindow = 4096;
     size_t limit = text.size() > kWindow ? text.size() - kWindow : 0;
@@ -103,8 +98,7 @@ class HeadTailBuffer {
       --begin;
     }
     while (begin < end && Blank(text[begin])) ++begin;
-    // Cut from the front: the head of a progress line is what names the work,
-    // and the caller bounds it again for its own width.
+    // Keeps the front: the head of a progress line is what names the work.
     return Utf8Prefix(std::string(text.substr(begin, end - begin)), cap);
   }
 
@@ -121,8 +115,7 @@ class HeadTailBuffer {
   size_t omitted_ = 0;
 };
 
-// Over-cap text keeps its head and its tail, where the beginning and the
-// errors are; the middle is what a reader can most afford to lose. The cap
+// Over-cap text keeps its head and its tail and loses the middle. The cap
 // includes the marker, and no codepoint is split.
 inline std::string HeadTail(std::string text, size_t cap) {
   if (text.size() <= cap) return text;

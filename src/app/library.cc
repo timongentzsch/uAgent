@@ -205,9 +205,8 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
              ? json{{"error", "saved skill is outside the discovery limit"}}
              : json{{"item", describe(*saved, true)}};
 }
-// Every place's memories and skills in one list, each tagged with its kind
-// and the place it belongs to: "" for what every place shares (global,
-// bundled, another agent's), listed once.
+// Every place's memories and skills in one list, tagged with kind and place;
+// "" marks what every place shares, listed once.
 json LibraryOverview(const json& request) {
   json items = json::array(), limits = json::object();
   std::set<std::string> seen;

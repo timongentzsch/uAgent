@@ -108,8 +108,8 @@ export async function serveFramebuffer(page) {
     height,
     prepare: () =>
       page.evaluate(() => {
-        // noVNC introspects own/direct-prototype properties. Playwright's routed
-        // socket inherits an extra layer. Forward its actual transport unchanged.
+        // noVNC introspects own and direct-prototype properties; Playwright's
+        // routed socket inherits an extra layer, so its transport is forwarded.
         WebSocket = new Proxy(WebSocket, {
           construct(Target, args) {
             const socket = new Target(...args);
@@ -143,8 +143,7 @@ export async function serveFramebuffer(page) {
 }
 
 // The server's pointer (Cursor pseudo-encoding -239): an opaque 12x16 block
-// with its hotspot at (2, 3), so a client drawing it can be told apart from
-// any local stand-in.
+// with its hotspot at (2, 3), unlike any local stand-in.
 const cursor = { width: 12, height: 16, hotX: 2, hotY: 3 };
 const cursorRect = () => {
   const header = Buffer.alloc(12);

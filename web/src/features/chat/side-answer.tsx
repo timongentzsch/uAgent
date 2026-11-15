@@ -1,19 +1,17 @@
-import { ExternalLink, X } from "lucide-preact";
+import { ArrowRight, X } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { Act } from "../../shared/types.ts";
-import { Button, IconButton } from "../../shared/ui.tsx";
+import { Button, IconButton, LoadError } from "../../shared/ui.tsx";
 import { useAction } from "../../shared/use-action.ts";
-import { failure } from "../../shared/types.ts";
 import MessageInput from "../../shared/message-input.tsx";
 import Decision from "../../shared/decision.tsx";
-import { command } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
 
-// An ordinary conversation runtime, kept beside the parent's composer.
 export default function SideAnswer({
   side,
   choose,
@@ -23,6 +21,7 @@ export default function SideAnswer({
   choose: (id: string) => Promise<void>;
   close: () => void;
 }) {
+  const { command } = useApi();
   const { store, load, online, report, setModal } = useHostContext();
   const snapshot = useSnapshots(store, (all) =>
     side.id ? all[side.id] : undefined,
@@ -48,8 +47,7 @@ export default function SideAnswer({
   if (first >= 0) started.current = true;
   // Once older turns leave the live window, every retained node is side work.
   const nodes = first >= 0 ? all.slice(first) : started.current ? all : [];
-  // Follows its end like the transcript (same hook): a reader who scrolls
-  // up stays put, and scrolling back down follows again.
+  // Follows its end as the transcript does, through the same hook.
   const historyKey = `side:${side.id || ""}`;
   const thread = useTranscriptHistory(() => {}, historyKey, nodes);
   async function send() {
@@ -78,7 +76,7 @@ export default function SideAnswer({
             label="Open side conversation"
             onClick={() => void choose(side.id!)}
           >
-            <ExternalLink />
+            <ArrowRight />
           </IconButton>
         )}
         <IconButton label="Dismiss side conversation" onClick={close}>
@@ -122,7 +120,7 @@ export default function SideAnswer({
             ))}
         </div>
       </div>
-      {!!error && <p role="alert">{failure(error).message}</p>}
+      {!!error && <LoadError error={error} />}
       <form
         onSubmit={(event) => {
           event.preventDefault();

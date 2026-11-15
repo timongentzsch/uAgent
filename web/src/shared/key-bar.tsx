@@ -2,9 +2,7 @@ import type { ComponentChildren } from "preact";
 import "./key-bar.css";
 import { Button } from "./ui.tsx";
 
-// The keys a touch keyboard lacks, by their KeyboardEvent.key name, and a
-// sticky Ctrl for the next key typed. The browser viewer and the terminal
-// each send a key their own way.
+// By their KeyboardEvent.key name; each caller sends a key its own way.
 const BAR_KEYS = {
   Escape: "Esc",
   Tab: "Tab",
@@ -28,7 +26,6 @@ export function KeyBar({
   press: (key: BarKey) => void;
   ctrl: boolean;
   setCtrl: (ctrl: boolean) => void;
-  // More keys at the end, which share the width.
   children?: ComponentChildren;
 }) {
   return (

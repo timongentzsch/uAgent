@@ -10,7 +10,7 @@ import {
   withActivities,
   keptSession,
 } from "../src/state/store.ts";
-import { api, command, receiveOutcome } from "../src/state/api.ts";
+import { api, command, receiveOutcome, hostApi } from "../src/state/api.ts";
 import { stored } from "../src/shared/storage.ts";
 import { maxHttpExchanges } from "../src/shared/limits.ts";
 import {
@@ -47,7 +47,6 @@ test("rendering escapes HTML and never loads remote images", async () => {
   assert.ok(!html.includes("<img"));
   assert.ok(!html.includes('href="javascript:'));
   assert.ok(html.includes("&lt;img"));
-  // A blocked image keeps its alt text as a readable placeholder.
   assert.ok(html.includes("[image: private]"));
   for (const url of [
     "javascript:x",
@@ -224,7 +223,6 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
   assert.equal(next.state.view.nodes.length, 401);
   assert.equal(next.state.view.nodes[0], nodes[0]);
   assert.equal(next.state.view.nodes.at(-1).body.text, "new");
-  // A checkpoint replaces the host's window and keeps the loaded pages.
   const reply = (text) => ({
     id: "m-400",
     parent: null,
@@ -241,9 +239,6 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
   assert.equal(checkpoint.state.view.nodes.at(-1).body.text, "x");
 });
 
-// The browser applies the host's nodes and never re-derives them: a whole
-// node, streamed appends, set fields, a parent placed before the nodes under
-// it and a late retained node in sequence position.
 test("node patches rebuild the host's view", () => {
   const patch = (value) => ({ kind: "node", ...value });
   const reply = { id: "r", parent: "m-1", kind: "message", role: "assistant" };
@@ -335,7 +330,6 @@ test("a view that shows the host's row removes the outgoing one, and only that",
     s: { state: { view: { nodes: [{ request_id: "r1" }, {}] } } },
   };
   assert.deepEqual(confirmOutgoing(outgoing, views), outgoing.slice(1));
-  // A view without them, or none at all, confirms nothing.
   assert.equal(confirmOutgoing(outgoing, {}), outgoing);
 });
 
@@ -385,7 +379,6 @@ test("a state frame without the view keeps the last view, HTTP log and prompt", 
     turns: 2,
     phase: "model",
   });
-  // A checkpoint frame still replaces all three.
   const next = { nodes: [] };
   const checkpoint = stateFrame(
     prior,
@@ -397,8 +390,7 @@ test("a state frame without the view keeps the last view, HTTP log and prompt", 
   assert.equal(checkpoint.system_prompt, "NEW");
 });
 
-// The stream's events, applied without a browser: a host whose state is
-// plain values the setters update.
+// A host without a browser: its state is plain values the setters update.
 async function eventHost(snapshot) {
   const { snapshotStore } = await import("../src/state/snapshot-store.ts");
   const { applyEvent } = await import("../src/state/apply-event.ts");
@@ -492,5 +484,78 @@ test("receipts retain queued guidance until the transcript consumes it", async (
     );
     assert.equal(outgoingAfter(item, { accepted: false }), status.refused);
     assert.equal(outgoingAfter(item, {}), status.refused);
+  }
+});
+
+test("host clients share the main receipt stream without retargeting delayed commands", async () => {
+  const original = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (path, options) => {
+    requests.push({ path, body: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ accepted: true, pending: true }), {
+      status: 200,
+    });
+  };
+  try {
+    const a = hostApi("a"),
+      b = hostApi("b");
+    assert.equal(a, hostApi("a"));
+    assert.notEqual(a, b);
+    const first = a.command(
+      "rename",
+      { id: "same", generation: "g" },
+      { title: "A", request_id: "same-request" },
+    );
+    const second = b.command(
+      "rename",
+      { id: "same", generation: "g" },
+      { title: "B", request_id: "second-request" },
+    );
+    assert.equal(
+      receiveOutcome({ request_id: "second-request", accepted: true }),
+      true,
+    );
+    await second;
+    assert.equal(
+      receiveOutcome({ request_id: "same-request", accepted: true }),
+      true,
+    );
+    await first;
+    const later = a.command;
+    const delayed = later("create", null, {
+      cwd: "/project",
+      request_id: "later",
+    });
+    receiveOutcome({ request_id: "later", accepted: true });
+    await delayed;
+    const remote = b.command("create", null, {
+      cwd: "/project",
+      request_id: "remote",
+    });
+    receiveOutcome({ request_id: "remote", accepted: true });
+    await remote;
+    assert.deepEqual(
+      requests.map(({ path }) => path),
+      Array(4).fill("/api/command"),
+    );
+    assert.deepEqual(
+      requests.map(({ body }) => body.host),
+      [undefined, undefined, "a", "b"],
+    );
+    assert.deepEqual(
+      requests.slice(0, 2).map(({ body }) => body.session_id),
+      ["same", "same"],
+    );
+    assert.equal(
+      b.routes.folder("/some folder"),
+      "/api/folder?path=%2Fsome%20folder&host=b",
+    );
+    assert.equal(
+      b.routes.folders("/some folder"),
+      "/api/folders?path=%2Fsome%20folder&host=b",
+    );
+    assert.equal(b.routes.hostPing("a/b"), "/api/hosts/a%2Fb/ping");
+  } finally {
+    globalThis.fetch = original;
   }
 });

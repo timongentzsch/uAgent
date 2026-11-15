@@ -1,8 +1,16 @@
-.row-check {
+/* The native input owns the entire hit area; its square stays icon-sized. */
+input.row-check[type="checkbox"] {
   flex: none;
-  margin-inline-start: var(--space-4);
+  width: var(--row);
+  height: var(--row);
+  margin: 0;
 }
-/* The count and Clear, then the actions, on one line when there is room. */
+@media (pointer: coarse) {
+  input.row-check[type="checkbox"] {
+    min-width: var(--touch);
+    min-height: var(--touch);
+  }
+}
 .selection-bar {
   display: flex;
   flex-wrap: wrap;
@@ -17,4 +25,7 @@
 }
 .selection-bar > [role="toolbar"] > strong {
   flex: 1;
+}
+.selection-hint {
+  width: 100%;
 }

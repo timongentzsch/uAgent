@@ -22,6 +22,7 @@
 #include "include/api/client.h"
 #include "include/app/asset_store.h"
 #include "include/app/commands.h"
+#include "include/app/execution.h"
 #include "include/app/self_description.h"
 #include "include/app/session.h"
 #include "include/cli/cli.h"
@@ -41,6 +42,7 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
+#include "include/core/workspace.h"
 #include "include/media/attachments.h"
 #include "include/providers/providers.h"
 #include "include/tools/memory.h"
@@ -110,8 +112,8 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
       exit_code = 2;
       return false;
     }
-    // Said where it is approved: a server that opts out of the sandbox is the
-    // part of this file that can reach what the sandbox keeps from commands.
+    // A server that opts out of the sandbox can reach what the sandbox keeps
+    // from commands, so the prompt names it.
     std::string unconfined;
     json file;
     std::string unread;
@@ -150,16 +152,12 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
 // Project docs and memory context share one byte budget: what the folder
 // instructions do not spend is what the memory index may.
 ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
-                                     const RuntimeConfig& config,
-                                     bool memory_child) {
-  ProjectInstructions instructions;
-  if (!memory_child) {
-    instructions = LoadProjectInstructions(workspace, ProjectDocBytes());
-  }
+                                     const RuntimeConfig& config) {
+  ProjectInstructions instructions =
+      LoadProjectInstructions(workspace, ProjectDocBytes());
   if (config.memory_enabled) {
-    // A delegated child's brief is standalone: re-inlining every always-on
-    // memory there only duplicates the parent's context. What the slice
-    // leaves out stays in the index, so only a cut index loses anything.
+    // A delegated child's brief is standalone: inlining always-on memory
+    // there only duplicates the parent's context.
     MemoryIndex always;
     if (AgentDepth() == 0) {
       always = LoadAlwaysOnMemory(workspace, MemoryAlwaysBytes());
@@ -195,8 +193,7 @@ void ReportSandbox() {
         NoticeEvent(PresentationStatus::kWarned,
                     "sandbox: " + status.reason + "; commands run unconfined"));
   }
-  // The folder is said in full: "not granted" alone does not tell a person
-  // that every command in this conversation is about to fail to save its work.
+  // A folder that is not writable gets a notice of its own, said in full.
   const std::string workspace = CanonicalCwd();
   // At the readonly level the folder is not writable on purpose.
   if (std::string refusal = SandboxWorkspaceRefusal();
@@ -236,8 +233,6 @@ void LogReady(const AppContext& context) {
   provenance["sandbox"] = SandboxDiagnosticJson();
   provenance["active_schema_digest"] =
       HashHex(JsonDump(ToolSchemas(context.tools)));
-  // The behavior switches are recorded in the provenance and repeated at the
-  // top level of the event.
   const json behavior = {
       {"reasoning_effort", api.reasoning_effort},
       {"context_window", api.ctx_window},
@@ -272,7 +267,7 @@ void LogReady(const AppContext& context) {
       {"effective_config", context.config_manager.DiagnosticJson(config)}};
   ready.update(behavior);
   Emit(Event{EventId::kSessionReady, std::move(ready)});
-  ReportSandbox();
+  if (!RemoteWorkspace()) ReportSandbox();
 }
 
 }  // namespace
@@ -321,8 +316,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   SetExecutablePath(executable);
   // Nothing chdir()s during startup, so the canonical folder is invariant.
   const std::filesystem::path workspace = CanonicalAccessPath(CanonicalCwd());
-  std::string memory_source = EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE");
-  const bool memory_child = !memory_source.empty();
   bool trusted = false;
   json trusted_snapshot = nullptr;
   std::string error;
@@ -330,7 +323,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (options.show_system_prompt) {
     trusted = ProjectConfigTrusted(&trusted_snapshot);
   }
-  if (!options.show_system_prompt && !memory_child &&
+  if (!RemoteWorkspace() && !options.show_system_prompt &&
       !ResolveProjectTrust(options, trusted, trusted_snapshot, error,
                            exit_code)) {
     return Failure(std::move(error), exit_code);
@@ -338,13 +331,21 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
   ConfigManager config_manager = ConfigManager::Capture(options.overrides);
   RuntimeConfig config = config_manager.Initialize();
+  // Made once the settings are in effect, so the gateway's sandbox preset is
+  // this conversation's own: an agent that may not edit only reads there too.
+  std::shared_ptr<execution::Client> remote;
+  if (RemoteWorkspace()) {
+    remote = std::make_shared<execution::Client>(
+        execution::TargetFromJson(options.execution));
+    execution::SetClient(remote);
+    if (!remote->Open(error)) return Failure(error);
+    PrintWarning(
+        "Remote project MCP and browser file transfers are unavailable; "
+        "providers and global settings run on the main host.");
+  }
   PrintWarning(config_manager.Problem());
   if (headless && !config_manager.Problem().empty()) {
     fprintf(stderr, "uagent: %s\n", config_manager.Problem().c_str());
-  }
-  if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,
-                                                   options.prompt, error)) {
-    return Failure(std::move(error), 2);
   }
   // Housekeeping over the whole artifact tree is a session's, not something
   // each child it starts repeats.
@@ -358,6 +359,24 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       std::make_unique<AppContext>(std::move(config), std::move(config_manager),
                                    std::move(options), observability, channel);
   channel_input.Transfer();
+  if (remote) {
+    context->remote_watch =
+        std::jthread([remote, supervisor = &context->runtime.processes](
+                         const std::stop_token& stop) {
+          uint64_t generation = 0;
+          while (!stop.stop_requested()) {
+            const json state = remote->Call({{"op", "activities"}});
+            const uint64_t next = JsonValue(state, "generation", uint64_t{0});
+            if (next != generation) {
+              generation = next;
+              supervisor->Wake();
+            }
+            for (int i = 0; i < 60 && !stop.stop_requested(); ++i) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+          }
+        });
+  }
   if ((!context->options.prompt.empty() || channel) &&
       !context->output.Silence()) {
     return Failure("cannot redirect headless output");
@@ -382,7 +401,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
   Api& api = context->runtime.api;
   ProjectInstructions instructions =
-      LoadInstructions(workspace, context->runtime.config, memory_child);
+      LoadInstructions(workspace, context->runtime.config);
   if (instructions.truncated) {
     PrintWarning("folder instructions truncated at " +
                  std::to_string(ProjectDocBytes()) + " bytes");
@@ -391,8 +410,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     PrintWarning("memory context truncated at " +
                  std::to_string(instructions.memory_limit) + " bytes");
   }
-  std::vector<Skill> skills =
-      memory_child ? std::vector<Skill>{} : LoadSkills(CanonicalCwd());
+  std::vector<Skill> skills = LoadSkills(CanonicalCwd());
 
   context->provider = ConfigureProvider(api);
   PrintWarning(context->provider.warning);
@@ -416,9 +434,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
   ProbeModel(api);
   ActivateRoute(api);
-  // A flag for a conversation's setting sets it for that conversation, and
-  // is kept with it: a run started with a model and a mode (a scheduled
-  // task's) still has them when its runtime starts again without the flag.
+  // A flag for a conversation's setting is kept with the conversation, so a
+  // runtime that starts again without the flag still has it.
   for (const ConfigDescriptor& setting : ConfigRegistry()) {
     const auto flag =
         context->options.overrides.find(std::string(setting.environment));
@@ -445,7 +462,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       context->runtime.side_usage, MakeApprover(app), MakeToolRefresher(app),
       std::move(instructions), std::move(skills));
   context->agent->SetSessionRole(context->options.session);
-  if (memory_child) context->agent->SetUsagePurpose("memory_extract");
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->OpenEditJournal(context->channel->SessionPath() +
                                     kSessionEditsSuffix);

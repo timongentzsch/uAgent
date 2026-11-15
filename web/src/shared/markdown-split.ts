@@ -21,12 +21,9 @@ export function closedFence(source: string) {
   );
 }
 
-// Streaming split: the finished part runs through the last complete blank
-// line outside a code fence, or up to a code fence still open; the block
-// still being written after it is rendered from `healTail`, so it reads
-// formatted instead of as raw syntax. Block keys stay stable across frames
-// (see markdownBlocks). One forward pass from `start`, the start of a line
-// outside any fence; past 0 what precedes it is a head, so it has content.
+// The finished part runs through the last complete blank line outside a code
+// fence, or up to a fence still open. One forward pass from `start`, the
+// start of a line outside any fence; past 0, what precedes it has content.
 function scanHead(source: string, start: number): string {
   let head = 0;
   let content = start > 0;

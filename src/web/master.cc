@@ -11,11 +11,13 @@
 #include <cerrno>
 #include <chrono>
 #include <climits>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -26,6 +28,8 @@
 #include "include/app/folder_overview.h"
 #include "include/app/self_description.h"
 #include "include/app/session_host.h"
+#include "include/app/update.h"
+#include "include/app/workspace_files.h"
 #include "include/browser/browser.h"
 #include "include/core/detail.h"
 #include "include/core/effective_config.h"
@@ -49,18 +53,16 @@
 
 namespace uagent::web {
 namespace {
-// Browser-service policies live together here. They are operational limits,
-// not inferred model or billing data.
 constexpr size_t kOriginChars = 255;
 constexpr size_t kSubscriptionRequestBytes = KiB(8);
 constexpr size_t kDiscoveryBytes = KiB(4);
-// Four workers wait while idle. Busy, the pool grows to one per event stream,
-// viewer and terminal socket, which each hold theirs as long as they stay
-// open, plus twelve for requests, so those connections cannot starve the API.
+// Four workers wait while idle. Busy, the pool grows to one per open stream,
+// viewer and terminal socket plus twelve for requests, which cannot starve.
 constexpr size_t kIdleWorkerThreads = 4;
 constexpr size_t kRequestWorkerThreads = 12;
 constexpr size_t kWorkerQueue = 24;
 constexpr int kReadTimeoutSeconds = 5;
+constexpr int64_t kUpdateCheckMs = int64_t{24} * 60 * 60 * 1000;
 constexpr int kWriteTimeoutSeconds = 2;
 constexpr int kKeepAliveRequests = 50;
 constexpr int kKeepAliveTimeoutSeconds = 2;
@@ -127,7 +129,6 @@ bool Gunzip(const Asset& asset, std::string& plain) {
   return status == Z_STREAM_END && stream.total_out == asset.plain_size;
 }
 
-// The gzip of `body`; false on any fault.
 bool Gzip(const std::string& body, std::string& packed) {
   if (body.size() > UINT_MAX) {
     return false;
@@ -154,9 +155,6 @@ bool Gzip(const std::string& body, std::string& packed) {
 
 namespace master {
 
-// Read by the signal handler and by the delayed restart thread, written by
-// Run(): a lock-free atomic is safe in both, where sig_atomic_t is not
-// across threads.
 std::atomic<int> shutdown_fd{-1};
 static_assert(std::atomic<int>::is_always_lock_free);
 
@@ -266,7 +264,7 @@ bool Master::Initialize(std::string& error) {
        {"Content-Security-Policy",
         "default-src 'none'; script-src 'self'; style-src 'self' "
         "'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; "
-        "connect-src "
+        "media-src 'self'; connect-src "
         "'self'; manifest-src 'self'; worker-src 'self'; frame-src 'self'; "
         "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"}});
   server_.set_pre_routing_handler([this](const Request& request,
@@ -318,6 +316,23 @@ bool Master::Initialize(std::string& error) {
     response.set_header("Content-Encoding", "gzip");
     response.set_header("Vary", "Accept-Encoding");
   });
+  if (options_.update_check) {
+    // Asked at start when the last answer is a day old, then looked at
+    // hourly: an hour offline does not cost a day.
+    update_checker_ = std::jthread([this](const std::stop_token& stop) {
+      std::mutex mutex;
+      std::condition_variable_any woken;
+      while (!stop.stop_requested()) {
+        const int64_t checked =
+            JsonValue(UpdateState(options_.terminal), "checked_ms", int64_t{0});
+        if (NowMillis() - checked >= kUpdateCheckMs) {
+          CheckForUpdate(options_.terminal);
+        }
+        std::unique_lock lock(mutex);
+        woken.wait_for(lock, stop, std::chrono::hours(1), [] { return false; });
+      }
+    });
+  }
   if (options_.terminal) {
     // Every device lists the folders' shells as they come and go.
     terminals_ = std::make_unique<Terminals>(
@@ -328,6 +343,9 @@ bool Master::Initialize(std::string& error) {
               {{"kind", "terminals.changed"}, {"terminals", TerminalList()}});
         });
   }
+  remotes_ = std::make_unique<RemoteHosts>(executable_, options_.remote_bundle);
+  RegisterRemoteRoutes();
+  LoadRemoteTerminals();
   RegisterApiRoutes();
   RegisterTerminalRoutes();
   if (!browser::DataDirectory().empty()) RegisterBrowserRoutes();
@@ -440,6 +458,8 @@ int Master::Run() {
   stopping.join();
   scheduled.join();
   notifications.join();
+  // An update's thread wakes this loop through the pipe closed below.
+  if (updater_.joinable()) updater_.join();
   shutdown_fd = -1;
   // Browser service shutdown detaches; sessions belong to their runtimes.
   host_.Shutdown();
@@ -447,7 +467,6 @@ int Master::Run() {
   return served ? 0 : 1;
 }
 
-// The API: pairing, conversations, commands, events and their files.
 void Master::RegisterApiRoutes() {
   server_.Post("/api/instance", [this](const Request& request,
                                        Response& response) {
@@ -486,6 +505,7 @@ void Master::RegisterApiRoutes() {
                            {"pins", std::move(catalogue["pins"])},
                            {"commands", CommandSchemaJson()},
                            {"detail", ConfiguredDetail()},
+                           {"thinking", ConfiguredThinking()},
                            {"capabilities", push_->Capabilities(device)},
                            {"devices", std::move(devices)},
                            {"scheduled", std::move(catalogue["scheduled"])},
@@ -561,8 +581,41 @@ void Master::RegisterApiRoutes() {
               [this](const Request& request, Response& response) {
                 Search(request, response);
               });
+  // A host answers for its folders, before any conversation is in one, from
+  // one execution context of its own.
+  const auto browse = [this](const std::string& host, const char* op,
+                             const std::string& path) {
+    return RemoteCall(remotes_->Target(host, "~", HashHex("folder-browser")),
+                      {{"op", op}, {"path", path}});
+  };
+  server_.Get(
+      "/api/folders", [browse](const Request& request, Response& response) {
+        const std::string host = request.get_param_value("host");
+        const std::string path = request.get_param_value("path");
+        const json result = host.empty() ? workspace_files::Folders(path)
+                                         : browse(host, "folders", path);
+        if (result.contains("error")) {
+          Error(response, JsonValue(result, "error", "Folder unavailable"),
+                JsonValue(result, "status", 503));
+        } else {
+          Reply(response, result);
+        }
+      });
   // A folder at a glance, for its overview: spend, changes and git.
-  server_.Get("/api/folder", [](const Request& request, Response& response) {
+  server_.Get("/api/folder", [browse](const Request& request,
+                                      Response& response) {
+    const std::string host = request.get_param_value("host");
+    if (!host.empty()) {
+      const std::string path = request.get_param_value("path");
+      json facts = browse(host, "folder", path);
+      if (facts.contains("error")) {
+        Error(response, JsonValue(facts, "error", "Remote unavailable"), 503);
+        return;
+      }
+      facts.update(FolderFacts(path, host));
+      Reply(response, facts);
+      return;
+    }
     const std::optional<std::filesystem::path> folder =
         CanonicalDirectory(request.get_param_value("path"));
     if (!folder) {
@@ -571,10 +624,8 @@ void Master::RegisterApiRoutes() {
     }
     Reply(response, FolderFacts(folder->string()));
   });
-  // The person's own stylesheet, which the app adds after its own so it
-  // overrides the design tokens. Revalidated on every look: an edit applies
-  // without a new bundle. Empty when there is none. Like the rest of /api/,
-  // only a paired device reads it.
+  // The person's own stylesheet, added after the app's so it overrides the
+  // design tokens. Revalidated on every look: an edit needs no new bundle.
   server_.Get("/api/user.css", [](const Request& request, Response& response) {
     const std::string css = ReadUserStyle();
     const std::string etag = "\"" + HashHex(css) + "\"";
@@ -618,7 +669,6 @@ void Master::RegisterApiRoutes() {
               });
 }
 
-// The shared browser's status and its live viewer.
 void Master::RegisterBrowserRoutes() {
   server_.Get("/api/browser/status", [this](const Request& request,
                                             Response& response) {
@@ -661,11 +711,9 @@ void Master::RegisterBrowserRoutes() {
       });
 }
 
-// The app itself: the embedded bundle, or a test's build of it.
 bool Master::RegisterAssetRoutes(std::string& error) {
-  // Browser tests serve the bundle they just built, so a web edit needs no
-  // rebuild of this binary: that folder alone answers, never a mix of it
-  // and the embedded bundle. Never set outside a test run.
+  // Browser tests serve the bundle they just built: that folder alone answers,
+  // never a mix of it and the embedded bundle. Never set outside a test run.
   const char* dist = getenv("UAGENT_INTERNAL_WEB_DIST");
   std::string ignored;
   if (dist) {
@@ -762,8 +810,15 @@ std::string Master::ConfiguredDetail() {
   const std::string level = settings.Get(std::string(kDetailSetting));
   return std::string(DetailFor(level).name);
 }
+bool Master::ConfiguredThinking() {
+  bool shown = false;
+  ParseBool(
+      ConfigManager::Capture({}, "").Read().Get(std::string(kThinkingSetting)),
+      shown);
+  return shown;
+}
 // Tells every browser that what is saved is no longer what they read, and
-// the level with it: display state they all share.
+// the level and thinking with it: display state they all share.
 void Master::PublishSettings() {
   const FileStamp saved = SnapshotFile(SettingsPath());
   {
@@ -772,7 +827,9 @@ void Master::PublishSettings() {
     settings_ = saved;
   }
   host_.Publish("", "",
-                {{"kind", "settings.changed"}, {"level", ConfiguredDetail()}});
+                {{"kind", "settings.changed"},
+                 {"level", ConfiguredDetail()},
+                 {"thinking", ConfiguredThinking()}});
 }
 
 }  // namespace master

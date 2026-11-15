@@ -81,8 +81,7 @@ TEST_CASE(TestTurnStatus) {
       EventId::kReasoningDelta,
       {{"text", std::string(kStatusLineBytes + 1, 'x') + "\nShort heading\n"}});
   CHECK(projection.Status()["turn_status"] == "Thinking · Short heading");
-  // A long token stream never retains the growing transcript in the caption
-  // or emits extra status events once the incomplete line is known.
+  // A long token stream grows neither the caption nor the status events.
   const uint64_t before = projection.Revision();
   for (int index = 0; index < 10000; ++index) {
     emit(EventId::kReasoningDelta, {{"text", "token "}});
@@ -105,8 +104,7 @@ TEST_CASE(TestObservabilityEvents) {
   CHECK(provenance["prompt_digest"] == HashHex(JsonDump(PromptSurfaceJson())));
   CHECK(JsonValue(provenance, "build_id", "").size() == 16);
 
-  // The public_type strings are the --json-stream contract that external
-  // consumers parse, so they are pinned here rather than left to the table.
+  // public_type is the --json-stream contract external consumers parse.
   CHECK(std::string(PolicyFor(EventId::kTurnStarted).public_type) ==
         "turn.started");
   CHECK(std::string(PolicyFor(EventId::kResponseStarted).app_type) ==
@@ -121,9 +119,8 @@ TEST_CASE(TestObservabilityEvents) {
   CHECK(std::string(PolicyFor(EventId::kTurnCompleted).public_type) == "usage");
   CHECK(PolicyFor(EventId::kTurnStopped).public_type == nullptr);
   CHECK(!PolicyFor(EventId::kReasoningDelta).Durable());
-  // A tool the provider ran reaches subscribers and the public stream, and
-  // stops there: journalling it would put provider-side activity into the
-  // session record, where only what this agent did belongs.
+  // A tool the provider ran reaches subscribers and the public stream but is
+  // not journalled: the session record holds only what this agent did.
   CHECK(std::string(PolicyFor(EventId::kHostedToolActivity).app_type) ==
         "response.hosted_tool");
   CHECK(std::string(PolicyFor(EventId::kHostedToolActivity).public_type) ==
@@ -133,8 +130,6 @@ TEST_CASE(TestObservabilityEvents) {
   CHECK(PolicyFor(EventId::kToolResult).Durable());
   CHECK(PolicyFor(EventId::kActivityCompleted).Durable());
 
-  // Notices used to be raw printf, so they reached a terminal and nothing
-  // else. They are durable now: journalled and projected to the public JSONL.
   CHECK(std::string(PolicyFor(EventId::kNotice).journal_type) == "notice");
   CHECK(std::string(PolicyFor(EventId::kNotice).public_type) == "notice");
   CHECK(PolicyFor(EventId::kNotice).Durable());
@@ -147,9 +142,7 @@ TEST_CASE(TestObservabilityEvents) {
   notices.Append(notice, PolicyFor(notice.id));
   CHECK(notices.Size() == 1);
 
-  // A future GUI consumes the complete application event protocol directly;
-  // streaming text is copied into the envelope and never depends on terminal
-  // rendering or the public/redacted JSONL projection.
+  // App events carry streaming text themselves, whatever a terminal renders.
   Observability observable;
   std::vector<AppEvent> received;
   uint64_t subscription = observable.Subscribe(
@@ -345,8 +338,7 @@ TEST_CASE(TestObservabilityEvents) {
     ++lines;
   }
   CHECK(lines == 512);
-  // A save that follows no event leaves the file alone; the next event
-  // writes it again.
+  // A save that follows no event leaves the file alone.
   CHECK(journal.Flush(path, error));
   struct stat again{};
   CHECK(stat(path.c_str(), &again) == 0 && again.st_ino == state.st_ino);
@@ -424,8 +416,6 @@ TEST_CASE(TestObservabilityEvents) {
   CHECK(std::filesystem::exists(kept));
   CHECK(!std::filesystem::exists(orphan));
 
-  // A killed runtime's lease and socket go; a running one's stay, and so
-  // does one whose lease names nobody (a runtime from before leases did).
   CreatePrivateDirectories(RuntimeDir());
   const std::string dead = RuntimeDir() + "/dead.sock";
   const std::string live = RuntimeDir() + "/live.sock";
@@ -470,8 +460,7 @@ TEST_CASE(TestObservabilityEvents) {
     CHECK(std::filesystem::exists(sessions / (std::to_string(i) + ".json")));
   }
 
-  // The daily pass runs once, however many sessions start; a stamp a day old
-  // lets it run again. Modes are only rewritten where they are wrong.
+  // The daily pass runs once a day, however many sessions start.
   const std::filesystem::path stale = staging / "stale";
   const auto make_stale = [&] {
     std::filesystem::create_directories(stale);

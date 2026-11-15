@@ -18,13 +18,11 @@ import { ImageTile } from "../../shared/attachments.tsx";
 import { HostContext } from "../../state/host-context.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { coarsePointer } from "../../shared/layout.ts";
-import { routes } from "../../state/api.ts";
+import { useApi } from "../../state/api.ts";
 import { useNodeReader } from "../../state/node-reader.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { MessageActions } from "./message-actions.ts";
 
-// What an opened row shows: what the call sent, its body as its kind
-// draws it, the files and work it produced, and what can be asked of it.
 // Every part comes from the node; nothing here knows which tool made it.
 
 // A fence longer than any backtick run in the body, so code never ends early.
@@ -37,7 +35,6 @@ function fenced(text: string, language = "") {
   return `${fence}${language}\n${text}\n${fence}`;
 }
 
-// The input a call sent, in the closed vocabulary of its parts.
 function Input({ parts }: { parts: ToolPart[] }) {
   return (
     <>
@@ -68,7 +65,6 @@ function Input({ parts }: { parts: ToolPart[] }) {
   );
 }
 
-// A call working in the browser opens it, as the header's button does.
 function BrowserLink({ label }: { label: string }) {
   const host = useContext(HostContext);
   if (!host) return <p class="small muted">{label}</p>;
@@ -83,8 +79,7 @@ function BrowserLink({ label }: { label: string }) {
   );
 }
 
-// A body as text, as a terminal's output, as Markdown or as a diff. A body
-// whose content is its parts (an image, a link, fields) reads as text.
+// A body whose content is its parts (an image, a link, fields) reads as text.
 type Body = (props: {
   node: Node;
   text: string;
@@ -112,8 +107,7 @@ const bodies: Record<BodyKind, Body> = {
   fields: Text,
 };
 
-// A command's output as a terminal shows it: one box that opens scrolled to
-// the end. Until the whole result loads, a long one shows its end.
+// Opens scrolled to its end; a long one shows only its end until loaded.
 function Tail({ node, text, more, online, loadFull }: Parameters<Body>[0]) {
   const box = useRef<HTMLPreElement>(null);
   const shown = (more && node.body?.tail) || text;
@@ -143,7 +137,6 @@ function Tail({ node, text, more, online, loadFull }: Parameters<Body>[0]) {
   );
 }
 
-// The work a link part names, as the inspector opens it.
 const linkTarget = (node: Node, link: LinkPart): ActivityTarget => ({
   id: node.id,
   label: link.label,
@@ -157,7 +150,6 @@ const linkTarget = (node: Node, link: LinkPart): ActivityTarget => ({
       : undefined,
 });
 
-// An opened row: input, body, produced files and work, and its actions.
 export function NodeBody({
   node,
   online,
@@ -167,6 +159,8 @@ export function NodeBody({
   online: boolean;
   session: SessionRef;
 }) {
+  const { routes, command } = useApi();
+  const report = useContext(HostContext)?.report;
   const { read, inspect, activity, open } = useContext(MessageActions);
   const load = useNodeReader(session, read);
   const body = node.body;
@@ -195,6 +189,18 @@ export function NodeBody({
         onClick={() => setWantFull(true)}
       >
         Full output
+      </Button>
+    ),
+    node.moved && (
+      <Button
+        variant="quiet"
+        class="node-action small"
+        disabled={!online}
+        onClick={() =>
+          void command("move", session, { cwd: node.moved?.from }).catch(report)
+        }
+      >
+        Move back
       </Button>
     ),
     inspect && node.kind === "call" && (
@@ -257,9 +263,8 @@ export function NodeBody({
   );
 }
 
-// A file the agent shared: previewed where the browser can show it safely
-// (images; HTML in a sandboxed frame the server also sandboxes; PDF on a
-// desktop), then its name, size and Open / Download.
+// Previewed only where the browser can show it safely: images, HTML in a
+// sandboxed frame the server also sandboxes, PDF on a desktop.
 export function SharedFile({ file, href }: { file: FilePart; href: string }) {
   const touch = coarsePointer();
   const preview = file.mime.startsWith("image/") ? (

@@ -2,11 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_REPLAY_LOG_H_
 #define UAGENT_INCLUDE_APP_REPLAY_LOG_H_
-// Host event ordering and bounded reconnect replay. Each frame is kept once,
-// as the event stream sends it, so every reader shares it as it is.
-// The host owns the lock; every method below runs with it held, so this
-// class carries data but no mutex or condition variable. Bodies live in
-// src/app/replay_log.cc.
+// Host event ordering and bounded reconnect replay. Every method runs with
+// the host's lock held: the class has no mutex of its own.
 
 #include <cstdint>
 #include <deque>
@@ -43,15 +40,13 @@ class ReplayLog {
  public:
   ReplayLog(size_t byte_limit, size_t event_limit);
 
-  // Appends one host event, evicting oldest-first past either bound.
-  // run_owned mirrors the old sessions_ lookup: a live scheduled run wakes
-  // the scheduler even for otherwise quiet kinds.
+  // Appends one host event, evicting oldest-first past either bound. With
+  // `run_owned` (a live scheduled run) the frame also wakes the scheduler.
   void Publish(const std::string& epoch, const std::string& session,
                const std::string& generation, json value, bool run_owned);
   uint64_t Cursor() const { return sequence_; }
   // Events after `next` up to `watermark`, stopping once `byte_budget` of
-  // frames is reached: a reader sends one batch at a time, and copying the
-  // whole backlog for each would hold the host for megabytes.
+  // frames is reached: a reader sends one batch at a time.
   ReplayBatch Read(uint64_t next, bool valid, uint64_t watermark,
                    size_t byte_budget) const;
   bool HasNotices() const { return !notices_.empty(); }

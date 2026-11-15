@@ -2,17 +2,10 @@
   flex: 1;
   min-width: var(--control);
 }
-/* The slot is the flexible one; the button is as wide as its name, with
-   its chevron beside it. */
 .model-selector {
   min-width: 0;
   max-width: 100%;
   font-size: var(--font-small);
-}
-.model-selector > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 @container column (max-width: 43rem) {
   .model-selector > .lucide:first-child {

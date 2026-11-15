@@ -10,9 +10,10 @@
 
 #include "include/agent/session_store.h"
 #include "include/app/agent_tools.h"
-#include "include/app/artifact.h"
 #include "include/app/asset_store.h"
 #include "include/app/config_proposal.h"
+#include "include/app/execution.h"
+#include "include/app/present.h"
 #include "include/app/session.h"
 #include "include/app/uagent_tool.h"
 #include "include/browser/browser.h"
@@ -21,6 +22,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/sandbox.h"
+#include "include/core/workspace.h"
 #include "include/mcp/discover.h"
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
@@ -42,7 +44,15 @@ session::AssetStoreResult StoreSessionFile(const std::string& session_path,
                                            bool tool_copy, bool shared) {
   session::AssetStoreResult stored;
   std::string bytes;
-  if (!ReadRegularFile(path, session::kUploadBytes, bytes, stored.error)) {
+  if (RemoteWorkspace()) {
+    const json remote = WorkspaceRequest({{"op", "bytes"}, {"path", path}});
+    if (!HexDecode(JsonValue(remote, "data", ""), bytes,
+                   session::kUploadBytes)) {
+      stored.error = JsonValue(remote, "error", "Cannot read remote file.");
+      return stored;
+    }
+  } else if (!ReadRegularFile(path, session::kUploadBytes, bytes,
+                              stored.error)) {
     return stored;
   }
   return session::SessionAssets().Store(
@@ -57,8 +67,7 @@ std::vector<Tool> BuildTools(AppContext& context,
                              std::vector<Skill> skills, std::string& error) {
   Api& api = context.runtime.api;
   AppRuntime& runtime = context.runtime;
-  // A memory extractor gets its memory tools only; a tool-less child remains
-  // useful for constrained internal tasks.
+  // A tool-less child remains useful for constrained internal tasks.
   const std::string toolset = EnvStr("UAGENT_INTERNAL_TOOLSET");
   const std::string session_path =
       context.channel ? context.channel->SessionPath() : std::string();
@@ -83,31 +92,43 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
   std::vector<Tool> tools =
       BuiltinTools(runtime.processes, workspace, root_password);
+  if (auto remote = execution::CurrentClient()) {
+    auto forwarded = remote->Tools(session_path, tools);
+    std::erase_if(tools, [](const Tool& tool) {
+      return !tool.memory_store && tool.name != "todo";
+    });
+    for (auto& tool : forwarded) tools.push_back(std::move(tool));
+  }
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
   }
-  if (toolset == "memory") {
-    std::erase_if(tools, [](const Tool& tool) { return !tool.memory_store; });
-    return tools;
-  }
   if (toolset == "none") return {};
-  tools.push_back(UagentTool([app = &context](SelfTopic topic,
-                                              const std::string& name) {
-    return DescribeSelf(
-        topic, name,
-        SelfDescriptionInputs{app->config_manager, app->runtime.config,
-                              app->runtime.api, app->tools, app->agent.get()});
-  }));
+  // Where nobody can approve, or the policy forbids changes, uagent only shows.
+  ConfigProposalFactory prepare;
   if (InteractiveApprovalAvailable() &&
       (context.tool_policy.allowed & Capability(ToolCapability::kMutate))) {
-    tools.push_back(UagentConfigureTool(
-        [app = &context](ConfigProposalScope scope,
-                         const std::vector<ConfigChange>& changes) {
-          return PrepareConfigProposal(scope, changes, app->config_manager);
-        },
-        std::make_shared<ConfigApprovals>()));
-    tools.push_back(UagentFileTool());
+    prepare = [app = &context](ConfigProposalScope scope,
+                               const std::vector<ConfigChange>& changes) {
+      return PrepareConfigProposal(scope, changes, app->config_manager);
+    };
   }
+  // A slash command runs as the turn ends, in a conversation's own session
+  // only: a headless run has no such end, and an agent runs none.
+  CommandQueue queue;
+  if (prepare && context.channel && AgentDepth() == 0) {
+    queue = [app = &context](const std::string& line) {
+      app->commands.push_back(line);
+    };
+  }
+  tools.push_back(UagentTool(
+      [app = &context](SelfTopic topic, const std::string& name) {
+        return DescribeSelf(
+            topic, name,
+            SelfDescriptionInputs{app->config_manager, app->runtime.config,
+                                  app->runtime.api, app->tools,
+                                  app->runtime.mcp, app->agent.get()});
+      },
+      std::move(prepare), std::move(queue)));
   if (OffersWebSearch(api, context.provider.providers)) {
     tools.push_back(
         WebSearchTool(api, runtime.side_usage, context.provider.providers));
@@ -116,7 +137,9 @@ std::vector<Tool> BuildTools(AppContext& context,
   // availability.
   tools.push_back(WebFetchTool(api));
   if (!session_path.empty()) {
-    tools.push_back(ArtifactTool(session_path));
+    tools.push_back(PresentTool(session_path, RemoteWorkspace()
+                                                  ? FindTool(tools, "read_path")
+                                                  : nullptr));
     CopyAttachments(tools, session_path);
   }
   if (context.channel) {
@@ -150,7 +173,7 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
   // The web host runs the browser; any top-level session that reaches it may
   // use it, one at a time. A one-shot run has no session file to be named by.
-  if (!browser::DataDirectory().empty() &&
+  if (!RemoteWorkspace() && !browser::DataDirectory().empty() &&
       browser::Request({{"op", "ping"}}, 3000).value("ok", false)) {
     context.browser_lease =
         session_path.empty() ? RandomToken(16) : SessionIdFor(session_path);
@@ -170,7 +193,8 @@ std::vector<Tool> BuildTools(AppContext& context,
   // An agent's MCP servers are its first ancestor's: each agent starting
   // its own fleet would multiply them.
   if (AgentDepth() == 0) {
-    error = McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
+    error = McpRegister(tools, runtime.mcp, runtime.config,
+                        RemoteWorkspace() ? json(nullptr) : trusted_snapshot);
     if (!error.empty()) return {};
   }
   AddAgentTools(tools, api, [app = &context] {

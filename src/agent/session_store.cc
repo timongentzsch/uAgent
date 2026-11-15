@@ -24,6 +24,7 @@
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 namespace {
@@ -40,7 +41,6 @@ bool ArtifactPath(const std::string& text,
          CanonicalAccessPath(file.parent_path()) == artifacts;
 }
 
-// Visits every string leaf of a JSON value, depth first.
 template <typename Json, typename Visit>
 void ForEachString(Json& value, const Visit& visit) {
   if (value.is_object() || value.is_array()) {
@@ -84,6 +84,7 @@ constexpr Field kStateFields[] = {
     {"context_tokens", json::value_t::number_integer, true},
     {"context_window", json::value_t::number_integer, true},
     {"usage", json::value_t::object, true},
+    {"route_usage", json::value_t::object, true},
     {"last_sent_prompt", json::value_t::string, true},
     {"display", json::value_t::object, true},
     {"delivered_mail", json::value_t::array, true}};
@@ -121,8 +122,12 @@ json HeaderJson(const SessionMetadata& metadata) {
                  {kSessionHeaderParent, metadata.parent_session_id},
                  {kSessionHeaderForkTurn, metadata.forked_at_turn},
                  {kSessionHeaderForkTime, metadata.forked_at_time}};
+  if (!metadata.host.empty()) header["host"] = metadata.host;
   if (!metadata.agent.empty()) header[kSessionHeaderAgent] = metadata.agent;
   if (!metadata.memory) header["memory"] = false;
+  if (!metadata.suggestion.is_null()) {
+    header["suggestion"] = metadata.suggestion;
+  }
   return header;
 }
 
@@ -223,7 +228,16 @@ SessionLoadResult SessionStore::Load(const std::string& path,
                                      const std::string& expected_cwd) {
   SessionLoadResult result = Inspect(path);
   if (!result.record) return result;
-  const auto saved = CanonicalAccessPath(result.record->metadata.cwd);
+  const auto& metadata = result.record->metadata;
+  if (!metadata.host.empty() || RemoteWorkspace()) {
+    if (metadata.host == Workspace().host && metadata.cwd == expected_cwd) {
+      return result;
+    }
+    return {Error(SessionStoreError::kWrongWorkspace,
+                  "session belongs to another execution host or folder"),
+            std::nullopt};
+  }
+  const auto saved = CanonicalAccessPath(metadata.cwd);
   const auto expected = CanonicalAccessPath(expected_cwd);
   if (saved != expected) {
     return {Error(SessionStoreError::kWrongWorkspace,
@@ -278,12 +292,14 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
 
   SessionRecord record;
   record.metadata.cwd = header[kSessionHeaderCwd].get<std::string>();
+  record.metadata.host = JsonValue(header, "host", "");
   record.metadata.model = header[kSessionHeaderModel].get<std::string>();
   record.metadata.session_id =
       header[kSessionHeaderSessionId].get<std::string>();
   record.metadata.turns = header[kSessionHeaderTurns].get<int64_t>();
   record.metadata.title = header[kSessionHeaderTitle].get<std::string>();
   record.metadata.custom_title = JsonValue(header, "custom_title", false);
+  record.metadata.suggestion = JsonValue(header, "suggestion", json(nullptr));
   record.metadata.parent_session_id =
       JsonValue(header, kSessionHeaderParent, "");
   record.metadata.forked_at_turn =
@@ -299,16 +315,12 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.state.context_tokens =
       std::max(int64_t{0}, state["context_tokens"].get<int64_t>());
   record.state.context_window =
-      std::max(int64_t{0}, JsonValue(state, "context_window", int64_t{0}));
+      std::max(int64_t{0}, state["context_window"].get<int64_t>());
   record.state.usage = UsageFromJson(state["usage"]);
-  record.state.route_usage =
-      RouteUsageFromJson(JsonValue(state, "route_usage", json::object()));
-  record.state.last_sent_prompt = JsonValue(state, "last_sent_prompt", "");
-  if (state.contains("display")) {
-    record.state.display = std::move(state["display"]);
-  }
-  record.state.delivered_mail =
-      JsonValue(state, "delivered_mail", json::array());
+  record.state.route_usage = RouteUsageFromJson(state["route_usage"]);
+  record.state.last_sent_prompt = state["last_sent_prompt"].get<std::string>();
+  record.state.display = std::move(state["display"]);
+  record.state.delivered_mail = std::move(state["delivered_mail"]);
   if (!ValidState(record.state)) {
     return fail("session payload is invalid or incomplete");
   }
@@ -364,12 +376,12 @@ std::vector<SessionInfo> ListSessions(SessionScope scope) {
 
 std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   namespace fs = std::filesystem;
-  const std::string current = CanonicalCwd();
+  const WorkspaceIdentity current = Workspace();
   const fs::path base = fs::path(GlobalBase()) / kHistoryDir;
   std::vector<fs::path> directories{base};
   std::error_code ec;
   if (scope != SessionScope::kAll) {
-    directories.push_back(base / WorkspaceId(current));
+    directories.push_back(base / WorkspaceId(current.path, current.host));
   } else {
     for (const auto& entry : fs::directory_iterator(base, ec)) {
       if (directories.size() >= kMaxCatalogueEntries) break;
@@ -380,7 +392,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   }
   const auto listed = [&](const SessionInfo& info) {
     return scope == SessionScope::kAll ||
-           (info.cwd == current && info.parent.empty());
+           (info.cwd == current.path && info.host == current.host &&
+            info.parent.empty());
   };
   std::vector<SessionInfo> out;
   std::map<std::string, Entry> next;
@@ -411,9 +424,12 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.error = "invalid or oversized session header";
       } else {
         item.cwd = JsonValue(header, kSessionHeaderCwd, "");
+        item.host = JsonValue(header, "host", "");
         item.title = JsonValue(header, kSessionHeaderTitle, "(untitled)");
         item.model = JsonValue(header, kSessionHeaderModel, "");
+        item.session_id = JsonValue(header, kSessionHeaderSessionId, "");
         item.custom_title = JsonValue(header, "custom_title", false);
+        item.suggestion = JsonValue(header, "suggestion", json(nullptr));
         item.turns = JsonValue(header, kSessionHeaderTurns, int64_t{0});
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
         item.cost = JsonValue(header, "cost", 0.0);
@@ -513,8 +529,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
                                .string();
   std::error_code ec;
   std::map<std::string, std::string> copies;
-  // Owned assets are immutable; independent directory entries make deletion
-  // independent without a reference-count database. Metadata is copied.
+  // Owned assets are immutable: each fork gets its own copies, so deleting a
+  // session needs no reference count.
   if (std::filesystem::is_symlink(
           std::filesystem::symlink_status(source + kSessionAssetsSuffix, ec))) {
     return {{"error", "unsafe source attachment directory"}};
@@ -571,8 +587,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
             }
             copied += static_cast<size_t>(count);
           }
-          // Kept even when partial: the previous hand-rolled cleanup
-          // removed only rejected inputs, not short copies.
+          // Released even when partial: a failed fork unlinks every copy.
           it->second = copy.Release();
         }
       }
@@ -739,16 +754,11 @@ SessionStoreStatus SessionStore::Rename(const std::string& path,
   if (!ValidSessionTitle(title)) {
     return Error(SessionStoreError::kInvalid, InvalidSessionTitleMessage());
   }
-  FileLease writer;
-  std::string error;
-  if (!writer.Acquire(SessionLockPath(path), error)) {
-    return Error(SessionStoreError::kIo, std::move(error));
-  }
-  auto loaded = Inspect(path);
-  if (!loaded.status.Ok() || !loaded.record) return loaded.status;
-  loaded.record->metadata.title = title;
-  loaded.record->metadata.custom_title = true;
-  return Save(path, *loaded.record);
+  return Edit(path, [&](SessionRecord& record) {
+    record.metadata.title = title;
+    record.metadata.custom_title = true;
+    return true;
+  });
 }
 
 SessionStoreStatus SessionStore::Remove(const std::string& path,

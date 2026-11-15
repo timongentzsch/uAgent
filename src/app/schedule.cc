@@ -18,6 +18,7 @@
 #include "include/agent/activity_supervisor.h"
 #include "include/app/control.h"
 #include "include/app/launch.h"
+#include "include/app/session.h"
 #include "include/core/config_registry.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
@@ -36,7 +37,6 @@ constexpr size_t kSchedulePromptChars = KiB(8);
 constexpr size_t kScheduleCheckChars = KiB(2);
 // What a check prints reaches the run's prompt; its end says the most.
 constexpr size_t kCheckOutputChars = KiB(4);
-// How long a task's check may run before its run fails.
 constexpr int kCheckSeconds = 50;
 constexpr size_t kTimezoneNameChars = 100;
 constexpr int kUpcomingScheduleTimes = 3;
@@ -57,9 +57,8 @@ json Public(json store) {
 }
 json Mutate(const std::function<json(json&)>& change) {
   std::string error;
-  // Wait for the lock: the host claims runs the moment a CLI write lands,
-  // while that writer may still hold it; failing fast stranded the run. The
-  // wait is bounded so a writer stopped with Ctrl+Z cannot block the host.
+  // The host claims runs the moment a CLI write lands, while that writer may
+  // still hold the lock: wait, bounded so a stopped writer cannot block it.
   Fd lock(open((UagentDir("scheduled") + "/" + kWriteLockFile).c_str(),
                O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, kPrivateFileMode));
   const auto give_up =
@@ -103,9 +102,13 @@ constexpr char kUnknownAction[] =
 json Run(const json& task, int64_t at, const std::string& status) {
   auto id = HashHex(MakeSessionId());
   const auto project = JsonValue(task, "cwd", "");
+  const std::string host = JsonValue(task, "host", "");
   const auto [cwd, path] =
-      PlanLaunch(project, JsonValue(task, "environment", "local") == "worktree",
-                 "scheduled-", id);
+      host.empty()
+          ? PlanLaunch(project,
+                       JsonValue(task, "environment", "local") == "worktree",
+                       "scheduled-", id)
+          : LaunchPaths{project, HistoryPath(project, "scheduled-" + id, host)};
   return {{"id", id},
           {"task_id", task["id"]},
           {"task_revision", task["revision"]},
@@ -114,6 +117,7 @@ json Run(const json& task, int64_t at, const std::string& status) {
           {"updated", NowSeconds()},
           {"status", status},
           {"cwd", cwd},
+          {"host", host},
           {"project", project},
           {"session_path", path},
           {"session_id", SessionIdFor(path)},
@@ -317,8 +321,21 @@ json ScheduleSave(json& store, const json& request, const std::string& id,
              "provide a name, instructions, execution environment and "
              "permissions"}};
   }
-  const auto cwd = CanonicalDirectory(JsonValue(task, "cwd", ""));
+  const std::string host = JsonValue(task, "host", "");
+  const std::string requested = JsonValue(task, "cwd", "");
+  const auto cwd =
+      host.empty()
+          ? CanonicalDirectory(requested)
+          : (!session::OpaqueId(host) || requested.empty() ||
+                     requested.front() != '/' || requested.size() > KiB(4)
+                 ? std::nullopt
+                 : std::optional<std::filesystem::path>(requested));
   if (!cwd) return {{"error", "folder is unavailable"}};
+  if (!host.empty() && environment == "worktree") {
+    return {{"error",
+             "Remote schedules run in the selected folder; remote worktrees "
+             "are unavailable."}};
+  }
   if (found == store["tasks"].end() &&
       (!id.empty() || store["tasks"].size() >= kTasks)) {
     return {{"error", "task not found or task limit reached"}};
@@ -345,6 +362,7 @@ json ScheduleSave(json& store, const json& request, const std::string& id,
                 {"name", name},
                 {"prompt", prompt},
                 {"cwd", cwd->string()},
+                {"host", host},
                 {"environment", environment},
                 {"permissions", permissions},
                 {"model", JsonValue(task, "model", "")},

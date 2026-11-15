@@ -40,22 +40,15 @@
 namespace uagent {
 namespace {
 
-// The shell that `bash` means on this host. Only needed under a sandbox
-// wrapper: there the spawn resolves the wrapper, so a missing shell surfaces
-// as the wrapper's own failure rather than as an errno the retry below could
-// read. Resolving in the parent keeps the same Bash candidates in the same
-// order.
+// The shell `bash` means on this host. Needed under a sandbox wrapper only:
+// there a missing shell fails as the wrapper, not as an errno to retry on.
 std::string ResolveShellExecutable(const std::string& shell) {
   if (shell != "bash") return shell;
-  for (const char* candidate : {"/bin/bash"}) {
-    if (access(candidate, X_OK) == 0) return candidate;
-  }
-  return shell;
+  return access("/bin/bash", X_OK) == 0 ? "/bin/bash" : shell;
 }
 
 // `program` is the argv to run: `shell -c command`, or a program run directly.
-// It gets its own process group (or session), the default signal dispositions
-// and `fds`. Returns the posix_spawnp errno; `pid` is set on 0.
+// Returns the posix_spawnp errno; `pid` is set on 0.
 int SpawnShellWithFallback(const std::vector<std::string>& program,
                            const std::vector<std::string>& wrapper,
                            std::vector<SpawnFd> fds, bool session,
@@ -67,17 +60,15 @@ int SpawnShellWithFallback(const std::vector<std::string>& program,
       .fds = std::move(fds)};
   const std::string& shell = program.front();
   auto spawn = [&](const std::string& executable) {
-    // The program is the wrapper when there is one; the shell is then just its
-    // first argument, and the rest stays unwrapped either way.
+    // With a wrapper, the wrapper is the program and the shell its argument.
     spec.argv = wrapper;
     spec.argv.push_back(executable);
     spec.argv.insert(spec.argv.end(), program.begin() + 1, program.end());
     return SpawnProcess(spec, pid);
   };
   int error = spawn(wrapper.empty() ? shell : ResolveShellExecutable(shell));
-  // `bash` is the documented default, so fall back to the usual absolute
-  // path before giving up on a PATH that does not have it. Do not silently
-  // downgrade to sh: its pipelines may mask failures.
+  // `bash` falls back to its usual absolute path when PATH lacks it, never to
+  // sh: its pipelines may mask failures.
   const bool fallback = wrapper.empty() && shell == "bash";
   if (error != 0 && fallback) error = spawn("/bin/bash");
   return error;
@@ -101,7 +92,6 @@ int SpawnPtyShell(const std::vector<std::string>& program,
                   const std::vector<std::string>& wrapper,
                   char* const* environment, pid_t& pid, int& master_fd) {
   master_fd = -1;
-  // Owned here until the child is running; every failure below closes it.
   Fd master;
   std::string slave_path;
   if (const int error = OpenPty(master, slave_path, 24, 80); error != 0) {
@@ -117,8 +107,7 @@ int SpawnPtyShell(const std::vector<std::string>& program,
 }
 
 // How long a command stopped at its deadline or by an interrupt has to clean
-// up after itself (a browser removing its temporary profile) before it is
-// killed.
+// up before it is killed.
 constexpr auto kStopGrace = std::chrono::seconds(1);
 
 void SignalShellGroup(pid_t pid, int signal_number) {
@@ -145,10 +134,8 @@ ToolResult ActivityLimitError() {
       "activity limit reached (" + std::to_string(MaxActivities()) + ")");
 }
 
-// Resolves the wrapper argv for one spawn, or reports why this command cannot
-// run. Both failures are the same rule: a session that was told to confine and
-// cannot must not spawn anyway. That would be a silent unsandboxed command --
-// the one outcome the sandbox exists to rule out, arriving without a word.
+// The wrapper argv for one spawn, or why the command cannot run: a session
+// told to confine that cannot must not spawn unconfined.
 std::string SandboxWrapperFor(const ShellCommand& spec,
                               const SandboxStatus& status,
                               std::vector<std::string>* wrapper) {
@@ -190,9 +177,8 @@ ToolResult LinkResult(std::string hint, json link) {
   return result;
 }
 
-// A detached terminal outlives the turn that starts it: its output goes to a
-// rotating log through a pump child, it has no session, no pipe and no
-// deadline, and an identical live command is reused rather than started twice.
+// A detached terminal outlives its turn: its output goes to a rotating log
+// through a pump child, and an identical live command is reused.
 ShellCommandResult StartDetachedShell(
     ActivitySupervisor& supervisor, ShellCommand& spec,
     const std::vector<std::string>& wrapper,
@@ -250,8 +236,6 @@ ShellCommandResult StartDetachedShell(
                .kind = ActivityKind::kDetached,
                .id = pid,
                .display_label = std::move(spec.activity_label),
-               .receipt_path = std::move(spec.receipt_path),
-               .source_id = std::move(spec.source_id),
                .watch = std::move(watch)};
   if (!supervisor.TryAdd(std::move(job), MaxActivities())) {
     return fail_and_reap(ActivityLimitError());
@@ -268,7 +252,8 @@ ShellCommandResult StartDetachedShell(
 std::string RootCommand(const std::string& command, const std::string& host,
                         bool tty, const std::string& nonce) {
   // Without a terminal only sudo reads the password pipe; the command's stdin
-  // is /dev/null, as any command's is, also when sudo asks for nothing.
+  // is /dev/null. -k makes sudo prompt even with cached credentials, so the
+  // password line never reaches the command.
   std::string sudo =
       (nonce.empty() ? std::string("sudo -n") : "sudo -k -S -p " + nonce) +
       " -- bash -o pipefail -c " +
@@ -315,7 +300,6 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   std::shared_ptr<const SandboxWatch> watch = WatchUnenforced(sandbox, wrapper);
   if (spec.detach) return StartDetachedShell(supervisor, spec, wrapper, watch);
 
-  // Everything below is the supervised foreground lifecycle.
   std::optional<ActivityReservation> reservation =
       supervisor.ReserveActivity(MaxActivities());
   if (!reservation) return {ActivityLimitError()};
@@ -338,8 +322,6 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
     return {ToolFailure(ToolErrorCode::kInternal,
                         "cannot create process output pipe")};
   }
-  // Owned from here: every early return closes them, and only the hand-off to
-  // the supervisor releases them.
   Fd pipe_read(pipe_fds[0]), pipe_write(pipe_fds[1]);
   // A root command without a terminal reads sudo's password from a pipe the
   // activity answers on, as a terminal's input is answered.
@@ -376,18 +358,15 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
         ToolErrorCode::kUnavailable,
         "cannot spawn shell: " + std::string(strerror(spawn_error)))};
   }
-  // Named after the pid and the activity id: a pid alone is reused within one
-  // run and a rename onto a completed activity's uncollected log would destroy
-  // it, while an activity id alone counts from the same base in every process
-  // -- and a child agent shares this directory with its parent.
+  // Named after the pid and the activity id: a pid alone is reused within a
+  // run, and an activity id alone repeats in a child agent sharing the folder.
   std::string named = UagentDir(kActivityDir) + "/" + std::to_string(getpid()) +
                       "-" + std::to_string(reservation->Id()) + ".log";
   if (rename(pending.Path().c_str(), named.c_str()) == 0) {
     log = named;  // child's fd stays valid
   }
-  // The supervisor owns the log from here; `log` already holds whichever
-  // path won above. ReleaseFd keeps the file and hands over the descriptor;
-  // Release would close it while the supervisor still needs to tail it.
+  // ReleaseFd, not Release: the supervisor still tails the file through this
+  // descriptor.
   int log_fd = pending.ReleaseFd();
 
   Fd input(tty ? dup(master.Get()) : stdin_write.Release());
@@ -402,12 +381,9 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   Activity foreground{.pid = pid,
                       .log = log,
                       .cmd = cmd,
-                      .kind = spec.activity_kind,
                       .id = reservation->Id(),
                       .session = session,
                       .display_label = std::move(spec.activity_label),
-                      .receipt_path = std::move(spec.receipt_path),
-                      .source_id = std::move(spec.source_id),
                       .watch = watch};
   std::optional<int64_t> registered = reservation->Register(foreground);
   if (!registered) {
@@ -527,9 +503,8 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                         "foreground activity ownership was lost"),
             std::nullopt, /*launched=*/true};
   }
-  // An interrupt that arrived while a command being waited for was handed
-  // over stops it all the same: nothing else would, once it is in the
-  // background.
+  // An interrupt that arrived during the handover stops the command all the
+  // same: nothing else would, once it is in the background.
   if (!spec.immediate && AbortRequested()) {
     (void)ToolActivityStop(supervisor, activity_id);
     return {ToolCancelled("error: command cancelled by user"), std::nullopt,
@@ -559,203 +534,6 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   return {std::move(running), std::nullopt, /*launched=*/true};
 }
 
-bool PythonScriptHasDependencies(const std::string& source) {
-  size_t metadata = source.find("# /// script");
-  if (metadata == std::string::npos) return false;
-  size_t dependencies = source.find("dependencies", metadata);
-  size_t end = source.find("# ///", metadata + 12);
-  if (dependencies == std::string::npos || end == std::string::npos ||
-      dependencies >= end) {
-    return true;  // malformed metadata is not safe for the plain fallback
-  }
-  size_t open = source.find('[', dependencies);
-  size_t close = open == std::string::npos ? open : source.find(']', open + 1);
-  if (open == std::string::npos || close == std::string::npos || close >= end) {
-    return true;
-  }
-  std::string list = source.substr(open + 1, close - open - 1);
-  for (size_t start = 0; start < list.size();) {
-    size_t newline = list.find('\n', start);
-    std::string line = Trim(list.substr(start, newline - start));
-    if (line.starts_with('#')) line = Trim(line.substr(1));
-    if (!line.empty()) return true;
-    if (newline == std::string::npos) break;
-    start = newline + 1;
-  }
-  return false;
-}
-
-std::string ScratchArgvLabel(const json& args) {
-  std::string label;
-  if (!args.is_array()) return label;
-  for (const json& value : args) {
-    if (!value.is_string()) continue;
-    const std::string& arg = value.get_ref<const std::string&>();
-    label += ' ';
-    label += arg.empty() || arg.find_first_of(" \t\n'\"\\") != std::string::npos
-                 ? ShellQuote(arg)
-                 : arg;
-  }
-  return label;
-}
-
-namespace {
-// How many changed entries a scratch result names before it counts the rest.
-constexpr size_t kChangedNames = 20;
-
-// The folder root's entries and when each was last written. A script runs
-// in the folder, so this is where the files it names without a folder land;
-// a folder it wrote into shows as changed itself. µAgent's own is left out.
-std::map<std::string, std::filesystem::file_time_type> RootEntries(
-    const std::filesystem::path& workspace) {
-  namespace fs = std::filesystem;
-  std::map<std::string, fs::file_time_type> entries;
-  std::error_code ec;
-  for (fs::directory_iterator entry(workspace, ec), end; !ec && entry != end;
-       entry.increment(ec)) {
-    std::string name = entry->path().filename().string();
-    if (name == kWorkspaceDir) {
-      continue;
-    }
-    std::error_code ignored;
-    if (entry->is_directory(ignored)) name += '/';
-    entries[std::move(name)] = entry->last_write_time(ignored);
-  }
-  return entries;
-}
-}  // namespace
-
-std::optional<std::filesystem::path> ScratchScriptPath(
-    const std::filesystem::path& workspace, const std::string& relative_path,
-    std::string& error) {
-  namespace fs = std::filesystem;
-  constexpr std::string_view kScratchPrefix = ".uagent/scratch/";
-  fs::path requested(relative_path.starts_with(kScratchPrefix)
-                         ? relative_path.substr(kScratchPrefix.size())
-                         : relative_path);
-  if (relative_path.empty() || requested.is_absolute() ||
-      (requested.extension() != ".sh" && requested.extension() != ".py" &&
-       requested.extension() != ".js" && requested.extension() != ".mjs")) {
-    error =
-        "path must be a relative .py, .sh, .js or .mjs file under "
-        ".uagent/scratch";
-    return std::nullopt;
-  }
-  for (const fs::path& component : requested) {
-    if (component == "..") {
-      error = "scratch script path must not contain ..";
-      return std::nullopt;
-    }
-  }
-  fs::path scratch = ScratchDir(workspace);
-  fs::path script = CanonicalAccessPath((scratch / requested).string());
-  if (!PathWithin(script, CanonicalAccessPath(scratch.string()))) {
-    error = "scratch script path escapes .uagent/scratch";
-    return std::nullopt;
-  }
-  return script;
-}
-
-ToolResult ToolRunScratch(ActivitySupervisor& supervisor,
-                          const std::filesystem::path& workspace,
-                          const std::string& relative_path, const json& args,
-                          const ToolContext& context) {
-  namespace fs = std::filesystem;
-  std::string error;
-  const auto script = ScratchScriptPath(workspace, relative_path, error);
-  if (!script) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments, error);
-  }
-  std::error_code ec;
-  if (!fs::is_regular_file(*script, ec)) {
-    return ToolFailure(
-        ToolErrorCode::kNotFound,
-        "no script at .uagent/scratch/" +
-            fs::relative(*script, ScratchDir(workspace), ec).generic_string() +
-            "; this call supplied no code. Pass code with path to scratch "
-            "to create and run it, or write the file first with write_file");
-  }
-  // The scratch directory is private to the agent: keep it out of git.
-  const fs::path ignore = script->parent_path() / ".gitignore";
-  std::string write_error;
-  if (script->parent_path().filename() == kScratchDir &&
-      !fs::exists(ignore, ec) &&
-      !AtomicWriteFile(ignore.string(), "*\n", kSharedFileMode,
-                       /*preserve_mode=*/false, write_error)) {
-    return ToolFailure(ToolErrorCode::kInternal, write_error);
-  }
-  if (!args.is_null() && !args.is_array()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "args must be an array of strings");
-  }
-  std::string argv;
-  if (args.is_array()) {
-    for (const json& value : args) {
-      if (!value.is_string() ||
-          value.get_ref<const std::string&>().find('\0') != std::string::npos) {
-        return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "args must be strings without NUL");
-      }
-      argv += ' ' + ShellQuote(value.get<std::string>());
-    }
-  }
-  const bool shell_script = script->extension() == ".sh";
-  std::string command;
-  if (shell_script) {
-    command = "sh " + ShellQuote(script->string()) + argv;
-  } else if (script->extension() == ".js" || script->extension() == ".mjs") {
-    if (!ExecutableOnPath("node")) {
-      return ToolFailure(ToolErrorCode::kUnavailable,
-                         "JavaScript scratch scripts require node on PATH");
-    }
-    command = "node " + ShellQuote(script->string()) + argv;
-  } else {
-    const std::string source = ReadFile(*script, EditFileBytes()).value_or("");
-    const bool uv = ExecutableOnPath("uv");
-    if (!uv && PythonScriptHasDependencies(source)) {
-      return ToolFailure(
-          ToolErrorCode::kUnavailable,
-          "this script declares third-party dependencies and requires "
-          "uv on PATH. Install uv or edit the PEP 723 dependency list");
-    }
-    command =
-        uv ? "UV_NO_PROGRESS=1 MPLBACKEND=Agg uv run --quiet --no-project "
-             "--script " +
-                 ShellQuote(script->string()) + argv
-           : "MPLBACKEND=Agg python3 " + ShellQuote(script->string()) + argv;
-  }
-  const auto before = RootEntries(workspace);
-  ShellCommandResult result =
-      RunShellCommand(supervisor, context, {.command = std::move(command)});
-  // What the script left behind, said with its output: a model that saved a
-  // chart by a bare name otherwise spends its next call looking for it.
-  if (result.result.Ok()) {
-    std::string changed;
-    size_t count = 0;
-    for (const auto& [name, written] : RootEntries(workspace)) {
-      const auto was = before.find(name);
-      if (was != before.end() && was->second == written) continue;
-      if (++count <= kChangedNames) changed += (count > 1 ? ", " : "") + name;
-    }
-    if (count > kChangedNames) {
-      changed += " +" + std::to_string(count - kChangedNames) + " more";
-    }
-    if (count > 0) {
-      AddHint(result.result, "[changed in the folder: " + changed + "]");
-    }
-  }
-  if (result.result.error == ToolErrorCode::kProcessFailed && !shell_script) {
-    result.result.output =
-        "error: Python execution failed.\n" + result.result.output;
-  }
-  if (!result.result.Ok()) {
-    AddHint(result.result,
-            "[execution " +
-                std::string(CompletionStatusName(result.result.status)) + "]");
-  }
-  return std::move(result.result);
-}
-
 ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
                     const std::string& path, const GrepOptions& options,
                     const ToolContext& context) {
@@ -773,11 +551,8 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
   int64_t max_results = GrepResults();
   int64_t bytes = ToolResultCap() > 0 ? ToolResultCap() : 1024;
   bool ripgrep = ExecutableOnPath("rg");
-  // Ripgrep searches files in parallel and reports them in completion order, so
-  // two identical searches can disagree. That is not cosmetic here: results are
-  // truncated at a cap, so an unordered search returns an arbitrary subset, and
-  // a repeated search looks changed when nothing changed. Path order costs
-  // ripgrep's parallelism and buys a result the agent can compare and reuse.
+  // Ripgrep reports files in completion order and results are cut at a cap:
+  // unsorted, a repeated search would return another arbitrary subset.
   const char* sorted = " --sort path";
   std::string command;
   if (files_only) {
@@ -812,8 +587,7 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
     command += " -- " + ShellQuote(pattern) + " " + ShellQuote(target);
   }
   // PIPESTATUS[0], not pipefail: head closing the pipe makes the whole
-  // pipeline exit 141, which would read as "truncated" and swallow a producer
-  // error. The producer's own 141 still means head cut it short.
+  // pipeline exit 141, which would swallow a producer error.
   command += " 2>&1 | head -n " + std::to_string(max_results + 1) +
              " | head -c " + std::to_string(bytes) + "; exit ${PIPESTATUS[0]}";
   ShellCommandResult execution =

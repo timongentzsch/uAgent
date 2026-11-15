@@ -28,6 +28,7 @@
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
+#include "include/core/workspace.h"
 
 namespace uagent {
 namespace {
@@ -92,8 +93,6 @@ std::string AnswerRootPrompt(ActivitySession& session, std::string_view chunk) {
 
 std::string ActivityKindName(ActivityKind kind) {
   switch (kind) {
-    case ActivityKind::kMemory:
-      return "memory";
     case ActivityKind::kDetached:
       return "detached";
     case ActivityKind::kCommand:
@@ -138,10 +137,7 @@ bool TransitionActivityLocked(ActivitySession& session, ActivityState next) {
 
 ActivityReservation::~ActivityReservation() { Reset(); }
 
-// Every member moves: the supervisor alone told the destination which counter
-// to give back and, since the reservation names the log, which id to commit
-// under. ReserveActivity hands its result through an optional, so this runs on
-// the way out of every reservation.
+// Only the destination gives the counter back.
 ActivityReservation::ActivityReservation(ActivityReservation&& other) noexcept
     : supervisor_(std::exchange(other.supervisor_, nullptr)), id_(other.id_) {}
 
@@ -378,8 +374,12 @@ size_t ActivitySupervisor::PendingCount() const {
 }
 
 size_t ActivitySupervisor::Count() const {
+  const size_t remote =
+      RemoteWorkspace() ? JsonValue(WorkspaceRequest({{"op", "activities"}}),
+                                    "count", size_t{0})
+                        : 0;
   std::lock_guard<std::mutex> lock(mutex_);
-  return activities_.size();
+  return remote + activities_.size();
 }
 
 void ActivitySupervisor::SetOwner(std::string owner) {
@@ -406,10 +406,11 @@ json ActivitySupervisor::ActivityViews() const {
     jobs.insert(jobs.end(), foreground_.begin(), foreground_.end());
     jobs.insert(jobs.end(), retained_.begin(), retained_.end());
   }
-  json rows = json::array();
+  json rows = RemoteWorkspace() ? WorkspaceRequest({{"op", "activities"}})
+                                      .value("views", json::array())
+                                : json::array();
   for (size_t index = 0; index < jobs.size(); ++index) {
     const Activity& job = jobs[index];
-    if (job.kind == ActivityKind::kMemory) continue;
     json row = {{"id", ActivityId(job)}};
     // The turn is waiting on it, as opposed to running behind it.
     row["foreground"] = index >= background && index < background + foreground;
@@ -418,10 +419,8 @@ json ActivitySupervisor::ActivityViews() const {
     row["label"] = job.display_label.empty()
                        ? Utf8Trunc(FirstLine(job.cmd), kStatusLabelBytes)
                        : job.display_label;
-    // The modal shows the full command scrollable on top. Rows only carry
-    // the 160-char label, and inspect fails once a finished activity leaves the
-    // retained set, so the command travels here (bounded like transcript
-    // nodes) instead of degrading to the abbreviated label.
+    // The full command travels here (bounded): rows carry only a label, and
+    // inspect fails once a finished activity leaves the retained set.
     if (!job.cmd.empty()) {
       row["command"] = Utf8Trunc(job.cmd, kActivityCommandBytes);
     }

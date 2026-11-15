@@ -1,5 +1,5 @@
 import { useCallback } from "preact/hooks";
-import { readPages, routes } from "./api.ts";
+import { useApi } from "./api.ts";
 import type { SessionRef } from "../shared/types.ts";
 
 // Single node reader: custom read wins, else session detail endpoint.
@@ -11,6 +11,7 @@ export function useNodeReader(
     signal?: AbortSignal,
   ) => Promise<{ text: string }>,
 ) {
+  const { readPages, routes } = useApi();
   return useCallback(
     (id: string, raw: boolean, signal?: AbortSignal) =>
       read
@@ -22,6 +23,6 @@ export function useNodeReader(
             ),
             signal,
           ),
-    [read, session.id],
+    [read, session.id, routes.session, readPages],
   );
 }

@@ -171,9 +171,8 @@ json Agent::CompactionSkillMessages() const {
 }
 
 json Agent::CompactionUserMessages(std::vector<uint64_t>* retained_ids) const {
-  // A summary is lossy by definition. Keep recent real user instructions as
-  // an independent source of truth, while bounding them to a small fraction
-  // of the next context. Codex uses the same summary-plus-user-message shape.
+  // A summary is lossy: recent real user instructions are kept as an
+  // independent source of truth, bounded to a fraction of the next context.
   size_t cap = kCompactionUserBytes;
   if (api_.ctx_window > 0) {
     size_t route_cap = static_cast<size_t>(api_.ctx_window) / 2;
@@ -231,11 +230,9 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   size_t source_bytes = JsonEstimatedBytes(conversation_.Messages());
   size_t messages_before = conversation_.Size();
   const auto compact_started = std::chrono::steady_clock::now();
-  // The live request plus one instruction, so the provider's cache of the
-  // conversation is read instead of paid for again. A conversation that no
-  // longer fits the window (the overflow path compacts exactly then), or one
-  // still holding attachments that must reach the model once, is summarized
-  // from a bounded transcript instead.
+  // The live request plus one instruction reads the provider's cache instead
+  // of paying again. A conversation past the window, or one still holding
+  // attachments, is summarized from a bounded transcript instead.
   const json no_schemas = json::array();
   json compact_messages;
   const json* compact_schemas = &no_schemas;
@@ -313,8 +310,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
     conversation_.Push(std::move(skill), MessageKind::kInternal);
   }
   for (size_t i = 0; i < retained_users.size(); ++i) {
-    // Keep the source display id so the archived original and this re-push
-    // collapse to one node instead of flooding the transcript twice.
+    // The source display id makes the original and this re-push one node.
     uint64_t id = i < retained_ids.size() ? retained_ids[i] : 0;
     if (id) {
       conversation_.PushWithDisplayId(std::move(retained_users[i]),

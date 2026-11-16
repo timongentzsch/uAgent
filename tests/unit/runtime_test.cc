@@ -556,13 +556,33 @@ TEST_CASE(TestPermissionPolicy) {
   std::string error;
   CHECK(RememberRepositoryRule(root, folder, error));
   CHECK(RememberRepositoryRule(root, folder, error));
-  PermissionRule matched;
-  CHECK(RepositoryRuleAllows(root, tool, {{"path", "src/app/c.ts"}}, true,
-                             &matched));
-  CHECK(matched.match == "./src/app/");
-  CHECK(!RepositoryRuleAllows(root, tool, {{"path", "other/c.ts"}}, true));
+  CoveringRules covering =
+      FolderRules(root, tool, {{"path", "src/app/c.ts"}}, true);
+  CHECK(covering.allow && covering.allow->match == "./src/app/");
+  CHECK(!covering.deny && !covering.ask);
+  CHECK(!FolderRules(root, tool, {{"path", "other/c.ts"}}, true).allow);
   json rules = PermissionRulesControl({{"action", "list"}});
   CHECK(rules["rules"].size() == 1);
+  // The same tool and match with another effect takes its place.
+  PermissionRule never = folder;
+  never.effect = RuleEffect::kDeny;
+  CHECK(RememberRepositoryRule(root, never, error));
+  covering = FolderRules(root, tool, {{"path", "src/app/c.ts"}}, true);
+  CHECK(covering.deny && !covering.allow);
+  rules = PermissionRulesControl({{"action", "list"}});
+  CHECK(rules["rules"].size() == 1 && rules["rules"][0]["effect"] == "deny");
+  CHECK(PermissionRulesControl({{"action", "add"},
+                                {"tool", "run"},
+                                {"match", "git push *"},
+                                {"effect", "sometimes"}})
+            .contains("error"));
+  rules = PermissionRulesControl({{"action", "add"},
+                                  {"tool", "run"},
+                                  {"match", "git push *"},
+                                  {"effect", "ask"}});
+  CHECK(rules["rules"].size() == 2);
+  rules = PermissionRulesControl(
+      {{"action", "delete"}, {"tool", "run"}, {"match", "git push *"}});
   rules = PermissionRulesControl(
       {{"action", "delete"}, {"tool", "write_file"}, {"match", "./src/app/"}});
   CHECK(rules["rules"].empty());

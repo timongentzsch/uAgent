@@ -12,10 +12,10 @@ import sys
 from integration_support import (
     Server,
     Skipped,
-    allow_always,
     assert_true,
     base_env,
     event,
+    keep_rule,
     run,
     run_dialog,
     run_pty,
@@ -85,7 +85,7 @@ def run_once(root, env, command, *flags, binary):
     with Server([tool_call("run", {"command": command}), event({"content": "ok"})]) as server:
         env = dict(env)
         env["UAGENT_PROVIDERS"] = test_providers(server.url)
-        allow_always(env["HOME"], workspace(root))
+        keep_rule(env["HOME"], workspace(root))
         return run_dialog(workspace(root), env, "", *flags, "-p", "go", timeout=30, binary=binary)
 
 
@@ -106,7 +106,7 @@ def tool_output(root, env, command, headless=False, *, binary, **arguments):
         if headless:
             run(workspace(root), env, "--yolo", "-p", "go", timeout=30, binary=binary)
         else:
-            allow_always(env["HOME"], workspace(root))
+            keep_rule(env["HOME"], workspace(root))
             run_dialog(workspace(root), env, "", "-p", "go", timeout=30, binary=binary)
     return seen[0] if seen else ""
 
@@ -230,7 +230,7 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
                 # Nobody is there: a folder rule approves, and without one
                 # the call is refused.
                 if mode == "confined":
-                    allow_always(home, ws)
+                    keep_rule(home, ws)
                 result = run_dialog(
                     ws, env, "", *flags, "-p", "run the fixture", timeout=30, binary=binary
                 )
@@ -619,7 +619,7 @@ def browser_reach(root, env, profile, *, binary, approve=False, yolo=False):
         elif yolo:
             run(ws, env, "--yolo", "-p", "go", timeout=30, binary=binary)
         else:
-            allow_always(env["HOME"], ws)
+            keep_rule(env["HOME"], ws)
             run_dialog(ws, env, "", "-p", "go", timeout=30, binary=binary)
     return {marker.name.removeprefix("reach-") for marker in ws.glob("reach-*")}
 
@@ -900,7 +900,7 @@ def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
 
     # Approved by a folder rule, not under yolo, which raises the level to relaxed
     # and so opens the home folder.
-    allow_always(home, home)
+    keep_rule(home, home)
     with Server([route]) as server:
         result = run_dialog(
             home, sandbox_env(home, server.url), "", "-p", "go", timeout=30, binary=binary

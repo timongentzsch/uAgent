@@ -53,7 +53,14 @@ bool InteractiveApprovalAvailable() {
 namespace {
 // What a person may answer an ordinary approval with. An answer outside the
 // table is guidance: denied, and queued as steering.
-enum class ApprovalAnswer { kOnce, kSession, kRepository, kDeny, kGuidance };
+enum class ApprovalAnswer {
+  kOnce,
+  kSession,
+  kRepository,
+  kNever,
+  kDeny,
+  kGuidance
+};
 
 struct ApprovalChoice {
   ApprovalAnswer answer;
@@ -72,6 +79,10 @@ constexpr ApprovalChoice kApprovalChoices[] = {
      kAllowFolder,
      "Always allow here: ",
      {kAllowFolder, "always", "repository"}},
+    {ApprovalAnswer::kNever,
+     kDenyFolder,
+     "Never allow here: ",
+     {kDenyFolder, "never"}},
     {ApprovalAnswer::kDeny, kDeny, "Deny", {kDeny, "no"}},
     {ApprovalAnswer::kGuidance, "guidance", "Send guidance", {}},
 };
@@ -231,12 +242,17 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
                       chosen == ApprovalAnswer::kSession ||
                       chosen == ApprovalAnswer::kRepository;
     if (chosen == ApprovalAnswer::kSession) app->session_rules.push_back(rule);
-    if (chosen == ApprovalAnswer::kRepository) {
+    if (chosen == ApprovalAnswer::kRepository ||
+        chosen == ApprovalAnswer::kNever) {
+      PermissionRule kept = rule;
+      if (chosen == ApprovalAnswer::kNever) kept.effect = RuleEffect::kDeny;
       std::string error;
-      if (!RememberRepositoryRule(root, rule, error)) {
+      if (!RememberRepositoryRule(root, kept, error)) {
         Emit(NoticeEvent(
             PresentationStatus::kWarned,
-            "allowed once; could not save permission rule: " + error));
+            std::string(chosen == ApprovalAnswer::kNever ? "refused once"
+                                                         : "allowed once") +
+                "; could not save permission rule: " + error));
       }
     }
     if (chosen == ApprovalAnswer::kGuidance && !answer.empty()) {
@@ -285,27 +301,42 @@ Agent::Approver MakeApprover(AppContext* app) {
       facts.inside_work_area = context.agent_edits && tool.needs_approval &&
                                !tool.needs_approval(arguments);
     }
-    // The rule that allows it, if one does; else the one a person is
-    // offered. A command's prefix holds only where the sandbox holds it.
+    // The folder's rules hold in every mode; one that refuses holds for a
+    // mandatory call too. A command's prefix lets a call through only where
+    // the sandbox holds it.
     const bool confined = !facts.command || context.sandbox_enforced;
-    PermissionRule rule;
-    const auto covered = [&](const PermissionRule& held) {
-      return RuleCovers(held, tool, arguments, root, confined);
-    };
+    const CoveringRules folder = FolderRules(root, tool, arguments, confined);
+    context.deny_rule = folder.deny.has_value();
+    context.ask_rule = folder.ask.has_value();
+    std::optional<PermissionRule> allowing;
     if (!mandatory) {
-      auto held = std::ranges::find_if(app->session_rules, covered);
-      context.session_rule = held != app->session_rules.end();
-      if (context.session_rule) rule = *held;
-      context.folder_rule =
-          !context.session_rule &&
-          RepositoryRuleAllows(root, tool, arguments, confined, &rule);
+      const auto held =
+          std::ranges::find_if(app->session_rules, [&](const auto& kept) {
+            return RuleCovers(kept, tool, arguments, root, confined);
+          });
+      if (held != app->session_rules.end()) {
+        context.session_rule = true;
+        allowing = *held;
+      } else if (folder.allow) {
+        context.folder_rule = true;
+        allowing = folder.allow;
+      }
     }
-    const bool by_rule = context.session_rule || context.folder_rule;
-    if (!by_rule) rule = SuggestRule(tool, arguments, root, confined);
+    // What a person is offered to remember.
+    const PermissionRule offered = SuggestRule(tool, arguments, root, confined);
     const ApprovalDecision decision = Decide(facts, context);
+    const std::optional<PermissionRule>& decisive =
+        decision.source == ApprovalSource::kDenyRule  ? folder.deny
+        : decision.source == ApprovalSource::kAskRule ? folder.ask
+                                                      : allowing;
     bool automatic = decision.effect != ApprovalEffect::kAskPerson;
     Verdict verdict;
-    if (decision.source == ApprovalSource::kPlan) {
+    if (decision.source == ApprovalSource::kDenyRule) {
+      verdict = {false,
+                 "this action was not approved: a rule of this folder "
+                 "refuses it (" +
+                     RuleLabel(*folder.deny) + ")"};
+    } else if (decision.source == ApprovalSource::kPlan) {
       verdict = {false,
                  "plan mode is read-only; write the plan to " + PlanFile()};
     } else if (decision.source == ApprovalSource::kNobody) {
@@ -337,7 +368,7 @@ Agent::Approver MakeApprover(AppContext* app) {
     }
     if (!automatic) {
       verdict = AskPerson(app, tool, arguments, raw_payload, request_id, root,
-                          rule, mandatory, review);
+                          offered, mandatory, review);
     }
     DebugLog("approval", {{"tool", tool.name},
                           {"automatic", automatic},
@@ -351,7 +382,7 @@ Agent::Approver MakeApprover(AppContext* app) {
                {{"id", request_id},
                 {"tool", tool.name},
                 {"automatic", automatic},
-                {"rule", by_rule ? RuleLabel(rule) : std::string()},
+                {"rule", decisive ? RuleLabel(*decisive) : std::string()},
                 {"mode", ApprovalModeName(CurrentApprovalMode())},
                 {"review", review},
                 {"mandatory_human", mandatory},

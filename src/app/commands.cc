@@ -171,7 +171,8 @@ CommandReply RunSlashCommand(AppSession& session,
       break;
     case SlashCommandId::kPermissions:
       if (command.argument == "rules" ||
-          command.argument.starts_with("forget")) {
+          command.argument.starts_with("forget") ||
+          IsRuleArgument(command.argument)) {
         HandlePermissionRules(command.argument, reply);
         return reply;
       }

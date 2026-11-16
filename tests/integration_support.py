@@ -560,13 +560,13 @@ def fnv1a64(text):
     return f"{value:016x}"
 
 
-def allow_always(home, folder, tool="run", match="*"):
-    """A folder rule, as "Always allow here" keeps one: what lets a run with
-    nobody to ask do what needs approval."""
+def keep_rule(home, folder, tool="run", match="*", effect="allow"):
+    """A folder rule, as "Always allow here" keeps one; an allow rule is what
+    lets a run with nobody to ask do what needs approval."""
     path = pathlib.Path(home) / ".uagent" / "config" / "permissions.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    rule = {"root": os.path.realpath(folder), "tool": tool, "match": match}
-    path.write_text(json.dumps({"version": 2, "rules": [rule]}) + "\n")
+    rule = {"root": os.path.realpath(folder), "tool": tool, "match": match, "effect": effect}
+    path.write_text(json.dumps({"version": 3, "rules": [rule]}) + "\n")
 
 
 def settings_path(home):

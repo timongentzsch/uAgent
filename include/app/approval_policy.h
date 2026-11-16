@@ -36,7 +36,10 @@ struct PolicyContext {
   bool agent_edits = false;
   // A person can answer: a terminal, or a runtime's clients.
   bool person = true;
-  // A remembered rule covers the call: this conversation's, or the folder's.
+  // A folder rule holds the call back: refuses it, or asks a person.
+  bool deny_rule = false;
+  bool ask_rule = false;
+  // A remembered rule lets it through: this conversation's, or the folder's.
   bool session_rule = false;
   bool folder_rule = false;
 };
@@ -45,8 +48,10 @@ enum class ApprovalEffect { kAllow, kDeny, kAskPerson, kAskModel };
 
 // The stage of the order that decided.
 enum class ApprovalSource {
+  kDenyRule,
   kPlan,
   kMandatory,
+  kAskRule,
   kSessionRule,
   kFolderRule,
   kYolo,

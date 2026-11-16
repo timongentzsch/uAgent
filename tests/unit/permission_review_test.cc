@@ -158,6 +158,35 @@ TEST_CASE(TestPermissionReview) {
   }
 }
 
+// A rule that holds a call back covers any part of a command, sandbox or
+// not; one that lets it through covers only a whole simple command.
+TEST_CASE(TestRuleEffectsMatch) {
+  const std::string root = CanonicalCwd();
+  Tool run;
+  run.name = "run";
+  const auto covers = [&](RuleEffect effect, const std::string& command,
+                          bool confined = true) {
+    return RuleCovers({"run", "git push *", effect}, run,
+                      {{"command", command}}, root, confined);
+  };
+  for (const RuleEffect effect : {RuleEffect::kDeny, RuleEffect::kAsk}) {
+    CHECK(covers(effect, "git push"));
+    CHECK(covers(effect, "git push origin main"));
+    CHECK(covers(effect, "cd sub && git push --force"));
+    CHECK(covers(effect, "make; git push | tee log"));
+    CHECK(covers(effect, "git push", false));
+    CHECK(!covers(effect, "git pushy"));
+    CHECK(!covers(effect, "git status"));
+  }
+  CHECK(covers(RuleEffect::kAllow, "git push origin"));
+  CHECK(!covers(RuleEffect::kAllow, "cd sub && git push"));
+  CHECK(!covers(RuleEffect::kAllow, "git push", false));
+  RuleEffect effect = RuleEffect::kAllow;
+  CHECK(ParseRuleEffect("deny", effect) && effect == RuleEffect::kDeny);
+  CHECK(!ParseRuleEffect("never", effect));
+  CHECK(std::string(RuleEffectName(RuleEffect::kAsk)) == "ask");
+}
+
 // A remote path tool's subject names where its gateway resolved the path
 // (execution.cc), so a remembered rule still covers the file's folder.
 TEST_CASE(TestRemotePathToolRemembersItsFolder) {

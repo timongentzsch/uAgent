@@ -23,7 +23,8 @@
 namespace uagent {
 namespace {
 
-constexpr int64_t kPermissionStoreVersion = 2;
+constexpr int64_t kPermissionStoreVersion = 3;
+constexpr const char* kRuleEffects[] = {"allow", "ask", "deny"};
 constexpr size_t kPermissionStoreBytes = MiB(1);
 constexpr size_t kMatchBytes = 4096;
 json EmptyStore() {
@@ -36,8 +37,10 @@ bool ValidStore(const json& store, std::string& error) {
     return false;
   }
   for (const auto& rule : store["rules"]) {
+    RuleEffect effect = RuleEffect::kAllow;
     if (!JsonStringRef(rule, "root") || !JsonStringRef(rule, "tool") ||
-        !JsonStringRef(rule, "match")) {
+        !JsonStringRef(rule, "match") ||
+        !ParseRuleEffect(JsonValue(rule, "effect", ""), effect)) {
       error = "permission rules file contains an invalid rule";
       return false;
     }
@@ -46,28 +49,38 @@ bool ValidStore(const json& store, std::string& error) {
 }
 
 // The rules file, locked for its lifetime. Usable() is false, with `error`
-// set, when it cannot be read or fails validation.
+// set, when it cannot be read, is of another format or fails validation. A
+// file of another format is refused, not read as empty: saving over it would
+// drop its rules.
 class RulesFile : public PrivateJsonStore {
  public:
   explicit RulesFile(std::string& error)
       : PrivateJsonStore(kPermissionStoreFile, EmptyStore(),
                          kPermissionStoreBytes, error),
-        usable_(Ready() && (Current() || ValidStore(Data(), error))) {}
+        usable_(Ready() && Current(error) && ValidStore(Data(), error)) {}
 
   bool Usable() const { return usable_; }
   json& Rules() { return Data()["rules"]; }
 
  private:
-  // False for a current file, which is then validated.
-  bool Current() {
-    if (JsonValue(Data(), "version", int64_t{0}) == kPermissionStoreVersion) {
-      return false;
-    }
-    Data() = EmptyStore();
-    return true;
+  bool Current(std::string& error) {
+    const int64_t version = JsonValue(Data(), "version", int64_t{0});
+    if (version == kPermissionStoreVersion) return true;
+    error = "~/.uagent/config/" + std::string(kPermissionStoreFile) +
+            " has format " + std::to_string(version) + "; this build reads " +
+            std::to_string(kPermissionStoreVersion) +
+            ". Remove it and remember the rules again";
+    return false;
   }
   bool usable_;
 };
+
+PermissionRule RuleFrom(const json& held) {
+  PermissionRule rule{JsonValue(held, "tool", ""),
+                      JsonValue(held, "match", "")};
+  ParseRuleEffect(JsonValue(held, "effect", ""), rule.effect);
+  return rule;
+}
 
 // Matches the rules of `root`, narrowed to `rule` when one is given.
 auto RuleOf(const std::string& root, const PermissionRule* rule = nullptr) {
@@ -78,8 +91,29 @@ auto RuleOf(const std::string& root, const PermissionRule* rule = nullptr) {
   };
 }
 
+// The parts of a command between the operators that run one after another.
+std::vector<std::string> CommandParts(const std::string& command) {
+  std::vector<std::string> parts;
+  std::string part;
+  const auto keep = [&] {
+    if (std::string trimmed = Trim(part); !trimmed.empty()) {
+      parts.push_back(std::move(trimmed));
+    }
+    part.clear();
+  };
+  for (const char c : command) {
+    if (c == ';' || c == '&' || c == '|' || c == '\n') {
+      keep();
+    } else {
+      part += c;
+    }
+  }
+  keep();
+  return parts;
+}
+
 // One command with nothing that chains, substitutes or redirects: what a
-// command prefix may cover.
+// command prefix may allow.
 bool SimpleCommand(const std::string& command) {
   return !command.empty() &&
          command.find_first_of(";&|`$<>()\n\\") == std::string::npos;
@@ -157,13 +191,34 @@ bool RuleCovers(const PermissionRule& rule, const Tool& tool,
   if (rule.tool != tool.name) return false;
   if (rule.match == "*") return true;
   const std::string subject = RuleSubject(tool, arguments, root);
-  if (rule.match.ends_with(" *")) {
-    const std::string prefix = rule.match.substr(0, rule.match.size() - 2);
-    return confined && SimpleCommand(subject) &&
-           (subject == prefix || subject.starts_with(prefix + " "));
-  }
   if (rule.match.ends_with("/")) return subject.starts_with(rule.match);
-  return subject == rule.match;
+  const bool prefixed = rule.match.ends_with(" *");
+  const std::string prefix =
+      prefixed ? rule.match.substr(0, rule.match.size() - 2) : rule.match;
+  const auto matches = [&](const std::string& part) {
+    return part == prefix || (prefixed && part.starts_with(prefix + " "));
+  };
+  // A rule that holds a call back holds every form of it, a part of a
+  // longer command too; one that lets it through, only the whole of a
+  // simple command the sandbox holds.
+  if (rule.effect != RuleEffect::kAllow) {
+    return matches(subject) ||
+           (tool.name == "run" &&
+            std::ranges::any_of(CommandParts(subject), matches));
+  }
+  if (!prefixed) return subject == rule.match;
+  return confined && SimpleCommand(subject) && matches(subject);
+}
+
+const char* RuleEffectName(RuleEffect effect) {
+  return kRuleEffects[static_cast<size_t>(effect)];
+}
+
+bool ParseRuleEffect(std::string_view name, RuleEffect& effect) {
+  const auto found = std::ranges::find(kRuleEffects, name);
+  if (found == std::end(kRuleEffects)) return false;
+  effect = static_cast<RuleEffect>(found - std::begin(kRuleEffects));
+  return true;
 }
 
 std::string RuleLabel(const PermissionRule& rule) {
@@ -200,40 +255,50 @@ json ApprovalRisks(const Tool& tool, const json& arguments,
   return risks;
 }
 
-bool RepositoryRuleAllows(const std::string& root, const Tool& tool,
-                          const json& arguments, bool confined,
-                          PermissionRule* matched) {
-  std::string error;
-  RulesFile file(error);
+CoveringRules FolderRules(const std::string& root, const Tool& tool,
+                          const json& arguments, bool confined) {
+  CoveringRules covering;
+  RulesFile file(covering.error);
   if (!file.Usable()) {
-    DebugLog("permission_rules_error", {{"error", error}});
-    return false;
+    DebugLog("permission_rules_error", {{"error", covering.error}});
+    return covering;
   }
+  const std::string identity = WorkspaceIdentity{Workspace().host, root}.Key();
   for (const json& held : file.Rules()) {
-    PermissionRule rule{JsonValue(held, "tool", ""),
-                        JsonValue(held, "match", "")};
-    if (JsonValue(held, "root", "") ==
-            WorkspaceIdentity{Workspace().host, root}.Key() &&
-        RuleCovers(rule, tool, arguments, root, confined)) {
-      if (matched) *matched = std::move(rule);
-      return true;
+    PermissionRule rule = RuleFrom(held);
+    if (JsonValue(held, "root", "") != identity ||
+        !RuleCovers(rule, tool, arguments, root, confined)) {
+      continue;
     }
+    std::optional<PermissionRule>& slot =
+        rule.effect == RuleEffect::kDeny  ? covering.deny
+        : rule.effect == RuleEffect::kAsk ? covering.ask
+                                          : covering.allow;
+    if (!slot) slot = std::move(rule);
   }
-  return false;
+  return covering;
 }
+
+namespace {
+// Keeps `rule` for `identity` in place of one with its tool and match.
+void Keep(json& rules, const std::string& identity,
+          const PermissionRule& rule) {
+  rules.erase(
+      std::remove_if(rules.begin(), rules.end(), RuleOf(identity, &rule)),
+      rules.end());
+  rules.push_back({{"root", identity},
+                   {"tool", rule.tool},
+                   {"match", rule.match},
+                   {"effect", RuleEffectName(rule.effect)},
+                   {"created", NowSeconds()}});
+}
+}  // namespace
 
 bool RememberRepositoryRule(const std::string& root, const PermissionRule& rule,
                             std::string& error) {
   RulesFile file(error);
   if (!file.Usable()) return false;
-  json& rules = file.Rules();
-  const std::string identity = WorkspaceIdentity{Workspace().host, root}.Key();
-  if (std::none_of(rules.begin(), rules.end(), RuleOf(identity, &rule))) {
-    rules.push_back({{"root", identity},
-                     {"tool", rule.tool},
-                     {"match", rule.match},
-                     {"created", NowSeconds()}});
-  }
+  Keep(file.Rules(), WorkspaceIdentity{Workspace().host, root}.Key(), rule);
   return file.Save(error);
 }
 
@@ -244,9 +309,18 @@ json PermissionRulesControl(const json& request) {
   RulesFile file(error);
   if (!file.Usable()) return {{"error", error}};
   json& rules = file.Rules();
-  if (action == "delete" || action == "clear") {
-    const PermissionRule rule{JsonValue(request, "tool", ""),
-                              JsonValue(request, "match", "")};
+  PermissionRule rule{JsonValue(request, "tool", ""),
+                      JsonValue(request, "match", "")};
+  if (action == "add") {
+    if (rule.tool.empty() || rule.match.empty() ||
+        !ParseRuleEffect(JsonValue(request, "effect", ""), rule.effect)) {
+      return {{"error",
+               "a rule needs a tool, a match and an effect: allow, "
+               "ask or deny"}};
+    }
+    Keep(rules, root, rule);
+    if (!file.Save(error)) return {{"error", error}};
+  } else if (action == "delete" || action == "clear") {
     const size_t before = rules.size();
     rules.erase(
         std::remove_if(rules.begin(), rules.end(),

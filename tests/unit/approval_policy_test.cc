@@ -85,6 +85,20 @@ TEST_CASE(TestApprovalOrder) {
   CHECK(Is(Decide(Command(), alone), kAskModel, kReview));
   CHECK(Is(Decide(EditOutside(), alone), kDeny, kNobody));
 
+  // A rule that refuses holds in every mode and before a person is asked;
+  // one that asks, before anything lets the call through.
+  for (const Mode mode : {Mode::kAsk, Mode::kAuto, Mode::kYolo, Mode::kPlan}) {
+    PolicyContext held = In(mode);
+    held.deny_rule = held.ask_rule = held.folder_rule = true;
+    CHECK(Is(Decide(Command(), held), kDeny, kDenyRule));
+    CHECK(Is(Decide(Unsandboxed(), held), kDeny, kDenyRule));
+    held.deny_rule = false;
+    if (mode != Mode::kPlan) {
+      CHECK(Is(Decide(Command(), held), kAskPerson, kAskRule));
+      CHECK(Is(Decide(Unsandboxed(), held), kAskPerson, kMandatory));
+    }
+  }
+
   // Yolo allows everything but the mandatory class.
   CHECK(Is(Decide(Command(), In(Mode::kYolo)), kAllow, kYolo));
   CHECK(Is(Decide(EditOutside(), In(Mode::kYolo)), kAllow, kYolo));
@@ -130,7 +144,7 @@ TEST_CASE(TestApprovalInvariants) {
   constexpr std::array kModes = {Mode::kAsk, Mode::kAuto, Mode::kYolo,
                                  Mode::kPlan};
   for (const Mode mode : kModes) {
-    for (uint32_t bits = 0; bits < (1u << 13); ++bits) {
+    for (uint32_t bits = 0; bits < (1u << 15); ++bits) {
       const auto bit = [bits](int at) { return ((bits >> at) & 1u) != 0; };
       const ApprovalFacts call{
           .required = bit(0) ? kMandatoryCall : kOrdinaryCall,
@@ -145,9 +159,16 @@ TEST_CASE(TestApprovalInvariants) {
                                   .sandbox_read_only = bit(8),
                                   .agent_edits = bit(9),
                                   .person = bit(12),
+                                  .deny_rule = bit(13),
+                                  .ask_rule = bit(14),
                                   .session_rule = bit(10),
                                   .folder_rule = bit(11)};
       const ApprovalDecision decision = Decide(call, context);
+      // A rule that refuses always does; one that asks is never passed by.
+      if (context.deny_rule) CHECK(decision.effect == kDeny);
+      if (context.ask_rule && decision.effect == kAllow) {
+        CHECK(mode == Mode::kPlan);
+      }
       // Nobody to ask is never asked.
       if (!context.person) CHECK(decision.effect != kAskPerson);
       // A mandatory call is never allowed without a person.
@@ -164,11 +185,12 @@ TEST_CASE(TestApprovalInvariants) {
               !call.outside_folder &&
               (!call.command || context.sandbox_enforced));
       }
-      // Yolo never asks the model, and asks a person only when it must.
+      // Yolo never asks the model, and a person only for a mandatory call or
+      // one a rule holds back.
       if (mode == Mode::kYolo) {
         CHECK(decision.effect != kAskModel);
         if (decision.effect == kAskPerson) {
-          CHECK(call.required == kMandatoryCall);
+          CHECK(call.required == kMandatoryCall || context.ask_rule);
         }
       }
     }

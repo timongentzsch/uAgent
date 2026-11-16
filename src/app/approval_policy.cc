@@ -23,10 +23,13 @@ ApprovalDecision Decide(const ApprovalFacts& call,
       planning && (call.on_plan_file ||
                    (call.executes && !mandatory && context.sandbox_enforced &&
                     context.sandbox_read_only));
+  // A rule that refuses holds in every mode, before anyone is asked.
+  if (context.deny_rule) return {kDeny, kDenyRule};
   // Anything else that changes something is refused before anyone is asked.
   if (planning && !plan_allows && call.mutates) return {kDeny, kPlan};
   // A mandatory call ignores every automatic-approval switch.
   if (mandatory) return ask(kMandatory);
+  if (context.ask_rule) return ask(kAskRule);
   if (context.session_rule) return {kAllow, kSessionRule};
   if (context.folder_rule) return {kAllow, kFolderRule};
   if (context.mode == ApprovalMode::kYolo) return {kAllow, kYolo};

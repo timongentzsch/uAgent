@@ -253,6 +253,10 @@ def test_yolo_writes_no_file_that_runs_code_when_something_else_starts(root, hom
     startup.write_text("# mine\n")
     (home / ".ssh").mkdir(mode=0o700, exist_ok=True)
     keys = home / ".ssh" / "authorized_keys"
+    # Landlock withholds by opening the home folder's entries one by one, so
+    # the open part is a folder in it.
+    notes = home / "Documents" / "notes.txt"
+    notes.parent.mkdir()
     told = []
 
     def route(_, body):
@@ -261,7 +265,7 @@ def test_yolo_writes_no_file_that_runs_code_when_something_else_starts(root, hom
         calls = [
             tool_call("run", {"command": f"echo planted >> {startup}; echo k > {keys}"}),
             tool_call("write_file", {"path": str(startup), "content": "planted"}),
-            tool_call("run", {"command": f"echo ok > {home / 'notes.txt'}"}),
+            tool_call("run", {"command": f"echo ok > {notes}"}),
         ]
         return calls[len(results)] if len(results) < len(calls) else event({"content": "done"})
 
@@ -273,7 +277,7 @@ def test_yolo_writes_no_file_that_runs_code_when_something_else_starts(root, hom
     assert_true(not keys.exists(), told)
     assert_true("needs a person's approval" in told[1], told)
     # The rest of the home folder stays open to yolo.
-    assert_true((home / "notes.txt").read_text() == "ok\n", told)
+    assert_true(notes.read_text() == "ok\n", told)
 
 
 def test_yolo_toggle_raises_the_level_from_the_next_command(root, home, *, binary):

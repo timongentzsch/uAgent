@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Upgrade notes
+
+- **The HTTP API names things one way.** Session metadata says `needs_you` where it said `pending` (a snapshot's `pending` decision and a receipt's `pending` stay). `/api/browser/status` and `/api/browser/viewer` take `instance_id`, `/api/search` takes `session_id`, and `POST /api/library/delete` takes `session_id`. A malformed command is 400 (409 now means only that the protocol differs), saving a file of an unknown conversation is 404, a ping of an unknown host is 404, and an unknown `update` action is refused.
+
+### Fixes
+
+- **A narrow list keeps its names.** A conversation's place gives way before its title, a remote host's status before its name, and Library and Scheduled stack instead of running past the edge.
+- **A takeover whose Chrome cannot start leaves nobody in control.** The browser stayed held by that device, so the agent's browser calls and every other device were refused until it let go.
+- **The browser's status says when its service is down** (503), instead of answering 200 with an error inside.
+- **An unknown command kind is refused as unsupported**, not as a stale generation, and every stale-generation refusal reads the same.
+
 ## v1.10.0 - 2026-11-16
 
 ### Upgrade notes

@@ -300,9 +300,9 @@
   .field-row {
     display: grid;
     grid-template-columns: repeat(
-      auto-fill,
-      minmax(min(100%, max(var(--pane), (100% - var(--gap)) / 2)), 1fr)
-    );
+        auto-fill,
+        minmax(min(100%, max(var(--pane), (100% - var(--gap)) / 2)), 1fr)
+      );
     gap: var(--gap);
   }
   /* One auto grid column: unwrappable lines size it to the longest one, and

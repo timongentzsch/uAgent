@@ -23,13 +23,16 @@ further turns, and waits while they owe it a report. stdout goes to
 | `--budget USD`, `--token-budget TOKENS` | `UAGENT_SESSION_BUDGET`, `UAGENT_SESSION_TOKEN_BUDGET` for this run |
 | `--trust-project-config` | trust the folder's `.mcp.json`; an untrusted one fails the run with status 2 |
 
-Stdin carries no prompt. An ordinary call that asks a person
-(`approval.mode`, [Settings](settings.md)) reads one line from it: `y`,
-`s` or `a` allow (once, for the conversation, always in this folder), `n`
-or end of file denies, other text denies and is queued as steering. Under
-`auto`, a call the reviewer cannot decide is denied unless stdin is a
-terminal. A call that always needs a person is denied unless stdin is a
-terminal; `--yolo` never covers it. Run with `</dev/null` to deny them.
+Stdin carries no prompt and never answers an approval. When stdin is a
+terminal, a call that asks a person (`approval.mode`,
+[Settings](settings.md)) reads one line there: `y`, `s` or `a` allow (once,
+for the conversation, always in this folder), `x` refuses always in this
+folder, `n` or end of file denies, other text denies and is queued as
+steering. When it is not, every call that would ask a person is denied,
+including what Auto's reviewer cannot decide and what always needs a
+person; `--yolo` never covers the latter. A folder rule
+(`/permissions allow TOOL MATCH`, `permissions.json`) is how an unattended
+run is allowed to act.
 
 ## Plain output and exit status
 

@@ -34,6 +34,9 @@ ApprovalDecision Decide(const ApprovalFacts& call,
   if (context.folder_rule) return {kAllow, kFolderRule};
   if (context.mode == ApprovalMode::kYolo) return {kAllow, kYolo};
   if (plan_allows) return {kAllow, kPlanAllows};
+  // A brief or message to an agent runs nothing itself; it becomes that
+  // conversation's request, which only Auto has judged.
+  if (call.delegates && !automatic) return {kAllow, kDelegation};
   // In Auto a file tool's change inside the folder needs no judge: undo
   // takes it back. Commands and the rest are judged, in an agent as in the
   // conversation that started it.
@@ -42,9 +45,12 @@ ApprovalDecision Decide(const ApprovalFacts& call,
     return {kAllow, kContainedEdit};
   }
   // The model judges only what the sandbox contains: nothing outside the
-  // folder, no command without the enforced sandbox around it.
-  const bool confined = !call.command || context.sandbox_enforced;
-  if (automatic && confined && !call.outside_folder) {
+  // folder, no command without the enforced sandbox around it; and what an
+  // agent is told.
+  const bool confined =
+      call.delegates ||
+      ((!call.command || context.sandbox_enforced) && !call.outside_folder);
+  if (automatic && confined) {
     return context.review_paused ? ask(kRefusals)
                                  : ApprovalDecision{kAskModel, kReview};
   }
@@ -72,6 +78,8 @@ const char* ApprovalSourceName(ApprovalSource source) {
       return "plan_allows";
     case kContainedEdit:
       return "contained_edit";
+    case kDelegation:
+      return "delegation";
     case kReview:
       return "review";
     case kRefusals:

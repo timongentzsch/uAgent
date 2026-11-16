@@ -615,6 +615,20 @@ Tool AgentStartTool(const Api& api, std::function<std::string()> own_model) {
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
   tool.result_chars = static_cast<int64_t>(kWaitChars) + 4096;
+  tool.needs_approval = [](const json&) { return true; };
+  tool.approval_preview = [](const json& a) {
+    const json* items = JsonArray(a, "items");
+    std::string preview =
+        "edits: " + JsonValue(a, "edits", "none") +
+        "\nmodel: " + JsonValue(a, "model", "yours") +
+        "\nwait: " + (JsonValue(a, "wait", true) ? "yes" : "no") +
+        "\nitems: " + std::to_string(items ? items->size() : 0) + "\n\n" +
+        JsonValue(a, "brief", "");
+    for (const json& item : items ? *items : json::array()) {
+      preview += "\n- " + (item.is_string() ? item.get<std::string>() : "");
+    }
+    return preview;
+  };
   tool.headline = [](const json& a) {
     return Headline{"Starting agent", "Started agent",
                     FirstLine(JsonValue(a, "brief", ""))};
@@ -637,6 +651,10 @@ Tool AgentSendTool() {
       });
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
+  tool.needs_approval = [](const json&) { return true; };
+  tool.approval_preview = [](const json& a) {
+    return "to: " + JsonValue(a, "id", "") + "\n\n" + JsonValue(a, "text", "");
+  };
   tool.headline = [](const json& a) {
     return Headline{"Messaging", "Messaged", JsonValue(a, "id", "")};
   };

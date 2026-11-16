@@ -142,6 +142,10 @@ std::string RuleSubject(const Tool& tool, const json& arguments,
                         const std::string& root) {
   if (tool.name == "run") return Trim(JsonValue(arguments, "command", ""));
   if (tool.name == "web_fetch") return UrlHost(JsonValue(arguments, "url", ""));
+  if (tool.name == "agent_start" || tool.name == "agent_send") {
+    return FirstLine(
+        JsonValue(arguments, "brief", JsonValue(arguments, "text", "")));
+  }
   const json subject =
       tool.approval_subject ? tool.approval_subject(arguments) : json();
   // A remote path tool's subject names where its gateway resolved the path.

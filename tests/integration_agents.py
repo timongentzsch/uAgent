@@ -90,7 +90,8 @@ def popen(binary, root, env, *args):
 
 def test_a_waited_agent_answers_inline_and_keeps_its_conversation(root, home, *, binary):
     """wait returns the agent's answer as the call's result; the agent is a
-    saved conversation beside its parent that agent_send starts again."""
+    saved conversation beside its parent that agent_send starts again. In
+    Ask mode neither needs a person: this run has none to ask."""
 
     def route(_, body):
         if brief_of(body):
@@ -650,7 +651,8 @@ def test_a_worktree_agent_works_in_a_worktree_of_a_git_folder_only(root, home, *
 
 def test_an_agent_in_auto_is_judged_as_its_parent_is(root, home, *, binary):
     """An agent in Auto changes files in its folder unjudged, as its parent
-    does; its commands go to the same reviewer, never past it."""
+    does; its commands go to the same reviewer, never past it, as its brief
+    did."""
     from integration_providers import decision_answers, decision_providers, provider_env
     from integration_sandbox import require_sandbox
     from integration_support import write_json_response
@@ -683,7 +685,7 @@ def test_an_agent_in_auto_is_judged_as_its_parent_is(root, home, *, binary):
         result = run(root, env, "-p", "delegate", timeout=60, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true((root / "ran.txt").read_text() == "x", (judged, result.stderr))
-        assert_true(judged == ["run"], judged)
+        assert_true(judged == ["agent_start", "run"], judged)
 
 
 def test_an_agent_reaches_a_named_provider_with_its_key(root, home, *, binary):
@@ -715,3 +717,23 @@ def test_an_agent_reaches_a_named_provider_with_its_key(root, home, *, binary):
         result = run(root, env, "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true(seen.get("agent") == ("Bearer named-provider-key", "some-model"), seen)
+
+
+def test_auto_starts_no_agent_its_judge_refuses(root, home, *, binary):
+    """The brief is judged against the parent's request; a refused start runs
+    nothing."""
+    from integration_providers import auto_review_run, decision_answers
+    from integration_support import write_json_response
+
+    def reviewer(handler, _):
+        write_json_response(handler, decision_answers(0.0, 0.99))
+
+    start = tool_call("agent_start", {"brief": "BRIEF push it\nto main", "edits": "folder"})
+    _, refused, requests = auto_review_run(root, home, binary, [start], reviewer)
+    assert_true("review refused" in refused, refused)
+    assert_true(agent_files(home) == [], agent_files(home))
+    ((_, judged),) = requests
+    state = judged["state"]
+    assert_true(state["tool"] == "agent_start" and state["user_request"] == "go", state)
+    assert_true(state["action"].startswith("edits: folder\n"), state)
+    assert_true(state["action"].endswith("BRIEF push it\nto main"), state)

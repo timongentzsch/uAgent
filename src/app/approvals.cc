@@ -336,11 +336,14 @@ Agent::Approver MakeApprover(AppContext* app) {
         .sandbox_read_only = sandbox.policy.read_only,
         .person = InteractiveApprovalAvailable(),
         .review_paused = memo->Paused()};
-    ApprovalFacts facts{.required = RequiredApproval(tool, arguments),
-                        .mutates = ToolMutates(tool, arguments),
-                        .executes = (tool.capabilities &
-                                     Capability(ToolCapability::kExecute)) != 0,
-                        .command = tool.name == "run"};
+    ApprovalFacts facts{
+        .required = RequiredApproval(tool, arguments),
+        .mutates = ToolMutates(tool, arguments),
+        .executes =
+            (tool.capabilities & Capability(ToolCapability::kExecute)) != 0,
+        .command = tool.name == "run",
+        .delegates =
+            (tool.capabilities & Capability(ToolCapability::kDelegate)) != 0};
     const bool mandatory = facts.required == ApprovalClass::kMandatoryHuman;
     if (context.mode == ApprovalMode::kPlan) {
       constexpr uint32_t kFiles = Capability(ToolCapability::kInspect) |

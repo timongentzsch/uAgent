@@ -21,7 +21,7 @@ action `show` with topic `config`.
 | Which settings exist? | `show` `config`, no `name`: every setting with its key, environment name, type, default, purpose and where it is set |
 | Which flags exist? | `uagent --help`, or `show` `cli` |
 | Which slash commands exist? | `show` `commands`, or `/help` |
-| What is in the system prompt? | `uagent --show-system-prompt` (`--json` adds the sources); how instructions layer onto it: `docs/INSTRUCTIONS.md` in a source checkout |
+| What is in the system prompt? | `uagent --show-system-prompt` (`--json` adds the sources); how instructions layer onto it: `docs/architecture/memory-and-schedules.md` in a source checkout |
 | Which prompt is this session actually running? | `show` `prompt` (base digest, active sections, and `saved`, the person's changes) |
 | Which built-in tools and arguments exist? | `show` `tools` |
 | Which model routes are configured, and is a credential set? | `show` `routes` |
@@ -29,7 +29,7 @@ action `show` with topic `config`.
 | Which approvals are remembered for this folder? | `show` `permissions` |
 | Which skills are installed, and which are on? | `show` `skills` |
 | How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/architecture/overview.md` in a source checkout |
-| Limits, recovery or failure triage | `docs/OPERATIONS.md` in a source checkout |
+| Limits, recovery or failure triage | `docs/interfaces/limits.md` and `docs/operations/budgets-and-recovery.md` in a source checkout |
 | Change a setting persistently | `set`; see `references/self-configuration.md` |
 | What instructions do sessions read? | `show` `instructions` |
 | Change instructions, the system message, MCP servers or a skill | `write`; see "Change a file" |

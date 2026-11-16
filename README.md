@@ -38,7 +38,7 @@ settings, history or provider keys.
 | Footprint | 26.4 MiB idle, 17 ms CPU per headless turn ([measured 2026-11-10](benchmarks/README.md#footprint-comparison)) |
 | Model APIs | OpenAI Chat Completions, OpenAI Responses, Anthropic Messages |
 | Sandbox | Seatbelt on macOS, Landlock on Linux, on in every approval mode |
-| Runtime dependencies | libcurl, zlib and the C++ runtime; no language runtime, no plugin loader |
+| Runtime dependencies | libcurl, zlib, the C++ runtime and, on Linux, OpenSSL 3; no language runtime, no plugin loader |
 | Platforms | Linux x86_64 and ARM64 (glibc 2.38 or newer), macOS 15 or newer on Apple silicon |
 | Tests | native unit and integration suites against mock providers, Chromium and WebKit, sanitizers, fuzzers, clang-tidy |
 
@@ -66,9 +66,9 @@ Sizes are of the 1.9.0 archives.
   agent writes render in opaque-origin frames from a capability address; a
   sheet calculates in a worker of its own page.
   [Artifacts](docs/architecture/artifacts.md)
-- **A turn survives its client.** Sessions are journalled; a closed tab, a
-  dropped SSH connection or a restarted web host does not end the work.
-  [Sessions](docs/architecture/sessions.md)
+- **A turn survives its client.** A conversation's runtime is a process of
+  its own: a closed tab, a detached terminal or a restarted web host does not
+  end the turn. [Sessions](docs/architecture/sessions.md)
 
 ## Interfaces
 

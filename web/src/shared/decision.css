@@ -90,6 +90,16 @@
   padding-inline: var(--space-2);
   font-size: var(--font-small);
 }
+/* raw: a narrow column gives each answer a row of its own, at full size. */
+@container column (max-width: 43rem) {
+  .decision-answers {
+    grid-auto-flow: row;
+  }
+  .decision-answers > button {
+    padding-inline: var(--inset-x);
+    font-size: inherit;
+  }
+}
 .decision-more > summary {
   width: fit-content;
 }

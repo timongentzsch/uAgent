@@ -55,7 +55,7 @@ Files beside `<name>.json`, all private:
 | `.lock` | the writer lease |
 | `.events.jsonl` | the event journal |
 | `.edits/` | undo blobs, `index.json`, stored diffs |
-| `.assets/` | uploads and display copies, each `<id>.<ext>` with `<id>.json` |
+| `.assets/` | uploads, each `<id>.data` with its record `<id>.json` |
 | `.plan.md` | plan mode's plan |
 | `<stem>.share.md` | `/share` export |
 

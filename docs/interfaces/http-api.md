@@ -78,13 +78,15 @@ without `generation` starts the runtime first; one with a stale
 | library | `memory`, `skills`, `schedule`, `import`, `instructions`, `permission_rules`, `models`, `provider`, `openrouter`: the [`--control`](headless.md#--control-json-) request; its reply is `result` |
 | browser | `browser` (`action` `takeover`, `done`, `stop`, `create_profile`, `select_profile`, `setup_profile`, `configure`, `viewport`; `instance_id`, `interaction_id`, `name`, `profile_id`, `viewport`, `parallel_capacity`) |
 | a conversation's lifecycle (host) | `create` (`cwd` or `space`), `activate`, `close`, `delete` (only when stopped), `move` (`cwd` or `space`) |
-| a conversation (runtime) | `submit` and `steer` (`text`, `attachment_ids`, `queue`), `reply` (`interaction_id`, `text`, `cancelled`), `interrupt`, `recall` and `insert` (`target_id`), `rename` (`title`), `keep`, `refresh`, `permissions` (`mode`), `activity`, `tools`, `model`, `config`, `context`, `revert` (`turn`, `path`), `fork` (`argument` or `message_id`), `share`, `side`, `escalate` |
+| a conversation (runtime) | `submit` and `steer` (`text`, `attachment_ids`, `queue`), `reply` (`interaction_id`, `text`, `cancelled`), `interrupt`, `recall` and `insert` (`target_id`), `rename` (`title`), `keep`, `refresh`, `permissions` (`mode`), `activity`, `tools`, `model`, `config`, `context`, `revert` (`turn`, `path`), `fork` (`argument` or `message_id`), `share`, `side` |
 
 A runtime command is forwarded with a host-made id
 (`SessionHost::ExecuteCommand`); `rename`, `keep`, `delete` and `fork` of a
 stopped conversation are done by the host on the file. `attachment_ids`
 names uploads (ids or `{id, name}`, at most 8, `kUploadCount`), which the
-host resolves before forwarding.
+host resolves before forwarding. `escalate`, which hands an agent's
+decision from its parent agent to the person, is sent by the agent link and
+the parent's tools, not by a client.
 
 The receipt has `request_id`, `accepted` (false with HTTP 409 and an
 `error`), `pending` (the runtime has not answered within 2 s), `result`

@@ -244,6 +244,11 @@ void Master::RestartHost(CommandCall& call) {
 // beside the host, which restarts itself when the files are replaced.
 void Master::UpdateCommand(CommandCall& call) {
   const std::string action = JsonValue(call.command, "action", "show");
+  if (action != "show" && action != "check" && action != "apply" &&
+      action != "chrome") {
+    call.error = "unknown update action";
+    return;
+  }
   if (action == "apply") {
     std::lock_guard lock(update_mutex_);
     if (JsonValue(update_, "installing", false)) {

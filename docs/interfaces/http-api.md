@@ -128,7 +128,7 @@ not contract; treat unknown kinds as a reason to reread.
 
 ## Files, previews and assets
 
-Under `/api/sessions/<id>/`; a path outside the folder or hidden is 404.
+Under `/api/sessions/<id>/`; an unknown conversation, or a path outside the folder or hidden, is 404.
 
 | Route | Request | Response |
 | --- | --- | --- |

@@ -462,7 +462,9 @@ json RemoteHosts::Ping(const std::string& id) const {
   {
     std::lock_guard lock(impl_->mutex);
     const auto found = impl_->hosts.find(id);
-    if (found == impl_->hosts.end()) return {{"error", "Unknown host."}};
+    if (found == impl_->hosts.end()) {
+      return {{"error", "Unknown host."}, {"status", 404}};
+    }
     host = found->second;
   }
   {

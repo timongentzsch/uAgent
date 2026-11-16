@@ -64,8 +64,10 @@ A file that does not load is 422.
 | … | | the kind's own fields |
 
 The body may be 64 KiB, or 1 MiB (`kFrameBytes`) for `memory`, `skills`
-and `instructions`. A conversation command without `generation` starts the
-runtime first; one with a stale `generation` is refused.
+and `instructions`. A body that is not a command with a valid `request_id`,
+or `recall`/`insert` without `target_id`, is 400. A conversation command
+without `generation` starts the runtime first; one with a stale
+`generation` is refused.
 
 | Acts on | Kinds |
 | --- | --- |
@@ -159,7 +161,7 @@ page, and `~sheet/<file>` serves the sheet engine.
 | `POST /api/library/delete` | `{kind, key, place}` or `{kind: "file", key, session}`; `{}` |
 | `GET /api/hosts` | `hosts`: `id`, `address`, `phase`, `error`, `installing`, `version`, `round_trip_ms` |
 | `POST /api/hosts` | `{action: add, address}` or `{action: connect\|reconnect\|disconnect, id}`, ≤ 4 KiB; `{id}` |
-| `GET /api/hosts/<32 hex>/ping` | `{round_trip_ms}` |
+| `GET /api/hosts/<32 hex>/ping` | `{round_trip_ms}`; 404 for an unknown host, 503 when it does not answer |
 | `POST /api/push/subscriptions` | body: a browser `PushSubscription` (`endpoint`, `keys.p256dh`, `keys.auth`), ≤ 8 KiB; replies with the capabilities: `push`, `push_reason`, `subscribed`, `vapid_public_key`; 422 when refused |
 | `DELETE /api/push/subscriptions` | no body; the capabilities |
 | `GET /api/user.css` | the person's stylesheet, `text/css`, ETag |

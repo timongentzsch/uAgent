@@ -149,6 +149,14 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                 == 409,
                 "stale generation accepted",
             )
+            for invalid, expected in (
+                ({**payload, "request_id": "not hex"}, 400),
+                ({**payload, "request_id": "c" * 32, "kind": "recall"}, 400),
+                ({**payload, "request_id": "c" * 32, "v": 1}, 409),
+            ):
+                assert_true(client.json("/api/command", invalid)[0] == expected, invalid)
+            assert_true(client.request("/api/command", raw=b"{")[0] == 400, "unparsable command")
+            assert_true(client.request(f"/api/hosts/{'0' * 32}/ping")[0] == 404, "unknown host")
             status, denied, _ = client.json(
                 "/api/command",
                 {

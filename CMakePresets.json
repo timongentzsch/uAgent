@@ -23,6 +23,12 @@
       }
     },
     {
+      "name": "dev",
+      "inherits": "debug",
+      "description": "The debug build with Ninja, which rebuilds only what changed fastest; .github/dev.sh uses it.",
+      "generator": "Ninja"
+    },
+    {
       "name": "release",
       "inherits": "base",
       "cacheVariables": {
@@ -85,6 +91,10 @@
       "configurePreset": "debug"
     },
     {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
       "name": "release",
       "configurePreset": "release"
     },
@@ -123,6 +133,11 @@
     {
       "name": "debug",
       "configurePreset": "debug",
+      "inherits": "base"
+    },
+    {
+      "name": "dev",
+      "configurePreset": "dev",
       "inherits": "base"
     },
     {

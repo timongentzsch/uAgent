@@ -53,14 +53,11 @@ def decide(handler, body):
     noul["sends_data_off_machine"] = 0.78
     answers = {name: {"type": "noul", "noul": probability} for name, probability in noul.items()}
     refused = "refuse.example" in json.dumps(body.get("state", {}))
+    choice, other = ("deny", "allow") if refused else ("allow", "deny")
     answers["permission"] = {
         "type": "choice",
-        "choice": "deny" if refused else "allow",
-        "probabilities": (
-            {"allow": 0.0, "ask": 0.01, "deny": 0.99}
-            if refused
-            else {"allow": 0.99, "ask": 0.01, "deny": 0.0}
-        ),
+        "choice": choice,
+        "probabilities": {choice: 0.99, "ask": 0.01, other: 0.0},
     }
     write_json_response(handler, {"answers": answers, "usage": {"input_tokens": 9, "cost": 0.0001}})
 

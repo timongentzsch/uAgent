@@ -285,8 +285,13 @@
   border-top: 0;
   border-bottom: var(--border);
 }
+/* The tabs keep room for a tab's name; the buttons beside them take the
+   next row first. */
+.sheet-bar {
+  flex-wrap: wrap;
+}
 .sheet-tabs {
-  flex: 1;
+  flex: 999 1 var(--pane-s);
   min-width: 0;
   padding-inline: 0;
   border: 0;

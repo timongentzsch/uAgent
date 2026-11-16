@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.9.1 - 2026-11-16
+
+### Fixes
+
+- **The container's browser starts again.** In 1.9.0 the browser service looked for Chrome only in the system's folders, and the container now fetches Chrome onto its data volume: every browser action answered "Google Chrome is not installed". The service looks on the data volume first. `deploy/check-browser.sh` starts the browser of a running stack, and CI runs it on the image.
+
 ## v1.9.0 - 2026-11-15
 
 ### Upgrade notes

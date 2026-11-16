@@ -25,7 +25,8 @@ with `google-chrome-stable`, `Xtigervnc`, `xauth` and `web.browserData`
 | `google-chrome-stable`, one per instance in use | the service, after Xvnc | as Xvnc |
 | `chrome-update --loop` | `deploy/start.sh`, container only | the container |
 
-The service gets a fixed environment: `PATH` of the system directories,
+The service gets a fixed environment: `PATH` of `<data>/chrome/bin`, where a
+container's Chrome is fetched, then the system directories,
 `HOME` and `UAGENT_BROWSER_DATA` set to the data directory, `LANG=C.UTF-8`,
 and `TZ` and `LANGUAGE` passed through so pages see the user's clock and
 language. It accepts on `<data>/service.sock` and answers each connection

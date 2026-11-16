@@ -295,9 +295,14 @@
     justify-content: space-between;
     gap: var(--pad);
   }
+  /* Two fields side by side while each has a pane's width, else one
+     over the other. */
   .field-row {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(min(100%, max(var(--pane), (100% - var(--gap)) / 2)), 1fr)
+    );
     gap: var(--gap);
   }
   /* One auto grid column: unwrappable lines size it to the longest one, and
@@ -972,6 +977,13 @@
   }
   .cluster[data-align="between"] {
     justify-content: space-between;
+  }
+  /* A narrow column gives each of its buttons a row of its own. */
+  @container column (max-width: 43rem) {
+    .cluster[data-narrow="stack"] {
+      flex-direction: column;
+      align-items: stretch;
+    }
   }
   .bar {
     display: flex;

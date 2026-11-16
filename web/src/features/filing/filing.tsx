@@ -152,7 +152,7 @@ export function Suggestion({
             .join(" ")}
         </DataText>
       </p>
-      <Cluster class="filing-actions">
+      <Cluster class="filing-actions" narrow="stack">
         {buttons}
         {!early && (
           <Button

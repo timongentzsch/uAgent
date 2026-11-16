@@ -314,8 +314,12 @@
 .sheet-looks {
   width: 100%;
 }
-.sheet-looks-folded {
+.sheet-looks-folded,
+.page-tools-folded {
   display: none;
+}
+.page-tools-wide {
+  display: contents;
 }
 /* A fill or a text colour by name, its swatch before it. */
 [data-look]::before {
@@ -719,8 +723,12 @@
   .sheet-looks-folded {
     display: block;
   }
+  .page-tools-folded {
+    display: contents;
+  }
   .sheet-note,
-  .sheet-looks {
+  .sheet-looks,
+  .page-tools-wide {
     display: none;
   }
   .page-legend-item[data-drop]::before {

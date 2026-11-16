@@ -117,6 +117,20 @@ const cramped = (page) =>
 
 const roomy = async (page) => expect.poll(() => cramped(page)).toEqual([]);
 
+// A page's tools in one row that needs no scrolling: those that are an
+// icon alone fold into a menu.
+const toolsFit = async (page) => {
+  const tools = page.locator(".page-tools").first();
+  expect(
+    await tools.evaluate((row) => row.scrollWidth - row.clientWidth),
+  ).toBeLessThanOrEqual(1);
+  await tools.getByRole("button", { name: "More tools" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Open alone", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+};
+
 // A conversation saved in Scratch with the host's suggestion for it.
 async function unfiled(host, request, title, suggestion) {
   const scratch = `${host.home}/.uagent/spaces/Scratch`;
@@ -209,6 +223,7 @@ test.describe("files", () => {
     await openFiles(page, session, "deck/", { phone: true });
     await expect(page.locator(".page-stage iframe").first()).toBeVisible();
     await roomy(page);
+    await toolsFit(page);
   });
 
   test("a document's tool row", async ({ page, session, host }) => {
@@ -218,6 +233,7 @@ test.describe("files", () => {
     await openFiles(page, session, "memo.html", { phone: true });
     await expect(page.locator(".page-stage iframe").first()).toBeVisible();
     await roomy(page);
+    await toolsFit(page);
   });
 
   test("a sheet's Format sheet and rules dialog", async ({

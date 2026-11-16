@@ -63,14 +63,14 @@ TEST_CASE(TestApprovalOrder) {
 
   // Auto: the model judges what the sandbox contains, a person the rest.
   CHECK(Is(Decide(Command(), In(Mode::kAuto)), kAskModel, kReview));
-  CHECK(Is(Decide(EditInFolder(), In(Mode::kAuto)), kAskModel, kReview));
+  CHECK(Is(Decide(EditInFolder(), In(Mode::kAuto)), kAllow, kContainedEdit));
   CHECK(Is(Decide(Fetch(), In(Mode::kAuto)), kAskModel, kReview));
   CHECK(Is(Decide(EditOutside(), In(Mode::kAuto)), kAskPerson, kMode));
   CHECK(Is(Decide(ReadOutside(), In(Mode::kAuto)), kAskPerson, kMode));
   PolicyContext loose = In(Mode::kAuto);
   loose.sandbox_enforced = false;
   CHECK(Is(Decide(Command(), loose), kAskPerson, kMode));
-  CHECK(Is(Decide(EditInFolder(), loose), kAskModel, kReview));
+  CHECK(Is(Decide(EditInFolder(), loose), kAllow, kContainedEdit));
 
   // With nobody to ask, what a person would decide is refused; what is
   // decided without one is not.
@@ -112,17 +112,6 @@ TEST_CASE(TestApprovalOrder) {
   CHECK(Is(Decide(Command(), ruled), kAllow, kFolderRule));
   CHECK(Is(Decide(Unsandboxed(), ruled), kAskPerson, kMandatory));
 
-  // An agent that may edit, in Auto, runs commands and in-folder edits
-  // unreviewed while the sandbox is enforced.
-  PolicyContext agent = In(Mode::kAuto);
-  agent.agent_edits = true;
-  CHECK(Is(Decide(Command(), agent), kAllow, kAgentPolicy));
-  CHECK(Is(Decide(EditInFolder(), agent), kAllow, kAgentPolicy));
-  CHECK(Is(Decide(Fetch(), agent), kAskModel, kReview));
-  CHECK(Is(Decide(EditOutside(), agent), kAskPerson, kMode));
-  agent.sandbox_enforced = false;
-  CHECK(Is(Decide(Command(), agent), kAskPerson, kMode));
-
   // Plan mode refuses changes, first of all, except a command the read-only
   // sandbox holds and the plan file.
   PolicyContext plan = In(Mode::kPlan);
@@ -157,7 +146,6 @@ TEST_CASE(TestApprovalInvariants) {
       const PolicyContext context{.mode = mode,
                                   .sandbox_enforced = bit(7),
                                   .sandbox_read_only = bit(8),
-                                  .agent_edits = bit(9),
                                   .person = bit(12),
                                   .deny_rule = bit(13),
                                   .ask_rule = bit(14),
@@ -178,6 +166,10 @@ TEST_CASE(TestApprovalInvariants) {
       if (mode == Mode::kPlan && call.mutates && decision.effect == kAllow) {
         CHECK(call.on_plan_file || (call.executes && context.sandbox_enforced &&
                                     context.sandbox_read_only));
+      }
+      // Auto lets through unjudged only a file tool's change in the folder.
+      if (mode == Mode::kAuto && decision.source == kContainedEdit) {
+        CHECK(call.inside_work_area && !call.executes && !call.outside_folder);
       }
       // The model sees only Auto's contained calls.
       if (decision.effect == kAskModel) {

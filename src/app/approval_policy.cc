@@ -33,13 +33,14 @@ ApprovalDecision Decide(const ApprovalFacts& call,
   if (context.session_rule) return {kAllow, kSessionRule};
   if (context.folder_rule) return {kAllow, kFolderRule};
   if (context.mode == ApprovalMode::kYolo) return {kAllow, kYolo};
-  // An agent that may edit acts in its folder while the enforced sandbox
-  // holds it there: commands, and path tools inside the work area.
-  if (context.agent_edits && automatic && context.sandbox_enforced &&
-      (call.command || call.inside_work_area)) {
-    return {kAllow, kAgentPolicy};
-  }
   if (plan_allows) return {kAllow, kPlanAllows};
+  // In Auto a file tool's change inside the folder needs no judge: undo
+  // takes it back. Commands and the rest are judged, in an agent as in the
+  // conversation that started it.
+  if (automatic && call.inside_work_area && !call.executes &&
+      !call.outside_folder) {
+    return {kAllow, kContainedEdit};
+  }
   // The model judges only what the sandbox contains: nothing outside the
   // folder, no command without the enforced sandbox around it.
   const bool confined = !call.command || context.sandbox_enforced;

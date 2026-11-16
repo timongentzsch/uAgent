@@ -16,7 +16,6 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/path_policy.h"
-#include "include/agent/session_role.h"
 #include "include/app/approval_policy.h"
 #include "include/app/approval_review.h"
 #include "include/app/permissions.h"
@@ -272,13 +271,10 @@ Agent::Approver MakeApprover(AppContext* app) {
     static std::atomic<uint64_t> sequence{0};
     const std::string root = Workspace().path;
     const SandboxStatus& sandbox = SandboxRuntime();
-    const json agent = app->options.AgentRole();
     PolicyContext context{
         .mode = CurrentApprovalMode(),
         .sandbox_enforced = sandbox.mode == SandboxMode::kEnforced,
         .sandbox_read_only = sandbox.policy.read_only,
-        .agent_edits =
-            !agent.empty() && JsonValue(agent, "edits", "") != "none",
         .person = InteractiveApprovalAvailable()};
     ApprovalFacts facts{.required = RequiredApproval(tool, arguments),
                         .mutates = ToolMutates(tool, arguments),
@@ -298,8 +294,8 @@ Agent::Approver MakeApprover(AppContext* app) {
     }
     if (context.mode == ApprovalMode::kAuto) {
       facts.outside_folder = PathOutsideFolder(arguments, root);
-      facts.inside_work_area = context.agent_edits && tool.needs_approval &&
-                               !tool.needs_approval(arguments);
+      facts.inside_work_area =
+          tool.needs_approval && !tool.needs_approval(arguments);
     }
     // The folder's rules hold in every mode; one that refuses holds for a
     // mandatory call too. A command's prefix lets a call through only where

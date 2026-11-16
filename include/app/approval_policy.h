@@ -32,8 +32,6 @@ struct PolicyContext {
   ApprovalMode mode = ApprovalMode::kAsk;
   bool sandbox_enforced = false;
   bool sandbox_read_only = false;
-  // An agent that may edit.
-  bool agent_edits = false;
   // A person can answer: a terminal, or a runtime's clients.
   bool person = true;
   // A folder rule holds the call back: refuses it, or asks a person.
@@ -55,8 +53,8 @@ enum class ApprovalSource {
   kSessionRule,
   kFolderRule,
   kYolo,
-  kAgentPolicy,
   kPlanAllows,
+  kContainedEdit,
   kReview,
   kMode,
   // A person would decide, and nobody can.

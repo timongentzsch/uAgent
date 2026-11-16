@@ -193,7 +193,7 @@ export const tell = (
     | { type: "find"; text: string; index: number }
     | { type: "input"; value: string }
     | { type: "suggest"; text: string }
-    | { type: "do"; command: string; value?: string },
+    | { type: "do"; command: string; value?: string; tab?: number },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 
 // What a sheet's grid takes from the app, as the variables of its stylesheet

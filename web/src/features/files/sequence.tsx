@@ -483,7 +483,7 @@ export default function Sequence({
   const asked = useRef("");
   const act = (command: string, value?: string) => {
     asked.current = command;
-    tell(frame.current, { type: "do", command, value });
+    tell(frame.current, { type: "do", command, value, tab: index });
     if (TAB_AFTER[command]) setPart(TAB_AFTER[command](index, boards.length));
   };
   // Its size as a picture: an artboard's, or a page's full height.

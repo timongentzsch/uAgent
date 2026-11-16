@@ -676,6 +676,9 @@ async function open() {
   // with its values; tabs put in or taken out are a table here for each,
   // and a filter is of a column of the table.
   let shown = book.tabs;
+  // The address says which tab shows: "#2" is the second.
+  const addressed = () =>
+    offered[(Number(location.hash.slice(1)) || 1) - 1] ?? offered[0];
   const redraw = (again) => {
     if (book.tabs === shown && !again) return;
     shown = book.tabs;
@@ -685,7 +688,7 @@ async function open() {
         for (const column of filters[sheet].keys())
           if (column > tab.columns.length) filters[sheet].delete(column);
       });
-    show(Math.min(at, tables.length - 1), true);
+    show(Math.min(addressed(), tables.length - 1), true);
     tell(true);
   };
   // A row moved past one a filter hides would change the file unseen. The
@@ -1014,7 +1017,13 @@ async function open() {
   const charts = listenCharts(sheet);
   addEventListener("message", ({ source, data }) => {
     if (source !== parent || data?.uagentDesign !== 1) return;
-    if (data.type === "do") sheet.run(data.command, data.value);
+    // On the tab the app showed when it asked, though its address may
+    // already name the next.
+    if (data.type === "do") {
+      if (Number.isInteger(data.tab) && offered[data.tab] !== undefined)
+        show(offered[data.tab], true);
+      sheet.run(data.command, data.value);
+    }
     if (data.type === "input") type(String(data.value));
     // What the app's formula bar may take after `text`.
     if (data.type === "suggest") {
@@ -1022,9 +1031,7 @@ async function open() {
       say({ type: "suggest", text, ...suggestions(text, book.tokens) });
     }
   });
-  // The address says which tab shows: "#2" is the second.
-  const said = () =>
-    show(offered[(Number(location.hash.slice(1)) || 1) - 1] ?? offered[0]);
+  const said = () => show(addressed());
   addEventListener("hashchange", said);
   said();
   return errors();

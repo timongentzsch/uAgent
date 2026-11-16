@@ -332,3 +332,27 @@ test.describe("a conversation in Scratch", () => {
     await roomy(page);
   });
 });
+
+test.describe("a narrow list", () => {
+  test.use({ isMobile: false, hasTouch: false });
+
+  test("keeps a conversation's title before its place, and its foot inside", async ({
+    page,
+    host,
+    request,
+  }) => {
+    await savedConversation(host, request, "Run exactly this command once");
+    await page.setViewportSize({ width: 1000, height: 700 });
+    await page.goto("/");
+    await page.addStyleTag({ content: ".sidebar { --sidebar-width: 200px }" });
+    const row = page.locator(".session-row").first();
+    await expect(row).toBeVisible();
+    const [title, place] = await row.evaluate((node) =>
+      [".row-label", ".session-tag, .session-time"].map(
+        (part) => node.querySelector(part).getBoundingClientRect().width,
+      ),
+    );
+    expect(title).toBeGreaterThan(2 * place);
+    await roomy(page);
+  });
+});

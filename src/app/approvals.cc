@@ -82,7 +82,7 @@ constexpr ApprovalChoice kApprovalChoices[] = {
      kDenyFolder,
      "Never allow here: ",
      {kDenyFolder, "never"}},
-    {ApprovalAnswer::kDeny, kDeny, "Deny", {kDeny, "no"}},
+    {ApprovalAnswer::kDeny, kDenyOnce, "Deny", {kDenyOnce, "no"}},
     {ApprovalAnswer::kGuidance, "guidance", "Send guidance", {}},
 };
 
@@ -285,7 +285,7 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
       .prompt = "Allow " + TerminalSafe(tool.name) + "?"};
   if (mandatory) {
     request.options = json::array({{{"value", kAllowOnce}, {"label", "Allow"}},
-                                   {{"value", kDeny}, {"label", "Deny"}}});
+                                   {{"value", kDenyOnce}, {"label", "Deny"}}});
     verdict.granted = Confirm(std::move(request));
     verdict.refusal += " (" + MandatoryReason(tool, arguments) + ")";
   } else {

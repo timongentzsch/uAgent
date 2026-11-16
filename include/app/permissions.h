@@ -20,7 +20,7 @@ namespace uagent {
 inline constexpr std::string_view kAllowOnce = "y";
 inline constexpr std::string_view kAllowSession = "s";
 inline constexpr std::string_view kAllowFolder = "a";
-inline constexpr std::string_view kDeny = "n";
+inline constexpr std::string_view kDenyOnce = "n";
 inline constexpr std::string_view kDenyFolder = "x";
 
 // What a rule does to the calls it covers: deny beats ask, ask beats allow.

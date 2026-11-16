@@ -572,7 +572,7 @@ ToolResult Decide(const json& a) {
         {"kind", "reply"},
         {"text", action == "allow_once"           ? std::string(kAllowOnce)
                  : action == "allow_conversation" ? std::string(kAllowSession)
-                 : reason.empty() ? std::string(kDeny)
+                 : reason.empty() ? std::string(kDenyOnce)
                                   : "The parent agent denied this: " + reason}};
   }
   if (action != "yield") {

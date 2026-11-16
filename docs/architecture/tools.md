@@ -1,0 +1,195 @@
+# Tools
+
+How a tool is defined, how calls are validated, approved and bounded, the
+approval pipeline, activities and MCP. Parameters are in
+[Tool schemas](../interfaces/tool-schemas.md); mode policy and the sandbox
+in [Security](../../SECURITY.md); the step loop in [Turn loop](turn-loop.md).
+
+## Responsibility
+
+A `Tool` (`include/tools/tool.h`) bundles a JSON schema, its handler and
+the metadata the executor and approver read. `BuildTools`
+(`src/app/bootstrap_tools.cc`) builds the list once per runtime; MCP rescans
+may replace a server's entries between steps. Tools own no session state;
+agent tools, `present`, `schedule` and `uagent` live in `src/app/`.
+
+## Processes and threads
+
+Handlers run on the turn's thread or `std::async` batch workers. Commands
+are children in their own process group under the sandbox wrapper
+(`SandboxWrapperFor`); `ActivitySupervisor` owns their I/O, output and
+reaping and wakes waiters on output, exit and signals. MCP servers are
+long-lived children of the runtime.
+
+## Data and formats
+
+`Tool` fields the executor reads:
+
+| Field | Effect |
+| --- | --- |
+| `parameters`, `action_requires`, `validate` | schema check, required fields per `action`/`operation`, semantic check |
+| `canonicalize`, `clamped_arguments` | normalization; pacing values clamped to bounds with a `[clamped …]` hint instead of rejected |
+| `parallel_safe` | may run beside adjacent parallel-safe calls |
+| `timeout_s` | `-1` uses `UAGENT_TOOL_TIMEOUT`; `0` is bounded only by the turn |
+| `result_chars`, `max_calls_per_turn`, `dedupe_output`, `retain_output` | result cap, per-turn cap, collapse of a byte-identical recent result, exemption from old-result pruning |
+| `capabilities` | `inspect`, `execute`, `mutate`, `delegate`, `external` |
+| `mutating`, `mutates`, `needs_approval`, `approval_class` | whether a call needs approval, and whether only a person may give it |
+| `approval_preview`, `approval_subject`, `mandatory_reason` | what a person sees, what a remembered rule covers, why a person is required |
+| `available`, `skill` | withheld while it cannot run; offered only once its skill is open |
+
+`ToolResult` carries `output`, `hint` (model only), `facts` (exit, lines,
+count, outcome), `diff` (person only), an `artifact` (spilled log), a
+`FileEffect` for `/undo`, the to-do list, and `background` (an activity id).
+
+The offered set is filtered three ways. `UAGENT_TOOL_CAPABILITIES` removes
+every tool needing a capability not listed (`ApplyToolPolicy`); an unknown
+name removes all tools. A conversation's `ToolSelection` (profiles
+`default`, `coding`, `research`, `minimal`, plus per-tool overrides) hides
+tools from the model without changing what exists. An agent with
+`edits: none` loses every `mutate` tool that is not also `execute`. Turn
+progress never changes the offered set, because the tool array is part of
+the cached prompt; a tool at its per-turn cap stays offered and refuses.
+
+## Protocol
+
+The approval decision for one call (`MakeApprover`,
+`src/app/approvals.cc`) runs only when `RequiredApproval` is not `kNone`:
+a mutating call, a `needs_approval` call (a path outside the work area, a
+network tool), or one an `approval_class` escalates.
+
+```mermaid
+flowchart TD
+  A[Call needs approval] --> E{Plan mode, mutates, not plan-allowed?}
+  E -- yes --> NO[Refuse]
+  E -- no --> B{Mandatory human?}
+  B -- yes --> P1[Ask a person: allow or deny]
+  B -- no --> C{Session or folder rule covers it?}
+  C -- yes --> OK[Run]
+  C -- no --> D{yolo, agent policy, or plan allows?}
+  D -- yes --> OK
+  D -- no --> F{Auto mode and contained?}
+  F -- yes --> G{Decision model}
+  G -- allow --> OK
+  G -- deny --> NO
+  G -- ask --> P2[Ask a person]
+  F -- no --> P2
+  P1 --> R[Allowed or refused]
+  P2 --> R
+```
+
+- Mandatory human (`ApprovalClass::kMandatoryHuman`): file-tool access to
+  µAgent's own configuration (`SelfConfigurationPath`: settings, trust
+  store, `permissions.json`, global instruction files, the user's skills,
+  any `.mcp.json`), a folder the sandbox closes to reads, `run` with
+  `sandbox: false` or `root: true`, the `uagent` tool's writes and `agents`
+  `delete`. Rules, yolo and Auto do not apply. With no interactive client
+  (`InteractiveApprovalAvailable`) it is refused.
+- A person answers `y` (once), `s` (this conversation, kept in
+  `session_rules`), `a` (this folder, saved to
+  `~/.uagent/config/permissions.json`), `n`, or free text, which denies and
+  is queued as guidance. Silence or end of input denies.
+- A rule is `{tool, match}` (`PermissionRule`, `src/app/permissions.cc`):
+  `*` (every call; offered for MCP tools), `PREFIX *` (a simple `run`
+  command, with no chaining, substitution, redirection, backslash or
+  newline, starting with one or two plain words), `DIR/` (a path under a
+  folder), or the exact subject. The subject
+  is the command, a `web_fetch` URL's host, a path relative to the folder,
+  or the arguments. A command prefix is offered and matches only while the
+  sandbox is enforced; otherwise commands match exactly.
+- Auto sends the decision model (`decisions_url` on an endpoint declaring
+  `decisions`) the tool, folder, the latest and first user messages and the
+  action preview (16 KiB each), and asks a choice (`allow`, `ask`, `deny`)
+  plus four yes/no reasons: `destructive`, `beyond_request`,
+  `sends_data_off_machine`, `touches_secrets`. Allow needs P(allow) at or
+  above the model's bar and no reason at or above its veto bar; deny needs
+  P(deny) at or above its bar; anything else asks. A model with no
+  `decision_bars` row gets 0.9 / 0.95 / 0.3. Reviews are memoized per
+  action within a turn. Only calls that name no path outside the folder and
+  whose command runs in the enforced sandbox are reviewed.
+- Agent policy (`ReviewedByPolicy`): an agent that may edit, in Auto, with
+  the sandbox enforced, runs `run` and in-folder file changes unreviewed.
+  Plan mode allows commands in the `readonly` sandbox and file calls on the
+  plan file; it refuses every other mutation before anyone is asked, a
+  mandatory one included.
+
+Each decision emits `approval.resolved`; asking a person emits
+`approval.requested` with the whole preview and risks (`runs`, `writes`,
+`network`, `outside`).
+
+Activities. `run` waits `yield_ms` (default 10 s, clamped to 250 ms–30 s;
+`0` waits for exit within the turn) and then returns a still-running
+command as an activity with an id. A foreground command's output is read by
+the supervisor into a log under `~/.uagent/activity/`; `detach: true`
+starts a session-independent command whose output a `--log-pump` child
+writes to a log of two rotating halves (`UAGENT_ACTIVITY_LOG_MB` in all),
+recorded by pid so an identical live command is reused. The `activity`
+tool lists, polls (`until` a marker), waits (`any` or `all`, up to
+300,000 ms), writes input (`\u0003` interrupts), resizes a PTY or stops
+(TERM, then KILL, to the group). Output already returned is not returned
+again. When an activity ends its result joins the next model request; if
+the conversation is idle and has a client channel, it starts a turn. A
+headless run has no wake channel, so a late result starts nothing.
+
+MCP. Servers come from `~/.mcp.json` and, once trusted, the folder's
+`.mcp.json` (the folder entry wins on a name clash). Only the `stdio`
+transport is supported. Each server is spawned in its own process group,
+under the command sandbox unless its entry sets `"sandbox": false`, with
+stderr copied to `~/.uagent/mcp/<name>-<pid>.log` (16 MiB). The protocol
+is the stateless `2026-07-28` revision: newline-delimited JSON-RPC, every
+request carrying `_meta` with the protocol version and client info. The
+client sends `server/discover`, pages `tools/list` (at most 100 pages), and
+subscribes with `subscriptions/listen` for `notifications/tools/list_changed`.
+A `tools/call` that returns `input_required` for `roots/list` is answered
+with the server's roots, up to 8 rounds. A tool is named
+`<server>_<tool>`, sanitized to `[A-Za-z0-9_-]` and 64 characters; a name
+that collides is skipped. Every MCP tool is `external` and needs approval
+unless its entry sets `"trust": true` and the tool declares
+`readOnlyHint`.
+
+## Invariants and limits
+
+- Prose that looks like a tool call is never executed; only native calls
+  that pass the schema run.
+- Results: `UAGENT_TOOL_RESULT_CHARS` per call (head and tail kept), a
+  larger window for `read_path`, 6,000 characters for `activity`
+  (`kActivityResultChars`); `run` and `activity` take `max_output_chars`
+  between 256 and 65,536.
+- Concurrency: `UAGENT_TOOL_CONCURRENCY` calls of a batch at once;
+  `UAGENT_MAX_ACTIVITIES` live activities.
+- MCP: `UAGENT_MCP_MAX_SERVERS` servers, `UAGENT_MCP_MAX_TOOLS` tools per
+  server, 256 KiB of schemas per server (`kMcpSchemaBytes`), 400-character
+  descriptions, `UAGENT_MCP_TIMEOUT` per call and per required startup.
+  Optional servers (`"required": false`) share a 2 s startup window and
+  finish discovery at a later step. An agent starts no MCP servers.
+- The file tools refuse hidden paths (browser profile, settings, credential
+  stores) outright; the OS sandbox hides the same paths from commands.
+- Others: [Limits](../interfaces/limits.md), [Settings](../interfaces/settings.md).
+
+## Failure modes
+
+- A required MCP server that fails to start, discover or list its tools
+  stops the runtime's bootstrap; an optional one is reported and skipped.
+  A server that exits is not restarted automatically; its calls fail with
+  a pointer to its log until `/mcp retry`. A wedged write kills the server.
+- A command past its deadline gets TERM, 1 s, then KILL, and returns
+  timed out; an interrupt cancels it the same way.
+- Without an enforceable sandbox where one is required, a command does not
+  spawn (`SandboxWrapperFor` returns an error).
+- File-tool approval is defense in depth: an approved unsandboxed command
+  reaches the same paths. Nothing is re-run after a crash.
+
+## Source and tests
+
+| Path | What |
+| --- | --- |
+| `include/tools/tool.h`, `src/tools/tool.cc`, `src/tools/policy.cc` | `Tool`, `ToolResult`, schema checks, `RequiredApproval`, capability policy |
+| `src/tools/registry.cc`, `src/tools/registry_files.cc`, `src/tools/registry_exec.cc`, `src/tools/registry_activity.cc` | built-in tool definitions |
+| `src/tools/shell.cc`, `src/agent/activity_supervisor.cc`, `src/agent/activity.cc` | `RunShellCommand`, activities, logs |
+| `src/app/bootstrap_tools.cc` | which tools a runtime gets |
+| `src/app/approvals.cc`, `src/app/permissions.cc`, `include/app/permissions.h` | approval pipeline, rules, decision model |
+| `include/agent/path_policy.h` | self-configuration and hidden paths |
+| `src/mcp/register.cc`, `src/mcp/discover.cc`, `src/mcp/rpc.cc`, `src/mcp/invoke.cc`, `include/mcp/config.h` | MCP startup, tools, protocol |
+| `tests/unit/tool_execution_policy_test.cc`, `tests/unit/permission_review_test.cc` | executor policy, review bars |
+| `tests/unit/mcp_session_test.cc`, `tests/integration_mcp.py` | MCP protocol and lifecycle |
+| `tests/integration_tools.py`, `tests/unit/activity_sessions_test.cc` | tools and activities end to end |
+| `tests/integration_sandbox.py` | commands under the sandbox |

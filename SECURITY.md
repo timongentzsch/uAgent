@@ -1,446 +1,434 @@
 # Security
 
-µAgent is a local, single-user coding agent. It confines the commands it runs
-(see [Sandboxing](#sandboxing)) but is not a container: approval grants the
-current user's permissions. Below the `relaxed` level, commands cannot read
-your other folders or the [hidden stores](#sandboxing). It sends prompts,
-selected files, tool results and attachments to the configured endpoint;
-treat that endpoint as trusted infrastructure. Use a container, VM or
-restricted account for untrusted code.
+µAgent is a local, single-user coding agent. Every process it starts runs
+as your user, with your authority: the web host, the conversation
+runtimes, the agent's commands, the terminals and the agent's Chrome.
+Approval decides who is asked before a call runs; the OS sandbox decides
+what a command can reach once it runs. Neither makes µAgent a container:
+an approved call acts with your permissions within the sandbox's limits,
+and the configured model endpoint receives what the model reads. Use a
+container, a VM or a restricted account for code you do not trust.
 
-![Provider keys and provider HTTP stay on the main; local and remote commands use their OS sandbox, authenticated SSH carries execution requests, and remote shared accounts retain ordinary filesystem permissions](docs/images/boundaries.svg)
+This page states every boundary and what you may rely on; the
+[architecture pages](docs/README.md#architecture) explain the mechanisms.
+
+```mermaid
+flowchart LR
+  D[Paired devices] -- device cookie and Origin --> H
+  subgraph M[Main machine, your account]
+    H[Web host] --> R[Conversation runtimes]
+    H --> T[Terminals, unsandboxed]
+    H --> B[Browser service and Chrome]
+    R --> S[Sandboxed commands and MCP servers]
+  end
+  R -- HTTPS with the provider key --> P[Model endpoint]
+  R -- SSH and an auth token --> G[Execution worker on a remote host]
+  G --> RS[Remote sandboxed commands]
+  B -- public web --> W[Web pages]
+```
+
+## Assets
+
+- Provider keys, in clear text in `~/.uagent/config/settings.json`.
+- What decides the agent's authority: saved settings, the trust record of
+  each folder's `.mcp.json`, remembered approvals
+  (`~/.uagent/config/permissions.json`), instruction files and skills.
+- Conversation history: sessions, attachments, plans, debug logs.
+- The paired devices' tokens in `~/.uagent/web`; the browser profile with
+  its logins and cookies.
+- Your other files and other tools' credentials (`~/.aws`, `~/.ssh`…), and
+  what you can reach: SSH hosts, the LAN, cloud metadata addresses.
+
+## Actors
+
+- **The model's tool calls.** Only native calls that pass their schema
+  run; text resembling another harness's call syntax is recognised only so
+  the reply can be suppressed and retried, never executed.
+- **Content the model reads** (files, web pages, MCP output, memory,
+  search results) is evidence and cannot widen what you approved; schema
+  validation, path checks, the sandbox and approval enforce that.
+- **Paired devices**, which act as you; **other local users**, kept out by
+  owner-only files; **a remote host's account and administrators**; **the
+  network** between µAgent and its endpoints, devices and hosts.
 
 ## What the agent may do without asking
 
-The approval mode decides who is asked; the sandbox decides what a command
-can reach. No approval mode turns the sandbox off, but yolo raises the
-`default` level to `relaxed` and plan mode lowers it to `readonly` (see
-[Sandboxing](#sandboxing)).
+No approval mode turns the sandbox off; yolo raises the `default` level to
+`relaxed` and plan mode lowers it to `readonly` ([Sandboxing](#sandboxing)).
 
 | Mode | Set with | Effect |
 | --- | --- | --- |
-| `ask` (default) | `/permissions ask` | a person approves each mutating, process, network, cost-bearing or untrusted MCP call, and each read outside the folder |
-| `auto` | `/permissions auto`, `UAGENT_APPROVAL=auto` | a decision model allows or denies the calls the sandbox contains; what it cannot decide, every call that leaves the sandbox or the folder, and every `run` call while the sandbox is off or not enforced go to a person, and are denied when nobody can answer |
-| `yolo` | `--yolo`, `/yolo`, `/permissions yolo` | those calls run unasked; commands stay sandboxed, at the `relaxed` level where the level is `default` |
-| `plan` | `/plan`, `/permissions plan` | only reads run: commands at the `readonly` level and calls on the conversation's plan file; every other change is refused, and reads outside the folder ask as in `ask` |
+| `ask` (default) | `/permissions ask` | a person approves each mutating, process, network, cost-bearing or untrusted MCP call, and each path outside the work area (the folder and the roots commands may write) |
+| `auto` | `/permissions auto`, `UAGENT_APPROVAL=auto` | a decision model allows or denies the calls the sandbox contains; what it cannot decide, every call naming a path outside the folder, and every `run` call while the sandbox is off or not enforced go to a person, and are denied when nobody can answer |
+| `yolo` | `--yolo`, `/yolo`, `/permissions yolo` | those calls run unasked; commands stay sandboxed, at `relaxed` where the level is `default` |
+| `plan` | `/plan`, `/permissions plan` | only reads run: commands at `readonly` and file calls on the conversation's plan file; every other change is refused before anyone is asked; other calls ask as in `ask` |
 
 In every mode:
 
-- Reads inside the folder need no approval, apart from the files named
-  below.
-- A call a rule you kept covers is not asked again: a rule for the session
-  or for the repository names a tool and what it covers (a simple command's
-  prefix, a folder, a host, or the exact call). A command that chains,
-  substitutes or redirects matches no prefix, and a prefix covers only
-  commands the enforced sandbox holds, which bounds whatever it lets through
-  (`run python *` writes only where any confined command may); without the
-  sandbox every command is allowed only exactly. `/permissions rules` lists
-  the rules and `/permissions forget N` removes one.
-- Some operations always require a person, even under yolo, auto or a
-  remembered rule, and are denied when no interactive client can answer, as
-  in a delegated child:
+- A call a kept rule covers is not asked again: `s` keeps one for the
+  conversation, `a` ("Always allow here") for the repository in
+  `permissions.json` (`/permissions rules`, `/permissions forget N`). A
+  rule names a tool and a simple command's prefix, a folder, a host, or the
+  exact call. A command that chains, substitutes or redirects matches no
+  prefix, and prefixes match only while the sandbox is enforced, which
+  bounds what they let through; without it commands match only exactly.
+- Some calls always need a person, under yolo, auto or a kept rule alike.
+  No parent agent or reviewer may answer them, and they are denied when
+  nobody can, as in a headless run whose stdin is not a terminal:
   - writing µAgent's configuration through the file tools: the saved
-    settings, the trust store, `~/.uagent/config/permissions.json`, your
-    instruction files in `~/.uagent`, your own skills (`~/.uagent/skills`,
-    `~/.agents/skills` and the Claude Code and Codex folders µAgent reads),
-    and any `.mcp.json`;
-  - reading any of those through the file tools, except the trust store, the
-    instruction files and the skills, which hold no credential;
-  - reading, through the file tools, one of your folders that the sandbox
+    settings, the trust store, `permissions.json`, your instruction files
+    in `~/.uagent`, your own skills (`~/.uagent/skills`, `~/.agents/skills`
+    and the Claude Code and Codex folders µAgent reads), any `.mcp.json`;
+  - reading any of those through the file tools, except the trust store,
+    the instruction files and the skills, which hold no credential;
+  - reading or changing, through the file tools, a folder the sandbox
     closes to commands (see **Reads** below);
-  - the `uagent` tool's `set`, `write` and `command`: a slash command the
-    agent asks for runs only as the exact line you approved, when the turn
-    ends, and never for an agent or a headless run;
-  - `run(sandbox=false)`, and `run(root=true)`.
+  - the `uagent` tool's `set` (settings), `write` (instructions,
+    stylesheet, system message, the folder's `.mcp.json`, a skill) and
+    `command`: a slash command runs only as the exact line you approved,
+    when the turn ends, and is never offered to an agent or headless run;
+  - `run(sandbox=false)`, `run(root=true)`, and `agents` `delete`.
 
 An **agent**, a conversation another one started, acts for you unattended.
-It takes its parent's approval mode, auto at most, unless a mode is chosen
-for its own conversation (`/permissions`, `--yolo`, or the web's approval
-control); the saved setting does not reach it. One started with `edits` none
-runs at the `readonly` level with no tool that edits, whatever its settings
-say, and so do the agents it starts. Any other runs at the `default` level,
-or `relaxed` while it is in yolo. While that sandbox is enforced and it is
-in auto, its `run` commands and its file changes inside the
-folder run without review; everything else goes through its approval mode.
-What would ask a person goes to its parent first, which decides or passes it
-to you, and to you after five minutes. Once you write to the agent yourself,
-what its turn still asks comes to you directly: in a turn your message
-started, or one you wrote into while it ran. What always needs a person
-never goes to the parent.
+It runs in Auto, or in Ask when its parent asks, unless a mode is chosen
+for its own conversation (`/permissions`, `--yolo`, the web's approval
+control); the saved setting does not reach it. With `edits` `none`, the
+default and the only choice in plan mode, it runs at `readonly` with no
+tool that edits, and so do the agents it starts. Otherwise it runs at
+`default`, or `relaxed` in yolo; in Auto with that sandbox enforced, its
+`run` commands and its file changes inside the work area run unreviewed.
+What would ask a person goes to its parent first, which decides or passes
+it on, and to you after five minutes; once you write in the agent's own
+conversation, that turn asks you directly. What always needs a person goes
+to you, never to the parent. An agent is never offered `root` or `command`.
+
+**Auto review** sends the `decisions_url` of an endpoint declaring
+`decisions` the tool, the folder, your latest and first messages and the
+action preview, each cut to 16 KiB; with provider routing it asks for
+providers that retain no data (`decisions_private`), and a session id goes
+as a hash. A call is allowed only at or above the model's allow bar with
+no risk question at or above its risk bar; without such an endpoint, or
+when the review fails, it asks.
 
 ## Trust boundaries
 
-- Settings are never read from the folder, and `.env` files in it
-  are ignored. Saved settings live in `~/.uagent/config/settings.json`
-  ([Operations](docs/OPERATIONS.md#settings) has the scopes and their order).
-  That file and artifact files are forced private.
-- Folder trust is about `.mcp.json` alone. User `~/.mcp.json` is trusted
-  executable configuration. The folder's `.mcp.json` requires interactive trust or
-  `--trust-project-config`; semantic edits revoke stored trust.
-- Folder instruction files, memories and skills enter model context without
-  configuration trust because they grant no capability. An explicit
-  `$skill-name` mention loads that skill before the first model call. Treat
-  an untrusted checkout as prompt input and review requested actions before
-  approving them.
-- Only structured provider tool calls are executed. Text that resembles
-  another harness's call syntax is recognized only so the malformed response
-  can be suppressed and retried; it is never translated or executed.
-- Tool, file, web, memory, MCP and summary text is evidence: it cannot expand
-  user-approved scope. Schema validation, capability policy, path checks and
-  approval enforce the boundary; the system prompt reinforces it. µAgent does
-  not semantically detect every prompt injection.
-- An MCP call skips approval only when its server is trusted and marks the
-  tool read-only. MCP servers run under the command sandbox unless their
-  entry sets `"sandbox": false`.
-- Auto mode sends the current request, the tool name, the folder and a
-  bounded action preview to the decision model of an endpoint that declares
-  `decisions` (a provider at openrouter.ai does). It asks for providers that retain no
-  data and identifies the conversation by a hash. It allows only above the
-  model's allow bar with no risk question above its risk bar. It never judges
-  a call outside the sandbox or the folder, or a command while the sandbox is
-  off, degraded or refused; without such an endpoint it asks.
-- Paths are canonicalized to reduce symlink escapes, and path restrictions
-  are checked again when the call runs. Writes are atomic.
-- Requests, responses, attachments, tool output, scans, activities, MCP data and
-  logs are bounded. MCP server stderr goes to a rotating, size-bounded log.
-- API redirects are rejected and bearer-auth transfers use HTTP(S) only.
-- `web_fetch` makes credential-free direct HTTP(S) connections only to public
-  IPv4 or IPv6 destinations. The resolved address is checked before every
-  connection, including redirects; proxy variables are ignored so they cannot
-  bypass that check.
-- Shell commands run in managed process groups. Child processes
-  receive a centralized secret-deny environment; only class-specific
-  credentials are re-added. Approved `run` commands can opt in exact
-  variables with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to MCP
-  servers or delegated agents. `UAGENT_SANDBOX_HIDE_ENV` adds
-  names that no child inherits, whatever the allowlist says.
-- A `run(tty=true)` activity keeps a writable PTY for the harness lifetime.
-  `activity(operation=write, chars=...)` sends raw bytes with the original
-  process's permissions, so treat every write, interrupt and resize as
-  process control. Input to non-TTY activities is rejected. Detached
-  persistent activities keep logs but no reattachable stdin.
-- Automatic memory extraction reads at most one idle saved session, in one
-  model request without tools.
-  Transcript text and event previews are redacted for known credential forms
-  before model requests and memory writes. Codex and Claude memories are
-  read-only, untrusted evidence. Redaction is defense in depth, not a
-  guarantee that every secret is recognized: it finds keyword assignments,
-  bearer tokens, private keys and known vendor token prefixes, not a bare
-  token or a password named in prose. A conversation run with `--no-memory`
-  is never extracted.
-- Model, MCP and tool text is terminal-sanitized.
-- The web host's pairing, device authentication, Origin checks and file
-  serving are described in [Web interface](docs/WEB.md#security-model).
-- The web host's terminal gives a paired device your own shell, unsandboxed:
-  pairing is the boundary, and `UAGENT_WEB_TERMINAL=off` removes it. The
-  shell gets the same secret-deny environment as the agent's commands.
-  The agent never reads a terminal, but output you send with "Add to chat"
-  enters model context and may contain secrets read by that shell.
-- The same pairing and the same switch let a paired device start an update
-  from Settings → About: the host downloads the release GitHub names, runs
-  its installer as you and restarts. The agent cannot start one.
+### The model endpoint
 
-## Remote execution
+The main sends the configured endpoint the system message (instructions,
+memory, the skills list), the conversation, tool results and attachments;
+the reviewer, title, memory, image and search routes send their own
+requests. Treat every configured endpoint as trusted infrastructure.
+Requests leave from the main only: a remote host never receives provider
+configuration or keys, and `localhost` in a provider means the main. API
+redirects are refused, and requests carrying a key use HTTP(S) only.
+`web_fetch` connects, without credentials, only to public IPv4 or IPv6
+addresses, checked before every connection, redirects included; proxy
+variables are ignored so they cannot bypass that check.
 
-The main owns provider settings, model keys, approvals and conversation history.
-Model HTTP requests go directly from the main to the configured endpoint.
-Only file, Git, command and terminal operations cross the SSH gateway boundary;
-provider configuration and keys are not sent to the remote executable. A
-provider's `localhost` address therefore means the main machine.
+### The folder and the processes it starts
 
-Multiple mains reuse one installed executable with separate authenticated
-execution processes. Each request authenticates; the RPC credential arrives
-over SSH stdin, not argv or environment. SSH children receive a filtered
-environment, with agent and environment forwarding disabled. The gateway
-does not load or save remote application configuration or history.
+Settings come only from flags, the environment and
+`~/.uagent/config/settings.json` ([Settings](docs/interfaces/settings.md));
+no settings or `.env` file is read from the folder. Folder trust concerns
+`.mcp.json` alone. `~/.mcp.json` is trusted
+executable configuration. A folder's `.mcp.json` runs nothing until trusted
+interactively or with `--trust-project-config`, and a change to its parsed
+content revokes the trust. Instruction files, memories and skills enter
+model context without trust because they grant no capability; an explicit
+`$skill-name` loads that skill before the first model call. Treat an
+untrusted checkout as prompt input and read what it makes the agent ask
+for before approving it.
 
-Remote commands use the remote OS sandbox and account. Paired-device terminals
-are that account's unsandboxed shell. Sharing an SSH account shares ordinary
-filesystem permissions; it does not isolate users from each other's files.
-The remote account and administrators can inspect remote execution data and
-process memory, while provider keys remain on the main. See
-[remote ownership and limits](docs/REMOTE_HOSTS.md#ownership-and-isolation).
+Paths are canonicalised, and hidden paths are checked again when a call
+runs, so a link an earlier call made cannot reach them. File writes are
+atomic. Requests, responses, attachments, tool output, scans, activities,
+MCP data and logs are bounded. Model, MCP and tool text is sanitised before
+it reaches a terminal.
 
-## Browser automation
+**Environment.** Every child gets a filtered environment: names that look
+like credentials, `SSH_AUTH_SOCK` and `XAUTHORITY` are withheld, and so are
+µAgent's settings variables except from an agent's runtime. An MCP server
+also gets its entry's `env`. `UAGENT_SHELL_ENV_ALLOW` gives approved `run`
+commands the exact variables it names, never MCP servers or agents;
+`UAGENT_SANDBOX_HIDE_ENV` withholds more names from every child, whatever
+the allowlist says.
 
-The `browser` tool drives the web host's shared Chrome, available while
-`UAGENT_BROWSER_DATA` is set and the web host runs it. You and the agent see
-and drive the same browser, and its profile keeps your saved logins and
-cookies.
+**Activities.** `activity` `write` sends raw bytes to a `run(tty=true)`
+activity's PTY with the process's permissions: treat it as process
+control. An activity without a PTY, or a detached one, takes no input.
 
-- Actions that change the page need approval like any mutating call.
-- The agent can use a saved login without seeing it: `fill_saved` has Chrome
-  fill the one it offers for the focused field and does not read what was
-  filled. Page text includes the start of ordinary field values; password,
-  one-time-code and card fields expose only whether they are filled. The
-  request list has no bodies, and it cannot type into a password field.
-  Screenshots draw password fields as dots;
-  [the browser guide](docs/BROWSER.md#isolation) lists the fields that are
-  not masked.
-- With the sandbox on, commands cannot read the profile or connect to its
-  sockets, and the file tools refuse it in every mode. The
-  [managed policy](deploy/chrome-policy.json) blocks Chrome's password pages
-  and `passwords.google.com`, where a saved password could be shown.
-- Whatever a page shows after sign-in can enter model context. Use a profile
-  that holds only the accounts the agent should reach.
+**Memory.** Extraction reads at most one idle conversation of the folder,
+never one run with `--no-memory`, in one model request without tools. Its
+excerpt and every memory written or read are redacted for credential
+assignments, bearer tokens, private keys and known vendor token prefixes.
+Codex and Claude memories are read-only evidence.
+
+### MCP servers
+
+An MCP call skips approval only when its server's entry sets `"trust":
+true` and the tool declares itself read-only. A stdio server runs under the
+command sandbox unless its entry, in `~/.mcp.json` or a trusted folder's
+`.mcp.json`, sets `"sandbox": false`; the prompt to trust a folder names
+the servers that would run unconfined. Server stderr goes to a
+size-bounded log. An agent starts no MCP servers.
+
+### Paired devices and the web host
+
+The web host listens on `127.0.0.1` unless `web.bind` says otherwise.
+Pairing codes are single-use, last five minutes and are tried at most 12
+times a minute. A device holds an `HttpOnly`, `SameSite=Strict` cookie
+(`Secure` on HTTPS) for 30 days unless revoked; revoking or logging out
+ends its access, its push subscription and every preview address. Every
+request must name the configured origin or the loopback URL, a mutation
+must carry that exact `Origin`, and every API route but pairing needs a
+device. `--web-origin` must be bare `https://`, or `http://` on a
+`100.64.0.0/10` address. The app runs under a content security policy that
+allows only its own scripts, connections and frames.
+
+A paired device acts as you:
+
+- It reads a conversation's folder as the agent can: nothing outside it,
+  through a link or otherwise, and never the hidden stores or µAgent's
+  configuration files. Images are served inline, other files as downloads.
+- It opens terminals: your login shell, unsandboxed, with the filtered
+  environment plus `SSH_AUTH_SOCK`. The agent never reads one; **Add to
+  chat** puts its text into your message. `UAGENT_WEB_TERMINAL=off`
+  removes terminals.
+- With terminals on, it may start an update (Settings → About): the host
+  runs the installer of the release GitHub names, as you, and restarts.
+  The agent cannot start one.
+
+### Previews and artifacts
+
+A folder's pages open from `/preview/<token>/…`, a 24-byte random token
+per conversation. The token is the grant: the route takes no cookie, and
+the address works for whoever holds it until the host stops or a device is
+revoked. It serves only web file types, with the refusals above. Each page
+runs sandboxed in an opaque origin, so it reaches neither the app, its
+cookie nor the API; its policy lets it load only from its own address and
+Google Fonts and submit no form. `Origin: null` is accepted only to read
+under `/preview/`. Under `~sheet/` the host serves its installed sheet
+engine, with WebAssembly and `blob:` workers allowed. An HTML attachment
+opens sandboxed in an opaque origin too.
 
 ## Sandboxing
 
-The OS confines the commands the agent runs (`run`) and the stdio
-MCP servers it starts: `sandbox-exec` (Seatbelt) on macOS, Landlock on
-Linux. The sandbox is on by default, in every approval mode.
-
-One setting chooses how far it goes, `sandbox.level` in the settings file or
-`UAGENT_SANDBOX` in the environment:
+The OS confines the commands the agent runs (`run`) and the stdio MCP
+servers it starts: `sandbox-exec` (Seatbelt) on macOS, Landlock on Linux.
+It is on by default, in every approval mode. The built-in file tools are
+not confined by it; approval and their own path checks govern them, with
+the same hidden and closed paths. `sandbox.level` (`UAGENT_SANDBOX`) sets
+how far it goes:
 
 | Level | Writes | Reads | Network | Hidden stores |
 | --- | --- | --- | --- | --- |
 | `readonly` | temporary files and the terminal logs only, never the folder | not your other folders | none | yes |
 | `default` | the roots below | not your other folders | allowed | yes |
-| `relaxed` | the roots below and your home folder, except `~/.uagent` and the hidden stores | open | allowed | yes |
+| `relaxed` | the roots below and your home folder, except `~/.uagent` | open | allowed | yes |
 | `off` | unconfined | open | allowed | no |
 
-**Yolo raises `default` to `relaxed`.** While a session's approval mode is
-yolo and its level is `default`, its commands run at `relaxed`: they read
-anywhere and write the home folder, except `~/.uagent` and the hidden
-stores. The browser profile, µAgent's settings and the credential stores
-stay out of reach. The change holds from the next command after `/yolo`,
-`/permissions` or the web's control, and `/status` names the level in
-effect (`relaxed (yolo)`). `readonly`, `relaxed` and `off`, set explicitly,
-stay as they are. Plan mode runs commands at `readonly (plan)` whatever the
-level, except `off`, where it runs none.
+In yolo at `default`, commands run at `relaxed` from the next command on;
+`/status` shows `relaxed (yolo)`. `readonly`, `relaxed` and `off`, set
+explicitly, stay. Plan mode runs commands at `readonly (plan)` whatever
+the level, and none at `off`. A value that is no level refuses every
+command until fixed; it never falls back to `default`.
 
-A value that is no level is not read as
-`default`: commands are refused until it is fixed, so a typo cannot open the
-network a stricter level would have closed.
+Five settings win over the level, from the next `/restart`:
+`sandbox.network`, `sandbox.write` (more writable roots), `sandbox.read`
+(opens one of your folders to commands and the file tools), `sandbox.hide`
+and `sandbox.reveal` ([Settings](docs/interfaces/settings.md)).
 
-Five more settings each adjust one thing and win over the level:
+**Writes.** A confined command may write the folder; `$TMPDIR`, `/tmp`,
+`/var/tmp` and `/dev`; the package caches (`kPackageCaches`, and
+`kMacPackageCaches` on macOS, in `include/core/defaults.h`);
+`~/.uagent/terminals/logs`; the `sandbox.write` roots; in a linked git
+worktree, its git directory and the shared repository's `objects`, `refs`
+and `logs`; at `relaxed`, the home folder. Nothing else. A requested root
+is rejected, and reported at startup, when it is `/`, `~/.uagent` or an
+ancestor, or inside `~/.uagent/config`. At `relaxed`, `~/.uagent` stays
+closed but for its terminal logs and a workspace under `~/.uagent/spaces`.
+A session started in your home folder therefore has no writable folder
+below `relaxed`; start in a folder or a workspace.
 
-| To | Setting | Environment |
-| --- | --- | --- |
-| allow or deny the network whatever the level | `sandbox.network` | `UAGENT_SANDBOX_NET=0` or `1` |
-| let commands write another folder | `sandbox.write` | `UAGENT_SANDBOX_WRITE=/path/a:/path/b` |
-| let commands and the file tools read another of your folders | `sandbox.read` | `UAGENT_SANDBOX_READ=~/Software/other` |
-| hide more paths from commands and the file tools | `sandbox.hide` | `UAGENT_SANDBOX_HIDE=~/.config/mycloud:/path/b` |
-| show a path that is hidden by default | `sandbox.reveal` | `UAGENT_SANDBOX_REVEAL=~/.aws` |
+**Reads.** Below `relaxed`, commands cannot read your own folders: the
+visible entries of the home folder (`~/Documents`, `~/Library`, other
+repositories…), the workspaces, and the folder's neighbours. Inside those
+they still read the folder, the writable roots, `kReadableHomePaths`, the
+folders their environment names (each `PATH` entry, the parent of a `bin`,
+`GOPATH`…, and `~/go` while `GOPATH` is unset), a linked worktree's git
+directories, the skill folders and the `sandbox.read` folders. Dot-folders
+and everything outside the home folder stay readable. On Linux a closed
+folder's names can be listed. On Linux, Landlock grants around hidden paths
+by the entries present at spawn, so a running command cannot read a file
+created later directly in a folder on the way to a hidden path, nor create
+one directly in the home folder at `relaxed`.
 
-Paths in `sandbox.read`, `sandbox.hide` and `sandbox.reveal` are absolute or start with
-`~/`. All of these settings take effect at the next start of the
-conversation (`/restart`). `/status` names the mechanism and `/context`
-lists every writable root. The agent can call `run(sandbox=false)` for one
-command, which a person must approve.
+**Hidden stores.** At every level but `off`, commands cannot read, write or
+connect to sockets under these paths, and the file tools refuse them in
+every mode:
 
-**Writes** are what the sandbox restricts. A confined command may write:
-
-- the folder;
-- `$TMPDIR`, `/tmp`, `/var/tmp` and `/dev`;
-- the package caches: `~/.cache`, `~/.local/share/uv`, `~/.npm` and, on
-  macOS, `~/Library/Caches` (`kPackageCaches` and `kMacPackageCaches` in
-  `include/core/defaults.h`; grant another with `sandbox.write`);
-- `~/.uagent/terminals/logs`, where a detached activity's log pump writes;
-- the roots `sandbox.write` adds;
-- in a linked git worktree, the worktree's own git directory and the shared
-  repository's `objects`, `refs` and `logs`, so a commit works; the shared
-  `config` and `hooks` stay unwritable on macOS, and on Linux are only as
-  protected as the folder's own `.git/config` is;
-- at the `relaxed` level, your home folder.
-
-Everything else is refused. `~/.uagent` is never granted, and a requested
-root is rejected, and reported at startup, when it is `/`, `~/.uagent` or
-one of its ancestors, or lies inside `~/.uagent/config`. That keeps the
-saved settings, trust store and detached-activity records
-out of reach. The `relaxed` level opens the home folder around `~/.uagent`:
-its terminal logs, and a workspace under `~/.uagent/spaces`, stay writable;
-nothing else in it is. On Linux, Landlock can only grant, so the home folder
-is granted entry by entry as it is when a command starts: a new file made
-directly in the home folder is not writable, while files in its folders and
-existing files are. The startup note says so.
-
-The folder is held to the same rule. A session started in your home
-directory, which holds `~/.uagent`, has no writable folder below the
-`relaxed` level: its commands can write only the other roots above, while
-the file tools still work there. Startup says so, the model is told, and a
-refused write names the roots. Start in a folder instead, or in a
-workspace: the web's **New → Workspace…** takes a name and keeps a folder
-for it at `~/.uagent/spaces/<name>`, which is granted like any other
-folder.
-
-**Reads** are closed in your own folders, below the `relaxed` level: the
-visible entries of the home folder (`~/Software`, `~/Documents`, `~/Desktop`,
-`~/Library`…), the workspaces in `~/.uagent/spaces`, and the folder's
-neighbours, the other entries of the folder that holds it, as other
-folders in the container's `/workspaces` are. A neighbour that holds the
-home folder is closed only by the home folder's own entries. A model that climbs out of its folder into a sibling
-repository answers from code that is not the one it was asked about, and
-your documents are not its business. Inside those folders a command still
-reads:
-
-- the folder;
-- the writable roots above;
-- `~/Library/Caches`, `~/Library/Developer` and `~/Library/Python`
-  (`kReadableHomePaths` in `include/core/defaults.h`);
-- the folders its environment points at: every `PATH` entry, the parent of
-  one named `bin` (the `bin` itself when that parent is the home folder), and
-  any variable that names a folder (`GOPATH`, `ANDROID_HOME`…), so a
-  toolchain installed in `~/go` or `~/fvm` keeps working; `~/go` is open
-  while `GOPATH` is unset;
-- a linked git worktree's git directory and the repository's shared one,
-  when the repository itself is in a closed folder (only those directories,
-  not the main checkout), after checking that they belong to each other;
-- the skill folders;
-- the folders `sandbox.read` adds.
-
-Everything else stays readable: dot-folders such as `~/.config` and
-`~/.gitconfig`, which tools need, and everything outside the home folder. A
-confined `cat ~/.ssh/config` still pulls the file into model context. A
-refused command is told which folder closed and that `sandbox.read` opens
-one. A stdio MCP server you configured reads as before: it lives wherever
-you keep it. The file tools ask a person before reading or changing a
-closed folder (a failed edit shows lines of the file), even under auto, and
-refuse it where nobody can answer, as in a headless run. Yolo at the `default`
-level closes none. `/status`
-lists the folders opened for reading. On macOS a closed folder cannot be listed; on Linux, Landlock
-lists its names but refuses its files.
-
-**Hidden stores.** With the sandbox on, commands cannot read, write or
-connect to the sockets of these paths (those that exist), and the file tools
-refuse them in every mode:
-
-- the browser data directory (`UAGENT_BROWSER_DATA`) and `~/.uagent/web`,
-  which holds the paired devices' tokens;
-- `~/.uagent/config`: the saved settings and API keys, the trust store and
-  remembered approvals;
-- other tools' credential stores: `~/.aws`, `~/.config/gcloud`, `~/.azure`,
-  `~/.kube`, `~/.gnupg`, `~/.netrc`, `~/.git-credentials` and
-  `~/.docker/config.json`
+- the browser data directory and `~/.uagent/web`;
+- `~/.uagent/config`: saved settings and keys, trust store, remembered
+  approvals;
+- `~/.aws`, `~/.config/gcloud`, `~/.azure`, `~/.kube`, `~/.gnupg`,
+  `~/.netrc`, `~/.git-credentials`, `~/.docker/config.json`
   (`kHiddenCredentialStores` in
-  [`include/core/defaults.h`](include/core/defaults.h)).
+  [`include/core/defaults.h`](include/core/defaults.h));
+- `sandbox.hide` paths, less `sandbox.reveal` ones.
 
-`~/.ssh` and the GitHub CLI login (`~/.config/gh`) stay readable: git over
-ssh and `gh` are expected agent work and need them. Add your own store with
-`sandbox.hide` (`sandbox.hide=~/.config/mycloud`); `sandbox.reveal` takes a
-default out of the list (`sandbox.reveal=~/.aws`), for the file tools too.
-macOS keychains are not listed: keychain access goes through the `securityd`
-service, so hiding the files in `~/Library/Keychains` would not stop a
-command asking it for a password (the files themselves are encrypted).
+`~/.ssh` and `~/.config/gh` stay readable: git over ssh and `gh` are
+expected work. `run(sandbox=false)` and `off` lift the hiding; yolo does
+not. A path is hidden only if it exists when the command starts.
 
-`run(sandbox=false)` and `off` lift the hiding along with the sandbox; yolo
-does not. On Linux, Landlock hides the files on any supported kernel but the
-sockets only from Linux 7.1 (ABI 9). Keep the browser data directory outside
-the sandbox's writable roots, for example `~/.uagent/browser`; see
-[the browser guide](docs/BROWSER.md#isolation).
+**Network.** Outbound access is allowed by default. Denying it blocks all
+IP traffic on macOS, and TCP bind and connect on Linux.
 
-On Linux this has one side effect. Because Landlock can only grant, reads are
-granted folder by folder around a hidden path, as the folders are when a
-command starts. A command that is still running (a server, a watcher) cannot
-read a file created or replaced afterwards directly in a folder on the way to
-a hidden path: `/`, `/home`, your home directory, `~/.uagent`, `~/.config`
-and `~/.docker`. Files in any other folder, a repository among them, are
-unaffected. A session whose folder is one of those folders is told so.
+**Inside the folder** a confined command cannot change `.mcp.json` or, in
+a repository, `.git/config` and `.git/hooks`; it can still commit. macOS
+denies the write; Linux records them before the command and puts them back
+when it ends (`restored .git/hooks: sandboxed commands may not change
+it`). A folder's `AGENTS.md` is an ordinary file any session may edit.
 
-**Network.** Outbound access is allowed, because git, npm and pip need it.
-Denying it (`sandbox.network` off, or the `readonly` level) blocks all IP
-traffic on macOS and TCP (bind and connect) on Linux, where Landlock cannot
-express the rest.
+**MCP servers** run under the same policy, hidden stores included, with
+the folder and package caches writable and no folder closed to reads. A
+server keeps the sandbox it started with when the approval mode changes.
 
-**Inside the folder**, a sandboxed command cannot change `.mcp.json` or,
-in a repository, `.git/config` and `.git/hooks` (which your own git would
-run); it can still commit. macOS denies the write. Landlock has no deny
-rule, so on Linux the three are recorded before a sandboxed command runs and
-put back when it ends (when it returns, or when a background or detached activity
-is collected), and the model and you are told:
-`restored .git/hooks: sandboxed commands may not change it`. The folder's
-trust still follows `.mcp.json`'s content. This is a check at the end of a
-command, not a wall: a hook added by a long-running command is live until it
-ends, a change you make to those paths while a sandboxed command runs is
-undone with it, and a detached activity still running when the session ends is
-not checked. A folder's instruction file (`AGENTS.md`) is an ordinary
-repository file that any session in it may edit.
+**Unconfined**, besides `off`:
 
-**MCP servers.** A stdio server is spawned under the same policy as a
-command, hidden stores included, with the folder and the package caches
-writable, so a server started with `npx` or `uvx` works. Its network follows
-the level and `sandbox.network`. A server that needs more can get a root
-through `sandbox.write`. A server keeps the sandbox it was started with:
-one started under yolo keeps `relaxed` when the mode changes, and one
-started before keeps `default`. An entry that sets `"sandbox": false` runs
-unconfined, in the folder's `.mcp.json` or in `~/.mcp.json`. The prompt that
-asks you to trust a folder's `.mcp.json` names the servers that would run
-unconfined, and a changed entry asks again like any other change to the file.
+- `run(sandbox=false)`, which always asks a person.
+- `run(root=true)`, offered only to an interactive top-level conversation
+  and asked every time: `sudo -S` outside the sandbox, or over ssh with
+  `host`. The password, asked once a turn per machine, is written only to
+  sudo's random prompt token, never reaches model context, events, logs or
+  the session, shows as `***` if printed (4 or more characters, within one
+  read), and is wiped at the turn's end or when a second prompt stops the
+  command. A command's own `sudo` fails and names `root=true`.
+- No Landlock (Linux before 5.13) or no `sandbox-exec`: the sandbox
+  degrades with a warning and a `capability.changed` event, and commands
+  run unconfined; if the level was set explicitly, commands are refused
+  instead. A denied network on Landlock before ABI 4 refuses commands too.
 
-**Not confined by the sandbox:** the built-in file tools (approval and path
-checks govern them; they reach `.mcp.json`, and the `uagent` tool reaches the
-saved settings, `.mcp.json`, your stylesheet, system message, instructions
-and skills, with mandatory human approval for each change) and an MCP
-server that opts out.
+A policy over 64 KiB (macOS) or 96 KiB (Linux) refuses the command.
 
-Besides `off`, these operations or fallback conditions can run unconfined:
+## Browser automation
 
-- `run(sandbox=false)` always asks a person. Yolo and a remembered grant
-  cannot give that approval, and headless or delegated runs have nobody to
-  ask, so a delegated child cannot unconfine itself.
-- `run(root=true)` runs through `sudo -S` outside the sandbox (over ssh with
-  `host`, only the remote end is root) and asks a person every time. The
-  sudo password is asked once a turn per machine; sudo prints a random token
-  as its prompt (`-p`, with echo already off), and only on that token is the
-  password written to it, so it is never echoed, never in model context,
-  events, logs or the session, and it is wiped from memory at the turn's
-  end. A second token means a wrong password: the command is stopped and the
-  password wiped. The password is written once; the command printing the
-  token after that only stops itself. Should the command print the password
-  itself, it is shown as `***` (one of 4 or more characters, within one
-  read). Where `root` is offered, a command's own `sudo` is a bash function
-  that fails pointing at `root=true`; no command text is read for it.
-- On a Linux kernel without Landlock (before 5.13), the sandbox degrades: a
-  startup warning, a `capability.changed` event, `sandbox.mode=degraded`, and
-  commands run unconfined. A session that requested the sandbox explicitly,
-  in the environment or a saved setting, refuses to run commands instead. So
-  does one that denies the network (`sandbox.network` off) on a
-  kernel whose Landlock cannot restrict it (before ABI 4).
+The `browser` tool drives the web host's Chrome, on Linux, while
+`web.browserData` is set. You and the agent drive the same browser, and its
+profile keeps your logins and cookies.
 
-On macOS, a sandbox profile larger than 64 KiB, and on Linux a policy larger
-than 96 KiB (very many writable roots or closed folders), refuses the
-command rather than running it under a truncated one.
+- Actions that change a page need approval like any mutating call; a
+  remembered approval for a site stops applying once the page leaves it.
+- The agent can use a saved login without reading it: `fill_saved` has
+  Chrome fill the focused field and reads back only its length; `type`
+  refuses password fields. Page text shows the start of ordinary field
+  values and only `(filled)` or `(empty)` for password, one-time-code and
+  card fields. The request list has no bodies. Screenshots are taken only
+  once password fields, also one switched to text, are drawn as dots.
+- With the sandbox on, commands cannot read the profile, and the file tools
+  refuse it; keep the data directory outside the writable roots, such as
+  `~/.uagent/browser`. The managed policy (`deploy/chrome-policy.json`,
+  installed by the container image, by hand elsewhere) blocks Chrome's
+  password and autofill pages, `passwords.google.com`, `view-source:` and
+  DevTools.
+- `open` takes only `http`, `https` or a file of the folder; uploads take
+  only files of the folder; downloads land in its `downloads`.
+- There is no CDP or VNC TCP port: the agent reaches Chrome over pipes, the
+  viewer over the authenticated web host, and only the device in control
+  sends input. A research browser gets a fresh profile per conversation.
+
+## Remote execution
+
+The main keeps provider settings, keys, approvals, memory and history.
+Only file, Git, command and terminal operations cross SSH, over a master
+with `BatchMode=yes`, `StrictHostKeyChecking=yes`, `ForwardAgent=no` and
+`SendEnv=-*`. Every request carries an auth token the worker checks; the
+token travels on SSH stdin, never in argv or the environment. The remote
+side loads no settings, history or provider configuration, and the main
+uses only a worker of its own build. Several mains may share one installed
+executable through separately authenticated workers.
+
+Remote commands run under the remote OS sandbox and account, with the
+worker's socket and lease and the account's `~/.uagent` hidden from them.
+A paired device's remote terminal is that account's unsandboxed shell.
 
 ## The container
 
-The [Compose appliance](deploy/compose.yaml) runs the web host, the agent, its
-terminal and its Chrome as one nonroot user. What it does and does not bound:
+The [Compose appliance](deploy/compose.yaml) runs the web host, the agent,
+its terminals and its Chrome as one nonroot user (UID 10001); operation is
+in [Container](docs/operations/container.md).
 
 - **Files and processes.** Only the workspaces folder and a data volume are
-  mounted; the root filesystem is read-only, every capability but `SYS_CHROOT`
-  is dropped, `no-new-privileges` is set and the number of processes is
-  limited. No Docker socket and nothing of the host's home is mounted.
-- **The network.** Rules loaded by a separate root-only container refuse
-  every private address (the host, the LAN, a tailnet, other containers, a
-  cloud metadata address) to everything in the agent's container; public
-  addresses stay open, so a compromised agent can still send what it reads
-  to the internet. `UAGENT_NETWORK_ALLOW` names exceptions and
-  `UAGENT_NETWORK=open` turns the rules off; see
-  [Browser](docs/BROWSER.md#isolation).
-- **One trust level inside.** The command sandbox is on there as anywhere, so
-  agent commands do not read the saved keys or the browser's profiles. The web
-  terminal is yours and is not sandboxed: it reads both.
-- **Chrome.** It is not in the image: the container fetches Google's stable
-  package onto the data volume, accepts it only when its checksum is in the
-  index signed by Google's packaging key (shipped in the image), and looks
-  for a newer one daily.
-- **User namespaces.** The seccomp profile lets any process in the container
-  create one, as Chrome's sandbox requires.
-- **What you build there runs here.** The workspaces folder is yours on the
-  host too; a script the agent wrote runs with your rights when you run it.
+  mounted; the root filesystem is read-only, `/tmp` is `noexec`, every
+  capability but `SYS_CHROOT` is dropped, `no-new-privileges` is set and
+  processes are limited. No Docker socket or host home is mounted. The port
+  is published on the host's loopback only.
+- **The network.** A separate container, alone holding root and
+  `NET_ADMIN`, owns the shared network namespace and refuses the Docker
+  bridge's gateway, `0.0.0.0/8`, `10.0.0.0/8`, `100.64.0.0/10`,
+  `169.254.0.0/16` (cloud metadata), `172.16.0.0/12`, `192.168.0.0/16`,
+  `224.0.0.0/3`, `fc00::/7`, `fe80::/10` and `ff00::/8`
+  ([`deploy/firewall.sh`](deploy/firewall.sh)). Without its rules the
+  agent's container does not start. `UAGENT_NETWORK_ALLOW` names
+  exceptions; `UAGENT_NETWORK=open` loads no rules.
+- **One trust level inside.** The command sandbox is on there as anywhere;
+  the web terminal is yours and reads everything the container holds. The
+  seccomp profile lets every process create user namespaces, as Chrome's
+  sandbox requires.
+- **Chrome** is fetched onto the data volume at start and daily, and
+  accepted only when its checksum is in the package index Google signs,
+  checked against the key shipped in the image.
+
+## What is not defended
+
+- **Your authority.** An approved call, an unconfined command and a paired
+  device act as you. The mandatory approvals on configuration files bind
+  the file tools only; an unsandboxed command reaches the same paths.
+- **Exfiltration.** Commands have the network by default and read
+  dot-folders (`~/.ssh`, `~/.config`, `~/.mcp.json`) and everything outside
+  the home folder: a confined `cat ~/.ssh/config` puts the file into model
+  context, and a command can send what it reads. In the container public
+  addresses stay open, a public address of the Docker host is not refused,
+  and DNS goes to the resolver Docker forwards to, which may be on your LAN.
+- **The home folder at `relaxed`** (and in yolo at `default`): commands
+  write shell startup files, `~/.ssh`, `~/.mcp.json`, whose servers may
+  run unconfined, and the skill folders outside `~/.uagent`, which later
+  sessions read.
+- **Linux limits.** The `.mcp.json` and `.git` guard is a check at a
+  command's end: a hook a long-running command adds is live until it ends,
+  a change you make there meanwhile is undone, and a detached activity
+  still running when the session ends is not checked. A denied network
+  stops only TCP. Sockets under hidden paths are blocked only from Linux
+  7.1 (ABI 9); before that a command can drive the browser.
+- **macOS keychains** are not hidden: access goes through `securityd`.
+- **Prompt injection** is bounded by approval and the sandbox, not
+  detected. **Redaction** finds the forms listed above, not a bare token or
+  a password named in prose.
+- **Previews and attachments.** A preview address is readable by whoever
+  holds it; a preview page's script can put any text, its address
+  included, into a request to Google Fonts. An HTML attachment's policy
+  restricts no destination.
+- **The browser.** Whatever a signed-in page shows can enter model context;
+  use a profile that holds only the accounts the agent should reach.
+  One-time-code and card fields, closed shadow roots and other sites'
+  frames are not masked in screenshots. Outside the container Chrome runs
+  as you, without the seccomp profile or network rules, and the managed
+  policy applies only where installed.
+- **Remote hosts.** A shared SSH account isolates no user from another;
+  the account and its administrators can read remote execution data and
+  process memory.
+- **Container output.** A script the agent wrote in the workspaces folder
+  runs with your rights on the host when you run it.
 
 ## Sensitive data
 
-Sessions and debug logs may contain source, prompts, commands, output and
-reasoning. They are private (owner-only files) but not encrypted, and are
-pruned by age and count; [Persistence](docs/PERSISTENCE.md) lists each kind,
-its retention and how to remove it. `config/settings.json` holds saved API
-keys in clear text; treat it as a secret.
-
-Do not attach secrets or enable debug logging unless disclosure is
-acceptable. If a credential appears in a prompt, attachment, result or trace,
-delete the affected artifacts and rotate the credential.
+Sessions and debug logs may hold source, prompts, commands, output and
+reasoning. They are owner-only, not encrypted, and pruned by age and count
+([On disk](docs/interfaces/on-disk.md)). `~/.uagent/config/settings.json`
+is owner-only but holds saved API keys in clear text; treat it as a
+secret. The web's HTTP captures redact credential headers; bodies hold
+folder content. Do not attach secrets or enable debug logging unless
+disclosure is acceptable. If a credential appears in a prompt, attachment,
+result or trace, delete the affected artifacts and rotate the credential.
 
 ## Reporting
 

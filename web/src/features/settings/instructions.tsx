@@ -18,7 +18,7 @@ import { ProjectField } from "../../shared/project-field.tsx";
 import "./instructions.css";
 
 // What the saved system message file holds: the sections replaced and the
-// text added after the last (docs/INSTRUCTIONS.md).
+// text added after the last (docs/architecture/memory-and-schedules.md).
 interface PromptChanges {
   replace?: Record<string, string>;
   append?: string;

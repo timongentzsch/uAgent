@@ -16,7 +16,7 @@ cmake --build --preset debug --parallel
 ctest --preset debug --output-on-failure
 ```
 
-While iterating, run one case instead; [Testing](docs/TESTING.md#common-cases)
+While iterating, run one case instead; [Testing](docs/testing.md#common-cases)
 shows how.
 
 Before a commit, run what CI checks on every change:
@@ -45,7 +45,7 @@ npm run size
 `web/dist` is build output and not committed; CI builds it once and embeds it
 in every native build, so run `npm run build` before the first configure.
 `npm run test:browser` runs the Playwright suite against a native host; see
-[Testing](docs/TESTING.md#web-tests).
+[Testing](docs/testing.md#web-tests).
 
 A macOS build does not show what CI's Linux checks report: cpplint,
 clang-tidy and a GCC 13 build with warnings as
@@ -80,7 +80,7 @@ Docker is given.
 - Keep persistence versioned, and validate complete temporary state before
   replacing live state.
 
-Test as [Testing](docs/TESTING.md#guidelines) says. Parser changes must
+Test as [Testing](docs/testing.md#guidelines) says. Parser changes must
 preserve chunk-boundary equivalence.
 
 ## Code conventions
@@ -92,7 +92,7 @@ preserve chunk-boundary equivalence.
   JSON object: the `*Control(const json&)` handlers, such as `SkillControl`
   and `ScheduleControl`, and the per-action functions they dispatch to.
 - Keep headers and includes in the layer order
-  [Architecture](docs/ARCHITECTURE.md#build-layers) describes;
+  [the overview](docs/architecture/overview.md#invariants-and-limits) describes;
   `tests/boundary_test.py` enforces it.
 - Web features (`web/src/features/<name>/`) import from `shared/` and
   `state/`, not from each other. Every request to the host goes through

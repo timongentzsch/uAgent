@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changes
+
+- **The docs are written for someone who reads the source.** The README opens on the process model, the properties and the design decisions. `docs/architecture/` has one page per subsystem in one shape (responsibility, processes, formats, protocol, limits, failures, source and tests); `docs/interfaces/` specifies the HTTP API, headless output, the files on disk and the artifact formats, and its settings, command line, tool schema and limits pages are generated from the binary's registries, with a test that fails when they differ; `docs/operations/` covers install, container, remote access and recovery; one `docs/manual.md` replaces the guides. `SECURITY.md` is a threat model. Diagrams are Mermaid in the page. The old pages are gone and their paths with them.
+
 ### Fixes
 
 - **An approval's answers stack on a phone.** In a narrow column Deny, Allow for this conversation and Allow once each take a row at full size, the usual answer last; side by side the middle one broke into two lines of small text.

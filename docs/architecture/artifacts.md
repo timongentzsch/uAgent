@@ -1,0 +1,193 @@
+# Artifacts
+
+This page explains how an HTML page the agent writes becomes a deck, a
+document, a sheet or a design in the Files pane: how it is recognised,
+served, framed and edited, and how a person's edit reaches the file. The
+`meta` tags and attributes a page uses are listed in
+[Artifact formats](../interfaces/artifact-formats.md); the preview route and
+its policy are in [Web host](web-host.md#protocol).
+
+## Responsibility
+
+An artifact is an ordinary file in the conversation's folder. Nothing
+converts it: the agent writes HTML (guided by `skills/artifact/`), the host
+classifies and serves it, and the client draws it in a sandboxed frame.
+Four parts cooperate:
+
+| Part | Where | Does |
+| --- | --- | --- |
+| Classifier | `src/app/workspace_files.cc` | names each page and folder a kind for listings, the Library and `present` |
+| Page helper | `web/public/design-helper.js`, inlined first in every previewed page | reports what the page is and what is wrong with it; pages documents; edits blocks; applies tweaks |
+| Sheet code | `web/sheet/*.js` with the IronCalc engine, served under `~sheet/` | draws and calculates a sheet inside its own frame |
+| Viewer | `web/src/features/files/` | frames, legends, editing, saving, export |
+
+Saving is always the client's job: a frame never writes a file.
+
+## Processes and threads
+
+Each page runs in an `<iframe sandbox="allow-scripts allow-forms">` loaded
+from `/preview/<token>/<path>`, so it has an opaque origin and cannot reach
+the app, its cookie or the API. A sheet's engine runs in a Web Worker the
+page makes from a `blob:` URL (the only kind an opaque origin may make),
+one worker per answer, terminated when it answers or after 20 s (`LIMIT` in
+`web/sheet/sheet.js`). The WebAssembly module is fetched and compiled once
+per page and handed to each worker, since an opaque origin has no cache.
+PDF and PNG exports run in the agent's Chrome ([Browser](browser.md)).
+
+## Data and formats
+
+**Kinds.** `PageKind` reads the first 4 KiB of a page, without comments:
+`<meta name="sheet">` makes a sheet, a `print` meta starting `flow` a
+document, an `artboard` meta a slide (`… slide`) or a design page. A folder
+is a design system if it holds `tokens.css`, a deck if every page that is
+not a document is a slide, and a design if any page has an artboard.
+Sheets and documents are their own artifacts even inside such a folder.
+
+**Sheets.** Each `<table data-sheet>` is a tab; a cell holds what a person
+would type and the engine computes what it shows. Merged ranges
+(`data-merge`), groups and folds (`data-group`, `data-folded`), rules and
+charts (`<figure data-chart>` directly after its table) are attributes and
+elements of the page, so the file stays the record.
+
+**Engine.** `@ironcalc/wasm-xlsx` (pinned in `web/package.json`) is copied
+with the sheet code into `web/dist/share/sheet` by
+`web/scripts/promote-dist.js`, installed as `share/uagent/sheet`, and served
+under `/preview/<token>/~sheet/` with a one-hour private cache. The preview
+policy adds `'wasm-unsafe-eval'` and `blob:` workers for it.
+
+## Protocol
+
+**Opening.** The client gets a base from `POST /api/sessions/<id>/preview`
+and frames the page. The host inserts `design-helper.js` after the doctype
+of every HTML it serves there. The helper reads the meta tags and sends
+`ready` with title, artboard size, notes, tweaks and stylesheets, then
+`drawn`, `size`, `pages`, `error` and `checked`. Every message carries
+`uagentDesign: 1`; the app takes one only from its own frame's window, and
+clips every field before use (`cellOf`, `offerOf`, `fileOf`). The app sends
+`select`, `edit`, `format`, `markdown`, `tweak`, `find`, `input`, `suggest`
+and `do`. Message types are listed in `web/src/shared/page-frame.tsx`.
+
+A finished `Wrote`, `Edited` or `Deleted` tool call in the transcript bumps
+the version of the page it names, which reloads its frame; a stylesheet,
+image or data file reloads every page. An open sheet reloads only for a
+write to itself, since a reload ends its undo.
+
+**Decks and documents.** A deck's slides are its pages in name order; a
+slide with `<meta name="slide" content="skip">` is left out of presenting
+and of the PDF. Its last `<aside>` is speaker notes, hidden by the helper.
+Presenter view is a second window kept in step through a
+`BroadcastChannel`. A document is paged on screen by CSS columns: the
+helper sets `@page` from the print line, makes the body columns the size of
+the text area, turns forced page breaks into column breaks, and moves and
+clips the body to show one sheet (`--uagent-page`). Pages are counted from
+the columns the body's children reach, so screen pages match the
+browser's print pages.
+
+**Editing a block.** With Edit on, headings, paragraphs, list items and
+table cells are `contenteditable`. The helper sends `edit` with the block's
+place among the blocks it lists, its HTML and the text of it and its
+neighbours. `blockSaver` (`web/src/features/files/doc-edit.ts`) waits for a
+1 s pause, another block, or a flush, then reads the file with its revision,
+finds the block in the parsed source by the same place and neighbours
+(`applyEdit`), keeps of the typed HTML only the block's own tags and
+attributes, bare marks and links, serialises the document, and posts
+`{path, text, revision}` to `/api/sessions/<id>/files`. One write runs at a
+time. The first save rewrites the file as a parser reads it; line endings
+and a byte-order mark are kept.
+
+**A sheet change.** The grid in the page applies the change to its copy of
+the tabs (`book.js`), says `held` with the tables it would write, and asks a
+fresh worker to calculate. On an answer the grid redraws and, for each tab
+changed, says `edit` with `{tab, tabs, table}`; a refused change is undone
+on screen and said with `refused`. `tableSaver`
+(`web/src/features/files/sheet-edit.ts`) splices only that tab's
+`<table data-sheet>`, and the charts directly after it, into the file's
+text and writes it with the revision it read.
+
+```mermaid
+sequenceDiagram
+  participant G as Sheet page
+  participant K as Worker
+  participant A as Files pane
+  participant H as Web host
+  G->>G: keystroke, book.js applies
+  G->>A: held (tables to write)
+  G->>K: tabs and wasm module
+  K-->>G: table (calculated)
+  G->>G: redraw
+  G->>A: edit {tab, tabs, table}
+  A->>H: GET files read (text, revision)
+  A->>A: splice that tab's table
+  A->>H: POST files {path, text, revision}
+  H-->>A: new revision, or 409
+```
+
+**Excel and CSV.** An `.xlsx` or `.csv` previewed with `?sheet` is served as
+a stub page whose `sheet` meta names the file. The sheet code fetches it
+and a worker reads it (`workbook.js`): cells, formulas, number and date
+patterns, column widths and merged cells from Excel; CSV cells as text
+unless a plain number, ISO date or boolean; at most 200,000 cells. It is
+read-only until Save as sheet, which writes a new `.html` with `create`
+(refused if the name exists). Export goes the other way: `xlsxOf` in a
+worker builds the workbook with rules as rules and folded groups as hidden
+rows and columns, or the open tab goes out as CSV. Either comes to the app
+as a `file` message, at most 8 MiB.
+
+**Designs.** The canvas (`plane.tsx`) lays boards out at real size, 80 px
+apart in a row and 240 px between rows; pages named `NN-…` share row `NN`.
+
+**Export.** `GET /api/sessions/<id>/files?png=<path>` or `?pdf=<path>` asks
+the browser service for `capture` on instance 0 at the artboard's size
+(1440 × 900 for a page, 1920 × 1080 for a deck by default). A deck's PDF is
+the host's `?deck` page, one iframe per slide with `break-after: page`,
+served with `script-src 'none'`. Chrome renders in a throwaway context,
+waits up to 10 s for fonts and `window.uagentReady`, and prints or shoots.
+
+**`present` and the page check.** `present` (`src/app/present.cc`) asks the
+folder listing what a path is. An artifact becomes a result part
+`{kind: "artifact", type, path, cover, count}` that the conversation shows
+as a live card; any other file is copied into the conversation's asset
+store as a snapshot. When the agent opens its own page with the browser
+tool, the helper resolves `window.uagentChecked` after load; the service
+reads the `uagent page:` console lines it logged, or, if the window is not
+the artboard's size, reloads the page at that size in a throwaway context
+and reads them there. The checks are: files that did not load, a page
+larger than its artboard, a section that overflows, overlapping text on a
+slide, a print line not understood, and a sheet's cells in error.
+
+## Invariants and limits
+
+- The file is the only state: a frame holds edits only until they are
+  written, and every write names the revision it read.
+- Files over 1 MiB (`kFileViewBytes`) are not saved from the pane.
+- A write from a page being closed uses `keepalive` and carries at most
+  48 KiB (`CLOSING_BYTES`); larger edits are not sent then.
+- The engine never runs in the app's thread or origin; a formula that never
+  returns costs one worker for 20 s.
+
+## Failure modes
+
+- The agent wrote the file meanwhile: the host answers 409. A block is
+  marked owed with `this text changed in the file meanwhile`, kept on the
+  page and not written over; a sheet is drawn again from the file and the
+  pane says why.
+- A sheet whose engine fails or times out is shown as written, and a change
+  is refused with the reason. Without the engine installed, the page notes
+  that formulas show as text.
+- Export without a browser service answers 503.
+
+## Source and tests
+
+| Path | What |
+| --- | --- |
+| `src/app/workspace_files.cc` | kinds, deck page, revisioned writes |
+| `src/web/master_files.cc` | preview serving, helper injection, `~sheet/`, export |
+| `web/public/design-helper.js` | page messages, document paging, checks |
+| `web/sheet/sheet.js`, `web/sheet/calculate.js`, `web/sheet/book.js`, `web/sheet/workbook.js` | sheet page, worker, model, import |
+| `web/src/shared/page-frame.tsx` | frame and message types |
+| `web/src/features/files/doc-edit.ts`, `web/src/features/files/sheet-edit.ts` | saving |
+| `web/src/features/files/sequence.tsx`, `web/src/features/files/plane.tsx` | viewer, canvas |
+| `src/app/present.cc` | `present` |
+| `web/tests/doc-edit.spec.js`, `web/tests/sheet-edit.spec.js`, `web/tests/sheet-files.spec.js` | edits, conflicts, import |
+| `web/tests/sheet-merge.spec.js`, `web/tests/sheet-groups.spec.js`, `web/tests/sheet-rules.spec.js` | sheet features |
+| `tests/integration_web/preview.py` | preview address and policy |

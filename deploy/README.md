@@ -18,13 +18,13 @@ API keys go in with `docker compose exec uagent uagent setup` and stay on the
 data volume.
 
 Setup, the Compose variables and the isolation model are in
-[Browser](../docs/BROWSER.md); [Web](../docs/WEB.md) covers pairing and origins.
+[Container](../docs/operations/container.md); [Remote access](../docs/operations/remote-access.md) covers pairing and origins.
 
 | Path | Contents |
 | --- | --- |
 | `Dockerfile` | Builds the web UI and the native binary, then a Debian image with what Chrome needs of the system and a nonroot `agent` user |
 | `compose.yaml` | The agent's service and the `network` service that owns its network: read-only root, no capabilities but `SYS_CHROOT`, no new privileges, a process limit, loopback-only port, data volume, workspaces mount, health check |
-| `chrome-policy.json` | Managed Chrome policy; [Browser](../docs/BROWSER.md) says what it blocks |
+| `chrome-policy.json` | Managed Chrome policy; [Browser](../docs/architecture/browser.md) says what it blocks |
 | `chrome-update.sh`, `google-chrome.asc` | Keeps Chrome on the data volume: Google's stable package, checked against the index signed with that key |
 | `start.sh` | What the agent's container runs: the Chrome updater beside the web host |
 | `firewall.sh` | What the `network` service runs: refuses private addresses to the agent, except those `UAGENT_NETWORK_ALLOW` names |

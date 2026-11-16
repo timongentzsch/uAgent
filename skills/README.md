@@ -14,13 +14,13 @@ to the executable.
 
 Without `$name`, the model opens a skill itself when its description fits
 the task. The web's Library lists and edits the same skills; see
-[Memory, skills and scheduled tasks](../docs/MANAGEMENT.md).
+[Memory and schedules](../docs/architecture/memory-and-schedules.md).
 
 ## What ships
 
 | Skill | Purpose |
 | --- | --- |
-| `uagent-config` | Configuration precedence and the complete runtime, install and integration reference, loaded only for configuration work. It answers from the running binary; `references/` holds the hand-written `self-configuration.md`, and installs add `architecture.md` from `docs/ARCHITECTURE.md` and the web UI's `tokens.css`. Opening it adds the `uagent` tool to the conversation. |
+| `uagent-config` | Configuration precedence and the complete runtime, install and integration reference, loaded only for configuration work. It answers from the running binary; `references/` holds the hand-written `self-configuration.md`, and installs add `architecture.md` from `docs/architecture/overview.md` and the web UI's `tokens.css`. Opening it adds the `uagent` tool to the conversation. |
 | `fusion` | Invoked explicitly with `$fusion`: coordinates one sidekick agent on a scoped implementation while the lead keeps decisions, review and the final answer. |
 | `import` | Invoked explicitly with `$import`: condenses Codex's memory summary into global memories. |
 | `artifact` | Documents, slide decks, designs, design systems and sheets as HTML in the folder, which the web's Files pane shows live: what the five types are and what they share, with one reference each for the format and its craft rules. The agent hands the result over with `present`. |

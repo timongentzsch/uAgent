@@ -43,23 +43,18 @@ def document(title, width, height, body, notes):
     )
 
 
-def bars(title, panels, notes, label_width=110, shared_scale=False):
+def bars(title, panels, notes, label_width=110):
     """Panels are (title, [(label, value, highlight)], decimal places)."""
     columns, panel_width, gap = 2, 420, 32
     bar_width = panel_width - label_width - 60
     panel_height = 48 + 32 * max(len(rows) for _, rows, _ in panels)
     width = 48 + columns * panel_width + (columns - 1) * gap
     height = 86 + ceil(len(panels) / columns) * panel_height + 18 * len(notes)
-    overall_peak = max((v for _, rows, _ in panels for _, v, _ in rows if v is not None), default=1)
     body = []
     for index, (heading, rows, places) in enumerate(panels):
         x, y = 24 + index % columns * (panel_width + gap), 88 + index // columns * panel_height
         body.append(text(x, y, heading, "title"))
-        peak = (
-            overall_peak
-            if shared_scale
-            else max((v for _, v, _ in rows if v is not None), default=1)
-        )
+        peak = max((v for _, v, _ in rows if v is not None), default=1)
         for row, (label, value, highlight) in enumerate(rows):
             top = y + 22 + row * 32
             body.append(text(x, top + 14, label))

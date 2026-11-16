@@ -11,6 +11,7 @@
 #include "include/app/library.h"
 #include "include/app/permissions.h"
 #include "include/app/schedule.h"
+#include "include/app/self_description.h"
 #include "include/app/setup.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
@@ -34,6 +35,13 @@ json ManagementControl(const json& request) {
     Api api(RuntimeConfig::FromEnvironment());
     ConfigureProvider(api);
     return {{"configured", !api.base_url.empty()}};
+  }
+  // What docs/interfaces is generated from (tests/reference_docs.py).
+  if (kind == "reference") {
+    return {{"settings", ConfigSchemaJson()},
+            {"flags", CliSchemaJson()},
+            {"commands", CommandSchemaJson()},
+            {"tools", ToolSurfaceJson()}};
   }
   if (kind == "openrouter") return OpenRouterControl(request);
   if (kind == "schedule") return ScheduleControl(request);

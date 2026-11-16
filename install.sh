@@ -404,8 +404,8 @@ elif [ -n "$service" ] &&
   if [ "$service" = systemd ]; then
     mkdir -p "$(dirname -- "$unit")"
     # Agent commands find the tools of the shell that installed it. A
-    # runtime moves into its own scope (docs/WEB.md), so the default kill
-    # policy stays.
+    # runtime moves into its own scope (docs/architecture/overview.md), so the
+    # default kill policy stays.
     cat >"$unit" <<EOF
 [Unit]
 Description=µAgent web interface

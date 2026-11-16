@@ -17,3 +17,4 @@ python3 tests/boundary_test.py
 python3 tests/wire_contract_test.py
 python3 benchmarks/session_metrics.py --self-test
 python3 benchmarks/eval.py --self-test
+python3 tests/docs_test.py

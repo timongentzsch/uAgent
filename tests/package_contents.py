@@ -29,7 +29,7 @@ def main():
         ):
             continue
         expected_skills.add(relative.as_posix())
-    # Installed from docs/ARCHITECTURE.md and the web's tokens rather than
+    # Installed from docs/architecture/overview.md and the web's tokens rather than
     # duplicated in the tree.
     expected_skills.add("uagent-config/references/architecture.md")
     expected_skills.add("uagent-config/references/tokens.css")
@@ -58,11 +58,10 @@ def main():
     docs = f"{root}/share/doc/uagent/"
     if f"{docs}THIRD_PARTY_NOTICES.md" not in files:
         fail("frontend licence notices are missing")
-    for name in sorted(guide.stem for guide in (source / "docs").glob("*.md")):
-        if f"{docs}docs/{name}.md" not in files:
-            fail(f"canonical guide docs/{name}.md is missing")
-        if f"{docs}{name}.md" in files:
-            fail(f"duplicate flat guide {name}.md")
+    for page in sorted((source / "docs").rglob("*.md")):
+        name = page.relative_to(source).as_posix()
+        if f"{docs}{name}" not in files:
+            fail(f"{name} is missing")
 
     prefix = f"{root}/share/uagent/skills/"
     packaged_skills = {name.removeprefix(prefix) for name in files if name.startswith(prefix)}

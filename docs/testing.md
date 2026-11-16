@@ -25,6 +25,7 @@ cmake --build --preset debug --parallel
 | integration tests by name | `python3 tests/integration.py build/debug/uagent -k compaction` | seconds |
 | a web edit | `npm test` and `npm run typecheck` in `web/` | seconds |
 | one web spec in a browser | `npm run build`, then `npm run test:spec -- tests/phone-layout.spec.js` in `web/` | build + the spec |
+| a docs edit | `python3 tests/docs_test.py` | seconds |
 | the native and integration suites | `ctest --preset debug` | minutes |
 | web work before a push | `npm run test:browser` in `web/` (both browsers) | minutes |
 | what only CI's compilers and linters report | `.github/ci-local.sh` | minutes; incremental after the first run |
@@ -40,24 +41,43 @@ ctest --preset debug                      # everything, six tests at a time
 ctest --preset debug -R '^core$'          # one CTest by name
 ```
 
-The source contracts and measurement self-tests need no build; they run in
-`.github/lint.sh` with the format checks.
+The source contracts (`tests/ci_changes_test.py`, `tests/boundary_test.py`,
+`tests/wire_contract_test.py`), the docs check `tests/docs_test.py` and
+the measurement self-tests run in `.github/lint.sh`.
 
 Test presets exist for `debug`, `release`, `sanitize`, `tsan` and `coverage`.
 
 | CTest name | Covers |
 | --- | --- |
 | `core` | C++ unit tests (`tests/unit/`, binary `uagent_tests`; Web Push encryption only with `UAGENT_WEB_PUSH=ON`) |
-| `integration_runtime`, `_tools`, `_ui`, `_providers`, `_mcp`, `_agents`, `_sandbox` | end-to-end cases against the real binary with a scripted HTTP provider and a PTY (`tests/integration_<group>.py` or `tests/integration_<group>/`) |
+| `integration_runtime`, `_tools`, `_ui`, `_providers`, `_mcp`, `_agents`, `_sandbox` | end-to-end cases against the real binary with a scripted HTTP provider and a PTY (`tests/integration_<group>.py` or `tests/integration_<group>/`); `runtime` runs in three processes |
 | `integration_web`, `integration_management` | native web host |
 | `behavior_eval` | scenario scores against the committed baseline |
+| `reference_docs` | the generated pages in `docs/interfaces/` against the binary's registries |
 | `benchmarks` | native micro-benchmarks; only with `UAGENT_BUILD_BENCHMARKS=ON` |
 
-Beyond the runners, `tests/fixtures/` holds the provider route contract, saved
-sessions and the evaluation and browser-runtime fixtures; `tests/package_contents.py`
-validates a release archive and its bundled skill tree; `tests/reviewer_eval/`
-holds labelled tool calls for the approval reviewer (`run.py` checks a model by
-hand with an API key; the unit tests read its questions).
+`reference_docs` fails when `docs/interfaces/settings.md`, `cli.md`,
+`tool-schemas.md` or `limits.md` differs from what the binary's setting,
+flag, command and tool registries and `include/core/limits.h` give. After
+changing one, regenerate the pages and commit them:
+
+```sh
+python3 tests/reference_docs.py build/debug/uagent --write
+```
+
+`tests/docs_test.py` needs no build. Over `docs/`, the root and folder
+READMEs, SECURITY and CONTRIBUTING it checks that every relative link and
+anchor resolves, that every `UAGENT_*` variable, `--flag`, `/api/` route and
+`k` constant in a code span appears in the tracked source, and that every
+repository path in a code span is tracked. Generated pages are skipped.
+`.github/lint.sh` runs it.
+
+`tests/fixtures/` holds the provider route contract, saved sessions, the
+stand-in Chrome and Xvnc (`browser_runtime.py`) and an SSH relay;
+`tests/package_contents.py` validates a release archive and its bundled skill
+tree; `tests/reviewer_eval/` holds labelled tool calls for the approval
+reviewer (`run.py` checks a model by hand with an API key; the unit tests read
+its questions).
 
 ### Selecting cases
 
@@ -113,8 +133,8 @@ build/fuzz/uagent_fuzz_input_decoder -runs=2000 -max_len=4096 \
   /tmp/corpus/input_decoder
 ```
 
-The weekly `fuzz.yml` workflow does this and then searches for five minutes per
-fuzzer and uploads the corpus it reached.
+The weekly `fuzz.yml` workflow builds each fuzzer, searches for five minutes
+per fuzzer from the committed corpus, and uploads the corpus it reached.
 
 ## Web tests
 
@@ -129,8 +149,8 @@ npm run test:spec -- tests/phone-layout.spec.js   # one spec: Chromium, no retry
 
 Which binary and bundle a browser test drives:
 
-- `tests/web_host.py` runs `UAGENT_TEST_BINARY` (CI sets it), or by default
-  `../build/debug/uagent`.
+- `web/tests/fixtures.js` starts `tests/web_host.py` with
+  `UAGENT_TEST_BINARY` (CI sets it), or by default `../build/debug/uagent`.
 - Locally the host serves `web/dist` from disk, so a web edit needs
   `npm run build` but no rebuild of the binary. In CI it serves the bundle
   embedded in the binary, as a release does, and the sheet engine the build
@@ -141,10 +161,10 @@ How the tests are isolated:
 - Each test owns its host, temporary HOME and folder, mock provider, pairing
   cookie and output directory, and waits on visible state or an API condition
   rather than a fixed delay.
-- The Vite dev server used by fixtures such as `action.spec.js` and
-  `render-count.spec.js` takes a port
-  derived from the checkout's path and never reuses a server already
-  listening there, so a run cannot test another checkout's tree.
+- The Vite dev server used by `action.spec.js`, `doc-edit.spec.js`,
+  `render-count.spec.js` and `transcript-tree.spec.js` takes a port derived
+  from the checkout's path and never reuses a server already listening
+  there, so a run cannot test another checkout's tree.
 
 What a spec may assume about time:
 
@@ -168,11 +188,10 @@ including action admission and management flows. A failed test is not retried.
 Four workers run locally and two in CI. Traces and screenshots of failures are
 kept in `web/test-results`.
 
-The films under `docs/images/` are recorded from the running client, so they
-can be made again when it changes: `web/recordings/*.rec.js` are Playwright
-scripts against the same fixture host, and `npm run record` (with
-`UAGENT_TEST_BINARY` and ffmpeg) films them and writes each as a GIF. Pass a
-name, as in `npm run record -- files`, for one of them.
+The GIFs under `docs/images/` come from `web/recordings/*.rec.js`,
+Playwright scripts against the same fixture host: `npm run record` (with
+`UAGENT_TEST_BINARY` and ffmpeg) films them all, `npm run record -- files`
+one.
 
 ## Behavioral evaluation
 
@@ -184,8 +203,7 @@ size, folder immutability). Results are compared with
 `benchmarks/baselines/hermetic.json`. `benchmarks/run_trace.py` holds the run
 timing and trace aggregation the eval and the audit share.
 The [benchmark snapshot](../benchmarks/README.md#current-measurements) records
-dated package sizes and local CPU samples; its SVG chart generator uses only
-the Python standard library.
+dated package sizes and local CPU samples.
 
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check
@@ -227,57 +245,60 @@ python3 benchmarks/session_metrics.py --cohort ID --json /tmp/sessions.json
 
 `.github/workflows/ci.yml` runs on pull requests, pushes to `master`, weekly
 and by hand. `release.yml` also calls it for a tag whose commit has no
-passing `master` run.
+passing `master` run with live artifacts.
 
 On a pull request, `.github/changes.py` selects jobs by the paths changed:
 
 | Changed paths | Jobs |
 | --- | --- |
-| only `docs/`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE` | `lint` |
+| only `docs/` (not `docs/interfaces/`), `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE` | `lint` |
 | those and `web/` | `lint`, `web`, `web-browser` |
-| anything else | native and web jobs, with the additional filters below |
+| anything else, `docs/interfaces/` included | native and web jobs, with the additional filters below |
 
-For native changes, `clang-tidy` reads the changed translation units in one
-job. Changes to headers, top-level CMake files, `.github/`, vendored code,
-`.dockerignore` or `.clang-tidy` select all units across three runners, as
-non-PR runs do.
+For native changes, `clang-tidy` reads the changed `.cc` files under `src/`,
+`tests/` and `benchmarks/` in one job. A changed header, `.clang-tidy`,
+`CMakeLists.txt`, `CMakePresets.json`, `.dockerignore`, `.github/` or
+`third_party/` selects all units across three runners, as non-PR runs do.
 `coverage` runs weekly and by hand only. The selection source is
 [changes.py](../.github/changes.py); [ci.yml](../.github/workflows/ci.yml) defines
 the jobs and their conditions.
 
-The Linux build jobs reuse compiled objects through ccache
+The build jobs reuse compiled objects through ccache
 (`.github/actions/native-setup`), restored in every run and saved from
 `master` and once per pull request. A newer push to a pull request cancels
 the older run; runs on `master` are never cancelled, so each merge is tested
 as it landed.
 
-A pull request skips the slowest legs (Linux ARM64,
-ThreadSanitizer and the remote bundle) unless it is heavy: it touches
-`CMakeLists.txt`, `CMakePresets.json`, `.dockerignore`, `cmake/`, `deploy/`,
-`third_party/`, `.github/`, `src/web/`, `src/browser/`, `include/web/` or
-`include/browser/` (`heavy` in `.github/changes.py`).
-Master, scheduled and manual runs always run them.
+A pull request skips the slowest legs unless its paths call for them;
+master, scheduled and manual runs always run them:
+
+| Leg | Runs on a pull request that touches (`.github/changes.py`) |
+| --- | --- |
+| ThreadSanitizer (`heavy`) | `src/web/`, `src/browser/`, `include/web/`, `include/browser/`, `.github/`, `cmake/`, `deploy/`, `third_party/`, `CMakeLists.txt`, `CMakePresets.json`, `.dockerignore` |
+| remote bundle (`bundle`) | `.github/`, `cmake/`, `deploy/`, `CMakeLists.txt`, `CMakePresets.json`, `.dockerignore`, `install.sh` |
+| Linux ARM64 build | either list |
+| container image (`image`) | `deploy/`, `.github/workflows/`, `.dockerignore` |
 
 | Job | Runs |
 | --- | --- |
 | `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |
-| `build-and-test` | Release builds with Web Push on Linux x86_64 and macOS ARM64, and Linux ARM64 on master and for heavy changes; `ctest`; packaging and the target's remote payload |
-| `remote-bundle` | On master and for heavy changes: assembles the four payloads into one verified bundle, adds it to each release archive and checks the archives |
+| `build-and-test` | `ci-release` builds (Web Push on) for Linux x86_64 and macOS ARM64, and Linux ARM64 where selected; `ctest`; packaging through `install.sh` with `UAGENT_LOCAL_ONLY=1`, `tests/package_contents.py`, and the target's remote payload |
+| `remote-bundle` | Where selected: assembles the three payloads into one verified bundle (`.github/remote_bundle.py`), adds it to each release archive and checks the archives; uploads `release-complete` |
 | `sanitizers` | `sanitize` preset, `ctest` |
-| `thread-sanitizer` | On master and for heavy changes: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
+| `thread-sanitizer` | Where selected: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `coverage` | Weekly and by hand: `core` and every integration group with a branch report; fails under 67% line coverage |
-| `lint` | `.github/lint.sh`: clang-format, cpplint, Ruff and the source contracts |
+| `lint` | `.github/lint.sh`: clang-format, cpplint, Ruff, the source contracts and the docs check |
 | `clang-tidy` | clang-tidy, changed units on one runner or all units across three |
-| `web` | Biome format check and lint, Node tests, bundle and size report, a release host with Web Push |
+| `web` | Biome format check and lint, Node tests, bundle and size report, a `ci-release` host with Web Push |
 | `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), split across three runners |
-| `image` | On non-PR runs, or when `deploy/`, `.dockerignore` or a workflow changes: builds the container image for x86_64 from the tested Linux installation, starts it under compose's seccomp profile, and checks the compose stack's firewall and fetched Chrome |
+| `image` | Where selected: builds the container image for x86_64 from the tested Linux archive, starts it under `deploy/seccomp-chrome.json`, runs `deploy/check-network.sh` against a second listening container, and waits for the fetched Chrome |
 | `CI result` | fails if any required job failed or was cancelled |
 
 The `master requires CI` ruleset requires `CI result`, so a red run blocks a
 merge. When a pull request stacked on another's branch is pushed together
 with it, GitHub sends two events: the first run is cancelled within seconds
-and its `CI result` reads failed. CodeQL runs in its own workflow on pushes
-to `master` and weekly.
+and its `CI result` reads failed. CodeQL runs in its own workflow
+(`codeql.yml`) on pushes to `master` and weekly.
 
 ## Guidelines
 

@@ -336,7 +336,8 @@ interface ApprovalPending extends PendingBase {
     // automatic review gave, by name and probability.
     risks?: { id: string; label: string }[];
     // The stage of the order that asks ("mode", "ask_rule", "review",
-    // "refusals", "mandatory") and why, in a line; an asking rule in words.
+    // "refusals", "mandatory"), or "report" for an agent's report held back,
+    // and why, in a line; an asking rule in words.
     source?: string;
     reason?: string;
     rule?: string;

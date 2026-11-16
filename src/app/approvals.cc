@@ -16,6 +16,8 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/path_policy.h"
+#include "include/agent/session_search.h"
+#include "include/agent/session_store.h"
 #include "include/app/approval_policy.h"
 #include "include/app/approval_review.h"
 #include "include/app/permissions.h"
@@ -130,6 +132,30 @@ struct Verdict {
 constexpr int kReviewRefusalsInRow = 3;
 constexpr int kReviewRefusals = 20;
 
+// Numbers the approvals asked and resolved, calls and reports alike.
+std::atomic<uint64_t> approvals{0};
+
+// What a review judges against: the latest message, then the first, since
+// an agent's brief still authorizes what a later note from its parent adds.
+std::string RequestOf(const Conversation& history) {
+  std::string request = history.UserMessageText(history.UserTurns());
+  if (const std::string first = history.UserMessageText(1); first != request) {
+    request += "\n\n[first message]\n" + first;
+  }
+  return request;
+}
+
+json ReviewJson(AutoPermissionReview decision) {
+  const bool ask = decision.decision == AutoPermissionDecision::kAsk;
+  const bool allow = decision.decision == AutoPermissionDecision::kAllow;
+  json review = {{"choice", ask ? "ask" : (allow ? "allow" : "deny")},
+                 {"probabilities", std::move(decision.probabilities)},
+                 {"reasons", std::move(decision.reasons)},
+                 {"note", std::move(decision.note)}};
+  if (!decision.error.empty()) review["error"] = decision.error;
+  return review;
+}
+
 // The review of each action in the turn being run, so the same action asked
 // again in that turn is not paid for again; and its refusals.
 struct ReviewMemo {
@@ -156,13 +182,7 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
                                            const std::string& raw_payload,
                                            int64_t turn, json& review) {
   Verdict verdict;
-  // The latest message, then the first: an agent's brief still authorizes
-  // what a later note from its parent adds.
-  const Conversation& history = app->agent->History();
-  std::string request = history.UserMessageText(history.UserTurns());
-  if (const std::string first = history.UserMessageText(1); first != request) {
-    request += "\n\n[first message]\n" + first;
-  }
+  const std::string request = RequestOf(app->agent->History());
   const std::string memo_key = tool.name + ":" + HashHex(raw_payload);
   std::optional<AutoPermissionReview> memoized;
   {
@@ -197,11 +217,8 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
       ++memo.refused;
     }
   }
-  review = {{"choice", ask ? "ask" : (allow ? "allow" : "deny")},
-            {"probabilities", std::move(decision.probabilities)},
-            {"reasons", std::move(decision.reasons)},
-            {"note", std::move(decision.note)}};
-  if (!decision.error.empty()) review["error"] = decision.error;
+  const std::string error = decision.error;
+  review = ReviewJson(std::move(decision));
   // An undecided review with nobody to ask is a denial.
   const bool decided = !ask || !InteractiveApprovalAvailable();
   if (decided) {
@@ -210,7 +227,7 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
         ask ? "the automatic permission review could not decide "
               "this action and nobody is here to ask"
             : "the automatic permission review refused this action";
-    if (!decision.error.empty()) verdict.refusal += " (" + decision.error + ")";
+    if (!error.empty()) verdict.refusal += " (" + error + ")";
   }
   if (!decided) return std::nullopt;
   return verdict;
@@ -327,7 +344,6 @@ Agent::Approver MakeApprover(AppContext* app) {
   auto memo = std::make_shared<ReviewMemo>();
   return [app, memo](const Tool& tool, const json& arguments,
                      int64_t turn) -> ApprovalOutcome {
-    static std::atomic<uint64_t> sequence{0};
     const std::string root = Workspace().path;
     const SandboxStatus& sandbox = SandboxRuntime();
     PolicyContext context{
@@ -406,7 +422,7 @@ Agent::Approver MakeApprover(AppContext* app) {
     }
     json review = json::object();
     std::string request_id =
-        "approval-" + std::to_string(sequence.fetch_add(1) + 1);
+        "approval-" + std::to_string(approvals.fetch_add(1) + 1);
     // Without a preview of its own, a call is approved as what it targets,
     // or as all of its arguments when nothing short names it.
     std::string raw_payload = tool.approval_preview
@@ -462,6 +478,81 @@ Agent::Approver MakeApprover(AppContext* app) {
       }
     }
     return {verdict.refusal, std::move(part)};
+  };
+}
+
+// In Auto a report is judged before the conversation that started its agent
+// reads it, against what that agent was asked.
+Agent::ReportJudge MakeReportJudge(AppContext* app) {
+  return [app](const std::string& sender, const std::string& report,
+               int64_t turn) -> std::string {
+    if (CurrentApprovalMode() != ApprovalMode::kAuto) return report;
+    // One at a time: the reviewer's client and a person's card are shared.
+    static std::mutex judging;
+    std::lock_guard lock(judging);
+    static const Tool kReport = [] {
+      Tool tool;
+      tool.name = "agent_report";
+      return tool;
+    }();
+    std::string error;
+    const std::optional<Conversation> agent = LoadConversation(sender, error);
+    AutoPermissionReview decision = ReviewPermission(
+        app->runtime.permission_api,
+        ResolveReviewRoute(app->runtime.api, app->provider.providers,
+                           app->runtime.config.permission_model),
+        app->runtime.side_usage,
+        {.tool = kReport,
+         .preview = report,
+         .user_request = agent ? RequestOf(*agent) : std::string(),
+         .session_id = app->agent->SessionId(),
+         .turn = turn,
+         .questions = ReportQuestions()});
+    const std::string id = SessionIdFor(sender);
+    const std::string request_id =
+        "approval-" + std::to_string(approvals.fetch_add(1) + 1);
+    const bool ask = decision.decision == AutoPermissionDecision::kAsk;
+    const bool asked = ask && InteractiveApprovalAvailable();
+    bool delivered = decision.decision == AutoPermissionDecision::kAllow;
+    std::string withheld =
+        decision.error.empty() ? decision.note : decision.error;
+    if (asked) {
+      Emit(Event{EventId::kApprovalRequested,
+                 {{"id", request_id},
+                  {"tool", kReport.name},
+                  {"preview", TerminalSafe(report)},
+                  {"risks", decision.reasons},
+                  {"source", "report"},
+                  {"reason",
+                   "An agent's report looks like it instructs this "
+                   "conversation: " +
+                       withheld},
+                  {"rule", ""}}});
+      delivered =
+          Confirm({.id = request_id,
+                   .kind = "approval",
+                   .prompt = "Deliver agent " + id + "'s report?",
+                   .options = json::array(
+                       {{{"value", kAllowOnce}, {"label", "Deliver"}},
+                        {{"value", kDenyOnce}, {"label", "Withhold"}}})});
+      withheld = "the person withheld it";
+    } else if (ask) {
+      withheld += "; nobody is here to ask";
+    }
+    Emit(Event{EventId::kApprovalResolved,
+               {{"id", request_id},
+                {"tool", kReport.name},
+                {"effect", delivered ? "allow" : "deny"},
+                {"source", "report"},
+                {"asked", asked},
+                {"reason", delivered ? std::string() : withheld},
+                {"rule", ""},
+                {"mode", ApprovalModeName(ApprovalMode::kAuto)},
+                {"review", ReviewJson(std::move(decision))}}});
+    return delivered
+               ? report
+               : "[agent " + id +
+                     " finished; its report was withheld: " + withheld + "]";
   };
 }
 

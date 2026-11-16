@@ -13,9 +13,13 @@
 
 namespace uagent {
 // agent_start is added only while agents.depth allows; `own_model` names the
-// model an agent starts on unless told otherwise.
-void AddAgentTools(std::vector<Tool>& tools, const Api& api,
-                   std::function<std::string()> own_model);
+// model an agent starts on unless told otherwise; `judge_report` is what a
+// wait returns of a report (Agent::ReportJudge).
+void AddAgentTools(
+    std::vector<Tool>& tools, const Api& api,
+    std::function<std::string()> own_model,
+    std::function<std::string(const std::string&, const std::string&, int64_t)>
+        judge_report);
 
 // Whether an agent of the session at `path` works or has not begun, or mail
 // from one is not yet acknowledged. One waiting on a person does not count.

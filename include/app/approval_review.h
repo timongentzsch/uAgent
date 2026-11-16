@@ -33,19 +33,27 @@ struct AutoPermissionReview {
   std::string error;
 };
 
-// The questions every review asks, as tests/reviewer_eval/questions.json.
+// The questions every review of a call asks, as
+// tests/reviewer_eval/questions.json.
 const json& ReviewQuestions();
+
+// The questions an agent's report is judged by, as
+// tests/reviewer_eval/questions-report.json: allow delivers it, ask holds it
+// for a person, deny withholds it.
+const json& ReportQuestions();
 
 // The `decision_bars` row for `model` at `endpoint`, else the strict bars.
 ReviewBars ReviewBarsFor(const Endpoint& endpoint, const std::string& model);
 
-// The verdict the answers of a decisions request give under `bars`.
-AutoPermissionReview JudgeAnswers(const json& answers, const ReviewBars& bars);
+// The verdict the answers to `questions` give under `bars`.
+AutoPermissionReview JudgeAnswers(const json& answers, const ReviewBars& bars,
+                                  const json& questions = ReviewQuestions());
 
 struct ReviewedCall {
   const Tool& tool;
   std::string preview, user_request, session_id;
   int64_t turn = 0;
+  const json& questions = ReviewQuestions();
 };
 
 // Asks the decision model `route` names; with no endpoint for one, it asks.

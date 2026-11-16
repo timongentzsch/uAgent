@@ -347,7 +347,7 @@ TEST_CASE(TestImportFromOtherAgents) {
   UsageAccumulator tool_usage;
   registered.push_back(WebFetchTool(tool_api));
   registered.push_back(WebSearchTool(tool_api, tool_usage, {}));
-  AddAgentTools(registered, tool_api, [] { return std::string(); });
+  AddAgentTools(registered, tool_api, [] { return std::string(); }, {});
   for (const char* vendor : {"Bash", "exec_command", "shell", "Read", "Write",
                              "Edit", "MultiEdit", "apply_patch", "Grep", "Glob",
                              "WebFetch", "WebSearch", "Task", "Agent"}) {

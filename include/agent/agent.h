@@ -111,6 +111,11 @@ class Agent {
   using KeepFile =
       std::function<json(const std::string& path, const std::string& name)>;
   void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
+  // What this conversation reads of an agent's report: the report, or why
+  // it was withheld. `sender` is the agent's session file.
+  using ReportJudge = std::function<std::string(
+      const std::string& sender, const std::string& report, int64_t turn)>;
+  void JudgeReports(ReportJudge judge) { judge_report_ = std::move(judge); }
   // An agent's role ({agent}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
   void RetainExchanges(bool enabled) {
@@ -412,6 +417,7 @@ class Agent {
   size_t schema_bytes_ = 0;
   Approver approve_;
   ToolRefresher refresh_tools_;
+  ReportJudge judge_report_;
   ProjectInstructions project_instructions_;
   std::vector<Skill> skills_;
   // Read once: a later edit must not rewrite a running conversation's prefix.

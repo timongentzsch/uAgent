@@ -197,9 +197,12 @@ std::vector<Tool> BuildTools(AppContext& context,
                         RemoteWorkspace() ? json(nullptr) : trusted_snapshot);
     if (!error.empty()) return {};
   }
-  AddAgentTools(tools, api, [app = &context] {
-    return ChosenSelection(app->runtime.api, app->provider.providers);
-  });
+  AddAgentTools(
+      tools, api,
+      [app = &context] {
+        return ChosenSelection(app->runtime.api, app->provider.providers);
+      },
+      MakeReportJudge(&context));
   ApplyToolPolicy(tools, context.tool_policy);
   // An agent that may not edit has no tool that edits, whatever its
   // conversation's settings allow; its commands only read (session_worker.cc).

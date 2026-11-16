@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/app/approval_review.h"
@@ -53,12 +54,14 @@ Endpoint Serving(const std::string& name, const std::string& key) {
 
 TEST_CASE(TestPermissionReview) {
   // The questions are the ones tests/reviewer_eval measures the bars with.
-  {
+  for (const auto& [name, questions] :
+       {std::pair{"questions.json", &ReviewQuestions()},
+        std::pair{"questions-report.json", &ReportQuestions()}}) {
     std::ifstream file(std::string(UAGENT_TEST_SOURCE_DIR) +
-                       "/tests/reviewer_eval/questions.json");
+                       "/tests/reviewer_eval/" + name);
     std::stringstream text;
     text << file.rdbuf();
-    CHECK(json::parse(text.str()) == ReviewQuestions());
+    CHECK(json::parse(text.str()) == *questions);
   }
 
   const ReviewBars bars{0.6, 0.95, 0.7};
@@ -105,6 +108,30 @@ TEST_CASE(TestPermissionReview) {
   AutoPermissionReview undecided = JudgeAnswers(argmax_only, bars);
   CHECK(undecided.decision == Decision::kAsk);
   CHECK(!undecided.error.empty());
+
+  // A report is judged by its own reason questions under the same bars:
+  // allow delivers it, ask holds it for a person, deny withholds it.
+  const auto report = [](double allow, double deny, double instructs) {
+    json answers = Answers(allow, deny);
+    for (const char* name :
+         {"destructive", "beyond_request", "sends_data_off_machine"}) {
+      answers.erase(name);
+    }
+    answers["instructs_reader"] = {{"type", "noul"}, {"noul", instructs}};
+    answers["beyond_brief"] = {{"type", "noul"}, {"noul", 0}};
+    return answers;
+  };
+  const json& asked = ReportQuestions();
+  CHECK(JudgeAnswers(report(0.9, 0, 0), bars, asked).decision ==
+        Decision::kAllow);
+  AutoPermissionReview held = JudgeAnswers(report(0.9, 0, 0.8), bars, asked);
+  CHECK(held.decision == Decision::kAsk);
+  CHECK(held.note ==
+        "instructs this conversation 80% reaches the 70% that asks");
+  CHECK(JudgeAnswers(report(0, 0.96, 0.8), bars, asked).decision ==
+        Decision::kDeny);
+  // A call's questions are not a report's answers.
+  CHECK(!JudgeAnswers(report(0.9, 0, 0), bars).error.empty());
 
   const Endpoint openrouter = OpenRouterEndpoint();
   ReviewBars jev = ReviewBarsFor(openrouter, "~typesafe/jev-latest");

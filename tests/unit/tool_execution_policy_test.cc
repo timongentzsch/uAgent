@@ -344,7 +344,7 @@ TEST_CASE(TestActionRequiresDeclarations) {
   ActivitySupervisor supervisor;
   std::vector<Tool> tools = BuiltinTools(supervisor);
   const Api api(RuntimeConfig{});
-  AddAgentTools(tools, api, [] { return std::string(); });
+  AddAgentTools(tools, api, [] { return std::string(); }, {});
   tools.push_back(BrowserTool("cccccccccccccccccccccccccccccccc",
                               [](const std::string&, const std::string&,
                                  bool*) { return std::string(); }));
@@ -386,7 +386,7 @@ TEST_CASE(TestActionRequiresDeclarations) {
 TEST_CASE(TestPayloadToolsRequireTheirPayload) {
   std::vector<Tool> tools;
   const Api api(RuntimeConfig{});
-  AddAgentTools(tools, api, [] { return std::string(); });
+  AddAgentTools(tools, api, [] { return std::string(); }, {});
   const std::vector<std::pair<std::string, std::string>> expected = {
       {"agent_start", R"(["brief"])"}, {"agent_send", R"(["id","text"])"}};
   for (const auto& [name, required] : expected) {
@@ -467,7 +467,7 @@ TEST_CASE(TestRemoteAgentDiffIsQuotedData) {
   std::ofstream(agent) << header << "\n";
   std::vector<Tool> tools;
   const Api api(RuntimeConfig{});
-  AddAgentTools(tools, api, [] { return std::string(); });
+  AddAgentTools(tools, api, [] { return std::string(); }, {});
   json asked;
   SetWorkspace({"host", folder});
   SetWorkspaceRequest([&](const json& request) {

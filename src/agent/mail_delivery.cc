@@ -43,7 +43,7 @@ bool Agent::DeliverMail() {
                                 mail.id) != delivered_mail_.end();
     // The sender labels its text; it is never the user's. Trimmed as input
     // is, so the message it becomes is known for this mail's.
-    const std::string text = Trim(JsonValue(mail.body, "text", ""));
+    std::string text = Trim(JsonValue(mail.body, "text", ""));
     // Mail that changes nothing has no save to be acknowledged by: one
     // without text, or one a save already holds.
     if ((text.empty() || seen) &&
@@ -64,6 +64,7 @@ bool Agent::DeliverMail() {
     if (mail.body.contains("agent")) {
       origin["kind"] = "agent";
       origin["agent"] = mail.body["agent"];
+      if (judge_report_) text = judge_report_(mail.sender_path, text, turn_id_);
     }
     Arrive(text, std::move(origin));
     DebugLog("mail_delivered", {{"id", mail.id},

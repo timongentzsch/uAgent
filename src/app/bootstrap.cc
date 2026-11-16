@@ -462,6 +462,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       context->runtime.side_usage, MakeApprover(app), MakeToolRefresher(app),
       std::move(instructions), std::move(skills));
   context->agent->SetSessionRole(context->options.session);
+  context->agent->JudgeReports(MakeReportJudge(app));
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->OpenEditJournal(context->channel->SessionPath() +
                                     kSessionEditsSuffix);

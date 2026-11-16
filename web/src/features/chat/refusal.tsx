@@ -4,6 +4,7 @@ import { Button } from "../../shared/ui.tsx";
 import { cleanText } from "../../shared/display.ts";
 import { HostContext } from "../../state/host-context.ts";
 import { useApi } from "../../state/api.ts";
+import { useAction } from "../../shared/use-action.ts";
 import { headlineOf } from "../../shared/tree.ts";
 
 export const refusalOf = (node: Node) =>
@@ -25,7 +26,9 @@ export function Refusal({
   const { command } = useApi();
   const host = useContext(HostContext);
   const [allowed, setAllowed] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const allowing = useAction({
+    report: (error) => host?.report(error, "inline"),
+  });
   const { offer } = part;
   return (
     <div class="refusal" role="note">
@@ -38,17 +41,11 @@ export function Refusal({
       </div>
       {offer ? (
         <Button
-          disabled={!online || busy || allowed}
+          disabled={!online || allowing.busy || allowed}
           onClick={async () => {
-            setBusy(true);
-            try {
-              await command("permissions", session, { allow: offer });
-              setAllowed(true);
-            } catch (error) {
-              host?.report(error, "inline");
-            } finally {
-              setBusy(false);
-            }
+            const allow = () =>
+              command("permissions", session, { allow: offer });
+            if (await allowing.run(allow)) setAllowed(true);
           }}
         >
           {allowed

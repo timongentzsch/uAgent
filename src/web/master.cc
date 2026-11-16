@@ -151,6 +151,13 @@ bool Gzip(const std::string& body, std::string& packed) {
   packed.resize(stream.total_out);
   return true;
 }
+
+// The browser instance a request names; the first when it names none.
+std::string InstanceId(const httplib::Request& request) {
+  return request.has_param("instance_id")
+             ? request.get_param_value("instance_id")
+             : "0";
+}
 }  // namespace
 
 namespace master {
@@ -674,10 +681,7 @@ void Master::RegisterBrowserRoutes() {
   server_.Get("/api/browser/status", [this](const Request& request,
                                             Response& response) {
     json status = browser::Request(
-        {{"op", "status"},
-         {"instance_id", request.has_param("instance_id")
-                             ? request.get_param_value("instance_id")
-                             : "0"}});
+        {{"op", "status"}, {"instance_id", InstanceId(request)}});
     // A runtime's status may carry its profile error; only a status the
     // service did not give lacks `ok`.
     if (!JsonValue(status, "ok", false)) {
@@ -694,10 +698,7 @@ void Master::RegisterBrowserRoutes() {
       "/api/browser/viewer",
       [this](const Request& request, httplib::ws::WebSocket& socket) {
         const std::string device = WebSocketDevice(request);
-        const std::string instance =
-            request.has_param("instance_id")
-                ? request.get_param_value("instance_id")
-                : "0";
+        const std::string instance = InstanceId(request);
         if (instance.size() != 1 || instance[0] < '0' || instance[0] > '4') {
           socket.close(httplib::ws::CloseStatus::PolicyViolation);
           return;

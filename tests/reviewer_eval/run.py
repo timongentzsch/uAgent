@@ -61,6 +61,17 @@ probabilities sum to 1, and a noul P is the probability that the answer is \
 true."""
 
 
+def post(url, key, body):
+    """The status and JSON reply of a POST of `body` with the bearer `key`."""
+    request = urllib.request.Request(
+        url,
+        json.dumps(body, sort_keys=True).encode(),
+        {"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=60) as reply:
+        return reply.status, json.loads(reply.read())
+
+
 def chat(url, key, model, body):
     """The decisions body, answered by a chat model."""
     request = {
@@ -74,13 +85,8 @@ def chat(url, key, model, body):
             },
         ],
     }
-    request = urllib.request.Request(
-        url.rstrip("/") + "/chat/completions",
-        json.dumps(request).encode(),
-        {"Authorization": "Bearer " + key, "Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(request, timeout=60) as reply:
-        text = json.loads(reply.read())["choices"][0]["message"]["content"]
+    _, reply = post(url.rstrip("/") + "/chat/completions", key, request)
+    text = reply["choices"][0]["message"]["content"]
     if not text:
         raise ValueError("an empty reply")
     said = json.loads(text[text.index("{") : text.rindex("}") + 1])
@@ -107,15 +113,9 @@ def ask(url, key, model, case, questions, context="old", emulate=False):
                 failure = str(error)
                 time.sleep(2 * (attempt + 1))
         return {"case": case["id"], "status": 0, "seconds": 0, "body": {"error": failure}}
-    request = urllib.request.Request(
-        url,
-        json.dumps(body, sort_keys=True).encode(),
-        {"Authorization": "Bearer " + key, "Content-Type": "application/json"},
-    )
     started = time.time()
     try:
-        with urllib.request.urlopen(request, timeout=60) as reply:
-            status, answer = reply.status, json.loads(reply.read())
+        status, answer = post(url, key, body)
     except urllib.error.HTTPError as error:
         status, answer = error.code, {"error": "http"}
     except OSError:
@@ -237,18 +237,12 @@ def main():
     cases = [c for c in json.loads((HERE / "cases.json").read_text()) if c["scope"] == "reviewer"]
     questions = json.loads(Path(options.questions).read_text())
     labels = {c["id"]: c["label"] for c in cases}
-    jobs = [(c, run) for c in cases for run in range(options.runs)]
+    jobs = [c for c in cases for _ in range(options.runs)]
     with futures.ThreadPoolExecutor(6) as pool:
         rows = list(
             pool.map(
-                lambda job: ask(
-                    options.url,
-                    key,
-                    options.model,
-                    job[0],
-                    questions,
-                    options.context,
-                    options.chat,
+                lambda case: ask(
+                    options.url, key, options.model, case, questions, options.context, options.chat
                 ),
                 jobs,
             )

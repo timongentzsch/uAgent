@@ -1,43 +1,14 @@
 // A conversation starts in Scratch and is filed later, where its host
 // suggests: from the home screen, the list, or the conversation itself.
-import { mkdir, realpath } from "node:fs/promises";
 import {
   test,
   expect,
   online,
-  saveHistory,
   savedConversation,
+  unfiled,
 } from "./fixtures.js";
 
 test.use({ places: true });
-
-// A conversation saved in Scratch with the host's suggestion for it.
-async function unfiled(host, request, title, suggestion) {
-  const scratch = `${host.home}/.uagent/spaces/Scratch`;
-  await mkdir(`${scratch}/.uagent`, { recursive: true });
-  const id = crypto.randomUUID();
-  await saveHistory(host, `saved-${id}.json`, {
-    id,
-    title,
-    turns: 1,
-    cwd: await realpath(scratch),
-    suggestion,
-    messages: [
-      { role: "user", content: title },
-      { role: "assistant", content: "Done" },
-    ],
-  });
-  let found;
-  await expect
-    .poll(async () => {
-      const response = await request.get("/api/sessions?refresh=1");
-      const { sessions } = await response.json();
-      found = sessions.find((item) => item.title === title);
-      return !!found;
-    })
-    .toBe(true);
-  return found;
-}
 
 test("on a phone the home screen lists the latest above a docked start box, with long titles cut and room to type", async ({
   page,

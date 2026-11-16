@@ -19,7 +19,6 @@
 #include "include/app/approval_policy.h"
 #include "include/app/approval_review.h"
 #include "include/app/permissions.h"
-#include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -106,8 +105,6 @@ ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
   }
   return ApprovalAnswer::kGuidance;
 }
-
-bool WrapsCommands(const Tool& tool) { return tool.name == "run"; }
 
 // Why a mandatory call needs a person. A tool that escalates for its own
 // reason names it; otherwise its path did, by reaching µAgent's
@@ -215,12 +212,12 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
             : "the automatic permission review refused this action";
     if (!decision.error.empty()) verdict.refusal += " (" + decision.error + ")";
   }
-  DebugLog("permission_review", {{"tool", tool.name}, {"result", review}});
   if (!decided) return std::nullopt;
   return verdict;
 }
 
-// Why a person is asked, in a line: the stage of the order that asked.
+// Why a person is asked, or a call refused without asking, in a line: the
+// stage of the order that decided.
 std::string AskReason(ApprovalSource source, const ApprovalFacts& facts,
                       const PolicyContext& context, const std::string& rule,
                       const std::string& mandatory, const json& review,
@@ -228,6 +225,8 @@ std::string AskReason(ApprovalSource source, const ApprovalFacts& facts,
   switch (source) {
     case ApprovalSource::kMandatory:
       return "Needs you in every mode: " + mandatory + ".";
+    case ApprovalSource::kDenyRule:
+      return "A rule of this folder refuses it: " + rule;
     case ApprovalSource::kAskRule:
       return "A rule of this folder asks for it: " + rule + ".";
     case ApprovalSource::kReview: {
@@ -341,7 +340,7 @@ Agent::Approver MakeApprover(AppContext* app) {
                         .mutates = ToolMutates(tool, arguments),
                         .executes = (tool.capabilities &
                                      Capability(ToolCapability::kExecute)) != 0,
-                        .command = WrapsCommands(tool)};
+                        .command = tool.name == "run"};
     const bool mandatory = facts.required == ApprovalClass::kMandatoryHuman;
     if (context.mode == ApprovalMode::kPlan) {
       constexpr uint32_t kFiles = Capability(ToolCapability::kInspect) |
@@ -433,17 +432,10 @@ Agent::Approver MakeApprover(AppContext* app) {
           source == ApprovalSource::kAskRule ? rule : std::string(), review);
       memo->Answered();
     }
-    const char* effect = verdict.granted ? "allow" : "deny";
-    DebugLog("approval", {{"tool", tool.name},
-                          {"effect", effect},
-                          {"source", ApprovalSourceName(source)},
-                          {"asked", !automatic},
-                          {"mode", ApprovalModeName(CurrentApprovalMode())},
-                          {"review", review}});
     Emit(Event{EventId::kApprovalResolved,
                {{"id", request_id},
                 {"tool", tool.name},
-                {"effect", effect},
+                {"effect", verdict.granted ? "allow" : "deny"},
                 {"source", ApprovalSourceName(source)},
                 {"asked", !automatic},
                 {"reason", verdict.granted ? std::string() : verdict.refusal},
@@ -458,10 +450,8 @@ Agent::Approver MakeApprover(AppContext* app) {
                       source == ApprovalSource::kDenyRule)) {
       part = {{"kind", "refusal"},
               {"source", ApprovalSourceName(source)},
-              {"reason", source == ApprovalSource::kDenyRule
-                             ? "A rule of this folder refuses it: " + rule
-                             : AskReason(source, facts, context, rule, "",
-                                         review, false)},
+              {"reason",
+               AskReason(source, facts, context, rule, "", review, false)},
               {"rule", rule}};
       if (source == ApprovalSource::kReview) {
         part["offer"] = {{"tool", tool.name},

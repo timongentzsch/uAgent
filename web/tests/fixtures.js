@@ -1,7 +1,7 @@
 import { test as base, expect } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 export { expect };
@@ -243,9 +243,16 @@ export async function saveHistory(
 
 // A saved conversation with one exchange, as the host lists it: the list
 // leaves out an empty one unless it is open.
-export async function savedConversation(host, request, title, reply = "Done") {
+export async function savedConversation(
+  host,
+  request,
+  title,
+  reply = "Done",
+  fields = {},
+) {
   const id = crypto.randomUUID();
   await saveHistory(host, `saved-${id}.json`, {
+    ...fields,
     id,
     title,
     turns: 1,
@@ -264,6 +271,16 @@ export async function savedConversation(host, request, title, reply = "Done") {
     })
     .toBe(true);
   return found;
+}
+
+// A conversation saved in Scratch with the host's suggestion for it.
+export async function unfiled(host, request, title, suggestion) {
+  const scratch = `${host.home}/.uagent/spaces/Scratch`;
+  await mkdir(`${scratch}/.uagent`, { recursive: true });
+  return savedConversation(host, request, title, "Done", {
+    cwd: await realpath(scratch),
+    suggestion,
+  });
 }
 
 // Opens the conversation menu's More view, with the menu already open.

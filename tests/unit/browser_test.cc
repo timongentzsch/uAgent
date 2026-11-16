@@ -320,6 +320,14 @@ TEST_CASE(TestBrowserWaitsForChrome) {
   fs::remove(fake.data / "chrome/status");
   CHECK(says(fake.Act({{"op", "observe"}, {"image", false}}).value("error", ""),
              "Google Chrome is not installed"));
+  // A takeover that cannot start Chrome leaves nobody in control.
+  CHECK(fake.runtime
+            .Execute({{"op", "takeover"},
+                      {"device", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})
+            .contains("error"));
+  const json after = fake.runtime.Execute({{"op", "status"}});
+  CHECK(after.value("mode", "") == "idle");
+  CHECK(after.value("viewer", "x").empty());
 }
 
 // Scheduling is independent of page execution: FIFO admission, explicit

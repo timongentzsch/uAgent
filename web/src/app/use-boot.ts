@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
+import { failure } from "../shared/types.ts";
 import type { InstallPrompt, Report } from "../shared/types.ts";
 import { stored } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
@@ -35,7 +36,8 @@ export function useBoot({
       authenticated === true && online
         ? api(routes.browserStatus, undefined, { signal }).then(
             () => true,
-            () => false,
+            // The browser exists while its service only restarts.
+            (error) => failure(error).status === 503,
           )
         : undefined,
     [authenticated, online],

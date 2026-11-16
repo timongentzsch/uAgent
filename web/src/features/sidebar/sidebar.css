@@ -129,9 +129,11 @@
   flex: none;
   white-space: nowrap;
 }
-/* The place's name keeps its room up to a part of the row. */
+/* The place's name keeps up to a part of the row, and gives way before the
+   title does. */
 .session-tag {
-  flex: none;
+  flex: 0 1000 auto;
+  min-width: var(--control);
   max-width: 40%;
 }
 /* At rest a row's menu waits over its end, unseen; pointed at or focused,
@@ -243,13 +245,15 @@
 }
 .sidebar-pages {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--gap);
   border-top: var(--border);
   padding-top: var(--space-2);
 }
-/* raw: two equal halves of the list's foot. */
+/* raw: two equal halves of the list's foot, one over the other when the
+   list is too narrow for both. */
 .sidebar-pages button {
-  flex: 1;
+  flex: 1 1 auto;
   font-size: var(--font-small);
 }
 /* In the sheet a narrow screen holds the list in, Home, Search and New are
@@ -339,12 +343,15 @@
   justify-content: flex-start;
   font-size: var(--font-small);
 }
-.host-row > .truncate {
-  flex: 1;
+/* The host's name stays whole; its status is cut short first. */
+.host-row > .host-name {
+  flex: none;
+  max-width: 100%;
   text-align: left;
 }
-.host-phase {
-  flex: none;
+.host-row > .host-phase {
+  flex: 1;
+  text-align: right;
 }
 @media (pointer: coarse) {
   .sidebar .host-row,

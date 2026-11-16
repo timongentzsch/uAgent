@@ -223,6 +223,11 @@ def test_web_files_stay_inside_the_folder(root, home, *, binary):
                 assert_true(status == 404 and value == {"error": "not found"}, (query, value))
             status, value, _ = client.json(f"/api/sessions/{'0' * 32}/files?list=")
             assert_true(status == 404 and value["error"] == "unknown session", value)
+            status, value, _ = client.json(
+                f"/api/sessions/{'0' * 32}/files", {"path": "notes.txt", "text": ""}
+            )
+            assert_true(status == 404 and value["error"] == "unknown session", value)
+            assert_true(client.json(endpoint, ["not", "an", "object"])[0] == 400, "bad body")
             anonymous = WebClient(client.port)
             assert_true(
                 anonymous.request(endpoint + urlencode({"read": "notes.txt"}))[0] == 401,

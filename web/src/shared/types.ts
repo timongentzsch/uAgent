@@ -437,7 +437,7 @@ export interface Session {
   updated?: number;
   incoming?: number;
   turn_active?: boolean;
-  pending?: boolean;
+  needs_you?: boolean;
   // What it waits on you for: "approval", "ask", …, and its prompt.
   pending_prompt?: string;
   turn_status?: string;

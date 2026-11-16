@@ -44,9 +44,12 @@ void Master::Command(const Request& request, Response& response) {
     return;
   }
   std::string request_id = JsonValue(command, "request_id", "");
-  if (!command.is_object() || !OpaqueId(request_id) ||
-      JsonValue(command, "v", 0) != kProtocol) {
-    Error(response, "invalid command or protocol; refresh the app", 409);
+  if (!command.is_object() || !OpaqueId(request_id)) {
+    Error(response, "invalid command");
+    return;
+  }
+  if (JsonValue(command, "v", 0) != kProtocol) {
+    Error(response, "protocol differs; refresh the app", 409);
     return;
   }
   UniqueLock lock(mutex_);
@@ -86,7 +89,7 @@ void Master::Command(const Request& request, Response& response) {
   // request ids are single-use receipts and reuse is rejected above.
   std::string target = JsonValue(command, "target_id", "");
   if ((kind == "recall" || kind == "insert") && !OpaqueId(target)) {
-    Error(response, "command needs a queued guidance id", 409);
+    Error(response, "command needs a queued guidance id");
     return;
   }
   // Reserve before releasing the mutex for any pipe write or process join.
@@ -241,6 +244,11 @@ void Master::RestartHost(CommandCall& call) {
 // beside the host, which restarts itself when the files are replaced.
 void Master::UpdateCommand(CommandCall& call) {
   const std::string action = JsonValue(call.command, "action", "show");
+  if (action != "show" && action != "check" && action != "apply" &&
+      action != "chrome") {
+    call.error = "unknown update action";
+    return;
+  }
   if (action == "apply") {
     std::lock_guard lock(update_mutex_);
     if (JsonValue(update_, "installing", false)) {

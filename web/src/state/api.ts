@@ -45,7 +45,7 @@ const localRoutes = {
   libraryDelete: "/api/library/delete",
   // Rows that contain q, in every conversation or, with a session, in one.
   search: (q: string, session?: string) =>
-    `/api/search?q=${encodeURIComponent(q)}${session ? `&session=${session}` : ""}`,
+    `/api/search?q=${encodeURIComponent(q)}${session ? `&session_id=${session}` : ""}`,
   // The conversation's folder, read only: `list`, `read`, `find`, `changes`
   // and `diff` answer JSON, `raw` is the file itself.
   files: (

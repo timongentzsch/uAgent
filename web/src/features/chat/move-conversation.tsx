@@ -46,7 +46,7 @@ export default function MoveConversation({
   const places = new Set(moving.map(folderOf));
   const current = places.size === 1 ? [...places][0] : "";
   const family = moving.flatMap((item) => familyOf(sessions, item));
-  const running = family.filter((item) => item.turn_active || item.pending);
+  const running = family.filter((item) => item.turn_active || item.needs_you);
   const typed = query.trim().startsWith("/") ? query.trim() : "";
   const target = chosen || typed;
   const folders = [

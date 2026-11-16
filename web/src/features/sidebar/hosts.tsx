@@ -329,8 +329,8 @@ export function HostList() {
                       : "idle"
                   }
                 />
-                <span class="truncate">{source.name}</span>
-                <span class="host-phase caption">
+                <span class="host-name truncate">{source.name}</span>
+                <span class="host-phase caption truncate">
                   {status(source)}
                   {source.phase === "connected" && source.round_trip_ms != null
                     ? ` · ${Math.round(source.round_trip_ms)} ms`

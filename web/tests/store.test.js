@@ -120,7 +120,7 @@ test("the list leaves out empty conversations that are neither open nor busy", a
     { id: "empty", turns: 0 },
     { id: "open", turns: 0 },
     { id: "working", turns: 0, turn_active: true },
-    { id: "asking", turns: 0, pending: true },
+    { id: "asking", turns: 0, needs_you: true },
     { id: "agent", turns: 0, parent: "said" },
     { id: "unknown" },
   ];

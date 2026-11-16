@@ -536,6 +536,8 @@ def test_web_update_is_checked_installed_and_restarts_the_host(root, home, *, bi
                 (shown["install"], shown["available"], shown["apply"]) == ("release", False, False),
                 shown,
             )
+            status, refused = client.send("update", action="upgrade")
+            assert_true(status == 409 and refused["error"] == "unknown update action", refused)
             checked = client.command("update", action="check")["result"]
             assert_true(
                 (checked["latest"], checked["available"], checked["apply"], checked["blocked"])

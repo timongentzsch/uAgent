@@ -84,11 +84,11 @@ def test_web_search_finds_rows_across_conversations(root, home, *, binary):
                     (query, value),
                 )
             # Within one conversation, every row, each with its sequence.
-            status, value = search(q="quokka", session=ids["many"])
+            status, value = search(q="quokka", session_id=ids["many"])
             assert_true(status == 200 and len(value["hits"]) == 8 and not value["truncated"], value)
             sequences = [hit["sequence"] for hit in value["hits"]]
             assert_true(sequences == sorted(sequences), sequences)
-            status, value = search(q="quokka", session="f" * 16)
+            status, value = search(q="quokka", session_id="f" * 16)
             assert_true(status == 404, value)
             status, value = search(q="q")
             assert_true(status == 400, value)

@@ -159,11 +159,7 @@ json Runtime::Control(const std::string& op, const json& command) {
     const bool setup = profile_setup_ || op == "setup_profile";
     if (setup && !profile_setup_) Stop(true);
     std::string error;
-    if (!Start(error, setup)) {
-      viewer_ = device;
-      mode_ = "human";
-      return {{"error", error}};
-    }
+    if (!Start(error, setup)) return {{"error", error}};
     viewer_ = device;
     mode_ = "human";
     observation_.clear();
@@ -207,13 +203,9 @@ json Runtime::Control(const std::string& op, const json& command) {
       const std::string controller = viewer_;
       Stop(true);
       std::string error;
-      const bool started = Start(error);
+      if (!Start(error)) return {{"error", error}};
       viewer_ = controller;
       mode_ = "human";
-      if (!started) {
-        profile_setup_ = true;
-        return {{"error", error}};
-      }
     }
     if (op == "prepare_done") return Status();
   }

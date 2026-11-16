@@ -169,12 +169,15 @@ void Master::Files(const Request& request, Response& response) {
 void Master::FileWrite(const Request& request, Response& response) {
   const std::string id = request.matches[1].str();
   const WorkspaceIdentity workspace = host_.WorkspaceOf(id);
+  if (workspace.path.empty()) {
+    Error(response, "unknown session", 404);
+    return;
+  }
   const json body = request.body.size() > kFileViewBytes + KiB(64)
                         ? json()
                         : json::parse(request.body, nullptr, false);
-  if (workspace.path.empty() || !body.is_object()) {
-    Error(response,
-          workspace.path.empty() ? "unknown session" : "invalid request", 400);
+  if (!body.is_object()) {
+    Error(response, "invalid request");
     return;
   }
   // Only these fields travel: a browser never names a request's identity.

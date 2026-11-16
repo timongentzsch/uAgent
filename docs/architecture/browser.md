@@ -89,7 +89,7 @@ pending. `setup_profile` restarts Chrome without the debugging pipe for a
 manual sign-in; `done` restarts it with the pipe. Profile changes need
 control or a stopped Chrome.
 
-**Viewer.** `/api/browser/viewer?instance=N` ([Web host](web-host.md))
+**Viewer.** `/api/browser/viewer?instance_id=N` ([Web host](web-host.md))
 relays the raw RFB stream of that instance's `display.sock`. Every 250 ms
 the relay asks the service whether this device controls the display.
 `RfbInputFilter` passes display messages always and key, pointer and

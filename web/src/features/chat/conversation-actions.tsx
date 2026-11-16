@@ -22,7 +22,7 @@ export async function deleteConversation(
   } catch (failure) {
     // Nothing to stop (already closed, or owned elsewhere): only a
     // stale-worker refusal goes on to delete; anything else is the error.
-    if (!/stale worker generation/i.test(String(failure))) throw failure;
+    if (!/stale generation/i.test(String(failure))) throw failure;
   }
   const closed = { ...session, generation: "" };
   let lastError: unknown = null;

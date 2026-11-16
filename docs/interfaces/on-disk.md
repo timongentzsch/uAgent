@@ -112,9 +112,12 @@ the user's, or open to others is refused (`EnsurePrivateDirectory`).
 
 Versioned files: `settings.json` and session files (`format` 3), the
 journal (`uagent.session.event.v1`), mail and move files (`format` 1),
-`permissions.json` (`version` 3). Only the current version is read and
+`permissions.json` (`version` 3), and each folder's record in
+`trusted-projects.json` (`format` 3). Only the current version is read and
 nothing is migrated; a `permissions.json` of another version is refused
-with a message naming it, and no rule of it applies until it is removed. Paths not listed here are not contract.
+with a message naming it, and no rule of it applies until it is removed; a
+trust record of another format trusts nothing, so the folder's `.mcp.json`
+needs trusting again. Paths not listed here are not contract.
 
 ## Source and tests
 

@@ -30,8 +30,9 @@ Session metadata (`SessionHost::Metadata`): `id`, `generation`, `cwd`,
 `host`, `parent`, `title`, `model`, `status` (`draft`, `saved`,
 `starting`, `interrupted`, `failed`, `closing`, `updating`, `deleting`,
 `waiting`, `running`, `processing`, `idle`), `presence` (`active` or `""`),
-`turn_active`, `pending`, `pending_kind`, `pending_prompt`, `updated` (ms),
-and display fields that are not contract.
+`turn_active`, `needs_you` (a decision waits on a person, not on a parent
+agent) with its `pending_kind` and `pending_prompt`, `updated` (ms), and
+display fields that are not contract.
 
 `GET /api/sessions/<id>` (`<id>` 16 to 64 hex digits) returns a snapshot:
 `v`, `epoch`, `cursor`, `metadata`, `state`, `pending`, and `live_truncated`
@@ -64,8 +65,10 @@ A file that does not load is 422.
 | … | | the kind's own fields |
 
 The body may be 64 KiB, or 1 MiB (`kFrameBytes`) for `memory`, `skills`
-and `instructions`. A conversation command without `generation` starts the
-runtime first; one with a stale `generation` is refused.
+and `instructions`. A body that is not a command with a valid `request_id`,
+or `recall`/`insert` without `target_id`, is 400. A conversation command
+without `generation` starts the runtime first; one with a stale
+`generation` is refused.
 
 | Acts on | Kinds |
 | --- | --- |
@@ -75,13 +78,15 @@ runtime first; one with a stale `generation` is refused.
 | library | `memory`, `skills`, `schedule`, `import`, `instructions`, `permission_rules`, `models`, `provider`, `openrouter`: the [`--control`](headless.md#--control-json-) request; its reply is `result` |
 | browser | `browser` (`action` `takeover`, `done`, `stop`, `create_profile`, `select_profile`, `setup_profile`, `configure`, `viewport`; `instance_id`, `interaction_id`, `name`, `profile_id`, `viewport`, `parallel_capacity`) |
 | a conversation's lifecycle (host) | `create` (`cwd` or `space`), `activate`, `close`, `delete` (only when stopped), `move` (`cwd` or `space`) |
-| a conversation (runtime) | `submit` and `steer` (`text`, `attachment_ids`, `queue`), `reply` (`interaction_id`, `text`, `cancelled`), `interrupt`, `recall` and `insert` (`target_id`), `rename` (`title`), `keep`, `refresh`, `permissions` (`mode`), `activity`, `tools`, `model`, `config`, `context`, `revert` (`turn`, `path`), `fork` (`argument` or `message_id`), `share`, `side`, `escalate` |
+| a conversation (runtime) | `submit` and `steer` (`text`, `attachment_ids`, `queue`), `reply` (`interaction_id`, `text`, `cancelled`), `interrupt`, `recall` and `insert` (`target_id`), `rename` (`title`), `keep`, `refresh`, `permissions` (`mode`), `activity`, `tools`, `model`, `config`, `context`, `revert` (`turn`, `path`), `fork` (`argument` or `message_id`), `share`, `side` |
 
 A runtime command is forwarded with a host-made id
 (`SessionHost::ExecuteCommand`); `rename`, `keep`, `delete` and `fork` of a
 stopped conversation are done by the host on the file. `attachment_ids`
 names uploads (ids or `{id, name}`, at most 8, `kUploadCount`), which the
-host resolves before forwarding.
+host resolves before forwarding. `escalate`, which hands an agent's
+decision from its parent agent to the person, is sent by the agent link and
+the parent's tools, not by a client.
 
 The receipt has `request_id`, `accepted` (false with HTTP 409 and an
 `error`), `pending` (the runtime has not answered within 2 s), `result`
@@ -128,7 +133,7 @@ not contract; treat unknown kinds as a reason to reread.
 
 ## Files, previews and assets
 
-Under `/api/sessions/<id>/`; a path outside the folder or hidden is 404.
+Under `/api/sessions/<id>/`; an unknown conversation, or a path outside the folder or hidden, is 404.
 
 | Route | Request | Response |
 | --- | --- | --- |
@@ -154,16 +159,16 @@ page, and `~sheet/<file>` serves the sheet engine.
 | `GET /api/folders?path=<p>[&host=<id>]` | `entries` (directories), `more`, `path`, `parent` |
 | `GET /api/folder?path=<p>[&host=<id>]` | `spend`, `changed`, and `git` for a local folder; 404 when absent |
 | `GET /api/search?q=<≥2 chars>` | `hits` (`session_id`, `title`, `rows`, …), `scanned`, `truncated` |
-| `GET /api/search?q=…&session=<id>` | `hits` (up to 2,000 rows), `truncated` |
+| `GET /api/search?q=…&session_id=<id>` | `hits` (up to 2,000 rows), `truncated` |
 | `GET /api/library` | `places` (`path`, `name`, `workspace`, `session`), `items`, `limits` |
-| `POST /api/library/delete` | `{kind, key, place}` or `{kind: "file", key, session}`; `{}` |
+| `POST /api/library/delete` | `{kind, key, place}` or `{kind: "file", key, session_id}`; `{}` |
 | `GET /api/hosts` | `hosts`: `id`, `address`, `phase`, `error`, `installing`, `version`, `round_trip_ms` |
 | `POST /api/hosts` | `{action: add, address}` or `{action: connect\|reconnect\|disconnect, id}`, ≤ 4 KiB; `{id}` |
-| `GET /api/hosts/<32 hex>/ping` | `{round_trip_ms}` |
+| `GET /api/hosts/<32 hex>/ping` | `{round_trip_ms}`; 404 for an unknown host, 503 when it does not answer |
 | `POST /api/push/subscriptions` | body: a browser `PushSubscription` (`endpoint`, `keys.p256dh`, `keys.auth`), ≤ 8 KiB; replies with the capabilities: `push`, `push_reason`, `subscribed`, `vapid_public_key`; 422 when refused |
 | `DELETE /api/push/subscriptions` | no body; the capabilities |
 | `GET /api/user.css` | the person's stylesheet, `text/css`, ETag |
-| `GET /api/browser/status?instance=<0-4>` | the browser service status plus `controller`, `leased`; only with `UAGENT_BROWSER_DATA` |
+| `GET /api/browser/status?instance_id=<0-4>` | the browser service status plus `controller`, `leased`; 503 when the service does not answer; only with `UAGENT_BROWSER_DATA` |
 
 ## WebSockets
 
@@ -174,7 +179,7 @@ Both check `Origin` and the cookie, else close with policy violation.
   out are `{"type": "exit", "code"}` and `{"type": "replaced"}`. A message
   over 64 KiB, or any other text, ends the socket. A newer socket for the
   same shell replaces the older.
-- `/api/browser/viewer?instance=<0-4>`: binary frames carry an RFB (VNC)
+- `/api/browser/viewer?instance_id=<0-4>`: binary frames carry an RFB (VNC)
   session. Display messages always pass; keys, pointer and clipboard pass
   only while this device is the controller. One socket per instance.
 

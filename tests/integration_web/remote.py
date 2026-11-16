@@ -633,6 +633,8 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
             browsed = web.json("/api/folders?" + urlencode({"host": host, "path": str(project)}))
             assert_true(browsed[0] == 200 and browsed[1]["path"] == str(project.resolve()), browsed)
             assert_true(all(row["dir"] for row in browsed[1]["entries"]), browsed)
+            absent = web.json("/api/folder?" + urlencode({"host": host, "path": "/no/such"}))
+            assert_true(absent[0] == 404, absent)
             session = web.command("create", cwd=str(project), host=host)["session"]
             assert_true(session["host"] == host, session)
             session = web.command("activate", session)["session"]

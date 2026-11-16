@@ -166,7 +166,14 @@ def test_an_agent_not_waited_for_reports_to_its_parent_and_its_spend_counts(root
         (agent,) = agent_files(home)
         # Its ceiling is the parent's budget shared among the free slots.
         assert_true(header(agent)["agent"]["budget"] == 1 / 8, header(agent))
-        parent = next(p for p in agent.parent.glob("*.json") if p != agent)
+        # The agent names its parent; nothing else is saved beside them.
+        held = {p.name: header(p) for p in agent.parent.glob("*.json")}
+        (parent,) = [
+            p
+            for p in agent.parent.glob("*.json")
+            if fnv1a64(str(p)) == header(agent)["agent"]["parent"]
+        ]
+        assert_true(len(held) == 2, held)
         assert_true(header(parent)["cost"] >= 0.05, header(parent))
         # The report shows as the agent's, naming it beside its text.
         facts = json.loads(parent.read_text(encoding="utf-8").splitlines()[1])["display"]["facts"]

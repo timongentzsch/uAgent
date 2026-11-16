@@ -18,7 +18,7 @@ void Master::RegisterRemoteRoutes() {
     const json result = remotes_->Ping(request.matches[1].str());
     if (result.contains("error")) {
       Error(response, JsonValue(result, "error", "Measurement unavailable"),
-            503);
+            JsonValue(result, "status", 503));
     } else {
       Reply(response, result);
     }

@@ -1,7 +1,7 @@
 import type { Session } from "../shared/types.ts";
 
 export const waiting = (sessions: Session[]) =>
-  sessions.filter((item) => item.pending);
+  sessions.filter((item) => item.needs_you);
 
 // How many sessions need you: the tab title and the app badge show this
 // number, and the sidebar's Needs you lists them.
@@ -16,7 +16,7 @@ export const sessionById = (sessions: Session[], id?: string) =>
 export type SessionState = "waiting" | "failed" | "working" | "idle";
 
 export function statusOf(item: Session, online: boolean): SessionState {
-  if (online && item.pending) return "waiting";
+  if (online && item.needs_you) return "waiting";
   if (item.error) return "failed";
   return isRunning(item, online) ? "working" : "idle";
 }

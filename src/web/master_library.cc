@@ -108,7 +108,7 @@ void Master::LibraryDelete(const Request& request, Response& response) {
   const std::string key = JsonValue(body, "key", "");
   if (kind == "file") {
     const std::string error =
-        host_.DeleteShared(JsonValue(body, "session", ""), key);
+        host_.DeleteShared(JsonValue(body, "session_id", ""), key);
     if (error.empty()) {
       Reply(response, json::object());
     } else {

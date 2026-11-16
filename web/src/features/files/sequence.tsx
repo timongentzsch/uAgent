@@ -85,7 +85,7 @@ import {
   skipSlide,
 } from "./doc-edit.ts";
 import { downloadBlob, saveLink } from "../../shared/share.ts";
-import { Menu, MenuItem } from "../../shared/menu.tsx";
+import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
 import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
 import { useResource } from "../../shared/use-resource.ts";
 
@@ -483,7 +483,7 @@ export default function Sequence({
   const asked = useRef("");
   const act = (command: string, value?: string) => {
     asked.current = command;
-    tell(frame.current, { type: "do", command, value });
+    tell(frame.current, { type: "do", command, value, tab: index });
     if (TAB_AFTER[command]) setPart(TAB_AFTER[command](index, boards.length));
   };
   // Its size as a picture: an artboard's, or a page's full height.
@@ -767,6 +767,17 @@ export default function Sequence({
       )}
     </div>
   );
+  const exportItems = exports.map(
+    (item) =>
+      item && (
+        <MenuItem key={item[0]} onClick={item[1]}>
+          {item[0]}
+        </MenuItem>
+      ),
+  );
+  const draw = () =>
+    png &&
+    settle().then(() => view({ src: png(1), name: `${stem}.png`, edit: true }));
   return (
     <div class="open-page">
       {failure && (
@@ -808,49 +819,59 @@ export default function Sequence({
             () => setTweaking(!tweaking),
             <SlidersHorizontal />,
           )}
-        {!sheet &&
-          toggle("Find", finding, () => setFinding(!finding), <Search />, true)}
-        {!sheet && (
-          <IconButton label="Present" onClick={() => present(true)}>
-            <Presentation />
-          </IconButton>
-        )}
-        {drawn && (
-          <IconButton
-            label="Draw on it"
-            disabled={!png}
-            onClick={() =>
-              png &&
-              settle().then(() =>
-                view({ src: png(1), name: `${stem}.png`, edit: true }),
-              )
+        {/* raw: a narrow pane folds the tools after Edit into one menu. */}
+        <span class="page-tools-wide">
+          {!sheet &&
+            toggle(
+              "Find",
+              finding,
+              () => setFinding(!finding),
+              <Search />,
+              true,
+            )}
+          {!sheet && (
+            <IconButton label="Present" onClick={() => present(true)}>
+              <Presentation />
+            </IconButton>
+          )}
+          {drawn && (
+            <IconButton label="Draw on it" disabled={!png} onClick={draw}>
+              <PenLine />
+            </IconButton>
+          )}
+          <Menu
+            label="Export"
+            trigger={
+              <>
+                <FileOutput />
+                Export
+                <ChevronDown />
+              </>
             }
           >
-            <PenLine />
+            {exportItems}
+          </Menu>
+          <IconButton label="Open alone" onClick={() => open(src)}>
+            <ExternalLink />
           </IconButton>
-        )}
-        <Menu
-          label="Export"
-          trigger={
-            <>
-              <FileOutput />
-              Export
-              <ChevronDown />
-            </>
-          }
-        >
-          {exports.map(
-            (item) =>
-              item && (
-                <MenuItem key={item[0]} onClick={item[1]}>
-                  {item[0]}
-                </MenuItem>
-              ),
-          )}
-        </Menu>
-        <IconButton label="Open alone" onClick={() => open(src)}>
-          <ExternalLink />
-        </IconButton>
+        </span>
+        <span class="page-tools-folded">
+          <Menu label="More tools">
+            {!sheet && (
+              <MenuItem onClick={() => setFinding(!finding)}>Find</MenuItem>
+            )}
+            {!sheet && (
+              <MenuItem onClick={() => present(true)}>Present</MenuItem>
+            )}
+            {drawn && (
+              <MenuItem disabled={!png} onClick={draw}>
+                Draw on it
+              </MenuItem>
+            )}
+            <MenuSub label="Export">{exportItems}</MenuSub>
+            <MenuItem onClick={() => open(src)}>Open alone</MenuItem>
+          </Menu>
+        </span>
         {!editable && status}
       </Bar>
       {mode === "edit" && (

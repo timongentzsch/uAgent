@@ -46,6 +46,8 @@ struct SandboxInputs {
   std::vector<std::string> extra_roots;  // UAGENT_SANDBOX_WRITE, one per entry
   // The home folder when the relaxed level makes it writable, else empty.
   std::string open_home;
+  // The kAuthorityPaths that exist in it, withheld from it.
+  std::vector<std::string> authority_paths;
   bool allow_network = true;
   // The readonly level: only temporary roots and the terminal logs are offered.
   bool read_only = false;

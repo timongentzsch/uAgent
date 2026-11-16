@@ -2,29 +2,38 @@
 
 #ifndef UAGENT_INCLUDE_APP_PERMISSIONS_H_
 #define UAGENT_INCLUDE_APP_PERMISSIONS_H_
-// Approval policy: the key a call is remembered under, what approving it
-// risks, remembered rules and the automatic review's decisions.
+// Remembered approvals: the key a call is remembered under, what approving
+// it risks, and the rules kept for this conversation and for a folder.
 
-#include <cstdint>
+#include <mutex>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "include/api/client.h"
-#include "include/core/env.h"
 #include "include/core/json.h"
-#include "include/core/usage.h"
-#include "include/providers/providers.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
 
-struct RuntimeConfig;
+// What an approval is answered with, by a person or by a parent agent.
+inline constexpr std::string_view kAllowOnce = "y";
+inline constexpr std::string_view kAllowSession = "s";
+inline constexpr std::string_view kAllowFolder = "a";
+inline constexpr std::string_view kDenyOnce = "n";
+inline constexpr std::string_view kDenyFolder = "x";
 
-// A remembered approval: the calls of `tool` whose subject `match` covers.
-// A match is "*" (every call), "PREFIX *" (one simple command starting with
-// PREFIX), "DIR/" (a path under DIR) or the subject itself.
+// What a rule does to the calls it covers: deny beats ask, ask beats allow.
+enum class RuleEffect { kAllow, kAsk, kDeny };
+const char* RuleEffectName(RuleEffect effect);
+bool ParseRuleEffect(std::string_view name, RuleEffect& effect);
+
+// A remembered rule: the calls of `tool` whose subject `match` covers.
+// A match is "*" (every call), "PREFIX *" (a command starting with PREFIX),
+// "DIR/" (a path under DIR) or the subject itself.
 struct PermissionRule {
   std::string tool, match;
+  RuleEffect effect = RuleEffect::kAllow;
 };
 
 // What a rule is matched against: a command, ./path inside the folder `root`
@@ -32,9 +41,12 @@ struct PermissionRule {
 std::string RuleSubject(const Tool& tool, const json& arguments,
                         const std::string& root);
 // The broadest rule a person is offered for this call. A command's prefix is
-// offered, and covers, only where it runs `confined` in the enforced sandbox.
+// offered, and allows, only where it runs `confined` in the enforced sandbox.
 PermissionRule SuggestRule(const Tool& tool, const json& arguments,
                            const std::string& root, bool confined);
+// An allow rule covers one simple command; a deny or ask rule covers a
+// command when any part of it, between `&&`, `||`, `;`, `|`, `&` or a line
+// break, matches, sandbox or not.
 bool RuleCovers(const PermissionRule& rule, const Tool& tool,
                 const json& arguments, const std::string& root, bool confined);
 // The rule in words: "run npm test *", "every mcp_x call".
@@ -47,50 +59,34 @@ bool PathOutsideFolder(const json& arguments, const std::string& root);
 json ApprovalRisks(const Tool& tool, const json& arguments,
                    const std::string& root);
 
-// Whether a rule kept for `root` covers the call; `matched` takes it.
-bool RepositoryRuleAllows(const std::string& root, const Tool& tool,
-                          const json& arguments, bool confined,
-                          PermissionRule* matched = nullptr);
+// The rules kept for `root` that cover the call, one of each effect at most.
+// `error` says why the rules file could not be read; nothing covers then.
+struct CoveringRules {
+  std::optional<PermissionRule> deny, ask, allow;
+  std::string error;
+};
+CoveringRules FolderRules(const std::string& root, const Tool& tool,
+                          const json& arguments, bool confined);
+// What "allow for this conversation" granted; it dies with the session. A
+// person adds to it while the agent's calls are checked against it.
+class SessionRules {
+ public:
+  void Add(PermissionRule rule);
+  void Clear();
+  std::optional<PermissionRule> Covering(const Tool& tool,
+                                         const json& arguments,
+                                         const std::string& root,
+                                         bool confined) const;
+
+ private:
+  mutable std::mutex mutex_;
+  std::vector<PermissionRule> rules_;
+};
+
+// Keeps `rule` for `root`, in place of one with the same tool and match.
 bool RememberRepositoryRule(const std::string& root, const PermissionRule& rule,
                             std::string& error);
 json PermissionRulesControl(const json& request);
-
-enum class AutoPermissionDecision { kAllow, kAsk, kDeny };
-
-// Allow needs P(allow) >= `allow` and every reason question below `veto`;
-// deny needs P(deny) >= `deny`; anything else asks.
-struct ReviewBars {
-  double allow, deny, veto;
-};
-
-struct AutoPermissionReview {
-  AutoPermissionDecision decision = AutoPermissionDecision::kAsk;
-  json probabilities = json::object();
-  // [{id, label}], each label with its probability; `note` names the bar.
-  json reasons = json::array();
-  std::string note;
-  std::string error;
-};
-
-// The questions every review asks, as tests/reviewer_eval/questions.json.
-const json& ReviewQuestions();
-
-// The `decision_bars` row for `model` at `endpoint`, else the strict bars.
-ReviewBars ReviewBarsFor(const Endpoint& endpoint, const std::string& model);
-
-// The verdict the answers of a decisions request give under `bars`.
-AutoPermissionReview JudgeAnswers(const json& answers, const ReviewBars& bars);
-
-struct ReviewedCall {
-  const Tool& tool;
-  std::string preview, user_request, session_id;
-  int64_t turn = 0;
-};
-
-// Asks the decision model `route` names; with no endpoint for one, it asks.
-AutoPermissionReview ReviewPermission(Api& api, const RouteResolution& route,
-                                      UsageAccumulator& usage,
-                                      const ReviewedCall& call);
 
 }  // namespace uagent
 

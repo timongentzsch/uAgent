@@ -143,7 +143,7 @@ std::chrono::milliseconds Patience(const TerminalShell& shell,
     UAGENT_REQUIRES(shell.mutex) {
   if (!shell.folder.empty()) return idle;
   return shell.generations > 0 ? std::chrono::milliseconds(0)
-                               : kTerminalFirstViewerWait;
+                               : TerminalFirstViewerWait();
 }
 
 }  // namespace

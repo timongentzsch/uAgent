@@ -19,6 +19,7 @@ from integration_support import (
     function_tools,
     has_message,
     json_sentinel_command,
+    keep_rule,
     large_json_command,
     open_config_skill,
     run,
@@ -1225,6 +1226,86 @@ def test_approval_remembers_a_command_prefix_and_forwards_a_refusal(root, home, 
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))
         assert_true(b"approval-done" in output, output)
+
+
+def test_an_unattended_run_takes_no_approval_from_its_input(root, home, *, binary):
+    """With nobody to ask, a call that needs approval is refused, whatever the
+    piped input says; a folder rule is how such a run is allowed to act."""
+    told = []
+
+    def route(_, body):
+        results = tool_results(body["messages"])
+        if not results:
+            return tool_call("run", {"command": "touch piped-approval"})
+        told.append(results[-1])
+        return event({"content": "done"})
+
+    for rule in (False, True):
+        told.clear()
+        if rule:
+            keep_rule(home, root)
+        with Server([route]) as server:
+            result = run_dialog(
+                root,
+                base_env(home, server.url),
+                "y\ny\n",
+                "-p",
+                "go",
+                timeout=30,
+                binary=binary,
+            )
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        made = (root / "piped-approval").exists()
+        assert_true(made == rule, (rule, told, result.stderr))
+        if not rule:
+            assert_true("not approved: nobody is here" in str(told), told)
+
+
+def test_folder_rules_refuse_and_ask_in_every_mode(root, home, *, binary):
+    """A deny rule refuses a command even in yolo, a part of a longer one too;
+    an ask rule asks a person even in yolo; "Never allow here" keeps a deny
+    rule."""
+    told = []
+
+    def route(command):
+        def answer(_, body):
+            results = tool_results(body["messages"])
+            if not results:
+                return tool_call("run", {"command": command})
+            told.append(results[-1])
+            return event({"content": "rules-done"})
+
+        return answer
+
+    keep_rule(home, root, "run", "touch denied *", "deny")
+    with Server([route("echo x && touch denied here")]) as server:
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "go", timeout=30, binary=binary
+        )
+    assert_true(result.returncode == 0, result.stderr)
+    assert_true(not (root / "here").exists(), told)
+    assert_true("a rule of this folder refuses it (run touch denied *)" in str(told), told)
+
+    keep_rule(home, root, "run", "touch asked *", "ask")
+    with Server([route("touch asked there")]) as server:
+        status, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"go\n", b"Allow run?"), (b"x\n", b"rules-done"), b"/quit\n"],
+            args=("--yolo",),
+            timeout=25,
+            binary=binary,
+        )
+    assert_true(status == 0, output)
+    assert_true(b"Never allow here: run touch asked *" in output, output)
+    assert_true(not (root / "there").exists(), output)
+    kept = json.loads((home / ".uagent" / "config" / "permissions.json").read_text())
+    # The prefix where the sandbox holds commands, else the exact command.
+    assert_true(
+        [(rule["match"], rule["effect"]) for rule in kept["rules"]]
+        in ([("touch asked *", "deny")], [("touch asked there", "deny")]),
+        kept,
+    )
 
 
 def test_root_asks_the_password_once_a_turn_and_keeps_it_out(root, home, *, binary):

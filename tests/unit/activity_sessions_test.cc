@@ -491,7 +491,11 @@ TEST_CASE(TestRootCommands) {
   REQUIRE(mkdtemp(bin) != nullptr);
   {
     std::ofstream sudo(std::string(bin) + "/sudo");
+    // The probe `sudo -n true` names no `--`: it passes only where sudo
+    // asks for nothing.
     sudo << "#!/bin/sh\n"
+            "case \" $* \" in *\" -- \"*) ;; *) [ -n \"$SUDO_OPEN\" ]; exit;; "
+            "esac\n"
             "while [ \"$1\" != -- ]; do\n"
             "  [ \"$1\" = -p ] && { shift; prompt=$1; }; shift\n"
             "done; shift\n"
@@ -555,7 +559,8 @@ TEST_CASE(TestRootCommands) {
   typed.clear();
   CHECK(run->run({{"command", "true"}, {"root", true}}, context)
             .output.find("declined") != std::string::npos);
-  CHECK(asked == 6);
+  // Asked for each run but the one whose sudo asks for nothing.
+  CHECK(asked == 5);
   // Its own sudo, wherever bash meets it, points at root where root is
   // offered, and is left alone where it is not.
   for (const char* command : {"sudo apt update", "cd . && sudo make install",

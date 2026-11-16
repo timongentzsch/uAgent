@@ -381,10 +381,30 @@ void HandleConfig(AppSession& session, const std::string& argument,
              "KEY=VALUE, unset KEY, or reset (keeps secrets)");
 }
 
+bool IsRuleArgument(const std::string& argument) {
+  RuleEffect effect = RuleEffect::kAllow;
+  const size_t space = argument.find(' ');
+  return space != std::string::npos &&
+         ParseRuleEffect(argument.substr(0, space), effect);
+}
+
 // The rules are numbered so one can be forgotten.
 void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
   json listed = PermissionRulesControl({{"action", "list"}});
-  if (argument != "rules" && !listed.contains("error")) {
+  if (IsRuleArgument(argument)) {
+    // The tool, then the match: what the rule list shows after the effect.
+    const size_t space = argument.find(' ');
+    const std::string rest = Trim(argument.substr(space + 1));
+    const size_t tool_end = rest.find(' ');
+    listed =
+        tool_end == std::string::npos
+            ? json{{"error", "usage: /permissions allow|ask|deny TOOL MATCH"}}
+            : PermissionRulesControl(
+                  {{"action", "add"},
+                   {"effect", argument.substr(0, space)},
+                   {"tool", rest.substr(0, tool_end)},
+                   {"match", Trim(rest.substr(tool_end + 1))}});
+  } else if (argument != "rules" && !listed.contains("error")) {
     const std::string which = Trim(argument.substr(6));
     int64_t index = 0;
     const json& rules = listed["rules"];
@@ -410,7 +430,9 @@ void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
   for (size_t i = 0; i < rules.size(); ++i) {
     const PermissionRule rule{JsonValue(rules[i], "tool", ""),
                               JsonValue(rules[i], "match", "")};
-    reply.Print("%zu. %s\n", i + 1, TerminalSafe(RuleLabel(rule)).c_str());
+    reply.Print("%zu. %s %s\n", i + 1,
+                JsonValue(rules[i], "effect", "").c_str(),
+                TerminalSafe(RuleLabel(rule)).c_str());
   }
 }
 

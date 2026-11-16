@@ -346,7 +346,22 @@ void CollectReads(SandboxInputs* inputs) {
 // your folders closed to reads.
 void Relax(SandboxInputs* inputs) {
   const std::string home = UserHome();
-  if (!home.empty()) inputs->open_home = CanonicalAccessPath(home).string();
+  if (!home.empty()) {
+    inputs->open_home = CanonicalAccessPath(home).string();
+    // A link is withheld as itself and as what it points to.
+    for (std::string_view entry : kAuthorityPaths) {
+      const std::filesystem::path path =
+          inputs->open_home / std::filesystem::path(entry);
+      std::error_code missing;
+      if (!std::filesystem::exists(
+              std::filesystem::symlink_status(path, missing))) {
+        continue;
+      }
+      inputs->authority_paths.push_back(path.string());
+      const std::string target = CanonicalAccessPath(path.string()).string();
+      if (target != path.string()) inputs->authority_paths.push_back(target);
+    }
+  }
   inputs->closed_folders.clear();
   inputs->read_roots.clear();
 }

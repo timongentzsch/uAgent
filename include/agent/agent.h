@@ -46,11 +46,19 @@ struct CallTask;
 enum class TurnStopReason;
 enum class Fault;
 
+// Why a call was refused, empty when it may run, and what its row shows of
+// the refusal (a display-only part).
+struct ApprovalOutcome {
+  ApprovalOutcome(std::string why = {}, json shown = nullptr)  // NOLINT
+      : refusal(std::move(why)), part(std::move(shown)) {}
+  std::string refusal;
+  json part;
+};
+
 class Agent {
  public:
-  // Returns why a mutating call was refused, empty when it may run.
-  using Approver =
-      std::function<std::string(const Tool&, const json& args, int64_t turn)>;
+  using Approver = std::function<ApprovalOutcome(const Tool&, const json& args,
+                                                 int64_t turn)>;
   using ToolRefresher =
       std::function<bool(std::chrono::steady_clock::time_point)>;
 

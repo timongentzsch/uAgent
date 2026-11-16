@@ -52,7 +52,11 @@ import {
   maxRecalledPromptSessions,
   stopGuardMs,
 } from "../../shared/limits.ts";
-import { permissionLabel, permissionLabels } from "../../shared/display.ts";
+import {
+  permissionLabel,
+  permissionLabels,
+  permissionNotes,
+} from "../../shared/display.ts";
 import GuidanceQueue from "./guidance-queue.tsx";
 import TodoList from "./todo-list.tsx";
 import { focusComposer } from "../../shared/navigation.ts";
@@ -509,7 +513,7 @@ function Composer({
             {(close) => (
               <Field
                 label="This conversation's approval mode"
-                help="The default is the approval mode in Settings, unless a folder or the environment sets another."
+                help={`${permissionNotes[effective ?? "ask"] ?? permissionNotes.ask} Always needs you: µAgent's own settings, startup files, unsandboxed and root commands. The default is the mode in Settings, unless a folder or the environment sets another.`}
               >
                 <Select
                   aria-label="Approval"

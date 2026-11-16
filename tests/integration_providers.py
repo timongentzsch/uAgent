@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import threading
 import time
@@ -164,12 +165,27 @@ def write_call(path, content="x", call_id="call-1"):
     return tool_call("write_file", {"path": str(path), "content": content}, call_id=call_id)
 
 
+def judged_call(path, content="x", call_id="call-1"):
+    """A call Auto puts to the reviewer: a command, since a file tool's change
+    inside the folder runs unjudged."""
+    command = f"printf %s {shlex.quote(content)} > {shlex.quote(str(path))}"
+    return tool_call("run", {"command": command}, call_id=call_id)
+
+
+def judged(root, home, binary):
+    """Commands are judged only inside the enforced sandbox."""
+    from integration_sandbox import require_sandbox
+
+    require_sandbox(root, home, binary=binary)
+
+
 def test_auto_permission_reviewer_allows_and_accounts(root, home, *, binary):
+    judged(root, home, binary)
     target = root / "reviewed.txt"
 
     def reviewer(handler, body):
         assert_true(body["model"] == "judge-model", body)
-        assert_true(body["state"]["tool"] == "write_file", body)
+        assert_true(body["state"]["tool"] == "run", body)
         assert_true(body["state"]["user_request"] == "go", body)
         assert_true(
             set(body["questions"])
@@ -190,10 +206,9 @@ def test_auto_permission_reviewer_allows_and_accounts(root, home, *, binary):
         write_json_response(handler, decision_answers(0.9, 0.0, destructive=0.1))
 
     envelope, tool, requests = auto_review_run(
-        root, home, binary, [write_call(target, "approved")], reviewer
+        root, home, binary, [judged_call(target, "approved")], reviewer
     )
-    assert_true("wrote" in tool, tool)
-    assert_true(target.read_text() == "approved", target)
+    assert_true(target.read_text() == "approved", (target, tool))
     assert_true(len(requests) == 1, requests)
     assert_true(requests[0][0]["Authorization"] == "Bearer review-key", requests[0][0])
     assert_true(envelope["usage"]["input"] >= 7, envelope)
@@ -202,6 +217,7 @@ def test_auto_permission_reviewer_allows_and_accounts(root, home, *, binary):
 
 
 def test_auto_permission_review_is_asked_once_per_action_in_a_turn(root, home, *, binary):
+    judged(root, home, binary)
     target = root / "memo.txt"
 
     def denies(handler, _):
@@ -212,7 +228,7 @@ def test_auto_permission_review_is_asked_once_per_action_in_a_turn(root, home, *
         root,
         home,
         binary,
-        [write_call(target, call_id="first"), write_call(target, call_id="second")],
+        [judged_call(target, call_id="first"), judged_call(target, call_id="second")],
         denies,
     )
     assert_true("refused this action" in tool, tool)
@@ -221,6 +237,7 @@ def test_auto_permission_review_is_asked_once_per_action_in_a_turn(root, home, *
 
 
 def test_auto_permission_reviewer_bars(root, home, *, binary):
+    judged(root, home, binary)
     target = root / "bars.txt"
 
     # A risk reason at its bar forces the question, however sure the allow is;
@@ -232,7 +249,7 @@ def test_auto_permission_reviewer_bars(root, home, *, binary):
         write_json_response(handler, decision_answers(0.59))
 
     for reviewer in (sure_but_risky, unsure):
-        _, tool, _ = auto_review_run(root, home, binary, [write_call(target)], reviewer)
+        _, tool, _ = auto_review_run(root, home, binary, [judged_call(target)], reviewer)
         assert_true("could not decide" in tool and "user denied" not in tool, tool)
         assert_true(not target.exists(), target)
 
@@ -240,7 +257,7 @@ def test_auto_permission_reviewer_bars(root, home, *, binary):
     def denies(handler, _):
         write_json_response(handler, decision_answers(0.0, 0.95))
 
-    _, tool, _ = auto_review_run(root, home, binary, [write_call(target)], denies)
+    _, tool, _ = auto_review_run(root, home, binary, [judged_call(target)], denies)
     assert_true("refused this action" in tool, tool)
     assert_true(not target.exists(), target)
 
@@ -254,14 +271,16 @@ def test_auto_permission_reviewer_bars(root, home, *, binary):
 
     strict = {"judge-model": {"allow": 0.99, "deny": 0.95, "veto": 0.7}}
     _, tool, _ = auto_review_run(
-        root, home, binary, [write_call(target)], fairly_sure, decision_bars=strict
+        root, home, binary, [judged_call(target)], fairly_sure, decision_bars=strict
     )
     assert_true("could not decide" in tool and not target.exists(), tool)
-    auto_review_run(root, home, binary, [write_call(target)], sure, decision_bars=strict)
+    auto_review_run(root, home, binary, [judged_call(target)], sure, decision_bars=strict)
     assert_true(target.read_text() == "x", target)
 
 
 def test_auto_permission_card_shows_the_reasons(root, home, *, binary):
+    judged(root, home, binary)
+
     # What the person is asked comes with the reasons that made it a question,
     # by probability, and the bar they fell on.
     def reviewer(handler, _):
@@ -271,7 +290,7 @@ def test_auto_permission_card_shows_the_reasons(root, home, *, binary):
         )
 
     with Server([reviewer]) as permission_server:
-        with Server([write_call(root / "card.txt"), event({"content": "card-ok"})]) as model:
+        with Server([judged_call(root / "card.txt"), event({"content": "card-ok"})]) as model:
             env = provider_env(
                 home, model.url, decision_providers(permission_server.url), model="test/test"
             )
@@ -286,7 +305,7 @@ def test_auto_permission_card_shows_the_reasons(root, home, *, binary):
             )
     assert_true(code == 0, output[-2000:])
     for text in (
-        b"Risk: makes changes - beyond what you asked 55% - sends data off this machine 70%",
+        b"Risk: runs commands - beyond what you asked 55% - sends data off this machine 70%",
         b"Auto review sends data off this machine 70% reaches the 70% that asks",
     ):
         assert_true(text in output, output[-2000:])
@@ -296,6 +315,7 @@ def test_auto_permission_card_shows_the_reasons(root, home, *, binary):
 def test_auto_permission_reviewer_judges_against_the_first_request_too(root, home, *, binary):
     """A later message narrows what was asked; the reviewer reads both, so an
     action the first request covers is not judged against the note alone."""
+    judged(root, home, binary)
     target = root / "reviewed.txt"
     seen = []
 
@@ -307,7 +327,7 @@ def test_auto_permission_reviewer_judges_against_the_first_request_too(root, hom
         with Server(
             [
                 event({"content": "noted"}),
-                tool_call("write_file", {"path": str(target), "content": "approved"}),
+                judged_call(target, "approved"),
                 event({"content": "written"}),
             ]
         ) as model_server:
@@ -328,6 +348,7 @@ def test_auto_permission_reviewer_judges_against_the_first_request_too(root, hom
 
 
 def test_auto_permission_reviewer_errors_in_words(root, home, *, binary):
+    judged(root, home, binary)
     target = root / "must-not-exist.txt"
     for status, message, words in [
         (402, "insufficient credits", "has no credit"),
@@ -341,26 +362,28 @@ def test_auto_permission_reviewer_errors_in_words(root, home, *, binary):
                 handler, {"error": {"code": status, "message": message}}, status=status
             )
 
-        _, tool, requests = auto_review_run(root, home, binary, [write_call(target)], failing)
+        _, tool, requests = auto_review_run(root, home, binary, [judged_call(target)], failing)
         assert_true(words in tool, (status, tool))
         assert_true(len(requests) == 1, (status, requests))
         assert_true(not target.exists(), target)
 
 
 def test_auto_permission_reviewer_needs_an_address(root, home, *, binary):
+    judged(root, home, binary)
     target = root / "no-address.txt"
 
     def never(*_):
         raise AssertionError("no address, no request")
 
     _, tool, requests = auto_review_run(
-        root, home, binary, [write_call(target)], never, decisions_url="decide"
+        root, home, binary, [judged_call(target)], never, decisions_url="decide"
     )
     assert_true("not an address" in tool and requests == [], (tool, requests))
     assert_true(not target.exists(), target)
 
 
 def test_auto_permission_reviewer_privacy_and_session(root, home, *, binary):
+    judged(root, home, binary)
     private = root / "private.txt"
     open_ = root / "open.txt"
     declared = ("decisions", "provider_routing", "session_passthrough")
@@ -371,7 +394,7 @@ def test_auto_permission_reviewer_privacy_and_session(root, home, *, binary):
         assert_true(len(body["session_id"]) == 16, body)
         write_json_response(handler, decision_answers(0.9))
 
-    auto_review_run(root, home, binary, [write_call(private)], reviewer, supports=declared)
+    auto_review_run(root, home, binary, [judged_call(private)], reviewer, supports=declared)
 
     # The endpoint's option turns the retention filter off; the session hash stays.
     def unfiltered(handler, body):
@@ -382,7 +405,7 @@ def test_auto_permission_reviewer_privacy_and_session(root, home, *, binary):
         root,
         home,
         binary,
-        [write_call(open_)],
+        [judged_call(open_)],
         unfiltered,
         supports=declared,
         decisions_private=False,
@@ -391,6 +414,7 @@ def test_auto_permission_reviewer_privacy_and_session(root, home, *, binary):
 
 
 def test_auto_permission_reviewer_rechecks_after_user_restriction(root, home, *, binary):
+    judged(root, home, binary)
     target = root / "twice.txt"
     seen = []
 
@@ -402,7 +426,7 @@ def test_auto_permission_reviewer_rechecks_after_user_restriction(root, home, *,
     def repeat(_, body):
         assert_true("stop writing" in json.dumps(body["messages"]), body)
         target.write_text("preserve this later change")
-        return write_call(target, "again", "second")
+        return judged_call(target, "again", "second")
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]
@@ -411,7 +435,7 @@ def test_auto_permission_reviewer_rechecks_after_user_restriction(root, home, *,
 
     with Server([reviewer]) as permission_server:
         with Server(
-            [write_call(target, "again", "first"), event({"content": "written"}), repeat, finish]
+            [judged_call(target, "again", "first"), event({"content": "written"}), repeat, finish]
         ) as model_server:
             env = provider_env(
                 home, model_server.url, decision_providers(permission_server.url), model="test/test"
@@ -421,6 +445,22 @@ def test_auto_permission_reviewer_rechecks_after_user_restriction(root, home, *,
     assert_true(result.returncode == 0, result.stderr)
     assert_true(len(seen) == 2 and seen[1].startswith("stop writing"), seen)
     assert_true(target.read_text() == "preserve this later change", target.read_text())
+
+
+def test_auto_permission_review_pauses_after_three_refusals_in_a_row(root, home, *, binary):
+    judged(root, home, binary)
+    seen = []
+
+    def reviewer(handler, body):
+        seen.append(body["state"]["tool"])
+        write_json_response(handler, decision_answers(0.0, 0.99))
+
+    calls = [judged_call(root / f"refused-{n}.txt", call_id=f"call-{n}") for n in range(4)]
+    _, tool, _ = auto_review_run(root, home, binary, calls, reviewer)
+    # The fourth goes to a person, and with nobody here it is refused unjudged.
+    assert_true(len(seen) == 3, seen)
+    assert_true("nobody is here" in tool, tool)
+    assert_true(not any((root / f"refused-{n}.txt").exists() for n in range(4)), root)
 
 
 def test_auto_permission_never_reviews_outside_the_folder(root, home, *, binary):
@@ -454,6 +494,7 @@ def test_auto_permission_never_reviews_commands_without_a_sandbox(root, home, *,
 
 
 def test_auto_permission_without_decision_endpoint_asks(root, home, *, binary):
+    judged(root, home, binary)
     target = root / "must-not-exist.txt"
 
     def finish(_, body):
@@ -464,7 +505,7 @@ def test_auto_permission_without_decision_endpoint_asks(root, home, *, binary):
         assert_true("user denied" not in refused, refused)
         return event({"content": "review-failed-closed"})
 
-    with Server([write_call(target, "not approved"), finish]) as model_server:
+    with Server([judged_call(target, "not approved"), finish]) as model_server:
         env = base_env(home, model_server.url)
         env["UAGENT_APPROVAL"] = "auto"
         result = run(root, env, "--json", "-p", "write it", binary=binary)

@@ -309,8 +309,12 @@
 .sheet-looks {
   width: 100%;
 }
-.sheet-looks-folded {
+.sheet-looks-folded,
+.page-tools-folded {
   display: none;
+}
+.page-tools-wide {
+  display: contents;
 }
 /* A fill or a text colour by name, its swatch before it. */
 [data-look]::before {
@@ -711,11 +715,23 @@
   .sheet-edit-cell {
     display: inline-flex;
   }
+  /* The tabs keep room for a tab's name; the buttons beside them take the
+     next row first. */
+  .sheet-bar {
+    flex-wrap: wrap;
+  }
+  .sheet-tabs {
+    flex: 999 1 var(--pane-s);
+  }
   .sheet-looks-folded {
     display: block;
   }
+  .page-tools-folded {
+    display: contents;
+  }
   .sheet-note,
-  .sheet-looks {
+  .sheet-looks,
+  .page-tools-wide {
     display: none;
   }
   .page-legend-item[data-drop]::before {

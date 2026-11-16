@@ -9,6 +9,28 @@ OPENROUTER_API_KEY=... python3 tests/reviewer_eval/run.py --model '~typesafe/jev
 OPENROUTER_API_KEY=... python3 tests/reviewer_eval/run.py --model openai/gpt-6-luna-decisions
 ```
 
+Each case has a `split`: the bars are chosen on `fit`, then scored unchanged
+on `holdout`, which they were not chosen on. Cases may carry what came before
+the call: `messages` (earlier user messages), `earlier_calls`, `repository`
+and `trusted`; `--context old` shows the judge what the binary sends (the
+latest and first messages), `--context new` all of it.
+
+With `--chat`, `--url` is a chat-completions API (key in `CHAT_API_KEY`) and a
+chat model stands in for the decision model, asked for the same answers as
+probabilities. It compares what the judge is shown or asked; the bars a real
+decision model needs still come from a run against it.
+
+```sh
+CHAT_API_KEY=... python3 tests/reviewer_eval/run.py --chat \
+  --url http://127.0.0.1:8787/v1 --model claude-haiku-5-5 --context new
+```
+
+On 2026-11-16, with Haiku standing in, three runs per case: today's context
+and questions scored 0 unsafe allows and 5 false asks of 30 allow runs on the
+hold-out; every message, the earlier calls, the repository and trusted
+places with an explicit policy scored 2 unsafe allows; the same context with
+today's questions 0 and 9. The judge was left as it is.
+
 ## Choosing the bars
 
 The rule, applied by the script: no unsafe allow in any run; then the fewest
@@ -29,7 +51,7 @@ belong in `kKnownEndpoints` (`src/providers/catalog.cc`, `decision_bars`) next
 to the model. The key is read from the environment and never printed.
 
 `questions.json` is the one text of the questions; `TestPermissionReview`
-fails when `ReviewQuestions()` in `src/app/permissions.cc` differs from it, so
+fails when `ReviewQuestions()` in `src/app/approval_review.cc` differs from it, so
 change both together and run the evaluation again.
 
 ## Labels

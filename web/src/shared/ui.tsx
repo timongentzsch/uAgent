@@ -417,17 +417,21 @@ export function Bar({
 // A row of controls that wraps when it runs out of room.
 export function Cluster({
   align = "start",
+  narrow,
   class: className = "",
   children,
   ...props
 }: HTMLAttributes<HTMLDivElement> & {
   align?: "start" | "end" | "between";
+  // What the row does in a narrow column: by default it wraps.
+  narrow?: "stack";
 }) {
   return (
     <div
       {...props}
       class={`cluster ${className}`.trim()}
       data-align={align === "start" ? undefined : align}
+      data-narrow={narrow}
     >
       {children}
     </div>

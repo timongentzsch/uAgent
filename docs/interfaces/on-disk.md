@@ -42,7 +42,7 @@ in [Sessions](../architecture/sessions.md#failure-modes).
 | `settings.json`, `settings.json.lock` | the settings document (below) | `/config`, the web settings, `setup`, the `uagent` tool | every process |
 | `settings.schema.json` | its JSON Schema, rewritten when the build changes | any reader | editors |
 | `trusted-projects.json` | folders whose `.mcp.json` is trusted | the trust prompt | runtimes |
-| `permissions.json` | `{version, rules: [{root, tool, match, created}]}` | "always allow here" | the approver, `permission_rules` |
+| `permissions.json` | `{version, rules: [{root, tool, match, effect, created}]}`, `effect` `allow`, `ask` or `deny` | an approval's Always or Never, `/permissions allow\|ask\|deny`, Settings › This folder › Rules | the approver, `permission_rules` |
 | `prompt.json` | changes to the system message's sections | `instructions` control, `uagent` tool | runtimes |
 | `style.css` | the person's stylesheet for the web client | the `uagent` tool, you | `GET /api/user.css` |
 | `update.json` | the last release check | the web host | the web host |
@@ -112,9 +112,9 @@ the user's, or open to others is refused (`EnsurePrivateDirectory`).
 
 Versioned files: `settings.json` and session files (`format` 3), the
 journal (`uagent.session.event.v1`), mail and move files (`format` 1),
-`permissions.json` (`version` 2). Only the current version is read and
-nothing is migrated; a `permissions.json` of another version is read as
-empty. Paths not listed here are not contract.
+`permissions.json` (`version` 3). Only the current version is read and
+nothing is migrated; a `permissions.json` of another version is refused
+with a message naming it, and no rule of it applies until it is removed. Paths not listed here are not contract.
 
 ## Source and tests
 

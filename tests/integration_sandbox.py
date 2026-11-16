@@ -15,6 +15,7 @@ from integration_support import (
     assert_true,
     base_env,
     event,
+    keep_rule,
     run,
     run_dialog,
     run_pty,
@@ -84,9 +85,8 @@ def run_once(root, env, command, *flags, binary):
     with Server([tool_call("run", {"command": command}), event({"content": "ok"})]) as server:
         env = dict(env)
         env["UAGENT_PROVIDERS"] = test_providers(server.url)
-        return run_dialog(
-            workspace(root), env, "y\n", *flags, "-p", "go", timeout=30, binary=binary
-        )
+        keep_rule(env["HOME"], workspace(root))
+        return run_dialog(workspace(root), env, "", *flags, "-p", "go", timeout=30, binary=binary)
 
 
 def tool_output(root, env, command, headless=False, *, binary, **arguments):
@@ -106,7 +106,8 @@ def tool_output(root, env, command, headless=False, *, binary, **arguments):
         if headless:
             run(workspace(root), env, "--yolo", "-p", "go", timeout=30, binary=binary)
         else:
-            run_dialog(workspace(root), env, "y\n", "-p", "go", timeout=30, binary=binary)
+            keep_rule(env["HOME"], workspace(root))
+            run_dialog(workspace(root), env, "", "-p", "go", timeout=30, binary=binary)
     return seen[0] if seen else ""
 
 
@@ -226,16 +227,14 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
                 )
                 assert_true(code == 0, transcript)
             else:
+                # Nobody is there: a folder rule approves, and without one
+                # the call is refused.
+                if mode == "confined":
+                    keep_rule(home, ws)
                 result = run_dialog(
-                    ws,
-                    env,
-                    "n\n" if mode == "denied" else "y\n",
-                    *flags,
-                    "-p",
-                    "run the fixture",
-                    timeout=30,
-                    binary=binary,
+                    ws, env, "", *flags, "-p", "run the fixture", timeout=30, binary=binary
                 )
+                (home / ".uagent" / "config" / "permissions.json").unlink(missing_ok=True)
                 assert_true(result.returncode == 0, (mode, result.stdout, result.stderr))
         output = "\n".join(seen)
         assert_true("privileged commands are unavailable" not in output, output)
@@ -244,6 +243,41 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
         assert_true(("use run root=true" in output) == (mode == "approved"), (mode, output))
         # Yolo spares the question, not the confinement.
         assert_true(not outside.exists(), (mode, output))
+
+
+def test_yolo_writes_no_file_that_runs_code_when_something_else_starts(root, home, *, binary):
+    """Yolo opens the home folder, but not a shell's startup file or ~/.ssh: a
+    command cannot change them, and a file tool's write asks a person."""
+    require_sandbox(root, home, binary=binary)
+    startup = home / ".zshrc"
+    startup.write_text("# mine\n")
+    (home / ".ssh").mkdir(mode=0o700, exist_ok=True)
+    keys = home / ".ssh" / "authorized_keys"
+    # Landlock withholds by opening the home folder's entries one by one, so
+    # the open part is a folder in it.
+    notes = home / "Documents" / "notes.txt"
+    notes.parent.mkdir()
+    told = []
+
+    def route(_, body):
+        results = [m for m in body["messages"] if m.get("role") == "tool"]
+        told.extend(str(m.get("content", "")) for m in results[len(told) :])
+        calls = [
+            tool_call("run", {"command": f"echo planted >> {startup}; echo k > {keys}"}),
+            tool_call("write_file", {"path": str(startup), "content": "planted"}),
+            tool_call("run", {"command": f"echo ok > {notes}"}),
+        ]
+        return calls[len(results)] if len(results) < len(calls) else event({"content": "done"})
+
+    with Server([route]) as server:
+        env = sandbox_env(home, server.url)
+        result = run(workspace(root), env, "--yolo", "-p", "go", timeout=40, binary=binary)
+    assert_true(result.returncode == 0, result.stderr)
+    assert_true(startup.read_text() == "# mine\n", (startup.read_text(), told))
+    assert_true(not keys.exists(), told)
+    assert_true("needs a person's approval" in told[1], told)
+    # The rest of the home folder stays open to yolo.
+    assert_true(notes.read_text() == "ok\n", told)
 
 
 def test_yolo_toggle_raises_the_level_from_the_next_command(root, home, *, binary):
@@ -620,7 +654,8 @@ def browser_reach(root, env, profile, *, binary, approve=False, yolo=False):
         elif yolo:
             run(ws, env, "--yolo", "-p", "go", timeout=30, binary=binary)
         else:
-            run_dialog(ws, env, "y\n", "-p", "go", timeout=30, binary=binary)
+            keep_rule(env["HOME"], ws)
+            run_dialog(ws, env, "", "-p", "go", timeout=30, binary=binary)
     return {marker.name.removeprefix("reach-") for marker in ws.glob("reach-*")}
 
 
@@ -898,11 +933,12 @@ def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
         )
         return tool_call("run", {"command": "echo x > refused.txt"})
 
-    # Asked and approved, not under yolo, which raises the level to relaxed
+    # Approved by a folder rule, not under yolo, which raises the level to relaxed
     # and so opens the home folder.
+    keep_rule(home, home)
     with Server([route]) as server:
         result = run_dialog(
-            home, sandbox_env(home, server.url), "y\n", "-p", "go", timeout=30, binary=binary
+            home, sandbox_env(home, server.url), "", "-p", "go", timeout=30, binary=binary
         )
     assert_true(not (home / "refused.txt").exists(), "a command wrote the home directory")
     assert_true(result.returncode == 0, (result.stdout, result.stderr))

@@ -31,6 +31,8 @@ void HandleConfig(AppSession& session, const std::string& argument,
                   CommandReply& reply);
 void HandleMcp(AppSession& session, const std::string& argument,
                CommandReply& reply);
+// "allow|ask|deny TOOL MATCH": a rule to keep, not an approval mode.
+bool IsRuleArgument(const std::string& argument);
 void HandlePermissionRules(const std::string& argument, CommandReply& reply);
 void HandleTools(AppSession& session, const std::string& argument,
                  CommandReply& reply);

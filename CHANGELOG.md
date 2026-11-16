@@ -1,15 +1,28 @@
 # Changelog
 
-## Unreleased
+## v1.10.0 - 2026-11-16
+
+### Upgrade notes
+
+- **Remember your folder rules again.** `~/.uagent/config/permissions.json` is format 3: each rule has an effect. A file of format 2, which every install has, is refused with a message naming it, and none of its rules apply until you remove it; nothing is converted.
+- **A headless run no longer takes approvals from its input.** `echo y | uagent -p …` approves nothing: with no terminal on stdin every call that would ask a person is refused. Give an unattended run a folder rule (`/permissions allow run "npm test *"`) instead.
+- **Yolo no longer writes the files that run code at login.** At the `relaxed` sandbox level, and so in yolo, commands cannot write `~/.ssh`, shell startup files, git's global config, `~/.mcp.json`, other agents' folders (`~/.agents`, `~/.claude`, `~/.codex`) or launch agents and user services; a file tool's write to one always asks you.
+- **Auto judges by kind, not by who calls.** A file tool's change inside the folder runs without the judge, in the conversation as in its agents; an agent's commands now go to the judge as the conversation's do.
 
 ### Changes
 
+- **Folder rules allow, ask or refuse.** A rule that refuses holds in every mode, yolo included, and before you are asked; one that asks asks in every mode; both cover any part of a chained command. An approval's More options keeps one as **Ask each time / Always allow / Never allow**; Settings › This folder › Rules lists them by effect and adds one; `/permissions allow|ask|deny TOOL MATCH` does from the terminal.
+- **You see why you are asked, and what Auto refused.** The approval card says which stage asks: the mode, a rule, the review, or a call that always needs you. A call Auto's review or a rule refused without asking shows in the transcript, under a folded turn too, with why and **Allow in this conversation** (or **Rules…**). After 3 refusals in a row, or 20 in a conversation, Auto asks you until you answer one.
+- **The reviewer evaluation has a hold-out.** `tests/reviewer_eval` has 40 more cases (permission or a boundary given earlier, the turn's earlier calls, the repository's state, trusted places, file and web tools, instructions planted in the action), a fit and a hold-out split, and `--chat`, which lets a chat model stand in for the decision model to compare what the judge is shown. Showing it more of the conversation, and an explicit policy, did not do better on the hold-out, so the judge is unchanged.
+- **The approval order is one pure function** (`Decide`, `src/app/approval_policy.cc`) with a table test and invariants checked over every combination of facts.
 - **The docs are written for someone who reads the source.** The README opens on the process model, the properties and the design decisions. `docs/architecture/` has one page per subsystem in one shape (responsibility, processes, formats, protocol, limits, failures, source and tests); `docs/interfaces/` specifies the HTTP API, headless output, the files on disk and the artifact formats, and its settings, command line, tool schema and limits pages are generated from the binary's registries, with a test that fails when they differ; `docs/operations/` covers install, container, remote access and recovery; one `docs/manual.md` replaces the guides. `SECURITY.md` is a threat model. Diagrams are Mermaid in the page. The old pages are gone and their paths with them.
 
 ### Fixes
 
 - **An approval's answers stack on a phone.** In a narrow column Deny, Allow for this conversation and Allow once each take a row at full size, the usual answer last; side by side the middle one broke into two lines of small text.
 - **A dialog no longer scrolls sideways for a long path.** On a phone the Move dialog's note pushed Cancel and Move off the screen. Text in a dialog breaks where it must.
+- **Phone rows fit.** The suggestion bar's answers stack; a page's tools after Edit fold into **More tools**, Export with them; a sheet's tabs keep room for a tab's name; a form's two fields side by side go one over the other when either would be narrower than a pane. A test opens each view at phone width and fails on a cut or wrapped button.
+- **A sheet's Duplicate and Move act on the tab you see.** Right after a tab was shown, the page could copy or move the next tab instead.
 
 ## v1.9.1 - 2026-11-16
 

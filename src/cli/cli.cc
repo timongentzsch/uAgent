@@ -75,10 +75,9 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kShare, "/share", "", "export transcript as markdown",
      kNoViewer | kClientOnly},
     {SlashCommandId::kPermissions, "/permissions",
-     "[default|ask|auto|yolo|rules|forget N|forget all]",
-     "show or change the approval mode, or this repository's remembered "
-     "actions",
-     kNoViewer},
+     "[default|ask|auto|yolo|plan|rules|forget N|forget all|allow|ask|deny "
+     "TOOL MATCH]",
+     "show or change the approval mode, or this folder's rules", kNoViewer},
     {SlashCommandId::kRename, "/rename", "TITLE", "rename this conversation",
      kNoViewer},
     {SlashCommandId::kInstructions, "/instructions", "[edit user|project]",

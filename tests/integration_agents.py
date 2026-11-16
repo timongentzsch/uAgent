@@ -365,7 +365,7 @@ def test_a_mandatory_decision_skips_the_parent(root, home, *, binary):
         client = client_of(home, agent_files(home)[0])
         try:
             waiting = client.until(pending)["pending"]
-            assert_true(waiting["approval"]["mandatory_human"], waiting)
+            assert_true(waiting["approval"]["source"] == "mandatory", waiting)
             assert_true("route" not in waiting, waiting)
             client.send("reply", interaction_id=waiting["id"], text="n")
         finally:
@@ -641,16 +641,22 @@ def test_a_worktree_agent_works_in_a_worktree_of_a_git_folder_only(root, home, *
         assert_true(agent.parent.name == fnv1a64(str(root.resolve())), agent)
 
 
-def test_a_confined_agent_acts_inside_its_folder_without_review(root, home, *, binary):
-    """The sandbox holds an agent in Auto to its folder, so what it writes
-    and runs there is put to nobody: not to a reviewer, not to its parent."""
-    from integration_sandbox import sandbox_enforced
+def test_an_agent_in_auto_is_judged_as_its_parent_is(root, home, *, binary):
+    """An agent in Auto changes files in its folder unjudged, as its parent
+    does; its commands go to the same reviewer, never past it."""
+    from integration_providers import decision_answers, decision_providers, provider_env
+    from integration_sandbox import require_sandbox
+    from integration_support import write_json_response
 
-    if not sandbox_enforced(root, home, binary=binary):
-        return
+    require_sandbox(root, home, binary=binary)
+    judged = []
+
+    def reviewer(handler, body):
+        judged.append(body["state"]["tool"])
+        write_json_response(handler, decision_answers(0.99))
 
     def route(_, body):
-        assert not ASKS.search(text_of(body)), "a confined agent's action was put to review"
+        assert not ASKS.search(text_of(body)), "an agent's action was put to its parent"
         if brief_of(body):
             results = results_of(body)
             if not results:
@@ -662,12 +668,15 @@ def test_a_confined_agent_acts_inside_its_folder_without_review(root, home, *, b
             return tool_call("agent_start", {"brief": "BRIEF write and run", "edits": "folder"})
         return event({"content": "parent ok"})
 
-    with Server([route]) as server:
-        env = base_env(home, server.url)
+    with Server([reviewer]) as permission_server, Server([route]) as server:
+        env = provider_env(
+            home, server.url, decision_providers(permission_server.url), model="test/test"
+        )
         env["UAGENT_APPROVAL"] = "auto"
         result = run(root, env, "-p", "delegate", timeout=60, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true((root / "ran.txt").read_text() == "x", "the agent did not get to act")
+        assert_true((root / "ran.txt").read_text() == "x", (judged, result.stderr))
+        assert_true(judged == ["run"], judged)
 
 
 def test_an_agent_reaches_a_named_provider_with_its_key(root, home, *, binary):

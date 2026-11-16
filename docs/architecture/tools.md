@@ -52,69 +52,93 @@ the cached prompt; a tool at its per-turn cap stays offered and refuses.
 
 ## Protocol
 
-The approval decision for one call (`MakeApprover`,
-`src/app/approvals.cc`) runs only when `RequiredApproval` is not `kNone`:
-a mutating call, a `needs_approval` call (a path outside the work area, a
-network tool), or one an `approval_class` escalates.
+The approval decision for one call runs only when `RequiredApproval` is
+not `kNone`: a mutating call, a `needs_approval` call (a path outside the
+work area, a network tool), or one an `approval_class` escalates.
+`MakeApprover` (`src/app/approvals.cc`) gathers the facts of the call and
+the situation; `Decide` (`src/app/approval_policy.cc`) is a pure function
+of them, and the first stage that matches decides:
 
 ```mermaid
 flowchart TD
-  A[Call needs approval] --> E{Plan mode, mutates, not plan-allowed?}
-  E -- yes --> NO[Refuse]
-  E -- no --> B{Mandatory human?}
-  B -- yes --> P1[Ask a person: allow or deny]
-  B -- no --> C{Session or folder rule covers it?}
-  C -- yes --> OK[Run]
-  C -- no --> D{yolo, agent policy, or plan allows?}
-  D -- yes --> OK
-  D -- no --> F{Auto mode and contained?}
-  F -- yes --> G{Decision model}
+  A[Call needs approval] --> D1{A folder rule refuses it?}
+  D1 -- yes --> NO[Refuse]
+  D1 -- no --> PL{Plan mode, mutates, not plan-allowed?}
+  PL -- yes --> NO
+  PL -- no --> M{Always needs a person?}
+  M -- yes --> P[Ask a person]
+  M -- no --> AR{A folder rule asks?}
+  AR -- yes --> P
+  AR -- no --> R{A conversation or folder rule allows it?}
+  R -- yes --> OK[Run]
+  R -- no --> Y{Yolo, or plan allows it?}
+  Y -- yes --> OK
+  Y -- no --> E{Auto, a file tool's change in the folder?}
+  E -- yes --> OK
+  E -- no --> J{Auto, contained, review not paused?}
+  J -- yes --> G{Decision model}
   G -- allow --> OK
   G -- deny --> NO
-  G -- ask --> P2[Ask a person]
-  F -- no --> P2
-  P1 --> R[Allowed or refused]
-  P2 --> R
+  G -- ask --> P
+  J -- no --> P
+  P -- nobody can answer --> NO
 ```
 
-- Mandatory human (`ApprovalClass::kMandatoryHuman`): file-tool access to
-  µAgent's own configuration (`SelfConfigurationPath`: settings, trust
-  store, `permissions.json`, global instruction files, the user's skills,
-  any `.mcp.json`), a folder the sandbox closes to reads, `run` with
+- Always needs a person (`ApprovalClass::kMandatoryHuman`): file-tool
+  access to µAgent's own configuration (`SelfConfigurationPath`: settings,
+  trust store, `permissions.json`, global instruction files, the user's
+  skills, any `.mcp.json`), a write to a file that runs code at login or
+  for another agent (`kAuthorityPaths`: `~/.ssh`, shell startup files,
+  git's global config, `.agents`, `.claude`, `.codex`, launch agents and
+  user services), a folder the sandbox closes to reads, `run` with
   `sandbox: false` or `root: true`, the `uagent` tool's writes and `agents`
-  `delete`. Rules, yolo and Auto do not apply. With no interactive client
-  (`InteractiveApprovalAvailable`) it is refused.
+  `delete`. Allow rules, yolo and Auto do not apply; a refusing rule does.
+- With nobody to ask (`InteractiveApprovalAvailable` false: no terminal on
+  stdin and no client), every stage that would ask a person refuses
+  instead (`kNobody`). Piped input never answers an approval.
 - A person answers `y` (once), `s` (this conversation, kept in
-  `session_rules`), `a` (this folder, saved to
-  `~/.uagent/config/permissions.json`), `n`, or free text, which denies and
-  is queued as guidance. Silence or end of input denies.
-- A rule is `{tool, match}` (`PermissionRule`, `src/app/permissions.cc`):
-  `*` (every call; offered for MCP tools), `PREFIX *` (a simple `run`
-  command, with no chaining, substitution, redirection, backslash or
-  newline, starting with one or two plain words), `DIR/` (a path under a
-  folder), or the exact subject. The subject
-  is the command, a `web_fetch` URL's host, a path relative to the folder,
-  or the arguments. A command prefix is offered and matches only while the
-  sandbox is enforced; otherwise commands match exactly.
-- Auto sends the decision model (`decisions_url` on an endpoint declaring
-  `decisions`) the tool, folder, the latest and first user messages and the
-  action preview (16 KiB each), and asks a choice (`allow`, `ask`, `deny`)
-  plus four yes/no reasons: `destructive`, `beyond_request`,
-  `sends_data_off_machine`, `touches_secrets`. Allow needs P(allow) at or
-  above the model's bar and no reason at or above its veto bar; deny needs
-  P(deny) at or above its bar; anything else asks. A model with no
-  `decision_bars` row gets 0.9 / 0.95 / 0.3. Reviews are memoized per
-  action within a turn. Only calls that name no path outside the folder and
-  whose command runs in the enforced sandbox are reviewed.
-- Agent policy (`ReviewedByPolicy`): an agent that may edit, in Auto, with
-  the sandbox enforced, runs `run` and in-folder file changes unreviewed.
-  Plan mode allows commands in the `readonly` sandbox and file calls on the
+  `SessionRules`), `a` (always in this folder), `x` (never in this folder),
+  `n`, or free text, which denies and is queued as guidance. Silence or end
+  of input denies.
+- A rule is `{tool, match, effect}` (`PermissionRule`,
+  `src/app/permissions.cc`), its effect `allow`, `ask` or `deny`; a refusing
+  rule wins over an asking one, an asking one over an allowing one. The
+  match is `*` (every call; offered for MCP tools), `PREFIX *` (a command
+  starting with one or two plain words), `DIR/` (a path under a folder), or
+  the exact subject. The subject is the command, a `web_fetch` URL's host, a
+  path relative to the folder, or the arguments. An allow rule covers only
+  a whole simple command (no chaining, substitution, redirection, backslash
+  or newline), and a prefix only while the sandbox is enforced. A deny or
+  ask rule covers any part of a command split at `&&`, `||`, `;`, `|`, `&`
+  and line breaks, sandbox or not.
+- Auto lets a file tool's change inside the folder through unjudged: undo
+  takes it back. It sends every other call that names no path outside the
+  folder, and whose command runs in the enforced sandbox, to the decision
+  model (`decisions_url` on an endpoint declaring `decisions`), for the
+  main conversation and its agents alike. The model is shown the tool, the
+  folder, the latest and first user messages and the action preview
+  (16 KiB each). It answers a
+  choice (`allow`, `ask`, `deny`) and four yes/no reasons:
+  `destructive`, `beyond_request`, `sends_data_off_machine`,
+  `touches_secrets`. Allow needs P(allow) at or above the model's bar and
+  no reason at or above its veto bar; deny needs P(deny) at or above its
+  bar; anything else asks. A model with no `decision_bars` row gets 0.9 /
+  0.95 / 0.3. Reviews are memoized per action within a turn.
+- After 3 refusals by the review in a row, or 20 in a conversation, Auto
+  asks a person instead (`kRefusals`) until one answers.
+- Plan mode allows commands in the `readonly` sandbox and file calls on the
   plan file; it refuses every other mutation before anyone is asked, a
   mandatory one included.
 
-Each decision emits `approval.resolved`; asking a person emits
-`approval.requested` with the whole preview and risks (`runs`, `writes`,
-`network`, `outside`).
+Asking a person emits `approval.requested` with the whole preview, the
+risks (`runs`, `writes`, `network`, `outside`, then the review's reasons),
+the stage that asks (`source`: `mode`, `ask_rule`, `review`, `refusals`,
+`mandatory`), why in a line (`reason`) and an asking rule. Each decision
+emits `approval.resolved` with its `effect`, `source`, `reason`, `rule`,
+`mode` and the review. A call the review or a refusing rule turned down
+without asking carries a `refusal` part on its row, with the action to
+allow for the conversation (the `permissions` control's `allow`) or the
+rule.
 
 Activities. `run` waits `yield_ms` (default 10 s, clamped to 250 ms–30 s;
 `0` waits for exit within the turn) and then returns a still-running
@@ -186,7 +210,7 @@ unless its entry sets `"trust": true` and the tool declares
 | `src/tools/registry.cc`, `src/tools/registry_files.cc`, `src/tools/registry_exec.cc`, `src/tools/registry_activity.cc` | built-in tool definitions |
 | `src/tools/shell.cc`, `src/agent/activity_supervisor.cc`, `src/agent/activity.cc` | `RunShellCommand`, activities, logs |
 | `src/app/bootstrap_tools.cc` | which tools a runtime gets |
-| `src/app/approvals.cc`, `src/app/permissions.cc`, `include/app/permissions.h` | approval pipeline, rules, decision model |
+| `src/app/approvals.cc`, `src/app/approval_policy.cc`, `src/app/approval_review.cc`, `src/app/permissions.cc` | approval driver, the decision order, the decision model, rules |
 | `include/agent/path_policy.h` | self-configuration and hidden paths |
 | `src/mcp/register.cc`, `src/mcp/discover.cc`, `src/mcp/rpc.cc`, `src/mcp/invoke.cc`, `include/mcp/config.h` | MCP startup, tools, protocol |
 | `tests/unit/tool_execution_policy_test.cc`, `tests/unit/permission_review_test.cc` | executor policy, review bars |

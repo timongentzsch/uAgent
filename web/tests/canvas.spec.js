@@ -383,7 +383,9 @@ test("on a phone a book opens as one page: its tools one row, Back to its list",
   // The page's tools stay one row, scrolling sideways when they run out.
   const tools = files.locator(".page-tools");
   const row = await tools.evaluate((bar) => {
-    const tops = [...bar.children].map((child) => child.offsetTop);
+    const tops = [...bar.children]
+      .filter((child) => child.getClientRects().length)
+      .map((child) => child.offsetTop);
     return new Set(tops).size;
   });
   expect(row).toBe(1);

@@ -252,10 +252,14 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
     Offer(root, inputs, &accepted, &result.rejected);
   }
   // The relaxed level's home is no ordinary root: it holds ~/.uagent, which
-  // Acceptable() would refuse, so it is withheld from it here instead.
+  // Acceptable() would refuse, and the files that run code when something
+  // else starts, so those are withheld from it here instead.
   if (!inputs.open_home.empty()) {
     accepted.push_back(inputs.open_home);
     result.policy.withheld = {inputs.global_base};
+    result.policy.withheld.insert(result.policy.withheld.end(),
+                                  inputs.authority_paths.begin(),
+                                  inputs.authority_paths.end());
   }
   FoldNested(&accepted, result.policy.withheld);
   result.policy.writable_roots = std::move(accepted);

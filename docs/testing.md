@@ -17,8 +17,14 @@ cmake --preset debug
 cmake --build --preset debug --parallel
 ```
 
+`.github/dev.sh` is the quick loop: it builds the `dev` preset (the debug
+build with Ninja, in `build/dev`) and runs the narrowest test.
+
 | To check | Run | About |
 | --- | --- | --- |
+| unit tests by name, rebuilt first | `.github/dev.sh unit Approval` | seconds |
+| integration tests by name, rebuilt first | `.github/dev.sh int review` | seconds |
+| browser specs in the Chrome on this machine, bundle rebuilt first | `.github/dev.sh web tests/turn-controls.spec.js` | the build + the specs |
 | one unit test area | `build/debug/uagent_tests -k Activity` | seconds |
 | one unit test | `build/debug/uagent_tests --test TestActivitySessions` | seconds |
 | one integration test | `python3 tests/integration.py build/debug/uagent --test test_plain_turn` | seconds |
@@ -28,6 +34,11 @@ cmake --build --preset debug --parallel
 | a docs edit | `python3 tests/docs_test.py` | seconds |
 | the native and integration suites | `ctest --preset debug` | minutes |
 | web work before a push | `npm run test:browser` in `web/` (both browsers) | minutes |
+
+`web/playwright.local.config.js` runs the specs in the installed Chrome when
+Playwright's own browsers are not downloaded. The canvas specs fail in it on a
+clean checkout, for the environment, so it leaves them out unless
+`PW_CANVAS=1`; CI runs them in Playwright's browsers.
 | what only CI's compilers and linters report | `.github/ci-local.sh` | minutes; incremental after the first run |
 
 Style checks (clang-format, cpplint, clang-tidy, Ruff, Biome) are
@@ -284,13 +295,13 @@ master, scheduled and manual runs always run them:
 | `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |
 | `build-and-test` | `ci-release` builds (Web Push on) for Linux x86_64 and macOS ARM64, and Linux ARM64 where selected; `ctest`; packaging through `install.sh` with `UAGENT_LOCAL_ONLY=1`, `tests/package_contents.py`, and the target's remote payload |
 | `remote-bundle` | Where selected: assembles the three payloads into one verified bundle (`.github/remote_bundle.py`), adds it to each release archive and checks the archives; uploads `release-complete` |
-| `sanitizers` | `sanitize` preset, `ctest` |
+| `sanitizers` | `sanitize` preset, `ctest` in two legs: `integration_web` (with `behavior_eval`, `reference_docs`), and the rest |
 | `thread-sanitizer` | Where selected: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `coverage` | Weekly and by hand: `core` and every integration group with a branch report; fails under 67% line coverage |
 | `lint` | `.github/lint.sh`: clang-format, cpplint, Ruff, the source contracts and the docs check |
 | `clang-tidy` | clang-tidy, changed units on one runner or all units across three |
 | `web` | Biome format check and lint, Node tests, bundle and size report, a `ci-release` host with Web Push |
-| `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), split across three runners |
+| `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), each browser split across two runners |
 | `image` | Where selected: builds the container image for x86_64 from the tested Linux archive, starts it under `deploy/seccomp-chrome.json`, runs `deploy/check-network.sh` against a second listening container, and waits for the fetched Chrome |
 | `CI result` | fails if any required job failed or was cancelled |
 

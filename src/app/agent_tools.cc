@@ -25,6 +25,7 @@
 #include "include/app/agent_link.h"
 #include "include/app/execution.h"
 #include "include/app/launch.h"
+#include "include/app/permissions.h"
 #include "include/app/session.h"
 #include "include/core/config_registry.h"
 #include "include/core/env.h"
@@ -569,9 +570,9 @@ ToolResult Decide(const json& a) {
   } else {
     command = {
         {"kind", "reply"},
-        {"text", action == "allow_once"           ? "y"
-                 : action == "allow_conversation" ? "s"
-                 : reason.empty() ? "n"
+        {"text", action == "allow_once"           ? std::string(kAllowOnce)
+                 : action == "allow_conversation" ? std::string(kAllowSession)
+                 : reason.empty() ? std::string(kDenyOnce)
                                   : "The parent agent denied this: " + reason}};
   }
   if (action != "yield") {

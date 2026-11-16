@@ -69,7 +69,8 @@
 .provider-form .dialog-actions > .destructive {
   margin-right: auto;
 }
-.provider-tool {
+.provider-tool,
+.rule-form {
   display: grid;
   gap: var(--gap);
 }

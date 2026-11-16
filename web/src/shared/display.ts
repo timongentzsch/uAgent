@@ -14,6 +14,13 @@ export const permissionLabels = {
   yolo: "YOLO",
   plan: "Plan",
 } as const;
+// What each mode lets through, in a line.
+export const permissionNotes: Record<string, string> = {
+  ask: "You approve each change, command and network call.",
+  auto: "Edits in this folder run; a judge decides commands and the rest, and asks you when unsure.",
+  yolo: "Everything runs, sandboxed. Folder rules that refuse or ask still hold.",
+  plan: "Reads only, and writes the plan.",
+};
 // Any other mode asks.
 export const permissionLabel = (mode?: string) =>
   permissionLabels[

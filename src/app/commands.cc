@@ -100,7 +100,7 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
   if (session.session_file.empty() || session.session_file == previous_path) {
     return;
   }
-  session.context.session_rules.clear();
+  session.context.session_rules.Clear();
   std::string error;
   if (!session.context.observability.Journal().Load(
           session.session_file + kSessionJournalSuffix, error)) {
@@ -171,7 +171,8 @@ CommandReply RunSlashCommand(AppSession& session,
       break;
     case SlashCommandId::kPermissions:
       if (command.argument == "rules" ||
-          command.argument.starts_with("forget")) {
+          command.argument.starts_with("forget") ||
+          IsRuleArgument(command.argument)) {
         HandlePermissionRules(command.argument, reply);
         return reply;
       }

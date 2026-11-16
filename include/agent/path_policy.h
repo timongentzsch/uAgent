@@ -115,12 +115,29 @@ inline bool UnreadablePath(const std::string& path) {
 
 enum class PathAccess { kRead, kWrite };
 
+// A home-folder entry that runs code when something else starts
+// (kAuthorityPaths), by its path or by what a link there points to.
+inline bool AuthorityPath(const std::string& path) {
+  const std::string home = UserHome();
+  if (path.empty() || home.empty()) return false;
+  const std::filesystem::path candidate = CanonicalAccessPath(path);
+  const std::filesystem::path base = CanonicalAccessPath(home);
+  return std::ranges::any_of(kAuthorityPaths, [&](std::string_view entry) {
+    const std::filesystem::path held = base / std::filesystem::path(entry);
+    return PathWithin(candidate, held) ||
+           PathWithin(candidate, CanonicalAccessPath(held.string()));
+  });
+}
+
 // Reads escalate too: config files and .mcp.json carry keys and credentials.
 // The trust store, instruction files and skills hold no secret, so only
 // writing them escalates. A closed folder asks for either.
 inline ApprovalClass PathApprovalClass(const std::string& path,
                                        PathAccess access) {
   if (UnreadablePath(path)) return ApprovalClass::kMandatoryHuman;
+  if (access == PathAccess::kWrite && AuthorityPath(path)) {
+    return ApprovalClass::kMandatoryHuman;
+  }
   if (!SelfConfigurationPath(path)) return ApprovalClass::kNone;
   if (access == PathAccess::kRead &&
       (CanonicalAccessPath(path) == CanonicalAccessPath(TrustStorePath()) ||

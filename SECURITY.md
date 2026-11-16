@@ -59,19 +59,26 @@ No approval mode turns the sandbox off; yolo raises the `default` level to
 | Mode | Set with | Effect |
 | --- | --- | --- |
 | `ask` (default) | `/permissions ask` | a person approves each mutating, process, network, cost-bearing or untrusted MCP call, and each path outside the work area (the folder and the roots commands may write) |
-| `auto` | `/permissions auto`, `UAGENT_APPROVAL=auto` | a decision model allows or denies the calls the sandbox contains; what it cannot decide, every call naming a path outside the folder, and every `run` call while the sandbox is off or not enforced go to a person, and are denied when nobody can answer |
+| `auto` | `/permissions auto`, `UAGENT_APPROVAL=auto` | a file tool's change inside the folder runs (undo takes it back); a decision model allows or denies the other calls the sandbox contains; what it cannot decide, every call naming a path outside the folder, and every `run` call while the sandbox is off or not enforced go to a person, and are denied when nobody can answer. After 3 refusals in a row or 20 in a conversation it asks a person until one answers |
 | `yolo` | `--yolo`, `/yolo`, `/permissions yolo` | those calls run unasked; commands stay sandboxed, at `relaxed` where the level is `default` |
 | `plan` | `/plan`, `/permissions plan` | only reads run: commands at `readonly` and file calls on the conversation's plan file; every other change is refused before anyone is asked; other calls ask as in `ask` |
 
 In every mode:
 
-- A call a kept rule covers is not asked again: `s` keeps one for the
-  conversation, `a` ("Always allow here") for the repository in
-  `permissions.json` (`/permissions rules`, `/permissions forget N`). A
-  rule names a tool and a simple command's prefix, a folder, a host, or the
-  exact call. A command that chains, substitutes or redirects matches no
-  prefix, and prefixes match only while the sandbox is enforced, which
-  bounds what they let through; without it commands match only exactly.
+- A folder's rules allow, ask or refuse (`permissions.json`; Settings ›
+  This folder, `/permissions rules`, `/permissions allow|ask|deny TOOL
+  MATCH`, `/permissions forget N`). `s` keeps an allowing rule for the
+  conversation, `a` ("Always allow") one for the folder, `x` ("Never
+  allow") a refusing one. A rule names a tool and a command's prefix, a
+  folder, a host, or the exact call. A refusing rule holds in every mode,
+  yolo included, and before a person is asked; an asking rule asks in every
+  mode. Both cover any part of a command that chains. An allowing rule
+  covers only a whole simple command: one that chains, substitutes or
+  redirects matches no prefix, and prefixes match only while the sandbox is
+  enforced; without it commands match only exactly.
+- Nobody to ask means refused: a headless run whose stdin is not a
+  terminal never takes an approval from its input. A folder rule is how an
+  unattended run is allowed to act.
 - Some calls always need a person, under yolo, auto or a kept rule alike.
   No parent agent or reviewer may answer them, and they are denied when
   nobody can, as in a headless run whose stdin is not a terminal:
@@ -79,6 +86,10 @@ In every mode:
     settings, the trust store, `permissions.json`, your instruction files
     in `~/.uagent`, your own skills (`~/.uagent/skills`, `~/.agents/skills`
     and the Claude Code and Codex folders µAgent reads), any `.mcp.json`;
+  - writing, through the file tools, a file that runs code when you log
+    in or another agent starts: `~/.ssh`, shell startup files, git's
+    global config, `~/.mcp.json`, `~/.agents`, `~/.claude`, `~/.codex`,
+    launch agents and user services;
   - reading any of those through the file tools, except the trust store,
     the instruction files and the skills, which hold no credential;
   - reading or changing, through the file tools, a folder the sandbox
@@ -95,8 +106,9 @@ for its own conversation (`/permissions`, `--yolo`, the web's approval
 control); the saved setting does not reach it. With `edits` `none`, the
 default and the only choice in plan mode, it runs at `readonly` with no
 tool that edits, and so do the agents it starts. Otherwise it runs at
-`default`, or `relaxed` in yolo; in Auto with that sandbox enforced, its
-`run` commands and its file changes inside the work area run unreviewed.
+`default`, or `relaxed` in yolo. In Auto it is held to the same order as
+the conversation that started it: its file changes inside the folder run,
+its commands and the rest go to the decision model.
 What would ask a person goes to its parent first, which decides or passes
 it on, and to you after five minutes; once you write in the agent's own
 conversation, that turn asks you directly. What always needs a person goes
@@ -104,9 +116,8 @@ to you, never to the parent. An agent is never offered `root` or `command`.
 
 **Auto review** sends the `decisions_url` of an endpoint declaring
 `decisions` the tool, the folder, your latest and first messages and the
-action preview, each cut to 16 KiB; with provider routing it asks for
-providers that retain no data (`decisions_private`), and a session id goes
-as a hash. A call is allowed only at or above the model's allow bar with
+action preview, each cut to 16 KiB; with provider routing it asks for providers that retain no data
+(`decisions_private`), and a session id goes as a hash. A call is allowed only at or above the model's allow bar with
 no risk question at or above its risk bar; without such an endpoint, or
 when the review fails, it asks.
 
@@ -224,7 +235,7 @@ how far it goes:
 | --- | --- | --- | --- | --- |
 | `readonly` | temporary files and the terminal logs only, never the folder | not your other folders | none | yes |
 | `default` | the roots below | not your other folders | allowed | yes |
-| `relaxed` | the roots below and your home folder, except `~/.uagent` | open | allowed | yes |
+| `relaxed` | the roots below and your home folder, except `~/.uagent` and the files that run code at login | open | allowed | yes |
 | `off` | unconfined | open | allowed | no |
 
 In yolo at `default`, commands run at `relaxed` from the next command on;
@@ -246,7 +257,11 @@ worktree, its git directory and the shared repository's `objects`, `refs`
 and `logs`; at `relaxed`, the home folder. Nothing else. A requested root
 is rejected, and reported at startup, when it is `/`, `~/.uagent` or an
 ancestor, or inside `~/.uagent/config`. At `relaxed`, `~/.uagent` stays
-closed but for its terminal logs and a workspace under `~/.uagent/spaces`.
+closed but for its terminal logs and a workspace under `~/.uagent/spaces`,
+and so do the files that run code when you log in or another agent starts
+(`kAuthorityPaths`: `~/.ssh`, shell startup files, git's global config,
+`~/.mcp.json`, `~/.agents`, `~/.claude`, `~/.codex`, launch agents and user
+services), a link's target too.
 A session started in your home folder therefore has no writable folder
 below `relaxed`; start in a folder or a workspace.
 

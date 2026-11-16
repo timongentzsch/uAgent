@@ -16,7 +16,8 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/path_policy.h"
-#include "include/agent/session_role.h"
+#include "include/app/approval_policy.h"
+#include "include/app/approval_review.h"
 #include "include/app/permissions.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
@@ -51,7 +52,14 @@ bool InteractiveApprovalAvailable() {
 namespace {
 // What a person may answer an ordinary approval with. An answer outside the
 // table is guidance: denied, and queued as steering.
-enum class ApprovalAnswer { kOnce, kSession, kRepository, kDeny, kGuidance };
+enum class ApprovalAnswer {
+  kOnce,
+  kSession,
+  kRepository,
+  kNever,
+  kDeny,
+  kGuidance
+};
 
 struct ApprovalChoice {
   ApprovalAnswer answer;
@@ -61,16 +69,20 @@ struct ApprovalChoice {
 };
 
 constexpr ApprovalChoice kApprovalChoices[] = {
-    {ApprovalAnswer::kOnce, "y", "Allow once", {"y", "yes"}},
+    {ApprovalAnswer::kOnce, kAllowOnce, "Allow once", {kAllowOnce, "yes"}},
     {ApprovalAnswer::kSession,
-     "s",
+     kAllowSession,
      "Allow for this conversation",
-     {"s", "session"}},
+     {kAllowSession, "session"}},
     {ApprovalAnswer::kRepository,
-     "a",
+     kAllowFolder,
      "Always allow here: ",
-     {"a", "always", "repository"}},
-    {ApprovalAnswer::kDeny, "n", "Deny", {"n", "no"}},
+     {kAllowFolder, "always", "repository"}},
+    {ApprovalAnswer::kNever,
+     kDenyFolder,
+     "Never allow here: ",
+     {kDenyFolder, "never"}},
+    {ApprovalAnswer::kDeny, kDenyOnce, "Deny", {kDenyOnce, "no"}},
     {ApprovalAnswer::kGuidance, "guidance", "Send guidance", {}},
 };
 
@@ -97,36 +109,16 @@ ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
 
 bool WrapsCommands(const Tool& tool) { return tool.name == "run"; }
 
-// An agent in Auto that may edit acts in its folder without review while
-// the enforced sandbox holds it there: wrapped commands and file changes
-// inside the folder, not stopping a process, which may be another folder's.
-bool ReviewedByPolicy(const AppContext* app, const Tool& tool,
-                      const json& arguments) {
-  const json agent = app->options.AgentRole();
-  return !agent.empty() && JsonValue(agent, "edits", "") != "none" &&
-         CurrentApprovalMode() == ApprovalMode::kAuto &&
-         SandboxRuntime().mode == SandboxMode::kEnforced &&
-         (WrapsCommands(tool) ||
-          (tool.needs_approval && !tool.needs_approval(arguments)));
-}
-
-// Plan mode only reads. What runs there without asking although it may
-// change something: a command the readonly sandbox holds, as for an agent that
-// may not edit, and a file tool's call on the plan, the one file it writes.
-bool PlanModeAllows(const Tool& tool, const json& arguments, bool mandatory) {
-  const SandboxStatus& sandbox = SandboxRuntime();
-  if ((tool.capabilities & Capability(ToolCapability::kExecute)) &&
-      !mandatory && sandbox.mode == SandboxMode::kEnforced &&
-      sandbox.policy.read_only) {
-    return true;
-  }
-  constexpr uint32_t kFiles = Capability(ToolCapability::kInspect) |
-                              Capability(ToolCapability::kMutate);
-  const std::string plan = PlanFile();
-  return !plan.empty() && tool.capabilities != 0 &&
-         (tool.capabilities & ~kFiles) == 0 &&
-         CanonicalAccessPath(JsonValue(arguments, "path", "")) ==
-             CanonicalAccessPath(plan);
+// Why a mandatory call needs a person. A tool that escalates for its own
+// reason names it; otherwise its path did, by reaching µAgent's
+// configuration or one of the person's folders.
+std::string MandatoryReason(const Tool& tool, const json& arguments) {
+  std::string reason =
+      tool.mandatory_reason ? tool.mandatory_reason(arguments) : "";
+  if (!reason.empty()) return reason;
+  return UnreadablePath(JsonValue(arguments, "path", std::string()))
+             ? "reads your folders outside this folder; sandbox.read opens one"
+             : "changes \u00b5Agent's own configuration";
 }
 
 // A refusal says what was not approved, not who refused it: a client with
@@ -136,12 +128,29 @@ struct Verdict {
   std::string refusal = "this action was not approved";
 };
 
+// After this many refusals by the review, in a row or in the conversation,
+// Auto asks a person until one answers.
+constexpr int kReviewRefusalsInRow = 3;
+constexpr int kReviewRefusals = 20;
+
 // The review of each action in the turn being run, so the same action asked
-// again in that turn is not paid for again.
+// again in that turn is not paid for again; and its refusals.
 struct ReviewMemo {
   std::mutex mutex;
   int64_t turn = -1;
   std::unordered_map<std::string, AutoPermissionReview> reviews;
+  int refused_in_row = 0;
+  int refused = 0;
+
+  bool Paused() {
+    std::lock_guard lock(mutex);
+    return refused_in_row >= kReviewRefusalsInRow || refused >= kReviewRefusals;
+  }
+  // A person answered: the review judges again.
+  void Answered() {
+    std::lock_guard lock(mutex);
+    refused_in_row = refused = 0;
+  }
 };
 
 // Nothing when the review asks for a person to decide.
@@ -178,12 +187,19 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
                                    app->runtime.config.permission_model),
                 app->runtime.side_usage,
                 {tool, raw_payload, request, app->agent->SessionId(), turn});
-  if (!memoized && decision.error.empty()) {
-    std::lock_guard lock(memo.mutex);
-    if (memo.turn == turn) memo.reviews.emplace(memo_key, decision);
-  }
   const bool ask = decision.decision == AutoPermissionDecision::kAsk;
   const bool allow = decision.decision == AutoPermissionDecision::kAllow;
+  {
+    std::lock_guard lock(memo.mutex);
+    if (!memoized && decision.error.empty() && memo.turn == turn) {
+      memo.reviews.emplace(memo_key, decision);
+    }
+    if (allow) memo.refused_in_row = 0;
+    if (!allow && !ask) {
+      ++memo.refused_in_row;
+      ++memo.refused;
+    }
+  }
   review = {{"choice", ask ? "ask" : (allow ? "allow" : "deny")},
             {"probabilities", std::move(decision.probabilities)},
             {"reasons", std::move(decision.reasons)},
@@ -204,52 +220,74 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
   return verdict;
 }
 
+// Why a person is asked, in a line: the stage of the order that asked.
+std::string AskReason(ApprovalSource source, const ApprovalFacts& facts,
+                      const PolicyContext& context, const std::string& rule,
+                      const std::string& mandatory, const json& review,
+                      bool in_row) {
+  switch (source) {
+    case ApprovalSource::kMandatory:
+      return "Needs you in every mode: " + mandatory + ".";
+    case ApprovalSource::kAskRule:
+      return "A rule of this folder asks for it: " + rule + ".";
+    case ApprovalSource::kReview: {
+      const std::string error = JsonValue(review, "error", "");
+      const std::string note = JsonValue(review, "note", "");
+      return error.empty()
+                 ? "Auto review " + (note.empty() ? "could not decide." : note)
+                 : "Auto review could not decide: " + error;
+    }
+    case ApprovalSource::kRefusals:
+      return in_row ? "Auto review refused " +
+                          std::to_string(kReviewRefusalsInRow) +
+                          " calls in a row; it asks you until you answer one."
+                    : "Auto review refused " + std::to_string(kReviewRefusals) +
+                          " calls in this conversation; it asks you until "
+                          "you answer one.";
+    default:
+      break;
+  }
+  if (context.mode == ApprovalMode::kAuto) {
+    return facts.outside_folder
+               ? "Auto asks you about anything outside this folder."
+               : "Auto asks you about commands while the sandbox is off.";
+  }
+  if (context.mode == ApprovalMode::kPlan) {
+    return "Plan mode asks before anything but reading.";
+  }
+  return "The approval mode is Ask.";
+}
+
 Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
                   const std::string& raw_payload, const std::string& request_id,
                   const std::string& root, const PermissionRule& rule,
-                  bool mandatory, const json& review) {
+                  ApprovalSource source, const std::string& reason,
+                  const std::string& asking_rule, const json& review) {
   Verdict verdict;
-  // A tool that escalates for its own reason names it; otherwise its path
-  // did, by reaching µAgent's configuration or one of the person's folders.
-  std::string reason =
-      tool.mandatory_reason ? tool.mandatory_reason(arguments) : "";
-  if (reason.empty()) {
-    reason = UnreadablePath(JsonValue(arguments, "path", std::string()))
-                 ? "reads your folders outside this folder; sandbox.read "
-                   "opens one"
-                 : "changes \u00b5Agent's own configuration";
-  }
-  // The review's reasons join the risks; its note names the bar it fell on.
+  const bool mandatory = source == ApprovalSource::kMandatory;
+  // The review's reasons join the risks.
   json risks = ApprovalRisks(tool, arguments, root);
   for (const json& caution : JsonValue(review, "reasons", json::array())) {
     risks.push_back(caution);
   }
-  std::string verdict_line = JsonValue(review, "error", "");
-  verdict_line = verdict_line.empty() ? JsonValue(review, "note", "")
-                                      : "could not decide: " + verdict_line;
   // The preview is the whole payload: a long command is never truncated.
-  Emit(Event{
-      EventId::kApprovalRequested,
-      {{"id", request_id},
-       {"tool", tool.name},
-       {"preview", TerminalSafe(raw_payload)},
-       {"risks", std::move(risks)},
-       {"review", verdict_line.empty() ? "" : "Auto review " + verdict_line},
-       {"mandatory_human", mandatory},
-       {"mandatory_reason", mandatory ? reason : std::string()}}});
+  Emit(Event{EventId::kApprovalRequested,
+             {{"id", request_id},
+              {"tool", tool.name},
+              {"preview", TerminalSafe(raw_payload)},
+              {"risks", std::move(risks)},
+              {"source", ApprovalSourceName(source)},
+              {"reason", reason},
+              {"rule", asking_rule}}});
   InteractionRequest request{
       .id = request_id,
       .kind = "approval",
       .prompt = "Allow " + TerminalSafe(tool.name) + "?"};
-  if (mandatory && !InteractiveApprovalAvailable()) {
-    verdict.granted = false;
-    verdict.refusal = "this action needs a person's approval (" + reason +
-                      ") and nobody is here to give it";
-  } else if (mandatory) {
-    request.options = json::array({{{"value", "y"}, {"label", "Allow"}},
-                                   {{"value", "n"}, {"label", "Deny"}}});
+  if (mandatory) {
+    request.options = json::array({{{"value", kAllowOnce}, {"label", "Allow"}},
+                                   {{"value", kDenyOnce}, {"label", "Deny"}}});
     verdict.granted = Confirm(std::move(request));
-    verdict.refusal += " (" + reason + ")";
+    verdict.refusal += " (" + MandatoryReason(tool, arguments) + ")";
   } else {
     request.options = ApprovalOptions(rule);
     bool cancelled = false;
@@ -261,13 +299,18 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
     verdict.granted = chosen == ApprovalAnswer::kOnce ||
                       chosen == ApprovalAnswer::kSession ||
                       chosen == ApprovalAnswer::kRepository;
-    if (chosen == ApprovalAnswer::kSession) app->session_rules.push_back(rule);
-    if (chosen == ApprovalAnswer::kRepository) {
+    if (chosen == ApprovalAnswer::kSession) app->session_rules.Add(rule);
+    if (chosen == ApprovalAnswer::kRepository ||
+        chosen == ApprovalAnswer::kNever) {
+      PermissionRule kept = rule;
+      if (chosen == ApprovalAnswer::kNever) kept.effect = RuleEffect::kDeny;
       std::string error;
-      if (!RememberRepositoryRule(root, rule, error)) {
+      if (!RememberRepositoryRule(root, kept, error)) {
         Emit(NoticeEvent(
             PresentationStatus::kWarned,
-            "allowed once; could not save permission rule: " + error));
+            std::string(chosen == ApprovalAnswer::kNever ? "refused once"
+                                                         : "allowed once") +
+                "; could not save permission rule: " + error));
       }
     }
     if (chosen == ApprovalAnswer::kGuidance && !answer.empty()) {
@@ -279,44 +322,85 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
 
 }  // namespace
 
-// A mandatory-human call ignores every automatic-approval switch and denies
-// when no human can answer. Defense in depth for the file tools, not a
-// boundary: an approved shell outside the sandbox reaches the same paths.
+// The facts of the call and the situation go to Decide (approval_policy.h);
+// what it decides is carried out here: a review, a person asked, a rule kept.
 Agent::Approver MakeApprover(AppContext* app) {
   auto memo = std::make_shared<ReviewMemo>();
-  return [app, memo](const Tool& tool, const json& arguments, int64_t turn) {
+  return [app, memo](const Tool& tool, const json& arguments,
+                     int64_t turn) -> ApprovalOutcome {
     static std::atomic<uint64_t> sequence{0};
-    ApprovalClass required = RequiredApproval(tool, arguments);
-    bool mandatory = required == ApprovalClass::kMandatoryHuman;
     const std::string root = Workspace().path;
-    // The rule that allows it, if one does; else the one a person is
-    // offered. A command's prefix holds only where the sandbox holds it.
-    const bool confined = !(WrapsCommands(tool) &&
-                            SandboxRuntime().mode != SandboxMode::kEnforced);
-    PermissionRule rule;
-    const auto covered = [&](const PermissionRule& held) {
-      return RuleCovers(held, tool, arguments, root, confined);
-    };
-    auto held = std::ranges::find_if(app->session_rules, covered);
-    bool session_rule = !mandatory && held != app->session_rules.end();
-    if (session_rule) rule = *held;
-    bool repository_rule =
-        !mandatory && !session_rule &&
-        RepositoryRuleAllows(root, tool, arguments, confined, &rule);
-    const bool by_rule = session_rule || repository_rule;
-    if (!by_rule) rule = SuggestRule(tool, arguments, root, confined);
-    const bool planning = CurrentApprovalMode() == ApprovalMode::kPlan;
-    const bool planned = planning && PlanModeAllows(tool, arguments, mandatory);
-    bool automatic =
-        !mandatory && (ApprovalIsYolo() || session_rule || repository_rule ||
-                       ReviewedByPolicy(app, tool, arguments) || planned);
+    const SandboxStatus& sandbox = SandboxRuntime();
+    PolicyContext context{
+        .mode = CurrentApprovalMode(),
+        .sandbox_enforced = sandbox.mode == SandboxMode::kEnforced,
+        .sandbox_read_only = sandbox.policy.read_only,
+        .person = InteractiveApprovalAvailable(),
+        .review_paused = memo->Paused()};
+    ApprovalFacts facts{.required = RequiredApproval(tool, arguments),
+                        .mutates = ToolMutates(tool, arguments),
+                        .executes = (tool.capabilities &
+                                     Capability(ToolCapability::kExecute)) != 0,
+                        .command = WrapsCommands(tool)};
+    const bool mandatory = facts.required == ApprovalClass::kMandatoryHuman;
+    if (context.mode == ApprovalMode::kPlan) {
+      constexpr uint32_t kFiles = Capability(ToolCapability::kInspect) |
+                                  Capability(ToolCapability::kMutate);
+      const std::string plan = PlanFile();
+      facts.on_plan_file =
+          !plan.empty() && tool.capabilities != 0 &&
+          (tool.capabilities & ~kFiles) == 0 &&
+          CanonicalAccessPath(JsonValue(arguments, "path", "")) ==
+              CanonicalAccessPath(plan);
+    }
+    if (context.mode == ApprovalMode::kAuto) {
+      facts.outside_folder = PathOutsideFolder(arguments, root);
+      facts.inside_work_area =
+          tool.needs_approval && !tool.needs_approval(arguments);
+    }
+    // The folder's rules hold in every mode; one that refuses holds for a
+    // mandatory call too. A command's prefix lets a call through only where
+    // the sandbox holds it.
+    const bool confined = !facts.command || context.sandbox_enforced;
+    const CoveringRules folder = FolderRules(root, tool, arguments, confined);
+    context.deny_rule = folder.deny.has_value();
+    context.ask_rule = folder.ask.has_value();
+    std::optional<PermissionRule> allowing;
+    if (!mandatory) {
+      allowing = app->session_rules.Covering(tool, arguments, root, confined);
+      if (allowing) {
+        context.session_rule = true;
+      } else if (folder.allow) {
+        context.folder_rule = true;
+        allowing = folder.allow;
+      }
+    }
+    // What a person is offered to remember.
+    const PermissionRule offered = SuggestRule(tool, arguments, root, confined);
+    const ApprovalDecision decision = Decide(facts, context);
+    ApprovalSource source = decision.source;
+    const std::optional<PermissionRule>& decisive =
+        source == ApprovalSource::kDenyRule  ? folder.deny
+        : source == ApprovalSource::kAskRule ? folder.ask
+                                             : allowing;
+    const std::string rule = decisive ? RuleLabel(*decisive) : std::string();
+    bool automatic = decision.effect != ApprovalEffect::kAskPerson;
     Verdict verdict;
-    // Anything else that changes something is refused before anyone is
-    // asked; a read that asks, asks.
-    if (planning && !planned && ToolMutates(tool, arguments)) {
-      automatic = true;
+    if (source == ApprovalSource::kDenyRule) {
+      verdict = {false,
+                 "this action was not approved: a rule of this folder "
+                 "refuses it (" +
+                     rule + ")"};
+    } else if (source == ApprovalSource::kPlan) {
       verdict = {false,
                  "plan mode is read-only; write the plan to " + PlanFile()};
+    } else if (source == ApprovalSource::kNobody) {
+      verdict = {false, mandatory ? "this action needs a person's approval (" +
+                                        MandatoryReason(tool, arguments) +
+                                        ") and nobody is here to give it"
+                                  : "this action was not approved: nobody "
+                                    "is here to give it; a remembered rule "
+                                    "or another approval mode allows it"};
     }
     json review = json::object();
     std::string request_id =
@@ -329,40 +413,62 @@ Agent::Approver MakeApprover(AppContext* app) {
     if (!tool.approval_preview && raw_payload.empty()) {
       raw_payload = JsonDump(arguments);
     }
-    // The model judges only what the sandbox contains: a call that names a
-    // path outside the folder, or a command with no enforced sandbox around
-    // it, goes to the person, as a mandatory one does.
-    const bool contained = !PathOutsideFolder(arguments, root) && confined;
-    if (!automatic && !mandatory &&
-        CurrentApprovalMode() == ApprovalMode::kAuto && contained) {
+    if (decision.effect == ApprovalEffect::kAskModel) {
       if (auto decided = ReviewAutomatically(app, *memo, tool, raw_payload,
                                              turn, review)) {
-        automatic = true;
         verdict = std::move(*decided);
+      } else {
+        automatic = false;
       }
     }
     if (!automatic) {
-      verdict = AskPerson(app, tool, arguments, raw_payload, request_id, root,
-                          rule, mandatory, review);
+      const bool in_row = [&memo] {
+        std::lock_guard lock(memo->mutex);
+        return memo->refused_in_row >= kReviewRefusalsInRow;
+      }();
+      verdict = AskPerson(
+          app, tool, arguments, raw_payload, request_id, root, offered, source,
+          AskReason(source, facts, context, rule,
+                    MandatoryReason(tool, arguments), review, in_row),
+          source == ApprovalSource::kAskRule ? rule : std::string(), review);
+      memo->Answered();
     }
+    const char* effect = verdict.granted ? "allow" : "deny";
     DebugLog("approval", {{"tool", tool.name},
-                          {"automatic", automatic},
+                          {"effect", effect},
+                          {"source", ApprovalSourceName(source)},
+                          {"asked", !automatic},
                           {"mode", ApprovalModeName(CurrentApprovalMode())},
-                          {"session_rule", session_rule},
-                          {"repository_rule", repository_rule},
-                          {"review", review},
-                          {"mandatory_human", mandatory},
-                          {"granted", verdict.granted}});
+                          {"review", review}});
     Emit(Event{EventId::kApprovalResolved,
                {{"id", request_id},
                 {"tool", tool.name},
-                {"automatic", automatic},
-                {"rule", by_rule ? RuleLabel(rule) : std::string()},
+                {"effect", effect},
+                {"source", ApprovalSourceName(source)},
+                {"asked", !automatic},
+                {"reason", verdict.granted ? std::string() : verdict.refusal},
+                {"rule", rule},
                 {"mode", ApprovalModeName(CurrentApprovalMode())},
-                {"review", review},
-                {"mandatory_human", mandatory},
-                {"granted", verdict.granted}}});
-    return verdict.granted ? std::string() : verdict.refusal;
+                {"review", review}}});
+    if (verdict.granted) return {};
+    // A refusal nobody was asked about shows on its row, with what lets the
+    // call through: the action itself for this conversation, or the rules.
+    json part = nullptr;
+    if (automatic && (source == ApprovalSource::kReview ||
+                      source == ApprovalSource::kDenyRule)) {
+      part = {{"kind", "refusal"},
+              {"source", ApprovalSourceName(source)},
+              {"reason", source == ApprovalSource::kDenyRule
+                             ? "A rule of this folder refuses it: " + rule
+                             : AskReason(source, facts, context, rule, "",
+                                         review, false)},
+              {"rule", rule}};
+      if (source == ApprovalSource::kReview) {
+        part["offer"] = {{"tool", tool.name},
+                         {"match", RuleSubject(tool, arguments, root)}};
+      }
+    }
+    return {verdict.refusal, std::move(part)};
   };
 }
 

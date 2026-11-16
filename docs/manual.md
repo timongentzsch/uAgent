@@ -144,15 +144,25 @@ The web's **Approval** control sets this conversation's mode; **Default**
 returns to the one `approval.mode` gives.
 
 An approval card shows what the call would do (the command, or a diff),
-the folder and the risks a reviewer saw, with **Deny**, **Allow for this
-conversation** and **Allow once** (`n`, `s`, `y` in the terminal, and `a`
-for always; other text denies and reaches the model as guidance). Under
-**More options**, **Always allow here** makes
-Allow once also store the rule the card names (a command prefix, a folder,
-a host, or the exact call) for the repository in
-`~/.uagent/config/permissions.json`; **+ guidance** answers in words.
-Settings → This folder → Allowed actions and `/permissions rules` list the
-stored rules; `/permissions forget N` removes one.
+the folder, the risks a reviewer saw and why it asks (the mode, a rule, the
+review, or a call that always needs you), with **Deny**, **Allow for this
+conversation** and **Allow once** (`n`, `s`, `y` in the terminal, `a` for
+always and `x` for never; other text denies and reaches the model as
+guidance). Under **More options**, **Ask each time / Always allow / Never
+allow** keeps the rule the card names (a command prefix, a folder, a host,
+or the exact call) for this folder in `~/.uagent/config/permissions.json`
+when you answer: Always with an allowing answer, Never with Deny; **+
+guidance** answers in words.
+
+A folder's rules allow, ask or refuse, in every mode: a refusing rule holds
+in yolo too, and an asking rule asks there. Settings → This folder → Rules
+lists them by effect and adds one; `/permissions rules` lists them,
+`/permissions allow|ask|deny TOOL MATCH` adds one and `/permissions forget
+N` removes one. A call Auto refused without asking shows in the transcript
+with why, and **Allow in this conversation** lets that action through for
+the rest of the conversation (or **Rules…** when a rule refused it). After
+3 refusals in a row, or 20 in a conversation, Auto asks you until you
+answer one.
 
 **Plan mode** only reads: commands run in the `readonly` sandbox and the
 only file it writes is a plan kept beside the conversation's history, never
@@ -296,7 +306,7 @@ scopes and when a change applies are in
 
 The web's Settings has five panes. **All conversations** and **This
 folder** list every setting with a filter, plus instructions, MCP servers
-and the folder's Allowed actions; a change that needs a restart offers it.
+and the folder's Rules; a change that needs a restart offers it.
 **This browser** (Appearance, Animations, Clock, Timestamps, Zoom) is kept
 in the browser only. **Host** holds Install, Notifications and Paired
 devices; **About** the build and updates.

@@ -4,6 +4,7 @@
 // The web host's and a remote gateway's terminals: the user's login shells
 // on a PTY, unsandboxed. The agent never reads them.
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -16,13 +17,18 @@
 #include <thread>
 #include <vector>
 
+#include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/thread_annotations.h"
 
 namespace uagent {
 
-// Unattached panel shells and their main-side records share this grace period.
-inline constexpr std::chrono::seconds kTerminalFirstViewerWait{30};
+// Unattached panel shells and their main-side records share this grace
+// period. Tests shorten it.
+inline std::chrono::seconds TerminalFirstViewerWait() {
+  return std::chrono::seconds(
+      std::max<int64_t>(1, EnvLong("UAGENT_INTERNAL_TERMINAL_WAIT_S", 30)));
+}
 struct TerminalShell;
 
 // A shell as the page lists it, under the folder it belongs to.

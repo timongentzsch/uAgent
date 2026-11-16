@@ -46,7 +46,7 @@ Typed into a conversation. A command the web has a control for is offered there 
 | `/fork [TITLE] [@TURN]` | terminal, web | branch this conversation, optionally at user turn N |
 | `/rewind [N]` | terminal, web | fork before your message N to edit it; bare, list the numbers |
 | `/share` | terminal, web | export transcript as markdown |
-| `/permissions [default\|ask\|auto\|yolo\|rules\|forget N\|forget all]` | terminal, web | show or change the approval mode, or this repository's remembered actions |
+| `/permissions [default\|ask\|auto\|yolo\|plan\|rules\|forget N\|forget all\|allow\|ask\|deny TOOL MATCH]` | terminal, web | show or change the approval mode, or this folder's rules |
 | `/rename TITLE` | terminal, web | rename this conversation |
 | `/instructions [edit user\|project]` | terminal, web | show or edit instructions |
 | `/http [INDEX [request\|response]]` | terminal, web | inspect captured HTTP attempts (latest by default) |

@@ -182,10 +182,21 @@ jobs:
   # The feature switches compile different #if paths. Each builds on its own
   # runner instead of after the x86 leg.
   sanitizers:
+    name: sanitizers (${{ matrix.leg }})
     needs: [changes, web-dist]
     if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # integration_web is a third of the instrumented run: it has a runner of
+    # its own, and the rest share the other.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: web
+            tests: -R "^(integration_web|behavior_eval|reference_docs)$"
+          - leg: rest
+            tests: -E "^(integration_web|behavior_eval|reference_docs)$"
     # Instrumented startup and rendering cost several times the plain build, so
     # the terminal tests get proportionally longer deadlines here.
     env:
@@ -196,13 +207,14 @@ jobs:
         with:
           web-dist: true
           ccache: sanitize
+          ccache-save: ${{ matrix.leg == 'rest' }}
           ccache-size: 600M
       - name: Configure ASan and UBSan
         run: cmake --preset sanitize
       - name: Build
         run: cmake --build --preset sanitize --parallel 4 && ccache --show-stats
       - name: Test
-        run: ctest --preset sanitize -j 2
+        run: ctest --preset sanitize -j 2 ${{ matrix.tests }}
       # Session workers run with no stderr, so every process writes its
       # sanitizer report to a file (CMakePresets.json log_path).
       - name: Sanitizer reports
@@ -353,10 +365,14 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.web.outputs.playwright }}-noble
       options: --ipc=host
+    # Each browser in halves: Playwright cuts a shard from the list in
+    # project order, so a shard across both would hold most of WebKit's slower
+    # tests.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        project: [chromium, webkit]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -365,14 +381,14 @@ jobs:
       - run: chmod +x build/uagent && npm ci --prefix web
       - name: Browser integration against native host
         working-directory: web
-        run: npx playwright test --shard=${{ matrix.shard }}/3
+        run: npx playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/2
         env:
           UAGENT_TEST_BINARY: ../build/uagent
       - name: Retain browser failure evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: browser-failure-${{ matrix.shard }}
+          name: browser-failure-${{ matrix.project }}-${{ matrix.shard }}
           path: web/test-results
           if-no-files-found: ignore
           retention-days: 3

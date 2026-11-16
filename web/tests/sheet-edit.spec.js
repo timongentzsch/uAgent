@@ -1266,7 +1266,10 @@ for (const [pane, phone] of [
     await expect(cell("Tasks", "B2")).toBeVisible();
     await expect(notice).toHaveCount(0);
     const bare = await places();
-    expect(bare.map(([name]) => name)).toContain("Open alone");
+    // A phone's pane folds the tools after Edit into one menu.
+    expect(bare.map(([name]) => name)).toContain(
+      phone ? "More tools" : "Open alone",
+    );
     await cell("Tasks", "A2").click();
     await app.keyboard.type("Draft");
     await app.keyboard.press("Enter");

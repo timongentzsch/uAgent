@@ -80,6 +80,20 @@ TEST_CASE(TestSandboxPolicy) {
   offline.allow_network = false;
   CHECK(SandboxWritesNote(offline, "/home/u/work") ==
         note + ", and reach no network");
+  // The relaxed level opens the home folder around ~/.uagent and the files
+  // that run code when something else starts.
+  SandboxInputs relaxed = BaseInputs();
+  relaxed.open_home = "/home/u";
+  relaxed.authority_paths = {"/home/u/.ssh", "/home/u/.zshrc",
+                             "/home/dotfiles/zshrc"};
+  const SandboxPolicyResult opened = BuildSandboxPolicy(relaxed);
+  CHECK(SandboxWritable(opened.policy, "/home/u/notes.txt"));
+  CHECK(opened.policy.withheld ==
+        std::vector<std::string>({"/home/u/.uagent", "/home/u/.ssh",
+                                  "/home/u/.zshrc", "/home/dotfiles/zshrc"}));
+  const std::string profile = SeatbeltProfile(opened.policy);
+  CHECK(profile.find("(deny file-write* (subpath \"/home/u/.ssh\"))") !=
+        std::string::npos);
   // A home directory as the workspace holds ~/.uagent, so it is dropped: the
   // note then leads with that, and with what still works there.
   SandboxInputs at_home = BaseInputs();
@@ -269,7 +283,18 @@ TEST_CASE(TestSandboxFollowsApprovalMode) {
     CHECK(raised.mode == SandboxMode::kEnforced);
     CHECK(raised.policy.allow_network == asked.policy.allow_network);
     CHECK(SandboxWritable(raised.policy, home + "/Documents/notes.txt"));
-    CHECK(raised.policy.withheld == std::vector<std::string>{base});
+    // ~/.uagent and what of kAuthorityPaths exists are withheld from it.
+    CHECK(std::ranges::find(raised.policy.withheld, base) !=
+          raised.policy.withheld.end());
+    for (const std::string& held : raised.policy.withheld) {
+      CHECK(held == base || AuthorityPath(held));
+    }
+    if (std::filesystem::exists(home + "/.ssh")) {
+      CHECK(!WithinWorkArea(home + "/.ssh/authorized_keys", "/nonexistent/ws"));
+      CHECK(PathApprovalClass(home + "/.ssh/authorized_keys",
+                              PathAccess::kWrite) ==
+            ApprovalClass::kMandatoryHuman);
+    }
     CHECK(raised.policy.unreadable.empty());
     CHECK(SandboxReadable(raised.policy, home + "/Documents/notes.txt"));
     // The file tools' work area follows it: the home folder, not ~/.uagent.

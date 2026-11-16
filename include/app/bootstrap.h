@@ -96,8 +96,7 @@ struct AppContext {
   std::vector<Tool> tools;
   // The name this session holds the shared browser under.
   std::string browser_lease;
-  // What "allow for this conversation" granted; it dies with the session.
-  std::vector<PermissionRule> session_rules;
+  SessionRules session_rules;
   // The sudo passwords run(root=true) was given this turn, by host ("" for
   // this machine); wiped when the turn ends.
   std::mutex root_passwords_mutex;

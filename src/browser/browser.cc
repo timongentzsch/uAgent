@@ -207,8 +207,11 @@ bool StartService(const std::string& executable, ServiceProcess& process,
     error = "cannot duplicate browser service owner pipe";
     return false;
   }
+  // A container's Chrome is fetched onto the data volume (chrome-update).
   std::vector<std::string> environment = {
-      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "PATH=" + DataDirectory() +
+          "/chrome/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:"
+          "/sbin:/bin",
       "HOME=" + DataDirectory(),
       "UAGENT_BROWSER_DATA=" + DataDirectory(),
       "UAGENT_INTERNAL_RUNTIME_DIR=" + RuntimeDir(),

@@ -245,6 +245,37 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
         assert_true(not outside.exists(), (mode, output))
 
 
+def test_yolo_writes_no_file_that_runs_code_when_something_else_starts(root, home, *, binary):
+    """Yolo opens the home folder, but not a shell's startup file or ~/.ssh: a
+    command cannot change them, and a file tool's write asks a person."""
+    require_sandbox(root, home, binary=binary)
+    startup = home / ".zshrc"
+    startup.write_text("# mine\n")
+    (home / ".ssh").mkdir(mode=0o700, exist_ok=True)
+    keys = home / ".ssh" / "authorized_keys"
+    told = []
+
+    def route(_, body):
+        results = [m for m in body["messages"] if m.get("role") == "tool"]
+        told.extend(str(m.get("content", "")) for m in results[len(told) :])
+        calls = [
+            tool_call("run", {"command": f"echo planted >> {startup}; echo k > {keys}"}),
+            tool_call("write_file", {"path": str(startup), "content": "planted"}),
+            tool_call("run", {"command": f"echo ok > {home / 'notes.txt'}"}),
+        ]
+        return calls[len(results)] if len(results) < len(calls) else event({"content": "done"})
+
+    with Server([route]) as server:
+        env = sandbox_env(home, server.url)
+        result = run(workspace(root), env, "--yolo", "-p", "go", timeout=40, binary=binary)
+    assert_true(result.returncode == 0, result.stderr)
+    assert_true(startup.read_text() == "# mine\n", (startup.read_text(), told))
+    assert_true(not keys.exists(), told)
+    assert_true("needs a person's approval" in told[1], told)
+    # The rest of the home folder stays open to yolo.
+    assert_true((home / "notes.txt").read_text() == "ok\n", told)
+
+
 def test_yolo_toggle_raises_the_level_from_the_next_command(root, home, *, binary):
     """Interactive /yolo raises the default level to relaxed from the next
     command: a closed folder opens, writes outside the home stay confined."""

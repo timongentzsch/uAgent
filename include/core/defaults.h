@@ -23,6 +23,38 @@ inline constexpr std::string_view kHiddenCredentialStores[] = {
     ".docker/config.json"  // Docker registry logins
 };
 
+// Home-folder entries that run code or grant access when something else
+// starts: shells, ssh, git, other agents, the user's services. Commands never
+// write them, also where the relaxed level opens the home folder, and a file
+// tool's write to one asks a person in every mode.
+inline constexpr std::string_view kAuthorityPaths[] = {
+    // ssh's keys, authorized_keys and config
+    ".ssh",
+    // shell startup files: login shells, bash, zsh, fish
+    ".profile",
+    ".bashrc",
+    ".bash_profile",
+    ".bash_login",
+    ".zshrc",
+    ".zprofile",
+    ".zshenv",
+    ".zlogin",
+    ".config/fish",
+    // git's aliases and the hooks it runs
+    ".gitconfig",
+    ".config/git",
+    // the MCP servers every conversation starts
+    ".mcp.json",
+    // other agents' settings, hooks and skills, which µAgent reads too
+    ".agents",
+    ".claude",
+    ".codex",
+    // services started at login: macOS, Linux, desktops
+    "Library/LaunchAgents",
+    ".config/systemd/user",
+    ".config/autostart",
+};
+
 // Package-manager caches under the home folder that sandboxed commands may
 // write. Of the data directory only uv's part: the rest holds keyrings.
 inline constexpr std::string_view kPackageCaches[] = {

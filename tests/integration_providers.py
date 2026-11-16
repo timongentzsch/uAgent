@@ -7,6 +7,7 @@ import subprocess
 import threading
 import time
 
+from integration_sandbox import require_sandbox
 from integration_support import (
     OPENROUTER_SUPPORTS,
     SMALL_PNG,
@@ -172,15 +173,8 @@ def judged_call(path, content="x", call_id="call-1"):
     return tool_call("run", {"command": command}, call_id=call_id)
 
 
-def judged(root, home, binary):
-    """Commands are judged only inside the enforced sandbox."""
-    from integration_sandbox import require_sandbox
-
-    require_sandbox(root, home, binary=binary)
-
-
 def test_auto_permission_reviewer_allows_and_accounts(root, home, *, binary):
-    judged(root, home, binary)
+    require_sandbox(root, home, binary=binary)
     target = root / "reviewed.txt"
 
     def reviewer(handler, body):
@@ -217,7 +211,7 @@ def test_auto_permission_reviewer_allows_and_accounts(root, home, *, binary):
 
 
 def test_auto_permission_review_is_asked_once_per_action_in_a_turn(root, home, *, binary):
-    judged(root, home, binary)
+    require_sandbox(root, home, binary=binary)
     target = root / "memo.txt"
 
     def denies(handler, _):
@@ -237,7 +231,7 @@ def test_auto_permission_review_is_asked_once_per_action_in_a_turn(root, home, *
 
 
 def test_auto_permission_reviewer_bars(root, home, *, binary):
-    judged(root, home, binary)
+    require_sandbox(root, home, binary=binary)
     target = root / "bars.txt"
 
     # A risk reason at its bar forces the question, however sure the allow is;
@@ -279,7 +273,7 @@ def test_auto_permission_reviewer_bars(root, home, *, binary):
 
 
 def test_auto_permission_card_shows_the_reasons(root, home, *, binary):
-    judged(root, home, binary)
+    require_sandbox(root, home, binary=binary)
 
     # What the person is asked comes with the reasons that made it a question,
     # by probability, and the bar they fell on.
@@ -315,7 +309,7 @@ def test_auto_permission_card_shows_the_reasons(root, home, *, binary):
 def test_auto_permission_reviewer_judges_against_the_first_request_too(root, home, *, binary):
     """A later message narrows what was asked; the reviewer reads both, so an
     action the first request covers is not judged against the note alone."""
-    judged(root, home, binary)
+    require_sandbox(root, home, binary=binary)
     target = root / "reviewed.txt"
     seen = []
 
@@ -348,7 +342,7 @@ def test_auto_permission_reviewer_judges_against_the_first_request_too(root, hom
 
 
 def test_auto_permission_reviewer_errors_in_words(root, home, *, binary):
-    judged(root, home, binary)
+    require_sandbox(root, home, binary=binary)
     target = root / "must-not-exist.txt"
     for status, message, words in [
         (402, "insufficient credits", "has no credit"),
@@ -369,7 +363,7 @@ def test_auto_permission_reviewer_errors_in_words(root, home, *, binary):
 
 
 def test_auto_permission_reviewer_needs_an_address(root, home, *, binary):
-    judged(root, home, binary)
+    require_sandbox(root, home, binary=binary)
     target = root / "no-address.txt"
 
     def never(*_):
@@ -383,7 +377,7 @@ def test_auto_permission_reviewer_needs_an_address(root, home, *, binary):
 
 
 def test_auto_permission_reviewer_privacy_and_session(root, home, *, binary):
-    judged(root, home, binary)
+    require_sandbox(root, home, binary=binary)
     private = root / "private.txt"
     open_ = root / "open.txt"
     declared = ("decisions", "provider_routing", "session_passthrough")
@@ -414,7 +408,7 @@ def test_auto_permission_reviewer_privacy_and_session(root, home, *, binary):
 
 
 def test_auto_permission_reviewer_rechecks_after_user_restriction(root, home, *, binary):
-    judged(root, home, binary)
+    require_sandbox(root, home, binary=binary)
     target = root / "twice.txt"
     seen = []
 
@@ -448,7 +442,7 @@ def test_auto_permission_reviewer_rechecks_after_user_restriction(root, home, *,
 
 
 def test_auto_permission_review_pauses_after_three_refusals_in_a_row(root, home, *, binary):
-    judged(root, home, binary)
+    require_sandbox(root, home, binary=binary)
     seen = []
 
     def reviewer(handler, body):
@@ -494,7 +488,7 @@ def test_auto_permission_never_reviews_commands_without_a_sandbox(root, home, *,
 
 
 def test_auto_permission_without_decision_endpoint_asks(root, home, *, binary):
-    judged(root, home, binary)
+    require_sandbox(root, home, binary=binary)
     target = root / "must-not-exist.txt"
 
     def finish(_, body):

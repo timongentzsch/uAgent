@@ -279,9 +279,10 @@ std::optional<PermissionRule> SessionRules::Covering(const Tool& tool,
 CoveringRules FolderRules(const std::string& root, const Tool& tool,
                           const json& arguments, bool confined) {
   CoveringRules covering;
-  RulesFile file(covering.error);
+  std::string error;
+  RulesFile file(error);
   if (!file.Usable()) {
-    DebugLog("permission_rules_error", {{"error", covering.error}});
+    DebugLog("permission_rules_error", {{"error", error}});
     return covering;
   }
   const std::string identity = WorkspaceIdentity{Workspace().host, root}.Key();

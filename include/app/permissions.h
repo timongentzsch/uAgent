@@ -59,11 +59,10 @@ bool PathOutsideFolder(const json& arguments, const std::string& root);
 json ApprovalRisks(const Tool& tool, const json& arguments,
                    const std::string& root);
 
-// The rules kept for `root` that cover the call, one of each effect at most.
-// `error` says why the rules file could not be read; nothing covers then.
+// The rules kept for `root` that cover the call, one of each effect at most;
+// none when the rules file cannot be read.
 struct CoveringRules {
   std::optional<PermissionRule> deny, ask, allow;
-  std::string error;
 };
 CoveringRules FolderRules(const std::string& root, const Tool& tool,
                           const json& arguments, bool confined);

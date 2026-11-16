@@ -34,6 +34,9 @@ namespace uagent::session {
 namespace {
 namespace fs = std::filesystem;
 
+constexpr const char* kStaleGeneration =
+    "stale generation; refresh before acting";
+
 // Where a workspace keeps the name it goes by; its folder's own name is only
 // what it was first called, made safe for a path.
 fs::path LabelFile(const fs::path& space) {
@@ -282,6 +285,10 @@ SessionCommandResult SessionHost::ExecuteCommand(
   result.outcome = {{"request_id", request_id}, {"accepted", true}};
   const SessionCommandKind kind =
       ParseSessionCommandKind(JsonValue(command, "kind", ""));
+  if (kind == SessionCommandKind::kUnknown) {
+    result.error = "unsupported command";
+    return result;
+  }
   const std::string host = JsonValue(command, "host", "");
   if (kind == SessionCommandKind::kCreate && !host.empty()) {
     if (!JsonValue(command, "space", "").empty()) {
@@ -353,7 +360,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
   }
   if (kind == SessionCommandKind::kMove) {
     if (JsonValue(command, "generation", "") != session->generation) {
-      result.error = "stale session; refresh before acting";
+      result.error = kStaleGeneration;
       return result;
     }
     const auto folder = NamedFolder(command, result.error);
@@ -375,7 +382,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
   }
   if (kind == SessionCommandKind::kFork && session->pid <= 0) {
     if (JsonValue(command, "generation", "") != session->generation) {
-      result.error = "stale session; refresh before acting";
+      result.error = kStaleGeneration;
     } else if (sessions_.size() >= kMaxCatalogueEntries) {
       result.error = "session catalogue limit reached";
     } else {
@@ -396,7 +403,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
        kind == SessionCommandKind::kDelete) &&
       session->pid <= 0) {
     if (JsonValue(command, "generation", "") != session->generation) {
-      result.error = "stale session; refresh before acting";
+      result.error = kStaleGeneration;
       return result;
     }
     std::string title = Trim(JsonValue(command, "title", ""));
@@ -468,7 +475,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
   } else if (JsonValue(command, "generation", "") != session->generation ||
              session->generation.empty()) {
-    result.error = "stale worker generation; refresh before acting";
+    result.error = kStaleGeneration;
   } else if (kind == SessionCommandKind::kClose) {
     auto recorded = session->run_id.empty()
                         ? json::object()
@@ -491,7 +498,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
   } else if (session->pid <= 0 || session->exited) {
     result.error = "session needs activation";
-  } else if (ForwardsToWorker(kind)) {
+  } else {
     command["attachments"] = json::array();
     AssetClaim claim;
     if (outcomes_.PendingCommands(*session) >= kMaxPendingSessionCommands) {
@@ -539,8 +546,6 @@ SessionCommandResult SessionHost::ExecuteCommand(
         }
       }
     }
-  } else {
-    result.error = "unsupported command";
   }
   return result;
 }

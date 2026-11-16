@@ -149,6 +149,10 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                 == 409,
                 "stale generation accepted",
             )
+            unknown = {**payload, "request_id": "a" * 32, "kind": "dance"}
+            del unknown["generation"]
+            status, refused, _ = client.json("/api/command", unknown)
+            assert_true(status == 409 and refused["error"] == "unsupported command", refused)
             for invalid, expected in (
                 ({**payload, "request_id": "not hex"}, 400),
                 ({**payload, "request_id": "c" * 32, "kind": "recall"}, 400),

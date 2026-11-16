@@ -271,17 +271,22 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
     if (required != ApprovalClass::kNone && tool->approval_subject) {
       task.approved = tool->approval_subject(arguments);
     }
-    const std::string refused = required == ApprovalClass::kNone
-                                    ? ""
-                                    : approve_(*tool, arguments, turn_id_);
-    if (refused.empty()) {
+    ApprovalOutcome approval;
+    if (required != ApprovalClass::kNone) {
+      approval = approve_(*tool, arguments, turn_id_);
+    }
+    if (approval.refusal.empty()) {
       task.execute = true;
       ++tool_count;
       ++tool_counts[call.name];
     } else {
-      reject(task, ToolErrorCode::kPermissionDenied,
-             refused + "; ask for guidance or try a different approach",
-             "denied");
+      reject(
+          task, ToolErrorCode::kPermissionDenied,
+          approval.refusal + "; ask for guidance or try a different approach",
+          "denied");
+      if (approval.part.is_object()) {
+        task.result.parts = json::array({std::move(approval.part)});
+      }
     }
   }
   if (!task.execute) {

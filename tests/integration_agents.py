@@ -365,7 +365,7 @@ def test_a_mandatory_decision_skips_the_parent(root, home, *, binary):
         client = client_of(home, agent_files(home)[0])
         try:
             waiting = client.until(pending)["pending"]
-            assert_true(waiting["approval"]["mandatory_human"], waiting)
+            assert_true(waiting["approval"]["source"] == "mandatory", waiting)
             assert_true("route" not in waiting, waiting)
             client.send("reply", interaction_id=waiting["id"], text="n")
         finally:

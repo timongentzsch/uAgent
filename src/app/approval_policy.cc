@@ -45,9 +45,43 @@ ApprovalDecision Decide(const ApprovalFacts& call,
   // folder, no command without the enforced sandbox around it.
   const bool confined = !call.command || context.sandbox_enforced;
   if (automatic && confined && !call.outside_folder) {
-    return {kAskModel, kReview};
+    return context.review_paused ? ask(kRefusals)
+                                 : ApprovalDecision{kAskModel, kReview};
   }
   return ask(kMode);
+}
+
+const char* ApprovalSourceName(ApprovalSource source) {
+  switch (source) {
+    using enum ApprovalSource;
+    case kDenyRule:
+      return "deny_rule";
+    case kPlan:
+      return "plan";
+    case kMandatory:
+      return "mandatory";
+    case kAskRule:
+      return "ask_rule";
+    case kSessionRule:
+      return "session_rule";
+    case kFolderRule:
+      return "folder_rule";
+    case kYolo:
+      return "yolo";
+    case kPlanAllows:
+      return "plan_allows";
+    case kContainedEdit:
+      return "contained_edit";
+    case kReview:
+      return "review";
+    case kRefusals:
+      return "refusals";
+    case kMode:
+      return "mode";
+    case kNobody:
+      return "nobody";
+  }
+  return "";
 }
 
 }  // namespace uagent

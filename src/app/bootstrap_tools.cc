@@ -244,7 +244,7 @@ Agent::ToolRefresher MakeToolRefresher(AppContext* app) {
                                    app->runtime.config, deadline);
     if (changed) {
       ApplyToolPolicy(app->tools, app->tool_policy);
-      app->session_rules.clear();
+      app->session_rules.Clear();
     }
     return changed;
   };

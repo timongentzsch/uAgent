@@ -105,9 +105,11 @@ def test_an_approved_command_runs_when_the_turn_ends(root, home, *, binary):
         connection, response = client.events()
         client.command("submit", session, text="widen")
         waiting = decide(client, session)
-        assert_true(waiting["approval"]["mandatory_human"], waiting)
+        assert_true(waiting["approval"]["source"] == "mandatory", waiting)
         assert_true(
-            waiting["approval"]["mandatory_reason"] == "runs a slash command for you", waiting
+            waiting["approval"]["reason"]
+            == "Needs you in every mode: runs a slash command for you.",
+            waiting,
         )
         assert_true(
             waiting["approval"]["preview"]

@@ -5,9 +5,11 @@
 // Remembered approvals: the key a call is remembered under, what approving
 // it risks, and the rules kept for this conversation and for a folder.
 
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "include/core/json.h"
 #include "include/tools/tool.h"
@@ -65,6 +67,22 @@ struct CoveringRules {
 };
 CoveringRules FolderRules(const std::string& root, const Tool& tool,
                           const json& arguments, bool confined);
+// What "allow for this conversation" granted; it dies with the session. A
+// person adds to it while the agent's calls are checked against it.
+class SessionRules {
+ public:
+  void Add(PermissionRule rule);
+  void Clear();
+  std::optional<PermissionRule> Covering(const Tool& tool,
+                                         const json& arguments,
+                                         const std::string& root,
+                                         bool confined) const;
+
+ private:
+  mutable std::mutex mutex_;
+  std::vector<PermissionRule> rules_;
+};
+
 // Keeps `rule` for `root`, in place of one with the same tool and match.
 bool RememberRepositoryRule(const std::string& root, const PermissionRule& rule,
                             std::string& error);

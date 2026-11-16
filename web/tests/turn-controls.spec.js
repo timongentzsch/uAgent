@@ -48,16 +48,24 @@ test("always allowing an action remembers it in Settings", async ({
     expect(Math.abs(answer.y - answers[0].y)).toBeLessThanOrEqual(1);
     expect(Math.abs(answer.width - answers[0].width)).toBeLessThanOrEqual(1);
   }
-  await expect(
-    card.getByRole("checkbox", { name: /^Always allow here: / }),
-  ).toBeHidden();
+  await expect(card).toContainText("The approval mode is Ask.");
+  const remember = card.getByRole("group", {
+    name: "From now on in this folder, write_file ./:",
+  });
+  await expect(remember).toBeHidden();
   await card.getByText("More options").click();
+  await expect(remember.getByRole("button")).toHaveText([
+    "Ask each time",
+    "Always allow",
+    "Never allow",
+  ]);
   await expect(card.getByLabel("Guidance")).toHaveCount(0);
   await card.getByRole("button", { name: "+ guidance" }).click();
   await expect(card.getByLabel("Guidance")).toBeVisible();
-  await card
-    .getByRole("checkbox", { name: /^Always allow here: write_file / })
-    .check();
+  await remember.getByRole("button", { name: "Always allow" }).click();
+  await expect(
+    remember.getByRole("button", { name: "Always allow" }),
+  ).toHaveAttribute("aria-pressed", "true");
   await card.getByRole("button", { name: "Allow once", exact: true }).click();
   await expect(card).toHaveCount(0);
   await expect
@@ -70,9 +78,18 @@ test("always allowing an action remembers it in Settings", async ({
     .locator(".settings-nav")
     .getByRole("button", { name: /^This folder/ })
     .click();
-  await expect(settings.getByLabel(/^Allowed actions/)).toContainText(
-    "write_file",
-  );
+  const rules = settings.getByLabel(/^Rules/);
+  await expect(rules).toContainText("write_file ./");
+  await expect(rules).toContainText("Always");
+  // A rule added by hand is kept with its effect.
+  const adding = settings.getByLabel("Add a rule");
+  await adding.getByLabel("Match").fill("git push *");
+  await adding.getByRole("button", { name: "Never", exact: true }).click();
+  await adding.getByRole("button", { name: "Add rule" }).click();
+  await expect(rules).toContainText("run git push *");
+  await expect(
+    rules.locator(".row", { hasText: "run git push *" }),
+  ).toContainText("Never");
 });
 
 test("a root command asks for sudo's password in a password field, when sudo needs one", async ({
@@ -108,10 +125,10 @@ test.describe("Auto approval", () => {
     }) => {
       await page.setViewportSize({ width, height: 844 });
       await page.goto(`/#session=${session.id}`);
-      await send(page, "request approval");
+      await send(page, "Review probe");
       const card = page.getByRole("region", { name: "Pending decision" });
       await expect(card.locator(".risk-chip")).toContainText([
-        "makes changes",
+        "uses the network",
         "sends data off this machine 78%",
       ]);
       await expect(card).toContainText(
@@ -130,6 +147,31 @@ test.describe("Auto approval", () => {
       await expect(card).toHaveCount(0);
     });
   }
+
+  test("a call the review refuses shows refused, and is allowed for the conversation from there", async ({
+    page,
+    session,
+  }) => {
+    await page.goto(`/#session=${session.id}`);
+    await send(page, "Refused probe");
+    const refusal = page.getByRole("note").filter({ hasText: "Refused" });
+    await expect(refusal).toContainText("refuse.example");
+    await expect(refusal).toContainText("Auto review");
+    // Seen without opening the turn's work.
+    await expect(refusal).toBeVisible();
+    await refusal
+      .getByRole("button", { name: "Allow in this conversation" })
+      .click();
+    await expect(
+      refusal.getByRole("button", { name: "Allowed in this conversation" }),
+    ).toBeDisabled();
+    // The same call again is not judged, and so not refused.
+    await send(page, "Refused probe");
+    await expect(page.locator(".message.response").last()).toBeVisible();
+    await expect(
+      page.getByRole("note").filter({ hasText: "Refused" }),
+    ).toHaveCount(1);
+  });
 });
 
 test("an undone turn puts its file back", async ({ page, session, host }) => {

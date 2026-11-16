@@ -40,6 +40,9 @@ struct PolicyContext {
   // A remembered rule lets it through: this conversation's, or the folder's.
   bool session_rule = false;
   bool folder_rule = false;
+  // The review refused too often (kReviewRefusalsInRow, kReviewRefusals):
+  // Auto asks a person until one answers.
+  bool review_paused = false;
 };
 
 enum class ApprovalEffect { kAllow, kDeny, kAskPerson, kAskModel };
@@ -56,6 +59,8 @@ enum class ApprovalSource {
   kPlanAllows,
   kContainedEdit,
   kReview,
+  // The review is paused after its refusals.
+  kRefusals,
   kMode,
   // A person would decide, and nobody can.
   kNobody,
@@ -68,6 +73,9 @@ struct ApprovalDecision {
 
 ApprovalDecision Decide(const ApprovalFacts& call,
                         const PolicyContext& context);
+
+// The source as events name it: "deny_rule", "review", …
+const char* ApprovalSourceName(ApprovalSource source);
 
 }  // namespace uagent
 

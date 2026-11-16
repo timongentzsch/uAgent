@@ -36,6 +36,7 @@ import {
 } from "../../shared/tree.ts";
 import type { Node, SessionRef } from "../../shared/types.ts";
 import { NodeBody } from "./bodies.tsx";
+import { Refusal, refusalOf } from "./refusal.tsx";
 import { MessageView } from "./message.tsx";
 
 // How much of the agent's work is drawn: the level, and whether thinking is.
@@ -248,6 +249,14 @@ function RowNode({
     !open && node.kind === "work" && node.state === "running"
       ? kids.filter((kid) => kid.node.role === "assistant")
       : [];
+  // A call refused without asking shows under its line, and under its
+  // work's while that is folded.
+  const refused =
+    !open && node.kind === "work"
+      ? kids.filter((kid) => refusalOf(kid.node))
+      : refusalOf(node)
+        ? [branch]
+        : [];
   // So does its latest thought, on one line, while it is the latest thing.
   const working = !open && node.kind === "work" && node.state === "running";
   const thought =
@@ -291,6 +300,15 @@ function RowNode({
       {thought && (
         <Thought node={thought} lines={1} online={online} session={session} />
       )}
+      {refused.map((kid) => (
+        <Refusal
+          key={kid.node.id}
+          node={kid.node}
+          part={refusalOf(kid.node)!}
+          online={online}
+          session={session}
+        />
+      ))}
       {open && openable && (
         <div class="node-open">
           <NodeBody node={node} online={online} session={session} />

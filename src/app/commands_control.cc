@@ -14,6 +14,7 @@
 #include "include/app/commands.h"
 #include "include/app/config_proposal.h"
 #include "include/app/launch.h"
+#include "include/app/permissions.h"
 #include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
@@ -57,6 +58,15 @@ json ApprovalState(const EffectiveConfigSnapshot& configured, bool agent) {
 
 json PermissionControl(AppContext& context, const json& request) {
   const bool agent = !context.options.AgentRole().empty();
+  // A call refused without asking, allowed for the rest of the conversation.
+  if (const json* allow = JsonObject(request, "allow")) {
+    PermissionRule rule{JsonValue(*allow, "tool", ""),
+                        JsonValue(*allow, "match", "")};
+    if (rule.tool.empty() || rule.match.empty()) {
+      return {{"error", "allow needs a tool and a match"}};
+    }
+    context.session_rules.Add(std::move(rule));
+  }
   std::string mode = JsonValue(request, "mode", "");
   if (!mode.empty()) {
     ApprovalMode chosen = ApprovalMode::kAsk;
@@ -191,7 +201,7 @@ json SessionControl(AppSession& session, const json& request) {
         McpControl(request, app.tools, app.runtime.mcp, app.runtime.config);
     if (app.runtime.mcp.registry_changed) {
       ApplyToolPolicy(app.tools, app.tool_policy);
-      app.session_rules.clear();
+      app.session_rules.Clear();
     }
     return result;
   }

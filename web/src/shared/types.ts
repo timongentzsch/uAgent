@@ -109,12 +109,22 @@ export type BodyKind =
   | "fields";
 // How a call reads, built natively by each tool (see ToolView in tool.h).
 export type ToolPart =
+  | RefusalPart
   | { kind: "command"; text: string }
   | { kind: "code"; text: string; language?: string; label?: string }
   | { kind: "fields"; rows: [string, string][] }
   | FilePart
   | ArtifactPart
   | LinkPart;
+// A call refused without asking: by the review, with the action to allow
+// for this conversation, or by a rule of the folder.
+export interface RefusalPart {
+  kind: "refusal";
+  source: "review" | "deny_rule";
+  reason: string;
+  rule?: string;
+  offer?: { tool: string; match: string };
+}
 // Pages in the folder the agent presented: opened in Files, never copied.
 export interface ArtifactPart {
   kind: "artifact";
@@ -321,14 +331,15 @@ interface ApprovalPending extends PendingBase {
   kind: "approval";
   approval?: {
     tool: string;
-    mandatory_human?: boolean;
-    mandatory_reason?: string;
     preview?: string;
     // What approving risks, most serious first; then the reasons the
     // automatic review gave, by name and probability.
     risks?: { id: string; label: string }[];
-    // What the automatic review made of the call and which bar it fell on.
-    review?: string;
+    // The stage of the order that asks ("mode", "ask_rule", "review",
+    // "refusals", "mandatory") and why, in a line; an asking rule in words.
+    source?: string;
+    reason?: string;
+    rule?: string;
   };
 }
 // A line of text, a password, a file to edit, or a step done in the browser.
@@ -373,9 +384,11 @@ interface Permissions {
 }
 // A rule allows the calls of `tool` that `match` covers: "*" every call,
 // "PREFIX *" a command, "DIR/" a path under it, else that exact subject.
+export type RuleEffect = "allow" | "ask" | "deny";
 interface PermissionRule {
   tool: string;
   match: string;
+  effect: RuleEffect;
   created: number;
 }
 export interface PermissionRules {
@@ -918,11 +931,13 @@ export interface CommandInputs {
     attachment_ids?: string[];
   };
   interrupt: None;
-  permissions: { mode: string };
+  // A mode, or a call a review refused allowed for this conversation.
+  permissions: { mode?: string; allow?: { tool: string; match: string } };
   permission_rules: {
     action: string;
     tool?: string;
     match?: string;
+    effect?: RuleEffect;
     cwd?: string;
   };
   revoke_device: { device_id: string };

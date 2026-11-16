@@ -447,6 +447,22 @@ def test_auto_permission_reviewer_rechecks_after_user_restriction(root, home, *,
     assert_true(target.read_text() == "preserve this later change", target.read_text())
 
 
+def test_auto_permission_review_pauses_after_three_refusals_in_a_row(root, home, *, binary):
+    judged(root, home, binary)
+    seen = []
+
+    def reviewer(handler, body):
+        seen.append(body["state"]["tool"])
+        write_json_response(handler, decision_answers(0.0, 0.99))
+
+    calls = [judged_call(root / f"refused-{n}.txt", call_id=f"call-{n}") for n in range(4)]
+    _, tool, _ = auto_review_run(root, home, binary, calls, reviewer)
+    # The fourth goes to a person, and with nobody here it is refused unjudged.
+    assert_true(len(seen) == 3, seen)
+    assert_true("nobody is here" in tool, tool)
+    assert_true(not any((root / f"refused-{n}.txt").exists() for n in range(4)), root)
+
+
 def test_auto_permission_never_reviews_outside_the_folder(root, home, *, binary):
     outside = root.parent / (root.name + "-outside.txt")
 

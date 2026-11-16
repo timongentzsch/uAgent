@@ -128,12 +128,29 @@ struct Verdict {
   std::string refusal = "this action was not approved";
 };
 
+// After this many refusals by the review, in a row or in the conversation,
+// Auto asks a person until one answers.
+constexpr int kReviewRefusalsInRow = 3;
+constexpr int kReviewRefusals = 20;
+
 // The review of each action in the turn being run, so the same action asked
-// again in that turn is not paid for again.
+// again in that turn is not paid for again; and its refusals.
 struct ReviewMemo {
   std::mutex mutex;
   int64_t turn = -1;
   std::unordered_map<std::string, AutoPermissionReview> reviews;
+  int refused_in_row = 0;
+  int refused = 0;
+
+  bool Paused() {
+    std::lock_guard lock(mutex);
+    return refused_in_row >= kReviewRefusalsInRow || refused >= kReviewRefusals;
+  }
+  // A person answered: the review judges again.
+  void Answered() {
+    std::lock_guard lock(mutex);
+    refused_in_row = refused = 0;
+  }
 };
 
 // Nothing when the review asks for a person to decide.
@@ -170,12 +187,19 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
                                    app->runtime.config.permission_model),
                 app->runtime.side_usage,
                 {tool, raw_payload, request, app->agent->SessionId(), turn});
-  if (!memoized && decision.error.empty()) {
-    std::lock_guard lock(memo.mutex);
-    if (memo.turn == turn) memo.reviews.emplace(memo_key, decision);
-  }
   const bool ask = decision.decision == AutoPermissionDecision::kAsk;
   const bool allow = decision.decision == AutoPermissionDecision::kAllow;
+  {
+    std::lock_guard lock(memo.mutex);
+    if (!memoized && decision.error.empty() && memo.turn == turn) {
+      memo.reviews.emplace(memo_key, decision);
+    }
+    if (allow) memo.refused_in_row = 0;
+    if (!allow && !ask) {
+      ++memo.refused_in_row;
+      ++memo.refused;
+    }
+  }
   review = {{"choice", ask ? "ask" : (allow ? "allow" : "deny")},
             {"probabilities", std::move(decision.probabilities)},
             {"reasons", std::move(decision.reasons)},
@@ -196,30 +220,65 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
   return verdict;
 }
 
+// Why a person is asked, in a line: the stage of the order that asked.
+std::string AskReason(ApprovalSource source, const ApprovalFacts& facts,
+                      const PolicyContext& context, const std::string& rule,
+                      const std::string& mandatory, const json& review,
+                      bool in_row) {
+  switch (source) {
+    case ApprovalSource::kMandatory:
+      return "Needs you in every mode: " + mandatory + ".";
+    case ApprovalSource::kAskRule:
+      return "A rule of this folder asks for it: " + rule + ".";
+    case ApprovalSource::kReview: {
+      const std::string error = JsonValue(review, "error", "");
+      const std::string note = JsonValue(review, "note", "");
+      return error.empty()
+                 ? "Auto review " + (note.empty() ? "could not decide." : note)
+                 : "Auto review could not decide: " + error;
+    }
+    case ApprovalSource::kRefusals:
+      return in_row ? "Auto review refused " +
+                          std::to_string(kReviewRefusalsInRow) +
+                          " calls in a row; it asks you until you answer one."
+                    : "Auto review refused " + std::to_string(kReviewRefusals) +
+                          " calls in this conversation; it asks you until "
+                          "you answer one.";
+    default:
+      break;
+  }
+  if (context.mode == ApprovalMode::kAuto) {
+    return facts.outside_folder
+               ? "Auto asks you about anything outside this folder."
+               : "Auto asks you about commands while the sandbox is off.";
+  }
+  if (context.mode == ApprovalMode::kPlan) {
+    return "Plan mode asks before anything but reading.";
+  }
+  return "The approval mode is Ask.";
+}
+
 Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
                   const std::string& raw_payload, const std::string& request_id,
                   const std::string& root, const PermissionRule& rule,
-                  bool mandatory, const json& review) {
+                  ApprovalSource source, const std::string& reason,
+                  const std::string& asking_rule, const json& review) {
   Verdict verdict;
-  const std::string reason = MandatoryReason(tool, arguments);
-  // The review's reasons join the risks; its note names the bar it fell on.
+  const bool mandatory = source == ApprovalSource::kMandatory;
+  // The review's reasons join the risks.
   json risks = ApprovalRisks(tool, arguments, root);
   for (const json& caution : JsonValue(review, "reasons", json::array())) {
     risks.push_back(caution);
   }
-  std::string verdict_line = JsonValue(review, "error", "");
-  verdict_line = verdict_line.empty() ? JsonValue(review, "note", "")
-                                      : "could not decide: " + verdict_line;
   // The preview is the whole payload: a long command is never truncated.
-  Emit(Event{
-      EventId::kApprovalRequested,
-      {{"id", request_id},
-       {"tool", tool.name},
-       {"preview", TerminalSafe(raw_payload)},
-       {"risks", std::move(risks)},
-       {"review", verdict_line.empty() ? "" : "Auto review " + verdict_line},
-       {"mandatory_human", mandatory},
-       {"mandatory_reason", mandatory ? reason : std::string()}}});
+  Emit(Event{EventId::kApprovalRequested,
+             {{"id", request_id},
+              {"tool", tool.name},
+              {"preview", TerminalSafe(raw_payload)},
+              {"risks", std::move(risks)},
+              {"source", ApprovalSourceName(source)},
+              {"reason", reason},
+              {"rule", asking_rule}}});
   InteractionRequest request{
       .id = request_id,
       .kind = "approval",
@@ -228,7 +287,7 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
     request.options = json::array({{{"value", kAllowOnce}, {"label", "Allow"}},
                                    {{"value", kDeny}, {"label", "Deny"}}});
     verdict.granted = Confirm(std::move(request));
-    verdict.refusal += " (" + reason + ")";
+    verdict.refusal += " (" + MandatoryReason(tool, arguments) + ")";
   } else {
     request.options = ApprovalOptions(rule);
     bool cancelled = false;
@@ -240,7 +299,7 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
     verdict.granted = chosen == ApprovalAnswer::kOnce ||
                       chosen == ApprovalAnswer::kSession ||
                       chosen == ApprovalAnswer::kRepository;
-    if (chosen == ApprovalAnswer::kSession) app->session_rules.push_back(rule);
+    if (chosen == ApprovalAnswer::kSession) app->session_rules.Add(rule);
     if (chosen == ApprovalAnswer::kRepository ||
         chosen == ApprovalAnswer::kNever) {
       PermissionRule kept = rule;
@@ -267,7 +326,8 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
 // what it decides is carried out here: a review, a person asked, a rule kept.
 Agent::Approver MakeApprover(AppContext* app) {
   auto memo = std::make_shared<ReviewMemo>();
-  return [app, memo](const Tool& tool, const json& arguments, int64_t turn) {
+  return [app, memo](const Tool& tool, const json& arguments,
+                     int64_t turn) -> ApprovalOutcome {
     static std::atomic<uint64_t> sequence{0};
     const std::string root = Workspace().path;
     const SandboxStatus& sandbox = SandboxRuntime();
@@ -275,7 +335,8 @@ Agent::Approver MakeApprover(AppContext* app) {
         .mode = CurrentApprovalMode(),
         .sandbox_enforced = sandbox.mode == SandboxMode::kEnforced,
         .sandbox_read_only = sandbox.policy.read_only,
-        .person = InteractiveApprovalAvailable()};
+        .person = InteractiveApprovalAvailable(),
+        .review_paused = memo->Paused()};
     ApprovalFacts facts{.required = RequiredApproval(tool, arguments),
                         .mutates = ToolMutates(tool, arguments),
                         .executes = (tool.capabilities &
@@ -306,13 +367,9 @@ Agent::Approver MakeApprover(AppContext* app) {
     context.ask_rule = folder.ask.has_value();
     std::optional<PermissionRule> allowing;
     if (!mandatory) {
-      const auto held =
-          std::ranges::find_if(app->session_rules, [&](const auto& kept) {
-            return RuleCovers(kept, tool, arguments, root, confined);
-          });
-      if (held != app->session_rules.end()) {
+      allowing = app->session_rules.Covering(tool, arguments, root, confined);
+      if (allowing) {
         context.session_rule = true;
-        allowing = *held;
       } else if (folder.allow) {
         context.folder_rule = true;
         allowing = folder.allow;
@@ -321,21 +378,23 @@ Agent::Approver MakeApprover(AppContext* app) {
     // What a person is offered to remember.
     const PermissionRule offered = SuggestRule(tool, arguments, root, confined);
     const ApprovalDecision decision = Decide(facts, context);
+    ApprovalSource source = decision.source;
     const std::optional<PermissionRule>& decisive =
-        decision.source == ApprovalSource::kDenyRule  ? folder.deny
-        : decision.source == ApprovalSource::kAskRule ? folder.ask
-                                                      : allowing;
+        source == ApprovalSource::kDenyRule  ? folder.deny
+        : source == ApprovalSource::kAskRule ? folder.ask
+                                             : allowing;
+    const std::string rule = decisive ? RuleLabel(*decisive) : std::string();
     bool automatic = decision.effect != ApprovalEffect::kAskPerson;
     Verdict verdict;
-    if (decision.source == ApprovalSource::kDenyRule) {
+    if (source == ApprovalSource::kDenyRule) {
       verdict = {false,
                  "this action was not approved: a rule of this folder "
                  "refuses it (" +
-                     RuleLabel(*folder.deny) + ")"};
-    } else if (decision.source == ApprovalSource::kPlan) {
+                     rule + ")"};
+    } else if (source == ApprovalSource::kPlan) {
       verdict = {false,
                  "plan mode is read-only; write the plan to " + PlanFile()};
-    } else if (decision.source == ApprovalSource::kNobody) {
+    } else if (source == ApprovalSource::kNobody) {
       verdict = {false, mandatory ? "this action needs a person's approval (" +
                                         MandatoryReason(tool, arguments) +
                                         ") and nobody is here to give it"
@@ -363,27 +422,53 @@ Agent::Approver MakeApprover(AppContext* app) {
       }
     }
     if (!automatic) {
-      verdict = AskPerson(app, tool, arguments, raw_payload, request_id, root,
-                          offered, mandatory, review);
+      const bool in_row = [&memo] {
+        std::lock_guard lock(memo->mutex);
+        return memo->refused_in_row >= kReviewRefusalsInRow;
+      }();
+      verdict = AskPerson(
+          app, tool, arguments, raw_payload, request_id, root, offered, source,
+          AskReason(source, facts, context, rule,
+                    MandatoryReason(tool, arguments), review, in_row),
+          source == ApprovalSource::kAskRule ? rule : std::string(), review);
+      memo->Answered();
     }
+    const char* effect = verdict.granted ? "allow" : "deny";
     DebugLog("approval", {{"tool", tool.name},
-                          {"automatic", automatic},
+                          {"effect", effect},
+                          {"source", ApprovalSourceName(source)},
+                          {"asked", !automatic},
                           {"mode", ApprovalModeName(CurrentApprovalMode())},
-                          {"session_rule", context.session_rule},
-                          {"repository_rule", context.folder_rule},
-                          {"review", review},
-                          {"mandatory_human", mandatory},
-                          {"granted", verdict.granted}});
+                          {"review", review}});
     Emit(Event{EventId::kApprovalResolved,
                {{"id", request_id},
                 {"tool", tool.name},
-                {"automatic", automatic},
-                {"rule", decisive ? RuleLabel(*decisive) : std::string()},
+                {"effect", effect},
+                {"source", ApprovalSourceName(source)},
+                {"asked", !automatic},
+                {"reason", verdict.granted ? std::string() : verdict.refusal},
+                {"rule", rule},
                 {"mode", ApprovalModeName(CurrentApprovalMode())},
-                {"review", review},
-                {"mandatory_human", mandatory},
-                {"granted", verdict.granted}}});
-    return verdict.granted ? std::string() : verdict.refusal;
+                {"review", review}}});
+    if (verdict.granted) return {};
+    // A refusal nobody was asked about shows on its row, with what lets the
+    // call through: the action itself for this conversation, or the rules.
+    json part = nullptr;
+    if (automatic && (source == ApprovalSource::kReview ||
+                      source == ApprovalSource::kDenyRule)) {
+      part = {{"kind", "refusal"},
+              {"source", ApprovalSourceName(source)},
+              {"reason", source == ApprovalSource::kDenyRule
+                             ? "A rule of this folder refuses it: " + rule
+                             : AskReason(source, facts, context, rule, "",
+                                         review, false)},
+              {"rule", rule}};
+      if (source == ApprovalSource::kReview) {
+        part["offer"] = {{"tool", tool.name},
+                         {"match", RuleSubject(tool, arguments, root)}};
+      }
+    }
+    return {verdict.refusal, std::move(part)};
   };
 }
 

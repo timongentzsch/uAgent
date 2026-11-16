@@ -255,6 +255,27 @@ json ApprovalRisks(const Tool& tool, const json& arguments,
   return risks;
 }
 
+void SessionRules::Add(PermissionRule rule) {
+  std::lock_guard lock(mutex_);
+  rules_.push_back(std::move(rule));
+}
+
+void SessionRules::Clear() {
+  std::lock_guard lock(mutex_);
+  rules_.clear();
+}
+
+std::optional<PermissionRule> SessionRules::Covering(const Tool& tool,
+                                                     const json& arguments,
+                                                     const std::string& root,
+                                                     bool confined) const {
+  std::lock_guard lock(mutex_);
+  for (const PermissionRule& rule : rules_) {
+    if (RuleCovers(rule, tool, arguments, root, confined)) return rule;
+  }
+  return std::nullopt;
+}
+
 CoveringRules FolderRules(const std::string& root, const Tool& tool,
                           const json& arguments, bool confined) {
   CoveringRules covering;

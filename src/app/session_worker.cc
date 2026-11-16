@@ -147,7 +147,7 @@ class WorkerChannel final : public ApplicationChannel {
       // An agent's approval that Auto could not settle goes to its parent
       // first, unless the person is in this turn or it is reserved for one.
       if (link_ && !person_turn_ &&
-          !JsonValue(data, "mandatory_human", false)) {
+          JsonValue(data, "source", "") != "mandatory") {
         data["route"] = kRouteParent;
         link_->Ask(JsonValue(data, "id", ""), "approval request",
                    "asks to run " + JsonValue(data, "tool", ""),

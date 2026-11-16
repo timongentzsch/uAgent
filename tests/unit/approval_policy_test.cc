@@ -85,6 +85,12 @@ TEST_CASE(TestApprovalOrder) {
   CHECK(Is(Decide(Command(), alone), kAskModel, kReview));
   CHECK(Is(Decide(EditOutside(), alone), kDeny, kNobody));
 
+  // After the review's refusals, Auto asks a person what it would judge.
+  PolicyContext paused = In(Mode::kAuto);
+  paused.review_paused = true;
+  CHECK(Is(Decide(Command(), paused), kAskPerson, kRefusals));
+  CHECK(Is(Decide(EditInFolder(), paused), kAllow, kContainedEdit));
+
   // A rule that refuses holds in every mode and before a person is asked;
   // one that asks, before anything lets the call through.
   for (const Mode mode : {Mode::kAsk, Mode::kAuto, Mode::kYolo, Mode::kPlan}) {
@@ -150,7 +156,8 @@ TEST_CASE(TestApprovalInvariants) {
                                   .deny_rule = bit(13),
                                   .ask_rule = bit(14),
                                   .session_rule = bit(10),
-                                  .folder_rule = bit(11)};
+                                  .folder_rule = bit(11),
+                                  .review_paused = bit(9)};
       const ApprovalDecision decision = Decide(call, context);
       // A rule that refuses always does; one that asks is never passed by.
       if (context.deny_rule) CHECK(decision.effect == kDeny);
@@ -171,8 +178,9 @@ TEST_CASE(TestApprovalInvariants) {
       if (mode == Mode::kAuto && decision.source == kContainedEdit) {
         CHECK(call.inside_work_area && !call.executes && !call.outside_folder);
       }
-      // The model sees only Auto's contained calls.
+      // The model sees only Auto's contained calls, while not paused.
       if (decision.effect == kAskModel) {
+        CHECK(!context.review_paused);
         CHECK(mode == Mode::kAuto && call.required != kMandatoryCall &&
               !call.outside_folder &&
               (!call.command || context.sandbox_enforced));

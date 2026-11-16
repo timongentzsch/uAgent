@@ -21,9 +21,20 @@ import "./decision.css";
 const ALLOW_ONCE = "y",
   ALLOW_SESSION = "s",
   ALWAYS = "a",
+  NEVER = "x",
   DENY = "n",
   GUIDANCE = "guidance";
-const CARD = new Set([ALLOW_ONCE, ALLOW_SESSION, ALWAYS, DENY, GUIDANCE]);
+const CARD = new Set([
+  ALLOW_ONCE,
+  ALLOW_SESSION,
+  ALWAYS,
+  NEVER,
+  DENY,
+  GUIDANCE,
+]);
+// What the folder keeps once the person answers: nothing, or a rule that
+// allows (sent with an allowing answer) or refuses (with Deny).
+type Remember = "" | "always" | "never";
 type Answer = Omit<CommandInputs["reply"], "interaction_id">;
 
 export default function Decision({
@@ -62,7 +73,7 @@ export default function Decision({
     offers(DENY) ? DENY : pending.initial || "",
   );
   const [guidance, setGuidance] = useState("");
-  const [always, setAlways] = useState(false);
+  const [remember, setRemember] = useState<Remember>("");
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState<{
     message: string;
@@ -124,6 +135,10 @@ export default function Decision({
   const card = !!approval && keyed;
   const extra = options.filter((item) => !CARD.has(item.value));
   const more = offers(ALWAYS) || offers(GUIDANCE) || extra.length > 0;
+  // The rule an approval offers to keep, in words: "run git push *".
+  const rule = labelOf(ALWAYS).replace(/^[^:]*: /, "");
+  const allow = (answer: string) =>
+    void send(remember === "always" && offers(ALWAYS) ? ALWAYS : answer);
   return (
     <section class="card decision enters" aria-label="Pending decision">
       <div class="decision-head">
@@ -134,15 +149,7 @@ export default function Decision({
           {approval?.tool && <span class="sr-only">: {approval.tool}</span>}
         </div>
         {approval && !asking && (
-          <strong
-            class="decision-tool"
-            title={approval.mandatory_reason || undefined}
-          >
-            {approval.tool}
-            {approval.mandatory_human
-              ? ` · ${approval.mandatory_reason || "explicit approval required"}`
-              : ""}
-          </strong>
+          <strong class="decision-tool">{approval.tool}</strong>
         )}
       </div>
       {pending.route === "parent" && (
@@ -182,9 +189,14 @@ export default function Decision({
               )}
             </>
           )}
-          {approval?.review && (
-            <p class="small">{cleanText(approval.review)}</p>
-          )}
+          {approval?.reason &&
+            (approval.source === "mandatory" ? (
+              <p class="small">
+                <Notice tone="warning">{cleanText(approval.reason)}</Notice>
+              </p>
+            ) : (
+              <p class="small muted">{cleanText(approval.reason)}</p>
+            ))}
           <AttachmentList
             files={(pending.files ?? []).map((file) => ({
               ...file,
@@ -233,12 +245,19 @@ export default function Decision({
           {/* The usual answer comes last, nearest the thumb. */}
           <div class="decision-answers">
             {offers(DENY) && (
-              <Button disabled={idle} onClick={() => void send(DENY)}>
+              <Button
+                disabled={idle}
+                onClick={() =>
+                  void send(
+                    remember === "never" && offers(NEVER) ? NEVER : DENY,
+                  )
+                }
+              >
                 {labelOf(DENY)}
               </Button>
             )}
             {offers(ALLOW_SESSION) && (
-              <Button disabled={idle} onClick={() => void send(ALLOW_SESSION)}>
+              <Button disabled={idle} onClick={() => allow(ALLOW_SESSION)}>
                 {labelOf(ALLOW_SESSION)}
               </Button>
             )}
@@ -246,7 +265,7 @@ export default function Decision({
               <Button
                 variant="primary"
                 disabled={idle}
-                onClick={() => void send(always ? ALWAYS : ALLOW_ONCE)}
+                onClick={() => allow(ALLOW_ONCE)}
               >
                 {labelOf(ALLOW_ONCE)}
               </Button>
@@ -257,16 +276,38 @@ export default function Decision({
               <summary class="small">More options</summary>
               <div class="decision-more-body">
                 {offers(ALWAYS) && (
-                  <label class="decision-always">
-                    <Input
-                      type="checkbox"
-                      checked={always}
-                      onChange={(event) =>
-                        setAlways(event.currentTarget.checked)
-                      }
-                    />
-                    {labelOf(ALWAYS)}
-                  </label>
+                  <div class="decision-remember">
+                    <p id={`${pending.id}-remember`}>
+                      From now on in this folder, {cleanText(rule)}:
+                    </p>
+                    <div
+                      class="segmented"
+                      role="group"
+                      aria-labelledby={`${pending.id}-remember`}
+                    >
+                      {(
+                        [
+                          ["", "Ask each time"],
+                          ["always", "Always allow"],
+                          ...(offers(NEVER)
+                            ? [["never", "Never allow"] as const]
+                            : []),
+                        ] as const
+                      ).map(([value, label]) => (
+                        <Button
+                          key={value}
+                          aria-pressed={remember === value}
+                          disabled={idle}
+                          onClick={() => setRemember(value)}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
+                    <p class="muted">
+                      Kept when you answer. Settings › This folder lists it.
+                    </p>
+                  </div>
                 )}
                 {(extra.length > 0 || offers(GUIDANCE)) && (
                   <Actions>

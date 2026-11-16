@@ -46,15 +46,21 @@ titled = threading.Event()
 titled_at = {}
 
 
-def decide(handler):
-    """The decisions endpoint: allow is likely, sending data away is too."""
+def decide(handler, body):
+    """The decisions endpoint: allow is likely, sending data away is too; a
+    call that names refuse.example is refused."""
     noul = {"destructive": 0.0, "beyond_request": 0.0, "touches_secrets": 0.0}
     noul["sends_data_off_machine"] = 0.78
     answers = {name: {"type": "noul", "noul": probability} for name, probability in noul.items()}
+    refused = "refuse.example" in json.dumps(body.get("state", {}))
     answers["permission"] = {
         "type": "choice",
-        "choice": "allow",
-        "probabilities": {"allow": 0.99, "ask": 0.01, "deny": 0.0},
+        "choice": "deny" if refused else "allow",
+        "probabilities": (
+            {"allow": 0.0, "ask": 0.01, "deny": 0.99}
+            if refused
+            else {"allow": 0.99, "ask": 0.01, "deny": 0.0}
+        ),
     }
     write_json_response(handler, {"answers": answers, "usage": {"input_tokens": 9, "cost": 0.0001}})
 
@@ -99,7 +105,7 @@ def film(done):
 
 def answer(handler, body):
     if "questions" in body:
-        return decide(handler)
+        return decide(handler, body)
     texts = [
         message.get("content", "") for message in body["messages"] if message.get("role") == "user"
     ]
@@ -259,6 +265,19 @@ def answer(handler, body):
             "run",
             {"command": "echo ROOT_RAN", "description": "Echo as root", "root": True},
             call_id="root-run",
+        )
+    if "Review probe" in prompt and not any(
+        message.get("role") == "tool" for message in body["messages"]
+    ):
+        return tool_call("web_fetch", {"url": "https://review.example/"}, call_id="reviewed")
+    # Once for each time it is asked: a retry after the call was allowed.
+    users = [i for i, message in enumerate(body["messages"]) if message.get("role") == "user"]
+    since = body["messages"][users[-1] if users else 0 :]
+    if "Refused probe" in prompt and not any(message.get("role") == "tool" for message in since):
+        return tool_call(
+            "web_fetch",
+            {"url": "https://refuse.example/"},
+            call_id=f"refused-{len(body['messages'])}",
         )
     if "request approval" in prompt and not any(
         message.get("role") == "tool" for message in body["messages"]

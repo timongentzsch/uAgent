@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(uagent VERSION 1.10.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
+project(uagent VERSION 1.10.1 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 # The build id hashes the runtime's inputs, not HEAD, so an unpublished edit

@@ -11,7 +11,7 @@ cmake -B build/bench -DCMAKE_BUILD_TYPE=Release -DUAGENT_BUILD_BENCHMARKS=ON
 cmake --build build/bench --target uagent_bench && build/bench/uagent_bench
 ```
 
-[Testing](../docs/TESTING.md#behavioral-evaluation) covers the scenarios and
+[Testing](../docs/testing.md#behavioral-evaluation) covers the scenarios and
 the other options.
 
 | Path | Contents |
@@ -22,7 +22,7 @@ the other options.
 | `bench_core.cc` | Source of `uagent_bench`, built with `UAGENT_BUILD_BENCHMARKS=ON`; `--session PATH` measures a saved conversation in place of the built long one |
 | `scenarios/` | One declarative JSON file per evaluation scenario |
 | `baselines/` | Committed results: `hermetic.json` gates `eval.py` |
-| `results/`, `plot.py` | Dated measurement snapshots and the reproducible encoding chart; `charts.py` shares SVG layout and styling |
+| `results/`, `charts.py` | Dated measurement snapshots; the SVG layout and styling of the footprint chart |
 
 ## Current measurements
 
@@ -58,15 +58,22 @@ mock-provider probe advertises **13 tools / 10,413 schema bytes**, with a
 tool or a count of billed provider tokens. The audit reads captured schemas
 directly; no generated tool-reference file or personal profile is required.
 
-![Five-run medians for 1000 request payload serializations in three provider dialects, comparing full and cached payload construction](../docs/images/request-encoding.svg)
+Serializing 1,000 request payloads, in milliseconds, median of five Release
+runs on 2026-11-12 at commit `f3489142`:
 
-The chart measures local payload serialization, not model or network latency.
+| Wire format | Full payload | Cached payload |
+| --- | ---: | ---: |
+| Chat Completions | 169.3 | 24.6 |
+| Responses | 282.7 | 35.6 |
+| Anthropic Messages | 252.9 | 51.8 |
+
+This is local payload serialization, not model or network latency.
 All five core runs use the same built-in workload without a personal session.
 The web bundle's first JS/CSS fetch is **174,276 compressed bytes**; all shipped
 web assets total **2,330,660 compressed bytes**, including optional renderers.
 The sheet engine is installed beside the app and counted with the installation.
 
-Reproduce the local measurements and charts from the repository root:
+Reproduce the local measurements from the repository root:
 
 ```sh
 cmake -S . -B build/bench -DCMAKE_BUILD_TYPE=Release \
@@ -76,12 +83,11 @@ python3 benchmarks/eval.py build/bench/uagent --check --report /tmp/eval.json
 python3 benchmarks/audit.py build/bench/uagent --json /tmp/audit.json
 for run in 1 2 3 4 5; do build/bench/uagent_bench > "/tmp/core-$run.txt"; done
 (cd web && npm run size)
-python3 benchmarks/plot.py benchmarks/results/2026-11-12.json
 ```
 
-Build `web/dist` first as described in [Testing](../docs/TESTING.md#common-cases).
-The charts use the committed snapshot; changing it requires new measurements,
-not just a date edit. Package figures come from summing regular-file members of
+Build `web/dist` first as described in [Testing](../docs/testing.md#common-cases).
+Changing the committed snapshot requires new measurements, not just a date
+edit. Package figures come from summing regular-file members of
 each complete release archive and checking the matching gateway manifest.
 
 ## Footprint comparison
@@ -162,7 +168,7 @@ Haiku 5.5 on the Responses and Anthropic Messages routes (`footprint-run.sh`
 lists the paths). The current recipe installs the complete gateway bundle
 through `install.sh`. For an unpublished checkout, put its verified matching
 bundle in `remote-bundle/` before building; see
-[source/container installation](../docs/REMOTE_HOSTS.md#installers-and-containers).
+[building and installing from source](../docs/operations/install.md#build-and-install-from-source).
 Codex, Bun and omp have pinned build arguments; Claude Code uses its installer.
 Retain the generated JSON's actual version strings with any new comparison.
 Run it on an otherwise idle host with fixed limits:

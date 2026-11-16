@@ -449,7 +449,7 @@ int RunSetup() {
   if (usable.empty()) {
     printf(
         "No key is set up. Run uagent setup again, or see "
-        "https://github.com/timongentzsch/uAgent/blob/master/docs/GUIDE.md"
+        "https://github.com/timongentzsch/uAgent/blob/master/docs/manual.md"
         "#models-and-providers for other endpoints.\n");
     return 1;
   }

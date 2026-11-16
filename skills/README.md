@@ -14,7 +14,7 @@ to the executable.
 
 Without `$name`, the model opens a skill itself when its description fits
 the task. The web's Library lists and edits the same skills; see
-[Memory, skills and scheduled tasks](../docs/MANAGEMENT.md).
+[Memory and schedules](../docs/architecture/memory-and-schedules.md).
 
 ## What ships
 

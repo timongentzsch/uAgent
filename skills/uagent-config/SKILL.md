@@ -28,7 +28,7 @@ action `show` with topic `config`.
 | Which MCP servers are configured, and do they run? | `show` `mcp`: each server's file, state and tool count. `/mcp` shows the person why one failed |
 | Which approvals are remembered for this folder? | `show` `permissions` |
 | Which skills are installed, and which are on? | `show` `skills` |
-| How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/ARCHITECTURE.md` in a source checkout |
+| How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/architecture/overview.md` in a source checkout |
 | Limits, recovery or failure triage | `docs/OPERATIONS.md` in a source checkout |
 | Change a setting persistently | `set`; see `references/self-configuration.md` |
 | What instructions do sessions read? | `show` `instructions` |

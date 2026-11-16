@@ -16,7 +16,7 @@ list(APPEND _runtime_inputs "CMakeLists.txt"
      "cmake/embed_web.cmake"
      "cmake/build_identity.cc.in"
      "web/public/design-helper.js"
-     "docs/ARCHITECTURE.md"
+     "docs/architecture/overview.md"
      "web/src/shared/styles/tokens.css")
 list(SORT _runtime_inputs)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_runtime_inputs})
@@ -486,19 +486,19 @@ install(DIRECTORY web/dist/share/sheet/
         DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/sheet OPTIONAL)
 # The skill answers design questions from this copy.
 install(
-  FILES docs/ARCHITECTURE.md
+  FILES docs/architecture/overview.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/uagent-config/references
   RENAME architecture.md)
 # The web UI's design tokens, for the skill to read.
 install(
   FILES web/src/shared/styles/tokens.css
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/uagent-config/references)
-# Every guide ships; tests/package_contents.py checks the same directory.
-file(GLOB UAGENT_GUIDES CONFIGURE_DEPENDS docs/*.md)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
-# README and CONTRIBUTING link to docs/ by relative path.
-install(FILES ${UAGENT_GUIDES} DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs)
+# Every page ships where README and CONTRIBUTING link to it;
+# tests/package_contents.py checks the same tree.
+install(DIRECTORY docs/ DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs
+        FILES_MATCHING PATTERN "*.md")
 install(FILES web/dist/THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
 install(FILES third_party/cpp-httplib/LICENSE
         DESTINATION ${CMAKE_INSTALL_DOCDIR}/licenses RENAME cpp-httplib.txt)

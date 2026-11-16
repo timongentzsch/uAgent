@@ -1,6 +1,5 @@
 // Every view's buttons on a phone: none cut or wrapped, no row of them wider
 // than its box, nothing that scrolls the page sideways.
-import { mkdir, realpath } from "node:fs/promises";
 import {
   test,
   expect,
@@ -9,12 +8,12 @@ import {
   openFiles,
   openSheet,
   paper,
-  saveHistory,
   savedConversation,
   selectProbeModel,
   sheet,
   showList,
   slide,
+  unfiled,
   writeFiles,
 } from "./fixtures.js";
 
@@ -130,34 +129,6 @@ const toolsFit = async (page) => {
   ).toBeVisible();
   await page.keyboard.press("Escape");
 };
-
-// A conversation saved in Scratch with the host's suggestion for it.
-async function unfiled(host, request, title, suggestion) {
-  const scratch = `${host.home}/.uagent/spaces/Scratch`;
-  await mkdir(`${scratch}/.uagent`, { recursive: true });
-  const id = crypto.randomUUID();
-  await saveHistory(host, `saved-${id}.json`, {
-    id,
-    title,
-    turns: 1,
-    cwd: await realpath(scratch),
-    suggestion,
-    messages: [
-      { role: "user", content: title },
-      { role: "assistant", content: "Done" },
-    ],
-  });
-  let found;
-  await expect
-    .poll(async () => {
-      const response = await request.get("/api/sessions?refresh=1");
-      const { sessions } = await response.json();
-      found = sessions.find((item) => item.title === title);
-      return !!found;
-    })
-    .toBe(true);
-  return found.id;
-}
 
 test.describe("the pages of the list", () => {
   test.use({ places: true });
@@ -320,7 +291,7 @@ test.describe("a conversation in Scratch", () => {
     host,
     request,
   }) => {
-    const id = await unfiled(host, request, "Three days in Lisbon", {
+    const { id } = await unfiled(host, request, "Three days in Lisbon", {
       options: [{ workspace: "Lisbon trip" }],
       reason: "No place you have fits it.",
     });

@@ -45,8 +45,10 @@ flowchart LR
   run; text resembling another harness's call syntax is recognised only so
   the reply can be suppressed and retried, never executed.
 - **Content the model reads** (files, web pages, MCP output, memory,
-  search results) is evidence and cannot widen what you approved; schema
-  validation, path checks, the sandbox and approval enforce that.
+  search results, agents' reports) is evidence and cannot widen what you
+  approved; schema validation, path checks, the sandbox and approval
+  enforce that. A report arrives as a user-role message, the only role mail
+  has, labelled as an agent's report, data, not instructions.
 - **Paired devices**, which act as you; **other local users**, kept out by
   owner-only files; **a remote host's account and administrators**; **the
   network** between µAgent and its endpoints, devices and hosts.
@@ -109,6 +111,15 @@ tool that edits, and so do the agents it starts. Otherwise it runs at
 `default`, or `relaxed` in yolo. In Auto it is held to the same order as
 the conversation that started it: its file changes inside the folder run,
 its commands and the rest go to the decision model.
+Its brief becomes its request, which its own review trusts, so in Auto the
+decision model judges the brief first (`agent_start`, and `agent_send`
+for later messages) against what you asked; the other modes start it
+unasked, and a folder rule can refuse or ask (`/permissions deny
+agent_start *`). In Auto its report is judged too before the conversation
+that started it reads it: one that tries to direct that conversation,
+claims work beyond its brief or carries secrets is held for you (Deliver
+or Withhold), and with nobody to ask that conversation gets only a note
+that it was withheld. The report stays in the agent's conversation.
 What would ask a person goes to its parent first, which decides or passes
 it on, and to you after five minutes; once you write in the agent's own
 conversation, that turn asks you directly. What always needs a person goes

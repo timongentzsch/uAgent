@@ -602,28 +602,29 @@ void Master::RegisterApiRoutes() {
         }
       });
   // A folder at a glance, for its overview: spend, changes and git.
-  server_.Get("/api/folder", [browse](const Request& request,
-                                      Response& response) {
-    const std::string host = request.get_param_value("host");
-    if (!host.empty()) {
-      const std::string path = request.get_param_value("path");
-      json facts = browse(host, "folder", path);
-      if (facts.contains("error")) {
-        Error(response, JsonValue(facts, "error", "Remote unavailable"), 503);
-        return;
-      }
-      facts.update(FolderFacts(path, host));
-      Reply(response, facts);
-      return;
-    }
-    const std::optional<std::filesystem::path> folder =
-        CanonicalDirectory(request.get_param_value("path"));
-    if (!folder) {
-      Error(response, "not found", 404);
-      return;
-    }
-    Reply(response, FolderFacts(folder->string()));
-  });
+  server_.Get(
+      "/api/folder", [browse](const Request& request, Response& response) {
+        const std::string host = request.get_param_value("host");
+        if (!host.empty()) {
+          const std::string path = request.get_param_value("path");
+          json facts = browse(host, "folder", path);
+          if (facts.contains("error")) {
+            Error(response, JsonValue(facts, "error", "Remote unavailable"),
+                  JsonValue(facts, "status", 503));
+            return;
+          }
+          facts.update(FolderFacts(path, host));
+          Reply(response, facts);
+          return;
+        }
+        const std::optional<std::filesystem::path> folder =
+            CanonicalDirectory(request.get_param_value("path"));
+        if (!folder) {
+          Error(response, "not found", 404);
+          return;
+        }
+        Reply(response, FolderFacts(folder->string()));
+      });
   // The person's own stylesheet, added after the app's so it overrides the
   // design tokens. Revalidated on every look: an edit needs no new bundle.
   server_.Get("/api/user.css", [](const Request& request, Response& response) {

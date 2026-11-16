@@ -273,7 +273,10 @@ class Worker {
     if (operation == "folder") {
       const auto folder =
           CanonicalDirectory(ExpandHome(JsonValue(request, "path", "~")));
-      if (!folder) return {{"error", "Choose an accessible remote directory."}};
+      if (!folder) {
+        return {{"error", "Choose an accessible remote directory."},
+                {"status", 404}};
+      }
       json facts = FolderGitFacts(folder->string());
       facts["cwd"] = folder->string();
       return facts;

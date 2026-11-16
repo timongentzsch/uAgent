@@ -10,7 +10,12 @@ from pathlib import Path
 
 def classify(paths):
     docs = {"README.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "LICENSE"}
-    native = any(not (path.startswith(("web/", "docs/")) or path in docs) for path in paths)
+    # docs/interfaces is checked against the binary (tests/reference_docs.py).
+    native = any(
+        path.startswith("docs/interfaces/")
+        or not (path.startswith(("web/", "docs/")) or path in docs)
+        for path in paths
+    )
     return {"native": native, "web": native or any(path.startswith("web/") for path in paths)}
 
 

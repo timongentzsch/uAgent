@@ -445,6 +445,11 @@ if(BUILD_TESTING)
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/eval.py
                    $<TARGET_FILE:uagent> --check --timeout 30)
   set_tests_properties(behavior_eval PROPERTIES TIMEOUT 120)
+  # docs/interfaces says what the registries say.
+  add_test(NAME reference_docs
+           COMMAND ${Python3_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/reference_docs.py
+                   $<TARGET_FILE:uagent>)
 endif()
 
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)

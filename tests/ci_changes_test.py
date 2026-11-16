@@ -14,11 +14,12 @@ bundle = changes["bundle"]
 class ChangeSelectionTest(unittest.TestCase):
     def test_frontend_and_docs_keep_their_required_checks(self):
         self.assertEqual(
-            classify(["web/src/raw.tsx", "docs/WEB.md"]), {"native": False, "web": True}
+            classify(["web/src/raw.tsx", "docs/manual.md"]), {"native": False, "web": True}
         )
         self.assertEqual(
-            classify(["docs/TESTING.md", "README.md"]), {"native": False, "web": False}
+            classify(["docs/testing.md", "README.md"]), {"native": False, "web": False}
         )
+        self.assertTrue(classify(["docs/interfaces/settings.md"])["native"])
 
     def test_shared_code_and_unknown_paths_require_every_suite(self):
         for path in (
@@ -35,7 +36,7 @@ class ChangeSelectionTest(unittest.TestCase):
 
     def test_clang_tidy_reads_changed_units_unless_any_unit_may_be_affected(self):
         self.assertEqual(
-            tidy(["src/app/chat.cc", "tests/unit/stream_test.cc", "docs/WEB.md", "web/a.ts"]),
+            tidy(["src/app/chat.cc", "tests/unit/stream_test.cc", "docs/manual.md", "web/a.ts"]),
             "src/app/chat.cc tests/unit/stream_test.cc",
         )
         self.assertEqual(tidy(["tests/integration.py"]), "")

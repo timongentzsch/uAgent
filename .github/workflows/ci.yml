@@ -451,6 +451,7 @@ jobs:
           # Chrome is fetched, checked against Google's signed index and run.
           timeout 600 sh -c 'until docker compose -f deploy/compose.yaml exec -T uagent grep -q "^ready " /data/browser/chrome/status 2>/dev/null; do sleep 5; done'
           docker compose -f deploy/compose.yaml exec -T uagent google-chrome-stable --version
+          deploy/check-browser.sh
           docker compose -f deploy/compose.yaml down -v
 
   checks:

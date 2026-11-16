@@ -29,6 +29,7 @@ Setup, the Compose variables and the isolation model are in
 | `start.sh` | What the agent's container runs: the Chrome updater beside the web host |
 | `firewall.sh` | What the `network` service runs: refuses private addresses to the agent, except those `UAGENT_NETWORK_ALLOW` names |
 | `check-network.sh` | Checks a running stack from the agent's side: public reachable, private refused, rules out of reach |
+| `check-browser.sh` | Checks that a running stack's browser starts, as a paired device that is logged out again |
 | `seccomp-chrome.json` | Seccomp profile that lets Chrome create its own user namespace |
 | `footprint.sh` | Snapshot of the running container, for comparing before and during browser use |
 | `NOTICE.md`, `APACHE-2.0.txt` | Origin and license of the seccomp profile |

@@ -59,6 +59,16 @@ test("the open conversation is asked for with the list, not after it", async ({
 }) => {
   await page.goto(`/#session=${session.id}`);
   await expect(page.getByLabel("Message or guidance")).toBeEnabled();
+  // Only a conversation this device has listed is asked for early: wait
+  // until its kept list has it, which it writes once events pause.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (id) => (localStorage.getItem("uagent-catalogue") ?? "").includes(id),
+        session.id,
+      ),
+    )
+    .toBe(true);
   let release;
   const held = new Promise((resolve) => (release = resolve));
   await page.route(/\/api\/sessions(\?refresh=1)?$/, async (route) => {

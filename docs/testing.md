@@ -42,8 +42,8 @@ ctest --preset debug -R '^core$'          # one CTest by name
 ```
 
 The source contracts (`tests/ci_changes_test.py`, `tests/boundary_test.py`,
-`tests/wire_contract_test.py`) and measurement self-tests run in
-`.github/lint.sh`.
+`tests/wire_contract_test.py`), the docs check `tests/docs_test.py` and
+the measurement self-tests run in `.github/lint.sh`.
 
 Test presets exist for `debug`, `release`, `sanitize`, `tsan` and `coverage`.
 
@@ -70,6 +70,7 @@ READMEs, SECURITY and CONTRIBUTING it checks that every relative link and
 anchor resolves, that every `UAGENT_*` variable, `--flag`, `/api/` route and
 `k` constant in a code span appears in the tracked source, and that every
 repository path in a code span is tracked. Generated pages are skipped.
+`.github/lint.sh` runs it.
 
 `tests/fixtures/` holds the provider route contract, saved sessions, the
 stand-in Chrome and Xvnc (`browser_runtime.py`) and an SSH relay;
@@ -286,7 +287,7 @@ master, scheduled and manual runs always run them:
 | `sanitizers` | `sanitize` preset, `ctest` |
 | `thread-sanitizer` | Where selected: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `coverage` | Weekly and by hand: `core` and every integration group with a branch report; fails under 67% line coverage |
-| `lint` | `.github/lint.sh`: clang-format, cpplint, Ruff and the source contracts |
+| `lint` | `.github/lint.sh`: clang-format, cpplint, Ruff, the source contracts and the docs check |
 | `clang-tidy` | clang-tidy, changed units on one runner or all units across three |
 | `web` | Biome format check and lint, Node tests, bundle and size report, a `ci-release` host with Web Push |
 | `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), split across three runners |

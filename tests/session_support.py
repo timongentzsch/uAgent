@@ -62,6 +62,10 @@ def remove_runtime(home):
 def close_sessions(home):
     """One pass: ask every runtime of `home` to close and wait for it."""
     for path in runtime_directory(home).glob("*.sock"):
+        # An execution gateway's socket (e-…) speaks no session protocol: it
+        # would never greet, and the wait for it would run out.
+        if path.name.startswith("e-"):
+            continue
         try:
             client = SessionClient(path)
             client.send("close")

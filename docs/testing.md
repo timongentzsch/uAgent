@@ -295,7 +295,7 @@ master, scheduled and manual runs always run them:
 | `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |
 | `build-and-test` | `ci-release` builds (Web Push on) for Linux x86_64 and macOS ARM64, and Linux ARM64 where selected; `ctest`; packaging through `install.sh` with `UAGENT_LOCAL_ONLY=1`, `tests/package_contents.py`, and the target's remote payload |
 | `remote-bundle` | Where selected: assembles the three payloads into one verified bundle (`.github/remote_bundle.py`), adds it to each release archive and checks the archives; uploads `release-complete` |
-| `sanitizers` | `sanitize` preset, `ctest` in two legs: `integration_web` (with `behavior_eval`, `reference_docs`), and the rest |
+| `sanitizers` | `sanitize` preset, `ctest` in two legs: `integration_web` and `integration_providers` (with `behavior_eval`, `reference_docs`), and the rest |
 | `thread-sanitizer` | Where selected: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `coverage` | Weekly and by hand: `core` and every integration group with a branch report; fails under 67% line coverage |
 | `lint` | `.github/lint.sh`: clang-format, cpplint, Ruff, the source contracts and the docs check |

@@ -187,16 +187,16 @@ jobs:
     if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    # integration_web is a third of the instrumented run: it has a runner of
-    # its own, and the rest share the other.
+    # integration_web is a third of the instrumented run: it and
+    # integration_providers have one runner, the rest share the other.
     strategy:
       fail-fast: false
       matrix:
         include:
           - leg: web
-            tests: -R "^(integration_web|behavior_eval|reference_docs)$"
+            tests: -R "^(integration_web|integration_providers|behavior_eval|reference_docs)$"
           - leg: rest
-            tests: -E "^(integration_web|behavior_eval|reference_docs)$"
+            tests: -E "^(integration_web|integration_providers|behavior_eval|reference_docs)$"
     # Instrumented startup and rendering cost several times the plain build, so
     # the terminal tests get proportionally longer deadlines here.
     env:

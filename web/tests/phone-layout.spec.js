@@ -6,6 +6,7 @@ import {
   online,
   selectProbeModel,
   saveHistory,
+  savedConversation,
 } from "./fixtures.js";
 
 test.describe("message layout", () => {
@@ -741,5 +742,69 @@ test.describe("phone header", () => {
     await expect(
       page.getByRole("dialog", { name: "Settings", exact: true }),
     ).toBeVisible();
+  });
+});
+
+test.describe("buttons in a narrow column", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+  test.beforeEach(({ command, session }) => selectProbeModel(command, session));
+
+  test("an approval's answers each take a row, the usual one last", async ({
+    page,
+    session,
+  }) => {
+    await page.goto(`/#session=${session.id}`);
+    await page.getByLabel("Message or guidance").fill("request approval");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const buttons = page
+      .getByRole("region", { name: "Pending decision" })
+      .locator(".decision-answers > button");
+    await expect(buttons).toHaveCount(3);
+    const answers = await buttons.evaluateAll((all) =>
+      all.map((button) => {
+        const { x, y, width, height } = button.getBoundingClientRect();
+        return { name: button.textContent, x, y, width, height };
+      }),
+    );
+    expect(answers.map((answer) => answer.name)).toEqual([
+      "Deny",
+      "Allow for this conversation",
+      "Allow once",
+    ]);
+    for (const [at, answer] of answers.entries()) {
+      // One line each: a label that wrapped would make its button taller.
+      expect(answer).toMatchObject({
+        x: answers[0].x,
+        width: answers[0].width,
+        height: answers[0].height,
+      });
+      if (at)
+        expect(answer.y).toBeGreaterThanOrEqual(
+          answers[at - 1].y + answers[at - 1].height,
+        );
+    }
+  });
+
+  test("a dialog breaks a long path and keeps its buttons in view", async ({
+    page,
+    host,
+    request,
+  }) => {
+    const saved = await savedConversation(host, request, "Move probe");
+    await page.goto(`/#session=${saved.id}`);
+    await page
+      .locator(".conversation-head")
+      .getByRole("button", { name: "Conversation menu" })
+      .click();
+    await page.getByRole("menuitem", { name: "Move to…", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: /^Move / });
+    await expect(
+      dialog.getByRole("button", { name: "Move", exact: true }),
+    ).toBeInViewport({ ratio: 1 });
+    expect(
+      await dialog
+        .locator(".dialog-body")
+        .evaluate((body) => body.scrollWidth - body.clientWidth),
+    ).toBeLessThanOrEqual(0);
   });
 });

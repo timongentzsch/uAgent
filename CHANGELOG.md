@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **An approval's answers stack on a phone.** In a narrow column Deny, Allow for this conversation and Allow once each take a row at full size, the usual answer last; side by side the middle one broke into two lines of small text.
+- **A dialog no longer scrolls sideways for a long path.** On a phone the Move dialog's note pushed Cancel and Move off the screen. Text in a dialog breaks where it must.
+
 ## v1.9.1 - 2026-11-16
 
 ### Fixes

@@ -677,6 +677,12 @@ void Master::RegisterBrowserRoutes() {
          {"instance_id", request.has_param("instance")
                              ? request.get_param_value("instance")
                              : "0"}});
+    // A runtime's status may carry its profile error; only a status the
+    // service did not give lacks `ok`.
+    if (!JsonValue(status, "ok", false)) {
+      Error(response, JsonValue(status, "error", "Browser unavailable"), 503);
+      return;
+    }
     std::lock_guard lock(mutex_);
     status["controller"] = JsonValue(status, "viewer", "") == DeviceId(request);
     status["leased"] = !JsonValue(status, "viewer", "").empty();

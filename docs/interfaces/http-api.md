@@ -163,7 +163,7 @@ page, and `~sheet/<file>` serves the sheet engine.
 | `POST /api/push/subscriptions` | body: a browser `PushSubscription` (`endpoint`, `keys.p256dh`, `keys.auth`), ≤ 8 KiB; replies with the capabilities: `push`, `push_reason`, `subscribed`, `vapid_public_key`; 422 when refused |
 | `DELETE /api/push/subscriptions` | no body; the capabilities |
 | `GET /api/user.css` | the person's stylesheet, `text/css`, ETag |
-| `GET /api/browser/status?instance=<0-4>` | the browser service status plus `controller`, `leased`; only with `UAGENT_BROWSER_DATA` |
+| `GET /api/browser/status?instance=<0-4>` | the browser service status plus `controller`, `leased`; 503 when the service does not answer; only with `UAGENT_BROWSER_DATA` |
 
 ## WebSockets
 

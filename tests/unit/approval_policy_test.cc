@@ -72,6 +72,19 @@ TEST_CASE(TestApprovalOrder) {
   CHECK(Is(Decide(Command(), loose), kAskPerson, kMode));
   CHECK(Is(Decide(EditInFolder(), loose), kAskModel, kReview));
 
+  // With nobody to ask, what a person would decide is refused; what is
+  // decided without one is not.
+  PolicyContext alone = In(Mode::kAsk);
+  alone.person = false;
+  CHECK(Is(Decide(Command(), alone), kDeny, kNobody));
+  CHECK(Is(Decide(Unsandboxed(), alone), kDeny, kNobody));
+  alone.folder_rule = true;
+  CHECK(Is(Decide(Command(), alone), kAllow, kFolderRule));
+  alone = In(Mode::kAuto);
+  alone.person = false;
+  CHECK(Is(Decide(Command(), alone), kAskModel, kReview));
+  CHECK(Is(Decide(EditOutside(), alone), kDeny, kNobody));
+
   // Yolo allows everything but the mandatory class.
   CHECK(Is(Decide(Command(), In(Mode::kYolo)), kAllow, kYolo));
   CHECK(Is(Decide(EditOutside(), In(Mode::kYolo)), kAllow, kYolo));
@@ -117,7 +130,7 @@ TEST_CASE(TestApprovalInvariants) {
   constexpr std::array kModes = {Mode::kAsk, Mode::kAuto, Mode::kYolo,
                                  Mode::kPlan};
   for (const Mode mode : kModes) {
-    for (uint32_t bits = 0; bits < (1u << 12); ++bits) {
+    for (uint32_t bits = 0; bits < (1u << 13); ++bits) {
       const auto bit = [bits](int at) { return ((bits >> at) & 1u) != 0; };
       const ApprovalFacts call{
           .required = bit(0) ? kMandatoryCall : kOrdinaryCall,
@@ -131,9 +144,12 @@ TEST_CASE(TestApprovalInvariants) {
                                   .sandbox_enforced = bit(7),
                                   .sandbox_read_only = bit(8),
                                   .agent_edits = bit(9),
+                                  .person = bit(12),
                                   .session_rule = bit(10),
                                   .folder_rule = bit(11)};
       const ApprovalDecision decision = Decide(call, context);
+      // Nobody to ask is never asked.
+      if (!context.person) CHECK(decision.effect != kAskPerson);
       // A mandatory call is never allowed without a person.
       if (call.required == kMandatoryCall) CHECK(decision.effect != kAllow);
       // Plan mode allows a change only on the plan file or in the read-only

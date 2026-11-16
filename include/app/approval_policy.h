@@ -34,6 +34,8 @@ struct PolicyContext {
   bool sandbox_read_only = false;
   // An agent that may edit.
   bool agent_edits = false;
+  // A person can answer: a terminal, or a runtime's clients.
+  bool person = true;
   // A remembered rule covers the call: this conversation's, or the folder's.
   bool session_rule = false;
   bool folder_rule = false;
@@ -52,6 +54,8 @@ enum class ApprovalSource {
   kPlanAllows,
   kReview,
   kMode,
+  // A person would decide, and nobody can.
+  kNobody,
 };
 
 struct ApprovalDecision {

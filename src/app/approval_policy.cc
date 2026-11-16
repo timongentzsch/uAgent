@@ -11,6 +11,12 @@ ApprovalDecision Decide(const ApprovalFacts& call,
   const bool mandatory = call.required == ApprovalClass::kMandatoryHuman;
   const bool planning = context.mode == ApprovalMode::kPlan;
   const bool automatic = context.mode == ApprovalMode::kAuto;
+  // With nobody to ask, what a person would decide is refused: an unattended
+  // run never takes its answers from whatever its input holds.
+  const auto ask = [&context](ApprovalSource source) -> ApprovalDecision {
+    return context.person ? ApprovalDecision{kAskPerson, source}
+                          : ApprovalDecision{kDeny, kNobody};
+  };
   // Plan mode only reads. What runs there although it may change something:
   // a command the read-only sandbox holds, and a call on the plan file.
   const bool plan_allows =
@@ -20,7 +26,7 @@ ApprovalDecision Decide(const ApprovalFacts& call,
   // Anything else that changes something is refused before anyone is asked.
   if (planning && !plan_allows && call.mutates) return {kDeny, kPlan};
   // A mandatory call ignores every automatic-approval switch.
-  if (mandatory) return {kAskPerson, kMandatory};
+  if (mandatory) return ask(kMandatory);
   if (context.session_rule) return {kAllow, kSessionRule};
   if (context.folder_rule) return {kAllow, kFolderRule};
   if (context.mode == ApprovalMode::kYolo) return {kAllow, kYolo};
@@ -37,7 +43,7 @@ ApprovalDecision Decide(const ApprovalFacts& call,
   if (automatic && confined && !call.outside_folder) {
     return {kAskModel, kReview};
   }
-  return {kAskPerson, kMode};
+  return ask(kMode);
 }
 
 }  // namespace uagent

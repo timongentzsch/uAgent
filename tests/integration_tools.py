@@ -9,6 +9,7 @@ import time
 from integration_support import (
     SMALL_PNG,
     Server,
+    allow_always,
     assert_true,
     base_env,
     captured_log_path,
@@ -1225,6 +1226,39 @@ def test_approval_remembers_a_command_prefix_and_forwards_a_refusal(root, home, 
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))
         assert_true(b"approval-done" in output, output)
+
+
+def test_an_unattended_run_takes_no_approval_from_its_input(root, home, *, binary):
+    """With nobody to ask, a call that needs approval is refused, whatever the
+    piped input says; a folder rule is how such a run is allowed to act."""
+    told = []
+
+    def route(_, body):
+        results = tool_results(body["messages"])
+        if not results:
+            return tool_call("run", {"command": "touch piped-approval"})
+        told.append(results[-1])
+        return event({"content": "done"})
+
+    for rule in (False, True):
+        told.clear()
+        if rule:
+            allow_always(home, root)
+        with Server([route]) as server:
+            result = run_dialog(
+                root,
+                base_env(home, server.url),
+                "y\ny\n",
+                "-p",
+                "go",
+                timeout=30,
+                binary=binary,
+            )
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        made = (root / "piped-approval").exists()
+        assert_true(made == rule, (rule, told, result.stderr))
+        if not rule:
+            assert_true("not approved: nobody is here" in str(told), told)
 
 
 def test_root_asks_the_password_once_a_turn_and_keeps_it_out(root, home, *, binary):

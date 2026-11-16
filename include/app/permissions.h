@@ -6,11 +6,18 @@
 // it risks, and the rules kept for this conversation and for a folder.
 
 #include <string>
+#include <string_view>
 
 #include "include/core/json.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
+
+// What an approval is answered with, by a person or by a parent agent.
+inline constexpr std::string_view kAllowOnce = "y";
+inline constexpr std::string_view kAllowSession = "s";
+inline constexpr std::string_view kAllowFolder = "a";
+inline constexpr std::string_view kDeny = "n";
 
 // A remembered approval: the calls of `tool` whose subject `match` covers.
 // A match is "*" (every call), "PREFIX *" (one simple command starting with

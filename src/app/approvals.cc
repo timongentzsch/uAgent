@@ -63,16 +63,16 @@ struct ApprovalChoice {
 };
 
 constexpr ApprovalChoice kApprovalChoices[] = {
-    {ApprovalAnswer::kOnce, "y", "Allow once", {"y", "yes"}},
+    {ApprovalAnswer::kOnce, kAllowOnce, "Allow once", {kAllowOnce, "yes"}},
     {ApprovalAnswer::kSession,
-     "s",
+     kAllowSession,
      "Allow for this conversation",
-     {"s", "session"}},
+     {kAllowSession, "session"}},
     {ApprovalAnswer::kRepository,
-     "a",
+     kAllowFolder,
      "Always allow here: ",
-     {"a", "always", "repository"}},
-    {ApprovalAnswer::kDeny, "n", "Deny", {"n", "no"}},
+     {kAllowFolder, "always", "repository"}},
+    {ApprovalAnswer::kDeny, kDeny, "Deny", {kDeny, "no"}},
     {ApprovalAnswer::kGuidance, "guidance", "Send guidance", {}},
 };
 
@@ -98,6 +98,18 @@ ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
 }
 
 bool WrapsCommands(const Tool& tool) { return tool.name == "run"; }
+
+// Why a mandatory call needs a person. A tool that escalates for its own
+// reason names it; otherwise its path did, by reaching µAgent's
+// configuration or one of the person's folders.
+std::string MandatoryReason(const Tool& tool, const json& arguments) {
+  const std::string reason =
+      tool.mandatory_reason ? tool.mandatory_reason(arguments) : "";
+  if (!reason.empty()) return reason;
+  return UnreadablePath(JsonValue(arguments, "path", std::string()))
+             ? "reads your folders outside this folder; sandbox.read opens one"
+             : "changes \u00b5Agent's own configuration";
+}
 
 // A refusal says what was not approved, not who refused it: a client with
 // nobody behind it may have declined.
@@ -179,16 +191,7 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
                   const std::string& root, const PermissionRule& rule,
                   bool mandatory, const json& review) {
   Verdict verdict;
-  // A tool that escalates for its own reason names it; otherwise its path
-  // did, by reaching µAgent's configuration or one of the person's folders.
-  std::string reason =
-      tool.mandatory_reason ? tool.mandatory_reason(arguments) : "";
-  if (reason.empty()) {
-    reason = UnreadablePath(JsonValue(arguments, "path", std::string()))
-                 ? "reads your folders outside this folder; sandbox.read "
-                   "opens one"
-                 : "changes \u00b5Agent's own configuration";
-  }
+  const std::string reason = MandatoryReason(tool, arguments);
   // The review's reasons join the risks; its note names the bar it fell on.
   json risks = ApprovalRisks(tool, arguments, root);
   for (const json& caution : JsonValue(review, "reasons", json::array())) {
@@ -211,13 +214,9 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
       .id = request_id,
       .kind = "approval",
       .prompt = "Allow " + TerminalSafe(tool.name) + "?"};
-  if (mandatory && !InteractiveApprovalAvailable()) {
-    verdict.granted = false;
-    verdict.refusal = "this action needs a person's approval (" + reason +
-                      ") and nobody is here to give it";
-  } else if (mandatory) {
-    request.options = json::array({{{"value", "y"}, {"label", "Allow"}},
-                                   {{"value", "n"}, {"label", "Deny"}}});
+  if (mandatory) {
+    request.options = json::array({{{"value", kAllowOnce}, {"label", "Allow"}},
+                                   {{"value", kDeny}, {"label", "Deny"}}});
     verdict.granted = Confirm(std::move(request));
     verdict.refusal += " (" + reason + ")";
   } else {
@@ -263,7 +262,8 @@ Agent::Approver MakeApprover(AppContext* app) {
         .sandbox_enforced = sandbox.mode == SandboxMode::kEnforced,
         .sandbox_read_only = sandbox.policy.read_only,
         .agent_edits =
-            !agent.empty() && JsonValue(agent, "edits", "") != "none"};
+            !agent.empty() && JsonValue(agent, "edits", "") != "none",
+        .person = InteractiveApprovalAvailable()};
     ApprovalFacts facts{.required = RequiredApproval(tool, arguments),
                         .mutates = ToolMutates(tool, arguments),
                         .executes = (tool.capabilities &
@@ -305,9 +305,16 @@ Agent::Approver MakeApprover(AppContext* app) {
     const ApprovalDecision decision = Decide(facts, context);
     bool automatic = decision.effect != ApprovalEffect::kAskPerson;
     Verdict verdict;
-    if (decision.effect == ApprovalEffect::kDeny) {
+    if (decision.source == ApprovalSource::kPlan) {
       verdict = {false,
                  "plan mode is read-only; write the plan to " + PlanFile()};
+    } else if (decision.source == ApprovalSource::kNobody) {
+      verdict = {false, mandatory ? "this action needs a person's approval (" +
+                                        MandatoryReason(tool, arguments) +
+                                        ") and nobody is here to give it"
+                                  : "this action was not approved: nobody "
+                                    "is here to give it; a remembered rule "
+                                    "or another approval mode allows it"};
     }
     json review = json::object();
     std::string request_id =

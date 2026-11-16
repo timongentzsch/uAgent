@@ -361,8 +361,9 @@ void BenchmarkLongConversation(std::string path) {
   std::vector<Tool> tools;
   ActivitySupervisor processes;
   UsageAccumulator usage;
-  Agent agent(api, tools, processes, usage,
-              [](const Tool&, const json&, int64_t) { return "denied"; });
+  Agent agent(
+      api, tools, processes, usage,
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
   std::string error;
   if (path.empty()) {
     path = std::string(directory) + "/built.json";

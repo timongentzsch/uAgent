@@ -49,8 +49,8 @@ enum class Fault;
 // Why a call was refused, empty when it may run, and what its row shows of
 // the refusal (a display-only part).
 struct ApprovalOutcome {
-  ApprovalOutcome(std::string refusal = {}, json part = nullptr)  // NOLINT
-      : refusal(std::move(refusal)), part(std::move(part)) {}
+  ApprovalOutcome(std::string why = {}, json shown = nullptr)  // NOLINT
+      : refusal(std::move(why)), part(std::move(shown)) {}
   std::string refusal;
   json part;
 };

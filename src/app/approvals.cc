@@ -113,7 +113,7 @@ bool WrapsCommands(const Tool& tool) { return tool.name == "run"; }
 // reason names it; otherwise its path did, by reaching µAgent's
 // configuration or one of the person's folders.
 std::string MandatoryReason(const Tool& tool, const json& arguments) {
-  const std::string reason =
+  std::string reason =
       tool.mandatory_reason ? tool.mandatory_reason(arguments) : "";
   if (!reason.empty()) return reason;
   return UnreadablePath(JsonValue(arguments, "path", std::string()))

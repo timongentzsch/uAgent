@@ -249,6 +249,8 @@ add_library(
   src/app/application_headless.cc
   src/app/bootstrap.cc
   src/app/bootstrap_tools.cc
+  src/app/approval_policy.cc
+  src/app/approval_review.cc
   src/app/approvals.cc
   src/app/commands.cc
   src/app/commands_control.cc
@@ -390,6 +392,7 @@ if(BUILD_TESTING)
     tests/unit/memory_test.cc
     tests/unit/mcp_session_test.cc
     tests/unit/openrouter_server_search_test.cc
+    tests/unit/approval_policy_test.cc
     tests/unit/permission_review_test.cc
     tests/unit/presentation_test.cc
     tests/unit/protocol_test.cc

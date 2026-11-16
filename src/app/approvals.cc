@@ -17,6 +17,8 @@
 #include "include/agent/child_agent.h"
 #include "include/agent/path_policy.h"
 #include "include/agent/session_role.h"
+#include "include/app/approval_policy.h"
+#include "include/app/approval_review.h"
 #include "include/app/permissions.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
@@ -96,38 +98,6 @@ ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
 }
 
 bool WrapsCommands(const Tool& tool) { return tool.name == "run"; }
-
-// An agent in Auto that may edit acts in its folder without review while
-// the enforced sandbox holds it there: wrapped commands and file changes
-// inside the folder, not stopping a process, which may be another folder's.
-bool ReviewedByPolicy(const AppContext* app, const Tool& tool,
-                      const json& arguments) {
-  const json agent = app->options.AgentRole();
-  return !agent.empty() && JsonValue(agent, "edits", "") != "none" &&
-         CurrentApprovalMode() == ApprovalMode::kAuto &&
-         SandboxRuntime().mode == SandboxMode::kEnforced &&
-         (WrapsCommands(tool) ||
-          (tool.needs_approval && !tool.needs_approval(arguments)));
-}
-
-// Plan mode only reads. What runs there without asking although it may
-// change something: a command the readonly sandbox holds, as for an agent that
-// may not edit, and a file tool's call on the plan, the one file it writes.
-bool PlanModeAllows(const Tool& tool, const json& arguments, bool mandatory) {
-  const SandboxStatus& sandbox = SandboxRuntime();
-  if ((tool.capabilities & Capability(ToolCapability::kExecute)) &&
-      !mandatory && sandbox.mode == SandboxMode::kEnforced &&
-      sandbox.policy.read_only) {
-    return true;
-  }
-  constexpr uint32_t kFiles = Capability(ToolCapability::kInspect) |
-                              Capability(ToolCapability::kMutate);
-  const std::string plan = PlanFile();
-  return !plan.empty() && tool.capabilities != 0 &&
-         (tool.capabilities & ~kFiles) == 0 &&
-         CanonicalAccessPath(JsonValue(arguments, "path", "")) ==
-             CanonicalAccessPath(plan);
-}
 
 // A refusal says what was not approved, not who refused it: a client with
 // nobody behind it may have declined.
@@ -279,42 +249,63 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
 
 }  // namespace
 
-// A mandatory-human call ignores every automatic-approval switch and denies
-// when no human can answer. Defense in depth for the file tools, not a
-// boundary: an approved shell outside the sandbox reaches the same paths.
+// The facts of the call and the situation go to Decide (approval_policy.h);
+// what it decides is carried out here: a review, a person asked, a rule kept.
 Agent::Approver MakeApprover(AppContext* app) {
   auto memo = std::make_shared<ReviewMemo>();
   return [app, memo](const Tool& tool, const json& arguments, int64_t turn) {
     static std::atomic<uint64_t> sequence{0};
-    ApprovalClass required = RequiredApproval(tool, arguments);
-    bool mandatory = required == ApprovalClass::kMandatoryHuman;
     const std::string root = Workspace().path;
+    const SandboxStatus& sandbox = SandboxRuntime();
+    const json agent = app->options.AgentRole();
+    PolicyContext context{
+        .mode = CurrentApprovalMode(),
+        .sandbox_enforced = sandbox.mode == SandboxMode::kEnforced,
+        .sandbox_read_only = sandbox.policy.read_only,
+        .agent_edits =
+            !agent.empty() && JsonValue(agent, "edits", "") != "none"};
+    ApprovalFacts facts{.required = RequiredApproval(tool, arguments),
+                        .mutates = ToolMutates(tool, arguments),
+                        .executes = (tool.capabilities &
+                                     Capability(ToolCapability::kExecute)) != 0,
+                        .command = WrapsCommands(tool)};
+    const bool mandatory = facts.required == ApprovalClass::kMandatoryHuman;
+    if (context.mode == ApprovalMode::kPlan) {
+      constexpr uint32_t kFiles = Capability(ToolCapability::kInspect) |
+                                  Capability(ToolCapability::kMutate);
+      const std::string plan = PlanFile();
+      facts.on_plan_file =
+          !plan.empty() && tool.capabilities != 0 &&
+          (tool.capabilities & ~kFiles) == 0 &&
+          CanonicalAccessPath(JsonValue(arguments, "path", "")) ==
+              CanonicalAccessPath(plan);
+    }
+    if (context.mode == ApprovalMode::kAuto) {
+      facts.outside_folder = PathOutsideFolder(arguments, root);
+      facts.inside_work_area = context.agent_edits && tool.needs_approval &&
+                               !tool.needs_approval(arguments);
+    }
     // The rule that allows it, if one does; else the one a person is
     // offered. A command's prefix holds only where the sandbox holds it.
-    const bool confined = !(WrapsCommands(tool) &&
-                            SandboxRuntime().mode != SandboxMode::kEnforced);
+    const bool confined = !facts.command || context.sandbox_enforced;
     PermissionRule rule;
     const auto covered = [&](const PermissionRule& held) {
       return RuleCovers(held, tool, arguments, root, confined);
     };
-    auto held = std::ranges::find_if(app->session_rules, covered);
-    bool session_rule = !mandatory && held != app->session_rules.end();
-    if (session_rule) rule = *held;
-    bool repository_rule =
-        !mandatory && !session_rule &&
-        RepositoryRuleAllows(root, tool, arguments, confined, &rule);
-    const bool by_rule = session_rule || repository_rule;
+    if (!mandatory) {
+      auto held = std::ranges::find_if(app->session_rules, covered);
+      context.session_rule = held != app->session_rules.end();
+      if (context.session_rule) rule = *held;
+      context.folder_rule =
+          !context.session_rule &&
+          RepositoryRuleAllows(root, tool, arguments, confined, &rule);
+    }
+    const bool by_rule = context.session_rule || context.folder_rule;
     if (!by_rule) rule = SuggestRule(tool, arguments, root, confined);
-    const bool planning = CurrentApprovalMode() == ApprovalMode::kPlan;
-    const bool planned = planning && PlanModeAllows(tool, arguments, mandatory);
-    bool automatic =
-        !mandatory && (ApprovalIsYolo() || session_rule || repository_rule ||
-                       ReviewedByPolicy(app, tool, arguments) || planned);
+    const ApprovalDecision decision = Decide(facts, context);
+    bool automatic = decision.effect != ApprovalEffect::kAskPerson;
     Verdict verdict;
-    // Anything else that changes something is refused before anyone is
-    // asked; a read that asks, asks.
-    if (planning && !planned && ToolMutates(tool, arguments)) {
-      automatic = true;
+    if (decision.effect == ApprovalEffect::kDeny) {
       verdict = {false,
                  "plan mode is read-only; write the plan to " + PlanFile()};
     }
@@ -329,16 +320,12 @@ Agent::Approver MakeApprover(AppContext* app) {
     if (!tool.approval_preview && raw_payload.empty()) {
       raw_payload = JsonDump(arguments);
     }
-    // The model judges only what the sandbox contains: a call that names a
-    // path outside the folder, or a command with no enforced sandbox around
-    // it, goes to the person, as a mandatory one does.
-    const bool contained = !PathOutsideFolder(arguments, root) && confined;
-    if (!automatic && !mandatory &&
-        CurrentApprovalMode() == ApprovalMode::kAuto && contained) {
+    if (decision.effect == ApprovalEffect::kAskModel) {
       if (auto decided = ReviewAutomatically(app, *memo, tool, raw_payload,
                                              turn, review)) {
-        automatic = true;
         verdict = std::move(*decided);
+      } else {
+        automatic = false;
       }
     }
     if (!automatic) {
@@ -348,8 +335,8 @@ Agent::Approver MakeApprover(AppContext* app) {
     DebugLog("approval", {{"tool", tool.name},
                           {"automatic", automatic},
                           {"mode", ApprovalModeName(CurrentApprovalMode())},
-                          {"session_rule", session_rule},
-                          {"repository_rule", repository_rule},
+                          {"session_rule", context.session_rule},
+                          {"repository_rule", context.folder_rule},
                           {"review", review},
                           {"mandatory_human", mandatory},
                           {"granted", verdict.granted}});

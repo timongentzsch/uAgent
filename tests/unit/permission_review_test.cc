@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "include/app/approval_review.h"
 #include "include/app/permissions.h"
 #include "include/core/runtime_config.h"
 #include "include/core/sandbox.h"

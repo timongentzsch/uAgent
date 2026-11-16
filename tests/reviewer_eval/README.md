@@ -29,7 +29,7 @@ belong in `kKnownEndpoints` (`src/providers/catalog.cc`, `decision_bars`) next
 to the model. The key is read from the environment and never printed.
 
 `questions.json` is the one text of the questions; `TestPermissionReview`
-fails when `ReviewQuestions()` in `src/app/permissions.cc` differs from it, so
+fails when `ReviewQuestions()` in `src/app/approval_review.cc` differs from it, so
 change both together and run the evaluation again.
 
 ## Labels

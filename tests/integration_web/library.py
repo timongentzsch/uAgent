@@ -117,13 +117,13 @@ def test_web_library_lists_everything_by_place(root, home, *, binary):
             for refused in (
                 {"kind": "deck", "place": str(root), "key": deck["key"]},
                 {"kind": "design", "place": str(site), "key": f"{site}/.."},
-                {"kind": "file", "session": shared["id"], "key": "../" + file["key"]},
+                {"kind": "file", "session_id": shared["id"], "key": "../" + file["key"]},
             ):
                 assert_true(delete(**refused) == 404, refused)
             for fields in (
                 {"kind": "deck", "place": str(site), "key": deck["key"]},
                 {"kind": "doc", "place": str(site), "key": f"{site}/docs/memo.html"},
-                {"kind": "file", "session": file["session"], "key": file["key"]},
+                {"kind": "file", "session_id": file["session"], "key": file["key"]},
             ):
                 assert_true(delete(**fields) == 200, fields)
             for gone in ("decks/talk", "docs/memo.html"):

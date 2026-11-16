@@ -54,14 +54,14 @@ void Master::Snapshot(const Request& request, Response& response) {
 }
 
 // GET /api/search?q=…: the rows of every listed conversation that contain
-// q, newest conversation first; with session=ID, every row of that one.
+// q, newest conversation first; with session_id=ID, every row of that one.
 void Master::Search(const Request& request, Response& response) {
   const std::string query = request.get_param_value("q");
   if (query.size() < 2) {
     Error(response, "search needs at least two characters");
     return;
   }
-  if (!request.has_param("session")) {
+  if (!request.has_param("session_id")) {
     Reply(response, SearchSessions(ListSessions(SessionScope::kAll), query,
                                    kSearchLimits));
     return;
@@ -69,7 +69,7 @@ void Master::Search(const Request& request, Response& response) {
   std::string path;
   {
     std::lock_guard lock(mutex_);
-    path = host_.AssetPath(request.get_param_value("session"));
+    path = host_.AssetPath(request.get_param_value("session_id"));
   }
   std::string error;
   const auto conversation =

@@ -556,7 +556,7 @@ for (const width of [320, 1280]) {
     const commands = [];
     await page.route("**/api/browser/status*", (route) => {
       const instance =
-        new URL(route.request().url()).searchParams.get("instance") || "0";
+        new URL(route.request().url()).searchParams.get("instance_id") || "0";
       return route.fulfill({
         json: {
           ok: true,
@@ -642,7 +642,7 @@ for (const owner of ["0", "1"]) {
     });
     await page.route("**/api/browser/status*", (route) => {
       const instance =
-        new URL(route.request().url()).searchParams.get("instance") || "0";
+        new URL(route.request().url()).searchParams.get("instance_id") || "0";
       return route.fulfill({
         json: {
           ok: true,

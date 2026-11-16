@@ -237,7 +237,7 @@ export default function Library({
           kind: item.kind,
           place: item.place,
           key: item.key,
-          session: item.session,
+          session_id: item.session,
         }).catch((error) => {
           if (error?.status !== 404) throw error;
         });

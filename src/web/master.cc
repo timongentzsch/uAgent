@@ -675,8 +675,8 @@ void Master::RegisterBrowserRoutes() {
                                             Response& response) {
     json status = browser::Request(
         {{"op", "status"},
-         {"instance_id", request.has_param("instance")
-                             ? request.get_param_value("instance")
+         {"instance_id", request.has_param("instance_id")
+                             ? request.get_param_value("instance_id")
                              : "0"}});
     // A runtime's status may carry its profile error; only a status the
     // service did not give lacks `ok`.
@@ -694,9 +694,10 @@ void Master::RegisterBrowserRoutes() {
       "/api/browser/viewer",
       [this](const Request& request, httplib::ws::WebSocket& socket) {
         const std::string device = WebSocketDevice(request);
-        const std::string instance = request.has_param("instance")
-                                         ? request.get_param_value("instance")
-                                         : "0";
+        const std::string instance =
+            request.has_param("instance_id")
+                ? request.get_param_value("instance_id")
+                : "0";
         if (instance.size() != 1 || instance[0] < '0' || instance[0] > '4') {
           socket.close(httplib::ws::CloseStatus::PolicyViolation);
           return;

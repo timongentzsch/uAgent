@@ -100,8 +100,10 @@ def test_a_conversation_uses_the_shared_browser(root, home, *, binary):
         configured = web.command("browser", action="configure", parallel_capacity=2)["result"]
         assert_true(configured["parallel_capacity"] == 2, configured)
         assert_true(len(configured["instances"]) == 3, configured)
-        assert_true(web.json("/api/browser/status?instance=2")[1]["instance_id"] == "2", configured)
-        missing, answer, _ = web.json("/api/browser/status?instance=9")
+        assert_true(
+            web.json("/api/browser/status?instance_id=2")[1]["instance_id"] == "2", configured
+        )
+        missing, answer, _ = web.json("/api/browser/status?instance_id=9")
         assert_true(missing == 503 and "error" in answer, answer)
 
 

@@ -133,7 +133,7 @@ function Screen({
       attempted = true;
       const rfb = new RFB(
         target.current,
-        `${scheme}//${location.host}${routes.browserViewer}${instance === "0" ? "" : `?instance=${instance}`}`,
+        `${scheme}//${location.host}${routes.browserViewer}${instance === "0" ? "" : `?instance_id=${instance}`}`,
       );
       let denied = false;
       setViewOnly(rfb, viewOnly.current);
@@ -259,7 +259,7 @@ export default function BrowserPanel({
       const { signal } = lifetime.current;
       if (signal.aborted) return;
       const request = api<BrowserStatus>(
-        `${routes.browserStatus}${instance === "0" ? "" : `?instance=${instance}`}`,
+        `${routes.browserStatus}${instance === "0" ? "" : `?instance_id=${instance}`}`,
         undefined,
         {
           signal,

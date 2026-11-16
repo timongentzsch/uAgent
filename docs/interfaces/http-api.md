@@ -157,16 +157,16 @@ page, and `~sheet/<file>` serves the sheet engine.
 | `GET /api/folders?path=<p>[&host=<id>]` | `entries` (directories), `more`, `path`, `parent` |
 | `GET /api/folder?path=<p>[&host=<id>]` | `spend`, `changed`, and `git` for a local folder; 404 when absent |
 | `GET /api/search?q=<≥2 chars>` | `hits` (`session_id`, `title`, `rows`, …), `scanned`, `truncated` |
-| `GET /api/search?q=…&session=<id>` | `hits` (up to 2,000 rows), `truncated` |
+| `GET /api/search?q=…&session_id=<id>` | `hits` (up to 2,000 rows), `truncated` |
 | `GET /api/library` | `places` (`path`, `name`, `workspace`, `session`), `items`, `limits` |
-| `POST /api/library/delete` | `{kind, key, place}` or `{kind: "file", key, session}`; `{}` |
+| `POST /api/library/delete` | `{kind, key, place}` or `{kind: "file", key, session_id}`; `{}` |
 | `GET /api/hosts` | `hosts`: `id`, `address`, `phase`, `error`, `installing`, `version`, `round_trip_ms` |
 | `POST /api/hosts` | `{action: add, address}` or `{action: connect\|reconnect\|disconnect, id}`, ≤ 4 KiB; `{id}` |
 | `GET /api/hosts/<32 hex>/ping` | `{round_trip_ms}`; 404 for an unknown host, 503 when it does not answer |
 | `POST /api/push/subscriptions` | body: a browser `PushSubscription` (`endpoint`, `keys.p256dh`, `keys.auth`), ≤ 8 KiB; replies with the capabilities: `push`, `push_reason`, `subscribed`, `vapid_public_key`; 422 when refused |
 | `DELETE /api/push/subscriptions` | no body; the capabilities |
 | `GET /api/user.css` | the person's stylesheet, `text/css`, ETag |
-| `GET /api/browser/status?instance=<0-4>` | the browser service status plus `controller`, `leased`; 503 when the service does not answer; only with `UAGENT_BROWSER_DATA` |
+| `GET /api/browser/status?instance_id=<0-4>` | the browser service status plus `controller`, `leased`; 503 when the service does not answer; only with `UAGENT_BROWSER_DATA` |
 
 ## WebSockets
 
@@ -177,7 +177,7 @@ Both check `Origin` and the cookie, else close with policy violation.
   out are `{"type": "exit", "code"}` and `{"type": "replaced"}`. A message
   over 64 KiB, or any other text, ends the socket. A newer socket for the
   same shell replaces the older.
-- `/api/browser/viewer?instance=<0-4>`: binary frames carry an RFB (VNC)
+- `/api/browser/viewer?instance_id=<0-4>`: binary frames carry an RFB (VNC)
   session. Display messages always pass; keys, pointer and clipboard pass
   only while this device is the controller. One socket per instance.
 

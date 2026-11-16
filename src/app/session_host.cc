@@ -334,7 +334,7 @@ json SessionHost::Metadata(const HostSession& session) const {
                    ? TodoProgress(JsonValue(session.state, "todo", json()))
                    : session.todo},
       {"error", session.error},
-      {"pending", waits},
+      {"needs_you", waits},
       {"pending_kind", waits ? JsonValue(session.pending, "kind", "") : ""},
       {"pending_prompt", waits ? JsonValue(session.pending, "prompt", "") : ""},
       {"updated", session.updated}};

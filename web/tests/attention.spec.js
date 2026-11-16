@@ -20,7 +20,7 @@ async function waitingElsewhere(host, command, request) {
     .poll(async () => {
       const response = await request.get(`/api/sessions/${session.id}`);
       session = (await response.json()).metadata;
-      return session.pending;
+      return session.needs_you;
     })
     .toBe(true);
   return session;

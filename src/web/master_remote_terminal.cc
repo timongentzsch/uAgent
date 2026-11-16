@@ -116,7 +116,7 @@ bool Master::RemoteTerminalCommand(CommandCall& call) {
       for (const json& row : remote_terminals_) {
         if (Panel(row) && !JsonValue(row, "viewed", false) &&
             NowMillis() - JsonValue(row, "started", int64_t{0}) >=
-                kTerminalFirstViewerWait.count() * 1000) {
+                TerminalFirstViewerWait().count() * 1000) {
           expired.push_back(JsonValue(row, "id", ""));
         }
       }

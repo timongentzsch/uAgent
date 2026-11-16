@@ -589,6 +589,8 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
         "UAGENT_TEST_SSH_HOME": str(remote_home),
         "MAIN_SECRET": "main-private-canary",
         "OPENROUTER_API_KEY": "private-provider-key-canary",
+        # An unviewed terminal is forgotten after 2 s, not 30.
+        "UAGENT_INTERNAL_TERMINAL_WAIT_S": "2",
     }
     with Server(
         [
@@ -782,10 +784,10 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
             abandoned = web.command("terminal", action="open", cwd=str(project), host=host)[
                 "result"
             ]["id"]
-            expiry = time.monotonic() + 31
+            expiry = time.monotonic() + 3
             wait_until(
                 lambda: time.monotonic() >= expiry,
-                timeout=budget(35),
+                timeout=budget(5),
                 message="terminal first-viewer grace did not elapse",
             )
             terminal = web.command(

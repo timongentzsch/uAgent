@@ -24,7 +24,7 @@ build with Ninja, in `build/dev`) and runs the narrowest test.
 | --- | --- | --- |
 | unit tests by name, rebuilt first | `.github/dev.sh unit Approval` | seconds |
 | integration tests by name, rebuilt first | `.github/dev.sh int review` | seconds |
-| browser specs in the Chrome on this machine, bundle rebuilt first | `.github/dev.sh web tests/turn-controls.spec.js` | the build + the specs |
+| browser specs in Chromium, bundle rebuilt first | `.github/dev.sh web tests/turn-controls.spec.js` | the build + the specs |
 | one unit test area | `build/debug/uagent_tests -k Activity` | seconds |
 | one unit test | `build/debug/uagent_tests --test TestActivitySessions` | seconds |
 | one integration test | `python3 tests/integration.py build/debug/uagent --test test_plain_turn` | seconds |
@@ -35,10 +35,10 @@ build with Ninja, in `build/dev`) and runs the narrowest test.
 | the native and integration suites | `ctest --preset debug` | minutes |
 | web work before a push | `npm run test:browser` in `web/` (both browsers) | minutes |
 
-`web/playwright.local.config.js` runs the specs in the installed Chrome when
-Playwright's own browsers are not downloaded. The canvas specs fail in it on a
-clean checkout, for the environment, so it leaves them out unless
-`PW_CANVAS=1`; CI runs them in Playwright's browsers.
+The specs need Playwright's own browsers, once: `npx playwright install
+chromium webkit` in `web/`. An installed Chrome is not a stand-in: sheet
+clicks into its sandboxed frames are dropped now and then, and the canvas
+specs fail in it.
 | what only CI's compilers and linters report | `.github/ci-local.sh` | minutes; incremental after the first run |
 
 Style checks (clang-format, cpplint, clang-tidy, Ruff, Biome) are

@@ -2,8 +2,7 @@
 # The quick loop on one change: build what changed, run the narrowest tests.
 #   .github/dev.sh unit [FILTER]  unit tests, those whose name has FILTER
 #   .github/dev.sh int FILTER     integration tests whose name has FILTER
-#   .github/dev.sh web [SPEC…]    the bundle, then browser specs in the local
-#                                 Chrome (web/playwright.local.config.js)
+#   .github/dev.sh web [SPEC…]    the bundle, then browser specs in Chromium
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 tree=build/dev
@@ -19,7 +18,7 @@ case "${1:-}" in
     shift
     (cd web && npm run build >/dev/null)
     build
-    cd web && UAGENT_TEST_BINARY="../$tree/uagent" npx playwright test -c playwright.local.config.js "$@"
+    cd web && UAGENT_TEST_BINARY="../$tree/uagent" npx playwright test --project=chromium "$@"
     ;;
   *) sed -n 2,6p "$0" >&2; exit 2 ;;
 esac

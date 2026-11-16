@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.10.0 - 2026-11-16
 
 ### Upgrade notes
 
@@ -15,7 +15,6 @@
 - **You see why you are asked, and what Auto refused.** The approval card says which stage asks: the mode, a rule, the review, or a call that always needs you. A call Auto's review or a rule refused without asking shows in the transcript, under a folded turn too, with why and **Allow in this conversation** (or **Rules…**). After 3 refusals in a row, or 20 in a conversation, Auto asks you until you answer one.
 - **The reviewer evaluation has a hold-out.** `tests/reviewer_eval` has 40 more cases (permission or a boundary given earlier, the turn's earlier calls, the repository's state, trusted places, file and web tools, instructions planted in the action), a fit and a hold-out split, and `--chat`, which lets a chat model stand in for the decision model to compare what the judge is shown. Showing it more of the conversation, and an explicit policy, did not do better on the hold-out, so the judge is unchanged.
 - **The approval order is one pure function** (`Decide`, `src/app/approval_policy.cc`) with a table test and invariants checked over every combination of facts.
-
 - **The docs are written for someone who reads the source.** The README opens on the process model, the properties and the design decisions. `docs/architecture/` has one page per subsystem in one shape (responsibility, processes, formats, protocol, limits, failures, source and tests); `docs/interfaces/` specifies the HTTP API, headless output, the files on disk and the artifact formats, and its settings, command line, tool schema and limits pages are generated from the binary's registries, with a test that fails when they differ; `docs/operations/` covers install, container, remote access and recovery; one `docs/manual.md` replaces the guides. `SECURITY.md` is a threat model. Diagrams are Mermaid in the page. The old pages are gone and their paths with them.
 
 ### Fixes

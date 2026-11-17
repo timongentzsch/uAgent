@@ -8,7 +8,7 @@ from pathlib import Path
 changes = runpy.run_path(str(Path(__file__).resolve().parents[1] / ".github/changes.py"))
 classify, heavy, tidy = changes["classify"], changes["heavy"], changes["tidy"]
 build_matrix, tidy_files = changes["build_matrix"], changes["tidy_files"]
-bundle = changes["bundle"]
+bundle, selection = changes["bundle"], changes["selection"]
 
 
 class ChangeSelectionTest(unittest.TestCase):
@@ -87,6 +87,25 @@ class ChangeSelectionTest(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 self.assertTrue(bundle(["src/core/fs.cc", path]))
+
+    def test_a_push_to_master_packages_everything_but_leaves_slow_checks_to_others(self):
+        push = selection("push", ["src/app/chat.cc", "web/a.ts"])
+        self.assertEqual(
+            {k: push[k] for k in ("native", "web", "bundle", "heavy", "tidy")},
+            {
+                "native": True,
+                "web": True,
+                "bundle": True,
+                "heavy": False,
+                "tidy": "src/app/chat.cc",
+            },
+        )
+        self.assertEqual(selection("push", ["include/app/chat.h"])["tidy"], "all")
+        # Not knowing what changed, or not a push, runs everything.
+        for event, paths in (("push", None), ("schedule", None), ("workflow_dispatch", None)):
+            with self.subTest(event=event):
+                self.assertEqual(selection(event, paths)["tidy"], "all")
+                self.assertTrue(selection(event, paths)["heavy"])
 
 
 if __name__ == "__main__":

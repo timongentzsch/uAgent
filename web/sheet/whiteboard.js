@@ -140,13 +140,26 @@ function arrows(layer) {
         };
   };
   layer.replaceChildren(defs());
-  for (const line of document.querySelectorAll("hr[data-from][data-to]")) {
+  // Arrows between the same two items bow apart, each to its own side.
+  const lines = [...document.querySelectorAll("hr[data-from][data-to]")];
+  const pair = (line) => [line.dataset.from, line.dataset.to].sort().join("\n");
+  for (const line of lines) {
     const [a, b] = [box(line.dataset.from), box(line.dataset.to)];
     if (!a || !b) continue;
     const [p, q] = [end(a, b), end(b, a)];
     const pull = Math.max(30, Math.hypot(q.x - p.x, q.y - p.y) / 3);
-    const c1 = [p.x + p.nx * pull, p.y + p.ny * pull];
-    const c2 = [q.x + q.nx * pull, q.y + q.ny * pull];
+    const shared = lines.filter((other) => pair(other) === pair(line));
+    // Across the line from one end to the other, the same way for both
+    // directions: the pair's first named item to its second.
+    const forward = line.dataset.from <= line.dataset.to ? 1 : -1;
+    const length = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const bow = (shared.indexOf(line) - (shared.length - 1) / 2) * 40 * forward;
+    const [bx, by] = [
+      (-(q.y - p.y) / length) * bow,
+      ((q.x - p.x) / length) * bow,
+    ];
+    const c1 = [p.x + p.nx * pull + bx, p.y + p.ny * pull + by];
+    const c2 = [q.x + q.nx * pull + bx, q.y + q.ny * pull + by];
     const path = document.createElementNS(SVG, "path");
     path.setAttribute("d", `M${p.x} ${p.y}C${c1} ${c2} ${q.x} ${q.y}`);
     const head = line.dataset.head ?? "end";

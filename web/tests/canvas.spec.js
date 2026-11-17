@@ -3097,3 +3097,46 @@ test("a slide's block takes Edit's tools as a document's does", async ({
     "<h1>Cover</h1><h2>The <b>plan</b></h2><aside>Say hello.</aside>",
   );
 });
+
+test("a page's menu on the canvas saves it as a PNG or a PDF, and every page as one PDF", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await design(host.project);
+  // The host draws pictures with the agent's browser: here it says it has
+  // one, and what is saved is asked for, not drawn.
+  await app.route("**/api/browser/status", (route) =>
+    route.fulfill({ json: {} }),
+  );
+  const saved = async (item) => {
+    const [download] = await Promise.all([
+      app.waitForEvent("download"),
+      app.getByRole("menuitem", { name: item }).click(),
+    ]);
+    return [
+      decodeURIComponent(new URL(download.url()).search),
+      download.suggestedFilename(),
+    ];
+  };
+  const files = await openFiles(app, session, "design/");
+  await expect(files.locator(".canvas-page")).toHaveCount(3);
+  await files.getByRole("button", { name: "Export Hero B" }).click();
+  await expect(app.getByRole("menuitem")).toHaveText([
+    "Copy as PNG",
+    "Export PNG 1×",
+    "Export PNG 2×",
+    "Export PDF",
+    "Export all 3 pages as PDF",
+  ]);
+  const [png, name] = await saved("Export PNG 2×");
+  expect(png).toMatch(
+    /^\?png=design\/01-hero-b\.html&w=\d+&h=\d+&scale=2&download=1$/,
+  );
+  expect(name).toBe("01-hero-b.png");
+  await files.getByRole("button", { name: "Export Cover" }).click();
+  expect(await saved("Export all 3 pages as PDF")).toEqual([
+    "?pdf=design/&download=1",
+    "design.pdf",
+  ]);
+});

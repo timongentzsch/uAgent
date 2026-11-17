@@ -84,7 +84,8 @@ import {
   type Saved,
   skipSlide,
 } from "./doc-edit.ts";
-import { downloadBlob, saveLink } from "../../shared/share.ts";
+import { downloadBlob } from "../../shared/share.ts";
+import { copyDrawn, type Drawn, saveDrawn } from "./drawn.ts";
 import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
 import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
 import { useResource } from "../../shared/use-resource.ts";
@@ -171,7 +172,7 @@ export default function Sequence({
   read: (path: string) => Promise<string>;
   // The address the agent's browser draws a path at as a PNG or a PDF (a
   // folder's PDF is its deck), where it has one.
-  drawn?: (as: "png" | "pdf", path: string) => string;
+  drawn?: Drawn;
   presenter?: (slides: string[], at: string) => void;
   // A document's or a slide's edited block, or a sheet's edited tab, saved
   // to its file. A block's answers with the place of the block the caret
@@ -506,7 +507,7 @@ export default function Sequence({
   // What the host draws is of the file: asked for once what was typed is in
   // it.
   const download = (address: string, name: string) =>
-    settle().then(() => saveLink(`${address}&download=1`, name));
+    saveDrawn(settle, address, name);
   // The page in another format: what fits its kind. Its source is Download
   // in the pane's header.
   const exports: (false | undefined | [string, () => void])[] = [
@@ -523,17 +524,7 @@ export default function Sequence({
           ),
       ],
     png && ["PNG image", () => download(png(2), `${stem}.png`)],
-    png && [
-      "Copy as image",
-      () =>
-        navigator.clipboard.write([
-          new ClipboardItem({
-            "image/png": settle()
-              .then(() => fetch(png(2)))
-              .then((response) => response.blob()),
-          }),
-        ]),
-    ],
+    png && ["Copy as image", () => copyDrawn(settle, png(2))],
     live &&
       doc && ["Markdown", () => tell(frame.current, { type: "markdown" })],
     live &&

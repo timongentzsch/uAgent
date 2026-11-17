@@ -786,6 +786,11 @@
   padding: 0 var(--space-1);
   border: var(--border);
 }
+/* A page's export menu, over its top right corner. */
+.canvas-menu {
+  position: absolute;
+  transform: translate(-100%, calc(-100% - var(--space-2)));
+}
 .canvas-name {
   position: absolute;
   max-width: var(--popover);

@@ -1,11 +1,13 @@
 import { useMemo, useState } from "preact/hooks";
 import { Button } from "../../shared/ui.tsx";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { ARTIFACT, partOf } from "../../shared/artifact.ts";
 import { plural } from "../../shared/quantities.ts";
 import { ZoomSurface } from "../../shared/zoom-surface.tsx";
 import type { ZoomView } from "../../shared/zoom.ts";
 import Frame, { type PageMessage } from "../../shared/page-frame.tsx";
 import { type Board, still } from "./boards.ts";
+import { copyDrawn, type Drawn, saveDrawn } from "./drawn.ts";
 
 // A design's boards on a plane you pan and zoom (ZoomSurface's plane): pages
 // live, and a document, a sheet or a deck that lies in it as a stack. The
@@ -24,6 +26,8 @@ export default function Plane({
   page,
   heard,
   open,
+  drawn,
+  settle,
 }: {
   dir: string;
   boards: Board[];
@@ -33,6 +37,9 @@ export default function Plane({
   page: (path: string) => string;
   heard: (path: string) => (message: PageMessage) => void;
   open: (path: string) => void;
+  // Pictures and PDFs the host draws, where it can.
+  drawn?: Drawn;
+  settle: () => Promise<unknown>;
 }) {
   const placed = useMemo(() => {
     let x = 0;
@@ -68,6 +75,53 @@ export default function Plane({
       : item.title;
   // A picture or a film that did not load: why, after its name.
   const lost = (item: Board) => (still(item) ? item.failed : "");
+  // A page's own menu: it as a picture or a PDF, or every page as one PDF.
+  const pages = placed.filter((item) => item.media === "page" && !item.type);
+  const menu = (item: Board, draw: Drawn) => {
+    const stem = item.path.replace(/^.*\//, "").replace(/\.html$/, "");
+    const png = (scale: number) =>
+      `${draw("png", item.path)}&w=${item.w}&h=${item.h}&scale=${scale}`;
+    const folder = dir.replace(/\/?$/, "/");
+    return (
+      <Menu label={`Export ${item.title}`}>
+        <MenuItem onClick={() => copyDrawn(settle, png(2))}>
+          Copy as PNG
+        </MenuItem>
+        {[1, 2].map((scale) => (
+          <MenuItem
+            key={scale}
+            onClick={() => saveDrawn(settle, png(scale), `${stem}.png`)}
+          >
+            Export PNG {scale}×
+          </MenuItem>
+        ))}
+        <MenuItem
+          onClick={() =>
+            saveDrawn(
+              settle,
+              `${draw("pdf", item.path)}&w=${item.w}&h=${item.h}`,
+              `${stem}.pdf`,
+            )
+          }
+        >
+          Export PDF
+        </MenuItem>
+        {pages.length > 1 && (
+          <MenuItem
+            onClick={() =>
+              saveDrawn(
+                settle,
+                draw("pdf", folder),
+                `${folder.slice(0, -1).replace(/^.*\//, "") || "design"}.pdf`,
+              )
+            }
+          >
+            Export all {pages.length} pages as PDF
+          </MenuItem>
+        )}
+      </Menu>
+    );
+  };
   return (
     <div class="canvas">
       <ZoomSurface
@@ -76,27 +130,42 @@ export default function Plane({
         fit={fit}
         fitKey={`${sized}:${dir}`}
         onView={setView}
-        over={placed.map((item, at) => (
-          <span
-            key={item.path}
-            class="canvas-name small truncate"
-            style={{
-              left: `${x + item.x * s}px`,
-              top: `${y + item.y * s}px`,
-              // A name runs up to the next frame of its row; the last one's
-              // as far as the canvas's names may (files.css).
-              maxWidth:
-                placed[at + 1]?.y === item.y
-                  ? `${(placed[at + 1].x - item.x) * s}px`
-                  : undefined,
-            }}
-          >
-            {item.x === 0 && item.row ? `${item.row} · ` : ""}
-            {item.title}
-            {lost(item) && ` ${lost(item)}`}
-            {item.count && <span class="canvas-count">{counted(item)}</span>}
-          </span>
-        ))}
+        over={[
+          ...placed.map((item, at) => (
+            <span
+              key={item.path}
+              class="canvas-name small truncate"
+              style={{
+                left: `${x + item.x * s}px`,
+                top: `${y + item.y * s}px`,
+                // A name runs up to the next frame of its row; the last one's
+                // as far as the canvas's names may (files.css).
+                maxWidth:
+                  placed[at + 1]?.y === item.y
+                    ? `${(placed[at + 1].x - item.x) * s}px`
+                    : undefined,
+              }}
+            >
+              {item.x === 0 && item.row ? `${item.row} · ` : ""}
+              {item.title}
+              {lost(item) && ` ${lost(item)}`}
+              {item.count && <span class="canvas-count">{counted(item)}</span>}
+            </span>
+          )),
+          ...(drawn ? pages : []).map((item) => (
+            <span
+              key={`${item.path} menu`}
+              class="canvas-menu"
+              onPointerDown={(event) => event.stopPropagation()}
+              style={{
+                left: `${x + (item.x + item.w) * s}px`,
+                top: `${y + item.y * s}px`,
+              }}
+            >
+              {menu(item, drawn!)}
+            </span>
+          )),
+        ]}
       >
         {placed.map((item) => (
           <div

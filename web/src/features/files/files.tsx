@@ -895,6 +895,10 @@ export default function Files({
               page={(path) => pageUrl(path)!}
               heard={heard}
               open={(path) => setFlow((current) => push(current, opened(path)))}
+              drawn={
+                pictures ? (as, path) => routes.files(id, as, path) : undefined
+              }
+              settle={settle}
             />
           )}
         </div>

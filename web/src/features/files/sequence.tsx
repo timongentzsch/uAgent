@@ -1062,7 +1062,10 @@ export default function Sequence({
                         const [undo, redo] = [!!message.undo, !!message.redo];
                         setTold((was) => ({ ...was, undo, redo }));
                         void keep(save?.(message));
-                      } else if (mode === "edit" && editable) {
+                      } else if (
+                        (mode === "edit" && editable) ||
+                        (doc && typeof message.done === "boolean")
+                      ) {
                         const edit = {
                           ...message,
                           insert: doc ? message.insert : undefined,

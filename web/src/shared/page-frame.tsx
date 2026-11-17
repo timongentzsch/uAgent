@@ -85,6 +85,7 @@ export type PageMessage =
       html: string;
       as?: string;
       insert?: string;
+      done?: boolean;
     }
   | { type: "left" }
   | {

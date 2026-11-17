@@ -440,7 +440,7 @@
   // A document's or a slide's text blocks, in order: what a person edits in
   // place.
   const EDITABLE =
-    "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote";
+    "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote, pre";
   // A slide's notes are none of them.
   const blocks = () => {
     const aside = notes();
@@ -519,7 +519,7 @@
             [...child.children]
               .map(
                 (item, at) =>
-                  `${"  ".repeat(depth)}${tag === "ol" ? `${at + 1}.` : "-"} ${inline(item).trim()}` +
+                  `${"  ".repeat(depth)}${tag === "ol" ? `${at + 1}.` : "-"} ${child.matches(".checklist") ? `[${item.hasAttribute("data-done") ? "x" : " "}] ` : ""}${inline(item).trim()}` +
                   [...item.children]
                     .filter(
                       (sub) => sub.localName === "ul" || sub.localName === "ol",
@@ -566,15 +566,29 @@
         part.removeAttribute(mark);
     const all = blocks();
     const index = all.indexOf(block);
+    // Outside Edit (a checklist's tick), the text as it stands.
+    const was = (part) => part && (before.get(part) ?? part.textContent);
     send("edit", {
       index,
       of: all.length,
-      before: before.get(block),
-      around: [before.get(all[index - 1]), before.get(all[index + 1])],
+      before: was(block),
+      around: [was(all[index - 1]), was(all[index + 1])],
       html: clean.innerHTML,
       ...more,
     });
   };
+  // A document's checklist: each item's box is drawn here, and a press on
+  // it ticks the item, which the app writes to the file.
+  const CHECKLIST = "ul.checklist > li";
+  addEventListener("click", (event) => {
+    const item = paper() && event.target.closest?.(CHECKLIST);
+    if (!item) return;
+    const room = Number.parseFloat(getComputedStyle(item).paddingLeft);
+    if (event.clientX - item.getBoundingClientRect().left > room) return;
+    event.preventDefault();
+    item.toggleAttribute("data-done");
+    report(item, { done: item.hasAttribute("data-done") });
+  });
   const changed = (event) => {
     const block = event.target.closest?.("[contenteditable]");
     if (block) report(block);
@@ -733,7 +747,13 @@
     const marks = document.createElement("style");
     marks.textContent =
       "::highlight(uagent-find){background:Mark;color:MarkText}" +
-      "::highlight(uagent-found){background:Highlight;color:HighlightText}";
+      "::highlight(uagent-found){background:Highlight;color:HighlightText}" +
+      "ul.checklist{list-style:none;padding-left:0}" +
+      `${CHECKLIST}{position:relative;padding-left:1.6em}` +
+      `${CHECKLIST}::before{content:"";position:absolute;left:0;top:.2em;` +
+      "width:1em;height:1em;box-sizing:border-box;border:1.5px solid;" +
+      "cursor:pointer;text-align:center;font-size:1em;line-height:.8}" +
+      `${CHECKLIST}[data-done]::before{content:"\\2713"}`;
     document.head.append(marks);
   });
   const height = () => root.scrollHeight;

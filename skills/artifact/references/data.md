@@ -10,8 +10,9 @@ can point at a value to see the file, column and row it came from.
   <b data-source="sales.csv" data-field="revenue" data-where="month=2027-03" data-format="$#,##0"></b></p>
 ```
 
-- `data-source` is the file, relative to the page: a CSV with a header row,
-  or JSON holding an array of objects.
+- `data-source` is the file's path from the page, as a link's would be:
+  `sales.csv` beside the page, `../../sales.csv` for one two folders up.
+  A CSV with a header row, or JSON holding an array of objects.
 - `data-field` is a column of the CSV (its header text, exactly) or a key
   of the objects.
 - `data-where="column=value"` picks the row; several are joined with `,`

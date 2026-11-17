@@ -33,6 +33,9 @@ class EditJournal {
   int64_t LastTurn() const;
   // {restored: [paths], conflicts: [{path, reason}]}; an empty `path` is all.
   json Revert(int64_t turn, const std::string& path);
+  // A file of the turn as it was and as it is: {path, before, after}, or
+  // {error} where the turn did not keep it.
+  json Texts(int64_t turn, const std::string& path) const;
 
  private:
   struct Entry {

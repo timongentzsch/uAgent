@@ -36,6 +36,7 @@ enum class SessionCommandKind {
   kConfig,
   kContext,
   kRevert,
+  kChanges,
   kFork,
   kShare,
   kSide,

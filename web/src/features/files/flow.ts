@@ -22,6 +22,8 @@ export type View =
       lines?: Lines;
       source?: boolean;
       diff?: boolean;
+      // The diff is what this turn changed, not the uncommitted change.
+      turn?: number;
     }
   // A page across the pane, with the legend of what it is part of (a deck's
   // slides, a document's pages, a design's boards).
@@ -36,6 +38,7 @@ export type View =
       path: string;
       lines?: Lines;
       diff?: boolean;
+      turn?: number;
       fresh: boolean;
     }
   | { kind: "outside"; path: string };
@@ -87,6 +90,7 @@ export function cite(target: FileTarget, folder: string): Flow {
       path,
       lines: lineRange(target.lines),
       diff: !!target.changes,
+      ...(target.turn && { turn: target.turn }),
       fresh: true,
     },
     back: [],
@@ -146,10 +150,15 @@ function landing(
   listing: Listing,
   lines?: Lines,
   diff?: boolean,
+  turn?: number,
 ): { view: View; up: View[] } {
   const dir = dirOf(path);
   const list: View = { kind: "list", dir };
-  if (diff) return { view: { kind: "file", path, diff: true }, up: [list] };
+  if (diff)
+    return {
+      view: { kind: "file", path, diff: true, ...(turn && { turn }) },
+      up: [list],
+    };
   // A design's page lies on its canvas; a document, a sheet and a deck's
   // slide have none.
   const view = opened(path, lines);
@@ -191,6 +200,7 @@ export async function resolve(
       listing,
       target.lines,
       target.diff,
+      target.turn,
     );
     return settle(view, up);
   }

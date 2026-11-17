@@ -158,6 +158,9 @@ function lastWrite(nodes: readonly Node[] = []) {
 // Where it is lives with the app (`flow`, see flow.ts), so it stays put while
 // closed or moved between the sheet and the docked pane. What is open is read
 // again when a turn ends: the turn may have changed the folder.
+// What a command still running when its answer was waited for says.
+const PENDING = "Still running. Refresh to see its result.";
+
 export default function Files({
   session,
   close,
@@ -176,7 +179,7 @@ export default function Files({
   // Whether the agent's browser can draw a page as a picture.
   pictures?: boolean;
 }) {
-  const { routes, api, host } = useApi();
+  const { routes, api, command, host } = useApi();
   const kept = useMemo(() => folderStore(host), [host]);
   // In a sheet, its header is this one: Close plays the sheet's exit, and
   // the title is where the sheet puts focus.
@@ -249,6 +252,9 @@ export default function Files({
   const file =
     view.kind === "file" || view.kind === "sequence" ? view.path : "";
   const changing = view.kind === "file" && !!view.diff;
+  // The turn whose change to the file is shown, rather than the uncommitted
+  // one.
+  const changedIn = view.kind === "file" ? view.turn : undefined;
   const source = view.kind === "file" && !!view.source;
   const marked = view.kind === "file" ? view.lines : undefined;
   // From the tree, search or changes (the list itself): Back is the list.
@@ -346,7 +352,15 @@ export default function Files({
   const diff = useResource(
     () =>
       changing
-        ? api<FileText>(routes.files(id, "diff", file)).then((value) => {
+        ? (changedIn
+            ? command("changes", session, { turn: changedIn, path: file }).then(
+                (receipt) => {
+                  if (receipt.pending) throw new Error(PENDING);
+                  return receipt.result;
+                },
+              )
+            : api<FileText>(routes.files(id, "diff", file))
+          ).then((value: { text: string; more?: boolean }) => {
             // Counted once as it arrives, not on every render.
             const kinds = value.text.split("\n").map(diffLineClass);
             const counts: [number, number] = [
@@ -356,8 +370,21 @@ export default function Files({
             return { ...value, path: file, counts };
           })
         : undefined,
-    [id, file, turn, changing],
+    [id, file, turn, changing, changedIn],
   );
+  // A turn's change is undone here as from the chat: only while the file
+  // still holds what the turn left. Undone, the change stays in view.
+  const undoing = useAction();
+  const [undone, setUndone] = useState("");
+  const shownChange = `${changedIn} ${file}`;
+  const undo = (turn: number) =>
+    undoing.run(async () => {
+      const receipt = await command("revert", session, { turn, path: file });
+      if (receipt.pending) throw new Error(PENDING);
+      const [conflict] = receipt.result.conflicts;
+      if (conflict) throw new Error(`Not undone: ${conflict.reason}`);
+      setUndone(shownChange);
+    });
   const text = content.value?.path === file ? content.value : undefined;
   const diffText = diff.value?.path === file ? diff.value : undefined;
   const counts = diffText?.counts ?? [0, 0];
@@ -712,6 +739,18 @@ export default function Files({
         {diffText && formatStat(counts) && (
           <span class="files-dir small">{formatStat(counts)}</span>
         )}
+        {changedIn &&
+          diffText &&
+          formatStat(counts) &&
+          undone !== shownChange && (
+            <Button
+              variant="secondary"
+              busy={undoing.busy}
+              onClick={() => void undo(changedIn)}
+            >
+              Undo
+            </Button>
+          )}
 
         {file && !changing && (MARKDOWN.test(file) || TEXT_PAGE.test(file)) && (
           <Button
@@ -1109,6 +1148,14 @@ export default function Files({
               <Skeleton rows={6} label="Reading the changes…" />
             ) : (
               <>
+                {undoing.error != null && (
+                  <Notice tone="error">{failure(undoing.error).message}</Notice>
+                )}
+                {undone === shownChange && (
+                  <Notice tone="info">
+                    Undone: the file is as it was before this turn.
+                  </Notice>
+                )}
                 <DiffView text={diffText.text} counts={counts} />
                 {diffText.more && (
                   <p class="files-note files-cut">

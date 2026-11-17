@@ -78,8 +78,10 @@ turn's first change to it as `<turn>-<hash(path)>`, with the hash the turn
 left. A file over 2 MiB, or past 64 MiB per session, is listed but not
 undoable. `index.json` is written when the turn's summary lists the files
 (at most 50) and after a revert. `Revert` restores a file only while it
-still hashes to what the turn left ("changed since" otherwise). Changes made
-by shell commands are not recorded.
+still hashes to what the turn left ("changed since" otherwise). The
+`changes` command draws a file's change in a turn with `git diff
+--no-index` between the stored content and the file now; Files shows it
+with Undo. Changes made by shell commands are not recorded.
 
 **Assets.** The web host stores uploads: 8 MiB a file, 8 a message, 64 MiB
 a session, 512 MiB in all (`asset_store.h`). A fork copies the directory

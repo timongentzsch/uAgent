@@ -189,6 +189,39 @@ json SelectModelControl(AppSession& session, const json& request) {
   return {{"route", RouteSelection(session.ApiClient(),
                                    session.context.provider.providers)}};
 }
+
+// A turn's change to a file as a unified diff, as git draws one between what
+// the turn found and what the file holds now.
+json TurnDiff(const json& texts) {
+  if (texts.contains("error")) return texts;
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  const fs::path folder =
+      fs::temp_directory_path(ec) / ("uagent-diff-" + RandomToken(8));
+  const std::string before = (folder / "before").string(),
+                    after = (folder / "after").string();
+  std::string error;
+  CreatePrivateDirectories(folder.string());
+  const bool written =
+      WritePrivateFile(before, JsonValue(texts, "before", ""), error) &&
+      WritePrivateFile(after, JsonValue(texts, "after", ""), error);
+  const CapturedProcess diff =
+      written ? HostGit(folder.string(),
+                        {"diff", "--no-index", "--no-ext-diff", "--no-textconv",
+                         "--no-color", "--", "before", "after"})
+              : CapturedProcess{};
+  fs::remove_all(folder, ec);
+  // Exit code 1: the files differ.
+  if (!written || diff.status < 0 || diff.status > 1) {
+    return {{"error", error.empty() ? "the change could not be drawn" : error}};
+  }
+  const std::string path = JsonValue(texts, "path", "");
+  const size_t hunk = diff.output.find("\n@@");
+  return {{"path", path},
+          {"text",
+           "--- a/" + path + "\n+++ b/" + path +
+               (hunk == std::string::npos ? "\n" : diff.output.substr(hunk))}};
+}
 }  // namespace
 
 json SessionControl(AppSession& session, const json& request) {
@@ -218,6 +251,11 @@ json SessionControl(AppSession& session, const json& request) {
   if (kind == "revert") {
     return session.ActiveAgent().Revert(JsonValue(request, "turn", int64_t{0}),
                                         JsonValue(request, "path", ""));
+  }
+  if (kind == "changes") {
+    return TurnDiff(
+        session.ActiveAgent().TurnTexts(JsonValue(request, "turn", int64_t{0}),
+                                        JsonValue(request, "path", "")));
   }
   if (kind == "context") {
     json preview = session.ActiveAgent().PreviewContext();

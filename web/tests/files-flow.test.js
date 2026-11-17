@@ -307,12 +307,19 @@ test("a path outside the folder is said so", () => {
   );
 });
 
-test("a cited change opens as its diff", async () => {
+test("a cited change opens as its diff, a turn's as what that turn changed", async () => {
   const fresh = cite({ path: "src/app.ts", changes: true }, "/p");
   assert.deepEqual((await resolve(START, fresh.view, io)).view, {
     kind: "file",
     path: "src/app.ts",
     diff: true,
+  });
+  const turn = cite({ path: "src/app.ts", changes: true, turn: 4 }, "/p");
+  assert.deepEqual((await resolve(START, turn.view, io)).view, {
+    kind: "file",
+    path: "src/app.ts",
+    diff: true,
+    turn: 4,
   });
 });
 

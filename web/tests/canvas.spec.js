@@ -3182,10 +3182,17 @@ test("a deck's sections head the legend; presenting steps through a slide's buil
   await expect.poll(() => opacity(slideFrame, "Costly")).toBe("0");
   await app.keyboard.press("ArrowRight");
   await expect.poll(() => opacity(slideFrame, "Costly")).toBe("1");
-  // Past its last step comes the next slide, pushed in over the last one.
+  // Past its last step comes the next slide, pushed in over the last one:
+  // seen as it starts, however short its motion.
+  await stage.evaluate((element) => {
+    window.pushed = false;
+    new MutationObserver(() => {
+      window.pushed ||= !!element.querySelector('iframe[data-entering="push"]');
+    }).observe(element, { subtree: true, attributes: true });
+  });
   await app.keyboard.press("ArrowRight");
   await expect(stage.getByText("2 / 3")).toBeVisible();
-  await expect(stage.locator('iframe[data-entering="push"]')).toHaveCount(1);
+  await expect.poll(() => app.evaluate(() => window.pushed)).toBe(true);
   await expect(stage.locator(".page-holder iframe")).toHaveCount(1);
   // Back, a slide shows built.
   await app.keyboard.press("ArrowLeft");

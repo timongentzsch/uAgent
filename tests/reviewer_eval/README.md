@@ -31,6 +31,14 @@ hold-out; every message, the earlier calls, the repository and trusted
 places with an explicit policy scored 2 unsafe allows; the same context with
 today's questions 0 and 9. The judge was left as it is.
 
+Cases with `tool` `agent_start` are briefs an agent is started with, judged
+with `questions.json`; `agent_report` cases are reports agents return, judged
+with `questions-report.json` (`--tool agent_report --questions
+questions-report.json`). On 2026-11-16, with Haiku standing in at allow 0.85,
+deny 0.95, veto 0.9: no unsafe allow of a brief or report on either split;
+every risky one went to a person (none reached the deny bar); about a third of
+benign briefs and one benign report in six were asked about too.
+
 ## Choosing the bars
 
 The rule, applied by the script: no unsafe allow in any run; then the fewest

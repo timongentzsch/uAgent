@@ -56,6 +56,9 @@ constexpr auto kTick = std::chrono::milliseconds(250);
 // How often a wait looks whether the agents it waits for still run.
 constexpr int kTicksPerLook = 20;
 
+using ReportJudge =
+    std::function<std::string(const std::string&, const std::string&, int64_t)>;
+
 ToolResult Unavailable(const std::string& error) {
   return ToolFailure(ToolErrorCode::kUnavailable, error);
 }
@@ -198,7 +201,8 @@ struct Batch {
 // Waits on the mailbox of the batch's parent until every agent has
 // reported or one asks for a decision, starting the rest as slots free up.
 // Escape stops them; the turn's deadline leaves them working.
-void Wait(Batch& batch, const ToolContext& context) {
+void Wait(Batch& batch, const ToolContext& context,
+          const ReportJudge& judge_report) {
   std::vector<Child>& rows = batch.rows;
   const std::string box = MailboxIdFor(batch.own);
   for (int tick = 0; batch.running > 0 && !context.Expired(); ++tick) {
@@ -244,6 +248,9 @@ void Wait(Batch& batch, const ToolContext& context) {
         asks = true;
         continue;
       }
+      if (judge_report) {
+        row.answer = judge_report(row.path, row.answer, context.turn_id);
+      }
       --batch.running;
       batch.StartNext();
     }
@@ -262,7 +269,8 @@ void Wait(Batch& batch, const ToolContext& context) {
 
 ToolResult StartAgents(const Api& api,
                        const std::function<std::string()>& own_model,
-                       const json& a, const ToolContext& context) {
+                       const ReportJudge& judge_report, const json& a,
+                       const ToolContext& context) {
   const std::string own = OwnSessionFile();
   if (own.empty()) return Unavailable("this conversation is not saved yet");
   Launch launch{.edits = JsonValue(a, "edits", "none"),
@@ -358,7 +366,7 @@ ToolResult StartAgents(const Api& api,
     }
     result = ToolSuccess(JsonDump(started));
   } else {
-    Wait(batch, context);
+    Wait(batch, context, judge_report);
     json waited = json::array();
     for (const Child& row : rows) {
       json one = {
@@ -585,7 +593,8 @@ ToolResult Decide(const json& a) {
   return error->empty() ? ToolSuccess("sent " + action) : Unavailable(*error);
 }
 
-Tool AgentStartTool(const Api& api, std::function<std::string()> own_model) {
+Tool AgentStartTool(const Api& api, std::function<std::string()> own_model,
+                    ReportJudge judge_report) {
   Tool tool = MakeTool(
       "agent_start",
       "Start an agent: a conversation of its own on brief, which it must "
@@ -604,9 +613,10 @@ Tool AgentStartTool(const Api& api, std::function<std::string()> own_model) {
         "items":{"type":"array","minItems":1,"maxItems":24,
           "items":{"type":"string"}}},
         "required":["brief"]})json"),
-      [&api, own_model = std::move(own_model)](const json& a,
+      [&api, own_model = std::move(own_model),
+       judge_report = std::move(judge_report)](const json& a,
                                                const ToolContext& context) {
-        return StartAgents(api, own_model, a, context);
+        return StartAgents(api, own_model, judge_report, a, context);
       });
   // A wait is bounded by the turn and Escape, not by a call timeout.
   tool.timeout_s = 0;
@@ -615,6 +625,20 @@ Tool AgentStartTool(const Api& api, std::function<std::string()> own_model) {
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
   tool.result_chars = static_cast<int64_t>(kWaitChars) + 4096;
+  tool.needs_approval = [](const json&) { return true; };
+  tool.approval_preview = [](const json& a) {
+    const json* items = JsonArray(a, "items");
+    std::string preview =
+        "edits: " + JsonValue(a, "edits", "none") +
+        "\nmodel: " + JsonValue(a, "model", "yours") +
+        "\nwait: " + (JsonValue(a, "wait", true) ? "yes" : "no") +
+        "\nitems: " + std::to_string(items ? items->size() : 0) + "\n\n" +
+        JsonValue(a, "brief", "");
+    for (const json& item : items ? *items : json::array()) {
+      preview += "\n- " + (item.is_string() ? item.get<std::string>() : "");
+    }
+    return preview;
+  };
   tool.headline = [](const json& a) {
     return Headline{"Starting agent", "Started agent",
                     FirstLine(JsonValue(a, "brief", ""))};
@@ -637,6 +661,10 @@ Tool AgentSendTool() {
       });
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
+  tool.needs_approval = [](const json&) { return true; };
+  tool.approval_preview = [](const json& a) {
+    return "to: " + JsonValue(a, "id", "") + "\n\n" + JsonValue(a, "text", "");
+  };
   tool.headline = [](const json& a) {
     return Headline{"Messaging", "Messaged", JsonValue(a, "id", "")};
   };
@@ -734,8 +762,12 @@ void Tree(const std::vector<SessionInfo>& all, const std::string& parent,
 }  // namespace
 
 void AddAgentTools(std::vector<Tool>& tools, const Api& api,
-                   std::function<std::string()> own_model) {
-  if (CanDelegate()) tools.push_back(AgentStartTool(api, std::move(own_model)));
+                   std::function<std::string()> own_model,
+                   ReportJudge judge_report) {
+  if (CanDelegate()) {
+    tools.push_back(
+        AgentStartTool(api, std::move(own_model), std::move(judge_report)));
+  }
   tools.push_back(AgentSendTool());
   tools.push_back(AgentsTool());
   tools.push_back(DecideTool());

@@ -25,6 +25,8 @@ struct ApprovalFacts {
   bool inside_work_area = false;
   // It names a path outside the folder.
   bool outside_folder = false;
+  // It starts or messages an agent: runs nothing itself.
+  bool delegates = false;
 };
 
 // Where it is decided.
@@ -58,6 +60,8 @@ enum class ApprovalSource {
   kYolo,
   kPlanAllows,
   kContainedEdit,
+  // Outside Auto an agent's brief or message needs nobody.
+  kDelegation,
   kReview,
   // The review is paused after its refusals.
   kRefusals,

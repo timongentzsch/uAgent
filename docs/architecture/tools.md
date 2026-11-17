@@ -54,7 +54,8 @@ the cached prompt; a tool at its per-turn cap stays offered and refuses.
 
 The approval decision for one call runs only when `RequiredApproval` is
 not `kNone`: a mutating call, a `needs_approval` call (a path outside the
-work area, a network tool), or one an `approval_class` escalates.
+work area, a network tool, `agent_start` and `agent_send`), or one an
+`approval_class` escalates.
 `MakeApprover` (`src/app/approvals.cc`) gathers the facts of the call and
 the situation; `Decide` (`src/app/approval_policy.cc`) is a pure function
 of them, and the first stage that matches decides:
@@ -73,9 +74,11 @@ flowchart TD
   R -- yes --> OK[Run]
   R -- no --> Y{Yolo, or plan allows it?}
   Y -- yes --> OK
-  Y -- no --> E{Auto, a file tool's change in the folder?}
+  Y -- no --> DL{Delegates, not Auto?}
+  DL -- yes --> OK
+  DL -- no --> E{Auto, a file tool's change in the folder?}
   E -- yes --> OK
-  E -- no --> J{Auto, contained, review not paused?}
+  E -- no --> J{Auto, contained or delegating, review not paused?}
   J -- yes --> G{Decision model}
   G -- allow --> OK
   G -- deny --> NO
@@ -105,8 +108,9 @@ flowchart TD
   rule wins over an asking one, an asking one over an allowing one. The
   match is `*` (every call; offered for MCP tools), `PREFIX *` (a command
   starting with one or two plain words), `DIR/` (a path under a folder), or
-  the exact subject. The subject is the command, a `web_fetch` URL's host, a
-  path relative to the folder, or the arguments. An allow rule covers only
+  the exact subject. The subject is the command, a `web_fetch` URL's host,
+  the first line of an agent's brief or message, a path relative to the
+  folder, or the arguments. An allow rule covers only
   a whole simple command (no chaining, substitution, redirection, backslash
   or newline), and a prefix only while the sandbox is enforced. A deny or
   ask rule covers any part of a command split at `&&`, `||`, `;`, `|`, `&`
@@ -124,6 +128,23 @@ flowchart TD
   no reason at or above its veto bar; deny needs P(deny) at or above its
   bar; anything else asks. A model with no `decision_bars` row gets 0.9 /
   0.95 / 0.3. Reviews are memoized per action within a turn.
+- A delegation (`agent_start`, `agent_send`: `ApprovalFacts::delegates`)
+  runs nothing itself, but its brief becomes the agent's request, which
+  that agent's own review then trusts. Auto sends it to the decision
+  model, sandbox or not; every other mode allows it (`kDelegation`).
+  Rules hold it back as any call. Its preview is the brief or text, headed
+  by `edits`, `model`, `wait` and the item count, then the items.
+- In Auto an agent's report is judged before the conversation that started
+  the agent reads it, in `Agent::DeliverMail` (mailed) and the `wait` of
+  `agent_start`, by `MakeReportJudge` (`src/app/approvals.cc`). The model
+  gets the stand-in tool `agent_report`, the report as the action, the
+  agent's latest and first messages as the request, and the report
+  questions (`ReportQuestions`, as `tests/reviewer_eval/questions-report.json`):
+  `instructs_reader`, `beyond_brief`, `touches_secrets`, under the same
+  bars. Allow delivers the report; ask holds it for a person (`source`
+  `report`, answers Deliver or Withhold); deny, a person's Withhold or
+  nobody to ask gives the parent only `[agent <id> finished; its report was
+  withheld: <reason>]`. The whole report stays in the agent's conversation.
 - After 3 refusals by the review in a row, or 20 in a conversation, Auto
   asks a person instead (`kRefusals`) until one answers.
 - Plan mode allows commands in the `readonly` sandbox and file calls on the
@@ -133,7 +154,7 @@ flowchart TD
 Asking a person emits `approval.requested` with the whole preview, the
 risks (`runs`, `writes`, `network`, `outside`, then the review's reasons),
 the stage that asks (`source`: `mode`, `ask_rule`, `review`, `refusals`,
-`mandatory`), why in a line (`reason`) and an asking rule. Each decision
+`mandatory`, or `report` for a held report), why in a line (`reason`) and an asking rule. Each decision
 emits `approval.resolved` with its `effect`, `source`, `reason`, `rule`,
 `mode` and the review. A call the review or a refusing rule turned down
 without asking carries a `refusal` part on its row, with the action to

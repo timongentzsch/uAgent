@@ -119,8 +119,13 @@ def decision_providers(url, supports=("decisions",), **options):
     }
 
 
-def decision_answers(allow, deny=0.0, **reasons):
-    names = ["destructive", "beyond_request", "sends_data_off_machine", "touches_secrets"]
+def decision_answers(allow, deny=0.0, questions=None, **reasons):
+    """Answers to `questions` (a call's by default)."""
+    names = (
+        [name for name, question in questions.items() if question["type"] == "noul"]
+        if questions
+        else ["destructive", "beyond_request", "sends_data_off_machine", "touches_secrets"]
+    )
     answers = {
         "permission": {
             "type": "choice",

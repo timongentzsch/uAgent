@@ -30,6 +30,7 @@ std::vector<Tool> BuildTools(AppContext& context,
                              const json& trusted_snapshot,
                              std::vector<Skill> skills, std::string& error);
 Agent::Approver MakeApprover(AppContext* app);
+Agent::ReportJudge MakeReportJudge(AppContext* app);
 Agent::ToolRefresher MakeToolRefresher(AppContext* app);
 
 }  // namespace uagent

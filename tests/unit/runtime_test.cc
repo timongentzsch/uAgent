@@ -508,6 +508,11 @@ TEST_CASE(TestPermissionPolicy) {
   CHECK(SuggestRule(remote, {{"q", 1}}, root, true).match == "*");
   CHECK(RuleCovers({"mcp_x", "*"}, remote, {{"q", 2}}, root, true));
   CHECK(!RuleCovers({"mcp_x", "*"}, run, {{"command", "ls"}}, root, true));
+  // An agent's brief or message is named by its first line.
+  Tool start;
+  start.name = "agent_start";
+  CHECK(SuggestRule(start, {{"brief", "Fix tests\nall"}}, root, true).match ==
+        "Fix tests");
   // What a call's approval covered reaches its own run.
   {
     Tool held;

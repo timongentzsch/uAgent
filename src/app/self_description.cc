@@ -407,7 +407,7 @@ json ToolSurfaceJson() {
   conditional.emplace_back(WebSearchTool(api, usage, {}), "search route");
   conditional.emplace_back(WebFetchTool(api), "always");
   std::vector<Tool> agent_tools;
-  AddAgentTools(agent_tools, api, [] { return std::string(); });
+  AddAgentTools(agent_tools, api, [] { return std::string(); }, {});
   for (Tool& tool : agent_tools) {
     const char* when = tool.name == "agent_start" ? "agent depth" : "always";
     conditional.emplace_back(std::move(tool), when);

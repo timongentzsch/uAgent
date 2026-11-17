@@ -39,6 +39,9 @@ ApprovalFacts Unsandboxed() {
   call.required = kMandatoryCall;
   return call;
 }
+ApprovalFacts Delegation() {
+  return {.required = kOrdinaryCall, .delegates = true};
+}
 ApprovalFacts PlanWrite() {
   ApprovalFacts call = EditInFolder();
   call.on_plan_file = true;
@@ -71,6 +74,19 @@ TEST_CASE(TestApprovalOrder) {
   loose.sandbox_enforced = false;
   CHECK(Is(Decide(Command(), loose), kAskPerson, kMode));
   CHECK(Is(Decide(EditInFolder(), loose), kAllow, kContainedEdit));
+
+  // An agent's brief is judged in Auto, sandbox or not, and needs nobody in
+  // the other modes; rules hold it back as any call.
+  CHECK(Is(Decide(Delegation(), In(Mode::kAuto)), kAskModel, kReview));
+  CHECK(Is(Decide(Delegation(), loose), kAskModel, kReview));
+  CHECK(Is(Decide(Delegation(), In(Mode::kAsk)), kAllow, kDelegation));
+  CHECK(Is(Decide(Delegation(), In(Mode::kPlan)), kAllow, kDelegation));
+  CHECK(Is(Decide(Delegation(), In(Mode::kYolo)), kAllow, kYolo));
+  PolicyContext asking = In(Mode::kAsk);
+  asking.ask_rule = true;
+  CHECK(Is(Decide(Delegation(), asking), kAskPerson, kAskRule));
+  asking.deny_rule = true;
+  CHECK(Is(Decide(Delegation(), asking), kDeny, kDenyRule));
 
   // With nobody to ask, what a person would decide is refused; what is
   // decided without one is not.
@@ -139,7 +155,7 @@ TEST_CASE(TestApprovalInvariants) {
   constexpr std::array kModes = {Mode::kAsk, Mode::kAuto, Mode::kYolo,
                                  Mode::kPlan};
   for (const Mode mode : kModes) {
-    for (uint32_t bits = 0; bits < (1u << 15); ++bits) {
+    for (uint32_t bits = 0; bits < (1u << 16); ++bits) {
       const auto bit = [bits](int at) { return ((bits >> at) & 1u) != 0; };
       const ApprovalFacts call{
           .required = bit(0) ? kMandatoryCall : kOrdinaryCall,
@@ -148,7 +164,8 @@ TEST_CASE(TestApprovalInvariants) {
           .command = bit(3),
           .on_plan_file = bit(4),
           .inside_work_area = bit(5),
-          .outside_folder = bit(6)};
+          .outside_folder = bit(6),
+          .delegates = bit(15)};
       const PolicyContext context{.mode = mode,
                                   .sandbox_enforced = bit(7),
                                   .sandbox_read_only = bit(8),
@@ -178,12 +195,19 @@ TEST_CASE(TestApprovalInvariants) {
       if (mode == Mode::kAuto && decision.source == kContainedEdit) {
         CHECK(call.inside_work_area && !call.executes && !call.outside_folder);
       }
-      // The model sees only Auto's contained calls, while not paused.
+      // The model sees only Auto's contained calls and its delegations,
+      // while not paused.
       if (decision.effect == kAskModel) {
         CHECK(!context.review_paused);
-        CHECK(mode == Mode::kAuto && call.required != kMandatoryCall &&
-              !call.outside_folder &&
-              (!call.command || context.sandbox_enforced));
+        CHECK(mode == Mode::kAuto && call.required != kMandatoryCall);
+        CHECK(call.delegates || (!call.outside_folder &&
+                                 (!call.command || context.sandbox_enforced)));
+      }
+      // A delegation is asked of a person outside Auto only by a rule or as
+      // a mandatory call.
+      if (call.delegates && mode != Mode::kAuto &&
+          decision.effect == kAskPerson) {
+        CHECK(context.ask_rule || call.required == kMandatoryCall);
       }
       // Yolo never asks the model, and a person only for a mandatory call or
       // one a rule holds back.

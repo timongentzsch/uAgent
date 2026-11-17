@@ -262,7 +262,10 @@ its parent. `/agents` lists them and `/open ID` switches to one; in the
 web its link opens it. An agent only reads unless started with `edits`
 `worktree` (a git worktree under `~/.uagent/worktrees/` from `HEAD`) or
 `folder`. Its approvals go to its parent first; once you write in its own
-conversation, that turn's come to you. `agents.max` and `agents.depth`
+conversation, that turn's come to you. In Auto the review judges the
+brief before an agent starts and its report before the parent reads it; a
+report that looks like it instructs the parent waits for you on a card
+with **Withhold** and **Deliver**, and is withheld when nobody can answer. `agents.max` and `agents.depth`
 bound how many work and how deep they nest ([Turn
 loop](architecture/turn-loop.md)).
 

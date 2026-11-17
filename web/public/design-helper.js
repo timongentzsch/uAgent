@@ -370,13 +370,24 @@
     const colors = document.createElement("style");
     colors.textContent =
       "html{print-color-adjust:exact;-webkit-print-color-adjust:exact}" +
-      "[data-uagent-busy] table[data-sheet]{visibility:hidden}";
+      "[data-uagent-busy] table[data-sheet]{visibility:hidden}" +
+      "[data-uagent-busy] body>[data-at]{visibility:hidden}";
     document.head.prepend(colors);
   });
 
   // A sheet is drawn and calculated by the code installed with its engine,
   // loaded from the page's own address. Until that is done the page says it
   // is busy, which a capture and the agent's browser wait out.
+  // A whiteboard is drawn by its own code from the same place.
+  addEventListener("DOMContentLoaded", () => {
+    if (!document.querySelector('meta[name="board"]')) return;
+    const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
+    root.dataset.uagentBusy = "";
+    window.uagentReady = import(`${base}~sheet/whiteboard.js`)
+      .then((board) => board.ready)
+      .catch((error) => [`the whiteboard could not be drawn: ${error.message}`])
+      .finally(() => delete root.dataset.uagentBusy);
+  });
   addEventListener("DOMContentLoaded", () => {
     if (!meta("sheet")) return;
     const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
@@ -392,6 +403,156 @@
         return [`the sheet could not be calculated: ${error.message}`];
       })
       .finally(() => delete root.dataset.uagentBusy);
+  });
+
+  // Values a page takes from a CSV or JSON file of its folder, by its marks
+  // (skills/artifact/references/data.md): filled once the page has loaded,
+  // after a sheet or a whiteboard is drawn, so a capture waits for them;
+  // what is missing is said to the agent. A pointer on a value says where
+  // it came from, and in the app opens the file at its row.
+  const NUMBER = {
+    "#,##0": { maximumFractionDigits: 0 },
+    "#,##0.00": { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+    "0%": { style: "percent", maximumFractionDigits: 0 },
+    "0.0%": {
+      style: "percent",
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    },
+    "$#,##0": { style: "currency", currency: "USD", maximumFractionDigits: 0 },
+    "€#,##0.00": { style: "currency", currency: "EUR" },
+  };
+  // A CSV file's rows as objects by its header; quoted fields may hold
+  // commas, quotes ("") and line ends.
+  const fromCsv = (text) => {
+    const rows = [[]];
+    let field = "";
+    let quoted = false;
+    for (let at = 0; at < text.length; at++) {
+      const c = text[at];
+      if (quoted) {
+        if (c === '"' && text[at + 1] === '"') field += text[at++];
+        else if (c === '"') quoted = false;
+        else field += c;
+      } else if (c === '"') quoted = true;
+      else if (c === ",") rows.at(-1).push(field), (field = "");
+      else if (c === "\n" || c === "\r") {
+        if (c === "\r" && text[at + 1] === "\n") at++;
+        rows.at(-1).push(field);
+        field = "";
+        rows.push([]);
+      } else field += c;
+    }
+    if (field || rows.at(-1).length) rows.at(-1).push(field);
+    const [head = [], ...body] = rows.filter((row) => row.length);
+    return body.map((row) =>
+      Object.fromEntries(head.map((name, at) => [name.trim(), row[at] ?? ""])),
+    );
+  };
+  const data = new Map();
+  const rowsOf = (source) => {
+    if (!data.has(source))
+      data.set(
+        source,
+        fetch(new URL(source, location.href))
+          // A file that is not there answers without the header that lets
+          // the page read it: the fetch itself fails.
+          .catch(() => ({ ok: false }))
+          .then(async (answer) => {
+            if (!answer.ok) throw new Error(`${source} did not load`);
+            const text = await answer.text();
+            const rows = /\.json$/i.test(source)
+              ? JSON.parse(text)
+              : fromCsv(text);
+            if (!Array.isArray(rows))
+              throw new Error(`${source} holds no rows`);
+            return rows;
+          }),
+      );
+    return data.get(source);
+  };
+  const fill = async (mark) => {
+    const { source, field, where = "", format } = mark.dataset;
+    let rows;
+    try {
+      rows = await rowsOf(source);
+    } catch (error) {
+      return error instanceof SyntaxError
+        ? `${source} is not JSON`
+        : error.message;
+    }
+    if (rows.length && !Object.hasOwn(rows[0], field))
+      return `${source} has no column "${field}"`;
+    const wanted = where
+      .split(",")
+      .filter((part) => part.trim())
+      .map((part) => part.split("=").map((side) => side.trim()));
+    const at = rows.findIndex((row) =>
+      wanted.every(([name, value]) => String(row[name]) === value),
+    );
+    if (at < 0) return `${source} has no row where ${where}`;
+    const value = rows[at][field];
+    const number = Number(value);
+    mark.textContent =
+      format && NUMBER[format] && value !== "" && Number.isFinite(number)
+        ? new Intl.NumberFormat("en-US", NUMBER[format]).format(number)
+        : String(value);
+    mark.dataset.uagentRow = `${at + 1}`;
+    if (format && !NUMBER[format])
+      return `data-format "${format}" is not one a mark takes`;
+  };
+  addEventListener("DOMContentLoaded", () => {
+    const marks = [...document.querySelectorAll("[data-source][data-field]")];
+    if (!marks.length) return;
+    const before = window.uagentReady;
+    window.uagentReady = Promise.all([
+      before,
+      Promise.all(marks.map(fill)),
+    ]).then(([drawn, said]) => [...(drawn ?? []), ...said.filter(Boolean)]);
+  });
+  // Where a value came from, while the pointer is on it: in the app, said
+  // for the app to draw at the pane's size (with Open, at the file's row);
+  // alone, a chip over it in the page.
+  let chip;
+  addEventListener("pointerover", (event) => {
+    const mark = event.target.closest?.("[data-uagent-row]");
+    if (!mark) return;
+    const { source, field, uagentRow } = mark.dataset;
+    const label = `${source} · ${field} · row ${uagentRow}`;
+    const { x, y, width, height } = mark.getBoundingClientRect();
+    if (parent !== window) {
+      const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
+      const path = decodeURIComponent(
+        new URL(source, location.href).pathname.slice(base.length),
+      );
+      // A CSV's row is the line after its header's; a JSON file opens whole.
+      const line = /\.csv$/i.test(source) ? +uagentRow + 1 : 0;
+      return send("source", {
+        rect: { x, y, width, height },
+        label,
+        path,
+        line,
+      });
+    }
+    chip?.remove();
+    chip = document.createElement("span");
+    chip.textContent = label;
+    Object.assign(chip.style, {
+      position: "fixed",
+      left: `${Math.max(0, x)}px`,
+      top: `${y + height + 4}px`,
+      zIndex: 2147483647,
+      font: "12px/1.4 system-ui, sans-serif",
+      background: "#111",
+      color: "#fff",
+      padding: "4px 8px",
+    });
+    document.body.append(chip);
+  });
+  addEventListener("pointerout", (event) => {
+    if (!event.target.closest?.("[data-uagent-row]")) return;
+    if (parent !== window) send("source", {});
+    chip?.remove();
   });
 
   if (parent === window) {
@@ -440,7 +601,7 @@
   // A document's or a slide's text blocks, in order: what a person edits in
   // place.
   const EDITABLE =
-    "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote";
+    "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote, pre";
   // A slide's notes are none of them.
   const blocks = () => {
     const aside = notes();
@@ -519,7 +680,7 @@
             [...child.children]
               .map(
                 (item, at) =>
-                  `${"  ".repeat(depth)}${tag === "ol" ? `${at + 1}.` : "-"} ${inline(item).trim()}` +
+                  `${"  ".repeat(depth)}${tag === "ol" ? `${at + 1}.` : "-"} ${child.matches(".checklist") ? `[${item.hasAttribute("data-done") ? "x" : " "}] ` : ""}${inline(item).trim()}` +
                   [...item.children]
                     .filter(
                       (sub) => sub.localName === "ul" || sub.localName === "ol",
@@ -566,15 +727,29 @@
         part.removeAttribute(mark);
     const all = blocks();
     const index = all.indexOf(block);
+    // Outside Edit (a checklist's tick), the text as it stands.
+    const was = (part) => part && (before.get(part) ?? part.textContent);
     send("edit", {
       index,
       of: all.length,
-      before: before.get(block),
-      around: [before.get(all[index - 1]), before.get(all[index + 1])],
+      before: was(block),
+      around: [was(all[index - 1]), was(all[index + 1])],
       html: clean.innerHTML,
       ...more,
     });
   };
+  // A document's checklist: each item's box is drawn here, and a press on
+  // it ticks the item, which the app writes to the file.
+  const CHECKLIST = "ul.checklist > li";
+  addEventListener("click", (event) => {
+    const item = paper() && event.target.closest?.(CHECKLIST);
+    if (!item) return;
+    const room = Number.parseFloat(getComputedStyle(item).paddingLeft);
+    if (event.clientX - item.getBoundingClientRect().left > room) return;
+    event.preventDefault();
+    item.toggleAttribute("data-done");
+    report(item, { done: item.hasAttribute("data-done") });
+  });
   const changed = (event) => {
     const block = event.target.closest?.("[contenteditable]");
     if (block) report(block);
@@ -733,7 +908,13 @@
     const marks = document.createElement("style");
     marks.textContent =
       "::highlight(uagent-find){background:Mark;color:MarkText}" +
-      "::highlight(uagent-found){background:Highlight;color:HighlightText}";
+      "::highlight(uagent-found){background:Highlight;color:HighlightText}" +
+      "ul.checklist{list-style:none;padding-left:0}" +
+      `${CHECKLIST}{position:relative;padding-left:1.6em}` +
+      `${CHECKLIST}::before{content:"";position:absolute;left:0;top:.2em;` +
+      "width:1em;height:1em;box-sizing:border-box;border:1.5px solid;" +
+      "cursor:pointer;text-align:center;font-size:1em;line-height:.8}" +
+      `${CHECKLIST}[data-done]::before{content:"\\2713"}`;
     document.head.append(marks);
   });
   const height = () => root.scrollHeight;
@@ -775,7 +956,30 @@
     await painted();
     send("drawn");
   });
+  // A slide's builds while it is presented: what has a `data-step` beyond
+  // the step shown is hidden, from the first paint when its address says
+  // "#build=N", then by message; a step below 0 shows all.
+  const hide = document.createElement("style");
+  hide.textContent =
+    "html[data-uagent-build] [data-step]{transition:opacity .2s}" +
+    "html[data-uagent-build] [data-step]:not([data-uagent-shown]){opacity:0}";
+  root.append(hide);
+  const building = /^#build=(\d+)$/.exec(location.hash);
+  if (building) root.toggleAttribute("data-uagent-build", true);
+  const build = (at) => {
+    root.toggleAttribute("data-uagent-build", at >= 0);
+    for (const element of document.querySelectorAll("[data-step]"))
+      element.toggleAttribute("data-uagent-shown", +element.dataset.step <= at);
+  };
+  const steps = () =>
+    Math.max(
+      0,
+      ...[...document.querySelectorAll("[data-step]")].map(
+        (element) => +element.dataset.step || 0,
+      ),
+    );
   addEventListener("DOMContentLoaded", () => {
+    if (building) build(+building[1]);
     send("ready", {
       title: document.title,
       artboard: artboard(),
@@ -788,6 +992,9 @@
       ),
       // A sheet takes the app's look for its grid.
       sheet: !!meta("sheet"),
+      // A slide's builds, and how it comes in when presented.
+      steps: steps(),
+      push: meta("slide").split(/\s+/).includes("push"),
     });
     let last = 0;
     new ResizeObserver(() => {
@@ -884,7 +1091,11 @@
   // too (Space only where it presses nothing).
   addEventListener("keydown", (event) => {
     const within = (selector) => event.target.closest?.(selector);
-    if (within("input, textarea, select, [contenteditable]")) return;
+    if (
+      event.defaultPrevented ||
+      within("input, textarea, select, [contenteditable]")
+    )
+      return;
     const paging =
       stepped() &&
       ["Home", "End", "PageUp", "PageDown", " "].includes(event.key) &&
@@ -917,12 +1128,14 @@
       edit(!!event.data.on, event.data.at, event.data.over);
     if (event.data.type === "format") format(event.data);
     if (event.data.type === "markdown") send("markdown", { text: markdown() });
-    if (event.data.type === "find") {
+    // A sheet's page finds in its grid itself.
+    if (event.data.type === "find" && !meta("sheet")) {
       sought = [String(event.data.text), Number(event.data.index)];
       if (paper()) turn();
       else find(...sought);
     }
     if (event.data.type === "tweak")
       tweak(String(event.data.name), event.data.value);
+    if (event.data.type === "build") build(Number(event.data.at));
   });
 })();

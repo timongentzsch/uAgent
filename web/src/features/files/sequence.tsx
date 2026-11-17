@@ -84,7 +84,9 @@ import {
   type Saved,
   skipSlide,
 } from "./doc-edit.ts";
-import { downloadBlob, saveLink } from "../../shared/share.ts";
+import { type BoardEdit, boardEdit } from "./board-edit.ts";
+import { downloadBlob } from "../../shared/share.ts";
+import { copyDrawn, type Drawn, saveDrawn } from "./drawn.ts";
 import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
 import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
 import { useResource } from "../../shared/use-resource.ts";
@@ -152,6 +154,7 @@ export default function Sequence({
   typing,
   saveAs,
   arrange,
+  cite,
   rewrite,
   arranging,
   view,
@@ -171,7 +174,7 @@ export default function Sequence({
   read: (path: string) => Promise<string>;
   // The address the agent's browser draws a path at as a PNG or a PDF (a
   // folder's PDF is its deck), where it has one.
-  drawn?: (as: "png" | "pdf", path: string) => string;
+  drawn?: Drawn;
   presenter?: (slides: string[], at: string) => void;
   // A document's or a slide's edited block, or a sheet's edited tab, saved
   // to its file. A block's answers with the place of the block the caret
@@ -198,7 +201,12 @@ export default function Sequence({
     add?: { name: string; text: string },
   ) => void;
   // A slide's file written as `change` makes it of what it holds.
-  rewrite?: (path: string, change: (source: string) => string) => void;
+  // A file of the folder opened at a line, from the page.
+  cite?: (path: string, line: number) => void;
+  rewrite?: (
+    path: string,
+    change: (source: string) => string,
+  ) => Promise<unknown>;
   arranging?: boolean;
   // Opens a picture in the image viewer, which can draw on it.
   view: (image: ViewedImage) => void;
@@ -259,6 +267,15 @@ export default function Sequence({
   // or `over` the words of a new one.
   const caretAt = useRef<{ at: number; over: boolean }>(undefined);
   const [hover, setHover] = useState<Rect>();
+  // A value's source, drawn under it; kept while the pointer is on its chip.
+  const [source, setSource] = useState<{
+    rect: Rect;
+    label: string;
+    path: string;
+    line: number;
+  }>();
+  const holding = useRef(false);
+  const unsourced = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [picked, setPicked] = useState<Pick>();
   const [comment, setComment] = useState("");
   const [tweaking, setTweaking] = useState(false);
@@ -303,18 +320,18 @@ export default function Sequence({
   };
   // The presenter's window moves this one, and this one it.
   const channel = useRef<BroadcastChannel>(undefined);
-  const follow = useLatest(
-    (at: unknown) =>
-      typeof at === "string" &&
-      at !== path &&
-      boards.some((board) => board.path === at) &&
-      go(at),
-  );
+  const follow = useLatest((at: unknown, built: unknown) => {
+    if (typeof at !== "string" || !boards.some((board) => board.path === at))
+      return;
+    if (at !== path) go(at);
+    else if (Number.isInteger(built)) showBuild(built as number);
+  });
   // One channel for the page's life: a new one per render would miss what
   // arrives while it is swapped.
   useEffect(() => {
     const opened = presentChannel();
-    opened.onmessage = (event) => follow.current(event.data?.at);
+    opened.onmessage = (event) =>
+      follow.current(event.data?.at, event.data?.build);
     channel.current = opened;
     return () => opened.close();
   }, []);
@@ -358,10 +375,56 @@ export default function Sequence({
   const index = boards.findLastIndex(
     (board, at) => board.path === path && at <= first + part,
   );
+  // A slide's builds while presenting: the step shown, and whether the slide
+  // was come to from the one after it, when it shows built.
+  const [build, setBuild] = useState(0);
+  const backward = useRef(false);
+  const builds = presenting && kind === "deck" ? (said?.steps ?? 0) : 0;
+  const showBuild = (at: number) => {
+    setBuild(at);
+    tell(frame.current, { type: "build", at });
+  };
+  // A whiteboard's changes made here, each with the text it took the place
+  // of: ⌘Z puts that back while the file is as the change left it.
+  // They are written one after another, as fast as they come.
+  const boardPast = useRef<{ path: string; before: string; after: string }[]>(
+    [],
+  );
+  const boardWrites = useRef<Promise<unknown>>(Promise.resolve());
+  const changeBoard = ({
+    undo,
+    ...edit
+  }: Partial<BoardEdit> & { undo?: boolean }) => {
+    const change = (source: string) => {
+      if (undo) {
+        const last = boardPast.current.at(-1);
+        if (last?.path !== path || source !== last.after) return source;
+        boardPast.current.pop();
+        return last.before;
+      }
+      const after = boardEdit(source, { ...edit, id: String(edit.id) });
+      if (after === null) return source;
+      boardPast.current.push({ path, before: source, after });
+      return after;
+    };
+    boardWrites.current = boardWrites.current.then(() =>
+      rewrite?.(path, change),
+    );
+  };
+  // Presenting starts at the slide's first step; ended, all of it shows.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on presenting alone
+  useEffect(() => {
+    if (kind === "deck") showBuild(presenting ? 0 : -1);
+  }, [presenting]);
+  const stepBuild = (at: number) => {
+    showBuild(at);
+    channel.current?.postMessage({ at: path, build: at });
+  };
   // Another file is another view, and the presenter's window goes with it.
-  const to = (next: number) => {
+  const to = (next: number, back = false) => {
     const board = boards[next];
     if (!board) return;
+    backward.current = back;
     if (board.path !== path) {
       go(board.path);
       channel.current?.postMessage({ at: board.path });
@@ -374,16 +437,23 @@ export default function Sequence({
     at === index || !(presenting && board.skip) ? [at] : [],
   );
   const place = stops.indexOf(index);
-  // Past the last slide comes the first; a document ends at its ends.
-  const step = (by: number) =>
-    place >= 0 &&
-    to(
-      stops[
-        doc
-          ? Math.min(stops.length - 1, Math.max(0, place + by))
-          : (place + by + stops.length) % stops.length
-      ],
+  // Past the last slide comes the first; a document ends at its ends. A
+  // presented slide steps through its builds first.
+  const step = (by: number) => {
+    if (by > 0 && build < builds) return stepBuild(build + 1);
+    if (by < 0 && build > 0 && builds) return stepBuild(build - 1);
+    return (
+      place >= 0 &&
+      to(
+        stops[
+          doc
+            ? Math.min(stops.length - 1, Math.max(0, place + by))
+            : (place + by + stops.length) % stops.length
+        ],
+        by < 0,
+      )
     );
+  };
   // Whether the key was one that steps; Home and End go to the ends.
   const stepKey = (key: string) => {
     const by = STEPS[key];
@@ -506,7 +576,7 @@ export default function Sequence({
   // What the host draws is of the file: asked for once what was typed is in
   // it.
   const download = (address: string, name: string) =>
-    settle().then(() => saveLink(`${address}&download=1`, name));
+    saveDrawn(settle, address, name);
   // The page in another format: what fits its kind. Its source is Download
   // in the pane's header.
   const exports: (false | undefined | [string, () => void])[] = [
@@ -523,17 +593,7 @@ export default function Sequence({
           ),
       ],
     png && ["PNG image", () => download(png(2), `${stem}.png`)],
-    png && [
-      "Copy as image",
-      () =>
-        navigator.clipboard.write([
-          new ClipboardItem({
-            "image/png": settle()
-              .then(() => fetch(png(2)))
-              .then((response) => response.blob()),
-          }),
-        ]),
-    ],
+    png && ["Copy as image", () => copyDrawn(settle, png(2))],
     live &&
       doc && ["Markdown", () => tell(frame.current, { type: "markdown" })],
     live &&
@@ -606,7 +666,8 @@ export default function Sequence({
   // Find: a deck's or a design's occurrences are counted in the boards'
   // source, so a step reaches a board that is not drawn, and the stage marks
   // those of the one shown. Only a document's layout knows which page a word
-  // is on: its frame counts them.
+  // is on, and a sheet's grid what its cells show: their frames count them.
+  const counted = doc || sheet;
   const [finding, setFinding] = useState(false);
   const [words, setWords] = useState("");
   const [found, setFound] = useState<number[]>();
@@ -619,25 +680,25 @@ export default function Sequence({
   // before it was rewritten, are never taken for these.
   const sources = useResource(
     () =>
-      finding && !doc
+      finding && !counted
         ? Promise.all(
             boards.map((board) =>
               read(board.path).then((html) => drawnText(html, kind === "deck")),
             ),
           ).then((texts) => ({ stamp, texts }))
         : undefined,
-    [finding, doc, stamp],
+    [finding, counted, stamp],
   );
   const texts =
     sources.value?.stamp === stamp ? sources.value.texts : undefined;
   const counts = useMemo(
     () =>
-      doc
+      counted
         ? found
         : texts?.map((nodes) =>
             sum(nodes.map((text) => occurrences(text, query).length)),
           ),
-    [doc, found, texts, query],
+    [counted, found, texts, query],
   );
   const hits = !query || !counts ? undefined : sum(counts);
   const hit = spotAt(counts ?? [], spot);
@@ -716,7 +777,7 @@ export default function Sequence({
       <Notice tone="info">{saved.text}</Notice>
     </small>
   );
-  const whole = doc ? "document" : kind === "deck" ? "deck" : "design";
+  const whole = doc ? "document" : sheet || kind === "deck" ? kind : "design";
   // A deck rearranged from here, by a drag in the legend or from the slide's
   // menu: the stage follows its slide.
   const names = boards.map((board) => nameOf(board.path));
@@ -821,14 +882,13 @@ export default function Sequence({
           )}
         {/* raw: a narrow pane folds the tools after Edit into one menu. */}
         <span class="page-tools-wide">
-          {!sheet &&
-            toggle(
-              "Find",
-              finding,
-              () => setFinding(!finding),
-              <Search />,
-              true,
-            )}
+          {toggle(
+            "Find",
+            finding,
+            () => setFinding(!finding),
+            <Search />,
+            true,
+          )}
           {!sheet && (
             <IconButton label="Present" onClick={() => present(true)}>
               <Presentation />
@@ -857,9 +917,7 @@ export default function Sequence({
         </span>
         <span class="page-tools-folded">
           <Menu label="More tools">
-            {!sheet && (
-              <MenuItem onClick={() => setFinding(!finding)}>Find</MenuItem>
-            )}
+            <MenuItem onClick={() => setFinding(!finding)}>Find</MenuItem>
             {!sheet && (
               <MenuItem onClick={() => present(true)}>Present</MenuItem>
             )}
@@ -908,6 +966,17 @@ export default function Sequence({
           count={hits}
           current={spot}
           step={(by) => hits && show((spot + by + hits) % hits)}
+          replace={
+            sheet && !locked
+              ? (by, all) =>
+                  tell(frame.current, {
+                    type: "replace",
+                    text: query,
+                    with: by,
+                    index: all ? -1 : nth,
+                  })
+              : undefined
+          }
           close={() => setFinding(false)}
         />
       )}
@@ -979,10 +1048,20 @@ export default function Sequence({
                 <Frame
                   src={
                     boards[index]
-                      ? address(boards[index], load ? `&load=${load}` : "")
+                      ? address(boards[index], load ? `&load=${load}` : "") +
+                        (presenting && kind === "deck"
+                          ? `#build=${backward.current ? 99 : 0}`
+                          : "")
                       : src
                   }
                   title={info?.title || path}
+                  transition={
+                    presenting && kind === "deck"
+                      ? said?.push
+                        ? "push"
+                        : "fade"
+                      : undefined
+                  }
                   frameRef={frame}
                   width={wide ? shape!.w : undefined}
                   height={fixed ? shape!.h : wide ? room.h / scale : undefined}
@@ -995,6 +1074,7 @@ export default function Sequence({
                       heard(path)(message);
                     if (message.type === "ready") {
                       setSaid(message);
+                      setBuild(backward.current ? (message.steps ?? 0) : 0);
                       // Drawn from the file: what it does not hold of what
                       // was typed is on no page any more.
                       forget();
@@ -1038,7 +1118,7 @@ export default function Sequence({
                       const counts = Array.isArray(message.counts)
                         ? message.counts.slice(0, boards.length).map(natural)
                         : undefined;
-                      if (doc)
+                      if (counted)
                         setFound((was) =>
                           String(was) === String(counts) ? was : counts,
                         );
@@ -1053,7 +1133,10 @@ export default function Sequence({
                         const [undo, redo] = [!!message.undo, !!message.redo];
                         setTold((was) => ({ ...was, undo, redo }));
                         void keep(save?.(message));
-                      } else if (mode === "edit" && editable) {
+                      } else if (
+                        (mode === "edit" && editable) ||
+                        (doc && typeof message.done === "boolean")
+                      ) {
                         const edit = {
                           ...message,
                           insert: doc ? message.insert : undefined,
@@ -1077,6 +1160,27 @@ export default function Sequence({
                           () => {},
                         );
                       }
+                    } else if (message.type === "source") {
+                      const { rect, label, path: from, line } = message;
+                      clearTimeout(unsourced.current);
+                      if (rect && typeof from === "string")
+                        setSource({
+                          rect,
+                          label: String(label ?? "").slice(0, 200),
+                          path: from,
+                          line: natural(line),
+                        });
+                      // A moment, for the pointer to reach the chip.
+                      else
+                        unsourced.current = setTimeout(
+                          () => !holding.current && setSource(undefined),
+                          300,
+                        );
+                    } else if (message.type === "cite") {
+                      if (typeof message.path === "string")
+                        cite?.(message.path, natural(message.line));
+                    } else if (message.type === "board") {
+                      changeBoard(message);
                     } else if (message.type === "caret") {
                       setCaret(caretOf(message));
                     } else if (message.type === "left") {
@@ -1108,6 +1212,9 @@ export default function Sequence({
                     else if (message.type === "picked")
                       setPicked((was) => was && { ...was, rect: message.rect });
                     else if (message.type === "sheet") {
+                      // Drawn: a find asked for before it listened is
+                      // asked again.
+                      if (query) marked();
                       const hidden = Number(message.hidden) || 0;
                       const readers = Number(message.readers) || 0;
                       setTold((was) => ({ ...was, hidden, readers }));
@@ -1177,6 +1284,33 @@ export default function Sequence({
                   }}
                 />
                 {mode === "select" && hover && mark(hover, "hover")}
+                {source && !mode && (
+                  // raw: laid under a value of the page, at the pane's size.
+                  <span
+                    class="float-toolbar page-source small"
+                    style={{
+                      left: `${source.rect.x * scale}px`,
+                      top: `${(source.rect.y + source.rect.height) * scale}px`,
+                    }}
+                    onPointerEnter={() => {
+                      holding.current = true;
+                    }}
+                    onPointerLeave={() => {
+                      holding.current = false;
+                      setSource(undefined);
+                    }}
+                  >
+                    <span>{source.label}</span>
+                    {cite && (
+                      <Button
+                        size="compact"
+                        onClick={() => cite(source.path, source.line)}
+                      >
+                        Open
+                      </Button>
+                    )}
+                  </span>
+                )}
                 {picked && mark(picked.rect, "picked")}
               </div>
             </div>

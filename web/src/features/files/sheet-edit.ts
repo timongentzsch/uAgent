@@ -17,7 +17,8 @@ const name = (said: unknown) =>
 const line = (text: unknown) => String(text ?? "").slice(0, 200);
 export function cellOf(said: Cell): Cell {
   const { count, sum, average } = said.summary ?? {};
-  const { bold, italic, wrap, align, fill, ink, format } = said.marks ?? {};
+  const { bold, italic, wrap, align, size, fill, ink, border, format } =
+    said.marks ?? {};
   return {
     type: "cell",
     ref: name(said.ref),
@@ -34,8 +35,10 @@ export function cellOf(said: Cell): Cell {
       italic: !!italic,
       wrap: !!wrap,
       align: name(align),
+      size: name(size),
       fill: name(fill),
       ink: name(ink),
+      border: name(border),
       format: name(format),
     },
     merged: !!said.merged,

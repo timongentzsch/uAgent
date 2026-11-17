@@ -158,8 +158,10 @@ test("what the page says of its selection is taken in the shape and size expecte
     italic: false,
     wrap: false,
     align: "right",
+    size: "large",
     fill: "good",
     ink: "",
+    border: "bottom",
     format: "0%",
   };
   const said = {
@@ -199,7 +201,9 @@ test("what the page says of its selection is taken in the shape and size expecte
       marks: {
         ...marks,
         align: "",
+        size: "",
         fill: "ab",
+        border: "",
         format: "7",
       },
       rules: [

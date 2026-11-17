@@ -2,7 +2,7 @@
 // source. The block is found by its place among those design-helper.js lists.
 
 const EDITABLE =
-  "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote";
+  "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote, pre";
 
 export interface BlockEdit {
   // Its place, or NOTES for a slide's speaker notes, whose `html` is their
@@ -19,6 +19,8 @@ export interface BlockEdit {
   as?: string;
   // What is put in after it: one of INSERTS.
   insert?: string;
+  // A checklist's item ticked or not, which needs no Edit.
+  done?: boolean;
 }
 
 // What a block can be turned into (an item is named by its list), and what
@@ -34,17 +36,23 @@ export const KINDS: Record<string, string> = {
 // is called.
 export const INSERTS: Record<string, string> = {
   ...KINDS,
+  checklist: "Checklist",
+  blockquote: "Quote",
+  pre: "Code",
   table: "Table",
   hr: "Divider",
 };
+const FRESH: Record<string, string> = {
+  hr: "<hr>",
+  table: `<table><thead><tr>${"<th>Column</th>".repeat(2)}</tr></thead><tbody>${`<tr>${"<td>Cell</td>".repeat(2)}</tr>`.repeat(2)}</tbody></table>`,
+  ul: "<ul><li>Item</li></ul>",
+  ol: "<ol><li>Item</li></ol>",
+  checklist: '<ul class="checklist"><li>Item</li></ul>',
+  blockquote: "<blockquote>Quote</blockquote>",
+  pre: "<pre><code>Code</code></pre>",
+};
 const fresh = (kind: string) =>
-  kind === "hr"
-    ? "<hr>"
-    : kind === "table"
-      ? `<table><thead><tr>${"<th>Column</th>".repeat(2)}</tr></thead><tbody>${`<tr>${"<td>Cell</td>".repeat(2)}</tr>`.repeat(2)}</tbody></table>`
-      : kind === "ul" || kind === "ol"
-        ? `<${kind}><li>Item</li></${kind}>`
-        : `<${kind}>${KINDS[kind]}</${kind}>`;
+  FRESH[kind] ?? `<${kind}>${KINDS[kind]}</${kind}>`;
 // The addresses a link made here may have: the web's, mail's, or "#" and
 // the id of a place in the page.
 export const LINK = /^((https?|mailto):|#\S)/i;
@@ -147,15 +155,23 @@ export function blankSlide(source: string) {
   return written(page, source);
 }
 
-// A slide's source with its mark to be skipped set or taken away: beside
-// its artboard, where the host reads it.
+// A slide's source with its mark to be skipped set or taken away, its other
+// words (how it comes in) kept: beside its artboard, where the host reads it.
 export function skipSlide(source: string, skip: boolean) {
   const page = parsed(source);
-  page.querySelector('meta[name="slide"]')?.remove();
-  if (skip)
+  const mark = page.querySelector('meta[name="slide"]');
+  const words = (mark?.getAttribute("content") ?? "")
+    .split(/\s+/)
+    .filter((word) => word && word !== "skip");
+  mark?.remove();
+  const content = (skip ? ["skip", ...words] : words).join(" ");
+  if (content)
     page
       .querySelector('meta[name="artboard"]')
-      ?.insertAdjacentHTML("afterend", '<meta name="slide" content="skip">');
+      ?.insertAdjacentHTML(
+        "afterend",
+        `<meta name="slide" content="${content.replace(/"/g, "&quot;")}">`,
+      );
   return written(page, source);
 }
 
@@ -285,8 +301,11 @@ export function applyEdit(
         )))
   )
     return null;
+  const ticked = typeof edit.done === "boolean";
+  if (ticked && !block.matches("ul.checklist > li")) return null;
   if (index === NOTES) note(block, String(edit.html));
   else fill(block, edit.html);
+  if (ticked) block.toggleAttribute("data-done", edit.done);
   const text = squash(block.textContent);
   // After the block, or after the whole of the list, table or figure it is
   // part of.

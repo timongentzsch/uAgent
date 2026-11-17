@@ -92,18 +92,30 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
             # the slides keep their own sandbox, the page runs none of them.
             (project / 'design/02 "b".html').write_text("<p>b</p>")
             (project / "design/03-left-out.html").write_text(
-                '<meta name="artboard" content="1440x900 slide"><meta name="slide" content="skip">'
+                '<meta name="artboard" content="1440x900 slide"><meta name="slide" content="push skip">'
             )
             status, deck, headers = page("design/?deck&w=1440&h=99999")
             assert_true(status == 200, (status, deck))
             assert_true(b"@page{size:1440px 8000px;margin:0}" in deck, deck[:200])
             assert_true(
-                deck.index(b'<iframe src="02%20%22b%22.html">')
-                < deck.index(b'<iframe src="hero-a.html">'),
+                deck.index(b'src="02%20%22b%22.html"') < deck.index(b'src="hero-a.html"'),
                 deck,
             )
-            # A slide that is skipped is not printed.
+            # A slide that is skipped is not printed, nor a document or a
+            # sheet of the folder; each page is printed at its artboard's size.
             assert_true(b"left-out" not in deck, deck)
+            (project / "design/04-memo.html").write_text('<meta name="print" content="flow a4">')
+            (project / "design/05-phone.html").write_text(
+                '<meta name="artboard" content="390x844">'
+            )
+            deck = page("design/?deck&w=1440&h=900")[1]
+            assert_true(b"memo" not in deck, deck)
+            assert_true(
+                b"@page p390x844{size:390px 844px;margin:0}" in deck
+                and b'<iframe class="p390x844" src="05-phone.html">' in deck
+                and b'<iframe class="p1440x900" src="02%20%22b%22.html">' in deck,
+                deck,
+            )
             policy = headers["Content-Security-Policy"]
             assert_true("sandbox" not in policy and "frame-ancestors 'none'" in policy, policy)
             assert_true(b"uagentDesign" not in deck, deck[:200])

@@ -205,22 +205,27 @@ test("an undone turn puts its file back", async ({ page, session, host }) => {
   await expect(page.locator(".turn-footer")).toBeVisible();
   await expect(page.locator(".turn-summary")).toHaveText(/^· /);
   expect(await exists(`${host.project}/browser-proof.txt`)).toBe(true);
-  // Outside a repository there is no diff, so the file itself opens.
+  // The file opens as what the turn changed in it, which Files undoes too.
   await receipt.click();
+  await expect(
+    page.getByRole("dialog", { name: "Changed files" }),
+  ).toContainText("Shell changes aren't tracked");
   await page
     .getByRole("dialog", { name: "Changed files" })
     .getByRole("button", { name: "browser-proof.txt", exact: true })
     .click();
-  await expect(
-    page.getByRole("region", { name: "Files" }).getByRole("heading"),
-  ).toHaveText("browser-proof.txt");
-  await receipt.click();
-  const sheet = page.getByRole("dialog", { name: "Changed files" });
-  await expect(sheet).toContainText("Shell changes aren't tracked");
-  await sheet.getByRole("button", { name: "Undo browser-proof.txt" }).click();
-  await expect(sheet).toContainText("Restored");
-  expect(await exists(`${host.project}/browser-proof.txt`)).toBe(false);
-  await expect(sheet.getByRole("button", { name: "Undo all" })).toBeDisabled();
+  const files = page.getByRole("region", { name: "Files" });
+  await expect(files.getByRole("heading")).toHaveText("browser-proof.txt");
+  const diff = files.getByRole("region", { name: "File changes" });
+  await expect(diff).toContainText("+++ b/browser-proof.txt");
+  await expect(diff.locator(".diff-add")).not.toHaveCount(0);
+  await files.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect
+    .poll(() => exists(`${host.project}/browser-proof.txt`))
+    .toBe(false);
+  await expect(files).toContainText(
+    "Undone: the file is as it was before this turn.",
+  );
 });
 
 test("a message queued during a turn runs after it", async ({

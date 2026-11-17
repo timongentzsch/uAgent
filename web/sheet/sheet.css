@@ -209,6 +209,29 @@ table[data-sheet] [data-ink="bad"] {
 table[data-sheet] [data-ink="muted"] {
   color: var(--sheet-muted);
 }
+table[data-sheet] [data-ink="accent"] {
+  color: var(--sheet-accent);
+}
+/* A size against the grid's, as grid.js measures it. */
+table[data-sheet] .sheet-small {
+  font-size: 0.85em;
+}
+table[data-sheet] .sheet-large {
+  font-size: 1.3em;
+}
+/* The lines written about a cell; its right and bottom are the grid's. */
+table[data-sheet] :is([data-border~="all"], [data-border~="top"]) {
+  border-top: 1px solid var(--sheet-ink);
+}
+table[data-sheet] :is([data-border~="all"], [data-border~="left"]) {
+  border-left: 1px solid var(--sheet-ink);
+}
+table[data-sheet] :is([data-border~="all"], [data-border~="bottom"]) {
+  border-bottom-color: var(--sheet-ink);
+}
+table[data-sheet] :is([data-border~="all"], [data-border~="right"]) {
+  border-right-color: var(--sheet-ink);
+}
 /* The selection: its box tinted over whatever fills the cells, its active
    cell ringed. */
 table[data-sheet] :is(.sheet-in, .sheet-read) {
@@ -387,6 +410,9 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
 }
 [data-swatch="fill-muted"] {
   --sheet-swatch: var(--sheet-edge);
+}
+[data-swatch="ink-accent"] {
+  --sheet-swatch: var(--sheet-accent);
 }
 [data-swatch="ink-good"] {
   --sheet-swatch: var(--sheet-ink-good);

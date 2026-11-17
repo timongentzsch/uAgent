@@ -69,15 +69,30 @@ const WORDS = {
   italic: ["italic"],
   wrap: ["wrap"],
   align: ["left", "center", "right"],
+  size: ["small", "large"],
 };
 // The text colours, as a workbook sent out has them.
-const INKS = {
+export const INKS = {
+  accent: "#1A56DB",
   good: "#116329",
   warn: "#855600",
   bad: "#B31D28",
   muted: "#555555",
 };
-const SAID = { fill: Object.keys(FILLS), ink: Object.keys(INKS) };
+const SIDES = ["all", "top", "bottom", "left", "right"];
+const SAID = {
+  fill: Object.keys(FILLS),
+  ink: Object.keys(INKS),
+  border: SIDES,
+};
+// A dropdown's options, each with the fill it may name: "Done:good".
+export const optionsOf = (text) =>
+  (text ?? "").split("|").map((option) => {
+    const [, value, fill] = /^(.*?)(?::(\w+))?$/.exec(option.trim());
+    return Object.hasOwn(FILLS, fill ?? "")
+      ? { value, fill }
+      : { value: option.trim() };
+  });
 // Where the engine keeps each look, and what it calls a colour.
 const STYLED = {
   bold: "font.b",
@@ -88,6 +103,10 @@ const STYLED = {
   ink: "font.color",
 };
 const COLOURED = { fill: FILLS, ink: INKS };
+// A size as the workbook's points, over its usual 11.
+export const POINTS = { small: "9", large: "14" };
+// A line about a cell, as a workbook sent out draws it.
+const LINE = { style: "thin", color: "#111111" };
 const has = (attrs, word) => !!attrs.class?.split(/\s+/).includes(word);
 // A run of a list `by` places on, and where each place of it then lies.
 const lifted = (list, at, count, by) => {
@@ -578,17 +597,27 @@ export function tableOf(engine, tabs) {
 
 // How a cell shows but for the rules: its own marks over its row's and
 // column's. A header and a total are bold.
+// A size and the lines about it are the cell's, else its row's. An option
+// of the column's dropdown fills a cell that has no fill of its own.
 const plainOf = (tab, row, column) => {
   const line = tab.rows[row - 1];
   const cell = line?.cells[column - 1];
   if (!cell) return {};
+  const sized = (attrs) => WORDS.size.find((word) => has(attrs, word));
+  const options =
+    row > headOf(tab) ? tab.columns[column - 1]["data-options"] : undefined;
   return {
     bold: has(cell.attrs, "bold") || isHeader(line) || isTotal(line),
     italic: has(cell.attrs, "italic"),
     wrap: has(cell.attrs, "wrap") || has(tab.columns[column - 1], "wrap"),
     align: WORDS.align.find((word) => has(cell.attrs, word)) ?? "",
-    fill: cell.attrs["data-fill"] ?? line.attrs["data-fill"],
+    size: sized(cell.attrs) ?? sized(line.attrs) ?? "",
+    fill:
+      cell.attrs["data-fill"] ??
+      line.attrs["data-fill"] ??
+      optionsOf(options).find(({ value }) => value === cell.text)?.fill,
     ink: cell.attrs["data-ink"],
+    border: cell.attrs["data-border"] ?? line.attrs["data-border"] ?? "",
   };
 };
 
@@ -605,15 +634,25 @@ export function xlsxOf(engine, tabs) {
       const wide = Number(column["data-width"]);
       if (wide) workbook.setColumnsWidth(sheet, c + 1, c + 1, wide);
     });
+    tab.rows.forEach((row, r) => {
+      const high = Number(row.attrs["data-height"]);
+      if (high) workbook.setRowsHeight(sheet, r + 1, r + 1, high);
+    });
   });
   eachCell(tabs, (_, sheet, row, column) => {
     const area = { sheet, row, column, width: 1, height: 1 };
-    for (const [name, value] of Object.entries(
-      plainOf(tabs[sheet], row, column),
-    )) {
+    const { border, size, ...looks } = plainOf(tabs[sheet], row, column);
+    for (const [name, value] of Object.entries(looks)) {
       const said = COLOURED[name] ? COLOURED[name][value] : `${value}`;
       if (value && said) workbook.updateRangeStyle(area, STYLED[name], said);
     }
+    if (size) workbook.updateRangeStyle(area, "font.size", POINTS[size]);
+    for (const side of border.split(/\s+/))
+      if (SIDES.includes(side))
+        workbook.setAreaWithBorder(area, {
+          item: LINE,
+          type: side[0].toUpperCase() + side.slice(1),
+        });
   });
   tabs.forEach((tab, sheet) => {
     for (const { top, left, bottom, right } of mergesOf(tab).merges.all)
@@ -1295,7 +1334,9 @@ export async function openBook(engine, written, locked, calculate) {
     // attribute goes with "".
     style: queued((sheet, box, name, value, skip) => {
       const words = WORDS[name];
-      const may = words ?? (SAID[name] && ["", ...SAID[name]]);
+      // "" takes the look off.
+      const said = words ?? SAID[name];
+      const may = said && ["", ...said];
       if (may && !may.includes(value)) return false;
       const tab = tabs[sheet];
       const attr = words ? "class" : `data-${name}`;
@@ -1357,7 +1398,7 @@ export async function openBook(engine, written, locked, calculate) {
       };
       const whole = box.top <= 1 && box.bottom >= tabs[sheet].rows.length;
       const within = (column) => column >= box.left && column <= box.right;
-      // A row's own fill goes where all its cells are in the box.
+      // A row's own looks go where all its cells are in the box.
       const across = (tab) => box.left <= 1 && box.right >= tab.columns.length;
       return commit(
         mapCells(
@@ -1372,7 +1413,11 @@ export async function openBook(engine, written, locked, calculate) {
               const inside = r + 1 >= box.top && r + 1 <= box.bottom;
               const attrs =
                 across(tab) && inside && !skip.has(r + 1)
-                  ? plainly(row.attrs, [], ["data-fill"])
+                  ? plainly(row.attrs, WORDS.size, [
+                      "data-fill",
+                      "data-border",
+                      "data-height",
+                    ])
                   : row.attrs;
               return attrs === row.attrs ? row : { ...row, attrs };
             }),
@@ -1384,6 +1429,7 @@ export async function openBook(engine, written, locked, calculate) {
             const attrs = plainly(cell.attrs, looks, [
               "data-fill",
               "data-ink",
+              "data-border",
               "data-format",
             ]);
             return attrs === cell.attrs ? cell : { ...cell, attrs };
@@ -1449,6 +1495,18 @@ export async function openBook(engine, written, locked, calculate) {
         ),
       );
     }),
+
+    // New text for cells anywhere in the book, by "sheet row column", as one
+    // step.
+    retype: queued((texts) =>
+      commit(
+        mapCells(tabs, (cell, sheet, row, column) =>
+          texts.has(`${sheet} ${row} ${column}`)
+            ? withText(cell, texts.get(`${sheet} ${row} ${column}`))
+            : cell,
+        ),
+      ),
+    ),
 
     // One row alone takes the row above it.
     fillDown: queued((sheet, box) => {

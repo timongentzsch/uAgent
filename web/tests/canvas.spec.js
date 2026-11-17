@@ -3097,3 +3097,107 @@ test("a slide's block takes Edit's tools as a document's does", async ({
     "<h1>Cover</h1><h2>The <b>plan</b></h2><aside>Say hello.</aside>",
   );
 });
+
+test("a page's menu on the canvas saves it as a PNG or a PDF, and every page as one PDF", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await design(host.project);
+  // The host draws pictures with the agent's browser: here it says it has
+  // one, and what is saved is asked for, not drawn.
+  await app.route("**/api/browser/status", (route) =>
+    route.fulfill({ json: {} }),
+  );
+  const saved = async (item) => {
+    const [download] = await Promise.all([
+      app.waitForEvent("download"),
+      app.getByRole("menuitem", { name: item }).click(),
+    ]);
+    return [
+      decodeURIComponent(new URL(download.url()).search),
+      download.suggestedFilename(),
+    ];
+  };
+  const files = await openFiles(app, session, "design/");
+  await expect(files.locator(".canvas-page")).toHaveCount(3);
+  await files.getByRole("button", { name: "Export Hero B" }).click();
+  await expect(app.getByRole("menuitem")).toHaveText([
+    "Copy as PNG",
+    "Export PNG 1×",
+    "Export PNG 2×",
+    "Export PDF",
+    "Export all 3 pages as PDF",
+  ]);
+  const [png, name] = await saved("Export PNG 2×");
+  expect(png).toMatch(
+    /^\?png=design\/01-hero-b\.html&w=\d+&h=\d+&scale=2&download=1$/,
+  );
+  expect(name).toBe("01-hero-b.png");
+  await files.getByRole("button", { name: "Export Cover" }).click();
+  expect(await saved("Export all 3 pages as PDF")).toEqual([
+    "?pdf=design/&download=1",
+    "design.pdf",
+  ]);
+});
+
+test("a deck's sections head the legend; presenting steps through a slide's builds, and a slide pushed in comes in pushed", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, legend } = await openDeck(app, session, host.project, {
+    "01-why.html": slide(
+      "Why",
+      "",
+      '<meta name="section" content="Problem"><ul><li data-step="1">Slow</li><li data-step="2">Costly</li></ul>',
+    ),
+    "02-how.html": slide(
+      "How",
+      "",
+      '<meta name="section" content="Plan"><meta name="slide" content="push">',
+    ),
+    "03-end.html": slide("End"),
+  });
+  await expect(legend.locator(".page-legend-section")).toHaveText([
+    "Problem",
+    "Plan",
+  ]);
+  // Outside presenting every step shows.
+  const { stage: shown } = viewerOf(files);
+  await expect(shown.getByText("Costly")).toBeVisible();
+  const opacity = (frame, text) =>
+    frame
+      .getByText(text)
+      .evaluate((element) => getComputedStyle(element).opacity);
+  await expect.poll(() => opacity(shown, "Costly")).toBe("1");
+
+  await files.getByRole("button", { name: "Present" }).click();
+  const stage = files.locator(".page-stage[data-presenting]");
+  const slideFrame = stage.frameLocator("iframe:not([inert])");
+  await expect.poll(() => opacity(slideFrame, "Slow")).toBe("0");
+  await app.keyboard.press("ArrowRight");
+  await expect(stage.getByText("1 / 3")).toBeVisible();
+  await expect.poll(() => opacity(slideFrame, "Slow")).toBe("1");
+  await expect.poll(() => opacity(slideFrame, "Costly")).toBe("0");
+  await app.keyboard.press("ArrowRight");
+  await expect.poll(() => opacity(slideFrame, "Costly")).toBe("1");
+  // Past its last step comes the next slide, pushed in over the last one:
+  // seen as it starts, however short its motion.
+  await stage.evaluate((element) => {
+    window.pushed = false;
+    new MutationObserver(() => {
+      window.pushed ||= !!element.querySelector('iframe[data-entering="push"]');
+    }).observe(element, { subtree: true, attributes: true });
+  });
+  await app.keyboard.press("ArrowRight");
+  await expect(stage.getByText("2 / 3")).toBeVisible();
+  await expect.poll(() => app.evaluate(() => window.pushed)).toBe(true);
+  await expect(stage.locator(".page-holder iframe")).toHaveCount(1);
+  // Back, a slide shows built.
+  await app.keyboard.press("ArrowLeft");
+  await expect(stage.getByText("1 / 3")).toBeVisible();
+  await expect.poll(() => opacity(slideFrame, "Costly")).toBe("1");
+  await app.keyboard.press("Escape");
+  await expect.poll(() => opacity(shown, "Slow")).toBe("1");
+});

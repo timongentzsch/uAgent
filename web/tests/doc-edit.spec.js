@@ -176,6 +176,41 @@ test("a block turned into another kind, or followed by a new one, leaves valid H
   );
 });
 
+test("a checklist's item is ticked and unticked, and nothing else is; a checklist, a quote and code are put in", async ({
+  page,
+}) => {
+  const body = async (inner, edit) => {
+    const made = await edited(page, page1(inner), edit);
+    return made && /<body>(.*)<\/body>/s.exec(made)[1];
+  };
+  const list =
+    '<ul class="checklist"><li>Book</li><li data-done="">Pay</li></ul>';
+  expect(await body(list, { ...typed(0, "Book", "Book"), done: true })).toBe(
+    '<ul class="checklist"><li data-done="">Book</li><li data-done="">Pay</li></ul>',
+  );
+  expect(await body(list, { ...typed(1, "Pay", "Pay"), done: false })).toBe(
+    '<ul class="checklist"><li>Book</li><li>Pay</li></ul>',
+  );
+  // An item of a plain list, or a paragraph, takes no tick.
+  expect(
+    await body("<ul><li>Book</li></ul>", { ...typed(0, "Book"), done: true }),
+  ).toBeNull();
+  for (const [insert, made] of [
+    ["checklist", '<ul class="checklist"><li>Item</li></ul>'],
+    ["blockquote", "<blockquote>Quote</blockquote>"],
+    ["pre", "<pre><code>Code</code></pre>"],
+  ])
+    expect(await body("<p>a</p>", { ...typed(0, "a", "a"), insert })).toBe(
+      `<p>a</p>${made}`,
+    );
+  // Code is a block typed in, with its lines.
+  expect(
+    await body("<pre><code>make</code></pre>", {
+      ...typed(0, "make", "<code>make\ndeploy</code>"),
+    }),
+  ).toBe("<pre><code>make\ndeploy</code></pre>");
+});
+
 test("a slide's notes are lines, and no block of the slide; a new slide is laid out as the deck's are", async ({
   page,
 }) => {
@@ -356,4 +391,29 @@ test("a closing page writes into the file as last seen here, when it was seen an
     "string",
     ["read 0", "write on 0"],
   ]);
+});
+
+test("skipping a slide keeps how it comes in, and taking the skip away leaves that alone", async ({
+  page,
+}) => {
+  const skip = (source, on) =>
+    page.evaluate(
+      async ([module, source, on]) =>
+        (await import(module)).skipSlide(source, on),
+      [MODULE, source, on],
+    );
+  const head = (meta) =>
+    `<!doctype html>\n<html><head><meta name="artboard" content="1920x1080 slide">${meta}</head><body></body></html>\n`;
+  const pushed = head('<meta name="slide" content="push">');
+  const skipped = await skip(pushed, true);
+  expect(skipped).toContain('<meta name="slide" content="skip push">');
+  expect(await skip(skipped, false)).toContain(
+    '<meta name="slide" content="push">',
+  );
+  expect(await skip(head(""), true)).toContain(
+    '<meta name="slide" content="skip">',
+  );
+  expect(
+    await skip(head('<meta name="slide" content="skip">'), false),
+  ).not.toContain('name="slide"');
 });

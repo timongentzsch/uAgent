@@ -263,11 +263,13 @@ interface Delivery {
   path: string;
 }
 // A file a message cites, as the Files pane opens it: its lines ("12" or
-// "12-20"), or its diff among the uncommitted changes.
+// "12-20"), or its diff: among the uncommitted changes, or what a turn
+// changed in it.
 export interface FileTarget {
   path: string;
   lines?: string;
   changes?: boolean;
+  turn?: number;
 }
 // What the inspector opens: a row's own work, or the one a link names.
 export interface ActivityTarget {
@@ -791,6 +793,8 @@ export interface CommandResults {
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
   revert: { restored: string[]; conflicts: { path: string; reason: string }[] };
+  // A turn's change to a file, as a unified diff.
+  changes: { path: string; text: string };
   // A fork cut before a message returns that message, to edit (prompt).
   fork: { id: string; prompt?: string };
   share: { path: string };
@@ -905,6 +909,7 @@ export interface CommandInputs {
   context: None;
   // The turn (0 = latest) and one file of it, or all.
   revert: { turn: number; path?: string };
+  changes: { turn: number; path: string };
   // argument: raw text after /fork, parsed by the native host; message_id:
   // the message a fork is cut before ("m-<id>").
   fork: { argument?: string; message_id?: string };

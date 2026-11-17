@@ -5,10 +5,12 @@ import type {
 } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
+  ALargeSmall,
   Baseline,
   Bold,
   Check,
   ChevronDown,
+  Grid2x2,
   Hash,
   Italic,
   PaintBucket,
@@ -62,6 +64,19 @@ const ALIGNS = {
   center: TextAlignCenter,
   right: TextAlignEnd,
 };
+const SIZES: Options = [
+  ["Small", "small"],
+  ["Normal", ""],
+  ["Large", "large"],
+];
+const BORDERS: Options = [
+  ["None", ""],
+  ["All", "all"],
+  ["Top", "top"],
+  ["Bottom", "bottom"],
+  ["Left", "left"],
+  ["Right", "right"],
+];
 const FORMATS: Options = [
   ["General", "general"],
   ["Number", "#,##0.00"],
@@ -118,7 +133,8 @@ function Choice({
 // How the selection's cells look, set as the active cell shows it; and
 // whether they are merged, which pressed again takes apart.
 function Looks({ cell, act }: { cell?: Cell; act: Act }) {
-  const { bold, italic, wrap, align, fill, ink, format } = cell?.marks ?? {};
+  const { bold, italic, wrap, align, size, fill, ink, border, format } =
+    cell?.marks ?? {};
   const Aligned = ALIGNS[align as keyof typeof ALIGNS] ?? TextAlignStart;
   return (
     <>
@@ -137,9 +153,16 @@ function Looks({ cell, act }: { cell?: Cell; act: Act }) {
         <Italic />
       </IconButton>
       <Choice
+        label="Text size"
+        icon={<ALargeSmall />}
+        options={SIZES}
+        value={size ?? ""}
+        pick={(value) => act("size", value)}
+      />
+      <Choice
         label="Text colour"
         icon={<Baseline />}
-        options={[["Default", ""], ...COLOURS.slice(1)]}
+        options={[["Default", ""], ...COLOURS]}
         swatch="ink"
         value={ink ?? ""}
         pick={(value) => act("ink", value)}
@@ -151,6 +174,13 @@ function Looks({ cell, act }: { cell?: Cell; act: Act }) {
         swatch="fill"
         value={fill ?? ""}
         pick={(value) => act("fill", value)}
+      />
+      <Choice
+        label="Borders"
+        icon={<Grid2x2 />}
+        options={BORDERS}
+        value={border ?? ""}
+        pick={(value) => act("border", value)}
       />
       <Choice
         label="Align"

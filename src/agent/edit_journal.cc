@@ -140,6 +140,27 @@ int64_t EditJournal::LastTurn() const {
   return turns_.empty() ? 0 : turns_.rbegin()->first;
 }
 
+json EditJournal::Texts(int64_t turn, const std::string& path) const {
+  const auto found = turns_.find(turn);
+  if (found == turns_.end()) return {{"error", "not found"}};
+  for (const Entry& entry : found->second) {
+    if (path != DisplayPath(entry.path) && path != entry.path) continue;
+    if (!entry.undoable) return {{"error", "not kept (binary or too large)"}};
+    std::string before, after, error;
+    if (entry.existed && !ReadRegularFile(Blob(turn, entry.path),
+                                          kUndoFileBytes, before, error)) {
+      return {{"error", error}};
+    }
+    if (!entry.after_hash.empty()) {
+      ReadWorkspaceFile(entry.path, EditFileBytes(), after, error);
+    }
+    return {{"path", DisplayPath(entry.path)},
+            {"before", before},
+            {"after", after}};
+  }
+  return {{"error", "not found"}};
+}
+
 json EditJournal::Revert(int64_t turn, const std::string& path) {
   json restored = json::array(), conflicts = json::array();
   auto found = turns_.find(turn);

@@ -629,6 +629,12 @@ TEST_CASE(TestEditJournal) {
   const json files = journal.Files(3);
   CHECK(files.size() == 1 && JsonValue(files[0], "added", 0) == 1 &&
         JsonValue(files[0], "removed", 0) == 1);
+  // What the turn found and what the file holds now, for its diff.
+  const json texts = journal.Texts(3, file);
+  CHECK(JsonValue(texts, "before", "") == "one\n" &&
+        JsonValue(texts, "after", "") == "three\n");
+  CHECK(journal.Texts(4, file).contains("error") &&
+        journal.Texts(3, "other.txt").contains("error"));
 
   EditJournal reopened;
   reopened.Open(directory);

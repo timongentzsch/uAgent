@@ -341,6 +341,9 @@
 [data-look="fill-muted"]::before {
   background: var(--surface);
 }
+[data-look="ink-accent"]::before {
+  background: var(--accent);
+}
 [data-look="ink-good"]::before {
   background: var(--added);
 }
@@ -466,6 +469,12 @@
 .page-legend-item[data-drop="after"]::before {
   inset: auto 0 calc(-1 * var(--space-2));
 }
+/* The part of a deck a slide opens, over it. */
+.page-legend-section {
+  width: 0;
+  min-width: 100%;
+  font-weight: var(--weight-strong);
+}
 .page-legend-name {
   width: 0;
   min-width: 100%;
@@ -548,6 +557,12 @@
 }
 .page-mark.hover {
   outline-style: dashed;
+}
+/* Where a value of the page came from, under it. */
+.page-source {
+  position: absolute;
+  z-index: var(--z-popover);
+  white-space: nowrap;
 }
 .page-tweaks {
   width: var(--pane);
@@ -782,6 +797,11 @@
   margin-left: var(--space-2);
   padding: 0 var(--space-1);
   border: var(--border);
+}
+/* A page's export menu, inside its top right corner: clear of its name. */
+.canvas-menu {
+  position: absolute;
+  transform: translate(calc(-100% - var(--space-2)), var(--space-2));
 }
 .canvas-name {
   position: absolute;

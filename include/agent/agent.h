@@ -192,6 +192,9 @@ class Agent {
   }
   // Puts them back; the model hears which at its next step, to re-read them.
   json Revert(int64_t turn, const std::string& path);
+  json TurnTexts(int64_t turn, const std::string& path) const {
+    return edits_.Texts(turn, path);
+  }
 
   // Tool results are text-only: attached files ride in on a user message.
   bool DrainAttachments();

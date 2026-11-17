@@ -1,6 +1,8 @@
 // An Excel or CSV file read into the tabs a sheet keeps, so it is drawn,
 // and saved as a sheet, like one.
 
+import { INKS, POINTS } from "./book.js";
+import { FILLS } from "./rules.js";
 import { boxName, fromCsv } from "./text.js";
 
 // A file with more cells is not read: the page would not answer for long.
@@ -27,6 +29,32 @@ const sized = (name, width, height) => {
   if (width * height > CELLS) throw new Error(`${name} is too large to show`);
 };
 const cell = (text, attrs = {}) => ({ th: false, attrs, text });
+const SIDES = ["top", "bottom", "left", "right"];
+const nameOf = (colours, color) =>
+  Object.keys(colours).find(
+    (name) => colours[name].toLowerCase() === color?.toLowerCase(),
+  );
+
+// The looks of a cell a sheet can write: its pattern, a size, the lines
+// about it, and a fill or text colour of the theme's.
+const looksOf = ({ num_fmt, font, fill, border }) => {
+  const sides = SIDES.filter((side) => border[side]?.style);
+  const size =
+    font.sz <= Number(POINTS.small)
+      ? "small"
+      : font.sz >= Number(POINTS.large)
+        ? "large"
+        : "";
+  return Object.fromEntries(
+    [
+      ["data-format", num_fmt === "general" ? "" : num_fmt],
+      ["class", size],
+      ["data-border", sides.length === 4 ? "all" : sides.join(" ")],
+      ["data-fill", nameOf(FILLS, fill.color)],
+      ["data-ink", nameOf(INKS, font.color)],
+    ].filter(([, value]) => value),
+  );
+};
 
 // A number that stays itself when read: no leading zero or "+", and no more
 // digits than a spreadsheet keeps. An ISO date, TRUE and FALSE are data too.
@@ -87,16 +115,19 @@ export function workbookTabs(engine, bytes, name) {
       const wide = model.getColumnWidth(at, c + 1);
       return wide === usual ? {} : { "data-width": `${Math.round(wide)}` };
     });
-    const rows = Array.from({ length: height }, (_, r) => ({
-      attrs: {},
-      cells: Array.from({ length: width }, (_, c) => {
-        const format = model.getCellStyle(at, r + 1, c + 1).style.num_fmt;
-        return cell(
-          model.getCellContent(at, r + 1, c + 1),
-          format === "general" ? {} : { "data-format": format },
-        );
-      }),
-    }));
+    const high = model.getRowHeight(at, height + 1);
+    const rows = Array.from({ length: height }, (_, r) => {
+      const own = model.getRowHeight(at, r + 1);
+      return {
+        attrs: own === high ? {} : { "data-height": `${Math.round(own)}` },
+        cells: Array.from({ length: width }, (_, c) =>
+          cell(
+            model.getCellContent(at, r + 1, c + 1),
+            looksOf(model.getCellStyle(at, r + 1, c + 1).style),
+          ),
+        ),
+      };
+    });
     // A first row whose filled cells are all text is the header.
     const filled = rows[0].cells.flatMap(({ text }, c) =>
       text ? [c + 1] : [],
@@ -114,7 +145,8 @@ export function workbookTabs(engine, bytes, name) {
       if (!format || others.length) return;
       column["data-format"] = format;
       for (const { cells } of rows)
-        if (cells[c].attrs["data-format"] === format) cells[c].attrs = {};
+        if (cells[c].attrs["data-format"] === format)
+          delete cells[c].attrs["data-format"];
     });
     const merged = model
       .getMergedCells(at)

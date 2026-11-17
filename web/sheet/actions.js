@@ -16,6 +16,14 @@ const COLOURS = {
   bad: "Bad",
   muted: "Muted",
 };
+const BORDERS = {
+  "": "None",
+  all: "All",
+  top: "Top",
+  bottom: "Bottom",
+  left: "Left",
+  right: "Right",
+};
 const FORMATS = {
   general: "General",
   "#,##0.00": "Number",
@@ -59,11 +67,11 @@ export const actionsOf = (sheet, clip) => (on) => {
     checked: (looks[name] ?? "").toLowerCase() === value,
     swatch,
   });
-  const colours = (name, none, from) => [
+  const colours = (name, none) => [
     one(name, "", none),
-    ...Object.entries(COLOURS)
-      .slice(from)
-      .map(([value, label]) => one(name, value, label, `${name}-${value}`)),
+    ...Object.entries(COLOURS).map(([value, label]) =>
+      one(name, value, label, `${name}-${value}`),
+    ),
   ];
   const held = sheet.held();
   // The merged cells the selection meets: it is merged unless it is one.
@@ -187,8 +195,20 @@ export const actionsOf = (sheet, clip) => (on) => {
                 one("align", way, way[0].toUpperCase() + way.slice(1)),
               ),
             },
-            { label: "Text colour", items: colours("ink", "Default", 1) },
-            { label: "Fill", items: colours("fill", "None", 0) },
+            {
+              label: "Text size",
+              items: ["small", "large"].map((size) =>
+                one("size", size, size[0].toUpperCase() + size.slice(1)),
+              ),
+            },
+            { label: "Text colour", items: colours("ink", "Default") },
+            { label: "Fill", items: colours("fill", "None") },
+            {
+              label: "Borders",
+              items: Object.entries(BORDERS).map(([side, label]) =>
+                one("border", side, label),
+              ),
+            },
             {
               label: "Number format",
               items: Object.entries(FORMATS).map(([pattern, label]) =>

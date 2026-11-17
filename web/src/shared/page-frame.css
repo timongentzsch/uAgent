@@ -36,6 +36,32 @@
   opacity: 0;
   pointer-events: none;
 }
+/* A presented slide that takes the place of the one before: it fades in
+   over that one, or pushes it out as it comes in. */
+.page-frame iframe[data-entering] {
+  animation: page-fade-in var(--motion-slow) var(--ease-out);
+}
+.page-frame iframe[data-entering="push"] {
+  animation-name: page-push-in;
+}
+.page-frame iframe[data-leaving="push"] {
+  animation: page-push-out var(--motion-slow) var(--ease-out) forwards;
+}
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes page-push-out {
+  to {
+    translate: -100% 0;
+  }
+}
+@keyframes page-push-in {
+  from {
+    translate: 100% 0;
+  }
+}
 /* Until its first page has drawn a frame holds the outline of one: a title
    and lines, or a sheet's grid. It comes after a moment, so a page that is
    quick shows nothing before itself. */

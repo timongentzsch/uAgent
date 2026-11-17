@@ -26,6 +26,8 @@ export interface Listing {
     artboard?: [number, number];
     count?: number;
     skip?: boolean;
+    // The part of a deck a slide opens.
+    section?: string;
   }[];
 }
 
@@ -52,6 +54,8 @@ export interface Board {
   row?: string;
   // A slide left out of what is presented and printed.
   skip?: true;
+  // The part of a deck it opens.
+  section?: string;
   // Why it failed, in a few words, else empty: a page threw or is not as it
   // should be drawn (design-helper.js); a picture or a film did not load.
   failed: string;
@@ -306,12 +310,16 @@ export function boardsOf(
     const like = slides
       .map((file) => seen[join(dir, file)]?.info)
       .find(Boolean);
-    const skipped = (file: string) =>
-      listing.entries.some((entry) => entry.name === file && entry.skip);
-    return slides.map((file) => ({
-      ...board(file, like),
-      ...(skipped(file) ? { skip: true as const } : {}),
-    }));
+    const entry = (file: string) =>
+      listing.entries.find((entry) => entry.name === file);
+    return slides.map((file) => {
+      const { skip, section } = entry(file) ?? {};
+      return {
+        ...board(file, like),
+        ...(skip ? { skip: true as const } : {}),
+        ...(section ? { section } : {}),
+      };
+    });
   }
   // What lies on the canvas, by the name that says its row.
   const lying = new Map<string, Board>();

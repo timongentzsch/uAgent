@@ -189,6 +189,11 @@ export default function Legend({
                 : undefined
           }
         >
+          {board.section && (
+            <span class="page-legend-section small truncate">
+              {board.section}
+            </span>
+          )}
           <Frame
             live={false}
             src={srcs[at]}
@@ -209,7 +214,7 @@ export default function Legend({
             class="cover"
             {...option(
               at,
-              `${unit} ${at + 1}: ${board.title}${board.failed ? ", failed to run" : ""}${board.skip ? ", skipped" : ""}`,
+              `${board.section ? `${board.section}, ` : ""}${unit} ${at + 1}: ${board.title}${board.failed ? ", failed to run" : ""}${board.skip ? ", skipped" : ""}`,
             )}
           />
         </div>

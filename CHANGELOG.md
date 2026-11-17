@@ -7,6 +7,13 @@
 - **Agents started in Auto are judged.** The review sees an agent's brief (and a later message to it) before the agent starts, against what you asked, so a conversation steered by something it read cannot pass a request on through an agent. In Ask, Plan and yolo agents start unasked as before; a folder rule can refuse or ask (`/permissions deny agent_start *`).
 - **An agent's report arrives as data.** The parent reads it labelled as the agent's report, data, not instructions, whether it waited for the agent or the report came as mail.
 - **A report that tries to direct its parent waits for you.** In Auto the review judges a report before the parent reads it. One that instructs the parent, claims work beyond its brief or carries secrets shows on a card with **Withhold** and **Deliver**; with nobody to ask, the parent gets only a note that it was withheld, and the report stays in the agent's conversation.
+- **Whiteboards.** The agent can draw a flow, map, retro or plan as notes, sections, text, twelve shapes, tables, pictures, link cards and arrows, alone (`boards/<name>/board.html`) or as a page of a design. Opened in Files, items are dragged, nudged with the arrow keys, resized by their corner and retyped with a double click, and ⌘Z undoes; each change is written to that item alone.
+- **Numbers from your data.** A page can show values from a CSV or JSON file in its folder; pointing at one shows the file, column and row it came from, and Open shows the file there. A value naming a missing column or row is reported to the agent.
+- **Sheets take borders, text sizes, row heights and coloured dropdown options**, from the format row too, and keep them through Excel export and import. Find works in sheets, over what the cells show, and Replace changes typed text, never a formula.
+- **Documents have checklists**, ticked in Files without Edit, and code and quote blocks you can insert.
+- **Slides build and push.** Elements of a slide can appear one click at a time while presenting, a slide can push the one before out (others fade in), and sections head the legend.
+- **A design's pages export from the canvas**: copy as PNG, PNG at 1× or 2×, PDF, or every page as one PDF, each at its own size.
+- **See what a turn changed in a file.** A file opened from a turn's changed files shows that turn's change, even outside a repository, with Undo beside it.
 
 ## v1.10.1 - 2026-11-16
 

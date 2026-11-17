@@ -9,6 +9,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -149,8 +150,21 @@ json ArtboardSize(const std::string& head) {
 }
 
 // Whether a slide's head leaves it out of what is presented and printed.
+// The content of the meta tag named `name`, as written; empty when none.
+std::string MetaContent(const std::string& head, const std::string& name) {
+  const std::string tag = MetaTag(head, name);
+  const size_t at = tag.find("content=\"");
+  return at == std::string::npos
+             ? std::string()
+             : tag.substr(at + 9, tag.find('"', at + 9) - at - 9);
+}
+
 bool Skipped(const std::string& head) {
-  return MetaTag(head, "slide").find("\"skip\"") != std::string::npos;
+  std::istringstream words(MetaContent(head, "slide"));
+  for (std::string word; words >> word;) {
+    if (word == "skip") return true;
+  }
+  return false;
 }
 
 // How many tabs a sheet has: its tables.
@@ -504,25 +518,46 @@ std::string PreviewMime(const fs::path& path) {
   return mime.starts_with("image/") ? mime : std::string();
 }
 
+// A folder's pages printed in name order, each at its own artboard's size
+// (the asked size where it names none): a deck's slides, or a design's
+// pages. Documents and sheets are artifacts of their own, and a skipped
+// slide is left out.
 std::string DeckPage(const fs::path& folder, int width, int height) {
-  std::vector<std::string> slides;
+  const auto px = [](int64_t n) { return std::to_string(n) + "px"; };
+  // Each page by its file's name, and the named @page of its size.
+  std::vector<std::pair<std::string, std::string>> pages;
+  std::map<std::string, std::string> sizes;
   std::error_code error;
   for (const auto& entry : fs::directory_iterator(folder, error)) {
-    if (entry.is_regular_file(error) && entry.path().extension() == ".html" &&
-        !Skipped(Head(entry.path()))) {
-      slides.push_back(entry.path().filename().string());
+    if (!entry.is_regular_file(error) || entry.path().extension() != ".html") {
+      continue;
     }
+    const std::string head = Head(entry.path());
+    const std::string kind = PageKind(head);
+    if (kind == "doc" || kind == "sheet" || Skipped(head)) continue;
+    const json size = ArtboardSize(head);
+    const auto side = [&](size_t at, int asked) {
+      const int64_t said = size.is_array() ? size[at].get<int64_t>() : 0;
+      return said > 0 ? std::min<int64_t>(said, 8000) : asked;
+    };
+    const int64_t w = side(0, width), h = side(1, height);
+    const std::string name = "p" + std::to_string(w) + "x" + std::to_string(h);
+    sizes[name] = "{size:" + px(w) + " " + px(h) + ";margin:0}." + name +
+                  "{page:" + name + ";width:" + px(w) + ";height:" + px(h) +
+                  "}";
+    pages.emplace_back(entry.path().filename().string(), name);
   }
-  std::ranges::sort(slides);
-  const std::string size =
-      std::to_string(width) + "px " + std::to_string(height) + "px";
+  std::ranges::sort(pages);
   std::string page =
-      "<!doctype html><meta charset=\"utf-8\"><style>@page{size:" + size +
-      ";margin:0}html,body{margin:0}iframe{display:block;border:0;width:" +
-      std::to_string(width) + "px;height:" + std::to_string(height) +
-      "px;break-after:page}</style>";
-  for (const std::string& slide : slides) {
-    page += "<iframe src=\"" + PercentEncode(slide) + "\"></iframe>";
+      "<!doctype html><meta charset=\"utf-8\"><style>@page{size:" + px(width) +
+      " " + px(height) +
+      ";margin:0}html,body{margin:0}iframe{display:block;"
+      "border:0;break-after:page}";
+  for (const auto& [name, rules] : sizes) page += "@page " + name + rules;
+  page += "</style>";
+  for (const auto& [file, name] : pages) {
+    page += "<iframe class=\"" + name + "\" src=\"" + PercentEncode(file) +
+            "\"></iframe>";
   }
   return page;
 }
@@ -637,6 +672,11 @@ json Request(const fs::path& root, const json& request) {
         entry["artboard"] = std::move(size);
       }
       if (Skipped(head)) entry["skip"] = true;
+      // A slide that opens a part of a deck names it.
+      if (std::string section = MetaContent(head, "section");
+          !section.empty()) {
+        entry["section"] = Utf8Prefix(std::move(section), 80);
+      }
       if (kind == "sheet") {
         entry["count"] = SheetTabs(*target / name);
       } else if (kind != "doc") {

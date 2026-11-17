@@ -18,6 +18,7 @@ import {
   LAST,
   letters,
   meeting,
+  occurrences,
   sheetText,
   spread,
   tableText,
@@ -850,12 +851,20 @@ async function open() {
     // A look for the selection's cells in view; a word (Bold) is its own
     // value.
     ...Object.fromEntries(
-      ["bold", "italic", "wrap", "align", "fill", "ink", "format"].map(
-        (name) => [
-          name,
-          (value = name) => book.style(at, box(), name, String(value), hidden),
-        ],
-      ),
+      [
+        "bold",
+        "italic",
+        "wrap",
+        "align",
+        "size",
+        "fill",
+        "ink",
+        "border",
+        "format",
+      ].map((name) => [
+        name,
+        (value = name) => book.style(at, box(), name, String(value), hidden),
+      ]),
     ),
   };
   // What is kept of each tab (its place, its filters) is let go with them.
@@ -1025,12 +1034,54 @@ async function open() {
       sheet.run(data.command, data.value);
     }
     if (data.type === "input") type(String(data.value));
+    if (data.type === "find") find(String(data.text), Number(data.index));
+    if (data.type === "replace")
+      replace(String(data.text), String(data.with), Number(data.index));
     // What the app's formula bar may take after `text`.
     if (data.type === "suggest") {
       const text = String(data.text);
       say({ type: "suggest", text, ...suggestions(text, book.tokens) });
     }
   });
+  // Find counts what the cells show by tab, as Files counts boards, and
+  // picks the `index`th of the tab shown.
+  const found = (sheet, text) =>
+    book.tabs[sheet].rows.flatMap((line, r) =>
+      line.cells.flatMap((_, c) =>
+        occurrences(book.shown(sheet, r + 1, c + 1), text).length
+          ? [{ sheet, row: r + 1, column: c + 1 }]
+          : [],
+      ),
+    );
+  const find = (text, index) => {
+    say({
+      type: "find",
+      counts: offered.map((tab) => (text ? found(tab, text).length : 0)),
+    });
+    const cell = text ? found(at, text)[index] : undefined;
+    if (cell) sheet.select(cell);
+  };
+  // Replace changes what was typed, so a formula is left as it is: in the
+  // `index`th found on the tab shown, or in all on every tab.
+  const replace = (text, by, index) => {
+    if (!text || sheet.locked) return;
+    const cells =
+      index < 0
+        ? offered.flatMap((tab) => found(tab, text))
+        : found(at, text).slice(index, index + 1);
+    const texts = new Map();
+    for (const { sheet: tab, row, column } of cells) {
+      const typed = book.tabs[tab].rows[row - 1].cells[column - 1].text;
+      const places = occurrences(typed, text);
+      if (typed.startsWith("=") || !places.length) continue;
+      let next = typed;
+      for (const place of places.reverse())
+        next = next.slice(0, place) + by + next.slice(place + text.length);
+      texts.set(`${tab} ${row} ${column}`, next);
+    }
+    if (texts.size)
+      sheet.did(book.retype(texts)).then(() => find(text, Math.max(0, index)));
+  };
   const said = () => show(addressed());
   addEventListener("hashchange", said);
   said();

@@ -83,7 +83,7 @@ export function TurnFooter({
               openFile &&
               ((path) => {
                 setReviewing(false);
-                openFile({ path, changes: true });
+                openFile({ path, changes: true, turn: summary.turn });
               })
             }
           />

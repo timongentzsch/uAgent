@@ -1,12 +1,12 @@
 ---
 name: artifact
-description: Open before making a spreadsheet, budget, memo, report, slide deck or design
+description: Open before making a spreadsheet, memo, report, deck, design or whiteboard
 ---
 
 # Artifacts
 
 An artifact is plain HTML in the folder, shown live and sandboxed in the
-web's Files pane, beside the chat. There are five types. Read the reference
+web's Files pane, beside the chat. There are six types. Read the reference
 of the one you make before you write a file:
 
 | Type | It is | Where | Read first |
@@ -16,6 +16,7 @@ of the one you make before you write a file:
 | Design | screens, pages, posts or a flow on a canvas: a folder of pages | `design/<name>/` | `references/design.md` |
 | Design system | tokens, components and a brand book the others link | `design/system/` | `references/design-system.md` |
 | Sheet | a budget, tracker, table or model with formulas: one file | `sheets/<name>.html` | `references/sheet.md` |
+| Whiteboard | a flow, map, retro or plan of notes, shapes and arrows | `boards/<name>/board.html`, or a page of a design | `references/whiteboard.md` |
 
 In a workspace any folder serves. A new artifact is a new file or folder:
 change an existing one only when the person asks to change it.

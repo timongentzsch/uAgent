@@ -84,6 +84,7 @@ import {
   type Saved,
   skipSlide,
 } from "./doc-edit.ts";
+import { type BoardEdit, boardEdit } from "./board-edit.ts";
 import { downloadBlob } from "../../shared/share.ts";
 import { copyDrawn, type Drawn, saveDrawn } from "./drawn.ts";
 import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
@@ -199,7 +200,10 @@ export default function Sequence({
     add?: { name: string; text: string },
   ) => void;
   // A slide's file written as `change` makes it of what it holds.
-  rewrite?: (path: string, change: (source: string) => string) => void;
+  rewrite?: (
+    path: string,
+    change: (source: string) => string,
+  ) => Promise<unknown>;
   arranging?: boolean;
   // Opens a picture in the image viewer, which can draw on it.
   view: (image: ViewedImage) => void;
@@ -367,6 +371,33 @@ export default function Sequence({
   const showBuild = (at: number) => {
     setBuild(at);
     tell(frame.current, { type: "build", at });
+  };
+  // A whiteboard's changes made here, each with the text it took the place
+  // of: ⌘Z puts that back while the file is as the change left it.
+  // They are written one after another, as fast as they come.
+  const boardPast = useRef<{ path: string; before: string; after: string }[]>(
+    [],
+  );
+  const boardWrites = useRef<Promise<unknown>>(Promise.resolve());
+  const changeBoard = ({
+    undo,
+    ...edit
+  }: Partial<BoardEdit> & { undo?: boolean }) => {
+    const change = (source: string) => {
+      if (undo) {
+        const last = boardPast.current.at(-1);
+        if (last?.path !== path || source !== last.after) return source;
+        boardPast.current.pop();
+        return last.before;
+      }
+      const after = boardEdit(source, { ...edit, id: String(edit.id) });
+      if (after === null) return source;
+      boardPast.current.push({ path, before: source, after });
+      return after;
+    };
+    boardWrites.current = boardWrites.current.then(() =>
+      rewrite?.(path, change),
+    );
   };
   // Presenting starts at the slide's first step; ended, all of it shows.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on presenting alone
@@ -1117,6 +1148,8 @@ export default function Sequence({
                           () => {},
                         );
                       }
+                    } else if (message.type === "board") {
+                      changeBoard(message);
                     } else if (message.type === "caret") {
                       setCaret(caretOf(message));
                     } else if (message.type === "left") {

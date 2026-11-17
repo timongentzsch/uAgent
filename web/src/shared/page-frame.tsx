@@ -91,6 +91,16 @@ export type PageMessage =
       done?: boolean;
     }
   | { type: "left" }
+  // A whiteboard's item moved, resized or retyped, or the last such change
+  // undone (an item's id and what it now is).
+  | {
+      type: "board";
+      id?: string;
+      at?: number[];
+      size?: number[];
+      text?: string;
+      undo?: boolean;
+    }
   | {
       type: "caret";
       tag?: string;

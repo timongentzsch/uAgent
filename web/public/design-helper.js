@@ -370,13 +370,24 @@
     const colors = document.createElement("style");
     colors.textContent =
       "html{print-color-adjust:exact;-webkit-print-color-adjust:exact}" +
-      "[data-uagent-busy] table[data-sheet]{visibility:hidden}";
+      "[data-uagent-busy] table[data-sheet]{visibility:hidden}" +
+      "[data-uagent-busy] body>[data-at]{visibility:hidden}";
     document.head.prepend(colors);
   });
 
   // A sheet is drawn and calculated by the code installed with its engine,
   // loaded from the page's own address. Until that is done the page says it
   // is busy, which a capture and the agent's browser wait out.
+  // A whiteboard is drawn by its own code from the same place.
+  addEventListener("DOMContentLoaded", () => {
+    if (!document.querySelector('meta[name="board"]')) return;
+    const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
+    root.dataset.uagentBusy = "";
+    window.uagentReady = import(`${base}~sheet/whiteboard.js`)
+      .then((board) => board.ready)
+      .catch((error) => [`the whiteboard could not be drawn: ${error.message}`])
+      .finally(() => delete root.dataset.uagentBusy);
+  });
   addEventListener("DOMContentLoaded", () => {
     if (!meta("sheet")) return;
     const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
@@ -930,7 +941,11 @@
   // too (Space only where it presses nothing).
   addEventListener("keydown", (event) => {
     const within = (selector) => event.target.closest?.(selector);
-    if (within("input, textarea, select, [contenteditable]")) return;
+    if (
+      event.defaultPrevented ||
+      within("input, textarea, select, [contenteditable]")
+    )
+      return;
     const paging =
       stepped() &&
       ["Home", "End", "PageUp", "PageDown", " "].includes(event.key) &&

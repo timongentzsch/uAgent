@@ -51,6 +51,8 @@ their message. You make every change by editing the files.
   `write_file` and `from`. Icons are inline stroke SVG; no emoji.
 - Charts and diagrams are inline SVG drawn in the markup, labelled with
   their values.
+- Numbers that live in a CSV or JSON file in the folder are marked, not
+  typed: read `references/data.md`.
 
 ## Craft
 

@@ -154,6 +154,7 @@ export default function Sequence({
   typing,
   saveAs,
   arrange,
+  cite,
   rewrite,
   arranging,
   view,
@@ -200,6 +201,8 @@ export default function Sequence({
     add?: { name: string; text: string },
   ) => void;
   // A slide's file written as `change` makes it of what it holds.
+  // A file of the folder opened at a line, from the page.
+  cite?: (path: string, line: number) => void;
   rewrite?: (
     path: string,
     change: (source: string) => string,
@@ -1148,6 +1151,9 @@ export default function Sequence({
                           () => {},
                         );
                       }
+                    } else if (message.type === "cite") {
+                      if (typeof message.path === "string")
+                        cite?.(message.path, natural(message.line));
                     } else if (message.type === "board") {
                       changeBoard(message);
                     } else if (message.type === "caret") {

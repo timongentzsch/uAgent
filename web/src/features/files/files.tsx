@@ -921,6 +921,11 @@ export default function Files({
                 setFlow((current) => push(current, { kind: "sequence", path }));
               }}
               arrange={kind === "deck" ? arrange : undefined}
+              cite={(path, line) =>
+                leave((current) =>
+                  follow(current, path, line ? [line, line] : undefined),
+                )
+              }
               rewrite={rewrite}
               arranging={arranging.busy}
               view={viewer}

@@ -91,6 +91,9 @@ export type PageMessage =
       done?: boolean;
     }
   | { type: "left" }
+  // A file of the folder to open at a line (0: at its start), from where a
+  // page's value came.
+  | { type: "cite"; path: string; line: number }
   // A whiteboard's item moved, resized or retyped, or the last such change
   // undone (an item's id and what it now is).
   | {

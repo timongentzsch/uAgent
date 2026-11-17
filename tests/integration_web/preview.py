@@ -98,15 +98,16 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
             assert_true(status == 200, (status, deck))
             assert_true(b"@page{size:1440px 8000px;margin:0}" in deck, deck[:200])
             assert_true(
-                deck.index(b'src="02%20%22b%22.html"')
-                < deck.index(b'src="hero-a.html"'),
+                deck.index(b'src="02%20%22b%22.html"') < deck.index(b'src="hero-a.html"'),
                 deck,
             )
             # A slide that is skipped is not printed, nor a document or a
             # sheet of the folder; each page is printed at its artboard's size.
             assert_true(b"left-out" not in deck, deck)
             (project / "design/04-memo.html").write_text('<meta name="print" content="flow a4">')
-            (project / "design/05-phone.html").write_text('<meta name="artboard" content="390x844">')
+            (project / "design/05-phone.html").write_text(
+                '<meta name="artboard" content="390x844">'
+            )
             deck = page("design/?deck&w=1440&h=900")[1]
             assert_true(b"memo" not in deck, deck)
             assert_true(

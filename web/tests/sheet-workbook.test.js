@@ -246,3 +246,47 @@ test("the tabs read are a book like any: calculated, and locked against every ch
   const cells = ({ hidden, ...tab }) => tab;
   assert.deepEqual(again.map(cells), structuredClone(book.tabs).map(cells));
 });
+
+test("a sheet's sizes, lines, row heights and theme colours go out to Excel and are read back as written", async () => {
+  const plain = (text, attrs = {}) => ({ th: false, attrs, text });
+  const tab = {
+    name: "Plan",
+    attrs: {},
+    markup: [],
+    charts: [],
+    columns: [{}, { "data-options": "To do:muted|Done:good" }],
+    rows: [
+      {
+        attrs: { "data-height": "40", class: "large" },
+        cells: [
+          { th: true, attrs: {}, text: "Task" },
+          { th: true, attrs: {}, text: "Status" },
+        ],
+      },
+      {
+        attrs: {},
+        cells: [
+          plain("Ship", { class: "small", "data-ink": "accent" }),
+          plain("Done", { "data-border": "bottom" }),
+        ],
+      },
+    ],
+  };
+  const [read] = workbookTabs(
+    engine,
+    await ask({ tabs: [tab], xlsx: true }),
+    "book",
+  );
+  assert.deepEqual(read.rows[0].attrs, { "data-height": "40" });
+  assert.deepEqual(
+    read.rows.map((row) => row.cells.map((cell) => cell.attrs)),
+    [
+      [{ class: "large" }, { class: "large" }],
+      // An option's colour goes out as the cell's fill.
+      [
+        { class: "small", "data-ink": "accent" },
+        { "data-border": "bottom", "data-fill": "good" },
+      ],
+    ],
+  );
+});

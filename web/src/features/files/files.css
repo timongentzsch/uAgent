@@ -341,6 +341,9 @@
 [data-look="fill-muted"]::before {
   background: var(--surface);
 }
+[data-look="ink-accent"]::before {
+  background: var(--accent);
+}
 [data-look="ink-good"]::before {
   background: var(--added);
 }

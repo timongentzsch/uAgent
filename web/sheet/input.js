@@ -1,7 +1,7 @@
 // One field holds the focus, unseen on the active cell, so typing replaces
 // and the clipboard works as in any field.
 
-import { headOf } from "./book.js";
+import { headOf, optionsOf } from "./book.js";
 import { actionsOf } from "./actions.js";
 import { openMenu } from "./menu.js";
 import { composing, suggest } from "./suggest.js";
@@ -122,7 +122,7 @@ export function listen(sheet) {
   const edit = (typed) => {
     if (sheet.locked) return rest();
     const options = inBody(active()) && columnOf()["data-options"];
-    if (options) return choose(options.split("|"));
+    if (options) return choose(optionsOf(options).map(({ value }) => value));
     editing = true;
     sheet.see();
     editor.dataset.editing = "";

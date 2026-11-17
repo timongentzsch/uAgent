@@ -88,6 +88,9 @@ const edge = (text, scope, data = {}) => {
   return cell;
 };
 
+// A cell's text size against the grid's (sheet.css).
+const SIZES = { small: 0.85, large: 1.3 };
+
 // A text's width on a canvas, asked once a text.
 const pen = document.createElement("canvas").getContext("2d");
 const known = new Map();
@@ -160,8 +163,8 @@ const gutter = (groups, lanes, n, across) => {
 export function sizesOf(table, book, sheet) {
   const tab = book.tabs[sheet];
   const style = getComputedStyle(table);
-  const font = (bold) =>
-    `${bold ? 600 : 400} ${style.fontSize} ${style.fontFamily}`;
+  const font = (bold, size = "") =>
+    `${bold ? 600 : 400} ${Number.parseFloat(style.fontSize) * (SIZES[size] ?? 1)}px ${style.fontFamily}`;
   // The mark of a header's menu (in a button) and of a list of options.
   const mark = wide("▾", font(false)) + 4;
   const head = headOf(tab);
@@ -173,9 +176,10 @@ export function sizesOf(table, book, sheet) {
   const ruled = tab.columns.map((_, c) => book.emboldens(sheet, c + 1));
   const marks = tab.rows.map((row, r) =>
     row.cells.map((_, c) => {
-      const { bold, wrap } = book.plain(sheet, r + 1, c + 1);
+      const { bold, wrap, size } = book.plain(sheet, r + 1, c + 1);
       return {
         wrap,
+        size,
         bold: bold || (ruled[c] && !!book.look(sheet, r + 1, c + 1).bold),
       };
     }),
@@ -190,7 +194,7 @@ export function sizesOf(table, book, sheet) {
       (most, texts, r) =>
         Math.max(
           most,
-          wide(texts[c], font(marks[r][c].bold)) +
+          wide(texts[c], font(marks[r][c].bold, marks[r][c].size)) +
             (r === head - 1
               ? mark + 4
               : r >= head && column["data-options"]
@@ -208,11 +212,16 @@ export function sizesOf(table, book, sheet) {
   const heights = shown.map((texts, r) =>
     Math.max(
       row + (isTotal(tab.rows[r]) ? 1 : 0),
-      ...texts.map((text, c) =>
-        marks[r][c].wrap
-          ? lines(text, font(marks[r][c].bold), widths[c] - PAD) * line + 5
-          : 0,
-      ),
+      Number(tab.rows[r].attrs["data-height"]) || 0,
+      ...texts.map((text, c) => {
+        const { bold, size, wrap } = marks[r][c];
+        const high = line * (SIZES[size] ?? 1);
+        return wrap
+          ? lines(text, font(bold, size), widths[c] - PAD) * high + 5
+          : size && text
+            ? Math.ceil(high) + 5
+            : 0;
+      }),
     ),
   );
   return { widths, heights, row };
@@ -285,7 +294,9 @@ export function draw(table, book, sheet, filters, view) {
       Object.assign(drawn.dataset, { row: number, column: at });
       const marks = book.marks(sheet, number, at);
       if (marks.fill) drawn.dataset.fill = marks.fill;
+      if (marks.border) drawn.dataset.border = marks.border;
       if (marks.align) drawn.classList.add(`sheet-${marks.align}`);
+      if (marks.size) drawn.classList.add(`sheet-${marks.size}`);
       for (const name of ["bold", "italic", "strike", "wrap"])
         drawn.classList.toggle(`sheet-${name}`, marks[name]);
       drawn.classList.toggle("sheet-number", kind === "number");
@@ -325,7 +336,7 @@ export function draw(table, book, sheet, filters, view) {
     const row = tab.rows[line - 1];
     const drawn = marked(make("tr"), row?.attrs ?? {});
     drawn.classList.toggle("sheet-head", !!row && isHeader(row));
-    drawn.style.height = `${view.row + (row && isTotal(row) ? 1 : 0)}px`;
+    drawn.style.height = `${Math.max(view.row + (row && isTotal(row) ? 1 : 0), Number(row?.attrs["data-height"]) || 0)}px`;
     // Each held row sticks under those before it, each held column beside.
     if (line <= frozen.rows) {
       drawn.classList.add("sheet-frozen");

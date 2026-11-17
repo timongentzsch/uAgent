@@ -435,3 +435,19 @@ export const tableText = ({ name, attrs, columns, rows, charts }) =>
         `<figure${attributes(chart.attrs)}><figcaption>${escaped(chart.caption)}</figcaption></figure>`,
     ),
   ].join("\n");
+
+// Where each occurrence of `query` starts in `text`, without overlaps; only
+// A-Z fold, as Files' find does (src/shared/find.ts).
+export function occurrences(text, query) {
+  const fold = (said) => said.replace(/[A-Z]/g, (c) => c.toLowerCase());
+  const [needle, haystack] = [fold(query), fold(text)];
+  const found = [];
+  if (!needle) return found;
+  for (
+    let at = haystack.indexOf(needle);
+    at >= 0;
+    at = haystack.indexOf(needle, at + needle.length)
+  )
+    found.push(at);
+  return found;
+}

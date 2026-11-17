@@ -917,7 +917,8 @@
       edit(!!event.data.on, event.data.at, event.data.over);
     if (event.data.type === "format") format(event.data);
     if (event.data.type === "markdown") send("markdown", { text: markdown() });
-    if (event.data.type === "find") {
+    // A sheet's page finds in its grid itself.
+    if (event.data.type === "find" && !meta("sheet")) {
       sought = [String(event.data.text), Number(event.data.index)];
       if (paper()) turn();
       else find(...sought);

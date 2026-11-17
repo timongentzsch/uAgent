@@ -41,8 +41,10 @@ export interface Marks {
   italic: boolean;
   wrap: boolean;
   align: string;
+  size: string;
   fill: string;
   ink: string;
+  border: string;
   format: string;
 }
 // A rule of a sheet's column: on the row or on the cell, and where the page
@@ -191,6 +193,7 @@ export const tell = (
     | { type: "markdown" }
     | { type: "tweak"; name: string; value: unknown }
     | { type: "find"; text: string; index: number }
+    | { type: "replace"; text: string; with: string; index: number }
     | { type: "input"; value: string }
     | { type: "suggest"; text: string }
     | { type: "do"; command: string; value?: string; tab?: number },

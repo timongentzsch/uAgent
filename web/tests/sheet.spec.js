@@ -51,7 +51,7 @@ test("a sheet is calculated and drawn as a grid, with its tabs, its clicked cell
     notice.getByRole("button", { name: "Ask agent to fix" }),
   ).toBeVisible();
   // A grid is not stepped, picked from or presented.
-  for (const name of ["Select", "Find", "Present", "Legend"])
+  for (const name of ["Select", "Present", "Legend"])
     await expect(files.getByRole("button", { name })).toHaveCount(0);
   await expect(files.getByRole("group", { name: "Step" })).toHaveCount(0);
 

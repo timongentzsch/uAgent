@@ -606,7 +606,8 @@ export default function Sequence({
   // Find: a deck's or a design's occurrences are counted in the boards'
   // source, so a step reaches a board that is not drawn, and the stage marks
   // those of the one shown. Only a document's layout knows which page a word
-  // is on: its frame counts them.
+  // is on, and a sheet's grid what its cells show: their frames count them.
+  const counted = doc || sheet;
   const [finding, setFinding] = useState(false);
   const [words, setWords] = useState("");
   const [found, setFound] = useState<number[]>();
@@ -619,25 +620,25 @@ export default function Sequence({
   // before it was rewritten, are never taken for these.
   const sources = useResource(
     () =>
-      finding && !doc
+      finding && !counted
         ? Promise.all(
             boards.map((board) =>
               read(board.path).then((html) => drawnText(html, kind === "deck")),
             ),
           ).then((texts) => ({ stamp, texts }))
         : undefined,
-    [finding, doc, stamp],
+    [finding, counted, stamp],
   );
   const texts =
     sources.value?.stamp === stamp ? sources.value.texts : undefined;
   const counts = useMemo(
     () =>
-      doc
+      counted
         ? found
         : texts?.map((nodes) =>
             sum(nodes.map((text) => occurrences(text, query).length)),
           ),
-    [doc, found, texts, query],
+    [counted, found, texts, query],
   );
   const hits = !query || !counts ? undefined : sum(counts);
   const hit = spotAt(counts ?? [], spot);
@@ -716,7 +717,7 @@ export default function Sequence({
       <Notice tone="info">{saved.text}</Notice>
     </small>
   );
-  const whole = doc ? "document" : kind === "deck" ? "deck" : "design";
+  const whole = doc ? "document" : sheet || kind === "deck" ? kind : "design";
   // A deck rearranged from here, by a drag in the legend or from the slide's
   // menu: the stage follows its slide.
   const names = boards.map((board) => nameOf(board.path));
@@ -821,14 +822,13 @@ export default function Sequence({
           )}
         {/* raw: a narrow pane folds the tools after Edit into one menu. */}
         <span class="page-tools-wide">
-          {!sheet &&
-            toggle(
-              "Find",
-              finding,
-              () => setFinding(!finding),
-              <Search />,
-              true,
-            )}
+          {toggle(
+            "Find",
+            finding,
+            () => setFinding(!finding),
+            <Search />,
+            true,
+          )}
           {!sheet && (
             <IconButton label="Present" onClick={() => present(true)}>
               <Presentation />
@@ -857,9 +857,7 @@ export default function Sequence({
         </span>
         <span class="page-tools-folded">
           <Menu label="More tools">
-            {!sheet && (
-              <MenuItem onClick={() => setFinding(!finding)}>Find</MenuItem>
-            )}
+            <MenuItem onClick={() => setFinding(!finding)}>Find</MenuItem>
             {!sheet && (
               <MenuItem onClick={() => present(true)}>Present</MenuItem>
             )}
@@ -908,6 +906,17 @@ export default function Sequence({
           count={hits}
           current={spot}
           step={(by) => hits && show((spot + by + hits) % hits)}
+          replace={
+            sheet && !locked
+              ? (by, all) =>
+                  tell(frame.current, {
+                    type: "replace",
+                    text: query,
+                    with: by,
+                    index: all ? -1 : nth,
+                  })
+              : undefined
+          }
           close={() => setFinding(false)}
         />
       )}
@@ -1038,7 +1047,7 @@ export default function Sequence({
                       const counts = Array.isArray(message.counts)
                         ? message.counts.slice(0, boards.length).map(natural)
                         : undefined;
-                      if (doc)
+                      if (counted)
                         setFound((was) =>
                           String(was) === String(counts) ? was : counts,
                         );

@@ -1,7 +1,7 @@
 # Artifacts
 
 This page explains how an HTML page the agent writes becomes a deck, a
-document, a sheet or a design in the Files pane: how it is recognised,
+document, a sheet, a whiteboard or a design in the Files pane: how it is recognised,
 served, framed and edited, and how a person's edit reaches the file. The
 `meta` tags and attributes a page uses are listed in
 [Artifact formats](../interfaces/artifact-formats.md); the preview route and
@@ -18,7 +18,7 @@ Four parts cooperate:
 | --- | --- | --- |
 | Classifier | `src/app/workspace_files.cc` | names each page and folder a kind for listings, the Library and `present` |
 | Page helper | `web/public/design-helper.js`, inlined first in every previewed page | reports what the page is and what is wrong with it; pages documents; edits blocks; applies tweaks |
-| Sheet code | `web/sheet/*.js` with the IronCalc engine, served under `~sheet/` | draws and calculates a sheet inside its own frame |
+| Sheet code | `web/sheet/*.js` with the IronCalc engine, served under `~sheet/` | draws and calculates a sheet inside its own frame; `whiteboard.js` draws a whiteboard |
 | Viewer | `web/src/features/files/` | frames, legends, editing, saving, export |
 
 Saving is always the client's job: a frame never writes a file.
@@ -135,11 +135,42 @@ as a `file` message, at most 8 MiB.
 
 **Designs.** The canvas (`plane.tsx`) lays boards out at real size, 80 px
 apart in a row and 240 px between rows; pages named `NN-…` share row `NN`.
+Each page has a menu: copy as PNG, PNG at 1× or 2×, PDF, and every page of
+the design as one PDF.
+
+**Whiteboards.** A page with `<meta name="board">` loads `~sheet/whiteboard.js`
+from the helper, which places its items, draws shapes as stretched SVG
+paths and arrows as curves between the items' nearest sides. Opened alone
+in the pane, a drag, an arrow key, a corner or a double click says
+`board {id, at | size | text}` (or `{undo}`); Sequence queues each through
+`rewrite` with `boardEdit` (`board-edit.ts`), which changes only that
+item's start tag or text in the source, and keeps the text it replaced for
+⌘Z while the file is as the change left it.
+
+**Builds and transitions.** While a deck is presented the slide's address
+ends `#build=N`; the helper hides `[data-step]` elements past N from the
+first paint and shows more on `build` messages. Sequence counts the steps
+the slide reported and steps through them before the next slide; coming
+back shows a slide built. `Frame` keeps the page before until the new one
+has drawn, then fades the new one in over it, or pushes both for a slide
+marked `push`.
+
+**Data marks.** After a sheet or whiteboard is drawn, the helper fetches
+each `data-source` file once (workspace files carry `Access-Control-Allow-Origin: *`),
+fills the marks and chains onto `window.uagentReady`, so exports wait for
+the values and the agent's page check lists marks naming a missing file,
+column or row. A pointer on a value shows its file, column and row; Open
+says `cite {path, line}` and Files opens the file there.
+
+**Turn changes.** A file opened from a turn's changed files shows that
+turn's change: the `changes` command diffs the edit journal's stored copy
+against the file with `git diff --no-index`, and Undo there is `revert`.
 
 **Export.** `GET /api/sessions/<id>/files?png=<path>` or `?pdf=<path>` asks
 the browser service for `capture` on instance 0 at the artboard's size
 (1440 × 900 for a page, 1920 × 1080 for a deck by default). A deck's PDF is
-the host's `?deck` page, one iframe per slide with `break-after: page`,
+the host's `?deck` page, one iframe per slide or design page (documents
+and sheets left out), each with a named `@page` of its own artboard's size,
 served with `script-src 'none'`. Chrome renders in a throwaway context,
 waits up to 10 s for fonts and `window.uagentReady`, and prints or shoots.
 
@@ -185,9 +216,11 @@ slide, a print line not understood, and a sheet's cells in error.
 | `web/public/design-helper.js` | page messages, document paging, checks |
 | `web/sheet/sheet.js`, `web/sheet/calculate.js`, `web/sheet/book.js`, `web/sheet/workbook.js` | sheet page, worker, model, import |
 | `web/src/shared/page-frame.tsx` | frame and message types |
-| `web/src/features/files/doc-edit.ts`, `web/src/features/files/sheet-edit.ts` | saving |
+| `web/src/features/files/doc-edit.ts`, `web/src/features/files/sheet-edit.ts`, `web/src/features/files/board-edit.ts` | saving |
+| `web/sheet/whiteboard.js` | whiteboard drawing and its edits |
 | `web/src/features/files/sequence.tsx`, `web/src/features/files/plane.tsx` | viewer, canvas |
 | `src/app/present.cc` | `present` |
 | `web/tests/doc-edit.spec.js`, `web/tests/sheet-edit.spec.js`, `web/tests/sheet-files.spec.js` | edits, conflicts, import |
-| `web/tests/sheet-merge.spec.js`, `web/tests/sheet-groups.spec.js`, `web/tests/sheet-rules.spec.js` | sheet features |
+| `web/tests/sheet-merge.spec.js`, `web/tests/sheet-groups.spec.js`, `web/tests/sheet-rules.spec.js`, `web/tests/sheet-format.spec.js` | sheet features |
+| `web/tests/whiteboard.spec.js`, `web/tests/board-edit.test.js`, `web/tests/data-marks.spec.js`, `web/tests/doc-checklist.spec.js` | whiteboards, data marks, checklists |
 | `tests/integration_web/preview.py` | preview address and policy |

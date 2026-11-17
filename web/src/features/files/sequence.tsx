@@ -1212,6 +1212,9 @@ export default function Sequence({
                     else if (message.type === "picked")
                       setPicked((was) => was && { ...was, rect: message.rect });
                     else if (message.type === "sheet") {
+                      // Drawn: a find asked for before it listened is
+                      // asked again.
+                      if (query) marked();
                       const hidden = Number(message.hidden) || 0;
                       const readers = Number(message.readers) || 0;
                       setTold((was) => ({ ...was, hidden, readers }));

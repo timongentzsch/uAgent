@@ -155,15 +155,23 @@ export function blankSlide(source: string) {
   return written(page, source);
 }
 
-// A slide's source with its mark to be skipped set or taken away: beside
-// its artboard, where the host reads it.
+// A slide's source with its mark to be skipped set or taken away, its other
+// words (how it comes in) kept: beside its artboard, where the host reads it.
 export function skipSlide(source: string, skip: boolean) {
   const page = parsed(source);
-  page.querySelector('meta[name="slide"]')?.remove();
-  if (skip)
+  const mark = page.querySelector('meta[name="slide"]');
+  const words = (mark?.getAttribute("content") ?? "")
+    .split(/\s+/)
+    .filter((word) => word && word !== "skip");
+  mark?.remove();
+  const content = (skip ? ["skip", ...words] : words).join(" ");
+  if (content)
     page
       .querySelector('meta[name="artboard"]')
-      ?.insertAdjacentHTML("afterend", '<meta name="slide" content="skip">');
+      ?.insertAdjacentHTML(
+        "afterend",
+        `<meta name="slide" content="${content.replace(/"/g, "&quot;")}">`,
+      );
   return written(page, source);
 }
 

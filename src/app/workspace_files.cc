@@ -9,6 +9,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -149,8 +150,21 @@ json ArtboardSize(const std::string& head) {
 }
 
 // Whether a slide's head leaves it out of what is presented and printed.
+// The content of the meta tag named `name`, as written; empty when none.
+std::string MetaContent(const std::string& head, const std::string& name) {
+  const std::string tag = MetaTag(head, name);
+  const size_t at = tag.find("content=\"");
+  return at == std::string::npos
+             ? std::string()
+             : tag.substr(at + 9, tag.find('"', at + 9) - at - 9);
+}
+
 bool Skipped(const std::string& head) {
-  return MetaTag(head, "slide").find("\"skip\"") != std::string::npos;
+  std::istringstream words(MetaContent(head, "slide"));
+  for (std::string word; words >> word;) {
+    if (word == "skip") return true;
+  }
+  return false;
 }
 
 // How many tabs a sheet has: its tables.
@@ -658,6 +672,11 @@ json Request(const fs::path& root, const json& request) {
         entry["artboard"] = std::move(size);
       }
       if (Skipped(head)) entry["skip"] = true;
+      // A slide that opens a part of a deck names it.
+      if (std::string section = MetaContent(head, "section");
+          !section.empty()) {
+        entry["section"] = Utf8Prefix(std::move(section), 80);
+      }
       if (kind == "sheet") {
         entry["count"] = SheetTabs(*target / name);
       } else if (kind != "doc") {

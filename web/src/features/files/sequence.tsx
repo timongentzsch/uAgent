@@ -304,18 +304,18 @@ export default function Sequence({
   };
   // The presenter's window moves this one, and this one it.
   const channel = useRef<BroadcastChannel>(undefined);
-  const follow = useLatest(
-    (at: unknown) =>
-      typeof at === "string" &&
-      at !== path &&
-      boards.some((board) => board.path === at) &&
-      go(at),
-  );
+  const follow = useLatest((at: unknown, built: unknown) => {
+    if (typeof at !== "string" || !boards.some((board) => board.path === at))
+      return;
+    if (at !== path) go(at);
+    else if (Number.isInteger(built)) showBuild(built as number);
+  });
   // One channel for the page's life: a new one per render would miss what
   // arrives while it is swapped.
   useEffect(() => {
     const opened = presentChannel();
-    opened.onmessage = (event) => follow.current(event.data?.at);
+    opened.onmessage = (event) =>
+      follow.current(event.data?.at, event.data?.build);
     channel.current = opened;
     return () => opened.close();
   }, []);
@@ -359,10 +359,29 @@ export default function Sequence({
   const index = boards.findLastIndex(
     (board, at) => board.path === path && at <= first + part,
   );
+  // A slide's builds while presenting: the step shown, and whether the slide
+  // was come to from the one after it, when it shows built.
+  const [build, setBuild] = useState(0);
+  const backward = useRef(false);
+  const builds = presenting && kind === "deck" ? (said?.steps ?? 0) : 0;
+  const showBuild = (at: number) => {
+    setBuild(at);
+    tell(frame.current, { type: "build", at });
+  };
+  // Presenting starts at the slide's first step; ended, all of it shows.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on presenting alone
+  useEffect(() => {
+    if (kind === "deck") showBuild(presenting ? 0 : -1);
+  }, [presenting]);
+  const stepBuild = (at: number) => {
+    showBuild(at);
+    channel.current?.postMessage({ at: path, build: at });
+  };
   // Another file is another view, and the presenter's window goes with it.
-  const to = (next: number) => {
+  const to = (next: number, back = false) => {
     const board = boards[next];
     if (!board) return;
+    backward.current = back;
     if (board.path !== path) {
       go(board.path);
       channel.current?.postMessage({ at: board.path });
@@ -375,16 +394,23 @@ export default function Sequence({
     at === index || !(presenting && board.skip) ? [at] : [],
   );
   const place = stops.indexOf(index);
-  // Past the last slide comes the first; a document ends at its ends.
-  const step = (by: number) =>
-    place >= 0 &&
-    to(
-      stops[
-        doc
-          ? Math.min(stops.length - 1, Math.max(0, place + by))
-          : (place + by + stops.length) % stops.length
-      ],
+  // Past the last slide comes the first; a document ends at its ends. A
+  // presented slide steps through its builds first.
+  const step = (by: number) => {
+    if (by > 0 && build < builds) return stepBuild(build + 1);
+    if (by < 0 && build > 0 && builds) return stepBuild(build - 1);
+    return (
+      place >= 0 &&
+      to(
+        stops[
+          doc
+            ? Math.min(stops.length - 1, Math.max(0, place + by))
+            : (place + by + stops.length) % stops.length
+        ],
+        by < 0,
+      )
     );
+  };
   // Whether the key was one that steps; Home and End go to the ends.
   const stepKey = (key: string) => {
     const by = STEPS[key];
@@ -979,10 +1005,20 @@ export default function Sequence({
                 <Frame
                   src={
                     boards[index]
-                      ? address(boards[index], load ? `&load=${load}` : "")
+                      ? address(boards[index], load ? `&load=${load}` : "") +
+                        (presenting && kind === "deck"
+                          ? `#build=${backward.current ? 99 : 0}`
+                          : "")
                       : src
                   }
                   title={info?.title || path}
+                  transition={
+                    presenting && kind === "deck"
+                      ? said?.push
+                        ? "push"
+                        : "fade"
+                      : undefined
+                  }
                   frameRef={frame}
                   width={wide ? shape!.w : undefined}
                   height={fixed ? shape!.h : wide ? room.h / scale : undefined}
@@ -995,6 +1031,7 @@ export default function Sequence({
                       heard(path)(message);
                     if (message.type === "ready") {
                       setSaid(message);
+                      setBuild(backward.current ? (message.steps ?? 0) : 0);
                       // Drawn from the file: what it does not hold of what
                       // was typed is on no page any more.
                       forget();

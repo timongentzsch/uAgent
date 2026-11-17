@@ -27,7 +27,17 @@ delete slides and edit a slide's text and notes in place.
   slide.
 - A slide to leave out of the presentation and the PDF, but keep in the
   deck, has `<meta name="slide" content="skip">` right after its artboard.
-- No scripts, no animation; Files fades between slides when presenting.
+- A slide that opens a part of the talk names it after its artboard line:
+  `<meta name="section" content="Results">`. The legend groups the slides
+  under these names.
+- No scripts and no animation of your own. Files fades between slides when
+  presenting; `<meta name="slide" content="push">` slides this one in from
+  the right instead (`content="skip push"` keeps both words).
+- Builds: `data-step="1"` on an element hides it until the presenter's
+  first click on that slide, `data-step="2"` until the second, and so on;
+  elements with the same number appear together. Build a list item by item
+  or a chart's second series, at most four steps. The PDF and the legend
+  show every step.
 
 ## Designing the deck
 

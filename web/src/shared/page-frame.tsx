@@ -22,6 +22,9 @@ export interface PageInfo {
   sheets?: string[];
   // A sheet: its tables drawn as a spreadsheet's grid.
   sheet?: boolean;
+  // A slide's builds (its highest data-step), and whether it is pushed in.
+  steps?: number;
+  push?: boolean;
 }
 export interface Rect {
   x: number;
@@ -193,6 +196,7 @@ export const tell = (
       }
     | { type: "markdown" }
     | { type: "tweak"; name: string; value: unknown }
+    | { type: "build"; at: number }
     | { type: "find"; text: string; index: number }
     | { type: "replace"; text: string; with: string; index: number }
     | { type: "input"; value: string }
@@ -243,6 +247,7 @@ export default function Frame({
   media,
   onMessage,
   frameRef,
+  transition,
 }: {
   src: string;
   title: string;
@@ -263,6 +268,9 @@ export default function Frame({
   onMessage?: (message: PageMessage) => void;
   // The frame itself, to tell the page things.
   frameRef?: { current: HTMLIFrameElement | null };
+  // How a page that has drawn takes the place of the one before: that one
+  // fades away, or is pushed out as the new one comes in.
+  transition?: "fade" | "push";
 }) {
   const own = useRef<HTMLIFrameElement>(null);
   const frame = frameRef ?? own;
@@ -276,6 +284,23 @@ export default function Frame({
   const wanted = useLatest(file);
   const left = useRef(src);
   if (drawn === file) left.current = src;
+  // The page before, on its way out, and how.
+  const [gone, setGone] = useState<{ address: string; as: string }>();
+  const going = useLatest({ drawn, as: transition });
+  // Gone once the new page's way in has played, at once without motion.
+  useEffect(() => {
+    if (!gone) return;
+    let live = true;
+    void Promise.all(
+      (frame.current?.getAnimations() ?? []).map((made) => made.finished),
+    ).then(
+      () => live && setGone(undefined),
+      () => live && setGone(undefined),
+    );
+    return () => {
+      live = false;
+    };
+  }, [gone, frame]);
   const paged = !far && !media;
   useLayoutEffect(() => {
     if (!paged) setDrawn(undefined);
@@ -292,7 +317,11 @@ export default function Frame({
         setSheet(!!event.data.sheet);
         if (event.data.sheet) tellLook(frame.current);
       }
-      if (event.data.type === "drawn") setDrawn(wanted.current);
+      if (event.data.type === "drawn") {
+        const { drawn: was, as } = going.current;
+        if (as && was && was !== wanted.current) setGone({ address: was, as });
+        setDrawn(wanted.current);
+      }
       handle.current?.(event.data);
     };
     addEventListener("message", heard);
@@ -354,7 +383,13 @@ export default function Frame({
           onError={lost}
         />
       ) : (
-        [...new Set([drawn ?? file, file])].map((address) => (
+        [
+          ...new Set(
+            [gone?.address, drawn ?? file, file].filter(
+              (address): address is string => !!address,
+            ),
+          ),
+        ].map((address) => (
           <iframe
             key={address}
             // Only the page wanted is told things and heard.
@@ -370,7 +405,14 @@ export default function Frame({
             sandbox="allow-scripts allow-forms"
             tabIndex={live ? undefined : -1}
             inert={address !== file}
-            data-arriving={address !== drawn || undefined}
+            data-arriving={
+              (address !== drawn && address !== gone?.address) || undefined
+            }
+            data-leaving={
+              (address === gone?.address && address !== file && gone.as) ||
+              undefined
+            }
+            data-entering={(address === file && gone?.as) || undefined}
             style={
               sized
                 ? {

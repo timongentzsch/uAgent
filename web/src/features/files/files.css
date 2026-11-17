@@ -469,6 +469,12 @@
 .page-legend-item[data-drop="after"]::before {
   inset: auto 0 calc(-1 * var(--space-2));
 }
+/* The part of a deck a slide opens, over it. */
+.page-legend-section {
+  width: 0;
+  min-width: 100%;
+  font-weight: var(--weight-strong);
+}
 .page-legend-name {
   width: 0;
   min-width: 100%;

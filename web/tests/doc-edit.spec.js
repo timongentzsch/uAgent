@@ -392,3 +392,28 @@ test("a closing page writes into the file as last seen here, when it was seen an
     ["read 0", "write on 0"],
   ]);
 });
+
+test("skipping a slide keeps how it comes in, and taking the skip away leaves that alone", async ({
+  page,
+}) => {
+  const skip = (source, on) =>
+    page.evaluate(
+      async ([module, source, on]) =>
+        (await import(module)).skipSlide(source, on),
+      [MODULE, source, on],
+    );
+  const head = (meta) =>
+    `<!doctype html>\n<html><head><meta name="artboard" content="1920x1080 slide">${meta}</head><body></body></html>\n`;
+  const pushed = head('<meta name="slide" content="push">');
+  const skipped = await skip(pushed, true);
+  expect(skipped).toContain('<meta name="slide" content="skip push">');
+  expect(await skip(skipped, false)).toContain(
+    '<meta name="slide" content="push">',
+  );
+  expect(await skip(head(""), true)).toContain(
+    '<meta name="slide" content="skip">',
+  );
+  expect(
+    await skip(head('<meta name="slide" content="skip">'), false),
+  ).not.toContain('name="slide"');
+});

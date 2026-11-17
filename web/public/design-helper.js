@@ -795,7 +795,30 @@
     await painted();
     send("drawn");
   });
+  // A slide's builds while it is presented: what has a `data-step` beyond
+  // the step shown is hidden, from the first paint when its address says
+  // "#build=N", then by message; a step below 0 shows all.
+  const hide = document.createElement("style");
+  hide.textContent =
+    "html[data-uagent-build] [data-step]{transition:opacity .2s}" +
+    "html[data-uagent-build] [data-step]:not([data-uagent-shown]){opacity:0}";
+  root.append(hide);
+  const building = /^#build=(\d+)$/.exec(location.hash);
+  if (building) root.toggleAttribute("data-uagent-build", true);
+  const build = (at) => {
+    root.toggleAttribute("data-uagent-build", at >= 0);
+    for (const element of document.querySelectorAll("[data-step]"))
+      element.toggleAttribute("data-uagent-shown", +element.dataset.step <= at);
+  };
+  const steps = () =>
+    Math.max(
+      0,
+      ...[...document.querySelectorAll("[data-step]")].map(
+        (element) => +element.dataset.step || 0,
+      ),
+    );
   addEventListener("DOMContentLoaded", () => {
+    if (building) build(+building[1]);
     send("ready", {
       title: document.title,
       artboard: artboard(),
@@ -808,6 +831,9 @@
       ),
       // A sheet takes the app's look for its grid.
       sheet: !!meta("sheet"),
+      // A slide's builds, and how it comes in when presented.
+      steps: steps(),
+      push: meta("slide").split(/\s+/).includes("push"),
     });
     let last = 0;
     new ResizeObserver(() => {
@@ -945,5 +971,6 @@
     }
     if (event.data.type === "tweak")
       tweak(String(event.data.name), event.data.value);
+    if (event.data.type === "build") build(Number(event.data.at));
   });
 })();

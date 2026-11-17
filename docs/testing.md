@@ -269,19 +269,24 @@ On a pull request, `.github/changes.py` selects jobs by the paths changed:
 For native changes, `clang-tidy` reads the changed `.cc` files under `src/`,
 `tests/` and `benchmarks/` in one job. A changed header, `.clang-tidy`,
 `CMakeLists.txt`, `CMakePresets.json`, `.dockerignore`, `.github/` or
-`third_party/` selects all units across three runners, as non-PR runs do.
-`coverage` runs weekly and by hand only. The selection source is
+`third_party/` selects all units across three runners. A push to `master`
+reads the same way from the commit it followed (the pull request already
+read it); weekly and manual runs read all units. `coverage` runs weekly and
+by hand only. The selection source is
 [changes.py](../.github/changes.py); [ci.yml](../.github/workflows/ci.yml) defines
 the jobs and their conditions.
 
 The build jobs reuse compiled objects through ccache
-(`.github/actions/native-setup`), restored in every run and saved from
-`master` and once per pull request. A newer push to a pull request cancels
+(`.github/actions/native-setup`), restored in every run and saved, on
+`master` and in a pull request, once per state of the headers and build
+files, so the repository's 10 GB hold one snapshot per build kind rather
+than one per commit. A newer push to a pull request cancels
 the older run; runs on `master` are never cancelled, so each merge is tested
 as it landed.
 
-A pull request skips the slowest legs unless its paths call for them;
-master, scheduled and manual runs always run them:
+A pull request skips the slowest legs unless its paths call for them.
+A push to `master` runs every build and the remote bundle, which a release
+promotes, but not ThreadSanitizer; scheduled and manual runs run them all:
 
 | Leg | Runs on a pull request that touches (`.github/changes.py`) |
 | --- | --- |

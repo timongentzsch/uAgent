@@ -42,7 +42,7 @@ HEAVY_DIRS = (
 
 def heavy(paths):
     """Whether a pull request also runs ThreadSanitizer and Linux ARM64,
-    which master always runs."""
+    which the weekly run, a run by hand and a release always run."""
     return any(
         path.startswith(HEAVY_DIRS)
         or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore")
@@ -74,8 +74,9 @@ def build_matrix(with_arm):
 
 
 def tidy(paths):
-    """What clang-tidy reads on a pull request: the changed units, or "all"
-    when a header, the build or the rules changed. Master reads everything."""
+    """What clang-tidy reads on a pull request or a push to master: the changed
+    units, or "all" when a header, the build or the rules changed. The weekly
+    run, a run by hand and a release read everything."""
     wide = any(
         path.endswith((".h", ".hpp", ".clang-tidy"))
         or path.startswith((".github/", "third_party/"))
@@ -109,36 +110,59 @@ def tidy_files(entries, units, shard="0/1"):
     return " ".join(re.escape(file) + "$" for file in files)
 
 
-if __name__ == "__main__" and sys.argv[1:2] == ["--tidy-files"]:
-    # --tidy-files BUILD_DIR UNITS [INDEX/COUNT]
-    build, units, *shard = sys.argv[2:]
-    entries = json.loads((Path(build) / "compile_commands.json").read_text())
-    print(tidy_files(entries, units, *shard))
-elif __name__ == "__main__":
-    base = os.environ.get("CI_BASE_SHA")
-    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" and base:
-        # No rename detection: both the old and the new path are listed. The
-        # working tree is compared, so ci-local.sh sees uncommitted changes.
-        changed = subprocess.check_output(
-            ["git", "diff", "--name-only", "--no-renames", "-z", base]
-        )
-        paths = [os.fsdecode(path) for path in changed.split(b"\0") if path]
-        result = {
+def selection(event, paths):
+    """What a run of `event` runs, from the paths it changed (None where they
+    are not known). A pull request runs what its paths need. A push to master
+    builds and packages everything, as a release promotes its run, but leaves
+    ThreadSanitizer and the reading of unchanged code to the pull request, the
+    weekly run and a run by hand, which run everything."""
+    if event == "pull_request" and paths is not None:
+        return {
             **classify(paths),
             "tidy": tidy(paths),
             "heavy": heavy(paths),
             "bundle": bundle(paths),
             "image": image(paths),
         }
-    else:
-        result = {
-            "native": True,
-            "web": True,
-            "tidy": "all",
-            "heavy": True,
-            "bundle": True,
-            "image": True,
-        }
+    everything = {
+        "native": True,
+        "web": True,
+        "tidy": "all",
+        "heavy": True,
+        "bundle": True,
+        "image": True,
+    }
+    if event == "push" and paths is not None:
+        return {**everything, "tidy": tidy(paths), "heavy": False}
+    return everything
+
+
+if __name__ == "__main__" and sys.argv[1:2] == ["--tidy-files"]:
+    # --tidy-files BUILD_DIR UNITS [INDEX/COUNT]
+    build, units, *shard = sys.argv[2:]
+    entries = json.loads((Path(build) / "compile_commands.json").read_text())
+    print(tidy_files(entries, units, *shard))
+elif __name__ == "__main__":
+    base = os.environ.get("CI_BASE_SHA", "")
+    # The paths changed since the base: a pull request's, or the commit a
+    # push to master followed when this clone has it (not after a force push).
+    known = base.strip("0") and (
+        subprocess.run(["git", "cat-file", "-e", f"{base}^{{commit}}"]).returncode == 0
+    )
+    # No rename detection: both the old and the new path are listed. The
+    # working tree is compared, so ci-local.sh sees uncommitted changes.
+    paths = (
+        [
+            os.fsdecode(path)
+            for path in subprocess.check_output(
+                ["git", "diff", "--name-only", "--no-renames", "-z", base]
+            ).split(b"\0")
+            if path
+        ]
+        if known
+        else None
+    )
+    result = selection(os.environ.get("GITHUB_EVENT_NAME", ""), paths)
     result["matrix"] = build_matrix(result["heavy"] or result["bundle"])
     output = "".join(
         f"{name}={value if isinstance(value, str) else str(value).lower()}\n"

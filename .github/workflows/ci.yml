@@ -38,7 +38,8 @@ jobs:
           persist-credentials: false
       - id: select
         env:
-          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          # A pull request's base, or the commit a push to master followed.
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: python3 .github/changes.py
 
   # Embedded by the native builds, which are its only readers: a change to

@@ -35,8 +35,9 @@ test("marks fill from a CSV in the page's folder, say their file, column and row
   await expect(stage.locator("#note")).toHaveText("cold, wet");
 
   await stage.locator("#us").hover();
-  const chip = stage.locator(".uagent-source");
+  const chip = files.locator(".page-source");
   await expect(chip).toContainText("sales.csv · revenue · row 2");
+  await chip.hover();
   await chip.getByRole("button", { name: "Open" }).click();
   await expect(files.getByRole("heading")).toContainText("sales.csv");
 

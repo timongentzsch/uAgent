@@ -267,6 +267,15 @@ export default function Sequence({
   // or `over` the words of a new one.
   const caretAt = useRef<{ at: number; over: boolean }>(undefined);
   const [hover, setHover] = useState<Rect>();
+  // A value's source, drawn under it; kept while the pointer is on its chip.
+  const [source, setSource] = useState<{
+    rect: Rect;
+    label: string;
+    path: string;
+    line: number;
+  }>();
+  const holding = useRef(false);
+  const unsourced = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [picked, setPicked] = useState<Pick>();
   const [comment, setComment] = useState("");
   const [tweaking, setTweaking] = useState(false);
@@ -1151,6 +1160,22 @@ export default function Sequence({
                           () => {},
                         );
                       }
+                    } else if (message.type === "source") {
+                      const { rect, label, path: from, line } = message;
+                      clearTimeout(unsourced.current);
+                      if (rect && typeof from === "string")
+                        setSource({
+                          rect,
+                          label: String(label ?? "").slice(0, 200),
+                          path: from,
+                          line: natural(line),
+                        });
+                      // A moment, for the pointer to reach the chip.
+                      else
+                        unsourced.current = setTimeout(
+                          () => !holding.current && setSource(undefined),
+                          300,
+                        );
                     } else if (message.type === "cite") {
                       if (typeof message.path === "string")
                         cite?.(message.path, natural(message.line));
@@ -1256,6 +1281,33 @@ export default function Sequence({
                   }}
                 />
                 {mode === "select" && hover && mark(hover, "hover")}
+                {source && !mode && (
+                  // raw: laid under a value of the page, at the pane's size.
+                  <span
+                    class="float-toolbar page-source small"
+                    style={{
+                      left: `${source.rect.x * scale}px`,
+                      top: `${(source.rect.y + source.rect.height) * scale}px`,
+                    }}
+                    onPointerEnter={() => {
+                      holding.current = true;
+                    }}
+                    onPointerLeave={() => {
+                      holding.current = false;
+                      setSource(undefined);
+                    }}
+                  >
+                    <span>{source.label}</span>
+                    {cite && (
+                      <Button
+                        size="compact"
+                        onClick={() => cite(source.path, source.line)}
+                      >
+                        Open
+                      </Button>
+                    )}
+                  </span>
+                )}
                 {picked && mark(picked.rect, "picked")}
               </div>
             </div>

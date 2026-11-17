@@ -510,56 +510,49 @@
       Promise.all(marks.map(fill)),
     ]).then(([drawn, said]) => [...(drawn ?? []), ...said.filter(Boolean)]);
   });
-  // Where a value came from, over it while the pointer is on it or the chip.
+  // Where a value came from, while the pointer is on it: in the app, said
+  // for the app to draw at the pane's size (with Open, at the file's row);
+  // alone, a chip over it in the page.
   let chip;
-  let leaving;
   addEventListener("pointerover", (event) => {
     const mark = event.target.closest?.("[data-uagent-row]");
-    if (event.target.closest?.(".uagent-source")) return clearTimeout(leaving);
     if (!mark) return;
-    clearTimeout(leaving);
-    chip?.remove();
     const { source, field, uagentRow } = mark.dataset;
-    chip = document.createElement("span");
-    chip.className = "uagent-source";
-    chip.textContent = `${source} · ${field} · row ${uagentRow}`;
+    const label = `${source} · ${field} · row ${uagentRow}`;
+    const { x, y, width, height } = mark.getBoundingClientRect();
     if (parent !== window) {
-      const open = document.createElement("button");
-      open.type = "button";
-      open.textContent = "Open";
-      // A CSV's row is the line after its header's; a JSON file opens whole.
       const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
       const path = decodeURIComponent(
         new URL(source, location.href).pathname.slice(base.length),
       );
+      // A CSV's row is the line after its header's; a JSON file opens whole.
       const line = /\.csv$/i.test(source) ? +uagentRow + 1 : 0;
-      open.addEventListener("click", () => send("cite", { path, line }));
-      chip.append(open);
+      return send("source", {
+        rect: { x, y, width, height },
+        label,
+        path,
+        line,
+      });
     }
-    const box = mark.getBoundingClientRect();
+    chip?.remove();
+    chip = document.createElement("span");
+    chip.textContent = label;
     Object.assign(chip.style, {
       position: "fixed",
-      left: `${Math.max(0, box.left)}px`,
-      top: `${box.bottom + 4}px`,
+      left: `${Math.max(0, x)}px`,
+      top: `${y + height + 4}px`,
       zIndex: 2147483647,
       font: "12px/1.4 system-ui, sans-serif",
       background: "#111",
       color: "#fff",
       padding: "4px 8px",
-      display: "flex",
-      gap: "8px",
-      alignItems: "center",
     });
     document.body.append(chip);
   });
   addEventListener("pointerout", (event) => {
-    if (!chip || !event.target.closest?.("[data-uagent-row], .uagent-source"))
-      return;
-    clearTimeout(leaving);
-    leaving = setTimeout(() => {
-      chip?.remove();
-      chip = undefined;
-    }, 300);
+    if (!event.target.closest?.("[data-uagent-row]")) return;
+    if (parent !== window) send("source", {});
+    chip?.remove();
   });
 
   if (parent === window) {

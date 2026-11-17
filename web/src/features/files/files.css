@@ -558,6 +558,12 @@
 .page-mark.hover {
   outline-style: dashed;
 }
+/* Where a value of the page came from, under it. */
+.page-source {
+  position: absolute;
+  z-index: var(--z-popover);
+  white-space: nowrap;
+}
 .page-tweaks {
   width: var(--pane);
   overflow-y: auto;
@@ -792,10 +798,10 @@
   padding: 0 var(--space-1);
   border: var(--border);
 }
-/* A page's export menu, over its top right corner. */
+/* A page's export menu, inside its top right corner: clear of its name. */
 .canvas-menu {
   position: absolute;
-  transform: translate(-100%, calc(-100% - var(--space-2)));
+  transform: translate(calc(-100% - var(--space-2)), var(--space-2));
 }
 .canvas-name {
   position: absolute;

@@ -1123,9 +1123,9 @@ TEST_CASE(TestEffectiveConfigReload) {
   ScopedEnv scoped_steps("UAGENT_MAX_STEPS", "9");
   ScopedEnv scoped_model("UAGENT_MODEL");
   ScopedEnv scoped_providers("UAGENT_PROVIDERS");
-  ScopedEnv scoped_toolset("UAGENT_INTERNAL_TOOLSET");
+  ScopedEnv scoped_overlay("UAGENT_INTERNAL_PROMPT_OVERLAY");
   CHECK(SaveSettings({{"UAGENT_MAX_STEPS", "4"},
-                      {"UAGENT_INTERNAL_TOOLSET", "lean"},
+                      {"UAGENT_INTERNAL_PROMPT_OVERLAY", "lean"},
                       {"UAGENT_MAX_TOOL_CALLS", "2"},
                       {"UAGENT_MAX_TURN_TOKENS", "100"},
                       {"UAGENT_SESSION_TOKEN_BUDGET", "200"},
@@ -1151,8 +1151,8 @@ TEST_CASE(TestEffectiveConfigReload) {
   json diagnostic = manager.DiagnosticJson(active);
   CHECK(diagnostic["sources"]["UAGENT_MAX_STEPS"] == "environment");
   CHECK(diagnostic["sources"]["UAGENT_SESSION_BUDGET"] == "cli");
-  // A parent's handoff to its child is not a setting a file may carry.
-  CHECK(!diagnostic["sources"].contains("UAGENT_INTERNAL_TOOLSET"));
+  // An internal name is not a setting a file may carry.
+  CHECK(!diagnostic["sources"].contains("UAGENT_INTERNAL_PROMPT_OVERLAY"));
   CHECK(diagnostic["sources"]["UAGENT_MAX_TOOL_CALLS"] == "user");
   CHECK(!diagnostic["sources"].contains("UAGENT_REQUEST_TIMEOUT"));
   std::string shown = JsonDump(diagnostic);

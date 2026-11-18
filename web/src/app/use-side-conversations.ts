@@ -66,18 +66,25 @@ export function useSideConversations({
     change(selected, (open) => ({ ...open, shown: key }));
   const cancel = () => setAsked(undefined);
   // The new one closes unasked; a started one stays a conversation.
-  function close(key: string) {
+  function close(key: string, parent = selected) {
     if ((asking?.to || "") === key) cancel();
-    change(selected, (open) => ({
+    change(parent, (open) => ({
       ...open,
       list: open.list.filter((side) => side.firstRequest !== key),
     }));
   }
+  // The conversation this one is a side chat of, where this device asked it.
+  const origin = Object.entries(all).flatMap(([parent, { list }]) =>
+    list
+      .filter((side) => side.id === selected)
+      .map((side) => ({ parent, key: side.firstRequest })),
+  )[0];
   function quote(text: string, to?: string) {
     setAsked({ parent: selected, to, quote: text });
     show(to || "");
   }
-  // Every question starts a side chat of its own.
+  // Every question starts a side chat of its own; resolves to its
+  // conversation, or to nothing when it could not be started.
   function ask(parent: Session, question: string, quoted = "") {
     const firstRequest = requestId();
     change(parent.id, (open) => ({
@@ -86,7 +93,7 @@ export function useSideConversations({
     }));
     // The side owns an ordinary runtime: tool dispatch, approvals and
     // follow-ups have one implementation, separate from the parent turn.
-    void (async () => {
+    return (async () => {
       const result = await command("side", parent, {
         operation: "create",
         text: question,
@@ -109,14 +116,27 @@ export function useSideConversations({
         text: quoted ? `${quoted}\n\n${question}` : question,
         request_id: firstRequest,
       });
+      return id as string | undefined;
     })().catch((failure) => {
       change(parent.id, (open) => ({
         ...open,
         list: open.list.filter((side) => side.firstRequest !== firstRequest),
       }));
       report(failure);
+      return undefined;
     });
   }
   const clearSides = () => setAll({});
-  return { sides, shown, asking, show, close, cancel, quote, ask, clearSides };
+  return {
+    sides,
+    shown,
+    asking,
+    origin,
+    show,
+    close,
+    cancel,
+    quote,
+    ask,
+    clearSides,
+  };
 }

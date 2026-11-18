@@ -386,6 +386,10 @@ class WorkerChannel final : public ApplicationChannel {
     StopSideQuestion();
     activity_control_ = control;
     for (const auto& [request, raw] : std::exchange(early_controls_, {})) {
+      if (control && JsonValue(raw, "kind", "") == "side") {
+        StartSideLocked(request, raw);
+        continue;
+      }
       CompleteControl(
           request, control ? control(raw) : json{{"error", "session closed"}});
     }
@@ -717,10 +721,19 @@ class WorkerChannel final : public ApplicationChannel {
   // free for stop, interrupt and replies.
   void StartSideQuestion(const std::string& request, const json& raw) {
     std::lock_guard control(control_mutex_);
-    if (!activity_control_ || side_busy_) {
-      CompleteControl(
-          request, {{"error", activity_control_ ? "a side question is running"
-                                                : "session not ready"}});
+    if (activity_control_) {
+      StartSideLocked(request, raw);
+    } else {
+      // The application is still starting, as after an idle conversation
+      // is asked: started once it is there.
+      early_controls_.emplace_back(request, raw);
+    }
+  }
+
+  void StartSideLocked(const std::string& request, const json& raw)
+      UAGENT_REQUIRES(control_mutex_) {
+    if (side_busy_) {
+      CompleteControl(request, {{"error", "a side question is running"}});
       return;
     }
     if (side_thread_.joinable()) side_thread_.join();

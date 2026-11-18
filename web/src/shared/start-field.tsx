@@ -4,6 +4,7 @@ import { ArrowUp } from "lucide-preact";
 import { useHostContext } from "../state/host-context.ts";
 import { IconButton } from "./ui.tsx";
 import MessageInput from "./message-input.tsx";
+import { useAction } from "./use-action.ts";
 import "./start-field.css";
 
 // The box a conversation starts from: what to ask, then a row of what it
@@ -14,6 +15,8 @@ export function StartField({
   placeholder,
   disabled,
   autoFocus,
+  action = "Start",
+  onKeyDown,
   start,
   children,
 }: {
@@ -22,14 +25,20 @@ export function StartField({
   placeholder: string;
   disabled?: boolean;
   autoFocus?: boolean;
+  // What its button does, for whoever cannot see the arrow.
+  action?: string;
+  onKeyDown?: (event: KeyboardEvent) => void;
   start: (text: string) => Promise<unknown> | undefined;
   children?: (text: string) => ComponentChildren;
 }) {
   const { report } = useHostContext();
   const [text, setText] = useState("");
+  const { run } = useAction({ report });
   const submit = (event: Event) => {
     event.preventDefault();
-    Promise.resolve(start(text.trim())).then(() => setText(""), report);
+    void run(async () => start(text.trim())).then(
+      (done) => done && setText(""),
+    );
   };
   return (
     <form class="start-field message-box" onSubmit={submit}>
@@ -42,12 +51,13 @@ export function StartField({
         disabled={disabled}
         autoFocus={autoFocus}
         submit={submit}
+        onKeyDown={onKeyDown}
         onInput={(event) => setText(event.currentTarget.value)}
       />
       <div class="start-tools message-actions">
         {children?.(text.trim())}
         <IconButton
-          label="Start"
+          label={action}
           variant="primary"
           type="submit"
           disabled={disabled}

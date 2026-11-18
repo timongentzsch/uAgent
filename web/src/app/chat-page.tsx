@@ -40,6 +40,7 @@ import { useSnapshots } from "../state/snapshot-store.ts";
 import { keepFirst, mergeNodes } from "../shared/tree.ts";
 import { maxHistoryNodes } from "../shared/limits.ts";
 import { isRunning } from "../state/attention.ts";
+import { useLatest } from "../shared/use-latest.ts";
 import SideChats from "../features/chat/side-answer.tsx";
 import { SelectionActions } from "../features/chat/selection-actions.tsx";
 import type { useSideConversations } from "./use-side-conversations.ts";
@@ -225,6 +226,44 @@ export default function ChatPage({
       ),
     [sessions, selected, online],
   );
+  // Its side chats that have a conversation, for the Activity list: a row
+  // shows the tab where they have a column, and the page where not.
+  const sides = side.sides;
+  const latest = useLatest({ side, sideColumn, addToChat });
+  const sideRows = useMemo(() => {
+    const asked = (id: string) =>
+      latest.current.side.sides.find((item) => item.id === id);
+    return {
+      list: sides.flatMap(
+        (item) => sessions.find((session) => session.id === item.id) ?? [],
+      ),
+      open: (id: string) => {
+        const { side, sideColumn } = latest.current;
+        const item = asked(id);
+        if (sideColumn && item) side.show(item.firstRequest);
+        else void choose(id);
+      },
+      remove: (id: string) => {
+        const item = asked(id);
+        if (item) latest.current.side.close(item.firstRequest);
+      },
+    };
+  }, [sides, sessions, choose, latest]);
+  // The composer keeps its place above the input for a selection's actions,
+  // so Jump to latest stays clear of them.
+  const selecting = !!addToChat;
+  const sideAsked = !!side.asking;
+  const selection = useMemo(
+    () =>
+      selecting && (
+        <SelectionActions
+          asking={sideAsked}
+          ask={(quote, to) => latest.current.side.quote(quote, to)}
+          add={(text) => latest.current.addToChat?.(text)}
+        />
+      ),
+    [selecting, sideAsked, latest],
+  );
   const open = useCallback((id: string) => void choose(id), [choose]);
   if (!active) return null;
 
@@ -240,6 +279,23 @@ export default function ChatPage({
   // A linked conversation the list does not name yet is drawn as a placeholder.
   const shown =
     session ?? (opening ? { id: selected, generation: "placeholder" } : null);
+  // No room for the side chats' column: the input asks, and a side chat is
+  // a page of its own.
+  const asking =
+    !sideColumn && side.asking && !side.asking.to ? side.asking : undefined;
+  const plainQuote = (asking?.quote || "")
+    .replace(/^> ?|`/gm, "")
+    .split("\n")[0];
+  const askSide = (event: Event) => {
+    event.preventDefault();
+    const question = draft.text.trim();
+    if (!question || !session || !asking) return;
+    setDraft({ ...draft, text: "" });
+    side.cancel();
+    void side.ask(session, question, asking.quote).then((id) => {
+      if (id) return choose(id);
+    });
+  };
   const composerFor = (item: Session) => (
     <Composer
       key={item.id}
@@ -252,7 +308,10 @@ export default function ChatPage({
       pending={snapshot?.pending}
       draft={draft}
       setDraft={setDraft}
-      submit={send}
+      sides={sideRows}
+      above={selection}
+      submit={asking ? askSide : send}
+      asking={asking && { quote: plainQuote, cancel: side.cancel }}
       unseen={unseen}
       jump={jump}
       openInspector={setInspector}
@@ -283,7 +342,7 @@ export default function ChatPage({
       cancel={side.cancel}
       unquote={() => side.quote("")}
       ask={(question, quote) => {
-        side.ask(session, question, quote);
+        void side.ask(session, question, quote);
         side.cancel();
       }}
       choose={choose}
@@ -336,14 +395,6 @@ export default function ChatPage({
           />
         </MessageActions.Provider>
       </LiveActivities.Provider>
-      {!sideColumn && sideChats}
-      {addToChat && (
-        <SelectionActions
-          asking={!!side.asking}
-          ask={side.quote}
-          add={addToChat}
-        />
-      )}
       {session && (
         <Suggestion
           key={session.id}

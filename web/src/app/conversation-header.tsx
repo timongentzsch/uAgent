@@ -59,6 +59,7 @@ export default function ConversationHeader({
   filesOpen,
   setFilesOpen,
   outgoing,
+  merge,
   openDrawer,
   choose,
   settings,
@@ -69,6 +70,8 @@ export default function ConversationHeader({
   selected: string;
   session?: Session;
   parent?: Session;
+  // A side chat: sums it up for `parent` and goes back there.
+  merge?: () => void;
   opening: boolean;
   booting: boolean;
   browserAvailable: boolean;
@@ -171,6 +174,11 @@ export default function ConversationHeader({
         )}
         {inMenu && session && <Totals session={session} outgoing={outgoing} />}
       </div>
+      {page === "chat" && session && merge && (
+        <Button disabled={!!session.turn_active} onClick={merge}>
+          Merge
+        </Button>
+      )}
       {!inMenu && page === "chat" && session && (
         <>
           <Tabs

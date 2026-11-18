@@ -226,7 +226,7 @@ def main():
     parser.add_argument("--model", default="~typesafe/jev-latest")
     parser.add_argument("--url", default=URL)
     parser.add_argument("--runs", type=int, default=2)
-    parser.add_argument("--questions", default=str(HERE / "questions.json"))
+    parser.add_argument("--questions", default=str(HERE / "../../src/app/review_questions.json"))
     parser.add_argument("--raw", help="also write the raw answers to this file")
     parser.add_argument("--context", choices=["old", "new"], default="old")
     parser.add_argument("--tool", help="only the cases of this tool, e.g. agent_report")

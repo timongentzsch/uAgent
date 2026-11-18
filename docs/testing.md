@@ -87,8 +87,8 @@ repository path in a code span is tracked. Generated pages are skipped.
 stand-in Chrome and Xvnc (`browser_runtime.py`) and an SSH relay;
 `tests/package_contents.py` validates a release archive and its bundled skill
 tree; `tests/reviewer_eval/` holds labelled tool calls for the approval
-reviewer (`run.py` checks a model by hand with an API key; the unit tests read
-its questions).
+reviewer (`run.py` checks a model by hand with an API key, with the questions
+the build embeds from `src/app/`).
 
 ### Selecting cases
 

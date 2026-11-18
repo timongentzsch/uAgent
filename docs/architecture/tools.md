@@ -139,7 +139,7 @@ flowchart TD
   `agent_start`, by `MakeReportJudge` (`src/app/approvals.cc`). The model
   gets the stand-in tool `agent_report`, the report as the action, the
   agent's latest and first messages as the request, and the report
-  questions (`ReportQuestions`, as `tests/reviewer_eval/questions-report.json`):
+  questions (`ReportQuestions`, from `src/app/report_questions.json`):
   `instructs_reader`, `beyond_brief`, `touches_secrets`, under the same
   bars. Allow delivers the report; ask holds it for a person (`source`
   `report`, answers Deliver or Withhold); deny, a person's Withhold or

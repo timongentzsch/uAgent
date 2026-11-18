@@ -1,9 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include <fstream>
-#include <sstream>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "include/app/approval_review.h"
@@ -53,17 +50,6 @@ Endpoint Serving(const std::string& name, const std::string& key) {
 }  // namespace
 
 TEST_CASE(TestPermissionReview) {
-  // The questions are the ones tests/reviewer_eval measures the bars with.
-  for (const auto& [name, questions] :
-       {std::pair{"questions.json", &ReviewQuestions()},
-        std::pair{"questions-report.json", &ReportQuestions()}}) {
-    std::ifstream file(std::string(UAGENT_TEST_SOURCE_DIR) +
-                       "/tests/reviewer_eval/" + name);
-    std::stringstream text;
-    text << file.rdbuf();
-    CHECK(json::parse(text.str()) == *questions);
-  }
-
   const ReviewBars bars{0.6, 0.95, 0.7};
   using Decision = AutoPermissionDecision;
   CHECK(JudgeAnswers(Answers(0.6, 0), bars).decision == Decision::kAllow);

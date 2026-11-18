@@ -33,13 +33,13 @@ struct AutoPermissionReview {
   std::string error;
 };
 
-// The questions every review of a call asks, as
-// tests/reviewer_eval/questions.json.
+// The questions every review of a call asks: src/app/review_questions.json,
+// which the build embeds.
 const json& ReviewQuestions();
 
-// The questions an agent's report is judged by, as
-// tests/reviewer_eval/questions-report.json: allow delivers it, ask holds it
-// for a person, deny withholds it.
+// The questions an agent's report is judged by
+// (src/app/report_questions.json): allow delivers it, ask holds it for a
+// person, deny withholds it.
 const json& ReportQuestions();
 
 // The `decision_bars` row for `model` at `endpoint`, else the strict bars.

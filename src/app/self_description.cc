@@ -434,6 +434,10 @@ json ToolSurfaceJson() {
     const char* when = "always";
     if (tool.memory_store) {
       when = "memory enabled";
+    } else if (tool.available && !tool.available()) {
+      when = tool.name == "write_file"
+                 ? "a file is attached; otherwise it runs a patch's files"
+                 : "never; it runs a patch's files";
     }
     emit(tool, when);
   }

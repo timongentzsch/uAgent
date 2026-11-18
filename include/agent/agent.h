@@ -386,6 +386,9 @@ class Agent {
 
   void RefreshBaseline();
 
+  // The row of a finished call, as a person reads it.
+  void RecordToolRow(const ToolCall& call, const ToolResult& original,
+                     double duration_ms);
   // Keep receipts and read metadata from the original; send only `result`.
   void AppendToolResult(const ToolCall& call, const std::string& result,
                         const ToolResult& original, double duration_ms);

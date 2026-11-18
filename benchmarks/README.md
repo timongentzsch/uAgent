@@ -223,7 +223,7 @@ One headless turn of each tool from a fresh home, the model endpoint set to
 
 | Tool | Hosts asked for besides the endpoint | Tools | Tool tokens | Instruction tokens | Total |
 | --- | --- | ---: | ---: | ---: | ---: |
-| µAgent 1.10.1 | none | 14 | 2,678 | 627 | 3,305 |
+| µAgent 1.10.1 | none | 12 | 2,525 | 627 | 3,152 |
 | OpenCode 2.3.2 | `models.opencode.ai` | 13 | 3,509 | 2,148 | 5,657 |
 | OpenCode 1.19.6 | `models.opencode.ai`, `registry.npmjs.org` | 10 | 5,014 | 1,890 | 6,904 |
 | Claude Code 2.1.327 | `api.anthropic.com` | 12 | 7,522 | 3,987 | 11,509 |

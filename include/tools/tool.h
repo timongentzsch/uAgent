@@ -107,6 +107,12 @@ struct EndedCommand {
 json EndedJson(const EndedCommand& ended);
 EndedCommand EndedFromJson(const json& value);
 
+// One call of those a tool stands for: a tool's name and its arguments.
+struct ToolPart {
+  std::string tool;
+  json args;
+};
+
 struct ToolResult {
   CompletionStatus status = CompletionStatus::kSuccess;
   // What the call returned: the model reads it and a person sees it.
@@ -297,6 +303,9 @@ struct Tool {
   bool memory_store = false;   // retained only when memory is enabled
   // Asked before every request: false withholds the tool while it cannot run.
   std::function<bool()> available;
+  // The calls this one stands for, run in its place, each validated,
+  // approved and shown as its own; none runs the tool itself.
+  std::function<std::vector<ToolPart>(const json& args)> parts;
   int64_t blocking_wait_default_ms =
       -1;  // >=0: wait_ms is intentional blocking
 };

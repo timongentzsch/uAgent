@@ -42,8 +42,8 @@
   "uagent": {
    "version": "1.10.1",
    "hosts": [],
-   "tools": 14,
-   "tool_tokens": 2678,
+   "tools": 12,
+   "tool_tokens": 2525,
    "instruction_tokens": 627
   },
   "claude": {

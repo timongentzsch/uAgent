@@ -52,6 +52,16 @@ the cached prompt; a tool at its per-turn cap stays offered and refuses.
 
 ## Protocol
 
+A model changes files with `apply_patch` (`src/tools/patch.cc`): one call
+adds, updates and deletes any number of files. The tool loop
+(`Agent::RunCalls`) runs a patch as the `write_file`, `edit_file` and
+`delete_file` calls it holds, one per file, each an update hunk an exact
+replacement. So every file is validated, approved, journalled and shown as
+its own call, a rule or setting that names one of the three applies, and
+the model's one call gets their results together. The three are not
+offered themselves, except `write_file` while the conversation has an
+attached file to copy.
+
 The approval decision for one call runs only when `RequiredApproval` is
 not `kNone`: a mutating call, a `needs_approval` call (a path outside the
 work area, a network tool, `agent_start` and `agent_send`), or one an

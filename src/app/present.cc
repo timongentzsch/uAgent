@@ -173,6 +173,12 @@ void CopyAttachments(std::vector<Tool>& tools,
        "an attached file's path, as [Attached: …] names it, copied byte for "
        "byte in place of content"}};
   write->parameters["required"] = json::array({"path"});
+  // Copying one is all a patch cannot do: offered once there is a file.
+  write->available = [store = session_path + kSessionAssetsSuffix] {
+    std::error_code ec;
+    return std::filesystem::is_directory(store, ec) &&
+           !std::filesystem::is_empty(store, ec);
+  };
   // The attachment's bytes, read from this conversation's own store only.
   const auto bytes = [session_path](const json& args, std::string& out) {
     const std::filesystem::path from =

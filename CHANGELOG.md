@@ -5,10 +5,12 @@
 ### Upgrade notes
 
 - **Name the reviewer if Auto should ask another provider.** A call judged in Auto is sent only to the provider the conversation runs on, or to the one `approval.reviewerModel` names (`openrouter/` for that provider's own decision model). Before, any configured provider with a decision endpoint was asked, so a conversation on a local model sent its commands to OpenRouter. With such a setup Auto now asks you, and says which setting to set.
+- **Models are offered `apply_patch` in place of `write_file`, `edit_file` and `delete_file`.** The three still run each file of a patch, so permission rules, approvals and tool settings that name them work as before; `write_file` is offered by itself only while the conversation has an attached file to copy.
 - **Previewed pages load nothing from another host.** The preview policy no longer admits Google Fonts, and the agent writes pages with system font stacks or a font file in the folder. A page that links a Google font is drawn in its fallback face and lists the link as not loaded.
 
 ### Changes
 
+- **Several files change in one call.** The agent changes files with `apply_patch`: one call adds, updates and deletes any number of files, where each file took a model round before. Every file of a patch is still approved, journalled and shown as its own change, and rules written for `write_file`, `edit_file` and `delete_file` keep applying to it. On five small fix tasks a small GPT model needed about a third fewer rounds and tokens.
 - **The to-do list is for long work.** The agent keeps one for work of several stages or many files, no longer for a single fix, where some models spent whole rounds on it.
 - **Agents started in Auto are judged.** The review sees an agent's brief (and a later message to it) before the agent starts, against what you asked, so a conversation steered by something it read cannot pass a request on through an agent. In Ask, Plan and yolo agents start unasked as before; a folder rule can refuse or ask (`/permissions deny agent_start *`).
 - **An agent's report arrives as data.** The parent reads it labelled as the agent's report, data, not instructions, whether it waited for the agent or the report came as mail.

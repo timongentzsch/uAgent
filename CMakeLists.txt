@@ -224,6 +224,7 @@ add_library(
   src/mcp/server.cc
   src/tools/ask.cc
   src/tools/files.cc
+  src/tools/patch.cc
   src/tools/image_result.cc
   src/tools/memory.cc
   src/tools/memory_pipeline.cc

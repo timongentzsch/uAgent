@@ -66,8 +66,8 @@ void Agent::PushToolResultMessage(const ToolCall& call, json message) {
                                {"detail_id", call.detail_id}});
 }
 
-void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
-                             const ToolResult& original, double duration_ms) {
+void Agent::RecordToolRow(const ToolCall& call, const ToolResult& original,
+                          double duration_ms) {
   conversation_.AddStatistics({{"tool_ms", duration_ms}});
   // The row as a person reads it: the output without the model's hints, and
   // its facts. The tool message below is what the model reads.
@@ -118,6 +118,11 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
   facts["occurrence_id"] = call.occurrence_id;
   facts["detail_id"] = call.detail_id;
   conversation_.RecordDisplay(call.detail_id, std::move(facts));
+}
+
+void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
+                             const ToolResult& original, double duration_ms) {
+  RecordToolRow(call, original, duration_ms);
   const Tool* tool = FindTool(tools_, call.name);
   if (tool && tool->dedupe_output && result.size() >= kToolDedupeMinChars &&
       conversation_.HasRecentToolResult(call.name, call.args, result)) {
@@ -370,9 +375,34 @@ void Agent::CloseWork(const std::string& outcome) {
                                               id.c_str(), json::object()))}}});
 }
 
-bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
+bool Agent::RunCalls(const std::vector<ToolCall>& asked, TurnExecution& state,
                      StepState& loop, std::vector<ToolRejection>& rejections,
                      std::vector<ActivityPollResult>& activity_polls) {
+  // A call that stands for others (Tool::parts) runs as those: each is
+  // approved, run and shown as its own, and the model's one call gets their
+  // results together.
+  std::vector<ToolCall> calls;
+  std::vector<size_t> answers;  // for each call, the asked one it is part of
+  for (size_t index = 0; index < asked.size(); ++index) {
+    const ToolCall& call = asked[index];
+    const Tool* tool = FindTool(tools_, call.name);
+    std::vector<ToolPart> parts;
+    if (tool && tool->parts && tool_selection_.Enabled(*tool) &&
+        call.malformed.empty()) {
+      parts = tool->parts(json::parse(call.args, nullptr, false));
+    }
+    if (parts.empty()) calls.push_back(call);
+    for (size_t part = 0; part < parts.size(); ++part) {
+      const std::string id = call.id + ":" + std::to_string(part + 1);
+      calls.push_back({.id = id,
+                       .name = parts[part].tool,
+                       .args = JsonDump(parts[part].args),
+                       .response_id = call.response_id,
+                       .occurrence_id = OccurrenceId(call.response_id, id),
+                       .detail_id = DetailId(call.response_id, id)});
+    }
+    answers.resize(calls.size(), index);
+  }
   const int64_t step = loop.step;
   const auto deadline = state.deadline;
   std::vector<CallTask> tasks(calls.size());
@@ -468,12 +498,28 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   std::vector<std::string> model_results = ModelFacingToolResults(tasks);
   size_t original_chars = 0;
   size_t model_chars = 0;
+  std::string patched;  // the results of a patch's calls so far
   for (size_t index = 0; index < tasks.size(); ++index) {
     const ToolCall& call = calls[index];
     CallTask& task = tasks[index];
     original_chars = SaturatingAdd(original_chars, task.result.output.size());
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
-    AppendToolResult(call, model_results[index], task.result, task.duration_ms);
+    const ToolCall& answered = asked[answers[index]];
+    if (answered.id == call.id) {
+      AppendToolResult(call, model_results[index], task.result,
+                       task.duration_ms);
+    } else {
+      RecordToolRow(call, task.result, task.duration_ms);
+      patched += model_results[index] + "\n";
+      if (index + 1 == tasks.size() || answers[index + 1] != answers[index]) {
+        patched.pop_back();
+        PushToolResultMessage(answered,
+                              {{"role", "tool"},
+                               {"tool_call_id", answered.id},
+                               {"content", std::exchange(patched, {})}});
+        PublishMessage();
+      }
+    }
     if (task.result.effect) edits_.Record(turn_id_, *task.result.effect);
     for (const EndedCommand& ended : task.result.ended) {
       FinishCommandRow(ended);

@@ -384,7 +384,7 @@ def test_delete_file_removes_and_receipts(root, home, *, binary):
     keep.write_text("KEEP\n", encoding="utf-8")
 
     def remove(_, body):
-        assert_true("delete_file" in function_names(body), function_names(body))
+        assert_true("apply_patch" in function_names(body), function_names(body))
         return tool_call("delete_file", {"path": "stale.txt"})
 
     def remove_missing(_, body):
@@ -1040,7 +1040,7 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
         assert_true(set(properties) == {"action", "topic", "name"}, properties)
         # The escape hatch is closed too: writing the saved settings directly
         # stays a mandatory-human mutation.
-        assert_true("write_file" in function_names(body), function_names(body))
+        assert_true("apply_patch" in function_names(body), function_names(body))
         return uagent_set("UAGENT_MAX_TOOL_CALLS", "120")
 
     def refused(_, body):
@@ -1406,6 +1406,64 @@ def test_root_asks_nothing_when_sudo_needs_no_password(root, home, *, binary):
     assert_true(status == 0, output)
     assert_true(b"root-ran" in output, output)
     assert_true(b"sudo password" not in output, output)
+
+
+def test_patch_changes_each_file_as_its_own_call(root, home, *, binary):
+    workspace = root / "patch"
+    workspace.mkdir()
+    (workspace / "keep.py").write_text("def run():\n    return 1\n")
+    (workspace / "other.py").write_text("x = 1\n")
+    (workspace / "old.txt").write_text("gone\n")
+    patch = "\n".join(
+        [
+            "*** Begin Patch",
+            "*** Add File: new.txt",
+            "+made",
+            "*** Update File: keep.py",
+            "@@",
+            " def run():",
+            "-    return 1",
+            "+    return 2",
+            "*** Update File: other.py",
+            "@@",
+            "-y = 1",
+            "+y = 2",
+            "*** Delete File: old.txt",
+            "*** End Patch",
+        ]
+    )
+    responses = [
+        tool_call("apply_patch", {"input": patch}, call_id="patch"),
+        tool_call("apply_patch", {"input": "*** Update File: keep.py"}, call_id="none"),
+        event({"content": "done"}),
+    ]
+    with Server(responses) as server:
+        result = run(
+            workspace, base_env(home, server.url), "--yolo", "-p", "Patch it.", binary=binary
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        # A file whose hunk finds nothing is left; the others are changed, and
+        # the one call hears of each.
+        left = {path.name: path.read_text() for path in workspace.glob("*.*")}
+        expected = {
+            "new.txt": "made\n",
+            "keep.py": "def run():\n    return 2\n",
+            "other.py": "x = 1\n",
+        }
+        assert_true(left == expected, left)
+        heard = {
+            m["tool_call_id"]: m["content"]
+            for _, body in server.requests
+            for m in body["messages"]
+            if m.get("role") == "tool"
+        }
+        assert_true(set(heard) == {"patch", "none"}, heard)
+        lines = heard["patch"].split("\n")
+        assert_true("new.txt" in lines[0] and "edited keep.py" in lines[1], lines)
+        assert_true("not found in other.py" in heard["patch"], heard["patch"])
+        assert_true("deleted old.txt" in lines[-1], lines)
+        assert_true("patch line 1" in heard["none"], heard["none"])
+        assert_true("nothing was changed" in heard["none"], heard["none"])
 
 
 def test_edit_recovery_survives_reads_and_tracks_revision(root, home, *, binary):

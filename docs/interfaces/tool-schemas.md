@@ -18,9 +18,9 @@ Read text/ranges, list directories, or add images/documents to model context. Om
 
 ## write_file
 
-Offered: always. Parallel: no.
+Offered: a file is attached; otherwise it runs a patch's files. Parallel: no.
 
-Create a file. Use edit_file for existing files; overwrite=true explicitly permits whole-file replacement.
+Create a file; overwrite=true explicitly permits replacing one whole. Change text files with apply_patch.
 
 | Parameter | Type | Required | What |
 | --- | --- | --- | --- |
@@ -30,7 +30,7 @@ Create a file. Use edit_file for existing files; overwrite=true explicitly permi
 
 ## edit_file
 
-Offered: always. Parallel: no.
+Offered: never; it runs a patch's files. Parallel: no.
 
 Apply exact search/replacements to an existing file, batched and atomic in order.
 
@@ -44,13 +44,23 @@ Apply exact search/replacements to an existing file, batched and atomic in order
 
 ## delete_file
 
-Offered: always. Parallel: no.
+Offered: never; it runs a patch's files. Parallel: no.
 
 Delete a regular file and show its removed content as a red diff.
 
 | Parameter | Type | Required | What |
 | --- | --- | --- | --- |
 | `path` | string | yes |  |
+
+## apply_patch
+
+Offered: always. Parallel: no.
+
+Change several files in one call. `input` is one patch: `*** Begin Patch`; then for each file `*** Add File: PATH` and its lines, each after `+`, or `*** Delete File: PATH`, or `*** Update File: PATH` and hunks, each `@@` then lines after a space (kept, enough to find the place), `-` (removed) or `+` (added); `*** End Patch`. Each file changes as write_file, delete_file or edit_file would.
+
+| Parameter | Type | Required | What |
+| --- | --- | --- | --- |
+| `input` | string | yes |  |
 
 ## grep
 

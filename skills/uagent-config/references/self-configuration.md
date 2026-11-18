@@ -10,8 +10,8 @@ user to apply themselves with `/config user KEY=VALUE` or
 
 Do not edit `~/.uagent/config/settings.json` with the file tools. The tool
 changes only the settings it was approved for and is refused if one of them
-changed since the preview; a `write_file` over the document discards whatever
-else was saved meanwhile and skips the approval.
+changed since the preview; a patch over the document discards whatever else
+was saved meanwhile and skips the approval.
 
 ## Procedure
 

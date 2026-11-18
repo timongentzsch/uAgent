@@ -40,7 +40,7 @@ settings, history or provider keys.
 | Code | about 74k lines of C++20; the web client, about 43k lines of TypeScript and CSS, is embedded in the binary |
 | Size | binary 6.6–10.8 MB; complete installation 19–23 MB with the web client, skills and three gateway payloads |
 | Footprint | 27.1 MiB idle, 29 ms CPU per headless turn ([measured 2026-11-18](benchmarks/README.md#footprint-comparison)) |
-| First request | 14 tools and their instructions in 3,305 tokens ([measured 2026-11-18](benchmarks/README.md#outside-contacts-and-first-request)) |
+| First request | 12 tools and their instructions in 3,152 tokens ([measured 2026-11-18](benchmarks/README.md#outside-contacts-and-first-request)) |
 | Outside contacts | the configured model endpoint; updates, push and Auto review at another provider only when turned on ([recorded 2026-11-18](benchmarks/README.md#outside-contacts-and-first-request)) |
 | Model APIs | OpenAI Chat Completions, OpenAI Responses, Anthropic Messages |
 | Sandbox | Seatbelt on macOS, Landlock on Linux, on in every approval mode |
@@ -63,13 +63,12 @@ Measured on 2026-11-18 with µAgent 1.10.1, Claude Code 2.1.327 and OpenCode
 | Hosts asked for during one headless turn, besides the model endpoint | none | `api.anthropic.com` | `models.opencode.ai`, `registry.npmjs.org` |
 | A phone or second device attaches to | your own web host, after pairing | Anthropic's API, which stores the transcript while connected (its docs) | your own server |
 | OS sandbox for the agent's commands | on in every approval mode | off by default (its docs) | none (its SECURITY.md) |
-| First request, tools and instructions | 3,305 tokens | 11,509 | 6,904 |
+| First request, tools and instructions | 3,152 tokens | 11,509 | 6,904 |
 | Idle memory | 27 MiB | 161 MiB | 585 MiB |
 
 Both do things µAgent does not: Claude Code has cloud sessions, IDE and
 desktop apps and a plugin ecosystem; OpenCode has more providers built in,
-LSP integration and desktop and IDE clients. On five small fix tasks with a
-small GPT model, OpenCode needed fewer model calls than µAgent.
+LSP integration and desktop and IDE clients.
 [Method and raw results](benchmarks/README.md#outside-contacts-and-first-request).
 
 ## Design decisions

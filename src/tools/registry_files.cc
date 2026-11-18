@@ -16,6 +16,7 @@
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
+#include "include/tools/patch.h"
 #include "include/tools/shell.h"
 #include "src/tools/registry_internal.h"
 
@@ -108,8 +109,8 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
 
   Tool& write = path_tool(MakeTool(
       "write_file",
-      "Create a file. Use edit_file for existing files; overwrite=true "
-      "explicitly permits whole-file replacement.",
+      "Create a file; overwrite=true explicitly permits replacing one whole. "
+      "Change text files with apply_patch.",
       json::parse(R"json({"type":"object","properties":{
                   "path":{"type":"string"},
                   "content":{"type":"string"},
@@ -198,6 +199,43 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
     if (!prev || prev->empty()) return "delete " + DisplayPath(path);
     return DeletedFileDiffDisplay(path, *prev);
   };
+  // A patch runs as the file calls it holds (Tool::parts); only one that is
+  // no patch gets here.
+  Tool& patch = AddTool(
+      tools,
+      MakeTool(
+          "apply_patch",
+          "Change several files in one call. `input` is one patch: "
+          "`*** Begin Patch`; then for each file `*** Add File: PATH` and "
+          "its lines, each after `+`, or `*** Delete File: PATH`, or "
+          "`*** Update File: PATH` and hunks, each `@@` then lines after a "
+          "space (kept, enough to find the place), `-` (removed) or `+` "
+          "(added); `*** End Patch`. Each file changes as write_file, "
+          "delete_file or edit_file would.",
+          json::parse(R"json({"type":"object","properties":{
+                      "input":{"type":"string"}},"required":["input"]})json"),
+          [](const json& a, const ToolContext&) {
+            std::string error;
+            ParsePatch(JsonValue(a, "input", ""), error);
+            return ToolFailure(ToolErrorCode::kInvalidArguments,
+                               error + "; nothing was changed");
+          }));
+  patch.parts = [](const json& a) {
+    std::string error;
+    return ParsePatch(JsonValue(a, "input", ""), error);
+  };
+  patch.capabilities = Capability(ToolCapability::kMutate);
+  patch.headline = [](const json&) {
+    return Headline{"Patching", "Patched", "files"};
+  };
+  // A model changes files with a patch alone; the three run its parts, so
+  // rules, approvals and rows stay a file each.
+  for (Tool& part : tools) {
+    if (part.name == "write_file" || part.name == "edit_file" ||
+        part.name == "delete_file") {
+      part.available = [] { return false; };
+    }
+  }
   Tool& grep = path_tool(MakeTool(
       "grep",
       "Search file contents by regex (literal=true for fixed text). mode: "

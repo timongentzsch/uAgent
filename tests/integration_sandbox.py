@@ -944,7 +944,7 @@ def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
     assert_true(result.returncode == 0, (result.stdout, result.stderr))
     for said in (seen.get("context", ""), seen.get("tool", "")):
         assert_true("commands cannot write the folder" in said, said)
-        assert_true("/tmp" in said and "write_file" in said, said)
+        assert_true("/tmp" in said and "apply_patch" in said, said)
         assert_true(("cannot read a file made" in said) == (sys.platform == "linux"), said)
     # And the person is told at startup, before anything has failed.
     with Server([event({"content": "ready-ok"})]) as server:

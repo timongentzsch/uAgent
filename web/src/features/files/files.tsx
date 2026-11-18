@@ -46,6 +46,7 @@ import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
 import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
 import { bytes, plural } from "../../shared/quantities.ts";
+import { fenced } from "../../shared/format.ts";
 import { maxTextFileBytes } from "../../shared/limits.ts";
 import { stored } from "../../shared/storage.ts";
 import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
@@ -167,6 +168,7 @@ export default function Files({
   flow,
   setFlow,
   addToChat,
+  askSide,
   pictures,
 }: {
   session: Session;
@@ -176,6 +178,8 @@ export default function Files({
   setFlow: (update: (flow: Flow) => Flow) => void;
   // Puts text in the conversation's draft; none where there is no draft.
   addToChat?: (text: string, keep?: boolean) => void;
+  // Asks about a quote in a side chat of the conversation.
+  askSide?: (quote: string) => void;
   // Whether the agent's browser can draw a page as a picture.
   pictures?: boolean;
 }) {
@@ -447,6 +451,10 @@ export default function Files({
     document.addEventListener("selectionchange", update);
     return () => document.removeEventListener("selectionchange", update);
   }, []);
+  const cited =
+    chosen && file && !changing
+      ? `\`${file}:${chosen[0]}${chosen[1] > chosen[0] ? `-${chosen[1]}` : ""}\``
+      : "";
   // The first marked line sits in the middle of the view, once per view.
   const codeView = useRef<HTMLPreElement>(null);
   const scrolled = useRef<View | undefined>(undefined);
@@ -804,19 +812,28 @@ export default function Files({
             Annotate
           </Button>
         )}
-        {addToChat && chosen && file && !changing && (
-          <Button
-            variant="secondary"
-            // Pressing it must not drop the selection it cites.
+        {addToChat && cited && (
+          <div
+            class="segmented"
+            role="group"
+            aria-label="Selection"
+            // Pressing one must not drop the selection it cites.
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() =>
-              addToChat(
-                `\`${file}:${chosen[0]}${chosen[1] > chosen[0] ? `-${chosen[1]}` : ""}\``,
-              )
-            }
           >
-            Add to chat
-          </Button>
+            {askSide && (
+              <Button
+                variant="primary"
+                onClick={() =>
+                  askSide(
+                    `${cited}\n${fenced(document.getSelection()!.toString())}`,
+                  )
+                }
+              >
+                Ask in side chat
+              </Button>
+            )}
+            <Button onClick={() => addToChat(cited)}>Add to chat</Button>
+          </div>
         )}
         {file && !deleted && (
           <a

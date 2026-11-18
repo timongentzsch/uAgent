@@ -537,7 +537,7 @@ test("side conversations stay main-owned across execution host navigation", asyn
   await online(page);
   await page.getByLabel("Message or guidance").fill("/btw Side tool probe");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  const side = page.getByRole("complementary", { name: "Side conversation" });
+  const side = page.getByRole("complementary", { name: "Side chats" });
   await expect(side).toContainText("SIDE-TOOL-COMPLETE");
   await page
     .getByRole("group", { name: "GPU", exact: true })
@@ -548,7 +548,7 @@ test("side conversations stay main-owned across execution host navigation", asyn
     location.hash = `session=${id}`;
   }, session.id);
   await expect(side).toContainText("SIDE-TOOL-COMPLETE");
-  await side.getByRole("button", { name: "Dismiss side conversation" }).click();
+  await side.getByRole("button", { name: "Close side chat" }).click();
   await page.reload();
   await online(page);
   await expect(side).toHaveCount(0);

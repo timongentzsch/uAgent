@@ -40,7 +40,9 @@ import { useSnapshots } from "../state/snapshot-store.ts";
 import { keepFirst, mergeNodes } from "../shared/tree.ts";
 import { maxHistoryNodes } from "../shared/limits.ts";
 import { isRunning } from "../state/attention.ts";
-import SideAnswer from "../features/chat/side-answer.tsx";
+import SideChats from "../features/chat/side-answer.tsx";
+import { SelectionActions } from "../features/chat/selection-actions.tsx";
+import type { useSideConversations } from "./use-side-conversations.ts";
 
 // Empty lists, so an idle context value or prop never changes identity.
 const NO_ACTIVITIES: Activity[] = [];
@@ -92,7 +94,8 @@ export default function ChatPage({
   updateView,
   choose,
   side,
-  closeSide,
+  sideColumn,
+  addToChat,
   actions,
   setInspector,
   files,
@@ -118,8 +121,10 @@ export default function ChatPage({
   redirect: Redirect;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
   choose: (id: string) => Promise<void>;
-  side: { question: string; id?: string; firstRequest: string } | null;
-  closeSide: () => void;
+  side: ReturnType<typeof useSideConversations>;
+  // The side chats have a column beside the chat; else they sit under it.
+  sideColumn: boolean;
+  addToChat?: (text: string) => void;
   actions: MessageActions;
   setInspector: (target: InspectorTarget | null) => void;
   files?: ComponentChildren;
@@ -267,13 +272,37 @@ export default function ChatPage({
     !nodes.some((node) => node.kind === "work" && node.result?.edited)
       ? asked[0].body?.text || ""
       : "";
+  const sideChats = !!session && (side.sides.length > 0 || side.asking) && (
+    <SideChats
+      sides={side.sides}
+      shown={side.shown}
+      asking={side.asking}
+      sessions={catalogue.sessions}
+      show={side.show}
+      close={side.close}
+      cancel={side.cancel}
+      unquote={() => side.quote("")}
+      ask={(question, quote) => {
+        side.ask(session, question, quote);
+        side.cancel();
+      }}
+      choose={choose}
+    />
+  );
   return shown ? (
     <SideLayout
-      pane={
+      panes={[
+        sideColumn && sideChats
+          ? {
+              name: "side",
+              label: "Resize the side chats",
+              content: sideChats,
+            }
+          : undefined,
         files
           ? { name: "files", label: "Resize the files", content: files }
-          : undefined
-      }
+          : undefined,
+      ]}
     >
       {find?.session === selected && (
         <FindBar
@@ -307,12 +336,12 @@ export default function ChatPage({
           />
         </MessageActions.Provider>
       </LiveActivities.Provider>
-      {side && (
-        <SideAnswer
-          key={side.firstRequest}
-          side={side}
-          choose={choose}
-          close={closeSide}
+      {!sideColumn && sideChats}
+      {addToChat && (
+        <SelectionActions
+          asking={!!side.asking}
+          ask={side.quote}
+          add={addToChat}
         />
       )}
       {session && (

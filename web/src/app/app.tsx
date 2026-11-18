@@ -39,7 +39,12 @@ import { ConversationMenu, TerminalMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { isRunning, sessionById, shownSessions } from "../state/attention.ts";
-import { lockPageZoom, useCompact, useNarrowColumn } from "../shared/layout.ts";
+import {
+  lockPageZoom,
+  useCompact,
+  useNarrowColumn,
+  useRoomyColumn,
+} from "../shared/layout.ts";
 import { applyDevicePrefs } from "../shared/device-prefs.ts";
 import { useWakeLock } from "../shared/wake-lock.ts";
 import { useLatest } from "../shared/use-latest.ts";
@@ -188,7 +193,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const openDrawer = useCallback(() => setDrawer(true), []);
   useEdgeSwipe(compact, openDrawer);
   const filesSheet = useNarrowColumn(shown) || compact;
-  const { side, closeSide, ask, clearSides } = useSideConversations(host);
+  const roomy = useRoomyColumn(shown);
+  const side = useSideConversations(host);
   const [busy, setBusy] = useState(false);
   const [notificationMode, setNotificationMode] = useState(false);
   // Choosing a level forgets the rows opened or closed on this device.
@@ -374,7 +380,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
       setNotice,
       levels,
       changeDetail,
-      askSide: ask,
+      askSide: side.ask,
     },
   );
   const chatActions = useMessageActions({
@@ -397,7 +403,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
       const registration = await navigator.serviceWorker?.getRegistration();
       await (await registration?.pushManager?.getSubscription())?.unsubscribe();
       await localApi.command("logout");
-      clearSides();
+      side.clearSides();
       reset();
       setModal(null);
     } catch (failure) {
@@ -544,6 +550,13 @@ function App({ host, bindResult, reading }: HostAppProps) {
       flow={flows[session.id] ?? START}
       setFlow={(update) => setFlow(session.id, update)}
       addToChat={toChat}
+      askSide={
+        toChat &&
+        ((quote) => {
+          side.quote(quote);
+          if (filesSheet) setFilesOpen(false);
+        })
+      }
       pictures={browserAvailable}
     />
   );
@@ -846,7 +859,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       updateView={updateView}
                       choose={choose}
                       side={side}
-                      closeSide={closeSide}
+                      sideColumn={!filesSheet && (!filesOpen || roomy)}
+                      addToChat={toChat}
                       actions={chatActions}
                       setInspector={setInspector}
                       files={filesOpen && !filesSheet && files}

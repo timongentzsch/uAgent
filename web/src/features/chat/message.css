@@ -108,6 +108,8 @@
   }
 }
 
+/* A conversation's side chats: a column beside it, or a box under its
+   transcript where there is no room for one. */
 .side-answer {
   display: flex;
   flex-direction: column;
@@ -118,18 +120,36 @@
   border: var(--border);
   background: var(--surface);
 }
+.side-pane > .side-answer {
+  max-height: none;
+  margin: 0;
+  border: 0;
+  border-left: var(--border);
+}
 .side-answer > header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--gap);
+  min-height: var(--bar-min);
 }
-
-.side-answer > header strong {
+/* raw: the tabs stay one row that scrolls; a tab shows the start of its
+   question. */
+.side-answer .tabs {
   flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.side-answer .tabs button {
+  flex: none;
+  max-width: var(--pane-s);
+  gap: var(--space-3);
 }
 .side-transcript {
+  flex: 1;
   min-height: 0;
+  margin: 0;
   overflow: auto;
   overflow-anchor: none;
   overscroll-behavior: contain;
@@ -140,10 +160,43 @@
   gap: var(--space-2);
   padding-top: var(--space-2);
 }
-/* raw: the field takes a row of its own above its buttons. */
-.side-answer > form .text-control {
+/* raw: the quote and the field each take a row above the buttons. */
+.side-answer > form :is(.text-control, .side-quote) {
   flex: 1 0 100%;
   min-width: 0;
+}
+.side-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gap);
+  max-height: var(--scroll-s);
+  overflow: auto;
+}
+.side-quote > .markdown {
+  flex: 1;
+  min-width: 0;
+}
+
+/* What is selected in a transcript: the buttons sit at the selection's
+   end. */
+.selection-quote {
+  position: fixed;
+  z-index: var(--z-popover);
+  top: min(
+    calc(var(--at-y) + var(--space-2)),
+    calc(var(--viewport-height) - var(--control) - var(--space-4))
+  );
+  right: clamp(
+    var(--space-4),
+    calc(var(--viewport-width) - var(--at-x)),
+    calc(var(--viewport-width) - var(--popover))
+  );
+  flex-wrap: nowrap;
+  border: var(--border);
+  background: var(--bg);
+}
+.selection-quote > p {
+  display: none;
 }
 
 @container column (max-width: 43rem) {
@@ -152,5 +205,23 @@
   .side-answer > header button {
     min-height: var(--touch);
     min-width: var(--touch);
+  }
+  /* raw: a bar above the composer, under the passage it quotes. */
+  .selection-quote {
+    position: static;
+    flex-wrap: wrap;
+    gap: var(--space-2) 0;
+    margin-bottom: var(--gap);
+    padding: var(--space-4);
+  }
+  .selection-quote > p {
+    display: block;
+    flex: 1 0 100%;
+    margin: 0;
+  }
+  /* raw: two touch targets share the bar's width. */
+  .selection-quote > button {
+    flex: 1;
+    min-height: var(--touch);
   }
 }

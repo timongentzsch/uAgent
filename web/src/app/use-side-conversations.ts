@@ -1,20 +1,42 @@
-import { useCallback } from "preact/hooks";
+import { useState } from "preact/hooks";
 import type { Session } from "../shared/types.ts";
 import { stored, useStored } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
 import { requestId, useApi } from "../state/api.ts";
 import type { HostState } from "../state/use-host.ts";
 
-type Side = { question: string; id?: string; firstRequest: string };
+export type Side = { question: string; id?: string; firstRequest: string };
+// What is being asked about: for the side chat named, or for a new one.
+export type Asking = { to?: string; quote: string };
+// A conversation's side chats and the one shown, by its first request;
+// "" is the new one being asked.
+type Open = { list: Side[]; shown: string };
+
+const NONE: Side[] = [];
 
 // Session ids and side conversations are main-owned, across execution hosts.
-const kept = stored<Record<string, Side>>(
+const kept = stored<Record<string, Open>>(
   storageKeys.sideConversations,
   {},
-  undefined,
+  (value) =>
+    Object.fromEntries(
+      Object.entries(value || {}).filter(([, open]) =>
+        Array.isArray(open?.list),
+      ),
+    ),
   {
     kept: (value) =>
-      Object.fromEntries(Object.entries(value).filter(([, side]) => side.id)),
+      Object.fromEntries(
+        Object.entries(value)
+          .map(
+            ([parent, open]) =>
+              [
+                parent,
+                { ...open, list: open.list.filter((side) => side.id) },
+              ] as const,
+          )
+          .filter(([, open]) => open.list.length),
+      ),
   },
 );
 
@@ -25,68 +47,76 @@ export function useSideConversations({
   report,
 }: HostState) {
   const { command } = useApi();
-  const [sides, setSides] = useStored(kept);
-  const side = sides[selected] || null;
-  const closeSide = useCallback(
-    () =>
-      setSides((current) => {
-        const next = { ...current };
-        delete next[selected];
-        return next;
-      }),
-    [selected],
-  );
-  async function ask(parent: Session, argument: string) {
-    const existing = sides[parent.id];
-    if (existing && !existing.id)
-      throw new Error("The side conversation is starting.");
-    if (existing?.id) {
-      const snapshot = await load(existing.id);
-      await command("submit", snapshot.metadata, { text: argument });
-      return;
-    }
-    const firstRequest = requestId();
-    setSides((current) => ({
+  const [all, setAll] = useStored(kept);
+  const [asked, setAsked] = useState<Asking & { parent: string }>();
+  const asking = asked?.parent === selected ? asked : undefined;
+  const open = all[selected];
+  const sides = open?.list || NONE;
+  const shown = sides.some((side) => side.firstRequest === open?.shown)
+    ? open!.shown
+    : asking && !asking.to
+      ? ""
+      : (sides.at(-1)?.firstRequest ?? "");
+  const change = (parent: string, to: (open: Open) => Open) =>
+    setAll((current) => ({
       ...current,
-      [parent.id]: { question: argument, firstRequest },
+      [parent]: to(current[parent] || { list: [], shown: "" }),
+    }));
+  const show = (key: string) =>
+    change(selected, (open) => ({ ...open, shown: key }));
+  const cancel = () => setAsked(undefined);
+  // The new one closes unasked; a started one stays a conversation.
+  function close(key: string) {
+    if ((asking?.to || "") === key) cancel();
+    change(selected, (open) => ({
+      ...open,
+      list: open.list.filter((side) => side.firstRequest !== key),
+    }));
+  }
+  function quote(text: string, to?: string) {
+    setAsked({ parent: selected, to, quote: text });
+    show(to || "");
+  }
+  // Every question starts a side chat of its own.
+  function ask(parent: Session, question: string, quoted = "") {
+    const firstRequest = requestId();
+    change(parent.id, (open) => ({
+      list: [...open.list, { question, firstRequest }],
+      shown: firstRequest,
     }));
     // The side owns an ordinary runtime: tool dispatch, approvals and
     // follow-ups have one implementation, separate from the parent turn.
     void (async () => {
       const result = await command("side", parent, {
         operation: "create",
-        text: argument,
+        text: question,
       });
       if (result.pending || !result.result.id)
         throw new Error(
-          "The side conversation could not be started. Refresh to inspect it.",
+          "The side chat could not be started. Refresh to inspect it.",
         );
       const id = result.result.id;
       await refresh();
       await command("activate", { id, generation: "" });
       const snapshot = await load(id);
-      setSides((current) =>
-        current[parent.id]?.firstRequest === firstRequest
-          ? {
-              ...current,
-              [parent.id]: { question: argument, id, firstRequest },
-            }
-          : current,
-      );
+      change(parent.id, (open) => ({
+        ...open,
+        list: open.list.map((side) =>
+          side.firstRequest === firstRequest ? { ...side, id } : side,
+        ),
+      }));
       await command("submit", snapshot.metadata, {
-        text: argument,
+        text: quoted ? `${quoted}\n\n${question}` : question,
         request_id: firstRequest,
       });
     })().catch((failure) => {
-      setSides((current) => {
-        if (current[parent.id]?.firstRequest !== firstRequest) return current;
-        const next = { ...current };
-        delete next[parent.id];
-        return next;
-      });
+      change(parent.id, (open) => ({
+        ...open,
+        list: open.list.filter((side) => side.firstRequest !== firstRequest),
+      }));
       report(failure);
     });
   }
-  const clearSides = () => setSides({});
-  return { side, closeSide, ask, clearSides };
+  const clearSides = () => setAll({});
+  return { sides, shown, asking, show, close, cancel, quote, ask, clearSides };
 }

@@ -235,6 +235,7 @@
     transition: rotate var(--motion-fast) var(--ease-standard);
   }
   ::highlight(find),
+  ::highlight(asked),
   mark {
     background-color: var(--find);
     color: inherit;

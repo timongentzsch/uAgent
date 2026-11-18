@@ -55,3 +55,13 @@ export function escapeHTML(value: string) {
     (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[character]!,
   );
 }
+
+// A fence longer than any backtick run in the body, so code never ends early.
+export function fenced(text: string, language = "") {
+  const longest = Math.max(
+    2,
+    ...(text.match(/`+/g) || []).map((run) => run.length),
+  );
+  const fence = "`".repeat(longest + 1);
+  return `${fence}${language}\n${text}\n${fence}`;
+}

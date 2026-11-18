@@ -1,6 +1,7 @@
 import MarkdownIt from "markdown-it";
 import { nextFence } from "./markdown-split.ts";
 import { knownFile } from "./file-types.ts";
+import { once, warm } from "./lazy.ts";
 // markdown-it with the app's link and heading rules, split into keyed
 // top-level blocks so a streaming reply re-renders only its tail.
 
@@ -162,8 +163,12 @@ markdown.renderer.rules.heading_close = shiftHeading;
 // to the container width (display:block on <table> would do exactly that).
 markdown.renderer.rules.table_open = () => '<div class="table-scroll"><table>';
 markdown.renderer.rules.table_close = () => "</table></div>";
-let math: Promise<void> | undefined;
-let highlighting: Promise<void> | undefined;
+const math = once(() =>
+  import("./math.ts").then(({ install }) => install(markdown)),
+);
+const highlighting = once(() =>
+  import("./highlight.ts").then(({ install }) => install(markdown)),
+);
 // The whole document in one markdown-it pass: the reference the block
 // renderer below must reproduce (see markdown.test.js).
 export async function renderMarkdown(text: string) {
@@ -182,16 +187,8 @@ export interface MarkdownBlock {
 // the streaming entry renders with whatever is ready and starts the rest.
 function plugins(text: string) {
   const wanted: Promise<void>[] = [];
-  if (/\$|\\[([]/.test(text)) {
-    math ??= import("./math.ts").then(({ install }) => install(markdown));
-    wanted.push(math);
-  }
-  if (/```|~~~/.test(text)) {
-    highlighting ??= import("./highlight.ts").then(({ install }) =>
-      install(markdown),
-    );
-    wanted.push(highlighting);
-  }
+  if (/\$|\\[([]/.test(text)) wanted.push(math());
+  if (/```|~~~/.test(text)) wanted.push(highlighting());
   return wanted;
 }
 
@@ -216,7 +213,7 @@ export function markdownBlocks(
   env: Record<string, unknown> = {},
   plain = false,
 ): MarkdownBlock[] {
-  void plugins(text);
+  warm(...plugins(text));
   const tokens = markdown.parse(text, env);
   const lines = text.split(/\n/);
   const blocks: MarkdownBlock[] = [];

@@ -80,8 +80,11 @@ export function useBoot({
   }, []);
   useEffect(() => {
     let stop: (() => void) | undefined;
+    // Without it nothing offers to install or update; the next start loads
+    // it again.
     import("../shared/pwa.ts").then(
       ({ watchPwa }) => (stop = watchPwa(setInstall, setUpdate, report)),
+      () => {},
     );
     return () => stop?.();
   }, [report]);

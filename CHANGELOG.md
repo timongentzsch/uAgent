@@ -23,6 +23,10 @@
 - **A design's pages export from the canvas**: copy as PNG, PNG at 1× or 2×, PDF, or every page as one PDF, each at its own size.
 - **See what a turn changed in a file.** A file opened from a turn's changed files shows that turn's change, even outside a repository, with Undo beside it.
 
+### Fixes
+
+- **A part of the client that failed to load is loaded again.** Markdown, math and code highlighting were remembered as failed after one interrupted load, so a moment offline could leave answers unrendered until a reload. Loads started ahead of their use no longer raise an error nobody handles.
+
 ## v1.10.1 - 2026-11-16
 
 ### Upgrade notes

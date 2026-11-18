@@ -379,9 +379,9 @@
   // loaded from the page's own address. Until that is done the page says it
   // is busy, which a capture and the agent's browser wait out.
   // A whiteboard is drawn by its own code from the same place.
+  const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
   addEventListener("DOMContentLoaded", () => {
     if (!document.querySelector('meta[name="board"]')) return;
-    const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
     root.dataset.uagentBusy = "";
     window.uagentReady = import(`${base}~sheet/whiteboard.js`)
       .then((board) => board.ready)
@@ -390,7 +390,6 @@
   });
   addEventListener("DOMContentLoaded", () => {
     if (!meta("sheet")) return;
-    const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
     root.dataset.uagentBusy = "";
     window.uagentReady = import(`${base}~sheet/sheet.js`)
       .then((sheet) => sheet.ready)
@@ -422,29 +421,11 @@
     "$#,##0": { style: "currency", currency: "USD", maximumFractionDigits: 0 },
     "€#,##0.00": { style: "currency", currency: "EUR" },
   };
-  // A CSV file's rows as objects by its header; quoted fields may hold
-  // commas, quotes ("") and line ends.
-  const fromCsv = (text) => {
-    const rows = [[]];
-    let field = "";
-    let quoted = false;
-    for (let at = 0; at < text.length; at++) {
-      const c = text[at];
-      if (quoted) {
-        if (c === '"' && text[at + 1] === '"') field += text[at++];
-        else if (c === '"') quoted = false;
-        else field += c;
-      } else if (c === '"') quoted = true;
-      else if (c === ",") rows.at(-1).push(field), (field = "");
-      else if (c === "\n" || c === "\r") {
-        if (c === "\r" && text[at + 1] === "\n") at++;
-        rows.at(-1).push(field);
-        field = "";
-        rows.push([]);
-      } else field += c;
-    }
-    if (field || rows.at(-1).length) rows.at(-1).push(field);
-    const [head = [], ...body] = rows.filter((row) => row.length);
+  // A CSV file's rows as objects by its header, read as a sheet reads the
+  // file (sheet/text.js).
+  const fromCsv = async (text) => {
+    const sheet = await import(`${base}~sheet/text.js`);
+    const [head, ...body] = sheet.fromCsv(text);
     return body.map((row) =>
       Object.fromEntries(head.map((name, at) => [name.trim(), row[at] ?? ""])),
     );
@@ -463,7 +444,7 @@
             const text = await answer.text();
             const rows = /\.json$/i.test(source)
               ? JSON.parse(text)
-              : fromCsv(text);
+              : await fromCsv(text);
             if (!Array.isArray(rows))
               throw new Error(`${source} holds no rows`);
             return rows;
@@ -521,7 +502,6 @@
     const label = `${source} · ${field} · row ${uagentRow}`;
     const { x, y, width, height } = mark.getBoundingClientRect();
     if (parent !== window) {
-      const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
       const path = decodeURIComponent(
         new URL(source, location.href).pathname.slice(base.length),
       );

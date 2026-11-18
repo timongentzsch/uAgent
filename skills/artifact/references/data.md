@@ -12,7 +12,8 @@ can point at a value to see the file, column and row it came from.
 
 - `data-source` is the file's path from the page, as a link's would be:
   `sales.csv` beside the page, `../../sales.csv` for one two folders up.
-  A CSV with a header row, or JSON holding an array of objects.
+  A CSV with a header row (commas or semicolons), or JSON holding an array
+  of objects.
 - `data-field` is a column of the CSV (its header text, exactly) or a key
   of the objects.
 - `data-where="column=value"` picks the row; several are joined with `,`

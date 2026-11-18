@@ -21,9 +21,12 @@ test("marks fill from a CSV in the page's folder, say their file, column and row
 }) => {
   await writeFiles(join(host.project, "design/kpi"), {
     "sales.csv": SALES,
+    // As a spreadsheet saves it elsewhere: semicolons, CRLF, a quoted comma.
+    "umsatz.csv": 'monat;umsatz\r\n2027-03;"198,7"\r\n',
     "01-march.html": artboard(
       "March",
-      '<p>EU <b id="eu" data-source="sales.csv" data-field="revenue" data-where="month=2027-03, region=EU" data-format="$#,##0"></b></p>' +
+      '<p>DE <b id="de" data-source="umsatz.csv" data-field="umsatz"></b></p>' +
+        '<p>EU <b id="eu" data-source="sales.csv" data-field="revenue" data-where="month=2027-03, region=EU" data-format="$#,##0"></b></p>' +
         '<p>US <b id="us" data-source="sales.csv" data-field="revenue" data-where="region=US"></b></p>' +
         '<p>Note <b id="note" data-source="sales.csv" data-field="note"></b></p>',
     ),
@@ -33,6 +36,7 @@ test("marks fill from a CSV in the page's folder, say their file, column and row
   await expect(stage.locator("#eu")).toHaveText("$198,700");
   await expect(stage.locator("#us")).toHaveText("266400");
   await expect(stage.locator("#note")).toHaveText("cold, wet");
+  await expect(stage.locator("#de")).toHaveText("198,7");
 
   await stage.locator("#us").hover();
   const chip = files.locator(".page-source");

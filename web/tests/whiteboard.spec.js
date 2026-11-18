@@ -19,16 +19,24 @@ const BOARD = `<!doctype html>
 <hr data-from="ok" data-to="db" data-label="yes" data-dash>
 `;
 
+// The board opened in Files, and its file as it then is.
+async function openBoard(app, session, host) {
+  const path = "boards/signup/board.html";
+  await writeFiles(host.project, { [path]: BOARD });
+  const files = await openFiles(app, session, "boards/signup/");
+  return {
+    files,
+    stage: viewerOf(files).stage,
+    saved: () => readFile(join(host.project, path), "utf8"),
+  };
+}
+
 test("a whiteboard draws its items and arrows, and a drag, the keys, the corner and a double click change the file; ⌘Z undoes", async ({
   page: app,
   session,
   host,
 }) => {
-  const path = "boards/signup/board.html";
-  await writeFiles(host.project, { [path]: BOARD });
-  const saved = () => readFile(join(host.project, path), "utf8");
-  const files = await openFiles(app, session, "boards/signup/");
-  const { stage } = viewerOf(files);
+  const { files, stage, saved } = await openBoard(app, session, host);
   const item = (id) => stage.locator(`#${id}`);
   await expect(item("ok")).toBeVisible();
   const place = (id) =>
@@ -102,10 +110,7 @@ test("a whiteboard opened alone while its change is being written opens as the f
   session,
   host,
 }) => {
-  const path = "boards/signup/board.html";
-  await writeFiles(host.project, { [path]: BOARD });
-  const files = await openFiles(app, session, "boards/signup/");
-  const { stage } = viewerOf(files);
+  const { files, stage } = await openBoard(app, session, host);
   const release = await holdWrite(app, session);
   const writing = app.waitForRequest(
     (request) =>
@@ -136,11 +141,7 @@ test("a whiteboard's change that was refused is not what ⌘Z undoes: the one be
   session,
   host,
 }) => {
-  const path = "boards/signup/board.html";
-  await writeFiles(host.project, { [path]: BOARD });
-  const saved = () => readFile(join(host.project, path), "utf8");
-  const files = await openFiles(app, session, "boards/signup/");
-  const { stage } = viewerOf(files);
+  const { files, stage, saved } = await openBoard(app, session, host);
   await stage.locator("#n1").click();
   await app.keyboard.press("ArrowRight");
   await expect.poll(saved).toContain('data-at="801 100"');

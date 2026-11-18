@@ -495,10 +495,6 @@ def mb(value):
     return "n/a" if value is None else f"{value / 1e6:.1f}"
 
 
-def ms(value):
-    return "n/a" if value is None else f"{value:.0f}"
-
-
 def table(tools, report):
     names = [t["name"] for t in tools]
     rows = []

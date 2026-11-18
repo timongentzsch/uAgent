@@ -91,3 +91,24 @@ for (const width of [320, 1280]) {
     );
   });
 }
+
+test("a side chat asked while the conversation is still waking starts once it is up", async ({
+  command,
+  session,
+}) => {
+  // Its runtime stops, as after an idle spell, and is asked the moment it
+  // is started again.
+  const target = { session_id: session.id, generation: session.generation };
+  await command("close", target);
+  const { session: woken } = await command("activate", {
+    session_id: session.id,
+  });
+  const made = await command("side", {
+    session_id: woken.id,
+    generation: woken.generation,
+    operation: "create",
+    text: "Asked while waking",
+  });
+  expect(made.error || "").toBe("");
+  expect(made.result.id).toMatch(/^[a-f0-9]{16,64}$/);
+});

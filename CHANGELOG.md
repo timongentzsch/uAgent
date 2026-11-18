@@ -9,6 +9,7 @@
 
 ### Changes
 
+- **The to-do list is for long work.** The agent keeps one for work of several stages or many files, no longer for a single fix, where some models spent whole rounds on it.
 - **Agents started in Auto are judged.** The review sees an agent's brief (and a later message to it) before the agent starts, against what you asked, so a conversation steered by something it read cannot pass a request on through an agent. In Ask, Plan and yolo agents start unasked as before; a folder rule can refuse or ask (`/permissions deny agent_start *`).
 - **An agent's report arrives as data.** The parent reads it labelled as the agent's report, data, not instructions, whether it waited for the agent or the report came as mail.
 - **A report that tries to direct its parent waits for you.** In Auto the review judges a report before the parent reads it. One that instructs the parent, claims work beyond its brief or carries secrets shows on a card with **Withhold** and **Deliver**; with nobody to ask, the parent gets only a note that it was withheld, and the report stays in the agent's conversation.

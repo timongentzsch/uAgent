@@ -15,10 +15,11 @@ void RegisterTodoTool(std::vector<Tool>& tools) {
       tools,
       MakeTool(
           "todo",
-          "Your to-do list for this conversation; you and the user see it "
-          "until it is done. Each call replaces the whole list. Keep one for "
-          "work of three or more steps. Mark items done in the same response "
-          "as your next calls, and drop what no longer applies.",
+          "A to-do list the user follows while you do long work: several "
+          "stages, or many files. Not for a single fix or a short change. "
+          "Each call replaces the whole list. Send it in the same response "
+          "as the calls that do the work, never alone, and drop what no "
+          "longer applies.",
           json::parse(R"json({"type":"object","properties":{
             "items":{"type":"array","maxItems":24,"items":{"type":"object",
               "properties":{

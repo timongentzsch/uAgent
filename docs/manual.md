@@ -271,7 +271,7 @@ with **Withhold** and **Deliver**, and is withheld when nobody can answer. `agen
 bound how many work and how deep they nest ([Turn
 loop](architecture/turn-loop.md)).
 
-The to-do list the agent keeps for work with several parts is saved with
+The to-do list the agent keeps for long work is saved with
 the conversation and sent with every request; the web shows it above the
 composer.
 

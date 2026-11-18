@@ -130,26 +130,6 @@ std::string PageKind(const std::string& head) {
   return artboard.find(" slide\"") == std::string::npos ? "page" : "slide";
 }
 
-// The size a page's artboard names, "1440x900" or a width alone: {w, h},
-// with 0 for what it leaves open.
-json ArtboardSize(const std::string& head) {
-  const std::string tag = MetaTag(head, "artboard");
-  const size_t at = tag.find("content=\"");
-  if (at == std::string::npos) return nullptr;
-  int64_t size[2] = {0, 0};
-  size_t digit = at + 9;
-  for (int64_t& side : size) {
-    while (digit < tag.size() &&
-           isdigit(static_cast<unsigned char>(tag[digit])) && side < 100000) {
-      side = side * 10 + (tag[digit++] - '0');
-    }
-    if (digit >= tag.size() || tag[digit] != 'x') break;
-    ++digit;
-  }
-  return size[0] > 0 ? json::array({size[0], size[1]}) : json(nullptr);
-}
-
-// Whether a slide's head leaves it out of what is presented and printed.
 // The content of the meta tag named `name`, as written; empty when none.
 std::string MetaContent(const std::string& head, const std::string& name) {
   const std::string tag = MetaTag(head, name);
@@ -159,6 +139,24 @@ std::string MetaContent(const std::string& head, const std::string& name) {
              : tag.substr(at + 9, tag.find('"', at + 9) - at - 9);
 }
 
+// The size a page's artboard names, "1440x900" or a width alone: {w, h},
+// with 0 for what it leaves open.
+json ArtboardSize(const std::string& head) {
+  const std::string said = MetaContent(head, "artboard");
+  int64_t size[2] = {0, 0};
+  size_t digit = 0;
+  for (int64_t& side : size) {
+    while (digit < said.size() &&
+           isdigit(static_cast<unsigned char>(said[digit])) && side < 100000) {
+      side = side * 10 + (said[digit++] - '0');
+    }
+    if (digit >= said.size() || said[digit] != 'x') break;
+    ++digit;
+  }
+  return size[0] > 0 ? json::array({size[0], size[1]}) : json(nullptr);
+}
+
+// Whether a slide's head leaves it out of what is presented and printed.
 bool Skipped(const std::string& head) {
   std::istringstream words(MetaContent(head, "slide"));
   for (std::string word; words >> word;) {

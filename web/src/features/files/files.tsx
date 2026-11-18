@@ -605,17 +605,21 @@ export default function Files({
     });
   // A slide's or a whiteboard's file rewritten by hand, once what was typed
   // in it is written; the folder is read again for what its head now says.
+  // Whether the file was written.
   const rewrite = (path: string, change: (source: string) => string) => {
-    const made = rewrites.current.then(() =>
-      arranging.run(async () => {
+    const made = rewrites.current.then(async () => {
+      let written = false;
+      await arranging.run(async () => {
         await typed();
         const { text, revision } = await api<FileText>(
           routes.files(id, "read", path),
         );
         await api(routes.fileWrite(id), { path, text: change(text), revision });
+        written = true;
         listing.setValue({ ...(await list(dir)), dir });
-      }),
-    );
+      });
+      return written;
+    });
     rewrites.current = made;
     return made;
   };

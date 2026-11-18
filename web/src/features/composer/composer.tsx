@@ -26,7 +26,7 @@ import type {
   Node,
   Outgoing,
 } from "../../shared/types.ts";
-import type { TargetedKeyboardEvent } from "preact";
+import type { ComponentChildren, TargetedKeyboardEvent } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
 import { useApi } from "../../state/api.ts";
@@ -40,7 +40,7 @@ import {
   mentionOptions,
 } from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
-import { ActivityButton } from "../../shared/turn-status.tsx";
+import { ActivityButton, type SideRows } from "../../shared/turn-status.tsx";
 import MessageInput from "../../shared/message-input.tsx";
 import ModelControl from "../../shared/model-control.tsx";
 import { useNarrowColumn } from "../../shared/layout.ts";
@@ -76,6 +76,7 @@ function Composer({
   draft,
   setDraft,
   submit,
+  asking,
   jump,
   unseen = 0,
   openInspector,
@@ -84,6 +85,8 @@ function Composer({
   stopped,
   resume,
   agents,
+  sides,
+  above,
   choose,
 }: {
   session: Session;
@@ -96,6 +99,8 @@ function Composer({
   draft: Draft;
   setDraft: (draft: Draft) => void;
   submit: (event: Event, queue?: boolean) => void;
+  // The message is a side chat's question about this, not the conversation's.
+  asking?: { quote: string; cancel: () => void };
   jump: () => void;
   unseen?: number;
   openInspector: (target: InspectorTarget) => void;
@@ -104,6 +109,10 @@ function Composer({
   stopped?: string;
   resume?: () => void;
   agents: Session[];
+  // The conversation's side chats, for the Activity list.
+  sides: SideRows;
+  // What sits on the input: Jump to latest stays clear of it.
+  above?: ComponentChildren;
   choose: (id: string) => void;
 }) {
   const { routes, command } = useApi();
@@ -273,11 +282,17 @@ function Composer({
   const effective =
     permission?.mode === "default" ? permission.default : permission?.mode;
   const effectiveLabel = permissionLabel(effective);
+  // What is asked about is asked at once.
+  const side = !!asking;
+  useEffect(() => {
+    if (side) input.current?.focus({ preventScroll: true });
+  }, [side]);
   return (
     <section class="composer">
       {jumpShown && (
         <JumpToLatest buttonRef={jumpRef} unseen={unseen} onClick={jump} />
       )}
+      {above}
       {pending?.kind === "browser" ? (
         <section class="card decision enters" aria-label="Browser needs you">
           <h2>Continue in the browser</h2>
@@ -327,6 +342,18 @@ function Composer({
             )}
           </SuggestionList>
         )}
+        {asking && (
+          <div class="composer-asking">
+            <span class="chip">Side chat</span>
+            <span class="muted truncate">{asking.quote}</span>
+            <IconButton
+              label="Ask in the conversation instead"
+              onClick={asking.cancel}
+            >
+              <X />
+            </IconButton>
+          </div>
+        )}
         <label class="sr-only" for="prompt">
           Message or guidance
         </label>
@@ -349,9 +376,11 @@ function Composer({
           placeholder={
             pending
               ? "Decide above to continue"
-              : running
-                ? "Add guidance… (Esc to stop)"
-                : "Ask µAgent…"
+              : asking
+                ? "Ask about it…"
+                : running
+                  ? "Add guidance… (Esc to stop)"
+                  : "Ask µAgent…"
           }
           value={draft.text}
           onInput={(event) => {
@@ -570,6 +599,7 @@ function Composer({
             report={report}
             items={state?.activities || NONE}
             agents={agents}
+            sides={sides}
             running={running}
             started={state?.turn_started_ms}
             pending={!!pending}

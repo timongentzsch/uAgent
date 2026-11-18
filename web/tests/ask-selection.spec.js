@@ -5,6 +5,7 @@ import {
   expect,
   online,
   openFiles,
+  leaveEnd,
   selectProbeModel,
   writeFiles,
 } from "./fixtures.js";
@@ -222,7 +223,7 @@ const pickLines = (pane) =>
 
 for (const [width, layout] of [
   [1440, "three columns"],
-  [1100, "the side chats under the transcript"],
+  [1100, "the input asks"],
 ]) {
   test(`lines of a file are asked about with Files open: ${layout}`, async ({
     page,
@@ -240,48 +241,98 @@ for (const [width, layout] of [
     await pickLines(pane);
     await pane.getByRole("button", { name: "Ask in side chat" }).click();
     const side = page.getByRole("complementary", { name: "Side chats" });
-    await expect(side.locator(".side-quote")).toContainText("src/app.ts:1-2");
-    await expect(side.locator(".side-quote")).toContainText("// One.");
-    await expect(side.getByLabel("Ask in a side chat")).toBeFocused();
-    const [chat, chats, files] = await Promise.all(
-      [page.locator(".side-chat"), side, pane].map(box),
+    const [chat, files] = await Promise.all(
+      [page.locator(".side-chat"), pane].map(box),
     );
     if (width === 1440) {
+      await expect(side.locator(".side-quote")).toContainText("src/app.ts:1-2");
+      await expect(side.locator(".side-quote")).toContainText("// One.");
+      await expect(side.getByLabel("Ask in a side chat")).toBeFocused();
+      const chats = await box(side);
       expect(chats.left).toBeGreaterThanOrEqual(chat.right);
       expect(files.left).toBeGreaterThanOrEqual(chats.right - 1);
       expect(chat.width).toBeGreaterThanOrEqual(360);
     } else {
-      expect(chats.right).toBeLessThanOrEqual(chat.right);
+      // No room for a third column: the conversation's input asks.
+      await expect(side).toHaveCount(0);
+      const asking = page.locator(".composer-asking");
+      await expect(asking).toContainText("Side chat");
+      await expect(asking).toContainText("src/app.ts:1-2");
+      await expect(page.getByLabel("Message or guidance")).toBeFocused();
       expect(files.left).toBeGreaterThanOrEqual(chat.right - 1);
     }
     expect(await fits(page)).toBe(true);
   });
 }
 
-test("on a phone the actions are a bar above the composer and the side chats sit under the transcript", async ({
+test("on a phone the actions are a bar above the input, which asks; the side chat is its own page", async ({
   page,
   session,
 }) => {
   const transcript = await answered(page, session, { width: 390, height: 844 });
   await select(transcript, "answer with a table");
   const actions = page.getByRole("group", { name: "Selection" });
-  const composer = page.locator(".composer");
+  const input = page.locator(".composer > form");
   const bar = await box(actions);
-  expect(bar.bottom).toBeLessThanOrEqual((await box(composer)).top);
+  expect(bar.bottom).toBeLessThanOrEqual((await box(input)).top);
   await expect(actions).toContainText("answer with a table");
   for (const button of await actions.getByRole("button").all())
     expect((await box(button)).height).toBeGreaterThanOrEqual(44);
   await actions.getByRole("button", { name: "Ask in side chat" }).click();
-  const side = page.getByRole("complementary", { name: "Side chats" });
-  await side.getByLabel("Ask in a side chat").fill("Which table?");
-  await side.getByRole("button", { name: "Ask", exact: true }).click();
-  await expect(side.locator(".message.response")).toContainText(
-    "Native worker",
-  );
-  const [above, chats, below] = await Promise.all(
-    [transcript, side, composer].map(box),
-  );
-  expect(chats.top).toBeGreaterThanOrEqual(above.bottom - 1);
-  expect(chats.bottom).toBeLessThanOrEqual(below.top);
+  // One input: it carries the quote and says where the question goes.
+  const prompt = page.getByLabel("Message or guidance");
+  const asking = page.locator(".composer-asking");
+  await expect(asking).toContainText("answer with a table");
+  await expect(prompt).toBeFocused();
+  await expect(prompt).toHaveAttribute("placeholder", "Ask about it…");
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+  // Taking it back leaves an ordinary message to write.
+  await asking
+    .getByRole("button", { name: "Ask in the conversation instead" })
+    .click();
+  await expect(asking).toHaveCount(0);
+  await select(transcript, "answer with a table");
+  await actions.getByRole("button", { name: "Ask in side chat" }).click();
+  await prompt.fill("Which table?");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  // Its page: the quote and the question, the answer, Merge and the way back.
+  await expect(page).not.toHaveURL(new RegExp(`session=${session.id}$`));
+  const asked = transcript.locator(".message.user").last();
+  await expect(asked.locator("blockquote")).toHaveText("answer with a table");
+  await expect(asked).toContainText("Which table?");
+  await expect(asking).toHaveCount(0);
+  const head = page.locator(".conversation-head");
+  await expect(
+    head.getByRole("button", { name: "Merge", exact: true }),
+  ).toBeVisible();
+  await head.getByRole("button", { name: /^‹/ }).click();
+  // Back there, the Activity list holds it.
+  const activity = page.locator(".composer .activity-button");
+  await expect(activity).toContainText("1 side chat");
+  await activity.click();
+  await expect(
+    page.getByRole("dialog", { name: "Activity" }).locator(".activity-row"),
+  ).toHaveText([/Which table\?/]);
   expect(await fits(page)).toBe(true);
+});
+
+test("on a phone Jump to latest stays clear of the selection's actions", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  await page.getByLabel("Message or guidance").fill("Long continuity probe");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const transcript = page.locator(".transcript");
+  await expect(transcript).toContainText("late reference");
+  await leaveEnd(transcript);
+  const jump = page.getByRole("button", { name: /^Jump to latest/ });
+  await expect(jump).toBeVisible();
+  await select(transcript, "Long retained body sentence.");
+  const actions = page.getByRole("group", { name: "Selection" });
+  await expect(actions).toBeVisible();
+  const [above, bar] = await Promise.all([jump, actions].map(box));
+  expect(above.bottom).toBeLessThanOrEqual(bar.top);
 });

@@ -227,10 +227,24 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   const messages = await page.locator(".transcript .message").count();
   await composerInput.fill("/btw what did we just do?");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.locator(".side-answer")).toContainText("Verified response");
-  expect(await page.locator(".transcript .message").count()).toBe(messages);
-  await page.getByRole("button", { name: "Close side chat" }).click();
-  await expect(page.locator(".side-answer")).toHaveCount(0);
+  // On a phone the side chat is a page of its own, and leaves no message
+  // in the conversation it came from.
+  await expect(page.locator(".transcript")).toContainText(
+    "what did we just do?",
+  );
+  await page
+    .locator(".conversation-head")
+    .getByRole("button", { name: /^‹/ })
+    .click();
+  await expect(page.locator(".transcript .message")).toHaveCount(messages);
+  // It is in the conversation's Activity list until it is removed there.
+  const activity = page.locator(".composer .activity-button");
+  await expect(activity).toContainText("1 side chat");
+  await activity.click();
+  await page
+    .getByRole("button", { name: /^Remove .* from the side chats$/ })
+    .click();
+  await expect(activity).toHaveCount(0);
   const toolResult = await openRow(page, "browser-proof.txt");
   await toolResult
     .getByRole("button", { name: "Input and output", exact: true })

@@ -29,6 +29,10 @@
 
 ### Fixes
 
+- **A side chat on a phone is a page of its own.** The box under the transcript held tabs, three buttons, a second input and its button on one small screen. Where the side chats have no column, the conversation's input now asks (marked **Side chat**, with the quote) and the side chat opens as its own page with the way back and **Merge** in its header.
+- **A conversation's side chats are in its Activity list**, with its commands and agents: "2 side chats" under the input, a row to open or remove each. A side chat's own fields are the message box every message is written in, with its arrow.
+- **Jump to latest stays clear of a selection's actions** on a phone.
+- **A side chat can be asked of a conversation that has gone idle.** The question arrived while the conversation's runtime was starting again and was refused with "session not ready".
 - **A part of the client that failed to load is loaded again.** Markdown, math and code highlighting were remembered as failed after one interrupted load, so a moment offline could leave answers unrendered until a reload. Loads started ahead of their use no longer raise an error nobody handles.
 
 ## v1.10.1 - 2026-11-16

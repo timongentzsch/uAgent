@@ -195,6 +195,9 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const filesSheet = useNarrowColumn(shown) || compact;
   const roomy = useRoomyColumn(shown);
   const side = useSideConversations(host);
+  // The side chats have a column where it fits beside the chat (and beside
+  // Files, when that is open); elsewhere each is a page of its own.
+  const sideColumn = !filesSheet && (!filesOpen || roomy);
   const [busy, setBusy] = useState(false);
   const [notificationMode, setNotificationMode] = useState(false);
   // Choosing a level forgets the rows opened or closed on this device.
@@ -380,7 +383,10 @@ function App({ host, bindResult, reading }: HostAppProps) {
       setNotice,
       levels,
       changeDetail,
-      askSide: side.ask,
+      askSide: (parent: Session, question: string) =>
+        void side.ask(parent, question).then((id) => {
+          if (id && !sideColumn) return choose(id);
+        }),
     },
   );
   const chatActions = useMessageActions({
@@ -774,7 +780,20 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       filesOpen={filesOpen}
                       setFilesOpen={setFilesOpen}
                       outgoing={outgoing}
-                      parent={sessionById(catalogue.sessions, session?.parent)}
+                      parent={sessionById(
+                        catalogue.sessions,
+                        session?.parent || side.origin?.parent,
+                      )}
+                      merge={
+                        side.origin &&
+                        (() =>
+                          void command("side", session, { operation: "merge" })
+                            .then(() => {
+                              side.close(side.origin!.key, side.origin!.parent);
+                              return choose(side.origin!.parent);
+                            })
+                            .catch(report))
+                      }
                       openDrawer={openDrawer}
                       choose={choose}
                       settings={settings}
@@ -859,7 +878,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       updateView={updateView}
                       choose={choose}
                       side={side}
-                      sideColumn={!filesSheet && (!filesOpen || roomy)}
+                      sideColumn={sideColumn}
                       addToChat={toChat}
                       actions={chatActions}
                       setInspector={setInspector}

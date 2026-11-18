@@ -129,9 +129,16 @@ the composer. A side chat is a `/btw` conversation: it has read the
 conversation so far, answers beside it and leaves it untouched, while a
 turn runs too. Each question starts a side chat of its own, shown as tabs;
 selecting in a side chat's answer follows up there. They sit in a column
-beside the chat (with Files open, between the chat and Files) and under
-the transcript in a narrow window. Closing a tab leaves the conversation
-in the list. **Merge** brings a side chat back: it writes a summary of
+beside the chat (with Files open, between the chat and Files); closing a
+tab leaves the conversation in the list. Where there is no room for the
+column, on a phone or in a narrow window, the input itself asks, marked
+**Side chat** with the quote above it, and the side chat opens as a page
+of its own, with the way back and **Merge** in its header. Everywhere, a
+conversation's side chats are listed in its **Activity** list under the
+input, with its commands and agents ("2 side chats"): a row opens the
+side chat or removes it from the list.
+
+**Merge** brings a side chat back: it writes a summary of
 what it found, the conversation receives that as it does an agent's
 report (data, not instructions; judged in Auto) and answers, and the tab
 closes. The conversation reads the summary, never the side chat.

@@ -1,12 +1,12 @@
-import { ArrowRight, CircleAlert, X } from "lucide-preact";
+import { ArrowRight, CircleAlert, Square, X } from "lucide-preact";
 import type { ComponentChildren } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useId, useRef } from "preact/hooks";
 import type { Act, Session } from "../../shared/types.ts";
 import { Button, IconButton, LoadError } from "../../shared/ui.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { Tabs } from "../../shared/tabs.tsx";
 import { useAction } from "../../shared/use-action.ts";
-import MessageInput from "../../shared/message-input.tsx";
+import { StartField } from "../../shared/start-field.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import Decision from "../../shared/decision.tsx";
 import { useApi } from "../../state/api.ts";
@@ -18,7 +18,8 @@ import type { Asking, Side } from "../../app/use-side-conversations.ts";
 import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
 
-// The question, under what it is about. Escape leaves what is being asked.
+// The question, under what it is about, in the box every message is
+// written in. Escape leaves what is being asked.
 function SideForm({
   quote,
   drop,
@@ -27,7 +28,6 @@ function SideForm({
   placeholder,
   action,
   disabled,
-  blocked,
   send,
   children,
 }: {
@@ -38,65 +38,40 @@ function SideForm({
   placeholder: string;
   action: string;
   disabled: boolean;
-  // The question can be written, not yet sent.
-  blocked?: boolean;
-  send: (text: string) => unknown;
+  send: (text: string) => Promise<unknown> | undefined;
   children?: ComponentChildren;
 }) {
-  const [draft, setDraft] = useState("");
-  const { run, busy, error } = useAction();
-  const input = useRef<HTMLTextAreaElement>(null);
+  const id = useId();
   // A new quote is asked about at once.
   useEffect(() => {
-    if (quote !== undefined) input.current?.focus({ preventScroll: true });
-  }, [quote]);
-  const submit = () => {
-    if (!draft.trim() || disabled || busy || blocked) return;
-    void run(async () => {
-      await send(draft);
-      setDraft("");
-    });
-  };
+    if (quote !== undefined)
+      document.getElementById(id)?.focus({ preventScroll: true });
+  }, [quote, id]);
   return (
     <>
-      {!!error && <LoadError error={error} />}
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit();
-        }}
+      {quote && (
+        <div class="side-quote">
+          <Markdown text={quote} refs />
+          <IconButton label="Remove the quote" onClick={drop}>
+            <X />
+          </IconButton>
+        </div>
+      )}
+      <StartField
+        id={id}
+        label={label}
+        placeholder={placeholder}
+        action={action}
+        disabled={disabled}
         onKeyDown={(event) => {
           if (event.key !== "Escape" || quote === undefined) return;
           event.stopPropagation();
           cancel();
         }}
+        start={(text) => (text ? send(text) : undefined)}
       >
-        {quote && (
-          <div class="side-quote">
-            <Markdown text={quote} refs />
-            <IconButton label="Remove the quote" onClick={drop}>
-              <X />
-            </IconButton>
-          </div>
-        )}
-        <MessageInput
-          inputRef={input}
-          submit={submit}
-          aria-label={label}
-          placeholder={placeholder}
-          rows={2}
-          value={draft}
-          onInput={(event) => setDraft(event.currentTarget.value)}
-          disabled={disabled || busy}
-        />
-        <Button
-          type="submit"
-          disabled={disabled || busy || !draft.trim() || blocked}
-        >
-          {action}
-        </Button>
-        {children}
-      </form>
+        {() => children}
+      </StartField>
     </>
   );
 }
@@ -186,8 +161,7 @@ function SideAnswer({
         label="Follow up on side chat"
         placeholder="Follow up…"
         action={running ? "Queue follow-up" : "Send follow-up"}
-        disabled={!session || !online}
-        blocked={!!pending}
+        disabled={!session || !online || !!pending}
         send={async (text) => {
           await act("submit", {
             text: asking?.quote ? `${asking.quote}\n\n${text}` : text,
@@ -198,9 +172,12 @@ function SideAnswer({
         }}
       >
         {running && (
-          <Button onClick={() => void act("interrupt").catch(report)}>
-            Stop
-          </Button>
+          <IconButton
+            label="Stop"
+            onClick={() => void act("interrupt").catch(report)}
+          >
+            <Square />
+          </IconButton>
         )}
       </SideForm>
     </>
@@ -335,7 +312,7 @@ export default function SideChats({
             placeholder="Ask about it…"
             action="Ask"
             disabled={!online}
-            send={(text) => ask(text, asking?.quote || "")}
+            send={async (text) => ask(text, asking?.quote || "")}
           />
         </>
       )}

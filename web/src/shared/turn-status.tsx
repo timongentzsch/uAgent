@@ -14,9 +14,11 @@ import {
   ArrowDownToLine,
   ChevronDown,
   CircleAlert,
+  MessagesSquare,
   Square,
   Terminal,
   Users,
+  X,
 } from "lucide-preact";
 import {
   cleanText,
@@ -27,18 +29,28 @@ import {
 } from "./ui.tsx";
 import { SheetButton } from "./sheet.tsx";
 import { useApi } from "../state/api.ts";
+import { isRunning } from "../state/attention.ts";
 import { useAction } from "./use-action.ts";
 import { useElapsed } from "./time.ts";
 import { focusDecision, revealLiveRow } from "./navigation.ts";
 
+// A conversation's side chats: which, and what a row of one does.
+export type SideRows = {
+  list: Session[];
+  open: (id: string) => void;
+  remove: (id: string) => void;
+};
+
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
 
-// Reads like "Working · 4m 02s · 1 command · 2 agents". It never names a
-// step, which its own row shows, and is absent while nothing needs saying.
+// Reads like "Working · 4m 02s · 1 command · 2 agents · 1 side chat". It
+// never names a step, which its own row shows, and is absent while nothing
+// needs saying. Side chats stay listed while they exist, at work or not.
 function ActivityButtonView({
   items,
   agents,
+  sides,
   session,
   online,
   connection,
@@ -53,6 +65,7 @@ function ActivityButtonView({
 }: {
   items: Activity[];
   agents: Session[];
+  sides: SideRows;
   session: SessionRef;
   online: boolean;
   connection?: ConnectionPhase;
@@ -74,7 +87,12 @@ function ActivityButtonView({
   const counts = [
     rows.length ? plural(rows.length, "command") : "",
     agents.length ? plural(agents.length, "agent") : "",
+    sides.list.length ? plural(sides.list.length, "side chat") : "",
   ].filter(Boolean);
+  const live =
+    running ||
+    rows.length + agents.length > 0 ||
+    sides.list.some((side) => isRunning(side, online));
   const announcement = pending
     ? "Needs your input"
     : running
@@ -118,7 +136,7 @@ function ActivityButtonView({
         sheetClass="activity-sheet"
         trigger={
           <>
-            <StatusLed state="running" />
+            {live && <StatusLed state="running" />}
             <span class="truncate">
               <DataText>
                 {running && <span class="working">Working</span>}
@@ -174,6 +192,19 @@ function ActivityButtonView({
                 open={() => {
                   close();
                   choose(agent.id);
+                }}
+              />
+            ))}
+            {sides.list.map((side) => (
+              <AgentRow
+                key={side.id}
+                agent={side}
+                remove={() => sides.remove(side.id)}
+                online={online}
+                report={report}
+                open={() => {
+                  close();
+                  sides.open(side.id);
                 }}
               />
             ))}
@@ -278,20 +309,24 @@ function ActivityRow({
   );
 }
 
+// An agent at work, or a side chat, which stays listed until it is removed.
 function AgentRow({
   agent,
+  remove,
   online,
   report,
   open,
 }: {
   agent: Session;
+  remove?: () => void;
   online: boolean;
   report: Report;
   open: () => void;
 }) {
   const { command } = useApi();
   const { run, busy } = useAction();
-  const name = cleanText(agent.title || "Agent");
+  const name = cleanText(agent.title || (remove ? "Side chat" : "Agent"));
+  const working = !remove || isRunning(agent, online);
   return (
     <li class="activity-row">
       <Button
@@ -300,19 +335,34 @@ function AgentRow({
         disabled={!online}
         onClick={open}
       >
-        <Users />
+        {remove ? <MessagesSquare /> : <Users />}
         <span class="activity-text">
           <strong>{name}</strong>
-          <small>{cleanText(agent.turn_status || "Working")}</small>
+          <small>
+            {working
+              ? cleanText(agent.turn_status || "Working")
+              : agent.needs_you
+                ? "Needs you"
+                : "Ready"}
+          </small>
         </span>
       </Button>
-      <IconButton
-        label={`Stop ${name}`}
-        disabled={!online || busy}
-        onClick={() => run(() => command("interrupt", agent).catch(report))}
-      >
-        <Square />
-      </IconButton>
+      {working ? (
+        <IconButton
+          label={`Stop ${name}`}
+          disabled={!online || busy}
+          onClick={() => run(() => command("interrupt", agent).catch(report))}
+        >
+          <Square />
+        </IconButton>
+      ) : (
+        <IconButton
+          label={`Remove ${name} from the side chats`}
+          onClick={remove}
+        >
+          <X />
+        </IconButton>
+      )}
     </li>
   );
 }

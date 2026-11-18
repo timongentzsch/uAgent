@@ -20,6 +20,7 @@ test("container and media queries ask about a fixed set of sizes", () => {
     "app max-height: 500px",
     "app min-width: 44.28rem",
     "column max-width: 43rem",
+    "column min-width: 71.5rem",
     "composer min-width: 40rem",
     "files max-width: 40rem",
     "files min-width: 40.0625rem",

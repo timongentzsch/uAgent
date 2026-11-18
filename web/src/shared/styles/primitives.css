@@ -1246,6 +1246,13 @@
     gap: var(--gap);
     padding: var(--space-4);
   }
+  /* The header carries --roomy for useRoomyColumn: --chat-min and two
+     panes of --popover fit. */
+  @container column (min-width: 71.5rem) {
+    .conversation-head {
+      --roomy: 1;
+    }
+  }
   /* The header carries --narrow for useNarrowColumn. */
   @container column (max-width: 43rem) {
     .conversation-head {

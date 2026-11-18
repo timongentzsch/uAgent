@@ -16,9 +16,11 @@ namespace uagent::session {
 bool Reach(const std::string& path);
 
 // An agent's link to its parent session `parent`: a file, empty when gone.
+// A side chat being merged has one to the conversation it branched from.
 class AgentLink {
  public:
-  AgentLink(std::string path, std::string id, std::string parent);
+  AgentLink(std::string path, std::string id, std::string parent,
+            std::string kind = "agent");
 
   // `kind` is "approval request" or "question". With no parent to take it,
   // the agent escalates `interaction` to the person itself.
@@ -38,7 +40,7 @@ class AgentLink {
   // How the parent's mail names this agent: agent <id> "<title>".
   std::string Label(const std::string& title) const;
 
-  std::string path_, id_, parent_;
+  std::string path_, id_, parent_, kind_;
   std::optional<SessionMail> unsent_;
   // Parent starts under way, each on a thread that may outlive this link.
   std::shared_ptr<std::atomic<int>> reaching_ =

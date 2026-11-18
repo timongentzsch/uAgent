@@ -14,6 +14,8 @@ struct MailParty {
   std::string id{};  // mailbox id (MailboxIdFor path)
   std::string path{};
   std::string parent{};  // its parent's mailbox id, for an agent
+  // What its header calls it, and the conversation it forked from.
+  std::string identity{}, source{};
 };
 
 // With `role` (AgentOf) for a session whose header is not saved yet.
@@ -21,7 +23,7 @@ MailParty SessionParty(const std::string& path);
 MailParty SessionParty(const std::string& path, const json& role);
 
 // True for its parent, its child, or a sibling under one parent.
-bool MayMail(const MailParty& from, const MailParty& to);
+bool MayMail(const MailParty& from, const MailParty& to, bool report = false);
 
 // Wakes an idle recipient, labelled by how its sender stands to it.
 struct SessionMail {

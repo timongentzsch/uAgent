@@ -122,6 +122,20 @@ attachments, closing a live runtime first; files in the folder stay.
 `/fork [@N]`, `/rewind N` and `/btw QUESTION` branch a conversation; a
 `/btw` conversation works in the same folder with the same tools.
 
+**Side chats.** Select text in an answer, in one of your messages or in a
+tool's output: **Ask in side chat** opens a side chat with the selection
+quoted and the question still to write, **Add to chat** puts the quote in
+the composer. A side chat is a `/btw` conversation: it has read the
+conversation so far, answers beside it and leaves it untouched, while a
+turn runs too. Each question starts a side chat of its own, shown as tabs;
+selecting in a side chat's answer follows up there. They sit in a column
+beside the chat (with Files open, between the chat and Files) and under
+the transcript in a narrow window. Closing a tab leaves the conversation
+in the list. **Merge** brings a side chat back: it writes a summary of
+what it found, the conversation receives that as it does an agent's
+report (data, not instructions; judged in Auto) and answers, and the tab
+closes. The conversation reads the summary, never the side chat.
+
 **Several at once.** Ctrl-click (⌘-click) picks a row, Shift-click a run,
 and **Select** in a row's menu starts picking by tap; the sidebar's footer
 then offers **Move to…**, **Close** and **Delete…**. The Library picks the
@@ -185,7 +199,8 @@ conversation's folder as a tree with name search. Code opens highlighted,
 Markdown rendered (**Source** shows the text), HTML live in a sandboxed
 frame; other files download. In a git repository **Changes** lists what
 differs from the last commit, each as a diff. **Add to chat** puts
-selected lines into the composer. Open files are read again when a turn
+selected lines into the composer, **Ask in side chat** asks about them in
+a side chat. Open files are read again when a turn
 ends. Files writes to disk only by artifact editing (below). It serves
 nothing outside the folder ([Web host](architecture/web-host.md)).
 

@@ -76,7 +76,7 @@ export function useCommands({
   setNotice: (notice: string) => void;
   levels: readonly string[];
   changeDetail: (level: string) => void;
-  askSide: (parent: Session, question: string) => Promise<void>;
+  askSide: (parent: Session, question: string) => void;
 }) {
   const { command, manage } = useApi();
   const {
@@ -153,7 +153,7 @@ export function useCommands({
       await forkAndOpen(session, { argument }, true);
     } else if (name === "/btw") {
       if (!argument) throw new Error("Use /btw QUESTION");
-      await askSide(session!, argument);
+      askSide(session!, argument);
     } else if (name === "/share") {
       setNotice(await shareTranscript(session!, command));
     } else if (name === "/instructions" && !argument) {

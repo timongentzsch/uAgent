@@ -1583,6 +1583,28 @@ TEST_CASE(TestSessionMail) {
   for (const auto& rule : rules) {
     CHECK(MayMail(SessionParty(rule.from), SessionParty(rule.to)) == rule.may);
   }
+  // A fork reports to the conversation it branched from, and writes it
+  // nothing else; nobody else's report goes there.
+  auto named = [&](const char* file, const char* id, const char* source) {
+    const std::string path = (dir / file).string();
+    std::ofstream(path) << json{{"format", kSessionFormat},
+                                {"cwd", CanonicalCwd()},
+                                {"model", ""},
+                                {"session_id", id},
+                                {"turns", 0},
+                                {"title", "T"},
+                                {kSessionHeaderParent, source}}
+                        << "\n";
+    return path;
+  };
+  const std::string origin = named("origin.json", "origin-id", "");
+  const std::string fork = named("fork.json", "fork-id", "origin-id");
+  CHECK(ForkSourcePath(fork) == origin);
+  CHECK(ForkSourcePath(origin).empty());
+  CHECK(MayMail(SessionParty(fork), SessionParty(origin), true));
+  CHECK(!MayMail(SessionParty(fork), SessionParty(origin)));
+  CHECK(!MayMail(SessionParty(origin), SessionParty(fork), true));
+  CHECK(!MayMail(SessionParty(stranger), SessionParty(origin), true));
   SetApprovalMode(before);
 
   // The label says who wrote, from how the sender stands to the recipient.

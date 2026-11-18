@@ -18,7 +18,11 @@ MailParty SessionParty(const std::string& path) {
 }
 
 MailParty SessionParty(const std::string& path, const json& role) {
-  MailParty party{.id = MailboxIdFor(path), .path = path};
+  const json header = SessionHeader(path);
+  MailParty party{.id = MailboxIdFor(path),
+                  .path = path,
+                  .identity = JsonValue(header, kSessionHeaderSessionId, ""),
+                  .source = JsonValue(header, kSessionHeaderParent, "")};
   const std::string parent =
       AgentParentPath(path, JsonValue(role, "parent", ""));
   if (!parent.empty()) party.parent = MailboxIdFor(parent);
@@ -36,16 +40,18 @@ std::string SessionLabel(const std::string& path) {
 }
 }  // namespace
 
-bool MayMail(const MailParty& from, const MailParty& to) {
+bool MayMail(const MailParty& from, const MailParty& to, bool report) {
   return (!to.parent.empty() && to.parent == from.id) ||
          (!from.parent.empty() &&
-          (from.parent == to.id || from.parent == to.parent));
+          (from.parent == to.id || from.parent == to.parent)) ||
+         // A side chat the person merges reports to where it branched from.
+         (report && !from.source.empty() && from.source == to.identity);
 }
 
 std::string SendSessionMail(SessionMail mail) {
   const MailParty from = SessionParty(mail.from_path);
   const MailParty to = SessionParty(mail.to_path);
-  if (!MayMail(from, to)) {
+  if (!MayMail(from, to, mail.report)) {
     return "not allowed to message that session";
   }
   // The label says who wrote: the recipient's parent, or a session it can

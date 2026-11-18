@@ -24,6 +24,7 @@ import {
   reconnectMaxDelayMs,
   terminalScrollbackLines,
 } from "../../shared/limits.ts";
+import { fenced } from "../../shared/format.ts";
 
 // Shells the host runs for this user, each an xterm.js view on a socket.
 // The agent never sees a terminal; "Add to chat" puts text in the composer.
@@ -86,17 +87,6 @@ function sequence(key: BarKey, application: boolean) {
     ArrowRight: `${arrow}C`,
     ArrowLeft: `${arrow}D`,
   }[key];
-}
-
-// The end of the text, fenced longer than any run of backticks inside.
-function fenced(text: string) {
-  const kept = text.slice(-maxTerminalChatChars);
-  const longest = Math.max(
-    0,
-    ...(kept.match(/`+/g) || []).map((run) => run.length),
-  );
-  const fence = "`".repeat(Math.max(3, longest + 1));
-  return `${fence}console\n${kept}\n${fence}`;
 }
 
 // Where a shell runs: the home folder ("") is ~.
@@ -499,7 +489,10 @@ export default function TerminalPanel({
               title="Put the selection, or what the terminal shows, into the message"
               onClick={() => {
                 const text = views.current.get(active)?.text();
-                if (text) addToChat(fenced(text));
+                if (text)
+                  addToChat(
+                    fenced(text.slice(-maxTerminalChatChars), "console"),
+                  );
               }}
             >
               Add to chat

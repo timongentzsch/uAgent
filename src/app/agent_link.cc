@@ -53,11 +53,15 @@ bool Deliver(const SessionMail& mail,
 }
 }  // namespace
 
-AgentLink::AgentLink(std::string path, std::string id, std::string parent)
-    : path_(std::move(path)), id_(std::move(id)), parent_(std::move(parent)) {}
+AgentLink::AgentLink(std::string path, std::string id, std::string parent,
+                     std::string kind)
+    : path_(std::move(path)),
+      id_(std::move(id)),
+      parent_(std::move(parent)),
+      kind_(std::move(kind)) {}
 
 std::string AgentLink::Label(const std::string& title) const {
-  return "agent " + id_ + " \"" + OneLine(title) + "\"";
+  return kind_ + " " + id_ + " \"" + OneLine(title) + "\"";
 }
 
 void AgentLink::Ask(const std::string& interaction, const std::string& kind,

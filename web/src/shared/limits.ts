@@ -103,3 +103,7 @@ export const edgeSwipeOpenPx = 60;
 export const thoughtLines = 2;
 // The latest conversations the home screen lists.
 export const homeRecent = 6;
+
+// A quoted selection is cut here: the conversation it is asked in has the
+// whole passage already.
+export const maxQuote = 2000;

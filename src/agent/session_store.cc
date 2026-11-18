@@ -361,6 +361,20 @@ std::string AgentParentPath(const std::string& path,
   return "";
 }
 
+std::string ForkSourcePath(const std::string& path) {
+  const std::string source =
+      JsonValue(SessionHeader(path), kSessionHeaderParent, "");
+  std::error_code ec;
+  for (const auto& entry : std::filesystem::directory_iterator(
+           std::filesystem::path(path).parent_path(), ec)) {
+    if (!source.empty() && JsonValue(SessionHeader(entry.path().string()),
+                                     kSessionHeaderSessionId, "") == source) {
+      return entry.path().string();
+    }
+  }
+  return "";
+}
+
 std::string SessionLockPath(const std::string& path) {
   return CanonicalAccessPath(path).string() + kSessionLockSuffix;
 }

@@ -21,19 +21,10 @@ import { coarsePointer } from "../../shared/layout.ts";
 import { useApi } from "../../state/api.ts";
 import { useNodeReader } from "../../state/node-reader.ts";
 import { useResource } from "../../shared/use-resource.ts";
+import { fenced } from "../../shared/format.ts";
 import { MessageActions } from "./message-actions.ts";
 
 // Every part comes from the node; nothing here knows which tool made it.
-
-// A fence longer than any backtick run in the body, so code never ends early.
-function fenced(text: string, language = "") {
-  const longest = Math.max(
-    2,
-    ...(text.match(/`+/g) || []).map((run) => run.length),
-  );
-  const fence = "`".repeat(longest + 1);
-  return `${fence}${language}\n${text}\n${fence}`;
-}
 
 function Input({ parts }: { parts: ToolPart[] }) {
   return (

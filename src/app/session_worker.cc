@@ -211,9 +211,10 @@ class WorkerChannel final : public ApplicationChannel {
       // A signal is no input, so it counts as a quiet wait: an agent's exit
       // (SIGCHLD) does not start the idle period over.
       if (ready <= 0) {
-        if (link_) {
+        {
           std::lock_guard lock(mutex_);
-          link_->Resend();
+          if (link_) link_->Resend();
+          if (merge_) merge_->Resend();
         }
         if (mail_.Get() < 0 && !PendingMail(MailboxIdFor(path_)).empty()) {
           return ApplicationInput{.wake = true};
@@ -346,6 +347,10 @@ class WorkerChannel final : public ApplicationChannel {
                     JsonValue(state_, "title", title_),
                     JsonValue(state, "answer", ""));
     }
+    if (finished_turn && std::exchange(merging_, false) && merge_) {
+      merge_->Report("merged", JsonValue(state_, "title", title_),
+                     JsonValue(state, "answer", ""));
+    }
     if (!busy_) {
       // Completion events precede saved display/HTTP metadata. Only the final
       // application checkpoint makes the turn idle and accepts another input.
@@ -404,7 +409,7 @@ class WorkerChannel final : public ApplicationChannel {
   bool Occupied() {
     std::lock_guard lock(mutex_);
     if (input_ || SteeringState().QueuedCount() > 0) return true;
-    if (link_ && link_->Owes()) return true;
+    if ((link_ && link_->Owes()) || (merge_ && merge_->Owes())) return true;
     const json* activities = JsonArray(state_, "activities");
     return activities && std::ranges::any_of(*activities, ActivityRuns);
   }
@@ -605,6 +610,10 @@ class WorkerChannel final : public ApplicationChannel {
         SendState();
         break;
       case SessionCommandKind::kSide:
+        if (parsed.operation == "merge") {
+          MergeLocked(parsed, error);
+          break;
+        }
         lock.unlock();
         StartSideQuestion(request, parsed.raw);
         return true;
@@ -726,6 +735,32 @@ class WorkerChannel final : public ApplicationChannel {
     });
   }
 
+  // The person merges this side chat: one more turn sums it up, and its
+  // answer goes to the conversation it branched from as an agent's report.
+  void MergeLocked(SessionCommand parsed, std::string& error)
+      UAGENT_REQUIRES(mutex_) {
+    const std::string source = ForkSourcePath(path_);
+    if (source.empty()) {
+      error = "this conversation branched from none that is still here";
+      return;
+    }
+    if (turn_active_) {
+      error = "session is busy";
+      return;
+    }
+    parsed.text =
+        "The person merges this side chat into the conversation it branched "
+        "from. That conversation knows everything before the side chat and "
+        "nothing since. Write only what is new for it: what was asked here, "
+        "what you found, and what follows for its work, with paths and "
+        "lines. At most five sentences of prose; no preamble, no tools.";
+    SubmitLocked(parsed, error);
+    if (!error.empty()) return;
+    if (input_) input_->report = true;
+    merge_.emplace(path_, id_, source, "side chat");
+    merging_ = true;
+  }
+
   // A message during a turn is guidance, as a steer is; otherwise it takes
   // the one-slot input queue.
   void SubmitLocked(const SessionCommand& parsed, std::string& error)
@@ -788,6 +823,9 @@ class WorkerChannel final : public ApplicationChannel {
   // while it ran. Not the parent's brief, mail or queued guidance.
   bool person_turn_ UAGENT_GUARDED_BY(mutex_) = false;
   std::optional<AgentLink> link_;  // set when this session is an agent
+  // Set once this side chat is merged; the merging turn reports through it.
+  std::optional<AgentLink> merge_ UAGENT_GUARDED_BY(mutex_);
+  bool merging_ UAGENT_GUARDED_BY(mutex_) = false;
   bool reply_cancelled_ UAGENT_GUARDED_BY(mutex_) = false;
   bool ready_ UAGENT_GUARDED_BY(mutex_) = false;
   json notices_ UAGENT_GUARDED_BY(mutex_) = json::array();

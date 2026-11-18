@@ -99,16 +99,11 @@ export function ResizeHandle({
   );
 }
 
-// The chat sits in the same place with or without a pane: a new parent
-// would remount the transcript and load its history again. The pane's
-// content keeps its width while its column grows, so it never reflows.
-export function SideLayout({
-  pane,
-  children,
-}: {
-  pane?: { name: Pane; label: string; content: ComponentChildren };
-  children: ComponentChildren;
-}) {
+type Docked = { name: Pane; label: string; content: ComponentChildren };
+
+// The pane's content keeps its width while its column grows, so it never
+// reflows.
+function SidePane({ pane }: { pane?: Docked }) {
   const [shown, ref] = useExit<typeof pane, HTMLDivElement>(pane);
   const opener = useRef<Element | null>(null);
   const open = !!pane;
@@ -152,15 +147,30 @@ export function SideLayout({
     )
       target.focus({ preventScroll: true });
   }, [open]);
+  return shown ? (
+    <div ref={ref} class="side-pane" data-pane={shown.name}>
+      <ResizeHandle pane={shown.name} label={shown.label} edge="start" />
+      {shown.content}
+    </div>
+  ) : null;
+}
+
+// The chat sits in the same place with or without panes: a new parent
+// would remount the transcript and load its history again. Each pane has
+// its place in the row, taken or not.
+export function SideLayout({
+  panes,
+  children,
+}: {
+  panes: (Docked | undefined)[];
+  children: ComponentChildren;
+}) {
   return (
     <div class="side-layout">
       <div class="side-chat">{children}</div>
-      {shown && (
-        <div ref={ref} class="side-pane" data-pane={shown.name}>
-          <ResizeHandle pane={shown.name} label={shown.label} edge="start" />
-          {shown.content}
-        </div>
-      )}
+      {panes.map((pane, place) => (
+        <SidePane key={place} pane={pane} />
+      ))}
     </div>
   );
 }

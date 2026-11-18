@@ -160,6 +160,8 @@ function Message({
     node.time,
   );
   const agent = node.agent;
+  // A side chat the person merged reports as an agent does.
+  const merged = agent?.outcome === "merged";
   const words =
     text &&
     splitMentionTokens(text).map((part, index) =>
@@ -205,8 +207,12 @@ function Message({
             {agent && (
               <div class="message-event">
                 <span>
-                  Agent “{agent.title}” finished
-                  {agent.outcome !== "completed" && ` (${agent.outcome})`}
+                  {merged
+                    ? `Side chat “${agent.title}” merged`
+                    : `Agent “${agent.title}” finished`}
+                  {!merged &&
+                    agent.outcome !== "completed" &&
+                    ` (${agent.outcome})`}
                 </span>
                 {open && (
                   <Button
@@ -215,7 +221,7 @@ function Message({
                     disabled={!online}
                     onClick={() => open(agent.session)}
                   >
-                    Open agent
+                    {merged ? "Open side chat" : "Open agent"}
                   </Button>
                 )}
               </div>

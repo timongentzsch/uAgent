@@ -229,7 +229,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".side-answer")).toContainText("Verified response");
   expect(await page.locator(".transcript .message").count()).toBe(messages);
-  await page.getByRole("button", { name: "Dismiss side conversation" }).click();
+  await page.getByRole("button", { name: "Close side chat" }).click();
   await expect(page.locator(".side-answer")).toHaveCount(0);
   const toolResult = await openRow(page, "browser-proof.txt");
   await toolResult

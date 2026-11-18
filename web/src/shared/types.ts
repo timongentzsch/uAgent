@@ -914,7 +914,8 @@ export interface CommandInputs {
   // the message a fork is cut before ("m-<id>").
   fork: { argument?: string; message_id?: string };
   share: None;
-  side: { operation: string; text: string };
+  // Starts a side chat of the conversation, or merges this one back.
+  side: { operation: "create"; text: string } | { operation: "merge" };
   // The folder or workspace to move to, by its path on the host.
   move: { cwd?: string; space?: string };
   // Answers a suggested place with "here".

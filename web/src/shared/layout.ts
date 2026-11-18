@@ -303,6 +303,9 @@ export const compactNow = () => !styled(".shell", "--docked");
 // The conversation's column is as narrow as a phone, whatever the window.
 export const useNarrowColumn = (ready?: boolean) =>
   useStyled(".conversation-head", "--narrow", ready);
+// It has room for the chat, the side chats and Files side by side.
+export const useRoomyColumn = (ready?: boolean) =>
+  useStyled(".conversation-head", "--roomy", ready);
 
 // Animations play unless this device asks for less motion or Settings
 // turns them off.

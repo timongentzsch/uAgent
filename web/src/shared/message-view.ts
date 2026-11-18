@@ -15,10 +15,16 @@ export const outgoingStatus = {
   unconfirmed: "Not confirmed",
 };
 
+// What a draft sends: its quotes, then what was typed.
+export const messageText = (draft: Draft) =>
+  [...draft.quotes, draft.text].filter((part) => part.trim()).join("\n\n");
+
 // Plain text can wait for the connection; attachments and slash commands
 // need it.
-export const holdable = (draft: Draft) =>
-  !!draft.text.trim() && !draft.files.length && !draft.text.startsWith("/");
+export const holdable = (draft: Draft) => {
+  const text = messageText(draft);
+  return !!text && !draft.files.length && !text.startsWith("/");
+};
 
 export const unsent = (node: { status?: string }) =>
   node.status === outgoingStatus.refused ||

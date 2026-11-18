@@ -1457,7 +1457,7 @@ export default function Sequence({
               Cancel
             </Button>
             <Button type="submit" disabled={!comment.trim()}>
-              Add to chat
+              Add comment
             </Button>
           </Actions>
         </form>

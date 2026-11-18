@@ -124,10 +124,11 @@ attachments, closing a live runtime first; files in the folder stay.
 
 **Side chats.** Select text in an answer, in one of your messages or in a
 tool's output: **Ask in side chat** opens a side chat with the selection
-quoted and the question still to write, **Add to chat** puts the quote in
-the composer. A side chat is a `/btw` conversation: it has read the
-conversation so far, answers beside it and leaves it untouched, while a
-turn runs too. Each question starts a side chat of its own, shown as tabs;
+quoted and the question still to write, **Quote** puts it over the input,
+in the message you are writing: several quotes stack, each with an X to
+remove it, and they go before your text when the message is sent. A side
+chat is a `/btw` conversation: it has read the conversation so far,
+answers beside it and leaves it untouched, while a turn runs too. Each question starts a side chat of its own, shown as tabs;
 selecting in a side chat's answer follows up there. They sit in a column
 beside the chat (with Files open, between the chat and Files); closing a
 tab leaves the conversation in the list. Where there is no room for the
@@ -205,9 +206,9 @@ by shell commands are not tracked.
 conversation's folder as a tree with name search. Code opens highlighted,
 Markdown rendered (**Source** shows the text), HTML live in a sandboxed
 frame; other files download. In a git repository **Changes** lists what
-differs from the last commit, each as a diff. **Add to chat** puts
-selected lines into the composer, **Ask in side chat** asks about them in
-a side chat. Open files are read again when a turn
+differs from the last commit, each as a diff. **Quote** puts a reference
+to the selected lines over the input, **Ask in side chat** asks about them
+in a side chat. Open files are read again when a turn
 ends. Files writes to disk only by artifact editing (below). It serves
 nothing outside the folder ([Web host](architecture/web-host.md)).
 

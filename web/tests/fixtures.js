@@ -142,6 +142,14 @@ export const withoutServiceWorker = (page) =>
 export const online = (page) =>
   expect(page.locator('.composer input[type="file"]')).toBeEnabled();
 
+// The quotes of a conversation's draft, as this device keeps them.
+export const quotesOf = (page, id) =>
+  page.evaluate(
+    (id) =>
+      JSON.parse(localStorage.getItem("uagent-drafts") || "{}")[id]?.quotes,
+    id,
+  );
+
 // The composer's totals open the statistics, which hold the way to the raw
 // context.
 export async function openRawContext(page) {

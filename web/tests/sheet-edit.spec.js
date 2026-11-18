@@ -667,7 +667,7 @@ test("a range's numbers are summed, and a comment on it goes into the draft", as
   await files.getByRole("button", { name: "Comment" }).click();
   await expect(files.getByText("Comment on Tasks!D2:D4")).toBeVisible();
   await files.getByLabel("Comment", { exact: true }).fill("too high");
-  await files.getByRole("button", { name: "Add to chat" }).click();
+  await files.getByRole("button", { name: "Add comment" }).click();
   await expect(app.locator("#prompt")).toHaveValue(
     "`sheets/plan.html` `Tasks!D2:D4` — too high",
   );

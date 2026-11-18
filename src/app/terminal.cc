@@ -288,7 +288,7 @@ std::string Terminals::Open(const std::string& directory,
     return {};
   }
   // The user's login shell without uagent's credentials or settings, which
-  // "Add to chat" could carry into a model's context. Their ssh agent stays.
+  // "Quote" could carry into a model's context. Their ssh agent stays.
   std::string program = EnvStr("SHELL");
   if (!program.starts_with('/')) program = "/bin/sh";
   ChildEnvironment environment({{"TERM", "xterm-256color"},

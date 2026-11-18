@@ -40,17 +40,6 @@
     padding-block: 0;
   }
 }
-/* The input asks a side chat: what it is about, and the way back. */
-.composer-asking {
-  display: flex;
-  align-items: center;
-  gap: var(--gap);
-  padding: 0 0 0 var(--inset-x);
-}
-.composer-asking > .muted {
-  flex: 1;
-  min-width: 0;
-}
 .composer .attachments {
   flex-wrap: nowrap;
   max-height: none;

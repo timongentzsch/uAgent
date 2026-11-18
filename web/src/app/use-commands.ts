@@ -15,6 +15,7 @@ import { requestId, useApi } from "../state/api.ts";
 import type { HostState } from "../state/use-host.ts";
 import {
   holdable,
+  messageText,
   outgoingStatus,
   waitingToSend,
 } from "../shared/message-view.ts";
@@ -125,7 +126,7 @@ export function useCommands({
     await choose(id);
     await command("activate", { id, generation: "" });
     await load(id);
-    if (edit && prompt) setDraft({ text: prompt, files: [] }, id);
+    if (edit && prompt) setDraft({ text: prompt, files: [], quotes: [] }, id);
     if (edit) setNotice("Continuing in a fork. Files on disk are unchanged.");
   }
   async function localCommand(text: string) {
@@ -188,11 +189,12 @@ export function useCommands({
   async function submit(event: Event, jumpToLatest: () => void, queue = false) {
     event.preventDefault();
     const pending = snapshots.get()[selected]?.pending;
+    const text = messageText(draft);
     setNotice("");
     if (
       (!online && !holdable(draft)) ||
       pending ||
-      (!draft.text.trim() && !draft.files.length) ||
+      (!text && !draft.files.length) ||
       uploading ||
       busy
     )
@@ -200,20 +202,20 @@ export function useCommands({
     setBusy(true);
     // Re-sticks first: the send's layout churn can move the scroll before the
     // observers re-pin. A message shown as a row rises from the input.
-    if (!draft.text.startsWith("/") || draft.files.length)
+    if (!text.startsWith("/") || draft.files.length)
       rememberSend(document.getElementById("prompt"));
     jumpToLatest();
     const id = selected,
       sent = draft,
       request_id = requestId();
-    if (sent.text.startsWith("/")) {
+    if (text.startsWith("/")) {
       try {
         // A side question is the one command meant for a running turn.
-        if (running && !sent.text.startsWith("/btw "))
+        if (running && !text.startsWith("/btw "))
           throw new Error(
             "Wait for this turn to finish before running a slash command.",
           );
-        if (await localCommand(sent.text)) {
+        if (await localCommand(text)) {
           setDrafts((current) =>
             current[id] === sent
               ? { ...current, [id]: { ...sent, text: "" } }
@@ -223,8 +225,8 @@ export function useCommands({
           return;
         }
         if (
-          parseSlash(catalogue.commands || [], sent.text).name === "/attach" &&
-          sent.text.trim().endsWith(" clear")
+          parseSlash(catalogue.commands || [], text).name === "/attach" &&
+          text.trim().endsWith(" clear")
         )
           updateDraft(id, emptyDraft);
       } catch (error) {
@@ -246,10 +248,11 @@ export function useCommands({
   ) {
     setBusy(true);
     const kind = running && !snapshots.get()[id]?.pending ? "steer" : "submit";
+    const text = messageText(sent);
     const queued =
       kind === "steer" &&
       (queue ? outgoingStatus.next : outgoingStatus.guidance);
-    const visible = !sent.text.startsWith("/") || sent.files.length;
+    const visible = !text.startsWith("/") || sent.files.length;
     if (visible) {
       const row: Outgoing = {
         id: `outgoing-${request_id}`,
@@ -257,7 +260,7 @@ export function useCommands({
         request_id,
         session_id: id,
         kind: "turn",
-        body: { kind: "text", text: sent.text },
+        body: { kind: "text", text },
         files: sent.files,
         time: new Date().toISOString(),
         status: !online
@@ -280,7 +283,7 @@ export function useCommands({
     try {
       const result = await act(kind, {
         request_id,
-        text: sent.text,
+        text,
         ...(queued && queue && { queue }),
         attachment_ids: sent.files.map((item) => ({
           id: item.id,
@@ -321,7 +324,7 @@ export function useCommands({
     if (online && !busy && item)
       void deliver(
         selected,
-        { text: item.body?.text || "", files: [] },
+        { text: item.body?.text || "", files: [], quotes: [] },
         false,
         waiting,
       );

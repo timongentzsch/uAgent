@@ -29,6 +29,8 @@ export interface Asset {
 export interface Draft {
   text: string;
   files: Asset[];
+  // Sent before the text, each a paragraph of its own.
+  quotes: string[];
 }
 export interface InstallPrompt extends Event {
   prompt(): Promise<void>;

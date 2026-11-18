@@ -16,9 +16,9 @@ import { mergeNodes, placeNode } from "../shared/tree.ts";
 // Pure updates; they keep object identity when nothing changed, so views
 // skip frames.
 
-export const emptyDraft = (): Draft => ({ text: "", files: [] });
+export const emptyDraft = (): Draft => ({ text: "", files: [], quotes: [] });
 export const hasContent = (draft: Draft) =>
-  !!(draft.text || draft.files.length);
+  !!(draft.text || draft.files.length || draft.quotes.length);
 
 // A state frame replaces the session's state. Only checkpoint frames carry
 // the view, HTTP log and prompt; the others keep the last ones.

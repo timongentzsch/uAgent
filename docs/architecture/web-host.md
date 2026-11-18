@@ -147,9 +147,9 @@ random token per conversation. It holds until the host stops or any device
 is revoked. The preview route needs no cookie: the token is the grant. It
 serves only the types `PreviewMime` lists (pages, styles, scripts, JSON,
 CSV, `.xlsx`, fonts, images, media). Its CSP (`PreviewPolicy`) sandboxes the
-page into an opaque origin and limits loads to the preview address and
-Google Fonts, with `'wasm-unsafe-eval'` and `blob:` workers for the sheet
-engine under `~sheet/`. Because the page is opaque, its own subresource
+page into an opaque origin and limits loads to the preview address, with
+`'wasm-unsafe-eval'` and `blob:` workers for the sheet engine under
+`~sheet/`. Because the page is opaque, its own subresource
 requests carry `Origin: null`; the pre-routing handler accepts that only for
 a GET or HEAD under `/preview/`.
 

@@ -723,7 +723,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             registry::Str("approval.reviewerModel", "UAGENT_PERMISSION_MODEL",
                           "permission_model", "", ReloadPolicy::kNextUserTurn,
                           Sensitivity::kPublic, "behaviour",
-                          "[endpoint/]decision model used by auto permissions"),
+                          "[provider/]decision model of Auto; a provider other "
+                          "than the conversation's reviews only when named"),
             "the endpoint's own decision model"),
         "Permission reviewer", "Judges risky actions when approval is Auto"),
     registry::Named(

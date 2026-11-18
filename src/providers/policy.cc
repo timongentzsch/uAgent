@@ -131,13 +131,6 @@ RouteResolution ResolveReviewRoute(const Api& api,
     model = setting.substr(slash + 1);
   } else if (serves(api)) {
     chosen = &api;
-  } else {
-    for (const Endpoint& provider : providers) {
-      if (serves(provider)) {
-        chosen = &provider;
-        break;
-      }
-    }
   }
   RouteResolution resolved;
   if (api.FreeOnly() && setting.empty()) {
@@ -146,8 +139,14 @@ RouteResolution ResolveReviewRoute(const Api& api,
     return resolved;
   }
   if (!chosen) {
+    // Another provider is never sent a command it was not named for.
+    const auto other = std::ranges::find_if(providers, serves);
     resolved.none =
-        "no provider serves decision models; one at openrouter.ai does";
+        other == providers.end()
+            ? "no provider serves decision models; one at openrouter.ai does"
+            : "this conversation's provider serves no decision model; set "
+              "approval.reviewerModel to " +
+                  other->name + "/ to review at " + other->name;
     return resolved;
   }
   static_cast<Endpoint&>(resolved.route) = *chosen;

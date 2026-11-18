@@ -138,17 +138,21 @@ TEST_CASE(TestPermissionReview) {
   RouteResolution none = ResolveReviewRoute(api, {}, "");
   CHECK(!none.none.empty());
   CHECK(!ResolveReviewRoute(api, {Serving("keyless", "")}, "").none.empty());
+  // An endpoint that serves them is not asked unless it is the
+  // conversation's own or the setting names it.
   RouteResolution found = ResolveReviewRoute(api, {first, second}, "");
-  CHECK(found.none.empty());
-  CHECK(found.route.name == "first" && found.route.model == "first-model");
-  // The setting names the model, optionally on an endpoint.
+  CHECK(found.none.find("approval.reviewerModel to first/") !=
+        std::string::npos);
+  CHECK(!ResolveReviewRoute(api, {first}, "vendor/judge-2").none.empty());
   found = ResolveReviewRoute(api, {first, second}, "second/judge-1");
   CHECK(found.route.name == "second" && found.route.model == "judge-1");
-  found = ResolveReviewRoute(api, {first, second}, "vendor/judge-2");
-  CHECK(found.route.name == "first" && found.route.model == "vendor/judge-2");
-  // The conversation's own endpoint comes first when it serves them.
+  found = ResolveReviewRoute(api, {first, second}, "second/");
+  CHECK(found.route.name == "second" && found.route.model == "second-model");
+  // On the conversation's own endpoint the setting names the model alone.
   static_cast<Endpoint&>(api) = second;
   CHECK(ResolveReviewRoute(api, {first}, "").route.name == "second");
+  found = ResolveReviewRoute(api, {first}, "vendor/judge-2");
+  CHECK(found.route.name == "second" && found.route.model == "vendor/judge-2");
 
   // A free setup never silently falls back to a paid reviewer. An explicit
   // reviewer remains the user's choice.

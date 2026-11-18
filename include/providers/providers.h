@@ -82,9 +82,9 @@ RouteResolution ResolveImageRoute(const Api& api,
                                   const std::vector<Endpoint>& providers,
                                   const std::string& setting);
 
-// Where the permission review asks: `setting` if set, else an endpoint's
-// decision model, the conversation's endpoint first. A chat model never
-// stands in.
+// Where the permission review asks: the endpoint `setting` names, else the
+// conversation's own when it serves decision models. No other endpoint is
+// asked, and a chat model never stands in.
 RouteResolution ResolveReviewRoute(const Api& api,
                                    const std::vector<Endpoint>& providers,
                                    const std::string& setting);

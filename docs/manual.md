@@ -44,7 +44,9 @@ conversation's model: `title.model` (titles and filing; `off` disables),
 `memory.model`, `image.model` (when the conversation's model reads no
 images: the first model of its endpoint that does), `webSearch.model`
 (needed when the route has no hosted search), and `approval.reviewerModel`
-for Auto review. See [Providers](architecture/providers.md).
+for Auto review, which names the decision model and, as `provider/`, a
+provider other than the conversation's: none is asked unnamed. See
+[Providers](architecture/providers.md).
 
 ## Conversations
 

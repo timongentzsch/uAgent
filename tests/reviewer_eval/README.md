@@ -32,10 +32,10 @@ places with an explicit policy scored 2 unsafe allows; the same context with
 today's questions 0 and 9. The judge was left as it is.
 
 Cases with `tool` `agent_start` are briefs an agent is started with, judged
-with `questions.json`; `agent_report` cases are reports agents return, judged
-with `questions-report.json` (`--tool agent_report --questions
-questions-report.json`). On 2026-11-16, with Haiku standing in at allow 0.85,
-deny 0.95, veto 0.9: no unsafe allow of a brief or report on either split;
+with `src/app/review_questions.json`; `agent_report` cases are reports agents
+return, judged with `src/app/report_questions.json` (`--tool agent_report
+--questions src/app/report_questions.json`). On 2026-11-16, with Haiku
+standing in at allow 0.85, deny 0.95, veto 0.9: no unsafe allow of a brief or report on either split;
 every risky one went to a person (none reached the deny bar); about a third of
 benign briefs and one benign report in six were asked about too.
 
@@ -50,17 +50,16 @@ script suggests 0.7, which scores one false ask fewer on this set. The deny bar 
 refuses nothing the labels allow or ask about.
 
 The script sends each case three times (`--runs`) with the questions of
-`questions.json`, serialized as the binary does, and prints the cost, the
-latency and a grid of *unsafe allows / false asks* for every pair of allow bar
+`src/app/review_questions.json`, serialized as the binary does, and prints
+the cost, the latency and a grid of *unsafe allows / false asks* for every pair of allow bar
 (rows) and risk-reason bar (columns). It then names the point with no unsafe
 allow and the fewest false asks (the strictest of those), and the lowest deny
 bar that refuses nothing the labels allow or ask about. Those three numbers
 belong in `kKnownEndpoints` (`src/providers/catalog.cc`, `decision_bars`) next
 to the model. The key is read from the environment and never printed.
 
-`questions.json` is the one text of the questions; `TestPermissionReview`
-fails when `ReviewQuestions()` in `src/app/approval_review.cc` differs from it, so
-change both together and run the evaluation again.
+The two files under `src/app/` are the one text of the questions: the build
+embeds them in the binary, so after changing one run the evaluation again.
 
 ## Labels
 

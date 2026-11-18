@@ -299,6 +299,12 @@ def answer(handler, body):
             {"path": "browser-proof.txt", "content": "approved from browser"},
             call_id="browser-write",
         )
+    if "Patch probe" in prompt and not any(
+        message.get("role") == "tool" for message in body["messages"]
+    ):
+        lines = ["*** Begin Patch", "*** Add File: patched-one.txt", "+one"]
+        lines += ["*** Add File: patched-two.txt", "+two", "*** End Patch"]
+        return tool_call("apply_patch", {"input": "\n".join(lines)}, call_id="patch-probe")
     if prompt == "Side tool probe":
         if not any(message.get("tool_call_id") == "btw-write" for message in body["messages"]):
             return tool_call(

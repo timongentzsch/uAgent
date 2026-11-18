@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "include/api/client.h"
-#include "include/core/child_env.h"
 #include "include/core/json.h"
 
 namespace uagent {
@@ -71,10 +70,6 @@ struct RouteResolution {
   std::string selection, none;
 };
 
-// The route variables a process started for this route reads: endpoint,
-// model, features and options. Never the API key.
-EnvironmentOverrides RouteEnvironment(const Route& route);
-
 RouteResolution ResolveSideRoute(const Api& api,
                                  const std::vector<Route>& routes,
                                  const std::vector<Endpoint>& providers,
@@ -87,9 +82,9 @@ RouteResolution ResolveImageRoute(const Api& api,
                                   const std::vector<Endpoint>& providers,
                                   const std::string& setting);
 
-// Where the permission review asks: `setting` if set, else an endpoint's
-// decision model, the conversation's endpoint first. A chat model never
-// stands in.
+// Where the permission review asks: the endpoint `setting` names, else the
+// conversation's own when it serves decision models. No other endpoint is
+// asked, and a chat model never stands in.
 RouteResolution ResolveReviewRoute(const Api& api,
                                    const std::vector<Endpoint>& providers,
                                    const std::string& setting);

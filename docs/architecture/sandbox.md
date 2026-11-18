@@ -27,9 +27,8 @@ paths in their own checks.
   dispatches `--sandbox-child` before any other startup;
   `SandboxChildMain` applies Landlock, sets `PR_SET_NO_NEW_PRIVS` and
   `execvp`s the command. Any failure exits 125 without executing it.
-- `ChildAgentEnvironment` passes the current status to a child in
-  `UAGENT_INTERNAL_SANDBOX`, which it adopts whole. An agent's own session
-  runtime discards it and runs at `readonly` (`edits` none) or `default`.
+- An agent's own session runtime runs at `readonly` (`edits` none) or
+  `default`.
 - In a remote workspace the execution worker supplies the status, cached
   per approval mode; an unreadable answer refuses every command.
 
@@ -166,6 +165,6 @@ What each mechanism cannot express:
 | `src/tools/shell.cc` | `SandboxWrapperFor`, `RootCommand`, `PasswordlessSudo` |
 | `src/tools/registry_exec.cc` | `run` arguments and approval class |
 | `src/agent/activity_supervisor.cc` | `AnswerRootPrompt` |
-| `src/app/approvals.cc`, `src/agent/child_agent.cc`, `src/app/session_worker.cc` | plan mode, what a child inherits |
+| `src/app/approvals.cc`, `src/app/session_worker.cc` | plan mode, an agent's level |
 | `tests/unit/sandbox_test.cc` | composition, profile, notes, watch |
 | `tests/integration_sandbox.py` | real commands under each level, yolo, sudo, refusals |

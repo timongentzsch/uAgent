@@ -431,31 +431,6 @@ SandboxInputs CollectInputs(SandboxPreset preset) {
   return inputs;
 }
 
-// A delegated child runs under the whole policy of the session that started
-// it: composing its own could add a root or lose an exclusion. Anything
-// unreadable refuses.
-SandboxStatus InheritedStatus(const std::string& text) {
-  SandboxStatus status;
-  const json from = json::parse(text, nullptr, false);
-  const int mode = JsonValue(from, "mode", -1);
-  status.mode = SandboxMode::kRefused;
-  status.reason =
-      "the sandbox policy this session was started with is "
-      "unreadable";
-  if (mode < 0 || mode > static_cast<int>(SandboxMode::kRefused)) return status;
-  status.mode = static_cast<SandboxMode>(mode);
-  status.level = SandboxSupported();
-  status.reason = JsonValue(from, "reason", "");
-  status.preset = JsonValue(from, "preset", "");
-  if (!SandboxPolicyFromJson(JsonValue(from, "policy", json()),
-                             &status.policy)) {
-    status.mode = SandboxMode::kRefused;
-    status.reason =
-        "the sandbox policy this session was started with is unreadable";
-  }
-  return status;
-}
-
 // The status at the configured level and the inputs it was composed from:
 // yolo's and plan mode's follow the configuration the session started with.
 struct ConfiguredSandbox {
@@ -467,12 +442,6 @@ struct ConfiguredSandbox {
 ConfiguredSandbox BuildStatus() {
   ConfiguredSandbox configured;
   SandboxStatus& status = configured.status;
-  // A child runs under its parent's status whatever its own approval mode.
-  if (const std::string inherited = EnvStr("UAGENT_INTERNAL_SANDBOX");
-      !inherited.empty()) {
-    status = InheritedStatus(inherited);
-    return configured;
-  }
   // A level somebody wrote down that names no level must not quietly become
   // the default, which opens the network a stricter level would have closed.
   // A saved one is dropped by the settings reader, which reports its key.

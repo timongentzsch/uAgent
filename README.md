@@ -3,10 +3,14 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A coding agent as one native C++20 executable. The same binary is the agent
-runtime, the web host for its client, and the execution gateway it starts on
-other machines over SSH. Conversations, settings and model credentials stay on
-one machine you own; there is no µAgent account and no relay.
+A coding agent you can account for. One native C++20 executable is the agent
+runtime, the web host its browser and phone clients connect to, and the
+execution gateway it starts on other machines over SSH. By default it
+contacts the model endpoint you configure and nothing else: conversations,
+settings and credentials stay on one machine you own, and there is no µAgent
+account, relay or telemetry. [Every other contact is
+listed](SECURITY.md#what-leaves-the-machine), and a test holds the source to
+that list.
 
 ## Process model
 
@@ -35,17 +39,37 @@ settings, history or provider keys.
 | --- | --- |
 | Code | about 74k lines of C++20; the web client, about 43k lines of TypeScript and CSS, is embedded in the binary |
 | Size | binary 6.6–10.8 MB; complete installation 19–23 MB with the web client, skills and three gateway payloads |
-| Footprint | 26.4 MiB idle, 17 ms CPU per headless turn ([measured 2026-11-10](benchmarks/README.md#footprint-comparison)) |
+| Footprint | 27.1 MiB idle, 29 ms CPU per headless turn ([measured 2026-11-18](benchmarks/README.md#footprint-comparison)) |
+| First request | 12 tools and their instructions in 3,152 tokens ([measured 2026-11-18](benchmarks/README.md#outside-contacts-and-first-request)) |
+| Outside contacts | the configured model endpoint; updates, push and Auto review at another provider only when turned on ([recorded 2026-11-18](benchmarks/README.md#outside-contacts-and-first-request)) |
 | Model APIs | OpenAI Chat Completions, OpenAI Responses, Anthropic Messages |
 | Sandbox | Seatbelt on macOS, Landlock on Linux, on in every approval mode |
 | Runtime dependencies | libcurl, zlib, the C++ runtime and, on Linux, OpenSSL 3; no language runtime, no plugin loader |
 | Platforms | Linux x86_64 and ARM64 (glibc 2.38 or newer), macOS 15 or newer on Apple silicon |
 | Tests | native unit and integration suites against mock providers, Chromium and WebKit, sanitizers, fuzzers, clang-tidy |
 
-![Idle memory and CPU per headless turn compared with Claude Code, Codex CLI and omp](docs/images/comparison.svg)
+![Idle memory and CPU per headless turn compared with Claude Code, Codex CLI, omp and OpenCode](docs/images/comparison.svg)
 
 Sizes are of the 1.9.0 archives.
 [Versions, raw results and method](benchmarks/README.md).
+
+## Compared with Claude Code and OpenCode
+
+Measured on 2026-11-18 with µAgent 1.10.1, Claude Code 2.1.327 and OpenCode
+1.19.6, except the two rows from each project's own documentation.
+
+| | µAgent | Claude Code | OpenCode |
+| --- | --- | --- | --- |
+| Hosts asked for during one headless turn, besides the model endpoint | none | `api.anthropic.com` | `models.opencode.ai`, `registry.npmjs.org` |
+| A phone or second device attaches to | your own web host, after pairing | Anthropic's API, which stores the transcript while connected (its docs) | your own server |
+| OS sandbox for the agent's commands | on in every approval mode | off by default (its docs) | none (its SECURITY.md) |
+| First request, tools and instructions | 3,152 tokens | 11,509 | 6,904 |
+| Idle memory | 27 MiB | 161 MiB | 585 MiB |
+
+Both do things µAgent does not: Claude Code has cloud sessions, IDE and
+desktop apps and a plugin ecosystem; OpenCode has more providers built in,
+LSP integration and desktop and IDE clients.
+[Method and raw results](benchmarks/README.md#outside-contacts-and-first-request).
 
 ## Design decisions
 

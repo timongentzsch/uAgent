@@ -190,9 +190,7 @@ std::string WritesNote(const SandboxPolicy& policy,
                                  });
   return "commands cannot write the folder " + std::string(workspace) +
          ", which holds µAgent's own state; they may write only under " +
-         roots + offline +
-         ". write_file, edit_file and delete_file still work in the "
-         "folder" +
+         roots + offline + ". apply_patch still changes files in the folder" +
          (stale ? ", but a command still running cannot read a file made "
                   "directly in it after the command started"
                 : "");

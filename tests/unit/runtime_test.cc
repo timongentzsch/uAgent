@@ -14,7 +14,6 @@
 #include <vector>
 
 #include "include/agent/agent.h"
-#include "include/agent/child_agent.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
@@ -837,7 +836,6 @@ TEST_CASE(TestChildEnvironmentPolicy) {
   ScopedEnv scoped_access("SERVICE_ACCESS_KEY", "secret");
   ScopedEnv scoped_private("SIGNING_PRIVATE_KEY", "secret");
   ScopedEnv scoped_cookie("SESSION_COOKIE", "secret");
-  ScopedEnv scoped_usage("UAGENT_INTERNAL_USAGE_FILE", "/tmp/ledger");
   ScopedEnv scoped_providers("UAGENT_PROVIDERS", "private-provider-config");
   ScopedEnv scoped_safe("UAGENT_CHILD_ENV_SAFE", "visible");
   ScopedEnv scoped_router("OPENROUTER_API_KEY", "secret");
@@ -851,7 +849,6 @@ TEST_CASE(TestChildEnvironmentPolicy) {
   CHECK(!shell.Contains("SERVICE_ACCESS_KEY"));
   CHECK(!shell.Contains("SIGNING_PRIVATE_KEY"));
   CHECK(!shell.Contains("SESSION_COOKIE"));
-  CHECK(!shell.Contains("UAGENT_INTERNAL_USAGE_FILE"));
   CHECK(!shell.Contains("UAGENT_PROVIDERS"));
   // A program is not told uagent's settings: a build or a test run under
   // them would behave as though the user had set them. What keeps a nested
@@ -860,8 +857,6 @@ TEST_CASE(TestChildEnvironmentPolicy) {
   CHECK(!shell.Contains("UAGENT_CHILD_ENV_SAFE"));
   CHECK(ChildEnvironment().Contains("UAGENT_INTERNAL_DEPTH"));
   CHECK(shell.Contains("UAGENT_APPROVAL"));
-  CHECK(ChildEnvironment({}, ChildEnvironmentPolicy::kAgent)
-            .Contains("UAGENT_CHILD_ENV_SAFE"));
 
   CHECK(!shell.Contains("OPENROUTER_API_KEY"));
   ChildEnvironment approved({}, ChildEnvironmentPolicy::kApprovedShell);
@@ -873,7 +868,6 @@ TEST_CASE(TestChildEnvironmentPolicy) {
   CHECK(!approved.Contains("SERVICE_ACCESS_KEY"));
   CHECK(!approved.Contains("SIGNING_PRIVATE_KEY"));
   CHECK(!approved.Contains("SESSION_COOKIE"));
-  CHECK(!approved.Contains("UAGENT_INTERNAL_USAGE_FILE"));
   CHECK(!approved.Contains("UAGENT_PROVIDERS"));
 
   // sandbox.hideEnv adds names, matched without regard to case, and wins over
@@ -884,50 +878,11 @@ TEST_CASE(TestChildEnvironmentPolicy) {
   ChildEnvironment hiding({}, ChildEnvironmentPolicy::kApprovedShell);
   CHECK(!hiding.Contains("INTERNAL_URL"));
   CHECK(!hiding.Contains("GITHUB_TOKEN"));
-  CHECK(!ChildEnvironment({}, ChildEnvironmentPolicy::kAgent)
-             .Contains("INTERNAL_URL"));
   CHECK(ChildEnvironment({{"INTERNAL_URL", "explicit"}})
             .Contains("INTERNAL_URL"));
 
-  ChildEnvironment delegated({{"UAGENT_INTERNAL_API_KEY", "explicit"},
-                              {"UAGENT_INTERNAL_USAGE_FILE", "/tmp/child"}});
-  CHECK(delegated.Contains("UAGENT_INTERNAL_API_KEY"));
-  CHECK(delegated.Contains("UAGENT_INTERNAL_USAGE_FILE"));
-
-  Route route;
-  route.base_url = "https://child.example/v1";
-  route.api_key = "child-key";
-  route.model = "child-model";
-  route.ctx_window = 32768;
-  route.reasoning_effort = "high";
-  route.wire_api = WireApi::kResponses;
-  route.features = FeaturesOf({Feature::kHostedSearch, Feature::kPdfParser});
-  route.options = {{"pdf_engine", "mistral-ocr"}};
-  route.hosted_tools = json::array({{{"type", "code_interpreter"}}});
-  EnvironmentOverrides child_overrides =
-      ChildAgentEnvironment(route, "parent-id");
-  auto child_value = [&](std::string_view key) {
-    auto found =
-        std::find_if(child_overrides.begin(), child_overrides.end(),
-                     [&](const auto& entry) { return entry.first == key; });
-    return found == child_overrides.end() ? std::string() : found->second;
-  };
-  CHECK(child_value("UAGENT_INTERNAL_BASE_URL") == "https://child.example/v1");
-  CHECK(child_value("UAGENT_INTERNAL_API_KEY") == "child-key");
-  // A child reports its spend to its parent session's ledger.
-  CHECK(child_value("UAGENT_INTERNAL_USAGE_FILE") == UsageLedger("parent-id"));
-  CHECK(child_value("UAGENT_MODEL") == "child-model");
-  CHECK(child_value("UAGENT_CONTEXT") == "32768");
-  CHECK(child_value("UAGENT_REASONING_EFFORT") == "high");
-  CHECK(child_value("UAGENT_INTERNAL_WIRE_API") == "responses");
-  CHECK(child_value("UAGENT_INTERNAL_FEATURES") == "hosted_search,pdf_parser");
-  CHECK(child_value("UAGENT_INTERNAL_ENDPOINT_OPTIONS") ==
-        R"({"pdf_engine":"mistral-ocr"})");
-  CHECK(child_value("UAGENT_INTERNAL_HOSTED_TOOLS") ==
-        R"([{"type":"code_interpreter"}])");
-  ChildEnvironment child(child_overrides);
-  CHECK(!child.Contains("UAGENT_PROVIDERS"));
-  CHECK(child.Contains("UAGENT_INTERNAL_API_KEY"));
+  CHECK(ChildEnvironment({{"UAGENT_INTERNAL_API_KEY", "explicit"}})
+            .Contains("UAGENT_INTERNAL_API_KEY"));
 }
 
 TEST_CASE(TestKnownEndpoints) {
@@ -971,16 +926,10 @@ TEST_CASE(TestKnownEndpoints) {
 TEST_CASE(TestNamedProviders) {
   // Route variables keep their inherited value until the body changes them,
   // and every one of them is restored when this scope ends.
-  ScopedEnv scoped_base_url("UAGENT_INTERNAL_BASE_URL",
-                            std::getenv("UAGENT_INTERNAL_BASE_URL"));
   ScopedEnv scoped_model("UAGENT_MODEL", std::getenv("UAGENT_MODEL"));
   ScopedEnv scoped_effort("UAGENT_REASONING_EFFORT",
                           std::getenv("UAGENT_REASONING_EFFORT"));
   ScopedEnv scoped_context("UAGENT_CONTEXT", std::getenv("UAGENT_CONTEXT"));
-  ScopedEnv scoped_features("UAGENT_INTERNAL_FEATURES",
-                            std::getenv("UAGENT_INTERNAL_FEATURES"));
-  ScopedEnv scoped_wire("UAGENT_INTERNAL_WIRE_API",
-                        std::getenv("UAGENT_INTERNAL_WIRE_API"));
   ScopedEnv scoped_providers("UAGENT_PROVIDERS",
                              std::getenv("UAGENT_PROVIDERS"));
   json configured = {
@@ -1043,9 +992,6 @@ TEST_CASE(TestNamedProviders) {
   // Startup takes the same selection grammar as interactive and side routes:
   // suffixes configure policy and never leak into the provider's model id.
   setenv("UAGENT_MODEL", "codex-local/gpt-5.6-luna:low", 1);
-  setenv("UAGENT_INTERNAL_WIRE_API", "invalid-direct-wire", 1);
-  setenv("UAGENT_INTERNAL_FEATURES", "invalid-direct-feature", 1);
-  unsetenv("UAGENT_INTERNAL_BASE_URL");
   unsetenv("UAGENT_REASONING_EFFORT");
   RuntimeConfig startup_config;
   Api startup(startup_config);
@@ -1170,18 +1116,6 @@ TEST_CASE(TestNamedProviders) {
                                 alias("static/high", "high")};
   ModelSearch alias_search = SearchModels(no_catalog, aliases, {}, "static");
   CHECK(alias_search.matches.size() == 2);
-
-  // A child handed a route it cannot read keeps no address.
-  setenv("UAGENT_INTERNAL_BASE_URL", "https://direct.test/v1", 1);
-  setenv("UAGENT_MODEL", "direct-model", 1);
-  setenv("UAGENT_INTERNAL_WIRE_API", "invalid-direct-wire", 1);
-  setenv("UAGENT_INTERNAL_FEATURES", "invalid-direct-feature", 1);
-  Api invalid_direct(RuntimeConfig{});
-  ProviderSetup invalid_setup = ConfigureProvider(invalid_direct);
-  CHECK(invalid_direct.base_url.empty());
-  CHECK(invalid_setup.warning.find("invalid wire API") != std::string::npos);
-  CHECK(invalid_setup.warning.find("invalid endpoint feature") !=
-        std::string::npos);
 }
 
 TEST_CASE(TestEffectiveConfigReload) {
@@ -1189,9 +1123,9 @@ TEST_CASE(TestEffectiveConfigReload) {
   ScopedEnv scoped_steps("UAGENT_MAX_STEPS", "9");
   ScopedEnv scoped_model("UAGENT_MODEL");
   ScopedEnv scoped_providers("UAGENT_PROVIDERS");
-  ScopedEnv scoped_toolset("UAGENT_INTERNAL_TOOLSET");
+  ScopedEnv scoped_overlay("UAGENT_INTERNAL_PROMPT_OVERLAY");
   CHECK(SaveSettings({{"UAGENT_MAX_STEPS", "4"},
-                      {"UAGENT_INTERNAL_TOOLSET", "lean"},
+                      {"UAGENT_INTERNAL_PROMPT_OVERLAY", "lean"},
                       {"UAGENT_MAX_TOOL_CALLS", "2"},
                       {"UAGENT_MAX_TURN_TOKENS", "100"},
                       {"UAGENT_SESSION_TOKEN_BUDGET", "200"},
@@ -1217,8 +1151,8 @@ TEST_CASE(TestEffectiveConfigReload) {
   json diagnostic = manager.DiagnosticJson(active);
   CHECK(diagnostic["sources"]["UAGENT_MAX_STEPS"] == "environment");
   CHECK(diagnostic["sources"]["UAGENT_SESSION_BUDGET"] == "cli");
-  // A parent's handoff to its child is not a setting a file may carry.
-  CHECK(!diagnostic["sources"].contains("UAGENT_INTERNAL_TOOLSET"));
+  // An internal name is not a setting a file may carry.
+  CHECK(!diagnostic["sources"].contains("UAGENT_INTERNAL_PROMPT_OVERLAY"));
   CHECK(diagnostic["sources"]["UAGENT_MAX_TOOL_CALLS"] == "user");
   CHECK(!diagnostic["sources"].contains("UAGENT_REQUEST_TIMEOUT"));
   std::string shown = JsonDump(diagnostic);
@@ -1254,18 +1188,11 @@ TEST_CASE(TestEffectiveConfigReload) {
   CHECK(
       JsonDump(manager.DiagnosticJson(reload->active)).find("changed-secret") ==
       std::string::npos);
-  // A setting read on use applies with the reload: environ is untouched and
-  // a child started afterwards is told the new value.
+  // A setting read on use applies with the reload: environ is untouched.
   CHECK(std::find(reload->applied.begin(), reload->applied.end(),
                   "UAGENT_TOOL_RESULT_CHARS") != reload->applied.end());
   CHECK(ToolResultCap() == 1234);
   CHECK(getenv("UAGENT_TOOL_RESULT_CHARS") == nullptr);
-  ChildEnvironment child({}, ChildEnvironmentPolicy::kAgent);
-  bool told = false;
-  for (char** entry = child.Data(); entry && *entry; ++entry) {
-    told |= std::string_view(*entry) == "UAGENT_TOOL_RESULT_CHARS=1234";
-  }
-  CHECK(told);
   // Put back to its default, it is at its default: nothing saved was ever
   // left in the environment to come back from.
   CHECK(ChangeSettings("", [](SettingValues& all) {

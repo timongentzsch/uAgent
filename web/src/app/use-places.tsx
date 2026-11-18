@@ -1,14 +1,8 @@
 import type { TargetedSubmitEvent } from "preact";
 import { useCallback, useMemo, useRef, useState } from "preact/hooks";
-import type {
-  AppModal,
-  Catalogue,
-  Report,
-  Session,
-  Snapshot,
-  Space,
-} from "../shared/types.ts";
+import type { AppModal, Space } from "../shared/types.ts";
 import { hostApi, useApi } from "../state/api.ts";
+import type { HostState } from "../state/use-host.ts";
 import { deleteConversation } from "../features/chat/conversation-actions.tsx";
 import type { Redirect } from "../features/filing/filing.tsx";
 import { folderOf, projectsOf } from "../shared/display.ts";
@@ -24,21 +18,15 @@ export interface ModelChoice {
 }
 
 export function usePlaces({
-  catalogue,
-  upsertSession,
+  host: { catalogue, upsertSession, load, report },
   choose,
-  load,
-  report,
   open,
   modal,
   setModal,
   setBusy,
 }: {
-  catalogue: Catalogue;
-  upsertSession: (session: Session) => void;
+  host: HostState;
   choose: (id: string, host?: string) => Promise<void>;
-  load: (id: string) => Promise<Snapshot>;
-  report: Report;
   open: (modal: AppModal) => void;
   modal: AppModal | null;
   setModal: (modal: AppModal | null) => void;

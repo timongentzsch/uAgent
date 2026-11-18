@@ -20,6 +20,7 @@
 #include "include/core/signals.h"
 #include "include/core/term.h"
 #include "include/tools/files.h"
+#include "include/tools/patch.h"
 #include "include/tools/registry.h"
 #include "tests/unit/test_support.h"
 
@@ -612,6 +613,65 @@ TEST_CASE(TestFileTools) {
 
 // Two changes to one file in a turn keep the bytes from before the first; an
 // undo restores them only while the file still holds what the turn left.
+TEST_CASE(TestPatch) {
+  std::string error;
+  const std::vector<ToolPart> calls = ParsePatch(
+      "*** Begin Patch\n"
+      "*** Add File: new.txt\n"
+      "+one\n"
+      "+\n"
+      "+three\n"
+      "*** Update File: src/a.py\r\n"
+      "@@ def run():\n"
+      " keep\n"
+      "-old\n"
+      "+new\n"
+      "\n"
+      "@@\n"
+      "-gone\n"
+      "@@ class Tail:\n"
+      "+    added = True\n"
+      "*** End of File\n"
+      "*** Delete File: old.txt\n"
+      "*** End Patch\n",
+      error);
+  CHECK(error.empty());
+  CHECK(calls.size() == 3);
+  CHECK(calls[0].tool == "write_file");
+  CHECK(calls[0].args ==
+        json({{"path", "new.txt"}, {"content", "one\n\nthree\n"}}));
+  CHECK(calls[1].tool == "edit_file");
+  CHECK(calls[1].args["path"] == "src/a.py");
+  // Context finds the place; whole lines go with their break; lines with
+  // no context go under the line the hunk names.
+  CHECK(calls[1].args["edits"] ==
+        json::array({{{"old", "keep\nold\n"}, {"new", "keep\nnew\n"}},
+                     {{"old", "gone\n"}, {"new", ""}},
+                     {{"old", "class Tail:"},
+                      {"new", "class Tail:\n    added = True"}}}));
+  CHECK(calls[2].tool == "delete_file");
+  CHECK(calls[2].args == json({{"path", "old.txt"}}));
+
+  const struct {
+    const char* patch;
+    const char* says;
+  } refused[] = {
+      {"*** Update File: a\n", "line 1: a patch starts with"},
+      {"*** Begin Patch\n*** Update File: a\n+x\n*** End Patch", "line 2"},
+      {"*** Begin Patch\n*** Update File: a\n x\n*** End Patch",
+       "line 2: this file has no change"},
+      {"*** Begin Patch\n*** Add File: a\nx\n*** End Patch", "line 3"},
+      {"*** Begin Patch\n*** Move File: a\n*** End Patch", "line 2"},
+      {"*** Begin Patch\n*** Delete File: a\n", "line 3: a patch ends with"},
+      {"*** Begin Patch\n*** End Patch", "changes no file"},
+  };
+  for (const auto& patch : refused) {
+    error.clear();
+    CHECK(ParsePatch(patch.patch, error).empty());
+    CHECK(error.find(patch.says) != std::string::npos);
+  }
+}
+
 TEST_CASE(TestEditJournal) {
   auto write = [](const std::string& path, const std::string& text) {
     std::string error;

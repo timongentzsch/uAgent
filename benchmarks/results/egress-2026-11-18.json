@@ -1,0 +1,83 @@
+{
+ "_method": {
+  "date": "2026-11-18",
+  "where": "a container with no network; DNS answered by benchmarks/dns_sink.py, which logs every name asked for and resolves none",
+  "uagent": "refactor/lean-pass after the review and preview changes, Debug build with Web Push; benchmarks/egress_record.py",
+  "others": "one headless turn from a fresh home, the model endpoint set to benchmarks/first_request.py on 127.0.0.1",
+  "tokens": "tools plus instructions of the first request that carries tools, o200k_base"
+ },
+ "uagent": {
+  "web host starts, a device pairs, the catalogue is read": [],
+  "a turn in the web client (model on 127.0.0.1)": [],
+  "a headless turn (model on 127.0.0.1)": [],
+  "a headless turn, model endpoint named by host": [
+   "model-endpoint.example"
+  ],
+  "About: check for an update now": [
+   "api.github.com"
+  ],
+  "Auto approval, an OpenRouter provider configured beside the conversation's": [],
+  "Auto approval, that provider named as the reviewer": [
+   "openrouter.ai"
+  ],
+  "the agent calls web_fetch on a page (yolo, so nobody is asked)": [
+   "docs.example.org"
+  ],
+  "a push to a subscribed device": [
+   "fcm.googleapis.com"
+  ]
+ },
+ "previewed_page": {
+  "asked": [
+   "fonts.googleapis.com",
+   "styles.example.com",
+   "scripts.example.com",
+   "images.example.com",
+   "beacon.example.com",
+   "api.example.com"
+  ],
+  "reached_dns": []
+ },
+ "headless_turn": {
+  "uagent": {
+   "version": "1.10.1",
+   "hosts": [],
+   "tools": 12,
+   "tool_tokens": 2525,
+   "instruction_tokens": 627
+  },
+  "claude": {
+   "version": "2.1.327",
+   "hosts": [
+    "api.anthropic.com"
+   ],
+   "tools": 12,
+   "tool_tokens": 7522,
+   "instruction_tokens": 3987,
+   "fallback_all_tools": {
+    "tools": 22,
+    "tool_tokens": 17483,
+    "instruction_tokens": 4012
+   }
+  },
+  "opencode": {
+   "version": "1.19.6",
+   "hosts": [
+    "models.opencode.ai",
+    "registry.npmjs.org"
+   ],
+   "tools": 10,
+   "tool_tokens": 5014,
+   "instruction_tokens": 1890
+  },
+  "opencode2": {
+   "version": "2.3.2",
+   "hosts": [
+    "models.opencode.ai"
+   ],
+   "tools": 13,
+   "tool_tokens": 3509,
+   "instruction_tokens": 2148
+  }
+ }
+}

@@ -856,7 +856,6 @@ int WorkerMain(int argc, char** argv) {
   // stands in for its own, so a restart never widens it.
   ::unsetenv("UAGENT_INTERNAL_DEPTH");
   if (!agent.empty()) {
-    ::unsetenv("UAGENT_INTERNAL_SANDBOX");
     ::setenv("UAGENT_INTERNAL_DEPTH",
              std::to_string(JsonValue(agent, "depth", int64_t{1})).c_str(), 1);
     options.overrides["UAGENT_SANDBOX"] =

@@ -44,7 +44,7 @@ constexpr const char kBase[] =
     "read it fully, say so, resolve its relative paths from its folder and "
     "reuse its assets; if it is unavailable, say so and fall back safely.\n\n"
     "## Scratch\nFor supporting computation, write a script under "
-    ".uagent/scratch with write_file (no approval there) and start it with "
+    ".uagent/scratch with apply_patch (no approval there) and start it with "
     "run: `UV_NO_PROGRESS=1 MPLBACKEND=Agg uv run --quiet --no-project "
     "--script FILE.py`, never pip or bare python; `sh FILE.sh`; `node "
     "FILE.mjs`. Only a script that imports packages names them, in its first "

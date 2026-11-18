@@ -142,10 +142,11 @@ the design as one PDF.
 from the helper, which places its items, draws shapes as stretched SVG
 paths and arrows as curves between the items' nearest sides. Opened alone
 in the pane, a drag, an arrow key, a corner or a double click says
-`board {id, at | size | text}` (or `{undo}`); Sequence queues each through
-`rewrite` with `boardEdit` (`board-edit.ts`), which changes only that
-item's start tag or text in the source, and keeps the text it replaced for
-⌘Z while the file is as the change left it.
+`board {id, at | size | text}` (or `{undo}`); Sequence hands each to the
+pane's `rewrite`, which writes them one at a time, with `boardEdit`
+(`board-edit.ts`), which changes only that item's start tag or text in the
+source. Once written, the text a change replaced is kept for ⌘Z while the
+file is as the change left it.
 
 **Builds and transitions.** While a deck is presented the slide's address
 ends `#build=N`; the helper hides `[data-step]` elements past N from the

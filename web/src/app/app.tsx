@@ -161,18 +161,14 @@ function App({ host, bindResult, reading }: HostAppProps) {
     loadErrors,
     catalogue,
     listed,
-    upsertSession,
     snapshots,
     selected,
     setSelected,
     drafts,
-    setDrafts,
     error,
     setError,
     unread,
     outgoing,
-    setOutgoing,
-    patchOutgoing,
     following,
     setFollowing,
     notifications,
@@ -192,12 +188,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const openDrawer = useCallback(() => setDrawer(true), []);
   useEdgeSwipe(compact, openDrawer);
   const filesSheet = useNarrowColumn(shown) || compact;
-  const { side, closeSide, ask, clearSides } = useSideConversations({
-    selected,
-    load,
-    refresh,
-    report,
-  });
+  const { side, closeSide, ask, clearSides } = useSideConversations(host);
   const [busy, setBusy] = useState(false);
   const [notificationMode, setNotificationMode] = useState(false);
   // Choosing a level forgets the rows opened or closed on this device.
@@ -258,13 +249,10 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const running = !!session && isRunning(session, online);
   useWakeLock(running);
   const { updateDraft, attachAnnotated, upload } = useDraftUploads({
+    host,
     session,
-    online,
-    selected,
     draft,
     uploading,
-    setDrafts,
-    report,
   });
   const setDraft = useCallback(
     (value: Draft, id = selected) => updateDraft(id, () => value),
@@ -310,12 +298,10 @@ function App({ host, bindResult, reading }: HostAppProps) {
     [selected, setSelected, hosts.open, hosts.active],
   );
   const { browserAvailable, install, setInstall, update, attach } = useBoot({
+    host,
     upload,
     page,
     choose,
-    report,
-    authenticated,
-    online,
   });
   const waiting = useSnapshots(
     snapshots,
@@ -327,11 +313,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
       ? "Wait for the running turn to finish."
       : "";
   const places = usePlaces({
-    catalogue,
-    upsertSession,
+    host,
     choose,
-    load,
-    report,
     open,
     modal,
     setModal,
@@ -395,19 +378,13 @@ function App({ host, bindResult, reading }: HostAppProps) {
     },
   );
   const chatActions = useMessageActions({
-    online,
-    selected,
+    host,
     act,
-    report,
     forkAndOpen,
-    outgoing,
     session,
     deliver,
     busy,
-    setOutgoing,
-    patchOutgoing,
     updateDraft,
-    snapshots,
     setInspector,
     setModal,
     choose,

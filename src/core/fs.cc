@@ -487,8 +487,9 @@ bool AtomicWriteFile(const std::string& path, const std::string& content,
   }
   if ((overwrite ? rename(temp.c_str(), target.c_str())
                  : link(temp.c_str(), target.c_str())) != 0) {
-    return fail("cannot write " + path + ": " + strerror(errno) +
-                (errno == EEXIST ? "; use edit_file or overwrite=true" : ""));
+    return fail(
+        "cannot write " + path + ": " + strerror(errno) +
+        (errno == EEXIST ? "; it exists: update it, or delete it first" : ""));
   }
   if (!overwrite) unlink(temp.c_str());
   // Syncing the directory makes the rename durable. A failure here means the

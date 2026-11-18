@@ -21,47 +21,35 @@ const rendererManifest = () => ({
         )
         .map((chunk) => chunk.fileName),
     );
-    const pending = [...roots];
-    while (pending.length) {
-      const file = pending.pop();
-      if (!file || optionalAssets.has(file)) continue;
-      optionalAssets.add(file);
-      const chunk = byFile.get(file);
-      for (const dependency of [
-        ...(chunk?.imports || []),
-        ...(chunk?.dynamicImports || []),
-      ])
-        pending.push(dependency);
-      for (const asset of chunk?.viteMetadata?.importedAssets || [])
-        optionalAssets.add(asset);
-      for (const css of chunk?.viteMetadata?.importedCss || [])
-        optionalAssets.add(css);
-    }
-    // Shared shell/conversation dependencies remain core. Traverse every
-    // entry dependency while treating renderer roots as lazy boundaries.
-    const core = new Set();
-    const corePending = chunks
-      .filter((chunk) => chunk.isEntry)
-      .map((chunk) => chunk.fileName);
-    while (corePending.length) {
-      const file = corePending.pop();
-      if (
-        !file ||
-        core.has(file) ||
-        (roots.has(file) && !byFile.get(file)?.isEntry)
-      )
-        continue;
-      core.add(file);
-      const chunk = byFile.get(file);
-      for (const dependency of [
-        ...(chunk?.imports || []),
-        ...(chunk?.dynamicImports || []),
-      ])
-        corePending.push(dependency);
-      for (const asset of chunk?.viteMetadata?.importedAssets || [])
-        core.add(asset);
-      for (const css of chunk?.viteMetadata?.importedCss || []) core.add(css);
-    }
+    // Every file reached from `from` through chunk imports, with the assets
+    // and styles those chunks bring; a chunk `stop` names is not entered.
+    const reach = (from, stop = () => false) => {
+      const seen = new Set();
+      const pending = [...from];
+      while (pending.length) {
+        const file = pending.pop();
+        if (seen.has(file) || stop(file)) continue;
+        seen.add(file);
+        const chunk = byFile.get(file);
+        pending.push(
+          ...(chunk?.imports || []),
+          ...(chunk?.dynamicImports || []),
+        );
+        for (const asset of [
+          ...(chunk?.viteMetadata?.importedAssets || []),
+          ...(chunk?.viteMetadata?.importedCss || []),
+        ])
+          seen.add(asset);
+      }
+      return seen;
+    };
+    for (const file of reach(roots)) optionalAssets.add(file);
+    // What the entries reach without entering a renderer stays core, shared
+    // shell and conversation dependencies included.
+    const core = reach(
+      chunks.filter((chunk) => chunk.isEntry).map((chunk) => chunk.fileName),
+      (file) => roots.has(file) && !byFile.get(file)?.isEntry,
+    );
     for (const file of core) optionalAssets.delete(file);
     this.emitFile({
       type: "asset",

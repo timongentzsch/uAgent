@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "include/agent/activity.h"
-#include "include/agent/child_agent.h"
 #include "include/agent/session_store.h"
 #include "include/app/commands.h"
 #include "include/app/config_proposal.h"

@@ -22,9 +22,9 @@ namespace fs = std::filesystem;
 using workspace_files::Resolve;
 namespace {
 
-// The page may reach its own folder's address and Google Fonts only, so
-// nothing can carry the address, and its token, away. The address is written
-// out: engines resolve 'self' differently in an opaque origin. WebAssembly is
+// The page may reach its own folder's address only, so nothing can carry
+// the address, and its token, away. The address is written out: engines
+// resolve 'self' differently in an opaque origin. WebAssembly is
 // allowed for the sheet engine, and a worker the page makes, under this same
 // policy, for the engine to calculate in.
 std::string PreviewPolicy(const std::string& origin, const std::string& base) {
@@ -32,9 +32,8 @@ std::string PreviewPolicy(const std::string& origin, const std::string& base) {
   return "sandbox allow-scripts allow-forms allow-modals; default-src " + self +
          "; script-src " + self +
          " 'unsafe-inline' 'wasm-unsafe-eval'; worker-src blob:; style-src " +
-         self + " 'unsafe-inline' https://fonts.googleapis.com; font-src " +
-         self + " https://fonts.gstatic.com data:; img-src " + self +
-         " data: blob:; media-src " + self +
+         self + " 'unsafe-inline'; font-src " + self + " data:; img-src " +
+         self + " data: blob:; media-src " + self +
          " data: blob:; form-action 'none'; base-uri 'none'; "
          "frame-ancestors " +
          origin;

@@ -118,7 +118,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 | `instructions.maxKb` | `UAGENT_INSTRUCTIONS_KB` | `32` | 1–1024 | user, project | restart | kibibytes of folder instructions loaded or written |
 | `approval.mode` | `UAGENT_APPROVAL` | `ask` | `ask`, `auto`, `yolo`, `plan` | user, project, conversation | next message | ask, auto reviewer, or yolo for ordinary mutations; plan only reads until a plan is approved |
 | `runtime.idleMinutes` | `UAGENT_IDLE_MINUTES` | `15` | 1–1440 | user, project | next message | minutes with nothing to do before a conversation's runtime and Chrome stop; the next message starts them again |
-| `approval.reviewerModel` | `UAGENT_PERMISSION_MODEL` | empty |  | user, project | next message | [endpoint/]decision model used by auto permissions |
+| `approval.reviewerModel` | `UAGENT_PERMISSION_MODEL` | empty |  | user, project | next message | [provider/]decision model of Auto; a provider other than the conversation's reviews only when named |
 | `title.model` | `UAGENT_TITLE_MODEL` | empty |  | user, project | next message | model route that names new sessions, or off |
 | `tools.capabilities` | `UAGENT_TOOL_CAPABILITIES` | empty |  | user, project | restart | restrict the exposed tool capability set |
 | `shell.envAllow` | `UAGENT_SHELL_ENV_ALLOW` | empty |  | user, project | next message | comma-separated sensitive variables approved shells may inherit |

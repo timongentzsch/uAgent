@@ -134,7 +134,7 @@ struct SandboxStatus {
 // the next command. No status is rebuilt, so the reference stays valid.
 const SandboxStatus& SandboxRuntime();
 
-// That status as UAGENT_INTERNAL_SANDBOX's value, which a child runs under.
+// That status as text: what a remote workspace's worker answers with.
 std::string SandboxInheritance();
 
 // How this session confines its commands: mode, mechanism, roots, refusals.

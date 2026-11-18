@@ -247,6 +247,8 @@ test("a sheet is drawn once its stylesheet has loaded, however late that comes",
 const COSTS = sheet("Costs", {
   Costs: ["<th>Item<th>Cost<th>Twice", "<td>Rent<td>1200<td>=B2*2"],
 });
+const openCosts = (app, session, host) =>
+  openSheet(app, session, host.project, COSTS);
 
 // A page in an opaque origin has no cache: what each worker needs of the
 // engine it is handed, not left to fetch.
@@ -259,7 +261,7 @@ test("a sheet fetches the engine once, however many changes it calculates", asyn
   app.on("request", (request) => {
     if (request.url().endsWith("/wasm_bg.wasm")) fetched++;
   });
-  const { cell } = await openSheet(app, session, host.project, COSTS);
+  const { cell } = await openCosts(app, session, host);
   for (const cost of [50, 60]) {
     await cell("Costs", "B2").click();
     await app.keyboard.type(`${cost}`);
@@ -274,12 +276,7 @@ test("a formula the engine panics on is refused when entered: the sheet goes on 
   session,
   host,
 }) => {
-  const { files, cell, saved } = await openSheet(
-    app,
-    session,
-    host.project,
-    COSTS,
-  );
+  const { files, cell, saved } = await openCosts(app, session, host);
   await cell("Costs", "B2").click();
   await app.keyboard.type("=XNPV(1,1)");
   await app.keyboard.press("Enter");
@@ -337,11 +334,10 @@ test("a formula the engine never finishes is refused once its time is up; meanwh
   host,
 }) => {
   test.setTimeout(90_000);
-  const { files, stage, bar, cell, saved } = await openSheet(
+  const { files, stage, bar, cell, saved } = await openCosts(
     app,
     session,
-    host.project,
-    COSTS,
+    host,
   );
   await cell("Costs", "B2").click();
   await app.keyboard.type(NEVER);
@@ -432,12 +428,7 @@ test("what is typed on in the formula bar while the cell written is calculated i
   host,
 }) => {
   await holdAnswers(app);
-  const { stage, field, cell, saved } = await openSheet(
-    app,
-    session,
-    host.project,
-    COSTS,
-  );
+  const { stage, field, cell, saved } = await openCosts(app, session, host);
   await cell("Costs", "B3").click();
   await field.click();
   await holding(stage, true);
@@ -460,12 +451,7 @@ test("what is typed on in the cells while a cell written is calculated is kept: 
   host,
 }) => {
   await holdAnswers(app);
-  const { stage, cell, saved } = await openSheet(
-    app,
-    session,
-    host.project,
-    COSTS,
-  );
+  const { stage, cell, saved } = await openCosts(app, session, host);
   const editor = stage.getByRole("textbox", { name: "Cell" });
   await cell("Costs", "B3").click();
   await holding(stage, true);
@@ -494,24 +480,29 @@ test("what is typed on in the cells while a cell written is calculated is kept: 
   await expect.poll(saved).toContain("=2+2+1");
 });
 
+// Back pressed while the sheet is calculating 50 written in B2.
+async function leaveCalculating(app, session, host) {
+  await holdAnswers(app);
+  const opened = await openCosts(app, session, host);
+  await opened.cell("Costs", "B2").click();
+  await holding(opened.stage, true);
+  await app.keyboard.type("50");
+  await app.keyboard.press("Enter");
+  const back = opened.files.getByRole("button", { name: /^Back to/ });
+  await back.click();
+  return { ...opened, back };
+}
+
 test("a sheet left while it calculates a change stays once, saying so; left again, the change is written as it stands", async ({
   page: app,
   session,
   host,
 }) => {
-  await holdAnswers(app);
-  const { files, stage, cell, saved } = await openSheet(
+  const { files, cell, saved, back } = await leaveCalculating(
     app,
     session,
-    host.project,
-    COSTS,
+    host,
   );
-  await cell("Costs", "B2").click();
-  await holding(stage, true);
-  await app.keyboard.type("50");
-  await app.keyboard.press("Enter");
-  const back = files.getByRole("button", { name: /^Back to/ });
-  await back.click();
   await expect(files.locator(".page-notice .notice")).toHaveText(
     "The sheet is still calculating a change. Leave again to keep it as it stands; it is calculated when the sheet is next opened.",
   );
@@ -527,19 +518,11 @@ test("a sheet that stayed for a change says so no longer once that is calculated
   session,
   host,
 }) => {
-  await holdAnswers(app);
-  const { files, stage, cell, saved } = await openSheet(
+  const { files, stage, cell, saved, back } = await leaveCalculating(
     app,
     session,
-    host.project,
-    COSTS,
+    host,
   );
-  await cell("Costs", "B2").click();
-  await holding(stage, true);
-  await app.keyboard.type("50");
-  await app.keyboard.press("Enter");
-  const back = files.getByRole("button", { name: /^Back to/ });
-  await back.click();
   await expect(files.locator(".page-notice")).toHaveCount(1);
   await holding(stage, false);
   await expect(files.locator(".page-notice")).toHaveCount(0);
@@ -553,11 +536,10 @@ test("what is typed in the formula bar and refused at once goes from the bar, wh
   session,
   host,
 }) => {
-  const { files, bar, field, cell, saved } = await openSheet(
+  const { files, bar, field, cell, saved } = await openCosts(
     app,
     session,
-    host.project,
-    COSTS,
+    host,
   );
   await cell("Costs", "B2").click();
   await app.keyboard.press("Control+ArrowDown");

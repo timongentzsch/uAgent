@@ -44,7 +44,9 @@ conversation's model: `title.model` (titles and filing; `off` disables),
 `memory.model`, `image.model` (when the conversation's model reads no
 images: the first model of its endpoint that does), `webSearch.model`
 (needed when the route has no hosted search), and `approval.reviewerModel`
-for Auto review. See [Providers](architecture/providers.md).
+for Auto review, which names the decision model and, as `provider/`, a
+provider other than the conversation's: none is asked unnamed. See
+[Providers](architecture/providers.md).
 
 ## Conversations
 
@@ -269,7 +271,7 @@ with **Withhold** and **Deliver**, and is withheld when nobody can answer. `agen
 bound how many work and how deep they nest ([Turn
 loop](architecture/turn-loop.md)).
 
-The to-do list the agent keeps for work with several parts is saved with
+The to-do list the agent keeps for long work is saved with
 the conversation and sent with every request; the web shows it above the
 composer.
 

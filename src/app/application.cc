@@ -8,7 +8,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/child_agent.h"
 #include "include/agent/node.h"
 #include "include/app/asset_store.h"
 #include "include/app/launch.h"

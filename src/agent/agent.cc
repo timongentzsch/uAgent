@@ -11,7 +11,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/child_agent.h"
 #include "include/agent/node.h"
 #include "include/agent/prompt.h"
 #include "include/agent/protocol.h"

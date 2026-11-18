@@ -139,6 +139,16 @@ def decision_answers(allow, deny=0.0, questions=None, **reasons):
     return {"answers": answers, "usage": {"input_tokens": 7, "output_tokens": 1, "cost": 0.0001}}
 
 
+def review_env(home, model_url, review_url, **provider):
+    """Auto mode with the model on one provider and the reviewer named on another."""
+    env = provider_env(
+        home, model_url, decision_providers(review_url, **provider), model="test/test"
+    )
+    env["UAGENT_APPROVAL"] = "auto"
+    env["UAGENT_PERMISSION_MODEL"] = "judge/"
+    return env
+
+
 def auto_review_run(
     root, home, binary, calls, reviewer, *, finish=None, environment=None, **provider
 ):
@@ -152,13 +162,7 @@ def auto_review_run(
 
     with Server([reviewer]) as permission_server:
         with Server([*calls, finish or last]) as model_server:
-            env = provider_env(
-                home,
-                model_server.url,
-                decision_providers(permission_server.url, **provider),
-                model="test/test",
-            )
-            env["UAGENT_APPROVAL"] = "auto"
+            env = review_env(home, model_server.url, permission_server.url, **provider)
             env.update(environment or {})
             result = run(root, env, "--json", "-p", "go", binary=binary)
             envelope = json.loads(result.stdout)
@@ -290,10 +294,7 @@ def test_auto_permission_card_shows_the_reasons(root, home, *, binary):
 
     with Server([reviewer]) as permission_server:
         with Server([judged_call(root / "card.txt"), event({"content": "card-ok"})]) as model:
-            env = provider_env(
-                home, model.url, decision_providers(permission_server.url), model="test/test"
-            )
-            env["UAGENT_APPROVAL"] = "auto"
+            env = review_env(home, model.url, permission_server.url)
             code, output = run_pty(
                 root,
                 env,
@@ -330,10 +331,7 @@ def test_auto_permission_reviewer_judges_against_the_first_request_too(root, hom
                 event({"content": "written"}),
             ]
         ) as model_server:
-            env = provider_env(
-                home, model_server.url, decision_providers(permission_server.url), model="test/test"
-            )
-            env["UAGENT_APPROVAL"] = "auto"
+            env = review_env(home, model_server.url, permission_server.url)
             result = run_dialog(
                 root, env, "write reviewed.txt\nalso keep it short\n/q\n", binary=binary
             )
@@ -436,10 +434,7 @@ def test_auto_permission_reviewer_rechecks_after_user_restriction(root, home, *,
         with Server(
             [judged_call(target, "again", "first"), event({"content": "written"}), repeat, finish]
         ) as model_server:
-            env = provider_env(
-                home, model_server.url, decision_providers(permission_server.url), model="test/test"
-            )
-            env["UAGENT_APPROVAL"] = "auto"
+            env = review_env(home, model_server.url, permission_server.url)
             result = run_dialog(root, env, "write twice.txt\nstop writing\n/q\n", binary=binary)
     assert_true(result.returncode == 0, result.stderr)
     assert_true(len(seen) == 2 and seen[1].startswith("stop writing"), seen)
@@ -512,6 +507,31 @@ def test_auto_permission_without_decision_endpoint_asks(root, home, *, binary):
         assert_true(result.returncode == 0, (result.stderr, envelope))
         assert_true(envelope["answer"] == "review-failed-closed", envelope)
         assert_true(not target.exists(), target)
+
+
+def test_auto_permission_review_stays_on_the_conversations_provider(root, home, *, binary):
+    """A decision endpoint among the providers is sent nothing of a
+    conversation on another one until the setting names it."""
+    require_sandbox(root, home, binary=binary)
+    target = root / "elsewhere.txt"
+
+    def never(*_):
+        raise AssertionError("a provider nobody named was sent the command")
+
+    def finish(_, body):
+        refused = tool_results(body["messages"])[-1]
+        assert_true("approval.reviewerModel to judge/" in refused, refused)
+        return event({"content": "asked"})
+
+    with Server([never]) as permission_server:
+        with Server([judged_call(target), finish]) as model_server:
+            env = review_env(home, model_server.url, permission_server.url)
+            del env["UAGENT_PERMISSION_MODEL"]
+            result = run(root, env, "--json", "-p", "write it", binary=binary)
+            envelope = json.loads(result.stdout)
+            assert_true(result.returncode == 0, (result.stderr, envelope))
+            assert_true(envelope["answer"] == "asked", envelope)
+            assert_true(permission_server.requests == [] and not target.exists(), target)
 
 
 def search_env(home, model_server, search_server, **extra):

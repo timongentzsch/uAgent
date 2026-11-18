@@ -660,7 +660,7 @@ def test_an_agent_in_auto_is_judged_as_its_parent_is(root, home, *, binary):
     """An agent in Auto changes files in its folder unjudged, as its parent
     does; its commands go to the same reviewer, never past it, as its brief
     and its report do."""
-    from integration_providers import decision_answers, decision_providers, provider_env
+    from integration_providers import decision_answers, review_env
     from integration_sandbox import require_sandbox
     from integration_support import write_json_response
 
@@ -685,10 +685,7 @@ def test_an_agent_in_auto_is_judged_as_its_parent_is(root, home, *, binary):
         return event({"content": "parent ok"})
 
     with Server([reviewer]) as permission_server, Server([route]) as server:
-        env = provider_env(
-            home, server.url, decision_providers(permission_server.url), model="test/test"
-        )
-        env["UAGENT_APPROVAL"] = "auto"
+        env = review_env(home, server.url, permission_server.url)
         result = run(root, env, "-p", "delegate", timeout=60, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true((root / "ran.txt").read_text() == "x", (judged, result.stderr))
@@ -750,7 +747,7 @@ def test_auto_starts_no_agent_its_judge_refuses(root, home, *, binary):
 def test_a_flagged_agent_report_with_nobody_to_ask_is_withheld(root, home, *, binary):
     """In Auto a report that instructs its reader reaches a headless parent
     only as a note that it was withheld, whether waited for or mailed."""
-    from integration_providers import decision_answers, decision_providers, provider_env
+    from integration_providers import decision_answers, review_env
     from integration_support import write_json_response
 
     for wait in (True, False):
@@ -776,10 +773,7 @@ def test_a_flagged_agent_report_with_nobody_to_ask_is_withheld(root, home, *, bi
             return event({"content": "started"})
 
         with Server([reviewer]) as permission_server, Server([route]) as server:
-            env = provider_env(
-                home, server.url, decision_providers(permission_server.url), model="test/test"
-            )
-            env["UAGENT_APPROVAL"] = "auto"
+            env = review_env(home, server.url, permission_server.url)
             result = run(root, env, "-p", "delegate", timeout=60, binary=binary)
             assert_true(result.returncode == 0, result.stderr)
             assert_true(result.stdout.strip() == "withheld", (wait, result.stdout))

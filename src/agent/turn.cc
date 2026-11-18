@@ -14,7 +14,6 @@
 
 #include "include/agent/activity.h"
 #include "include/agent/agent.h"
-#include "include/agent/child_agent.h"
 #include "include/agent/node.h"
 #include "include/agent/protocol.h"
 #include "include/agent/trace.h"

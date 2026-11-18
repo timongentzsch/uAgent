@@ -415,6 +415,9 @@ json ToolSelection::Catalogue(const std::vector<Tool>& tools) const {
   json full_schemas = json::array();
   int64_t active_count = 0;
   for (const Tool& tool : tools) {
+    // What no model is offered is no tool to switch: a patch's file tools,
+    // search without a route.
+    if (tool.available && !tool.available()) continue;
     json schema = ToolSchema(tool);
     const size_t bytes = JsonDump(schema).size();
     const bool active = Enabled(tool);
@@ -438,7 +441,7 @@ json ToolSelection::Catalogue(const std::vector<Tool>& tools) const {
       {"base_profile", profile_},
       {"profiles", json::array({"default", "coding", "research", "minimal"})},
       {"active", active_count},
-      {"available", static_cast<int64_t>(tools.size())},
+      {"available", static_cast<int64_t>(rows.size())},
       {"schema_bytes", static_cast<int64_t>(JsonDump(active_schemas).size())},
       {"full_schema_bytes",
        static_cast<int64_t>(JsonDump(full_schemas).size())},

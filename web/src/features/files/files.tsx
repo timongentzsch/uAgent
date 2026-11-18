@@ -206,9 +206,18 @@ export default function Files({
   );
   // What is typed and not yet in its file is written: a page's block, a
   // sheet's cell. Whether all of it is.
-  const settle = (closing = false) =>
+  const typed = (closing = false) =>
     Promise.all([blocks.flush(closing), tables.flush(closing)]).then(
       (written) => written.every(Boolean),
+    );
+  // A file rewritten by hand: one at a time, each of the file as the last
+  // left it.
+  const rewrites = useRef<Promise<unknown>>(Promise.resolve());
+  // What the pane has changed is in its files: what was typed, and each
+  // rewrite. Whether all that was typed is.
+  const settle = (closing = false) =>
+    Promise.all([typed(closing), rewrites.current]).then(
+      ([written]) => written,
     );
   // A page is left once that is written. Typing that could not be keeps
   // its page once, its notice read; the next time the person leaves it.
@@ -594,14 +603,26 @@ export default function Files({
         ),
       );
     });
-  // A slide's file rewritten by hand; the folder is read again for what
-  // the slide's head now says.
-  const rewrite = (path: string, change: (source: string) => string) =>
-    arranging.run(async () => {
-      const { text, revision } = await readFile(path);
-      await api(routes.fileWrite(id), { path, text: change(text), revision });
-      listing.setValue({ ...(await list(dir)), dir });
+  // A slide's or a whiteboard's file rewritten by hand, once what was typed
+  // in it is written; the folder is read again for what its head now says.
+  // Whether the file was written.
+  const rewrite = (path: string, change: (source: string) => string) => {
+    const made = rewrites.current.then(async () => {
+      let written = false;
+      await arranging.run(async () => {
+        await typed();
+        const { text, revision } = await api<FileText>(
+          routes.files(id, "read", path),
+        );
+        await api(routes.fileWrite(id), { path, text: change(text), revision });
+        written = true;
+        listing.setValue({ ...(await list(dir)), dir });
+      });
+      return written;
     });
+    rewrites.current = made;
+    return made;
+  };
   // biome-ignore lint/correctness/useExhaustiveDependencies: said of the folder it happened in
   useEffect(() => arranging.setError(null), [dir]);
   // A sheet's edits saved into its file. One that is not (the agent wrote

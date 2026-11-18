@@ -38,7 +38,7 @@ class Application {
   // The session's totals now: what ReportUsage counts from.
   json UsageTotals() const;
   // What the session spent since `used_before_`, appended to `ledger` for the
-  // parent that drains it. A child reports when it ends, an agent each turn.
+  // parent that drains it: an agent reports each turn.
   json ReportUsage(const std::string& ledger);
   int RunHeadless();
   // Empty, or why the named conversation could not be continued.
@@ -68,8 +68,6 @@ class Application {
   std::string config_problem_;
   // Whether search was last found unable to run for want of a model.
   bool search_unnamed_ = false;
-  // A delegated child's time ran out while work it had started was running.
-  bool out_of_time_ = false;
   std::string request_id_;
   json origin_;
   uint64_t message_subscription_ = 0;

@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "include/agent/agent.h"
-#include "include/agent/child_agent.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_role.h"
 #include "include/api/citations.h"

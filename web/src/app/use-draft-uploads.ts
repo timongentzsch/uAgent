@@ -1,28 +1,22 @@
 import { useCallback, useRef } from "preact/hooks";
-import type { Dispatch, StateUpdater } from "preact/hooks";
 import type { Draft, Session } from "../shared/types.ts";
 import { emptyDraft } from "../state/store.ts";
 import { requestId, useApi } from "../state/api.ts";
+import type { HostState } from "../state/use-host.ts";
 import { dedupeName } from "../features/composer/mention.ts";
 import { maxDraftFiles, maxUploadBytes } from "../shared/limits.ts";
 
 // No state of its own beyond admission: the drafts are the host layer's.
 export function useDraftUploads({
+  host: { online, selected, setDrafts, report },
   session,
-  online,
-  selected,
   draft,
   uploading,
-  setDrafts,
-  report,
 }: {
+  host: HostState;
   session: Session | undefined;
-  online: boolean;
-  selected: string;
   draft: Draft;
   uploading: boolean;
-  setDrafts: Dispatch<StateUpdater<Record<string, Draft>>>;
-  report: (error: unknown) => void;
 }) {
   const { uploadAttachment } = useApi();
   const active = useRef(new Set<string>());

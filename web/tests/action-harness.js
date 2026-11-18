@@ -35,13 +35,15 @@ export async function mountUploads() {
     drafts = value;
     const draft = value[id] || emptyDraft();
     uploads = useDraftUploads({
+      host: {
+        online: true,
+        selected: id,
+        setDrafts,
+        report: (error) => errors.push(error.message),
+      },
       session: { id },
-      online: true,
-      selected: id,
       draft,
       uploading: draft.files.some((file) => file.pending),
-      setDrafts,
-      report: (error) => errors.push(error.message),
     });
     return null;
   }

@@ -45,8 +45,9 @@ their message. You make every change by editing the files.
 - When the folder has a design system, link its `tokens.css` (and
   `components/bundle.css`), set `data-theme` on `<html>`, and take every
   colour, size and face from its tokens.
-- No network except Google Fonts (one `fonts.googleapis.com/css2` link).
-  Images, fonts and libraries are files in the folder, linked relatively.
+- No network: a page loads nothing from another host, a font service
+  included. Images, fonts and libraries are files in the folder, linked
+  relatively.
   To use an image the person attached, copy it into the folder with
   `write_file` and `from`. Icons are inline stroke SVG; no emoji.
 - Charts and diagrams are inline SVG drawn in the markup, labelled with
@@ -60,10 +61,12 @@ their message. You make every change by editing the files.
   sections. A missing fact is a visible placeholder such as [YOUR PRICE]
   that you list in your reply. Ask before adding sections or copy nobody
   asked for.
-- Without a brand: type from the subject; if neutral, one sans for text and
-  one for headings, from Google Fonts with a system fallback. A tinted
-  ground, 0–2 accents of like lightness and chroma. Commit to one nameable
-  look.
+- Without a brand: type from the subject, as a stack of faces the reader's
+  system has (`system-ui, "Segoe UI", sans-serif`; `"Iowan Old Style",
+  Palatino, Georgia, serif`; `ui-monospace, Menlo, Consolas, monospace`), or
+  a font file the person put in the folder. If neutral, one stack for text
+  and one for headings. A tinted ground, 0–2 accents of like lightness and
+  chroma. Commit to one nameable look.
 - Avoid the tropes: gradient washes, emoji, cards with a coloured left
   border, everything centred and rounded.
 - Do not recreate another company's distinctive design or branding.

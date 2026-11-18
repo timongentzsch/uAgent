@@ -203,10 +203,11 @@ export default function Sequence({
   // A slide's file written as `change` makes it of what it holds.
   // A file of the folder opened at a line, from the page.
   cite?: (path: string, line: number) => void;
+  // Whether it was written.
   rewrite?: (
     path: string,
     change: (source: string) => string,
-  ) => Promise<unknown>;
+  ) => Promise<boolean>;
   arranging?: boolean;
   // Opens a picture in the image viewer, which can draw on it.
   view: (image: ViewedImage) => void;
@@ -384,32 +385,32 @@ export default function Sequence({
     setBuild(at);
     tell(frame.current, { type: "build", at });
   };
-  // A whiteboard's changes made here, each with the text it took the place
-  // of: ⌘Z puts that back while the file is as the change left it.
-  // They are written one after another, as fast as they come.
+  // A whiteboard's changes made here and written, each with the text it
+  // took the place of: ⌘Z puts that back while the file is as the change
+  // left it.
   const boardPast = useRef<{ path: string; before: string; after: string }[]>(
     [],
   );
-  const boardWrites = useRef<Promise<unknown>>(Promise.resolve());
   const changeBoard = ({
     undo,
     ...edit
   }: Partial<BoardEdit> & { undo?: boolean }) => {
+    const past = boardPast.current;
+    // What the change does to the past, once it is in the file.
+    let written = () => {};
     const change = (source: string) => {
       if (undo) {
-        const last = boardPast.current.at(-1);
+        const last = past.at(-1);
         if (last?.path !== path || source !== last.after) return source;
-        boardPast.current.pop();
+        written = () => past.pop();
         return last.before;
       }
       const after = boardEdit(source, { ...edit, id: String(edit.id) });
       if (after === null) return source;
-      boardPast.current.push({ path, before: source, after });
+      written = () => past.push({ path, before: source, after });
       return after;
     };
-    boardWrites.current = boardWrites.current.then(() =>
-      rewrite?.(path, change),
-    );
+    void rewrite?.(path, change).then((made) => made && written());
   };
   // Presenting starts at the slide's first step; ended, all of it shows.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on presenting alone

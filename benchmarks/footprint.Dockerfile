@@ -1,5 +1,6 @@
 # The footprint comparison in a container: µAgent built from this checkout
-# beside Claude Code, Codex CLI and omp. Build and run: benchmarks/README.md.
+# beside Claude Code, Codex CLI, omp and OpenCode. Build and run:
+# benchmarks/README.md.
 FROM node:24-bookworm-slim AS frontend
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
@@ -23,6 +24,7 @@ FROM ubuntu:24.04
 ARG CODEX_VERSION=0.167.0
 ARG BUN_VERSION=1.4.4
 ARG OMP_VERSION=18.18.6
+ARG OPENCODE_VERSION=1.19.6
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates curl git openssh-client procps python3 libcurl4t64 libssl3t64 zlib1g unzip xz-utils \
     && rm -rf /var/lib/apt/lists/*
@@ -34,6 +36,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN mkdir codex && curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-package-$(uname -m)-unknown-linux-musl.tar.gz" | tar -xz -C codex
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
 RUN mkdir omp && cd omp && ~/.bun/bin/bun add "@oh-my-pi/pi-coding-agent@${OMP_VERSION}"
+RUN curl -fsSL https://opencode.ai/install | bash -s -- --version "${OPENCODE_VERSION}" --no-modify-path
 ENV PATH=/home/bench/.local/bin:/home/bench/.bun/bin:$PATH
 COPY benchmarks/compare_agents.py benchmarks/charts.py benchmarks/footprint-run.sh /opt/bench/
 ENTRYPOINT ["bash", "/opt/bench/footprint-run.sh"]

@@ -60,7 +60,6 @@ ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
   for (std::string& name : hidden) {
     name = AsciiLower(name);
   }
-  const bool agent = policy == ChildEnvironmentPolicy::kAgent;
   const bool user_shell = policy == ChildEnvironmentPolicy::kUserShell;
   auto permitted = [&](const std::string& key) {
     // A name the user hides stays hidden, whoever asks.
@@ -72,7 +71,7 @@ ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
     if (std::ranges::find(allow_list, key) != allow_list.end()) return true;
     // The person's own terminal pushes with their keys, as any terminal does.
     if (user_shell && key == "SSH_AUTH_SOCK") return true;
-    return (agent || !AgentConfigKey(key)) && !SensitiveEnvironmentKey(key);
+    return !AgentConfigKey(key) && !SensitiveEnvironmentKey(key);
   };
   auto set = [&](const std::string& key, const std::string& value) {
     std::erase_if(
@@ -82,12 +81,6 @@ ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
   for (char** current = ProcessEnvironment(); current && *current; ++current) {
     std::string entry(*current);
     if (permitted(KeyOf(entry))) values_.push_back(std::move(entry));
-  }
-  // environ predates reloads and session choices.
-  if (agent) {
-    for (const auto& [key, value] : CurrentSettings()) {
-      if (permitted(key)) set(key, value);
-    }
   }
   // A uagent started from a command is no freer than the session it runs in;
   // one the person starts in their own terminal chooses for itself.

@@ -1,0 +1,13 @@
+#include "include/app/approval_review.h"
+namespace uagent {
+const json& ReviewQuestions() {
+  static const json kQuestions =
+      json::parse(R"json(@UAGENT_REVIEW_QUESTIONS@)json");
+  return kQuestions;
+}
+const json& ReportQuestions() {
+  static const json kQuestions =
+      json::parse(R"json(@UAGENT_REPORT_QUESTIONS@)json");
+  return kQuestions;
+}
+}  // namespace uagent

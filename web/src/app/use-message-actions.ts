@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from "preact/hooks";
-import type { StateUpdater } from "preact/hooks";
 import type {
   Act,
   ActivityTarget,
@@ -10,8 +9,6 @@ import type {
   FileTarget,
   InspectorTarget,
   Node,
-  Outgoing,
-  Report,
   Session,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
@@ -22,59 +19,48 @@ import {
   unsent,
 } from "../shared/message-view.ts";
 import { useLatest } from "../shared/use-latest.ts";
-import type { SnapshotStore } from "../state/snapshot-store.ts";
+import type { HostState } from "../state/use-host.ts";
 import { transcriptNodes } from "./chat-page.tsx";
 
 // Every row reads these through one context value, so they stay the same
 // functions and read the latest state through a ref.
 export function useMessageActions({
-  online,
-  selected,
+  host,
   act,
-  report,
   forkAndOpen,
-  outgoing,
   session,
   deliver,
   busy,
-  setOutgoing,
-  patchOutgoing,
   updateDraft,
-  snapshots,
   setInspector,
   setModal,
   choose,
   openFile,
 }: {
-  online: boolean;
-  selected: string;
+  host: HostState;
   act: Act;
-  report: Report;
   forkAndOpen: (
     target: Session | undefined,
     fields?: CommandFields<"fork">,
     edit?: boolean,
   ) => Promise<void>;
-  outgoing: Outgoing[];
   session?: Session;
   deliver: (id: string, sent: Draft) => Promise<void>;
   busy: boolean;
-  setOutgoing: (update: StateUpdater<Outgoing[]>) => void;
-  patchOutgoing: (requestId: string, patch: Partial<Outgoing>) => void;
   updateDraft: (id: string, change: (draft: Draft) => Draft) => void;
-  snapshots: SnapshotStore;
   setInspector: (target: InspectorTarget | null) => void;
   setModal: (modal: AppModal | null) => void;
   choose: (id: string) => void;
   openFile: (target: FileTarget) => void;
 }) {
+  const { selected, report, setOutgoing, patchOutgoing, snapshots } = host;
   const latest = useLatest({
-    online,
+    online: host.online,
     selected,
     act,
     report,
     forkAndOpen,
-    outgoing,
+    outgoing: host.outgoing,
     session,
     deliver,
     busy,

@@ -13,12 +13,11 @@ namespace uagent {
 
 using EnvironmentOverrides = std::vector<std::pair<std::string, std::string>>;
 
-// Every child loses credentials. A program that is not uagent also loses
-// uagent's settings, which configure this session only.
+// Every child loses credentials and uagent's settings, which configure this
+// session only.
 enum class ChildEnvironmentPolicy {
   kSanitized,      // a program: an MCP server, a script
   kApprovedShell,  // a command the user's allow-list may hand credentials
-  kAgent,          // a child uagent, told this session's settings
   kUserShell,      // the person's own terminal: their ssh agent, no session
 };
 

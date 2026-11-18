@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { failure } from "../shared/types.ts";
-import type { InstallPrompt, Report } from "../shared/types.ts";
+import type { InstallPrompt } from "../shared/types.ts";
 import { stored } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
 import { prefetchMarkdown } from "../shared/markdown-view.tsx";
@@ -9,6 +9,7 @@ import { trackViewport } from "../shared/layout.ts";
 import { useLatest } from "../shared/use-latest.ts";
 import { useResource } from "../shared/use-resource.ts";
 import { useApi } from "../state/api.ts";
+import type { HostState } from "../state/use-host.ts";
 
 // Kept per device, so the header's browser slot is right from the first frame.
 const browserKept = stored(storageKeys.browser, false, (value) => value === 1, {
@@ -16,19 +17,15 @@ const browserKept = stored(storageKeys.browser, false, (value) => value === 1, {
 });
 
 export function useBoot({
+  host: { report, authenticated, online },
   upload,
   page,
   choose,
-  report,
-  authenticated,
-  online,
 }: {
+  host: HostState;
   upload: (files: File[]) => Promise<boolean>;
   page: string;
   choose: (id: string) => Promise<void>;
-  report: Report;
-  authenticated: boolean | null;
-  online: boolean;
 }) {
   const { api, routes } = useApi();
   const browserAvailable = !!useResource(

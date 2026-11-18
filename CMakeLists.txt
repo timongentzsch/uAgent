@@ -15,6 +15,7 @@ list(FILTER _runtime_inputs EXCLUDE REGEX "(^|/)([.]|__pycache__)|[.]pyc$")
 list(APPEND _runtime_inputs "CMakeLists.txt"
      "cmake/embed_web.cmake"
      "cmake/build_identity.cc.in"
+     "cmake/review_questions.cc.in"
      "web/public/design-helper.js"
      "docs/architecture/overview.md"
      "web/src/shared/styles/tokens.css")
@@ -27,6 +28,10 @@ foreach(_input IN LISTS _runtime_inputs)
 endforeach()
 string(SHA256 UAGENT_BUILD_ID "${_runtime_hashes}")
 configure_file(cmake/build_identity.cc.in build_identity.cc @ONLY)
+# The reviewer's questions are data: tests/reviewer_eval measures with them.
+file(READ src/app/review_questions.json UAGENT_REVIEW_QUESTIONS)
+file(READ src/app/report_questions.json UAGENT_REPORT_QUESTIONS)
+configure_file(cmake/review_questions.cc.in review_questions.cc @ONLY)
 
 if(NOT UNIX)
   message(FATAL_ERROR "uagent currently requires a POSIX platform")
@@ -184,7 +189,6 @@ add_library(
   src/agent/agent.cc
   src/agent/placement.cc
   src/agent/activity_drain.cc
-  src/agent/child_agent.cc
   src/agent/mail_delivery.cc
   src/agent/compaction.cc
   src/agent/conversation.cc
@@ -220,6 +224,7 @@ add_library(
   src/mcp/server.cc
   src/tools/ask.cc
   src/tools/files.cc
+  src/tools/patch.cc
   src/tools/image_result.cc
   src/tools/memory.cc
   src/tools/memory_pipeline.cc
@@ -251,6 +256,7 @@ add_library(
   src/app/bootstrap_tools.cc
   src/app/approval_policy.cc
   src/app/approval_review.cc
+  "${CMAKE_CURRENT_BINARY_DIR}/review_questions.cc"
   src/app/approvals.cc
   src/app/commands.cc
   src/app/commands_control.cc

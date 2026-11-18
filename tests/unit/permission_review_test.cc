@@ -1,9 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include <fstream>
-#include <sstream>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "include/app/approval_review.h"
@@ -53,17 +50,6 @@ Endpoint Serving(const std::string& name, const std::string& key) {
 }  // namespace
 
 TEST_CASE(TestPermissionReview) {
-  // The questions are the ones tests/reviewer_eval measures the bars with.
-  for (const auto& [name, questions] :
-       {std::pair{"questions.json", &ReviewQuestions()},
-        std::pair{"questions-report.json", &ReportQuestions()}}) {
-    std::ifstream file(std::string(UAGENT_TEST_SOURCE_DIR) +
-                       "/tests/reviewer_eval/" + name);
-    std::stringstream text;
-    text << file.rdbuf();
-    CHECK(json::parse(text.str()) == *questions);
-  }
-
   const ReviewBars bars{0.6, 0.95, 0.7};
   using Decision = AutoPermissionDecision;
   CHECK(JudgeAnswers(Answers(0.6, 0), bars).decision == Decision::kAllow);
@@ -152,17 +138,21 @@ TEST_CASE(TestPermissionReview) {
   RouteResolution none = ResolveReviewRoute(api, {}, "");
   CHECK(!none.none.empty());
   CHECK(!ResolveReviewRoute(api, {Serving("keyless", "")}, "").none.empty());
+  // An endpoint that serves them is not asked unless it is the
+  // conversation's own or the setting names it.
   RouteResolution found = ResolveReviewRoute(api, {first, second}, "");
-  CHECK(found.none.empty());
-  CHECK(found.route.name == "first" && found.route.model == "first-model");
-  // The setting names the model, optionally on an endpoint.
+  CHECK(found.none.find("approval.reviewerModel to first/") !=
+        std::string::npos);
+  CHECK(!ResolveReviewRoute(api, {first}, "vendor/judge-2").none.empty());
   found = ResolveReviewRoute(api, {first, second}, "second/judge-1");
   CHECK(found.route.name == "second" && found.route.model == "judge-1");
-  found = ResolveReviewRoute(api, {first, second}, "vendor/judge-2");
-  CHECK(found.route.name == "first" && found.route.model == "vendor/judge-2");
-  // The conversation's own endpoint comes first when it serves them.
+  found = ResolveReviewRoute(api, {first, second}, "second/");
+  CHECK(found.route.name == "second" && found.route.model == "second-model");
+  // On the conversation's own endpoint the setting names the model alone.
   static_cast<Endpoint&>(api) = second;
   CHECK(ResolveReviewRoute(api, {first}, "").route.name == "second");
+  found = ResolveReviewRoute(api, {first}, "vendor/judge-2");
+  CHECK(found.route.name == "second" && found.route.model == "vendor/judge-2");
 
   // A free setup never silently falls back to a paid reviewer. An explicit
   // reviewer remains the user's choice.

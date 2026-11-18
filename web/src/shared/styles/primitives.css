@@ -995,7 +995,6 @@
   }
   .bar[data-density="dense"] {
     --bar-min: var(--control-l);
-    --bar-pad-y: 0;
   }
   /* Inside a pane that pads its content already. */
   .bar[data-density="flush"] {

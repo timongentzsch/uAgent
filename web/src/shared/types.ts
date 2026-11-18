@@ -334,7 +334,8 @@ interface AskPending extends PendingBase {
 interface ApprovalPending extends PendingBase {
   kind: "approval";
   approval?: {
-    tool: string;
+    // The call in the words its row uses while it runs: "Running make test".
+    action: string;
     preview?: string;
     // What approving risks, most serious first; then the reasons the
     // automatic review gave, by name and probability.

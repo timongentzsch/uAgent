@@ -39,7 +39,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: var(--z-popover);
+  z-index: var(--z-handle);
   width: var(--space-6);
   cursor: col-resize;
   touch-action: none;

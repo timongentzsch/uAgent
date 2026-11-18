@@ -168,6 +168,7 @@ export default function Files({
   flow,
   setFlow,
   addToChat,
+  quote,
   askSide,
   pictures,
 }: {
@@ -178,6 +179,8 @@ export default function Files({
   setFlow: (update: (flow: Flow) => Flow) => void;
   // Puts text in the conversation's draft; none where there is no draft.
   addToChat?: (text: string, keep?: boolean) => void;
+  // Adds a quote to the conversation's draft.
+  quote?: (text: string) => void;
   // Asks about a quote in a side chat of the conversation.
   askSide?: (quote: string) => void;
   // Whether the agent's browser can draw a page as a picture.
@@ -423,7 +426,7 @@ export default function Files({
       })
       .join("");
   }, [highlighted.value, file, marked?.[0], marked?.[1]]);
-  // The lines selected in the code, which Add to chat cites. Each line is
+  // The lines selected in the code, which Quote cites. Each line is
   // a number then its code, so a child's place gives its line.
   const [chosen, setChosen] = useState<[number, number]>();
   useEffect(() => {
@@ -812,7 +815,7 @@ export default function Files({
             Annotate
           </Button>
         )}
-        {addToChat && cited && (
+        {quote && cited && (
           <div
             class="segmented"
             role="group"
@@ -832,7 +835,7 @@ export default function Files({
                 Ask in side chat
               </Button>
             )}
-            <Button onClick={() => addToChat(cited)}>Add to chat</Button>
+            <Button onClick={() => quote(cited)}>Quote</Button>
           </div>
         )}
         {file && !deleted && (

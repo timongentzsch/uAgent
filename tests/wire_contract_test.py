@@ -26,7 +26,7 @@ WEB_HANDLERS = ("web/src/state",)
 
 # Web-side types that never cross the wire, and field prefixes the host
 # builds at runtime (PrefixNumericStatistics).
-WEB_ONLY_TYPES = {"RawOptions"}
+WEB_ONLY_TYPES = {"Draft", "RawOptions"}
 BUILT_PREFIXES = ("side_",)
 
 # Frames the browser consumes: every member needs a native producer in the

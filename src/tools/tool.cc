@@ -536,6 +536,13 @@ std::string ToolSummary(const Tool& t, const json& args) {
                                  : headline.past + " " + headline.target;
 }
 
+std::string ToolAction(const Tool& t, const json& args) {
+  Headline headline = ToolHeadline(&t, args);
+  if (!headline.label.empty()) return headline.label;
+  return headline.target.empty() ? headline.present
+                                 : headline.present + " " + headline.target;
+}
+
 json CommandPart(std::string text) {
   return {{"kind", "command"},
           {"text", Utf8Trunc(std::move(text), kPreviewChars)}};

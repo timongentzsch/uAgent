@@ -83,7 +83,7 @@ export function SelectionActions({
       >
         Ask in side chat
       </Button>
-      <Button onClick={() => use(add)}>Add to chat</Button>
+      <Button onClick={() => use(add)}>Quote</Button>
     </div>
   );
 }

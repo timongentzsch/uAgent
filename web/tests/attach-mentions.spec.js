@@ -210,6 +210,7 @@ test("an upload cut off by a reload leaves no stuck chip", async ({
           files: [
             { id: "upload-lost", name: "lost.png", bytes: 1, pending: true },
           ],
+          quotes: [],
         },
       }),
     );

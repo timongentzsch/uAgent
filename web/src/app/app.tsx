@@ -534,12 +534,9 @@ function App({ host, bindResult, reading }: HostAppProps) {
   );
   // Added to the draft, never sent. What covers the chat on a small screen
   // steps aside, unless `keep`.
-  const addToChat = useCallback(
-    (text: string, keep = false) => {
-      updateDraft(selected, (current) => ({
-        ...current,
-        text: current.text ? `${current.text}\n${text}` : text,
-      }));
+  const toDraft = useCallback(
+    (change: (draft: Draft) => Draft, keep = false) => {
+      updateDraft(selected, change);
       if (keep) return;
       if (compact) hideTerminal();
       if (filesSheet) setFilesOpen(false);
@@ -547,7 +544,25 @@ function App({ host, bindResult, reading }: HostAppProps) {
     },
     [updateDraft, selected, compact, filesSheet, hideTerminal],
   );
-  const toChat = page === "chat" && session && online ? addToChat : undefined;
+  const addToChat = useCallback(
+    (text: string, keep = false) =>
+      toDraft(
+        (current) => ({
+          ...current,
+          text: current.text ? `${current.text}\n${text}` : text,
+        }),
+        keep,
+      ),
+    [toDraft],
+  );
+  const addQuote = useCallback(
+    (text: string) =>
+      toDraft((current) => ({ ...current, quotes: [...current.quotes, text] })),
+    [toDraft],
+  );
+  const drafting = page === "chat" && session && online;
+  const toChat = drafting ? addToChat : undefined;
+  const quote = drafting ? addQuote : undefined;
   const files = session && (
     <Files
       key={session.id}
@@ -556,6 +571,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
       flow={flows[session.id] ?? START}
       setFlow={(update) => setFlow(session.id, update)}
       addToChat={toChat}
+      quote={quote}
       askSide={
         toChat &&
         ((quote) => {
@@ -571,7 +587,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
       load={terminalPanel}
       fallback={<Spinner label="Opening the terminal…" />}
       cwd={session ? folderOf(session) : ""}
-      addToChat={toChat}
+      quote={quote}
       shown={!!terminalShown}
       hide={hideTerminal}
       close={() => setTerminalShown(undefined)}
@@ -879,7 +895,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       choose={choose}
                       side={side}
                       sideColumn={sideColumn}
-                      addToChat={toChat}
+                      quote={quote}
                       actions={chatActions}
                       setInspector={setInspector}
                       files={filesOpen && !filesSheet && files}

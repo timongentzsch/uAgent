@@ -146,10 +146,10 @@ export default function Decision({
           <h2 ref={heading} tabIndex={-1}>
             {title}
           </h2>
-          {approval?.tool && <span class="sr-only">: {approval.tool}</span>}
+          {approval && <span class="sr-only">: {approval.action}</span>}
         </div>
         {approval && !asking && (
-          <strong class="decision-tool">{approval.tool}</strong>
+          <strong class="decision-action truncate">{approval.action}</strong>
         )}
       </div>
       {pending.route === "parent" && (
@@ -204,7 +204,8 @@ export default function Decision({
             }))}
             href={(id) => routes.asset(session, id)}
           />
-          <p>{cleanText(pending.prompt)}</p>
+          {/* An approval's prompt names the tool; its head says the action. */}
+          {!approval && <p>{cleanText(pending.prompt)}</p>}
         </div>
       )}
       {failed && (

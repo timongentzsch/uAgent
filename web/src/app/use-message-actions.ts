@@ -75,6 +75,7 @@ export function useMessageActions({
       void deliver(selected, {
         text: node.body?.text || "",
         files: node.files || [],
+        quotes: [],
       });
     },
     [setOutgoing],
@@ -82,7 +83,7 @@ export function useMessageActions({
   const resume = useCallback(() => {
     const { online, selected, deliver, busy } = latest.current;
     if (online && !busy)
-      void deliver(selected, { text: "continue", files: [] });
+      void deliver(selected, { text: "continue", files: [], quotes: [] });
   }, []);
   // `edit` forks before the message; otherwise before the next one of yours.
   const branchFrom = useCallback(

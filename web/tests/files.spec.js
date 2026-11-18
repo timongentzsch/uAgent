@@ -10,6 +10,7 @@ import {
   headerAction,
   openFiles,
   openSession,
+  quotesOf,
   saveHistory,
   savedConversation,
   selectProbeModel,
@@ -354,7 +355,7 @@ test("on a phone a cited path opens the sheet at its lines", async ({
   await expect(sheet.locator(".push")).toHaveCount(0);
 });
 
-test("lines selected in a file go to the chat as a reference", async ({
+test("lines selected in a file are quoted in the draft as a reference", async ({
   page,
   session,
   host,
@@ -364,7 +365,7 @@ test("lines selected in a file go to the chat as a reference", async ({
   const list = pane.getByRole("navigation", { name: "Folder" });
   await list.getByRole("button", { name: "src" }).click();
   await list.getByRole("button", { name: "app.ts" }).click();
-  const add = pane.getByRole("button", { name: "Add to chat" });
+  const add = pane.getByRole("button", { name: "Quote" });
   await expect(add).toHaveCount(0);
   await pane.locator(".code-view").evaluate((view) => {
     const lines = view.querySelectorAll(".line");
@@ -375,9 +376,13 @@ test("lines selected in a file go to the chat as a reference", async ({
     getSelection().addRange(range);
   });
   await add.click();
-  await expect(page.getByLabel("Message or guidance")).toHaveValue(
-    "`src/app.ts:1-2`",
+  await expect(page.locator(".composer .quote-bar")).toHaveText(
+    "src/app.ts:1-2",
   );
+  await expect(page.getByLabel("Message or guidance")).toHaveValue("");
+  await expect
+    .poll(() => quotesOf(page, session.id))
+    .toEqual(["`src/app.ts:1-2`"]);
 });
 
 test("what the agent presents shows as a card that opens it in Files", async ({

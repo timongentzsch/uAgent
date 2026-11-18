@@ -83,8 +83,8 @@ export const maxTextFileBytes = 1024 * 1024;
 // Mobile Safari avoids focus zoom for an editable layout font of at least 16px.
 export const focusFontFloor = 16;
 
-// maxTerminals is the host's kWebTerminals; "Add to chat" carries the end
-// of a terminal, at most maxTerminalChatChars.
+// maxTerminals is the host's kWebTerminals; "Quote" carries the end of a
+// terminal, at most maxTerminalChatChars.
 export const maxTerminals = 8;
 export const maxTerminalChatChars = 16_000;
 export const terminalScrollbackLines = 5_000;

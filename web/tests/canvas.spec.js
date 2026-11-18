@@ -274,7 +274,7 @@ test("a page opened: select and comment, tweaks, print", async ({
     "difference",
   );
   await files.getByRole("textbox", { name: "Comment" }).fill("Make it bigger");
-  await files.getByRole("button", { name: "Add to chat" }).click();
+  await files.getByRole("button", { name: "Add comment" }).click();
   await expect(app.locator("#prompt")).toHaveValue(
     "`design/hero-a.html` `main > h1` “Alpha headline” — Make it bigger",
   );

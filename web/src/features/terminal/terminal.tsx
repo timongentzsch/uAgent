@@ -27,7 +27,7 @@ import {
 import { fenced } from "../../shared/format.ts";
 
 // Shells the host runs for this user, each an xterm.js view on a socket.
-// The agent never sees a terminal; "Add to chat" puts text in the composer.
+// The agent never sees a terminal; "Quote" puts its text in the draft.
 
 interface View {
   text: () => string;
@@ -384,7 +384,7 @@ export function FolderTerminal({
 // These shells end with their tab or the page; hidden, they run on.
 export default function TerminalPanel({
   cwd,
-  addToChat,
+  quote,
   shown,
   hide,
   close,
@@ -392,7 +392,7 @@ export default function TerminalPanel({
 }: {
   // Where a new terminal starts; "" is the home folder.
   cwd: string;
-  addToChat?: (text: string) => void;
+  quote?: (text: string) => void;
   shown: boolean;
   hide: () => void;
   // Its last tab closed.
@@ -483,19 +483,17 @@ export default function TerminalPanel({
           <Plus />
         </IconButton>
         <Menu label="Terminal menu">
-          {addToChat && (
+          {quote && (
             <MenuItem
               disabled={!current}
-              title="Put the selection, or what the terminal shows, into the message"
+              title="Quote the selection, or what the terminal shows, in the message"
               onClick={() => {
                 const text = views.current.get(active)?.text();
                 if (text)
-                  addToChat(
-                    fenced(text.slice(-maxTerminalChatChars), "console"),
-                  );
+                  quote(fenced(text.slice(-maxTerminalChatChars), "console"));
               }}
             >
-              Add to chat
+              Quote
             </MenuItem>
           )}
           <MenuItem disabled={!current} onClick={() => void remove(active)}>

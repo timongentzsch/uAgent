@@ -1,10 +1,10 @@
 // The terminal under the chat: shells of the user's on the host, in tabs.
-// "Add to chat" puts a terminal's text into the composer and sends nothing.
-import { test, expect, headerAction } from "./fixtures.js";
+// "Quote" puts a terminal's text in the draft as a quote and sends nothing.
+import { test, expect, headerAction, quotesOf } from "./fixtures.js";
 
 test.use({ places: true });
 
-test("terminal tabs run commands and add their text to the chat", async ({
+test("terminal tabs run commands and quote their text in the draft", async ({
   page,
   session,
 }) => {
@@ -33,13 +33,13 @@ test("terminal tabs run commands and add their text to the chat", async ({
   await dock.getByRole("button", { name: /^Terminal 1 · / }).click();
   await expect(shown.locator(".xterm-rows")).toContainText("first-42");
   await dock.getByRole("button", { name: "Terminal menu" }).click();
-  await page.getByRole("menuitem", { name: "Add to chat" }).click();
-  const composer = page.getByLabel("Message or guidance");
-  await expect(composer).toHaveValue(
-    /^```console\n[\s\S]*first-42[\s\S]*\n```$/,
-  );
-  await expect(composer).not.toHaveValue(/second-6/);
-  await expect(composer).toBeFocused();
+  await page.getByRole("menuitem", { name: "Quote" }).click();
+  await expect(page.locator(".composer .quote-bar")).toHaveCount(1);
+  await expect.poll(() => quotesOf(page, session.id)).toHaveLength(1);
+  const [quoted] = await quotesOf(page, session.id);
+  expect(quoted).toMatch(/^```console\n[\s\S]*first-42[\s\S]*\n```$/);
+  expect(quoted).not.toMatch(/second-6/);
+  await expect(page.getByLabel("Message or guidance")).toBeFocused();
 
   // Hidden, its shells run on: shown again it has what they printed, and
   // the keys.
@@ -83,7 +83,7 @@ test("a terminal keeps its number, and a new one takes the lowest free", async (
   await expect(place).toHaveText(/^Terminal 1 · /);
 });
 
-test("Add to chat is in the menu only with a conversation to add to", async ({
+test("Quote is in the menu only with a conversation to quote in", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -95,9 +95,7 @@ test("Add to chat is in the menu only with a conversation to add to", async ({
   await expect(
     page.getByRole("menuitem", { name: "Close terminal" }),
   ).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Add to chat" })).toHaveCount(
-    0,
-  );
+  await expect(page.getByRole("menuitem", { name: "Quote" })).toHaveCount(0);
 });
 
 test("a folder's terminal opens in the page, keeps running and closes", async ({

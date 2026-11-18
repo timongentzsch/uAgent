@@ -53,8 +53,10 @@ ctest --preset debug -R '^core$'          # one CTest by name
 ```
 
 The source contracts (`tests/ci_changes_test.py`, `tests/boundary_test.py`,
-`tests/wire_contract_test.py`), the docs check `tests/docs_test.py` and
-the measurement self-tests run in `.github/lint.sh`.
+`tests/egress_test.py`, `tests/wire_contract_test.py`), the docs check
+`tests/docs_test.py` and the measurement self-tests run in `.github/lint.sh`.
+`egress_test.py` fails when the source names an outside host that
+[SECURITY.md](../SECURITY.md#what-leaves-the-machine) does not list.
 
 Test presets exist for `debug`, `release`, `sanitize`, `tsan` and `coverage`.
 

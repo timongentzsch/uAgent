@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Upgrade notes
+
+- **Name the reviewer if Auto should ask another provider.** A call judged in Auto is sent only to the provider the conversation runs on, or to the one `approval.reviewerModel` names (`openrouter/` for that provider's own decision model). Before, any configured provider with a decision endpoint was asked, so a conversation on a local model sent its commands to OpenRouter. With such a setup Auto now asks you, and says which setting to set.
+- **Previewed pages load nothing from another host.** The preview policy no longer admits Google Fonts, and the agent writes pages with system font stacks or a font file in the folder. A page that links a Google font is drawn in its fallback face and lists the link as not loaded.
+
 ### Changes
 
 - **Agents started in Auto are judged.** The review sees an agent's brief (and a later message to it) before the agent starts, against what you asked, so a conversation steered by something it read cannot pass a request on through an agent. In Ask, Plan and yolo agents start unasked as before; a folder rule can refuse or ask (`/permissions deny agent_start *`).

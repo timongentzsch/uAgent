@@ -125,9 +125,10 @@ it on, and to you after five minutes; once you write in the agent's own
 conversation, that turn asks you directly. What always needs a person goes
 to you, never to the parent. An agent is never offered `root` or `command`.
 
-**Auto review** sends the `decisions_url` of an endpoint declaring
-`decisions` the tool, the folder, your latest and first messages and the
-action preview, each cut to 16 KiB; with provider routing it asks for providers that retain no data
+**Auto review** sends the `decisions_url` of the conversation's own
+endpoint, or of the one `approval.reviewerModel` names, the tool, the
+folder, your latest and first messages and the action preview, each cut to
+16 KiB; with provider routing it asks for providers that retain no data
 (`decisions_private`), and a session id goes as a hash. A call is allowed only at or above the model's allow bar with
 no risk question at or above its risk bar; without such an endpoint, or
 when the review fails, it asks.
@@ -228,10 +229,30 @@ the address works for whoever holds it until the host stops or a device is
 revoked. It serves only web file types, with the refusals above. Each page
 runs sandboxed in an opaque origin, so it reaches neither the app, its
 cookie nor the API; its policy lets it load only from its own address and
-Google Fonts and submit no form. `Origin: null` is accepted only to read
+submit no form. `Origin: null` is accepted only to read
 under `/preview/`. Under `~sheet/` the host serves its installed sheet
 engine, with WebAssembly and `blob:` workers allowed. An HTML attachment
 opens sandboxed in an opaque origin too.
+
+## What leaves the machine
+
+A default install contacts no host but the model endpoint you configure.
+Every other contact is listed here, and `tests/egress_test.py` fails when
+the source names a host this table lacks. µAgent has no telemetry,
+analytics or error reporting.
+
+| Contact | When | Carries | Off |
+| --- | --- | --- | --- |
+| The model endpoints you configure; setup offers `api.anthropic.com`, `api.openai.com` and `openrouter.ai` | every turn, and the title, memory, search and image requests of a conversation | the conversation | not optional |
+| The decision endpoint of the conversation's provider (`openrouter.ai` has one), or of the provider `approval.reviewerModel` names | a call judged in Auto | the tool, the folder, your latest and first messages and the action preview, 16 KiB each | any other approval mode; no other provider is asked |
+| `api.github.com`, `raw.githubusercontent.com`, `github.com` | you check for or apply an update in About; daily only with `web.updateCheck`; the installer | nothing of yours | off by default |
+| `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com` | a device subscribed to notifications, with `web.pushContact` set | the encrypted title and reason, or a generic notice with `web.notificationDetail` off | off by default |
+| `dl.google.com`, `ghcr.io` | the installer or the container fetching Chrome and the image | nothing of yours | no browser, no container |
+| Hosts the agent names | `web_fetch`, hosted search at the model endpoint, a command, an MCP server, the agent's browser | what the agent sends | approval and the sandbox (`sandbox.network`) |
+| What Chrome itself contacts | while the agent's browser runs | what a stock Chrome sends its maker | not starting the browser |
+| The SSH hosts you add | remote execution | execution requests, a token, a sandbox preset | not optional there |
+
+A previewed page reaches only its own address.
 
 ## Sandboxing
 
@@ -430,9 +451,7 @@ in [Container](docs/operations/container.md).
   detected. **Redaction** finds the forms listed above, not a bare token or
   a password named in prose.
 - **Previews and attachments.** A preview address is readable by whoever
-  holds it; a preview page's script can put any text, its address
-  included, into a request to Google Fonts. An HTML attachment's policy
-  restricts no destination.
+  holds it. An HTML attachment's policy restricts no destination.
 - **The browser.** Whatever a signed-in page shows can enter model context;
   use a profile that holds only the accounts the agent should reach.
   One-time-code and card fields, closed shadow roots and other sites'

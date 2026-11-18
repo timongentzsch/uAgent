@@ -4,7 +4,6 @@
 #include <string_view>
 #include <utility>
 
-#include "include/agent/child_agent.h"
 #include "include/cli/cli.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"

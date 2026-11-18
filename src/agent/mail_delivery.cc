@@ -7,11 +7,11 @@
 #include <vector>
 
 #include "include/agent/agent.h"
-#include "include/agent/child_agent.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_links.h"
 #include "include/agent/session_store.h"
 #include "include/core/debug.h"
+#include "include/core/env.h"
 #include "include/core/mailbox.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"

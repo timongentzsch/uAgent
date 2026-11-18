@@ -3,14 +3,12 @@
 #include <poll.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <string>
 #include <utility>
 
 #include "include/app/agent_tools.h"
-#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -18,7 +16,6 @@
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
-#include "include/core/time.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
 #include "src/app/application_internal.h"
@@ -81,19 +78,13 @@ json Application::ReportUsage(const std::string& ledger) {
 int Application::FinishHeadless(std::string answer, std::string error,
                                 int exit_code) {
   Teardown(exit_code == 0 ? "headless_complete" : "headless_error");
-  // Reported after teardown has taken in what its own children spent; a
-  // child writes it for its parent on every way out.
-  const json used = ReportUsage(EnvStr("UAGENT_INTERNAL_USAGE_FILE"));
+  // Counted after teardown has taken in what its own agents spent.
+  const json used = ReportUsage("");
   if (context_.options.json_stream || context_.options.json) {
-    json stop = agent_.LastStop();
-    if (out_of_time_ && stop.is_object()) {
-      stop["reason"] = "turn_deadline";
-      stop["detail"] = "time limit reached with work it started still running";
-    }
     json envelope =
         HeadlessResult(std::move(answer), std::move(error),
                        agent_.LatestToolTrace(), UsageFromJson(used["usage"]),
-                       used["routes"], exit_code, std::move(stop));
+                       used["routes"], exit_code, agent_.LastStop());
     if (context_.options.json_stream) {
       Emit(Event{exit_code == 0 ? EventId::kAnswer : EventId::kError,
                  std::move(envelope)});
@@ -114,19 +105,6 @@ int Application::RunHeadless() {
   // Spend is reported from here on: a continued conversation's envelope
   // carries this run, not everything before it.
   used_before_ = UsageTotals();
-  // A delegated child stops when told to and keeps to its time limit as a
-  // whole, not only turn by turn.
-  auto deadline = std::chrono::steady_clock::time_point::max();
-  if (!EnvStr("UAGENT_INTERNAL_USAGE_FILE").empty()) {
-    SetGracefulShutdown(true, /*stop_started=*/true);
-    if (api_.config.max_turn_seconds > 0) {
-      deadline = DeadlineAfter(api_.config.max_turn_seconds);
-    }
-  }
-  const auto stopping = [&] {
-    return AbortRequested() || ShutdownRequested() ||
-           std::chrono::steady_clock::now() >= deadline;
-  };
   // A followup run first receives what the previous run took but never saved.
   RecoverMail(MailboxIdFor(session_file_));
   json content;
@@ -145,16 +123,9 @@ int Application::RunHeadless() {
   auto answer_mail = [&] {
     for (;;) {
       agent_.DeliverMail();
-      if (stopping()) return;
+      if (AbortRequested()) return;
       auto next = SteeringState().TakeNextAutoStart();
       if (!next) return;
-      // A later turn gets what is left of the child's time, not a new share.
-      if (deadline != std::chrono::steady_clock::time_point::max()) {
-        api_.config.max_turn_seconds = std::max<int64_t>(
-            1, std::chrono::duration_cast<std::chrono::seconds>(
-                   deadline - std::chrono::steady_clock::now())
-                   .count());
-      }
       origin_ = next->origin;
       RunTurns(next->text);
       SaveSession();
@@ -164,14 +135,12 @@ int Application::RunHeadless() {
   PublishChannelState();
   // A run waits while the agents it started owe it a report, and takes each
   // up as a turn. One waiting on a person is not waited for.
-  while (!stopping() && AgentsOwe(session_file_)) {
+  while (!AbortRequested() && AgentsOwe(session_file_)) {
     pollfd wake{AbortWakeFd(), POLLIN, 0};
     poll(&wake, 1, kAgentPollMs);
     answer_mail();
     SaveSession();
   }
-  out_of_time_ =
-      std::chrono::steady_clock::now() >= deadline && AgentsOwe(session_file_);
   agent_.AccountSideUsage();
   context_.output.Restore();
 

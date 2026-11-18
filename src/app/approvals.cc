@@ -14,13 +14,13 @@
 #include <unordered_map>
 #include <utility>
 
-#include "include/agent/child_agent.h"
 #include "include/agent/path_policy.h"
 #include "include/agent/session_search.h"
 #include "include/agent/session_store.h"
 #include "include/app/approval_policy.h"
 #include "include/app/approval_review.h"
 #include "include/app/permissions.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"

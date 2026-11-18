@@ -67,8 +67,6 @@ std::vector<Tool> BuildTools(AppContext& context,
                              std::vector<Skill> skills, std::string& error) {
   Api& api = context.runtime.api;
   AppRuntime& runtime = context.runtime;
-  // A tool-less child remains useful for constrained internal tasks.
-  const std::string toolset = EnvStr("UAGENT_INTERNAL_TOOLSET");
   const std::string session_path =
       context.channel ? context.channel->SessionPath() : std::string();
   // Root needs someone to type the password: never a headless run or an
@@ -102,7 +100,6 @@ std::vector<Tool> BuildTools(AppContext& context,
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
   }
-  if (toolset == "none") return {};
   // Where nobody can approve, or the policy forbids changes, uagent only shows.
   ConfigProposalFactory prepare;
   if (InteractiveApprovalAvailable() &&

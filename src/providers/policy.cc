@@ -1,14 +1,11 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
-#include <cstdlib>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/core/config_registry.h"
-#include "include/core/env.h"
-#include "include/core/strings.h"
 #include "include/providers/providers.h"
 
 namespace uagent {
@@ -20,15 +17,6 @@ void ApplySelectionPolicy(Api& api, const ModelSelection& selection) {
 }
 
 namespace {
-void PublishActiveRoute(const Api& api) {
-  SettingValues route;
-  for (auto& [name, value] :
-       RouteEnvironment(ResolveSideRoute(api, {}, {}, "").route)) {
-    route[name] = std::move(value);
-  }
-  PublishRoute(std::move(route));
-}
-
 void ResetRouteCapabilities(Api& api) {
   const json features = api.capabilities.model_features;
   const json modalities = api.capabilities.input_modalities;
@@ -38,24 +26,6 @@ void ResetRouteCapabilities(Api& api) {
 }
 
 }  // namespace
-
-EnvironmentOverrides RouteEnvironment(const Route& route) {
-  std::string features;
-  for (const json& name : FeatureNames(route.features)) {
-    features += (features.empty() ? "" : ",") + name.get<std::string>();
-  }
-  return {
-      {"UAGENT_INTERNAL_BASE_URL", route.base_url},
-      {"UAGENT_MODEL", route.model},
-      {"UAGENT_INTERNAL_MODEL_FEATURES", JsonDump(route.model_features)},
-      {"UAGENT_REASONING_EFFORT", route.reasoning_effort},
-      {"UAGENT_CONTEXT", std::to_string(route.ctx_window)},
-      {"UAGENT_INTERNAL_WIRE_API", WireApiName(route.wire_api)},
-      {"UAGENT_INTERNAL_FEATURES", features},
-      {"UAGENT_INTERNAL_ENDPOINT_OPTIONS", JsonDump(route.options)},
-      {"UAGENT_INTERNAL_HOSTED_TOOLS", JsonDump(route.hosted_tools)},
-  };
-}
 
 RouteResolution ResolveSideRoute(const Api& api,
                                  const std::vector<Route>& routes,
@@ -230,15 +200,14 @@ bool SupportsReasoningEffort(const Api& api, std::string_view effort) {
 
 void ActivateRoute(Api& api) {
   ResetRouteCapabilities(api);
-  PublishActiveRoute(api);
+  // What a setting read finds for the route in use, where no setting names it.
+  PublishRoute({{"UAGENT_MODEL", api.model},
+                {"UAGENT_REASONING_EFFORT", api.reasoning_effort},
+                {"UAGENT_CONTEXT", std::to_string(api.ctx_window)}});
 }
 
 ProviderSetup ConfigureProvider(Api& api) {
-  // A parent hands its child the route it chose; anyone else names one of
-  // the providers in the model setting.
-  api.base_url = StripTrailingSlashes(EnvStr("UAGENT_INTERNAL_BASE_URL"));
-  api.api_key = EnvStr("UAGENT_INTERNAL_API_KEY");
-  if (api.api_key.empty()) api.api_key = kPlaceholderApiKey;
+  api.api_key = kPlaceholderApiKey;
   ModelSelection requested =
       ParseModelSelection(SettingText(Cfg("UAGENT_MODEL")));
   api.model = requested.base;
@@ -247,50 +216,16 @@ ProviderSetup ConfigureProvider(Api& api) {
   api.reasoning_effort = configured_effort;
   const int64_t configured_context = LongSetting(Cfg("UAGENT_CONTEXT"));
   api.ctx_window = configured_context;
-  std::string wire_setting =
-      EnvStr("UAGENT_INTERNAL_WIRE_API", "chat_completions");
-  std::optional<WireApi> configured_wire = ParseWireApi(wire_setting);
-  api.wire_api = configured_wire.value_or(WireApi::kChatCompletions);
-  // A parent hands its child the features and options of the route it chose.
-  std::string metadata_error;
-  if (!configured_wire) metadata_error = "invalid wire API: " + wire_setting;
-  const bool inherited = std::getenv("UAGENT_INTERNAL_FEATURES") != nullptr;
-  if (inherited) {
-    json names = json::array();
-    for (std::string name :
-         SplitPathList(EnvStr("UAGENT_INTERNAL_FEATURES"), ',')) {
-      name = Trim(name);
-      if (!name.empty()) names.push_back(std::move(name));
-    }
-    std::string unknown;
-    if (!ParseFeatures(names, api.features, unknown)) {
-      if (!metadata_error.empty()) metadata_error += "; ";
-      metadata_error += "invalid endpoint feature: " + unknown;
-    }
-    api.options =
-        json::parse(EnvStr("UAGENT_INTERNAL_ENDPOINT_OPTIONS"), nullptr, false);
-    if (api.options.is_discarded()) api.options = nullptr;
-    api.hosted_tools = HostedToolDefinitions(
-        json::parse(EnvStr("UAGENT_INTERNAL_HOSTED_TOOLS"), nullptr, false));
-  }
-  const json env_features =
-      json::parse(EnvStr("UAGENT_INTERNAL_MODEL_FEATURES"), nullptr, false);
-  const auto start_capabilities = [&] {
-    api.capabilities = CapabilitiesForRoute(api.wire_api, api.features);
-    api.capabilities.SetModelFeatures(env_features);
-  };
-  start_capabilities();
+  api.capabilities = CapabilitiesForRoute(api.wire_api, api.features);
 
   ProviderCatalog catalog = LoadProviderCatalog();
   ProviderSetup setup{
       std::move(catalog.models), std::move(catalog.providers), {}};
-  bool route_metadata_validated = false;
   if (std::optional<Route> route =
           ResolveModelRoute(setup.routes, setup.providers, api.model)) {
     ApplyRoute(api, *route);
     // A window set for all conversations wins over the provider's profile.
     if (configured_context > 0) api.ctx_window = configured_context;
-    route_metadata_validated = true;
   }
   // A suffix overrides a named route's defaults without becoming part of
   // the model id sent over the wire.
@@ -298,10 +233,6 @@ ProviderSetup ConfigureProvider(Api& api) {
   if (requested.effort.empty() && !configured_effort.empty() &&
       SupportsReasoningEffort(api, configured_effort)) {
     api.reasoning_effort = configured_effort;
-  }
-  if (!metadata_error.empty() && !route_metadata_validated) {
-    setup.warning = std::move(metadata_error);
-    api.base_url.clear();
   }
   if (!ValidEffort(api.reasoning_effort) ||
       !SupportsReasoningEffort(api, api.reasoning_effort)) {

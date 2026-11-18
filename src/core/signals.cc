@@ -245,8 +245,8 @@ SignalFlag g_graceful_shutdown = 0;
 SignalFlag g_shutdown_requested = 0;
 
 void SetQuitGesture(bool enabled) { g_quit_gesture = enabled ? 1 : 0; }
-void SetGracefulShutdown(bool enabled, bool stop_started) {
-  g_graceful_shutdown = !enabled ? 0 : stop_started ? 2 : 1;
+void SetGracefulShutdown(bool enabled) {
+  g_graceful_shutdown = enabled ? 1 : 0;
 }
 bool ShutdownRequested() { return g_shutdown_requested != 0; }
 
@@ -275,7 +275,6 @@ static void StopStartedFromHandler() {
 
 void SigintHandler(int signal_number) {
   if (signal_number != SIGINT && g_graceful_shutdown) {
-    if (g_graceful_shutdown == 2) StopStartedFromHandler();
     g_shutdown_requested = 1;
     g_signal_abort.test_and_set(std::memory_order_relaxed);
     WakeDescriptor(g_abort_wake_write);

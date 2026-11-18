@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "include/api/client.h"
-#include "include/core/child_env.h"
 #include "include/core/json.h"
 
 namespace uagent {
@@ -70,10 +69,6 @@ struct RouteResolution {
   Route route;
   std::string selection, none;
 };
-
-// The route variables a process started for this route reads: endpoint,
-// model, features and options. Never the API key.
-EnvironmentOverrides RouteEnvironment(const Route& route);
 
 RouteResolution ResolveSideRoute(const Api& api,
                                  const std::vector<Route>& routes,

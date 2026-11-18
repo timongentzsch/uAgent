@@ -29,6 +29,10 @@ bool CanDelegate();
 int64_t MaxOutputTokens();
 // Experiment overlay for the base prompt: a path, empty when unset.
 std::string PromptOverlayPath();
+// The session file this process saves to; empty for a run that never saves.
+std::string OwnSessionFile();
+// Plan mode's plan, beside that file; empty with it.
+std::string PlanFile();
 
 int64_t ReadFileLines();
 int64_t AttachmentLimitMb();

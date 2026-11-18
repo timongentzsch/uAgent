@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "include/core/config_registry.h"
+#include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/runtime_config.h"
 #include "include/core/signals.h"
@@ -58,6 +59,13 @@ int64_t MaxOutputTokens() { return LongSetting(Cfg("UAGENT_MAX_TOKENS")); }
 
 std::string PromptOverlayPath() {
   return EnvStr("UAGENT_INTERNAL_PROMPT_OVERLAY");
+}
+
+std::string OwnSessionFile() { return EnvStr("UAGENT_INTERNAL_SESSION_PATH"); }
+
+std::string PlanFile() {
+  const std::string session = OwnSessionFile();
+  return session.empty() ? session : session + kSessionPlanSuffix;
 }
 
 int64_t ReadFileLines() { return LongSetting(Cfg("UAGENT_READ_FILE_LINES")); }

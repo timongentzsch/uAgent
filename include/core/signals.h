@@ -70,9 +70,8 @@ void WakeProcessWaits();
 bool TakeIdleInterrupt();
 // Armed only while an interactive session is idle; otherwise SIGINT kills.
 void SetQuitGesture(bool enabled);
-// Persistent runtimes unwind through application teardown on TERM/HUP. With
-// `stop_started`, a delegated child also stops what it started at once.
-void SetGracefulShutdown(bool enabled, bool stop_started = false);
+// Persistent runtimes unwind through application teardown on TERM/HUP.
+void SetGracefulShutdown(bool enabled);
 bool ShutdownRequested();
 // Drain a stale abort byte only while the flag is clear, then re-arm if a
 // concurrent request arrived during the drain.

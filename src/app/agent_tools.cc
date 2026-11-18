@@ -15,7 +15,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/child_agent.h"
 #include "include/agent/conversation.h"
 #include "include/agent/session_links.h"
 #include "include/agent/session_role.h"

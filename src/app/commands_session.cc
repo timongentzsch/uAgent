@@ -8,7 +8,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/child_agent.h"
 #include "include/app/commands.h"
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"

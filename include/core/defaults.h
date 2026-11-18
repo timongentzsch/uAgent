@@ -80,7 +80,7 @@ inline constexpr char kExplicitSkillMarker[] = "[explicit skill instructions";
 // Variables that never reach a child process, matched without regard to
 // case; so is a name that holds a marker or looks like a credential.
 inline constexpr std::string_view kHiddenEnvNames[] = {
-    "uagent_providers", "uagent_session_budget", "uagent_internal_usage_file",
+    "uagent_providers", "uagent_session_budget",
     "ssh_auth_sock",  // the agent that holds your ssh keys
     "xauthority"};    // the X display's login cookie
 inline constexpr std::string_view kHiddenEnvMarkers[] = {

@@ -8,14 +8,18 @@ import {
   selectProbeModel,
 } from "./fixtures.js";
 
+async function openOnline(page, session, command) {
+  await selectProbeModel(command, session);
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+}
+
 test("reload mid-stream resumes the answer without freezing", async ({
   page,
   session,
   command,
 }, testInfo) => {
-  await selectProbeModel(command, session);
-  await page.goto(`/#session=${session.id}`);
-  await online(page);
+  await openOnline(page, session, command);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Long continuity probe");
   await prompt.press("Enter");
@@ -74,9 +78,7 @@ test("a reconnect reopens the event stream at its cursor and reads nothing again
   session,
   command,
 }) => {
-  await selectProbeModel(command, session);
-  await page.goto(`/#session=${session.id}`);
-  await online(page);
+  await openOnline(page, session, command);
   const requests = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
@@ -128,17 +130,9 @@ function commandsWith(page, text) {
   return sent;
 }
 
-async function openOnline(page, session, command) {
-  await selectProbeModel(command, session);
-  await page.goto(`/#session=${session.id}`);
-  await online(page);
-}
-
-test("a message sent while reconnecting waits and goes out once", async ({
-  page,
-  session,
-  command,
-}) => {
+// "Waiting probe" sent after a reload whose event stream is held: its row,
+// and the commands that carried it.
+async function sendWaiting(page, session, command) {
   await openOnline(page, session, command);
   const sent = commandsWith(page, "Waiting probe");
   const release = await holdStream(page);
@@ -147,6 +141,19 @@ test("a message sent while reconnecting waits and goes out once", async ({
   await prompt.fill("Waiting probe");
   await prompt.press("Enter");
   const row = page.locator(".message.user", { hasText: "Waiting probe" });
+  return { sent, release, prompt, row };
+}
+
+test("a message sent while reconnecting waits and goes out once", async ({
+  page,
+  session,
+  command,
+}) => {
+  const { sent, release, prompt, row } = await sendWaiting(
+    page,
+    session,
+    command,
+  );
   await expect(row).toContainText("Waiting for connection");
   await expect(prompt).toHaveValue("");
   expect(sent).toHaveLength(0);
@@ -161,14 +168,7 @@ test("a reload while a message waits neither loses nor repeats it", async ({
   session,
   command,
 }) => {
-  await openOnline(page, session, command);
-  const sent = commandsWith(page, "Waiting probe");
-  const release = await holdStream(page);
-  await page.reload();
-  const prompt = page.getByLabel("Message or guidance");
-  await prompt.fill("Waiting probe");
-  await prompt.press("Enter");
-  const row = page.locator(".message.user", { hasText: "Waiting probe" });
+  const { sent, release, row } = await sendWaiting(page, session, command);
   await expect(row).toContainText("Waiting for connection");
   await page.reload();
   await expect(row).toContainText("Waiting for connection");
@@ -184,13 +184,7 @@ test("a message waiting for the connection returns to the composer", async ({
   session,
   command,
 }) => {
-  await openOnline(page, session, command);
-  const sent = commandsWith(page, "Waiting probe");
-  const release = await holdStream(page);
-  await page.reload();
-  const prompt = page.getByLabel("Message or guidance");
-  await prompt.fill("Waiting probe");
-  await prompt.press("Enter");
+  const { sent, release, prompt } = await sendWaiting(page, session, command);
   await page
     .getByRole("button", { name: "Return message to composer" })
     .click();

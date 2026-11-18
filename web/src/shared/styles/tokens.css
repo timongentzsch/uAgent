@@ -111,8 +111,10 @@
     --icon-align: -0.2em;
     --stroke: max(1px, 0.12rem);
     --stripe: 2px;
-    /* The focus ring's distance outside its box (inside, where a box clips). */
-    --focus-offset: 2px;
+    /* The focus ring lies inside its control's edge: no pane clips it and
+       it never covers a neighbour. */
+    --focus-width: 2px;
+    --focus-offset: calc(-1 * var(--focus-width));
     --opacity-disabled: 0.45;
     --indent: var(--icon-l);
     /* Motion: the only durations and easings in the app. Reduced motion
@@ -225,7 +227,7 @@
     /* Made here, so each palette's colours fill them. */
     --border: 1px solid var(--line);
     --border-field: 1px solid var(--field-border);
-    --focus-ring: 2px solid var(--accent);
+    --focus-ring: var(--focus-width) solid var(--accent);
   }
   :root[data-theme="light"],
   [data-theme="dark"] .inverse,
@@ -276,7 +278,7 @@
     --terminal-bright-white: #333;
     --border: 1px solid var(--line);
     --border-field: 1px solid var(--field-border);
-    --focus-ring: 2px solid var(--accent);
+    --focus-ring: var(--focus-width) solid var(--accent);
   }
   @media (pointer: coarse) {
     :root {

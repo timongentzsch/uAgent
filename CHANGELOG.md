@@ -34,6 +34,7 @@
 - **Jump to latest stays clear of a selection's actions** on a phone.
 - **A side chat can be asked of a conversation that has gone idle.** The question arrived while the conversation's runtime was starting again and was refused with "session not ready".
 - **A part of the client that failed to load is loaded again.** Markdown, math and code highlighting were remembered as failed after one interrupted load, so a moment offline could leave answers unrendered until a reload. Loads started ahead of their use no longer raise an error nobody handles.
+- **The focus ring is drawn inside the control.** It stood outside every field, button and row, so in a pane, a sheet or a column it was cut off at the edge or lay over the control beside it, such as the quote above a side chat's message box. On a filled button it is drawn in the button's own ink, so it shows in both themes.
 - **The buttons of a toolbar keep an inset from its edges.** The browser's bar, the terminal's, a sheet's and a page's tools had no padding above and below, so on a touch screen a filled button such as **Done** touched the bar's top, bottom and the window's corner while its neighbours floated. They sit in the bar as the header's do.
 
 ## v1.10.1 - 2026-11-16

@@ -244,6 +244,14 @@
     outline: var(--focus-ring);
     outline-offset: var(--focus-offset);
   }
+  /* On a control filled with the accent the ring is its ink, a width in. */
+  .primary:focus-visible,
+  button[aria-pressed="true"]:focus-visible,
+  .tabs [aria-selected="true"]:focus-visible,
+  input:checked:focus-visible {
+    outline-color: var(--on-accent);
+    outline-offset: calc(2 * var(--focus-offset));
+  }
   /* Pointer-driven focus restoration must not look like keyboard selection.
      Editable fields retain their native focus indication in either mode. */
   :root[data-input="pointer"]
@@ -433,6 +441,7 @@
   }
   button.cover:is(:hover, :focus-visible) {
     outline: var(--focus-ring);
+    outline-offset: var(--focus-offset);
   }
   .float-toolbar output {
     min-width: 5ch;
@@ -888,7 +897,6 @@
     border-width: calc(1px / var(--input-scale));
     transform: scale(var(--input-scale));
     transform-origin: top left;
-    outline-offset: calc(-1 * var(--focus-offset));
   }
   /* Field width belongs to its responsive wrapper. Native horizontal resizing
      writes a fixed inline width that breaks subsequent layout/zoom changes. */

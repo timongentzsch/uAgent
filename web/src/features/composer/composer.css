@@ -265,7 +265,7 @@
     gap: 0;
     padding-top: 0;
   }
-  /* It clips while it opens and closes, so its focus ring is drawn inside. */
+  /* It clips while it opens and closes. */
   .status-line {
     height: 0;
     overflow: clip;
@@ -276,9 +276,6 @@
   .status-line:has(button) {
     height: var(--control-slim);
     margin-top: var(--space-1);
-  }
-  .status-line button {
-    outline-offset: calc(-1 * var(--focus-offset));
   }
   .composer-metrics .activity-button {
     max-width: 100%;

@@ -202,8 +202,8 @@ test("quotes stack over the draft, stay with it and go before its text", async (
   });
   const composer = page.getByLabel("Message or guidance");
   const bars = page.locator(".composer .quote-bar");
-  const quote = async (text) => {
-    await select(transcript, text);
+  const quote = async (text, within = transcript) => {
+    await select(within, text);
     await page
       .getByRole("group", { name: "Selection" })
       .getByRole("button", { name: "Quote" })
@@ -259,6 +259,21 @@ test("quotes stack over the draft, stay with it and go before its text", async (
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await alone;
   await expect(bars).toHaveCount(0);
+
+  // A command is what was typed: it runs, and the quote waits for the next
+  // message.
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeVisible();
+  // The last answer: the first has scrolled away.
+  await quote("Native worker", transcript.locator(".message.response").last());
+  await composer.fill("/btw Which table?");
+  await composer.press("Enter");
+  const side = page.getByRole("complementary", { name: "Side chats" });
+  await expect(side.getByRole("tab")).toHaveText(["Which table?"]);
+  await expect(side.locator(".message.user blockquote")).toHaveCount(0);
+  await expect(composer).toHaveValue("");
+  await expect(bars).toHaveText(["Native worker"]);
 });
 
 test.describe("phone", () => {

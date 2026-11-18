@@ -228,7 +228,10 @@ export function useCommands({
           parseSlash(catalogue.commands || [], text).name === "/attach" &&
           text.trim().endsWith(" clear")
         )
-          updateDraft(id, emptyDraft);
+          updateDraft(id, (draft) => ({
+            ...emptyDraft(),
+            quotes: draft.quotes,
+          }));
       } catch (error) {
         report(error);
         setBusy(false);
@@ -274,7 +277,15 @@ export function useCommands({
       );
     }
     setDrafts((current) =>
-      current[id] === sent ? { ...current, [id]: emptyDraft() } : current,
+      current[id] === sent
+        ? {
+            ...current,
+            [id]: {
+              ...emptyDraft(),
+              quotes: text.startsWith("/") ? sent.quotes : [],
+            },
+          }
+        : current,
     );
     if (!online) {
       setBusy(false);

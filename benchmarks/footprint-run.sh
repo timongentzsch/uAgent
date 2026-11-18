@@ -25,10 +25,17 @@ wire_api = "responses"
 TOML
 export ANTHROPIC_BASE_URL=$PROXY_URL/anthropic ANTHROPIC_API_KEY=$PROXY_KEY
 export ANTHROPIC_MODEL=$model ANTHROPIC_DEFAULT_HAIKU_MODEL=$model
+# OpenCode reaches either route; OPENCODE_MODEL names its model where the
+# endpoint refuses it the shared one (a Claude subscription does).
+opencode_model=${OPENCODE_MODEL:-anthropic/$model}
+export OPENCODE_CONFIG_CONTENT="{\"provider\": {
+ \"anthropic\": {\"options\": {\"baseURL\": \"$PROXY_URL/anthropic/v1\", \"apiKey\": \"$PROXY_KEY\"}},
+ \"openai\": {\"options\": {\"baseURL\": \"$PROXY_URL/openai/v1\", \"apiKey\": \"$PROXY_KEY\"}}}}"
 
 cd ~
 exec python3 /opt/bench/compare_agents.py \
   --uagent /opt/uagent/bin/uagent --uagent-model "proxy/$model" \
   --claude ~/.local/bin/claude --codex ~/codex/bin/codex --codex-config \
   --omp ~/omp/node_modules/.bin/omp --omp-model "$model" \
+  --opencode ~/.opencode/bin/opencode --opencode-model "$opencode_model" \
   --chart /out/footprint.svg --output /out/footprint.json "$@"

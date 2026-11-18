@@ -65,8 +65,11 @@ BARE_FLAGS = {
         ],
     ],
     "omp": ["--no-extensions", "--no-skills", "--no-rules", "--no-lsp", "--no-title"],
+    "opencode": ["--pure"],
 }
-QUIT_KEYS = {"uagent": b"/quit\r", "claude": b"/exit\r", "codex": b"/exit\r", "omp": b"/exit\r"}
+QUIT_KEYS = dict.fromkeys(("claude", "codex", "omp", "opencode"), b"/exit\r") | {
+    "uagent": b"/quit\r"
+}
 
 
 def cpu_seconds(value):
@@ -481,8 +484,23 @@ def build_tools(args):
                 ],
             }
         )
+    if args.opencode:
+        opencode_model = ["--model", args.opencode_model] if args.opencode_model else []
+        tools.append(
+            {
+                "name": "opencode",
+                "path": args.opencode,
+                "headless": [
+                    str(args.opencode),
+                    "run",
+                    *BARE_FLAGS["opencode"],
+                    *opencode_model,
+                    PROMPT,
+                ],
+            }
+        )
     if not tools:
-        sys.exit("give at least one of --uagent, --claude, --codex, --omp")
+        sys.exit("give at least one of --uagent, --claude, --codex, --omp, --opencode")
     return tools
 
 
@@ -524,7 +542,13 @@ def table(tools, report):
     return header + "\n" + "\n".join(rows)
 
 
-DISPLAY_NAMES = {"uagent": "µAgent", "claude": "Claude Code", "codex": "Codex CLI", "omp": "omp"}
+DISPLAY_NAMES = {
+    "uagent": "µAgent",
+    "claude": "Claude Code",
+    "codex": "Codex CLI",
+    "omp": "omp",
+    "opencode": "OpenCode",
+}
 
 
 def panel_values(tools, report, metric, key, divisor):
@@ -583,6 +607,7 @@ def main():
     parser.add_argument("--claude", type=pathlib.Path, help="path to the claude executable")
     parser.add_argument("--codex", type=pathlib.Path, help="path to the codex executable")
     parser.add_argument("--omp", type=pathlib.Path, help="path to the omp executable (needs Bun)")
+    parser.add_argument("--opencode", type=pathlib.Path, help="path to the opencode executable")
     parser.add_argument(
         "--codex-config",
         action="store_true",
@@ -591,6 +616,7 @@ def main():
     parser.add_argument("--machine", help="the machine named under the chart (default: the CPU)")
     parser.add_argument("--uagent-model", help="--model value for the uagent headless turn")
     parser.add_argument("--omp-model", help="--model value for the omp headless turn")
+    parser.add_argument("--opencode-model", help="--model value for the opencode headless turn")
     parser.add_argument(
         "--omp-env", action="append", default=[], help="KEY=VALUE set for omp only (repeatable)"
     )

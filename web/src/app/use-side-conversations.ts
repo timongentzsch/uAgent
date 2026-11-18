@@ -1,8 +1,9 @@
 import { useCallback } from "preact/hooks";
-import type { Report, Session, Snapshot } from "../shared/types.ts";
+import type { Session } from "../shared/types.ts";
 import { stored, useStored } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
 import { requestId, useApi } from "../state/api.ts";
+import type { HostState } from "../state/use-host.ts";
 
 type Side = { question: string; id?: string; firstRequest: string };
 
@@ -22,12 +23,7 @@ export function useSideConversations({
   load,
   refresh,
   report,
-}: {
-  selected: string;
-  load: (id: string) => Promise<Snapshot>;
-  refresh: () => Promise<void>;
-  report: Report;
-}) {
+}: HostState) {
   const { command } = useApi();
   const [sides, setSides] = useStored(kept);
   const side = sides[selected] || null;

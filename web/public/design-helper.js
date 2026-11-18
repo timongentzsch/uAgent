@@ -424,7 +424,9 @@
   // A CSV file's rows as objects by its header, read as a sheet reads the
   // file (sheet/text.js).
   const fromCsv = async (text) => {
-    const sheet = await import(`${base}~sheet/text.js`);
+    const sheet = await import(`${base}~sheet/text.js`).catch(() => {
+      throw new Error("a CSV is read by µAgent's sheet code, not installed");
+    });
     const [head, ...body] = sheet.fromCsv(text);
     return body.map((row) =>
       Object.fromEntries(head.map((name, at) => [name.trim(), row[at] ?? ""])),

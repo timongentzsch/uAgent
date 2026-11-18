@@ -6,6 +6,7 @@ import {
   test,
   expect,
   artboard,
+  openAlone,
   openFiles,
   viewerOf,
   writeFiles,
@@ -37,6 +38,10 @@ test("marks fill from a CSV in the page's folder, say their file, column and row
   await expect(stage.locator("#us")).toHaveText("266400");
   await expect(stage.locator("#note")).toHaveText("cold, wet");
   await expect(stage.locator("#de")).toHaveText("198,7");
+  // Opened alone, outside the app, the page fills the same.
+  const alone = await openAlone(app, files);
+  await expect(alone.locator("#eu")).toHaveText("$198,700");
+  await alone.close();
 
   await stage.locator("#us").hover();
   const chip = files.locator(".page-source");

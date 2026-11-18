@@ -347,7 +347,7 @@ class WorkerChannel final : public ApplicationChannel {
                     JsonValue(state_, "title", title_),
                     JsonValue(state, "answer", ""));
     }
-    if (finished_turn && std::exchange(merging_, false)) {
+    if (finished_turn && std::exchange(merging_, false) && merge_) {
       merge_->Report("merged", JsonValue(state_, "title", title_),
                      JsonValue(state, "answer", ""));
     }
@@ -756,7 +756,7 @@ class WorkerChannel final : public ApplicationChannel {
         "lines. At most five sentences of prose; no preamble, no tools.";
     SubmitLocked(parsed, error);
     if (!error.empty()) return;
-    input_->report = true;
+    if (input_) input_->report = true;
     merge_.emplace(path_, id_, source, "side chat");
     merging_ = true;
   }

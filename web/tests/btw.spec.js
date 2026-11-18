@@ -56,6 +56,11 @@ for (const width of [320, 1280]) {
       "Verified response",
     );
     await expect(page).toHaveURL(new RegExp(`session=${session.id}$`));
+    // Its turn over: under the transcript the box grows with the answer, and
+    // a tab is no still thing to click until then.
+    await expect(
+      side.getByRole("button", { name: "Send follow-up", exact: true }),
+    ).toBeVisible();
     await tabs.first().click();
     await expect(side).toContainText("SIDE-FOLLOWUP-COMPLETE");
     const layout = await side.evaluate((node) => ({

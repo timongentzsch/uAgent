@@ -153,6 +153,41 @@ test("a selection in an answer is asked about in side chats beside it", async ({
   await expect(side).toHaveCount(0);
 });
 
+test("Merge sums a side chat up for the conversation, which answers, and closes it", async ({
+  page,
+  session,
+}) => {
+  const transcript = await answered(page, session, {
+    width: 1440,
+    height: 900,
+  });
+  await select(transcript, "answer with a table");
+  await page
+    .getByRole("group", { name: "Selection" })
+    .getByRole("button", { name: "Ask in side chat" })
+    .click();
+  const side = page.getByRole("complementary", { name: "Side chats" });
+  await side.getByLabel("Ask in a side chat").fill("Which table?");
+  await side.getByLabel("Ask in a side chat").press("Enter");
+  await expect(side.locator(".message.response")).toContainText(
+    "Native worker",
+  );
+  const merge = side.getByRole("button", { name: "Merge", exact: true });
+  await expect(merge).toBeEnabled();
+  await merge.click();
+  await expect(side).toHaveCount(0);
+  // It arrives as a report: named, as the summary alone.
+  await expect(transcript.locator(".message-event")).toContainText(
+    "Side chat “Btw: Which table?” merged",
+  );
+  await expect(transcript).toContainText(
+    "SIDE-SUMMARY: the table has two columns.",
+  );
+  await expect(transcript).toContainText("MERGE-HEARD");
+  await expect(transcript).not.toContainText("Which table?”.");
+  await expect(transcript).not.toContainText("The person merges");
+});
+
 test("Add to chat puts the selection in the composer as a quote", async ({
   page,
   session,

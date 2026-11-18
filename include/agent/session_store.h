@@ -71,6 +71,8 @@ std::vector<SessionInfo> SessionsBeside(const std::string& path);
 
 // The session file of `parent` (a session id) beside `path`; empty for none.
 std::string AgentParentPath(const std::string& path, const std::string& parent);
+// The conversation beside `path` that it was forked from; "" when gone.
+std::string ForkSourcePath(const std::string& path);
 
 // The first line when it is a valid header, else {}; reads no transcript.
 json SessionHeader(const std::string& path);

@@ -305,6 +305,11 @@ def answer(handler, body):
         lines = ["*** Begin Patch", "*** Add File: patched-one.txt", "+one"]
         lines += ["*** Add File: patched-two.txt", "+two", "*** End Patch"]
         return tool_call("apply_patch", {"input": "\n".join(lines)}, call_id="patch-probe")
+    # A side chat merged into its conversation, and the conversation hearing it.
+    if prompt.startswith("The person merges this side chat"):
+        return event({"content": "SIDE-SUMMARY: the table has two columns."})
+    if "finished (merged)" in prompt:
+        return event({"content": "MERGE-HEARD"})
     if prompt == "Side tool probe":
         if not any(message.get("tool_call_id") == "btw-write" for message in body["messages"]):
             return tool_call(

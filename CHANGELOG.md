@@ -12,6 +12,7 @@
 ### Changes
 
 - **Ask about a selection.** Select text in an answer, a message or a tool's output and **Ask in side chat**: a side chat opens with the selection quoted, answers beside the conversation and leaves it untouched. **Add to chat** puts the quote in the composer instead. Lines selected in Files can be asked about the same way.
+- **Merge a side chat back.** **Merge** has the side chat sum up what it found; the conversation receives the summary as it does an agent's report, answers, and the tab closes. Only the summary enters the conversation.
 - **Several side chats, in a column.** Side chats are tabs in a column beside the chat, between the chat and Files when Files is open, and under the transcript in a narrow window.
 - **Several files change in one call.** The agent changes files with `apply_patch`: one call adds, updates and deletes any number of files, where each file took a model round before. Every file of a patch is still approved, journalled and shown as its own change, and rules written for `write_file`, `edit_file` and `delete_file` keep applying to it. On five small fix tasks a small GPT model needed about a third fewer rounds and tokens.
 - **The to-do list is for long work.** The agent keeps one for work of several stages or many files, no longer for a single fix, where some models spent whole rounds on it.

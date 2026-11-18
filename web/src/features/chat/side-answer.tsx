@@ -233,8 +233,11 @@ export default function SideChats({
   ask: (question: string, quote: string) => void;
   choose: (id: string) => Promise<void>;
 }) {
+  const { command } = useApi();
   const { online } = useHostContext();
+  const merging = useAction();
   const side = sides.find((item) => item.firstRequest === shown);
+  const session = sessions.find((one) => one.id === side?.id);
   const fresh = asking && !asking.to;
   const mark = (item: Side) => {
     const session = sessions.find((one) => one.id === item.id);
@@ -281,6 +284,22 @@ export default function SideChats({
               : []),
           ]}
         />
+        {session && (
+          <Button
+            title="Sum it up for the conversation, which answers, and close it"
+            disabled={
+              !online || merging.busy || statusOf(session, online) !== "idle"
+            }
+            onClick={() =>
+              void merging.run(async () => {
+                await command("side", session, { operation: "merge" });
+                close(shown);
+              })
+            }
+          >
+            Merge
+          </Button>
+        )}
         {side?.id && (
           <IconButton
             label="Open side chat"
@@ -293,6 +312,7 @@ export default function SideChats({
           <X />
         </IconButton>
       </header>
+      {!!merging.error && <LoadError error={merging.error} />}
       {side ? (
         <SideAnswer
           key={side.firstRequest}

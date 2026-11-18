@@ -70,6 +70,7 @@ class Application {
   bool search_unnamed_ = false;
   std::string request_id_;
   json origin_;
+  bool report_ = false;  // the turn under way reports its answer
   uint64_t message_subscription_ = 0;
   // The to-do list clients were last sent.
   json todo_ = json::array();

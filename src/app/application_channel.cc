@@ -74,6 +74,7 @@ int Application::RunChannel() {
     agent_.AccountSideUsage();
     request_id_ = input->request_id;
     origin_ = input->origin;
+    report_ = input->report;
     json result;
     if (input->title) {
       agent_.Rename(std::move(*input->title));
@@ -115,9 +116,9 @@ void Application::PublishChannelState(bool checkpoint) {
     state["view"] = agent_.DisplaySnapshot();
     state["system_prompt"] = agent_.LastSentPrompt();
     state["http"] = agent_.HttpExchanges();
-    // An agent's last answer whole, for the report to its parent: the view
-    // holds only a long one's opening.
-    if (!context_.options.AgentRole().empty()) {
+    // An agent's last answer whole, for the report to its parent, and a
+    // merged side chat's: the view holds only a long one's opening.
+    if (!context_.options.AgentRole().empty() || report_) {
       constexpr size_t kAnswerBytes = kMailBytes / 4;
       std::string answer = agent_.LastText();
       if (answer.size() > kAnswerBytes) {

@@ -131,7 +131,10 @@ turn runs too. Each question starts a side chat of its own, shown as tabs;
 selecting in a side chat's answer follows up there. They sit in a column
 beside the chat (with Files open, between the chat and Files) and under
 the transcript in a narrow window. Closing a tab leaves the conversation
-in the list.
+in the list. **Merge** brings a side chat back: it writes a summary of
+what it found, the conversation receives that as it does an agent's
+report (data, not instructions; judged in Auto) and answers, and the tab
+closes. The conversation reads the summary, never the side chat.
 
 **Several at once.** Ctrl-click (⌘-click) picks a row, Shift-click a run,
 and **Select** in a row's menu starts picking by tap; the sidebar's footer

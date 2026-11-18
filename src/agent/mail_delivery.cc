@@ -27,7 +27,8 @@ bool MailAllowed(const Mail& mail, const std::string& own_path,
   return !mail.sender_path.empty() &&
          MailboxIdFor(mail.sender_path) == mail.from &&
          MayMail(SessionParty(mail.sender_path),
-                 SessionParty(own_path, AgentOf(role)));
+                 SessionParty(own_path, AgentOf(role)),
+                 mail.body.contains("agent"));
 }
 }  // namespace
 

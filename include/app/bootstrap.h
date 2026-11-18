@@ -44,6 +44,9 @@ struct ApplicationInput {
   std::optional<std::string> title{};
   // Keeps the conversation where it is (Agent::KeepHere).
   bool keep = false;
+  // The turn's answer is reported to another conversation, so published
+  // whole.
+  bool report = false;
 };
 
 // Transport-neutral input half of the application protocol. NextInput

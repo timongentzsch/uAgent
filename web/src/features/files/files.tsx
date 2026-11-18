@@ -206,9 +206,18 @@ export default function Files({
   );
   // What is typed and not yet in its file is written: a page's block, a
   // sheet's cell. Whether all of it is.
-  const settle = (closing = false) =>
+  const typed = (closing = false) =>
     Promise.all([blocks.flush(closing), tables.flush(closing)]).then(
       (written) => written.every(Boolean),
+    );
+  // A file rewritten by hand: one at a time, each of the file as the last
+  // left it.
+  const rewrites = useRef<Promise<unknown>>(Promise.resolve());
+  // What the pane has changed is in its files: what was typed, and each
+  // rewrite. Whether all that was typed is.
+  const settle = (closing = false) =>
+    Promise.all([typed(closing), rewrites.current]).then(
+      ([written]) => written,
     );
   // A page is left once that is written. Typing that could not be keeps
   // its page once, its notice read; the next time the person leaves it.
@@ -594,13 +603,15 @@ export default function Files({
         ),
       );
     });
-  // A slide's or a whiteboard's file rewritten by hand, one rewrite at a
-  // time; the folder is read again for what its head now says.
-  const rewrites = useRef<Promise<unknown>>(Promise.resolve());
+  // A slide's or a whiteboard's file rewritten by hand, once what was typed
+  // in it is written; the folder is read again for what its head now says.
   const rewrite = (path: string, change: (source: string) => string) => {
     const made = rewrites.current.then(() =>
       arranging.run(async () => {
-        const { text, revision } = await readFile(path);
+        await typed();
+        const { text, revision } = await api<FileText>(
+          routes.files(id, "read", path),
+        );
         await api(routes.fileWrite(id), { path, text: change(text), revision });
         listing.setValue({ ...(await list(dir)), dir });
       }),

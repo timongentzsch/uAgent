@@ -83,3 +83,50 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
       .locator(".page-stage")
       .screenshot({ path: process.env.BOARD_SHOT });
 });
+
+// A write of the board's file waits until it is let go, or is refused once.
+async function holdWrite(app, session) {
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  await app.route(`**/api/sessions/${session.id}/files`, async (route) => {
+    await held;
+    await route.continue();
+  });
+  return release;
+}
+
+test("a whiteboard opened alone while its change is being written opens as the file then is", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const path = "boards/signup/board.html";
+  await writeFiles(host.project, { [path]: BOARD });
+  const files = await openFiles(app, session, "boards/signup/");
+  const { stage } = viewerOf(files);
+  const release = await holdWrite(app, session);
+  const writing = app.waitForRequest(
+    (request) =>
+      request.method() === "POST" && request.url().endsWith("/files"),
+  );
+  await stage.locator("#n1").click();
+  await app.keyboard.press("ArrowRight");
+  await writing;
+  const [alone] = await Promise.all([
+    app.waitForEvent("popup"),
+    files.getByRole("button", { name: "Open alone" }).click(),
+  ]);
+  // Two frames on, the window still waits for the write.
+  await app.evaluate(
+    () =>
+      new Promise((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(done)),
+      ),
+  );
+  expect(alone.url()).toBe("about:blank");
+  release();
+  await alone.waitForURL(/\/preview\//);
+  await expect(alone.locator("#n1")).toHaveAttribute("data-at", "801 100");
+});

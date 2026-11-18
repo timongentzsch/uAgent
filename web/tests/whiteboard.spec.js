@@ -84,7 +84,7 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
       .screenshot({ path: process.env.BOARD_SHOT });
 });
 
-// A write of the board's file waits until it is let go, or is refused once.
+// Writes of the board's file wait until they are let go.
 async function holdWrite(app, session) {
   let release;
   const held = new Promise((resolve) => {
@@ -129,4 +129,36 @@ test("a whiteboard opened alone while its change is being written opens as the f
   release();
   await alone.waitForURL(/\/preview\//);
   await expect(alone.locator("#n1")).toHaveAttribute("data-at", "801 100");
+});
+
+test("a whiteboard's change that was refused is not what ⌘Z undoes: the one before it is", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const path = "boards/signup/board.html";
+  await writeFiles(host.project, { [path]: BOARD });
+  const saved = () => readFile(join(host.project, path), "utf8");
+  const files = await openFiles(app, session, "boards/signup/");
+  const { stage } = viewerOf(files);
+  await stage.locator("#n1").click();
+  await app.keyboard.press("ArrowRight");
+  await expect.poll(saved).toContain('data-at="801 100"');
+  // The next write is refused, as when the agent wrote the file meanwhile.
+  let refused = false;
+  await app.route(`**/api/sessions/${session.id}/files`, (route) => {
+    if (refused) return route.continue();
+    refused = true;
+    return route.fulfill({ status: 409, json: { error: "conflict" } });
+  });
+  await app.keyboard.press("ArrowRight");
+  await expect(files.locator(".page-notice")).toContainText(
+    "changed meanwhile",
+  );
+  expect(await saved()).toContain('data-at="801 100"');
+  await expect(async () => {
+    await stage.locator("#title").click();
+    await app.keyboard.press("ControlOrMeta+z");
+    expect(await saved()).toBe(BOARD);
+  }).toPass();
 });

@@ -16,13 +16,14 @@ import {
 } from "./ui.tsx";
 import { useResource } from "./use-resource.ts";
 import { escapeHTML } from "./format.ts";
+import { once, warm } from "./lazy.ts";
 
 type Renderer = typeof import("./markdown.ts");
-let renderer: Promise<Renderer> | undefined;
 // Once loaded, streaming renders synchronously in the same frame as the text.
 let loaded: Renderer | undefined;
-const loadRenderer = () =>
-  (renderer ??= import("./markdown.ts").then((module) => (loaded = module)));
+const loadRenderer = once(() =>
+  import("./markdown.ts").then((module) => (loaded = module)),
+);
 const prepared = new Map<string, MarkdownBlock[]>();
 let preparedChars = 0;
 // What an entry really holds: its source plus every block's rendered HTML
@@ -66,9 +67,9 @@ export async function prepareMarkdown(
 // Warms the renderer chunk outside the critical path, so the switch to
 // markdown at completion pays only the parse, never the download.
 export function prefetchMarkdown(text = "") {
-  void loadRenderer();
-  if (/\$|\\[([]/.test(text)) void import("./math.ts");
-  if (/```|~~~/.test(text)) void import("./highlight.ts");
+  warm(loadRenderer());
+  if (/\$|\\[([]/.test(text)) warm(import("./math.ts"));
+  if (/```|~~~/.test(text)) warm(import("./highlight.ts"));
 }
 
 function plainSegments(tail: string, startLine: number) {
@@ -326,7 +327,6 @@ function RenderedMarkdown({
         else state.running = false;
       } catch (failure) {
         if (!state.active) return;
-        renderer = undefined;
         state.running = false;
         setError(failure);
       }

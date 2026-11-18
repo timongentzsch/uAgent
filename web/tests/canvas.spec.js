@@ -831,22 +831,36 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
   const stage = files.locator(".page-stage[data-presenting]");
   await expect(stage).toBeVisible();
   await expect(stage.getByText("1 / 3")).toBeVisible();
-  const slideFrame = stage.frameLocator("iframe");
+  // The slide shown: the one before it lies under it until it has drawn.
+  const slideFrame = stage.frameLocator("iframe:not([inert])");
   await expect(
     slideFrame.getByRole("heading", { name: "Cover" }),
   ).toBeVisible();
   await expect(slideFrame.getByText("Say hello.")).toBeHidden();
   await app.keyboard.press("n");
   await expect(stage.locator(".page-notes")).toContainText("Say hello.");
-  // Where the slide comes to rest once the notes have taken their room.
-  let shown = await placed(stage);
+  // Where the slide comes to rest once the notes have taken their room: it
+  // fits the room the stage has left, filling it one way across.
   await expect
-    .poll(async () => {
-      const before = shown;
-      shown = await placed(stage);
-      return String(shown) === String(before);
-    })
+    .poll(() =>
+      stage.locator(".page-scroll").evaluate((scroller) => {
+        const pad = getComputedStyle(scroller);
+        const across = (size, from, to) =>
+          size - parseFloat(pad[from]) - parseFloat(pad[to]);
+        const w = across(scroller.clientWidth, "paddingLeft", "paddingRight");
+        const h = across(scroller.clientHeight, "paddingTop", "paddingBottom");
+        const slide = scroller
+          .querySelector(".page-holder")
+          .getBoundingClientRect();
+        return (
+          slide.width <= w + 1 &&
+          slide.height <= h + 1 &&
+          (w - slide.width <= 1 || h - slide.height <= 1)
+        );
+      }),
+    )
     .toBe(true);
+  const shown = await placed(stage);
   await app.keyboard.press("ArrowRight");
   await expect(stage.getByText("2 / 3")).toBeVisible();
   await expect(stage.locator(".page-notes")).toHaveText("Three steps.");

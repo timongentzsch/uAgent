@@ -386,11 +386,9 @@ export default function Sequence({
   };
   // A whiteboard's changes made here, each with the text it took the place
   // of: ⌘Z puts that back while the file is as the change left it.
-  // They are written one after another, as fast as they come.
   const boardPast = useRef<{ path: string; before: string; after: string }[]>(
     [],
   );
-  const boardWrites = useRef<Promise<unknown>>(Promise.resolve());
   const changeBoard = ({
     undo,
     ...edit
@@ -407,9 +405,7 @@ export default function Sequence({
       boardPast.current.push({ path, before: source, after });
       return after;
     };
-    boardWrites.current = boardWrites.current.then(() =>
-      rewrite?.(path, change),
-    );
+    void rewrite?.(path, change);
   };
   // Presenting starts at the slide's first step; ended, all of it shows.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on presenting alone

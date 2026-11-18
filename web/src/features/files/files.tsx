@@ -594,14 +594,20 @@ export default function Files({
         ),
       );
     });
-  // A slide's file rewritten by hand; the folder is read again for what
-  // the slide's head now says.
-  const rewrite = (path: string, change: (source: string) => string) =>
-    arranging.run(async () => {
-      const { text, revision } = await readFile(path);
-      await api(routes.fileWrite(id), { path, text: change(text), revision });
-      listing.setValue({ ...(await list(dir)), dir });
-    });
+  // A slide's or a whiteboard's file rewritten by hand, one rewrite at a
+  // time; the folder is read again for what its head now says.
+  const rewrites = useRef<Promise<unknown>>(Promise.resolve());
+  const rewrite = (path: string, change: (source: string) => string) => {
+    const made = rewrites.current.then(() =>
+      arranging.run(async () => {
+        const { text, revision } = await readFile(path);
+        await api(routes.fileWrite(id), { path, text: change(text), revision });
+        listing.setValue({ ...(await list(dir)), dir });
+      }),
+    );
+    rewrites.current = made;
+    return made;
+  };
   // biome-ignore lint/correctness/useExhaustiveDependencies: said of the folder it happened in
   useEffect(() => arranging.setError(null), [dir]);
   // A sheet's edits saved into its file. One that is not (the agent wrote

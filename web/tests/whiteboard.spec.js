@@ -20,9 +20,9 @@ const BOARD = `<!doctype html>
 `;
 
 // The board opened in Files, and its file as it then is.
-async function openBoard(app, session, host) {
+async function openBoard(app, session, host, board = BOARD) {
   const path = "boards/signup/board.html";
-  await writeFiles(host.project, { [path]: BOARD });
+  await writeFiles(host.project, { [path]: board });
   const files = await openFiles(app, session, "boards/signup/");
   return {
     files,
@@ -98,6 +98,90 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
     await files
       .locator(".page-stage")
       .screenshot({ path: process.env.BOARD_SHOT });
+});
+
+test("arrows run in right-angled legs: straight between items that face each other, round one that stands between", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const shape = (id, at) =>
+    `<div id="${id}" data-shape="rect" data-at="${at}" data-size="160 80">${id}</div>`;
+  const { stage } = await openBoard(
+    app,
+    session,
+    host,
+    `<!doctype html>
+<meta charset="utf-8">
+<meta name="artboard" content="1200x800">
+<meta name="board">
+<title>Routes</title>
+${shape("a", "60 100")}${shape("between", "320 100")}${shape("b", "600 100")}${shape("low", "60 400")}
+<hr data-from="a" data-to="between">
+<hr data-from="a" data-to="b" data-label="past it">
+<hr data-from="a" data-to="low">
+`,
+  );
+  await expect(stage.locator("svg.arrows > path")).toHaveCount(3);
+  // Each arrow's corners, turns included, and the box of the item between.
+  const { routes, between } = await stage.locator("body").evaluate((body) => {
+    const box = (id) => {
+      const item = body.querySelector(`#${id}`);
+      return [
+        item.offsetLeft,
+        item.offsetTop,
+        item.offsetLeft + item.offsetWidth,
+        item.offsetTop + item.offsetHeight,
+      ];
+    };
+    return {
+      between: box("between"),
+      routes: [...body.querySelectorAll("svg.arrows > path")].map((path) => {
+        const numbers = path
+          .getAttribute("d")
+          .match(/-?[\d.]+/g)
+          .map(Number);
+        return numbers.flatMap((x, at) =>
+          at % 2 ? [] : [[x, numbers[at + 1]]],
+        );
+      }),
+    };
+  });
+  for (const route of routes)
+    for (const [at, [x, y]] of route.entries()) {
+      if (!at) continue;
+      const [fromX, fromY] = route[at - 1];
+      expect(x === fromX || y === fromY, `${route}`).toBe(true);
+    }
+  const [facing, past, down] = routes;
+  expect(facing).toEqual([
+    [220, 140],
+    [320, 140],
+  ]);
+  expect(down).toEqual([
+    [140, 180],
+    [140, 400],
+  ]);
+  // The one past the item between turns, and no leg of it runs through it.
+  expect(past.length).toBeGreaterThan(2);
+  const [left, top, right, bottom] = between;
+  for (const [at, [x, y]] of past.entries()) {
+    if (!at) continue;
+    const [fromX, fromY] = past[at - 1];
+    expect(
+      Math.max(x, fromX) > left &&
+        Math.min(x, fromX) < right &&
+        Math.max(y, fromY) > top &&
+        Math.min(y, fromY) < bottom,
+      `${past}`,
+    ).toBe(false);
+  }
+  // A shape is its fill: no line round it.
+  expect(
+    await stage
+      .locator("#a")
+      .evaluate((item) => getComputedStyle(item).borderTopStyle),
+  ).toBe("none");
 });
 
 // Writes of the board's file wait until they are let go.

@@ -5,26 +5,29 @@
 
 const SVG = "http://www.w3.org/2000/svg";
 const FILLS = {
-  yellow: "#fff1a8",
-  orange: "#ffd8b0",
-  pink: "#ffd3e0",
-  green: "#cdeccf",
-  blue: "#cfe3fb",
-  grey: "#e6e6e6",
+  yellow: "#ffe680",
+  orange: "#ffc48c",
+  pink: "#ffbdd1",
+  green: "#b4e2b8",
+  blue: "#b6d3fb",
+  grey: "#dedede",
 };
 // Shapes CSS cannot draw, as paths in a 100 by 100 box stretched to the item.
 const PATHS = {
   diamond: "M50 0L100 50L50 100L0 50Z",
   hexagon: "M15 0H85L100 50L85 100H15L0 50Z",
   parallelogram: "M15 0H100L85 100H0Z",
-  database:
-    "M0 12A50 12 0 0 1 100 12V88A50 12 0 0 1 0 88ZM0 12A50 12 0 0 0 100 12",
-  queue:
-    "M12 0H88A12 50 0 0 1 88 100H12A12 50 0 0 1 12 0ZM88 0A12 50 0 0 0 88 100",
+  database: "M0 12A50 12 0 0 1 100 12V88A50 12 0 0 1 0 88Z",
+  queue: "M12 0H88A12 50 0 0 1 88 100H12A12 50 0 0 1 12 0Z",
   document: "M0 0H100V86Q75 72 50 86T0 86Z",
   cloud:
     "M27 88A20 20 0 0 1 20 50A24 24 0 0 1 52 22A22 22 0 0 1 86 40A20 20 0 0 1 80 88Z",
   person: "M50 6A14 14 0 1 1 49.9 6ZM18 96Q18 48 50 48Q82 48 82 96Z",
+};
+// The rim that makes a cylinder of one, a line over its fill.
+const RIMS = {
+  database: "M0 12A50 12 0 0 0 100 12",
+  queue: "M88 0A12 50 0 0 0 88 100",
 };
 const CSS = `
 html, body { margin: 0; }
@@ -33,21 +36,25 @@ body { position: relative; min-height: 100vh; overflow: hidden; background: #faf
   background-size: 20px 20px; font: 16px/1.35 system-ui, sans-serif; color: #1a1a1a; }
 hr[data-from] { display: none; }
 [data-at] { position: absolute; box-sizing: border-box; margin: 0; z-index: 2; }
-section[data-at] { z-index: 0; border: 1.5px solid #9a9a9a; background: #ffffff99; padding: 12px; }
-section[data-at] > :first-child { margin: 0; font-size: 18px; }
+section[data-at] { z-index: 0; border: 1px solid #d0d0d0; border-radius: 12px; background: #ffffff99; }
+section[data-at] > :first-child { position: absolute; left: 2px; bottom: 100%; margin: 0 0 6px;
+  font-size: 15px; font-weight: 500; color: #666; white-space: nowrap; }
 h1[data-at] { font-size: 34px; } h2[data-at] { font-size: 22px; }
 small[data-at] { font-size: 13px; color: #555; display: block; }
-.note { width: 160px; min-height: 160px; padding: 14px; background: ${FILLS.yellow};
-  box-shadow: 0 1px 3px #0002; overflow-wrap: anywhere; }
+.note { width: 160px; min-height: 160px; padding: 14px; background: var(--fill, ${FILLS.yellow});
+  border-radius: 2px; box-shadow: 0 1px 3px #0002; overflow-wrap: anywhere; }
 [data-shape] { display: flex; align-items: center; justify-content: center; padding: 8px 14px;
   text-align: center; }
-[data-shape] > svg.shape { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1;
-  overflow: visible; }
-[data-shape] > svg.shape path { fill: #fff; stroke: #1a1a1a; stroke-width: 1.5px;
-  vector-effect: non-scaling-stroke; }
+[data-shape] { --fill: ${FILLS.grey}; }
+[data-shape] > svg.shape { position: absolute; inset: 4px; width: calc(100% - 8px);
+  height: calc(100% - 8px); z-index: -1; overflow: visible; }
+[data-shape] > svg.shape path { fill: var(--fill); stroke: var(--fill); stroke-width: 8px;
+  stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+[data-shape] > svg.shape path.rim { fill: none; stroke: #0003; stroke-width: 1.5px; }
 [data-shape="rect"], [data-shape="rounded"], [data-shape="pill"], [data-shape="ellipse"] {
-  background: #fff; border: 1.5px solid #1a1a1a; }
-[data-shape="rounded"] { border-radius: 14px; } [data-shape="pill"] { border-radius: 999px; }
+  background: var(--fill); }
+[data-shape="rect"] { border-radius: 8px; }
+[data-shape="rounded"] { border-radius: 18px; } [data-shape="pill"] { border-radius: 999px; }
 [data-shape="ellipse"] { border-radius: 50%; }
 [data-shape="person"] { align-items: flex-end; }
 table[data-at] { border-collapse: collapse; background: #fff; }
@@ -58,9 +65,9 @@ a[data-at] { display: block; padding: 10px 14px; background: #fff; border: 1px s
 a[data-at]::after { content: attr(href); display: block; font-size: 12px; color: #666; }
 .widget[data-at] { overflow: hidden; }
 svg.arrows { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: visible; }
-svg.arrows path { fill: none; stroke: #1a1a1a; stroke-width: 1.5px; }
+svg.arrows path { fill: none; stroke: #5c5c5c; stroke-width: 1.5px; }
 svg.arrows .dash { stroke-dasharray: 6 5; }
-svg.arrows text { font: 13px system-ui, sans-serif; fill: #1a1a1a; paint-order: stroke;
+svg.arrows text { font: 13px system-ui, sans-serif; fill: #444; paint-order: stroke;
   stroke: #fafafa; stroke-width: 6px; stroke-linejoin: round; }
 [data-uagent-picked] { outline: 2px solid #1a56db; outline-offset: 2px; }
 .uagent-handle { position: absolute; width: 10px; height: 10px; z-index: 3;
@@ -86,94 +93,265 @@ function place(item) {
   if (h > 0)
     item.style[item.matches(".note") ? "minHeight" : "height"] = `${h}px`;
   const fill = FILLS[item.dataset.fill];
-  if (fill && item.matches(".note")) item.style.background = fill;
-  const path = PATHS[item.dataset.shape];
-  if (path && !item.querySelector(":scope > svg.shape")) {
-    const svg = document.createElementNS(SVG, "svg");
-    svg.setAttribute("class", "shape");
-    svg.setAttribute("viewBox", "0 0 100 100");
-    svg.setAttribute("preserveAspectRatio", "none");
-    svg.setAttribute("aria-hidden", "true");
+  if (fill) item.style.setProperty("--fill", fill);
+  const { shape } = item.dataset;
+  if (!PATHS[shape] || item.querySelector(":scope > svg.shape")) return;
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("class", "shape");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("aria-hidden", "true");
+  for (const d of [PATHS[shape], RIMS[shape]].filter(Boolean)) {
     const drawn = document.createElementNS(SVG, "path");
-    drawn.setAttribute("d", path);
-    if (fill) drawn.style.fill = fill;
+    drawn.setAttribute("d", d);
+    if (d === RIMS[shape]) drawn.setAttribute("class", "rim");
     svg.append(drawn);
-    item.prepend(svg);
-  } else if (fill && item.dataset.shape) item.style.background = fill;
+  }
+  item.prepend(svg);
 }
 
-// The arrows, from one item's nearest side to the other's, as curves.
+// The four sides of an item, as the way out of each.
+const SIDES = [
+  [0, -1],
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+];
+// How far an arrow runs straight out of an item, and how round it turns.
+const OUT = 20;
+const BEND = 10;
+// How far apart two arrows stand on one side of an item.
+const APART = 16;
+
+// The arrows, each in right-angled legs from a side of one item to a side
+// of the other: the route across the fewest items, then with the fewest
+// turns, then the shortest. Arrows on one side of an item share it out.
 function arrows(layer) {
-  const box = (id) => {
-    const item = document.getElementById(id);
-    return (
-      item && {
-        x: item.offsetLeft,
-        y: item.offsetTop,
-        w: item.offsetWidth,
-        h: item.offsetHeight,
+  const boxOf = (item) =>
+    item && {
+      item,
+      x: item.offsetLeft,
+      y: item.offsetTop,
+      w: item.offsetWidth,
+      h: item.offsetHeight,
+    };
+  // A shape that meets its box only about the middle of a side.
+  const curved = ({ item }) =>
+    !["rect", "rounded"].includes(item.dataset.shape ?? "rect");
+  const blocks = items()
+    .filter((item) => !item.matches("section"))
+    .map(boxOf);
+  // Where an arrow meets a side of an item: on its box, or as far in as a
+  // drawn shape begins there.
+  const port = (box, [nx, ny], along = 0.5) => {
+    const at = {
+      x: nx ? box.x + (nx > 0 ? box.w : 0) : box.x + box.w * along,
+      y: ny ? box.y + (ny > 0 ? box.h : 0) : box.y + box.h * along,
+      nx,
+      ny,
+    };
+    const drawn = box.item.querySelector(":scope > svg.shape path");
+    const inside = () =>
+      drawn.isPointInFill(
+        new DOMPoint(
+          ((at.x - box.x) / box.w) * 100,
+          ((at.y - box.y) / box.h) * 100,
+        ),
+      );
+    for (let step = 0; drawn && step < 40 && !inside(); step++) {
+      at.x -= nx * 2;
+      at.y -= ny * 2;
+    }
+    return at;
+  };
+  // A route without the points that turn nothing.
+  const tidy = (points) =>
+    points.reduce((kept, at) => {
+      const [a, b] = kept.slice(-2);
+      if (b && ((a.x === b.x && b.x === at.x) || (a.y === b.y && b.y === at.y)))
+        kept.pop();
+      kept.push(at);
+      return kept;
+    }, []);
+  // The ways from one port to another: straight out of each, and across
+  // beside either or half way between.
+  const ways = (p, q) => {
+    const a = { x: p.x + p.nx * OUT, y: p.y + p.ny * OUT };
+    const b = { x: q.x + q.nx * OUT, y: q.y + q.ny * OUT };
+    const [mx, my] = [(a.x + b.x) / 2, (a.y + b.y) / 2];
+    return [
+      [{ x: b.x, y: a.y }],
+      [{ x: a.x, y: b.y }],
+      [
+        { x: mx, y: a.y },
+        { x: mx, y: b.y },
+      ],
+      [
+        { x: a.x, y: my },
+        { x: b.x, y: my },
+      ],
+    ].map((across) => tidy([p, a, ...across, b, q]));
+  };
+  const crosses = (points, box, inset) =>
+    points.some((at, index) => {
+      const to = points[index + 1];
+      return (
+        to &&
+        Math.max(at.x, to.x) > box.x + inset &&
+        Math.min(at.x, to.x) < box.x + box.w - inset &&
+        Math.max(at.y, to.y) > box.y + inset &&
+        Math.min(at.y, to.y) < box.y + box.h - inset
+      );
+    });
+  const length = (points) =>
+    points.reduce(
+      (sum, at, index) =>
+        index
+          ? sum +
+            Math.abs(at.x - points[index - 1].x) +
+            Math.abs(at.y - points[index - 1].y)
+          : 0,
+      0,
+    );
+  // A side an arrow already uses costs the next one as much as a detour.
+  const used = new Map();
+  const sideOf = (box, side) => `${box.item.id} ${side}`;
+  const cost = (points, from, to, s, t) =>
+    (crosses(points.slice(1), from, 2) || crosses(points.slice(0, -1), to, 2)
+      ? 1e7
+      : 0) +
+    blocks.filter(
+      (box) =>
+        box.item !== from.item &&
+        box.item !== to.item &&
+        crosses(points, box, 0),
+    ).length *
+      1e4 +
+    ((used.get(sideOf(from, s)) ?? 0) + (used.get(sideOf(to, t)) ?? 0)) * 200 +
+    points.length * 80 +
+    length(points);
+  const best = (from, to, sides, along = [0.5, 0.5]) => {
+    let found;
+    for (const [s, t] of sides)
+      for (const points of ways(
+        port(from, SIDES[s], along[0]),
+        port(to, SIDES[t], along[1]),
+      )) {
+        const costs = cost(points, from, to, s, t);
+        if (!found || costs < found.costs) found = { points, costs, s, t };
       }
+    return found;
+  };
+  const every = SIDES.flatMap((_, s) => SIDES.map((_, t) => [s, t]));
+  const lines = [];
+  for (const line of document.querySelectorAll("hr[data-from][data-to]")) {
+    const from = boxOf(document.getElementById(line.dataset.from));
+    const to = boxOf(document.getElementById(line.dataset.to));
+    if (!from || !to) continue;
+    const one = { line, from, to, ...best(from, to, every) };
+    for (const key of [sideOf(from, one.s), sideOf(to, one.t)])
+      used.set(key, (used.get(key) ?? 0) + 1);
+    lines.push(one);
+  }
+  used.clear();
+  // Where along its side each end of an arrow stands. Two items that face
+  // each other are joined straight, in the middle of what they share; any
+  // other end takes the middle of its side, and ends on one side keep apart.
+  const span = (box, side) =>
+    SIDES[side][0] ? [box.y, box.y + box.h] : [box.x, box.x + box.w];
+  const taken = new Map();
+  const stand = (box, side, wish) => {
+    const [low, high] = span(box, side);
+    const edge = curved(box) ? (high - low) / 4 : 8;
+    const others = taken.get(sideOf(box, side)) ?? [];
+    let at = wish;
+    for (
+      let step = 1;
+      others.some((other) => Math.abs(other - at) < APART);
+      step++
+    )
+      at = wish + (step % 2 ? 1 : -1) * Math.ceil(step / 2) * APART;
+    taken.set(sideOf(box, side), [...others, at]);
+    return (
+      (Math.min(high - edge, Math.max(low + edge, at)) - low) / (high - low)
     );
   };
-  const end = (from, to) => {
-    const [cx, cy, tx, ty] = [
-      from.x + from.w / 2,
-      from.y + from.h / 2,
-      to.x + to.w / 2,
-      to.y + to.h / 2,
-    ];
-    const across =
-      Math.abs(tx - cx) / (from.w + to.w) >=
-      Math.abs(ty - cy) / (from.h + to.h);
-    return across
-      ? {
-          x: tx > cx ? from.x + from.w : from.x,
-          y: cy,
-          nx: Math.sign(tx - cx) || 1,
-          ny: 0,
-        }
-      : {
-          x: cx,
-          y: ty > cy ? from.y + from.h : from.y,
-          nx: 0,
-          ny: Math.sign(ty - cy) || 1,
-        };
+  const shared = (one) => {
+    const [a, b] = [span(one.from, one.s), span(one.to, one.t)];
+    const [low, high] = [Math.max(a[0], b[0]), Math.min(a[1], b[1])];
+    return Math.abs(one.s - one.t) === 2 && low < high && (low + high) / 2;
   };
-  layer.replaceChildren(defs());
-  // Arrows between the same two items bow apart, each to its own side.
-  const lines = [...document.querySelectorAll("hr[data-from][data-to]")];
-  const pair = (line) => [line.dataset.from, line.dataset.to].sort().join("\n");
-  for (const line of lines) {
-    const [a, b] = [box(line.dataset.from), box(line.dataset.to)];
-    if (!a || !b) continue;
-    const [p, q] = [end(a, b), end(b, a)];
-    const pull = Math.max(30, Math.hypot(q.x - p.x, q.y - p.y) / 3);
-    const shared = lines.filter((other) => pair(other) === pair(line));
-    // Across the line from one end to the other, the same way for both
-    // directions: the pair's first named item to its second.
-    const forward = line.dataset.from <= line.dataset.to ? 1 : -1;
-    const length = Math.hypot(q.x - p.x, q.y - p.y) || 1;
-    const bow = (shared.indexOf(line) - (shared.length - 1) / 2) * 40 * forward;
-    const [bx, by] = [
-      (-(q.y - p.y) / length) * bow,
-      ((q.x - p.x) / length) * bow,
+  // The straight ones first: they have one place, the others any.
+  for (const one of [...lines].sort((a, b) => !shared(a) - !shared(b))) {
+    const middle = ([from, to]) => (from + to) / 2;
+    one.along = [
+      stand(one.from, one.s, shared(one) || middle(span(one.from, one.s))),
+      stand(one.to, one.t, shared(one) || middle(span(one.to, one.t))),
     ];
-    const c1 = [p.x + p.nx * pull + bx, p.y + p.ny * pull + by];
-    const c2 = [q.x + q.nx * pull + bx, q.y + q.ny * pull + by];
+  }
+  layer.replaceChildren(defs());
+  for (const one of lines) {
+    const { line } = one;
+    const { points } = best(one.from, one.to, [[one.s, one.t]], one.along);
+    const far = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
     const path = document.createElementNS(SVG, "path");
-    path.setAttribute("d", `M${p.x} ${p.y}C${c1} ${c2} ${q.x} ${q.y}`);
+    path.setAttribute(
+      "d",
+      points
+        .map((at, index) => {
+          const [was, next] = [points[index - 1], points[index + 1]];
+          if (!was) return `M${at.x} ${at.y}`;
+          if (!next) return `L${at.x} ${at.y}`;
+          // A turn starts and ends this far from its corner.
+          const round = Math.min(BEND, far(was, at) / 2, far(at, next) / 2);
+          const near = (to) => [
+            at.x + Math.sign(to.x - at.x) * round,
+            at.y + Math.sign(to.y - at.y) * round,
+          ];
+          return `L${near(was)}Q${at.x} ${at.y} ${near(next)}`;
+        })
+        .join(""),
+    );
     const head = line.dataset.head ?? "end";
     if (head !== "none") path.setAttribute("marker-end", "url(#uagent-head)");
     if (head === "both") path.setAttribute("marker-start", "url(#uagent-tail)");
     if (line.hasAttribute("data-dash")) path.setAttribute("class", "dash");
     layer.append(path);
     if (line.dataset.label) {
-      // The curve's middle: its point at t = 0.5.
+      // Beside the middle of a leg: over a level one, right of an
+      // upright one, on the longest that leaves the label clear of items.
+      const wide = line.dataset.label.length * 7;
+      const where = ([a, b]) => {
+        const level = a.y === b.y;
+        const [x, y] = [(a.x + b.x) / 2, (a.y + b.y) / 2];
+        return {
+          level,
+          x: x + (level ? 0 : 8),
+          y: y - (level ? 8 : 0),
+          box: level
+            ? { x: x - wide / 2, y: y - 24, w: wide, h: 20 }
+            : { x: x + 8, y: y - 10, w: wide, h: 20 },
+        };
+      };
+      const legs = points
+        .slice(1)
+        .map((to, index) => [points[index], to])
+        .sort((p, q) => far(...q) - far(...p))
+        .map(where);
+      const clear = ({ box }) =>
+        !blocks.some(
+          (other) =>
+            box.x < other.x + other.w &&
+            other.x < box.x + box.w &&
+            box.y < other.y + other.h &&
+            other.y < box.y + box.h,
+        );
+      const { level, x, y } = legs.find(clear) ?? legs[0];
       const text = document.createElementNS(SVG, "text");
-      text.setAttribute("x", `${(p.x + 3 * c1[0] + 3 * c2[0] + q.x) / 8}`);
-      text.setAttribute("y", `${(p.y + 3 * c1[1] + 3 * c2[1] + q.y) / 8}`);
-      text.setAttribute("text-anchor", "middle");
-      text.setAttribute("dominant-baseline", "middle");
+      text.setAttribute("x", `${x}`);
+      text.setAttribute("y", `${y}`);
+      text.setAttribute("text-anchor", level ? "middle" : "start");
+      if (!level) text.setAttribute("dominant-baseline", "middle");
       text.textContent = line.dataset.label;
       layer.append(text);
     }
@@ -182,23 +360,25 @@ function arrows(layer) {
 function defs() {
   const made = document.createElementNS(SVG, "defs");
   for (const [id, d] of [
-    ["uagent-head", "M0 0L10 5L0 10Z"],
-    ["uagent-tail", "M10 0L0 5L10 10Z"],
+    ["uagent-head", "M0 0L8 4L0 8Z"],
+    ["uagent-tail", "M8 0L0 4L8 8Z"],
   ]) {
     const marker = document.createElementNS(SVG, "marker");
     for (const [name, value] of Object.entries({
       id,
-      viewBox: "0 0 10 10",
-      refX: id === "uagent-head" ? 10 : 0,
-      refY: 5,
+      viewBox: "0 0 8 8",
+      refX: id === "uagent-head" ? 8 : 0,
+      refY: 4,
       markerWidth: 8,
       markerHeight: 8,
+      markerUnits: "userSpaceOnUse",
       orient: "auto",
     }))
       marker.setAttribute(name, `${value}`);
     const tip = document.createElementNS(SVG, "path");
     tip.setAttribute("d", d);
-    tip.style.fill = "#1a1a1a";
+    tip.style.fill = "#5c5c5c";
+    tip.style.stroke = "none";
     marker.append(tip);
     made.append(marker);
   }

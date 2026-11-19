@@ -154,8 +154,8 @@ the design as one PDF.
 
 **Whiteboards.** A page with `<meta name="board">` loads `~sheet/whiteboard.js`
 from the helper, which places its items, draws shapes as stretched SVG
-paths and arrows as curves between the items' nearest sides. Opened alone
-in the pane, a drag, an arrow key, a corner or a double click says
+paths and arrows in right-angled legs between the items' sides, round what
+stands between them. Opened alone in the pane, a drag, an arrow key, a corner or a double click says
 `board {id, at | size | text}`; Sequence hands each to the pane's
 `rewrite`, which writes it through `fileSaver` with `boardEdit`
 (`board-edit.ts`), which changes only that item's start tag or text in the

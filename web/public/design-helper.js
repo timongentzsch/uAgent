@@ -995,8 +995,10 @@
       sheets: [...document.querySelectorAll('link[rel="stylesheet"]')].map(
         (link) => link.href,
       ),
-      // A sheet takes the app's look for its grid.
+      // A sheet takes the app's look for its grid; a whiteboard is changed
+      // by hand.
       sheet: !!meta("sheet"),
+      board: !!document.querySelector('meta[name="board"]'),
       // A slide's builds, and how it comes in when presented.
       steps: steps(),
       push: meta("slide").split(/\s+/).includes("push"),

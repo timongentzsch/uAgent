@@ -75,7 +75,7 @@ import { dirOf } from "./flow.ts";
 import { readTokens } from "./tokens.ts";
 import { bindZoomWheel } from "../../shared/zoom.ts";
 import { useLatest } from "../../shared/use-latest.ts";
-import { useRoom } from "../../shared/layout.ts";
+import { coarsePointer, useRoom } from "../../shared/layout.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import type { ViewedImage } from "../../shared/attachments.tsx";
 import { presentChannel, STEPS } from "./present.ts";
@@ -86,7 +86,8 @@ import {
   type Saved,
   skipSlide,
 } from "./doc-edit.ts";
-import { boardEdit } from "./board-edit.ts";
+import { type BoardEdit, boardEdit } from "./board-edit.ts";
+import { BoardTools, type Chosen, chosenOf } from "./board-tools.tsx";
 import { downloadBlob } from "../../shared/share.ts";
 import { copyDrawn, type Drawn, saveDrawn } from "./drawn.ts";
 import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
@@ -296,6 +297,14 @@ export default function Sequence({
   const holding = useRef(false);
   const unsourced = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [picked, setPicked] = useState<Pick>();
+  // A whiteboard's tool armed for the next press, and what is picked on it.
+  const [tool, setTool] = useState("");
+  const [chosen, setChosen] = useState<Chosen>();
+  const board = !!info?.board;
+  const arm = (next: string) => {
+    setTool(next);
+    tell(frame.current, { type: "board", tool: next });
+  };
   const [comment, setComment] = useState("");
   const [tweaking, setTweaking] = useState(false);
   // Reset reloads the page: what it declares comes back.
@@ -330,6 +339,8 @@ export default function Sequence({
   useEffect(() => {
     clearTimeout(again.current);
     setPicked(undefined);
+    setTool("");
+    setChosen(undefined);
     setHover(undefined);
     setCaret(undefined);
     setNoted(undefined);
@@ -427,7 +438,7 @@ export default function Sequence({
   };
   // A document's, a slide's or a whiteboard's changes by hand are undone and
   // made again here; then the file is drawn again, its notes its own.
-  const undoes = !!undo && (editable || kind === "board");
+  const undoes = !!undo && (editable || board);
   const back = (redo: boolean) =>
     void undo?.(redo).then((made) => {
       if (!made) return;
@@ -523,6 +534,7 @@ export default function Sequence({
       return;
     const here = target === document.body || target.closest?.(".files");
     const held = event.metaKey || event.ctrlKey;
+    if (event.key === "Escape" && tool) arm("");
     if (presenting) presentKey(event.key);
     else if (sheet) {
       if (here && held && tabKey(event.key)) event.preventDefault();
@@ -644,6 +656,9 @@ export default function Sequence({
       : 1;
   // How far the person zoomed from the fit; each page opens at the fit.
   const [zoom, setZoom] = useState(1);
+  // On a touch screen two fingers zoom a whiteboard, and its tools take the
+  // foot of the stage: Fit is in the tools' menu.
+  const touch = board && coarsePointer();
   const scale = fit * zoom;
   // Scales by `by` keeping the point (x, y) of the scroller where it is.
   const anchor = useRef<{ x: number; y: number; cx: number; cy: number }>(
@@ -891,6 +906,7 @@ export default function Sequence({
             true,
           )}
         {!sheet &&
+          !board &&
           toggle(
             "Select",
             mode === "select",
@@ -980,6 +996,11 @@ export default function Sequence({
             )}
             <MenuSub label="Export">{exportItems}</MenuSub>
             <MenuItem onClick={() => open(src)}>Open alone</MenuItem>
+            {touch && (
+              <MenuItem disabled={zoom === 1} onClick={() => setZoom(1)}>
+                Fit
+              </MenuItem>
+            )}
           </Menu>
         </span>
         {writing && <span class="chip working">Agent writing</span>}
@@ -1127,6 +1148,8 @@ export default function Sequence({
                       heard(path)(message);
                     if (message.type === "ready") {
                       setSaid(message);
+                      setTool("");
+                      setChosen(undefined);
                       setBuild(backward.current ? (message.steps ?? 0) : 0);
                       // Drawn from the file: what it does not hold of what
                       // was typed is on no page any more.
@@ -1243,14 +1266,17 @@ export default function Sequence({
                           300,
                         );
                     } else if (message.type === "board") {
+                      if (!board) return;
+                      // An item put on the board ends its tool.
+                      if ("add" in message) setTool("");
                       void rewrite?.(
                         path,
                         (source) =>
-                          boardEdit(source, {
-                            ...message,
-                            id: String(message.id),
-                          }) ?? source,
+                          boardEdit(source, message as unknown as BoardEdit) ??
+                          source,
                       );
+                    } else if (message.type === "items") {
+                      setChosen(board ? chosenOf(message) : undefined);
                     } else if (message.type === "caret") {
                       setCaret(caretOf(message));
                     } else if (message.type === "left") {
@@ -1344,6 +1370,7 @@ export default function Sequence({
                     } else if (message.type === "comment") {
                       if (sheet && addToChat) setRanged(cell?.range);
                     } else if (message.type === "key") {
+                      if (message.key === "Escape") setTool("");
                       // A sheet's other keys are its own.
                       if (sheet) {
                         if (message.held) tabKey(message.key);
@@ -1420,7 +1447,43 @@ export default function Sequence({
                 </Button>
               </div>
             )}
-            {wide && !presenting && (
+            {board && live && !presenting && (
+              <BoardTools
+                chosen={chosen}
+                tool={tool}
+                arm={arm}
+                act={(act, value) =>
+                  tell(frame.current, { type: "board", act, value })
+                }
+                ask={
+                  addToChat &&
+                  (() => {
+                    const item = chosen?.items[0];
+                    if (item && chosen.rect)
+                      setPicked({
+                        rect: chosen.rect,
+                        selector: `#${item.id}`,
+                        tag: item.shape ?? (item.note ? "note" : item.tag),
+                        text: item.text,
+                      });
+                  })
+                }
+                at={() => {
+                  const page = frame.current?.getBoundingClientRect();
+                  const rect = chosen?.rect;
+                  return (
+                    page &&
+                    rect && {
+                      x: page.left + rect.x * scale,
+                      y: page.top + rect.y * scale,
+                      width: rect.width * scale,
+                      height: rect.height * scale,
+                    }
+                  );
+                }}
+              />
+            )}
+            {wide && !presenting && !touch && (
               <ZoomControls
                 percent={Math.round(scale * 100)}
                 out={() => middle(1 / ZOOM_STEP)}

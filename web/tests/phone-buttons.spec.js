@@ -260,6 +260,31 @@ test.describe("files", () => {
     await toolsFit(page);
   });
 
+  test("a whiteboard's tools and the bar over its picked shape", async ({
+    page,
+    session,
+    host,
+  }) => {
+    await writeFiles(host.project, {
+      "boards/flow/board.html": `<!doctype html>
+<meta charset="utf-8">
+<meta name="artboard" content="1000x600">
+<meta name="board">
+<title>Flow</title>
+<div id="ok" data-shape="parallelogram" data-fill="orange" data-at="400 300" data-size="160 100">Valid?</div>
+`,
+    });
+    await openFiles(page, session, "boards/flow/", { phone: true });
+    const stage = page.frameLocator(".page-stage iframe:not([inert])");
+    await expect(stage.locator("#ok")).toBeVisible();
+    await roomy(page);
+    const box = await stage.locator("#ok").boundingBox();
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.getByRole("toolbar", { name: "Picked" })).toBeVisible();
+    await roomy(page);
+    await toolsFit(page);
+  });
+
   test("a sheet's Format sheet and rules dialog", async ({
     page,
     session,

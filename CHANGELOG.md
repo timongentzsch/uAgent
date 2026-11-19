@@ -26,6 +26,9 @@
 - **Slides build and push.** Elements of a slide can appear one click at a time while presenting, a slide can push the one before out (others fade in), and sections head the legend.
 - **A design's pages export from the canvas**: copy as PNG, PNG at 1× or 2×, PDF, or every page as one PDF, each at its own size.
 - **See what a turn changed in a file.** A file opened from a turn's changed files shows that turn's change, even outside a repository, with Undo beside it.
+- **Whiteboards are drawn anew.** Shapes are filled and rounded with no line round them, and an arrow runs in right-angled legs with rounded turns: straight between two items that face each other, round an item that stands between, into the side that has room. A label stands beside its arrow where it covers nothing, and a section's name stands above its frame. Boards made before draw this way too; their files are unchanged.
+- **Undo and redo in documents, decks and whiteboards.** ⌘Z or Ctrl+Z takes back the last change you made by hand, ⇧⌘Z or Ctrl+Y makes it again, and both are buttons in the tool row. If the agent wrote the file since, undo says so and changes nothing.
+- **A whiteboard is listed as one.** The Library has Whiteboards beside Designs and Decks, and says Documents where it said Docs.
 
 ### Fixes
 

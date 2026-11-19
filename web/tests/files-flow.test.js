@@ -41,11 +41,12 @@ const tree = {
   sheets: ["budget.html", "plan.html"],
   src: ["app.ts", "notes.md"],
 };
-// What the host says a folder is, and each of its pages.
+// What the host says a folder is, and each of its pages is shown as; any
+// other page as a design.
 const kinds = {
-  "decks/a": ["deck", "slide"],
-  "decks/b": ["deck", "slide"],
-  "design/landing": ["design", "page"],
+  "decks/a": ["deck", "deck"],
+  "decks/b": ["deck", "deck"],
+  "design/landing": ["design", "design"],
   "design/system": ["system", "doc"],
   docs: ["", "doc"],
   sheets: ["", "sheet"],
@@ -60,15 +61,24 @@ const io = {
     tree[dir]
       ? {
           kind: kinds[dir]?.[0] ?? "",
-          entries: tree[dir].map((n) => ({
-            name: n.replace(/\/$/, ""),
-            dir: n.endsWith("/"),
-            kind: sheets.includes(`${dir}/${n}`)
-              ? "sheet"
-              : n.endsWith(".html")
-                ? kinds[dir]?.[1]
-                : undefined,
-          })),
+          entries: tree[dir].map((n) => {
+            const kind =
+              sheets.includes(`${dir}/${n}`) || /\.(xlsx|csv)$/.test(n)
+                ? "sheet"
+                : n.endsWith(".html")
+                  ? (kinds[dir]?.[1] ?? "design")
+                  : undefined;
+            // A document and a sheet are alone, but a design system's book.
+            const alone =
+              kind === "sheet" ||
+              (kind === "doc" && kinds[dir][0] !== "system");
+            return {
+              name: n.replace(/\/$/, ""),
+              dir: n.endsWith("/"),
+              kind,
+              alone,
+            };
+          }),
         }
       : null,
   find: async (name) =>

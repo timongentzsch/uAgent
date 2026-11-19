@@ -176,7 +176,7 @@ test("the Library picks across kinds and deletes them, files and all", async ({
 
   await page.keyboard.press("Backspace");
   const dialog = page.getByRole("dialog", {
-    name: "Delete 1 design, 1 doc and 2 memories?",
+    name: "Delete 1 design, 1 document and 2 memories?",
   });
   await dialog.getByRole("button", { name: "Delete 4", exact: true }).click();
   await expect(dialog).toHaveCount(0);

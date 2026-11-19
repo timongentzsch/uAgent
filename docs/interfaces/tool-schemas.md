@@ -235,7 +235,7 @@ Decide what an agent you started asked you. An approval request: allow_once, all
 
 Offered: a session with a client. Parallel: yes.
 
-Hand the user what you made, shown in the conversation: an artifact's folder or page (document, deck, design, design system, sheet) opens in Files and stays live; any other file (PDF, image, archive, data) is snapshotted to open or download, so present it again after changing it.
+Hand the user what you made, shown in the conversation: an artifact's folder or page (document, deck, design, design system, sheet, whiteboard) opens in Files and stays live; any other file (PDF, image, archive, data) is snapshotted to open or download, so present it again after changing it.
 
 | Parameter | Type | Required | What |
 | --- | --- | --- | --- |

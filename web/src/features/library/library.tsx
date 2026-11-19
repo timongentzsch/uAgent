@@ -1,17 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import type { FunctionComponent } from "preact";
-import {
-  BookOpen,
-  ChevronDown,
-  Brain,
-  FileText,
-  LayoutDashboard,
-  Palette,
-  Plus,
-  Presentation,
-  ScrollText,
-  Table,
-} from "lucide-preact";
+import { BookOpen, ChevronDown, Brain, FileText, Plus } from "lucide-preact";
 import { useApi } from "../../state/api.ts";
 import type {
   FileTarget,
@@ -34,7 +23,11 @@ import {
 } from "../../shared/ui.tsx";
 import { usePushDirection } from "../../shared/motion.ts";
 import { bytes, plural } from "../../shared/quantities.ts";
-import { artifactSize } from "../../shared/artifact.ts";
+import {
+  ARTIFACT,
+  type ArtifactType,
+  artifactSize,
+} from "../../shared/artifact.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { matches } from "../../shared/fuzzy.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
@@ -53,16 +46,22 @@ import "./management.css";
 // grouped by place. A rail filters it by kind and place; an item opens beside
 // the list. Nothing is stored here: each item stays where it lives.
 
+const TYPES = Object.keys(ARTIFACT) as ArtifactType[];
+// Each artifact type's value, from its table.
+const ofEach = <T,>(value: (type: ArtifactType) => T) =>
+  Object.fromEntries(TYPES.map((type) => [type, value(type)])) as Record<
+    ArtifactType,
+    T
+  >;
 const RAIL: [string, [LibraryKind | "", string][]][] = [
   ["", [["", "Everything"]]],
   [
     "Artifacts",
     [
-      ["design", "Designs"],
-      ["deck", "Decks"],
-      ["doc", "Docs"],
-      ["sheet", "Sheets"],
-      ["system", "Design systems"],
+      ...TYPES.map((type): [LibraryKind, string] => [
+        type,
+        `${ARTIFACT[type].name}s`,
+      ]),
       ["file", "Shared files"],
     ],
   ],
@@ -75,33 +74,22 @@ const RAIL: [string, [LibraryKind | "", string][]][] = [
   ],
 ];
 const ICON: Record<LibraryKind, FunctionComponent> = {
-  design: LayoutDashboard,
-  deck: Presentation,
-  doc: ScrollText,
-  sheet: Table,
-  system: Palette,
+  ...ofEach((type) => ARTIFACT[type].icon),
   file: FileText,
   memory: Brain,
   skill: BookOpen,
 };
 const NAME: Record<LibraryKind, string> = {
-  design: "design",
-  deck: "deck",
-  doc: "doc",
-  sheet: "sheet",
-  system: "design system",
+  ...ofEach((type) => ARTIFACT[type].name.toLowerCase()),
   file: "shared file",
   memory: "memory",
   skill: "skill",
 };
 const NAMES: Partial<Record<LibraryKind, string>> = { memory: "memories" };
-// What deleting one of a kind removes.
+// What deleting one of a kind removes; an artifact that is alone is no
+// folder.
 const GOES: Record<LibraryKind, string> = {
-  design: "deleted from the project, folder and all",
-  deck: "deleted from the project, folder and all",
-  system: "deleted from the project, folder and all",
-  doc: "deleted from the project",
-  sheet: "deleted from the project",
+  ...ofEach(() => "deleted from the project, folder and all"),
   file: "deleted",
   memory: "forgotten",
   skill: "forgotten; supporting files stay",
@@ -131,10 +119,8 @@ const detail = (item: LibraryItem) =>
       ? "on paper"
       : item.kind === "file"
         ? bytes(item.bytes ?? 0)
-        : item.kind === "design" ||
-            item.kind === "deck" ||
-            item.kind === "sheet"
-          ? artifactSize(item.kind, item.count ?? 0)
+        : item.kind && item.kind in ARTIFACT
+          ? artifactSize(item.kind as ArtifactType, item.count ?? 0)
           : item.description || item.source;
 // The control a memory or skill is managed through.
 const control = (kind?: LibraryKind) =>
@@ -242,8 +228,9 @@ export default function Library({
           if (error?.status !== 404) throw error;
         });
   const kinds = (Object.keys(NAME) as LibraryKind[]).flatMap((value) => {
-    const count = picked.filter((item) => item.kind === value).length;
-    return count ? [{ value, count }] : [];
+    const of = picked.filter((item) => item.kind === value);
+    const goes = of[0]?.alone ? "deleted from the project" : GOES[value];
+    return of.length ? [{ value, count: of.length, goes }] : [];
   });
   const placeLabel = (path: string) => {
     const place = placeOf(path);
@@ -323,10 +310,10 @@ export default function Library({
       <section class="library-summary" aria-label="Selection">
         <h2>{`${picked.length} selected`}</h2>
         <ul>
-          {kinds.map(({ value, count }) => (
+          {kinds.map(({ value, count, goes }) => (
             <li key={value}>
               <strong>{plural(count, NAME[value], NAMES[value])}</strong>
-              <span class="muted">{` · ${GOES[value]}`}</span>
+              <span class="muted">{` · ${goes}`}</span>
             </li>
           ))}
         </ul>
@@ -553,8 +540,8 @@ export default function Library({
             }))}
             note={`${kinds
               .map(
-                ({ value, count }) =>
-                  `${plural(count, NAME[value], NAMES[value])}: ${GOES[value]}`,
+                ({ value, count, goes }) =>
+                  `${plural(count, NAME[value], NAMES[value])}: ${goes}`,
               )
               .join("; ")}. `}
             online={online}

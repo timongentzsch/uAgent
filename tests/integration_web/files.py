@@ -134,7 +134,9 @@ def test_web_files_listing_says_what_a_folder_s_pages_are(root, home, *, binary)
         "design/system/book.html": paper,
         "docs/memo.html": paper,
         "docs/slide.html": slide,
+        "boards/flow/board.html": screen + '<meta name="board">',
         "plain/a.html": "<p>a</p>",
+        "plain/rows.CSV": "a,b",
     }
     for name, head in pages.items():
         (project / name).parent.mkdir(parents=True, exist_ok=True)
@@ -151,7 +153,9 @@ def test_web_files_listing_says_what_a_folder_s_pages_are(root, home, *, binary)
                 value = json.loads(body)
                 assert_true(status == 200, value)
                 kinds = {
-                    entry["name"]: entry["kind"] for entry in value["entries"] if "kind" in entry
+                    entry["name"]: entry["kind"] + (" alone" if entry.get("alone") else "")
+                    for entry in value["entries"]
+                    if "kind" in entry
                 }
                 return value["kind"], kinds
 
@@ -170,25 +174,35 @@ def test_web_files_listing_says_what_a_folder_s_pages_are(root, home, *, binary)
                 listed("decks/q3")
                 == (
                     "deck",
-                    dict.fromkeys(("01-cover.html", "02-plan.html", "03-end.html"), "slide"),
+                    dict.fromkeys(("01-cover.html", "02-plan.html", "03-end.html"), "deck"),
                 ),
                 listed("decks/q3"),
             )
             # One page with an artboard makes a design; other HTML is its page too.
             assert_true(
-                listed("design/onboarding") == ("design", {"01-welcome.html": "page"}),
+                listed("design/onboarding")
+                == ("design", {"01-welcome.html": "design", "notes.html": "design"}),
                 listed("design/onboarding"),
             )
+            # A system's document is its book, no artifact of its own.
             assert_true(
                 listed("design/system") == ("system", {"book.html": "doc"}),
                 listed("design/system"),
             )
             # A document is its own; the slide beside it is a deck of one.
             assert_true(
-                listed("docs") == ("deck", {"memo.html": "doc", "slide.html": "slide"}),
+                listed("docs") == ("deck", {"memo.html": "doc alone", "slide.html": "deck"}),
                 listed("docs"),
             )
-            assert_true(listed("plain") == ("", {}), listed("plain"))
+            assert_true(
+                listed("boards/flow") == ("board", {"board.html": "board"}),
+                listed("boards/flow"),
+            )
+            # Any other page is shown as a design; an Excel or CSV file is a sheet.
+            assert_true(
+                listed("plain") == ("", {"a.html": "design", "rows.CSV": "sheet alone"}),
+                listed("plain"),
+            )
             assert_true(listed("") == ("", {}), listed(""))
 
 

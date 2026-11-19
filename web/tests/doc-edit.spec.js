@@ -216,7 +216,7 @@ test("a slide's notes are lines, and no block of the slide; a new slide is laid 
 }) => {
   const slide = (body) =>
     page1(body, '<meta name="artboard" content="1920x1080 slide">');
-  const notes = (before, html) => ({ index: -1, before, html });
+  const notes = (before, html) => ({ index: -1, before, html, slide: true });
   // Paragraphs where the aside held elements, each line one; never markup.
   expect(
     await edited(
@@ -241,7 +241,12 @@ test("a slide's notes are lines, and no block of the slide; a new slide is laid 
     "<h1>T</h1><aside>new</aside></body>",
   );
   // Not on a page that is no slide.
-  expect(await edited(page, page1("<p>Hi</p>"), notes("", "new"))).toBeNull();
+  expect(
+    await edited(page, page1("<p>Hi</p>"), {
+      ...notes("", "new"),
+      slide: false,
+    }),
+  ).toBeNull();
   // The aside's paragraphs are not counted with the slide's blocks.
   expect(
     await edited(
@@ -250,6 +255,7 @@ test("a slide's notes are lines, and no block of the slide; a new slide is laid 
       {
         ...typed(1, "T"),
         of: 2,
+        slide: true,
       },
     ),
   ).toContain("<h1>T!</h1>");

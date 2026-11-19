@@ -3,14 +3,7 @@
 
 import type { FileTarget } from "../../shared/types.ts";
 import { HTML, MARKDOWN, nameOf, paged } from "../../shared/file-types.ts";
-import {
-  alone,
-  join,
-  kindOf,
-  type Listing,
-  pagesOf,
-  slidesOf,
-} from "./boards.ts";
+import { join, type Listing, pagesOf, slidesOf } from "./boards.ts";
 
 export type Lines = [number, number];
 export type View =
@@ -164,7 +157,7 @@ function landing(
   const view = opened(path, lines);
   const board =
     view.kind === "sequence" &&
-    !alone(kindOf(listing, nameOf(path))) &&
+    !listing.entries.find((entry) => entry.name === nameOf(path))?.alone &&
     folderView(dir, listing)?.kind === "canvas";
   return { view, up: board ? [list, { kind: "canvas", dir }] : [list] };
 }

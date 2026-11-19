@@ -21,6 +21,8 @@ export interface BlockEdit {
   insert?: string;
   // A checklist's item ticked or not, which needs no Edit.
   done?: boolean;
+  // Set by the app, from what the host says: the page is a deck's slide.
+  slide?: boolean;
 }
 
 // What a block can be turned into (an item is named by its list), and what
@@ -77,12 +79,6 @@ export const notesEdit = (before: string, text: string): BlockEdit => ({
   before,
   html: text,
 });
-const isSlide = (page: Document) =>
-  !!page
-    .querySelector('meta[name="artboard"]')
-    ?.getAttribute("content")
-    ?.trim()
-    .endsWith(" slide");
 // The lines written: each a paragraph where the aside held elements, else
 // its text.
 function note(aside: Element, text: string) {
@@ -256,7 +252,7 @@ export function applyEdit(
   wrote?: (index: number) => string | undefined,
 ) {
   const page = parsed(source);
-  const slide = isSlide(page);
+  const { slide } = edit;
   const notes = slide
     ? [...page.querySelectorAll("body > aside")].pop()
     : undefined;

@@ -1,26 +1,30 @@
 // What a folder holds, as one list of boards for the canvas and the legend.
-// The host says what each page is (a listing's `kind`s); a page says the rest.
+// The host says what each file is shown as (a listing's `kind`s); a page
+// says the rest.
 
 import type { ArtifactType } from "../../shared/artifact.ts";
-import { HTML, IMAGE, SHEET_FILE, VIDEO } from "../../shared/file-types.ts";
+import { HTML, IMAGE, VIDEO } from "../../shared/file-types.ts";
 import { maxUploadBytes } from "../../shared/limits.ts";
 import type { PageInfo, PageMessage } from "../../shared/page-frame.tsx";
 import { pageSize } from "../../shared/page-size.ts";
 import { bytes } from "../../shared/quantities.ts";
 
-// A document on paper, a sheet of tabs, a deck of slides, a design system,
-// or a design: any other pages.
+// A document on paper, a sheet of tabs, a deck of slides, a whiteboard, a
+// design system, or a design: any other pages.
 export type Kind = ArtifactType;
 
 export interface Listing {
-  // What its pages make the folder: a "deck", a "design", a "system" or "".
+  // What its pages make the folder: a "deck", a "design", a "board", a
+  // "system" or "".
   kind?: string;
-  // A page says "doc", "sheet", "slide" or "page" when its head declares
-  // one; a sheet, how many tabs it has; a slide, that it is skipped.
+  // What a page, or an Excel or CSV file, is shown as: itself when it is
+  // `alone`, an artifact of its own, else its folder. A sheet says how many
+  // tabs it has; a slide, that it is skipped.
   entries: {
     name: string;
     dir: boolean;
-    kind?: string;
+    kind?: Kind;
+    alone?: boolean;
     size?: number;
     // The size its artboard names, [w, h]; 0 for a height left open.
     artboard?: [number, number];
@@ -139,7 +143,7 @@ export const pagesOf = (listing: Listing) =>
 // A deck's slides in the order its PDF prints them: by name, as written.
 export const slidesOf = (listing: Listing) =>
   listing.entries
-    .filter((entry) => entry.kind === "slide")
+    .filter((entry) => entry.kind === "deck")
     .map((entry) => entry.name)
     .sort();
 
@@ -233,20 +237,10 @@ export function carried(all: SeenPages, dir: string, moves: Move[]) {
   return next;
 }
 
-// A document and a sheet are each their own, whatever folder they lie in.
-export const alone = (kind?: string): kind is "doc" | "sheet" =>
-  kind === "doc" || kind === "sheet";
-
-// What the file `name` of a folder is shown as: itself when it is its own;
-// any other page is a part of its folder.
-export function kindOf(listing: Listing, name: string): Kind {
-  const entry = listing.entries.find((entry) => entry.name === name);
-  if (alone(entry?.kind)) return entry.kind;
-  if (SHEET_FILE.test(name)) return "sheet";
-  return listing.kind === "deck" || listing.kind === "system"
-    ? listing.kind
-    : "design";
-}
+// What the host says the file `name` of a folder is shown as; a design
+// while it is not listed yet.
+export const kindOf = (listing: Listing, name: string): Kind =>
+  listing.entries.find((entry) => entry.name === name)?.kind ?? "design";
 
 // A page's step, its leading number (`02-pricing--annual.html` is step
 // 02); the variants and states of a step share its row.
@@ -327,10 +321,10 @@ export function boardsOf(
     if (entry.dir) continue;
     const made = board(entry.name);
     const { pages, tabs } = seen[made.path] ?? {};
-    if (HTML.test(entry.name) && !alone(entry.kind))
-      lying.set(entry.name, made);
+    if (HTML.test(entry.name) && !entry.alone) lying.set(entry.name, made);
     else if (kind) continue;
-    else if (entry.kind === "sheet")
+    // An Excel or CSV file is data beside the design, not drawn on it.
+    else if (entry.kind === "sheet" && HTML.test(entry.name))
       lying.set(entry.name, {
         ...made,
         media: "stack",

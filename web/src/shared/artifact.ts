@@ -1,12 +1,22 @@
+import {
+  LayoutDashboard,
+  Palette,
+  Presentation,
+  ScrollText,
+  StickyNote,
+  Table,
+} from "lucide-preact";
 import { plural } from "./quantities.ts";
 
-// What each type of artifact is called, in a card and in the Library.
+// Each type of artifact the host names: what a card and the Library call
+// it, its icon, and what the Library opens it with.
 export const ARTIFACT = {
-  doc: "Document",
-  deck: "Deck",
-  design: "Design",
-  system: "Design system",
-  sheet: "Sheet",
+  design: { name: "Design", icon: LayoutDashboard, open: "Open canvas" },
+  deck: { name: "Deck", icon: Presentation, open: "Open deck" },
+  doc: { name: "Document", icon: ScrollText, open: "Open document" },
+  sheet: { name: "Sheet", icon: Table, open: "Open sheet" },
+  board: { name: "Whiteboard", icon: StickyNote, open: "Open whiteboard" },
+  system: { name: "Design system", icon: Palette, open: "" },
 } as const;
 export type ArtifactType = keyof typeof ARTIFACT;
 

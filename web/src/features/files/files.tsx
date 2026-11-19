@@ -944,7 +944,7 @@ export default function Files({
               save={(edit) =>
                 "table" in edit
                   ? tables.save(file, edit).then(() => setUnsaved(undefined))
-                  : blocks.save(file, edit)
+                  : blocks.save(file, { ...edit, slide: kind === "deck" })
               }
               settle={settle}
               forget={blocks.forget}

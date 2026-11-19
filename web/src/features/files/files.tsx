@@ -101,6 +101,7 @@ import {
 import Sequence from "./sequence.tsx";
 import { openPresenter } from "./present.ts";
 import { blockSaver } from "./doc-edit.ts";
+import { fileSaver } from "./file-save.ts";
 import { tableSaver } from "./sheet-edit.ts";
 
 // The Files pane: a folder's tree, search and previews of text, images and
@@ -196,21 +197,28 @@ export default function Files({
   const turn = session.turn_active;
   const viewer = useContext(ImageViewer);
   const { view, back } = flow;
-  // What is typed in a page's blocks, on its way to the file.
+  // Every change made to a file's text by hand is written by this, and kept
+  // to be undone.
+  const [, setUndoable] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
-  const blocks = useMemo(
+  const files = useMemo(
     () =>
-      blockSaver({
-        read: (path) => api<FileText>(routes.files(id, "read", path)),
-        write: (path, text, revision, keepalive) =>
-          api<{ revision: string }>(
-            routes.fileWrite(id),
-            { path, text, revision },
-            { keepalive },
-          ),
-      }),
+      fileSaver(
+        {
+          read: (path) => api<FileText>(routes.files(id, "read", path)),
+          write: (path, text, revision, keepalive) =>
+            api<{ revision: string }>(
+              routes.fileWrite(id),
+              { path, text, revision },
+              { keepalive },
+            ),
+        },
+        () => setUndoable((count) => count + 1),
+      ),
     [],
   );
+  // What is typed in a page's blocks, on its way to the file.
+  const blocks = useMemo(() => blockSaver(files), [files]);
   // What is typed and not yet in its file is written: a page's block, a
   // sheet's cell. Whether all of it is.
   const typed = (closing = false) =>
@@ -614,19 +622,16 @@ export default function Files({
         ),
       );
     });
-  // A slide's or a whiteboard's file rewritten by hand, once what was typed
-  // in it is written; the folder is read again for what its head now says.
-  // Whether the file was written.
-  const rewrite = (path: string, change: (source: string) => string) => {
+  // A slide's or a whiteboard's file rewritten by hand, or the last change
+  // to a file made here undone or made again, once what was typed in it is
+  // written; the folder is read again for what its head now says. Whether
+  // the file was written.
+  const byHand = (write: () => Promise<boolean>) => {
     const made = rewrites.current.then(async () => {
       let written = false;
       await arranging.run(async () => {
         await typed();
-        const { text, revision } = await api<FileText>(
-          routes.files(id, "read", path),
-        );
-        await api(routes.fileWrite(id), { path, text: change(text), revision });
-        written = true;
+        written = await write();
         listing.setValue({ ...(await list(dir)), dir });
       });
       return written;
@@ -967,7 +972,11 @@ export default function Files({
                   follow(current, path, line ? [line, line] : undefined),
                 )
               }
-              rewrite={rewrite}
+              rewrite={(path, change) =>
+                byHand(() => files.write(path, change))
+              }
+              undo={(redo) => byHand(() => files.undo(file, redo))}
+              undoable={files.can(file)}
               arranging={arranging.busy}
               view={viewer}
               read={(path) => readFile(path).then((value) => value.text)}

@@ -68,8 +68,8 @@ export type PageMessage =
   | { type: "checked" }
   | { type: "hover" | "picked"; rect: Rect }
   | ({ type: "pick" } & Pick)
-  // A key the pane acts on; `held` with ⌘ or Ctrl.
-  | { type: "key"; key: string; held?: boolean }
+  // A key the pane acts on; `held` with ⌘ or Ctrl, `shift` with Shift.
+  | { type: "key"; key: string; held?: boolean; shift?: boolean }
   | { type: "zoom"; by: number; x: number; y: number }
   // A document: how many pages it has, the page it went to by itself, its
   // text as Markdown.
@@ -99,15 +99,13 @@ export type PageMessage =
       path?: string;
       line?: number;
     }
-  // A whiteboard's item moved, resized or retyped, or the last such change
-  // undone (an item's id and what it now is).
+  // A whiteboard's item moved, resized or retyped: its id and what it now is.
   | {
       type: "board";
       id?: string;
       at?: number[];
       size?: number[];
       text?: string;
-      undo?: boolean;
     }
   | {
       type: "caret";

@@ -1177,9 +1177,6 @@ export default function Sequence({
                           () => !holding.current && setSource(undefined),
                           300,
                         );
-                    } else if (message.type === "cite") {
-                      if (typeof message.path === "string")
-                        cite?.(message.path, natural(message.line));
                     } else if (message.type === "board") {
                       changeBoard(message);
                     } else if (message.type === "caret") {

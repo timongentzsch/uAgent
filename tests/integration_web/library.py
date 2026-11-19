@@ -27,6 +27,11 @@ def test_web_library_lists_everything_by_place(root, home, *, binary):
     (site / "docs/memo.html").write_text(
         '<!doctype html><meta name="print" content="flow letter"><title>memo</title>'
     )
+    # A folder of a whiteboard is one.
+    (site / "boards/flow").mkdir(parents=True)
+    (site / "boards/flow/board.html").write_text(
+        '<!doctype html><meta name="artboard" content="1600x1000"><meta name="board">'
+    )
     app = root.resolve() / "app"
     (app / "design/system/components/Button").mkdir(parents=True)
     (app / "design/system/tokens.css").write_text(":root{--ink:#111}")
@@ -93,6 +98,12 @@ def test_web_library_lists_everything_by_place(root, home, *, binary):
                 == [("decks/talk/handout.html", str(site)), ("docs/memo.html", str(site))],
                 listing["items"],
             )
+            assert_true(find("board") == [("boards/flow", str(site))], listing["items"])
+            # A document is one file; a folder's artifact is no file.
+            assert_true(
+                {item["kind"] for item in listing["items"] if item.get("alone")} == {"doc"},
+                listing["items"],
+            )
             deck = next(item for item in listing["items"] if item["kind"] == "deck")
             assert_true(deck["count"] == 2, deck)
             assert_true(find("file") == [("report.html", str(app))], listing["items"])
@@ -132,4 +143,4 @@ def test_web_library_lists_everything_by_place(root, home, *, binary):
             listing = json.loads(client.request("/api/library")[1])
             kinds = sorted(item["kind"] for item in listing["items"] if item["kind"] != "memory")
             # The handout was the deck folder's: it went with it.
-            assert_true(kinds == ["design", "system"], listing["items"])
+            assert_true(kinds == ["board", "design", "system"], listing["items"])

@@ -91,9 +91,6 @@ export type PageMessage =
       done?: boolean;
     }
   | { type: "left" }
-  // A file of the folder to open at a line (0: at its start), from where a
-  // page's value came.
-  | { type: "cite"; path: string; line: number }
   // Where the value under the pointer came from, or nothing.
   | {
       type: "source";

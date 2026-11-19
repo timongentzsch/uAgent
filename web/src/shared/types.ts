@@ -1051,9 +1051,10 @@ export interface LibraryItem {
   required_tools?: string[];
   files?: string[];
   // In the Library's listing: what it is and the place it belongs to, ""
-  // for every place's.
+  // for every place's; an artifact that is one file, not a folder, is alone.
   kind?: LibraryKind;
   place?: string;
+  alone?: boolean;
   // A design's page count and first pages; a shared file's conversation
   // (its key is the asset's id).
   count?: number;

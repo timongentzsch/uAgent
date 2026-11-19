@@ -140,12 +140,7 @@ void Master::LibraryDelete(const Request& request, Response& response) {
     return;
   }
   std::error_code ec;
-  // A document and a sheet are one file; the others are their folder.
-  if (kind == "doc" || kind == "sheet") {
-    fs::remove(fs::path(place) / path, ec);
-  } else {
-    fs::remove_all(fs::path(place) / path, ec);
-  }
+  fs::remove_all(fs::path(place) / path, ec);
   if (ec) {
     Error(response, "cannot delete: " + ec.message(), 500);
     return;

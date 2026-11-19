@@ -38,10 +38,14 @@ PDF and PNG exports run in the agent's Chrome ([Browser](browser.md)).
 
 **Kinds.** `PageKind` reads the first 4 KiB of a page, without comments:
 `<meta name="sheet">` makes a sheet, a `print` meta starting `flow` a
-document, an `artboard` meta a slide (`… slide`) or a design page. A folder
-is a design system if it holds `tokens.css`, a deck if every page that is
-not a document is a slide, and a design if any page has an artboard.
-Sheets and documents are their own artifacts even inside such a folder.
+document, an `artboard` meta a slide (`… slide`), a whiteboard (with a
+`board` meta) or a design page. A folder is a design system if it holds
+`tokens.css`, a deck if every page that is not a document is a slide, a
+whiteboard if every one is a board, and a design if any page has an
+artboard. Sheets (`.xlsx` and `.csv` files too) and documents are `alone`,
+artifacts of their own, even inside such a folder; a design system's
+document is its book. The listing gives each page the type it is shown as,
+and the app reads that rather than the page.
 
 **Sheets.** Each `<table data-sheet>` is a tab; a cell holds what a person
 would type and the engine computes what it shows. Merged ranges

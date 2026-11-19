@@ -15,12 +15,14 @@ write them is in `skills/artifact/references/*.md`; how they are shown, in
 | `<meta name="sheet" content="1">` | `sheet` | in a page without tables, another value names an `.xlsx` or `.csv` beside it |
 | `<meta name="print" content="flow …">` | `doc` | `flow`, then in any order a paper (`a3`, `a4`, `a5`, `letter`, `legal`, `<W>x<H>mm`; default `a4`), `landscape`, and margins: `normal` (25 mm), `narrow` (12.7), `moderate` (25/19), `wide` (25/50), or one to four lengths in `mm`, `cm`, `in`, `pt`, `px`, clockwise from the top |
 | `<meta name="artboard" content="<W>x<H> slide">` | `slide` | `^(\d+)(?:x(\d+))?(\s+slide)?$` |
+| `<meta name="artboard" content="<W>[x<H>]">` and `<meta name="board">` | `board` | see below |
 | `<meta name="artboard" content="<W>[x<H>]">` | `page` | a width alone lets the page scroll |
 
 A folder with `tokens.css` is a `system`; one whose HTML pages, documents
-and sheets aside, are all slides is a `deck`; any other with a page that
-declares an artboard is a `design` (`FolderPages`). A document and a sheet
-are each their own artifact wherever they lie. `<meta name="slide">`
+and sheets aside, are all slides is a `deck`, all boards a `board`; any
+other with a page that declares an artboard is a `design` (`FolderPages`).
+A document and a sheet (an `.xlsx` or `.csv` file too) are each their own
+artifact wherever they lie, but a design system's document is its book. `<meta name="slide">`
 holds words: `skip` leaves a slide out of presenting and the PDF, `push`
 pushes it in when presented (others fade in). `<meta name="section"
 content="Name">` names the part of a deck a slide opens (the legend shows

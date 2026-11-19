@@ -8,8 +8,8 @@
 #include "include/core/json.h"
 namespace uagent::workspace_files {
 json Folders(const std::string& path);
-// The decks, designs, documents and design systems under `root`, newest
-// first: {kind, key, name, path, place, count, pages, modified} each.
+// The artifacts under `root`, newest first: {kind, key, name, path, place,
+// count, pages, modified} each, and `alone` for one that is one file.
 json Designs(const std::filesystem::path& root);
 std::optional<std::filesystem::path> Resolve(const std::filesystem::path& root,
                                              const std::string& relative);

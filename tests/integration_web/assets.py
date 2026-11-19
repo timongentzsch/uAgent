@@ -393,6 +393,7 @@ def test_web_presented_artifact_stays_in_the_folder(root, home, *, binary):
         "design/system/book.html": paper,
         "design/system/buttons.html": screen,
         "docs/memo.html": paper,
+        "boards/flow/board.html": screen + '<meta name="board">',
         "plain/a.html": "<p>a</p>",
     }
     for name, head in pages.items():
@@ -405,6 +406,7 @@ def test_web_presented_artifact_stays_in_the_folder(root, home, *, binary):
         "design/system",
         "docs/memo.html",
         str(root / "docs/memo.html"),
+        "boards/flow",
         "plain/a.html",
         "plain",
     ]
@@ -451,12 +453,13 @@ def test_web_presented_artifact_stays_in_the_folder(root, home, *, binary):
                 artifact("system", "design/system/", "design/system/book.html", 2),
                 artifact("doc", "docs/memo.html", "docs/memo.html", 1),
                 artifact("doc", "docs/memo.html", "docs/memo.html", 1),
+                artifact("board", "boards/flow/", "boards/flow/board.html", 1),
             ]
-            assert_true(parts[:6] == expected, parts)
+            assert_true(parts[:7] == expected, parts)
             # A page that says nothing of itself is a file like any other; a
             # folder of them is nothing to present.
             assert_true(
-                [part.get("name") for part in parts[6:]] == ["a.html"] and len(parts) == 7, parts
+                [part.get("name") for part in parts[7:]] == ["a.html"] and len(parts) == 8, parts
             )
             failed = [
                 node["body"]["text"]

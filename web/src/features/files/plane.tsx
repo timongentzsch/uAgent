@@ -71,7 +71,7 @@ export default function Plane({
     item.count ? plural(item.count, partOf(item.type!)) : "";
   const named = (item: Board) =>
     item.type
-      ? `${ARTIFACT[item.type].toLowerCase()} ${item.title}${item.count ? `, ${counted(item)}` : ""}`
+      ? `${ARTIFACT[item.type].name.toLowerCase()} ${item.title}${item.count ? `, ${counted(item)}` : ""}`
       : item.title;
   // A picture or a film that did not load: why, after its name.
   const lost = (item: Board) => (still(item) ? item.failed : "");

@@ -15,21 +15,15 @@ import {
   Time,
 } from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
-import { ARTIFACT, artifactSize } from "../../shared/artifact.ts";
+import {
+  ARTIFACT,
+  type ArtifactType,
+  artifactSize,
+} from "../../shared/artifact.ts";
 import { PageThumb, usePreviewBase } from "../../shared/page-frame.tsx";
 
 // An artifact or a shared file, as the Library shows one: its pages
 // small, and the way to where it is worked on.
-
-const KIND = { ...ARTIFACT, file: "Shared file" };
-// A document and a sheet are one file; the others are their folder.
-const OWN = new Set(["doc", "sheet"]);
-const OPEN: Record<string, string> = {
-  design: "Open canvas",
-  deck: "Open deck",
-  doc: "Open document",
-  sheet: "Open sheet",
-};
 
 function Thumbnails({ session, pages }: { session: string; pages: string[] }) {
   const preview = usePreviewBase(session);
@@ -63,8 +57,8 @@ export default function LibraryArtifact({
   choose: (session: string) => void;
 }) {
   const { routes } = useApi();
-  const kind = item.kind as keyof typeof KIND;
-  const file = kind === "file";
+  const file = item.kind === "file";
+  const kind = item.kind as ArtifactType;
   const size = !file && item.count ? artifactSize(kind, item.count) : "";
   // A design system's book, which the agent writes beside its tokens.
   const book =
@@ -83,7 +77,8 @@ export default function LibraryArtifact({
         <strong>{item.name}</strong>
       </Bar>
       <p class="muted">
-        {KIND[kind]} · {place?.name ?? item.place}
+        {file ? "Shared file" : ARTIFACT[kind].name} ·{" "}
+        {place?.name ?? item.place}
         {size && ` · ${size}`}
         {file && item.bytes !== undefined ? ` · ${bytes(item.bytes)}` : ""}
         {item.modified ? (
@@ -122,11 +117,12 @@ export default function LibraryArtifact({
             variant="primary"
             onClick={() =>
               open({
-                path: book ?? (OWN.has(kind) ? item.path : `${item.path}/`),
+                path: book ?? (item.alone ? item.path : `${item.path}/`),
               })
             }
           >
-            {OPEN[kind] ?? (book ? "Open its brand book" : "Open its folder")}
+            {ARTIFACT[kind].open ||
+              (book ? "Open its brand book" : "Open its folder")}
             {!place?.session && " in a new conversation"}
           </Button>
         )}

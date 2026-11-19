@@ -1,7 +1,10 @@
 // A whiteboard page drawn: its items laid where their data-at puts them,
-// shapes and arrows drawn, and, opened alone in the app, items moved,
-// resized and retyped there, which the app writes to the file. The format:
-// skills/artifact/references/whiteboard.md.
+// shapes and arrows drawn, and, in the app, changed by hand there, which the
+// app writes to the file. The format: skills/artifact/references/whiteboard.md.
+
+import { fresh, grid, itemLayer, items, numbers } from "./items.js";
+
+export { busy } from "./items.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 const FILLS = {
@@ -69,25 +72,22 @@ svg.arrows path { fill: none; stroke: #5c5c5c; stroke-width: 1.5px; }
 svg.arrows .dash { stroke-dasharray: 6 5; }
 svg.arrows text { font: 13px system-ui, sans-serif; fill: #444; paint-order: stroke;
   stroke: #fafafa; stroke-width: 6px; stroke-linejoin: round; }
-[data-uagent-picked] { outline: 2px solid #1a56db; outline-offset: 2px; }
-.uagent-handle { position: absolute; width: 10px; height: 10px; z-index: 3;
-  background: #1a56db; cursor: nwse-resize; }
+svg.arrows path.hit { stroke: transparent; stroke-width: 12px; pointer-events: stroke;
+  cursor: pointer; }
+svg.arrows path.picked { stroke: #1a56db; }
+.uagent-dot { position: absolute; width: 10px; height: 10px; margin: -5px; z-index: 3;
+  box-sizing: border-box; border: 2px solid #1a56db; border-radius: 50%;
+  background: #fff; cursor: crosshair; touch-action: none; }
+svg.uagent-drawing { position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  overflow: visible; }
+svg.uagent-drawing path { fill: none; stroke: #1a56db; stroke-width: 1.5px;
+  stroke-dasharray: 6 5; }
 @media (prefers-reduced-motion: no-preference) {
   [data-uagent-glide] [data-at] { transition: left .3s, top .3s, width .3s, height .3s,
     min-height .3s, opacity .3s; }
   @starting-style { [data-uagent-glide] [data-at] { opacity: 0; } }
 }
 `;
-
-const numbers = (text) =>
-  (text ?? "")
-    .split(/[\s,]+/)
-    .filter(Boolean)
-    .map(Number);
-const items = () =>
-  [...document.body.children].filter((element) =>
-    element.hasAttribute("data-at"),
-  );
 
 // Each item where it says, at its size, filled and shaped.
 function place(item) {
@@ -325,7 +325,13 @@ function arrows(layer) {
     if (head !== "none") path.setAttribute("marker-end", "url(#uagent-head)");
     if (head === "both") path.setAttribute("marker-start", "url(#uagent-tail)");
     if (line.hasAttribute("data-dash")) path.setAttribute("class", "dash");
-    layer.append(path);
+    if (line === chosen) path.classList.add("picked");
+    // Wider than its line, for a press to pick it.
+    const hit = document.createElementNS(SVG, "path");
+    hit.setAttribute("d", path.getAttribute("d"));
+    hit.setAttribute("class", "hit");
+    hitOf.set(hit, line);
+    layer.append(path, hit);
     if (line.dataset.label) {
       // Beside the middle of a leg: over a level one, right of an
       // upright one, on the longest that leaves the label clear of items.
@@ -394,130 +400,248 @@ function defs() {
   return made;
 }
 
-// Opened alone in the app: a press picks an item and a drag moves it, its
-// corner resizes it, the arrows move it a pixel (with Shift ten), a double
-// click retypes a note or a text. Each change is said to the app, which
-// writes it, and undoes it with ⌘Z. Gives what keeps the picked item's
-// corner on it.
+// The arrow picked, and the arrow each wide line under one stands for.
+let chosen;
+const hitOf = new WeakMap();
+// What each of the app's tools puts where the board is next pressed; any
+// other tool is a shape of that kind.
+const MADE = {
+  note: { tag: "p", note: true, fill: "yellow", text: "" },
+  text: { tag: "p", text: "Text" },
+  section: { tag: "section", size: [400, 240], text: "Section" },
+};
+const TEXT = "h1, h2, p:not(.note), small";
+
+// In the app the board is changed by hand (items.js): the app's tools put a
+// note, a text, a section or a shape where the board is next pressed, an
+// arrow is drawn from a dot on the picked item's side (or with the arrow
+// tool from any item) to another, and the app's bar changes what is picked.
+// Each change is said to the app, which writes it and undoes it with ⌘Z.
+// Gives what keeps the picked items' handles on them.
 function edits(layer) {
-  const say = (change) => {
-    changing = false;
-    parent.postMessage({ uagentDesign: 1, type: "board", ...change }, "*");
-  };
-  const grid = (n) => Math.round(n / 10) * 10;
-  let picked;
-  const handle = document.createElement("span");
-  handle.className = "uagent-handle";
-  handle.dataset.uagent = "";
-  const pick = (item) => {
-    picked?.removeAttribute("data-uagent-picked");
-    picked = item;
-    if (!item) return handle.remove();
-    item.setAttribute("data-uagent-picked", "");
-    document.body.append(handle);
-    hold();
-  };
-  const hold = () => {
-    if (!picked) return;
-    if (!picked.isConnected) return pick(undefined);
-    handle.style.left = `${picked.offsetLeft + picked.offsetWidth - 5}px`;
-    handle.style.top = `${picked.offsetTop + picked.offsetHeight - 5}px`;
-  };
-  const at = (item) => [item.offsetLeft, item.offsetTop];
-  const moveTo = (item, x, y) => {
-    item.dataset.at = `${x} ${y}`;
+  const tell = (type, data) =>
+    parent.postMessage({ uagentDesign: 1, type, ...data }, "*");
+  const say = (change) => tell("board", change);
+  const lay = (item) => {
     place(item);
-    arrows(layer);
-    hold();
+    sized.observe(item);
   };
-  addEventListener("pointerdown", (event) => {
-    if (event.button || event.target.isContentEditable) return;
-    // A press elsewhere ends the typing in an item, which saves it.
-    if (document.activeElement?.isContentEditable)
-      document.activeElement.blur();
-    const resizing = event.target === handle;
-    const item = resizing ? picked : event.target.closest?.("[data-at]");
-    pick(item);
-    if (!item?.id) return;
-    changing = true;
-    const [x, y, w, h] = [...at(item), item.offsetWidth, item.offsetHeight];
-    const start = [event.clientX, event.clientY];
-    let moved = false;
-    const drag = (next) => {
-      const [dx, dy] = [next.clientX - start[0], next.clientY - start[1]];
-      moved ||= Math.hypot(dx, dy) > 3;
-      if (!moved) return;
-      if (!resizing) return moveTo(item, grid(x + dx), grid(y + dy));
-      item.dataset.size = `${Math.max(20, grid(w + dx))} ${Math.max(20, grid(h + dy))}`;
-      place(item);
-      arrows(layer);
-      hold();
-    };
-    const drop = () => {
-      removeEventListener("pointermove", drag);
-      changing = false;
-      if (!moved) return;
-      say(
-        resizing
-          ? { id: item.id, size: numbers(item.dataset.size) }
-          : { id: item.id, at: at(item) },
-      );
-    };
-    addEventListener("pointermove", drag);
-    addEventListener("pointerup", drop, { once: true });
-    // No text is selected by a drag; the page still takes the keys.
-    event.preventDefault();
-    focus();
+  let armed = "";
+  const arm = (tool) => {
+    armed = tool;
+    document.documentElement.style.cursor = tool ? "crosshair" : "";
+  };
+  const dots = SIDES.map(() => {
+    const dot = document.createElement("span");
+    dot.className = "uagent-dot";
+    dot.dataset.uagent = "";
+    return dot;
   });
-  let nudged;
+  // What is picked, said with where it is: items, or an arrow.
+  const show = (picked) => {
+    if (picked.length && chosen) pickLine(undefined);
+    const [one, more] = picked;
+    dots.forEach((dot, index) => {
+      if (!one || more) return dot.remove();
+      const [nx, ny] = SIDES[index];
+      dot.style.left = `${one.offsetLeft + (one.offsetWidth * (1 + nx)) / 2}px`;
+      dot.style.top = `${one.offsetTop + (one.offsetHeight * (1 + ny)) / 2}px`;
+      if (!dot.isConnected) document.body.append(dot);
+    });
+    const rects = (chosen ? [layer.querySelector("path.picked")] : picked)
+      .filter(Boolean)
+      .map((shown) => shown.getBoundingClientRect());
+    const [left, top] = ["left", "top"].map((side) =>
+      Math.min(...rects.map((rect) => rect[side])),
+    );
+    const [right, bottom] = ["right", "bottom"].map((side) =>
+      Math.max(...rects.map((rect) => rect[side])),
+    );
+    tell("items", {
+      items: picked.map((item) => ({
+        id: item.id,
+        tag: item.localName,
+        text: item.textContent.trim().slice(0, 60),
+        shape: item.dataset.shape,
+        fill: item.dataset.fill,
+        note: item.matches(".note"),
+      })),
+      arrow: !!chosen,
+      rect: rects.length
+        ? { x: left, y: top, width: right - left, height: bottom - top }
+        : undefined,
+    });
+  };
+  const hand = itemLayer({
+    place: lay,
+    drawn: () => arrows(layer),
+    say,
+    show,
+    remove: (item) => {
+      for (const line of document.querySelectorAll("hr[data-from][data-to]"))
+        if (line.dataset.from === item.id || line.dataset.to === item.id)
+          line.remove();
+      item.remove();
+    },
+  });
+  const pickLine = (line) => {
+    chosen = line;
+    arrows(layer);
+    if (line) hand.pick([]);
+  };
+  const unline = () => {
+    const { from, to } = chosen.dataset;
+    chosen.remove();
+    pickLine(undefined);
+    hand.pick([]);
+    say({ unarrow: { from, to } });
+  };
+
+  const insert = (event) => {
+    const add = {
+      id: fresh(MADE[armed] ? armed : "shape"),
+      at: [grid(event.clientX), grid(event.clientY)],
+      ...(MADE[armed] ?? {
+        tag: "div",
+        shape: armed,
+        size: [160, 80],
+        text: "",
+      }),
+    };
+    const item = document.createElement(add.tag);
+    item.id = add.id;
+    if (add.note) item.className = "note";
+    if (add.shape) item.dataset.shape = add.shape;
+    if (add.fill) item.dataset.fill = add.fill;
+    item.dataset.at = add.at.join(" ");
+    if (add.size) item.dataset.size = add.size.join(" ");
+    if (add.tag === "section") item.append(document.createElement("h2"));
+    (item.firstChild ?? item).textContent = add.text;
+    const last = items().at(-1);
+    if (last) last.after(item);
+    else document.body.append(item);
+    lay(item);
+    arrows(layer);
+    arm("");
+    hand.pick([item]);
+    say({ add });
+  };
+  // An arrow from the item to the one the drag ends on, a line from where
+  // it started until then.
+  const connect = (from, event) => {
+    const drawing = document.createElementNS(SVG, "svg");
+    drawing.setAttribute("class", "uagent-drawing");
+    drawing.dataset.uagent = "";
+    const path = document.createElementNS(SVG, "path");
+    drawing.append(path);
+    document.body.append(drawing);
+    const [x, y] = [event.clientX, event.clientY];
+    const off = new AbortController();
+    const end = () => {
+      off.abort();
+      drawing.remove();
+    };
+    // Only the pointer that started it draws it.
+    const pointer = event.pointerId;
+    const own = (next) => next.pointerId === pointer;
+    addEventListener(
+      "pointermove",
+      (next) =>
+        own(next) &&
+        path.setAttribute("d", `M${x} ${y}L${next.clientX} ${next.clientY}`),
+      { signal: off.signal },
+    );
+    addEventListener("pointercancel", (up) => own(up) && end(), {
+      signal: off.signal,
+    });
+    addEventListener(
+      "pointerup",
+      (up) => {
+        if (!own(up)) return;
+        end();
+        const to = document
+          .elementFromPoint(up.clientX, up.clientY)
+          ?.closest("[data-at]");
+        if (!to?.id || to === from) return;
+        const line = document.createElement("hr");
+        line.dataset.from = from.id;
+        line.dataset.to = to.id;
+        (
+          [...document.querySelectorAll("hr[data-from]")].at(-1) ??
+          items().at(-1)
+        ).after(line);
+        arm("");
+        arrows(layer);
+        say({ arrow: { from: from.id, to: to.id } });
+      },
+      { signal: off.signal },
+    );
+  };
+  addEventListener(
+    "pointerdown",
+    (event) => {
+      if (event.button) return;
+      const item = event.target.closest?.("[data-at]");
+      const dot = dots.indexOf(event.target);
+      const hit = hitOf.get(event.target);
+      if (armed && armed !== "arrow") insert(event);
+      else if (dot >= 0) connect(hand.picked()[0], event);
+      else if (armed === "arrow" && item?.id) connect(item, event);
+      else if (hit) pickLine(hit);
+      else {
+        if (chosen) pickLine(undefined);
+        return;
+      }
+      // The press is the board's, not the items'.
+      event.stopPropagation();
+      event.preventDefault();
+      focus();
+    },
+    true,
+  );
   addEventListener(
     "keydown",
     (event) => {
       if (event.target.isContentEditable) return;
-      const by = {
-        ArrowLeft: [-1, 0],
-        ArrowRight: [1, 0],
-        ArrowUp: [0, -1],
-        ArrowDown: [0, 1],
-      }[event.key];
-      if (!picked?.id || !by) return;
-      event.preventDefault();
-      const step = event.shiftKey ? 10 : 1;
-      const [x, y] = at(picked);
-      changing = true;
-      moveTo(picked, x + by[0] * step, y + by[1] * step);
-      clearTimeout(nudged);
-      const item = picked;
-      nudged = setTimeout(() => say({ id: item.id, at: at(item) }), 400);
-      // Before the keys the page forwards to the app, which would step pages.
+      if (event.key === "Escape") {
+        arm("");
+        if (chosen) pickLine(undefined);
+      }
+      if (chosen && (event.key === "Delete" || event.key === "Backspace")) {
+        event.preventDefault();
+        unline();
+      }
     },
     true,
   );
-  addEventListener("dblclick", (event) => {
-    const item = event.target.closest?.(
-      ".note[id], h1[id], h2[id], p[id], small[id]",
-    );
-    if (!item || item.children.length) return;
-    const was = item.textContent;
-    item.contentEditable = "plaintext-only";
-    item.focus();
-    item.addEventListener(
-      "blur",
-      () => {
-        item.removeAttribute("contenteditable");
-        if (item.textContent !== was)
-          say({ id: item.id, text: item.textContent });
-      },
-      { once: true },
-    );
+  // What the app asks: a tool armed, or a change to what is picked.
+  addEventListener("message", (event) => {
+    const { data } = event;
+    if (event.source !== parent || data?.uagentDesign !== 1) return;
+    if (data.type !== "board") return;
+    const [item] = hand.picked();
+    const { act, value } = data;
+    if (typeof data.tool === "string") arm(data.tool);
+    else if (act === "delete" && chosen) unline();
+    else if ((act === "shape" || act === "fill") && item) {
+      item.dataset[act] = value;
+      lay(item);
+      arrows(layer);
+      hand.hold();
+      say({ set: [{ id: item.id, [act]: value }] });
+    } else if (act === "tag" && item?.matches(TEXT)) {
+      const made = document.createElement(value);
+      for (const attribute of item.attributes)
+        made.setAttribute(attribute.name, attribute.value);
+      made.append(...item.childNodes);
+      item.replaceWith(made);
+      lay(made);
+      hand.pick([made]);
+      say({ set: [{ id: made.id, tag: value }] });
+    } else if (Object.hasOwn(hand.acts, act)) hand.acts[act](value);
   });
-  return hold;
+  return hand.hold;
 }
-
-// Whether a person is changing an item: holding, nudging or retyping it.
-let changing = false;
-export const busy = () =>
-  changing || !!document.activeElement?.isContentEditable;
 
 let layer;
 let sized;
@@ -536,13 +660,12 @@ function draw() {
   // Fonts and pictures change the items' sizes: the arrows follow.
   sized = new ResizeObserver(() => arrows(layer));
   for (const item of items()) sized.observe(item);
-  if (parent !== window && !matchMedia("(pointer: coarse)").matches)
-    follow = edits(layer);
+  if (parent !== window) follow = edits(layer);
   return [];
 }
 
 // The file changed under the page: each item glides to where it now says,
-// a new one fades in, and the arrows and the picked item's corner follow.
+// a new one fades in, and the arrows and the picked items' handles follow.
 export function redraw() {
   document.documentElement.toggleAttribute("data-uagent-glide", true);
   for (const item of items()) {

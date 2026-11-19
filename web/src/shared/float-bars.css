@@ -1,0 +1,17 @@
+/* The tools at the foot of the stage, in the middle. */
+.insert-bar {
+  inset-inline: 0;
+  bottom: var(--space-4);
+  width: fit-content;
+  margin-inline: auto;
+}
+/* Over what is picked, where its script places it; on a narrow stage it
+   takes a second row before it leaves the stage. */
+.pick-bar {
+  left: var(--bar-x);
+  top: var(--bar-y);
+  width: max-content;
+  max-width: calc(100% - 2 * var(--space-2));
+  flex-wrap: wrap;
+  margin: var(--space-2);
+}

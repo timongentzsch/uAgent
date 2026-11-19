@@ -995,8 +995,10 @@
       sheets: [...document.querySelectorAll('link[rel="stylesheet"]')].map(
         (link) => link.href,
       ),
-      // A sheet takes the app's look for its grid.
+      // A sheet takes the app's look for its grid; a whiteboard is changed
+      // by hand.
       sheet: !!meta("sheet"),
+      board: !!document.querySelector('meta[name="board"]'),
       // A slide's builds, and how it comes in when presented.
       steps: steps(),
       push: meta("slide").split(/\s+/).includes("push"),
@@ -1205,7 +1207,6 @@
     for (const mark of document.querySelectorAll("[data-source][data-field]"))
       void fill(mark);
     repaged?.();
-    board?.redraw();
     for (const element of changed)
       element.setAttribute("data-uagent-changed", "");
     setTimeout(() => {
@@ -1214,6 +1215,9 @@
     }, OUTLINED_MS);
     send("update", { result: "made" });
     ready();
+    // After `ready`, which the app takes as nothing picked: the board says
+    // what still is.
+    board?.redraw();
     send("drawn");
     await check();
   };

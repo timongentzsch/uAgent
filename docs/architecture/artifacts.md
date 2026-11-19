@@ -68,8 +68,8 @@ of every HTML it serves there. The helper reads the meta tags and sends
 `drawn`, `size`, `pages`, `error` and `checked`. Every message carries
 `uagentDesign: 1`; the app takes one only from its own frame's window, and
 clips every field before use (`cellOf`, `offerOf`, `fileOf`). The app sends
-`select`, `edit`, `format`, `markdown`, `tweak`, `find`, `input`, `suggest`
-and `do`. Message types are listed in `web/src/shared/page-frame.tsx`.
+`select`, `edit`, `format`, `markdown`, `tweak`, `find`, `input`, `suggest`,
+`do` and `board`. Message types are listed in `web/src/shared/page-frame.tsx`.
 
 **Following the file.** While the pane is shown in a visible tab it asks
 `files?stamps=<dir>` for the open folder every second, and at once when a
@@ -168,11 +168,22 @@ the design as one PDF.
 **Whiteboards.** A page with `<meta name="board">` loads `~sheet/whiteboard.js`
 from the helper, which places its items, draws shapes as stretched SVG
 paths and arrows in right-angled legs between the items' sides, round what
-stands between them. Opened alone in the pane, a drag, an arrow key, a corner or a double click says
-`board {id, at | size | text}`; Sequence hands each to the pane's
-`rewrite`, which writes it through `fileSaver` with `boardEdit`
-(`board-edit.ts`), which changes only that item's start tag or text in the
-source.
+stands between them. Open in the pane (on a touch screen too), it is
+changed by hand: `items.js` picks items (Shift adds, a frame drawn from the
+empty board picks what it touches; on touch that drag scrolls), moves the
+picked together, resizes one from a corner, and takes the keys (arrows,
+Delete, ⌘D, ⌘C and ⌘V, ⌘A, Escape) and a double click to retype;
+`whiteboard.js` adds what is a board's own: the item a tool puts where the
+board is next pressed, and arrows drawn from a dot on the picked item's
+side or picked by their line. The page says what is picked and its box
+(`items`), which Sequence shows as a bar over it (`PickBar`) beside the
+tools at the stage's foot (`InsertBar`, `shared/float-bars.tsx`); those
+tell the page `board {tool}` or `board {act, value}`. Each change is one
+`board` message (items set, added, copied, removed, brought to the front
+or sent to the back; an arrow added or removed); Sequence hands it to the
+pane's `rewrite`, which writes it through `fileSaver` with `boardEdit`
+(`board-edit.ts`): one write and one undo step, changing only what the
+change names in the source, new items after the last item.
 
 **Builds and transitions.** While a deck is presented the slide's address
 ends `#build=N`; the helper hides `[data-step]` elements past N from the
@@ -244,7 +255,7 @@ slide, a print line not understood, and a sheet's cells in error.
 | `web/sheet/sheet.js`, `web/sheet/calculate.js`, `web/sheet/book.js`, `web/sheet/workbook.js` | sheet page, worker, model, import |
 | `web/src/shared/page-frame.tsx` | frame and message types |
 | `web/src/features/files/doc-edit.ts`, `web/src/features/files/sheet-edit.ts`, `web/src/features/files/board-edit.ts` | saving |
-| `web/sheet/whiteboard.js` | whiteboard drawing and its edits |
+| `web/sheet/whiteboard.js`, `web/sheet/items.js` | whiteboard drawing and its edits |
 | `web/src/features/files/sequence.tsx`, `web/src/features/files/plane.tsx` | viewer, canvas |
 | `src/app/present.cc` | `present` |
 | `web/tests/doc-edit.spec.js`, `web/tests/sheet-edit.spec.js`, `web/tests/sheet-files.spec.js` | edits, conflicts, import |

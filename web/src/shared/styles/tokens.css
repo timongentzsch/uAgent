@@ -141,6 +141,13 @@
     --push: 30%;
     /* Theme-independent: what dims the page behind a dialog. */
     --scrim: rgb(0 0 0 / 0.6);
+    /* A whiteboard's fills, as its page draws them (web/sheet/whiteboard.js). */
+    --board-yellow: #ffe680;
+    --board-orange: #ffc48c;
+    --board-pink: #ffbdd1;
+    --board-green: #b4e2b8;
+    --board-blue: #b6d3fb;
+    --board-grey: #dedede;
     /* A pane's resize handle: over the panes beside it, under what floats. */
     --z-handle: 1;
     --z-popover: 5;

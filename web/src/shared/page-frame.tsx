@@ -25,6 +25,8 @@ export interface PageInfo {
   // A slide's builds (its highest data-step), and whether it is pushed in.
   steps?: number;
   push?: boolean;
+  // A whiteboard, changed by hand.
+  board?: boolean;
 }
 export interface Rect {
   x: number;
@@ -102,13 +104,21 @@ export type PageMessage =
       path?: string;
       line?: number;
     }
-  // A whiteboard's item moved, resized or retyped: its id and what it now is.
+  // A whiteboard changed by hand, as board-edit.ts takes it; and what is
+  // picked on it: items, or an arrow, and the box round them.
+  | ({ type: "board" } & Record<string, unknown>)
   | {
-      type: "board";
-      id?: string;
-      at?: number[];
-      size?: number[];
-      text?: string;
+      type: "items";
+      items: {
+        id: string;
+        tag: string;
+        text: string;
+        shape?: string;
+        fill?: string;
+        note?: boolean;
+      }[];
+      arrow?: boolean;
+      rect?: Rect;
     }
   | {
       type: "caret";
@@ -200,9 +210,9 @@ export type PageMessage =
 // block at `at`, `over` its words), a mark, a link or another kind for what
 // is being edited or a block to follow it, set a tweak, mark the words
 // found; a sheet: write into its active cell, do a command, say what a
-// formula may take after its text up to the caret; take its file's new
-// text in place. Which part of it shows (a page, a tab) is its address's to
-// say: "#3".
+// formula may take after its text up to the caret; a whiteboard: arm a
+// tool, or act on what is picked; take its file's new text in place. Which
+// part of it shows (a page, a tab) is its address's to say: "#3".
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
@@ -222,6 +232,7 @@ export const tell = (
     | { type: "input"; value: string }
     | { type: "suggest"; text: string }
     | { type: "do"; command: string; value?: string; tab?: number }
+    | { type: "board"; tool?: string; act?: string; value?: string }
     | { type: "update"; html: string },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 

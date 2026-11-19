@@ -356,6 +356,24 @@
 [data-look="ink-muted"]::before {
   background: var(--muted);
 }
+[data-look="board-yellow"]::before {
+  background: var(--board-yellow);
+}
+[data-look="board-orange"]::before {
+  background: var(--board-orange);
+}
+[data-look="board-pink"]::before {
+  background: var(--board-pink);
+}
+[data-look="board-green"]::before {
+  background: var(--board-green);
+}
+[data-look="board-blue"]::before {
+  background: var(--board-blue);
+}
+[data-look="board-grey"]::before {
+  background: var(--board-grey);
+}
 .sheet-formula > output {
   color: var(--muted);
 }
@@ -748,6 +766,11 @@
   }
   .page-tools-folded {
     display: contents;
+  }
+  /* A board's tools rise over the zoom and the step, which would cover
+     them. */
+  .page-stage:has(> .zoom-controls, > .page-count) > .insert-bar {
+    bottom: calc(2 * var(--space-4) + var(--control) + 2 * var(--space-1));
   }
   .sheet-note,
   .sheet-looks,

@@ -5,6 +5,7 @@ import {
   Frame,
   MessageSquare,
   MousePointer2,
+  MoveUpRight,
   Square,
   StickyNote,
   Trash2,
@@ -37,6 +38,7 @@ const TOOLS: Tool[] = [
     kinds: SHAPES.map((kind) => [kind, named(kind)]),
   },
   { name: "section", label: "Section", icon: <Frame /> },
+  { name: "arrow", label: "Arrow", icon: <MoveUpRight /> },
 ];
 
 // What is picked on a board, as its page said it: the page is untrusted.
@@ -53,6 +55,7 @@ export const chosenOf = (message: Chosen): Chosen | undefined =>
           fill: FILLS.find((fill) => fill === item.fill),
           note: !!item.note,
         })),
+        arrow: !!message.arrow,
         rect: message.rect,
       }
     : undefined;
@@ -75,7 +78,7 @@ export function BoardTools({
   // Where what is picked is, in the window.
   at: () => Rect | undefined;
 }) {
-  const [one, two] = chosen?.items ?? [];
+  const [one, two, three] = chosen?.items ?? [];
   // A menu of the values `name` takes, the one it has checked.
   const choice = (
     label: string,
@@ -124,10 +127,25 @@ export function BoardTools({
   return (
     <>
       <InsertBar tools={TOOLS} armed={tool} arm={arm} />
-      {one && (
+      {(one || chosen?.arrow) && (
         <PickBar label="Picked" at={at}>
-          {two ? (
+          {chosen?.arrow ? (
+            remove
+          ) : two ? (
             <>
+              {choice("Align", "align", "", [
+                ["left", "Left"],
+                ["center", "Centre"],
+                ["right", "Right"],
+                ["top", "Top"],
+                ["middle", "Middle"],
+                ["bottom", "Bottom"],
+              ])}
+              {three &&
+                choice("Distribute", "distribute", "", [
+                  ["across", "Across"],
+                  ["down", "Down"],
+                ])}
               {duplicate}
               {remove}
             </>

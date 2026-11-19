@@ -247,6 +247,21 @@ export function itemLayer({ place, drawn, say, show, remove }) {
     else rest[0].before(...list);
     say({ [over ? "front" : "back"]: list.map((item) => item.id) });
   };
+  // A side of the picked and its length, across or down.
+  const span = (across) =>
+    across ? ["offsetLeft", "offsetWidth"] : ["offsetTop", "offsetHeight"];
+  const lineUp = (list, across, places) => {
+    moveTo(
+      list,
+      list.map((item, index) => {
+        const [x, y] = at(item);
+        return across
+          ? [Math.round(places[index]), y]
+          : [x, Math.round(places[index])];
+      }),
+    );
+    placed(list);
+  };
   const acts = {
     delete: () => {
       const gone = picked;
@@ -259,6 +274,43 @@ export function itemLayer({ place, drawn, say, show, remove }) {
     duplicate: () => copy(picked),
     front: () => order(true),
     back: () => order(false),
+    // By a side or the middles: left, centre or right; top, middle or bottom.
+    align: (to) => {
+      const across = ["left", "center", "right"].includes(to);
+      const [start, length] = span(across);
+      const low = Math.min(...picked.map((item) => item[start]));
+      const high = Math.max(
+        ...picked.map((item) => item[start] + item[length]),
+      );
+      const where = { center: 0.5, middle: 0.5, right: 1, bottom: 1 }[to] ?? 0;
+      lineUp(
+        picked,
+        across,
+        picked.map((item) => low + (high - low - item[length]) * where),
+      );
+    },
+    // The first and the last stay, and the others share the room between.
+    distribute: (to) => {
+      const across = to === "across";
+      const [start, length] = span(across);
+      const list = [...picked].sort((a, b) => a[start] - b[start]);
+      const [first, last] = [list[0], list.at(-1)];
+      const room =
+        last[start] +
+        last[length] -
+        first[start] -
+        list.reduce((sum, item) => sum + item[length], 0);
+      let next = first[start];
+      lineUp(
+        list,
+        across,
+        list.map((item) => {
+          const here = next;
+          next += item[length] + room / (list.length - 1);
+          return here;
+        }),
+      );
+    },
   };
 
   let clipped = [];

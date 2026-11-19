@@ -72,6 +72,16 @@ svg.arrows path { fill: none; stroke: #5c5c5c; stroke-width: 1.5px; }
 svg.arrows .dash { stroke-dasharray: 6 5; }
 svg.arrows text { font: 13px system-ui, sans-serif; fill: #444; paint-order: stroke;
   stroke: #fafafa; stroke-width: 6px; stroke-linejoin: round; }
+svg.arrows path.hit { stroke: transparent; stroke-width: 12px; pointer-events: stroke;
+  cursor: pointer; }
+svg.arrows path.picked { stroke: #1a56db; }
+.uagent-dot { position: absolute; width: 10px; height: 10px; margin: -5px; z-index: 3;
+  box-sizing: border-box; border: 2px solid #1a56db; border-radius: 50%;
+  background: #fff; cursor: crosshair; touch-action: none; }
+svg.uagent-drawing { position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  overflow: visible; }
+svg.uagent-drawing path { fill: none; stroke: #1a56db; stroke-width: 1.5px;
+  stroke-dasharray: 6 5; }
 @media (prefers-reduced-motion: no-preference) {
   [data-uagent-glide] [data-at] { transition: left .3s, top .3s, width .3s, height .3s,
     min-height .3s, opacity .3s; }
@@ -315,7 +325,13 @@ function arrows(layer) {
     if (head !== "none") path.setAttribute("marker-end", "url(#uagent-head)");
     if (head === "both") path.setAttribute("marker-start", "url(#uagent-tail)");
     if (line.hasAttribute("data-dash")) path.setAttribute("class", "dash");
-    layer.append(path);
+    if (line === chosen) path.classList.add("picked");
+    // Wider than its line, for a press to pick it.
+    const hit = document.createElementNS(SVG, "path");
+    hit.setAttribute("d", path.getAttribute("d"));
+    hit.setAttribute("class", "hit");
+    hitOf.set(hit, line);
+    layer.append(path, hit);
     if (line.dataset.label) {
       // Beside the middle of a leg: over a level one, right of an
       // upright one, on the longest that leaves the label clear of items.
@@ -384,6 +400,9 @@ function defs() {
   return made;
 }
 
+// The arrow picked, and the arrow each wide line under one stands for.
+let chosen;
+const hitOf = new WeakMap();
 // What each of the app's tools puts where the board is next pressed; any
 // other tool is a shape of that kind.
 const MADE = {
@@ -394,8 +413,9 @@ const MADE = {
 const TEXT = "h1, h2, p:not(.note), small";
 
 // In the app the board is changed by hand (items.js): the app's tools put a
-// note, a text, a section or a shape where the board is next pressed, and
-// the app's bar changes what is picked.
+// note, a text, a section or a shape where the board is next pressed, an
+// arrow is drawn from a dot on the picked item's side (or with the arrow
+// tool from any item) to another, and the app's bar changes what is picked.
 // Each change is said to the app, which writes it and undoes it with ⌘Z.
 // Gives what keeps the picked items' handles on them.
 function edits(layer) {
@@ -411,9 +431,26 @@ function edits(layer) {
     armed = tool;
     document.documentElement.style.cursor = tool ? "crosshair" : "";
   };
-  // What is picked, said with where it is.
+  const dots = SIDES.map(() => {
+    const dot = document.createElement("span");
+    dot.className = "uagent-dot";
+    dot.dataset.uagent = "";
+    return dot;
+  });
+  // What is picked, said with where it is: items, or an arrow.
   const show = (picked) => {
-    const rects = picked.map((item) => item.getBoundingClientRect());
+    if (picked.length && chosen) pickLine(undefined);
+    const [one, more] = picked;
+    dots.forEach((dot, index) => {
+      if (!one || more) return dot.remove();
+      const [nx, ny] = SIDES[index];
+      dot.style.left = `${one.offsetLeft + (one.offsetWidth * (1 + nx)) / 2}px`;
+      dot.style.top = `${one.offsetTop + (one.offsetHeight * (1 + ny)) / 2}px`;
+      if (!dot.isConnected) document.body.append(dot);
+    });
+    const rects = (chosen ? [layer.querySelector("path.picked")] : picked)
+      .filter(Boolean)
+      .map((shown) => shown.getBoundingClientRect());
     const [left, top] = ["left", "top"].map((side) =>
       Math.min(...rects.map((rect) => rect[side])),
     );
@@ -429,6 +466,7 @@ function edits(layer) {
         fill: item.dataset.fill,
         note: item.matches(".note"),
       })),
+      arrow: !!chosen,
       rect: rects.length
         ? { x: left, y: top, width: right - left, height: bottom - top }
         : undefined,
@@ -446,6 +484,18 @@ function edits(layer) {
       item.remove();
     },
   });
+  const pickLine = (line) => {
+    chosen = line;
+    arrows(layer);
+    if (line) hand.pick([]);
+  };
+  const unline = () => {
+    const { from, to } = chosen.dataset;
+    chosen.remove();
+    pickLine(undefined);
+    hand.pick([]);
+    say({ unarrow: { from, to } });
+  };
 
   const insert = (event) => {
     const add = {
@@ -476,12 +526,66 @@ function edits(layer) {
     hand.pick([item]);
     say({ add });
   };
+  // An arrow from the item to the one the drag ends on, a line from where
+  // it started until then.
+  const connect = (from, event) => {
+    const drawing = document.createElementNS(SVG, "svg");
+    drawing.setAttribute("class", "uagent-drawing");
+    drawing.dataset.uagent = "";
+    const path = document.createElementNS(SVG, "path");
+    drawing.append(path);
+    document.body.append(drawing);
+    const [x, y] = [event.clientX, event.clientY];
+    const off = new AbortController();
+    const end = () => {
+      off.abort();
+      drawing.remove();
+    };
+    addEventListener(
+      "pointermove",
+      (next) =>
+        path.setAttribute("d", `M${x} ${y}L${next.clientX} ${next.clientY}`),
+      { signal: off.signal },
+    );
+    addEventListener("pointercancel", end, { signal: off.signal });
+    addEventListener(
+      "pointerup",
+      (up) => {
+        end();
+        const to = document
+          .elementFromPoint(up.clientX, up.clientY)
+          ?.closest("[data-at]");
+        if (!to?.id || to === from) return;
+        const line = document.createElement("hr");
+        line.dataset.from = from.id;
+        line.dataset.to = to.id;
+        (
+          [...document.querySelectorAll("hr[data-from]")].at(-1) ??
+          items().at(-1)
+        ).after(line);
+        arm("");
+        arrows(layer);
+        say({ arrow: { from: from.id, to: to.id } });
+      },
+      { signal: off.signal },
+    );
+  };
   addEventListener(
     "pointerdown",
     (event) => {
-      if (event.button || !armed) return;
-      insert(event);
-      // The press is the tool's, not the items'.
+      if (event.button) return;
+      const item = event.target.closest?.("[data-at]");
+      const dot = dots.indexOf(event.target);
+      const hit = hitOf.get(event.target);
+      if (armed && armed !== "arrow") insert(event);
+      else if (dot >= 0) connect(hand.picked()[0], event);
+      else if (armed === "arrow" && item?.id) connect(item, event);
+      else if (hit) pickLine(hit);
+      else {
+        if (chosen) pickLine(undefined);
+        return;
+      }
+      // The press is the board's, not the items'.
       event.stopPropagation();
       event.preventDefault();
       focus();
@@ -491,7 +595,15 @@ function edits(layer) {
   addEventListener(
     "keydown",
     (event) => {
-      if (event.key === "Escape" && !event.target.isContentEditable) arm("");
+      if (event.target.isContentEditable) return;
+      if (event.key === "Escape") {
+        arm("");
+        if (chosen) pickLine(undefined);
+      }
+      if (chosen && (event.key === "Delete" || event.key === "Backspace")) {
+        event.preventDefault();
+        unline();
+      }
     },
     true,
   );
@@ -503,6 +615,7 @@ function edits(layer) {
     const [item] = hand.picked();
     const { act, value } = data;
     if (typeof data.tool === "string") arm(data.tool);
+    else if (act === "delete" && chosen) unline();
     else if ((act === "shape" || act === "fill") && item) {
       item.dataset[act] = value;
       lay(item);

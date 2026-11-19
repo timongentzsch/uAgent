@@ -50,7 +50,7 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
   const place = (id) =>
     item(id).evaluate((element) => [element.offsetLeft, element.offsetTop]);
   expect(await place("ok")).toEqual([400, 160]);
-  await expect(stage.locator("svg.arrows > path")).toHaveCount(2);
+  await expect(stage.locator("svg.arrows > path:not(.hit)")).toHaveCount(2);
   await expect(stage.locator("svg.arrows text")).toHaveText("yes");
   await expect(item("ok").locator("svg.shape")).toHaveCount(1);
 
@@ -135,7 +135,7 @@ ${shape("a", "60 100")}${shape("between", "320 100")}${shape("b", "600 100")}${s
 <hr data-from="a" data-to="low">
 `,
   );
-  await expect(stage.locator("svg.arrows > path")).toHaveCount(3);
+  await expect(stage.locator("svg.arrows > path:not(.hit)")).toHaveCount(3);
   // Each arrow's corners, turns included, and the box of the item between.
   const { routes, between } = await stage.locator("body").evaluate((body) => {
     const box = (id) => {
@@ -149,15 +149,17 @@ ${shape("a", "60 100")}${shape("between", "320 100")}${shape("b", "600 100")}${s
     };
     return {
       between: box("between"),
-      routes: [...body.querySelectorAll("svg.arrows > path")].map((path) => {
-        const numbers = path
-          .getAttribute("d")
-          .match(/-?[\d.]+/g)
-          .map(Number);
-        return numbers.flatMap((x, at) =>
-          at % 2 ? [] : [[x, numbers[at + 1]]],
-        );
-      }),
+      routes: [...body.querySelectorAll("svg.arrows > path:not(.hit)")].map(
+        (path) => {
+          const numbers = path
+            .getAttribute("d")
+            .match(/-?[\d.]+/g)
+            .map(Number);
+          return numbers.flatMap((x, at) =>
+            at % 2 ? [] : [[x, numbers[at + 1]]],
+          );
+        },
+      ),
     };
   });
   for (const route of routes)
@@ -361,7 +363,7 @@ test("an item put from the tools lands where the board is next pressed, in the f
   await expect.poll(saved).toBe(BOARD);
 });
 
-test("items picked with Shift or a frame move together, each as one change that one Undo takes back", async ({
+test("items picked with Shift or a frame move together, line up and spread out, each as one change that one Undo takes back", async ({
   page: app,
   session,
   host,
@@ -372,7 +374,8 @@ test("items picked with Shift or a frame move together, each as one change that 
   await stage.locator("#n1").click({ modifiers: ["Shift"] });
   await expect(picked).toHaveCount(2);
   const bar = files.getByRole("toolbar", { name: "Picked" });
-  await expect(bar.getByRole("button", { name: "Delete" })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Align" })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Distribute" })).toHaveCount(0);
   await drag(app, await at(100, 200), await at(160, 260));
   await expect
     .poll(saved)
@@ -387,16 +390,29 @@ test("items picked with Shift or a frame move together, each as one change that 
   // the diamond, the database and the note.
   await drag(app, await at(1150, 790), await at(380, 240));
   await expect(picked).toHaveCount(4);
-  await app.keyboard.press("ArrowDown");
-  for (const [id, y] of [
-    ["web", 100],
-    ["ok", 160],
-    ["db", 500],
-    ["n1", 100],
-  ])
-    await expect
-      .poll(saved)
-      .toMatch(new RegExp(`id="${id}"[^>]*data-at="\\d+ ${y + 1}"`));
+  await bar.getByRole("button", { name: "Align" }).click();
+  await app.getByRole("menuitemradio", { name: "Top" }).click();
+  await expect
+    .poll(saved)
+    .toContain('id="db" data-shape="database" data-at="400 100"');
+  for (const id of ["web", "ok", "n1"])
+    expect(await saved()).toMatch(
+      new RegExp(`id="${id}"[^>]*data-at="\\d+ 100"`),
+    );
+  await undo.click();
+  await expect.poll(saved).toBe(BOARD);
+
+  // Three spread out across: the first and the last stay.
+  await stage.locator("#ad").click();
+  await stage.locator("#ok").click({ modifiers: ["Shift"] });
+  await stage.locator("#n1").click({ modifiers: ["Shift"] });
+  await bar.getByRole("button", { name: "Distribute" }).click();
+  await app.getByRole("menuitemradio", { name: "Across" }).click();
+  // 60 to 960 holds 160 + 160 + 160 with 210 between each.
+  await expect
+    .poll(saved)
+    .toContain('id="ok" data-shape="diamond" data-at="430 160"');
+  expect(await saved()).toContain('id="ad" data-shape="pill" data-at="60 180"');
   await undo.click();
   await expect.poll(saved).toBe(BOARD);
 });
@@ -470,7 +486,7 @@ test("the picked item's bar stands over it inside the stage, and changes its sha
   await app.keyboard.press("Delete");
   await expect.poll(saved).not.toContain('id="ok"');
   expect(await saved()).not.toContain("<hr");
-  await expect(stage.locator("svg.arrows > path")).toHaveCount(0);
+  await expect(stage.locator("svg.arrows > path:not(.hit)")).toHaveCount(0);
 });
 
 test("⌘D duplicates, ⌘C and ⌘V copy, and ⌘A picks every item", async ({
@@ -495,6 +511,48 @@ test("⌘D duplicates, ⌘C and ⌘V copy, and ⌘A picks every item", async ({
   await expect(stage.locator("[data-uagent-picked]")).toHaveCount(8);
   await app.keyboard.press("Escape");
   await expect(stage.locator("[data-uagent-picked]")).toHaveCount(0);
+});
+
+test("an arrow drawn from a dot on the picked item's side to another is in the file; it is picked by its line and deleted", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage, saved, at } = await openBoard(app, session, host);
+  await stage.locator("#db").click();
+  const dots = stage.locator(".uagent-dot");
+  await expect(dots).toHaveCount(4);
+  const side = await dots.nth(1).boundingBox();
+  const to = await stage.locator("#n1").boundingBox();
+  await drag(
+    app,
+    [side.x + side.width / 2, side.y + side.height / 2],
+    [to.x + to.width / 2, to.y + to.height / 2],
+  );
+  await expect.poll(saved).toBe(`${BOARD}<hr data-from="db" data-to="n1">\n`);
+  await expect(stage.locator("svg.arrows > path:not(.hit)")).toHaveCount(3);
+  // A press on its line picks it; the bar has Delete alone.
+  const middle = await stage
+    .locator("svg.arrows > path.hit")
+    .last()
+    .evaluate((line) => {
+      const point = line.getPointAtLength(line.getTotalLength() / 2);
+      return [point.x, point.y];
+    });
+  await app.mouse.click(...(await at(...middle)));
+  await expect(stage.locator("svg.arrows > path.picked")).toHaveCount(1);
+  const bar = files.getByRole("toolbar", { name: "Picked" });
+  await expect(bar.getByRole("button")).toHaveCount(1);
+  await bar.getByRole("button", { name: "Delete" }).click();
+  await expect.poll(saved).toBe(BOARD);
+  // With the arrow tool, from any item to another.
+  await files
+    .getByRole("group", { name: "Insert" })
+    .getByRole("button", { name: "Arrow" })
+    .click();
+  await armed(stage);
+  await drag(app, await at(100, 200), await at(860, 160));
+  await expect.poll(saved).toBe(`${BOARD}<hr data-from="ad" data-to="n1">\n`);
 });
 
 test.describe("on a phone", () => {

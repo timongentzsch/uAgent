@@ -1268,7 +1268,7 @@ export default function Sequence({
                     } else if (message.type === "board") {
                       if (!board) return;
                       // An item put on the board ends its tool.
-                      if ("add" in message) setTool("");
+                      if ("add" in message || "arrow" in message) setTool("");
                       void rewrite?.(
                         path,
                         (source) =>

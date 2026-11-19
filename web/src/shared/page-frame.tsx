@@ -105,7 +105,7 @@ export type PageMessage =
       line?: number;
     }
   // A whiteboard changed by hand, as board-edit.ts takes it; and what is
-  // picked on it, and the box round it.
+  // picked on it: items, or an arrow, and the box round them.
   | ({ type: "board" } & Record<string, unknown>)
   | {
       type: "items";
@@ -117,6 +117,7 @@ export type PageMessage =
         fill?: string;
         note?: boolean;
       }[];
+      arrow?: boolean;
       rect?: Rect;
     }
   | {

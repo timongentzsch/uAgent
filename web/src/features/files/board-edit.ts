@@ -43,16 +43,22 @@ export interface NewItem {
   fill?: string;
   text: string;
 }
+export interface Arrow {
+  from: string;
+  to: string;
+}
 // One change, one write: items changed together; an item added; copies of
 // items under new ids; items taken away with the arrows that name them;
-// items laid over the rest or under them.
+// items laid over the rest or under them; an arrow drawn or taken away.
 export type BoardEdit =
   | { set: ItemChange[] }
   | { add: NewItem }
   | { copy: { id: string; as: string; at: number[] }[] }
   | { remove: string[] }
   | { front: string[] }
-  | { back: string[] };
+  | { back: string[] }
+  | { arrow: Arrow }
+  | { unarrow: Arrow };
 
 const NEW_ID = /^[a-z][a-z0-9-]*$/;
 const VOID = /^(?:img|hr|br|input)$/;
@@ -292,6 +298,22 @@ export function boardEdit(source: string, edit: BoardEdit): string | null {
       "front" in edit ? front(rest) : back(rest),
       moving.map((item) => source.slice(item.start, item.end)),
     );
+  }
+  if ("arrow" in edit) {
+    const { from, to } = edit.arrow ?? {};
+    if (!ids.has(from) || !ids.has(to) || from === to) return null;
+    const last = arrowsOf(source).at(-1);
+    return put(
+      source,
+      last ? lineOf(source, last.start, last.end)[1] : front(source),
+      [`<hr data-from="${from}" data-to="${to}">`],
+    );
+  }
+  if ("unarrow" in edit) {
+    const arrow = arrowsOf(source).find(
+      ({ from, to }) => from === edit.unarrow?.from && to === edit.unarrow?.to,
+    );
+    return arrow ? cut(source, [lineOf(source, arrow.start, arrow.end)]) : null;
   }
   return null;
 }

@@ -190,7 +190,7 @@ test("copies of items take new ids and places after the last item; the rest of t
   );
 });
 
-test("items removed take the arrows that name them", () => {
+test("items removed take the arrows that name them; an arrow removed is that line alone", () => {
   assert.equal(
     boardEdit(BOARD, { remove: ["form"] }),
     without(
@@ -204,6 +204,33 @@ test("items removed take the arrows that name them", () => {
     without(ITEMS.n1, ITEMS.t, '<hr data-from="n1" data-to="form">'),
   );
   assert.equal(boardEdit(BOARD, { remove: ["n1", "gone"] }), null);
+  assert.equal(
+    boardEdit(BOARD, { unarrow: { from: "form", to: "web" } }),
+    without('<hr data-from="form" data-to="web">'),
+  );
+  assert.equal(
+    boardEdit(BOARD, { unarrow: { from: "web", to: "form" } }),
+    null,
+  );
+});
+
+test("an arrow drawn goes after the last arrow, between two items the file has", () => {
+  assert.equal(
+    boardEdit(BOARD, { arrow: { from: "t", to: "n1" } }),
+    `${BOARD}<hr data-from="t" data-to="n1">\n`,
+  );
+  assert.equal(
+    boardEdit(BOARD.replace(/<hr.*\n/g, ""), {
+      arrow: { from: "t", to: "n1" },
+    }),
+    `${BOARD.replace(/<hr.*\n/g, "")}<hr data-from="t" data-to="n1">\n`,
+  );
+  for (const arrow of [
+    { from: "t", to: "t" },
+    { from: "t", to: "gone" },
+    { from: 't" onclick="x', to: "n1" },
+  ])
+    assert.equal(boardEdit(BOARD, { arrow }), null, JSON.stringify(arrow));
 });
 
 test("items brought to the front go after the last item, sent to the back before the first", () => {

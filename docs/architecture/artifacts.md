@@ -174,12 +174,13 @@ empty board picks what it touches; on touch that drag scrolls), moves the
 picked together, resizes one from a corner, and takes the keys (arrows,
 Delete, ⌘D, ⌘C and ⌘V, ⌘A, Escape) and a double click to retype;
 `whiteboard.js` adds what is a board's own: the item a tool puts where the
-board is next pressed. The page says what is picked and its box
+board is next pressed, and arrows drawn from a dot on the picked item's
+side or picked by their line. The page says what is picked and its box
 (`items`), which Sequence shows as a bar over it (`PickBar`) beside the
 tools at the stage's foot (`InsertBar`, `shared/float-bars.tsx`); those
 tell the page `board {tool}` or `board {act, value}`. Each change is one
 `board` message (items set, added, copied, removed, brought to the front
-or sent to the back); Sequence hands it to the
+or sent to the back; an arrow added or removed); Sequence hands it to the
 pane's `rewrite`, which writes it through `fileSaver` with `boardEdit`
 (`board-edit.ts`): one write and one undo step, changing only what the
 change names in the source, new items after the last item.

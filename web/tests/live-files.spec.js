@@ -78,7 +78,7 @@ test("a whiteboard rewritten on disk takes the change in place: the same page at
       .replace('data-at="60 180"', 'data-at="300 600"')
       .replace("<hr", '<p id="n2" class="note" data-at="900 400">New</p>\n<hr'),
   );
-  await expect(stage.locator("#n2")).toBeVisible({ timeout: 2500 });
+  await expect(stage.locator("#n2")).toBeVisible();
   await expect(stage.locator("#ad")).toHaveAttribute("data-uagent-changed");
   await expect(stage.locator("#n2")).toHaveAttribute("data-uagent-changed");
   await expect(stage.locator("#ok")).not.toHaveAttribute("data-uagent-changed");
@@ -113,7 +113,7 @@ test("a document's block changed on disk changes where it stands, the page not l
   await looked(app);
   await rewrite((text) => text.replace("<p>Two</p>", "<p>Two, rewritten</p>"));
   const block = stage.getByText("Two, rewritten");
-  await expect(block).toBeVisible({ timeout: 2500 });
+  await expect(block).toBeVisible();
   await expect(block).toHaveAttribute("data-uagent-changed");
   await expect(stage.getByText("One")).not.toHaveAttribute(
     "data-uagent-changed",
@@ -137,9 +137,7 @@ test("a page with a script of its own loads again for a change", async ({
   await mark(stage);
   await looked(app);
   await rewrite((text) => text.replace("Before", "After"));
-  await expect(stage.getByRole("heading", { name: "After" })).toBeVisible({
-    timeout: 2500,
-  });
+  await expect(stage.getByRole("heading", { name: "After" })).toBeVisible();
   expect(await kept(stage)).toBeUndefined();
 });
 

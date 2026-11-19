@@ -396,7 +396,8 @@ with (
         },
     ) as provider,
 ):
-    root = pathlib.Path(temporary)
+    # Resolved, as the host stores a folder: on macOS /var is a link.
+    root = pathlib.Path(temporary).resolve()
     home = root / "home"
     home.mkdir()
     project = root / "project"

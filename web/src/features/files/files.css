@@ -446,14 +446,19 @@
 }
 /* One ring, round the picture, for the current one and the one pointed at:
    the cover's own would box the name in beside it. */
-.page-legend-item > button.cover:is(:hover, :focus-visible) {
+.page-legend-item > button.cover:is(:hover, :focus-visible, :active) {
   outline: 0;
 }
 .page-legend-item:has(
-    > .cover:is(:hover, :focus-visible, [aria-selected="true"])
+    > .cover:is(:focus-visible, :active, [aria-selected="true"])
   )
   > .page-frame {
   outline: var(--focus-ring);
+}
+@media (hover: hover) and (pointer: fine) {
+  .page-legend-item:has(> .cover:hover) > .page-frame {
+    outline: var(--focus-ring);
+  }
 }
 /* A slide being dragged to a new place, and the line where it would drop:
    before a slide, or after the last. */

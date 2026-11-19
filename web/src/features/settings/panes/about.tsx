@@ -68,7 +68,7 @@ export function AboutPane() {
   const [installed, where] = INSTALLED[state?.install ?? ""] ?? INSTALLED[""];
   return (
     <>
-      <Group title="µAgent">
+      <Group title="This install">
         <Row label="Version" detail={state?.version} />
         <Row label="Installed as" detail={state && installed} />
       </Group>

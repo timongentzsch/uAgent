@@ -181,47 +181,45 @@ export default function Tools({
               <DataText>{labels[category] || category}</DataText>
             </h3>
             {tools.map((tool) => (
-              <div
+              <label
                 key={tool.name}
-                class={`card tool-choice ${!tool.available ? "locked" : ""}`}
+                class={`card tool-toggle ${!tool.available ? "locked" : ""}`}
               >
-                <label class="tool-toggle">
-                  <Input
-                    type="checkbox"
-                    // What was just picked, until the host answers.
-                    checked={tool.active !== (saving === tool.name)}
-                    disabled={locked || !tool.available}
-                    onChange={(event) =>
-                      update({
-                        operation: "set",
-                        name: tool.name,
-                        active: event.currentTarget.checked,
-                      })
-                    }
-                  />
-                  <span>
-                    {/* raw: a label's first line, inside its text. */}
-                    <span class="tool-choice-head">
-                      <strong>
-                        <DataText>{tool.title}</DataText>
-                      </strong>
-                      <code>
-                        <DataText>{tool.name}</DataText>
-                      </code>
-                      <small>
-                        <DataText>{bytes(tool.schema_bytes)}</DataText>
-                      </small>
-                    </span>
-                    <span class="tool-description">
-                      <DataText>{tool.description}</DataText>
-                    </span>
-                    {tool.provider !== "builtin" && (
-                      <small class="muted">{tool.provider}</small>
-                    )}
-                    {tool.reason && <small class="muted">{tool.reason}</small>}
+                <Input
+                  type="checkbox"
+                  // What was just picked, until the host answers.
+                  checked={tool.active !== (saving === tool.name)}
+                  disabled={locked || !tool.available}
+                  onChange={(event) =>
+                    update({
+                      operation: "set",
+                      name: tool.name,
+                      active: event.currentTarget.checked,
+                    })
+                  }
+                />
+                <span>
+                  {/* raw: a label's first line, inside its text. */}
+                  <span class="tool-choice-head">
+                    <strong>
+                      <DataText>{tool.title}</DataText>
+                    </strong>
+                    <code>
+                      <DataText>{tool.name}</DataText>
+                    </code>
+                    <small>
+                      <DataText>{bytes(tool.schema_bytes)}</DataText>
+                    </small>
                   </span>
-                </label>
-              </div>
+                  <span class="tool-description">
+                    <DataText>{tool.description}</DataText>
+                  </span>
+                  {tool.provider !== "builtin" && (
+                    <small class="muted">{tool.provider}</small>
+                  )}
+                  {tool.reason && <small class="muted">{tool.reason}</small>}
+                </span>
+              </label>
             ))}
           </section>
         ))}

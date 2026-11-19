@@ -29,6 +29,7 @@
 - **Whiteboards are drawn anew.** Shapes are filled and rounded with no line round them, and an arrow runs in right-angled legs with rounded turns: straight between two items that face each other, round an item that stands between, into the side that has room. A label stands beside its arrow where it covers nothing, and a section's name stands above its frame. Boards made before draw this way too; their files are unchanged.
 - **Undo and redo in documents, decks and whiteboards.** ⌘Z or Ctrl+Z takes back the last change you made by hand, ⇧⌘Z or Ctrl+Y makes it again, and both are buttons in the tool row. If the agent wrote the file since, undo says so and changes nothing.
 - **A whiteboard is listed as one.** The Library has Whiteboards beside Designs and Decks, and says Documents where it said Docs.
+- **An open artifact is live.** A file shown in Files follows what is done to it within about a second, whoever does it: the agent's write, a shell command, a sub-agent, another conversation. The open page takes the change where it stands, so its zoom, scroll and selection stay: a whiteboard's items glide to their new places and new ones fade in, a document's blocks change in place. What changed is outlined for a moment, and while the agent is writing the open file the bar says **Agent writing**. A page with scripts of its own is loaded again, as before.
 
 ### Fixes
 

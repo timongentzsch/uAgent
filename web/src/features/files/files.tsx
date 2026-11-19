@@ -51,7 +51,7 @@ import { maxTextFileBytes } from "../../shared/limits.ts";
 import { stored } from "../../shared/storage.ts";
 import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
 import {
-  HTML,
+  SHARED,
   IMAGE,
   MARKDOWN,
   nameOf,
@@ -710,7 +710,7 @@ export default function Files({
   const refresh = (paths: string[], large: string[] = []) => {
     const inPlace = page && kind !== "sheet" && !large.includes(file);
     if (inPlace && paths.includes(file)) setFresh((count) => count + 1);
-    const shared = paths.some((path) => !HTML.test(path));
+    const shared = paths.some((path) => SHARED.test(path));
     const keys = [
       ...paths.filter((path) => paged(path) && !(inPlace && path === file)),
       ...(shared ? [""] : []),
@@ -792,7 +792,7 @@ export default function Files({
   useEffect(() => {
     void look.current().catch(() => {});
     const path = inFolder(written.slice(written.indexOf("\n") + 1));
-    if (path && !HTML.test(path) && dirOf(path) !== dir) refresh([path]);
+    if (SHARED.test(path) && dirOf(path) !== dir) refresh([path]);
   }, [written]);
   const titled =
     view.kind === "canvas"

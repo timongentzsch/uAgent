@@ -143,6 +143,33 @@ test("a page with a script of its own loads again for a change", async ({
   expect(await kept(stage)).toBeUndefined();
 });
 
+test("a file no page draws from changes nothing; a stylesheet loads the page again", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage } = await open(
+    app,
+    session,
+    host,
+    "design/home.html",
+    artboard("Home", "<h1>Home</h1>"),
+  );
+  await expect(stage.locator("h1")).toBeVisible();
+  await looked(app);
+  await mark(stage);
+  await writeFile(join(host.project, "design/build.log"), "one\n");
+  await looked(app);
+  await writeFile(join(host.project, "design/build.log"), "one\ntwo\n");
+  await looked(app);
+  await looked(app);
+  expect(await kept(stage)).toBe(true);
+  await writeFile(join(host.project, "design/look.css"), "h1 { margin: 0 }");
+  await looked(app);
+  await writeFile(join(host.project, "design/look.css"), "h1 { margin: 1px }");
+  await expect.poll(() => kept(stage)).toBeUndefined();
+});
+
 test("a person's own change is not taken for someone else's: no update, no outline", async ({
   page: app,
   session,

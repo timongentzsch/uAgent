@@ -42,6 +42,10 @@ export const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
 export const VIDEO = /\.(mp4|webm|mov)$/i;
 export const MARKDOWN = /\.(md|markdown)$/i;
 export const HTML = /\.html?$/i;
+// What a page may draw from besides its own file: styles, scripts, data,
+// pictures, films and fonts.
+export const SHARED =
+  /\.(css|m?js|json|csv|tsv|xlsx|png|jpe?g|gif|webp|svg|avif|mp4|webm|mov|woff2?|ttf|otf)$/i;
 // Excel and CSV files open as sheets, read-only.
 export const SHEET_FILE = /\.(xlsx|csv)$/i;
 // What opens as a page in the viewer, not as text.

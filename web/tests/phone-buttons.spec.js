@@ -111,6 +111,26 @@ const cramped = (page) =>
       )
         found.push(`a row wider than its box: ${named(row)}`);
     }
+    // A row's press covers its line: nothing to read stands beside the
+    // button on it but another control.
+    for (const row of document.querySelectorAll("button, summary, a[href]")) {
+      if (!shown(row) || getComputedStyle(row).justifyContent !== "flex-start")
+        continue;
+      const box = row.getBoundingClientRect();
+      for (const beside of row.parentElement.children) {
+        const at = beside.getBoundingClientRect();
+        if (
+          beside !== row &&
+          shown(beside) &&
+          !beside.matches("button, a, input, select, summary, label") &&
+          !beside.querySelector("button, a, input, select, summary") &&
+          at.top < box.bottom &&
+          at.bottom > box.top &&
+          beside.textContent.trim()
+        )
+          found.push(`a press stops short of: ${named(beside)}`);
+      }
+    }
     for (const dialog of document.querySelectorAll(
       "dialog[open], .dialog-body",
     ))
@@ -161,6 +181,14 @@ test.describe("the pages of the list", () => {
     await expect(
       page.getByRole("toolbar", { name: "Selection" }),
     ).toBeVisible();
+    await roomy(page);
+  });
+
+  test("the home's recent list", async ({ page, host, request }) => {
+    for (const title of ["Alpha talk", "Bravo talk"])
+      await savedConversation(host, request, title);
+    await page.goto("/");
+    await expect(page.locator(".home-list .list-row")).toHaveCount(2);
     await roomy(page);
   });
 

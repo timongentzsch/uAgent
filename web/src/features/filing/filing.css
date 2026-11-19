@@ -30,7 +30,6 @@
   align-items: center;
   gap: var(--gap);
   min-width: 0;
-  padding-right: var(--pad);
 }
 .home-list li > .list-row {
   flex: 1;
@@ -46,6 +45,9 @@
   color: var(--muted);
   font-size: var(--font-small);
 }
-.home-list li > :not(:first-child) {
+.home-list :is(time, li > :not(:first-child)) {
   flex: none;
+}
+.home-list li > :not(:first-child) {
+  margin-right: var(--pad);
 }

@@ -347,6 +347,15 @@ std::optional<json> List(const fs::path& root, const fs::path& folder) {
   return json{{"entries", std::move(rows)}, {"more", more}};
 }
 
+// What tells one state of a file from the next without reading it: its size,
+// inode and modification time.
+std::string Stamp(const fs::path& file) {
+  const FileStamp stamp = SnapshotFile(file.string());
+  return std::to_string(stamp.size) + ":" + std::to_string(stamp.inode) + ":" +
+         std::to_string(stamp.modified_seconds) + "." +
+         std::to_string(stamp.modified_nanoseconds);
+}
+
 }  // namespace
 
 json Folders(const std::string& path) {
@@ -694,6 +703,19 @@ json Request(const fs::path& root, const json& request) {
     (*listed)["kind"] = type;
     return *listed;
   }
+  // A folder's files by name, each with its stamp: what a viewer asks often
+  // to see what changed, so nothing in them is read.
+  if (mode == "stamps") {
+    auto listed = List(root, *target);
+    if (!listed) return {{"error", "not found"}, {"status", 404}};
+    json stamps = json::object();
+    for (const json& entry : (*listed)["entries"]) {
+      if (JsonValue(entry, "dir", false)) continue;
+      const std::string name = JsonValue(entry, "name", "");
+      stamps[name] = Stamp(*target / name);
+    }
+    return {{"stamps", std::move(stamps)}};
+  }
   if (mode == "deck") {
     std::error_code error;
     if (!fs::is_directory(*target, error)) {
@@ -744,7 +766,8 @@ json Request(const fs::path& root, const json& request) {
       }
       return {{"error", error}, {"status", 500}};
     }
-    return {{"revision", DocumentRevision(target->string(), text)}};
+    return {{"revision", DocumentRevision(target->string(), text)},
+            {"stamp", Stamp(*target)}};
   }
   std::string bytes, error;
   const bool read = mode == "read";

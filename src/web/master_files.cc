@@ -103,8 +103,8 @@ void Master::Files(const Request& request, Response& response) {
   }
   int modes = 0;
   std::string mode, path;
-  for (const char* name :
-       {"list", "read", "raw", "find", "changes", "diff", "png", "pdf"}) {
+  for (const char* name : {"list", "stamps", "read", "raw", "find", "changes",
+                           "diff", "png", "pdf"}) {
     if (!request.has_param(name)) continue;
     ++modes;
     mode = name;
@@ -112,7 +112,8 @@ void Master::Files(const Request& request, Response& response) {
   }
   if (modes != 1) {
     Error(response,
-          "name one of list, read, raw, find, changes, diff, png or pdf");
+          "name one of list, stamps, read, raw, find, changes, diff, png or "
+          "pdf");
     return;
   }
   if (mode == "png" || mode == "pdf") {

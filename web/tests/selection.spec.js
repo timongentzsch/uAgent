@@ -81,9 +81,11 @@ test("⌘ picks one, Shift a run, one confirmation deletes them all", async ({
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   const list = page.getByRole("navigation", { name: "Conversations" });
-  const titles = await list.locator(".session-row .row-label").allInnerTexts();
-  const ours = titles.filter((title) => title.endsWith(" talk"));
-  expect(ours).toHaveLength(3);
+  const labels = list
+    .locator(".session-row .row-label")
+    .filter({ hasText: / talk$/ });
+  await expect(labels).toHaveCount(3);
+  const ours = await labels.allInnerTexts();
   await row(page, ours[0])
     .locator(".list-row")
     .click({ modifiers: ["ControlOrMeta"] });

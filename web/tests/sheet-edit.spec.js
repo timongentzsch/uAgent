@@ -8,6 +8,7 @@ import {
   openSheet,
   selectProbeModel,
   sheet,
+  unwatched,
   writeFiles,
   openAlone,
 } from "./fixtures.js";
@@ -535,6 +536,7 @@ test("a save the file refuses, because it was rewritten meanwhile, shows the she
   session,
   host,
 }) => {
+  await unwatched(app);
   const { files, cell, saved } = await openSheet(
     app,
     session,

@@ -66,6 +66,9 @@ export type PageMessage =
   | { type: "error"; message: string; line: number }
   // What is wrong with it as drawn has all been said.
   | { type: "checked" }
+  // A new version of its file taken in place, held while a person changes
+  // the page, or to be loaded instead.
+  | { type: "update"; result: "made" | "held" | "load" }
   | { type: "hover" | "picked"; rect: Rect }
   | ({ type: "pick" } & Pick)
   // A key the pane acts on; `held` with ⌘ or Ctrl, `shift` with Shift.
@@ -197,8 +200,9 @@ export type PageMessage =
 // block at `at`, `over` its words), a mark, a link or another kind for what
 // is being edited or a block to follow it, set a tweak, mark the words
 // found; a sheet: write into its active cell, do a command, say what a
-// formula may take after its text up to the caret. Which part of it shows
-// (a page, a tab) is its address's to say: "#3".
+// formula may take after its text up to the caret; take its file's new
+// text in place. Which part of it shows (a page, a tab) is its address's to
+// say: "#3".
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
@@ -217,7 +221,8 @@ export const tell = (
     | { type: "replace"; text: string; with: string; index: number }
     | { type: "input"; value: string }
     | { type: "suggest"; text: string }
-    | { type: "do"; command: string; value?: string; tab?: number },
+    | { type: "do"; command: string; value?: string; tab?: number }
+    | { type: "update"; html: string },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 
 // What a sheet's grid takes from the app, as the variables of its stylesheet

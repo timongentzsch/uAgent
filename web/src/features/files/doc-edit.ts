@@ -364,6 +364,7 @@ export function blockSaver(files: {
     | undefined;
   let timer: ReturnType<typeof setTimeout>;
   let last: Promise<unknown> = Promise.resolve();
+  let writing = 0;
   const write = async (path: string, edit: BlockEdit, closing: boolean) => {
     const mine = key(path, edit.index);
     try {
@@ -400,9 +401,10 @@ export function blockSaver(files: {
     const mine = held;
     held = undefined;
     if (mine) {
+      writing++;
       const made = last.then(() => write(mine.path, mine.edit, closing));
       mine.start(made);
-      last = made.catch(() => {});
+      last = made.catch(() => {}).finally(() => writing--);
     }
     return last.then(() => !owed.size);
   };
@@ -422,6 +424,9 @@ export function blockSaver(files: {
       return held.done;
     },
     flush,
+    // Whether what was typed is not all in its file: held, being written,
+    // or owed.
+    unwritten: () => !!held || writing > 0 || owed.size > 0,
     // What is owed is left: the person was told and goes, or the page was
     // drawn again from the file and no longer holds it.
     forget: () => owed.clear(),

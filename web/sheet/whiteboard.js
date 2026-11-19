@@ -72,6 +72,11 @@ svg.arrows text { font: 13px system-ui, sans-serif; fill: #444; paint-order: str
 [data-uagent-picked] { outline: 2px solid #1a56db; outline-offset: 2px; }
 .uagent-handle { position: absolute; width: 10px; height: 10px; z-index: 3;
   background: #1a56db; cursor: nwse-resize; }
+@media (prefers-reduced-motion: no-preference) {
+  [data-uagent-glide] [data-at] { transition: left .3s, top .3s, width .3s, height .3s,
+    min-height .3s, opacity .3s; }
+  @starting-style { [data-uagent-glide] [data-at] { opacity: 0; } }
+}
 `;
 
 const numbers = (text) =>
@@ -95,9 +100,13 @@ function place(item) {
   const fill = FILLS[item.dataset.fill];
   if (fill) item.style.setProperty("--fill", fill);
   const { shape } = item.dataset;
-  if (!PATHS[shape] || item.querySelector(":scope > svg.shape")) return;
+  const drawn = item.querySelector(":scope > svg.shape");
+  if (drawn?.dataset.uagent === shape) return;
+  drawn?.remove();
+  if (!PATHS[shape]) return;
   const svg = document.createElementNS(SVG, "svg");
   svg.setAttribute("class", "shape");
+  svg.dataset.uagent = shape;
   svg.setAttribute("viewBox", "0 0 100 100");
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("aria-hidden", "true");
@@ -388,14 +397,18 @@ function defs() {
 // Opened alone in the app: a press picks an item and a drag moves it, its
 // corner resizes it, the arrows move it a pixel (with Shift ten), a double
 // click retypes a note or a text. Each change is said to the app, which
-// writes it, and undoes it with ⌘Z.
+// writes it, and undoes it with ⌘Z. Gives what keeps the picked item's
+// corner on it.
 function edits(layer) {
-  const say = (change) =>
+  const say = (change) => {
+    changing = false;
     parent.postMessage({ uagentDesign: 1, type: "board", ...change }, "*");
+  };
   const grid = (n) => Math.round(n / 10) * 10;
   let picked;
   const handle = document.createElement("span");
   handle.className = "uagent-handle";
+  handle.dataset.uagent = "";
   const pick = (item) => {
     picked?.removeAttribute("data-uagent-picked");
     picked = item;
@@ -406,6 +419,7 @@ function edits(layer) {
   };
   const hold = () => {
     if (!picked) return;
+    if (!picked.isConnected) return pick(undefined);
     handle.style.left = `${picked.offsetLeft + picked.offsetWidth - 5}px`;
     handle.style.top = `${picked.offsetTop + picked.offsetHeight - 5}px`;
   };
@@ -425,6 +439,7 @@ function edits(layer) {
     const item = resizing ? picked : event.target.closest?.("[data-at]");
     pick(item);
     if (!item?.id) return;
+    changing = true;
     const [x, y, w, h] = [...at(item), item.offsetWidth, item.offsetHeight];
     const start = [event.clientX, event.clientY];
     let moved = false;
@@ -440,6 +455,7 @@ function edits(layer) {
     };
     const drop = () => {
       removeEventListener("pointermove", drag);
+      changing = false;
       if (!moved) return;
       say(
         resizing
@@ -468,6 +484,7 @@ function edits(layer) {
       event.preventDefault();
       const step = event.shiftKey ? 10 : 1;
       const [x, y] = at(picked);
+      changing = true;
       moveTo(picked, x + by[0] * step, y + by[1] * step);
       clearTimeout(nudged);
       const item = picked;
@@ -494,24 +511,52 @@ function edits(layer) {
       { once: true },
     );
   });
+  return hold;
 }
 
+// Whether a person is changing an item: holding, nudging or retyping it.
+let changing = false;
+export const busy = () =>
+  changing || !!document.activeElement?.isContentEditable;
+
+let layer;
+let sized;
+let follow = () => {};
 function draw() {
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.prepend(style);
   for (const item of items()) place(item);
-  const layer = document.createElementNS(SVG, "svg");
+  layer = document.createElementNS(SVG, "svg");
   layer.setAttribute("class", "arrows");
   layer.setAttribute("aria-hidden", "true");
+  layer.dataset.uagent = "";
   document.body.prepend(layer);
   arrows(layer);
   // Fonts and pictures change the items' sizes: the arrows follow.
-  const sized = new ResizeObserver(() => arrows(layer));
+  sized = new ResizeObserver(() => arrows(layer));
   for (const item of items()) sized.observe(item);
   if (parent !== window && !matchMedia("(pointer: coarse)").matches)
-    edits(layer);
+    follow = edits(layer);
   return [];
+}
+
+// The file changed under the page: each item glides to where it now says,
+// a new one fades in, and the arrows and the picked item's corner follow.
+export function redraw() {
+  document.documentElement.toggleAttribute("data-uagent-glide", true);
+  for (const item of items()) {
+    place(item);
+    sized.observe(item);
+  }
+  const step = () => {
+    arrows(layer);
+    follow();
+    if (items().some((item) => item.getAnimations().length))
+      requestAnimationFrame(step);
+    else document.documentElement.removeAttribute("data-uagent-glide");
+  };
+  step();
 }
 
 export const ready =

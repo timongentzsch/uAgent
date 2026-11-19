@@ -555,6 +555,135 @@ test("an arrow drawn from a dot on the picked item's side to another is in the f
   await expect.poll(saved).toBe(`${BOARD}<hr data-from="ad" data-to="n1">\n`);
 });
 
+test("a change the board's file does not take is said, and the board is drawn again from the file", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  // The first note's end tag is left out: where it ends is not guessed.
+  const board = BOARD.replace(
+    "Which fields?</p>",
+    'Which fields?\n<p id="n2" class="note" data-at="800 400">More</p>',
+  );
+  const { files, stage, saved } = await openBoard(app, session, host, board);
+  await stage.locator("#n2").click();
+  await app.keyboard.press("ArrowRight");
+  await expect(files.locator(".page-notice")).toContainText(
+    "That change was not made",
+  );
+  await expect
+    .poll(() => stage.locator("#n2").evaluate((note) => note.offsetLeft))
+    .toBe(800);
+  expect(await saved()).toBe(board);
+});
+
+test("someone else's change keeps what is picked and lets the armed tool go, on the page and in the app alike", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage, saved, rewrite, at } = await openBoard(
+    app,
+    session,
+    host,
+  );
+  await stage.locator("#n1").click();
+  const tools = files.getByRole("group", { name: "Insert" });
+  await tools.getByRole("button", { name: "Note" }).click();
+  await armed(stage);
+  const changed = BOARD.replace("Signup flow</h1>", "Sign-up flow</h1>");
+  await rewrite(changed);
+  await expect(stage.locator("#title")).toHaveText("Sign-up flow");
+  await expect(tools.getByRole("button", { name: "Select" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect
+    .poll(() => stage.locator("html").evaluate((root) => root.style.cursor))
+    .toBe("");
+  await expect(stage.locator("#n1")).toHaveAttribute("data-uagent-picked", "");
+  await expect(files.getByRole("toolbar", { name: "Picked" })).toBeVisible();
+  // The next press on the empty board lets the pick go and puts nothing.
+  await app.mouse.click(...(await at(1000, 600)));
+  await expect(files.getByRole("toolbar", { name: "Picked" })).toBeHidden();
+  expect(await saved()).toBe(changed);
+});
+
+test("a page that only says it is a board changes nothing in its file", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const path = "pages/plain.html";
+  const plain = `<!doctype html>
+<meta charset="utf-8">
+<meta name="artboard" content="400x300">
+<title>Plain</title>
+<p id="a" data-at="1 1">A</p>
+<script>
+addEventListener("load", () => setTimeout(() => {
+  const say = (message) => parent.postMessage({ uagentDesign: 1, ...message }, "*");
+  say({ type: "ready", title: "Plain", artboard: { w: 400, h: 300 }, tweaks: null, height: 300, board: true });
+  say({ type: "drawn" });
+  setTimeout(() => say({ type: "board", set: [{ id: "a", at: [50, 50] }] }), 300);
+}, 300));
+</script>
+`;
+  await writeFiles(host.project, { [path]: plain });
+  const files = await openFiles(app, session, path);
+  await expect(files.locator(".page-notice")).toContainText(
+    "That change was not made",
+  );
+  expect(await readFile(join(host.project, path), "utf8")).toBe(plain);
+});
+
+test("a change by hand whose write waits while someone else's change arrives is not undone on the page", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, saved, rewrite } = await openBoard(app, session, host);
+  await stage.locator("#n1").click();
+  // The read the person's write starts with waits until let go.
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  let first = true;
+  await app.route(
+    (url) => url.pathname.endsWith("/files") && url.searchParams.has("read"),
+    async (route) => {
+      if (first) {
+        first = false;
+        await held;
+      }
+      await route.continue();
+    },
+  );
+  const reading = app.waitForRequest((request) =>
+    request.url().includes("/files?read="),
+  );
+  await app.keyboard.press("ArrowRight");
+  await reading;
+  await rewrite(BOARD.replace("Signup flow</h1>", "Sign-up flow</h1>"));
+  // The pane has looked at the folder since, and seen someone else's change.
+  for (let looks = 0; looks < 2; looks++)
+    await app.waitForResponse((response) => response.url().includes("stamps="));
+  release();
+  await expect(stage.locator("#title")).toHaveText("Sign-up flow");
+  await expect
+    .poll(saved)
+    .toBe(
+      BOARD.replace("Signup flow</h1>", "Sign-up flow</h1>").replace(
+        'data-at="800 100"',
+        'data-at="801 100"',
+      ),
+    );
+  expect(await stage.locator("#n1").evaluate((note) => note.offsetLeft)).toBe(
+    801,
+  );
+});
+
 test.describe("on a phone", () => {
   test.use({
     isMobile: true,
@@ -600,5 +729,45 @@ test.describe("on a phone", () => {
       .toMatch(/id="n1"[^>]*data-at="(?!800 100)\d+ \d+"/);
     await files.getByRole("button", { name: "More tools" }).click();
     await expect(app.getByRole("menuitem", { name: "Fit" })).toBeVisible();
+  });
+
+  test("a second finger on the board does not move what the first one drags", async ({
+    page: app,
+    session,
+    host,
+  }) => {
+    const { files, stage, saved } = await openBoard(app, session, host, BOARD, {
+      phone: true,
+    });
+    const box = await stage.locator("#n1").boundingBox();
+    const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+    const frame = await files
+      .locator(".page-stage iframe:not([inert])")
+      .boundingBox();
+    const scale = frame.width / 1200;
+    const cdp = await app.context().newCDPSession(app);
+    const touch = (type, points) =>
+      cdp.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: points.map(([px, py], id) => ({ x: px, y: py, id })),
+      });
+    await touch("touchStart", [[x, y]]);
+    await touch("touchMove", [[x + 10, y]]);
+    // The second finger lands on the empty board and sweeps far.
+    await touch("touchStart", [
+      [x + 10, y],
+      [x - 60, y + 200],
+    ]);
+    for (let by = 10; by <= 40; by += 10)
+      await touch("touchMove", [
+        [x + 10 + by, y],
+        [x - 60 + 3 * by, y + 200 + 3 * by],
+      ]);
+    await touch("touchEnd", []);
+    await expect.poll(saved).toMatch(/id="n1"[^>]*data-at="(?!800 )\d+ 100"/);
+    const left = Number(
+      (await saved()).match(/id="n1"[^>]*data-at="(\d+) 100"/)[1],
+    );
+    expect(Math.abs(left - (800 + 50 / scale))).toBeLessThanOrEqual(10);
   });
 });

@@ -15,6 +15,7 @@ import { InsertBar, PickBar, type Tool } from "../../shared/float-bars.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import type { PageMessage, Rect } from "../../shared/page-frame.tsx";
 import { IconButton } from "../../shared/ui.tsx";
+import { maxBoardEntries } from "../../shared/limits.ts";
 import { FILLS, SHAPES, TEXTS } from "./board-edit.ts";
 
 // A whiteboard's tools over its stage: what the next press puts on it, and
@@ -43,22 +44,32 @@ const TOOLS: Tool[] = [
 
 // What is picked on a board, as its page said it: the page is untrusted.
 export type Chosen = Extract<PageMessage, { type: "items" }>;
-export const chosenOf = (message: Chosen): Chosen | undefined =>
-  Array.isArray(message.items) && message.rect
-    ? {
-        type: "items",
-        items: message.items.slice(0, 1000).map((item) => ({
-          id: String(item.id),
-          tag: String(item.tag),
-          text: String(item.text).slice(0, 60),
-          shape: SHAPES.find((kind) => kind === item.shape),
-          fill: FILLS.find((fill) => fill === item.fill),
-          note: !!item.note,
-        })),
-        arrow: !!message.arrow,
-        rect: message.rect,
-      }
-    : undefined;
+export function chosenOf(message: Chosen): Chosen | undefined {
+  const [x, y, width, height] = ["x", "y", "width", "height"].map((side) =>
+    Number(message.rect?.[side as keyof Rect]),
+  );
+  if (
+    !Array.isArray(message.items) ||
+    ![x, y, width, height].every(Number.isFinite)
+  )
+    return undefined;
+  return {
+    type: "items",
+    items: message.items
+      .slice(0, maxBoardEntries)
+      .filter((item) => item && typeof item === "object")
+      .map((item) => ({
+        id: String(item.id),
+        tag: String(item.tag),
+        text: String(item.text).slice(0, 60),
+        shape: SHAPES.find((kind) => kind === item.shape),
+        fill: FILLS.find((fill) => fill === item.fill),
+        note: !!item.note,
+      })),
+    arrow: !!message.arrow,
+    rect: { x, y, width, height },
+  };
+}
 
 export function BoardTools({
   chosen,

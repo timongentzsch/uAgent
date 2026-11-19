@@ -541,16 +541,23 @@ function edits(layer) {
       off.abort();
       drawing.remove();
     };
+    // Only the pointer that started it draws it.
+    const pointer = event.pointerId;
+    const own = (next) => next.pointerId === pointer;
     addEventListener(
       "pointermove",
       (next) =>
+        own(next) &&
         path.setAttribute("d", `M${x} ${y}L${next.clientX} ${next.clientY}`),
       { signal: off.signal },
     );
-    addEventListener("pointercancel", end, { signal: off.signal });
+    addEventListener("pointercancel", (up) => own(up) && end(), {
+      signal: off.signal,
+    });
     addEventListener(
       "pointerup",
       (up) => {
+        if (!own(up)) return;
         end();
         const to = document
           .elementFromPoint(up.clientX, up.clientY)

@@ -38,7 +38,9 @@ export const grid = (n) => Math.round(n / 10) * 10;
 const at = (item) => [item.offsetLeft, item.offsetTop];
 // An id no element has yet, made from `stem`.
 export function fresh(stem) {
-  const base = stem.toLowerCase().replace(/[^a-z0-9-]|\d+$/g, "") || "item";
+  const kept = stem.toLowerCase().replace(/[^a-z0-9-]|\d+$/g, "");
+  // An id starts with a letter.
+  const base = /^[a-z]/.test(kept) ? kept : `item${kept}`;
   let n = 1;
   while (document.getElementById(`${base}${n}`)) n++;
   return `${base}${n}`;
@@ -53,11 +55,27 @@ export const busy = () =>
 // board's arrows), `say` tells the app a change, `show` what is picked, and
 // `remove` takes an item away. Gives what keeps the corners on the picked,
 // the pick, and the changes the app asks of what is picked.
-export function itemLayer({ place, drawn, say, show, remove }) {
+export function itemLayer({ place, drawn, say: tell, show, remove }) {
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.append(style);
   let picked = [];
+  // The items the keys moved, their places not yet said: said before any
+  // other change, or once the keys rest.
+  let owed;
+  let nudged;
+  const placing = (list) => ({
+    set: list.map((item) => ({ id: item.id, at: at(item) })),
+  });
+  const say = (change) => {
+    clearTimeout(nudged);
+    if (owed) {
+      changing = false;
+      tell(placing(owed));
+      owed = undefined;
+    }
+    if (change) tell(change);
+  };
   const handles = CORNERS.map(([sx, sy]) => {
     const handle = document.createElement("span");
     handle.className = "uagent-handle";
@@ -88,8 +106,7 @@ export function itemLayer({ place, drawn, say, show, remove }) {
     drawn();
     hold();
   };
-  const placed = (list) =>
-    say({ set: list.map((item) => ({ id: item.id, at: at(item) })) });
+  const placed = (list) => say(placing(list));
   const moveTo = (list, places) => {
     list.forEach((item, index) => {
       item.dataset.at = places[index].join(" ");
@@ -169,8 +186,12 @@ export function itemLayer({ place, drawn, say, show, remove }) {
       () => box?.remove(),
     ];
   };
+  // The pointer of the drag going on: another (a second finger) is not
+  // taken.
+  let pressing;
   addEventListener("pointerdown", (event) => {
-    if (event.button || event.target.isContentEditable) return;
+    if (event.button || pressing !== undefined) return;
+    if (event.target.isContentEditable) return;
     // A press elsewhere ends the typing in an item, which saves it.
     if (document.activeElement?.isContentEditable)
       document.activeElement.blur();
@@ -198,15 +219,19 @@ export function itemLayer({ place, drawn, say, show, remove }) {
     focus();
     if (!drag) return;
     changing = true;
+    pressing = event.pointerId;
     let moved = false;
     const off = new AbortController();
     const follow = (next) => {
+      if (next.pointerId !== pressing) return;
       const [dx, dy] = [next.clientX - start[0], next.clientY - start[1]];
       moved ||= Math.hypot(dx, dy) > 3;
       if (moved) drag[0](dx, dy);
     };
-    const drop = () => {
+    const drop = (up) => {
+      if (up.pointerId !== pressing) return;
       off.abort();
+      pressing = undefined;
       changing = false;
       if (moved) drag[1]();
     };
@@ -222,6 +247,9 @@ export function itemLayer({ place, drawn, say, show, remove }) {
       const copied = item.cloneNode(true);
       copied.removeAttribute("data-uagent-picked");
       copied.removeAttribute("data-uagent-changed");
+      // An id names one element: what the copy holds keeps none.
+      for (const inner of copied.querySelectorAll("[id]"))
+        inner.removeAttribute("id");
       copied.id = fresh(item.id);
       const [x, y] = at(item);
       copied.dataset.at = `${x + APART} ${y + APART}`;
@@ -264,6 +292,7 @@ export function itemLayer({ place, drawn, say, show, remove }) {
   };
   const acts = {
     delete: () => {
+      say();
       const gone = picked;
       if (!gone.length) return;
       pick([]);
@@ -314,7 +343,6 @@ export function itemLayer({ place, drawn, say, show, remove }) {
   };
 
   let clipped = [];
-  let nudged;
   addEventListener(
     "keydown",
     (event) => {
@@ -329,6 +357,7 @@ export function itemLayer({ place, drawn, say, show, remove }) {
       const key = held ? event.key.toLowerCase() : event.key;
       if (by && picked.length) {
         const step = event.shiftKey ? APART / 2 : 1;
+        if (owed !== picked) say();
         changing = true;
         moveTo(
           picked,
@@ -338,11 +367,8 @@ export function itemLayer({ place, drawn, say, show, remove }) {
           ]),
         );
         clearTimeout(nudged);
-        const list = picked;
-        nudged = setTimeout(() => {
-          changing = false;
-          placed(list);
-        }, 400);
+        owed = picked;
+        nudged = setTimeout(say, 400);
       } else if (key === "Delete" || key === "Backspace") acts.delete();
       else if (held && key === "d") acts.duplicate();
       else if (held && key === "c") clipped = picked;
@@ -358,7 +384,8 @@ export function itemLayer({ place, drawn, say, show, remove }) {
   );
   addEventListener("dblclick", (event) => {
     const item = event.target.closest?.("[data-at][id]:not(img)");
-    // The item's own text, or that of the one heading it holds.
+    // The item's own text, or that of the one element (a section's name)
+    // that holds all of it.
     const own = [...(item?.children ?? [])].filter(
       (child) => !child.hasAttribute("data-uagent"),
     );
@@ -366,7 +393,10 @@ export function itemLayer({ place, drawn, say, show, remove }) {
       ? undefined
       : !own.length
         ? item
-        : own.length === 1 && !own[0].children.length && own[0];
+        : own.length === 1 &&
+          !own[0].children.length &&
+          own[0].textContent.trim() === item.textContent.trim() &&
+          own[0];
     if (!field) return;
     const was = field.textContent;
     field.contentEditable = "plaintext-only";

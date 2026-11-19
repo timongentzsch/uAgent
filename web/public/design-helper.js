@@ -1207,7 +1207,6 @@
     for (const mark of document.querySelectorAll("[data-source][data-field]"))
       void fill(mark);
     repaged?.();
-    board?.redraw();
     for (const element of changed)
       element.setAttribute("data-uagent-changed", "");
     setTimeout(() => {
@@ -1216,6 +1215,9 @@
     }, OUTLINED_MS);
     send("update", { result: "made" });
     ready();
+    // After `ready`, which the app takes as nothing picked: the board says
+    // what still is.
+    board?.redraw();
     send("drawn");
     await check();
   };

@@ -94,6 +94,9 @@ import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
 import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
 import { useResource } from "../../shared/use-resource.ts";
 
+// Why a whiteboard's change was not written.
+const BOARD_REFUSED =
+  "That change was not made: the board's file does not take it as it stands. The board is shown as the file is now.";
 // Said in the tools' row while a sheet's engine takes more than a moment.
 const CALCULATING = "Calculating…";
 // What a sheet says of itself, before it has.
@@ -465,14 +468,14 @@ export default function Sequence({
   };
   // Another file is another view, and the presenter's window goes with it.
   const to = (next: number, back = false) => {
-    const board = boards[next];
-    if (!board) return;
+    const going = boards[next];
+    if (!going) return;
     backward.current = back;
-    if (board.path !== path) {
-      go(board.path);
-      channel.current?.postMessage({ at: board.path });
+    if (going.path !== path) {
+      go(going.path);
+      channel.current?.postMessage({ at: going.path });
     }
-    setPart(board.at ?? 0);
+    setPart(going.at ?? 0);
   };
   // The boards stepped through and counted: all, but while presenting only
   // the one shown and those not skipped.
@@ -1148,7 +1151,10 @@ export default function Sequence({
                       heard(path)(message);
                     if (message.type === "ready") {
                       setSaid(message);
-                      setTool("");
+                      // A page drawn again (or a change taken in place, after
+                      // which the board says what is still picked) holds no
+                      // tool.
+                      arm("");
                       setChosen(undefined);
                       setBuild(backward.current ? (message.steps ?? 0) : 0);
                       // Drawn from the file: what it does not hold of what
@@ -1269,12 +1275,18 @@ export default function Sequence({
                       if (!board) return;
                       // An item put on the board ends its tool.
                       if ("add" in message || "arrow" in message) setTool("");
-                      void rewrite?.(
-                        path,
-                        (source) =>
-                          boardEdit(source, message as unknown as BoardEdit) ??
+                      // One the file does not take is said, and the board is
+                      // drawn again from the file.
+                      let taken = true;
+                      void rewrite?.(path, (source) => {
+                        const made = boardEdit(
                           source,
-                      );
+                          message as unknown as BoardEdit,
+                        );
+                        taken = made !== null;
+                        if (!taken) throw new Error(BOARD_REFUSED);
+                        return made as string;
+                      }).then(() => taken || setLoad((count) => count + 1));
                     } else if (message.type === "items") {
                       setChosen(board ? chosenOf(message) : undefined);
                     } else if (message.type === "caret") {

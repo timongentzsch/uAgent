@@ -2,6 +2,8 @@
 // change names is written, so the rest of the file stays as the agent wrote
 // it (skills/artifact/references/whiteboard.md).
 
+import { maxBoardEntries, maxBoardTextChars } from "../../shared/limits.ts";
+
 // What the format offers: a shape's kinds, a note's or a shape's fills, and
 // text by size.
 export const SHAPES = [
@@ -23,7 +25,7 @@ export const TEXTS = ["h1", "h2", "p", "small"];
 
 // An item as it now is: placed, sized, retyped, reshaped, filled or made
 // text of another size.
-export interface ItemChange {
+interface ItemChange {
   id: string;
   at?: number[];
   size?: number[];
@@ -33,7 +35,7 @@ export interface ItemChange {
   tag?: string;
 }
 // A note, a text, a section or a shape put on the board.
-export interface NewItem {
+interface NewItem {
   id: string;
   tag: string;
   at: number[];
@@ -43,7 +45,7 @@ export interface NewItem {
   fill?: string;
   text: string;
 }
-export interface Arrow {
+interface Arrow {
   from: string;
   to: string;
 }
@@ -62,27 +64,51 @@ export type BoardEdit =
 
 const NEW_ID = /^[a-z][a-z0-9-]*$/;
 const VOID = /^(?:img|hr|br|input)$/;
+// A start tag, its quoted values read as values whatever they hold.
+const TAG = /<([a-z][a-z0-9]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
 const escaped = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+const blank = (text: string) => text.replace(/[^\n]/g, " ");
+// The text with what holds no tag of the page blanked, at the same offsets:
+// comments, scripts, styles and the quoted values of attributes.
+const masked = (source: string) =>
+  source
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, blank)
+    .replace(
+      /(<(script|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(?=<\/\2|$)/gi,
+      (_, open: string, _name, body: string) => open + blank(body),
+    )
+    .replace(TAG, (tag) =>
+      tag.replace(/"[^"]*"|'[^']*'/g, (value) => `"${blank(value.slice(2))}"`),
+    );
 const pair = (numbers?: number[]) =>
   Array.isArray(numbers) &&
   numbers.length === 2 &&
   numbers.every((n) => Number.isFinite(n))
     ? numbers.map(Math.round).join(" ")
     : undefined;
+// Where an attribute is in a start tag, found in its masked copy.
+const attrAt = (tag: string, name: string) =>
+  new RegExp(`\\s${name}(?:=("[^"]*"|'[^']*'|[^\\s>]*))?(?=[\\s/>])`, "i").exec(
+    masked(tag),
+  );
 const attr = (tag: string, name: string) => {
-  const found = new RegExp(
-    `\\s${name}=(?:"([^"]*)"|'([^']*)'|([^\\s>]*))`,
-    "i",
-  ).exec(tag);
-  return found ? (found[1] ?? found[2] ?? found[3]) : undefined;
+  const found = attrAt(tag, name);
+  if (!found) return undefined;
+  const value = tag.slice(found.index, found.index + found[0].length);
+  return value.replace(/^\s[^=]*=?/, "").replace(/^(["'])([\s\S]*)\1$/, "$2");
 };
-const setAttr = (tag: string, name: string, value: string) => {
-  const was = new RegExp(`\\s${name}=("[^"]*"|'[^']*'|[^\\s>]*)`, "i");
-  const written = ` ${name}="${escaped(value)}"`;
-  return was.test(tag)
-    ? tag.replace(was, written)
-    : tag.replace(/\s*\/?>$/, (end) => `${written}${end}`);
+// The tag with the attribute set to `value`, or taken out without one.
+const setAttr = (tag: string, name: string, value?: string) => {
+  const found = attrAt(tag, name);
+  const written = value === undefined ? "" : ` ${name}="${escaped(value)}"`;
+  if (found)
+    return (
+      tag.slice(0, found.index) +
+      written +
+      tag.slice(found.index + found[0].length)
+    );
+  return tag.replace(/\s*\/?>$/, (end) => `${written}${end}`);
 };
 
 // An element of the source: its start tag, where its content starts and
@@ -96,44 +122,50 @@ interface Found {
   close: number;
   end: number;
 }
-function elementAt(source: string, tag: RegExpExecArray): Found | undefined {
+function elementAt(source: string, mask: string, tag: RegExpExecArray) {
   const name = tag[1].toLowerCase();
   const inner = tag.index + tag[0].length;
-  const found = { id: attr(tag[0], "id") ?? "", name, open: tag[0] };
-  if (VOID.test(name))
-    return { ...found, start: tag.index, inner, close: inner, end: inner };
+  const open = source.slice(tag.index, inner);
+  const found = { id: attr(open, "id") ?? "", name, open, start: tag.index };
+  if (VOID.test(name)) return { ...found, inner, close: inner, end: inner };
   const nested = new RegExp(`<(/?)${name}\\b[^>]*>`, "gi");
   nested.lastIndex = inner;
   let depth = 1;
-  for (let at = nested.exec(source); at; at = nested.exec(source))
+  for (let at = nested.exec(mask); at; at = nested.exec(mask))
     if ((depth += at[1] ? -1 : 1) === 0)
       return {
         ...found,
-        start: tag.index,
         inner,
         close: at.index,
         end: at.index + at[0].length,
       };
 }
-// The items: the elements placed by data-at, outermost.
+// The items: the elements placed by data-at, outermost; none where one has
+// no end of its own (an end tag left out), which would be a guess.
 function itemsOf(source: string) {
+  const mask = masked(source);
   const found: Found[] = [];
-  const tags = /<([a-z][a-z0-9]*)\b[^>]*>/gi;
-  for (let tag = tags.exec(source); tag; tag = tags.exec(source)) {
-    const item = /\sdata-at=/i.test(tag[0]) && elementAt(source, tag);
-    if (!item) continue;
+  const tags = new RegExp(TAG);
+  for (let tag = tags.exec(mask); tag; tag = tags.exec(mask)) {
+    if (!/\sdata-at=/i.test(tag[0])) continue;
+    const item = elementAt(source, mask, tag);
+    if (!item || /\sdata-at=/i.test(mask.slice(item.inner, item.close)))
+      return undefined;
     found.push(item);
     tags.lastIndex = item.end;
   }
   return found;
 }
 const arrowsOf = (source: string) =>
-  [...source.matchAll(/<hr\b[^>]*>/gi)].map((tag) => ({
-    from: attr(tag[0], "data-from"),
-    to: attr(tag[0], "data-to"),
-    start: tag.index,
-    end: tag.index + tag[0].length,
-  }));
+  [...masked(source).matchAll(/<hr\b[^>]*>/gi)].map((tag) => {
+    const open = source.slice(tag.index, tag.index + tag[0].length);
+    return {
+      from: attr(open, "data-from"),
+      to: attr(open, "data-to"),
+      start: tag.index,
+      end: tag.index + tag[0].length,
+    };
+  });
 
 // From `start` to `end`, with their line where they stand alone on it.
 function lineOf(source: string, start: number, end: number) {
@@ -143,33 +175,64 @@ function lineOf(source: string, start: number, end: number) {
     ? [start, end]
     : [before, after];
 }
+// The spans cut out; one inside another goes with it.
 const cut = (source: string, spans: number[][]) =>
   spans
+    .filter(
+      (span, index) =>
+        !spans.some(
+          (other, at) =>
+            at !== index &&
+            other[0] <= span[0] &&
+            span[1] <= other[1] &&
+            (other[1] - other[0] > span[1] - span[0] || at < index),
+        ),
+    )
     .sort((a, b) => b[0] - a[0])
     .reduce((text, [from, to]) => text.slice(0, from) + text.slice(to), source);
-// `texts` put in at `at`, a line each.
-const put = (source: string, at: number, texts: string[]) =>
-  source.slice(0, at) +
-  (at && source[at - 1] !== "\n" ? "\n" : "") +
-  texts.map((text) => `${text}\n`).join("") +
-  source.slice(at);
+// `texts` put in at `at`, a line each, ended as the file ends its lines.
+function put(source: string, at: number, texts: string[]) {
+  const end = source.includes("\r\n") ? "\r\n" : "\n";
+  return (
+    source.slice(0, at) +
+    (at && source[at - 1] !== "\n" ? end : "") +
+    texts.map((text) => text + end).join("") +
+    source.slice(at)
+  );
+}
 // Where new items go: after the last item, or before the arrows, or the
 // end of the body; and where the first item starts.
 function front(source: string) {
-  const last = itemsOf(source).at(-1);
+  const last = itemsOf(source)?.at(-1);
   if (last) return lineOf(source, last.start, last.end)[1];
-  const tail = source.search(/<hr\b|<\/body/i);
+  const tail = masked(source).search(/<hr\b|<\/body/i);
   return tail < 0 ? source.length : source.lastIndexOf("\n", tail - 1) + 1;
 }
 function back(source: string) {
-  const first = itemsOf(source)[0];
+  const first = itemsOf(source)?.[0];
   return first ? lineOf(source, first.start, first.end)[0] : front(source);
 }
+const id = (value: unknown): value is string =>
+  typeof value === "string" && value !== "";
+// A copy's content, its own elements' ids left out: an id names one element.
+const withoutIds = (text: string) => {
+  const mask = masked(text);
+  let made = "";
+  let from = 0;
+  for (const tag of mask.matchAll(TAG)) {
+    const open = text.slice(tag.index, tag.index + tag[0].length);
+    made += text.slice(from, tag.index) + setAttr(open, "id");
+    from = tag.index + tag[0].length;
+  }
+  return made + text.slice(from);
+};
 
 // The item changed in place, or null where the change is not one it takes.
 function change(source: string, edit: ItemChange): string | null {
-  const item = itemsOf(source).find((found) => found.id === edit?.id);
-  if (!item?.id) return null;
+  const item = itemsOf(source)?.find(
+    (found) => id(edit?.id) && found.id === edit.id,
+  );
+  if (!item) return null;
   let open = item.open;
   let inner = source.slice(item.inner, item.close);
   let close = source.slice(item.close, item.end);
@@ -194,14 +257,20 @@ function change(source: string, edit: ItemChange): string | null {
     open = open.replace(/^<[a-z0-9]+/i, `<${edit.tag}`);
     close = `</${edit.tag}>`;
   }
-  if (typeof edit.text === "string") {
-    // Text only where the item holds text alone, or a heading that does.
-    const heading = /^(\s*<([a-z][a-z0-9]*)\b[^>]*>)[^<]*(<\/\2>\s*)$/i.exec(
-      inner,
-    );
+  if (edit.text !== undefined) {
+    if (typeof edit.text !== "string" || edit.text.length > maxBoardTextChars)
+      return null;
+    // Text only where the item holds text alone, or one element that does
+    // (a section's name).
+    const mask = masked(inner);
+    const one = /^(\s*<([a-z][a-z0-9]*)\b[^>]*>)[^<]*(<\/\2>\s*)$/i.exec(mask);
     const text = escaped(edit.text);
-    if (heading) inner = heading[1] + text + heading[3];
-    else if (!inner.includes("<") && !VOID.test(item.name)) inner = text;
+    if (one)
+      inner =
+        inner.slice(0, one[1].length) +
+        text +
+        inner.slice(inner.length - one[3].length);
+    else if (!/<[a-z!/]/i.test(mask) && !VOID.test(item.name)) inner = text;
     else return null;
   }
   return (
@@ -223,6 +292,7 @@ function written(add: NewItem) {
     !at ||
     size === undefined ||
     typeof add.text !== "string" ||
+    add.text.length > maxBoardTextChars ||
     (add.fill !== undefined && !(add.note || add.shape)) ||
     (add.fill !== undefined && !FILLS.includes(add.fill))
   )
@@ -243,12 +313,23 @@ function written(add: NewItem) {
 // (the agent changed it meanwhile) or the edit is not one a board takes.
 export function boardEdit(source: string, edit: BoardEdit): string | null {
   const items = itemsOf(source);
+  // A file is a board by what it says itself, not by what its page says.
+  const meta = [...masked(source).matchAll(TAG)].some(
+    (tag) =>
+      tag[1].toLowerCase() === "meta" &&
+      attr(source.slice(tag.index, tag.index + tag[0].length), "name") ===
+        "board",
+  );
+  if (!items || !meta) return null;
   const ids = new Set(items.map((item) => item.id));
+  const few = (list: unknown): list is unknown[] =>
+    Array.isArray(list) && list.length > 0 && list.length <= maxBoardEntries;
   const named = (list: unknown): list is string[] =>
-    Array.isArray(list) && list.length > 0 && list.every((id) => ids.has(id));
-  const fresh = (id: string) => NEW_ID.test(String(id)) && !ids.has(id);
+    few(list) && list.every((one) => id(one) && ids.has(one));
+  const fresh = (value: unknown) =>
+    id(value) && NEW_ID.test(value) && !ids.has(value);
   if ("set" in edit)
-    return Array.isArray(edit.set) && edit.set.length
+    return few(edit.set)
       ? edit.set.reduce<string | null>(
           (text, one) => text && change(text, one),
           source,
@@ -259,15 +340,15 @@ export function boardEdit(source: string, edit: BoardEdit): string | null {
     return text ? put(source, front(source), [text]) : null;
   }
   if ("copy" in edit) {
-    const copies = Array.isArray(edit.copy) ? edit.copy : [];
-    const texts = copies.map(({ id, as, at }) => {
-      const item = items.find((found) => found.id === id);
-      const place = pair(at);
-      if (!item || !place || !fresh(as)) return undefined;
-      const open = setAttr(setAttr(item.open, "id", as), "data-at", place);
-      return open + source.slice(item.inner, item.end);
+    const copies = few(edit.copy) ? edit.copy : [];
+    const texts = copies.map((copy) => {
+      const item = items.find((found) => id(copy?.id) && found.id === copy.id);
+      const place = pair(copy?.at);
+      if (!item || !place || !fresh(copy.as)) return undefined;
+      const open = setAttr(setAttr(item.open, "id", copy.as), "data-at", place);
+      return open + withoutIds(source.slice(item.inner, item.end));
     });
-    const made = new Set(copies.map(({ as }) => as));
+    const made = new Set(copies.map((copy) => copy?.as));
     return texts.length && made.size === texts.length && texts.every(Boolean)
       ? put(source, front(source), texts as string[])
       : null;
@@ -292,7 +373,7 @@ export function boardEdit(source: string, edit: BoardEdit): string | null {
       source,
       moving.map((item) => lineOf(source, item.start, item.end)),
     );
-    if (rest === source || !itemsOf(rest).length) return null;
+    if (rest === source || !itemsOf(rest)?.length) return null;
     return put(
       rest,
       "front" in edit ? front(rest) : back(rest),
@@ -301,7 +382,7 @@ export function boardEdit(source: string, edit: BoardEdit): string | null {
   }
   if ("arrow" in edit) {
     const { from, to } = edit.arrow ?? {};
-    if (!ids.has(from) || !ids.has(to) || from === to) return null;
+    if (!named([from, to]) || from === to) return null;
     const last = arrowsOf(source).at(-1);
     return put(
       source,
@@ -310,9 +391,11 @@ export function boardEdit(source: string, edit: BoardEdit): string | null {
     );
   }
   if ("unarrow" in edit) {
-    const arrow = arrowsOf(source).find(
-      ({ from, to }) => from === edit.unarrow?.from && to === edit.unarrow?.to,
-    );
+    const { from, to } = edit.unarrow ?? {};
+    const arrow =
+      id(from) &&
+      id(to) &&
+      arrowsOf(source).find((one) => one.from === from && one.to === to);
     return arrow ? cut(source, [lineOf(source, arrow.start, arrow.end)]) : null;
   }
   return null;

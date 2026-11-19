@@ -20,6 +20,10 @@ export const maxRecalledPrompts = 100;
 export const maxHistoryNodes = 256;
 // Changes made by hand that can be undone; each holds its file's text twice.
 export const maxUndoable = 100;
+// What one change by hand to a whiteboard may name: items, and an item's
+// text in characters.
+export const maxBoardEntries = 1_000;
+export const maxBoardTextChars = 20_000;
 // A row with more children shows its latest ones and a line for the rest.
 export const maxShownSteps = 30;
 export const maxRememberedToggles = 500;

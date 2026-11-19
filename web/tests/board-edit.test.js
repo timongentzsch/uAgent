@@ -283,3 +283,118 @@ test("an item the file no longer has, or an edit a board does not take, changes 
     BOARD.replace("Fields?", "<b>x</b>"),
   );
 });
+
+test("an id from a message is a string, or nothing is changed", () => {
+  const at = [1, 2];
+  for (const edit of [
+    { add: { id: ["title"], tag: "p", at, text: "" } },
+    { copy: [{ id: "form", as: ["b"], at }] },
+    { copy: [{ id: ["form"], as: "b", at }] },
+    { set: [{ id: ["n1"], at }] },
+    { remove: [["n1"]] },
+    { arrow: { from: ["t"], to: "n1" } },
+  ])
+    assert.equal(boardEdit(BOARD, edit), null, JSON.stringify(edit));
+});
+
+test("a file that does not say it is a board, or a change larger than one may be, changes nothing", () => {
+  const move = { set: [{ id: "n1", at: [1, 2] }] };
+  assert.equal(
+    boardEdit(BOARD.replace('<meta name="board">\n', ""), move),
+    null,
+  );
+  assert.equal(
+    boardEdit(
+      BOARD.replace('<meta name="board">', '<meta name="boards">'),
+      move,
+    ),
+    null,
+  );
+  assert.equal(
+    boardEdit(BOARD, { set: Array(1001).fill({ id: "n1", at: [1, 2] }) }),
+    null,
+  );
+  assert.equal(
+    boardEdit(BOARD, { set: [{ id: "n1", text: "x".repeat(20_001) }] }),
+    null,
+  );
+});
+
+test("comments, quoted values and a plain divider are not taken for items or arrows", () => {
+  // A commented-out copy of an item before it is not the item.
+  const commented = BOARD.replace(
+    line(ITEMS.n1),
+    `<!-- ${ITEMS.n1} -->\n${line(ITEMS.n1)}`,
+  );
+  assert.equal(
+    boardEdit(commented, { set: [{ id: "n1", at: [40, 60] }] }),
+    commented.replace(
+      `${line(ITEMS.n1)}`,
+      line(ITEMS.n1.replace('data-at="10 20"', 'data-at="40 60"')),
+    ),
+  );
+  // An unclosed item in a comment swallows nothing after it.
+  const unclosed = BOARD.replace(
+    line(ITEMS.n1),
+    `<!-- <div id="x" data-at="1 1"> -->\n${line(ITEMS.n1)}`,
+  );
+  assert.equal(
+    boardEdit(unclosed, { remove: ["t"] }),
+    unclosed.replace(line(ITEMS.t), ""),
+  );
+  // A ">" in a quoted value is the value's, not the tag's end.
+  const quoted = BOARD.replace("<div id=form", '<div title="a > b" id=form');
+  assert.equal(
+    boardEdit(quoted, { set: [{ id: "form", at: [1, 2] }] }),
+    quoted.replace('data-at="300 200"', 'data-at="1 2"'),
+  );
+  // An arrow is named by both its ends: a plain divider is none.
+  const divider = BOARD.replace(line(ITEMS.t), `${line(ITEMS.t)}<hr>\n`);
+  for (const unarrow of [
+    { from: "", to: "" },
+    {},
+    { from: undefined, to: undefined },
+  ])
+    assert.equal(boardEdit(divider, { unarrow }), null);
+});
+
+test("an item whose end tag is left out is not guessed at: the change is refused", () => {
+  const open = BOARD.replace(
+    line(ITEMS.t),
+    '<p id="a" data-at="1 1">A\n<p id="b" data-at="2 2">B</p>\n',
+  );
+  assert.equal(boardEdit(open, { remove: ["a"] }), null);
+  assert.equal(boardEdit(open, { set: [{ id: "b", at: [3, 4] }] }), null);
+});
+
+test("a copy leaves out the ids of what its item holds", () => {
+  const widget =
+    '<div id="w" class="widget" data-at="0 0" data-size="100 100"><ul><li id="x">One</li></ul></div>';
+  const board = BOARD.replace(line(ITEMS.t), line(ITEMS.t) + line(widget));
+  assert.equal(
+    boardEdit(board, { copy: [{ id: "w", as: "w1", at: [20, 20] }] }),
+    board.replace(
+      line(widget),
+      line(widget) +
+        line(
+          '<div id="w1" class="widget" data-at="20 20" data-size="100 100"><ul><li>One</li></ul></div>',
+        ),
+    ),
+  );
+});
+
+test("an arrow inside an item removed goes with the item, and nothing after it", () => {
+  const widget =
+    '<div id="w" class="widget" data-at="0 0"><hr data-from="w" data-to="n1"></div>';
+  const board = BOARD.replace(line(ITEMS.t), line(ITEMS.t) + line(widget));
+  assert.equal(boardEdit(board, { remove: ["w"] }), BOARD);
+});
+
+test("a file with CRLF line ends gets its new lines ended the same", () => {
+  const crlf = BOARD.replace(/\n/g, "\r\n");
+  const made = boardEdit(crlf, {
+    add: { id: "x1", tag: "p", at: [1, 2], text: "X" },
+  });
+  assert.match(made, /<p id="x1" data-at="1 2">X<\/p>\r\n<hr/);
+  assert.doesNotMatch(made, /[^\r]\n/);
+});

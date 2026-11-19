@@ -2,6 +2,8 @@
 // each into the file as it then is. Each write is kept, to be undone and
 // made again while the file is as the last write from here left it.
 
+import { maxUndoable } from "../../shared/limits.ts";
+
 interface Change {
   path: string;
   before: string;
@@ -69,6 +71,7 @@ export function fileSaver(
         await put(path, after, closing);
         drop(path, undone);
         past.push({ path, before: text, after });
+        if (past.length > maxUndoable) past.shift();
         changed();
         return true;
       }),

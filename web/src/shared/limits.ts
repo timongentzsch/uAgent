@@ -18,6 +18,8 @@ export const maxRecalledPromptSessions = 32;
 // Prompts Up and Down recall per conversation.
 export const maxRecalledPrompts = 100;
 export const maxHistoryNodes = 256;
+// Changes made by hand that can be undone; each holds its file's text twice.
+export const maxUndoable = 100;
 // A row with more children shows its latest ones and a line for the rest.
 export const maxShownSteps = 30;
 export const maxRememberedToggles = 500;

@@ -416,6 +416,43 @@ test("on a phone the actions are a bar above the input, which asks; the side cha
   expect(await fits(page)).toBe(true);
 });
 
+test("on a phone a long quote is cut short in the message box, which keeps its width", async ({
+  page,
+  host,
+  request,
+}) => {
+  const line = "A sentence far too long for a phone to show on one line. ";
+  const { id } = await savedConversation(host, request, "Long", line.repeat(4));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${id}`);
+  await online(page);
+  const transcript = page.locator(".transcript");
+  const actions = page.getByRole("group", { name: "Selection" });
+  const form = page.locator(".composer > form");
+  // The quote and the button that sends stay inside the box's edges.
+  const held = async () => {
+    const edge = await box(form);
+    for (const part of [
+      form.locator(".quote-bar"),
+      form.getByRole("button", { name: "Send", exact: true }),
+    ]) {
+      const inner = await box(part);
+      expect(inner.left).toBeGreaterThanOrEqual(edge.left);
+      expect(inner.right).toBeLessThanOrEqual(edge.right);
+    }
+  };
+  const passage = transcript.locator(".message.response");
+  await select(passage, line.repeat(4).trim());
+  await actions.getByRole("button", { name: "Quote" }).click();
+  await expect(form.locator(".quote-bar")).toContainText("A sentence far");
+  await held();
+  await select(passage, line.repeat(4).trim());
+  await actions.getByRole("button", { name: "Ask in side chat" }).click();
+  await expect(form.locator(".quote-bar .chip")).toHaveText("Side chat");
+  await held();
+  expect(await fits(page)).toBe(true);
+});
+
 test("on a phone Jump to latest stays clear of the selection's actions", async ({
   page,
   session,

@@ -29,6 +29,11 @@
 
 ### Fixes
 
+- **Everything you can tap shows the press.** On a touch screen a conversation in the list, a row of the Library or of Scheduled, a slide's tile, a link or a file reference in an answer, **Copy code**, **More options** and **Show source**, a question's option, a tool's card and a sent picture or file looked the same pressed as at rest. Each now fills as a button does, or takes the ring where a picture would hide a fill. A tool's whole card switches it, not only its text.
+- **A long quote stays inside the message box.** On a phone a quote whose first line was wider than the screen stretched the box under it: the draft, its controls and **Send** ran off the edge. The quote is cut short with an ellipsis, as on a wide screen.
+- **The Library's place field fills its row on a phone.** It stopped short of its arrow, which stood outside the field.
+- **The list's drawer shows its title whole on a phone.** It read "Conversati…"; the drawer now takes the screen's width but for an edge of the page to close it by.
+- **A tile keeps no ring after a tap.** On a touch screen the slide or page last tapped could keep the ring a pointer shows.
 - **A side chat on a phone is a page of its own.** The box under the transcript held tabs, three buttons, a second input and its button on one small screen. Where the side chats have no column, the conversation's input now asks (marked **Side chat**, with the quote) and the side chat opens as its own page with the way back and **Merge** in its header.
 - **A conversation's side chats are in its Activity list**, with its commands and agents: "2 side chats" under the input, a row to open or remove each. A side chat's own fields are the message box every message is written in, with its arrow.
 - **Jump to latest stays clear of a selection's actions** on a phone.

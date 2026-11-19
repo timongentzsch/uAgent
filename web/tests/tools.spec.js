@@ -29,7 +29,7 @@ test("tool catalogue shows its schema size and persists selection", async ({
 
   const search = dialog.getByRole("searchbox", { name: "Find a tool" });
   await search.fill("read_path");
-  const choice = dialog.locator(".tool-choice");
+  const choice = dialog.locator(".tool-toggle");
   await expect(choice).toHaveCount(1);
   await expect(choice.locator("code")).toHaveText("read_path");
   const enabled = choice.getByRole("checkbox");

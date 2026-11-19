@@ -1,21 +1,26 @@
 // Every view's buttons on a phone: none cut or wrapped, no row of them wider
-// than its box, nothing that scrolls the page sideways.
+// than its box, nothing that scrolls the page sideways, and each of them
+// shows a press.
 import {
   test,
   expect,
   headerAction,
   online,
   openFiles,
+  openMore,
   openSheet,
   paper,
+  SAMPLE_ASK,
   savedConversation,
   selectProbeModel,
+  servePending,
   sheet,
   showList,
   slide,
   unfiled,
   writeFiles,
 } from "./fixtures.js";
+import { unanswered } from "./press.js";
 
 test.use({
   isMobile: true,
@@ -114,7 +119,10 @@ const cramped = (page) =>
     return [...new Set(found)];
   });
 
-const roomy = async (page) => expect.poll(() => cramped(page)).toEqual([]);
+const roomy = async (page) => {
+  await expect.poll(() => cramped(page)).toEqual([]);
+  expect(await unanswered(page)).toEqual([]);
+};
 
 // A page's tools in one row that needs no scrolling: those that are an
 // icon alone fold into a menu.
@@ -173,6 +181,14 @@ test.describe("the pages of the list", () => {
       await savedConversation(host, request, title);
     await page.goto("/");
     await showList(page);
+    // The drawer shows its title whole, and leaves an edge of the page.
+    const drawer = page.locator("dialog.sidebar");
+    expect(
+      await drawer
+        .locator("header h2")
+        .evaluate((title) => title.scrollWidth - title.clientWidth),
+    ).toBeLessThanOrEqual(0);
+    expect((await drawer.boundingBox()).width).toBe(390 - 16);
     await page
       .locator(".session-row", { hasText: "Alpha talk" })
       .getByRole("button", { name: "Conversation menu" })
@@ -263,6 +279,73 @@ test.describe("a conversation", () => {
     await expect(
       page.getByRole("dialog", { name: "Changed files" }),
     ).toBeVisible();
+    await roomy(page);
+  });
+
+  test("an answer's link, file reference, code and source", async ({
+    page,
+    host,
+    request,
+  }) => {
+    const { id } = await savedConversation(
+      host,
+      request,
+      "Rich answer",
+      "See [the docs](https://example.com) and `web/src/app.tsx:12`.\n\n```js\nlet a = 1;\n```\n\n```mermaid\ngraph TD; A-->B;\n```\n",
+    );
+    await page.goto(`/#session=${id}`);
+    const transcript = page.locator(".transcript");
+    await expect(transcript.locator(".file-ref")).toBeVisible();
+    await expect(transcript.locator("summary")).toBeVisible();
+    await roomy(page);
+  });
+
+  test("a sent picture and file", async ({ page, session }) => {
+    await page.goto(`/#session=${session.id}`);
+    await online(page);
+    await page.locator('.composer input[type="file"]').setInputFiles([
+      {
+        name: "shot.svg",
+        mimeType: "image/svg+xml",
+        buffer: Buffer.from(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="3"/>',
+        ),
+      },
+      { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hi") },
+    ]);
+    await expect(page.locator(".composer .file-chip")).toHaveCount(2);
+    await roomy(page);
+    await page.getByLabel("Message or guidance").fill("with files");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const sent = page.locator(".transcript .message.user");
+    await expect(sent.locator(".attachment-tile")).toBeVisible();
+    await expect(sent.locator(".attachment-card")).toBeVisible();
+    // The turn over: its controls are no longer held.
+    await expect(page.locator(".transcript")).toContainText("Native worker");
+    await expect(
+      page.getByRole("button", { name: "Send", exact: true }),
+    ).toBeVisible();
+    await roomy(page);
+  });
+
+  test("a question's options", async ({ page, session, request }) => {
+    await servePending(page, request, session, SAMPLE_ASK);
+    await page.goto(`/#session=${session.id}`);
+    await expect(
+      page.getByRole("region", { name: "Pending decision" }),
+    ).toBeVisible();
+    await roomy(page);
+  });
+
+  test("the tools", async ({ page, session }) => {
+    await page.goto(`/#session=${session.id}`);
+    await page
+      .locator(".conversation-head")
+      .getByRole("button", { name: "Conversation menu" })
+      .click();
+    await openMore(page);
+    await page.getByRole("menuitem", { name: "Tools", exact: true }).click();
+    await expect(page.locator(".tool-toggle").first()).toBeVisible();
     await roomy(page);
   });
 

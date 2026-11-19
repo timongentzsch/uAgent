@@ -113,9 +113,6 @@
   top: var(--space-3);
   right: var(--space-3);
 }
-.code-copy button {
-  background: var(--surface);
-}
 @media (hover: hover) and (pointer: fine) {
   .code-copy {
     opacity: 0;
@@ -180,12 +177,10 @@
   line-height: inherit;
   text-align: inherit;
   color: var(--accent);
-  background: none;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-@media (hover: hover) and (pointer: fine) {
-  .markdown .file-ref:hover code {
-    background: var(--hover);
-  }
+/* The button is the fill, so it shows a pointer and a press. */
+.markdown .file-ref code {
+  background: none;
 }

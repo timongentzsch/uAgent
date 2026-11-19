@@ -2,6 +2,5 @@
   position: absolute;
   bottom: calc(100% + var(--space-2));
   right: 0;
-  background: var(--raised);
   font-size: var(--font-small);
 }

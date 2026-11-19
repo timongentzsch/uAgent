@@ -102,6 +102,10 @@
 .session-row:has(:focus-visible) {
   background: var(--raised);
 }
+/* The whole row answers a press on its conversation. */
+.session-row:has(> .list-row:active) {
+  background: var(--hover);
+}
 @media (hover: hover) and (pointer: fine) {
   .session-row:hover {
     background: var(--raised);

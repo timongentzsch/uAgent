@@ -278,7 +278,7 @@
     flex: none;
   }
   .library-place {
-    display: inline-flex;
+    display: block;
   }
   .library .management-editor {
     flex: 1;

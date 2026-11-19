@@ -137,6 +137,7 @@ export function CodeCopy({ text }: { text: string }) {
   return (
     <>
       <IconButton
+        variant="secondary"
         class="swap-feedback"
         data-swapped={swapped.current || undefined}
         label={status || "Copy code"}
@@ -620,7 +621,7 @@ export function IconButton({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   label: string;
-  variant?: "primary" | "quiet";
+  variant?: "primary" | "secondary" | "quiet";
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (

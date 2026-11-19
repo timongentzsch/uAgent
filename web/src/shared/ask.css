@@ -122,8 +122,3 @@
 .ask-question > .file-chip {
   justify-self: start;
 }
-@media (hover: hover) and (pointer: fine) {
-  .ask-option:hover {
-    background: var(--hover);
-  }
-}

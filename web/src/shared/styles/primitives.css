@@ -162,9 +162,17 @@
     border-color: transparent;
     background: transparent;
   }
+  /* What answers a pointer besides a button: a link, a disclosure's
+     summary, and a card that is one control (a link, or the label round its
+     choice). They fade as a button does. */
+  :is(a, summary, label.card) {
+    transition: background var(--motion-fast) var(--ease-standard);
+  }
   @media (hover: hover) and (pointer: fine) {
     button:enabled:hover,
-    .file-button:hover {
+    .file-button:hover,
+    a.card:hover,
+    label.card:not(:has(:disabled)):hover {
       background: var(--hover);
     }
     .primary:enabled:hover,
@@ -172,19 +180,25 @@
     .tabs [aria-selected="true"]:enabled:hover {
       background: var(--accent-hover);
     }
-    .quiet:not(:disabled):hover {
+    .quiet:not(:disabled):hover,
+    summary:hover {
       background: var(--raised);
     }
   }
-  /* A press fills at once and fades out on release (the fade is the base
-     transition; a press itself has none). The selectors outrank hover's. */
+  /* Every control answers a press: it fills at once and fades out on release
+     (the fade is its transition; a press itself has none). A fill at rest
+     turns to --press, none to --hover. A sheet outside the layers picks a
+     variant, never a background, which would outrank these. */
   button:enabled:active,
-  .file-button:active {
+  .file-button:active,
+  a:is(.card, .chip):active,
+  label.card:not(:has(:disabled)):active {
     background: var(--press);
     transition: none;
   }
   .quiet:not(:disabled):active,
-  button.row:enabled:active {
+  a:active,
+  summary:active {
     background: var(--hover);
     transition: none;
   }
@@ -439,9 +453,17 @@
     background: transparent;
     cursor: pointer;
   }
-  button.cover:is(:hover, :focus-visible) {
+  /* A picture would hide a fill: its press is the ring. */
+  button.cover:is(:focus-visible, :active),
+  .attachment-tile:active {
     outline: var(--focus-ring);
     outline-offset: var(--focus-offset);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    button.cover:hover {
+      outline: var(--focus-ring);
+      outline-offset: var(--focus-offset);
+    }
   }
   .float-toolbar output {
     min-width: 5ch;
@@ -1246,6 +1268,13 @@
     width: min(var(--popover), calc(var(--content-width) - 2 * var(--pad)));
     gap: 0;
   }
+  /* A phone's drawer leaves an edge of the page, enough to close it by. */
+  @media (max-width: 600px) {
+    dialog.sidebar.drawer[open] {
+      width: calc(var(--content-width) - 2 * var(--pad));
+      max-width: none;
+    }
+  }
   .drawer > .dialog-body {
     display: flex;
     flex-direction: column;
@@ -1405,11 +1434,6 @@
     --row: var(--control-l);
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-  }
-  @media (hover: hover) and (pointer: fine) {
-    button.row:enabled:hover {
-      background: var(--raised);
-    }
   }
   .group-footer {
     margin: var(--space-3) 0 0;

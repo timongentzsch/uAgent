@@ -1,6 +1,5 @@
 import type { ButtonHTMLAttributes, ComponentChildren } from "preact";
 import { Button } from "./ui.tsx";
-import "./list-row.css";
 
 // The current entry is marked with aria-current, which is also what styles it.
 export function ListRow({
@@ -18,6 +17,7 @@ export function ListRow({
   return (
     <Button
       title={typeof title === "string" ? title : undefined}
+      variant="quiet"
       {...props}
       class={`list-row ${className}`}
     >

@@ -447,7 +447,7 @@ function Composer({
           <div class="attachments">
             {draft.files.map((asset) => (
               <div
-                class="chip file-chip"
+                class="chip chip-outline file-chip"
                 key={asset.id}
                 aria-busy={asset.pending || undefined}
               >

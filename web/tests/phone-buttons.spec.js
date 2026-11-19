@@ -172,7 +172,16 @@ test.describe("the pages of the list", () => {
       .getByRole("button", { name: "Scheduled", exact: true })
       .click();
     await page.getByRole("button", { name: "New task", exact: true }).click();
-    await expect(page.getByLabel("Name", { exact: true })).toBeVisible();
+    const name = page.getByLabel("Name", { exact: true });
+    await expect(name).toBeVisible();
+    // The way back keeps its row over the first field.
+    const back = await page
+      .getByRole("button", { name: "All runs", exact: true })
+      .boundingBox();
+    expect(back.height).toBeGreaterThanOrEqual(44);
+    expect(back.y + back.height).toBeLessThanOrEqual(
+      (await page.locator(".field", { has: name }).boundingBox()).y,
+    );
     await roomy(page);
   });
 
@@ -244,6 +253,9 @@ test.describe("files", () => {
         return tab.right <= strip.getBoundingClientRect().right + 1;
       }),
     ).toBe(true);
+    expect(
+      (await files.getByRole("tab", { name: "Tasks" }).boundingBox()).height,
+    ).toBeGreaterThanOrEqual(44);
     await cell("Tasks", "A2").click();
     await files.getByRole("button", { name: "Format", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Format" })).toBeVisible();
@@ -333,6 +345,57 @@ test.describe("a conversation", () => {
     await page.goto(`/#session=${session.id}`);
     await expect(
       page.getByRole("region", { name: "Pending decision" }),
+    ).toBeVisible();
+    await roomy(page);
+  });
+
+  test("a side chat's way back, and its row in Activity", async ({
+    page,
+    session,
+  }) => {
+    await page.goto(`/#session=${session.id}`);
+    await online(page);
+    await page.getByLabel("Message or guidance").fill("/btw Side tool probe");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await page.getByRole("button", { name: "Allow once", exact: true }).click();
+    await expect(page.locator(".transcript")).toContainText(
+      "SIDE-TOOL-COMPLETE",
+    );
+    await roomy(page);
+    // A tap on the way back is not taken by the totals beside it.
+    await page
+      .locator(".conversation-head")
+      .getByRole("button", { name: /^‹/ })
+      .tap();
+    await expect(page).toHaveURL(new RegExp(`session=${session.id}$`));
+    await page.locator(".composer .activity-button").tap();
+    await expect(page.getByRole("dialog", { name: "Activity" })).toBeVisible();
+    await roomy(page);
+  });
+
+  test("the browser", async ({ page, session }) => {
+    const { serveFramebuffer } = await import("./rfb-fixture.js");
+    const remote = await serveFramebuffer(page);
+    await page.route("**/api/browser/status", (route) =>
+      route.fulfill({
+        json: {
+          ok: true,
+          display: 1,
+          generation: 1,
+          profile_id: "default",
+          profiles: [{ id: "default", name: "Default" }],
+          running: true,
+          mode: "human",
+          controller: true,
+          leased: true,
+        },
+      }),
+    );
+    await page.goto(`/#session=${session.id}`);
+    await remote.prepare();
+    await headerAction(page, "Open browser");
+    await expect(
+      page.getByRole("dialog", { name: "Browser", exact: true }),
     ).toBeVisible();
     await roomy(page);
   });

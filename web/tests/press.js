@@ -87,8 +87,9 @@ const painted = (page, index) =>
       .join("\n");
   }, index);
 
-// The controls on the page that show nothing when pressed.
-export async function unanswered(page) {
+// The controls on the page that show nothing when pressed, or with `state`
+// "hover" when pointed at.
+export async function unanswered(page, state = "active") {
   const names = await tag(page);
   const client = await page.context().newCDPSession(page);
   await client.send("DOM.enable");
@@ -104,7 +105,7 @@ export async function unanswered(page) {
     const rest = await painted(page, index);
     await client.send("CSS.forcePseudoState", {
       nodeId,
-      forcedPseudoClasses: ["active"],
+      forcedPseudoClasses: [state],
     });
     const pressed = await painted(page, index);
     await client.send("CSS.forcePseudoState", {

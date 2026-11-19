@@ -37,13 +37,13 @@ function Totals({
     (item) => item.session_id === session.id && queuedGuidance(item),
   );
   return (
-    <p class="head-subtitle head-totals small">
+    <span class="head-totals">
       <SessionSummary
         state={state}
         queued={queued ? 0 : session.guidance}
         open={() => setModal({ type: "statistics", session_id: session.id })}
       />
-    </p>
+    </span>
   );
 }
 
@@ -165,14 +165,18 @@ export default function ConversationHeader({
             </span>
           )}
         </div>
-        {page === "chat" && parent && (
+        {((page === "chat" && parent) || (inMenu && session)) && (
           <p class="head-subtitle small">
-            <Button variant="quiet" onClick={() => choose(parent.id)}>
-              <span class="truncate">‹ {titleOf(parent)}</span>
-            </Button>
+            {page === "chat" && parent && (
+              <Button variant="quiet" onClick={() => choose(parent.id)}>
+                <span class="truncate">‹ {titleOf(parent)}</span>
+              </Button>
+            )}
+            {inMenu && session && (
+              <Totals session={session} outgoing={outgoing} />
+            )}
           </p>
         )}
-        {inMenu && session && <Totals session={session} outgoing={outgoing} />}
       </div>
       {page === "chat" && session && merge && (
         <Button disabled={!!session.turn_active} onClick={merge}>

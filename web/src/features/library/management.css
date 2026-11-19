@@ -57,6 +57,10 @@
   min-width: 0;
   flex: 1;
 }
+/* Its column scrolls, and never squeezes it. */
+.editor-head {
+  flex: none;
+}
 .editor-head > strong {
   flex: 1;
 }

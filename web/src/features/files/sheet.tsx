@@ -542,7 +542,6 @@ export function SheetBar({
       <div class="sheet-tabs" ref={list}>
         <Tabs
           label="Tabs"
-          size="compact"
           value={index}
           to={to}
           tabs={boards.map((board, at) => ({ key: at, label: board.title }))}

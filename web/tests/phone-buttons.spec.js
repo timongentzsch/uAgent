@@ -285,6 +285,38 @@ test.describe("files", () => {
     await toolsFit(page);
   });
 
+  test("a slide's tools and the bar over its picked element", async ({
+    page,
+    session,
+    host,
+  }) => {
+    await writeFiles(host.project, {
+      "deck/01-cover.html": slide(
+        "Cover",
+        "Say hello.",
+        '<div class="card"><p style="translate: 5px 0px;">Inside.</p></div><div data-shape="rect" style="position: absolute; left: 100px; top: 300px; width: 200px; height: 100px;"></div>',
+      ),
+      "deck/02-plan.html": slide("Plan", "Three steps."),
+    });
+    const files = await openFiles(page, session, "deck/", { phone: true });
+    const stage = page.frameLocator(".page-stage iframe:not([inert])");
+    await expect(stage.locator("h1")).toBeVisible();
+    await files.getByRole("button", { name: "Edit" }).click();
+    await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+    await roomy(page);
+    // Every control the bar has: a container and Put back, a shape's order.
+    for (const element of [
+      stage.getByText("Inside."),
+      stage.locator("[data-shape]"),
+    ]) {
+      const box = await element.boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(page.getByRole("toolbar", { name: "Picked" })).toBeVisible();
+      await roomy(page);
+    }
+    await toolsFit(page);
+  });
+
   test("a sheet's Format sheet and rules dialog", async ({
     page,
     session,

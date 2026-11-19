@@ -44,8 +44,10 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
   session,
   host,
 }) => {
-  const { files, stage, saved } = await openBoard(app, session, host);
+  const { files, stage, saved, at } = await openBoard(app, session, host);
   const item = (id) => stage.locator(`#${id}`);
+  // A press on the empty board, which gives the page the keys.
+  const away = async () => app.mouse.click(...(await at(1100, 700)));
   await expect(item("ok")).toBeVisible();
   const place = (id) =>
     item(id).evaluate((element) => [element.offsetLeft, element.offsetTop]);
@@ -66,13 +68,13 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
   );
   // ⌘Z puts it back, once the page drawn again from the file has its keys.
   await expect(async () => {
-    await item("title").click();
+    await away();
     await app.keyboard.press("ControlOrMeta+z");
     expect(await saved()).toBe(BOARD);
   }).toPass();
   // The page is drawn again from the file, and ⇧⌘Z makes the move again.
   await expect.poll(() => place("ad")).toEqual([60, 180]);
-  await item("title").click();
+  await away();
   await app.keyboard.press("ControlOrMeta+Shift+z");
   await expect.poll(saved).toMatch(/id="ad"[^>]*data-at="(?!60 180)\d+ \d+"/);
   await expect.poll(() => place("ad")).not.toEqual([60, 180]);
@@ -248,7 +250,7 @@ test("a whiteboard's change that was refused is not what ⌘Z undoes: the one be
   session,
   host,
 }) => {
-  const { files, stage, saved } = await openBoard(app, session, host);
+  const { files, stage, saved, at } = await openBoard(app, session, host);
   await stage.locator("#n1").click();
   await app.keyboard.press("ArrowRight");
   await expect.poll(saved).toContain('data-at="801 100"');
@@ -265,7 +267,7 @@ test("a whiteboard's change that was refused is not what ⌘Z undoes: the one be
   );
   expect(await saved()).toContain('data-at="801 100"');
   await expect(async () => {
-    await stage.locator("#title").click();
+    await app.mouse.click(...(await at(1100, 700)));
     await app.keyboard.press("ControlOrMeta+z");
     expect(await saved()).toBe(BOARD);
   }).toPass();
@@ -625,7 +627,7 @@ addEventListener("load", () => setTimeout(() => {
   const say = (message) => parent.postMessage({ uagentDesign: 1, ...message }, "*");
   say({ type: "ready", title: "Plain", artboard: { w: 400, h: 300 }, tweaks: null, height: 300, board: true });
   say({ type: "drawn" });
-  setTimeout(() => say({ type: "board", set: [{ id: "a", at: [50, 50] }] }), 300);
+  setTimeout(() => say({ type: "change", set: [{ id: "a", at: [50, 50] }] }), 300);
 }, 300));
 </script>
 `;
@@ -727,6 +729,16 @@ test.describe("on a phone", () => {
     await expect
       .poll(saved)
       .toMatch(/id="n1"[^>]*data-at="(?!800 100)\d+ \d+"/);
+    // A tap again on the one picked retypes it.
+    const moved = await stage.locator("#n1").boundingBox();
+    await app.touchscreen.tap(
+      moved.x + moved.width / 2,
+      moved.y + moved.height / 2,
+    );
+    await expect(stage.locator("#n1")).toHaveAttribute(
+      "contenteditable",
+      "plaintext-only",
+    );
     await files.getByRole("button", { name: "More tools" }).click();
     await expect(app.getByRole("menuitem", { name: "Fit" })).toBeVisible();
   });

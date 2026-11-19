@@ -1,5 +1,12 @@
 // A person's edit of one text block of a document or a slide, applied to its
 // source. The block is found by its place among those design-helper.js lists.
+// And a slide's elements changed by hand (slideEdit).
+
+import {
+  maxItemEntries,
+  maxItemPixels,
+  maxItemTextChars,
+} from "../../shared/limits.ts";
 
 const EDITABLE =
   "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote, pre";
@@ -135,17 +142,22 @@ function written(page: Document, source: string) {
 // A slide in the style of `source`: its head, its body's own attributes,
 // and where its body is one element that wraps the slide, such a wrapper;
 // in it a heading and a paragraph to type over.
+// What a slide's content is in: the one element that wraps it, or the body
+// (sheet/slide.js finds it alike).
+function contentOf(page: Document) {
+  const [wrap, more] = [...page.body.children].filter(
+    (part) => !part.matches("aside, script, style"),
+  );
+  return wrap && !more && !wrap.matches(EDITABLE) ? wrap : page.body;
+}
+
 export function blankSlide(source: string) {
   const page = parsed(source);
   page.title = "New slide";
   page.querySelector('meta[name="slide"]')?.remove();
-  const [wrap, more] = [...page.body.children].filter(
-    (part) => !part.matches("aside, script, style"),
-  );
+  const content = contentOf(page);
   const into =
-    wrap && !more && !wrap.matches(EDITABLE)
-      ? (wrap.cloneNode() as Element)
-      : page.body;
+    content === page.body ? content : (content.cloneNode() as Element);
   into.innerHTML = "<h1>Heading</h1><p>Text</p>";
   if (into !== page.body) page.body.replaceChildren(into);
   return written(page, source);
@@ -169,6 +181,206 @@ export function skipSlide(source: string, skip: boolean) {
         `<meta name="slide" content="${content.replace(/"/g, "&quot;")}">`,
       );
   return written(page, source);
+}
+
+// A slide's element as its page showed it: its path from the body or from
+// an element with an id (design-helper.js `selector`), its tag and its text
+// without white space.
+interface Shown {
+  path: string;
+  tag: string;
+  text: string;
+}
+// Where an element put in by hand is placed in what it is in, and its size.
+interface Placed {
+  place: number[];
+  width: number;
+  height?: number;
+}
+// A slide's elements changed by hand (sheet/slide.js), each change one
+// write: elements moved by `move`, their translate, and sized (null takes a
+// size away); a text, a table or a shape put in; copies placed by hand
+// beside their originals; elements deleted; or what was put in by hand laid
+// over or under the rest put in beside it.
+export type SlideEdit =
+  | {
+      set: {
+        at: Shown;
+        move: number[];
+        width?: number | null;
+        height?: number | null;
+      }[];
+    }
+  | { add: { kind: string } & Placed }
+  | { copy: ({ at: Shown } & Placed)[] }
+  | { remove: Shown[] }
+  | { front: Shown[] }
+  | { back: Shown[] };
+// The shapes a slide's tools put in, by the corners each has.
+const CORNERS: Record<string, string> = {
+  rect: "",
+  round: "24px",
+  ellipse: "50%",
+};
+
+// The source with the change made, or null where the file is no slide, has
+// not every element the change names as the page showed it (the agent
+// changed it meanwhile), or the change is not one a slide takes. Its numbers
+// are written as whole pixels and nothing the page says as text.
+export function slideEdit(source: string, edit: SlideEdit): string | null {
+  const page = parsed(source);
+  const artboard = page.querySelector('meta[name="artboard"]');
+  if (!/\sslide$/.test(artboard?.getAttribute("content")?.trim() ?? ""))
+    return null;
+  const content = contentOf(page);
+  const notes = [...page.querySelectorAll("body > aside")].pop();
+  const length = (n: unknown, least = -maxItemPixels) =>
+    typeof n === "number" && n >= least && n <= maxItemPixels
+      ? Math.round(n)
+      : undefined;
+  const pair = (numbers: unknown) => {
+    const made = Array.isArray(numbers) ? numbers.map((n) => length(n)) : [];
+    return made.length === 2 && !made.includes(undefined)
+      ? (made as number[])
+      : undefined;
+  };
+  const found = (shown: unknown) => {
+    const { path, tag, text } = (shown ?? {}) as Partial<Shown>;
+    if (typeof path !== "string" || path.length > maxItemTextChars) return;
+    let element: Element | null = null;
+    try {
+      element = page.body.querySelector(
+        path.startsWith("#") ? path : `:scope > ${path}`,
+      );
+    } catch {
+      return;
+    }
+    return element &&
+      element !== content &&
+      content.contains(element) &&
+      !notes?.contains(element) &&
+      element.localName === tag &&
+      squash(element.textContent) === text
+      ? (element as HTMLElement)
+      : undefined;
+  };
+  // Each of the elements a list names, or none where one is not there.
+  const all = <T>(list: T[], at: (one: T) => unknown) => {
+    const elements =
+      Array.isArray(list) && list.length > 0 && list.length <= maxItemEntries
+        ? list.map((one) => found(at(one)))
+        : [];
+    return elements.every(Boolean) ? (elements as HTMLElement[]) : [];
+  };
+  // A size set in pixels, taken away (null) or left as it is (undefined); a
+  // height only a shape's. Whether it is one of those.
+  const sized = (element: HTMLElement, name: string, value: unknown) => {
+    const n = length(value, 1);
+    if (value === null) element.style.removeProperty(name);
+    else if (n && (name === "width" || element.matches("[data-shape]")))
+      element.style.setProperty(name, `${n}px`);
+    else return value === undefined;
+    return true;
+  };
+  // Placed by its own style at `place` in what it is placed in, as wide as
+  // `width` (and for a shape as high as `height`).
+  const placed = (
+    element: HTMLElement,
+    place: unknown,
+    width: unknown,
+    height: unknown,
+  ) => {
+    const at = pair(place);
+    element.style.removeProperty("translate");
+    Object.assign(element.style, {
+      position: "absolute",
+      left: `${at?.[0]}px`,
+      top: `${at?.[1]}px`,
+    });
+    return (
+      !!at &&
+      sized(element, "width", length(width, 1) ?? NaN) &&
+      sized(element, "height", height)
+    );
+  };
+  const byHand = (element: HTMLElement) =>
+    element.style.position === "absolute";
+
+  if ("set" in edit) {
+    const elements = all(edit.set, (one) => one?.at);
+    const made = elements.every((element, index) => {
+      const { move, width, height } = edit.set[index];
+      const [x, y] = pair(move) ?? [NaN];
+      if (x || y) element.style.setProperty("translate", `${x}px ${y}px`);
+      else element.style.removeProperty("translate");
+      const taken =
+        !Number.isNaN(x) &&
+        sized(element, "width", width) &&
+        sized(element, "height", height);
+      if (!element.getAttribute("style")) element.removeAttribute("style");
+      return taken;
+    });
+    return elements.length && made ? written(page, source) : null;
+  }
+  if ("add" in edit) {
+    const { kind, place, width, height } = edit.add ?? {};
+    const shape = typeof kind === "string" && Object.hasOwn(CORNERS, kind);
+    if (!(shape || kind === "text" || kind === "table")) return null;
+    const holder = page.createElement("template");
+    holder.innerHTML =
+      kind === "text"
+        ? "<p>Text</p>"
+        : kind === "table"
+          ? FRESH.table
+          : `<div data-shape="${kind}"></div>`;
+    const made = holder.content.firstElementChild as HTMLElement;
+    if (shape) {
+      made.style.background = "var(--accent, currentcolor)";
+      made.style.borderRadius = CORNERS[kind];
+    }
+    if (!placed(made, place, width, shape ? (height ?? NaN) : undefined))
+      return null;
+    if (notes?.parentElement === content) notes.before(made);
+    else content.append(made);
+    return written(page, source);
+  }
+  if ("copy" in edit) {
+    const elements = all(edit.copy, (one) => one?.at);
+    const copies = elements.map((element, index) => {
+      const { place, width, height } = edit.copy[index];
+      const copy = element.cloneNode(true) as HTMLElement;
+      for (const part of [copy, ...copy.querySelectorAll("[id]")])
+        part.removeAttribute("id");
+      return placed(copy, place, width, height) && copy;
+    });
+    if (!elements.length || !copies.every(Boolean)) return null;
+    elements.forEach((element, index) =>
+      element.after(copies[index] as HTMLElement),
+    );
+    return written(page, source);
+  }
+  if ("remove" in edit) {
+    const elements = all(edit.remove, (one) => one);
+    for (const element of elements) element.remove();
+    return elements.length ? written(page, source) : null;
+  }
+  if ("front" in edit || "back" in edit) {
+    const over = "front" in edit;
+    const elements = all(over ? edit.front : edit.back, (one) => one);
+    if (!elements.length || !elements.every(byHand)) return null;
+    let changed = false;
+    for (const element of elements) {
+      const peers = [...element.parentElement!.children].filter((peer) =>
+        byHand(peer as HTMLElement),
+      );
+      const end = over ? peers.at(-1)! : peers[0];
+      if (end === element) continue;
+      end[over ? "after" : "before"](element);
+      changed = true;
+    }
+    return changed ? written(page, source) : null;
+  }
+  return null;
 }
 
 // The page is untrusted: an edit leaves in a block what it held, by tag and

@@ -2,7 +2,7 @@
 // change names is written, so the rest of the file stays as the agent wrote
 // it (skills/artifact/references/whiteboard.md).
 
-import { maxBoardEntries, maxBoardTextChars } from "../../shared/limits.ts";
+import { maxItemEntries, maxItemTextChars } from "../../shared/limits.ts";
 
 // What the format offers: a shape's kinds, a note's or a shape's fills, and
 // text by size.
@@ -258,7 +258,7 @@ function change(source: string, edit: ItemChange): string | null {
     close = `</${edit.tag}>`;
   }
   if (edit.text !== undefined) {
-    if (typeof edit.text !== "string" || edit.text.length > maxBoardTextChars)
+    if (typeof edit.text !== "string" || edit.text.length > maxItemTextChars)
       return null;
     // Text only where the item holds text alone, or one element that does
     // (a section's name).
@@ -292,7 +292,7 @@ function written(add: NewItem) {
     !at ||
     size === undefined ||
     typeof add.text !== "string" ||
-    add.text.length > maxBoardTextChars ||
+    add.text.length > maxItemTextChars ||
     (add.fill !== undefined && !(add.note || add.shape)) ||
     (add.fill !== undefined && !FILLS.includes(add.fill))
   )
@@ -323,7 +323,7 @@ export function boardEdit(source: string, edit: BoardEdit): string | null {
   if (!items || !meta) return null;
   const ids = new Set(items.map((item) => item.id));
   const few = (list: unknown): list is unknown[] =>
-    Array.isArray(list) && list.length > 0 && list.length <= maxBoardEntries;
+    Array.isArray(list) && list.length > 0 && list.length <= maxItemEntries;
   const named = (list: unknown): list is string[] =>
     few(list) && list.every((one) => id(one) && ids.has(one));
   const fresh = (value: unknown) =>

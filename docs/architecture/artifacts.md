@@ -174,7 +174,8 @@ changed by hand on the item layer below; `whiteboard.js` adds what is a
 board's own: the item a tool puts where the board is next pressed, and
 arrows drawn from a dot on the picked item's side or picked by their line.
 Its changes are written with `boardEdit` (`board-edit.ts`), changing only
-what the change names in the source, new items after the last item.
+what the change names in the source, new items after the last item, and copies with the arrows that run between
+two of them.
 
 **Slides by hand.** With Edit on, the helper loads `~sheet/slide.js` for a
 slide instead of making every block editable. A press picks the outermost

@@ -515,6 +515,23 @@ test("⌘D duplicates, ⌘C and ⌘V copy, and ⌘A picks every item", async ({
   await expect(stage.locator("[data-uagent-picked]")).toHaveCount(0);
 });
 
+test("copies of items picked together keep the arrows between them, not those to the rest", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, saved } = await openBoard(app, session, host);
+  await stage.locator("#ok").click();
+  await stage.locator("#db").click({ modifiers: ["Shift"] });
+  await app.keyboard.press("ControlOrMeta+d");
+  await expect
+    .poll(saved)
+    .toMatch(
+      /<div id="db1"[^\n]*\n<hr data-from="ad" data-to="ok">\n<hr data-from="ok" data-to="db" data-label="yes" data-dash>\n<hr data-from="ok1" data-to="db1" data-label="yes" data-dash>\n$/,
+    );
+  await expect(stage.locator("svg.arrows > path:not(.hit)")).toHaveCount(3);
+});
+
 test("an arrow drawn from a dot on the picked item's side to another is in the file; it is picked by its line and deleted", async ({
   page: app,
   session,

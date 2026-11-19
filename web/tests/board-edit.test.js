@@ -156,7 +156,7 @@ test("an item added goes after the last item, before the arrows, with a new id",
     assert.equal(boardEdit(BOARD, { add }), null, JSON.stringify(add));
 });
 
-test("copies of items take new ids and places after the last item; the rest of the file stays", () => {
+test("copies of items take new ids and places after the last item, with the arrows between two of them; the rest of the file stays", () => {
   assert.equal(
     boardEdit(BOARD, {
       copy: [
@@ -173,7 +173,32 @@ test("copies of items take new ids and places after the last item; the rest of t
         line(
           '<section id="web1" data-at="20 20" data-size="600 400"><h2>Web</h2></section>',
         ),
+    ) + line('<hr data-from="form1" data-to="web1">'),
+  );
+  // An arrow with one end among the copied is not copied; one copied keeps
+  // its label and its look.
+  assert.equal(
+    boardEdit(BOARD, { copy: [{ id: "form", as: "form1", at: [1, 2] }] }),
+    BOARD.replace(
+      line(ITEMS.t),
+      line(ITEMS.t) +
+        line(
+          '<div id="form1" data-shape=rect data-at="1 2" data-size="180 80">Form</div>',
+        ),
     ),
+  );
+  const labelled = BOARD.replace(
+    '<hr data-from="n1" data-to="form">',
+    '<hr data-from="n1" data-to="form" data-label="yes" data-dash>',
+  );
+  assert.match(
+    boardEdit(labelled, {
+      copy: [
+        { id: "n1", as: "n2", at: [1, 2] },
+        { id: "form", as: "form1", at: [1, 2] },
+      ],
+    }),
+    /<hr data-from="form" data-to="web">\n<hr data-from="n2" data-to="form1" data-label="yes" data-dash>\n$/,
   );
   assert.equal(
     boardEdit(BOARD, { copy: [{ id: "form", as: "n1", at: [1, 2] }] }),

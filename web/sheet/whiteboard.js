@@ -546,6 +546,16 @@ function edits(layer) {
         lay(copied);
         return copied;
       });
+      // The arrows between two of them, between their copies.
+      const as = new Map(list.map((item, index) => [item.id, made[index].id]));
+      for (const line of document.querySelectorAll("hr[data-from][data-to]")) {
+        const { from, to } = line.dataset;
+        if (!as.has(from) || !as.has(to)) continue;
+        const copied = line.cloneNode();
+        copied.dataset.from = as.get(from);
+        copied.dataset.to = as.get(to);
+        [...document.querySelectorAll("hr[data-from]")].at(-1).after(copied);
+      }
       return [
         made,
         {

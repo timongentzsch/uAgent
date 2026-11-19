@@ -349,9 +349,24 @@ export function boardEdit(source: string, edit: BoardEdit): string | null {
       return open + withoutIds(source.slice(item.inner, item.end));
     });
     const made = new Set(copies.map((copy) => copy?.as));
-    return texts.length && made.size === texts.length && texts.every(Boolean)
-      ? put(source, front(source), texts as string[])
-      : null;
+    if (!texts.length || made.size !== texts.length || !texts.every(Boolean))
+      return null;
+    // The arrows between two of the copied, between their copies.
+    const as = new Map(copies.map((copy) => [copy.id, copy.as]));
+    const lines = arrowsOf(source)
+      .filter(({ from, to }) => as.has(from!) && as.has(to!))
+      .map(({ from, to, start, end }) =>
+        setAttr(
+          setAttr(source.slice(start, end), "data-from", as.get(from!)),
+          "data-to",
+          as.get(to!),
+        ),
+      );
+    const text = put(source, front(source), texts as string[]);
+    const last = arrowsOf(text).at(-1);
+    return last && lines.length
+      ? put(text, lineOf(text, last.start, last.end)[1], lines)
+      : text;
   }
   if ("remove" in edit) {
     if (!named(edit.remove)) return null;

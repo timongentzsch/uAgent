@@ -105,6 +105,8 @@ const TAB_AFTER: Record<string, (index: number, tabs: number) => number> = {
   "tab-left": (index) => index - 1,
 };
 
+// How soon a change of the file held for the person is offered again.
+const RENEW_MS = 500;
 // The zoom of an opened page, as a scale of its real size, and one step.
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 4;
@@ -153,6 +155,9 @@ export default function Sequence({
   uneditable,
   settle,
   forget,
+  unwritten,
+  fresh,
+  writing,
   typing,
   saveAs,
   arrange,
@@ -190,6 +195,12 @@ export default function Sequence({
   // dropped of it when its page is drawn again from the file.
   settle: () => Promise<unknown>;
   forget: () => void;
+  // Whether what was typed in a block is not all in its file yet.
+  unwritten: () => boolean;
+  // Counts the changes someone else made to the file, which the page takes
+  // in place where it can; and whether a call is writing it now.
+  fresh: number;
+  writing?: boolean;
   // A sheet's cell being typed in and the changes it is calculating, as the
   // edits they would make: written if the sheet is left first. None once
   // there are none.
@@ -294,8 +305,30 @@ export default function Sequence({
   const [arrived, setArrived] = useState("");
   const wanted = load ? `${src}&load=${load}` : src;
   const live = arrived === wanted;
+  // The file changed by someone else: the page takes it as it stands, its
+  // zoom, scroll and selection kept, or loads again where it cannot. Not
+  // while what was typed is on its way to the file, or the page is not live.
+  const again = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const renew = useLatest(() => {
+    clearTimeout(again.current);
+    if (!live || unwritten())
+      again.current = setTimeout(() => renew.current(), RENEW_MS);
+    else
+      void read(path).then(
+        (html) => tell(frame.current, { type: "update", html }),
+        () => setLoad((count) => count + 1),
+      );
+  });
+  const heardFresh = useRef(fresh);
+  useEffect(() => {
+    if (fresh === heardFresh.current) return;
+    heardFresh.current = fresh;
+    renew.current();
+  }, [fresh, renew]);
+  useEffect(() => () => clearTimeout(again.current), []);
   // Another page: nothing picked, typed or zoomed carries over.
   useEffect(() => {
+    clearTimeout(again.current);
     setPicked(undefined);
     setHover(undefined);
     setCaret(undefined);
@@ -949,6 +982,7 @@ export default function Sequence({
             <MenuItem onClick={() => open(src)}>Open alone</MenuItem>
           </Menu>
         </span>
+        {writing && <span class="chip working">Agent writing</span>}
         {!editable && status}
       </Bar>
       {mode === "edit" && (
@@ -1107,6 +1141,19 @@ export default function Sequence({
                       caretAt.current = undefined;
                       // Drawn again, what was found stays marked.
                       if (query) marked();
+                    } else if (message.type === "update") {
+                      if (message.result === "held") {
+                        again.current = setTimeout(
+                          () => renew.current(),
+                          RENEW_MS,
+                        );
+                        return;
+                      }
+                      if (message.result === "load")
+                        setLoad((count) => count + 1);
+                      // The legend draws the file again.
+                      wrote.current++;
+                      setSaves(wrote.current);
                     } else if (message.type === "drawn") {
                       setSaid((was) => was && { ...was, drawn: true });
                       setArrived(wanted);

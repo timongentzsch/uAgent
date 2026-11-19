@@ -404,6 +404,14 @@ def test_web_files_save_a_person_s_edit_against_its_revision(root, home, *, bina
             status, saved, _ = save("docs/memo.html", "<p>new</p>", revision)
             assert_true(status == 200 and saved["revision"] != revision, (status, saved))
             assert_true((project / "docs/memo.html").read_text() == "<p>new</p>", "not saved")
+            # The folder's stamps hold the one the save answered with, until
+            # someone else writes the file.
+
+            def stamp():
+                _, value, _ = client.json(files + "?" + urlencode({"stamps": "docs"}))
+                return value["stamps"]["memo.html"]
+
+            assert_true(saved["stamp"] and stamp() == saved["stamp"], (saved, stamp()))
             # Saved against what it was read at: a second save on the old
             # revision, or after the agent wrote, is refused.
             status, refused, _ = save("docs/memo.html", "<p>lost</p>", revision)
@@ -412,6 +420,7 @@ def test_web_files_save_a_person_s_edit_against_its_revision(root, home, *, bina
             status, refused, _ = save("docs/memo.html", "<p>lost</p>", saved["revision"])
             assert_true(status == 409, (status, refused))
             assert_true((project / "docs/memo.html").read_text() == "<p>agent</p>", "overwrote")
+            assert_true(stamp() != saved["stamp"], "the agent's write kept the stamp")
             # Only a text file that is there, inside the folder.
             for path in ("docs/new.html", "blob.bin", "../elsewhere.txt", str(elsewhere)):
                 status, refused, _ = save(path, "x", "")

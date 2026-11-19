@@ -119,6 +119,11 @@ export async function openSheet(page, session, project, source, options) {
   };
 }
 
+// The pane's look at its folder finds nothing there, so a file changed
+// behind its back stays unseen: the change a save of the person's then meets.
+export const unwatched = (page) =>
+  page.route(/[?&]stamps=/, (route) => route.fulfill({ json: { stamps: {} } }));
+
 // The viewer's stage (its page) and its counter, in the pane.
 export const viewerOf = (files) => ({
   stage: files.frameLocator(".page-stage iframe:not([inert])"),

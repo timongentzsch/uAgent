@@ -71,10 +71,23 @@ clips every field before use (`cellOf`, `offerOf`, `fileOf`). The app sends
 `select`, `edit`, `format`, `markdown`, `tweak`, `find`, `input`, `suggest`
 and `do`. Message types are listed in `web/src/shared/page-frame.tsx`.
 
-A finished `Wrote`, `Edited` or `Deleted` tool call in the transcript bumps
-the version of the page it names, which reloads its frame; a stylesheet,
-image or data file reloads every page. An open sheet reloads only for a
-write to itself, since a reload ends its undo.
+**Following the file.** While the pane is shown in a visible tab it asks
+`files?stamps=<dir>` for the open folder every second, and at once when a
+write call ends: each file's size, inode and modification time, nothing
+read. A stamp that changed, and is not the one the pane's own write left
+(a write answers with its `stamp`), is someone else's change: a call, a
+command, a sub-agent, another conversation. The open page is sent the new
+text (`update`); the helper makes its body like it where it stands,
+matching elements by id or else as the next of their kind, so zoom, scroll
+and selection stay; a document pages again, a whiteboard's items glide to
+their places, and what changed is outlined for two seconds. A page with
+scripts of its own, in either version, or another head, loads again, and
+so does any other frame of the file (the legend, the canvas); a stylesheet,
+image or data file reloads every page. An update waits while a block's
+typing is not in the file (or was refused, until the page is left) and
+while an item is held or retyped. An open sheet reloads only for a change
+to itself, since a reload ends its undo. A call still writing the open
+file shows `Agent writing` in the viewer's bar.
 
 **Decks and documents.** A deck's slides are its pages in name order; a
 slide with `<meta name="slide" content="skip">` is left out of presenting
@@ -237,4 +250,5 @@ slide, a print line not understood, and a sheet's cells in error.
 | `web/tests/doc-edit.spec.js`, `web/tests/sheet-edit.spec.js`, `web/tests/sheet-files.spec.js` | edits, conflicts, import |
 | `web/tests/sheet-merge.spec.js`, `web/tests/sheet-groups.spec.js`, `web/tests/sheet-rules.spec.js`, `web/tests/sheet-format.spec.js` | sheet features |
 | `web/tests/whiteboard.spec.js`, `web/tests/board-edit.test.js`, `web/tests/data-marks.spec.js`, `web/tests/doc-checklist.spec.js` | whiteboards, data marks, checklists |
+| `web/tests/live-files.spec.js` | following a file changed by someone else |
 | `tests/integration_web/preview.py` | preview address and policy |

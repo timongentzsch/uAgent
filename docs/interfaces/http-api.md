@@ -138,12 +138,13 @@ Under `/api/sessions/<id>/`; an unknown conversation, or a path outside the fold
 | Route | Request | Response |
 | --- | --- | --- |
 | `GET files?list=<dir>` | | `entries` (`name`, `dir`, `size`; pages add `kind`, `artboard`, `skip`, `count`), `more`, `kind` (the folder's) |
+| `GET files?stamps=<dir>` | | `stamps`: each file's name and its size, inode and modification time as one string |
 | `GET files?read=<path>` | | `text` (at most 1 MiB, `kFileViewBytes`), `bytes`, `more`, `revision` |
 | `GET files?find=<q>` | | `paths`, `more` |
 | `GET files?changes=` / `?diff=<path>` | | `changes` (`path`, `state`), `more`, `repository` / `text`, `more` |
 | `GET files?raw=<path>[&download]` | | the bytes; only images are inline |
 | `GET files?png=<path>` / `?pdf=<path>` | `w`, `h`, `scale`, `part` | a page drawn by the agent's browser; 503 without one |
-| `POST files` | `{path, text, revision}`, `{path, text, create: true}`, or `{path, moves}` | `{revision}` or `{moved}`; 409 when the file changed |
+| `POST files` | `{path, text, revision}`, `{path, text, create: true}`, or `{path, moves}` | `{revision, stamp}` or `{moved}`; 409 when the file changed |
 | `POST attachments?name=<name>` | the file as the body, ≤ 8 MiB | `{id, name, mime, image, bytes}` |
 | `GET assets/<asset id>[?download]` | | the stored file |
 | `POST preview` | | `{base: "/preview/<48 hex>/"}` |

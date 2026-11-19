@@ -14,6 +14,7 @@ import {
   viewerOf,
   writeFiles,
   openAlone,
+  unwatched,
 } from "./fixtures.js";
 
 // A design of three pages, one of which throws as it loads.
@@ -1530,6 +1531,7 @@ test("a block that was refused stays owed: its notice stands though another is s
   session,
   host,
 }) => {
+  await unwatched(app);
   const cover = join(host.project, "decks/talk/01-cover.html");
   const { files, stage, count } = await openDeck(app, session, host.project, {
     "01-cover.html": slide("Cover", "", "<p>One</p><p>Two</p>"),
@@ -1651,6 +1653,7 @@ test("a slide's text is saved as typing pauses, the caret where it was; undone, 
   session,
   host,
 }) => {
+  await unwatched(app);
   const { files, legend, stage, count } = await openDeck(
     app,
     session,
@@ -1721,6 +1724,7 @@ test("a slide that cannot be made once room was made for it says what was change
   session,
   host,
 }) => {
+  await unwatched(app);
   const { files, count } = await openDeck(app, session, host.project, FOUR);
   await expect(count).toHaveText("1 / 4");
   // Behind the pane's back, a file takes the name of the new slide's place.
@@ -2835,6 +2839,7 @@ test("a document exports Markdown, and a block edited on its third page is saved
   session,
   host,
 }) => {
+  await unwatched(app);
   const { files, memo, page, count } = await openMemo(
     app,
     session,

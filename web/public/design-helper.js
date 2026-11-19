@@ -1078,6 +1078,12 @@
       within("input, textarea, select, [contenteditable]")
     )
       return;
+    // ⌘Z or Ctrl+Z undoes a change made by hand, with Shift (or Ctrl+Y)
+    // makes it again: the app's, outside the text being typed.
+    if ((event.metaKey || event.ctrlKey) && /^[zy]$/i.test(event.key)) {
+      event.preventDefault();
+      return send("key", { key: event.key, held: true, shift: event.shiftKey });
+    }
     const paging =
       stepped() &&
       ["Home", "End", "PageUp", "PageDown", " "].includes(event.key) &&

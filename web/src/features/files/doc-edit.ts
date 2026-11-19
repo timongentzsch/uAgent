@@ -339,26 +339,21 @@ export interface Saved {
 }
 
 // What is typed in a block reaches its file once typing pauses, another
-// block is typed in or `flush` is called, whichever is first: one write at a
-// time, each into the file as it then is. A block whose typing was refused
-// stays owed, with why, until it is written or forgotten; another kind or a
-// new block that was refused took nothing typed with it, and is not owed.
-export function blockSaver(io: {
-  read: (path: string) => Promise<{ text: string; revision?: string }>;
+// block is typed in or `flush` is called, whichever is first, by the
+// files' one write (file-save.ts). A block whose typing was refused stays
+// owed, with why, until it is written or forgotten; another kind or a new
+// block that was refused took nothing typed with it, and is not owed.
+export function blockSaver(files: {
   write: (
     path: string,
-    text: string,
-    revision: string,
+    change: (text: string) => string,
     closing: boolean,
-  ) => Promise<{ revision: string }>;
+  ) => Promise<unknown>;
 }) {
   const key = (path: string, index: number) => `${path}\n${index}`;
   // What was last written in a block from here, and the blocks owed.
   const wrote = new Map<string, string>();
   const owed = new Map<string, string>();
-  // The file as last read or written here: a closing page cannot wait for a
-  // read, and writes into this.
-  let seen: { path: string; text: string; revision: string } | undefined;
   let held:
     | {
         path: string;
@@ -372,25 +367,22 @@ export function blockSaver(io: {
   const write = async (path: string, edit: BlockEdit, closing: boolean) => {
     const mine = key(path, edit.index);
     try {
-      if (!closing) {
-        const { text, revision = "" } = await io.read(path);
-        seen = { path, text, revision };
-      }
-      const next =
-        seen?.path === path && seen.revision
-          ? applyEdit(seen.text, edit, (index) => wrote.get(key(path, index)))
-          : null;
-      if (!next || (closing && new Blob([next.text]).size > CLOSING_BYTES))
-        throw new Error(
-          "this text changed in the file meanwhile. Reopen it to edit.",
-        );
-      const { revision } = await io.write(
+      let next!: NonNullable<ReturnType<typeof applyEdit>>;
+      await files.write(
         path,
-        next.text,
-        seen!.revision,
+        (text) => {
+          const made = applyEdit(text, edit, (index) =>
+            wrote.get(key(path, index)),
+          );
+          if (!made || (closing && new Blob([made.text]).size > CLOSING_BYTES))
+            throw new Error(
+              "this text changed in the file meanwhile. Reopen it to edit.",
+            );
+          next = made;
+          return made.text;
+        },
         closing,
       );
-      seen = { path, text: next.text, revision };
       // Another kind or a new block moves the places after it.
       if (edit.as || edit.insert) wrote.clear();
       else wrote.set(mine, next.wrote);

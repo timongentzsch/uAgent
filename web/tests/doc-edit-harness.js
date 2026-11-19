@@ -1,4 +1,5 @@
 import { blockSaver } from "../src/features/files/doc-edit.ts";
+import { fileSaver } from "../src/features/files/file-save.ts";
 
 export const doc = (...texts) =>
   `<!doctype html>\n<html><head></head><body>${texts.map((text) => `<p>${text}</p>`).join("")}</body></html>`;
@@ -16,19 +17,21 @@ export function saverOn() {
   const file = { text: doc("a", "b"), revision: 0 };
   const calls = [];
   let refused = 0;
-  const saver = blockSaver({
-    read: async () => {
-      calls.push(`read ${file.revision}`);
-      return { text: file.text, revision: String(file.revision) };
-    },
-    write: async (_path, text, revision, closing) => {
-      calls.push(`write on ${revision}${closing ? ", closing" : ""}`);
-      if (revision !== String(file.revision) || refused-- > 0)
-        throw new Error("refused");
-      file.text = text;
-      return { revision: String(++file.revision) };
-    },
-  });
+  const saver = blockSaver(
+    fileSaver({
+      read: async () => {
+        calls.push(`read ${file.revision}`);
+        return { text: file.text, revision: String(file.revision) };
+      },
+      write: async (_path, text, revision, closing) => {
+        calls.push(`write on ${revision}${closing ? ", closing" : ""}`);
+        if (revision !== String(file.revision) || refused-- > 0)
+          throw new Error("refused");
+        file.text = text;
+        return { revision: String(++file.revision) };
+      },
+    }),
+  );
   return {
     saver,
     file,

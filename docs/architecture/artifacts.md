@@ -91,13 +91,23 @@ browser's print pages.
 table cells are `contenteditable`. The helper sends `edit` with the block's
 place among the blocks it lists, its HTML and the text of it and its
 neighbours. `blockSaver` (`web/src/features/files/doc-edit.ts`) waits for a
-1 s pause, another block, or a flush, then reads the file with its revision,
-finds the block in the parsed source by the same place and neighbours
-(`applyEdit`), keeps of the typed HTML only the block's own tags and
-attributes, bare marks and links, serialises the document, and posts
-`{path, text, revision}` to `/api/sessions/<id>/files`. One write runs at a
-time. The first save rewrites the file as a parser reads it; line endings
-and a byte-order mark are kept.
+1 s pause, another block, or a flush, then hands the edit to the pane's one
+write of a file by hand, `fileSaver` (`file-save.ts`). That reads the file
+with its revision; `applyEdit` finds the block in the parsed source by the
+same place and neighbours, keeps of the typed HTML only the block's own
+tags and attributes, bare marks and links, and serialises the document; the
+saver posts `{path, text, revision}` to `/api/sessions/<id>/files`. One
+write runs at a time. The first save rewrites the file as a parser reads
+it; line endings and a byte-order mark are kept.
+
+**Undo.** `fileSaver` keeps each write as `{path, before, after}`. ⌘Z (or
+Undo in the tools) writes `before` back and ⇧⌘Z or Ctrl+Y (Redo) writes
+`after` again, through the same write, and the stage is drawn again from
+the file. A file whose revision is no longer the one the last write from
+here left (the agent wrote it) is not undone: its history is dropped and
+the pane says so. In a block being typed in, or a board item being
+retyped, the keys stay the browser's; the helper forwards them otherwise.
+A sheet keeps its engine's own undo.
 
 **A sheet change.** The grid in the page applies the change to its copy of
 the tabs (`book.js`), says `held` with the tables it would write, and asks a
@@ -146,11 +156,10 @@ the design as one PDF.
 from the helper, which places its items, draws shapes as stretched SVG
 paths and arrows as curves between the items' nearest sides. Opened alone
 in the pane, a drag, an arrow key, a corner or a double click says
-`board {id, at | size | text}` (or `{undo}`); Sequence hands each to the
-pane's `rewrite`, which writes them one at a time, with `boardEdit`
+`board {id, at | size | text}`; Sequence hands each to the pane's
+`rewrite`, which writes it through `fileSaver` with `boardEdit`
 (`board-edit.ts`), which changes only that item's start tag or text in the
-source. Once written, the text a change replaced is kept for ⌘Z while the
-file is as the change left it.
+source.
 
 **Builds and transitions.** While a deck is presented the slide's address
 ends `#build=N`; the helper hides `[data-step]` elements past N from the

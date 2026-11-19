@@ -1,6 +1,6 @@
 // A whiteboard opened in Files: its items laid where the file puts them,
 // joined by arrows, and moved, resized and retyped there into the file.
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test, expect, openFiles, viewerOf, writeFiles } from "./fixtures.js";
 
@@ -28,10 +28,12 @@ async function openBoard(app, session, host) {
     files,
     stage: viewerOf(files).stage,
     saved: () => readFile(join(host.project, path), "utf8"),
+    // As the agent would write it.
+    rewrite: (text) => writeFile(join(host.project, path), text),
   };
 }
 
-test("a whiteboard draws its items and arrows, and a drag, the keys, the corner and a double click change the file; ⌘Z undoes", async ({
+test("a whiteboard draws its items and arrows, and a drag, the keys, the corner and a double click change the file; ⌘Z undoes, ⇧⌘Z redoes", async ({
   page: app,
   session,
   host,
@@ -62,6 +64,12 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
     await app.keyboard.press("ControlOrMeta+z");
     expect(await saved()).toBe(BOARD);
   }).toPass();
+  // The page is drawn again from the file, and ⇧⌘Z makes the move again.
+  await expect.poll(() => place("ad")).toEqual([60, 180]);
+  await item("title").click();
+  await app.keyboard.press("ControlOrMeta+Shift+z");
+  await expect.poll(saved).toMatch(/id="ad"[^>]*data-at="(?!60 180)\d+ \d+"/);
+  await expect.poll(() => place("ad")).not.toEqual([60, 180]);
 
   // The keys move the picked item a pixel at a time.
   await item("n1").click();
@@ -162,4 +170,26 @@ test("a whiteboard's change that was refused is not what ⌘Z undoes: the one be
     await app.keyboard.press("ControlOrMeta+z");
     expect(await saved()).toBe(BOARD);
   }).toPass();
+});
+
+test("a whiteboard the agent wrote meanwhile is not undone: ⌘Z is refused, said, and keeps nothing to undo", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage, saved, rewrite } = await openBoard(app, session, host);
+  await stage.locator("#n1").click();
+  await app.keyboard.press("ArrowRight");
+  await expect.poll(saved).toContain('data-at="801 100"');
+  const undo = files.getByRole("button", { name: "Undo" });
+  await expect(undo).toBeEnabled();
+  const agents = (await saved()).replace("Which fields?", "Which fields now?");
+  await rewrite(agents);
+  await stage.locator("#title").click();
+  await app.keyboard.press("ControlOrMeta+z");
+  await expect(files.locator(".page-notice")).toHaveText(
+    "Not undone: the file changed meanwhile.",
+  );
+  expect(await saved()).toBe(agents);
+  await expect(undo).toBeDisabled();
 });

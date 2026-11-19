@@ -17,8 +17,10 @@ import {
   MousePointerClick,
   Pencil,
   Presentation,
+  Redo2,
   Search,
   SlidersHorizontal,
+  Undo2,
 } from "lucide-preact";
 import {
   Bar,
@@ -84,7 +86,7 @@ import {
   type Saved,
   skipSlide,
 } from "./doc-edit.ts";
-import { type BoardEdit, boardEdit } from "./board-edit.ts";
+import { boardEdit } from "./board-edit.ts";
 import { downloadBlob } from "../../shared/share.ts";
 import { copyDrawn, type Drawn, saveDrawn } from "./drawn.ts";
 import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
@@ -156,6 +158,8 @@ export default function Sequence({
   arrange,
   cite,
   rewrite,
+  undo,
+  undoable,
   arranging,
   view,
 }: {
@@ -203,11 +207,14 @@ export default function Sequence({
   // A slide's file written as `change` makes it of what it holds.
   // A file of the folder opened at a line, from the page.
   cite?: (path: string, line: number) => void;
-  // Whether it was written.
   rewrite?: (
     path: string,
     change: (source: string) => string,
-  ) => Promise<boolean>;
+  ) => Promise<unknown>;
+  // The last change made to its file by hand undone, or `redo` made again;
+  // whether it was, and whether either can be.
+  undo?: (redo: boolean) => Promise<boolean>;
+  undoable?: { undo: boolean; redo: boolean };
   arranging?: boolean;
   // Opens a picture in the image viewer, which can draw on it.
   view: (image: ViewedImage) => void;
@@ -385,32 +392,23 @@ export default function Sequence({
     setBuild(at);
     tell(frame.current, { type: "build", at });
   };
-  // A whiteboard's changes made here and written, each with the text it
-  // took the place of: ⌘Z puts that back while the file is as the change
-  // left it.
-  const boardPast = useRef<{ path: string; before: string; after: string }[]>(
-    [],
-  );
-  const changeBoard = ({
-    undo,
-    ...edit
-  }: Partial<BoardEdit> & { undo?: boolean }) => {
-    const past = boardPast.current;
-    // What the change does to the past, once it is in the file.
-    let written = () => {};
-    const change = (source: string) => {
-      if (undo) {
-        const last = past.at(-1);
-        if (last?.path !== path || source !== last.after) return source;
-        written = () => past.pop();
-        return last.before;
-      }
-      const after = boardEdit(source, { ...edit, id: String(edit.id) });
-      if (after === null) return source;
-      written = () => past.push({ path, before: source, after });
-      return after;
-    };
-    void rewrite?.(path, change).then((made) => made && written());
+  // A document's, a slide's or a whiteboard's changes by hand are undone and
+  // made again here; then the file is drawn again, its notes its own.
+  const undoes = !!undo && (editable || kind === "board");
+  const back = (redo: boolean) =>
+    void undo?.(redo).then((made) => {
+      if (!made) return;
+      wrote.current++;
+      setSaves(wrote.current);
+      setNoted(undefined);
+      setLoad((count) => count + 1);
+    });
+  // Whether the key undoes or redoes: ⌘Z, with Shift, or Ctrl+Y.
+  const undoKey = (key: string, shift?: boolean) => {
+    const letter = key.toLowerCase();
+    if (!undoes || (letter !== "z" && letter !== "y")) return false;
+    back(letter === "y" || !!shift);
+    return true;
   };
   // Presenting starts at the slide's first step; ended, all of it shows.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on presenting alone
@@ -497,6 +495,8 @@ export default function Sequence({
       if (here && held && tabKey(event.key)) event.preventDefault();
     } else if (target.closest?.("input, textarea, select, [contenteditable]"))
       return;
+    else if (here && held && undoKey(event.key, event.shiftKey))
+      event.preventDefault();
     else if (
       boards.length > 1 &&
       !event.altKey &&
@@ -874,6 +874,24 @@ export default function Sequence({
             false,
             uneditable,
           )}
+        {undoes && (
+          <>
+            <IconButton
+              label="Undo"
+              disabled={!undoable?.undo}
+              onClick={() => back(false)}
+            >
+              <Undo2 />
+            </IconButton>
+            <IconButton
+              label="Redo"
+              disabled={!undoable?.redo}
+              onClick={() => back(true)}
+            >
+              <Redo2 />
+            </IconButton>
+          </>
+        )}
         {(declared.length > 0 || !!theme.value?.colors.length) &&
           toggle(
             "Tweaks",
@@ -1178,7 +1196,14 @@ export default function Sequence({
                           300,
                         );
                     } else if (message.type === "board") {
-                      changeBoard(message);
+                      void rewrite?.(
+                        path,
+                        (source) =>
+                          boardEdit(source, {
+                            ...message,
+                            id: String(message.id),
+                          }) ?? source,
+                      );
                     } else if (message.type === "caret") {
                       setCaret(caretOf(message));
                     } else if (message.type === "left") {
@@ -1276,6 +1301,8 @@ export default function Sequence({
                       if (sheet) {
                         if (message.held) tabKey(message.key);
                       } else if (presenting) presentKey(message.key);
+                      else if (message.held)
+                        undoKey(message.key, message.shift);
                       else if (mode !== "select") stepKey(message.key);
                       else if (message.key === "Escape") enter("");
                     }

@@ -1906,6 +1906,74 @@ test("a slide's notes are typed under its stage while Edit is on, and made where
   ).toHaveText("Three steps & a <demo>.");
 });
 
+test("a slide's typed text and its skip are undone and made again from the tools, the slide drawn again from its file", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage } = await openDeck(app, session, host.project, TALK);
+  const cover = () => talkFile(host.project, "01-cover.html");
+  const undo = files.getByRole("button", { name: "Undo" });
+  const redo = files.getByRole("button", { name: "Redo" });
+  await typeIn(app, files, stage.getByText("The plan"));
+  await expect(undo).toBeDisabled();
+  await app.keyboard.insertText(" for Q3");
+  await app.clock.runFor(1000);
+  await expect.poll(cover).toContain("<p>The plan for Q3</p>");
+  await app.clock.resume();
+  await undo.click();
+  await expect.poll(cover).toContain("<p>The plan</p>");
+  await expect(stage.getByText("The plan", { exact: true })).toBeVisible();
+  await redo.click();
+  await expect.poll(cover).toContain("<p>The plan for Q3</p>");
+  await expect(
+    stage.getByText("The plan for Q3", { exact: true }),
+  ).toBeVisible();
+  await expect(redo).toBeDisabled();
+  // A skip is undone as well.
+  await files.getByRole("button", { name: "Slide actions" }).click();
+  await app.getByRole("menuitemcheckbox", { name: "Skip slide" }).click();
+  await expect.poll(cover).toContain('<meta name="slide" content="skip">');
+  await undo.click();
+  await expect.poll(cover).not.toContain('name="slide"');
+});
+
+test("a document's typed block is undone and made again with the keys, the page drawn again from the file; in the block they are its own", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await writeFiles(host.project, {
+    "docs/note.html": paper("Note", "<h1>Note</h1><p>Plan</p>"),
+  });
+  const files = await openFiles(app, session, "docs/note.html");
+  const { stage } = viewerOf(files);
+  const note = () => readFile(join(host.project, "docs/note.html"), "utf8");
+  const block = stage.locator("p");
+  await files.getByRole("button", { name: "Edit" }).click();
+  await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
+  await block.click();
+  await app.keyboard.press("End");
+  await app.keyboard.insertText(" A");
+  await expect.poll(note).toContain("<p>Plan A</p>");
+  // Out of the block, the keys are the pane's.
+  await files.locator(".files-title").click();
+  await app.keyboard.press("ControlOrMeta+z");
+  await expect.poll(note).toContain("<p>Plan</p>");
+  await expect(block).toHaveText("Plan");
+  await app.keyboard.press("ControlOrMeta+Shift+z");
+  await expect.poll(note).toContain("<p>Plan A</p>");
+  await expect(block).toHaveText("Plan A");
+  // In the block, ⌘Z is the block's, which has nothing to undo since the
+  // page was drawn: the file keeps what was made again.
+  await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
+  await block.click();
+  await app.keyboard.press("ControlOrMeta+z");
+  await app.keyboard.press("End");
+  await app.keyboard.insertText("!");
+  await expect.poll(note).toContain("<p>Plan A!</p>");
+});
+
 test("on a phone a deck's legend is a filmstrip under the stage", async ({
   page: app,
   session,

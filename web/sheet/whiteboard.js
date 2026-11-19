@@ -207,8 +207,8 @@ function defs() {
 
 // Opened alone in the app: a press picks an item and a drag moves it, its
 // corner resizes it, the arrows move it a pixel (with Shift ten), a double
-// click retypes a note or a text, and ⌘Z undoes the last change made here.
-// Each change is said to the app, which writes it.
+// click retypes a note or a text. Each change is said to the app, which
+// writes it, and undoes it with ⌘Z.
 function edits(layer) {
   const say = (change) =>
     parent.postMessage({ uagentDesign: 1, type: "board", ...change }, "*");
@@ -278,10 +278,6 @@ function edits(layer) {
     "keydown",
     (event) => {
       if (event.target.isContentEditable) return;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        return say({ undo: true });
-      }
       const by = {
         ArrowLeft: [-1, 0],
         ArrowRight: [1, 0],

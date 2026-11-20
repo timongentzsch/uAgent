@@ -18,12 +18,15 @@ import {
   spotAt,
 } from "../src/features/files/boards.ts";
 
+// A listing as the host gives it: a document and a sheet are alone.
+const own = (kind) => kind === "doc" || kind === "sheet";
 const listing = (kind, ...entries) => ({
   kind,
   entries: entries.map(([name, kind, count]) => ({
     name,
     dir: false,
     kind,
+    alone: own(kind),
     count,
   })),
 });
@@ -36,28 +39,18 @@ const ready = (title, w, h, height = 0) => ({
 });
 const paths = (boards) => boards.map((board) => board.path);
 
-test("a document is its own in any folder; another page is part of its folder", () => {
-  const docs = listing("deck", ["memo.html", "doc"], ["slide.html", "slide"]);
+test("a file is shown as the host says; one not listed yet, as a design", () => {
+  const docs = listing("deck", ["memo.html", "doc"], ["slide.html", "deck"]);
   assert.equal(kindOf(docs, "memo.html"), "doc");
   assert.equal(kindOf(docs, "slide.html"), "deck");
-  const system = listing("system", ["book.html", "doc"], ["parts.html"]);
-  assert.equal(kindOf(system, "book.html"), "doc");
-  assert.equal(kindOf(system, "parts.html"), "system");
-  assert.equal(kindOf(listing("", ["a.html"]), "a.html"), "design");
-  // A sheet too.
-  const sheets = listing("deck", ["costs.html", "sheet"], ["a.html", "slide"]);
-  assert.equal(kindOf(sheets, "costs.html"), "sheet");
-  // An Excel or CSV file is a sheet by its name; the host says no kind.
-  const read = listing("deck", ["book.xlsx"], ["rows.csv"], ["notes.txt"]);
-  assert.deepEqual(
-    ["book.xlsx", "rows.csv"].map((name) => kindOf(read, name)),
-    ["sheet", "sheet"],
-  );
+  assert.equal(kindOf(docs, "new.html"), "design");
+  // An Excel or CSV file the host calls a sheet is one board.
+  const read = listing("deck", ["book.xlsx", "sheet"], ["notes.txt"]);
   assert.equal(boardsOf("d", read, {}, "book.xlsx").length, 1);
 });
 
 test("a sheet's boards are its tabs: numbered as many as the folder says, then as the sheet names them", () => {
-  const folder = listing("", ["budget.html", "sheet", 2], ["a.html", "page"]);
+  const folder = listing("", ["budget.html", "sheet", 2], ["a.html", "design"]);
   const tabs = (seen) =>
     boardsOf("d", folder, seen, "budget.html").map((board) => board.title);
   assert.deepEqual(tabs({}), ["1", "2"]);
@@ -94,9 +87,9 @@ test("a sheet's boards are its tabs: numbered as many as the folder says, then a
 test("a deck's slides lie in name order as written, the order its PDF prints", () => {
   const deck = listing(
     "deck",
-    ["10-end.html", "slide"],
-    ["2-plan.html", "slide"],
-    ["01-cover.html", "slide"],
+    ["10-end.html", "deck"],
+    ["2-plan.html", "deck"],
+    ["01-cover.html", "deck"],
     ["memo.html", "doc"],
     ["style.css"],
   );
@@ -108,7 +101,7 @@ test("a deck's slides lie in name order as written, the order its PDF prints", (
 });
 
 test("a slide not drawn yet is as large as one that is, and named by its file", () => {
-  const deck = listing("deck", ["a.html", "slide"], ["b.html", "slide"]);
+  const deck = listing("deck", ["a.html", "deck"], ["b.html", "deck"]);
   const seen = hear({}, "b.html", ready("Plan", 1920, 1080));
   assert.deepEqual(
     boardsOf("", deck, seen, "a.html").map(({ title, w, h }) => [title, w, h]),
@@ -122,10 +115,10 @@ test("a slide not drawn yet is as large as one that is, and named by its file", 
 test("a design's pages lie in rows by step, numbers in number order, the stepless first", () => {
   const design = listing(
     "design",
-    ["10-end.html", "page"],
-    ["2-pricing--annual.html", "page"],
-    ["2-pricing.html", "page"],
-    ["cover.html"],
+    ["10-end.html", "design"],
+    ["2-pricing--annual.html", "design"],
+    ["2-pricing.html", "design"],
+    ["cover.html", "design"],
     ["memo.html", "doc"],
     ["notes.md"],
     ["shot.png"],
@@ -155,23 +148,29 @@ test("a design's canvas holds its pages, pictures and films, and a stack for a d
       { name: "02-talk", dir: true },
       { name: "src", dir: true },
       ...[
-        ["02-pricing.html", "page"],
+        ["02-pricing.html", "design"],
         ["02-chart.svg"],
-        ["01-hero.html", "page"],
+        ["01-hero.html", "design"],
         ["hero.png"],
         ["torn.gif"],
         ["clip.mp4"],
         ["photo.avif"],
         ["memo.html", "doc"],
-        ["cover.html"],
+        ["cover.html", "design"],
         ["notes.md"],
         ["style.css"],
-      ].map(([name, kind]) => ({ name, dir: false, kind, size: 100 })),
+      ].map(([name, kind]) => ({
+        name,
+        dir: false,
+        kind,
+        alone: own(kind),
+        size: 100,
+      })),
       { name: "huge.jpg", dir: false, size: 9 << 20 },
       { name: "02-raw.mov", dir: false, size: 9 << 20 },
     ],
   };
-  const deck = listing("deck", ["02.html", "slide"], ["01.html", "slide"]);
+  const deck = listing("deck", ["02.html", "deck"], ["01.html", "deck"]);
   const folders = { talk: deck, "02-talk": deck, src: listing("") };
   // A document has said its pages; a picture its size; another did not load.
   let seen = hear({}, "d/memo.html", ready("Memo", 794, 1123));
@@ -223,7 +222,12 @@ test("a design's canvas holds its pages, pictures and films, and a stack for a d
     ["d/memo.html", "d/hero.png", "d/huge.jpg", "d/torn.gif", "d/02-raw.mov"],
   );
   // A step that holds no page is still in step order.
-  const steps = listing("", ["03-b.html"], ["01-a.html"], ["02-shot.png"]);
+  const steps = listing(
+    "",
+    ["03-b.html", "design"],
+    ["01-a.html", "design"],
+    ["02-shot.png"],
+  );
   assert.deepEqual(paths(boardsOf("", steps, {})), [
     "01-a.html",
     "02-shot.png",
@@ -277,7 +281,7 @@ test("what a page says is kept once: its size as it grows, an error however ofte
 });
 
 test("failed pages are counted once each and written as lines for the agent", () => {
-  const design = listing("design", ["a.html", "page"], ["b.html", "page"]);
+  const design = listing("design", ["a.html", "design"], ["b.html", "design"]);
   let seen = hear({}, "d/a.html", { type: "error", message: "one", line: 0 });
   seen = hear(seen, "d/a.html", { type: "error", message: "two", line: 7 });
   const boards = boardsOf("d", design, seen);

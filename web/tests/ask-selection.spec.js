@@ -1,14 +1,16 @@
 // Text selected in a transcript or a file is asked about in a side chat, or
-// added to the composer as a quote.
+// quoted in the draft.
 import {
   test,
   expect,
   online,
   openFiles,
   leaveEnd,
+  savedConversation,
   selectProbeModel,
   writeFiles,
 } from "./fixtures.js";
+import { uneven } from "./insets.js";
 
 test.beforeEach(({ command, session }) => selectProbeModel(command, session));
 
@@ -63,8 +65,9 @@ test("a selection in an answer is asked about in side chats beside it", async ({
   await select(transcript, "answer with a table");
   await expect(actions.getByRole("button")).toHaveText([
     "Ask in side chat",
-    "Add to chat",
+    "Quote",
   ]);
+  expect(await uneven(page)).toEqual([]);
   // The buttons sit under the end of the selection.
   const end = await page.evaluate(() => {
     const rects = getSelection().getRangeAt(0).getClientRects();
@@ -189,26 +192,125 @@ test("Merge sums a side chat up for the conversation, which answers, and closes 
   await expect(transcript).not.toContainText("The person merges");
 });
 
-test("Add to chat puts the selection in the composer as a quote", async ({
+test("quotes stack over the draft, stay with it and go before its text", async ({
   page,
   session,
+  host,
 }) => {
+  const other = await savedConversation(host, page.request, "Other chat");
   const transcript = await answered(page, session, {
     width: 1440,
     height: 900,
   });
-  await select(transcript, "answer with a table");
-  await page
-    .getByRole("group", { name: "Selection" })
-    .getByRole("button", { name: "Add to chat" })
-    .click();
   const composer = page.getByLabel("Message or guidance");
-  await expect(composer).toHaveValue("> answer with a table");
+  const bars = page.locator(".composer .quote-bar");
+  const quote = async (text, within = transcript) => {
+    await select(within, text);
+    await page
+      .getByRole("group", { name: "Selection" })
+      .getByRole("button", { name: "Quote" })
+      .click();
+  };
+  await quote("answer with a table");
+  await expect(bars).toHaveText(["answer with a table"]);
+  await expect(composer).toHaveValue("");
   await expect(composer).toBeFocused();
   await expect(page.getByRole("group", { name: "Selection" })).toHaveCount(0);
   await expect(
     page.getByRole("complementary", { name: "Side chats" }),
   ).toHaveCount(0);
+  await quote("streamed");
+  await expect(bars).toHaveText(["answer with a table", "streamed"]);
+  await bars.first().getByRole("button", { name: "Remove the quote" }).click();
+  await expect(bars).toHaveText(["streamed"]);
+  await quote("answer with a table");
+  await expect(bars).toHaveText(["streamed", "answer with a table"]);
+
+  // Another conversation has a draft of its own; this one keeps its quotes.
+  await page.getByRole("button", { name: /Other chat/ }).click();
+  await expect(page).toHaveURL(new RegExp(other.id));
+  await expect(bars).toHaveCount(0);
+  await page.getByRole("button", { name: /Hello/ }).first().click();
+  await expect(bars).toHaveText(["streamed", "answer with a table"]);
+
+  const sent = (text) =>
+    page.waitForRequest(
+      (request) =>
+        request.url().endsWith("/api/command") &&
+        request.postDataJSON().text === text,
+    );
+  const asked = sent("> streamed\n\n> answer with a table\n\nWhich of them?");
+  await composer.fill("Which of them?");
+  await composer.press("Enter");
+  await asked;
+  await expect(bars).toHaveCount(0);
+  await expect(composer).toHaveValue("");
+  const mine = transcript.locator(".message.user").last();
+  await expect(mine.locator("blockquote")).toHaveText([
+    "streamed",
+    "answer with a table",
+  ]);
+  await expect(mine).toContainText("Which of them?");
+
+  // A quote alone is a message.
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeVisible();
+  await quote("answer with a table");
+  const alone = sent("> answer with a table");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await alone;
+  await expect(bars).toHaveCount(0);
+
+  // A command is what was typed: it runs, and the quote waits for the next
+  // message.
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeVisible();
+  // The last answer: the first has scrolled away.
+  await quote("Native worker", transcript.locator(".message.response").last());
+  await composer.fill("/btw Which table?");
+  await composer.press("Enter");
+  const side = page.getByRole("complementary", { name: "Side chats" });
+  await expect(side.getByRole("tab")).toHaveText(["Which table?"]);
+  await expect(side.locator(".message.user blockquote")).toHaveCount(0);
+  await expect(composer).toHaveValue("");
+  await expect(bars).toHaveText(["Native worker"]);
+});
+
+test.describe("phone", () => {
+  test.use({ isMobile: true, hasTouch: true });
+
+  test("a quote is one line over the input, with a full-size X", async ({
+    page,
+    session,
+  }) => {
+    const transcript = await answered(page, session, {
+      width: 390,
+      height: 844,
+    });
+    const answer = transcript.locator(".message.response").last();
+    await answer.evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+    });
+    await page
+      .getByRole("group", { name: "Selection" })
+      .getByRole("button", { name: "Quote" })
+      .click();
+    const bar = page.locator(".composer .quote-bar");
+    await expect(bar).toHaveCount(1);
+    expect(await fits(page)).toBe(true);
+    const box = await bar.boundingBox();
+    const form = await page.locator(".composer .message-box").boundingBox();
+    expect(box.x + box.width).toBeLessThanOrEqual(form.x + form.width);
+    const remove = bar.getByRole("button", { name: "Remove the quote" });
+    expect((await remove.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await remove.tap();
+    await expect(bar).toHaveCount(0);
+  });
 });
 
 const pickLines = (pane) =>
@@ -255,7 +357,7 @@ for (const [width, layout] of [
     } else {
       // No room for a third column: the conversation's input asks.
       await expect(side).toHaveCount(0);
-      const asking = page.locator(".composer-asking");
+      const asking = page.locator(".composer .quote-bar");
       await expect(asking).toContainText("Side chat");
       await expect(asking).toContainText("src/app.ts:1-2");
       await expect(page.getByLabel("Message or guidance")).toBeFocused();
@@ -281,7 +383,7 @@ test("on a phone the actions are a bar above the input, which asks; the side cha
   await actions.getByRole("button", { name: "Ask in side chat" }).click();
   // One input: it carries the quote and says where the question goes.
   const prompt = page.getByLabel("Message or guidance");
-  const asking = page.locator(".composer-asking");
+  const asking = page.locator(".composer .quote-bar");
   await expect(asking).toContainText("answer with a table");
   await expect(prompt).toBeFocused();
   await expect(prompt).toHaveAttribute("placeholder", "Ask about it…");
@@ -313,6 +415,43 @@ test("on a phone the actions are a bar above the input, which asks; the side cha
   await expect(
     page.getByRole("dialog", { name: "Activity" }).locator(".activity-row"),
   ).toHaveText([/Which table\?/]);
+  expect(await fits(page)).toBe(true);
+});
+
+test("on a phone a long quote is cut short in the message box, which keeps its width", async ({
+  page,
+  host,
+  request,
+}) => {
+  const line = "A sentence far too long for a phone to show on one line. ";
+  const { id } = await savedConversation(host, request, "Long", line.repeat(4));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${id}`);
+  await online(page);
+  const transcript = page.locator(".transcript");
+  const actions = page.getByRole("group", { name: "Selection" });
+  const form = page.locator(".composer > form");
+  // The quote and the button that sends stay inside the box's edges.
+  const held = async () => {
+    const edge = await box(form);
+    for (const part of [
+      form.locator(".quote-bar"),
+      form.getByRole("button", { name: "Send", exact: true }),
+    ]) {
+      const inner = await box(part);
+      expect(inner.left).toBeGreaterThanOrEqual(edge.left);
+      expect(inner.right).toBeLessThanOrEqual(edge.right);
+    }
+  };
+  const passage = transcript.locator(".message.response");
+  await select(passage, line.repeat(4).trim());
+  await actions.getByRole("button", { name: "Quote" }).click();
+  await expect(form.locator(".quote-bar")).toContainText("A sentence far");
+  await held();
+  await select(passage, line.repeat(4).trim());
+  await actions.getByRole("button", { name: "Ask in side chat" }).click();
+  await expect(form.locator(".quote-bar .chip")).toHaveText("Side chat");
+  await held();
   expect(await fits(page)).toBe(true);
 });
 

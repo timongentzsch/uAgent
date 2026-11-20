@@ -134,7 +134,9 @@ def test_web_files_listing_says_what_a_folder_s_pages_are(root, home, *, binary)
         "design/system/book.html": paper,
         "docs/memo.html": paper,
         "docs/slide.html": slide,
+        "boards/flow/board.html": screen + '<meta name="board">',
         "plain/a.html": "<p>a</p>",
+        "plain/rows.CSV": "a,b",
     }
     for name, head in pages.items():
         (project / name).parent.mkdir(parents=True, exist_ok=True)
@@ -151,7 +153,9 @@ def test_web_files_listing_says_what_a_folder_s_pages_are(root, home, *, binary)
                 value = json.loads(body)
                 assert_true(status == 200, value)
                 kinds = {
-                    entry["name"]: entry["kind"] for entry in value["entries"] if "kind" in entry
+                    entry["name"]: entry["kind"] + (" alone" if entry.get("alone") else "")
+                    for entry in value["entries"]
+                    if "kind" in entry
                 }
                 return value["kind"], kinds
 
@@ -170,25 +174,35 @@ def test_web_files_listing_says_what_a_folder_s_pages_are(root, home, *, binary)
                 listed("decks/q3")
                 == (
                     "deck",
-                    dict.fromkeys(("01-cover.html", "02-plan.html", "03-end.html"), "slide"),
+                    dict.fromkeys(("01-cover.html", "02-plan.html", "03-end.html"), "deck"),
                 ),
                 listed("decks/q3"),
             )
             # One page with an artboard makes a design; other HTML is its page too.
             assert_true(
-                listed("design/onboarding") == ("design", {"01-welcome.html": "page"}),
+                listed("design/onboarding")
+                == ("design", {"01-welcome.html": "design", "notes.html": "design"}),
                 listed("design/onboarding"),
             )
+            # A system's document is its book, no artifact of its own.
             assert_true(
                 listed("design/system") == ("system", {"book.html": "doc"}),
                 listed("design/system"),
             )
             # A document is its own; the slide beside it is a deck of one.
             assert_true(
-                listed("docs") == ("deck", {"memo.html": "doc", "slide.html": "slide"}),
+                listed("docs") == ("deck", {"memo.html": "doc alone", "slide.html": "deck"}),
                 listed("docs"),
             )
-            assert_true(listed("plain") == ("", {}), listed("plain"))
+            assert_true(
+                listed("boards/flow") == ("board", {"board.html": "board"}),
+                listed("boards/flow"),
+            )
+            # Any other page is shown as a design; an Excel or CSV file is a sheet.
+            assert_true(
+                listed("plain") == ("", {"a.html": "design", "rows.CSV": "sheet alone"}),
+                listed("plain"),
+            )
             assert_true(listed("") == ("", {}), listed(""))
 
 
@@ -390,6 +404,14 @@ def test_web_files_save_a_person_s_edit_against_its_revision(root, home, *, bina
             status, saved, _ = save("docs/memo.html", "<p>new</p>", revision)
             assert_true(status == 200 and saved["revision"] != revision, (status, saved))
             assert_true((project / "docs/memo.html").read_text() == "<p>new</p>", "not saved")
+            # The folder's stamps hold the one the save answered with, until
+            # someone else writes the file.
+
+            def stamp():
+                _, value, _ = client.json(files + "?" + urlencode({"stamps": "docs"}))
+                return value["stamps"]["memo.html"]
+
+            assert_true(saved["stamp"] and stamp() == saved["stamp"], (saved, stamp()))
             # Saved against what it was read at: a second save on the old
             # revision, or after the agent wrote, is refused.
             status, refused, _ = save("docs/memo.html", "<p>lost</p>", revision)
@@ -398,6 +420,7 @@ def test_web_files_save_a_person_s_edit_against_its_revision(root, home, *, bina
             status, refused, _ = save("docs/memo.html", "<p>lost</p>", saved["revision"])
             assert_true(status == 409, (status, refused))
             assert_true((project / "docs/memo.html").read_text() == "<p>agent</p>", "overwrote")
+            assert_true(stamp() != saved["stamp"], "the agent's write kept the stamp")
             # Only a text file that is there, inside the folder.
             for path in ("docs/new.html", "blob.bin", "../elsewhere.txt", str(elsewhere)):
                 status, refused, _ = save(path, "x", "")

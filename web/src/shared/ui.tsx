@@ -137,6 +137,7 @@ export function CodeCopy({ text }: { text: string }) {
   return (
     <>
       <IconButton
+        variant="secondary"
         class="swap-feedback"
         data-swapped={swapped.current || undefined}
         label={status || "Copy code"}
@@ -387,7 +388,7 @@ export function ConfirmModal({
 }
 
 // A row of a title and controls along an edge of its pane: one height and
-// padding per density, wherever it is.
+// one inset on every side, wherever it is.
 export function Bar({
   as = "div",
   density,
@@ -398,7 +399,7 @@ export function Bar({
   ...props
 }: Omit<HTMLAttributes<HTMLElement>, "title"> & {
   as?: "div" | "header" | "footer";
-  density?: "dense" | "flush";
+  density?: "flush";
   edge?: "top" | "bottom";
   title?: ComponentChildren;
 }) {
@@ -620,7 +621,7 @@ export function IconButton({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   label: string;
-  variant?: "primary" | "quiet";
+  variant?: "primary" | "secondary" | "quiet";
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (

@@ -1,21 +1,26 @@
 // Every view's buttons on a phone: none cut or wrapped, no row of them wider
-// than its box, nothing that scrolls the page sideways.
+// than its box, nothing that scrolls the page sideways, and each of them
+// shows a press.
 import {
   test,
   expect,
   headerAction,
   online,
   openFiles,
+  openMore,
   openSheet,
   paper,
+  SAMPLE_ASK,
   savedConversation,
   selectProbeModel,
+  servePending,
   sheet,
   showList,
   slide,
   unfiled,
   writeFiles,
 } from "./fixtures.js";
+import { unanswered } from "./press.js";
 
 test.use({
   isMobile: true,
@@ -106,6 +111,26 @@ const cramped = (page) =>
       )
         found.push(`a row wider than its box: ${named(row)}`);
     }
+    // A row's press covers its line: nothing to read stands beside the
+    // button on it but another control.
+    for (const row of document.querySelectorAll("button, summary, a[href]")) {
+      if (!shown(row) || getComputedStyle(row).justifyContent !== "flex-start")
+        continue;
+      const box = row.getBoundingClientRect();
+      for (const beside of row.parentElement.children) {
+        const at = beside.getBoundingClientRect();
+        if (
+          beside !== row &&
+          shown(beside) &&
+          !beside.matches("button, a, input, select, summary, label") &&
+          !beside.querySelector("button, a, input, select, summary") &&
+          at.top < box.bottom &&
+          at.bottom > box.top &&
+          beside.textContent.trim()
+        )
+          found.push(`a press stops short of: ${named(beside)}`);
+      }
+    }
     for (const dialog of document.querySelectorAll(
       "dialog[open], .dialog-body",
     ))
@@ -114,7 +139,10 @@ const cramped = (page) =>
     return [...new Set(found)];
   });
 
-const roomy = async (page) => expect.poll(() => cramped(page)).toEqual([]);
+const roomy = async (page) => {
+  await expect.poll(() => cramped(page)).toEqual([]);
+  expect(await unanswered(page)).toEqual([]);
+};
 
 // A page's tools in one row that needs no scrolling: those that are an
 // icon alone fold into a menu.
@@ -156,6 +184,14 @@ test.describe("the pages of the list", () => {
     await roomy(page);
   });
 
+  test("the home's recent list", async ({ page, host, request }) => {
+    for (const title of ["Alpha talk", "Bravo talk"])
+      await savedConversation(host, request, title);
+    await page.goto("/");
+    await expect(page.locator(".home-list .list-row")).toHaveCount(2);
+    await roomy(page);
+  });
+
   test("Scheduled and a new task", async ({ page }) => {
     await page.goto("/");
     await showList(page);
@@ -164,7 +200,16 @@ test.describe("the pages of the list", () => {
       .getByRole("button", { name: "Scheduled", exact: true })
       .click();
     await page.getByRole("button", { name: "New task", exact: true }).click();
-    await expect(page.getByLabel("Name", { exact: true })).toBeVisible();
+    const name = page.getByLabel("Name", { exact: true });
+    await expect(name).toBeVisible();
+    // The way back keeps its row over the first field.
+    const back = await page
+      .getByRole("button", { name: "All runs", exact: true })
+      .boundingBox();
+    expect(back.height).toBeGreaterThanOrEqual(44);
+    expect(back.y + back.height).toBeLessThanOrEqual(
+      (await page.locator(".field", { has: name }).boundingBox()).y,
+    );
     await roomy(page);
   });
 
@@ -173,6 +218,14 @@ test.describe("the pages of the list", () => {
       await savedConversation(host, request, title);
     await page.goto("/");
     await showList(page);
+    // The drawer shows its title whole, and leaves an edge of the page.
+    const drawer = page.locator("dialog.sidebar");
+    expect(
+      await drawer
+        .locator("header h2")
+        .evaluate((title) => title.scrollWidth - title.clientWidth),
+    ).toBeLessThanOrEqual(0);
+    expect((await drawer.boundingBox()).width).toBe(390 - 16);
     await page
       .locator(".session-row", { hasText: "Alpha talk" })
       .getByRole("button", { name: "Conversation menu" })
@@ -207,6 +260,68 @@ test.describe("files", () => {
     await toolsFit(page);
   });
 
+  test("a whiteboard with Edit off and on, and the bar over its picked shape", async ({
+    page,
+    session,
+    host,
+  }) => {
+    await writeFiles(host.project, {
+      "boards/flow/board.html": `<!doctype html>
+<meta charset="utf-8">
+<meta name="artboard" content="1000x600">
+<meta name="board">
+<title>Flow</title>
+<div id="ok" data-shape="parallelogram" data-fill="orange" data-at="400 300" data-size="160 100">Valid?</div>
+`,
+    });
+    const files = await openFiles(page, session, "boards/flow/", {
+      phone: true,
+    });
+    const stage = page.frameLocator(".page-stage iframe:not([inert])");
+    await expect(stage.locator("#ok")).toBeVisible();
+    await roomy(page);
+    await files.getByRole("button", { name: "Edit" }).click();
+    await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+    await roomy(page);
+    const box = await stage.locator("#ok").boundingBox();
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.getByRole("toolbar", { name: "Picked" })).toBeVisible();
+    await roomy(page);
+    await toolsFit(page);
+  });
+
+  test("a slide's tools and the bar over its picked element", async ({
+    page,
+    session,
+    host,
+  }) => {
+    await writeFiles(host.project, {
+      "deck/01-cover.html": slide(
+        "Cover",
+        "Say hello.",
+        '<div class="card"><p style="translate: 5px 0px;">Inside.</p></div><div data-shape="rect" style="position: absolute; left: 100px; top: 300px; width: 200px; height: 100px;"></div>',
+      ),
+      "deck/02-plan.html": slide("Plan", "Three steps."),
+    });
+    const files = await openFiles(page, session, "deck/", { phone: true });
+    const stage = page.frameLocator(".page-stage iframe:not([inert])");
+    await expect(stage.locator("h1")).toBeVisible();
+    await files.getByRole("button", { name: "Edit" }).click();
+    await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+    await roomy(page);
+    // Every control the bar has: a container and Put back, a shape's order.
+    for (const element of [
+      stage.getByText("Inside."),
+      stage.locator("[data-shape]"),
+    ]) {
+      const box = await element.boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(page.getByRole("toolbar", { name: "Picked" })).toBeVisible();
+      await roomy(page);
+    }
+    await toolsFit(page);
+  });
+
   test("a sheet's Format sheet and rules dialog", async ({
     page,
     session,
@@ -228,6 +343,9 @@ test.describe("files", () => {
         return tab.right <= strip.getBoundingClientRect().right + 1;
       }),
     ).toBe(true);
+    expect(
+      (await files.getByRole("tab", { name: "Tasks" }).boundingBox()).height,
+    ).toBeGreaterThanOrEqual(44);
     await cell("Tasks", "A2").click();
     await files.getByRole("button", { name: "Format", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Format" })).toBeVisible();
@@ -263,6 +381,128 @@ test.describe("a conversation", () => {
     await expect(
       page.getByRole("dialog", { name: "Changed files" }),
     ).toBeVisible();
+    await roomy(page);
+  });
+
+  test("an answer's link, file reference, code and source", async ({
+    page,
+    host,
+    request,
+  }) => {
+    const { id } = await savedConversation(
+      host,
+      request,
+      "Rich answer",
+      "See [the docs](https://example.com) and `web/src/app.tsx:12`.\n\n```js\nlet a = 1;\n```\n\n```mermaid\ngraph TD; A-->B;\n```\n",
+    );
+    await page.goto(`/#session=${id}`);
+    const transcript = page.locator(".transcript");
+    await expect(transcript.locator(".file-ref")).toBeVisible();
+    await expect(transcript.locator("summary")).toBeVisible();
+    await roomy(page);
+  });
+
+  test("a sent picture and file", async ({ page, session }) => {
+    await page.goto(`/#session=${session.id}`);
+    await online(page);
+    await page.locator('.composer input[type="file"]').setInputFiles([
+      {
+        name: "shot.svg",
+        mimeType: "image/svg+xml",
+        buffer: Buffer.from(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="3"/>',
+        ),
+      },
+      { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hi") },
+    ]);
+    await expect(page.locator(".composer .file-chip")).toHaveCount(2);
+    await roomy(page);
+    await page.getByLabel("Message or guidance").fill("with files");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const sent = page.locator(".transcript .message.user");
+    await expect(sent.locator(".attachment-tile")).toBeVisible();
+    await expect(sent.locator(".attachment-card")).toBeVisible();
+    // The turn over: its controls are no longer held.
+    await expect(page.locator(".transcript")).toContainText("Native worker");
+    await expect(
+      page.getByRole("button", { name: "Send", exact: true }),
+    ).toBeVisible();
+    await roomy(page);
+  });
+
+  test("a question's options", async ({ page, session, request }) => {
+    await servePending(page, request, session, SAMPLE_ASK);
+    await page.goto(`/#session=${session.id}`);
+    await expect(
+      page.getByRole("region", { name: "Pending decision" }),
+    ).toBeVisible();
+    await roomy(page);
+  });
+
+  test("a side chat's way back, and its row in Activity", async ({
+    page,
+    session,
+  }) => {
+    await page.goto(`/#session=${session.id}`);
+    await online(page);
+    await page.getByLabel("Message or guidance").fill("/btw Side tool probe");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await page.getByRole("button", { name: "Allow once", exact: true }).click();
+    await expect(page.locator(".transcript")).toContainText(
+      "SIDE-TOOL-COMPLETE",
+    );
+    // The turn over: Stop is no longer there to press.
+    await expect(
+      page.getByRole("button", { name: "Send", exact: true }),
+    ).toBeVisible();
+    await roomy(page);
+    // A tap on the way back is not taken by the totals beside it.
+    await page
+      .locator(".conversation-head")
+      .getByRole("button", { name: /^‹/ })
+      .tap();
+    await expect(page).toHaveURL(new RegExp(`session=${session.id}$`));
+    await page.locator(".composer .activity-button").tap();
+    await expect(page.getByRole("dialog", { name: "Activity" })).toBeVisible();
+    await roomy(page);
+  });
+
+  test("the browser", async ({ page, session }) => {
+    const { serveFramebuffer } = await import("./rfb-fixture.js");
+    const remote = await serveFramebuffer(page);
+    await page.route("**/api/browser/status", (route) =>
+      route.fulfill({
+        json: {
+          ok: true,
+          display: 1,
+          generation: 1,
+          profile_id: "default",
+          profiles: [{ id: "default", name: "Default" }],
+          running: true,
+          mode: "human",
+          controller: true,
+          leased: true,
+        },
+      }),
+    );
+    await page.goto(`/#session=${session.id}`);
+    await remote.prepare();
+    await headerAction(page, "Open browser");
+    await expect(
+      page.getByRole("dialog", { name: "Browser", exact: true }),
+    ).toBeVisible();
+    await roomy(page);
+  });
+
+  test("the tools", async ({ page, session }) => {
+    await page.goto(`/#session=${session.id}`);
+    await page
+      .locator(".conversation-head")
+      .getByRole("button", { name: "Conversation menu" })
+      .click();
+    await openMore(page);
+    await page.getByRole("menuitem", { name: "Tools", exact: true }).click();
+    await expect(page.locator(".tool-toggle").first()).toBeVisible();
     await roomy(page);
   });
 

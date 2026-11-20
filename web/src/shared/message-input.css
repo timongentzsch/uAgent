@@ -30,6 +30,20 @@
 .message-box > .message-input > textarea:focus-visible {
   outline: none;
 }
+/* What a message quotes, a line each over its draft, ruled as a quote in a
+   message is. */
+.quote-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding-left: var(--inset-x);
+}
+.quote-bar > .truncate {
+  flex: 1;
+  min-width: 0;
+  padding-left: var(--space-6);
+  border-left: var(--stripe) solid var(--accent);
+}
 .message-actions {
   display: flex;
   flex-wrap: nowrap;

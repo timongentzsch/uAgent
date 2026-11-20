@@ -24,9 +24,8 @@
 .decision-head > [role="alert"] {
   flex: none;
 }
-.decision-tool {
+.decision-action {
   min-width: 0;
-  overflow-wrap: anywhere;
   font-size: var(--font-small);
 }
 .decision-where {

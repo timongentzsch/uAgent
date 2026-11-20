@@ -121,13 +121,22 @@ std::string Head(const fs::path& page) {
 }
 
 // What an HTML page's head says it is: a "sheet" of tables, a "doc" on paper
-// (print flow), a "slide", a "page" with an artboard, or nothing.
+// (print flow), a "slide", a whiteboard's "board", a "page" with an
+// artboard, or nothing.
 std::string PageKind(const std::string& head) {
   if (!MetaTag(head, "sheet").empty()) return "sheet";
   if (MetaTag(head, "print").find("\"flow") != std::string::npos) return "doc";
   const std::string artboard = MetaTag(head, "artboard");
   if (artboard.empty()) return "";
-  return artboard.find(" slide\"") == std::string::npos ? "page" : "slide";
+  if (artboard.find(" slide\"") != std::string::npos) return "slide";
+  return MetaTag(head, "board").empty() ? "page" : "board";
+}
+
+// Whether a page of `kind` is an artifact of its own, one file, in a folder
+// that is `folder`: a sheet anywhere, a document but a design system's,
+// which is its book. Neither makes its folder what it is.
+bool Alone(const std::string& kind, const std::string& folder = "") {
+  return kind == "sheet" || (kind == "doc" && folder != "system");
 }
 
 // The content of the meta tag named `name`, as written; empty when none.
@@ -177,31 +186,37 @@ int64_t SheetTabs(const fs::path& page) {
 }
 
 // What a folder's files make it: a design "system" with a tokens.css, a
-// "deck" when every page that is not a document is a slide, a "design" when
-// a page declares an artboard, or nothing.
+// "deck" when every page not alone is a slide, a whiteboard's "board" when
+// every one is a board, a "design" when a page declares an artboard, or
+// nothing.
 struct FolderPages {
-  size_t pages = 0, slides = 0;
+  size_t pages = 0, slides = 0, boards = 0;
   bool artboard = false, system = false;
   void Add(const std::string& kind) {
+    if (Alone(kind)) return;
     ++pages;
     slides += kind == "slide";
+    boards += kind == "board";
     artboard = artboard || !kind.empty();
   }
   const char* Kind() const {
     return system            ? "system"
            : !artboard       ? ""
            : slides == pages ? "deck"
+           : boards == pages ? "board"
                              : "design";
   }
 };
 }  // namespace
 
-// The artifacts in `root` (see the artifact skill): decks and designs, a
-// folder each; documents and sheets, each its own; and design systems, whose
-// own pages are theirs. Each names up to four of its pages, for thumbnails.
+// The artifacts in `root` (see the artifact skill): decks, designs and
+// whiteboards, a folder each; documents and sheets, each its own; and design
+// systems, whose own pages are theirs. Each names up to four of its pages,
+// for thumbnails.
 json Designs(const fs::path& root) {
   struct Folder {
-    std::vector<std::string> pages, docs, sheets;
+    // Each page's path and kind.
+    std::vector<std::pair<std::string, std::string>> pages;
     int64_t modified = 0;
     FolderPages kind;
   };
@@ -224,15 +239,7 @@ json Designs(const fs::path& root) {
       continue;
     }
     const std::string kind = PageKind(Head(root / relative));
-    if (kind == "doc") {
-      folder.docs.push_back(path);
-      continue;
-    }
-    if (kind == "sheet") {
-      folder.sheets.push_back(path);
-      continue;
-    }
-    folder.pages.push_back(path);
+    folder.pages.emplace_back(path, kind);
     folder.kind.Add(kind);
   }
   struct Found {
@@ -256,32 +263,27 @@ json Designs(const fs::path& root) {
                   {"modified", changed}}};
   };
   for (auto& [dir, folder] : folders) {
-    // A system's component previews and book are its own, not designs.
     const bool inside = std::ranges::any_of(folders, [&](const auto& other) {
       return other.second.kind.system && other.first != dir &&
              (other.first.empty() || dir.starts_with(other.first + "/"));
     });
-    if (folder.kind.system) {
-      folder.pages.insert(folder.pages.end(), folder.docs.begin(),
-                          folder.docs.end());
-      found.push_back(item("system", dir, folder.pages, folder.modified));
-      continue;
-    }
-    if (inside) continue;
-    if (folder.kind.artboard) {
-      found.push_back(
-          item(folder.kind.Kind(), dir, folder.pages, folder.modified));
-    }
-    for (const std::string& doc : folder.docs) {
-      found.push_back(item("doc", doc, {doc}, modified(doc)));
-    }
-  }
-  // A sheet is its own wherever it lies, counted by its tabs.
-  for (auto& [dir, folder] : folders) {
-    for (const std::string& sheet : folder.sheets) {
-      Found one = item("sheet", sheet, {sheet}, modified(sheet));
-      one.item["count"] = SheetTabs(root / sheet);
+    const std::string type = folder.kind.Kind();
+    std::vector<std::string> pages;
+    for (const auto& [path, kind] : folder.pages) {
+      if (!Alone(kind, type)) {
+        pages.push_back(path);
+        continue;
+      }
+      // A system's book and component previews are its own; a sheet is
+      // its own wherever it lies, counted by its tabs.
+      if (inside && kind != "sheet") continue;
+      Found one = item(kind, path, {path}, modified(path));
+      one.item["alone"] = true;
+      if (kind == "sheet") one.item["count"] = SheetTabs(root / path);
       found.push_back(std::move(one));
+    }
+    if (type == "system" || (!type.empty() && !inside)) {
+      found.push_back(item(type, dir, std::move(pages), folder.modified));
     }
   }
   std::ranges::sort(found, [](const Found& a, const Found& b) {
@@ -343,6 +345,15 @@ std::optional<json> List(const fs::path& root, const fs::path& folder) {
         {{"name", entry.name}, {"dir", entry.dir}, {"size", entry.size}});
   }
   return json{{"entries", std::move(rows)}, {"more", more}};
+}
+
+// What tells one state of a file from the next without reading it: its size,
+// inode and modification time.
+std::string Stamp(const fs::path& file) {
+  const FileStamp stamp = SnapshotFile(file.string());
+  return std::to_string(stamp.size) + ":" + std::to_string(stamp.inode) + ":" +
+         std::to_string(stamp.modified_seconds) + "." +
+         std::to_string(stamp.modified_nanoseconds);
 }
 
 }  // namespace
@@ -531,8 +542,7 @@ std::string DeckPage(const fs::path& folder, int width, int height) {
       continue;
     }
     const std::string head = Head(entry.path());
-    const std::string kind = PageKind(head);
-    if (kind == "doc" || kind == "sheet" || Skipped(head)) continue;
+    if (Alone(PageKind(head)) || Skipped(head)) continue;
     const json size = ArtboardSize(head);
     const auto side = [&](size_t at, int asked) {
       const int64_t said = size.is_array() ? size[at].get<int64_t>() : 0;
@@ -654,17 +664,23 @@ json Request(const fs::path& root, const json& request) {
   if (mode == "list") {
     auto listed = List(root, *target);
     if (!listed) return {{"error", "not found"}, {"status", 404}};
-    // What the folder's pages say they are, so a viewer knows a deck from a
-    // design and a document from a page.
+    // What the folder is and what each page is shown as, so a viewer knows
+    // a deck from a design and a document from a page: a document or a sheet
+    // (an Excel or CSV file too) as itself, any other as its folder, or a
+    // design.
     FolderPages folder;
+    std::vector<std::pair<json*, std::string>> kinds;
     for (json& entry : (*listed)["entries"]) {
       const fs::path name(JsonValue(entry, "name", ""));
       if (JsonValue(entry, "dir", false)) continue;
       folder.system = folder.system || name == "tokens.css";
+      const std::string ext = AsciiLower(name.extension().string());
+      if (ext == ".xlsx" || ext == ".csv") kinds.emplace_back(&entry, "sheet");
       if (name.extension() != ".html") continue;
       const std::string head = Head(*target / name);
       const std::string kind = PageKind(head);
-      if (!kind.empty()) entry["kind"] = kind;
+      kinds.emplace_back(&entry, kind);
+      folder.Add(kind);
       // Its size, so a viewer gives it its room before it has drawn.
       if (json size = ArtboardSize(head); !size.is_null()) {
         entry["artboard"] = std::move(size);
@@ -675,14 +691,30 @@ json Request(const fs::path& root, const json& request) {
           !section.empty()) {
         entry["section"] = Utf8Prefix(std::move(section), 80);
       }
-      if (kind == "sheet") {
-        entry["count"] = SheetTabs(*target / name);
-      } else if (kind != "doc") {
-        folder.Add(kind);
-      }
+      if (kind == "sheet") entry["count"] = SheetTabs(*target / name);
     }
-    (*listed)["kind"] = folder.Kind();
+    const std::string type = folder.Kind();
+    for (auto& [entry, kind] : kinds) {
+      (*entry)["kind"] = kind == "doc" || kind == "sheet" ? kind
+                         : type.empty()                   ? "design"
+                                                          : type;
+      if (Alone(kind, type)) (*entry)["alone"] = true;
+    }
+    (*listed)["kind"] = type;
     return *listed;
+  }
+  // A folder's files by name, each with its stamp: what a viewer asks often
+  // to see what changed, so nothing in them is read.
+  if (mode == "stamps") {
+    auto listed = List(root, *target);
+    if (!listed) return {{"error", "not found"}, {"status", 404}};
+    json stamps = json::object();
+    for (const json& entry : (*listed)["entries"]) {
+      if (JsonValue(entry, "dir", false)) continue;
+      const std::string name = JsonValue(entry, "name", "");
+      stamps[name] = Stamp(*target / name);
+    }
+    return {{"stamps", std::move(stamps)}};
   }
   if (mode == "deck") {
     std::error_code error;
@@ -734,7 +766,8 @@ json Request(const fs::path& root, const json& request) {
       }
       return {{"error", error}, {"status", 500}};
     }
-    return {{"revision", DocumentRevision(target->string(), text)}};
+    return {{"revision", DocumentRevision(target->string(), text)},
+            {"stamp", Stamp(*target)}};
   }
   std::string bytes, error;
   const bool read = mode == "read";

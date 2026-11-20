@@ -118,10 +118,13 @@ export function useLongPress(
 export function Menu({
   label,
   trigger,
+  pressed,
   children,
 }: {
   label: string;
   trigger?: ComponentChildren;
+  // A choice among several buttons, which one of its items made.
+  pressed?: boolean;
   children: ComponentChildren;
 }) {
   const [open, setOpen] = useState(false);
@@ -190,6 +193,7 @@ export function Menu({
     "aria-haspopup": "menu" as const,
     "aria-controls": open ? id : undefined,
     "aria-expanded": open,
+    "aria-pressed": pressed,
     // Associate the invoker even where showPopover({ source }) is ignored:
     // pressing it must toggle, rather than light-dismiss before our click.
     popovertarget: id,

@@ -25,6 +25,8 @@ export interface PageInfo {
   // A slide's builds (its highest data-step), and whether it is pushed in.
   steps?: number;
   push?: boolean;
+  // A whiteboard, changed by hand.
+  board?: boolean;
 }
 export interface Rect {
   x: number;
@@ -66,10 +68,13 @@ export type PageMessage =
   | { type: "error"; message: string; line: number }
   // What is wrong with it as drawn has all been said.
   | { type: "checked" }
+  // A new version of its file taken in place, held while a person changes
+  // the page, or to be loaded instead.
+  | { type: "update"; result: "made" | "held" | "load" }
   | { type: "hover" | "picked"; rect: Rect }
   | ({ type: "pick" } & Pick)
-  // A key the pane acts on; `held` with ⌘ or Ctrl.
-  | { type: "key"; key: string; held?: boolean }
+  // A key the pane acts on; `held` with ⌘ or Ctrl, `shift` with Shift.
+  | { type: "key"; key: string; held?: boolean; shift?: boolean }
   | { type: "zoom"; by: number; x: number; y: number }
   // A document: how many pages it has, the page it went to by itself, its
   // text as Markdown.
@@ -91,9 +96,6 @@ export type PageMessage =
       done?: boolean;
     }
   | { type: "left" }
-  // A file of the folder to open at a line (0: at its start), from where a
-  // page's value came.
-  | { type: "cite"; path: string; line: number }
   // Where the value under the pointer came from, or nothing.
   | {
       type: "source";
@@ -102,15 +104,26 @@ export type PageMessage =
       path?: string;
       line?: number;
     }
-  // A whiteboard's item moved, resized or retyped, or the last such change
-  // undone (an item's id and what it now is).
+  // A whiteboard's or a slide's items changed by hand, as board-edit.ts or
+  // slideEdit takes it; and what is picked: items, or a board's arrow, and
+  // the box round them. A slide's item says whether it is in a container
+  // and whether it was moved or sized from its place, or put in, by hand.
+  | ({ type: "change" } & Record<string, unknown>)
   | {
-      type: "board";
-      id?: string;
-      at?: number[];
-      size?: number[];
-      text?: string;
-      undo?: boolean;
+      type: "items";
+      items: {
+        selector: string;
+        tag: string;
+        text: string;
+        shape?: string;
+        fill?: string;
+        note?: boolean;
+        container?: boolean;
+        moved?: boolean;
+        placed?: boolean;
+      }[];
+      arrow?: boolean;
+      rect?: Rect;
     }
   | {
       type: "caret";
@@ -202,8 +215,10 @@ export type PageMessage =
 // block at `at`, `over` its words), a mark, a link or another kind for what
 // is being edited or a block to follow it, set a tweak, mark the words
 // found; a sheet: write into its active cell, do a command, say what a
-// formula may take after its text up to the caret. Which part of it shows
-// (a page, a tab) is its address's to say: "#3".
+// formula may take after its text up to the caret; items changed by hand
+// (a whiteboard's, a slide's): arm a tool, or act on what is picked; take
+// its file's new text in place. Which
+// part of it shows (a page, a tab) is its address's to say: "#3".
 export const tell = (
   frame: HTMLIFrameElement | null,
   message:
@@ -222,7 +237,14 @@ export const tell = (
     | { type: "replace"; text: string; with: string; index: number }
     | { type: "input"; value: string }
     | { type: "suggest"; text: string }
-    | { type: "do"; command: string; value?: string; tab?: number },
+    | { type: "do"; command: string; value?: string; tab?: number }
+    | {
+        type: "arm";
+        tool: string;
+        made?: { html: string; width: number; height?: number };
+      }
+    | { type: "act"; act: string; value?: string }
+    | { type: "update"; html: string },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 
 // What a sheet's grid takes from the app, as the variables of its stylesheet
@@ -244,14 +266,24 @@ const SHEET_LOOK = {
   "ink-good": "added",
   "ink-warn": "warning",
 };
-function tellLook(frame: HTMLIFrameElement | null) {
+// What every page takes: the colours of what is marked inside it.
+const PAGE_LOOK = { pick: "page-pick", changed: "page-changed" };
+function tellLook(frame: HTMLIFrameElement | null, sheet: boolean) {
   if (!frame) return;
   const style = getComputedStyle(frame);
-  const token = (name: string) => style.getPropertyValue(`--${name}`).trim();
   const set = (name: string, value: string) =>
-    tell(frame, { type: "tweak", name: `--sheet-${name}`, value });
-  for (const [name, from] of Object.entries(SHEET_LOOK)) set(name, token(from));
-  set("font", `${style.fontSize}/${style.lineHeight} ${style.fontFamily}`);
+    tell(frame, { type: "tweak", name: `--${name}`, value });
+  const all = (prefix: string, look: Record<string, string>) => {
+    for (const [name, from] of Object.entries(look))
+      set(`${prefix}-${name}`, style.getPropertyValue(`--${from}`).trim());
+  };
+  all("uagent", PAGE_LOOK);
+  if (!sheet) return;
+  all("sheet", SHEET_LOOK);
+  set(
+    "sheet-font",
+    `${style.fontSize}/${style.lineHeight} ${style.fontFamily}`,
+  );
 }
 
 export const pageAddress = (base: string, path: string) =>
@@ -336,7 +368,7 @@ export default function Frame({
       if (event.data?.uagentDesign !== 1) return;
       if (event.data.type === "ready") {
         setSheet(!!event.data.sheet);
-        if (event.data.sheet) tellLook(frame.current);
+        tellLook(frame.current, !!event.data.sheet);
       }
       if (event.data.type === "drawn") {
         const { drawn: was, as } = going.current;
@@ -350,7 +382,7 @@ export default function Frame({
   }, []);
   useEffect(() => {
     if (!sheet) return;
-    const restyle = new MutationObserver(() => tellLook(frame.current));
+    const restyle = new MutationObserver(() => tellLook(frame.current, true));
     restyle.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-theme", "style"],

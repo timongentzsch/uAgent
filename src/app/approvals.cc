@@ -28,6 +28,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/turn_status.h"
 #include "include/core/workspace.h"
 #include "include/ui/presentation.h"
 #include "src/app/bootstrap_internal.h"
@@ -290,6 +291,7 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
   Emit(Event{EventId::kApprovalRequested,
              {{"id", request_id},
               {"tool", tool.name},
+              {"action", StatusLabel(ToolAction(tool, arguments))},
               {"preview", TerminalSafe(raw_payload)},
               {"risks", std::move(risks)},
               {"source", ApprovalSourceName(source)},
@@ -493,6 +495,10 @@ Agent::ReportJudge MakeReportJudge(AppContext* app) {
     static const Tool kReport = [] {
       Tool tool;
       tool.name = "agent_report";
+      tool.headline = [](const json&) {
+        return Headline{"Delivering an agent's report",
+                        "Delivered an agent's report"};
+      };
       return tool;
     }();
     std::string error;
@@ -520,6 +526,7 @@ Agent::ReportJudge MakeReportJudge(AppContext* app) {
       Emit(Event{EventId::kApprovalRequested,
                  {{"id", request_id},
                   {"tool", kReport.name},
+                  {"action", ToolAction(kReport, json::object())},
                   {"preview", TerminalSafe(report)},
                   {"risks", decision.reasons},
                   {"source", "report"},

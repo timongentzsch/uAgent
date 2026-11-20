@@ -12,8 +12,11 @@
 .execution-host {
   max-width: 40%;
 }
+/* One line under the title: the way back to where the conversation came
+   from, then its totals. Side by side, their touch areas never overlap. */
 .head-subtitle {
   display: flex;
+  gap: var(--space-4);
   margin: 0;
 }
 /* raw: a link in a line of text, drawn as text. */
@@ -24,6 +27,17 @@
   min-height: 0;
   padding: 0;
   text-decoration: underline;
+}
+/* The way back is cut short before the totals, down to a touch's width. */
+.head-subtitle > button {
+  min-width: var(--touch);
+}
+.head-totals {
+  display: flex;
+  min-width: 0;
+}
+.head-subtitle > button + .head-totals {
+  flex: none;
 }
 /* The totals are quiet text, not a link. */
 .head-totals button {

@@ -357,6 +357,8 @@ std::string DefaultTarget(const json& args);
 Headline ToolHeadline(const Tool* tool, const json& args);
 // The call in one line, its past verb and target: "Ran make test".
 std::string ToolSummary(const Tool& t, const json& args);
+// The call under way, as its row reads while it runs: "Running make test".
+std::string ToolAction(const Tool& t, const json& args);
 
 // What every client renders for a call: {"verb": [present, past], "target",
 // "input": [part...]}. `tool` is null for a tool gone: the generic view.

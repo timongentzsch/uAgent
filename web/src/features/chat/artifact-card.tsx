@@ -32,7 +32,7 @@ export function ArtifactCard({
       <figcaption>
         <strong>{nameOf(part.path.replace(/\/$/, ""))}</strong>
         <span class="muted">
-          {ARTIFACT[part.type]}
+          {ARTIFACT[part.type].name}
           {size && ` · ${size}`}
         </span>
         <Button onClick={show}>Open</Button>

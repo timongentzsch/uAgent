@@ -18,6 +18,15 @@ export const maxRecalledPromptSessions = 32;
 // Prompts Up and Down recall per conversation.
 export const maxRecalledPrompts = 100;
 export const maxHistoryNodes = 256;
+// Changes made by hand that can be undone; each holds its file's text twice.
+export const maxUndoable = 100;
+// What one change by hand to a whiteboard's or a slide's items may name:
+// items, an item's text and a slide's element's path in characters, and a
+// place or a size in pixels.
+export const maxItemEntries = 1_000;
+export const maxItemTextChars = 20_000;
+export const maxItemPathChars = 1_000;
+export const maxItemPixels = 100_000;
 // A row with more children shows its latest ones and a line for the rest.
 export const maxShownSteps = 30;
 export const maxRememberedToggles = 500;
@@ -83,8 +92,8 @@ export const maxTextFileBytes = 1024 * 1024;
 // Mobile Safari avoids focus zoom for an editable layout font of at least 16px.
 export const focusFontFloor = 16;
 
-// maxTerminals is the host's kWebTerminals; "Add to chat" carries the end
-// of a terminal, at most maxTerminalChatChars.
+// maxTerminals is the host's kWebTerminals; "Quote" carries the end of a
+// terminal, at most maxTerminalChatChars.
 export const maxTerminals = 8;
 export const maxTerminalChatChars = 16_000;
 export const terminalScrollbackLines = 5_000;

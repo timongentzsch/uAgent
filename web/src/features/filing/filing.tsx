@@ -193,8 +193,10 @@ function HomeRow({
         title={<SessionName item={item} />}
         meta={detail && <DataText>{detail}</DataText>}
         onClick={() => choose(item.id)}
-      />
-      {children ?? <Time value={item.updated} brief />}
+      >
+        {!children && <Time value={item.updated} brief />}
+      </ListRow>
+      {children}
     </li>
   );
 }

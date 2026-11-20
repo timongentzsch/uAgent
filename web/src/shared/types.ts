@@ -29,6 +29,8 @@ export interface Asset {
 export interface Draft {
   text: string;
   files: Asset[];
+  // Sent before the text, each a paragraph of its own.
+  quotes: string[];
 }
 export interface InstallPrompt extends Event {
   prompt(): Promise<void>;
@@ -332,7 +334,8 @@ interface AskPending extends PendingBase {
 interface ApprovalPending extends PendingBase {
   kind: "approval";
   approval?: {
-    tool: string;
+    // The call in the words its row uses while it runs: "Running make test".
+    action: string;
     preview?: string;
     // What approving risks, most serious first; then the reasons the
     // automatic review gave, by name and probability.
@@ -1048,9 +1051,10 @@ export interface LibraryItem {
   required_tools?: string[];
   files?: string[];
   // In the Library's listing: what it is and the place it belongs to, ""
-  // for every place's.
+  // for every place's; an artifact that is one file, not a folder, is alone.
   kind?: LibraryKind;
   place?: string;
+  alone?: boolean;
   // A design's page count and first pages; a shared file's conversation
   // (its key is the asset's id).
   count?: number;

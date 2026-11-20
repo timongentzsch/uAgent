@@ -72,7 +72,11 @@ const kept = {
           >,
         ).map(([id, draft]) => [
           id,
-          { ...draft, files: draft.files.filter((file) => !file.pending) },
+          {
+            ...draft,
+            files: draft.files.filter((file) => !file.pending),
+            quotes: draft.quotes ?? [],
+          },
         ]),
       ),
     {

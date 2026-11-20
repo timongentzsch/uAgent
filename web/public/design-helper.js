@@ -2,6 +2,7 @@
 // postMessage it says what the page is and what fails in it, and takes tweaks.
 (() => {
   const root = document.documentElement;
+  const helper = document.currentScript;
   const meta = (name) =>
     document.querySelector(`meta[name="${name}"]`)?.content.trim() || "";
   // A document's print line: "flow", then in any order its paper (a name or
@@ -88,7 +89,16 @@
     artboard().slide
       ? [...document.querySelectorAll("body > aside")].pop() || null
       : null;
+  // A page's head as its file wrote it (this script aside): a change of the
+  // file in place keeps it.
+  const headOf = (page) =>
+    [...page.head.children]
+      .filter((part) => part !== helper)
+      .map((part) => part.outerHTML)
+      .join("");
+  let head;
   addEventListener("DOMContentLoaded", () => {
+    head = headOf(document);
     for (const [name, spec] of Object.entries(tweaks() || {}))
       if (!name.startsWith("--") && spec && "default" in spec)
         tweak(name, spec.default);
@@ -265,6 +275,7 @@
   let shown = 0;
   let paged;
   let went;
+  let repaged;
   // The page a box of the body lies on, from 0.
   const pageOf = (box) => {
     const { w, margin } = paper();
@@ -326,11 +337,14 @@
       }
       turn();
     };
-    breaks();
-    addEventListener("load", breaks);
     // Whatever changes how far the text runs changes a block's size.
     const sized = new ResizeObserver(turn);
-    for (const block of document.body.children) sized.observe(block);
+    repaged = () => {
+      for (const block of document.body.children) sized.observe(block);
+      breaks();
+    };
+    repaged();
+    addEventListener("load", breaks);
     addEventListener("hashchange", turn);
     // A link to a place in the document turns to its page ("#", the first);
     // one to nowhere does nothing.
@@ -380,11 +394,17 @@
   // is busy, which a capture and the agent's browser wait out.
   // A whiteboard is drawn by its own code from the same place.
   const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
+  let board;
+  let boarding;
   addEventListener("DOMContentLoaded", () => {
     if (!document.querySelector('meta[name="board"]')) return;
     root.dataset.uagentBusy = "";
-    window.uagentReady = import(`${base}~sheet/whiteboard.js`)
-      .then((board) => board.ready)
+    boarding = import(`${base}~sheet/whiteboard.js`);
+    window.uagentReady = boarding
+      .then((drawn) => {
+        board = drawn;
+        return drawn.ready;
+      })
       .catch((error) => [`the whiteboard could not be drawn: ${error.message}`])
       .finally(() => delete root.dataset.uagentBusy);
   });
@@ -809,25 +829,63 @@
     event.preventDefault();
     format({ mark });
   };
-  // Edit on or off; with `at`, the caret goes to the end of that block, or
-  // `over` its words, to type over them.
-  const edit = (on, at, over) => {
+  // Typed in: a block, the caret where `press` was in it, else at its end
+  // or `over` its words.
+  const typeIn = (block, press, over) => {
+    block.setAttribute("contenteditable", "plaintext-only");
+    block.focus();
+    const point =
+      press && document.caretPositionFromPoint?.(press.clientX, press.clientY);
+    const range = point
+      ? new Range()
+      : press && document.caretRangeFromPoint?.(press.clientX, press.clientY);
+    if (point) range.setStart(point.offsetNode, point.offset);
+    if (range && block.contains(range.startContainer))
+      return getSelection().collapse(range.startContainer, range.startOffset);
+    getSelection().selectAllChildren(block);
+    if (!over) getSelection().collapseToEnd();
+  };
+  // Each block new on the page since Edit went on, with its text as it is.
+  const remember = () => {
     for (const block of blocks())
-      if (on) {
-        block.setAttribute("contenteditable", "plaintext-only");
+      if (!before.has(block)) before.set(block, block.textContent);
+  };
+  // A slide's elements while Edit is on, changed by hand from its own code;
+  // and whether Edit was last asked on, which holds once that code is in.
+  let slide;
+  let editOn = false;
+  // Edit on or off; with `at`, the caret goes to the end of that block, or
+  // `over` its words, to type over them. A document's blocks all take
+  // typing; a slide's the one a press picks.
+  const edit = async (on, at, over) => {
+    editOn = on;
+    const items = artboard().slide;
+    for (const block of blocks())
+      if (!on) block.removeAttribute("contenteditable");
+      else {
+        if (!items) block.setAttribute("contenteditable", "plaintext-only");
         before.set(block, block.textContent);
-      } else block.removeAttribute("contenteditable");
+      }
     const toggle = on ? addEventListener : removeEventListener;
     toggle("input", changed, true);
     toggle("focusout", left, true);
     toggle("keydown", keyed, true);
     toggle.call(document, "selectionchange", caret);
     told = "";
-    const block = on && blocks()[at];
-    if (!block) return;
-    block.focus();
-    getSelection().selectAllChildren(block);
-    if (!over) getSelection().collapseToEnd();
+    if (items && (on || slide)) {
+      slide ??= await import(`${base}~sheet/slide.js`);
+      slide.edit(editOn, {
+        send,
+        selector,
+        notes,
+        blocks,
+        text: EDITABLE,
+        typeIn,
+        remember,
+      });
+    }
+    const block = editOn && blocks()[at];
+    if (block) (slide?.type ?? typeIn)(block, undefined, over);
   };
 
   const send = (type, data) =>
@@ -885,10 +943,12 @@
         ),
     });
   };
-  // Marked in the system's own colours for it: the page's are unknown.
+  // Marked in the app's colours for it (--uagent-changed): the page's are
+  // unknown.
   addEventListener("DOMContentLoaded", () => {
     const marks = document.createElement("style");
     marks.textContent =
+      `[data-uagent-changed]{outline:2px solid var(--uagent-changed);outline-offset:2px}` +
       "::highlight(uagent-find){background:Mark;color:MarkText}" +
       "::highlight(uagent-found){background:Highlight;color:HighlightText}" +
       "ul.checklist{list-style:none;padding-left:0}" +
@@ -902,14 +962,17 @@
   const height = () => root.scrollHeight;
   // Checked once the app has given the frame its artboard's size, which it
   // does when the page has said it: one verdict, whenever it is drawn.
+  const check = async () => {
+    for (const problem of await found())
+      send("error", { message: problem, line: 0 });
+    send("checked");
+  };
   addEventListener("load", async () => {
     while (!fits())
       await new Promise((sized) =>
         addEventListener("resize", sized, { once: true }),
       );
-    for (const problem of await found())
-      send("error", { message: problem, line: 0 });
-    send("checked");
+    await check();
   });
   // What was last asked to be found: a document marks it again on the page
   // it turns to, for the turn and the asking arrive either way round.
@@ -960,8 +1023,7 @@
         (element) => +element.dataset.step || 0,
       ),
     );
-  addEventListener("DOMContentLoaded", () => {
-    if (building) build(+building[1]);
+  const ready = () =>
     send("ready", {
       title: document.title,
       artboard: artboard(),
@@ -972,12 +1034,17 @@
       sheets: [...document.querySelectorAll('link[rel="stylesheet"]')].map(
         (link) => link.href,
       ),
-      // A sheet takes the app's look for its grid.
+      // A sheet takes the app's look for its grid; a whiteboard is changed
+      // by hand.
       sheet: !!meta("sheet"),
+      board: !!document.querySelector('meta[name="board"]'),
       // A slide's builds, and how it comes in when presented.
       steps: steps(),
       push: meta("slide").split(/\s+/).includes("push"),
     });
+  addEventListener("DOMContentLoaded", () => {
+    if (building) build(+building[1]);
+    ready();
     let last = 0;
     new ResizeObserver(() => {
       if (height() !== last) send("size", { height: (last = height()) });
@@ -1078,6 +1145,12 @@
       within("input, textarea, select, [contenteditable]")
     )
       return;
+    // ⌘Z or Ctrl+Z undoes a change made by hand, with Shift (or Ctrl+Y)
+    // makes it again: the app's, outside the text being typed.
+    if ((event.metaKey || event.ctrlKey) && /^[zy]$/i.test(event.key)) {
+      event.preventDefault();
+      return send("key", { key: event.key, held: true, shift: event.shiftKey });
+    }
     const paging =
       stepped() &&
       ["Home", "End", "PageUp", "PageDown", " "].includes(event.key) &&
@@ -1097,17 +1170,105 @@
   addEventListener("touchend", (event) => {
     const from = swipe;
     swipe = null;
-    if (!from || !stepped()) return;
+    if (!from || !stepped() || slide?.editing()) return;
     const dx = event.changedTouches[0].clientX - from.clientX;
     const dy = event.changedTouches[0].clientY - from.clientY;
     if (Math.abs(dx) > innerWidth / 8 && Math.abs(dx) > 2 * Math.abs(dy))
       send("key", { key: dx < 0 ? "ArrowRight" : "ArrowLeft" });
   });
+  // The file as it now is, from the app: the body is made like it where it
+  // stands, so zoom, scroll and selection stay, and drawn again; what
+  // changed is outlined for a moment. A page with scripts of its own, in
+  // either version, or another head loads again; one a person is changing
+  // waits.
+  const OUTLINED_MS = 2000;
+  const scripted = (page) =>
+    [...page.scripts].some(
+      (script) =>
+        script !== helper &&
+        (!script.type || /javascript|ecmascript|module/i.test(script.type)),
+    );
+  // What the page draws itself, and the attributes it sets, stay.
+  const own = (node) => node.nodeType === 1 && node.hasAttribute("data-uagent");
+  const kept = (name) =>
+    name.startsWith("data-uagent") || name === "contenteditable";
+  // `from` made like `to`: its attributes and its children, each matched by
+  // its id, else as the next of its kind; the elements whose own text or
+  // attributes changed (not a value a data mark filled) go into `changed`.
+  const morph = (from, to, changed) => {
+    const differ = (name) => name !== "style" && changed.add(from);
+    for (const { name } of [...from.attributes])
+      if (!to.hasAttribute(name) && !kept(name)) {
+        from.removeAttribute(name);
+        differ(name);
+      }
+    for (const { name, value } of to.attributes)
+      if (from.getAttribute(name) !== value) {
+        from.setAttribute(name, value);
+        differ(name);
+      }
+    const said = (node) =>
+      node.nodeType === 1
+        ? changed.add(node)
+        : node.nodeType === 3 &&
+          node.data.trim() &&
+          !from.hasAttribute("data-uagent-row") &&
+          changed.add(from);
+    const old = [...from.childNodes].filter((node) => !own(node));
+    let at = from.firstChild;
+    for (const node of [...to.childNodes]) {
+      const index = old.findIndex((was) =>
+        node.id
+          ? was.id === node.id && was.nodeName === node.nodeName
+          : !was.id && was.nodeName === node.nodeName,
+      );
+      const [same] = index < 0 ? [] : old.splice(index, 1);
+      if (!same) said(node);
+      else if (same.nodeType === 1) morph(same, node, changed);
+      else if (same.data !== node.data) {
+        said(node);
+        same.data = node.data;
+      }
+      while (at && own(at)) at = at.nextSibling;
+      if ((same ?? node) === at) at = at.nextSibling;
+      else from.insertBefore(same ?? node, at);
+    }
+    for (const gone of old) gone.remove();
+  };
+  const update = async (html) => {
+    const next = new DOMParser().parseFromString(html, "text/html");
+    if ((board ?? slide)?.busy()) return send("update", { result: "held" });
+    if (scripted(document) || scripted(next) || headOf(next) !== head)
+      return send("update", { result: "load" });
+    const changed = new Set();
+    morph(document.body, next.body, changed);
+    notes()?.style.setProperty("display", "none", "important");
+    for (const mark of document.querySelectorAll("[data-source][data-field]"))
+      void fill(mark);
+    repaged?.();
+    for (const element of changed)
+      element.setAttribute("data-uagent-changed", "");
+    setTimeout(() => {
+      for (const element of changed)
+        element.removeAttribute("data-uagent-changed");
+    }, OUTLINED_MS);
+    send("update", { result: "made" });
+    ready();
+    // After `ready`, which the app takes as nothing picked: the board says
+    // what still is.
+    board?.redraw();
+    send("drawn");
+    await check();
+  };
   addEventListener("message", (event) => {
     if (event.source !== parent || event.data?.uagentDesign !== 1) return;
+    if (event.data.type === "update") void update(String(event.data.html));
     if (event.data.type === "select") select(!!event.data.on);
-    if (event.data.type === "edit" && stepped())
-      edit(!!event.data.on, event.data.at, event.data.over);
+    // A whiteboard is changed by hand while Edit is on.
+    if (event.data.type === "edit" && boarding)
+      void boarding.then((drawn) => drawn.edit(!!event.data.on));
+    else if (event.data.type === "edit" && stepped())
+      void edit(!!event.data.on, event.data.at, event.data.over);
     if (event.data.type === "format") format(event.data);
     if (event.data.type === "markdown") send("markdown", { text: markdown() });
     // A sheet's page finds in its grid itself.

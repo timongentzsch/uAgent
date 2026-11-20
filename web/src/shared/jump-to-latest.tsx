@@ -15,12 +15,7 @@ export function JumpToLatest({
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
-    <Button
-      variant="quiet"
-      class="jump enters"
-      buttonRef={buttonRef}
-      onClick={onClick}
-    >
+    <Button class="jump enters" buttonRef={buttonRef} onClick={onClick}>
       Jump to latest{unseen > 0 && <span> ({unseen} new)</span>}
       <ArrowDown />
     </Button>

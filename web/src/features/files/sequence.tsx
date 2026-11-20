@@ -17,8 +17,10 @@ import {
   MousePointerClick,
   Pencil,
   Presentation,
+  Redo2,
   Search,
   SlidersHorizontal,
+  Undo2,
 } from "lucide-preact";
 import {
   Bar,
@@ -73,7 +75,7 @@ import { dirOf } from "./flow.ts";
 import { readTokens } from "./tokens.ts";
 import { bindZoomWheel } from "../../shared/zoom.ts";
 import { useLatest } from "../../shared/use-latest.ts";
-import { useRoom } from "../../shared/layout.ts";
+import { coarsePointer, useRoom } from "../../shared/layout.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import type { ViewedImage } from "../../shared/attachments.tsx";
 import { presentChannel, STEPS } from "./present.ts";
@@ -84,13 +86,22 @@ import {
   type Saved,
   skipSlide,
 } from "./doc-edit.ts";
-import { type BoardEdit, boardEdit } from "./board-edit.ts";
+import {
+  BOARD,
+  type Chosen,
+  chosenOf,
+  ItemTools,
+  SLIDE,
+} from "./item-tools.tsx";
 import { downloadBlob } from "../../shared/share.ts";
 import { copyDrawn, type Drawn, saveDrawn } from "./drawn.ts";
 import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
 import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
 import { useResource } from "../../shared/use-resource.ts";
 
+// Why a change of items by hand was not written.
+const REFUSED =
+  "That change was not made: the file does not take it as it stands. It is shown as the file is now.";
 // Said in the tools' row while a sheet's engine takes more than a moment.
 const CALCULATING = "Calculating…";
 // What a sheet says of itself, before it has.
@@ -103,6 +114,8 @@ const TAB_AFTER: Record<string, (index: number, tabs: number) => number> = {
   "tab-left": (index) => index - 1,
 };
 
+// How soon a change of the file held for the person is offered again.
+const RENEW_MS = 500;
 // The zoom of an opened page, as a scale of its real size, and one step.
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 4;
@@ -151,11 +164,16 @@ export default function Sequence({
   uneditable,
   settle,
   forget,
+  unwritten,
+  fresh,
+  writing,
   typing,
   saveAs,
   arrange,
   cite,
   rewrite,
+  undo,
+  undoable,
   arranging,
   view,
 }: {
@@ -186,6 +204,12 @@ export default function Sequence({
   // dropped of it when its page is drawn again from the file.
   settle: () => Promise<unknown>;
   forget: () => void;
+  // Whether what was typed in a block is not all in its file yet.
+  unwritten: () => boolean;
+  // Counts the changes someone else made to the file, which the page takes
+  // in place where it can; and whether a call is writing it now.
+  fresh: number;
+  writing?: boolean;
   // A sheet's cell being typed in and the changes it is calculating, as the
   // edits they would make: written if the sheet is left first. None once
   // there are none.
@@ -203,11 +227,14 @@ export default function Sequence({
   // A slide's file written as `change` makes it of what it holds.
   // A file of the folder opened at a line, from the page.
   cite?: (path: string, line: number) => void;
-  // Whether it was written.
   rewrite?: (
     path: string,
     change: (source: string) => string,
-  ) => Promise<boolean>;
+  ) => Promise<unknown>;
+  // The last change made to its file by hand undone, or `redo` made again;
+  // whether it was, and whether either can be.
+  undo?: (redo: boolean) => Promise<boolean>;
+  undoable?: { undo: boolean; redo: boolean };
   arranging?: boolean;
   // Opens a picture in the image viewer, which can draw on it.
   view: (image: ViewedImage) => void;
@@ -216,8 +243,6 @@ export default function Sequence({
 }) {
   const doc = kind === "doc";
   const sheet = kind === "sheet";
-  // Whether its text is typed in place.
-  const editable = doc || kind === "deck";
   const unit = kind === "deck" ? "Slide" : "Page";
   const src = page(path);
   // A board's address: its file's, with its version, and after "#" its
@@ -244,6 +269,10 @@ export default function Sequence({
   const staged = useRef<PageInfo>(undefined);
   if (said?.drawn) staged.current = said;
   const info = staged.current;
+  // What Edit changes in place: a document's or a slide's text, a slide's
+  // elements, a whiteboard's items.
+  const board = !!info?.board;
+  const editable = doc || kind === "deck" || board;
   // Select picks an element to comment on; Edit lets a document's or a
   // slide's text be typed in place. One at a time, told to the page as each
   // goes on or off.
@@ -258,6 +287,8 @@ export default function Sequence({
     setHover(undefined);
     setCaret(undefined);
     setLinking(false);
+    setTool("");
+    setChosen(undefined);
     if (next !== "select") setPicked(undefined);
   };
   // What is selected in the block being edited, and whether its link's
@@ -278,6 +309,22 @@ export default function Sequence({
   const holding = useRef(false);
   const unsourced = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [picked, setPicked] = useState<Pick>();
+  // While Edit is on a whiteboard's items, or a slide's, are changed by
+  // hand: a tool armed for the next press, and what is picked.
+  const hand =
+    mode !== "edit"
+      ? undefined
+      : board
+        ? BOARD
+        : kind === "deck"
+          ? SLIDE
+          : undefined;
+  const [tool, setTool] = useState("");
+  const [chosen, setChosen] = useState<Chosen>();
+  const arm = (next: string) => {
+    setTool(next);
+    tell(frame.current, { type: "arm", tool: next, made: hand?.made?.[next] });
+  };
   const [comment, setComment] = useState("");
   const [tweaking, setTweaking] = useState(false);
   // Reset reloads the page: what it declares comes back.
@@ -287,9 +334,33 @@ export default function Sequence({
   const [arrived, setArrived] = useState("");
   const wanted = load ? `${src}&load=${load}` : src;
   const live = arrived === wanted;
+  // The file changed by someone else: the page takes it as it stands, its
+  // zoom, scroll and selection kept, or loads again where it cannot. Not
+  // while what was typed is on its way to the file, or the page is not live.
+  const again = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const renew = useLatest(() => {
+    clearTimeout(again.current);
+    if (!live || unwritten())
+      again.current = setTimeout(() => renew.current(), RENEW_MS);
+    else
+      void read(path).then(
+        (html) => tell(frame.current, { type: "update", html }),
+        () => setLoad((count) => count + 1),
+      );
+  });
+  const heardFresh = useRef(fresh);
+  useEffect(() => {
+    if (fresh === heardFresh.current) return;
+    heardFresh.current = fresh;
+    renew.current();
+  }, [fresh, renew]);
+  useEffect(() => () => clearTimeout(again.current), []);
   // Another page: nothing picked, typed or zoomed carries over.
   useEffect(() => {
+    clearTimeout(again.current);
     setPicked(undefined);
+    setTool("");
+    setChosen(undefined);
     setHover(undefined);
     setCaret(undefined);
     setNoted(undefined);
@@ -385,32 +456,23 @@ export default function Sequence({
     setBuild(at);
     tell(frame.current, { type: "build", at });
   };
-  // A whiteboard's changes made here and written, each with the text it
-  // took the place of: ⌘Z puts that back while the file is as the change
-  // left it.
-  const boardPast = useRef<{ path: string; before: string; after: string }[]>(
-    [],
-  );
-  const changeBoard = ({
-    undo,
-    ...edit
-  }: Partial<BoardEdit> & { undo?: boolean }) => {
-    const past = boardPast.current;
-    // What the change does to the past, once it is in the file.
-    let written = () => {};
-    const change = (source: string) => {
-      if (undo) {
-        const last = past.at(-1);
-        if (last?.path !== path || source !== last.after) return source;
-        written = () => past.pop();
-        return last.before;
-      }
-      const after = boardEdit(source, { ...edit, id: String(edit.id) });
-      if (after === null) return source;
-      written = () => past.push({ path, before: source, after });
-      return after;
-    };
-    void rewrite?.(path, change).then((made) => made && written());
+  // A document's, a slide's or a whiteboard's changes by hand are undone and
+  // made again here; then the file is drawn again, its notes its own.
+  const undoes = !!undo && editable;
+  const back = (redo: boolean) =>
+    void undo?.(redo).then((made) => {
+      if (!made) return;
+      wrote.current++;
+      setSaves(wrote.current);
+      setNoted(undefined);
+      setLoad((count) => count + 1);
+    });
+  // Whether the key undoes or redoes: ⌘Z, with Shift, or Ctrl+Y.
+  const undoKey = (key: string, shift?: boolean) => {
+    const letter = key.toLowerCase();
+    if (!undoes || (letter !== "z" && letter !== "y")) return false;
+    back(letter === "y" || !!shift);
+    return true;
   };
   // Presenting starts at the slide's first step; ended, all of it shows.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on presenting alone
@@ -423,14 +485,14 @@ export default function Sequence({
   };
   // Another file is another view, and the presenter's window goes with it.
   const to = (next: number, back = false) => {
-    const board = boards[next];
-    if (!board) return;
+    const going = boards[next];
+    if (!going) return;
     backward.current = back;
-    if (board.path !== path) {
-      go(board.path);
-      channel.current?.postMessage({ at: board.path });
+    if (going.path !== path) {
+      go(going.path);
+      channel.current?.postMessage({ at: going.path });
     }
-    setPart(board.at ?? 0);
+    setPart(going.at ?? 0);
   };
   // The boards stepped through and counted: all, but while presenting only
   // the one shown and those not skipped.
@@ -492,11 +554,14 @@ export default function Sequence({
       return;
     const here = target === document.body || target.closest?.(".files");
     const held = event.metaKey || event.ctrlKey;
+    if (event.key === "Escape" && tool) arm("");
     if (presenting) presentKey(event.key);
     else if (sheet) {
       if (here && held && tabKey(event.key)) event.preventDefault();
     } else if (target.closest?.("input, textarea, select, [contenteditable]"))
       return;
+    else if (here && held && undoKey(event.key, event.shiftKey))
+      event.preventDefault();
     else if (
       boards.length > 1 &&
       !event.altKey &&
@@ -611,7 +676,19 @@ export default function Sequence({
       : 1;
   // How far the person zoomed from the fit; each page opens at the fit.
   const [zoom, setZoom] = useState(1);
+  // On a touch screen the tools for items changed by hand take the foot of
+  // the stage (two fingers zoom a whiteboard): Fit is in the tools' menu.
+  const touch = !!hand && coarsePointer();
   const scale = fit * zoom;
+  // The handles of items changed by hand keep a finger's size at any zoom.
+  useEffect(() => {
+    if (live && hand)
+      tell(frame.current, {
+        type: "tweak",
+        name: "--uagent-scale",
+        value: scale,
+      });
+  }, [live, scale, hand]);
   // Scales by `by` keeping the point (x, y) of the scroller where it is.
   const anchor = useRef<{ x: number; y: number; cx: number; cy: number }>(
     undefined,
@@ -847,7 +924,7 @@ export default function Sequence({
           <Notice tone="error">{failure.text}</Notice>
         </p>
       )}
-      <Bar density="dense" edge="bottom" class="page-tools">
+      <Bar edge="bottom" class="page-tools">
         {boards.length > 1 &&
           !sheet &&
           toggle(
@@ -874,6 +951,24 @@ export default function Sequence({
             false,
             uneditable,
           )}
+        {undoes && (
+          <>
+            <IconButton
+              label="Undo"
+              disabled={!undoable?.undo}
+              onClick={() => back(false)}
+            >
+              <Undo2 />
+            </IconButton>
+            <IconButton
+              label="Redo"
+              disabled={!undoable?.redo}
+              onClick={() => back(true)}
+            >
+              <Redo2 />
+            </IconButton>
+          </>
+        )}
         {(declared.length > 0 || !!theme.value?.colors.length) &&
           toggle(
             "Tweaks",
@@ -929,12 +1024,18 @@ export default function Sequence({
             )}
             <MenuSub label="Export">{exportItems}</MenuSub>
             <MenuItem onClick={() => open(src)}>Open alone</MenuItem>
+            {touch && (
+              <MenuItem disabled={zoom === 1} onClick={() => setZoom(1)}>
+                Fit
+              </MenuItem>
+            )}
           </Menu>
         </span>
+        {writing && <span class="chip working">Agent writing</span>}
         {!editable && status}
       </Bar>
-      {mode === "edit" && (
-        <Bar density="dense" edge="bottom" class="page-tools">
+      {mode === "edit" && !board && (
+        <Bar edge="bottom" class="page-tools">
           <FormatTools
             caret={caret}
             format={(format) =>
@@ -1075,6 +1176,11 @@ export default function Sequence({
                       heard(path)(message);
                     if (message.type === "ready") {
                       setSaid(message);
+                      // A page drawn again (or a change taken in place, after
+                      // which the board says what is still picked) holds no
+                      // tool.
+                      arm("");
+                      setChosen(undefined);
                       setBuild(backward.current ? (message.steps ?? 0) : 0);
                       // Drawn from the file: what it does not hold of what
                       // was typed is on no page any more.
@@ -1089,6 +1195,19 @@ export default function Sequence({
                       caretAt.current = undefined;
                       // Drawn again, what was found stays marked.
                       if (query) marked();
+                    } else if (message.type === "update") {
+                      if (message.result === "held") {
+                        again.current = setTimeout(
+                          () => renew.current(),
+                          RENEW_MS,
+                        );
+                        return;
+                      }
+                      if (message.result === "load")
+                        setLoad((count) => count + 1);
+                      // The legend draws the file again.
+                      wrote.current++;
+                      setSaves(wrote.current);
                     } else if (message.type === "drawn") {
                       setSaid((was) => was && { ...was, drawn: true });
                       setArrived(wanted);
@@ -1177,11 +1296,26 @@ export default function Sequence({
                           () => !holding.current && setSource(undefined),
                           300,
                         );
-                    } else if (message.type === "cite") {
-                      if (typeof message.path === "string")
-                        cite?.(message.path, natural(message.line));
-                    } else if (message.type === "board") {
-                      changeBoard(message);
+                    } else if (message.type === "change") {
+                      if (!hand) return;
+                      // An item put on the page ends its tool.
+                      if ("add" in message || "arrow" in message) setTool("");
+                      // One the file does not take is said, and the page is
+                      // drawn again from the file; one it takes, the legend
+                      // draws.
+                      let taken = true;
+                      void rewrite?.(path, (source) => {
+                        const made = hand.edit(source, message as never);
+                        taken = made !== null;
+                        if (!taken) throw new Error(REFUSED);
+                        return made as string;
+                      }).then(() => {
+                        if (!taken) return setLoad((count) => count + 1);
+                        wrote.current++;
+                        setSaves(wrote.current);
+                      });
+                    } else if (message.type === "items") {
+                      setChosen(hand ? chosenOf(message) : undefined);
                     } else if (message.type === "caret") {
                       setCaret(caretOf(message));
                     } else if (message.type === "left") {
@@ -1275,10 +1409,13 @@ export default function Sequence({
                     } else if (message.type === "comment") {
                       if (sheet && addToChat) setRanged(cell?.range);
                     } else if (message.type === "key") {
+                      if (message.key === "Escape") setTool("");
                       // A sheet's other keys are its own.
                       if (sheet) {
                         if (message.held) tabKey(message.key);
                       } else if (presenting) presentKey(message.key);
+                      else if (message.held)
+                        undoKey(message.key, message.shift);
                       else if (mode !== "select") stepKey(message.key);
                       else if (message.key === "Escape") enter("");
                     }
@@ -1349,7 +1486,44 @@ export default function Sequence({
                 </Button>
               </div>
             )}
-            {wide && !presenting && (
+            {hand && chosen && live && !presenting && (
+              <ItemTools
+                items={hand}
+                chosen={chosen}
+                tool={tool}
+                arm={arm}
+                act={(act, value) =>
+                  tell(frame.current, { type: "act", act, value })
+                }
+                ask={
+                  addToChat &&
+                  (() => {
+                    const item = chosen.items[0];
+                    if (item && chosen.rect)
+                      setPicked({
+                        rect: chosen.rect,
+                        selector: item.selector,
+                        tag: item.shape ?? (item.note ? "note" : item.tag),
+                        text: item.text,
+                      });
+                  })
+                }
+                at={() => {
+                  const page = frame.current?.getBoundingClientRect();
+                  const rect = chosen.rect;
+                  return (
+                    page &&
+                    rect && {
+                      x: page.left + rect.x * scale,
+                      y: page.top + rect.y * scale,
+                      width: rect.width * scale,
+                      height: rect.height * scale,
+                    }
+                  );
+                }}
+              />
+            )}
+            {wide && !presenting && !touch && (
               <ZoomControls
                 percent={Math.round(scale * 100)}
                 out={() => middle(1 / ZOOM_STEP)}
@@ -1457,7 +1631,7 @@ export default function Sequence({
               Cancel
             </Button>
             <Button type="submit" disabled={!comment.trim()}>
-              Add to chat
+              Add comment
             </Button>
           </Actions>
         </form>

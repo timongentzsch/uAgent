@@ -96,7 +96,7 @@ export default function ChatPage({
   choose,
   side,
   sideColumn,
-  addToChat,
+  quote,
   actions,
   setInspector,
   files,
@@ -125,7 +125,8 @@ export default function ChatPage({
   side: ReturnType<typeof useSideConversations>;
   // The side chats have a column beside the chat; else they sit under it.
   sideColumn: boolean;
-  addToChat?: (text: string) => void;
+  // Adds a quote to the conversation's draft.
+  quote?: (text: string) => void;
   actions: MessageActions;
   setInspector: (target: InspectorTarget | null) => void;
   files?: ComponentChildren;
@@ -229,7 +230,7 @@ export default function ChatPage({
   // Its side chats that have a conversation, for the Activity list: a row
   // shows the tab where they have a column, and the page where not.
   const sides = side.sides;
-  const latest = useLatest({ side, sideColumn, addToChat });
+  const latest = useLatest({ side, sideColumn, quote });
   const sideRows = useMemo(() => {
     const asked = (id: string) =>
       latest.current.side.sides.find((item) => item.id === id);
@@ -251,7 +252,7 @@ export default function ChatPage({
   }, [sides, sessions, choose, latest]);
   // The composer keeps its place above the input for a selection's actions,
   // so Jump to latest stays clear of them.
-  const selecting = !!addToChat;
+  const selecting = !!quote;
   const sideAsked = !!side.asking;
   const selection = useMemo(
     () =>
@@ -259,7 +260,7 @@ export default function ChatPage({
         <SelectionActions
           asking={sideAsked}
           ask={(quote, to) => latest.current.side.quote(quote, to)}
-          add={(text) => latest.current.addToChat?.(text)}
+          add={(text) => latest.current.quote?.(text)}
         />
       ),
     [selecting, sideAsked, latest],
@@ -283,9 +284,6 @@ export default function ChatPage({
   // a page of its own.
   const asking =
     !sideColumn && side.asking && !side.asking.to ? side.asking : undefined;
-  const plainQuote = (asking?.quote || "")
-    .replace(/^> ?|`/gm, "")
-    .split("\n")[0];
   const askSide = (event: Event) => {
     event.preventDefault();
     const question = draft.text.trim();
@@ -311,7 +309,7 @@ export default function ChatPage({
       sides={sideRows}
       above={selection}
       submit={asking ? askSide : send}
-      asking={asking && { quote: plainQuote, cancel: side.cancel }}
+      asking={asking && { quote: asking.quote, cancel: side.cancel }}
       unseen={unseen}
       jump={jump}
       openInspector={setInspector}

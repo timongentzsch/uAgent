@@ -14,6 +14,7 @@ import {
   viewerOf,
   writeFiles,
   openAlone,
+  unwatched,
 } from "./fixtures.js";
 
 // A design of three pages, one of which throws as it loads.
@@ -274,7 +275,7 @@ test("a page opened: select and comment, tweaks, print", async ({
     "difference",
   );
   await files.getByRole("textbox", { name: "Comment" }).fill("Make it bigger");
-  await files.getByRole("button", { name: "Add to chat" }).click();
+  await files.getByRole("button", { name: "Add comment" }).click();
   await expect(app.locator("#prompt")).toHaveValue(
     "`design/hero-a.html` `main > h1` “Alpha headline” — Make it bigger",
   );
@@ -1427,13 +1428,23 @@ const TALK = {
 };
 const talkFile = (project, name) =>
   readFile(join(project, "decks/talk", name), "utf8");
+// A slide's block typed in, once its page takes presses: a press picks it,
+// a press again types.
+async function typing(block, press = (target) => target.click()) {
+  await expect(
+    block.page().getByRole("group", { name: "Insert" }),
+  ).toBeVisible();
+  await press(block);
+  await expect(block).toHaveAttribute("data-uagent-picked", "");
+  await press(block);
+  await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
+}
 // Edit on, the caret at the end of a block of the stage's page, and time
 // stopped: what is typed next is written only by what the test then does.
 async function typeIn(app, files, block, press = (target) => target.click()) {
   const edit = files.getByRole("button", { name: "Edit" });
   if ((await edit.getAttribute("aria-pressed")) !== "true") await press(edit);
-  await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
-  await press(block);
+  await typing(block, press);
   await app.keyboard.press("End");
   await app.clock.install();
   await app.clock.pauseAt((await app.evaluate(() => Date.now())) + 60_000);
@@ -1530,6 +1541,7 @@ test("a block that was refused stays owed: its notice stands though another is s
   session,
   host,
 }) => {
+  await unwatched(app);
   const cover = join(host.project, "decks/talk/01-cover.html");
   const { files, stage, count } = await openDeck(app, session, host.project, {
     "01-cover.html": slide("Cover", "", "<p>One</p><p>Two</p>"),
@@ -1550,7 +1562,12 @@ test("a block that was refused stays owed: its notice stands though another is s
   await expect(saving(files)).toHaveText(/^Not saved: this text changed/);
   // Another block, with the same blocks around it, is saved; the notice
   // still says what is not.
-  await stage.getByRole("heading", { name: "Cover" }).click();
+  // Near its start, clear of its corners: the bar over the block typed in
+  // covers its middle.
+  await typing(stage.getByRole("heading", { name: "Cover" }), (heading) =>
+    heading.click({ position: { x: 20, y: 4 } }),
+  );
+  await app.keyboard.press("End");
   await app.keyboard.insertText(" page");
   await expect(saving(files)).toHaveText("Saving…");
   await app.clock.runFor(1000);
@@ -1587,10 +1604,7 @@ test("an edit is taken only where it is on offer: not with Edit off, and no new 
   // The page says a block was edited though Edit is off.
   await forge({ index: 0, before: "Cover", html: "Forged" });
   await files.getByRole("button", { name: "Edit" }).click();
-  await expect(stage.getByText("The plan")).toHaveAttribute(
-    "contenteditable",
-    "plaintext-only",
-  );
+  await typing(stage.getByText("The plan"));
   // With Edit on its text is taken, but a slide gets no new block.
   await forge({
     index: 1,
@@ -1651,6 +1665,7 @@ test("a slide's text is saved as typing pauses, the caret where it was; undone, 
   session,
   host,
 }) => {
+  await unwatched(app);
   const { files, legend, stage, count } = await openDeck(
     app,
     session,
@@ -1721,6 +1736,7 @@ test("a slide that cannot be made once room was made for it says what was change
   session,
   host,
 }) => {
+  await unwatched(app);
   const { files, count } = await openDeck(app, session, host.project, FOUR);
   await expect(count).toHaveText("1 / 4");
   // Behind the pane's back, a file takes the name of the new slide's place.
@@ -1891,7 +1907,8 @@ test("a slide's notes are typed under its stage while Edit is on, and made where
     .toContain(
       "<aside><p>Say:</p><p>First point.</p><p>Second, changed.</p><p>Third.</p></aside>",
     );
-  await stage.getByRole("heading", { name: "End" }).click();
+  await typing(stage.getByRole("heading", { name: "End" }));
+  await app.keyboard.press("End");
   await app.keyboard.insertText("!");
   await expect.poll(end).toContain("<h1>End!</h1><aside><p>Say:");
   await files.getByRole("button", { name: "Previous slide" }).click();
@@ -1904,6 +1921,74 @@ test("a slide's notes are typed under its stage while Edit is on, and made where
   await expect(
     files.locator(".page-stage[data-presenting] .page-notes"),
   ).toHaveText("Three steps & a <demo>.");
+});
+
+test("a slide's typed text and its skip are undone and made again from the tools, the slide drawn again from its file", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage } = await openDeck(app, session, host.project, TALK);
+  const cover = () => talkFile(host.project, "01-cover.html");
+  const undo = files.getByRole("button", { name: "Undo" });
+  const redo = files.getByRole("button", { name: "Redo" });
+  await typeIn(app, files, stage.getByText("The plan"));
+  await expect(undo).toBeDisabled();
+  await app.keyboard.insertText(" for Q3");
+  await app.clock.runFor(1000);
+  await expect.poll(cover).toContain("<p>The plan for Q3</p>");
+  await app.clock.resume();
+  await undo.click();
+  await expect.poll(cover).toContain("<p>The plan</p>");
+  await expect(stage.getByText("The plan", { exact: true })).toBeVisible();
+  await redo.click();
+  await expect.poll(cover).toContain("<p>The plan for Q3</p>");
+  await expect(
+    stage.getByText("The plan for Q3", { exact: true }),
+  ).toBeVisible();
+  await expect(redo).toBeDisabled();
+  // A skip is undone as well.
+  await files.getByRole("button", { name: "Slide actions" }).click();
+  await app.getByRole("menuitemcheckbox", { name: "Skip slide" }).click();
+  await expect.poll(cover).toContain('<meta name="slide" content="skip">');
+  await undo.click();
+  await expect.poll(cover).not.toContain('name="slide"');
+});
+
+test("a document's typed block is undone and made again with the keys, the page drawn again from the file; in the block they are its own", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await writeFiles(host.project, {
+    "docs/note.html": paper("Note", "<h1>Note</h1><p>Plan</p>"),
+  });
+  const files = await openFiles(app, session, "docs/note.html");
+  const { stage } = viewerOf(files);
+  const note = () => readFile(join(host.project, "docs/note.html"), "utf8");
+  const block = stage.locator("p");
+  await files.getByRole("button", { name: "Edit" }).click();
+  await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
+  await block.click();
+  await app.keyboard.press("End");
+  await app.keyboard.insertText(" A");
+  await expect.poll(note).toContain("<p>Plan A</p>");
+  // Out of the block, the keys are the pane's.
+  await files.locator(".files-title").click();
+  await app.keyboard.press("ControlOrMeta+z");
+  await expect.poll(note).toContain("<p>Plan</p>");
+  await expect(block).toHaveText("Plan");
+  await app.keyboard.press("ControlOrMeta+Shift+z");
+  await expect.poll(note).toContain("<p>Plan A</p>");
+  await expect(block).toHaveText("Plan A");
+  // In the block, ⌘Z is the block's, which has nothing to undo since the
+  // page was drawn: the file keeps what was made again.
+  await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
+  await block.click();
+  await app.keyboard.press("ControlOrMeta+z");
+  await app.keyboard.press("End");
+  await app.keyboard.insertText("!");
+  await expect.poll(note).toContain("<p>Plan A!</p>");
 });
 
 test("on a phone a deck's legend is a filmstrip under the stage", async ({
@@ -2293,6 +2378,14 @@ test("find follows what the agent rewrites while it is open", async ({
   command,
 }) => {
   await design(host.project);
+  // The look at the folder the pane opened in answers only after the write:
+  // it holds up no look at the design folder.
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await app.route(/files\?stamps=$/, async (route) => {
+    await held;
+    await route.continue();
+  });
   const files = await openFiles(app, session, "design/");
   await files.getByRole("button", { name: "Open Hero B" }).click();
   await files.getByRole("button", { name: "Find" }).click();
@@ -2302,6 +2395,8 @@ test("find follows what the agent rewrites while it is open", async ({
   await selectProbeModel(command, session, { yolo: true });
   await app.locator("#prompt").fill("Design probe");
   await app.locator("#prompt").press("Enter");
+  await expect(app.getByText("Wrote design/01-hero-a.html")).toBeVisible();
+  release();
   // The page it rewrote is read again, and holds the words now.
   await expect(bar).toContainText("1 of 1");
   await expect(
@@ -2767,6 +2862,7 @@ test("a document exports Markdown, and a block edited on its third page is saved
   session,
   host,
 }) => {
+  await unwatched(app);
   const { files, memo, page, count } = await openMemo(
     app,
     session,
@@ -3097,7 +3193,7 @@ test("a slide's block takes Edit's tools as a document's does", async ({
   const cover = () => talkFile(host.project, "01-cover.html");
   await tool("Edit").click();
   const text = stage.getByText("The plan");
-  await expect(text).toHaveAttribute("contenteditable", "plaintext-only");
+  await typing(text);
   // A slide's text does not flow on: nothing is put in after a block.
   await expect(tool("Style")).toBeVisible();
   await expect(tool("Insert")).toHaveCount(0);

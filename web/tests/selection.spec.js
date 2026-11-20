@@ -81,9 +81,11 @@ test("⌘ picks one, Shift a run, one confirmation deletes them all", async ({
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   const list = page.getByRole("navigation", { name: "Conversations" });
-  const titles = await list.locator(".session-row .row-label").allInnerTexts();
-  const ours = titles.filter((title) => title.endsWith(" talk"));
-  expect(ours).toHaveLength(3);
+  const labels = list
+    .locator(".session-row .row-label")
+    .filter({ hasText: / talk$/ });
+  await expect(labels).toHaveCount(3);
+  const ours = await labels.allInnerTexts();
   await row(page, ours[0])
     .locator(".list-row")
     .click({ modifiers: ["ControlOrMeta"] });
@@ -176,7 +178,7 @@ test("the Library picks across kinds and deletes them, files and all", async ({
 
   await page.keyboard.press("Backspace");
   const dialog = page.getByRole("dialog", {
-    name: "Delete 1 design, 1 doc and 2 memories?",
+    name: "Delete 1 design, 1 document and 2 memories?",
   });
   await dialog.getByRole("button", { name: "Delete 4", exact: true }).click();
   await expect(dialog).toHaveCount(0);

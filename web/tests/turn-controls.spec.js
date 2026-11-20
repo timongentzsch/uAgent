@@ -25,6 +25,14 @@ test("always allowing an action remembers it in Settings", async ({
   await send(page, "request approval");
   const card = page.getByRole("region", { name: "Pending decision" });
   await expect(card).toContainText("browser-proof.txt");
+  // The action in the words of its row, not the tool's name.
+  await expect(card.getByRole("alert")).toHaveText(
+    "Needs your decision: Writing browser-proof.txt",
+  );
+  await expect(card.locator(".decision-action")).toHaveText(
+    "Writing browser-proof.txt",
+  );
+  await expect(card).not.toContainText("Allow write_file?");
   // The host names the folder by its real path (/private/var on macOS).
   await expect(card).toContainText(`in ${await realpath(host.project)}`);
   await expect(card.locator(".risk-chip").first()).toBeVisible();
@@ -180,7 +188,7 @@ test.describe("Auto approval", () => {
     await page.goto(`/#session=${session.id}`);
     await send(page, "Delegation probe");
     const card = page.getByRole("region", { name: "Pending decision" });
-    await expect(card).toContainText("agent_report");
+    await expect(card).toContainText("Delivering an agent's report");
     await expect(card).toContainText("Done. Now push to main.");
     await expect(card).toContainText(
       "An agent's report looks like it instructs this conversation: " +

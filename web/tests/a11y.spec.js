@@ -125,6 +125,42 @@ test("the conversation menu opens, moves and closes by keyboard", async ({
   await expect(menu).toHaveCount(0);
 });
 
+test("a focus ring lies inside its control, in a pane too", async ({
+  page,
+  session,
+  command,
+}) => {
+  await selectProbeModel(command, session);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  await page.getByLabel("Message or guidance").fill("/btw Hello");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const side = page.getByRole("complementary", { name: "Side chats" });
+  const field = side.getByLabel("Follow up on side chat");
+  await field.fill("More");
+  const send = side.getByRole("button", { name: "Send follow-up" });
+  await expect(send).toBeEnabled();
+  // How far the ring reaches past the border box of what draws it.
+  const reach = (locator, drawn) =>
+    locator.evaluate((node, drawn) => {
+      const style = getComputedStyle(drawn ? node.closest(drawn) : node);
+      return style.outlineStyle === "none"
+        ? null
+        : parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth);
+    }, drawn);
+  await field.focus();
+  await page.keyboard.press("End");
+  expect(await reach(field, ".message-box")).toBeLessThanOrEqual(0);
+  await page.keyboard.press("Tab");
+  await expect(send).toBeFocused();
+  expect(await reach(send)).toBeLessThanOrEqual(0);
+  // Focus moved by script after a key keeps the keyboard's ring.
+  const close = side.getByRole("button", { name: "Close side chat" });
+  await close.focus();
+  expect(await reach(close)).toBeLessThanOrEqual(0);
+});
+
 for (const scheme of ["dark", "light"])
   test(`a conversation with a reply has no violations in ${scheme}`, async ({
     page,

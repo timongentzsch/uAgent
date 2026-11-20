@@ -57,6 +57,10 @@
   min-width: 0;
   flex: 1;
 }
+/* Its column scrolls, and never squeezes it. */
+.editor-head {
+  flex: none;
+}
 .editor-head > strong {
   flex: 1;
 }
@@ -262,7 +266,7 @@
   .library-rail {
     flex: none;
     flex-direction: row;
-    padding-block: var(--gap);
+    padding: var(--bar-pad);
     border-right: 0;
     border-bottom: var(--border);
   }
@@ -278,7 +282,7 @@
     flex: none;
   }
   .library-place {
-    display: inline-flex;
+    display: block;
   }
   .library .management-editor {
     flex: 1;

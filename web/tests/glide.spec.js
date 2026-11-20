@@ -1,11 +1,13 @@
 // While a conversation is followed, what arrives glides in: the view eases to
-// the end, a new row fades in (never on load), a sent message rises.
+// the end, a new row fades in (never on load), and a sent message travels
+// from the draft to its place on a spring, pushing the rows above it.
 import { test, expect, online, selectProbeModel } from "./fixtures.js";
 
-// Rows that fade in, and the sent message's rise, from the next send on.
+// Rows that fade in, the sent message's travel and the rows it pushes, from
+// the next send on.
 const watch = (page) =>
   page.evaluate(() => {
-    window.arrived = { faded: 0, rose: 0 };
+    window.arrived = { faded: 0, rose: 0, pushed: 0 };
     document.addEventListener("transitionrun", (event) => {
       if (
         event.propertyName === "opacity" &&
@@ -13,13 +15,15 @@ const watch = (page) =>
       )
         window.arrived.faded++;
     });
-    // The rise is played by script: note each animation started on it.
+    // Both are played by script: note each animation started. The sent
+    // row starts cut to its draft's box and moves on a spring.
     const animate = Element.prototype.animate;
     Element.prototype.animate = function (keyframes, options) {
-      if (
-        this.dataset?.messageId?.startsWith("outgoing-") &&
-        keyframes?.[0]?.translate
-      )
+      const [from] = keyframes ?? [];
+      if (!from?.translate || !this.closest(".transcript-content"));
+      else if (!this.dataset.messageId?.startsWith("outgoing-"))
+        window.arrived.pushed++;
+      else if (from.clipPath && String(options.easing).startsWith("linear("))
         window.arrived.rose = 1;
       return animate.call(this, keyframes, options);
     };
@@ -60,6 +64,8 @@ test("what arrives glides in, and nothing animates on load", async ({
 }) => {
   // The suite runs with motion off; this one is about the motion.
   await page.emulateMedia({ reducedMotion: "no-preference" });
+  // Low enough that one turn fills the view: the next send pushes its rows.
+  await page.setViewportSize({ width: 900, height: 420 });
   await selectProbeModel(command, session, { yolo: true });
   await page.goto(`/#session=${session.id}`);
   await online(page);
@@ -71,10 +77,12 @@ test("what arrives glides in, and nothing animates on load", async ({
   expect(await page.evaluate(() => window.arrived)).toEqual({
     faded: 0,
     rose: 0,
+    pushed: 0,
   });
   await send(page, "Structured stream probe");
   const arrived = await page.evaluate(() => window.arrived);
   expect(arrived.rose).toBe(1);
+  expect(arrived.pushed).toBeGreaterThan(0);
   expect(arrived.faded).toBeGreaterThan(0);
   expect(await restingGap(page)).toBeLessThan(1);
 });
@@ -93,6 +101,7 @@ test("with motion off nothing glides, fades or rises", async ({
   expect(await page.evaluate(() => window.arrived)).toEqual({
     faded: 0,
     rose: 0,
+    pushed: 0,
   });
   expect(await restingGap(page)).toBeLessThan(1);
 });

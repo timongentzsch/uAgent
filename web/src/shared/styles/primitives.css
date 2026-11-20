@@ -162,9 +162,17 @@
     border-color: transparent;
     background: transparent;
   }
+  /* What answers a pointer besides a button: a link, a disclosure's
+     summary, and a card that is one control (a link, or the label round its
+     choice). They fade as a button does. */
+  :is(a, summary, label.card) {
+    transition: background var(--motion-fast) var(--ease-standard);
+  }
   @media (hover: hover) and (pointer: fine) {
     button:enabled:hover,
-    .file-button:hover {
+    .file-button:hover,
+    a:is(.card, .chip):hover,
+    label.card:not(:has(:disabled)):hover {
       background: var(--hover);
     }
     .primary:enabled:hover,
@@ -172,19 +180,26 @@
     .tabs [aria-selected="true"]:enabled:hover {
       background: var(--accent-hover);
     }
-    .quiet:not(:disabled):hover {
+    .quiet:not(:disabled):hover,
+    a:hover,
+    summary:hover {
       background: var(--raised);
     }
   }
-  /* A press fills at once and fades out on release (the fade is the base
-     transition; a press itself has none). The selectors outrank hover's. */
+  /* Every control answers a press: it fills at once and fades out on release
+     (the fade is its transition; a press itself has none). A fill at rest
+     turns to --press, none to --hover. A sheet outside the layers picks a
+     variant, never a background, which would outrank these. */
   button:enabled:active,
-  .file-button:active {
+  .file-button:active,
+  a:is(.card, .chip):active,
+  label.card:not(:has(:disabled)):active {
     background: var(--press);
     transition: none;
   }
   .quiet:not(:disabled):active,
-  button.row:enabled:active {
+  a:active,
+  summary:active {
     background: var(--hover);
     transition: none;
   }
@@ -243,6 +258,14 @@
   .file-button:has(:focus-visible) {
     outline: var(--focus-ring);
     outline-offset: var(--focus-offset);
+  }
+  /* On a control filled with the accent the ring is its ink, a width in. */
+  .primary:focus-visible,
+  button[aria-pressed="true"]:focus-visible,
+  .tabs [aria-selected="true"]:focus-visible,
+  input:checked:focus-visible {
+    outline-color: var(--on-accent);
+    outline-offset: calc(2 * var(--focus-offset));
   }
   /* Pointer-driven focus restoration must not look like keyboard selection.
      Editable fields retain their native focus indication in either mode. */
@@ -431,8 +454,17 @@
     background: transparent;
     cursor: pointer;
   }
-  button.cover:is(:hover, :focus-visible) {
+  /* A picture would hide a fill: its press is the ring. */
+  button.cover:is(:focus-visible, :active),
+  .attachment-tile:active {
     outline: var(--focus-ring);
+    outline-offset: var(--focus-offset);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    :is(button.cover, .attachment-tile):hover {
+      outline: var(--focus-ring);
+      outline-offset: var(--focus-offset);
+    }
   }
   .float-toolbar output {
     min-width: 5ch;
@@ -617,8 +649,8 @@
     background: var(--surface);
     display: flex;
     flex-direction: column;
-    gap: var(--gap);
-    padding: var(--space-4);
+    gap: var(--pad);
+    padding: var(--pad);
     min-height: 0;
     min-width: 0;
   }
@@ -713,8 +745,8 @@
     align-items: center;
     gap: var(--gap);
     flex-shrink: 0;
-    min-height: var(--touch);
-    padding: var(--space-2) var(--pad);
+    min-height: var(--bar-min);
+    padding: var(--bar-pad);
     border-bottom: var(--border);
   }
   .conversation-head > div:first-of-type {
@@ -888,7 +920,6 @@
     border-width: calc(1px / var(--input-scale));
     transform: scale(var(--input-scale));
     transform-origin: top left;
-    outline-offset: calc(-1 * var(--focus-offset));
   }
   /* Field width belongs to its responsive wrapper. Native horizontal resizing
      writes a fixed inline width that breaks subsequent layout/zoom changes. */
@@ -991,11 +1022,7 @@
     gap: var(--space-2);
     min-width: 0;
     min-height: var(--bar-min);
-    padding: var(--bar-pad-y) var(--bar-pad-x);
-  }
-  .bar[data-density="dense"] {
-    --bar-min: var(--control-l);
-    --bar-pad-y: 0;
+    padding: var(--bar-pad);
   }
   /* Inside a pane that pads its content already. */
   .bar[data-density="flush"] {
@@ -1011,6 +1038,11 @@
   .bar-title {
     flex: 1;
     min-width: 0;
+  }
+  /* A bar that starts with its title: text stands where a row's does. */
+  .bar > .bar-title:first-child,
+  .conversation-head > div:first-child {
+    padding-left: calc(var(--inset-x) - var(--bar-pad));
   }
   /* A field shares its row with controls while both fit; the controls take
      the next row before the field is squeezed. */
@@ -1032,6 +1064,7 @@
   /* One control of several buttons: they touch. */
   .segmented,
   .tabs {
+    gap: 0;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
@@ -1239,6 +1272,13 @@
     width: min(var(--popover), calc(var(--content-width) - 2 * var(--pad)));
     gap: 0;
   }
+  /* A phone's drawer leaves an edge of the page, enough to close it by. */
+  @media (max-width: 600px) {
+    dialog.sidebar.drawer[open] {
+      width: calc(var(--content-width) - 2 * var(--pad));
+      max-width: none;
+    }
+  }
   .drawer > .dialog-body {
     display: flex;
     flex-direction: column;
@@ -1398,11 +1438,6 @@
     --row: var(--control-l);
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-  }
-  @media (hover: hover) and (pointer: fine) {
-    button.row:enabled:hover {
-      background: var(--raised);
-    }
   }
   .group-footer {
     margin: var(--space-3) 0 0;

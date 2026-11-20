@@ -56,7 +56,7 @@
     linear-gradient(var(--mark), var(--mark)) center / 2px 100% no-repeat,
     linear-gradient(var(--mark), var(--mark)) center / 100% 2px no-repeat;
   outline: 1px solid var(--on-mark);
-  outline-offset: var(--focus-offset);
+  outline-offset: var(--space-1);
   border-radius: 50%;
 }
 .annotator-tools {

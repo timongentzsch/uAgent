@@ -173,6 +173,8 @@ TEST_CASE(TestGrepTool) {
     CHECK(row["input"][0]["text"] == "make test");
     CHECK(ToolHeadline(run, described).target == "make test");
     CHECK(ToolSummary(*run, described) == "Ran make test");
+    CHECK(ToolAction(*run, described) == "Run the unit tests");
+    CHECK(ToolAction(*run, {{"command", "make"}}) == "Running make");
     // A blank description costs no round: the row shows the command.
     CHECK(ToolView(run, {{"command", "make"},
                          {"description", " "}})["target"] == "make");

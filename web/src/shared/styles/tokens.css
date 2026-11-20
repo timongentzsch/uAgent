@@ -15,6 +15,10 @@
     /* Drawn with mix-blend-mode: difference, white is the inverse of
        whatever lies under it: an outline seen on any page. */
     --page-mark: 2px solid #fff;
+    /* Drawn inside a page, whose own colours are unknown: what is picked
+       there by hand, and what someone else just changed. */
+    --page-pick: #1a56db;
+    --page-changed: #f59e0b;
     --screen-scrim: rgb(0 0 0 / 0.78);
     --screen-mark: #fff;
     --screen-mark-fill: rgb(255 255 255 / 0.25);
@@ -50,10 +54,13 @@
     --control-m: calc(32rem / 14);
     --control-l: calc(36rem / 14);
     --touch: calc(44rem / 14);
-    /* A bar: a row of a title and controls along an edge of its pane. */
-    --bar-min: var(--touch);
-    --bar-pad-x: var(--space-4);
-    --bar-pad-y: var(--space-2);
+    /* How far the bar over what is picked stands off it. */
+    --pick-gap: var(--space-2);
+    /* A bar: a row of a title and controls along an edge of its pane. A
+       control in it is as far from the bar's ends as from its sides and
+       from the next control. */
+    --bar-pad: var(--space-2);
+    --bar-min: calc(var(--control) + 2 * var(--bar-pad));
     --icon-l: calc(20rem / 14);
     --logo: calc(48rem / 14);
     /* An attachment's thumbnail height; its width is 4:3. */
@@ -111,8 +118,10 @@
     --icon-align: -0.2em;
     --stroke: max(1px, 0.12rem);
     --stripe: 2px;
-    /* The focus ring's distance outside its box (inside, where a box clips). */
-    --focus-offset: 2px;
+    /* The focus ring lies inside its control's edge: no pane clips it and
+       it never covers a neighbour. */
+    --focus-width: 2px;
+    --focus-offset: calc(-1 * var(--focus-width));
     --opacity-disabled: 0.45;
     --indent: var(--icon-l);
     /* Motion: the only durations and easings in the app. Reduced motion
@@ -120,17 +129,75 @@
     --motion-fast: 120ms;
     --motion-base: 200ms;
     --motion-slow: 280ms;
-    /* How long the view glides to new content, a new row fades in, and a sent
-       message rises from the input. 0ms makes any of them instant. */
-    --motion-glide: var(--motion-base);
+    /* How long the view takes to follow new content, a new row to fade in,
+       and a sent message to travel from the draft to its place. 0ms makes
+       any of them instant. */
+    --motion-glide: 520ms;
     --motion-arrive: var(--motion-base);
-    --motion-send: var(--motion-slow);
+    --motion-send: 620ms;
     --motion-pulse: 1.6s;
     --motion-spin: 0.8s;
     --motion-spin-reduced: 2.4s;
     --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
     --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    /* Springs, as easings over their whole time: a sent message arrives
+       with a small overshoot (stiffness 320, damping 24); what has far to
+       go settles without one (300, 34). */
+    --ease-send: linear(
+      0,
+      0.097,
+      0.288,
+      0.532,
+      0.715,
+      0.856,
+      0.953,
+      1.012,
+      1.041,
+      1.051,
+      1.047,
+      1.037,
+      1.026,
+      1.017,
+      1.009,
+      1.003,
+      1,
+      0.998,
+      0.997,
+      0.998,
+      0.998,
+      0.999,
+      0.999,
+      1,
+      1
+    );
+    --ease-settle: linear(
+      0,
+      0.085,
+      0.212,
+      0.373,
+      0.52,
+      0.641,
+      0.722,
+      0.798,
+      0.854,
+      0.89,
+      0.922,
+      0.945,
+      0.961,
+      0.971,
+      0.98,
+      0.986,
+      0.99,
+      0.993,
+      0.995,
+      0.996,
+      0.997,
+      0.998,
+      0.999,
+      0.999,
+      1
+    );
     --rise: var(--space-4);
     --enter:
       opacity var(--motion-base) var(--ease-out),
@@ -139,6 +206,15 @@
     --push: 30%;
     /* Theme-independent: what dims the page behind a dialog. */
     --scrim: rgb(0 0 0 / 0.6);
+    /* A whiteboard's fills, as its page draws them (web/sheet/whiteboard.js). */
+    --board-yellow: #ffe680;
+    --board-orange: #ffc48c;
+    --board-pink: #ffbdd1;
+    --board-green: #b4e2b8;
+    --board-blue: #b6d3fb;
+    --board-grey: #dedede;
+    /* A pane's resize handle: over the panes beside it, under what floats. */
+    --z-handle: 1;
     --z-popover: 5;
     --z-toast: 10;
     --z-present: 15; /* a page presented over the whole app */
@@ -225,7 +301,7 @@
     /* Made here, so each palette's colours fill them. */
     --border: 1px solid var(--line);
     --border-field: 1px solid var(--field-border);
-    --focus-ring: 2px solid var(--accent);
+    --focus-ring: var(--focus-width) solid var(--accent);
   }
   :root[data-theme="light"],
   [data-theme="dark"] .inverse,
@@ -276,12 +352,14 @@
     --terminal-bright-white: #333;
     --border: 1px solid var(--line);
     --border-field: 1px solid var(--field-border);
-    --focus-ring: 2px solid var(--accent);
+    --focus-ring: var(--focus-width) solid var(--accent);
   }
   @media (pointer: coarse) {
     :root {
       --control: var(--touch);
       --control-slim: var(--control-m);
+      /* Far enough that a finger pressing what is picked lands off the bar. */
+      --pick-gap: var(--space-12);
     }
   }
   /* More contrast asked for: dividers, field edges and secondary text move

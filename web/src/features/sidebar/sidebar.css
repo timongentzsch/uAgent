@@ -5,9 +5,6 @@
   width: var(--control-m);
   height: var(--control-m);
 }
-.sidebar-head {
-  padding: 0;
-}
 .sidebar-head .brand {
   margin-right: auto;
 }
@@ -101,6 +98,10 @@
 }
 .session-row:has(:focus-visible) {
   background: var(--raised);
+}
+/* The whole row answers a press on its conversation. */
+.session-row:has(> .list-row:active) {
+  background: var(--hover);
 }
 @media (hover: hover) and (pointer: fine) {
   .session-row:hover {
@@ -223,7 +224,7 @@
   align-items: center;
   gap: var(--space-2);
   border-top: var(--border);
-  padding-block: var(--space-2);
+  padding-top: var(--pad);
 }
 .menu-note {
   margin: 0;
@@ -248,7 +249,7 @@
   flex-wrap: wrap;
   gap: var(--gap);
   border-top: var(--border);
-  padding-top: var(--space-2);
+  padding-top: var(--pad);
 }
 /* raw: two equal halves of the list's foot, one over the other when the
    list is too narrow for both. */
@@ -327,7 +328,7 @@
 .host-list {
   flex: none;
   border-top: var(--border);
-  padding-top: var(--space-2);
+  padding-top: var(--pad);
 }
 .host-list .list-group {
   margin: 0;

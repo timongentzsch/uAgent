@@ -41,7 +41,7 @@ import {
 } from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import { ActivityButton, type SideRows } from "../../shared/turn-status.tsx";
-import MessageInput from "../../shared/message-input.tsx";
+import MessageInput, { QuoteBar } from "../../shared/message-input.tsx";
 import ModelControl from "../../shared/model-control.tsx";
 import { useNarrowColumn } from "../../shared/layout.ts";
 import { SessionSummary } from "../../shared/session-summary.tsx";
@@ -265,7 +265,11 @@ function Composer({
   const [jumpShown, jumpRef] = useExit<boolean, HTMLButtonElement>(
     !following && !pending,
   );
-  const empty = !draft.text.trim() && !draft.files.length;
+  // Asking a side chat, the draft's quotes wait for the conversation.
+  const empty =
+    !draft.text.trim() &&
+    !draft.files.length &&
+    (!!asking || !draft.quotes.length);
   const stopping = running && empty;
   const unsendable =
     (!online && !holdable(draft)) || busy || uploading || empty || !!pending;
@@ -342,17 +346,27 @@ function Composer({
             )}
           </SuggestionList>
         )}
-        {asking && (
-          <div class="composer-asking">
+        {asking ? (
+          <QuoteBar
+            quote={asking.quote}
+            remove={asking.cancel}
+            label="Ask in the conversation instead"
+          >
             <span class="chip">Side chat</span>
-            <span class="muted truncate">{asking.quote}</span>
-            <IconButton
-              label="Ask in the conversation instead"
-              onClick={asking.cancel}
-            >
-              <X />
-            </IconButton>
-          </div>
+          </QuoteBar>
+        ) : (
+          draft.quotes.map((quote, at) => (
+            <QuoteBar
+              key={at}
+              quote={quote}
+              remove={() =>
+                setDraft({
+                  ...draft,
+                  quotes: draft.quotes.filter((_, other) => other !== at),
+                })
+              }
+            />
+          ))
         )}
         <label class="sr-only" for="prompt">
           Message or guidance
@@ -433,7 +447,7 @@ function Composer({
           <div class="attachments">
             {draft.files.map((asset) => (
               <div
-                class="chip file-chip"
+                class="chip chip-outline file-chip"
                 key={asset.id}
                 aria-busy={asset.pending || undefined}
               >

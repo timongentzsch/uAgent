@@ -60,16 +60,18 @@ export default function TurnReview({
                 variant="quiet"
                 class="turn-file-path"
                 title={file.path}
+                aria-label={file.path}
                 onClick={() => show(file.path)}
               >
                 {file.path}
+                <small>{formatStat([file.added, file.removed])}</small>
               </Button>
             ) : (
               <span class="turn-file-path" title={file.path}>
                 {file.path}
+                <small>{formatStat([file.added, file.removed])}</small>
               </span>
             )}
-            <small>{formatStat([file.added, file.removed])}</small>
             {restored.includes(file.path) ? (
               <small>Restored</small>
             ) : file.undoable ? (

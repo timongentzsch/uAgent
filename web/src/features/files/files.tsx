@@ -51,7 +51,7 @@ import { maxTextFileBytes } from "../../shared/limits.ts";
 import { stored } from "../../shared/storage.ts";
 import { storageKeys, hostStorageKey } from "../../shared/storage-keys.ts";
 import {
-  HTML,
+  SHARED,
   IMAGE,
   MARKDOWN,
   nameOf,
@@ -101,6 +101,7 @@ import {
 import Sequence from "./sequence.tsx";
 import { openPresenter } from "./present.ts";
 import { blockSaver } from "./doc-edit.ts";
+import { fileSaver } from "./file-save.ts";
 import { tableSaver } from "./sheet-edit.ts";
 
 // The Files pane: a folder's tree, search and previews of text, images and
@@ -155,6 +156,20 @@ function lastWrite(nodes: readonly Node[] = []) {
   }
   return "";
 }
+// The files that calls still running are writing, a line each.
+const WRITING = new Set(["Writing", "Editing"]);
+const beingWritten = (nodes: readonly Node[] = []) =>
+  nodes
+    .filter(
+      (node) =>
+        node.kind === "call" &&
+        node.state === "running" &&
+        WRITING.has(node.headline?.verb ?? ""),
+    )
+    .map((node) => node.headline!.target)
+    .join("\n");
+// How often the open folder is looked at for files changed.
+const LOOK_MS = 1000;
 
 // Where it is lives with the app (`flow`, see flow.ts), so it stays put while
 // closed or moved between the sheet and the docked pane. What is open is read
@@ -168,6 +183,7 @@ export default function Files({
   flow,
   setFlow,
   addToChat,
+  quote,
   askSide,
   pictures,
 }: {
@@ -178,6 +194,8 @@ export default function Files({
   setFlow: (update: (flow: Flow) => Flow) => void;
   // Puts text in the conversation's draft; none where there is no draft.
   addToChat?: (text: string, keep?: boolean) => void;
+  // Adds a quote to the conversation's draft.
+  quote?: (text: string) => void;
   // Asks about a quote in a side chat of the conversation.
   askSide?: (quote: string) => void;
   // Whether the agent's browser can draw a page as a picture.
@@ -193,20 +211,54 @@ export default function Files({
   const turn = session.turn_active;
   const viewer = useContext(ImageViewer);
   const { view, back } = flow;
-  // What is typed in a page's blocks, on its way to the file.
+  // What the pane writes itself: the stamp each write left its file at, so
+  // that change is never taken for someone else's; and the writes begun and
+  // ended, as the folder is not compared while one is under way.
+  const mine = useRef(new Map<string, string>());
+  const writes = useRef({ begun: 0, ended: 0 });
+  const post = <Body extends { path: string }>(
+    body: Body,
+    keepalive?: boolean,
+  ) => {
+    writes.current.begun++;
+    return api<{ revision: string; stamp?: string }>(
+      routes.fileWrite(id),
+      body,
+      { keepalive },
+    )
+      .then((reply) => {
+        if (reply.stamp) mine.current.set(body.path, reply.stamp);
+        return reply;
+      })
+      .finally(() => writes.current.ended++);
+  };
+  // Every change made to a file's text by hand is written by this, and kept
+  // to be undone.
+  const [, setUndoable] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
+  const files = useMemo(
+    () =>
+      fileSaver(
+        {
+          read: (path) => api<FileText>(routes.files(id, "read", path)),
+          write: (path, text, revision, keepalive) =>
+            post({ path, text, revision }, keepalive),
+        },
+        () => setUndoable((count) => count + 1),
+      ),
+    [],
+  );
+  // What is typed in a page's blocks, on its way to the file: after the
+  // rewrites asked for before it (a closing page's at once).
   const blocks = useMemo(
     () =>
       blockSaver({
-        read: (path) => api<FileText>(routes.files(id, "read", path)),
-        write: (path, text, revision, keepalive) =>
-          api<{ revision: string }>(
-            routes.fileWrite(id),
-            { path, text, revision },
-            { keepalive },
-          ),
+        write: (path, change, closing) =>
+          closing
+            ? files.write(path, change, closing)
+            : rewrites.current.then(() => files.write(path, change)),
       }),
-    [],
+    [files],
   );
   // What is typed and not yet in its file is written: a page's block, a
   // sheet's cell. Whether all of it is.
@@ -310,9 +362,17 @@ export default function Files({
   const written = useSnapshots(store, (all) =>
     lastWrite(all[id]?.state?.view?.nodes),
   );
-  // Each page's version: a write to it reloads its frame, and so does one
-  // to a file pages share, unless the page has none (`shared` false).
+  const writing = useSnapshots(store, (all) =>
+    beingWritten(all[id]?.state?.view?.nodes),
+  );
+  // Each page's version: someone else's change to it reloads its frame, and
+  // so does one to a file pages share, unless the page has none (`shared`
+  // false). The open page takes its own change in place where it can
+  // (`fresh`, see Sequence).
   const [versions, setVersions] = useState<Record<string, number>>({});
+  const [fresh, setFresh] = useState(0);
+  // The folder's files read again: someone else changed them.
+  const [edition, setEdition] = useState(0);
   const preview = usePreviewBase(id);
   const pageUrl = (path: string, shared = true) =>
     preview.value &&
@@ -326,11 +386,11 @@ export default function Files({
   // one answers, and is never taken for it.
   const listing = useResource(
     () => list(dir).then((value) => ({ ...value, dir })),
-    [id, dir, turn, written],
+    [id, dir, turn, written, edition],
   );
   const here = listing.value?.dir === dir ? listing.value : undefined;
   // The tree's top, read as the folder in context is.
-  const root = useResource(() => list(""), [id, turn, written]);
+  const root = useResource(() => list(""), [id, turn, written, edition]);
   const search = query.trim();
   const found = useResource<Found | undefined>(
     (signal) =>
@@ -423,7 +483,7 @@ export default function Files({
       })
       .join("");
   }, [highlighted.value, file, marked?.[0], marked?.[1]]);
-  // The lines selected in the code, which Add to chat cites. Each line is
+  // The lines selected in the code, which Quote cites. Each line is
   // a number then its code, so a child's place gives its line.
   const [chosen, setChosen] = useState<[number, number]>();
   useEffect(() => {
@@ -587,9 +647,9 @@ export default function Files({
     arranging.run(async () => {
       await settle();
       // Room first: a slide made and then refused its place would be left.
-      if (moves.length) await api(routes.fileWrite(id), { path: dir, moves });
+      if (moves.length) await post({ path: dir, moves });
       if (add)
-        await api(routes.fileWrite(id), {
+        await post({
           path: join(dir, add.name),
           text: add.text,
           create: true,
@@ -611,19 +671,18 @@ export default function Files({
         ),
       );
     });
-  // A slide's or a whiteboard's file rewritten by hand, once what was typed
-  // in it is written; the folder is read again for what its head now says.
-  // Whether the file was written.
-  const rewrite = (path: string, change: (source: string) => string) => {
+  // A slide's or a whiteboard's file rewritten by hand, or the last change
+  // to a file made here undone or made again, once what was typed in it is
+  // written; the folder is read again for what its head now says. Whether
+  // the file was written.
+  const byHand = (write: () => Promise<boolean>) => {
+    // What was typed before it goes first; what is typed after waits for it.
+    const before = typed();
     const made = rewrites.current.then(async () => {
       let written = false;
       await arranging.run(async () => {
-        await typed();
-        const { text, revision } = await api<FileText>(
-          routes.files(id, "read", path),
-        );
-        await api(routes.fileWrite(id), { path, text: change(text), revision });
-        written = true;
+        await before;
+        written = await write();
         listing.setValue({ ...(await list(dir)), dir });
       });
       return written;
@@ -642,8 +701,7 @@ export default function Files({
     () =>
       tableSaver({
         read: (path) => api<FileText>(routes.files(id, "read", path)),
-        write: (held, keepalive) =>
-          api<{ revision: string }>(routes.fileWrite(id), held, { keepalive }),
+        write: (held, keepalive) => post(held, keepalive),
         failed(error, path) {
           setUnsaved(error);
           setSeen((all) => rewritten(all, path));
@@ -657,30 +715,99 @@ export default function Files({
     setUnsaved(undefined);
     setStaying(false);
   }, [file]);
-  // A write reloads the page it changed.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
-  useEffect(() => {
-    const target = written.slice(written.indexOf("\n") + 1);
-    if (!target) return;
-    const cited = cite({ path: target }, folderOf(session)).view;
-    const path = cited.kind === "resolve" ? cited.path : "";
-    if (!path) return;
-    // A page, or what pages share (a stylesheet, an image, the data a page
-    // reads): all reload. An Excel or CSV file is both.
-    const shared = !HTML.test(path);
-    const keys = [...(paged(path) ? [path] : []), ...(shared ? [""] : [])];
+  // Files someone else changed, those too large to read whole `large`: the
+  // open page takes its change in place where it can, another page loads
+  // again, and so does every page for a file they share (a stylesheet, an
+  // image, the data a page reads). An Excel or CSV file is both.
+  const refresh = (paths: string[], large: string[] = []) => {
+    const inPlace = page && kind !== "sheet" && !large.includes(file);
+    if (inPlace && paths.includes(file)) setFresh((count) => count + 1);
+    const shared = paths.some((path) => SHARED.test(path));
+    const keys = [
+      ...paths.filter((path) => paged(path) && !(inPlace && path === file)),
+      ...(shared ? [""] : []),
+    ];
     setVersions((all) => ({
       ...all,
       ...Object.fromEntries(keys.map((key) => [key, (all[key] ?? 0) + 1])),
     }));
-    // An open sheet is drawn anew only by a write to itself: it has no
+    // An open sheet is drawn anew only by a change to itself: it has no
     // styles or scripts of its own, and a reload ends its undo.
-    const alone = kind === "sheet" && path !== file;
+    const alone = kind === "sheet" && !paths.includes(file);
     setSeen((all) => ({
-      ...rewritten(all, shared ? "" : path),
+      ...(shared ? rewritten(all, "") : paths.reduce(rewritten, all)),
       ...(alone && all[file] && { [file]: all[file] }),
     }));
-    if (kind === "sheet" && path === file) tables.renew();
+    if (kind === "sheet" && paths.includes(file)) tables.renew();
+  };
+  // A path a call names, as one of the folder's; empty outside it.
+  const inFolder = (target: string) => {
+    const cited = cite({ path: target }, folderOf(session)).view;
+    return cited.kind === "resolve" ? cited.path : "";
+  };
+  // The open folder's files as last looked at, by name, each with its stamp.
+  // A file whose stamp is another, and not the one the pane's own write
+  // left, was changed by someone else; one come or gone changes the folder.
+  const known = useRef<{ dir: string; stamps: Record<string, string> }>(
+    undefined,
+  );
+  // The folder a look is out for: one still out for a folder left holds up
+  // no look at the folder shown, and its answer is dropped.
+  const looking = useRef<string>(undefined);
+  const shown = useLatest(dir);
+  const look = useLatest(async () => {
+    const { begun, ended } = writes.current;
+    if (looking.current === dir || begun !== ended) return;
+    looking.current = dir;
+    try {
+      const { stamps } = await api<{ stamps: Record<string, string> }>(
+        routes.files(id, "stamps", dir),
+      );
+      if (begun !== writes.current.begun || dir !== shown.current) return;
+      const was = known.current;
+      known.current = { dir, stamps };
+      if (was?.dir !== dir) return;
+      const changed = Object.keys({ ...was.stamps, ...stamps }).filter(
+        (name) =>
+          was.stamps[name] !== stamps[name] &&
+          mine.current.get(join(dir, name)) !== stamps[name],
+      );
+      if (!changed.length) return;
+      setEdition((count) => count + 1);
+      const there = changed.filter(
+        (name) => name in was.stamps && stamps[name],
+      );
+      refresh(
+        there.map((name) => join(dir, name)),
+        there
+          .filter(
+            (name) => Number.parseInt(stamps[name], 10) > maxTextFileBytes,
+          )
+          .map((name) => join(dir, name)),
+      );
+    } finally {
+      if (looking.current === dir) looking.current = undefined;
+    }
+  });
+  // Looked at while the pane is shown in a tab that is: every LOOK_MS, at
+  // once when the tab is shown again, and when a write call ends.
+  useEffect(() => {
+    const tick = () => document.hidden || void look.current().catch(() => {});
+    tick();
+    const timer = setInterval(tick, LOOK_MS);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [id, dir]);
+  // A write outside the folder is not looked at: one to a file pages share
+  // loads them all.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on each write
+  useEffect(() => {
+    void look.current().catch(() => {});
+    const path = inFolder(written.slice(written.indexOf("\n") + 1));
+    if (SHARED.test(path) && dirOf(path) !== dir) refresh([path]);
   }, [written]);
   const titled =
     view.kind === "canvas"
@@ -812,7 +939,7 @@ export default function Files({
             Annotate
           </Button>
         )}
-        {addToChat && cited && (
+        {quote && cited && (
           <div
             class="segmented"
             role="group"
@@ -832,7 +959,7 @@ export default function Files({
                 Ask in side chat
               </Button>
             )}
-            <Button onClick={() => addToChat(cited)}>Add to chat</Button>
+            <Button onClick={() => quote(cited)}>Quote</Button>
           </div>
         )}
         {file && !deleted && (
@@ -941,10 +1068,15 @@ export default function Files({
               save={(edit) =>
                 "table" in edit
                   ? tables.save(file, edit).then(() => setUnsaved(undefined))
-                  : blocks.save(file, edit)
+                  : blocks.save(file, { ...edit, slide: kind === "deck" })
               }
               settle={settle}
               forget={blocks.forget}
+              unwritten={blocks.unwritten}
+              fresh={fresh}
+              writing={writing
+                .split("\n")
+                .some((target) => target && inFolder(target) === file)}
               typing={(edit, calculating) => {
                 tables.hold(file, edit, calculating);
                 if (!calculating) setStaying(false);
@@ -954,7 +1086,7 @@ export default function Files({
                   dir,
                   nameOf(file).replace(/\.[^.]+$/, ".html"),
                 );
-                await api(routes.fileWrite(id), { path, text, create: true });
+                await post({ path, text, create: true });
                 listing.setValue({ ...(await list(dir)), dir });
                 setFlow((current) => push(current, { kind: "sequence", path }));
               }}
@@ -964,7 +1096,11 @@ export default function Files({
                   follow(current, path, line ? [line, line] : undefined),
                 )
               }
-              rewrite={rewrite}
+              rewrite={(path, change) =>
+                byHand(() => files.write(path, change))
+              }
+              undo={(redo) => byHand(() => files.undo(file, redo))}
+              undoable={files.can(file)}
               arranging={arranging.busy}
               view={viewer}
               read={(path) => readFile(path).then((value) => value.text)}
@@ -1139,7 +1275,7 @@ export default function Files({
                   <FileTree
                     root={root.value ?? SAMPLE_LISTING}
                     session={id}
-                    version={`${turn}${written}`}
+                    version={`${turn}${written}.${edition}`}
                     expanded={expanded}
                     dir={dir}
                     file={file}

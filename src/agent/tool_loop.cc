@@ -241,11 +241,7 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   task.activity["occurrence_id"] = call.occurrence_id;
   task.activity["detail_id"] = call.detail_id;
   if (tool) {
-    const Headline headline = ToolHeadline(tool, arguments);
-    task.activity["status_label"] = StatusLabel(
-        !headline.label.empty()   ? headline.label
-        : headline.target.empty() ? headline.present
-                                  : headline.present + " " + headline.target);
+    task.activity["status_label"] = StatusLabel(ToolAction(*tool, arguments));
   } else {
     task.activity["status_label"] = StatusLabel(call.name);
   }

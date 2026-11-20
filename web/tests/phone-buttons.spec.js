@@ -451,6 +451,10 @@ test.describe("a conversation", () => {
     await expect(page.locator(".transcript")).toContainText(
       "SIDE-TOOL-COMPLETE",
     );
+    // The turn over: Stop is no longer there to press.
+    await expect(
+      page.getByRole("button", { name: "Send", exact: true }),
+    ).toBeVisible();
     await roomy(page);
     // A tap on the way back is not taken by the totals beside it.
     await page

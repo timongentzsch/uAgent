@@ -456,6 +456,9 @@ export function itemLayer(type) {
     if (data.type !== "act" || type.act?.(data.act, data.value)) return;
     if (Object.hasOwn(acts, data.act)) acts[data.act](data.value);
   });
+  // Said as the layer starts: the app shows its tools once the page takes
+  // presses.
+  hold();
   return {
     arm,
     hold,

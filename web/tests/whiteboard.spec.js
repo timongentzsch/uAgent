@@ -148,6 +148,7 @@ test("with Edit off a whiteboard is only looked at: a drag on an item moves noth
   ).toEqual([60, 180]);
   // Edit on and off again: the item picked then is let go with it.
   await edit.click();
+  await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
   await stage.locator("#ad").click();
   await expect(files.getByRole("toolbar", { name: "Picked" })).toBeVisible();
   await edit.click();

@@ -1486,7 +1486,7 @@ export default function Sequence({
                 </Button>
               </div>
             )}
-            {hand && live && !presenting && (
+            {hand && chosen && live && !presenting && (
               <ItemTools
                 items={hand}
                 chosen={chosen}
@@ -1498,7 +1498,7 @@ export default function Sequence({
                 ask={
                   addToChat &&
                   (() => {
-                    const item = chosen?.items[0];
+                    const item = chosen.items[0];
                     if (item && chosen.rect)
                       setPicked({
                         rect: chosen.rect,
@@ -1510,7 +1510,7 @@ export default function Sequence({
                 }
                 at={() => {
                   const page = frame.current?.getBoundingClientRect();
-                  const rect = chosen?.rect;
+                  const rect = chosen.rect;
                   return (
                     page &&
                     rect && {

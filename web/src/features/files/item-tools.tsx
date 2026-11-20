@@ -170,11 +170,7 @@ export function chosenOf(message: Chosen): Chosen | undefined {
   const [x, y, width, height] = ["x", "y", "width", "height"].map((side) =>
     Number(message.rect?.[side as keyof Rect]),
   );
-  if (
-    !Array.isArray(message.items) ||
-    ![x, y, width, height].every(Number.isFinite)
-  )
-    return undefined;
+  if (!Array.isArray(message.items)) return undefined;
   const shapes = [...SHAPES, ...SLIDE_SHAPES.map(([kind]) => kind)];
   return {
     type: "items",
@@ -193,7 +189,10 @@ export function chosenOf(message: Chosen): Chosen | undefined {
         placed: !!item.placed,
       })),
     arrow: !!message.arrow,
-    rect: { x, y, width, height },
+    // None while nothing is picked.
+    rect: [x, y, width, height].every(Number.isFinite)
+      ? { x, y, width, height }
+      : undefined,
   };
 }
 
@@ -207,7 +206,8 @@ export function ItemTools({
   at,
 }: {
   items: Items;
-  chosen?: Chosen;
+  // What the page says is picked: it takes presses.
+  chosen: Chosen;
   tool: string;
   arm: (tool: string) => void;
   // A change asked of what is picked.
@@ -217,7 +217,7 @@ export function ItemTools({
   // Where what is picked is, in the window.
   at: () => Rect | undefined;
 }) {
-  const [one, two, three] = chosen?.items ?? [];
+  const [one, two, three] = chosen.items;
   const remove = (
     <IconButton label="Delete" onClick={() => act("delete")}>
       <Trash2 />
@@ -231,9 +231,9 @@ export function ItemTools({
   return (
     <>
       <InsertBar tools={items.tools} armed={tool} arm={arm} />
-      {(one || chosen?.arrow) && (
+      {(one || chosen.arrow) && (
         <PickBar label="Picked" at={at}>
-          {chosen?.arrow ? (
+          {chosen.arrow ? (
             remove
           ) : two ? (
             <>

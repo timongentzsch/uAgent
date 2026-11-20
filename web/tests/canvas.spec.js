@@ -1601,6 +1601,7 @@ test("an edit is taken only where it is on offer: not with Edit off, and no new 
   // The page says a block was edited though Edit is off.
   await forge({ index: 0, before: "Cover", html: "Forged" });
   await files.getByRole("button", { name: "Edit" }).click();
+  await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
   await typing(stage.getByText("The plan"));
   // With Edit on its text is taken, but a slide gets no new block.
   await forge({

@@ -751,16 +751,19 @@ export default function Files({
   const known = useRef<{ dir: string; stamps: Record<string, string> }>(
     undefined,
   );
-  const looking = useRef(false);
+  // The folder a look is out for: one still out for a folder left holds up
+  // no look at the folder shown, and its answer is dropped.
+  const looking = useRef<string>(undefined);
+  const shown = useLatest(dir);
   const look = useLatest(async () => {
     const { begun, ended } = writes.current;
-    if (looking.current || begun !== ended) return;
-    looking.current = true;
+    if (looking.current === dir || begun !== ended) return;
+    looking.current = dir;
     try {
       const { stamps } = await api<{ stamps: Record<string, string> }>(
         routes.files(id, "stamps", dir),
       );
-      if (begun !== writes.current.begun) return;
+      if (begun !== writes.current.begun || dir !== shown.current) return;
       const was = known.current;
       known.current = { dir, stamps };
       if (was?.dir !== dir) return;
@@ -783,7 +786,7 @@ export default function Files({
           .map((name) => join(dir, name)),
       );
     } finally {
-      looking.current = false;
+      if (looking.current === dir) looking.current = undefined;
     }
   });
   // Looked at while the pane is shown in a tab that is: every LOOK_MS, at

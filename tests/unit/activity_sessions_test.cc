@@ -1132,7 +1132,7 @@ TEST_CASE(TestActivityWaitAndDelivery) {
   for (std::thread& thread : parallel_threads) thread.join();
   CHECK(
       !parallel_handoff.WaitForForeground(1, std::chrono::steady_clock::now()));
-  CHECK(parallel_handoff.PendingCount() == 3);
+  CHECK(parallel_handoff.Snapshot().size() == 3);
   for (const Activity& job : parallel_handoff.Snapshot()) {
     CHECK_OK(ToolActivityStop(parallel_handoff, ActivityId(job)));
   }

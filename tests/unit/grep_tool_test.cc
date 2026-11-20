@@ -112,7 +112,7 @@ TEST_CASE(TestGrepTool) {
   CHECK(ToolActivityWait(supervisor, {activity_ids[1]}, "all", 2000,
                          activity_context)
             .output.find("activity-two") != std::string::npos);
-  CHECK(supervisor.PendingCount() == 0);
+  CHECK(supervisor.Snapshot().empty());
 
   fs::path marker = root / "injected";
   result = ToolGrep(supervisor, "needle'; touch " + marker.string() + "; '",

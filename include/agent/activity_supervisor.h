@@ -151,7 +151,6 @@ class ActivitySupervisor {
   bool RequestForegroundBackground();
 
   bool TryAdd(Activity job, int64_t max_pending);
-  size_t PendingCount() const;
   size_t Count() const;
   json ActivityViews() const;
   json InspectActivity(int64_t id) const;

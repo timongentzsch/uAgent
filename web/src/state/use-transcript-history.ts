@@ -261,11 +261,13 @@ export function useTranscriptHistory(
     gliding.current = 0;
   }, []);
 
-  // How high what the scroller holds is laid out: a sent row still on its
-  // way from the draft is drawn below the end and adds nothing to it.
+  // How high what the scroller holds is: while a sent row is on its way
+  // from the draft, drawn below the end, what is laid out, to which that row
+  // adds nothing.
+  const rising = useRef(false);
   const laid = useCallback((element: HTMLElement) => {
     const column = content.current;
-    if (!column) return element.scrollHeight;
+    if (!column || !rising.current) return element.scrollHeight;
     const below = Number.parseFloat(getComputedStyle(element).paddingBottom);
     return Math.min(
       element.scrollHeight,
@@ -281,14 +283,11 @@ export function useTranscriptHistory(
     sized.current = { height: laid(element), client: element.clientHeight };
   }, [laid, stopGlide, writeTop]);
 
-  // Eases the view to the end on a spring that never overshoots,
-  // retargeting as the end moves, and settles in about --motion-glide. It
-  // stops when following does.
+  // Eases the view to the end, retargeting as the end moves, and settles in
+  // about --motion-glide. It stops when following does.
   const glide = useCallback(() => {
     if (gliding.current) return;
-    // Critically damped: a thousandth of the way is left after that time.
-    const omega = 9200 / motionMs("glide");
-    let speed = 0;
+    const tau = motionMs("glide") / 3;
     let last = performance.now();
     glideTop.current = scroller.current?.scrollTop ?? 0;
     const step = (now: number) => {
@@ -300,12 +299,9 @@ export function useTranscriptHistory(
       const end = laid(element) - element.clientHeight;
       const from = Math.max(element.scrollTop, glideTop.current);
       const gap = end - from;
-      // A frame that came late counts as a short one.
-      const dt = Math.min(now - last, 50) / 1000;
-      last = now;
-      speed += (omega * omega * gap - 2 * omega * speed) * dt;
       // At least a pixel a frame, so every frame moves the view.
-      const move = Math.max(1, speed * dt);
+      const move = Math.max(1, gap * (1 - Math.exp(-(now - last) / tau)));
+      last = now;
       sized.current = { height: laid(element), client: element.clientHeight };
       // The last pixel lands at once.
       if (gap - move < 1) {
@@ -505,7 +501,8 @@ export function useTranscriptHistory(
           duration: motionMs("send"),
           easing: motionEase(rise > FAR ? "settle" : "send"),
         };
-        row.animate(
+        rising.current = true;
+        const risen = row.animate(
           [
             {
               translate: `0 ${rise}px`,
@@ -517,6 +514,10 @@ export function useTranscriptHistory(
           ],
           timing,
         );
+        const landed = () => {
+          rising.current = false;
+        };
+        risen.finished.then(landed, landed);
         const pushed = box.scrollTop - before;
         const top = box.getBoundingClientRect().top;
         for (

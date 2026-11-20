@@ -3,8 +3,12 @@
 import { test, expect } from "./fixtures.js";
 
 // What a page route holds or refuses must reach it: WebKit sends a page's
-// requests past routes once a service worker controls it.
-test.use({ serviceWorkers: "block" });
+// requests past routes once a service worker controls it. A client without
+// service workers, not Playwright's "block", whose register() resolves to
+// nothing and shows an error.
+test.beforeEach(({ page }) =>
+  page.addInitScript(() => delete Navigator.prototype.serviceWorker),
+);
 
 const box = (locator) =>
   locator.evaluate((node) => {

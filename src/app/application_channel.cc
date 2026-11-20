@@ -24,8 +24,9 @@
 namespace uagent {
 int Application::RunChannel() {
   if (std::string error = ResumeAtStartup(); !error.empty()) {
+    // No teardown: its save would write this empty conversation over the
+    // file once the runtime holding it lets go.
     Emit(Event{EventId::kError, {{"error", "cannot resume: " + error}}});
-    Teardown("eof");
     return 2;
   }
   persist_ = true;

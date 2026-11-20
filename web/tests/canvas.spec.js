@@ -2378,6 +2378,14 @@ test("find follows what the agent rewrites while it is open", async ({
   command,
 }) => {
   await design(host.project);
+  // The look at the folder the pane opened in answers only after the write:
+  // it holds up no look at the design folder.
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await app.route(/files\?stamps=$/, async (route) => {
+    await held;
+    await route.continue();
+  });
   const files = await openFiles(app, session, "design/");
   await files.getByRole("button", { name: "Open Hero B" }).click();
   await files.getByRole("button", { name: "Find" }).click();
@@ -2387,6 +2395,8 @@ test("find follows what the agent rewrites while it is open", async ({
   await selectProbeModel(command, session, { yolo: true });
   await app.locator("#prompt").fill("Design probe");
   await app.locator("#prompt").press("Enter");
+  await expect(app.getByText("Wrote design/01-hero-a.html")).toBeVisible();
+  release();
   // The page it rewrote is read again, and holds the words now.
   await expect(bar).toContainText("1 of 1");
   await expect(

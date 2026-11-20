@@ -150,6 +150,8 @@ const OUT = 20;
 const BEND = 10;
 // How far apart two arrows stand on one side of an item.
 const APART = 16;
+// How far inside its edge a section is still held by it, on the screen.
+const EDGE = 8;
 
 // The arrows, each in right-angled legs from a side of one item to a side
 // of the other: the route across the fewest items, then with the fewest
@@ -444,9 +446,23 @@ function edits(layer, signal) {
     place(item);
     sized.observe(item);
   };
-  const itemOf = (target) => {
+  // A section is held by its name or its edge: a press inside it is one on
+  // the board under it.
+  const framed = (item) => item.localName === "section";
+  const holds = (item, press) => {
+    if (item !== press.target || !framed(item)) return true;
+    const edge =
+      EDGE /
+      (Number(
+        document.documentElement.style.getPropertyValue("--uagent-scale"),
+      ) || 1);
+    const { left, top, right, bottom } = item.getBoundingClientRect();
+    const { clientX: x, clientY: y } = press;
+    return Math.min(x - left, right - x, y - top, bottom - y) <= edge;
+  };
+  const itemOf = (target, press) => {
     const item = target.closest?.("[data-at]");
-    return item?.id ? item : undefined;
+    return item?.id && (!press || holds(item, press)) ? item : undefined;
   };
   const dots = SIDES.map(() => {
     const dot = document.createElement("span");
@@ -514,9 +530,11 @@ function edits(layer, signal) {
     say({ add });
   };
   const hand = itemLayer({
-    touch: "[data-at]",
+    touch: "[data-at]:not(section), section[data-at] > :first-child",
     items: () => items().filter((item) => item.id),
     itemOf,
+    holds,
+    whole: framed,
     box: (item) => [...at(item), item.offsetWidth, item.offsetHeight],
     put: (item, [x, y, w, h], resized) => {
       item.dataset.at = `${x} ${y}`;

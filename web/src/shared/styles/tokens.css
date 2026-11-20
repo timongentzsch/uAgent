@@ -129,17 +129,75 @@
     --motion-fast: 120ms;
     --motion-base: 200ms;
     --motion-slow: 280ms;
-    /* How long the view glides to new content, a new row fades in, and a sent
-       message rises from the input. 0ms makes any of them instant. */
-    --motion-glide: var(--motion-base);
+    /* How long the view takes to follow new content, a new row to fade in,
+       and a sent message to travel from the draft to its place. 0ms makes
+       any of them instant. */
+    --motion-glide: 520ms;
     --motion-arrive: var(--motion-base);
-    --motion-send: var(--motion-slow);
+    --motion-send: 620ms;
     --motion-pulse: 1.6s;
     --motion-spin: 0.8s;
     --motion-spin-reduced: 2.4s;
     --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
     --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    /* Springs, as easings over their whole time: a sent message arrives
+       with a small overshoot (stiffness 320, damping 24); what has far to
+       go settles without one (300, 34). */
+    --ease-send: linear(
+      0,
+      0.097,
+      0.288,
+      0.532,
+      0.715,
+      0.856,
+      0.953,
+      1.012,
+      1.041,
+      1.051,
+      1.047,
+      1.037,
+      1.026,
+      1.017,
+      1.009,
+      1.003,
+      1,
+      0.998,
+      0.997,
+      0.998,
+      0.998,
+      0.999,
+      0.999,
+      1,
+      1
+    );
+    --ease-settle: linear(
+      0,
+      0.085,
+      0.212,
+      0.373,
+      0.52,
+      0.641,
+      0.722,
+      0.798,
+      0.854,
+      0.89,
+      0.922,
+      0.945,
+      0.961,
+      0.971,
+      0.98,
+      0.986,
+      0.99,
+      0.993,
+      0.995,
+      0.996,
+      0.997,
+      0.998,
+      0.999,
+      0.999,
+      1
+    );
     --rise: var(--space-4);
     --enter:
       opacity var(--motion-base) var(--ease-out),

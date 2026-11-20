@@ -88,11 +88,12 @@ test("a document beside the conversation", async ({ page, session, host }) => {
 });
 
 test("a sheet beside the conversation", async ({ page, session, host }) => {
-  await openSheet(
+  const { tabs } = await openSheet(
     page,
     session,
     host.project,
     sheet("Plan", { Tasks: ["<th>Task<th>Cost", "<td>Write<td>1200"] }),
   );
+  await expect(tabs).toHaveText(["Tasks"]);
   await even(page);
 });

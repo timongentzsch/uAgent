@@ -1040,7 +1040,8 @@
     min-width: 0;
   }
   /* A bar that starts with its title: text stands where a row's does. */
-  :is(.bar, .conversation-head) > :is(.bar-title, div):first-child {
+  .bar > .bar-title:first-child,
+  .conversation-head > div:first-child {
     padding-left: calc(var(--inset-x) - var(--bar-pad));
   }
   /* A field shares its row with controls while both fit; the controls take

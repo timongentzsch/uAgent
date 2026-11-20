@@ -924,7 +924,7 @@ export default function Sequence({
           <Notice tone="error">{failure.text}</Notice>
         </p>
       )}
-      <Bar density="dense" edge="bottom" class="page-tools">
+      <Bar edge="bottom" class="page-tools">
         {boards.length > 1 &&
           !sheet &&
           toggle(
@@ -1035,7 +1035,7 @@ export default function Sequence({
         {!editable && status}
       </Bar>
       {mode === "edit" && !board && (
-        <Bar density="dense" edge="bottom" class="page-tools">
+        <Bar edge="bottom" class="page-tools">
           <FormatTools
             caret={caret}
             format={(format) =>

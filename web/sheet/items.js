@@ -8,16 +8,17 @@
 // puts, and asks acts of what is picked. Each change is said once, for the
 // app to write.
 
-// Drawn the same size on screen at any zoom of the page (--uagent-scale).
+// Drawn the same size on screen at any zoom of the page (--uagent-scale),
+// in the app's colour for what is picked (--uagent-pick).
 const CSS = `
 :root { --uagent-px: calc(1px / var(--uagent-scale, 1)); }
-[data-uagent-picked] { outline: calc(2 * var(--uagent-px)) solid #1a56db;
+[data-uagent-picked] { outline: calc(2 * var(--uagent-px)) solid var(--uagent-pick);
   outline-offset: calc(2 * var(--uagent-px)); touch-action: none; }
 .uagent-handle { position: absolute; width: calc(10 * var(--uagent-px));
   height: calc(10 * var(--uagent-px)); margin: calc(-5 * var(--uagent-px));
-  z-index: 3; background: #1a56db; touch-action: none; }
+  z-index: 3; background: var(--uagent-pick); touch-action: none; }
 .uagent-frame { position: absolute; z-index: 3;
-  border: var(--uagent-px) solid #1a56db; background: #1a56db1a; }
+  border: var(--uagent-px) solid var(--uagent-pick); background: color-mix(in srgb, var(--uagent-pick) 10%, transparent); }
 @media (pointer: coarse) {
   .uagent-handle::after { content: ""; position: absolute;
     inset: calc(-17 * var(--uagent-px)); }

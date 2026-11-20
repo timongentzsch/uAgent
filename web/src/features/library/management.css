@@ -266,7 +266,7 @@
   .library-rail {
     flex: none;
     flex-direction: row;
-    padding-block: var(--gap);
+    padding: var(--bar-pad);
     border-right: 0;
     border-bottom: var(--border);
   }

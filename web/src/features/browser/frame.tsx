@@ -15,7 +15,7 @@ export function BrowserFrame({
   return (
     <section class="browser-panel">
       {screen}
-      <Bar density="dense" edge="top" class="browser-bar">
+      <Bar edge="top" class="browser-bar">
         {bar}
       </Bar>
     </section>

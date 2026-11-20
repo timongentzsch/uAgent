@@ -426,9 +426,11 @@ test("items picked with Shift or a frame move together, line up and spread out, 
   await expect.poll(saved).toBe(BOARD);
   await expect(undo).toBeDisabled();
 
-  // A frame drawn from the empty board picks what it touches: the section,
-  // the diamond, the database and the note.
-  await drag(app, await at(1150, 790), await at(380, 240));
+  // A frame drawn from the empty board picks what it touches, the diamond,
+  // the database and the note, and a section only where it holds all of it.
+  await drag(app, await at(1150, 790), await at(10, 90));
+  await expect(picked).toHaveCount(5);
+  await stage.locator("#ad").click({ modifiers: ["Shift"] });
   await expect(picked).toHaveCount(4);
   await bar.getByRole("button", { name: "Align" }).click();
   await app.getByRole("menuitemradio", { name: "Top" }).click();
@@ -455,6 +457,34 @@ test("items picked with Shift or a frame move together, line up and spread out, 
   expect(await saved()).toContain('id="ad" data-shape="pill" data-at="60 180"');
   await undo.click();
   await expect.poll(saved).toBe(BOARD);
+});
+
+test("a section is held by its name or its edge: a press inside it lets go of what is picked, and a frame drawn inside it picks what it touches, not the section", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, at } = await openBoard(app, session, host);
+  const picked = stage.locator("[data-uagent-picked]");
+  const inside = async () => app.mouse.click(...(await at(300, 350)));
+  await stage.locator("#ad").click();
+  await expect(picked).toHaveAttribute("id", "ad");
+  await inside();
+  await expect(picked).toHaveCount(0);
+  await drag(app, await at(40, 150), await at(240, 260));
+  await expect(picked).toHaveAttribute("id", "ad");
+  await inside();
+  await expect(picked).toHaveCount(0);
+  await stage.locator("#web h2").click();
+  await expect(picked).toHaveAttribute("id", "web");
+  await inside();
+  await expect(picked).toHaveCount(0);
+  await app.mouse.click(...(await at(22, 250)));
+  await expect(picked).toHaveAttribute("id", "web");
+  // A frame round all of the section picks it with what it holds.
+  await app.mouse.click(...(await at(1100, 700)));
+  await drag(app, await at(10, 90), await at(740, 420));
+  await expect(picked).toHaveCount(3);
 });
 
 test("the picked item's bar stands over it inside the stage, and changes its shape, colour, text size, order and copies, and deletes it with its arrows", async ({

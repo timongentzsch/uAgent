@@ -55,7 +55,8 @@ export function rectOf(list) {
 }
 
 // The type says: `items` the page has, `itemOf` the one a press on an
-// element picks, `box` an item's [x, y, w, h] in the page, `put` it there
+// element picks, `holds` whether a press on a picked item is on it at all,
+// `whole` whether a frame picks an item only when it holds all of it, `box` an item's [x, y, w, h] in the page, `put` it there
 // (`sized`: at that size), `tall` whether a corner sets its height, `snap` a
 // length as it is kept; `said` the change that says items' places (and
 // sizes), `copy` copies them and `order` lays them over or under the rest,
@@ -179,15 +180,19 @@ export function itemLayer(type) {
           width: `${width}px`,
           height: `${height}px`,
         });
+        const [x0, y0] = [left + scrollX, top + scrollY];
         const touched = type.items().filter((item) => {
           const [ix, iy, iw, ih] = box(item);
-          return (
-            !was.includes(item) &&
-            ix < left + scrollX + width &&
-            left + scrollX < ix + iw &&
-            iy < top + scrollY + height &&
-            top + scrollY < iy + ih
-          );
+          if (was.includes(item)) return false;
+          return type.whole?.(item)
+            ? x0 <= ix &&
+                ix + iw <= x0 + width &&
+                y0 <= iy &&
+                iy + ih <= y0 + height
+            : ix < x0 + width &&
+                x0 < ix + iw &&
+                iy < y0 + height &&
+                y0 < iy + ih;
         });
         pick([...was, ...touched]);
       },
@@ -261,8 +266,10 @@ export function itemLayer(type) {
       document.activeElement.blur();
     const corner = handles.indexOf(event.target);
     const item =
-      picked.find((one) => one.contains(event.target)) ??
-      type.itemOf(event.target);
+      picked.find(
+        (one) =>
+          one.contains(event.target) && type.holds?.(one, event) !== false,
+      ) ?? type.itemOf(event.target, event);
     const start = [event.clientX, event.clientY];
     let drag;
     let again;

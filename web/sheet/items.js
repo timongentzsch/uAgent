@@ -51,14 +51,15 @@ export function rectOf(list) {
 // `remove` takes them away, each giving the change; `retype` types in an
 // item at a press, `insert` puts what a tool makes where a press is (or
 // does not take the press), `act` does what only the type does, `drawn`
-// follows a change, `show` says what is picked, `say` tells the app.
+// follows a change, `show` says what is picked, `say` tells the app; on
+// `touch`, a finger drags rather than scrolls.
 export function itemLayer(type) {
   const { box, put, say: tell, snap = Math.round } = type;
   const off = new AbortController();
   const listen = (kind, handle, capture) =>
     addEventListener(kind, handle, { capture, signal: off.signal });
   const style = document.createElement("style");
-  style.textContent = CSS;
+  style.textContent = `${CSS}:is(${type.touch}) { touch-action: none; }`;
   document.head.append(style);
   let picked = [];
   // Whether a person is changing an item: holding or nudging it.
@@ -201,10 +202,46 @@ export function itemLayer(type) {
     },
     true,
   );
-  // The pointer of the drag going on: another (a second finger) is not
-  // taken.
+  // Two fingers zoom the stage, as the app does for a pinch it sees.
+  const pinch = (fingers) => {
+    const done = new AbortController();
+    const spread = () => {
+      const [a, b] = [...fingers.values()];
+      return [Math.hypot(a.screenX - b.screenX, a.screenY - b.screenY), a, b];
+    };
+    let [was] = spread();
+    const follow = (next) => {
+      if (!fingers.has(next.pointerId)) return;
+      fingers.set(next.pointerId, next);
+      const [now, a, b] = spread();
+      if (was && now)
+        parent.postMessage(
+          {
+            uagentDesign: 1,
+            type: "zoom",
+            by: now / was,
+            x: (a.clientX + b.clientX) / 2,
+            y: (a.clientY + b.clientY) / 2,
+          },
+          "*",
+        );
+      was = now;
+    };
+    const signal = AbortSignal.any([done.signal, off.signal]);
+    addEventListener("pointermove", follow, { signal });
+    for (const kind of ["pointerup", "pointercancel"])
+      addEventListener(
+        kind,
+        (up) => fingers.has(up.pointerId) && done.abort(),
+        { signal },
+      );
+  };
+  // The pointer of the drag going on, and what a second finger does to it.
   let pressing;
+  let joined;
   listen("pointerdown", (event) => {
+    if (pressing !== undefined && event.pointerType === "touch")
+      return joined?.(event);
     if (event.button || pressing !== undefined) return;
     if (event.target.isContentEditable) return;
     // A press elsewhere ends the typing in an item, which saves it.
@@ -240,9 +277,33 @@ export function itemLayer(type) {
     changing = true;
     pressing = event.pointerId;
     let moved = false;
+    let last = event;
     const done = new AbortController();
+    // The items' attributes as the drag found them.
+    const kept = picked.map((one) => [
+      one,
+      [...one.attributes].map(({ name, value }) => [name, value]),
+    ]);
+    // A second finger: the items go back, nothing is said, and the two zoom.
+    joined = (second) => {
+      done.abort();
+      pressing = undefined;
+      changing = false;
+      for (const [one, attributes] of kept) {
+        for (const { name } of [...one.attributes]) one.removeAttribute(name);
+        for (const [name, value] of attributes) one.setAttribute(name, value);
+      }
+      changed();
+      pinch(
+        new Map([
+          [last.pointerId, last],
+          [second.pointerId, second],
+        ]),
+      );
+    };
     const follow = (next) => {
       if (next.pointerId !== pressing) return;
+      last = next;
       const [dx, dy] = [next.clientX - start[0], next.clientY - start[1]];
       moved ||= Math.hypot(dx, dy) > 3;
       if (moved) drag[0](dx, dy);

@@ -395,10 +395,12 @@
   // A whiteboard is drawn by its own code from the same place.
   const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
   let board;
+  let boarding;
   addEventListener("DOMContentLoaded", () => {
     if (!document.querySelector('meta[name="board"]')) return;
     root.dataset.uagentBusy = "";
-    window.uagentReady = import(`${base}~sheet/whiteboard.js`)
+    boarding = import(`${base}~sheet/whiteboard.js`);
+    window.uagentReady = boarding
       .then((drawn) => {
         board = drawn;
         return drawn.ready;
@@ -1260,7 +1262,10 @@
     if (event.source !== parent || event.data?.uagentDesign !== 1) return;
     if (event.data.type === "update") void update(String(event.data.html));
     if (event.data.type === "select") select(!!event.data.on);
-    if (event.data.type === "edit" && stepped())
+    // A whiteboard is changed by hand while Edit is on.
+    if (event.data.type === "edit" && boarding)
+      void boarding.then((drawn) => drawn.edit(!!event.data.on));
+    else if (event.data.type === "edit" && stepped())
       void edit(!!event.data.on, event.data.at, event.data.over);
     if (event.data.type === "format") format(event.data);
     if (event.data.type === "markdown") send("markdown", { text: markdown() });

@@ -260,7 +260,7 @@ test.describe("files", () => {
     await toolsFit(page);
   });
 
-  test("a whiteboard's tools and the bar over its picked shape", async ({
+  test("a whiteboard with Edit off and on, and the bar over its picked shape", async ({
     page,
     session,
     host,
@@ -274,9 +274,14 @@ test.describe("files", () => {
 <div id="ok" data-shape="parallelogram" data-fill="orange" data-at="400 300" data-size="160 100">Valid?</div>
 `,
     });
-    await openFiles(page, session, "boards/flow/", { phone: true });
+    const files = await openFiles(page, session, "boards/flow/", {
+      phone: true,
+    });
     const stage = page.frameLocator(".page-stage iframe:not([inert])");
     await expect(stage.locator("#ok")).toBeVisible();
+    await roomy(page);
+    await files.getByRole("button", { name: "Edit" }).click();
+    await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
     await roomy(page);
     const box = await stage.locator("#ok").boundingBox();
     await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);

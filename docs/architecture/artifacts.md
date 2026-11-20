@@ -169,8 +169,10 @@ the design as one PDF.
 **Whiteboards.** A page with `<meta name="board">` loads `~sheet/whiteboard.js`
 from the helper, which places its items, draws shapes as stretched SVG
 paths and arrows in right-angled legs between the items' sides, round what
-stands between them. Open in the pane (on a touch screen too), it is
-changed by hand on the item layer below; `whiteboard.js` adds what is a
+stands between them. Open in the pane it is only looked at (one finger
+pans, two zoom) until Edit is on, as for a document or a slide; then it is
+changed by hand on the item layer below (`whiteboard.js` `edit` turns the
+layer on and off); `whiteboard.js` adds what is a
 board's own: the item a tool puts where the board is next pressed, and
 arrows drawn from a dot on the picked item's side or picked by their line.
 Its changes are written with `boardEdit` (`board-edit.ts`), changing only
@@ -197,7 +199,8 @@ touches; on touch that drag scrolls), a press inside a picked item drags
 it, the picked move together, a corner resizes one (a finger-sized target
 on touch, kept at any zoom by `--uagent-scale`), the keys nudge, delete,
 duplicate, copy, paste, pick all and let go, and a press again on the one
-picked types in it. The type gives what its items are, an item's box, how
+picked types in it. A second finger joining a drag undoes it, says nothing,
+and the two fingers zoom the stage (`zoom` messages). The type gives what its items are, an item's box, how
 its place and size are put, and the change each act makes. The page says
 what is picked and its box (`items`), which Sequence shows as a bar over
 it (`PickBar`) beside the tools at the stage's foot (`InsertBar`,

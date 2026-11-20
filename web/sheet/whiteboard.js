@@ -36,8 +36,7 @@ body { position: relative; min-height: 100vh; overflow: hidden; background: #faf
   background-image: radial-gradient(#d4d4d4 1px, transparent 1px);
   background-size: 20px 20px; font: 16px/1.35 system-ui, sans-serif; color: #1a1a1a; }
 hr[data-from] { display: none; }
-[data-at] { position: absolute; box-sizing: border-box; margin: 0; z-index: 2;
-  touch-action: none; }
+[data-at] { position: absolute; box-sizing: border-box; margin: 0; z-index: 2; }
 section[data-at] { z-index: 0; border: 1px solid #d0d0d0; border-radius: 12px; background: #ffffff99; }
 section[data-at] > :first-child { position: absolute; left: 2px; bottom: 100%; margin: 0 0 6px;
   font-size: 15px; font-weight: 500; color: #666; white-space: nowrap; }
@@ -436,7 +435,7 @@ const TEXT = "h1, h2, p:not(.note), small";
 // arrow is drawn from a dot on the picked item's side (or with the arrow
 // tool from any item) to another, and the app's bar changes what is picked.
 // Each change is said to the app, which writes it and undoes it with ⌘Z.
-function edits(layer) {
+function edits(layer, signal) {
   const tell = (type, data) =>
     parent.postMessage({ uagentDesign: 1, type, ...data }, "*");
   const say = (change) => tell("change", change);
@@ -514,6 +513,7 @@ function edits(layer) {
     say({ add });
   };
   const hand = itemLayer({
+    touch: "[data-at]",
     items: () => items().filter((item) => item.id),
     itemOf,
     box: (item) => [...at(item), item.offsetWidth, item.offsetHeight],
@@ -723,7 +723,7 @@ function edits(layer) {
       event.preventDefault();
       focus();
     },
-    true,
+    { capture: true, signal },
   );
   addEventListener(
     "keydown",
@@ -735,7 +735,7 @@ function edits(layer) {
         unline();
       }
     },
-    true,
+    { capture: true, signal },
   );
   return hand;
 }
@@ -743,6 +743,7 @@ function edits(layer) {
 let layer;
 let sized;
 let hand;
+let off;
 function draw() {
   const style = document.createElement("style");
   style.textContent = CSS;
@@ -757,8 +758,21 @@ function draw() {
   // Fonts and pictures change the items' sizes: the arrows follow.
   sized = new ResizeObserver(() => arrows(layer));
   for (const item of items()) sized.observe(item);
-  if (parent !== window) hand = edits(layer);
   return [];
+}
+
+// Edit on: the board is changed by hand; off, it is only looked at.
+export function edit(on) {
+  if (!on) {
+    hand?.end();
+    off?.abort();
+    hand = undefined;
+    chosen = undefined;
+    return arrows(layer);
+  }
+  if (hand) return hand.hold();
+  off = new AbortController();
+  hand = edits(layer, off.signal);
 }
 
 // The file changed under the page: each item glides to where it now says,

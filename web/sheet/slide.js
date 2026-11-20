@@ -11,7 +11,6 @@ import { APART, itemLayer, rectOf } from "./items.js";
 // What a press picks: the outermost of these that holds it.
 const ITEMS =
   "h1, h2, h3, h4, h5, h6, p, ul, ol, dl, table, blockquote, pre, figure, img, svg, [data-shape]";
-const CSS = `:is(${ITEMS}) { touch-action: none; }`;
 // What each tool makes, at what size; a shape is filled with the accent.
 const MADE = {
   text: { tag: "p", size: [480, 0] },
@@ -60,7 +59,6 @@ const inner = (item, w, h) => {
 };
 
 let hand;
-let sheet;
 let off;
 let typeIn;
 let typing;
@@ -86,7 +84,6 @@ export function edit(on, helper) {
   if (!on) {
     stop();
     hand?.end();
-    sheet?.remove();
     off?.abort();
     hand = undefined;
     return;
@@ -101,9 +98,6 @@ export function edit(on, helper) {
     (event) => typing && !typing.contains(event.target) && stop(),
     { capture: true, signal: off.signal },
   );
-  sheet = document.createElement("style");
-  sheet.textContent = CSS;
-  document.head.append(sheet);
   // Where its content is: the one element that wraps it, or the body.
   const root = () => {
     const [only, more] = [...document.body.children].filter(
@@ -181,6 +175,7 @@ export function edit(on, helper) {
     return true;
   };
   const layer = itemLayer({
+    touch: ITEMS,
     items,
     itemOf,
     box,

@@ -243,8 +243,6 @@ export default function Sequence({
 }) {
   const doc = kind === "doc";
   const sheet = kind === "sheet";
-  // Whether its text is typed in place.
-  const editable = doc || kind === "deck";
   const unit = kind === "deck" ? "Slide" : "Page";
   const src = page(path);
   // A board's address: its file's, with its version, and after "#" its
@@ -271,6 +269,10 @@ export default function Sequence({
   const staged = useRef<PageInfo>(undefined);
   if (said?.drawn) staged.current = said;
   const info = staged.current;
+  // What Edit changes in place: a document's or a slide's text, a slide's
+  // elements, a whiteboard's items.
+  const board = !!info?.board;
+  const editable = doc || kind === "deck" || board;
   // Select picks an element to comment on; Edit lets a document's or a
   // slide's text be typed in place. One at a time, told to the page as each
   // goes on or off.
@@ -307,14 +309,16 @@ export default function Sequence({
   const holding = useRef(false);
   const unsourced = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [picked, setPicked] = useState<Pick>();
-  // A whiteboard's items, or a slide's while Edit is on, are changed by
+  // While Edit is on a whiteboard's items, or a slide's, are changed by
   // hand: a tool armed for the next press, and what is picked.
-  const board = !!info?.board;
-  const hand = board
-    ? BOARD
-    : kind === "deck" && mode === "edit"
-      ? SLIDE
-      : undefined;
+  const hand =
+    mode !== "edit"
+      ? undefined
+      : board
+        ? BOARD
+        : kind === "deck"
+          ? SLIDE
+          : undefined;
   const [tool, setTool] = useState("");
   const [chosen, setChosen] = useState<Chosen>();
   const arm = (next: string) => {
@@ -454,7 +458,7 @@ export default function Sequence({
   };
   // A document's, a slide's or a whiteboard's changes by hand are undone and
   // made again here; then the file is drawn again, its notes its own.
-  const undoes = !!undo && (editable || board);
+  const undoes = !!undo && editable;
   const back = (redo: boolean) =>
     void undo?.(redo).then((made) => {
       if (!made) return;
@@ -931,7 +935,6 @@ export default function Sequence({
             true,
           )}
         {!sheet &&
-          !board &&
           toggle(
             "Select",
             mode === "select",
@@ -1031,7 +1034,7 @@ export default function Sequence({
         {writing && <span class="chip working">Agent writing</span>}
         {!editable && status}
       </Bar>
-      {mode === "edit" && (
+      {mode === "edit" && !board && (
         <Bar density="dense" edge="bottom" class="page-tools">
           <FormatTools
             caret={caret}

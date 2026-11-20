@@ -8,7 +8,7 @@ import Frame, {
 import { pageSize } from "../../shared/page-size.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 import { useRoom } from "../../shared/layout.ts";
-import { type Presenting, presentChannel, STEPS } from "./present.ts";
+import { type Presenting, STEPS, usePresentChannel } from "./present.ts";
 import "./files.css";
 
 // The presenter's own window: the slide now and the next, the speaker notes
@@ -59,24 +59,19 @@ export default function Presenter({ deck }: { deck: Presenting }) {
   const [notes, setNotes] = useState("");
   const [started, setStarted] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
-  const channel = useRef<BroadcastChannel>(undefined);
+  const broadcast = usePresentChannel(
+    ({ at }) => at && deck.slides.includes(at) && setAt(at),
+  );
   useEffect(() => {
-    const opened = presentChannel();
-    opened.onmessage = (event) =>
-      deck.slides.includes(event.data?.at) && setAt(event.data.at);
-    channel.current = opened;
     const tick = setInterval(() => setNow(Date.now()), 1000);
-    return () => {
-      opened.close();
-      clearInterval(tick);
-    };
-  }, [deck]);
+    return () => clearInterval(tick);
+  }, []);
   const index = deck.slides.indexOf(at);
   const go = useLatest((by: number) => {
     const next = deck.slides[index + by];
     if (!next) return;
     setAt(next);
-    channel.current?.postMessage({ at: next });
+    broadcast({ at: next });
   });
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {

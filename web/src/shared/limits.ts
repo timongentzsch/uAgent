@@ -21,10 +21,11 @@ export const maxHistoryNodes = 256;
 // Changes made by hand that can be undone; each holds its file's text twice.
 export const maxUndoable = 100;
 // What one change by hand to a whiteboard's or a slide's items may name:
-// items, an item's text (and a slide's element's path) in characters, and a
+// items, an item's text and a slide's element's path in characters, and a
 // place or a size in pixels.
 export const maxItemEntries = 1_000;
 export const maxItemTextChars = 20_000;
+export const maxItemPathChars = 1_000;
 export const maxItemPixels = 100_000;
 // A row with more children shows its latest ones and a line for the rest.
 export const maxShownSteps = 30;

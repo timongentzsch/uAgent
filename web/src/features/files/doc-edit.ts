@@ -5,7 +5,7 @@
 import {
   maxItemEntries,
   maxItemPixels,
-  maxItemTextChars,
+  maxItemPathChars,
 } from "../../shared/limits.ts";
 
 const EDITABLE =
@@ -139,9 +139,6 @@ function written(page: Document, source: string) {
   );
 }
 
-// A slide in the style of `source`: its head, its body's own attributes,
-// and where its body is one element that wraps the slide, such a wrapper;
-// in it a heading and a paragraph to type over.
 // What a slide's content is in: the one element that wraps it, or the body
 // (sheet/slide.js finds it alike).
 function contentOf(page: Document) {
@@ -151,6 +148,9 @@ function contentOf(page: Document) {
   return wrap && !more && !wrap.matches(EDITABLE) ? wrap : page.body;
 }
 
+// A slide in the style of `source`: its head, its body's own attributes,
+// and where its body is one element that wraps the slide, such a wrapper;
+// in it a heading and a paragraph to type over.
 export function blankSlide(source: string) {
   const page = parsed(source);
   page.title = "New slide";
@@ -184,12 +184,42 @@ export function skipSlide(source: string, skip: boolean) {
 }
 
 // A slide's element as its page showed it: its path from the body or from
-// an element with an id (design-helper.js `selector`), its tag and its text
-// without white space.
+// an element with an id (design-helper.js `selector`), its tag, its text
+// without white space, how many elements the slide's content held and its
+// own attributes (sheet/slide.js says them alike).
 interface Shown {
   path: string;
   tag: string;
   text: string;
+  of: number;
+  attrs: string;
+}
+const attributesOf = (element: Element) =>
+  [...element.attributes]
+    .filter(
+      ({ name }) => !/^(style|contenteditable|data-uagent-.*)$/.test(name),
+    )
+    .map(({ name, value }) => `${name}=${value}`)
+    .sort()
+    .join("\n");
+// The element a path names as `selector` writes one, or null: an id, then
+// steps to a child by its tag and its place among those of its tag; a step
+// without a place names the one child of its tag.
+function at(page: Document, path: string) {
+  if (path.length > maxItemPathChars) return null;
+  const steps = path.split(" > ");
+  const id = /^#([\w-]+)$/.exec(steps[0]);
+  let element: Element | null = id ? page.getElementById(id[1]) : page.body;
+  for (const step of id ? steps.slice(1) : steps) {
+    const [, tag, nth] =
+      /^([a-zA-Z][\w-]*)(?::nth-of-type\((\d+)\))?$/.exec(step) ?? [];
+    const same = [...(element?.children ?? [])].filter(
+      (child) => child.localName === tag,
+    );
+    element =
+      (nth ? same[Number(nth) - 1] : same.length === 1 && same[0]) || null;
+  }
+  return element;
 }
 // Where an element put in by hand is placed in what it is in, and its size.
 interface Placed {
@@ -198,17 +228,17 @@ interface Placed {
   height?: number;
 }
 // A slide's elements changed by hand (sheet/slide.js), each change one
-// write: elements moved by `move`, their translate, and sized (null takes a
-// size away); a text, a table or a shape put in; copies placed by hand
-// beside their originals; elements deleted; or what was put in by hand laid
-// over or under the rest put in beside it.
+// write: elements moved by `move`, their translate, and sized; a text, a
+// table or a shape put in; copies placed by hand beside their originals;
+// elements deleted; or what was put in by hand laid over or under the rest
+// put in beside it.
 export type SlideEdit =
   | {
       set: {
         at: Shown;
         move: number[];
-        width?: number | null;
-        height?: number | null;
+        width?: number;
+        height?: number;
       }[];
     }
   | { add: { kind: string } & Placed }
@@ -216,11 +246,30 @@ export type SlideEdit =
   | { remove: Shown[] }
   | { front: Shown[] }
   | { back: Shown[] };
-// The shapes a slide's tools put in, by the corners each has.
-const CORNERS: Record<string, string> = {
-  rect: "",
-  round: "24px",
-  ellipse: "50%",
+// What a slide's tools put in, named, at what size; a shape (one with a
+// height) is filled with the accent. The page shows what the app arms it
+// with, and the file gets the same.
+const shape = (kind: string, corners = "") =>
+  `<div data-shape="${kind}" style="background: var(--accent, currentcolor);${corners}"></div>`;
+export const SLIDE_MADE: Record<
+  string,
+  { label: string; html: string; width: number; height?: number }
+> = {
+  text: { label: "Text", html: "<p>Text</p>", width: 480 },
+  rect: { label: "Rectangle", html: shape("rect"), width: 240, height: 160 },
+  round: {
+    label: "Rounded",
+    html: shape("round", " border-radius: 24px;"),
+    width: 240,
+    height: 160,
+  },
+  ellipse: {
+    label: "Ellipse",
+    html: shape("ellipse", " border-radius: 50%;"),
+    width: 240,
+    height: 160,
+  },
+  table: { label: "Table", html: FRESH.table, width: 640 },
 };
 
 // The source with the change made, or null where the file is no slide, has
@@ -244,23 +293,18 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
       ? (made as number[])
       : undefined;
   };
+  const elements = content.querySelectorAll("*").length;
   const found = (shown: unknown) => {
-    const { path, tag, text } = (shown ?? {}) as Partial<Shown>;
-    if (typeof path !== "string" || path.length > maxItemTextChars) return;
-    let element: Element | null = null;
-    try {
-      element = page.body.querySelector(
-        path.startsWith("#") ? path : `:scope > ${path}`,
-      );
-    } catch {
-      return;
-    }
+    const { path, tag, text, of, attrs } = (shown ?? {}) as Partial<Shown>;
+    const element = typeof path === "string" ? at(page, path) : null;
     return element &&
       element !== content &&
       content.contains(element) &&
       !notes?.contains(element) &&
       element.localName === tag &&
-      squash(element.textContent) === text
+      squash(element.textContent) === text &&
+      of === elements &&
+      attributesOf(element) === attrs
       ? (element as HTMLElement)
       : undefined;
   };
@@ -272,12 +316,11 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
         : [];
     return elements.every(Boolean) ? (elements as HTMLElement[]) : [];
   };
-  // A size set in pixels, taken away (null) or left as it is (undefined); a
-  // height only a shape's. Whether it is one of those.
+  // A size set in pixels, or left as it is (undefined); a height only a
+  // shape's. Whether it is one of those.
   const sized = (element: HTMLElement, name: string, value: unknown) => {
     const n = length(value, 1);
-    if (value === null) element.style.removeProperty(name);
-    else if (n && (name === "width" || element.matches("[data-shape]")))
+    if (n && (name === "width" || element.matches("[data-shape]")))
       element.style.setProperty(name, `${n}px`);
     else return value === undefined;
     return true;
@@ -324,22 +367,13 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
   }
   if ("add" in edit) {
     const { kind, place, width, height } = edit.add ?? {};
-    const shape = typeof kind === "string" && Object.hasOwn(CORNERS, kind);
-    if (!(shape || kind === "text" || kind === "table")) return null;
-    const holder = page.createElement("template");
-    holder.innerHTML =
-      kind === "text"
-        ? "<p>Text</p>"
-        : kind === "table"
-          ? FRESH.table
-          : `<div data-shape="${kind}"></div>`;
-    const made = holder.content.firstElementChild as HTMLElement;
-    if (shape) {
-      made.style.background = "var(--accent, currentcolor)";
-      made.style.borderRadius = CORNERS[kind];
-    }
-    if (!placed(made, place, width, shape ? (height ?? NaN) : undefined))
+    if (typeof kind !== "string" || !Object.hasOwn(SLIDE_MADE, kind))
       return null;
+    const holder = page.createElement("template");
+    holder.innerHTML = SLIDE_MADE[kind].html;
+    const made = holder.content.firstElementChild as HTMLElement;
+    const tall = SLIDE_MADE[kind].height ? (height ?? NaN) : undefined;
+    if (!placed(made, place, width, tall)) return null;
     if (notes?.parentElement === content) notes.before(made);
     else content.append(made);
     return written(page, source);

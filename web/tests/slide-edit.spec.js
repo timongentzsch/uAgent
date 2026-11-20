@@ -12,12 +12,65 @@ test.beforeEach(async ({ page }) => {
   await page.goto(`${DEV_SERVER_URL}/slide-edit-test`);
 });
 
+// An element as a page showing `source` names it: its path, tag and text,
+// how many elements the slide's content holds, and its own attributes.
+// Those a change names without the count are filled in so.
+const SHOWN = (source, change) => {
+  // Read as the file's text is: without a byte order mark.
+  const page = new DOMParser().parseFromString(
+    source.replace(/^\uFEFF/, ""),
+    "text/html",
+  );
+  const [wrap, more] = [...page.body.children].filter(
+    (part) => !part.matches("aside, script, style"),
+  );
+  const root =
+    wrap &&
+    !more &&
+    !wrap.matches(
+      "h1, h2, h3, h4, h5, h6, p, li, td, th, dt, dd, figcaption, blockquote, pre",
+    )
+      ? wrap
+      : page.body;
+  const fill = (value) => {
+    if (Array.isArray(value)) return value.forEach(fill);
+    if (!value || typeof value !== "object") return;
+    if (typeof value.path !== "string" || "of" in value)
+      return Object.values(value).forEach(fill);
+    let element;
+    try {
+      element = page.body.querySelector(
+        value.path.startsWith("#") ? value.path : `:scope > ${value.path}`,
+      );
+    } catch {}
+    value.of = root.querySelectorAll("*").length;
+    value.attrs = [...(element?.attributes ?? [])]
+      .filter(
+        ({ name }) => !/^(style|contenteditable|data-uagent-.*)$/.test(name),
+      )
+      .map(({ name, value }) => `${name}=${value}`)
+      .sort()
+      .join("\n");
+  };
+  fill(change);
+  return change;
+};
 // The file's text after the change, or null where it is refused.
 const edited = (page, source, change) =>
   page.evaluate(
-    async ([module, source, change]) =>
-      (await import(module)).slideEdit(source, change),
-    ["/src/features/files/doc-edit.ts", source, change],
+    async ([module, shown, source, change]) =>
+      (await import(module)).slideEdit(
+        source,
+        new Function(`return ${shown}`)()(source, change),
+      ),
+    ["/src/features/files/doc-edit.ts", String(SHOWN), source, change],
+  );
+// An element as the page showed it in `source`, to be changed in another.
+const shown = (page, source, path) =>
+  page.evaluate(
+    ([shown, source, path]) =>
+      new Function(`return ${shown}`)()(source, { path, tag: "", text: "" }),
+    [String(SHOWN), source, path],
   );
 const slide = (body, artboard = "1920x1080 slide") =>
   `<!doctype html>\n<html><head><meta name="artboard" content="${artboard}"><title>T</title></head><body>${body}<aside>Say it.</aside></body></html>\n`;
@@ -41,9 +94,10 @@ test("a move is the element's translate, taken away at none; a size is its width
   expect(await edited(page, moved, set(title, [0, 0]))).toBe(SLIDE);
   const wide = await edited(page, SLIDE, set(list, [0, 0], { width: 300 }));
   expect(wide).toBe(SLIDE.replace("<ul>", '<ul style="width: 300px;">'));
-  expect(
-    await edited(page, wide, set(list, [0, 0], { width: null, height: null })),
-  ).toBe(SLIDE);
+  // A size is taken back by an undo, not by a change.
+  expect(await edited(page, wide, set(list, [0, 0], { width: null }))).toBe(
+    null,
+  );
   // Text follows its width: only a shape takes a height.
   expect(await edited(page, SLIDE, set(list, [0, 0], { height: 90 }))).toBe(
     null,
@@ -183,6 +237,53 @@ test("what was put in by hand is laid over or under the rest put in beside it; n
   expect(await edited(page, source, { front: [title] })).toBe(null);
 });
 
+test("an element is told from others of its tag and text by its own attributes and by how many elements the slide holds", async ({
+  page,
+}) => {
+  const at = async (source, path, tag) => ({
+    ...(await shown(page, source, path)),
+    tag,
+    text: "",
+  });
+  const two = slide(
+    '<main><h1>P</h1><img src="a.png"><img src="b.png"></main>',
+  );
+  const b = await at(two, "main > img:nth-of-type(2)", "img");
+  expect(await edited(page, two, set(b, [5, 0]))).toContain(
+    '<img src="b.png" style="translate: 5px;">',
+  );
+  // Another picture put before both, or the two the other way round.
+  expect(
+    await edited(
+      page,
+      two.replace('<img src="a.png">', '<img src="c.png"><img src="a.png">'),
+      set(b, [5, 0]),
+    ),
+  ).toBe(null);
+  expect(
+    await edited(
+      page,
+      two.replace(
+        '<img src="a.png"><img src="b.png">',
+        '<img src="b.png"><img src="a.png">',
+      ),
+      set(b, [5, 0]),
+    ),
+  ).toBe(null);
+  // Shapes alike in all but their place: one put in before them refuses.
+  const shapes = slide(
+    '<main><h1>P</h1><div data-shape="rect"></div><div data-shape="rect"></div></main>',
+  );
+  const second = await at(shapes, "main > div:nth-of-type(2)", "div");
+  expect(
+    await edited(
+      page,
+      shapes.replace("<h1>P</h1>", '<h1>P</h1><div data-shape="round"></div>'),
+      set(second, [5, 0]),
+    ),
+  ).toBe(null);
+});
+
 test("the file keeps its byte order mark and its line ends", async ({
   page,
 }) => {
@@ -211,8 +312,37 @@ test("what the page says is taken only as paths, checks, bounded numbers and kin
     expect(await refused(set(title, move))).toBe(null);
   for (const width of [-5, 0, "300px", Number.NaN, 1e9])
     expect(await refused(set(list, [0, 0], { width }))).toBe(null);
-  for (const path of [7, { toString: "main > h1" }, "main >", "", null])
+  for (const path of [
+    7,
+    { toString: "main > h1" },
+    "main >",
+    "",
+    null,
+    "*",
+    "main > *",
+    "main h1",
+    "h1, main > h1",
+    "main > h1:has(b)",
+    "main > h1:not(p)",
+    `${"main > ".repeat(200)}h1`,
+  ])
     expect(await refused(set({ ...title, path }, [1, 1]))).toBe(null);
+  // A plain step names the one element of its tag there, or none.
+  const twice = slide("<main><h1>A</h1><p>x</p><p>x</p></main>");
+  expect(
+    await edited(
+      page,
+      twice,
+      set({ path: "main > p", tag: "p", text: "x" }, [1, 1]),
+    ),
+  ).toBe(null);
+  expect(
+    await edited(
+      page,
+      twice,
+      set({ path: "main > p:nth-of-type(2)", tag: "p", text: "x" }, [1, 1]),
+    ),
+  ).toContain('<p>x</p><p style="translate: 1px 1px;">x</p>');
   expect(
     await refused({
       set: Array.from({ length: 1001 }, () => ({ at: title, move: [1, 1] })),

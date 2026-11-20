@@ -30,6 +30,12 @@ const CORNERS = [
   [-1, 1],
   [1, 1],
 ];
+const ARROWS = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+};
 // How far a copy lies from what it copies, and the smallest an item gets.
 export const APART = 20;
 const LEAST = 20;
@@ -68,12 +74,10 @@ export function itemLayer(type) {
   let picked = [];
   // Whether a person is changing an item: holding or nudging it.
   let changing = false;
-  // The items the keys moved, their places not yet said: said before any
-  // other change, or once the keys rest.
+  // The items the arrow keys move, their places not yet said: said once the
+  // key is up, and before anything else changes the page.
   let owed;
-  let nudged;
   const say = (change) => {
-    clearTimeout(nudged);
     if (owed) {
       changing = false;
       tell(type.said(owed));
@@ -189,16 +193,19 @@ export function itemLayer(type) {
       () => shown?.remove(),
     ];
   };
-  // A tool the app armed: the next press is its own.
+  // A tool the app armed, with what it makes: the next press is its own.
   let armed = "";
-  const arm = (tool) => {
+  let made;
+  const arm = (tool, making) => {
     armed = tool;
+    made = making;
     document.documentElement.style.cursor = tool ? "crosshair" : "";
   };
   listen(
     "pointerdown",
     (event) => {
-      if (event.button || !armed || !type.insert(armed, event)) return;
+      say();
+      if (event.button || !armed || !type.insert(armed, event, made)) return;
       arm("");
       event.stopImmediatePropagation();
       event.preventDefault();
@@ -410,16 +417,11 @@ export function itemLayer(type) {
     (event) => {
       if (event.target.isContentEditable) return;
       const held = event.metaKey || event.ctrlKey;
-      const by = {
-        ArrowLeft: [-1, 0],
-        ArrowRight: [1, 0],
-        ArrowUp: [0, -1],
-        ArrowDown: [0, 1],
-      }[event.key];
+      const by = ARROWS[event.key];
       const key = held ? event.key.toLowerCase() : event.key;
+      if (!by || owed !== picked) say();
       if (by && picked.length) {
         const step = event.shiftKey ? APART / 2 : 1;
-        if (owed !== picked) say();
         changing = true;
         moveTo(
           picked,
@@ -428,9 +430,7 @@ export function itemLayer(type) {
             return [x + by[0] * step, y + by[1] * step];
           }),
         );
-        clearTimeout(nudged);
         owed = picked;
-        nudged = setTimeout(say, 400);
       } else if (key === "Delete" || key === "Backspace") acts.delete();
       else if (held && key === "d") acts.duplicate();
       else if (held && key === "c") clipped = picked;
@@ -446,15 +446,18 @@ export function itemLayer(type) {
     },
     true,
   );
+  listen("keyup", (event) => ARROWS[event.key] && say());
   // What the app asks: a tool armed, or an act on what is picked.
   listen("message", (event) => {
     const { data } = event;
     if (event.source !== parent || data?.uagentDesign !== 1) return;
-    if (data.type === "arm") arm(String(data.tool));
+    say();
+    if (data.type === "arm") arm(String(data.tool), data.made);
     if (data.type !== "act" || type.act?.(data.act, data.value)) return;
     if (Object.hasOwn(acts, data.act)) acts[data.act](data.value);
   });
   return {
+    arm,
     hold,
     pick,
     picked: () => picked,

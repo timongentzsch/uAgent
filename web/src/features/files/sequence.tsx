@@ -323,7 +323,7 @@ export default function Sequence({
   const [chosen, setChosen] = useState<Chosen>();
   const arm = (next: string) => {
     setTool(next);
-    tell(frame.current, { type: "arm", tool: next });
+    tell(frame.current, { type: "arm", tool: next, made: hand?.made?.[next] });
   };
   const [comment, setComment] = useState("");
   const [tweaking, setTweaking] = useState(false);

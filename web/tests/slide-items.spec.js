@@ -30,8 +30,10 @@ async function openSlide(app, session, host, plan = PLAN, options = {}) {
   const files = await openFiles(app, session, path, options);
   const { stage } = viewerOf(files);
   await expect(stage.locator("h1")).toBeVisible();
-  await files.getByRole("button", { name: "Edit" }).click();
-  await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+  if (options.edit !== false) {
+    await files.getByRole("button", { name: "Edit" }).click();
+    await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+  }
   const frame = files.locator(".page-stage iframe:not([inert])");
   return {
     files,
@@ -66,7 +68,7 @@ const armed = (stage, cursor = "crosshair") =>
     .poll(() => stage.locator("html").evaluate((root) => root.style.cursor))
     .toBe(cursor);
 
-test("a press picks the outermost element, a drag moves it by its translate alone, a corner sizes it, Put back undoes both; ⌘Z and ⇧⌘Z", async ({
+test("a press picks the outermost element, a drag moves it by its translate alone, a corner sizes it, Put back undoes the move alone; ⌘Z and ⇧⌘Z", async ({
   page: app,
   session,
   host,
@@ -110,8 +112,14 @@ test("a press picks the outermost element, a drag moves it by its translate alon
   const corner = await middle(stage.locator(".uagent-handle").nth(3));
   await drag(app, corner, [corner[0] - 200, corner[1] + 50]);
   await expect.poll(saved).toMatch(/<ul style="width: \d+px;">/);
+  // A size is undone with ⌘Z; Put back takes back a move, and leaves the
+  // size, also one the author wrote.
+  await expect(bar.getByRole("button", { name: "Put back" })).toHaveCount(0);
+  const list = await middle(stage.getByText("Alpha"));
+  await drag(app, list, [list[0] + 30, list[1]]);
+  await expect.poll(saved).toMatch(/<ul style="width: \d+px; translate: /);
   await bar.getByRole("button", { name: "Put back" }).click();
-  await expect.poll(saved).toMatch(/<ul><li>/);
+  await expect.poll(saved).toMatch(/<ul style="width: \d+px;"><li>/);
   await expect(bar.getByRole("button", { name: "Put back" })).toHaveCount(0);
 });
 
@@ -323,6 +331,136 @@ test("someone else's change keeps what is picked and lets the armed tool go; a m
     .poll(saved)
     .toBe(again.replace("<ul>", '<ul style="translate: 1px;">'));
   await expect(stage.locator("ul")).toHaveCSS("translate", "1px");
+});
+
+test("a run of arrow presses is written once the key is up, to the elements it moved, before a copy that follows; Escape and a step lose none", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const shape = (left) =>
+    `<div data-shape="rect" style="position: absolute; left: ${left}px; top: 700px; width: 100px; height: 100px;"></div>`;
+  const plan = PLAN.replace(
+    "</ul>",
+    `</ul>${shape(200)}${shape(400)}${shape(600)}`,
+  );
+  const { stage, saved } = await openSlide(app, session, host, plan);
+  const shapes = stage.locator("[data-shape]");
+  await shapes.nth(0).click();
+  await shapes.nth(1).click({ modifiers: ["Shift"] });
+  await app.keyboard.press("ArrowRight");
+  await app.keyboard.press("ControlOrMeta+d");
+  await expect
+    .poll(saved)
+    .toMatch(/(<div data-shape="rect"[^>]*><\/div>){5}<\/main>/);
+  const written = (await saved()).match(/<div data-shape="rect"[^>]*>/g);
+  expect(written[0]).toContain("translate: 1px;");
+  expect(written[2]).toContain("translate: 1px;");
+  // The third was not moved; the copies are placed where they stand.
+  expect(written[4]).toBe(
+    '<div data-shape="rect" style="position: absolute; left: 600px; top: 700px; width: 100px; height: 100px;">',
+  );
+  // A nudge, Escape and a step to the next slide: the nudge is in this
+  // slide's file, and the next slide's is as it was.
+  await stage.locator("h1").click();
+  await app.keyboard.press("ArrowDown");
+  await app.keyboard.press("Escape");
+  await app.keyboard.press("ArrowRight");
+  await expect(stage.locator("h1")).toHaveText("Next");
+  await expect.poll(saved).toMatch(/<h1 style="translate: 0px 1px;">Plan/);
+  expect(await readFile(join(host.project, "deck/02-next.html"), "utf8")).toBe(
+    NEXT,
+  );
+});
+
+test("Edit turned off while the slide's code loads stays off", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  await app.route("**/~sheet/slide.js", async (route) => {
+    await held;
+    await route.continue();
+  });
+  const { files, stage } = await openSlide(app, session, host, PLAN, {
+    edit: false,
+  });
+  const edit = files.getByRole("button", { name: "Edit" });
+  const loading = app.waitForRequest("**/~sheet/slide.js");
+  await edit.click();
+  await loading;
+  await edit.click();
+  await expect(edit).toHaveAttribute("aria-pressed", "false");
+  release();
+  // Once the page has loaded it too, and gone on from where it waited.
+  await stage
+    .locator("body")
+    .evaluate(() =>
+      import(
+        `${location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1")}~sheet/slide.js`
+      ).then(() => {}),
+    );
+  await stage.locator("h1").click();
+  await expect(stage.locator("[data-uagent-picked]")).toHaveCount(0);
+  await expect(stage.locator(".uagent-handle")).toHaveCount(0);
+});
+
+test("typing done after a change waiting to be written follows it into the file, and typing before it goes first", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const plan = PLAN.replace("<ul>", "<p>Gone</p><ul>");
+  const { stage, saved } = await openSlide(app, session, host, plan);
+  // The file's writes wait until let go.
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  await app.route(`**/api/sessions/${session.id}/files`, async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  // A move, written first and held; then a paragraph deleted, which waits
+  // behind it; then typing in a block after it.
+  await stage.locator("h1").click();
+  await app.keyboard.press("ArrowRight");
+  await stage.getByText("Gone").click();
+  await app.keyboard.press("Delete");
+  await expect(stage.getByText("Gone")).toHaveCount(0);
+  const beta = stage.getByText("Beta");
+  await beta.click();
+  await beta.click();
+  await expect(beta).toHaveAttribute("contenteditable", "plaintext-only");
+  await app.keyboard.press("End");
+  await app.keyboard.insertText(" too");
+  release();
+  await expect.poll(saved).toContain("<li>Beta too</li>");
+  const file = await saved();
+  expect(file).not.toContain("Gone");
+  expect(file).toContain('<h1 style="translate: 1px;">Plan');
+});
+
+test("a text made while a block is typed in leaves that block as it was, not editable", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, tools, saved } = await openSlide(app, session, host);
+  const first = stage.getByText("First step.");
+  await first.click();
+  await first.click();
+  await expect(first).toHaveAttribute("contenteditable", "plaintext-only");
+  await tools.getByRole("button", { name: "Text" }).click();
+  await armed(stage);
+  await first.click();
+  await expect.poll(saved).toContain(">Text</p></main>");
+  await expect(first).not.toHaveAttribute("contenteditable");
+  await expect(stage.locator("[contenteditable]")).toHaveCount(1);
 });
 
 test.describe("on a phone", () => {

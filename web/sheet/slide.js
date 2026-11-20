@@ -11,15 +11,6 @@ import { APART, itemLayer, rectOf } from "./items.js";
 // What a press picks: the outermost of these that holds it.
 const ITEMS =
   "h1, h2, h3, h4, h5, h6, p, ul, ol, dl, table, blockquote, pre, figure, img, svg, [data-shape]";
-// What each tool makes, at what size; a shape is filled with the accent.
-const MADE = {
-  text: { tag: "p", size: [480, 0] },
-  table: { tag: "table", size: [640, 0] },
-  rect: { tag: "div", size: [240, 160], radius: "" },
-  round: { tag: "div", size: [240, 160], radius: "24px" },
-  ellipse: { tag: "div", size: [240, 160], radius: "50%" },
-};
-const TABLE = `<thead><tr>${"<th>Column</th>".repeat(2)}</tr></thead><tbody>${`<tr>${"<td>Cell</td>".repeat(2)}</tr>`.repeat(2)}</tbody>`;
 
 const squash = (text) => text.replace(/\s+/g, "");
 const px = (value) => Math.round(Number.parseFloat(value));
@@ -68,14 +59,15 @@ export const editing = () => !!hand;
 export const busy = () => !!hand?.busy();
 // A press, or the app, types in a block: until a press elsewhere.
 export function type(block, press, over) {
+  if (typing !== block) stop();
   typing = block;
   typeIn(block, press, over);
 }
-const stop = () => {
+function stop() {
   typing?.blur();
   typing?.removeAttribute("contenteditable");
   typing = undefined;
-};
+}
 
 // On: the slide's elements picked by a press; off, as written. The helper
 // gives what it says with, the path of an element, the notes, the text
@@ -130,6 +122,15 @@ export function edit(on, helper) {
     path: selector(item),
     tag: item.localName,
     text: squash(item.textContent),
+    of: root().querySelectorAll("*").length,
+    // Its own, without what the page or a person's change sets on it.
+    attrs: [...item.attributes]
+      .filter(
+        ({ name }) => !/^(style|contenteditable|data-uagent-.*)$/.test(name),
+      )
+      .map(({ name, value }) => `${name}=${value}`)
+      .sort()
+      .join("\n"),
   });
   const say = (change) => {
     remember();
@@ -153,25 +154,21 @@ export function edit(on, helper) {
     Object.assign(made.style, { left: `${left}px`, top: `${top}px` });
     return { place: [left, top], width, ...shape };
   };
-  // What a tool makes, where the slide was pressed, picked.
-  const insert = (tool, event) => {
-    const kind = MADE[tool];
-    if (!kind) return false;
-    const made = document.createElement(kind.tag);
-    if (tool === "text") made.textContent = "Text";
-    if (tool === "table") made.innerHTML = TABLE;
-    if (kind.radius !== undefined) {
-      made.dataset.shape = tool;
-      made.style.background = "var(--accent, currentcolor)";
-      made.style.borderRadius = kind.radius;
-    }
+  // What the armed tool makes (the app's), where the slide was pressed,
+  // picked; a text is typed over at once.
+  const insert = (tool, event, made) => {
+    if (!made) return false;
+    const holder = document.createElement("template");
+    holder.innerHTML = made.html;
+    const element = holder.content.firstElementChild;
     const aside = notes();
-    if (aside?.parentElement === root()) aside.before(made);
-    else root().append(made);
+    if (aside?.parentElement === root()) aside.before(element);
+    else root().append(element);
     const [x, y] = [event.clientX + scrollX, event.clientY + scrollY];
-    say({ add: { kind: tool, ...place(made, x, y, kind.size) } });
-    layer.pick([made]);
-    if (tool === "text") type(made, undefined, true);
+    const size = [made.width, made.height ?? 0];
+    say({ add: { kind: tool, ...place(element, x, y, size) } });
+    layer.pick([element]);
+    if (tool === "text") type(element, undefined, true);
     return true;
   };
   const layer = itemLayer({
@@ -260,13 +257,10 @@ export function edit(on, helper) {
       // Its container, picked; or its own place and size again.
       if (act === "container" && inside(one.parentElement))
         layer.pick([one.parentElement]);
-      else if (act === "reset" && !placed(one)) {
-        for (const name of ["translate", "width", "height"])
-          one.style.removeProperty(name);
-        if (!one.style.length) one.removeAttribute("style");
-        say({
-          set: [{ at: address(one), move: [0, 0], width: null, height: null }],
-        });
+      else if (act === "reset" && one.style.translate) {
+        const at = address(one);
+        translate(one, [0, 0]);
+        say({ set: [{ at, move: [0, 0] }] });
         layer.hold();
       } else return false;
       return true;
@@ -279,9 +273,7 @@ export function edit(on, helper) {
           text: item.textContent.trim().slice(0, 60),
           shape: item.dataset.shape,
           container: inside(item.parentElement),
-          moved:
-            !placed(item) &&
-            ["translate", "width", "height"].some((name) => item.style[name]),
+          moved: !!item.style.translate,
           placed: placed(item),
         })),
         rect: rectOf(picked),

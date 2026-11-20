@@ -618,7 +618,7 @@ function edits(layer, signal) {
         return true;
       }
       const from = itemOf(event.target);
-      if (from) connect(from, event);
+      if (from) connect(from, event, tool);
       return !!from;
     },
     act: (act, value) => {
@@ -660,8 +660,8 @@ function edits(layer, signal) {
   };
 
   // An arrow from the item to the one the drag ends on, a line from where
-  // it started until then.
-  const connect = (from, event) => {
+  // it started until then; the arrow tool that drew none stays armed.
+  const connect = (from, event, tool) => {
     const drawing = document.createElementNS(SVG, "svg");
     drawing.setAttribute("class", "uagent-drawing");
     drawing.dataset.uagent = "";
@@ -670,9 +670,10 @@ function edits(layer, signal) {
     document.body.append(drawing);
     const [x, y] = [event.clientX, event.clientY];
     const off = new AbortController();
-    const end = () => {
+    const end = (made) => {
       off.abort();
       drawing.remove();
+      if (tool && !made) hand.arm(tool);
     };
     // Only the pointer that started it draws it.
     const pointer = event.pointerId;
@@ -684,15 +685,15 @@ function edits(layer, signal) {
         path.setAttribute("d", `M${x} ${y}L${next.clientX} ${next.clientY}`),
       { signal: off.signal },
     );
-    addEventListener("pointercancel", (up) => own(up) && end(), {
+    addEventListener("pointercancel", (up) => own(up) && end(false), {
       signal: off.signal,
     });
     addEventListener(
       "pointerup",
       (up) => {
         if (!own(up)) return;
-        end();
         const to = itemOf(document.elementFromPoint(up.clientX, up.clientY));
+        end(to && to !== from);
         if (!to || to === from) return;
         const line = document.createElement("hr");
         line.dataset.from = from.id;

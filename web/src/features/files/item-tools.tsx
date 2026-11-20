@@ -21,7 +21,7 @@ import type { PageMessage, Rect } from "../../shared/page-frame.tsx";
 import { IconButton } from "../../shared/ui.tsx";
 import { maxItemEntries } from "../../shared/limits.ts";
 import { boardEdit, FILLS, SHAPES, TEXTS } from "./board-edit.ts";
-import { slideEdit } from "./doc-edit.ts";
+import { SLIDE_MADE, slideEdit } from "./doc-edit.ts";
 
 // The tools over a stage whose items are changed by hand (web/sheet/items.js):
 // what the next press puts on it, and what can be done to what is picked
@@ -33,6 +33,8 @@ export type Chosen = Extract<PageMessage, { type: "items" }>;
 type Item = Chosen["items"][number];
 export interface Items {
   tools: Tool[];
+  // What a tool puts in, which the page is armed with.
+  made?: typeof SLIDE_MADE;
   // The change the page asks, made in its file's text; null where the file
   // does not take it.
   edit(source: string, change: never): string | null;
@@ -47,11 +49,10 @@ const SIZES: Record<string, string> = {
   p: "Body",
   small: "Small",
 };
-const SLIDE_SHAPES: [string, string][] = [
-  ["rect", "Rectangle"],
-  ["round", "Rounded"],
-  ["ellipse", "Ellipse"],
-];
+const SLIDE_SHAPES = Object.entries(SLIDE_MADE).flatMap(
+  ([kind, { label, height }]): [string, string][] =>
+    height ? [[kind, label]] : [],
+);
 
 // A menu of the values `name` takes, the one it has checked.
 const choice = (
@@ -140,10 +141,11 @@ export const BOARD: Items = {
 export const SLIDE: Items = {
   tools: [
     { name: "", label: "Select", icon: <MousePointer2 /> },
-    { name: "text", label: "Text", icon: <Type /> },
+    { name: "text", label: SLIDE_MADE.text.label, icon: <Type /> },
     { name: "shape", label: "Shape", icon: <Square />, kinds: SLIDE_SHAPES },
-    { name: "table", label: "Table", icon: <Table /> },
+    { name: "table", label: SLIDE_MADE.table.label, icon: <Table /> },
   ],
+  made: SLIDE_MADE,
   edit: slideEdit,
   // Its container picked; its own place and size again; and of what was
   // put in by hand, the order.

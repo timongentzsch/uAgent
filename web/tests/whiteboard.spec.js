@@ -601,12 +601,18 @@ test("an arrow drawn from a dot on the picked item's side to another is in the f
   await expect(bar.getByRole("button")).toHaveCount(1);
   await bar.getByRole("button", { name: "Delete" }).click();
   await expect.poll(saved).toBe(BOARD);
-  // With the arrow tool, from any item to another.
-  await files
-    .getByRole("group", { name: "Insert" })
-    .getByRole("button", { name: "Arrow" })
-    .click();
+  // With the arrow tool, from any item to another; one let go on the empty
+  // board makes none and keeps the tool, in the page and the app alike.
+  const tools = files.getByRole("group", { name: "Insert" });
+  await tools.getByRole("button", { name: "Arrow" }).click();
   await armed(stage);
+  await drag(app, await at(100, 200), await at(1000, 700));
+  await armed(stage);
+  await expect(tools.getByRole("button", { name: "Arrow" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(await saved()).toBe(BOARD);
   await drag(app, await at(100, 200), await at(860, 160));
   await expect.poll(saved).toBe(`${BOARD}<hr data-from="ad" data-to="n1">\n`);
 });

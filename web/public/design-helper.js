@@ -850,12 +850,15 @@
     for (const block of blocks())
       if (!before.has(block)) before.set(block, block.textContent);
   };
-  // A slide's elements while Edit is on, changed by hand from its own code.
+  // A slide's elements while Edit is on, changed by hand from its own code;
+  // and whether Edit was last asked on, which holds once that code is in.
   let slide;
+  let editOn = false;
   // Edit on or off; with `at`, the caret goes to the end of that block, or
   // `over` its words, to type over them. A document's blocks all take
   // typing; a slide's the one a press picks.
   const edit = async (on, at, over) => {
+    editOn = on;
     const items = artboard().slide;
     for (const block of blocks())
       if (!on) block.removeAttribute("contenteditable");
@@ -871,7 +874,7 @@
     told = "";
     if (items && (on || slide)) {
       slide ??= await import(`${base}~sheet/slide.js`);
-      slide.edit(on, {
+      slide.edit(editOn, {
         send,
         selector,
         notes,
@@ -881,7 +884,7 @@
         remember,
       });
     }
-    const block = on && blocks()[at];
+    const block = editOn && blocks()[at];
     if (block) (slide?.type ?? typeIn)(block, undefined, over);
   };
 

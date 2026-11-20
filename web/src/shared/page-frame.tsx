@@ -238,7 +238,11 @@ export const tell = (
     | { type: "input"; value: string }
     | { type: "suggest"; text: string }
     | { type: "do"; command: string; value?: string; tab?: number }
-    | { type: "arm"; tool: string }
+    | {
+        type: "arm";
+        tool: string;
+        made?: { html: string; width: number; height?: number };
+      }
     | { type: "act"; act: string; value?: string }
     | { type: "update"; html: string },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");

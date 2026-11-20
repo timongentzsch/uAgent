@@ -248,8 +248,18 @@ export default function Files({
       ),
     [],
   );
-  // What is typed in a page's blocks, on its way to the file.
-  const blocks = useMemo(() => blockSaver(files), [files]);
+  // What is typed in a page's blocks, on its way to the file: after the
+  // rewrites asked for before it (a closing page's at once).
+  const blocks = useMemo(
+    () =>
+      blockSaver({
+        write: (path, change, closing) =>
+          closing
+            ? files.write(path, change, closing)
+            : rewrites.current.then(() => files.write(path, change)),
+      }),
+    [files],
+  );
   // What is typed and not yet in its file is written: a page's block, a
   // sheet's cell. Whether all of it is.
   const typed = (closing = false) =>
@@ -666,10 +676,12 @@ export default function Files({
   // written; the folder is read again for what its head now says. Whether
   // the file was written.
   const byHand = (write: () => Promise<boolean>) => {
+    // What was typed before it goes first; what is typed after waits for it.
+    const before = typed();
     const made = rewrites.current.then(async () => {
       let written = false;
       await arranging.run(async () => {
-        await typed();
+        await before;
         written = await write();
         listing.setValue({ ...(await list(dir)), dir });
       });

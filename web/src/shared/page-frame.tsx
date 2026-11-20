@@ -266,14 +266,24 @@ const SHEET_LOOK = {
   "ink-good": "added",
   "ink-warn": "warning",
 };
-function tellLook(frame: HTMLIFrameElement | null) {
+// What every page takes: the colours of what is marked inside it.
+const PAGE_LOOK = { pick: "page-pick", changed: "page-changed" };
+function tellLook(frame: HTMLIFrameElement | null, sheet: boolean) {
   if (!frame) return;
   const style = getComputedStyle(frame);
-  const token = (name: string) => style.getPropertyValue(`--${name}`).trim();
   const set = (name: string, value: string) =>
-    tell(frame, { type: "tweak", name: `--sheet-${name}`, value });
-  for (const [name, from] of Object.entries(SHEET_LOOK)) set(name, token(from));
-  set("font", `${style.fontSize}/${style.lineHeight} ${style.fontFamily}`);
+    tell(frame, { type: "tweak", name: `--${name}`, value });
+  const all = (prefix: string, look: Record<string, string>) => {
+    for (const [name, from] of Object.entries(look))
+      set(`${prefix}-${name}`, style.getPropertyValue(`--${from}`).trim());
+  };
+  all("uagent", PAGE_LOOK);
+  if (!sheet) return;
+  all("sheet", SHEET_LOOK);
+  set(
+    "sheet-font",
+    `${style.fontSize}/${style.lineHeight} ${style.fontFamily}`,
+  );
 }
 
 export const pageAddress = (base: string, path: string) =>
@@ -358,7 +368,7 @@ export default function Frame({
       if (event.data?.uagentDesign !== 1) return;
       if (event.data.type === "ready") {
         setSheet(!!event.data.sheet);
-        if (event.data.sheet) tellLook(frame.current);
+        tellLook(frame.current, !!event.data.sheet);
       }
       if (event.data.type === "drawn") {
         const { drawn: was, as } = going.current;
@@ -372,7 +382,7 @@ export default function Frame({
   }, []);
   useEffect(() => {
     if (!sheet) return;
-    const restyle = new MutationObserver(() => tellLook(frame.current));
+    const restyle = new MutationObserver(() => tellLook(frame.current, true));
     restyle.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-theme", "style"],

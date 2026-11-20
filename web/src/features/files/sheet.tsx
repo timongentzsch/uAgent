@@ -538,7 +538,7 @@ export function SheetBar({
       `Sum ${number(summary.sum)} · Average ${number(summary.average)} · Count ${summary.count}`,
   ].filter(Boolean);
   return (
-    <Bar density="dense" edge="top" class="sheet-bar">
+    <Bar edge="top" class="sheet-bar">
       <div class="sheet-tabs" ref={list}>
         <Tabs
           label="Tabs"

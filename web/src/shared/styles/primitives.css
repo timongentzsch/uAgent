@@ -649,8 +649,8 @@
     background: var(--surface);
     display: flex;
     flex-direction: column;
-    gap: var(--gap);
-    padding: var(--space-4);
+    gap: var(--pad);
+    padding: var(--pad);
     min-height: 0;
     min-width: 0;
   }
@@ -745,8 +745,8 @@
     align-items: center;
     gap: var(--gap);
     flex-shrink: 0;
-    min-height: var(--touch);
-    padding: var(--space-2) var(--pad);
+    min-height: var(--bar-min);
+    padding: var(--bar-pad);
     border-bottom: var(--border);
   }
   .conversation-head > div:first-of-type {
@@ -1022,10 +1022,7 @@
     gap: var(--space-2);
     min-width: 0;
     min-height: var(--bar-min);
-    padding: var(--bar-pad-y) var(--bar-pad-x);
-  }
-  .bar[data-density="dense"] {
-    --bar-min: var(--control-l);
+    padding: var(--bar-pad);
   }
   /* Inside a pane that pads its content already. */
   .bar[data-density="flush"] {
@@ -1041,6 +1038,11 @@
   .bar-title {
     flex: 1;
     min-width: 0;
+  }
+  /* A bar that starts with its title: text stands where a row's does. */
+  .bar > .bar-title:first-child,
+  .conversation-head > div:first-child {
+    padding-left: calc(var(--inset-x) - var(--bar-pad));
   }
   /* A field shares its row with controls while both fit; the controls take
      the next row before the field is squeezed. */

@@ -37,7 +37,6 @@
     > .composer-actions {
     flex: 1 1 auto;
     max-width: 100%;
-    padding-block: 0;
   }
 }
 .composer .attachments {

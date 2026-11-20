@@ -15,6 +15,10 @@
     /* Drawn with mix-blend-mode: difference, white is the inverse of
        whatever lies under it: an outline seen on any page. */
     --page-mark: 2px solid #fff;
+    /* Drawn inside a page, whose own colours are unknown: what is picked
+       there by hand, and what someone else just changed. */
+    --page-pick: #1a56db;
+    --page-changed: #f59e0b;
     --screen-scrim: rgb(0 0 0 / 0.78);
     --screen-mark: #fff;
     --screen-mark-fill: rgb(255 255 255 / 0.25);
@@ -52,10 +56,11 @@
     --touch: calc(44rem / 14);
     /* How far the bar over what is picked stands off it. */
     --pick-gap: var(--space-2);
-    /* A bar: a row of a title and controls along an edge of its pane. */
-    --bar-min: var(--touch);
-    --bar-pad-x: var(--space-4);
-    --bar-pad-y: var(--space-2);
+    /* A bar: a row of a title and controls along an edge of its pane. A
+       control in it is as far from the bar's ends as from its sides and
+       from the next control. */
+    --bar-pad: var(--space-2);
+    --bar-min: calc(var(--control) + 2 * var(--bar-pad));
     --icon-l: calc(20rem / 14);
     --logo: calc(48rem / 14);
     /* An attachment's thumbnail height; its width is 4:3. */

@@ -72,14 +72,14 @@ svg.arrows text { font: 13px system-ui, sans-serif; fill: #444; paint-order: str
   stroke: #fafafa; stroke-width: 6px; stroke-linejoin: round; }
 svg.arrows path.hit { stroke: transparent; stroke-width: 12px; pointer-events: stroke;
   cursor: pointer; }
-svg.arrows path.picked { stroke: #1a56db; }
+svg.arrows path.picked { stroke: var(--uagent-pick); }
 .uagent-dot { position: absolute; width: calc(10 * var(--uagent-px));
   height: calc(10 * var(--uagent-px)); margin: calc(-5 * var(--uagent-px)); z-index: 3;
-  box-sizing: border-box; border: calc(2 * var(--uagent-px)) solid #1a56db; border-radius: 50%;
+  box-sizing: border-box; border: calc(2 * var(--uagent-px)) solid var(--uagent-pick); border-radius: 50%;
   background: #fff; cursor: crosshair; touch-action: none; }
 svg.uagent-drawing { position: absolute; inset: 0; z-index: 3; pointer-events: none;
   overflow: visible; }
-svg.uagent-drawing path { fill: none; stroke: #1a56db; stroke-width: 1.5px;
+svg.uagent-drawing path { fill: none; stroke: var(--uagent-pick); stroke-width: 1.5px;
   stroke-dasharray: 6 5; }
 @media (prefers-reduced-motion: no-preference) {
   [data-uagent-glide] [data-at] { transition: left .3s, top .3s, width .3s, height .3s,

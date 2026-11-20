@@ -1428,8 +1428,12 @@ const TALK = {
 };
 const talkFile = (project, name) =>
   readFile(join(project, "decks/talk", name), "utf8");
-// A slide's block typed in: a press picks it, a press again types.
+// A slide's block typed in, once its page takes presses: a press picks it,
+// a press again types.
 async function typing(block, press = (target) => target.click()) {
+  await expect(
+    block.page().getByRole("group", { name: "Insert" }),
+  ).toBeVisible();
   await press(block);
   await expect(block).toHaveAttribute("data-uagent-picked", "");
   await press(block);
@@ -1440,7 +1444,6 @@ async function typing(block, press = (target) => target.click()) {
 async function typeIn(app, files, block, press = (target) => target.click()) {
   const edit = files.getByRole("button", { name: "Edit" });
   if ((await edit.getAttribute("aria-pressed")) !== "true") await press(edit);
-  await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
   await typing(block, press);
   await app.keyboard.press("End");
   await app.clock.install();
@@ -1601,7 +1604,6 @@ test("an edit is taken only where it is on offer: not with Edit off, and no new 
   // The page says a block was edited though Edit is off.
   await forge({ index: 0, before: "Cover", html: "Forged" });
   await files.getByRole("button", { name: "Edit" }).click();
-  await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
   await typing(stage.getByText("The plan"));
   // With Edit on its text is taken, but a slide gets no new block.
   await forge({

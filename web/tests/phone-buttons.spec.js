@@ -260,7 +260,7 @@ test.describe("files", () => {
     await toolsFit(page);
   });
 
-  test("a whiteboard's tools and the bar over its picked shape", async ({
+  test("a whiteboard with Edit off and on, and the bar over its picked shape", async ({
     page,
     session,
     host,
@@ -274,14 +274,51 @@ test.describe("files", () => {
 <div id="ok" data-shape="parallelogram" data-fill="orange" data-at="400 300" data-size="160 100">Valid?</div>
 `,
     });
-    await openFiles(page, session, "boards/flow/", { phone: true });
+    const files = await openFiles(page, session, "boards/flow/", {
+      phone: true,
+    });
     const stage = page.frameLocator(".page-stage iframe:not([inert])");
     await expect(stage.locator("#ok")).toBeVisible();
+    await roomy(page);
+    await files.getByRole("button", { name: "Edit" }).click();
+    await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
     await roomy(page);
     const box = await stage.locator("#ok").boundingBox();
     await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
     await expect(page.getByRole("toolbar", { name: "Picked" })).toBeVisible();
     await roomy(page);
+    await toolsFit(page);
+  });
+
+  test("a slide's tools and the bar over its picked element", async ({
+    page,
+    session,
+    host,
+  }) => {
+    await writeFiles(host.project, {
+      "deck/01-cover.html": slide(
+        "Cover",
+        "Say hello.",
+        '<div class="card"><p style="translate: 5px 0px;">Inside.</p></div><div data-shape="rect" style="position: absolute; left: 100px; top: 300px; width: 200px; height: 100px;"></div>',
+      ),
+      "deck/02-plan.html": slide("Plan", "Three steps."),
+    });
+    const files = await openFiles(page, session, "deck/", { phone: true });
+    const stage = page.frameLocator(".page-stage iframe:not([inert])");
+    await expect(stage.locator("h1")).toBeVisible();
+    await files.getByRole("button", { name: "Edit" }).click();
+    await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+    await roomy(page);
+    // Every control the bar has: a container and Put back, a shape's order.
+    for (const element of [
+      stage.getByText("Inside."),
+      stage.locator("[data-shape]"),
+    ]) {
+      const box = await element.boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(page.getByRole("toolbar", { name: "Picked" })).toBeVisible();
+      await roomy(page);
+    }
     await toolsFit(page);
   });
 
@@ -414,6 +451,10 @@ test.describe("a conversation", () => {
     await expect(page.locator(".transcript")).toContainText(
       "SIDE-TOOL-COMPLETE",
     );
+    // The turn over: Stop is no longer there to press.
+    await expect(
+      page.getByRole("button", { name: "Send", exact: true }),
+    ).toBeVisible();
     await roomy(page);
     // A tap on the way back is not taken by the totals beside it.
     await page

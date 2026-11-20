@@ -1428,13 +1428,20 @@ const TALK = {
 };
 const talkFile = (project, name) =>
   readFile(join(project, "decks/talk", name), "utf8");
+// A slide's block typed in: a press picks it, a press again types.
+async function typing(block, press = (target) => target.click()) {
+  await press(block);
+  await expect(block).toHaveAttribute("data-uagent-picked", "");
+  await press(block);
+  await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
+}
 // Edit on, the caret at the end of a block of the stage's page, and time
 // stopped: what is typed next is written only by what the test then does.
 async function typeIn(app, files, block, press = (target) => target.click()) {
   const edit = files.getByRole("button", { name: "Edit" });
   if ((await edit.getAttribute("aria-pressed")) !== "true") await press(edit);
-  await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
-  await press(block);
+  await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+  await typing(block, press);
   await app.keyboard.press("End");
   await app.clock.install();
   await app.clock.pauseAt((await app.evaluate(() => Date.now())) + 60_000);
@@ -1552,7 +1559,12 @@ test("a block that was refused stays owed: its notice stands though another is s
   await expect(saving(files)).toHaveText(/^Not saved: this text changed/);
   // Another block, with the same blocks around it, is saved; the notice
   // still says what is not.
-  await stage.getByRole("heading", { name: "Cover" }).click();
+  // Near its start, clear of its corners: the bar over the block typed in
+  // covers its middle.
+  await typing(stage.getByRole("heading", { name: "Cover" }), (heading) =>
+    heading.click({ position: { x: 20, y: 4 } }),
+  );
+  await app.keyboard.press("End");
   await app.keyboard.insertText(" page");
   await expect(saving(files)).toHaveText("Saving…");
   await app.clock.runFor(1000);
@@ -1589,10 +1601,8 @@ test("an edit is taken only where it is on offer: not with Edit off, and no new 
   // The page says a block was edited though Edit is off.
   await forge({ index: 0, before: "Cover", html: "Forged" });
   await files.getByRole("button", { name: "Edit" }).click();
-  await expect(stage.getByText("The plan")).toHaveAttribute(
-    "contenteditable",
-    "plaintext-only",
-  );
+  await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+  await typing(stage.getByText("The plan"));
   // With Edit on its text is taken, but a slide gets no new block.
   await forge({
     index: 1,
@@ -1895,7 +1905,8 @@ test("a slide's notes are typed under its stage while Edit is on, and made where
     .toContain(
       "<aside><p>Say:</p><p>First point.</p><p>Second, changed.</p><p>Third.</p></aside>",
     );
-  await stage.getByRole("heading", { name: "End" }).click();
+  await typing(stage.getByRole("heading", { name: "End" }));
+  await app.keyboard.press("End");
   await app.keyboard.insertText("!");
   await expect.poll(end).toContain("<h1>End!</h1><aside><p>Say:");
   await files.getByRole("button", { name: "Previous slide" }).click();
@@ -3170,7 +3181,7 @@ test("a slide's block takes Edit's tools as a document's does", async ({
   const cover = () => talkFile(host.project, "01-cover.html");
   await tool("Edit").click();
   const text = stage.getByText("The plan");
-  await expect(text).toHaveAttribute("contenteditable", "plaintext-only");
+  await typing(text);
   // A slide's text does not flow on: nothing is put in after a block.
   await expect(tool("Style")).toBeVisible();
   await expect(tool("Insert")).toHaveCount(0);

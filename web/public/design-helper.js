@@ -395,10 +395,12 @@
   // A whiteboard is drawn by its own code from the same place.
   const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
   let board;
+  let boarding;
   addEventListener("DOMContentLoaded", () => {
     if (!document.querySelector('meta[name="board"]')) return;
     root.dataset.uagentBusy = "";
-    window.uagentReady = import(`${base}~sheet/whiteboard.js`)
+    boarding = import(`${base}~sheet/whiteboard.js`);
+    window.uagentReady = boarding
       .then((drawn) => {
         board = drawn;
         return drawn.ready;
@@ -827,25 +829,63 @@
     event.preventDefault();
     format({ mark });
   };
-  // Edit on or off; with `at`, the caret goes to the end of that block, or
-  // `over` its words, to type over them.
-  const edit = (on, at, over) => {
+  // Typed in: a block, the caret where `press` was in it, else at its end
+  // or `over` its words.
+  const typeIn = (block, press, over) => {
+    block.setAttribute("contenteditable", "plaintext-only");
+    block.focus();
+    const point =
+      press && document.caretPositionFromPoint?.(press.clientX, press.clientY);
+    const range = point
+      ? new Range()
+      : press && document.caretRangeFromPoint?.(press.clientX, press.clientY);
+    if (point) range.setStart(point.offsetNode, point.offset);
+    if (range && block.contains(range.startContainer))
+      return getSelection().collapse(range.startContainer, range.startOffset);
+    getSelection().selectAllChildren(block);
+    if (!over) getSelection().collapseToEnd();
+  };
+  // Each block new on the page since Edit went on, with its text as it is.
+  const remember = () => {
     for (const block of blocks())
-      if (on) {
-        block.setAttribute("contenteditable", "plaintext-only");
+      if (!before.has(block)) before.set(block, block.textContent);
+  };
+  // A slide's elements while Edit is on, changed by hand from its own code;
+  // and whether Edit was last asked on, which holds once that code is in.
+  let slide;
+  let editOn = false;
+  // Edit on or off; with `at`, the caret goes to the end of that block, or
+  // `over` its words, to type over them. A document's blocks all take
+  // typing; a slide's the one a press picks.
+  const edit = async (on, at, over) => {
+    editOn = on;
+    const items = artboard().slide;
+    for (const block of blocks())
+      if (!on) block.removeAttribute("contenteditable");
+      else {
+        if (!items) block.setAttribute("contenteditable", "plaintext-only");
         before.set(block, block.textContent);
-      } else block.removeAttribute("contenteditable");
+      }
     const toggle = on ? addEventListener : removeEventListener;
     toggle("input", changed, true);
     toggle("focusout", left, true);
     toggle("keydown", keyed, true);
     toggle.call(document, "selectionchange", caret);
     told = "";
-    const block = on && blocks()[at];
-    if (!block) return;
-    block.focus();
-    getSelection().selectAllChildren(block);
-    if (!over) getSelection().collapseToEnd();
+    if (items && (on || slide)) {
+      slide ??= await import(`${base}~sheet/slide.js`);
+      slide.edit(editOn, {
+        send,
+        selector,
+        notes,
+        blocks,
+        text: EDITABLE,
+        typeIn,
+        remember,
+      });
+    }
+    const block = editOn && blocks()[at];
+    if (block) (slide?.type ?? typeIn)(block, undefined, over);
   };
 
   const send = (type, data) =>
@@ -1131,7 +1171,7 @@
   addEventListener("touchend", (event) => {
     const from = swipe;
     swipe = null;
-    if (!from || !stepped()) return;
+    if (!from || !stepped() || slide?.editing()) return;
     const dx = event.changedTouches[0].clientX - from.clientX;
     const dy = event.changedTouches[0].clientY - from.clientY;
     if (Math.abs(dx) > innerWidth / 8 && Math.abs(dx) > 2 * Math.abs(dy))
@@ -1198,7 +1238,7 @@
   };
   const update = async (html) => {
     const next = new DOMParser().parseFromString(html, "text/html");
-    if (board?.busy()) return send("update", { result: "held" });
+    if ((board ?? slide)?.busy()) return send("update", { result: "held" });
     if (scripted(document) || scripted(next) || headOf(next) !== head)
       return send("update", { result: "load" });
     const changed = new Set();
@@ -1225,8 +1265,11 @@
     if (event.source !== parent || event.data?.uagentDesign !== 1) return;
     if (event.data.type === "update") void update(String(event.data.html));
     if (event.data.type === "select") select(!!event.data.on);
-    if (event.data.type === "edit" && stepped())
-      edit(!!event.data.on, event.data.at, event.data.over);
+    // A whiteboard is changed by hand while Edit is on.
+    if (event.data.type === "edit" && boarding)
+      void boarding.then((drawn) => drawn.edit(!!event.data.on));
+    else if (event.data.type === "edit" && stepped())
+      void edit(!!event.data.on, event.data.at, event.data.over);
     if (event.data.type === "format") format(event.data);
     if (event.data.type === "markdown") send("markdown", { text: markdown() });
     // A sheet's page finds in its grid itself.

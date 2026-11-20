@@ -104,18 +104,23 @@ export type PageMessage =
       path?: string;
       line?: number;
     }
-  // A whiteboard changed by hand, as board-edit.ts takes it; and what is
-  // picked on it: items, or an arrow, and the box round them.
-  | ({ type: "board" } & Record<string, unknown>)
+  // A whiteboard's or a slide's items changed by hand, as board-edit.ts or
+  // slideEdit takes it; and what is picked: items, or a board's arrow, and
+  // the box round them. A slide's item says whether it is in a container
+  // and whether it was moved or sized from its place, or put in, by hand.
+  | ({ type: "change" } & Record<string, unknown>)
   | {
       type: "items";
       items: {
-        id: string;
+        selector: string;
         tag: string;
         text: string;
         shape?: string;
         fill?: string;
         note?: boolean;
+        container?: boolean;
+        moved?: boolean;
+        placed?: boolean;
       }[];
       arrow?: boolean;
       rect?: Rect;
@@ -210,8 +215,9 @@ export type PageMessage =
 // block at `at`, `over` its words), a mark, a link or another kind for what
 // is being edited or a block to follow it, set a tweak, mark the words
 // found; a sheet: write into its active cell, do a command, say what a
-// formula may take after its text up to the caret; a whiteboard: arm a
-// tool, or act on what is picked; take its file's new text in place. Which
+// formula may take after its text up to the caret; items changed by hand
+// (a whiteboard's, a slide's): arm a tool, or act on what is picked; take
+// its file's new text in place. Which
 // part of it shows (a page, a tab) is its address's to say: "#3".
 export const tell = (
   frame: HTMLIFrameElement | null,
@@ -232,7 +238,12 @@ export const tell = (
     | { type: "input"; value: string }
     | { type: "suggest"; text: string }
     | { type: "do"; command: string; value?: string; tab?: number }
-    | { type: "board"; tool?: string; act?: string; value?: string }
+    | {
+        type: "arm";
+        tool: string;
+        made?: { html: string; width: number; height?: number };
+      }
+    | { type: "act"; act: string; value?: string }
     | { type: "update"; html: string },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 

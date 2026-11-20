@@ -100,8 +100,9 @@ clips the body to show one sheet (`--uagent-page`). Pages are counted from
 the columns the body's children reach, so screen pages match the
 browser's print pages.
 
-**Editing a block.** With Edit on, headings, paragraphs, list items and
-table cells are `contenteditable`. The helper sends `edit` with the block's
+**Editing a block.** With Edit on, a document's headings, paragraphs, list
+items and table cells are `contenteditable`; on a slide only the block a
+press types in is (see Slides by hand). The helper sends `edit` with the block's
 place among the blocks it lists, its HTML and the text of it and its
 neighbours. `blockSaver` (`web/src/features/files/doc-edit.ts`) waits for a
 1 s pause, another block, or a flush, then hands the edit to the pane's one
@@ -118,8 +119,8 @@ Undo in the tools) writes `before` back and ⇧⌘Z or Ctrl+Y (Redo) writes
 `after` again, through the same write, and the stage is drawn again from
 the file. A file whose revision is no longer the one the last write from
 here left (the agent wrote it) is not undone: its history is dropped and
-the pane says so. In a block being typed in, or a board item being
-retyped, the keys stay the browser's; the helper forwards them otherwise.
+the pane says so. In a block being typed in, or an item being retyped,
+the keys stay the browser's; the helper forwards them otherwise.
 A sheet keeps its engine's own undo.
 
 **A sheet change.** The grid in the page applies the change to its copy of
@@ -168,22 +169,49 @@ the design as one PDF.
 **Whiteboards.** A page with `<meta name="board">` loads `~sheet/whiteboard.js`
 from the helper, which places its items, draws shapes as stretched SVG
 paths and arrows in right-angled legs between the items' sides, round what
-stands between them. Open in the pane (on a touch screen too), it is
-changed by hand: `items.js` picks items (Shift adds, a frame drawn from the
-empty board picks what it touches; on touch that drag scrolls), moves the
-picked together, resizes one from a corner, and takes the keys (arrows,
-Delete, ⌘D, ⌘C and ⌘V, ⌘A, Escape) and a double click to retype;
-`whiteboard.js` adds what is a board's own: the item a tool puts where the
-board is next pressed, and arrows drawn from a dot on the picked item's
-side or picked by their line. The page says what is picked and its box
-(`items`), which Sequence shows as a bar over it (`PickBar`) beside the
-tools at the stage's foot (`InsertBar`, `shared/float-bars.tsx`); those
-tell the page `board {tool}` or `board {act, value}`. Each change is one
-`board` message (items set, added, copied, removed, brought to the front
-or sent to the back; an arrow added or removed); Sequence hands it to the
-pane's `rewrite`, which writes it through `fileSaver` with `boardEdit`
-(`board-edit.ts`): one write and one undo step, changing only what the
-change names in the source, new items after the last item.
+stands between them. Open in the pane it is only looked at (one finger
+pans, two zoom) until Edit is on, as for a document or a slide; then it is
+changed by hand on the item layer below (`whiteboard.js` `edit` turns the
+layer on and off); `whiteboard.js` adds what is a
+board's own: the item a tool puts where the board is next pressed, and
+arrows drawn from a dot on the picked item's side or picked by their line.
+Its changes are written with `boardEdit` (`board-edit.ts`), changing only
+what the change names in the source, new items after the last item, and copies with the arrows that run between
+two of them.
+
+**Slides by hand.** With Edit on, the helper loads `~sheet/slide.js` for a
+slide instead of making every block editable. A press picks the outermost
+heading, paragraph, list, table, quote, figure, picture or shape that holds
+it; Select container picks its parent. A move is the element's
+`translate` and a corner its `width` (a shape's `height` too), in its own
+`style`, so the rest of the slide stays in its flow; Put back takes them
+away. A tool's text, table or shape is put in last in the slide's content,
+placed `position: absolute` at the press; a copy is placed so beside its
+original. A press again on the one picked (or a double click) types in the
+block under it through the block edits above. `slideEdit` (`doc-edit.ts`)
+finds each element in the parsed source by the path the helper's
+`selector` gives, checked by its tag and its text, and builds every style
+from bounded numbers and every new element from a known kind.
+
+**The item layer.** `web/sheet/items.js` is shared by both: a press picks
+an item (Shift adds, a frame drawn from the empty page picks what it
+touches; on touch that drag scrolls), a press inside a picked item drags
+it, the picked move together, a corner resizes one (a finger-sized target
+on touch, kept at any zoom by `--uagent-scale`), the keys nudge, delete,
+duplicate, copy, paste, pick all and let go, and a press again on the one
+picked types in it. A second finger joining a drag undoes it, says nothing,
+and the two fingers zoom the stage (`zoom` messages). The type gives what its items are, an item's box, how
+its place and size are put, and the change each act makes. The page says
+what is picked and its box (`items`), which Sequence shows as a bar over
+it (`PickBar`) beside the tools at the stage's foot (`InsertBar`,
+`shared/float-bars.tsx`), both from `ItemTools` (`item-tools.tsx`) fed by
+the type's table (`BOARD`, `SLIDE`): its tools, its controls for one item,
+its edit. Those tell the page `arm {tool}` or `act {act, value}`. Each
+change is one `change` message; Sequence hands it to the pane's `rewrite`,
+which writes it through `fileSaver` with the type's edit: one write and one
+undo step. A change the file does not take is said, and the page is drawn
+again from the file. Someone else's change keeps what is still picked and
+lets an armed tool go on both sides.
 
 **Builds and transitions.** While a deck is presented the slide's address
 ends `#build=N`; the helper hides `[data-step]` elements past N from the
@@ -255,11 +283,12 @@ slide, a print line not understood, and a sheet's cells in error.
 | `web/sheet/sheet.js`, `web/sheet/calculate.js`, `web/sheet/book.js`, `web/sheet/workbook.js` | sheet page, worker, model, import |
 | `web/src/shared/page-frame.tsx` | frame and message types |
 | `web/src/features/files/doc-edit.ts`, `web/src/features/files/sheet-edit.ts`, `web/src/features/files/board-edit.ts` | saving |
-| `web/sheet/whiteboard.js`, `web/sheet/items.js` | whiteboard drawing and its edits |
+| `web/sheet/items.js`, `web/sheet/whiteboard.js`, `web/sheet/slide.js`, `web/src/features/files/item-tools.tsx` | items changed by hand: the layer, a whiteboard's and a slide's |
 | `web/src/features/files/sequence.tsx`, `web/src/features/files/plane.tsx` | viewer, canvas |
 | `src/app/present.cc` | `present` |
 | `web/tests/doc-edit.spec.js`, `web/tests/sheet-edit.spec.js`, `web/tests/sheet-files.spec.js` | edits, conflicts, import |
 | `web/tests/sheet-merge.spec.js`, `web/tests/sheet-groups.spec.js`, `web/tests/sheet-rules.spec.js`, `web/tests/sheet-format.spec.js` | sheet features |
 | `web/tests/whiteboard.spec.js`, `web/tests/board-edit.test.js`, `web/tests/data-marks.spec.js`, `web/tests/doc-checklist.spec.js` | whiteboards, data marks, checklists |
+| `web/tests/slide-items.spec.js`, `web/tests/slide-edit.spec.js` | a slide's elements by hand |
 | `web/tests/live-files.spec.js` | following a file changed by someone else |
 | `tests/integration_web/preview.py` | preview address and policy |

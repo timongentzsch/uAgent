@@ -173,7 +173,7 @@ test("a person's own change is not taken for someone else's: no update, no outli
   session,
   host,
 }) => {
-  const { stage, saved } = await open(
+  const { files, stage, saved } = await open(
     app,
     session,
     host,
@@ -182,6 +182,8 @@ test("a person's own change is not taken for someone else's: no update, no outli
   );
   const item = stage.locator("#ad");
   await expect(item).toBeVisible();
+  await files.getByRole("button", { name: "Edit" }).click();
+  await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
   await stage.locator("body").evaluate(() => {
     window.updates = 0;
     addEventListener("message", (event) => {

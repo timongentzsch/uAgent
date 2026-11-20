@@ -2,9 +2,7 @@
 // shapes and arrows drawn, and, in the app, changed by hand there, which the
 // app writes to the file. The format: skills/artifact/references/whiteboard.md.
 
-import { fresh, grid, itemLayer, items, numbers } from "./items.js";
-
-export { busy } from "./items.js";
+import { APART as COPIED, itemLayer, rectOf } from "./items.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 const FILLS = {
@@ -75,8 +73,9 @@ svg.arrows text { font: 13px system-ui, sans-serif; fill: #444; paint-order: str
 svg.arrows path.hit { stroke: transparent; stroke-width: 12px; pointer-events: stroke;
   cursor: pointer; }
 svg.arrows path.picked { stroke: #1a56db; }
-.uagent-dot { position: absolute; width: 10px; height: 10px; margin: -5px; z-index: 3;
-  box-sizing: border-box; border: 2px solid #1a56db; border-radius: 50%;
+.uagent-dot { position: absolute; width: calc(10 * var(--uagent-px));
+  height: calc(10 * var(--uagent-px)); margin: calc(-5 * var(--uagent-px)); z-index: 3;
+  box-sizing: border-box; border: calc(2 * var(--uagent-px)) solid #1a56db; border-radius: 50%;
   background: #fff; cursor: crosshair; touch-action: none; }
 svg.uagent-drawing { position: absolute; inset: 0; z-index: 3; pointer-events: none;
   overflow: visible; }
@@ -88,6 +87,26 @@ svg.uagent-drawing path { fill: none; stroke: #1a56db; stroke-width: 1.5px;
   @starting-style { [data-uagent-glide] [data-at] { opacity: 0; } }
 }
 `;
+
+const numbers = (text) =>
+  (text ?? "")
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .map(Number);
+const items = () =>
+  [...document.body.children].filter((element) =>
+    element.hasAttribute("data-at"),
+  );
+const grid = (n) => Math.round(n / 10) * 10;
+// An id no element has yet, made from `stem`.
+function fresh(stem) {
+  const kept = stem.toLowerCase().replace(/[^a-z0-9-]|\d+$/g, "");
+  // An id starts with a letter.
+  const base = /^[a-z]/.test(kept) ? kept : `item${kept}`;
+  let n = 1;
+  while (document.getElementById(`${base}${n}`)) n++;
+  return `${base}${n}`;
+}
 
 // Each item where it says, at its size, filled and shaped.
 function place(item) {
@@ -417,19 +436,17 @@ const TEXT = "h1, h2, p:not(.note), small";
 // arrow is drawn from a dot on the picked item's side (or with the arrow
 // tool from any item) to another, and the app's bar changes what is picked.
 // Each change is said to the app, which writes it and undoes it with ⌘Z.
-// Gives what keeps the picked items' handles on them.
-function edits(layer) {
+function edits(layer, signal) {
   const tell = (type, data) =>
     parent.postMessage({ uagentDesign: 1, type, ...data }, "*");
-  const say = (change) => tell("board", change);
+  const say = (change) => tell("change", change);
   const lay = (item) => {
     place(item);
     sized.observe(item);
   };
-  let armed = "";
-  const arm = (tool) => {
-    armed = tool;
-    document.documentElement.style.cursor = tool ? "crosshair" : "";
+  const itemOf = (target) => {
+    const item = target.closest?.("[data-at]");
+    return item?.id ? item : undefined;
   };
   const dots = SIDES.map(() => {
     const dot = document.createElement("span");
@@ -448,18 +465,9 @@ function edits(layer) {
       dot.style.top = `${one.offsetTop + (one.offsetHeight * (1 + ny)) / 2}px`;
       if (!dot.isConnected) document.body.append(dot);
     });
-    const rects = (chosen ? [layer.querySelector("path.picked")] : picked)
-      .filter(Boolean)
-      .map((shown) => shown.getBoundingClientRect());
-    const [left, top] = ["left", "top"].map((side) =>
-      Math.min(...rects.map((rect) => rect[side])),
-    );
-    const [right, bottom] = ["right", "bottom"].map((side) =>
-      Math.max(...rects.map((rect) => rect[side])),
-    );
     tell("items", {
       items: picked.map((item) => ({
-        id: item.id,
+        selector: `#${globalThis.CSS.escape(item.id)}`,
         tag: item.localName,
         text: item.textContent.trim().slice(0, 60),
         shape: item.dataset.shape,
@@ -467,46 +475,26 @@ function edits(layer) {
         note: item.matches(".note"),
       })),
       arrow: !!chosen,
-      rect: rects.length
-        ? { x: left, y: top, width: right - left, height: bottom - top }
-        : undefined,
+      rect: rectOf(
+        (chosen ? [layer.querySelector("path.picked")] : picked).filter(
+          Boolean,
+        ),
+      ),
     });
   };
-  const hand = itemLayer({
-    place: lay,
-    drawn: () => arrows(layer),
-    say,
-    show,
-    remove: (item) => {
-      for (const line of document.querySelectorAll("hr[data-from][data-to]"))
-        if (line.dataset.from === item.id || line.dataset.to === item.id)
-          line.remove();
-      item.remove();
-    },
-  });
-  const pickLine = (line) => {
-    chosen = line;
-    arrows(layer);
-    if (line) hand.pick([]);
+  const at = (item) => [item.offsetLeft, item.offsetTop];
+  const removeItem = (item) => {
+    for (const line of document.querySelectorAll("hr[data-from][data-to]"))
+      if (line.dataset.from === item.id || line.dataset.to === item.id)
+        line.remove();
+    item.remove();
   };
-  const unline = () => {
-    const { from, to } = chosen.dataset;
-    chosen.remove();
-    pickLine(undefined);
-    hand.pick([]);
-    say({ unarrow: { from, to } });
-  };
-
-  const insert = (event) => {
+  // A new item where the board was pressed, picked.
+  const insert = (tool, event) => {
     const add = {
-      id: fresh(MADE[armed] ? armed : "shape"),
+      id: fresh(MADE[tool] ? tool : "shape"),
       at: [grid(event.clientX), grid(event.clientY)],
-      ...(MADE[armed] ?? {
-        tag: "div",
-        shape: armed,
-        size: [160, 80],
-        text: "",
-      }),
+      ...(MADE[tool] ?? { tag: "div", shape: tool, size: [160, 80], text: "" }),
     };
     const item = document.createElement(add.tag);
     item.id = add.id;
@@ -522,13 +510,158 @@ function edits(layer) {
     else document.body.append(item);
     lay(item);
     arrows(layer);
-    arm("");
     hand.pick([item]);
     say({ add });
   };
+  const hand = itemLayer({
+    touch: "[data-at]",
+    items: () => items().filter((item) => item.id),
+    itemOf,
+    box: (item) => [...at(item), item.offsetWidth, item.offsetHeight],
+    put: (item, [x, y, w, h], resized) => {
+      item.dataset.at = `${x} ${y}`;
+      if (resized) item.dataset.size = `${w} ${h}`;
+      lay(item);
+    },
+    tall: () => true,
+    snap: grid,
+    said: (list, resized) => ({
+      set: list.map((item) => ({
+        id: item.id,
+        at: at(item),
+        ...(resized && { size: numbers(item.dataset.size) }),
+      })),
+    }),
+    copy: (list) => {
+      const made = list.map((item) => {
+        const copied = item.cloneNode(true);
+        copied.removeAttribute("data-uagent-picked");
+        copied.removeAttribute("data-uagent-changed");
+        // An id names one element: what the copy holds keeps none.
+        for (const inner of copied.querySelectorAll("[id]"))
+          inner.removeAttribute("id");
+        copied.id = fresh(item.id);
+        const [x, y] = at(item);
+        copied.dataset.at = `${x + COPIED} ${y + COPIED}`;
+        items().at(-1).after(copied);
+        lay(copied);
+        return copied;
+      });
+      // The arrows between two of them, between their copies.
+      const as = new Map(list.map((item, index) => [item.id, made[index].id]));
+      for (const line of document.querySelectorAll("hr[data-from][data-to]")) {
+        const { from, to } = line.dataset;
+        if (!as.has(from) || !as.has(to)) continue;
+        const copied = line.cloneNode();
+        copied.dataset.from = as.get(from);
+        copied.dataset.to = as.get(to);
+        [...document.querySelectorAll("hr[data-from]")].at(-1).after(copied);
+      }
+      return [
+        made,
+        {
+          copy: list.map((item, index) => ({
+            id: item.id,
+            as: made[index].id,
+            at: numbers(made[index].dataset.at),
+          })),
+        },
+      ];
+    },
+    // The picked laid over the rest, or under them.
+    order: (picked, over) => {
+      const list = items().filter((item) => picked.includes(item));
+      const rest = items().filter((item) => !picked.includes(item));
+      if (!list.length || !rest.length) return;
+      if (over) rest.at(-1).after(...list);
+      else rest[0].before(...list);
+      return { [over ? "front" : "back"]: list.map((item) => item.id) };
+    },
+    remove: (list) => {
+      for (const item of list) removeItem(item);
+      return { remove: list.map((item) => item.id) };
+    },
+    // The item's own text, or that of the one element (a section's name)
+    // that holds all of it.
+    retype: (item) => {
+      const own = [...item.children].filter(
+        (child) => !child.hasAttribute("data-uagent"),
+      );
+      const field = item.matches("img")
+        ? undefined
+        : !own.length
+          ? item
+          : own.length === 1 &&
+            !own[0].children.length &&
+            own[0].textContent.trim() === item.textContent.trim() &&
+            own[0];
+      if (!field) return;
+      const was = field.textContent;
+      field.contentEditable = "plaintext-only";
+      field.focus();
+      field.addEventListener(
+        "blur",
+        () => {
+          field.removeAttribute("contenteditable");
+          lay(item);
+          arrows(layer);
+          hand.hold();
+          if (field.textContent !== was)
+            say({ set: [{ id: item.id, text: field.textContent }] });
+        },
+        { once: true },
+      );
+    },
+    insert: (tool, event) => {
+      if (tool !== "arrow") {
+        insert(tool, event);
+        return true;
+      }
+      const from = itemOf(event.target);
+      if (from) connect(from, event, tool);
+      return !!from;
+    },
+    act: (act, value) => {
+      const [item] = hand.picked();
+      if (act === "delete" && chosen) unline();
+      else if ((act === "shape" || act === "fill") && item) {
+        item.dataset[act] = value;
+        lay(item);
+        arrows(layer);
+        hand.hold();
+        say({ set: [{ id: item.id, [act]: value }] });
+      } else if (act === "tag" && item?.matches(TEXT)) {
+        const made = document.createElement(value);
+        for (const attribute of item.attributes)
+          made.setAttribute(attribute.name, attribute.value);
+        made.append(...item.childNodes);
+        item.replaceWith(made);
+        lay(made);
+        hand.pick([made]);
+        say({ set: [{ id: made.id, tag: value }] });
+      } else return false;
+      return true;
+    },
+    drawn: () => arrows(layer),
+    show,
+    say,
+  });
+  const pickLine = (line) => {
+    chosen = line;
+    arrows(layer);
+    if (line) hand.pick([]);
+  };
+  const unline = () => {
+    const { from, to } = chosen.dataset;
+    chosen.remove();
+    pickLine(undefined);
+    hand.pick([]);
+    say({ unarrow: { from, to } });
+  };
+
   // An arrow from the item to the one the drag ends on, a line from where
-  // it started until then.
-  const connect = (from, event) => {
+  // it started until then; the arrow tool that drew none stays armed.
+  const connect = (from, event, tool) => {
     const drawing = document.createElementNS(SVG, "svg");
     drawing.setAttribute("class", "uagent-drawing");
     drawing.dataset.uagent = "";
@@ -537,9 +670,10 @@ function edits(layer) {
     document.body.append(drawing);
     const [x, y] = [event.clientX, event.clientY];
     const off = new AbortController();
-    const end = () => {
+    const end = (made) => {
       off.abort();
       drawing.remove();
+      if (tool && !made) hand.arm(tool);
     };
     // Only the pointer that started it draws it.
     const pointer = event.pointerId;
@@ -551,18 +685,16 @@ function edits(layer) {
         path.setAttribute("d", `M${x} ${y}L${next.clientX} ${next.clientY}`),
       { signal: off.signal },
     );
-    addEventListener("pointercancel", (up) => own(up) && end(), {
+    addEventListener("pointercancel", (up) => own(up) && end(false), {
       signal: off.signal,
     });
     addEventListener(
       "pointerup",
       (up) => {
         if (!own(up)) return;
-        end();
-        const to = document
-          .elementFromPoint(up.clientX, up.clientY)
-          ?.closest("[data-at]");
-        if (!to?.id || to === from) return;
+        const to = itemOf(document.elementFromPoint(up.clientX, up.clientY));
+        end(to && to !== from);
+        if (!to || to === from) return;
         const line = document.createElement("hr");
         line.dataset.from = from.id;
         line.dataset.to = to.id;
@@ -570,7 +702,6 @@ function edits(layer) {
           [...document.querySelectorAll("hr[data-from]")].at(-1) ??
           items().at(-1)
         ).after(line);
-        arm("");
         arrows(layer);
         say({ arrow: { from: from.id, to: to.id } });
       },
@@ -581,12 +712,9 @@ function edits(layer) {
     "pointerdown",
     (event) => {
       if (event.button) return;
-      const item = event.target.closest?.("[data-at]");
       const dot = dots.indexOf(event.target);
       const hit = hitOf.get(event.target);
-      if (armed && armed !== "arrow") insert(event);
-      else if (dot >= 0) connect(hand.picked()[0], event);
-      else if (armed === "arrow" && item?.id) connect(item, event);
+      if (dot >= 0) connect(hand.picked()[0], event);
       else if (hit) pickLine(hit);
       else {
         if (chosen) pickLine(undefined);
@@ -597,55 +725,27 @@ function edits(layer) {
       event.preventDefault();
       focus();
     },
-    true,
+    { capture: true, signal },
   );
   addEventListener(
     "keydown",
     (event) => {
-      if (event.target.isContentEditable) return;
-      if (event.key === "Escape") {
-        arm("");
-        if (chosen) pickLine(undefined);
-      }
-      if (chosen && (event.key === "Delete" || event.key === "Backspace")) {
+      if (event.target.isContentEditable || !chosen) return;
+      if (event.key === "Escape") pickLine(undefined);
+      if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
         unline();
       }
     },
-    true,
+    { capture: true, signal },
   );
-  // What the app asks: a tool armed, or a change to what is picked.
-  addEventListener("message", (event) => {
-    const { data } = event;
-    if (event.source !== parent || data?.uagentDesign !== 1) return;
-    if (data.type !== "board") return;
-    const [item] = hand.picked();
-    const { act, value } = data;
-    if (typeof data.tool === "string") arm(data.tool);
-    else if (act === "delete" && chosen) unline();
-    else if ((act === "shape" || act === "fill") && item) {
-      item.dataset[act] = value;
-      lay(item);
-      arrows(layer);
-      hand.hold();
-      say({ set: [{ id: item.id, [act]: value }] });
-    } else if (act === "tag" && item?.matches(TEXT)) {
-      const made = document.createElement(value);
-      for (const attribute of item.attributes)
-        made.setAttribute(attribute.name, attribute.value);
-      made.append(...item.childNodes);
-      item.replaceWith(made);
-      lay(made);
-      hand.pick([made]);
-      say({ set: [{ id: made.id, tag: value }] });
-    } else if (Object.hasOwn(hand.acts, act)) hand.acts[act](value);
-  });
-  return hand.hold;
+  return hand;
 }
 
 let layer;
 let sized;
-let follow = () => {};
+let hand;
+let off;
 function draw() {
   const style = document.createElement("style");
   style.textContent = CSS;
@@ -660,8 +760,21 @@ function draw() {
   // Fonts and pictures change the items' sizes: the arrows follow.
   sized = new ResizeObserver(() => arrows(layer));
   for (const item of items()) sized.observe(item);
-  if (parent !== window) follow = edits(layer);
   return [];
+}
+
+// Edit on: the board is changed by hand; off, it is only looked at.
+export function edit(on) {
+  if (!on) {
+    hand?.end();
+    off?.abort();
+    hand = undefined;
+    chosen = undefined;
+    return arrows(layer);
+  }
+  if (hand) return hand.hold();
+  off = new AbortController();
+  hand = edits(layer, off.signal);
 }
 
 // The file changed under the page: each item glides to where it now says,
@@ -674,13 +787,16 @@ export function redraw() {
   }
   const step = () => {
     arrows(layer);
-    follow();
+    hand?.hold();
     if (items().some((item) => item.getAnimations().length))
       requestAnimationFrame(step);
     else document.documentElement.removeAttribute("data-uagent-glide");
   };
   step();
 }
+
+// Whether a person is changing an item: holding, nudging or retyping it.
+export const busy = () => !!hand?.busy();
 
 export const ready =
   document.readyState === "loading"

@@ -1,18 +1,27 @@
-// Items laid on a page by `data-at="x y"` and `data-size="w h"`, changed by
-// hand in the app. A press picks one, with Shift adds or drops it; a drag
-// from the empty page frames the items it touches (on a touch screen it
-// scrolls); a drag moves the picked together and a corner resizes one; the
-// keys nudge, delete, duplicate, copy and paste, pick all and let go; a
-// double click retypes an item's text. Each change is said once, for the
-// app to write (board-edit.ts).
+// Items of a page changed by hand in the app: a whiteboard's (whiteboard.js)
+// or a slide's (slide.js), which say what the items are and how one is
+// placed. A press picks one, with Shift adds or drops it; a drag from the
+// empty page frames the items it touches (on a touch screen it scrolls); a
+// drag moves the picked together and a corner resizes one; a press again on
+// the one picked types in it; the keys nudge, delete, duplicate, copy and
+// paste, pick all and let go. The app arms a tool, which the next press
+// puts, and asks acts of what is picked. Each change is said once, for the
+// app to write.
 
+// Drawn the same size on screen at any zoom of the page (--uagent-scale).
 const CSS = `
-[data-at] { touch-action: none; }
-[data-uagent-picked] { outline: 2px solid #1a56db; outline-offset: 2px; }
-.uagent-handle { position: absolute; width: 10px; height: 10px; margin: -5px;
-  z-index: 3; background: #1a56db; }
-.uagent-frame { position: absolute; z-index: 3; border: 1px solid #1a56db;
-  background: #1a56db1a; }
+:root { --uagent-px: calc(1px / var(--uagent-scale, 1)); }
+[data-uagent-picked] { outline: calc(2 * var(--uagent-px)) solid #1a56db;
+  outline-offset: calc(2 * var(--uagent-px)); touch-action: none; }
+.uagent-handle { position: absolute; width: calc(10 * var(--uagent-px));
+  height: calc(10 * var(--uagent-px)); margin: calc(-5 * var(--uagent-px));
+  z-index: 3; background: #1a56db; touch-action: none; }
+.uagent-frame { position: absolute; z-index: 3;
+  border: var(--uagent-px) solid #1a56db; background: #1a56db1a; }
+@media (pointer: coarse) {
+  .uagent-handle::after { content: ""; position: absolute;
+    inset: calc(-17 * var(--uagent-px)); }
+}
 `;
 // The corners, as the sides of the item each one moves.
 const CORNERS = [
@@ -21,57 +30,57 @@ const CORNERS = [
   [-1, 1],
   [1, 1],
 ];
+const ARROWS = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+};
 // How far a copy lies from what it copies, and the smallest an item gets.
-const APART = 20;
+export const APART = 20;
 const LEAST = 20;
 
-export const numbers = (text) =>
-  (text ?? "")
-    .split(/[\s,]+/)
-    .filter(Boolean)
-    .map(Number);
-export const items = () =>
-  [...document.body.children].filter((element) =>
-    element.hasAttribute("data-at"),
+// The box of elements together, in the window.
+export function rectOf(list) {
+  const rects = list.map((one) => one.getBoundingClientRect());
+  if (!rects.length) return undefined;
+  const [left, top] = ["left", "top"].map((side) =>
+    Math.min(...rects.map((rect) => rect[side])),
   );
-export const grid = (n) => Math.round(n / 10) * 10;
-const at = (item) => [item.offsetLeft, item.offsetTop];
-// An id no element has yet, made from `stem`.
-export function fresh(stem) {
-  const kept = stem.toLowerCase().replace(/[^a-z0-9-]|\d+$/g, "");
-  // An id starts with a letter.
-  const base = /^[a-z]/.test(kept) ? kept : `item${kept}`;
-  let n = 1;
-  while (document.getElementById(`${base}${n}`)) n++;
-  return `${base}${n}`;
+  const [right, bottom] = ["right", "bottom"].map((side) =>
+    Math.max(...rects.map((rect) => rect[side])),
+  );
+  return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
-// Whether a person is changing an item: holding, nudging or retyping it.
-let changing = false;
-export const busy = () =>
-  changing || !!document.activeElement?.isContentEditable;
-
-// `place` lays an item as its attributes say, `drawn` follows a change (a
-// board's arrows), `say` tells the app a change, `show` what is picked, and
-// `remove` takes an item away. Gives what keeps the corners on the picked,
-// the pick, and the changes the app asks of what is picked.
-export function itemLayer({ place, drawn, say: tell, show, remove }) {
+// The type says: `items` the page has, `itemOf` the one a press on an
+// element picks, `box` an item's [x, y, w, h] in the page, `put` it there
+// (`sized`: at that size), `tall` whether a corner sets its height, `snap` a
+// length as it is kept; `said` the change that says items' places (and
+// sizes), `copy` copies them and `order` lays them over or under the rest,
+// `remove` takes them away, each giving the change; `retype` types in an
+// item at a press, `insert` puts what a tool makes where a press is (or
+// does not take the press), `act` does what only the type does, `drawn`
+// follows a change, `show` says what is picked, `say` tells the app; on
+// `touch`, a finger drags rather than scrolls.
+export function itemLayer(type) {
+  const { box, put, say: tell, snap = Math.round } = type;
+  const off = new AbortController();
+  const listen = (kind, handle, capture) =>
+    addEventListener(kind, handle, { capture, signal: off.signal });
   const style = document.createElement("style");
-  style.textContent = CSS;
+  style.textContent = `${CSS}:is(${type.touch}) { touch-action: none; }`;
   document.head.append(style);
   let picked = [];
-  // The items the keys moved, their places not yet said: said before any
-  // other change, or once the keys rest.
+  // Whether a person is changing an item: holding or nudging it.
+  let changing = false;
+  // The items the arrow keys move, their places not yet said: said once the
+  // key is up, and before anything else changes the page.
   let owed;
-  let nudged;
-  const placing = (list) => ({
-    set: list.map((item) => ({ id: item.id, at: at(item) })),
-  });
   const say = (change) => {
-    clearTimeout(nudged);
     if (owed) {
       changing = false;
-      tell(placing(owed));
+      tell(type.said(owed));
       owed = undefined;
     }
     if (change) tell(change);
@@ -88,125 +97,183 @@ export function itemLayer({ place, drawn, say: tell, show, remove }) {
     const [one, more] = picked;
     handles.forEach((handle, index) => {
       if (!one || more) return handle.remove();
+      const [x, y, w, h] = box(one);
       const [sx, sy] = CORNERS[index];
-      handle.style.left = `${one.offsetLeft + (sx > 0 ? one.offsetWidth : 0)}px`;
-      handle.style.top = `${one.offsetTop + (sy > 0 ? one.offsetHeight : 0)}px`;
-      if (!handle.isConnected) document.body.append(handle);
+      handle.style.left = `${x + (sx > 0 ? w : 0)}px`;
+      handle.style.top = `${y + (sy > 0 ? h : 0)}px`;
+      if (!handle.isConnected) document.documentElement.append(handle);
     });
-    show(picked);
+    type.show(picked);
   };
   const pick = (next) => {
     for (const item of picked) item.removeAttribute("data-uagent-picked");
-    picked = next.filter((item) => item.id);
+    picked = next;
     for (const item of picked) item.setAttribute("data-uagent-picked", "");
     hold();
   };
-  const changed = (list) => {
-    for (const item of list) place(item);
-    drawn();
+  const changed = () => {
+    type.drawn?.();
     hold();
   };
-  const placed = (list) => say(placing(list));
+  const placed = (list) => say(type.said(list));
   const moveTo = (list, places) => {
     list.forEach((item, index) => {
-      item.dataset.at = places[index].join(" ");
+      const [, , w, h] = box(item);
+      put(item, [...places[index], w, h]);
     });
-    changed(list);
+    changed();
   };
 
   // What a drag does as it goes, and once it is let go.
   const move = (list) => {
-    const starts = list.map(at);
+    const starts = list.map(box);
     const [x, y] = starts[0];
     return [
       (dx, dy) =>
         moveTo(
           list,
           starts.map(([sx, sy]) => [
-            sx + grid(x + dx) - x,
-            sy + grid(y + dy) - y,
+            sx + snap(x + dx) - x,
+            sy + snap(y + dy) - y,
           ]),
         ),
       () => placed(list),
     ];
   };
   const resize = (item, [sx, sy]) => {
-    const [x, y, w, h] = [...at(item), item.offsetWidth, item.offsetHeight];
+    const [x, y, w, h] = box(item);
+    const tall = type.tall(item);
     // A span with its start (side < 0) or its end moved by d.
     const side = (start, size, toward, d) => {
-      if (toward > 0) return [start, Math.max(LEAST, grid(size + d))];
-      const moved = Math.min(grid(start + d), start + size - LEAST);
+      if (toward > 0) return [start, Math.max(LEAST, snap(size + d))];
+      const moved = Math.min(snap(start + d), start + size - LEAST);
       return [moved, start + size - moved];
     };
     return [
       (dx, dy) => {
         const [left, width] = side(x, w, sx, dx);
-        const [top, height] = side(y, h, sy, dy);
-        item.dataset.at = `${left} ${top}`;
-        item.dataset.size = `${width} ${height}`;
-        changed([item]);
+        const [top, height] = tall ? side(y, h, sy, dy) : [y, h];
+        put(item, [left, top, width, height], true);
+        changed();
       },
-      () =>
-        say({
-          set: [
-            { id: item.id, at: at(item), size: numbers(item.dataset.size) },
-          ],
-        }),
+      () => say(type.said([item], true)),
     ];
   };
   const frame = ([x, y], adding) => {
     const was = adding ? picked : [];
-    let box;
+    let shown;
     return [
       (dx, dy) => {
         const [left, top] = [Math.min(x, x + dx), Math.min(y, y + dy)];
         const [width, height] = [Math.abs(dx), Math.abs(dy)];
-        if (!box) {
-          box = document.createElement("div");
-          box.className = "uagent-frame";
-          box.dataset.uagent = "";
-          document.body.append(box);
+        if (!shown) {
+          shown = document.createElement("div");
+          shown.className = "uagent-frame";
+          shown.dataset.uagent = "";
+          document.documentElement.append(shown);
         }
-        Object.assign(box.style, {
-          left: `${left}px`,
-          top: `${top}px`,
+        Object.assign(shown.style, {
+          left: `${left + scrollX}px`,
+          top: `${top + scrollY}px`,
           width: `${width}px`,
           height: `${height}px`,
         });
-        const touched = items().filter(
-          (item) =>
+        const touched = type.items().filter((item) => {
+          const [ix, iy, iw, ih] = box(item);
+          return (
             !was.includes(item) &&
-            item.offsetLeft < left + width &&
-            left < item.offsetLeft + item.offsetWidth &&
-            item.offsetTop < top + height &&
-            top < item.offsetTop + item.offsetHeight,
-        );
+            ix < left + scrollX + width &&
+            left + scrollX < ix + iw &&
+            iy < top + scrollY + height &&
+            top + scrollY < iy + ih
+          );
+        });
         pick([...was, ...touched]);
       },
-      () => box?.remove(),
+      () => shown?.remove(),
     ];
   };
-  // The pointer of the drag going on: another (a second finger) is not
-  // taken.
+  // A tool the app armed, with what it makes: the next press is its own.
+  let armed = "";
+  let made;
+  const arm = (tool, making) => {
+    armed = tool;
+    made = making;
+    document.documentElement.style.cursor = tool ? "crosshair" : "";
+  };
+  listen(
+    "pointerdown",
+    (event) => {
+      say();
+      if (event.button || !armed || !type.insert(armed, event, made)) return;
+      arm("");
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      focus();
+    },
+    true,
+  );
+  // Two fingers zoom the stage, as the app does for a pinch it sees.
+  const pinch = (fingers) => {
+    const done = new AbortController();
+    const spread = () => {
+      const [a, b] = [...fingers.values()];
+      return [Math.hypot(a.screenX - b.screenX, a.screenY - b.screenY), a, b];
+    };
+    let [was] = spread();
+    const follow = (next) => {
+      if (!fingers.has(next.pointerId)) return;
+      fingers.set(next.pointerId, next);
+      const [now, a, b] = spread();
+      if (was && now)
+        parent.postMessage(
+          {
+            uagentDesign: 1,
+            type: "zoom",
+            by: now / was,
+            x: (a.clientX + b.clientX) / 2,
+            y: (a.clientY + b.clientY) / 2,
+          },
+          "*",
+        );
+      was = now;
+    };
+    const signal = AbortSignal.any([done.signal, off.signal]);
+    addEventListener("pointermove", follow, { signal });
+    for (const kind of ["pointerup", "pointercancel"])
+      addEventListener(
+        kind,
+        (up) => fingers.has(up.pointerId) && done.abort(),
+        { signal },
+      );
+  };
+  // The pointer of the drag going on, and what a second finger does to it.
   let pressing;
-  addEventListener("pointerdown", (event) => {
+  let joined;
+  listen("pointerdown", (event) => {
+    if (pressing !== undefined && event.pointerType === "touch")
+      return joined?.(event);
     if (event.button || pressing !== undefined) return;
     if (event.target.isContentEditable) return;
     // A press elsewhere ends the typing in an item, which saves it.
     if (document.activeElement?.isContentEditable)
       document.activeElement.blur();
     const corner = handles.indexOf(event.target);
-    const item = event.target.closest?.("[data-at]");
+    const item =
+      picked.find((one) => one.contains(event.target)) ??
+      type.itemOf(event.target);
     const start = [event.clientX, event.clientY];
     let drag;
+    let again;
     if (corner >= 0) drag = resize(picked[0], CORNERS[corner]);
-    else if (item?.id && event.shiftKey)
+    else if (item && event.shiftKey)
       pick(
         picked.includes(item)
           ? picked.filter((other) => other !== item)
           : [...picked, item],
       );
-    else if (item?.id) {
+    else if (item) {
+      again = picked.length === 1 && picked[0] === item;
       if (!picked.includes(item)) pick([item]);
       drag = move(picked);
     } else if (event.pointerType === "touch") return pick([]);
@@ -221,68 +288,70 @@ export function itemLayer({ place, drawn, say: tell, show, remove }) {
     changing = true;
     pressing = event.pointerId;
     let moved = false;
-    const off = new AbortController();
+    let last = event;
+    const done = new AbortController();
+    // The items' attributes as the drag found them.
+    const kept = picked.map((one) => [
+      one,
+      [...one.attributes].map(({ name, value }) => [name, value]),
+    ]);
+    // A second finger: the items go back, nothing is said, and the two zoom.
+    joined = (second) => {
+      done.abort();
+      pressing = undefined;
+      changing = false;
+      for (const [one, attributes] of kept) {
+        for (const { name } of [...one.attributes]) one.removeAttribute(name);
+        for (const [name, value] of attributes) one.setAttribute(name, value);
+      }
+      changed();
+      pinch(
+        new Map([
+          [last.pointerId, last],
+          [second.pointerId, second],
+        ]),
+      );
+    };
     const follow = (next) => {
       if (next.pointerId !== pressing) return;
+      last = next;
       const [dx, dy] = [next.clientX - start[0], next.clientY - start[1]];
       moved ||= Math.hypot(dx, dy) > 3;
       if (moved) drag[0](dx, dy);
     };
     const drop = (up) => {
       if (up.pointerId !== pressing) return;
-      off.abort();
+      done.abort();
       pressing = undefined;
       changing = false;
       if (moved) drag[1]();
+      else if (again && up.type === "pointerup") type.retype(item, up);
     };
-    addEventListener("pointermove", follow, { signal: off.signal });
-    addEventListener("pointerup", drop, { signal: off.signal });
-    addEventListener("pointercancel", drop, { signal: off.signal });
+    const signal = AbortSignal.any([done.signal, off.signal]);
+    addEventListener("pointermove", follow, { signal });
+    addEventListener("pointerup", drop, { signal });
+    addEventListener("pointercancel", drop, { signal });
   });
 
   // Copies of the items, over the rest, picked.
   const copy = (list) => {
     if (!list.length) return;
-    const made = list.map((item) => {
-      const copied = item.cloneNode(true);
-      copied.removeAttribute("data-uagent-picked");
-      copied.removeAttribute("data-uagent-changed");
-      // An id names one element: what the copy holds keeps none.
-      for (const inner of copied.querySelectorAll("[id]"))
-        inner.removeAttribute("id");
-      copied.id = fresh(item.id);
-      const [x, y] = at(item);
-      copied.dataset.at = `${x + APART} ${y + APART}`;
-      items().at(-1).after(copied);
-      return copied;
-    });
-    say({
-      copy: list.map((item, index) => ({
-        id: item.id,
-        as: made[index].id,
-        at: numbers(made[index].dataset.at),
-      })),
-    });
-    changed(made);
+    const [made, change] = type.copy(list);
+    say(change);
+    changed();
     pick(made);
   };
-  // The picked laid over the rest, or under them.
   const order = (over) => {
-    const list = items().filter((item) => picked.includes(item));
-    const rest = items().filter((item) => !picked.includes(item));
-    if (!list.length || !rest.length) return;
-    if (over) rest.at(-1).after(...list);
-    else rest[0].before(...list);
-    say({ [over ? "front" : "back"]: list.map((item) => item.id) });
+    const change = type.order(picked, over);
+    if (change) say(change);
   };
-  // A side of the picked and its length, across or down.
-  const span = (across) =>
-    across ? ["offsetLeft", "offsetWidth"] : ["offsetTop", "offsetHeight"];
+  // A side of the picked and its length, across or down, in their boxes.
+  const span = (across) => (across ? [0, 2] : [1, 3]);
   const lineUp = (list, across, places) => {
     moveTo(
       list,
       list.map((item, index) => {
-        const [x, y] = at(item);
+        const [x, y] = box(item);
         return across
           ? [Math.round(places[index]), y]
           : [x, Math.round(places[index])];
@@ -296,9 +365,8 @@ export function itemLayer({ place, drawn, say: tell, show, remove }) {
       const gone = picked;
       if (!gone.length) return;
       pick([]);
-      for (const item of gone) remove(item);
-      drawn();
-      say({ remove: gone.map((item) => item.id) });
+      say(type.remove(gone));
+      type.drawn?.();
     },
     duplicate: () => copy(picked),
     front: () => order(true),
@@ -307,35 +375,36 @@ export function itemLayer({ place, drawn, say: tell, show, remove }) {
     align: (to) => {
       const across = ["left", "center", "right"].includes(to);
       const [start, length] = span(across);
-      const low = Math.min(...picked.map((item) => item[start]));
-      const high = Math.max(
-        ...picked.map((item) => item[start] + item[length]),
-      );
+      const boxes = picked.map(box);
+      const low = Math.min(...boxes.map((one) => one[start]));
+      const high = Math.max(...boxes.map((one) => one[start] + one[length]));
       const where = { center: 0.5, middle: 0.5, right: 1, bottom: 1 }[to] ?? 0;
       lineUp(
         picked,
         across,
-        picked.map((item) => low + (high - low - item[length]) * where),
+        boxes.map((one) => low + (high - low - one[length]) * where),
       );
     },
     // The first and the last stay, and the others share the room between.
     distribute: (to) => {
       const across = to === "across";
       const [start, length] = span(across);
-      const list = [...picked].sort((a, b) => a[start] - b[start]);
-      const [first, last] = [list[0], list.at(-1)];
+      const list = picked
+        .map((item) => [item, box(item)])
+        .sort((a, b) => a[1][start] - b[1][start]);
+      const [first, last] = [list[0][1], list.at(-1)[1]];
       const room =
         last[start] +
         last[length] -
         first[start] -
-        list.reduce((sum, item) => sum + item[length], 0);
+        list.reduce((sum, [, one]) => sum + one[length], 0);
       let next = first[start];
       lineUp(
-        list,
+        list.map(([item]) => item),
         across,
-        list.map((item) => {
+        list.map(([, one]) => {
           const here = next;
-          next += item[length] + room / (list.length - 1);
+          next += one[length] + room / (list.length - 1);
           return here;
         }),
       );
@@ -343,74 +412,66 @@ export function itemLayer({ place, drawn, say: tell, show, remove }) {
   };
 
   let clipped = [];
-  addEventListener(
+  listen(
     "keydown",
     (event) => {
       if (event.target.isContentEditable) return;
       const held = event.metaKey || event.ctrlKey;
-      const by = {
-        ArrowLeft: [-1, 0],
-        ArrowRight: [1, 0],
-        ArrowUp: [0, -1],
-        ArrowDown: [0, 1],
-      }[event.key];
+      const by = ARROWS[event.key];
       const key = held ? event.key.toLowerCase() : event.key;
+      if (!by || owed !== picked) say();
       if (by && picked.length) {
         const step = event.shiftKey ? APART / 2 : 1;
-        if (owed !== picked) say();
         changing = true;
         moveTo(
           picked,
-          picked.map((item) => [
-            item.offsetLeft + by[0] * step,
-            item.offsetTop + by[1] * step,
-          ]),
+          picked.map((item) => {
+            const [x, y] = box(item);
+            return [x + by[0] * step, y + by[1] * step];
+          }),
         );
-        clearTimeout(nudged);
         owed = picked;
-        nudged = setTimeout(say, 400);
       } else if (key === "Delete" || key === "Backspace") acts.delete();
       else if (held && key === "d") acts.duplicate();
       else if (held && key === "c") clipped = picked;
       else if (held && key === "v")
         copy(clipped.filter((item) => item.isConnected));
-      else if (held && key === "a") pick(items());
-      else if (key === "Escape") return pick([]);
-      else return;
+      else if (held && key === "a") pick(type.items());
+      else if (key === "Escape") {
+        arm("");
+        return pick([]);
+      } else return;
       // Before the keys the page forwards to the app, which would step pages.
       event.preventDefault();
     },
     true,
   );
-  addEventListener("dblclick", (event) => {
-    const item = event.target.closest?.("[data-at][id]:not(img)");
-    // The item's own text, or that of the one element (a section's name)
-    // that holds all of it.
-    const own = [...(item?.children ?? [])].filter(
-      (child) => !child.hasAttribute("data-uagent"),
-    );
-    const field = !item
-      ? undefined
-      : !own.length
-        ? item
-        : own.length === 1 &&
-          !own[0].children.length &&
-          own[0].textContent.trim() === item.textContent.trim() &&
-          own[0];
-    if (!field) return;
-    const was = field.textContent;
-    field.contentEditable = "plaintext-only";
-    field.focus();
-    field.addEventListener(
-      "blur",
-      () => {
-        field.removeAttribute("contenteditable");
-        changed([item]);
-        if (field.textContent !== was)
-          say({ set: [{ id: item.id, text: field.textContent }] });
-      },
-      { once: true },
-    );
+  listen("keyup", (event) => ARROWS[event.key] && say());
+  // What the app asks: a tool armed, or an act on what is picked.
+  listen("message", (event) => {
+    const { data } = event;
+    if (event.source !== parent || data?.uagentDesign !== 1) return;
+    say();
+    if (data.type === "arm") arm(String(data.tool), data.made);
+    if (data.type !== "act" || type.act?.(data.act, data.value)) return;
+    if (Object.hasOwn(acts, data.act)) acts[data.act](data.value);
   });
-  return { hold, pick, picked: () => picked, acts };
+  // Said as the layer starts: the app shows its tools once the page takes
+  // presses.
+  hold();
+  return {
+    arm,
+    hold,
+    pick,
+    picked: () => picked,
+    busy: () => changing || !!document.activeElement?.isContentEditable,
+    // The layer gone: nothing picked, nothing listened to.
+    end: () => {
+      say();
+      pick([]);
+      off.abort();
+      style.remove();
+      arm("");
+    },
+  };
 }

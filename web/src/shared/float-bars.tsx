@@ -86,11 +86,10 @@ export function PickBar({
     const stage = node?.offsetParent?.getBoundingClientRect();
     const rect = at();
     if (!node || !stage || !rect) return;
-    // Its margin keeps it off the item and the stage's edges.
-    const margin = Number.parseFloat(getComputedStyle(node).marginTop);
-    const [w, h] = [node.offsetWidth, node.offsetHeight].map(
-      (size) => size + 2 * margin,
-    );
+    // Its margins keep it off the item and the stage's edges.
+    const { marginLeft, marginTop } = getComputedStyle(node);
+    const w = node.offsetWidth + 2 * Number.parseFloat(marginLeft);
+    const h = node.offsetHeight + 2 * Number.parseFloat(marginTop);
     const middle = rect.x + rect.width / 2 - stage.left;
     const above = rect.y - stage.top - h;
     const x = Math.max(0, Math.min(middle - w / 2, stage.width - w));

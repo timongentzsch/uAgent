@@ -19,12 +19,20 @@ const BOARD = `<!doctype html>
 <hr data-from="ok" data-to="db" data-label="yes" data-dash>
 `;
 
-// The board opened in Files, and its file as it then is.
+// The board opened in Files with Edit on (unless `edit` is false), and its
+// file as it then is.
 async function openBoard(app, session, host, board = BOARD, options = {}) {
   const path = "boards/signup/board.html";
   await writeFiles(host.project, { [path]: board });
   const files = await openFiles(app, session, "boards/signup/", options);
   const frame = files.locator(".page-stage iframe:not([inert])");
+  await expect(
+    viewerOf(files).stage.locator("[data-at]").first(),
+  ).toBeVisible();
+  if (options.edit !== false) {
+    await files.getByRole("button", { name: "Edit" }).click();
+    await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+  }
   return {
     files,
     stage: viewerOf(files).stage,
@@ -44,8 +52,10 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
   session,
   host,
 }) => {
-  const { files, stage, saved } = await openBoard(app, session, host);
+  const { files, stage, saved, at } = await openBoard(app, session, host);
   const item = (id) => stage.locator(`#${id}`);
+  // A press on the empty board, which gives the page the keys.
+  const away = async () => app.mouse.click(...(await at(1100, 700)));
   await expect(item("ok")).toBeVisible();
   const place = (id) =>
     item(id).evaluate((element) => [element.offsetLeft, element.offsetTop]);
@@ -66,13 +76,13 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
   );
   // ⌘Z puts it back, once the page drawn again from the file has its keys.
   await expect(async () => {
-    await item("title").click();
+    await away();
     await app.keyboard.press("ControlOrMeta+z");
     expect(await saved()).toBe(BOARD);
   }).toPass();
   // The page is drawn again from the file, and ⇧⌘Z makes the move again.
   await expect.poll(() => place("ad")).toEqual([60, 180]);
-  await item("title").click();
+  await away();
   await app.keyboard.press("ControlOrMeta+Shift+z");
   await expect.poll(saved).toMatch(/id="ad"[^>]*data-at="(?!60 180)\d+ \d+"/);
   await expect.poll(() => place("ad")).not.toEqual([60, 180]);
@@ -111,6 +121,40 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
     await files
       .locator(".page-stage")
       .screenshot({ path: process.env.BOARD_SHOT });
+});
+
+test("with Edit off a whiteboard is only looked at: a drag on an item moves nothing, and no tools show", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, stage, saved } = await openBoard(app, session, host, BOARD, {
+    edit: false,
+  });
+  const edit = files.getByRole("button", { name: "Edit" });
+  await expect(edit).toHaveAttribute("aria-pressed", "false");
+  const box = await stage.locator("#ad").boundingBox();
+  await drag(app, [box.x + 20, box.y + 20], [box.x + 80, box.y + 60]);
+  await stage.locator("#ad").click();
+  await app.keyboard.press("Delete");
+  await expect(stage.locator("[data-uagent-picked]")).toHaveCount(0);
+  await expect(stage.locator(".uagent-handle")).toHaveCount(0);
+  await expect(files.getByRole("group", { name: "Insert" })).toHaveCount(0);
+  await expect(files.getByRole("toolbar", { name: "Picked" })).toHaveCount(0);
+  expect(
+    await stage
+      .locator("#ad")
+      .evaluate((item) => [item.offsetLeft, item.offsetTop]),
+  ).toEqual([60, 180]);
+  // Edit on and off again: the item picked then is let go with it.
+  await edit.click();
+  await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+  await stage.locator("#ad").click();
+  await expect(files.getByRole("toolbar", { name: "Picked" })).toBeVisible();
+  await edit.click();
+  await expect(stage.locator("[data-uagent-picked]")).toHaveCount(0);
+  await expect(files.getByRole("toolbar", { name: "Picked" })).toHaveCount(0);
+  expect(await saved()).toBe(BOARD);
 });
 
 test("arrows run in right-angled legs: straight between items that face each other, round one that stands between", async ({
@@ -248,7 +292,7 @@ test("a whiteboard's change that was refused is not what ⌘Z undoes: the one be
   session,
   host,
 }) => {
-  const { files, stage, saved } = await openBoard(app, session, host);
+  const { files, stage, saved, at } = await openBoard(app, session, host);
   await stage.locator("#n1").click();
   await app.keyboard.press("ArrowRight");
   await expect.poll(saved).toContain('data-at="801 100"');
@@ -265,7 +309,7 @@ test("a whiteboard's change that was refused is not what ⌘Z undoes: the one be
   );
   expect(await saved()).toContain('data-at="801 100"');
   await expect(async () => {
-    await stage.locator("#title").click();
+    await app.mouse.click(...(await at(1100, 700)));
     await app.keyboard.press("ControlOrMeta+z");
     expect(await saved()).toBe(BOARD);
   }).toPass();
@@ -315,10 +359,6 @@ test("an item put from the tools lands where the board is next pressed, in the f
   const { files, stage, saved, at } = await openBoard(app, session, host);
   await expect(stage.locator("#ok")).toBeVisible();
   const tools = files.getByRole("group", { name: "Insert" });
-  // A board's item is picked by a press: no Select in the tool row.
-  await expect(
-    files.locator(".page-tools").getByRole("button", { name: "Select" }),
-  ).toHaveCount(0);
   await tools.getByRole("button", { name: "Note" }).click();
   await expect(tools.getByRole("button", { name: "Note" })).toHaveAttribute(
     "aria-pressed",
@@ -513,6 +553,23 @@ test("⌘D duplicates, ⌘C and ⌘V copy, and ⌘A picks every item", async ({
   await expect(stage.locator("[data-uagent-picked]")).toHaveCount(0);
 });
 
+test("copies of items picked together keep the arrows between them, not those to the rest", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, saved } = await openBoard(app, session, host);
+  await stage.locator("#ok").click();
+  await stage.locator("#db").click({ modifiers: ["Shift"] });
+  await app.keyboard.press("ControlOrMeta+d");
+  await expect
+    .poll(saved)
+    .toMatch(
+      /<div id="db1"[^\n]*\n<hr data-from="ad" data-to="ok">\n<hr data-from="ok" data-to="db" data-label="yes" data-dash>\n<hr data-from="ok1" data-to="db1" data-label="yes" data-dash>\n$/,
+    );
+  await expect(stage.locator("svg.arrows > path:not(.hit)")).toHaveCount(3);
+});
+
 test("an arrow drawn from a dot on the picked item's side to another is in the file; it is picked by its line and deleted", async ({
   page: app,
   session,
@@ -545,12 +602,18 @@ test("an arrow drawn from a dot on the picked item's side to another is in the f
   await expect(bar.getByRole("button")).toHaveCount(1);
   await bar.getByRole("button", { name: "Delete" }).click();
   await expect.poll(saved).toBe(BOARD);
-  // With the arrow tool, from any item to another.
-  await files
-    .getByRole("group", { name: "Insert" })
-    .getByRole("button", { name: "Arrow" })
-    .click();
+  // With the arrow tool, from any item to another; one let go on the empty
+  // board makes none and keeps the tool, in the page and the app alike.
+  const tools = files.getByRole("group", { name: "Insert" });
+  await tools.getByRole("button", { name: "Arrow" }).click();
   await armed(stage);
+  await drag(app, await at(100, 200), await at(1000, 700));
+  await armed(stage);
+  await expect(tools.getByRole("button", { name: "Arrow" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(await saved()).toBe(BOARD);
   await drag(app, await at(100, 200), await at(860, 160));
   await expect.poll(saved).toBe(`${BOARD}<hr data-from="ad" data-to="n1">\n`);
 });
@@ -625,12 +688,17 @@ addEventListener("load", () => setTimeout(() => {
   const say = (message) => parent.postMessage({ uagentDesign: 1, ...message }, "*");
   say({ type: "ready", title: "Plain", artboard: { w: 400, h: 300 }, tweaks: null, height: 300, board: true });
   say({ type: "drawn" });
-  setTimeout(() => say({ type: "board", set: [{ id: "a", at: [50, 50] }] }), 300);
 }, 300));
+// With Edit on, a change.
+addEventListener("message", (event) => {
+  if (event.data?.type === "edit" && event.data.on)
+    parent.postMessage({ uagentDesign: 1, type: "change", set: [{ id: "a", at: [50, 50] }] }, "*");
+});
 </script>
 `;
   await writeFiles(host.project, { [path]: plain });
   const files = await openFiles(app, session, path);
+  await files.getByRole("button", { name: "Edit" }).click();
   await expect(files.locator(".page-notice")).toContainText(
     "That change was not made",
   );
@@ -727,11 +795,21 @@ test.describe("on a phone", () => {
     await expect
       .poll(saved)
       .toMatch(/id="n1"[^>]*data-at="(?!800 100)\d+ \d+"/);
+    // A tap again on the one picked retypes it.
+    const moved = await stage.locator("#n1").boundingBox();
+    await app.touchscreen.tap(
+      moved.x + moved.width / 2,
+      moved.y + moved.height / 2,
+    );
+    await expect(stage.locator("#n1")).toHaveAttribute(
+      "contenteditable",
+      "plaintext-only",
+    );
     await files.getByRole("button", { name: "More tools" }).click();
     await expect(app.getByRole("menuitem", { name: "Fit" })).toBeVisible();
   });
 
-  test("a second finger on the board does not move what the first one drags", async ({
+  test("a second finger joining a drag puts the item back, writes nothing, and zooms", async ({
     page: app,
     session,
     host,
@@ -741,10 +819,15 @@ test.describe("on a phone", () => {
     });
     const box = await stage.locator("#n1").boundingBox();
     const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
-    const frame = await files
-      .locator(".page-stage iframe:not([inert])")
-      .boundingBox();
-    const scale = frame.width / 1200;
+    const at = () =>
+      stage
+        .locator("#n1")
+        .evaluate((note) => [note.offsetLeft, note.offsetTop]);
+    const level = () =>
+      files
+        .locator(".page-stage iframe:not([inert])")
+        .evaluate((frame) => frame.getBoundingClientRect().width);
+    const before = await level();
     const cdp = await app.context().newCDPSession(app);
     const touch = (type, points) =>
       cdp.send("Input.dispatchTouchEvent", {
@@ -752,22 +835,24 @@ test.describe("on a phone", () => {
         touchPoints: points.map(([px, py], id) => ({ x: px, y: py, id })),
       });
     await touch("touchStart", [[x, y]]);
-    await touch("touchMove", [[x + 10, y]]);
-    // The second finger lands on the empty board and sweeps far.
+    for (let by = 5; by <= 30; by += 5) await touch("touchMove", [[x + by, y]]);
+    await expect.poll(at).not.toEqual([800, 100]);
+    // The second finger lands, and the two spread apart.
     await touch("touchStart", [
-      [x + 10, y],
-      [x - 60, y + 200],
+      [x + 30, y],
+      [x - 20, y + 20],
     ]);
-    for (let by = 10; by <= 40; by += 10)
+    await expect.poll(at).toEqual([800, 100]);
+    for (let by = 10; by <= 60; by += 10)
       await touch("touchMove", [
-        [x + 10 + by, y],
-        [x - 60 + 3 * by, y + 200 + 3 * by],
+        [x + 30 + by, y],
+        [x - 20 - by, y + 20 + by],
       ]);
     await touch("touchEnd", []);
-    await expect.poll(saved).toMatch(/id="n1"[^>]*data-at="(?!800 )\d+ 100"/);
-    const left = Number(
-      (await saved()).match(/id="n1"[^>]*data-at="(\d+) 100"/)[1],
-    );
-    expect(Math.abs(left - (800 + 50 / scale))).toBeLessThanOrEqual(10);
+    await expect.poll(level).toBeGreaterThan(before);
+    expect(await at()).toEqual([800, 100]);
+    // Looked at since: nothing was written.
+    await app.waitForResponse((response) => response.url().includes("stamps="));
+    expect(await saved()).toBe(BOARD);
   });
 });

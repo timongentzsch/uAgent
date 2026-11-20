@@ -86,17 +86,22 @@ import {
   type Saved,
   skipSlide,
 } from "./doc-edit.ts";
-import { type BoardEdit, boardEdit } from "./board-edit.ts";
-import { BoardTools, type Chosen, chosenOf } from "./board-tools.tsx";
+import {
+  BOARD,
+  type Chosen,
+  chosenOf,
+  ItemTools,
+  SLIDE,
+} from "./item-tools.tsx";
 import { downloadBlob } from "../../shared/share.ts";
 import { copyDrawn, type Drawn, saveDrawn } from "./drawn.ts";
 import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
 import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
 import { useResource } from "../../shared/use-resource.ts";
 
-// Why a whiteboard's change was not written.
-const BOARD_REFUSED =
-  "That change was not made: the board's file does not take it as it stands. The board is shown as the file is now.";
+// Why a change of items by hand was not written.
+const REFUSED =
+  "That change was not made: the file does not take it as it stands. It is shown as the file is now.";
 // Said in the tools' row while a sheet's engine takes more than a moment.
 const CALCULATING = "Calculating…";
 // What a sheet says of itself, before it has.
@@ -238,8 +243,6 @@ export default function Sequence({
 }) {
   const doc = kind === "doc";
   const sheet = kind === "sheet";
-  // Whether its text is typed in place.
-  const editable = doc || kind === "deck";
   const unit = kind === "deck" ? "Slide" : "Page";
   const src = page(path);
   // A board's address: its file's, with its version, and after "#" its
@@ -266,6 +269,10 @@ export default function Sequence({
   const staged = useRef<PageInfo>(undefined);
   if (said?.drawn) staged.current = said;
   const info = staged.current;
+  // What Edit changes in place: a document's or a slide's text, a slide's
+  // elements, a whiteboard's items.
+  const board = !!info?.board;
+  const editable = doc || kind === "deck" || board;
   // Select picks an element to comment on; Edit lets a document's or a
   // slide's text be typed in place. One at a time, told to the page as each
   // goes on or off.
@@ -280,6 +287,8 @@ export default function Sequence({
     setHover(undefined);
     setCaret(undefined);
     setLinking(false);
+    setTool("");
+    setChosen(undefined);
     if (next !== "select") setPicked(undefined);
   };
   // What is selected in the block being edited, and whether its link's
@@ -300,13 +309,21 @@ export default function Sequence({
   const holding = useRef(false);
   const unsourced = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [picked, setPicked] = useState<Pick>();
-  // A whiteboard's tool armed for the next press, and what is picked on it.
+  // While Edit is on a whiteboard's items, or a slide's, are changed by
+  // hand: a tool armed for the next press, and what is picked.
+  const hand =
+    mode !== "edit"
+      ? undefined
+      : board
+        ? BOARD
+        : kind === "deck"
+          ? SLIDE
+          : undefined;
   const [tool, setTool] = useState("");
   const [chosen, setChosen] = useState<Chosen>();
-  const board = !!info?.board;
   const arm = (next: string) => {
     setTool(next);
-    tell(frame.current, { type: "board", tool: next });
+    tell(frame.current, { type: "arm", tool: next, made: hand?.made?.[next] });
   };
   const [comment, setComment] = useState("");
   const [tweaking, setTweaking] = useState(false);
@@ -441,7 +458,7 @@ export default function Sequence({
   };
   // A document's, a slide's or a whiteboard's changes by hand are undone and
   // made again here; then the file is drawn again, its notes its own.
-  const undoes = !!undo && (editable || board);
+  const undoes = !!undo && editable;
   const back = (redo: boolean) =>
     void undo?.(redo).then((made) => {
       if (!made) return;
@@ -659,10 +676,19 @@ export default function Sequence({
       : 1;
   // How far the person zoomed from the fit; each page opens at the fit.
   const [zoom, setZoom] = useState(1);
-  // On a touch screen two fingers zoom a whiteboard, and its tools take the
-  // foot of the stage: Fit is in the tools' menu.
-  const touch = board && coarsePointer();
+  // On a touch screen the tools for items changed by hand take the foot of
+  // the stage (two fingers zoom a whiteboard): Fit is in the tools' menu.
+  const touch = !!hand && coarsePointer();
   const scale = fit * zoom;
+  // The handles of items changed by hand keep a finger's size at any zoom.
+  useEffect(() => {
+    if (live && hand)
+      tell(frame.current, {
+        type: "tweak",
+        name: "--uagent-scale",
+        value: scale,
+      });
+  }, [live, scale, hand]);
   // Scales by `by` keeping the point (x, y) of the scroller where it is.
   const anchor = useRef<{ x: number; y: number; cx: number; cy: number }>(
     undefined,
@@ -909,7 +935,6 @@ export default function Sequence({
             true,
           )}
         {!sheet &&
-          !board &&
           toggle(
             "Select",
             mode === "select",
@@ -1009,7 +1034,7 @@ export default function Sequence({
         {writing && <span class="chip working">Agent writing</span>}
         {!editable && status}
       </Bar>
-      {mode === "edit" && (
+      {mode === "edit" && !board && (
         <Bar density="dense" edge="bottom" class="page-tools">
           <FormatTools
             caret={caret}
@@ -1271,24 +1296,26 @@ export default function Sequence({
                           () => !holding.current && setSource(undefined),
                           300,
                         );
-                    } else if (message.type === "board") {
-                      if (!board) return;
-                      // An item put on the board ends its tool.
+                    } else if (message.type === "change") {
+                      if (!hand) return;
+                      // An item put on the page ends its tool.
                       if ("add" in message || "arrow" in message) setTool("");
-                      // One the file does not take is said, and the board is
-                      // drawn again from the file.
+                      // One the file does not take is said, and the page is
+                      // drawn again from the file; one it takes, the legend
+                      // draws.
                       let taken = true;
                       void rewrite?.(path, (source) => {
-                        const made = boardEdit(
-                          source,
-                          message as unknown as BoardEdit,
-                        );
+                        const made = hand.edit(source, message as never);
                         taken = made !== null;
-                        if (!taken) throw new Error(BOARD_REFUSED);
+                        if (!taken) throw new Error(REFUSED);
                         return made as string;
-                      }).then(() => taken || setLoad((count) => count + 1));
+                      }).then(() => {
+                        if (!taken) return setLoad((count) => count + 1);
+                        wrote.current++;
+                        setSaves(wrote.current);
+                      });
                     } else if (message.type === "items") {
-                      setChosen(board ? chosenOf(message) : undefined);
+                      setChosen(hand ? chosenOf(message) : undefined);
                     } else if (message.type === "caret") {
                       setCaret(caretOf(message));
                     } else if (message.type === "left") {
@@ -1459,22 +1486,23 @@ export default function Sequence({
                 </Button>
               </div>
             )}
-            {board && live && !presenting && (
-              <BoardTools
+            {hand && chosen && live && !presenting && (
+              <ItemTools
+                items={hand}
                 chosen={chosen}
                 tool={tool}
                 arm={arm}
                 act={(act, value) =>
-                  tell(frame.current, { type: "board", act, value })
+                  tell(frame.current, { type: "act", act, value })
                 }
                 ask={
                   addToChat &&
                   (() => {
-                    const item = chosen?.items[0];
+                    const item = chosen.items[0];
                     if (item && chosen.rect)
                       setPicked({
                         rect: chosen.rect,
-                        selector: `#${item.id}`,
+                        selector: item.selector,
                         tag: item.shape ?? (item.note ? "note" : item.tag),
                         text: item.text,
                       });
@@ -1482,7 +1510,7 @@ export default function Sequence({
                 }
                 at={() => {
                   const page = frame.current?.getBoundingClientRect();
-                  const rect = chosen?.rect;
+                  const rect = chosen.rect;
                   return (
                     page &&
                     rect && {

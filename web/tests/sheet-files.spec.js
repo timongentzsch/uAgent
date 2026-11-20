@@ -1,15 +1,9 @@
 // An Excel or CSV file opens in the sheet viewer, read-only; it is saved as
 // a sheet to change it, and any sheet goes out as a workbook or as CSV.
-import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { test, expect, openSheet, viewerOf, writeFiles } from "./fixtures.js";
+import { evaluating as engine } from "./sheet-engine.js";
 
-const wasm = createRequire(import.meta.url).resolve("@ironcalc/wasm-xlsx");
-const engine = await import(wasm);
-engine.initSync({
-  module: readFileSync(wasm.replace(/wasm\.js$/, "wasm_bg.wasm")),
-});
 const LOCALE = ["en", "UTC", "en"];
 
 // A workbook as Excel would write it: costs with their patterns, a second

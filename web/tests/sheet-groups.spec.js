@@ -1,15 +1,8 @@
 // Groups: rows or columns a person folds and opens from the gutter beside
 // the row numbers and over the letters, made and taken out from the menus.
-import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { test, expect, openSheet, sheet } from "./fixtures.js";
-
-const wasm = createRequire(import.meta.url).resolve("@ironcalc/wasm-xlsx");
-const engine = await import(wasm);
-engine.initSync({
-  module: readFileSync(wasm.replace(/wasm\.js$/, "wasm_bg.wasm")),
-});
+import { evaluating as engine } from "./sheet-engine.js";
 
 // A budget whose items are grouped under their sums, both kinds in one
 // group, and its amounts in a group of columns.

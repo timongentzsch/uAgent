@@ -2,15 +2,9 @@
 // itself: its list of functions is the engine's, read as the engine reads.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { FUNCTIONS } from "../sheet/functions.js";
 import { suggestions } from "../sheet/suggest.js";
-
-const wasm = createRequire(import.meta.url).resolve("@ironcalc/wasm-xlsx");
-const binary = readFileSync(wasm.replace(/wasm\.js$/, "wasm_bg.wasm"));
-const engine = await import(wasm);
-engine.initSync({ module: binary });
+import { binary, evaluating as engine } from "./sheet-engine.js";
 
 const listed = FUNCTIONS.trim()
   .split("\n")

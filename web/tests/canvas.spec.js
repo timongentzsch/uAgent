@@ -1428,12 +1428,11 @@ const TALK = {
 };
 const talkFile = (project, name) =>
   readFile(join(project, "decks/talk", name), "utf8");
-// A slide's block typed in: a press picks it, a click again types (a
-// finger's tap again would land on the bar over it).
+// A slide's block typed in: a press picks it, a press again types.
 async function typing(block, press = (target) => target.click()) {
   await press(block);
   await expect(block).toHaveAttribute("data-uagent-picked", "");
-  await block.click();
+  await press(block);
   await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
 }
 // Edit on, the caret at the end of a block of the stage's page, and time
@@ -1560,9 +1559,10 @@ test("a block that was refused stays owed: its notice stands though another is s
   await expect(saving(files)).toHaveText(/^Not saved: this text changed/);
   // Another block, with the same blocks around it, is saved; the notice
   // still says what is not.
-  // At its start: the bar over the block typed in covers its middle.
+  // Near its start, clear of its corners: the bar over the block typed in
+  // covers its middle.
   await typing(stage.getByRole("heading", { name: "Cover" }), (heading) =>
-    heading.click({ position: { x: 2, y: 2 } }),
+    heading.click({ position: { x: 20, y: 4 } }),
   );
   await app.keyboard.press("End");
   await app.keyboard.insertText(" page");

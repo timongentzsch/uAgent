@@ -73,8 +73,9 @@ svg.arrows text { font: 13px system-ui, sans-serif; fill: #444; paint-order: str
 svg.arrows path.hit { stroke: transparent; stroke-width: 12px; pointer-events: stroke;
   cursor: pointer; }
 svg.arrows path.picked { stroke: #1a56db; }
-.uagent-dot { position: absolute; width: 10px; height: 10px; margin: -5px; z-index: 3;
-  box-sizing: border-box; border: 2px solid #1a56db; border-radius: 50%;
+.uagent-dot { position: absolute; width: calc(10 * var(--uagent-px));
+  height: calc(10 * var(--uagent-px)); margin: calc(-5 * var(--uagent-px)); z-index: 3;
+  box-sizing: border-box; border: calc(2 * var(--uagent-px)) solid #1a56db; border-radius: 50%;
   background: #fff; cursor: crosshair; touch-action: none; }
 svg.uagent-drawing { position: absolute; inset: 0; z-index: 3; pointer-events: none;
   overflow: visible; }

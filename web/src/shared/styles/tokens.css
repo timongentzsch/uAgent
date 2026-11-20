@@ -50,6 +50,8 @@
     --control-m: calc(32rem / 14);
     --control-l: calc(36rem / 14);
     --touch: calc(44rem / 14);
+    /* How far the bar over what is picked stands off it. */
+    --pick-gap: var(--space-2);
     /* A bar: a row of a title and controls along an edge of its pane. */
     --bar-min: var(--touch);
     --bar-pad-x: var(--space-4);
@@ -293,6 +295,8 @@
     :root {
       --control: var(--touch);
       --control-slim: var(--control-m);
+      /* Far enough that a finger pressing what is picked lands off the bar. */
+      --pick-gap: var(--space-12);
     }
   }
   /* More contrast asked for: dividers, field edges and secondary text move

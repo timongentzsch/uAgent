@@ -373,10 +373,11 @@ test.describe("on a phone", () => {
     await swipe(from, [80, 0]);
     await expect.poll(saved).toMatch(/<ul style="translate: \d+px[^"]*;">/);
     await expect(stage.locator("h1")).toHaveText("Plan");
-    // The corner is a finger's size, though drawn small.
+    // The corner is drawn its size on screen at any zoom, and takes a finger
+    // pressing beside it.
     const corner = stage.locator(".uagent-handle").nth(2);
     const drawn = await corner.boundingBox();
-    expect(drawn.width).toBeLessThan(5);
+    expect(Math.round(drawn.width)).toBe(10);
     await swipe([drawn.x - 8, drawn.y + drawn.height + 8], [15, 15]);
     await expect
       .poll(saved)

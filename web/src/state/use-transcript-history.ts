@@ -25,12 +25,25 @@ const WHEEL_SETTLE_MS = 250;
 const WHEEL_SETTLE_FRAMES = 15;
 const WHEEL_QUIET_FRAMES = 5;
 
-// Where the message being sent left from (the input), so its row can rise
-// from there: recorded on send, used once when that row appears.
-let sentFrom: DOMRect | null = null;
+// Where the message being sent left from: the top of its draft and the
+// sides of the box round it, so its row can travel from there. Recorded on
+// send, used once when that row appears.
+let sentFrom: { top: number; left: number; right: number } | null = null;
 export const rememberSend = (input: Element | null) => {
-  sentFrom = input?.getBoundingClientRect() ?? null;
+  const box = (
+    input?.closest(".message-box") ?? input
+  )?.getBoundingClientRect();
+  sentFrom =
+    input && box
+      ? {
+          top: input.getBoundingClientRect().top,
+          left: box.left,
+          right: box.right,
+        }
+      : null;
 };
+// Past this far, a sent message settles into its place without overshoot.
+const FAR = 200;
 
 // Runs `then` after `count` painted frames; the result cancels it.
 function afterFrames(count: number, then: () => void) {
@@ -248,22 +261,34 @@ export function useTranscriptHistory(
     gliding.current = 0;
   }, []);
 
+  // How high what the scroller holds is laid out: a sent row still on its
+  // way from the draft is drawn below the end and adds nothing to it.
+  const laid = useCallback((element: HTMLElement) => {
+    const column = content.current;
+    if (!column) return element.scrollHeight;
+    const below = Number.parseFloat(getComputedStyle(element).paddingBottom);
+    return Math.min(
+      element.scrollHeight,
+      Math.ceil(contentY(column, element) + column.offsetHeight + below),
+    );
+  }, []);
+
   const pin = useCallback(() => {
     const element = scroller.current;
     if (!element) return;
     stopGlide();
-    writeTop(element.scrollHeight - element.clientHeight);
-    sized.current = {
-      height: element.scrollHeight,
-      client: element.clientHeight,
-    };
-  }, [stopGlide, writeTop]);
+    writeTop(laid(element) - element.clientHeight);
+    sized.current = { height: laid(element), client: element.clientHeight };
+  }, [laid, stopGlide, writeTop]);
 
-  // Eases the view to the end, retargeting as the end moves, and settles in
-  // about --motion-glide. It stops when following does.
+  // Eases the view to the end on a spring that never overshoots,
+  // retargeting as the end moves, and settles in about --motion-glide. It
+  // stops when following does.
   const glide = useCallback(() => {
     if (gliding.current) return;
-    const tau = motionMs("glide") / 3;
+    // Critically damped: a thousandth of the way is left after that time.
+    const omega = 9200 / motionMs("glide");
+    let speed = 0;
     let last = performance.now();
     glideTop.current = scroller.current?.scrollTop ?? 0;
     const step = (now: number) => {
@@ -272,16 +297,16 @@ export function useTranscriptHistory(
         gliding.current = 0;
         return;
       }
-      const end = element.scrollHeight - element.clientHeight;
+      const end = laid(element) - element.clientHeight;
       const from = Math.max(element.scrollTop, glideTop.current);
       const gap = end - from;
-      // At least a pixel a frame, so every frame moves the view.
-      const move = Math.max(1, gap * (1 - Math.exp(-(now - last) / tau)));
+      // A frame that came late counts as a short one.
+      const dt = Math.min(now - last, 50) / 1000;
       last = now;
-      sized.current = {
-        height: element.scrollHeight,
-        client: element.clientHeight,
-      };
+      speed += (omega * omega * gap - 2 * omega * speed) * dt;
+      // At least a pixel a frame, so every frame moves the view.
+      const move = Math.max(1, speed * dt);
+      sized.current = { height: laid(element), client: element.clientHeight };
       // The last pixel lands at once.
       if (gap - move < 1) {
         writeTop(end);
@@ -293,7 +318,7 @@ export function useTranscriptHistory(
       gliding.current = requestAnimationFrame(step);
     };
     gliding.current = requestAnimationFrame(step);
-  }, [writeTop]);
+  }, [laid, writeTop]);
 
   // Following: content that grows glides into view, as in a messenger;
   // anything else (the box resizing, a send's own row, a finger on the
@@ -302,7 +327,7 @@ export function useTranscriptHistory(
     const element = scroller.current;
     if (!element) return;
     const resized = element.clientHeight !== sized.current.client;
-    const grew = !resized && element.scrollHeight > sized.current.height;
+    const grew = !resized && laid(element) > sized.current.height;
     if (
       resized ||
       sentFrom ||
@@ -316,7 +341,7 @@ export function useTranscriptHistory(
       if (element.scrollTop < glideTop.current) writeTop(glideTop.current);
       glide();
     } else pin();
-  }, [glide, pin, writeTop]);
+  }, [glide, laid, pin, writeTop]);
 
   // A reader who moves down into the end follows again: by scrolling there,
   // or by a wheel, swipe or key that finds no more room below. A shrink that
@@ -461,24 +486,50 @@ export function useTranscriptHistory(
   // React commits and late browser layout use the same reconciliation path.
   useLayoutEffect(() => {
     if (!box?.isConnected || box !== scroller.current || !column) return;
+    const before = box.scrollTop;
     if (!restore()) reconcile();
     const last = nodes.at(-1)?.id;
     if (last !== lastNode.current) {
-      // A message just sent rises from the input into its place.
+      // A message just sent starts as the draft in its box and travels to
+      // its place, and the rows above it are pushed up by the same motion.
       const row =
         sentFrom &&
         motionMs("send") > 0 &&
         last?.startsWith("outgoing-") &&
         column.querySelector(`[data-message-id="${CSS.escape(last)}"]`);
       if (row) {
-        const rise = sentFrom!.top - row.getBoundingClientRect().top;
+        const to = row.getBoundingClientRect();
+        const rise = sentFrom!.top - to.top;
+        const look = getComputedStyle(document.documentElement);
+        const timing = {
+          duration: motionMs("send"),
+          easing: motionEase(rise > FAR ? "settle" : "send"),
+        };
         row.animate(
           [
-            { translate: `0 ${rise}px`, opacity: 0 },
-            { translate: "0 0", opacity: 1 },
+            {
+              translate: `0 ${rise}px`,
+              clipPath: `inset(0 ${Math.max(0, to.right - sentFrom!.right)}px 0 ${Math.max(0, sentFrom!.left - to.left)}px)`,
+              background: look.getPropertyValue("--raised"),
+              color: look.getPropertyValue("--text"),
+            },
+            { translate: "0 0", clipPath: "inset(0 0 0 0)" },
           ],
-          { duration: motionMs("send"), easing: motionEase("out") },
+          timing,
         );
+        const pushed = box.scrollTop - before;
+        const top = box.getBoundingClientRect().top;
+        for (
+          let above = row.previousElementSibling;
+          pushed > 0 &&
+          above &&
+          above.getBoundingClientRect().bottom + pushed > top;
+          above = above.previousElementSibling
+        )
+          above.animate(
+            [{ translate: `0 ${pushed}px` }, { translate: "0 0" }],
+            timing,
+          );
       }
       sentFrom = null;
       if (!following.current) {

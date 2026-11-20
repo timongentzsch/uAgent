@@ -14,7 +14,9 @@ export function motionMs(name: Motion) {
   return parseFloat(value) * (value.endsWith("ms") ? 1 : 1000) || 0;
 }
 
-export const motionEase = (name: "out" | "in" | "standard") =>
+export const motionEase = (
+  name: "out" | "in" | "standard" | "send" | "settle",
+) =>
   getComputedStyle(document.documentElement)
     .getPropertyValue(`--ease-${name}`)
     .trim() || "ease";

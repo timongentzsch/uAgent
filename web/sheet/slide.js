@@ -34,18 +34,13 @@ const box = (item) => {
   const { left, top, width, height } = item.getBoundingClientRect();
   return [left + scrollX, top + scrollY, width, height];
 };
-// The size its style gives for a box this size.
+// The size its style gives for a box this size: less its padding and
+// border where its style sizes its content.
 const inner = (item, w, h) => {
   const own = getComputedStyle(item);
-  const edge = (a, b) =>
-    own.boxSizing === "border-box"
-      ? 0
-      : [`padding${a}`, `padding${b}`, `border${a}Width`, `border${b}Width`]
-          .map((side) => Number.parseFloat(own[side]))
-          .reduce((sum, side) => sum + side, 0);
   return [
-    Math.round(w - edge("Left", "Right")),
-    Math.round(h - edge("Top", "Bottom")),
+    Math.round(w - (item.offsetWidth - Number.parseFloat(own.width) || 0)),
+    Math.round(h - (item.offsetHeight - Number.parseFloat(own.height) || 0)),
   ];
 };
 
@@ -254,7 +249,7 @@ export function edit(on, helper) {
     act: (act) => {
       const [one, more] = layer.picked();
       if (!one || more) return false;
-      // Its container, picked; or its own place and size again.
+      // Its container, picked; or its move taken back.
       if (act === "container" && inside(one.parentElement))
         layer.pick([one.parentElement]);
       else if (act === "reset" && one.style.translate) {

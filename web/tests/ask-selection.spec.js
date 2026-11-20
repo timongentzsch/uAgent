@@ -10,6 +10,7 @@ import {
   selectProbeModel,
   writeFiles,
 } from "./fixtures.js";
+import { uneven } from "./insets.js";
 
 test.beforeEach(({ command, session }) => selectProbeModel(command, session));
 
@@ -66,6 +67,7 @@ test("a selection in an answer is asked about in side chats beside it", async ({
     "Ask in side chat",
     "Quote",
   ]);
+  expect(await uneven(page)).toEqual([]);
   // The buttons sit under the end of the selection.
   const end = await page.evaluate(() => {
     const rects = getSelection().getRangeAt(0).getClientRects();

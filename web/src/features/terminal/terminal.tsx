@@ -372,7 +372,7 @@ export function FolderTerminal({
       class="terminal-panel"
       aria-label={`Terminal in ${where(terminal.cwd)}`}
     >
-      <Bar density="dense" edge="bottom" class="terminal-bar">
+      <Bar edge="bottom" class="terminal-bar">
         <Place name={terminal.title} cwd={terminal.cwd} />
         <Button onClick={() => close(terminal)}>Close terminal</Button>
       </Bar>
@@ -447,7 +447,7 @@ export default function TerminalPanel({
   if (!tabs.length && busy) return <Spinner label="Opening the terminal…" />;
   return (
     <div class="terminal-panel">
-      <Bar density="dense" edge="bottom" class="terminal-bar">
+      <Bar edge="bottom" class="terminal-bar">
         <div class="terminal-tabs" role="group" aria-label="Terminals">
           {tabs.map((tab) => (
             <div class="terminal-tab entry" key={tab.id}>

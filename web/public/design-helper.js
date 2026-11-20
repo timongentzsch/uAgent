@@ -943,13 +943,12 @@
         ),
     });
   };
-  // Marked in the system's own colours for it: the page's are unknown. What
-  // someone else changed is outlined in one colour of its own.
-  const CHANGED = "#f59e0b";
+  // Marked in the app's colours for it (--uagent-changed): the page's are
+  // unknown.
   addEventListener("DOMContentLoaded", () => {
     const marks = document.createElement("style");
     marks.textContent =
-      `[data-uagent-changed]{outline:2px solid ${CHANGED};outline-offset:2px}` +
+      `[data-uagent-changed]{outline:2px solid var(--uagent-changed);outline-offset:2px}` +
       "::highlight(uagent-find){background:Mark;color:MarkText}" +
       "::highlight(uagent-found){background:Highlight;color:HighlightText}" +
       "ul.checklist{list-style:none;padding-left:0}" +

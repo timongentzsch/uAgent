@@ -800,7 +800,7 @@ function SidebarView({
   ];
   return (
     <>
-      <Bar density="dense" class="sidebar-head">
+      <Bar density="flush" class="sidebar-head">
         <a
           class="brand"
           href="#"

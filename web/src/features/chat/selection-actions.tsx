@@ -68,8 +68,9 @@ export function SelectionActions({
     take(quoted(picked.text));
   };
   return (
+    // raw: floats over the page, not along an edge of a pane.
     <div
-      class="segmented selection-quote"
+      class="float-toolbar selection-quote"
       role="group"
       aria-label="Selection"
       style={{ "--at-x": `${picked.x}px`, "--at-y": `${picked.y}px` }}

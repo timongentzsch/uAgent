@@ -2,7 +2,8 @@ import type { RefObject } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Node, View } from "../../shared/types.ts";
 import { FindField } from "../../shared/find-field.tsx";
-import { highlights, occurrences, rangesIn } from "../../shared/find.ts";
+import { occurrences } from "../../../sheet/text.js";
+import { highlights, rangesIn } from "../../shared/find.ts";
 import { useApi } from "../../state/api.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 

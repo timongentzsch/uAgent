@@ -1,22 +1,4 @@
-// Finding words in text the way the host does (src/core/strings.cc
-// ContainsCaseInsensitive): only A-Z fold, so a count here and the host's
-// count of the same text agree.
-const fold = (text: string) => text.replace(/[A-Z]/g, (c) => c.toLowerCase());
-
-// Where each occurrence of `query` starts in `text`, without overlaps.
-export function occurrences(text: string, query: string) {
-  const needle = fold(query);
-  const haystack = fold(text);
-  const found: number[] = [];
-  if (!needle) return found;
-  for (
-    let at = haystack.indexOf(needle);
-    at >= 0;
-    at = haystack.indexOf(needle, at + needle.length)
-  )
-    found.push(at);
-  return found;
-}
+import { occurrences } from "../../sheet/text.js";
 
 // The occurrences of `query` in the text under `root`, as ranges for the CSS
 // Highlight API. A match split across two text nodes (say, half of it bold)

@@ -13,7 +13,7 @@ import { useCompact } from "../../shared/layout.ts";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { fuzzy, matches } from "../../shared/fuzzy.ts";
-import { occurrences } from "../../shared/find.ts";
+import { occurrences } from "../../../sheet/text.js";
 import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
 import { useApi } from "../../state/api.ts";

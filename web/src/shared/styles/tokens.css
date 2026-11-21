@@ -61,6 +61,7 @@
        from the next control. */
     --bar-pad: var(--space-2);
     --bar-min: calc(var(--control) + 2 * var(--bar-pad));
+    --line-width: 1px;
     --icon-l: calc(20rem / 14);
     --logo: calc(48rem / 14);
     /* An attachment's thumbnail height; its width is 4:3. */
@@ -299,7 +300,7 @@
     --terminal-bright-cyan: #29b8db;
     --terminal-bright-white: #fff;
     /* Made here, so each palette's colours fill them. */
-    --border: 1px solid var(--line);
+    --border: var(--line-width) solid var(--line);
     --border-field: 1px solid var(--field-border);
     --focus-ring: var(--focus-width) solid var(--accent);
   }
@@ -350,7 +351,7 @@
     --terminal-bright-magenta: #8f008f;
     --terminal-bright-cyan: #0b5566;
     --terminal-bright-white: #333;
-    --border: 1px solid var(--line);
+    --border: var(--line-width) solid var(--line);
     --border-field: 1px solid var(--field-border);
     --focus-ring: var(--focus-width) solid var(--accent);
   }

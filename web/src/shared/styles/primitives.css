@@ -745,7 +745,7 @@
     align-items: center;
     gap: var(--gap);
     flex-shrink: 0;
-    min-height: var(--bar-min);
+    min-height: calc(var(--bar-min) + var(--line-width));
     padding: var(--bar-pad);
     border-bottom: var(--border);
   }
@@ -1034,6 +1034,10 @@
   .bar[data-density="flush"] {
     min-height: 0;
     padding: 0;
+  }
+  /* Its edge is drawn below its controls, never over them. */
+  .bar[data-edge] {
+    min-height: calc(var(--bar-min) + var(--line-width));
   }
   .bar[data-edge="bottom"] {
     border-bottom: var(--border);

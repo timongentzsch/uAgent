@@ -16,8 +16,7 @@ const box = (locator) =>
     return { x, y, width, height };
   });
 // Where a list sits and how wide it is; its height is its rows'.
-const placed = (a, b) =>
-  ["x", "y", "width"].every((key) => Math.abs(a[key] - b[key]) <= 1);
+const placed = (a, b) => ["x", "y", "width"].every((key) => a[key] === b[key]);
 const near = (a, b) =>
   ["x", "y", "width", "height"].every((key) => Math.abs(a[key] - b[key]) <= 1);
 
@@ -130,6 +129,7 @@ test("Scheduled draws its list from samples while its tasks load", async ({
   await page.getByRole("button", { name: "Scheduled", exact: true }).click();
   const list = page.locator(".management-list");
   await expect(list).toBeVisible();
+  await expect(page.locator(".placeholder")).toHaveCount(0);
   const loaded = await box(list);
   let release;
   const held = new Promise((resolve) => (release = resolve));

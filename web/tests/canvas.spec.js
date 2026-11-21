@@ -1387,7 +1387,14 @@ test("a move the folder no longer allows is refused: nothing moves, and the pane
   );
   const names = legend.locator(".page-legend-name");
   await expect(names).toHaveCount(4);
-  // Behind the pane's back, as the agent would.
+  // Behind the pane's back, as the agent would; the pane does not look at
+  // the folder again until the move has been refused.
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await app.route(/files\?stamps=decks%2Ftalk$/, async (route) => {
+    await held;
+    await route.continue();
+  });
   const dir = join(host.project, "decks", "talk");
   await rename(join(dir, "02-plan.html"), join(dir, "02-agenda.html"));
   const down = async () => {
@@ -1399,6 +1406,7 @@ test("a move the folder no longer allows is refused: nothing moves, and the pane
   await expect(notice).toHaveText(
     "The deck's folder changed meanwhile, so nothing was changed.",
   );
+  release();
   expect(await slidesIn(host.project)).toEqual([
     "01-cover.html",
     "02-agenda.html",

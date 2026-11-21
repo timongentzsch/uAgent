@@ -132,6 +132,27 @@ const cramped = (page) =>
           found.push(`a press stops short of: ${named(beside)}`);
       }
     }
+    // A line along the screen's edge, which a phone's round corners cut.
+    for (const box of document.querySelectorAll("#app *, dialog[open]")) {
+      if (!shown(box)) continue;
+      const style = getComputedStyle(box);
+      const at = box.getBoundingClientRect();
+      for (const [side, edge] of [
+        ["Top", at.top],
+        ["Left", at.left],
+        ["Right", innerWidth - at.right],
+        ["Bottom", innerHeight - at.bottom],
+      ])
+        if (
+          Math.abs(edge) < 1 &&
+          Number.parseFloat(style[`border${side}Width`]) > 0 &&
+          style[`border${side}Style`] !== "none" &&
+          !/, 0\)$|^transparent$/.test(style[`border${side}Color`])
+        )
+          found.push(
+            `a line along the screen's ${side.toLowerCase()} edge: ${named(box)}`,
+          );
+    }
     for (const dialog of document.querySelectorAll(
       "dialog[open], .dialog-body",
     ))

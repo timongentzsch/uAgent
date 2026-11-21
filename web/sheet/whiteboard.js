@@ -2,7 +2,7 @@
 // shapes and arrows drawn, and, in the app, changed by hand there, which the
 // app writes to the file. The format: skills/artifact/references/whiteboard.md.
 
-import { APART as COPIED, itemLayer, post, rectOf } from "./items.js";
+import { APART as COPIED, held, itemLayer, post, rectOf } from "./items.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 const FILLS = {
@@ -686,32 +686,15 @@ function edits(layer, signal) {
     drawing.append(path);
     document.body.append(drawing);
     const [x, y] = [event.clientX, event.clientY];
-    const off = new AbortController();
-    const end = (made) => {
-      off.abort();
-      drawing.remove();
-      if (tool && !made) hand.arm(tool);
-    };
-    // Only the pointer that started it draws it.
-    const pointer = event.pointerId;
-    const own = (next) => next.pointerId === pointer;
-    addEventListener(
-      "pointermove",
+    held(
+      event,
       (next) =>
-        own(next) &&
         path.setAttribute("d", `M${x} ${y}L${next.clientX} ${next.clientY}`),
-      { signal: off.signal },
-    );
-    addEventListener("pointercancel", (up) => own(up) && end(false), {
-      signal: off.signal,
-    });
-    addEventListener(
-      "pointerup",
       (up) => {
-        if (!own(up)) return;
-        const to = itemOf(document.elementFromPoint(up.clientX, up.clientY));
-        end(to && to !== from);
-        if (!to || to === from) return;
+        drawing.remove();
+        const to =
+          up && itemOf(document.elementFromPoint(up.clientX, up.clientY));
+        if (!to || to === from) return tool && hand.arm(tool);
         const line = document.createElement("hr");
         line.dataset.from = from.id;
         line.dataset.to = to.id;
@@ -722,7 +705,7 @@ function edits(layer, signal) {
         arrows(layer);
         say({ arrow: { from: from.id, to: to.id } });
       },
-      { signal: off.signal },
+      signal,
     );
   };
   addEventListener(

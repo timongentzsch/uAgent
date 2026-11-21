@@ -244,7 +244,9 @@ export const tell = (
         made?: { html: string; width: number; height?: number };
       }
     | { type: "act"; act: string; value?: string }
-    | { type: "update"; html: string },
+    | { type: "update"; html: string }
+    // A pointer was let go over the app: the page hears no release there.
+    | { type: "release" },
 ) => frame?.contentWindow?.postMessage({ uagentDesign: 1, ...message }, "*");
 
 // What a sheet's grid takes from the app, as the variables of its stylesheet
@@ -380,6 +382,16 @@ export default function Frame({
     addEventListener("message", heard);
     return () => removeEventListener("message", heard);
   }, []);
+  useEffect(() => {
+    if (!live) return;
+    const released = () => tell(frame.current, { type: "release" });
+    addEventListener("pointerup", released, true);
+    addEventListener("pointercancel", released, true);
+    return () => {
+      removeEventListener("pointerup", released, true);
+      removeEventListener("pointercancel", released, true);
+    };
+  }, [live, frame]);
   useEffect(() => {
     if (!sheet) return;
     const restyle = new MutationObserver(() => tellLook(frame.current, true));

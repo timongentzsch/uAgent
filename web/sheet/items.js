@@ -46,6 +46,40 @@ export const post = (message) =>
   parent.postMessage({ uagentDesign: 1, ...message }, "*");
 
 // The box of elements together, in the window.
+// One pointer followed from its press to its end. The app lies round the
+// page and over it, and a release there is not heard here: the app says
+// when a pointer is let go, and a mouse seen moving with no button down was
+// let go. `move` takes where it is, `end` its release, or nothing where it
+// was cancelled or let go elsewhere. Gives what ends it from here.
+export function held(press, move, end, signal) {
+  const done = new AbortController();
+  const own = (event) => event.pointerId === press.pointerId;
+  const stop = (up) => {
+    if (done.signal.aborted) return;
+    done.abort();
+    end(up?.type === "pointerup" ? up : undefined);
+  };
+  const on = { signal: done.signal };
+  addEventListener(
+    "pointermove",
+    (next) => own(next) && (next.buttons ? move(next) : stop()),
+    on,
+  );
+  for (const kind of ["pointerup", "pointercancel"])
+    addEventListener(kind, (up) => own(up) && stop(up), on);
+  addEventListener(
+    "message",
+    ({ source, data }) =>
+      source === parent &&
+      data?.uagentDesign === 1 &&
+      data.type === "release" &&
+      stop(),
+    on,
+  );
+  signal.addEventListener("abort", () => stop(), on);
+  return stop;
+}
+
 export function rectOf(list) {
   const rects = list.map((one) => one.getBoundingClientRect());
   if (!rects.length) return undefined;
@@ -253,13 +287,14 @@ export function itemLayer(type) {
         { signal },
       );
   };
-  // The pointer of the drag going on, and what a second finger does to it.
-  let pressing;
+  // The drag going on: what ends it, and what a second finger does to it.
+  let dragging;
   let joined;
   listen("pointerdown", (event) => {
-    if (pressing !== undefined && event.pointerType === "touch")
-      return joined?.(event);
-    if (event.button || pressing !== undefined) return;
+    if (dragging && event.pointerType === "touch") return joined(event);
+    if (event.button) return;
+    // A press while one is held: its release was lost, so it ends here.
+    dragging?.();
     if (event.target.isContentEditable) return;
     // A press elsewhere ends the typing in an item, which saves it.
     if (document.activeElement?.isContentEditable)
@@ -294,10 +329,8 @@ export function itemLayer(type) {
     focus();
     if (!drag) return;
     changing = true;
-    pressing = event.pointerId;
     let moved = false;
     let last = event;
-    const done = new AbortController();
     // The items' attributes as the drag found them.
     const kept = picked.map((one) => [
       one,
@@ -305,9 +338,8 @@ export function itemLayer(type) {
     ]);
     // A second finger: the items go back, nothing is said, and the two zoom.
     joined = (second) => {
-      done.abort();
-      pressing = undefined;
-      changing = false;
+      moved = false;
+      dragging();
       for (const [one, attributes] of kept) {
         for (const { name } of [...one.attributes]) one.removeAttribute(name);
         for (const [name, value] of attributes) one.setAttribute(name, value);
@@ -320,25 +352,22 @@ export function itemLayer(type) {
         ]),
       );
     };
-    const follow = (next) => {
-      if (next.pointerId !== pressing) return;
-      last = next;
-      const [dx, dy] = [next.clientX - start[0], next.clientY - start[1]];
-      moved ||= Math.hypot(dx, dy) > 3;
-      if (moved) drag[0](dx, dy);
-    };
-    const drop = (up) => {
-      if (up.pointerId !== pressing) return;
-      done.abort();
-      pressing = undefined;
-      changing = false;
-      if (moved) drag[1]();
-      else if (again && up.type === "pointerup") type.retype(item, up);
-    };
-    const signal = AbortSignal.any([done.signal, off.signal]);
-    addEventListener("pointermove", follow, { signal });
-    addEventListener("pointerup", drop, { signal });
-    addEventListener("pointercancel", drop, { signal });
+    dragging = held(
+      event,
+      (next) => {
+        last = next;
+        const [dx, dy] = [next.clientX - start[0], next.clientY - start[1]];
+        moved ||= Math.hypot(dx, dy) > 3;
+        if (moved) drag[0](dx, dy);
+      },
+      (up) => {
+        dragging = undefined;
+        changing = false;
+        if (moved) drag[1]();
+        else if (again && up) type.retype(item, up);
+      },
+      off.signal,
+    );
   });
 
   // Copies of the items, over the rest, picked.

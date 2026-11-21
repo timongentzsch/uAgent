@@ -14,6 +14,7 @@
 
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/strings.h"
 #include "include/media/attachments.h"
 
 namespace uagent::web {
@@ -68,27 +69,6 @@ std::string Hkdf(std::string_view key, std::string_view salt,
   return result;
 }
 }  // namespace
-
-std::string Base64Url(std::string_view bytes) {
-  if (bytes.size() > kBase64InputBytes) {
-    return {};
-  }
-  std::string result((bytes.size() + 2) / 3 * 4 + 1, '\0');
-  int length =
-      EVP_EncodeBlock(reinterpret_cast<unsigned char*>(result.data()),
-                      reinterpret_cast<const unsigned char*>(bytes.data()),
-                      static_cast<int>(bytes.size()));
-  if (length < 0) {
-    return {};
-  }
-  result.resize(static_cast<size_t>(length));
-  std::replace(result.begin(), result.end(), '+', '-');
-  std::replace(result.begin(), result.end(), '/', '_');
-  while (!result.empty() && result.back() == '=') {
-    result.pop_back();
-  }
-  return result;
-}
 
 std::string Unbase64Url(std::string_view encoded) {
   if (encoded.size() > kBase64EncodedChars ||

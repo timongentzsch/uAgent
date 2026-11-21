@@ -8,6 +8,7 @@
 #include <string>
 
 #include "include/core/fs.h"
+#include "include/core/strings.h"
 #include "include/web/push.h"
 #include "include/web/push_crypto.h"
 #include "tests/unit/test_support.h"

@@ -24,6 +24,7 @@
 #include "include/api/client.h"
 #include "include/core/fs.h"
 #include "include/core/private_store.h"
+#include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/web/protocol.h"

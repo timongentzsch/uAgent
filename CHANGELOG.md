@@ -38,6 +38,7 @@
 
 ### Fixes
 
+- **A sheet no longer rises and then drops.** On a touch screen a sheet with fields, such as **Model and effort**, slid up a little too tall and then shrank, so its top moved down again: each field held 6px more than its height until a script had measured it, which it could only do once the sheet was shown. A one-line field has its height from the first frame now.
 - **Even on a phone, too.** The status line under the input stands as far from the screen's bottom as from its sides, and in the Activity sheet a row's Remove button fills its row, so it is as far from the sheet's end as from its side. The phone tour of every view now fails on a control that stands closer to one edge of its box than to the other, as the desktop one does.
 - **A conversation is not written over by an empty one.** When an agent's report reached a conversation that another process still held, a second runtime started for it, could not resume it, and on its way out saved its own empty conversation, which landed over the real one once the holder let go: the title became "(no messages)" and the cost zero. A runtime that cannot resume now leaves the file as it is.
 - **Requests no longer wait two seconds in a burst.** When several new connections arrived at once, the web host counted them against idle threads that had not woken yet and left the rest queued until an idle connection timed out, two seconds later: a folder opened slowly, and an open artifact followed its file late. It starts a thread for each queued connection now, as the HTTP library does from 0.62.

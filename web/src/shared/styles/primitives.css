@@ -921,6 +921,12 @@
     transform: scale(var(--input-scale));
     transform-origin: top left;
   }
+  /* A one-line field is its height from the first frame: the script that
+     fits a field measures it only once it is shown, a frame into a sheet's
+     rise, and until then the box it scales down held its full height. */
+  .text-control:has(> :is(input, select)) {
+    height: var(--input-min-height);
+  }
   /* Field width belongs to its responsive wrapper. Native horizontal resizing
      writes a fixed inline width that breaks subsequent layout/zoom changes. */
   .text-control > textarea {

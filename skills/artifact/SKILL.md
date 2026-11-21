@@ -79,8 +79,8 @@ their message. You make every change by editing the files.
    text that runs into other text or past an edge, a document page that runs
    past its height, a file that did not load.
 2. Fix every problem and open the page again, until none is listed.
-3. Look at the page once and fix what reads wrong or strays from the design
-   system's tokens. Pages you did not touch need no second look.
+3. Look at the page once (`observe` with its `path`, or a deck's folder)
+   and fix what reads wrong or strays from the design system's tokens. Pages you did not touch need no second look.
 4. Hand it over with `present`: the folder of a deck, a design or a design
    system (`decks/q3-review/`), the file of a document or a sheet
    (`docs/q3-board-memo.html`). The person gets a card that opens it. Make

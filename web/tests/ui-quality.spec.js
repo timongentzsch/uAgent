@@ -2,6 +2,7 @@ import {
   test,
   expect,
   headerAction,
+  online,
   selectProbeModel,
   openMore,
   showList,
@@ -144,6 +145,35 @@ test.describe("touch interaction", () => {
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
     expect(bounds.y).toBeGreaterThanOrEqual(0);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(844);
+  });
+  test("a sheet with fields is its height from its first frame: it rises and does not drop", async ({
+    page,
+    session,
+    command,
+  }) => {
+    await selectProbeModel(command, session);
+    await page.goto(`/#session=${session.id}`);
+    await online(page);
+    // Every frame's height of the sheet, from the first it is drawn in.
+    await page.evaluate(() => {
+      window.heights = [];
+      const frame = () => {
+        const sheet = document.querySelector(
+          'dialog[data-layout="sheet"][open]',
+        );
+        if (sheet) window.heights.push(sheet.getBoundingClientRect().height);
+        requestAnimationFrame(frame);
+      };
+      frame();
+    });
+    await page.getByRole("button", { name: "Model and effort" }).tap();
+    const sheet = page.getByRole("dialog", { name: "Model and effort" });
+    await expect(sheet.getByRole("button", { name: "Apply" })).toBeEnabled();
+    const heights = await page.evaluate(() => window.heights);
+    expect(heights.length).toBeGreaterThan(1);
+    expect([...new Set(heights.map((height) => Math.round(height)))]).toEqual([
+      Math.round(heights.at(-1)),
+    ]);
   });
   test("a long setting value is cut short, not scrolled to", async ({
     page,

@@ -2,11 +2,12 @@
 
 #include "include/media/attachments.h"
 
+#include <openssl/evp.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
-#include <array>
+#include <climits>
 #include <cstdio>
 #include <filesystem>
 #include <limits>
@@ -30,9 +31,6 @@
 namespace uagent {
 
 namespace {
-
-constexpr char kBase64Alphabet[] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 // Extension to MIME type. Also read backwards to name a saved image, so the
 // first entry for a type is the one its files get (.jpg, never .jpeg).
@@ -351,7 +349,7 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
     return "";
   }
   out.reserve(*reserved);
-  std::vector<unsigned char> block(KiB(48));
+  std::vector<char> block(KiB(48));
   uintmax_t read_bytes = 0;
   size_t held = 0;  // bytes of an incomplete triple carried into the next read
   // Stops at end of file rather than reading once more: reading a failed
@@ -366,23 +364,11 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
       return "";
     }
     size_t whole = (held + n) - (held + n) % 3;
-    for (size_t i = 0; i < whole; i += 3) {
-      const unsigned char* in = block.data() + i;
-      out += kBase64Alphabet[in[0] >> 2];
-      out += kBase64Alphabet[((in[0] & 3) << 4) | (in[1] >> 4)];
-      out += kBase64Alphabet[((in[1] & 15) << 2) | (in[2] >> 6)];
-      out += kBase64Alphabet[in[2] & 63];
-    }
+    out += Base64({block.data(), whole});
     held = held + n - whole;
     for (size_t i = 0; i < held; ++i) block[i] = block[whole + i];
   }
-  if (held > 0) {
-    unsigned char second = held > 1 ? block[1] : 0;
-    out += kBase64Alphabet[block[0] >> 2];
-    out += kBase64Alphabet[((block[0] & 3) << 4) | (second >> 4)];
-    out += held > 1 ? kBase64Alphabet[(second & 15) << 2] : '=';
-    out += '=';
-  }
+  out += Base64({block.data(), held});
   if (!ferror(file.get())) return out;
   error = "failed to read " + attachment.path;
   return "";
@@ -390,44 +376,25 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
 
 bool Base64Decode(std::string_view input, std::string& output,
                   size_t max_bytes) {
-  static const auto kTable = [] {
-    std::array<int, 256> values{};
-    values.fill(-1);
-    for (int i = 0; i < 64; ++i) {
-      values[static_cast<unsigned char>(kBase64Alphabet[i])] = i;
-    }
-    return values;
-  }();
-  if (input.size() % 4 != 0) return false;
-  std::optional<size_t> decoded = CheckedMul(input.size() / 4, 3);
-  if (!decoded) return false;
-  if (!input.empty() && input.back() == '=') --*decoded;
-  if (input.size() >= 2 && input[input.size() - 2] == '=') --*decoded;
-  if (*decoded > max_bytes) return false;
-  output.clear();
-  output.reserve(*decoded);
-  for (size_t i = 0; i < input.size(); i += 4) {
-    int a = kTable[static_cast<unsigned char>(input[i])];
-    int b = kTable[static_cast<unsigned char>(input[i + 1])];
-    int c = input[i + 2] == '='
-                ? 0
-                : kTable[static_cast<unsigned char>(input[i + 2])];
-    int d = input[i + 3] == '='
-                ? 0
-                : kTable[static_cast<unsigned char>(input[i + 3])];
-    if (a < 0 || b < 0 || c < 0 || d < 0 ||
-        (input[i + 2] == '=' && input[i + 3] != '=') ||
-        (i + 4 != input.size() &&
-         (input[i + 2] == '=' || input[i + 3] == '='))) {
-      return false;
-    }
-    output.push_back(static_cast<char>((a << 2) | (b >> 4)));
-    if (input[i + 2] != '=') {
-      output.push_back(static_cast<char>((b << 4) | (c >> 2)));
-    }
-    if (input[i + 3] != '=') output.push_back(static_cast<char>((c << 6) | d));
-    if (output.size() > max_bytes) return false;
+  if (input.size() % 4 != 0 || input.size() > static_cast<size_t>(INT_MAX)) {
+    return false;
   }
+  const size_t padding =
+      input.ends_with("==") ? size_t{2} : size_t{input.ends_with('=')};
+  const size_t decoded = input.size() / 4 * 3 - padding;
+  // '=' decodes as a zero byte: only the counted padding may hold it.
+  if (decoded > max_bytes || input.find('=') < input.size() - padding) {
+    return false;
+  }
+  output.resize(input.size() / 4 * 3);
+  // Whitespace it trims at either end comes back as a shorter length.
+  if (EVP_DecodeBlock(reinterpret_cast<unsigned char*>(output.data()),
+                      reinterpret_cast<const unsigned char*>(input.data()),
+                      static_cast<int>(input.size())) !=
+      static_cast<int>(output.size())) {
+    return false;
+  }
+  output.resize(decoded);
   return true;
 }
 

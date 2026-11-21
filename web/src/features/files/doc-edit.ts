@@ -113,14 +113,17 @@ const parsed = (source: string) =>
     source.startsWith(BOM) ? source.slice(1) : source,
     "text/html",
   );
+// Why an edit the file cannot take by itself was not written.
+export const UNSPLICED =
+  "this part of the file cannot be changed here. Ask the agent to change it.";
 // The changed page as its file's text: only what changed replaced, every
-// other byte kept; null where the file does not read back as the page that
+// other byte kept; false where the file does not read back as the page that
 // way (white space between tags aside), as where an end tag is left out.
 function rewritten(page: Document, source: string) {
   const text = spliced(source, parsed(source), page);
   const flat = (read: Document) =>
     read.documentElement.outerHTML.replace(/>\s+</g, "><");
-  return text !== undefined && flat(parsed(text)) === flat(page) ? text : null;
+  return text !== undefined && flat(parsed(text)) === flat(page) && text;
 }
 
 // A slide in the style of `source`: its head, its body's own attributes,
@@ -140,7 +143,8 @@ export function blankSlide(source: string) {
 
 // A slide's source with a word of its mark set or taken away (skip: left
 // out of the talk; push: it comes in from the right), its other words kept:
-// beside its artboard, where the host reads it. Null where it cannot be.
+// beside its artboard, where the host reads it. False where it cannot be
+// written by itself.
 export function markSlide(source: string, word: "skip" | "push", on: boolean) {
   const page = parsed(source);
   const mark = page.querySelector('meta[name="slide"]');
@@ -237,10 +241,13 @@ export const SLIDE_MADE: Record<
 
 // The source with the change made, or null where the file is no slide, has
 // not every element the change names as the page showed it (the agent
-// changed it meanwhile), or the change is not one a slide takes or can be
-// written by itself. Its numbers
-// are written as whole pixels and nothing the page says as text.
-export function slideEdit(source: string, edit: SlideEdit): string | null {
+// changed it meanwhile), or the change is not one a slide takes; false where
+// it cannot be written by itself. Its numbers are written as whole pixels
+// and nothing the page says as text.
+export function slideEdit(
+  source: string,
+  edit: SlideEdit,
+): string | false | null {
   const page = parsed(source);
   const artboard = page.querySelector('meta[name="artboard"]');
   if (!/\sslide$/.test(artboard?.getAttribute("content")?.trim() ?? ""))
@@ -454,7 +461,7 @@ function turn(block: Element, as: string) {
 // block the caret belongs in (a new one's first), or null when the file no
 // longer has the edit's place: the block and those around it as the page
 // showed them or as `wrote` says this last wrote them, among as many blocks
-// (the file changed meanwhile), or the edit cannot be written by itself.
+// (the file changed meanwhile); false where it cannot be written by itself.
 export function applyEdit(
   source: string,
   edit: BlockEdit,
@@ -528,8 +535,8 @@ export function applyEdit(
   if (kind && edit.as && edit.as !== kind && Object.hasOwn(KINDS, edit.as))
     turn(block, edit.as);
   const made = rewritten(page, source);
-  return made === null
-    ? null
+  return made === false
+    ? false
     : {
         text: made,
         wrote: text,
@@ -580,13 +587,14 @@ export function blockSaver(files: {
   const write = async (path: string, edit: BlockEdit, closing: boolean) => {
     const mine = key(path, edit.index);
     try {
-      let next!: NonNullable<ReturnType<typeof applyEdit>>;
+      let next!: Exclude<ReturnType<typeof applyEdit>, false | null>;
       await files.write(
         path,
         (text) => {
           const made = applyEdit(text, edit, (index) =>
             wrote.get(key(path, index)),
           );
+          if (made === false) throw new Error(UNSPLICED);
           if (!made || (closing && new Blob([made.text]).size > CLOSING_BYTES))
             throw new Error(
               "this text changed in the file meanwhile. Reopen it to edit.",

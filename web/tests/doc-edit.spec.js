@@ -51,7 +51,7 @@ test("a save writes the document's own nodes: its comments stay where they stood
       "<!-- note -->\n<!doctype html>\n<title>T</title>\n<p>Hi",
       typed(0, "Hi"),
     ),
-  ).toBeNull();
+  ).toBe(false);
   // A byte order mark stays first, and a file of CRLF lines stays one.
   expect(
     await edited(
@@ -323,18 +323,21 @@ test("each write reads the file first, so what the agent wrote meanwhile is kept
   ]);
 });
 
-test("an edit the file cannot take by itself is refused and said, and the file is left as it was", async ({
+test("an edit the file cannot take by itself is refused and said apart from one whose text changed, and the file is left as it was", async ({
   page,
 }) => {
   const said = await page.evaluate(async (harness) => {
     const { saverOn, edit, outcome } = await import(harness);
     const { saver, file } = saverOn();
     file.text = "<!doctype html>\n<ul><li>a<li>b</ul>\n";
-    const made = outcome(saver.save("f", edit(0, "a", "a1")));
-    return [await saver.flush(), await made, file.text];
+    const cannot = outcome(saver.save("f", edit(0, "a", "a1")));
+    await saver.flush();
+    const changed = outcome(saver.save("f", edit(1, "c", "c1")));
+    await saver.flush();
+    return [await cannot, await changed, file.text];
   }, HARNESS);
   expect(said).toEqual([
-    false,
+    "Not saved: this part of the file cannot be changed here. Ask the agent to change it.",
     "Not saved: this text changed in the file meanwhile. Reopen it to edit.",
     "<!doctype html>\n<ul><li>a<li>b</ul>\n",
   ]);

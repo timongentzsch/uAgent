@@ -87,6 +87,7 @@ import {
   notesEdit,
   type Saved,
   markSlide,
+  UNSPLICED,
 } from "./doc-edit.ts";
 import {
   BOARD,
@@ -104,8 +105,10 @@ import { useResource } from "../../shared/use-resource.ts";
 // Why a change by hand was not written.
 const REFUSED =
   "That change was not made: the file does not take it as it stands. It is shown as the file is now.";
-const refuse = (): never => {
-  throw new Error(REFUSED);
+// False: the file cannot take it by itself (doc-edit.ts); else it does not
+// take it as it stands.
+const refuse = (made?: false | null): never => {
+  throw new Error(made === false ? `Not saved: ${UNSPLICED}` : REFUSED);
 };
 // Said in the tools' row while a sheet's engine takes more than a moment.
 const CALCULATING = "Calculating…";
@@ -901,7 +904,8 @@ export default function Sequence({
             rewrite?.(
               path,
               (source) =>
-                markSlide(source, "skip", !boards[index]?.skip) ?? refuse(),
+                markSlide(source, "skip", !boards[index]?.skip) ||
+                refuse(false),
             )
           }
           push={async () => {
@@ -910,7 +914,7 @@ export default function Sequence({
             if (
               await rewrite?.(
                 path,
-                (source) => markSlide(source, "push", push) ?? refuse(),
+                (source) => markSlide(source, "push", push) || refuse(false),
               )
             )
               setSaid((was) => was && { ...was, push });
@@ -1335,8 +1339,8 @@ export default function Sequence({
                       let taken = true;
                       void rewrite?.(path, (source) => {
                         const made = hand.edit(source, message as never);
-                        taken = made !== null;
-                        return made ?? refuse();
+                        taken = typeof made === "string";
+                        return made || refuse(made as false | null);
                       }).then(() => {
                         if (!taken) return setLoad((count) => count + 1);
                         wrote.current++;

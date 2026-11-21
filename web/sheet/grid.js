@@ -2,7 +2,7 @@
 // it as a spreadsheet's grid.
 
 import { headOf, isHeader, isTotal } from "./book.js";
-import { boxAt, CELL, cellName, letters } from "./text.js";
+import { boxAt, CELL, cellName, hrefOf, letters } from "./text.js";
 
 const attrsOf = (element, skip) =>
   Object.fromEntries(
@@ -24,6 +24,16 @@ export function figuresOf(table) {
   return figures;
 }
 
+// A cell that is one link and nothing else: its anchor.
+const linkIn = (cell) => {
+  const [link, ...more] = cell.children;
+  return link?.matches("a[href]") &&
+    !more.length &&
+    link.textContent.trim() === cell.textContent.trim()
+    ? link
+    : undefined;
+};
+
 // Every row as wide as the widest; a header row is padded with header
 // cells, so it stays one.
 export function readTab(table) {
@@ -36,6 +46,7 @@ export function readTab(table) {
       th: cell.localName === "th",
       attrs: attrsOf(cell),
       text: cell.textContent.trim(),
+      ...(linkIn(cell) && { href: linkIn(cell).getAttribute("href") }),
     })),
   }));
   const width = Math.max(
@@ -53,12 +64,14 @@ export function readTab(table) {
     attrs: attrsOf(table, "data-sheet"),
     // A "<" written bare in a cell opened a tag: the cell's text is not
     // what was written.
-    markup: [...table.querySelectorAll(":is(td, th):has(*)")].map((cell) =>
-      cellName({
-        row: cell.parentElement.rowIndex + 1,
-        column: cell.cellIndex + 1,
-      }),
-    ),
+    markup: [...table.querySelectorAll(":is(td, th):has(*)")]
+      .filter((cell) => !linkIn(cell))
+      .map((cell) =>
+        cellName({
+          row: cell.parentElement.rowIndex + 1,
+          column: cell.cellIndex + 1,
+        }),
+      ),
     columns: Array.from({ length: width }, (_, at) => said[at] ?? {}),
     rows,
     charts: figuresOf(table).map((figure) => ({
@@ -301,7 +314,6 @@ export function draw(table, book, sheet, filters, view) {
         drawn.classList.toggle(`sheet-${name}`, marks[name]);
       drawn.classList.toggle("sheet-number", kind === "number");
       drawn.classList.toggle("sheet-error", kind === "error");
-      drawn.classList.toggle("sheet-link", /^=HYPERLINK\(/i.test(cell.text));
       drawn.classList.toggle(
         "sheet-options",
         r >= head && !!column["data-options"],
@@ -317,6 +329,14 @@ export function draw(table, book, sheet, filters, view) {
             checked: shown === "TRUE",
             tabIndex: -1,
             ariaLabel: `${letters(at)}${number}`,
+          }),
+        );
+      else if (hrefOf(cell))
+        drawn.replaceChildren(
+          make("span", {
+            className: "sheet-link",
+            role: "link",
+            textContent: shown,
           }),
         );
       else drawn.textContent = shown;

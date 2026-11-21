@@ -403,6 +403,12 @@ export const escaped = (text) =>
     /[&<>]/g,
     (sign) => `&${{ "&": "amp", "<": "lt", ">": "gt" }[sign]};`,
   );
+// Where a cell links to: its `<a href>`, or its text where that is an
+// address alone. Only these open; anything else shows as text.
+export const hrefOf = ({ text, href }) => {
+  const to = href ?? text;
+  return /^(https?:\/\/|mailto:)\S+$/i.test(to) ? to : undefined;
+};
 const attributes = (attrs) =>
   Object.entries(attrs)
     .map(([name, value]) =>
@@ -425,7 +431,11 @@ export const tableText = ({ name, attrs, columns, rows, charts }) =>
         `<tr${attributes(row.attrs)}>${row.cells
           .map(
             (cell) =>
-              `<${cell.th ? "th" : "td"}${attributes(cell.attrs)}>${escaped(cell.text)}`,
+              `<${cell.th ? "th" : "td"}${attributes(cell.attrs)}>${
+                cell.href
+                  ? `<a${attributes({ href: cell.href })}>${escaped(cell.text)}</a>`
+                  : escaped(cell.text)
+              }`,
           )
           .join("")}`,
     ),

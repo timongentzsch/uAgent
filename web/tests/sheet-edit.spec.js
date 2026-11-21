@@ -1440,16 +1440,109 @@ test("a cell's menu shows one value alone or leaves it out, holds rows and colum
   await pick("A7", "Paste values only");
   await expect(cell("Tasks", "A7")).toHaveText("2,400.00");
   await expect.poll(saved).toContain("\n<tr><td>2,400.00<td><td><td><td>\n");
-  // A link is a formula of the address and what the cell showed.
+  // A link is the cell's text in an anchor.
   await cell("Tasks", "A2").click({ button: "right" });
   const link = stage.getByRole("searchbox", { name: "Link to an address" });
   await link.fill("https://example.com/a");
   await link.press("Enter");
   await expect(cell("Tasks", "A2")).toHaveText("Write");
-  await expect(cell("Tasks", "A2")).toHaveClass(/sheet-link/);
+  await expect(cell("Tasks", "A2").locator(".sheet-link")).toBeVisible();
   await expect
     .poll(saved)
-    .toContain('<td>=HYPERLINK("https://example.com/a","Write")<td>');
+    .toContain('<td><a href="https://example.com/a">Write</a><td>');
+});
+
+test("a link in a cell is written as an anchor or an address alone, opens outside the app from its text only, and is added and taken away from the cell's menu or the keys", async ({
+  page: app,
+  session,
+  host,
+  context,
+}) => {
+  const LINKS = sheet("Links", {
+    Tools: [
+      "<th>Name<th>Home",
+      '<td><a href="http://outside.test/cmake">CMake</a><td>http://outside.test/home',
+      "<td>Plain<td>mailto:a@b.example",
+    ],
+  });
+  const { files, stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    LINKS,
+  );
+  await context.route("http://outside.test/**", (route) =>
+    route.fulfill({ body: "outside" }),
+  );
+  const notice = files.locator(
+    ".page-tools .notice, .open-page > .page-notice .notice",
+  );
+  const opened = [];
+  context.on("page", (made) => opened.push(made));
+  // Both forms show as links, the label of one and the address of the other;
+  // the anchor is no markup.
+  await expect(cell("Tools", "A2")).toHaveText("CMake");
+  for (const ref of ["A2", "B2", "B3"])
+    await expect(cell("Tools", ref).locator(".sheet-link")).toBeVisible();
+  await expect(cell("Tools", "A3").locator(".sheet-link")).toHaveCount(0);
+  await expect(notice).toHaveCount(0);
+  // A press beside the text only selects the cell; on the text it opens.
+  const box = await cell("Tools", "A2").boundingBox();
+  await app.mouse.click(box.x + box.width - 4, box.y + box.height / 2);
+  await expect(cell("Tools", "A2")).toHaveAttribute("aria-selected", "true");
+  expect(opened).toHaveLength(0);
+  const popup = context.waitForEvent("page");
+  await cell("Tools", "A2").locator(".sheet-link").click();
+  await expect(await popup).toHaveURL("http://outside.test/cmake");
+  // Added from the menu: the cell's text is the label.
+  await cell("Tools", "A3").click({ button: "right" });
+  const field = stage.getByRole("searchbox", { name: "Link to an address" });
+  await field.fill("javascript:alert(1)");
+  await field.press("Enter");
+  await expect(notice).toHaveText("A link opens an http(s) or mailto address.");
+  await cell("Tools", "A3").click({ button: "right" });
+  await field.fill("http://outside.test/plain");
+  await field.press("Enter");
+  await expect(cell("Tools", "A3").locator(".sheet-link")).toHaveText("Plain");
+  await expect
+    .poll(saved)
+    .toContain('<td><a href="http://outside.test/plain">Plain</a><td>mailto');
+  // The keys bring the same field, with the address it holds; Remove link
+  // leaves the label.
+  await app.keyboard.press("Control+k");
+  await expect(field).toHaveValue("http://outside.test/plain");
+  await app.keyboard.press("Escape");
+  await cell("Tools", "A3").click({ button: "right" });
+  await stage.getByRole("menuitem", { name: "Remove link" }).click();
+  await expect(cell("Tools", "A3").locator(".sheet-link")).toHaveCount(0);
+  await expect.poll(saved).toContain("\n<tr><td>Plain<td>mailto");
+  // A bare address is a link without a mark: a cell with none gets one.
+  await cell("Tools", "A4").click({ button: "right" });
+  await field.fill("http://outside.test/new");
+  await field.press("Enter");
+  await expect.poll(saved).toContain("<tr><td>http://outside.test/new<td>");
+  await expect(cell("Tools", "A4").locator(".sheet-link")).toBeVisible();
+});
+
+test("a link is read wherever white space lies round it: in a last cell before a line break, in a middle cell, and written with closing tags and indentation", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const rows = [
+    // As the skill teaches: no closing tags, one row to a line.
+    '<tr><td class="bold">Make<td>C<td><a href="https://a.example/make">gnu.org/make</a>',
+    '<tr><td>Ninja<td><a href="https://a.example/ninja">Ninja</a><td>C++',
+    // As a model without the skill writes it.
+    '    <tr><td><a href="https://a.example/cmake">CMake</a></td><td>C++</td><td>\n      <a href="https://a.example/cmake2">cmake.org</a>\n    </td></tr>',
+  ];
+  const source = `<!doctype html>\n<meta charset="utf-8">\n<meta name="sheet" content="1">\n<title>Tools</title>\n<table data-sheet="Tools">\n<tr><th>Name<th>Language<th>Home\n${rows.join("\n")}\n</table>\n`;
+  const { files, cell } = await openSheet(app, session, host.project, source);
+  for (const ref of ["C2", "B3", "A4", "C4"])
+    await expect(cell("Tools", ref).locator(".sheet-link")).toBeVisible();
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveCount(0);
 });
 
 test("the selection's cells are made bold, coloured, filled, aligned, patterned and wrapped from the formula bar, which shows how the active cell is", async ({

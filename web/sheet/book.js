@@ -16,6 +16,7 @@ import {
   boxNamed,
   cellName,
   followed,
+  hrefOf,
   frozenOf,
   inOrder,
   LAST,
@@ -418,8 +419,13 @@ const mapCells = (tabs, change) =>
     });
     return rows.some((row, r) => row !== tab.rows[r]) ? { ...tab, rows } : tab;
   });
-const withText = (cell, text) =>
-  cell.text === text ? cell : { ...cell, text };
+// A link stays with its cell as its label is retyped, and goes with it
+// when it is cleared.
+const withText = (cell, text) => {
+  if (cell.text === text) return cell;
+  const { href, ...rest } = cell;
+  return { ...rest, text, ...(text && href && { href }) };
+};
 
 // The grid runs on past a tab's table. Written to there, the table reaches
 // that far: blank cells under and beside it, a header row's headers too.
@@ -1492,6 +1498,31 @@ export async function openBook(engine, written, locked, calculate) {
             on === sheet && texts.has(`${row},${column}`)
               ? withText(cell, texts.get(`${row},${column}`))
               : cell,
+        ),
+      );
+    }),
+
+    // The cell at `at` linked to `address`, or freed of its link where that
+    // is empty; a cell with no text takes the address for its label.
+    link: queued((sheet, at, address) => {
+      if (address && !hrefOf({ text: address }))
+        return "A link opens an http(s) or mailto address.";
+      const refused = address && tooFar(sheet, at);
+      if (refused) return refused;
+      const [row, column] = address ? [at.row, at.column] : [0, 0];
+      return commit(
+        mapCells(
+          tabs.with(sheet, reaching(tabs[sheet], row, column)),
+          (cell, on, r, c) => {
+            if (on !== sheet || r !== at.row || c !== at.column) return cell;
+            const { href, ...rest } = cell;
+            const text = rest.text || address;
+            return {
+              ...rest,
+              text,
+              ...(address && address !== text && { href: address }),
+            };
+          },
         ),
       );
     }),

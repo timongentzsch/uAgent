@@ -757,6 +757,7 @@ async function open() {
         ),
       ),
     "fill-down": () => book.fillDown(at, box()),
+    link: (address) => book.link(at, pick().anchor, address),
     chart: () =>
       high() > 1 && wide() > 1
         ? book.setCharts(at, (charts) => [

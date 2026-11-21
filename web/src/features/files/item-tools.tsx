@@ -204,6 +204,7 @@ export function ItemTools({
   ask,
   at,
   room,
+  text,
 }: {
   items: Items;
   // What the page says is picked: it takes presses.
@@ -217,6 +218,8 @@ export function ItemTools({
   // Where what is picked is, in the window, and the room it is seen in.
   at: () => Rect | undefined;
   room: () => { width: number; height: number } | undefined;
+  // The tools for the text typed in what is picked.
+  text?: ComponentChildren;
 }) {
   const [one, two, three] = chosen.items;
   const remove = (
@@ -256,6 +259,7 @@ export function ItemTools({
             </>
           ) : (
             <>
+              {text}
               {items.one(one, act)}
               {duplicate}
               {remove}

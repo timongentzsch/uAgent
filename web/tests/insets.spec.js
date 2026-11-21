@@ -61,7 +61,7 @@ test("the Library, and Scheduled with a new task", async ({
   await even(page);
 });
 
-test("a deck beside the conversation, with Edit off and on", async ({
+test("a deck beside the conversation, with Edit off and on, and its text typed in", async ({
   page,
   session,
   host,
@@ -75,6 +75,18 @@ test("a deck beside the conversation, with Edit off and on", async ({
   await even(page);
   await files.getByRole("button", { name: "Edit" }).click();
   await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+  await even(page);
+  const title = files
+    .frameLocator(".page-stage iframe:not([inert])")
+    .locator("h1");
+  await title.click();
+  await expect(title).toHaveAttribute("data-uagent-picked", "");
+  await title.click();
+  await expect(
+    files.getByRole("toolbar", { name: "Picked" }).getByRole("button", {
+      name: "Style",
+    }),
+  ).toBeVisible();
   await even(page);
 });
 

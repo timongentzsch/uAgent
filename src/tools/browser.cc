@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -564,24 +565,34 @@ std::string Settle(const BrowserAccess& access, const ToolContext& context) {
   return notes;
 }
 
-// open with a path: a page of this conversation's folder is served by the
-// web host, any other inlined as markup. Returns what is wrong with the file.
-std::string InlinePageFile(json& args) {
-  const std::string path = JsonValue(args, "path", "");
-  const std::string kind = std::filesystem::path(path).extension().string();
-  std::string markup, error;
+// Where the web host serves `path`, a file or folder within this
+// conversation's folder; empty for any other.
+std::string Served(const std::string& path) {
   const std::string served = EnvStr("UAGENT_INTERNAL_PREVIEW");
   const size_t split = served.find('\n');
   const std::filesystem::path folder =
       CanonicalAccessPath(served.substr(0, split));
   const std::filesystem::path file = CanonicalAccessPath(path);
+  if (split == std::string::npos || file == folder ||
+      !PathWithin(file, folder)) {
+    return "";
+  }
+  return served.substr(split + 1) +
+         PercentEncode(file.lexically_relative(folder).string(), "/");
+}
+
+// open with a path: a page of this conversation's folder is served by the
+// web host, any other inlined as markup. Returns what is wrong with the file.
+std::string InlinePageFile(json& args) {
+  const std::string path = JsonValue(args, "path", "");
+  const std::string kind = std::filesystem::path(path).extension().string();
+  std::string markup, error, url = Served(path);
   if (kind != ".html" && kind != ".htm" && kind != ".svg") {
     error = "path takes a self-contained .html or .svg file";
-  } else if (split != std::string::npos && PathWithin(file, folder) &&
-             std::filesystem::is_regular_file(file)) {
+  } else if (!url.empty() &&
+             std::filesystem::is_regular_file(CanonicalAccessPath(path))) {
     args.erase("path");
-    args["url"] = served.substr(split + 1) +
-                  PercentEncode(file.lexically_relative(folder).string(), "/");
+    args["url"] = std::move(url);
     return "";
   } else if (ReadRegularFile(path, kPageFileBytes, markup, error) &&
              markup.empty()) {
@@ -592,6 +603,73 @@ std::string InlinePageFile(json& args) {
   args.erase("url");
   args["html"] = std::move(markup);
   return "";
+}
+
+// observe with a path: pictures of a page of this conversation's folder, or
+// of a deck's slides, as the Files pane draws them, drawn apart from the
+// agent's tab. `part` says which: "3", or "9-16".
+ToolResult Look(const json& args, const ToolContext& context) {
+  constexpr int kPictures = 8;
+  const std::string path = JsonValue(args, "path", "");
+  const std::filesystem::path file = CanonicalAccessPath(path);
+  const std::string kind = file.extension().string();
+  std::error_code error;
+  const bool deck = std::filesystem::is_directory(file, error);
+  const std::string url = Served(path);
+  if (url.empty() ||
+      !(deck || ((kind == ".html" || kind == ".htm") &&
+                 std::filesystem::is_regular_file(file, error)))) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "observe takes the path of an .html page or a deck's "
+                       "folder in this conversation's folder");
+  }
+  const std::string range = JsonValue(args, "part", "");
+  int first = 1, last = kPictures;
+  if (!range.empty()) {
+    const int read = std::sscanf(range.c_str(), "%d-%d", &first, &last);
+    if (read == 1) last = first;
+    if (read < 1 || first < 1 || last < first) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "part takes a number or a range such as 9-16");
+    }
+  }
+  const json shot =
+      browser::Request({{"op", "look"},
+                        {"instance_id", "0"},
+                        {"url", deck ? url + "/?deck&w=1920&h=1080" : url},
+                        {"width", deck ? 1920 : 1440},
+                        {"height", deck ? 1080 : 900},
+                        {"first", first},
+                        {"last", std::min(last, first + kPictures - 1)}},
+                       browser::kActionMs);
+  if (const std::string failed = JsonValue(shot, "error", "");
+      !failed.empty()) {
+    return ToolFailure(ToolErrorCode::kRemoteError, failed);
+  }
+  ToolResult looked = ToolSuccess("");
+  int shown = first - 1;
+  for (const json& picture : JsonValue(shot, "pictures", json::array())) {
+    ToolResult one = ToolImageResult(
+        {{"data", picture.is_string() ? picture.get<std::string>() : ""},
+         {"mimeType", kJpegMime}},
+        context.call_id, "browser", kArtifactsDir);
+    if (!one.Ok()) return one;
+    looked.body_kind = one.body_kind;
+    looked.hint += (looked.hint.empty() ? "" : "\n") + one.hint;
+    ++shown;
+  }
+  const int parts = JsonValue(shot, "parts", 0);
+  const auto span = [](int from, int to) {
+    return std::to_string(from) + (to > from ? "-" + std::to_string(to) : "");
+  };
+  const int next = std::min(parts, shown + kPictures);
+  looked.output = (shown > first ? "Parts " : "Part ") + span(first, shown) +
+                  " of " + std::to_string(parts) +
+                  (shown < parts ? "; part=" + span(shown + 1, next) +
+                                       (next < parts ? " shows the next."
+                                                     : " shows the rest.")
+                                 : ".");
+  return looked;
 }
 
 // The actions that only ask the browser something.
@@ -774,9 +852,11 @@ constexpr char kBrowserDescription[] =
     " page you wrote, open takes path instead of url: an .html or .svg file; "
     "one in this conversation's folder loads its stylesheets and images as "
     "the canvas shows it, and reports its problems (file:// URLs are "
-    "refused). upload with element, view_id and path gives a file of this "
-    "conversation's folder to a file field, or to the chooser the element "
-    "opens; what a page downloads lands in its downloads folder. console "
+    "refused). observe takes path too, or a deck's folder: its pages, slides "
+    "or tabs as pictures, 8 at a time (part=9-16). upload with element, "
+    "view_id and path gives a file of this conversation's folder to a file "
+    "field, or to the chooser the element opens; what a page downloads lands "
+    "in its downloads folder. console "
     "returns the page's console messages and uncaught errors, network its "
     "requests since it loaded; find narrows both. Chrome holds the user's "
     "saved logins: on a sign-in page click the field, call fill_saved to take"
@@ -797,6 +877,7 @@ json BrowserParameters() {
         {"browser", {{"type", "string"}, {"enum", {"auto", "shared"}}}},
         {"url", {{"type", "string"}}},
         {"path", {{"type", "string"}}},
+        {"part", {{"type", "string"}}},
         {"target_id", {{"type", "string"}}},
         {"view_id", {{"type", "string"}}},
         {"element", {{"type", "integer"}}},
@@ -1031,7 +1112,8 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     const std::string name = action ? action->name : "";
     return Headline{
         action ? action->doing : "Checking", action ? action->done : "Checked",
-        name == "open"   ? JsonValue(args, "url", JsonValue(args, "path", ""))
+        name == "open" || (name == "observe" && args.contains("path"))
+            ? JsonValue(args, "url", JsonValue(args, "path", ""))
         : name == "type" ? FirstLine(JsonValue(args, "text", ""))
                          : "the browser"};
   };
@@ -1070,6 +1152,9 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
                            "upload takes a file that exists");
       }
       args["file"] = file.string();
+    }
+    if (action == "observe" && args.contains("path")) {
+      return Look(args, context);
     }
     const bool page = action == "open" && !JsonValue(args, "path", "").empty();
     if (page) {

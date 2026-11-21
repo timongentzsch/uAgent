@@ -570,7 +570,10 @@
           for (const problem of await found())
             console.warn(`uagent page: ${problem}`);
         const { w, h } = artboard();
-        said({ w: w || innerWidth, h: h || innerHeight, fits: here });
+        // Its parts, each shown at "#N": a document's pages, a sheet's tabs.
+        const tabs = document.querySelectorAll("table[data-sheet]").length;
+        const parts = paper() ? pages : tabs || 1;
+        said({ w: w || innerWidth, h: h || innerHeight, fits: here, parts });
       }),
     );
     // Alone, a document turns its own pages by the keys the pane steps with.

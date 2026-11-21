@@ -800,6 +800,7 @@ json Runtime::Execute(const json& command) {
   if (mode_ == "human") return {{"error", kHumanControls}};
   if (!Start(error)) return {{"error", error}};
   if (op == "capture") return Capture(command);
+  if (op == "look") return Look(command);
   if (!Agent(command, error)) return {{"error", error}};
   // Chrome's word that the attached tab is gone is read with the next reply:
   // ask for the tabs, then attach a page again if none is.

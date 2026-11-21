@@ -1539,37 +1539,88 @@ export async function openBook(engine, written, locked, calculate) {
       ),
     ),
 
-    // One row alone takes the row above it.
-    fillDown: queued((sheet, box) => {
-      const top = box.bottom > box.top ? box.top : box.top - 1;
-      const source = tabs[sheet].rows[top - 1]?.cells;
-      if (!source) return false;
-      const filled = source
-        .slice(box.left - 1, box.right)
-        .some(({ text }) => text);
-      const refused =
-        filled && tooFar(sheet, { row: box.bottom, column: box.left });
-      if (refused) return refused;
-      return placed(
-        "filled",
-        mapCells(
-          tabs.with(sheet, reaching(tabs[sheet], filled ? box.bottom : 0, 0)),
-          (cell, at, row, column) =>
-            at === sheet &&
-            row > top &&
-            row <= box.bottom &&
-            column >= box.left &&
-            column <= box.right
-              ? withText(
-                  cell,
-                  relocated(source[column - 1].text, {
-                    row: row - top,
-                    column: 0,
-                  }),
-                )
-              : cell,
-        ),
-      );
+    // The cells beside `box`, as far as the row or the column `to`, filled
+    // from it: a formula moves along, a number or a date goes on by its
+    // step as the engine finds it, anything else repeats, and the looks
+    // come along. The engine is given the values alone: filling makes it
+    // calculate, which a formula may never finish.
+    fill: queued((sheet, box, to) => {
+      const down = to.row !== undefined;
+      const [edge, near, far] = down
+        ? [to.row, box.top, box.bottom]
+        : [to.column, box.left, box.right];
+      if (edge >= near && edge <= far) return false;
+      const lo = Math.min(far + 1, edge);
+      const hi = Math.max(near - 1, edge);
+      const span = down
+        ? { ...box, top: lo, bottom: hi }
+        : { ...box, left: lo, right: hi };
+      const [high, wide] = [box.bottom - box.top + 1, box.right - box.left + 1];
+      const own = (row, column) =>
+        tabs[sheet].rows[row - 1]?.cells[column - 1] ?? blank();
+      const cycle = (at, from, size) =>
+        from + ((((at - from) % size) + size) % size);
+      const model = new engine.Model("Sheet", "en", "UTC", "en");
+      try {
+        let filled = false;
+        for (let row = box.top; row <= box.bottom; row++)
+          for (let column = box.left; column <= box.right; column++) {
+            const { text } = own(row, column);
+            filled ||= !!text;
+            if (text && !text.startsWith("="))
+              model.setUserInput(0, row, column, text);
+          }
+        const refused =
+          filled && tooFar(sheet, { row: span.bottom, column: span.right });
+        if (refused) return refused;
+        const area = {
+          sheet: 0,
+          row: box.top,
+          column: box.left,
+          width: wide,
+          height: high,
+        };
+        if (down) model.autoFillRows(area, edge);
+        else model.autoFillColumns(area, edge);
+        const reached = filled ? [span.bottom, span.right] : [0, 0];
+        return placed(
+          "filled",
+          mapCells(
+            tabs.with(sheet, reaching(tabs[sheet], ...reached)),
+            (cell, at, row, column) => {
+              if (
+                at !== sheet ||
+                row < span.top ||
+                row > span.bottom ||
+                column < span.left ||
+                column > span.right
+              )
+                return cell;
+              const [r, c] = [
+                cycle(row, box.top, high),
+                cycle(column, box.left, wide),
+              ];
+              const source = own(r, c);
+              const made = model.getCellContent(0, row, column);
+              // A value repeated stays as typed, not as the engine reads it.
+              const text = source.text.startsWith("=")
+                ? relocated(source.text, { row: row - r, column: column - c })
+                : made === model.getCellContent(0, r, c)
+                  ? source.text
+                  : made;
+              const { href: _, ...bare } = cell;
+              return {
+                ...bare,
+                attrs: source.attrs,
+                text,
+                ...(source.href && { href: source.href }),
+              };
+            },
+          ),
+        );
+      } finally {
+        model.free();
+      }
     }),
 
     insertRows: moving((sheet, at, count) =>

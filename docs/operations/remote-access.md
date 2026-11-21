@@ -97,12 +97,11 @@ a secure context and the browser's permission.
 
 | Mode | Works | Needs |
 | --- | --- | --- |
-| Background push | with the app closed | a build with `-DUAGENT_WEB_PUSH=ON` (release archives, the image), `web.pushContact` set to a `mailto:` or `https://` contact, libcurl with asynchronous DNS, a browser with push |
+| Background push | with the app closed | `web.pushContact` set to a `mailto:` or `https://` contact, libcurl with asynchronous DNS, a browser with push |
 | Connected view | while the page is connected | nothing on the host |
 
 Without background push the pane names the reason, such as `set
-UAGENT_WEB_PUSH_CONTACT to a mailto or HTTPS contact to enable …` or
-`native Web Push is not compiled (UAGENT_WEB_PUSH=OFF)`. A notice is raised
+UAGENT_WEB_PUSH_CONTACT to a mailto or HTTPS contact to enable …`. A notice is raised
 when a turn completes, an approval or question waits on you, an approval is
 escalated, or a conversation fails. It carries the conversation id and, with
 `web.notificationDetail` on, the conversation's title and a reason

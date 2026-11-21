@@ -55,9 +55,6 @@ def pending_approval_push(root, home, binary, extra_env=None):
     with Server([responder]) as provider:
         with web_host(binary, root, home, provider.url, extra_env=env) as (client, code, _, _):
             client.pair(code)
-            _, catalogue, _ = client.json("/api/sessions")
-            if not catalogue["capabilities"]["push"]:
-                return None  # built without UAGENT_WEB_PUSH
             status, subscribed, _ = client.json(
                 "/api/push/subscriptions",
                 {
@@ -88,16 +85,12 @@ def pending_approval_push(root, home, binary, extra_env=None):
 
 def test_web_push_announces_pending_approval(root, home, *, binary):
     delivery = pending_approval_push(root / "push", home / "push", binary)
-    if delivery is None:
-        return
     assert_true(delivery["endpoint"].startswith("https://fcm.googleapis.com/"), delivery)
     assert_true(delivery["vapid"] and delivery["bytes"] > 0, delivery)
 
 
 def test_web_push_names_the_conversation_unless_turned_off(root, home, *, binary):
     on = pending_approval_push(root / "on", home / "on", binary)
-    if on is None:
-        return
     off = pending_approval_push(
         root / "off",
         home / "off",

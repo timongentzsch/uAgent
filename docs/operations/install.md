@@ -30,7 +30,7 @@ Archives exist for `linux-x86_64` and `linux-arm64` (glibc 2.38 or newer)
 and `macos-arm64` (macOS 15 or newer). Elsewhere, or when the unpacked
 binary fails `uagent --version` (a missing library), the installer clones
 that release's tag into `~/.local/share/uagent/src` and builds it: git,
-CMake 3.21+, a C++20 compiler, libcurl 7.66+, zlib and Node.js.
+CMake 3.21+, a C++20 compiler, libcurl 7.66+, zlib, OpenSSL 3 and Node.js.
 
 ## What is installed where
 
@@ -70,8 +70,7 @@ remote bundle for this exact build is required.` The installer takes the
 bundle for `uagent --build-id` from `<prefix>/share/uagent/remote/`,
 `UAGENT_REMOTE_BUNDLE` or the matching release asset, and checks it with
 `uagent --check-remote-bundle <dir>` first. An unpublished checkout has
-none: `UAGENT_LOCAL_ONLY=1` installs without one. Web Push needs
-`-DUAGENT_WEB_PUSH=ON` and OpenSSL 3 (the `ci-release` preset has it).
+none: `UAGENT_LOCAL_ONLY=1` installs without one.
 
 ## Run the web host as a service
 

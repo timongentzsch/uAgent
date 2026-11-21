@@ -100,7 +100,7 @@ jobs:
             openssl_prefix=$(brew --prefix openssl@3)
             flags+=("-DOPENSSL_ROOT_DIR=$openssl_prefix" "-DOPENSSL_INCLUDE_DIR=$openssl_prefix/include" -DOPENSSL_USE_STATIC_LIBS=TRUE -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0)
           fi
-          cmake --preset ci-release -B build "${flags[@]}"
+          cmake --preset release -B build "${flags[@]}"
       - name: Build
         # `--parallel` with no count hands Make an unlimited `-j`, and a small
         # runner then swaps instead of compiling.
@@ -338,9 +338,9 @@ jobs:
           ccache: release
           ccache-save: false
           ccache-size: 300M
-      - name: Build native push host
+      - name: Build native host
         run: |
-          cmake --preset ci-release -B build
+          cmake --preset release -B build
           cmake --build build --target uagent --parallel 4 && ccache --show-stats
       # Some specs read the bundle's files, .vite/manifest.json among them.
       - name: Hand the host and bundle to the browser shards

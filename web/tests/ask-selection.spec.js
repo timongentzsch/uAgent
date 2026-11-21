@@ -443,7 +443,9 @@ test("on a phone a long quote is cut short in the message box, which keeps its w
       expect(inner.right).toBeLessThanOrEqual(edge.right);
     }
   };
+  // The answer itself, not the sample drawn while the conversation loads.
   const passage = transcript.locator(".message.response");
+  await expect(passage).toContainText(line.repeat(4).trim());
   await select(passage, line.repeat(4).trim());
   await actions.getByRole("button", { name: "Quote" }).click();
   await expect(form.locator(".quote-bar")).toContainText("A sentence far");

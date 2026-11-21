@@ -268,6 +268,9 @@ slide, a print line not understood, and a sheet's cells in error.
   marked owed with `this text changed in the file meanwhile`, kept on the
   page and not written over; a sheet is drawn again from the file and the
   pane says why.
+- A document's or a slide's edit that cannot be written in place by itself
+  (its block's end tag left out, a comment in its text) is refused with
+  `this part of the file cannot be changed here`; the file is not touched.
 - A sheet whose engine fails or times out is shown as written, and a change
   is refused with the reason. Without the engine installed, the page notes
   that formulas show as text.

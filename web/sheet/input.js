@@ -392,7 +392,6 @@ export function listen(sheet) {
           show();
         }
       },
-      new AbortController().signal,
     );
   });
   let dragging = false;

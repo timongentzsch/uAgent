@@ -1,14 +1,7 @@
 // A formula being typed, in a cell or in the formula bar, is offered the
 // functions its letters name and told the arguments of the one it stands in.
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { test, expect, openSheet, sheet } from "./fixtures.js";
-
-const wasm = createRequire(import.meta.url).resolve("@ironcalc/wasm-xlsx");
-const engine = await import(wasm);
-engine.initSync({
-  module: readFileSync(wasm.replace(/wasm\.js$/, "wasm_bg.wasm")),
-});
+import { evaluating as engine } from "./sheet-engine.js";
 
 const COSTS = sheet("Costs", {
   Costs: [

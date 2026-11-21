@@ -366,13 +366,6 @@ size_t ActivitySupervisor::RetainedIndexOfLocked(int64_t id) const {
   return retained_.size();
 }
 
-size_t ActivitySupervisor::PendingCount() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return static_cast<size_t>(
-      std::count_if(activities_.begin(), activities_.end(),
-                    [](const Activity& job) { return !job.Detached(); }));
-}
-
 size_t ActivitySupervisor::Count() const {
   const size_t remote =
       RemoteWorkspace() ? JsonValue(WorkspaceRequest({{"op", "activities"}}),

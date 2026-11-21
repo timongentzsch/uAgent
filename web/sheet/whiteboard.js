@@ -2,7 +2,7 @@
 // shapes and arrows drawn, and, in the app, changed by hand there, which the
 // app writes to the file. The format: skills/artifact/references/whiteboard.md.
 
-import { APART as COPIED, itemLayer, rectOf } from "./items.js";
+import { APART as COPIED, itemLayer, post, rectOf } from "./items.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 const FILLS = {
@@ -439,9 +439,7 @@ const TEXT = "h1, h2, p:not(.note), small";
 // tool from any item) to another, and the app's bar changes what is picked.
 // Each change is said to the app, which writes it and undoes it with ⌘Z.
 function edits(layer, signal) {
-  const tell = (type, data) =>
-    parent.postMessage({ uagentDesign: 1, type, ...data }, "*");
-  const say = (change) => tell("change", change);
+  const say = (change) => post({ type: "change", ...change });
   const lay = (item) => {
     place(item);
     sized.observe(item);
@@ -481,7 +479,8 @@ function edits(layer, signal) {
       dot.style.top = `${one.offsetTop + (one.offsetHeight * (1 + ny)) / 2}px`;
       if (!dot.isConnected) document.body.append(dot);
     });
-    tell("items", {
+    post({
+      type: "items",
       items: picked.map((item) => ({
         selector: `#${globalThis.CSS.escape(item.id)}`,
         tag: item.localName,

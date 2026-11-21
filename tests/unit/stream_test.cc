@@ -608,11 +608,10 @@ TEST_CASE(TestActivityValidation) {
     CHECK(supervisor.TryAdd(std::move(job), 100));
   };
   add_job({.pid = 999998, .kind = ActivityKind::kDetached});
-  CHECK(!supervisor.PendingCount());
   add_job({.pid = 999997});
-  CHECK(supervisor.PendingCount());
-  CHECK(supervisor.PendingCount() == 1);
   CHECK(supervisor.Count() == 2);
+  const json views = supervisor.ActivityViews();
+  CHECK(views[0]["detached"] == true && views[1]["detached"] == false);
   CHECK(!supervisor.Find(999997).has_value());
   CHECK(supervisor.Find(ActivityId(supervisor.Snapshot().back())).has_value());
   CHECK(!supervisor.TryAdd({.pid = 999996}, 1));

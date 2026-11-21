@@ -41,6 +41,10 @@ const ARROWS = {
 export const APART = 20;
 const LEAST = 20;
 
+// Tells the app around the page.
+export const post = (message) =>
+  parent.postMessage({ uagentDesign: 1, ...message }, "*");
+
 // The box of elements together, in the window.
 export function rectOf(list) {
   const rects = list.map((one) => one.getBoundingClientRect());
@@ -232,16 +236,12 @@ export function itemLayer(type) {
       fingers.set(next.pointerId, next);
       const [now, a, b] = spread();
       if (was && now)
-        parent.postMessage(
-          {
-            uagentDesign: 1,
-            type: "zoom",
-            by: now / was,
-            x: (a.clientX + b.clientX) / 2,
-            y: (a.clientY + b.clientY) / 2,
-          },
-          "*",
-        );
+        post({
+          type: "zoom",
+          by: now / was,
+          x: (a.clientX + b.clientX) / 2,
+          y: (a.clientY + b.clientY) / 2,
+        });
       was = now;
     };
     const signal = AbortSignal.any([done.signal, off.signal]);

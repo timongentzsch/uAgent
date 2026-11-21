@@ -78,7 +78,7 @@ import { useLatest } from "../../shared/use-latest.ts";
 import { coarsePointer, useRoom } from "../../shared/layout.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import type { ViewedImage } from "../../shared/attachments.tsx";
-import { presentChannel, STEPS } from "./present.ts";
+import { STEPS, usePresentChannel } from "./present.ts";
 import {
   type BlockEdit,
   blankSlide,
@@ -391,22 +391,11 @@ export default function Sequence({
     else if (document.fullscreenElement) document.exitFullscreen();
   };
   // The presenter's window moves this one, and this one it.
-  const channel = useRef<BroadcastChannel>(undefined);
-  const follow = useLatest((at: unknown, built: unknown) => {
-    if (typeof at !== "string" || !boards.some((board) => board.path === at))
-      return;
+  const broadcast = usePresentChannel(({ at, build }) => {
+    if (!at || !boards.some((board) => board.path === at)) return;
     if (at !== path) go(at);
-    else if (Number.isInteger(built)) showBuild(built as number);
+    else if (Number.isInteger(build)) showBuild(build as number);
   });
-  // One channel for the page's life: a new one per render would miss what
-  // arrives while it is swapped.
-  useEffect(() => {
-    const opened = presentChannel();
-    opened.onmessage = (event) =>
-      follow.current(event.data?.at, event.data?.build);
-    channel.current = opened;
-    return () => opened.close();
-  }, []);
   // Which of its file's boards shows: a document's page, a sheet's tab.
   const [part, setPart] = useState(0);
   // A sheet's selection, what it offers the formula being typed, the range
@@ -481,7 +470,7 @@ export default function Sequence({
   }, [presenting]);
   const stepBuild = (at: number) => {
     showBuild(at);
-    channel.current?.postMessage({ at: path, build: at });
+    broadcast({ at: path, build: at });
   };
   // Another file is another view, and the presenter's window goes with it.
   const to = (next: number, back = false) => {
@@ -490,7 +479,7 @@ export default function Sequence({
     backward.current = back;
     if (going.path !== path) {
       go(going.path);
-      channel.current?.postMessage({ at: going.path });
+      broadcast({ at: going.path });
     }
     setPart(going.at ?? 0);
   };

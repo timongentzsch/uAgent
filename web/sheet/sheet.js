@@ -6,6 +6,7 @@ import { CHART } from "./chart.js";
 import { listenCharts } from "./figure.js";
 import { draw, figuresOf, LANE, paint, readTab, sizesOf } from "./grid.js";
 import { listen } from "./input.js";
+import { post } from "./items.js";
 import { layoutOf } from "./layout.js";
 import { suggestions } from "./suggest.js";
 import {
@@ -31,8 +32,6 @@ const tables = [...document.querySelectorAll("table[data-sheet]")];
 const named = document.querySelector('meta[name="sheet"]')?.content;
 const file = tables.length || named === "1" ? "" : (named ?? "");
 const title = decodeURIComponent(file).replace(/\.[^.]+$/, "");
-const say = (message) =>
-  parent.postMessage({ uagentDesign: 1, ...message }, "*");
 const here = new URL(".", import.meta.url).href;
 
 // The engine calculates in a worker made for each answer, ended once it
@@ -75,13 +74,13 @@ const ask = (request) =>
     let said = false;
     const shown = setTimeout(() => {
       said = true;
-      say({ type: "calculating", on: true });
+      post({ type: "calculating", on: true });
     }, MOMENT);
     const end = (answer) => {
       clearTimeout(shown);
       clearTimeout(limit);
       worker.terminate();
-      if (said) say({ type: "calculating", on: false });
+      if (said) post({ type: "calculating", on: false });
       done(answer);
     };
     const limit = setTimeout(() => end({ late: true }), LIMIT);
@@ -186,7 +185,7 @@ async function open() {
   // calculates them.
   const held = () => {
     const edits = editsOf(book.tabs);
-    say(edits.length ? { type: "held", edits } : { type: "held" });
+    post(edits.length ? { type: "held", edits } : { type: "held" });
   };
   // The tabs to choose from: a workbook's hidden sheets only calculate.
   const offered = written.flatMap((tab, at) => (tab.hidden ? [] : [at]));
@@ -549,7 +548,7 @@ async function open() {
     cancelAnimationFrame(saying);
     saying = 0;
     const { anchor } = pick();
-    say({
+    post({
       type: "cell",
       ref: `${tab().name}!${cellName(anchor)}`,
       raw: tab().rows[anchor.row - 1]?.cells[anchor.column - 1]?.text ?? "",
@@ -564,7 +563,7 @@ async function open() {
   };
   const sheet = {
     book,
-    say,
+    say: post,
     locked: !!file,
     get at() {
       return at;
@@ -634,13 +633,13 @@ async function open() {
     // next is asked for.
     async did(asked) {
       try {
-        say({ type: "refused", message: "" });
+        post({ type: "refused", message: "" });
         redraw();
         held();
         renew();
         const changed = await asked;
         if (typeof changed === "string")
-          say({ type: "refused", message: changed });
+          post({ type: "refused", message: changed });
         redraw(changed === true);
         if (changed === true) {
           const [undo, redo, found] = [
@@ -649,7 +648,7 @@ async function open() {
             errors(),
           ];
           for (const edit of editsOf(book.made))
-            say({ type: "edit", ...edit, undo, redo, errors: found });
+            post({ type: "edit", ...edit, undo, redo, errors: found });
           told.splice(0, Infinity, ...book.made.map(textOf));
         }
         return changed === true;
@@ -722,7 +721,7 @@ async function open() {
     return changed;
   };
 
-  const out = (as, data) => say({ type: "file", as, data });
+  const out = (as, data) => post({ type: "file", as, data });
   const commands = {
     undo: book.undo,
     redo: book.redo,
@@ -804,7 +803,7 @@ async function open() {
       const range = boxName(box());
       const count = book.filled(at, box());
       if (count && !value) {
-        say({ type: "merge", range, count });
+        post({ type: "merge", range, count });
         return false;
       }
       const asked = value ? JSON.parse(value) : { range, count };
@@ -941,7 +940,7 @@ async function open() {
     charts();
     if (still) place();
     else rest();
-    say({
+    post({
       type: "sheet",
       tabs: offered.map((tab) => book.tabs[tab].name),
       hidden: hidden.size,
@@ -1040,7 +1039,7 @@ async function open() {
     // What the app's formula bar may take after `text`.
     if (data.type === "suggest") {
       const text = String(data.text);
-      say({ type: "suggest", text, ...suggestions(text, book.tokens) });
+      post({ type: "suggest", text, ...suggestions(text, book.tokens) });
     }
   });
   // Find counts what the cells show by tab, as Files counts boards, and
@@ -1054,7 +1053,7 @@ async function open() {
       ),
     );
   const find = (text, index) => {
-    say({
+    post({
       type: "find",
       counts: offered.map((tab) => (text ? found(tab, text).length : 0)),
     });

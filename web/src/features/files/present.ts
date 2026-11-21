@@ -1,5 +1,6 @@
 // Presenting a deck in two windows, the slides and the presenter's view: one
 // BroadcastChannel keeps them on the same slide, and either moves both.
+import { useEffect } from "preact/hooks";
 
 export interface Presenting {
   session: string;
@@ -18,7 +19,21 @@ export const STEPS: Record<string, number | undefined> = {
 };
 
 const HASH = "#presenter=";
-export const presentChannel = () => new BroadcastChannel("uagent-present");
+
+// The slide shown, and the build shown on it.
+type Said = { at?: string; build?: number };
+let channel: BroadcastChannel | undefined;
+
+// `heard` takes what the other window says.
+export function usePresentChannel(heard: (said: Said) => void) {
+  channel ??= new BroadcastChannel("uagent-present");
+  useEffect(() => {
+    const listen = (event: MessageEvent<Said>) => heard(event.data ?? {});
+    channel?.addEventListener("message", listen);
+    return () => channel?.removeEventListener("message", listen);
+  });
+  return (said: Said) => channel?.postMessage(said);
+}
 
 // Opened in the press that asks for it; it goes to the deck once `ready`
 // (what was typed in a slide is in its file).

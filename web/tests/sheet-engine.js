@@ -1,17 +1,20 @@
-// The engine as a sheet's page has it, which never calculates: a call that
-// would throws. And the worker the page asks to calculate, made for each
-// answer (sheet/calculate.js), or to run other code with the engine as it
-// is: nothing where the engine panics or has not answered by `limit`.
+// The engine as it calculates, and as a sheet's page has it, which never
+// calculates: a call that would throws. And the worker the page asks to
+// calculate, made for each answer (sheet/calculate.js), or to run other code
+// with the engine as it is: nothing where the engine panics or has not
+// answered by `limit`.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 
 const wasm = createRequire(import.meta.url).resolve("@ironcalc/wasm-xlsx");
-export const engine = await import(wasm);
-const compiled = new WebAssembly.Module(
-  readFileSync(wasm.replace(/wasm\.js$/, "wasm_bg.wasm")),
-);
+export const binary = readFileSync(wasm.replace(/wasm\.js$/, "wasm_bg.wasm"));
+const compiled = new WebAssembly.Module(binary);
+export const evaluating = await import(wasm);
+evaluating.initSync({ module: compiled });
+// A second instance of the module, so the first keeps calculating.
+export const engine = await import(`${pathToFileURL(wasm).href}?page`);
 engine.initSync({ module: compiled });
 for (const name of ["evaluate", "resumeEvaluation"])
   engine.Model.prototype[name] = () => {

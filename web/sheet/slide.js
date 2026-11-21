@@ -29,6 +29,30 @@ const translate = (item, [x, y]) => {
   item.style.translate = x || y ? `${x}px ${y}px` : "";
   if (!item.style.length) item.removeAttribute("style");
 };
+// What a slide's content is in: the one element in `body` that wraps it
+// (none of `text`, the blocks typed in), or the body.
+export function contentOf(body, text) {
+  const [only, more] = [...body.children].filter(
+    (part) => !part.matches("aside, script, style"),
+  );
+  return only && !more && !only.matches(text) ? only : body;
+}
+// An element as the app finds it again in the file (slideEdit, doc-edit.ts):
+// its tag, its text without white space, how many elements the slide's
+// `content` holds, and its own attributes, without what the page or a
+// person's change sets on it.
+export const identity = (item, content) => ({
+  tag: item.localName,
+  text: squash(item.textContent),
+  of: content.querySelectorAll("*").length,
+  attrs: [...item.attributes]
+    .filter(
+      ({ name }) => !/^(style|contenteditable|data-uagent-.*)$/.test(name),
+    )
+    .map(({ name, value }) => `${name}=${value}`)
+    .sort()
+    .join("\n"),
+});
 // An element's box in the page.
 const box = (item) => {
   const { left, top, width, height } = item.getBoundingClientRect();
@@ -85,13 +109,7 @@ export function edit(on, helper) {
     (event) => typing && !typing.contains(event.target) && stop(),
     { capture: true, signal: off.signal },
   );
-  // Where its content is: the one element that wraps it, or the body.
-  const root = () => {
-    const [only, more] = [...document.body.children].filter(
-      (part) => !part.matches("aside, script, style"),
-    );
-    return only && !more && !only.matches(helper.text) ? only : document.body;
-  };
+  const root = () => contentOf(document.body, helper.text);
   const inside = (item) =>
     item &&
     item !== root() &&
@@ -111,21 +129,9 @@ export function edit(on, helper) {
       item = at;
     return inside(item) ? item : undefined;
   };
-  // An element as the app finds it in the file: where it is and what it
-  // holds.
   const address = (item) => ({
     path: selector(item),
-    tag: item.localName,
-    text: squash(item.textContent),
-    of: root().querySelectorAll("*").length,
-    // Its own, without what the page or a person's change sets on it.
-    attrs: [...item.attributes]
-      .filter(
-        ({ name }) => !/^(style|contenteditable|data-uagent-.*)$/.test(name),
-      )
-      .map(({ name, value }) => `${name}=${value}`)
-      .sort()
-      .join("\n"),
+    ...identity(item, root()),
   });
   const say = (change) => {
     remember();

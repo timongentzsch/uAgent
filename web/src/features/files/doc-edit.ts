@@ -2,6 +2,7 @@
 // source. The block is found by its place among those design-helper.js lists.
 // And a slide's elements changed by hand (slideEdit).
 
+import { contentOf, identity } from "../../../sheet/slide.js";
 import {
   maxItemEntries,
   maxItemPixels,
@@ -139,15 +140,6 @@ function written(page: Document, source: string) {
   );
 }
 
-// What a slide's content is in: the one element that wraps it, or the body
-// (sheet/slide.js finds it alike).
-function contentOf(page: Document) {
-  const [wrap, more] = [...page.body.children].filter(
-    (part) => !part.matches("aside, script, style"),
-  );
-  return wrap && !more && !wrap.matches(EDITABLE) ? wrap : page.body;
-}
-
 // A slide in the style of `source`: its head, its body's own attributes,
 // and where its body is one element that wraps the slide, such a wrapper;
 // in it a heading and a paragraph to type over.
@@ -155,7 +147,7 @@ export function blankSlide(source: string) {
   const page = parsed(source);
   page.title = "New slide";
   page.querySelector('meta[name="slide"]')?.remove();
-  const content = contentOf(page);
+  const content: Element = contentOf(page.body, EDITABLE);
   const into =
     content === page.body ? content : (content.cloneNode() as Element);
   into.innerHTML = "<h1>Heading</h1><p>Text</p>";
@@ -184,24 +176,8 @@ export function skipSlide(source: string, skip: boolean) {
 }
 
 // A slide's element as its page showed it: its path from the body or from
-// an element with an id (design-helper.js `selector`), its tag, its text
-// without white space, how many elements the slide's content held and its
-// own attributes (sheet/slide.js says them alike).
-interface Shown {
-  path: string;
-  tag: string;
-  text: string;
-  of: number;
-  attrs: string;
-}
-const attributesOf = (element: Element) =>
-  [...element.attributes]
-    .filter(
-      ({ name }) => !/^(style|contenteditable|data-uagent-.*)$/.test(name),
-    )
-    .map(({ name, value }) => `${name}=${value}`)
-    .sort()
-    .join("\n");
+// an element with an id (design-helper.js `selector`) and its `identity`.
+type Shown = { path: string } & ReturnType<typeof identity>;
 // The element a path names as `selector` writes one, or null: an id, then
 // steps to a child by its tag and its place among those of its tag; a step
 // without a place names the one child of its tag.
@@ -281,7 +257,7 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
   const artboard = page.querySelector('meta[name="artboard"]');
   if (!/\sslide$/.test(artboard?.getAttribute("content")?.trim() ?? ""))
     return null;
-  const content = contentOf(page);
+  const content: Element = contentOf(page.body, EDITABLE);
   const notes = [...page.querySelectorAll("body > aside")].pop();
   const length = (n: unknown, least = -maxItemPixels) =>
     typeof n === "number" && n >= least && n <= maxItemPixels
@@ -293,18 +269,17 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
       ? (made as number[])
       : undefined;
   };
-  const elements = content.querySelectorAll("*").length;
   const found = (shown: unknown) => {
     const { path, tag, text, of, attrs } = (shown ?? {}) as Partial<Shown>;
     const element = typeof path === "string" ? at(page, path) : null;
-    return element &&
-      element !== content &&
-      content.contains(element) &&
-      !notes?.contains(element) &&
-      element.localName === tag &&
-      squash(element.textContent) === text &&
-      of === elements &&
-      attributesOf(element) === attrs
+    if (!element || element === content || !content.contains(element))
+      return undefined;
+    const own = identity(element, content);
+    return !notes?.contains(element) &&
+      own.tag === tag &&
+      own.text === text &&
+      own.of === of &&
+      own.attrs === attrs
       ? (element as HTMLElement)
       : undefined;
   };

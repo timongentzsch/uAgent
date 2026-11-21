@@ -8,6 +8,7 @@
 - **Models are offered `apply_patch` in place of `write_file`, `edit_file` and `delete_file`.** The three still run each file of a patch, so permission rules, approvals and tool settings that name them work as before; `write_file` is offered by itself only while the conversation has an attached file to copy.
 - **Previewed pages load nothing from another host.** The preview policy no longer admits Google Fonts, and the agent writes pages with system font stacks or a font file in the folder. A page that links a Google font is drawn in its fallback face and lists the link as not loaded.
 - **Every `/btw` starts a side chat of its own.** A second `/btw` used to follow up in the first; follow up in the side chat's own field now.
+- **Building from source needs OpenSSL 3's headers** (Homebrew's `openssl@3` on macOS, `libssl-dev` on Debian and Ubuntu). Web Push is always built in: the `UAGENT_WEB_PUSH` option and the `ci-release` preset are gone (use `release`).
 
 ### Changes
 

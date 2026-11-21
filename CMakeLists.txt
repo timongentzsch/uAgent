@@ -48,11 +48,17 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 endif()
 
 find_package(CURL 7.66 REQUIRED)
+# Homebrew keeps its OpenSSL out of the default search paths.
+if(APPLE)
+  list(APPEND CMAKE_PREFIX_PATH /opt/homebrew/opt/openssl@3)
+endif()
+find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
 find_package(Threads REQUIRED)
 
 add_library(uagent_options INTERFACE)
 target_include_directories(uagent_options INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(uagent_options INTERFACE CURL::libcurl Threads::Threads)
+target_link_libraries(uagent_options INTERFACE CURL::libcurl OpenSSL::Crypto
+                                               Threads::Threads)
 target_compile_features(uagent_options INTERFACE cxx_std_20)
 target_compile_definitions(uagent_options INTERFACE UAGENT_VERSION="${PROJECT_VERSION}")
 if(_IS_GCC_CLANG)
@@ -323,7 +329,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/web/dist/share/sheet")
             "$<TARGET_FILE_DIR:uagent>/share/uagent/sheet")
 endif()
 # The web UI is built by `npm run build` in web/, not checked in.
-option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
 include(cmake/embed_web.cmake)
 add_library(uagent_web src/web/master.cc
                       src/web/remote_hosts.cc src/web/master_remote.cc
@@ -331,7 +336,8 @@ add_library(uagent_web src/web/master.cc
                        src/web/master_command.cc src/web/master_files.cc
                        src/web/master_library.cc
                        src/web/master_stream.cc src/web/master_terminal.cc
-                       src/web/browser_viewer.cc
+                       src/web/browser_viewer.cc src/web/push.cc
+                       src/web/push_crypto.cc
                        src/web/rfb_filter.cc "${_web_generated}")
 find_package(ZLIB REQUIRED)  # libcurl's own dependency: it inflates assets
 target_link_libraries(uagent_web PUBLIC uagent_app ZLIB::ZLIB)
@@ -344,13 +350,6 @@ target_sources(uagent_tools PRIVATE src/browser/browser.cc
                                     src/browser/runtime_page.cc
                                     src/tools/browser.cc)
 target_link_libraries(uagent PRIVATE uagent_web)
-if(UAGENT_WEB_PUSH)
-  find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
-  target_sources(uagent_web PRIVATE src/web/push.cc src/web/push_crypto.cc)
-  target_link_libraries(uagent_web PUBLIC OpenSSL::Crypto)
-else()
-  target_sources(uagent_web PRIVATE src/web/no_push.cc)
-endif()
 
 # json.hpp reaches nearly every translation unit and never changes.
 set(UAGENT_PCH
@@ -418,11 +417,9 @@ if(BUILD_TESTING)
   # uagent_web brings uagent_app; linking both lists it twice.
   target_sources(uagent_tests PRIVATE tests/unit/web_terminal_test.cc
                                       tests/unit/web_remote_test.cc
-                                      tests/unit/browser_test.cc)
+                                      tests/unit/browser_test.cc
+                                      tests/unit/web_push_test.cc)
   target_include_directories(uagent_tests SYSTEM PRIVATE third_party/cpp-httplib)
-  if(UAGENT_WEB_PUSH)
-    target_sources(uagent_tests PRIVATE tests/unit/web_push_test.cc)
-  endif()
   target_link_libraries(uagent_tests PRIVATE uagent_web)
   # Not REUSE_FROM: the test binary is built with an extra -D.
   target_precompile_headers(uagent_tests PRIVATE ${UAGENT_PCH})

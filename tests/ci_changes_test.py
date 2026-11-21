@@ -62,7 +62,7 @@ class ChangeSelectionTest(unittest.TestCase):
             "CMakeLists.txt",
             ".github/workflows/ci.yml",
             "src/browser/runtime.cc",
-            "src/web/no_push.cc",
+            "src/web/push.cc",
             "include/web/master.h",
         ):
             with self.subTest(path=path):

@@ -1,8 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_WEB_PUSH_CRYPTO_H_
 #define UAGENT_INCLUDE_WEB_PUSH_CRYPTO_H_
-// The cryptography Web Push needs: keys, base64url, message encryption and
-// VAPID.
+// The cryptography Web Push needs: keys, base64url decoding, message
+// encryption and VAPID.
 
 #include <openssl/evp.h>
 
@@ -17,7 +17,6 @@ struct PushKeyDeleter {
   void operator()(EVP_PKEY* key) const { EVP_PKEY_free(key); }
 };
 using PushKey = std::unique_ptr<EVP_PKEY, PushKeyDeleter>;
-std::string Base64Url(std::string_view bytes);
 std::string Unbase64Url(std::string_view encoded);
 PushKey GeneratePushKey();
 PushKey ImportPushKey(std::string_view public_bytes,

@@ -74,7 +74,7 @@ fi
 # next update reuses its build.
 build_from_source() {
   echo "Building µAgent from source: $1."
-  echo "That needs git, CMake 3.21+, a C++20 compiler, libcurl and zlib (Node.js adds the web interface)."
+  echo "That needs git, CMake 3.21+, a C++20 compiler, libcurl, zlib and OpenSSL 3's headers (Node.js adds the web interface)."
   has git || { echo "git is missing" >&2; exit 1; }
   release_version
   if [ -d "$data/src/.git" ]; then

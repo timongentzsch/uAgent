@@ -79,7 +79,7 @@ Reproduce the local measurements from the repository root:
 
 ```sh
 cmake -S . -B build/bench -DCMAKE_BUILD_TYPE=Release \
-  -DUAGENT_BUILD_BENCHMARKS=ON -DUAGENT_WEB_PUSH=ON
+  -DUAGENT_BUILD_BENCHMARKS=ON
 cmake --build build/bench --target uagent uagent_bench --parallel 4
 python3 benchmarks/eval.py build/bench/uagent --check --report /tmp/eval.json
 python3 benchmarks/audit.py build/bench/uagent --json /tmp/audit.json

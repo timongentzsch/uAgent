@@ -2,6 +2,7 @@
 
 #include "include/core/strings.h"
 
+#include <openssl/evp.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -180,6 +181,24 @@ std::string PercentEncode(std::string_view text, std::string_view keep) {
       out += {'%', kHex[byte >> 4], kHex[byte & 15]};
     }
   }
+  return out;
+}
+
+std::string Base64(std::string_view bytes) {
+  std::string out((bytes.size() + 2) / 3 * 4 + 1, '\0');
+  const int length =
+      EVP_EncodeBlock(reinterpret_cast<unsigned char*>(out.data()),
+                      reinterpret_cast<const unsigned char*>(bytes.data()),
+                      static_cast<int>(bytes.size()));
+  out.resize(static_cast<size_t>(length));
+  return out;
+}
+
+std::string Base64Url(std::string_view bytes) {
+  std::string out = Base64(bytes);
+  std::ranges::replace(out, '+', '-');
+  std::ranges::replace(out, '/', '_');
+  out.erase(out.find_last_not_of('=') + 1);
   return out;
 }
 

@@ -279,6 +279,40 @@ test("a side chat's form never reads Send follow-up once it is listed, while its
   ).toBeVisible();
 });
 
+test("a side chat whose question was taken stays listed when the read of its snapshot after that fails", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  let taken = false;
+  let failed = false;
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const { pathname } = new URL(request.url());
+    if (request.method() === "POST" && pathname === "/api/command") {
+      const body = request.postDataJSON();
+      taken ||= body.kind === "submit" && body.session_id !== session.id;
+    } else if (
+      taken &&
+      !failed &&
+      /^\/api\/sessions\/[a-f0-9]+$/.test(pathname) &&
+      !pathname.endsWith(session.id)
+    ) {
+      failed = true;
+      return route.fulfill({ status: 500, json: { error: "read failed" } });
+    }
+    await route.continue();
+  });
+  await page.getByLabel("Message or guidance").fill("/btw Side tool probe");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const side = page.getByRole("complementary", { name: "Side chats" });
+  await side.getByRole("button", { name: "Allow once", exact: true }).click();
+  await expect(side).toContainText("SIDE-TOOL-COMPLETE");
+  expect(failed).toBe(true);
+});
+
 test("a side chat asked while the conversation is still waking starts once it is up", async ({
   command,
   session,

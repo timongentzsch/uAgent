@@ -5,15 +5,16 @@
 #include <poll.h>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -626,9 +627,14 @@ ToolResult Look(const json& args, const ToolContext& context) {
   const std::string range = JsonValue(args, "part", "");
   int first = 1, last = kPictures;
   if (!range.empty()) {
-    const int read = std::sscanf(range.c_str(), "%d-%d", &first, &last);
-    if (read == 1) last = first;
-    if (read < 1 || first < 1 || last < first) {
+    const char* end = range.data() + range.size();
+    std::from_chars_result read = std::from_chars(range.data(), end, first);
+    last = first;
+    if (read.ec == std::errc() && read.ptr != end && *read.ptr == '-') {
+      read = std::from_chars(read.ptr + 1, end, last);
+    }
+    if (read.ec != std::errc() || read.ptr != end || first < 1 ||
+        last < first) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "part takes a number or a range such as 9-16");
     }

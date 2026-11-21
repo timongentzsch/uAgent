@@ -586,19 +586,22 @@ json Runtime::Capture(const json& command) {
   });
 }
 
+namespace {
+// What the page states once drawn (web/public/design-helper.js): its
+// artboard, whether this window is that, and its parts. A deck's page states
+// nothing: its slides are its frames.
+constexpr char kDrawn[] =
+    "document.fonts.ready.then(() => window.uagentReady).then(() => "
+    "window.uagentChecked).then((said) => said ? {...said, tall: "
+    "document.documentElement.scrollHeight} : {frames: "
+    "[...document.querySelectorAll('iframe')].map((frame) => { const box = "
+    "frame.getBoundingClientRect(); return [box.left + scrollX, box.top + "
+    "scrollY, box.width, box.height]; })})";
+}  // namespace
+
 json Runtime::Look(const json& command) {
   // Past this long edge a model sees the picture scaled down.
   constexpr double kEdge = 1568, kMost = 8000;
-  // What the page states once drawn (web/public/design-helper.js): its
-  // artboard, whether this window is that, and its parts. A deck's page
-  // states nothing: its slides are its frames.
-  constexpr const char* kDrawn =
-      "document.fonts.ready.then(() => window.uagentReady).then(() => "
-      "window.uagentChecked).then((said) => said ? {...said, tall: "
-      "document.documentElement.scrollHeight} : {frames: "
-      "[...document.querySelectorAll('iframe')].map((frame) => { const box = "
-      "frame.getBoundingClientRect(); return [box.left + scrollX, box.top + "
-      "scrollY, box.width, box.height]; })})";
   const int first = std::max(JsonValue(command, "first", 1), 1);
   const int last = JsonValue(command, "last", first);
   return Apart(command, [&](const std::string& session) -> json {

@@ -13,7 +13,7 @@ const blank = (text: string) => text.replace(/[^\n]/g, " ");
 // comments, scripts, styles and the quoted values of attributes.
 export const masked = (source: string) =>
   source
-    .replace(/<!--[\s\S]*?(?:-->|$)/g, blank)
+    .replace(/<!--[\s\S]*?-->/g, blank)
     .replace(
       /(<(script|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(?=<\/\2|$)/gi,
       (_, open: string, _name, body: string) => open + blank(body),
@@ -67,7 +67,7 @@ export function elementAt(
   const open = source.slice(start, inner);
   const found = { id: attr(open, "id") ?? "", name, open, start };
   if (VOID.test(name)) return { ...found, inner, close: inner, end: inner };
-  const nested = new RegExp(`<(/?)${name}\\b[^>]*>`, "gi");
+  const nested = new RegExp(`<(/?)${name}(?=[\\s/>])[^>]*>`, "gi");
   nested.lastIndex = inner;
   let depth = 1;
   for (let at = nested.exec(mask); at; at = nested.exec(mask))
@@ -90,9 +90,10 @@ export function spliced(source: string, was: Document, now: Document) {
   const cuts: [number, number, string][] = [];
   const spanOf = (element: Element) => {
     const name = element.localName;
+    if (!/^[a-z][a-z0-9-]*$/.test(name)) return;
     const at = [...was.getElementsByTagName(name)].indexOf(element);
     const tags = mask.matchAll(
-      new RegExp(`<(${name})\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, "gi"),
+      new RegExp(`<(${name})(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>`, "gi"),
     );
     const tag = [...tags][at];
     return tag && elementAt(source, mask, tag);
@@ -136,15 +137,16 @@ export function spliced(source: string, was: Document, now: Document) {
         [...one.childNodes].every((node, at) =>
           node.isEqualNode(other.childNodes[at]),
         );
-      if (span && kept) {
-        const open = text([other.cloneNode()]);
-        cuts.push([
-          span.start,
-          span.inner,
-          VOID.test(one.localName)
-            ? open
-            : open.slice(0, -`</${one.localName}>`.length),
-        ]);
+      const names = new Set([
+        ...one.getAttributeNames(),
+        ...other.getAttributeNames(),
+      ]);
+      if (span && kept && [...names].every((name) => /^[\w:-]+$/.test(name))) {
+        let open = span.open;
+        for (const name of names)
+          if (one.getAttribute(name) !== other.getAttribute(name))
+            open = setAttr(open, name, other.getAttribute(name) ?? undefined);
+        cuts.push([span.start, span.inner, open]);
         return true;
       }
     }

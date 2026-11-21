@@ -127,20 +127,75 @@ test("a move is the element's translate, taken away at none; a size is its width
 test("a change writes only the elements it names: the rest of the file stays as the agent wrote it", async ({
   page,
 }) => {
-  // An end tag left out, single quotes, CRLF lines and a byte order mark.
+  // An end tag left out, single quotes, an unquoted value, CRLF lines and a
+  // byte order mark.
   const source =
     "\uFEFF<!doctype html>\r\n<html><head><meta name='artboard' content='1920x1080 slide'>\r\n" +
-    "<title>T</title></head>\r\n<body>\r\n<main>\r\n<h1 class='big'>Plan</h1>\r\n" +
+    "<title>T</title></head>\r\n<body>\r\n<main>\r\n<h1 class='big' data-x=a>Plan</h1>\r\n" +
     "<ul><li>a<li>b</ul>\r\n<p>Note</main>\r\n<aside>Say it.</aside>\r\n</body>\r\n</html>\r\n";
   const big = { path: "main > h1", tag: "h1", text: "Plan" };
+  const by = (place, width) =>
+    `style="position: absolute; left: ${place[0]}px; top: ${place[1]}px; width: ${width}px;"`;
+  // A move sets its own attribute and leaves the others as written.
   expect(await edited(page, source, set(big, [4, 2]))).toBe(
     source.replace(
-      "<h1 class='big'>",
-      '<h1 class="big" style="translate: 4px 2px;">',
+      "<h1 class='big' data-x=a>",
+      `<h1 class='big' data-x=a style="translate: 4px 2px;">`,
     ),
   );
   expect(await edited(page, source, { remove: [big] })).toBe(
-    source.replace("<h1 class='big'>Plan</h1>", ""),
+    source.replace("<h1 class='big' data-x=a>Plan</h1>", ""),
+  );
+  expect(
+    await edited(page, source, {
+      add: { kind: "text", place: [1, 2], width: 480 },
+    }),
+  ).toBe(
+    source.replace(
+      "<p>Note</main>",
+      `<p>Note<p ${by([1, 2], 480)}>Text</p></main>`,
+    ),
+  );
+  expect(
+    await edited(page, source, {
+      copy: [{ at: big, place: [10, 20], width: 300 }],
+    }),
+  ).toBe(
+    source.replace(
+      "Plan</h1>",
+      `Plan</h1><h1 class="big" data-x="a" ${by([10, 20], 300)}>Plan</h1>`,
+    ),
+  );
+  // Laid over: the two put in by hand change places, and nothing else.
+  const placed = (text) => `<p ${by([0, 0], 100)}>${text}</p>`;
+  const two = source.replace(
+    "<p>Note</main>",
+    `<p class='x'>Note</p>\r\n${placed("A")}\r\n${placed("B")}\r\n</main>`,
+  );
+  const first = { path: "main > p:nth-of-type(2)", tag: "p", text: "A" };
+  expect(await edited(page, two, { front: [first] })).toBe(
+    two.replace(
+      `${placed("A")}\r\n${placed("B")}`,
+      `\r\n${placed("B")}${placed("A")}`,
+    ),
+  );
+  // A pre's first line break, which a parser drops, is written twice.
+  const pre = slide("<main><h1>T</h1><pre>\n\ncode</pre></main>");
+  expect(
+    await edited(page, pre, {
+      copy: [
+        {
+          at: { path: "main > pre", tag: "pre", text: "code" },
+          place: [1, 2],
+          width: 300,
+        },
+      ],
+    }),
+  ).toBe(
+    pre.replace(
+      "<pre>\n\ncode</pre>",
+      `<pre>\n\ncode</pre><pre ${by([1, 2], 300)}>\n\ncode</pre>`,
+    ),
   );
 });
 

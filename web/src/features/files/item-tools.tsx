@@ -36,8 +36,8 @@ export interface Items {
   // What a tool puts in, which the page is armed with.
   made?: typeof SLIDE_MADE;
   // The change the page asks, made in its file's text; null where the file
-  // does not take it.
-  edit(source: string, change: never): string | null;
+  // does not take it, false where it cannot take it by itself.
+  edit(source: string, change: never): string | false | null;
   // The controls for one item picked, before Duplicate, Delete and Ask.
   one: (item: Item, act: Act) => ComponentChildren;
 }

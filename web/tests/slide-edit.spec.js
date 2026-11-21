@@ -146,6 +146,13 @@ test("a change writes only the elements it names: the rest of the file stays as 
   expect(await edited(page, source, { remove: [big] })).toBe(
     source.replace("<h1 class='big' data-x=a>Plan</h1>", ""),
   );
+  // One whose end tag is left out has no end of its own to write up to:
+  // false, apart from the null of a change the file does not take.
+  const note = { path: "main > p", tag: "p", text: "Note" };
+  expect(await edited(page, source, set(note, [1, 1]))).toBe(false);
+  expect(await edited(page, source, set({ ...note, text: "No" }, [1, 1]))).toBe(
+    null,
+  );
   expect(
     await edited(page, source, {
       add: { kind: "text", place: [1, 2], width: 480 },

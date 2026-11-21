@@ -115,7 +115,10 @@ export function useSideConversations({
         },
         { streamed: true },
       );
-      // Its conversation is shown once its turn has started, never idle before.
+      // Shown once its turn has started and its snapshot says so: the stream
+      // put the turn's start before the outcome, and this read follows both. It
+      // only makes the first render right: where it fails, its pane reads again.
+      await load(id).catch(() => undefined);
       change(parent.id, (open) => ({
         ...open,
         list: open.list.map((side) =>

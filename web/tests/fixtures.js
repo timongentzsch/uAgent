@@ -501,9 +501,10 @@ export const test = base.extend({
           });
         }
       } finally {
-        const timer = setTimeout(() => child.kill("SIGKILL"), 15000);
+        // web_host.py bounds the stop itself, and one that overruns fails
+        // with the host's log: a kill here would cut that short.
         child.kill("SIGTERM");
-        const [code, signal] = await exited.finally(() => clearTimeout(timer));
+        const [code, signal] = await exited;
         expect({ code, signal }, output).toEqual({ code: 0, signal: null });
       }
     }

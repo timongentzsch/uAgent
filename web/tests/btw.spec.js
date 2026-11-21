@@ -184,6 +184,60 @@ test("a side chat is listed as working from the moment its question is taken unt
   ).toBeVisible();
 });
 
+test("a side chat is listed as working even when the host's answer is read before the stream delivers its turn", async ({
+  page,
+  session,
+}) => {
+  // The stream's updates wait for `release`, once the question has gone out.
+  await page.addInitScript(() => {
+    const held = [];
+    globalThis.holdUpdates = false;
+    globalThis.releaseUpdates = () => {
+      globalThis.holdUpdates = false;
+      for (const deliver of held.splice(0)) deliver();
+    };
+    const add = EventSource.prototype.addEventListener;
+    EventSource.prototype.addEventListener = function (
+      type,
+      listener,
+      ...rest
+    ) {
+      if (type !== "update") return add.call(this, type, listener, ...rest);
+      add.call(this, type, (message) => {
+        if (globalThis.holdUpdates) held.push(() => listener(message));
+        else listener(message);
+      });
+    };
+  });
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  await page.route("**/api/command", async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.kind === "submit" && body.session_id !== session.id)
+      await page.evaluate(() => (globalThis.holdUpdates = true));
+    await route.continue();
+  });
+  const reply = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/command") &&
+      response.request().postDataJSON().kind === "submit" &&
+      response.request().postDataJSON().session_id !== session.id,
+  );
+  await page.getByLabel("Message or guidance").fill("/btw Side tool probe");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await reply;
+  const activity = page.locator(".composer .activity-button");
+  await expect(activity).toHaveCount(0);
+  await page.evaluate(() => globalThis.releaseUpdates());
+  await activity.click();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Activity" })
+      .getByRole("button", { name: /^Stop .*/ }),
+  ).toBeVisible();
+});
+
 test("a side chat asked while the conversation is still waking starts once it is up", async ({
   command,
   session,

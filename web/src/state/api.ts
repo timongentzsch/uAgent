@@ -178,7 +178,7 @@ function createApi(host = "") {
     kind: K,
     session?: SessionRef | null,
     fields?: CommandFields<K>,
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; streamed?: boolean } = {},
   ): Promise<CommandReceipt<K>> {
     options.signal?.throwIfAborted();
     const request_id = fields?.request_id || requestId();
@@ -213,7 +213,9 @@ function createApi(host = "") {
         },
         options,
       );
-      if (result.pending) result = await receipt;
+      // The stream delivers an outcome after the state it caused, so a
+      // caller that shows that state waits for it there.
+      if (result.pending || options.streamed) result = await receipt;
       options.signal?.throwIfAborted();
       if (result.accepted === false) {
         const error = failure(new Error(result.error || "Command rejected"));

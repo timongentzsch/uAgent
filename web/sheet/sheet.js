@@ -403,7 +403,7 @@ async function open() {
       lay();
     }
     tables[at].classList.toggle("sheet-window", !whole);
-    paint(tables[at], box(), pick().anchor, tinted);
+    paint(tables[at], box(), pick().anchor, tinted, !file);
     based = base;
     if (moved) {
       charts();
@@ -573,7 +573,7 @@ async function open() {
     // The cells a picked chart reads, tinted; none without a box.
     reads(box) {
       tinted = box;
-      paint(tables[at], sheet.box(), pick().anchor, tinted);
+      paint(tables[at], sheet.box(), pick().anchor, tinted, !file);
     },
     // The rows and columns the tab holds in view.
     held: () => frozen,
@@ -621,7 +621,7 @@ async function open() {
         focus: to,
       };
       if (!still) reveal(to);
-      paint(tables[at], box(), pick().anchor, tinted);
+      paint(tables[at], box(), pick().anchor, tinted, !file);
       rest();
       tell();
     },
@@ -756,7 +756,17 @@ async function open() {
           hidden.has(box().top + r) ? [] : Array(wide()).fill(""),
         ),
       ),
-    "fill-down": () => book.fillDown(at, box()),
+    // A box filled to a row or a column; with ⌘D down: its top row fills
+    // the rest, one row alone is filled from the row above it.
+    "fill-to": ({ box, to }) => book.fill(at, box, to),
+    "fill-down": () => {
+      const { top, bottom } = box();
+      const source =
+        bottom > top
+          ? { ...box(), bottom: top }
+          : { ...box(), top: top - 1, bottom: top - 1 };
+      return source.top > 0 && book.fill(at, source, { row: bottom });
+    },
     chart: () =>
       high() > 1 && wide() > 1
         ? book.setCharts(at, (charts) => [

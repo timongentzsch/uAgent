@@ -184,14 +184,14 @@ test("a column put in keeps a header row a header, and moves formulas and the co
 test("filling down copies what was typed and moves formulas along", async () => {
   const book = await plan();
   await book.paste(0, { row: 4, column: 3 }, [["=B$3&A4"]]);
-  await book.fillDown(0, { top: 4, left: 2, bottom: 6, right: 3 });
+  await book.fill(0, { top: 4, left: 2, bottom: 4, right: 3 }, { row: 6 });
   assert.deepEqual(texts(book, 0).slice(3, 6), [
     ["Write", "Done", "=B$3&A4"],
     ["Book", "Done", "=B$3&A5"],
     ["Brief", "Done", "=B$3&A6"],
   ]);
   // One row takes the row above it.
-  await book.fillDown(0, { top: 7, left: 1, bottom: 7, right: 1 });
+  await book.fill(0, { top: 6, left: 1, bottom: 6, right: 1 }, { row: 7 });
   assert.equal(texts(book, 0)[6][0], "Brief");
 });
 
@@ -231,7 +231,7 @@ test("a sort that would split a formula's range is refused, with why, and nothin
   assert.deepEqual(texts(book, 0), before);
   // The next change is made as any other.
   assert.equal(
-    await book.fillDown(0, { top: 5, left: 1, bottom: 6, right: 1 }),
+    await book.fill(0, { top: 5, left: 1, bottom: 5, right: 1 }, { row: 6 }),
     true,
   );
 });
@@ -354,7 +354,7 @@ test("text set past the table makes it reach there, a header row staying one; bl
   assert.equal(await book.paste(0, { row: 4, column: 4 }, [[""]]), true);
   assert.equal(book.table(0), before);
   // Filled down past its end, it reaches as far as what is filled.
-  await book.fillDown(0, { top: 2, left: 1, bottom: 4, right: 3 });
+  await book.fill(0, { top: 2, left: 1, bottom: 2, right: 3 }, { row: 4 });
   assert.deepEqual(texts(book, 0).slice(2), [
     ["Rent", "1200"],
     ["Rent", "1200"],
@@ -367,7 +367,11 @@ test("text set past the table makes it reach there, a header row staying one; bl
     refusal,
   );
   assert.match(
-    await book.fillDown(0, { top: 2, left: 2, bottom: 100_000, right: 2 }),
+    await book.fill(
+      0,
+      { top: 2, left: 2, bottom: 2, right: 2 },
+      { row: 100_000 },
+    ),
     /^B100000 is too far/,
   );
   assert.equal(await book.paste(0, { row: 30_000, column: 2 }, [["x"]]), true);
@@ -1003,7 +1007,9 @@ test("a change the engine panics on is refused: the tabs, the steps and what the
   };
   // A formula typed, one moved along, and a value another formula reads.
   refused(await book.paste(0, { row: 2, column: 4 }, [["=XNPV(1,1)"]]));
-  refused(await book.fillDown(0, { top: 2, left: 3, bottom: 3, right: 3 }));
+  refused(
+    await book.fill(0, { top: 2, left: 3, bottom: 2, right: 3 }, { row: 3 }),
+  );
   refused(await book.paste(0, { row: 2, column: 2 }, [["1"]]));
   // A row put in by the engine itself moves the formula to where it panics.
   const moved = await open([
@@ -1247,7 +1253,7 @@ test("after any change a row or cell stands in one place of the tabs, and a copi
   once(book);
   const own = { sheet: 0, box: { top: 2, left: 1, bottom: 3, right: 2 } };
   for (const change of [
-    () => book.fillDown(0, { top: 2, left: 1, bottom: 4, right: 2 }),
+    () => book.fill(0, { top: 2, left: 1, bottom: 2, right: 2 }, { row: 4 }),
     () => book.paste(0, { row: 5, column: 1 }, [["=A2", "=B2"]], own),
     () => book.insertRows(0, 2, 2),
     () => book.deleteRows(0, 2, 1),
@@ -1373,7 +1379,7 @@ test("no text goes under a merged cell: a paste or fill there is refused; one th
     "Not changed: B1 lies under the merged cell A1:E1.",
   );
   assert.equal(
-    await book.fillDown(0, { top: 5, left: 2, bottom: 6, right: 2 }),
+    await book.fill(0, { top: 5, left: 2, bottom: 5, right: 2 }, { row: 6 }),
     "Not changed: B6 lies under the merged cell A6:B6.",
   );
   // Its own cell takes text, and blanks may go anywhere under it.
@@ -1602,7 +1608,7 @@ const REACHING = [
   ['sheet.nameTab(0, "Other")', true],
   // What it reads is blank here: nothing moves.
   ["sheet.sort(0, 1, false)", false],
-  ["sheet.fillDown(0, { top: 1, left: 1, bottom: 3, right: 2 })", true],
+  ["sheet.fill(0, { top: 1, left: 1, bottom: 1, right: 2 }, { row: 3 })", true],
   [
     'sheet.paste(0, { row: 4, column: 2 }, [["=FACT(99999999999)"]], { sheet: 0, box: { top: 1, left: 2, bottom: 1, right: 2 } })',
     true,
@@ -1888,4 +1894,58 @@ test("no change trades a group read for one that was not: one read before stays 
   assert.equal(await twice.paste(0, { row: 2, column: 3 }, [["note"]]), true);
   assert.equal(await twice.ungroup(0, "2:3"), true);
   assert.deepEqual(lists(twice), ["5:6 5:6 8:8", undefined]);
+});
+
+test("a fill goes on by the step of numbers and dates, repeats the rest, and moves formulas", async () => {
+  const book = await open([
+    tab("Fill", [
+      ["1", "2027-03-01", "x", "=A1*2"],
+      ["3", "2027-03-02", "", ""],
+      ["", "", "", ""],
+      ["", "", "", ""],
+      ["", "", "", ""],
+    ]),
+  ]);
+  const pair = (column) => ({ top: 1, left: column, bottom: 2, right: column });
+  assert.equal(await book.fill(0, pair(1), { row: 4 }), true);
+  assert.equal(await book.fill(0, pair(2), { row: 4 }), true);
+  assert.equal(
+    await book.fill(0, { top: 1, left: 3, bottom: 1, right: 4 }, { row: 3 }),
+    true,
+  );
+  assert.deepEqual(texts(book, 0), [
+    ["1", "2027-03-01", "x", "=A1*2"],
+    ["3", "2027-03-02", "x", "=A2*2"],
+    ["5", "2027-03-03", "x", "=A3*2"],
+    ["7", "2027-03-04", "", ""],
+  ]);
+  // Up goes back by the same step; inside the selection nothing is filled.
+  const rest = { top: 3, left: 1, bottom: 4, right: 1 };
+  assert.equal(await book.fill(0, rest, { row: 4 }), false);
+  assert.equal(await book.fill(0, rest, { row: 5 }), true);
+  assert.equal(texts(book, 0)[4][0], "9");
+  const up = await open([tab("Fill", [[""], [""], ["5"], ["7"]])]);
+  assert.equal(await up.fill(0, { ...rest, right: 1 }, { row: 1 }), true);
+  assert.deepEqual(texts(up, 0), [["1"], ["3"], ["5"], ["7"]]);
+  // One fill is one step.
+  assert.equal(await book.undo(), true);
+  assert.equal(texts(book, 0).length, 4);
+});
+
+test("a fill to the right and to the left takes the looks of its cells", async () => {
+  const book = await open([tab("Fill", [["1", "2", "", ""]])]);
+  book.tabs[0].rows[0].cells[1].attrs["data-format"] = "0%";
+  const row = { top: 1, left: 1, bottom: 1, right: 2 };
+  assert.equal(await book.fill(0, row, { column: 4 }), true);
+  assert.deepEqual(texts(book, 0)[0], ["1", "2", "3", "4"]);
+  assert.deepEqual(
+    book.tabs[0].rows[0].cells.map((cell) => cell.attrs["data-format"]),
+    [undefined, "0%", undefined, "0%"],
+  );
+  const back = await open([tab("Fill", [["", "", "3", "4"]])]);
+  assert.equal(
+    await back.fill(0, { ...row, left: 3, right: 4 }, { column: 1 }),
+    true,
+  );
+  assert.deepEqual(texts(back, 0)[0], ["1", "2", "3", "4"]);
 });

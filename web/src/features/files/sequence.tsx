@@ -1438,6 +1438,11 @@ export default function Sequence({
                     else if (message.type === "held") {
                       heldNow.current = heldOf(message) ?? [];
                       hold();
+                    } else if (message.type === "link") {
+                      // The page is untrusted: only these open.
+                      const href = String(message.href);
+                      if (/^(https?|mailto):/i.test(href))
+                        window.open(href, "_blank", "noopener");
                     } else if (message.type === "comment") {
                       if (sheet && addToChat) setRanged(cell?.range);
                     } else if (message.type === "key") {

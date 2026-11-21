@@ -170,6 +170,8 @@ export type PageMessage =
     }
   // A comment on a sheet's selection, asked for from its own menus.
   | { type: "comment" }
+  // A link pressed in a sheet's cell, to open outside the app.
+  | { type: "link"; href: string }
   // What is being typed in a sheet's cell, and that text as its file would
   // hold it; `first`, with the table its edit would make, cut around the
   // text, where that can be kept. Bare once it is typed no more.

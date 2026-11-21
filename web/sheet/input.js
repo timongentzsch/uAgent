@@ -2,10 +2,18 @@
 // and the clipboard works as in any field.
 
 import { headOf, optionsOf } from "./book.js";
-import { actionsOf } from "./actions.js";
+import { actionsOf, linkActions } from "./actions.js";
 import { openMenu } from "./menu.js";
 import { composing, suggest } from "./suggest.js";
-import { boxAt, edgeFrom, escaped, fromTsv, LAST, toTsv } from "./text.js";
+import {
+  boxAt,
+  edgeFrom,
+  escaped,
+  fromTsv,
+  hrefOf,
+  LAST,
+  toTsv,
+} from "./text.js";
 
 const ARROWS = {
   ArrowUp: { row: -1, column: 0 },
@@ -258,6 +266,7 @@ export function listen(sheet) {
     else if (letter === "z") sheet.run(event.shiftKey ? "redo" : "undo");
     else if (letter === "y") sheet.run("redo");
     else if (letter === "d") sheet.run("fill-down");
+    else if (letter === "k") menu(under(), linkActions(sheet));
     else if (letter === "b") sheet.run("bold");
     else if (letter === "i") sheet.run("italic");
     else if (letter === "a") sheet.select(end, { row: 1, column: 1 }, true);
@@ -369,7 +378,9 @@ export function listen(sheet) {
     else if (event.target.type === "checkbox") {
       event.preventDefault();
       toggle();
-    } else if (event.target.closest(".sheet-resize")) return;
+    } else if (event.target.closest(".sheet-link"))
+      sheet.say({ type: "link", href: hrefOf(cell(at)) });
+    else if (event.target.closest(".sheet-resize")) return;
     else if (!at.column) menu(point, actions("row"));
     else if (!at.row) menu(point, actions("column"));
   });

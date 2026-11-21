@@ -3,7 +3,7 @@
 // of it that applies there.
 
 import { headOf } from "./book.js";
-import { boxName, fromTsv, letters, meeting } from "./text.js";
+import { boxName, fromTsv, hrefOf, letters, meeting } from "./text.js";
 
 const count = (n, one) => (n === 1 ? one : `${n} ${one}s`);
 const HELD = /Mac|iP/.test(navigator.platform) ? "⌘" : "Ctrl+";
@@ -30,6 +30,20 @@ const FORMATS = {
   "$#,##0.00": "Currency",
   "0%": "Percent",
   "yyyy-mm-dd": "Date",
+};
+
+// The active cell's link: an address to type, and taking it away.
+export const linkActions = (sheet) => {
+  const at = sheet.pick().anchor;
+  const here = sheet.tab().rows[at.row - 1]?.cells[at.column - 1];
+  return [
+    {
+      field: "Link to an address",
+      value: (here && hrefOf(here)) ?? "",
+      change: (address) => sheet.run("link", address.trim()),
+    },
+    here?.href && { label: "Remove link", run: () => sheet.run("link", "") },
+  ].filter(Boolean);
 };
 
 // `clip` is the page's clipboard: what was copied here, and its commands.
@@ -235,15 +249,7 @@ export const actionsOf = (sheet, clip) => (on) => {
     [
       ...changes([
         cell && run("Insert chart", "chart"),
-        cell && {
-          field: "Link to an address",
-          value: "",
-          change: (address) =>
-            address.trim() &&
-            sheet.write(
-              `=HYPERLINK("${address.trim().replaceAll('"', '""')}","${(shown || address.trim()).replaceAll('"', '""')}")`,
-            ),
-        },
+        ...(cell ? linkActions(sheet) : []),
       ]),
       any &&
         sheet.comments() && {

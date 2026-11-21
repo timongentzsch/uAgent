@@ -64,6 +64,7 @@ with `browser` `open`, it lists every cell in error with the reason.
 | `data-folded="3:6"` on the table | those groups shown folded |
 | `data-rule="< 0: bad"` on a `<col>` | the column's cells that meet the condition take the effect |
 | `data-rule="D = Done: strike muted"` on the table | the rows whose column D meets it take the effect |
+| `<a href="https://example.com">label</a>` as a cell's whole content | the label as a link, which opens its address (http, https or mailto); a cell holding only an address such as `https://example.com` is a link too |
 | `<figure data-chart="bar" data-range="A1:C4">` after the table | a chart of those cells |
 
 Nothing else: no fonts, no `style`.

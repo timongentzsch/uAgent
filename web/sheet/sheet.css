@@ -93,6 +93,7 @@ table[data-sheet] .sheet-error {
 table[data-sheet] .sheet-link {
   color: var(--sheet-accent);
   text-decoration: underline;
+  cursor: pointer;
 }
 /* Letters across the top and numbers down the side, held in view: the
    numbers at the left, the letters at the top, the corner at both. What is

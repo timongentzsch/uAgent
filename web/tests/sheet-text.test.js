@@ -12,6 +12,7 @@ import {
   fromCsv,
   fromTsv,
   frozenOf,
+  hrefOf,
   inOrder,
   letters,
   linesName,
@@ -456,4 +457,33 @@ test("a formula follows cells that moved: one cell wherever it is read from, a r
     after("=SUM(Costs!B2 : C2)", "Notes", "Costs!B2", " C2"),
     "=SUM(Costs!B3 : C2)",
   );
+});
+
+test("a link is written as an anchor round its label, and only an address alone or an http(s) or mailto anchor is one", () => {
+  const link = (text, href) => ({ th: false, attrs: {}, text, href });
+  assert.equal(
+    tableText({
+      name: "Links",
+      attrs: {},
+      charts: [],
+      columns: [{}, {}],
+      rows: [
+        {
+          attrs: {},
+          cells: [link("A & <B>", 'https://x.example/?a=1&b="2"'), cell("")],
+        },
+      ],
+    }),
+    '<table data-sheet="Links">\n<tr><td><a href="https://x.example/?a=1&amp;b=&quot;2&quot;">A &amp; &lt;B&gt;</a><td>\n</table>',
+  );
+  assert.equal(hrefOf(link("CMake", "http://a.example")), "http://a.example");
+  assert.equal(hrefOf(cell("https://a.example/x")), "https://a.example/x");
+  assert.equal(hrefOf(cell("mailto:a@b.example")), "mailto:a@b.example");
+  for (const text of [
+    "see https://a.example",
+    "javascript:alert(1)",
+    "ftp://a",
+  ])
+    assert.equal(hrefOf(cell(text)), undefined);
+  assert.equal(hrefOf(link("x", "javascript:alert(1)")), undefined);
 });

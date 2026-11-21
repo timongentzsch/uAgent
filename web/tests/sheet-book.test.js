@@ -1889,3 +1889,39 @@ test("no change trades a group read for one that was not: one read before stays 
   assert.equal(await twice.ungroup(0, "2:3"), true);
   assert.deepEqual(lists(twice), ["5:6 5:6 8:8", undefined]);
 });
+
+test("a link is kept with its cell as the label is retyped, and goes with it when cleared; one is added or taken away as one step", async () => {
+  const book = await open([
+    tab("Links", [
+      ["Name", "Home"],
+      ["CMake", ""],
+    ]),
+  ]);
+  const cells = () =>
+    book.tabs[0].rows[1].cells.map(({ text, href }) => ({ text, href }));
+  const at = { row: 2, column: 1 };
+  assert.equal(await book.link(0, at, "http://a.example"), true);
+  assert.deepEqual(cells(), [
+    { text: "CMake", href: "http://a.example" },
+    { text: "", href: undefined },
+  ]);
+  // An empty cell takes the address for its label, which then needs no mark.
+  assert.equal(
+    await book.link(0, { row: 2, column: 2 }, "http://b.example"),
+    true,
+  );
+  assert.deepEqual(cells()[1], { text: "http://b.example", href: undefined });
+  // Retyped, the link stays; cleared, it goes.
+  assert.equal(await book.paste(0, at, [["Make"]]), true);
+  assert.equal(cells()[0].href, "http://a.example");
+  assert.equal(await book.paste(0, at, [[""]]), true);
+  assert.equal(cells()[0].href, undefined);
+  assert.equal(await book.undo(), true);
+  assert.equal(await book.undo(), true);
+  assert.deepEqual(cells()[0], { text: "CMake", href: "http://a.example" });
+  // Taken away, the label stays; what does not open is refused.
+  assert.equal(await book.link(0, at, ""), true);
+  assert.deepEqual(cells()[0], { text: "CMake", href: undefined });
+  assert.match(await book.link(0, at, "javascript:alert(1)"), /^A link opens/);
+  assert.equal(await book.link(0, at, ""), false);
+});

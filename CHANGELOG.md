@@ -36,6 +36,7 @@
 
 ### Fixes
 
+- **Even on a phone, too.** The status line under the input stands as far from the screen's bottom as from its sides, and in the Activity sheet a row's Remove button fills its row, so it is as far from the sheet's end as from its side. The phone tour of every view now fails on a control that stands closer to one edge of its box than to the other, as the desktop one does.
 - **A conversation is not written over by an empty one.** When an agent's report reached a conversation that another process still held, a second runtime started for it, could not resume it, and on its way out saved its own empty conversation, which landed over the real one once the holder let go: the title became "(no messages)" and the cost zero. A runtime that cannot resume now leaves the file as it is.
 - **Requests no longer wait two seconds in a burst.** When several new connections arrived at once, the web host counted them against idle threads that had not woken yet and left the rest queued until an idle connection timed out, two seconds later: a folder opened slowly, and an open artifact followed its file late. It starts a thread for each queued connection now, as the HTTP library does from 0.62.
 - **An open folder is followed even after a slow first look.** While the first look at one folder was still out, looks at the folder then shown were skipped, so a change made in that time became the baseline and was never shown, and Find kept counting the old text. Each folder's look stands for itself now.

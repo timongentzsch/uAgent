@@ -17,7 +17,11 @@ import {
 } from "lucide-preact";
 import { InsertBar, PickBar, type Tool } from "../../shared/float-bars.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
-import type { PageMessage, Rect } from "../../shared/page-frame.tsx";
+import {
+  type PageMessage,
+  type Rect,
+  rectOf,
+} from "../../shared/page-frame.tsx";
 import { IconButton } from "../../shared/ui.tsx";
 import { maxItemEntries } from "../../shared/limits.ts";
 import { boardEdit, FILLS, SHAPES, TEXTS } from "./board-edit.ts";
@@ -167,9 +171,6 @@ export const SLIDE: Items = {
 };
 
 export function chosenOf(message: Chosen): Chosen | undefined {
-  const [x, y, width, height] = ["x", "y", "width", "height"].map((side) =>
-    Number(message.rect?.[side as keyof Rect]),
-  );
   if (!Array.isArray(message.items)) return undefined;
   const shapes = [...SHAPES, ...SLIDE_SHAPES.map(([kind]) => kind)];
   return {
@@ -190,9 +191,7 @@ export function chosenOf(message: Chosen): Chosen | undefined {
       })),
     arrow: !!message.arrow,
     // None while nothing is picked.
-    rect: [x, y, width, height].every(Number.isFinite)
-      ? { x, y, width, height }
-      : undefined,
+    rect: rectOf(message.rect),
   };
 }
 
@@ -204,6 +203,7 @@ export function ItemTools({
   act,
   ask,
   at,
+  room,
 }: {
   items: Items;
   // What the page says is picked: it takes presses.
@@ -214,8 +214,9 @@ export function ItemTools({
   act: Act;
   // A comment on the one item picked.
   ask?: () => void;
-  // Where what is picked is, in the window.
+  // Where what is picked is, in the window, and the room it is seen in.
   at: () => Rect | undefined;
+  room: () => { width: number; height: number } | undefined;
 }) {
   const [one, two, three] = chosen.items;
   const remove = (
@@ -232,7 +233,7 @@ export function ItemTools({
     <>
       <InsertBar tools={items.tools} armed={tool} arm={arm} />
       {(one || chosen.arrow) && (
-        <PickBar label="Picked" at={at}>
+        <PickBar label="Picked" at={at} room={room}>
           {chosen.arrow ? (
             remove
           ) : two ? (

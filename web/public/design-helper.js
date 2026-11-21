@@ -787,7 +787,8 @@
   };
   // What the app's tools show of the selection, said as it changes: the
   // block's tag and its parent's, whether anything is selected, its marks
-  // and the link it touches.
+  // and the link it touches; the box of what is selected, which the tools
+  // stand by, and the block as a comment names it.
   let told = "";
   const caret = () => {
     const block = editing();
@@ -798,6 +799,9 @@
           selected: !getSelection().isCollapsed,
           ...marks(block),
           href: linked(block)?.getAttribute("href") || "",
+          rect: box(getSelection().getRangeAt(0)),
+          selector: selector(block),
+          text: block.innerText.replace(/\s+/g, " ").trim().slice(0, 60),
         }
       : {};
     if (told !== (told = JSON.stringify(state))) send("caret", state);

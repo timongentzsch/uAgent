@@ -563,7 +563,7 @@
 }
 .page-stage > .page-asks > .foot-bar {
   position: static;
-  margin-block: var(--space-2);
+  margin-block: var(--space-2) var(--space-4);
 }
 /* Which board of how many, with the previous and the next: over the
    stage's corner, as the zoom is over the other. */
@@ -763,10 +763,19 @@
   .page-tools-folded {
     display: contents;
   }
-  /* A board's tools rise over the zoom and the step, which would cover
-     them. */
+  /* The tools at the foot rise over the zoom and the step, which would
+     cover them. */
   .page-stage:has(> .zoom-controls, > .page-count) > .foot-bar {
     bottom: calc(2 * var(--space-4) + var(--control) + 2 * var(--space-1));
+  }
+  .page-stage:has(> .zoom-controls, > .page-count) > .page-asks > .foot-bar {
+    margin-bottom: calc(
+      2 *
+      var(--space-4) +
+      var(--control) +
+      2 *
+      var(--space-1)
+    );
   }
   .sheet-note,
   .page-tools-wide {

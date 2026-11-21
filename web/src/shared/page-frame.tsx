@@ -34,6 +34,18 @@ export interface Rect {
   width: number;
   height: number;
 }
+// A box a page said, which is untrusted: four numbers, or none.
+export const rectOf = (said?: Partial<Rect>): Rect | undefined => {
+  const [x, y, width, height] = [
+    said?.x,
+    said?.y,
+    said?.width,
+    said?.height,
+  ].map(Number);
+  return [x, y, width, height].every(Number.isFinite)
+    ? { x, y, width, height }
+    : undefined;
+};
 export interface Pick {
   rect: Rect;
   selector: string;
@@ -133,6 +145,9 @@ export type PageMessage =
       bold?: boolean | null;
       italic?: boolean | null;
       href?: string;
+      rect?: Rect;
+      selector?: string;
+      text?: string;
     }
   // A sheet's changed tab, its place among how many, as the table its file
   // keeps; whether the sheet can undo and redo; its cells in error.

@@ -273,14 +273,41 @@ test.describe("files", () => {
     await toolsFit(page);
   });
 
-  test("a document's tool row", async ({ page, session, host }) => {
+  test("a document's tool row, and Edit's bars over a selection and at the foot", async ({
+    page,
+    session,
+    host,
+  }) => {
     await writeFiles(host.project, {
       "memo.html": paper("Memo", "<h1>Memo</h1><p>Text.</p>"),
     });
-    await openFiles(page, session, "memo.html", { phone: true });
+    const files = await openFiles(page, session, "memo.html", {
+      phone: true,
+    });
     await expect(page.locator(".page-stage iframe").first()).toBeVisible();
     await roomy(page);
     await toolsFit(page);
+    await files.getByRole("button", { name: "Edit" }).click();
+    await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+    const stage = page.frameLocator(".page-stage iframe:not([inert])");
+    const text = stage.getByText("Text.");
+    const box = await text.boundingBox();
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(text).toBeFocused();
+    await text.evaluate((block) => getSelection().selectAllChildren(block));
+    const bar = page.getByRole("toolbar", { name: "Text" });
+    await expect(bar).toBeVisible();
+    // Under the selection: the phone's own menu stands over it.
+    await expect
+      .poll(async () => {
+        const [over, under] = await Promise.all([
+          bar.boundingBox(),
+          text.boundingBox(),
+        ]);
+        return !!over && over.y >= under.y + under.height - 1;
+      })
+      .toBe(true);
+    await roomy(page);
   });
 
   test("a whiteboard with Edit off and on, and the bar over its picked shape", async ({

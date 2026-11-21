@@ -450,6 +450,8 @@ test("on a phone a long quote is cut short in the message box, which keeps its w
   await actions.getByRole("button", { name: "Quote" }).click();
   await expect(form.locator(".quote-bar")).toContainText("A sentence far");
   await held();
+  // Quote focuses the input a frame later, which takes the selection.
+  await expect(page.getByLabel("Message or guidance")).toBeFocused();
   await select(passage, line.repeat(4).trim());
   await actions.getByRole("button", { name: "Ask in side chat" }).click();
   await expect(form.locator(".quote-bar .chip")).toHaveText("Side chat");

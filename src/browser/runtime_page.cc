@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
@@ -621,16 +622,21 @@ json Runtime::Look(const json& command) {
       drawn = Awaited(session, kDrawn, kCdpIoMs);
     }
     const json* frames = JsonArray(drawn, "frames");
-    const int parts = frames ? static_cast<int>(frames->size())
-                             : std::max(JsonValue(drawn, "parts", 1), 1);
+    const double high = JsonValue(drawn, "h", 1.0);
+    const double length = std::min(JsonValue(drawn, "tall", 0.0), kMost);
+    const int stated = std::max(JsonValue(drawn, "parts", 1), 1);
+    // A page of one part that scrolls is cut into windows of its height.
+    const int windows =
+        frames || stated > 1 ? 1 : static_cast<int>(std::ceil(length / high));
+    const int parts =
+        frames ? static_cast<int>(frames->size()) : std::max(stated, windows);
     if (first > parts) {
       return {{"error", "part " + std::to_string(first) +
                             " is past the last, " + std::to_string(parts)}};
     }
     json pictures = json::array();
     for (int part = first; part <= std::min(last, parts); ++part) {
-      double box[4] = {0, 0, JsonValue(drawn, "w", 1.0),
-                       JsonValue(drawn, "h", 1.0)};
+      double box[4] = {0, 0, JsonValue(drawn, "w", 1.0), high};
       if (frames) {
         const json& frame = (*frames)[static_cast<size_t>(part - 1)];
         for (size_t at = 0; at < 4; ++at) {
@@ -639,8 +645,11 @@ json Runtime::Look(const json& command) {
                   ? frame[at].get<double>()
                   : 0;
         }
+      } else if (windows > 1) {
+        box[1] = (part - 1) * high;
+        box[3] = std::min(high, length - box[1]);
       } else {
-        // A page that scrolls is drawn whole, as tall as the pane shows it.
+        // A part that scrolls is drawn whole, as tall as the pane shows it.
         json tall = JsonValue(drawn, "tall", json());
         if (parts > 1) {
           tall = Awaited(session,
@@ -656,8 +665,8 @@ json Runtime::Look(const json& command) {
       const double w = std::clamp(box[2], 1.0, kMost);
       const double h = std::clamp(box[3], 1.0, kMost);
       // The window is the part: a frame out of view is not drawn.
-      size(w, h);
-      if (frames) {
+      size(w, windows > 1 ? high : h);
+      if (frames || windows > 1) {
         Awaited(session, "scrollTo(0, " + std::to_string(box[1]) + ")",
                 kCheckedMs);
       }

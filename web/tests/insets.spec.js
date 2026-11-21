@@ -87,13 +87,18 @@ test("a document beside the conversation", async ({ page, session, host }) => {
   await even(page);
 });
 
-test("a sheet beside the conversation", async ({ page, session, host }) => {
-  const { tabs } = await openSheet(
+test("a sheet beside the conversation, with its format bar", async ({
+  page,
+  session,
+  host,
+}) => {
+  const { files, tabs } = await openSheet(
     page,
     session,
     host.project,
     sheet("Plan", { Tasks: ["<th>Task<th>Cost", "<td>Write<td>1200"] }),
   );
   await expect(tabs).toHaveText(["Tasks"]);
+  await expect(files.getByRole("toolbar", { name: "Format" })).toBeVisible();
   await even(page);
 });

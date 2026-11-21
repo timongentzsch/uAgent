@@ -1,5 +1,5 @@
 // A sheet's sizes, lines, row heights and coloured options as the file
-// writes them, set from the format row too; and find and replace over what
+// writes them, set from the format bar too; and find and replace over what
 // the cells show.
 import { test, expect, openSheet, sheet } from "./fixtures.js";
 
@@ -14,7 +14,7 @@ const PLAN = sheet("Plan", {
   Notes: ["<td>Plan the venue"],
 });
 
-test("sizes, lines, a row's height and an option's colour show as written, and the format row sets them", async ({
+test("sizes, lines, a row's height and an option's colour show as written, and the format bar sets them", async ({
   page: app,
   session,
   host,

@@ -1,8 +1,4 @@
-import type {
-  ComponentChildren,
-  RefObject,
-  TargetedKeyboardEvent,
-} from "preact";
+import type { ComponentChildren, TargetedKeyboardEvent } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
   ALargeSmall,
@@ -36,7 +32,6 @@ import {
 import { Input } from "../../shared/form-controls.tsx";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
-import { SheetButton } from "../../shared/sheet.tsx";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { Tabs } from "../../shared/tabs.tsx";
 import { capitalize } from "../../shared/display.ts";
@@ -130,14 +125,25 @@ function Choice({
   );
 }
 
-// How the selection's cells look, set as the active cell shows it; and
-// whether they are merged, which pressed again takes apart.
-function Looks({ cell, act }: { cell?: Cell; act: Act }) {
+// At the foot of the grid, as a board's tools stand, since a cell is always
+// selected: how the selection's cells look, set as the active cell shows
+// it; whether they are merged, which pressed again takes apart; a chart of
+// them, and a comment on them.
+export function FormatBar({
+  cell,
+  act,
+  comment,
+}: {
+  cell?: Cell;
+  act: Act;
+  comment?: () => void;
+}) {
   const { bold, italic, wrap, align, size, fill, ink, border, format } =
     cell?.marks ?? {};
   const Aligned = ALIGNS[align as keyof typeof ALIGNS] ?? TextAlignStart;
   return (
-    <>
+    // raw: at the foot of the stage, as a board's tools are.
+    <div class="float-toolbar foot-bar" role="toolbar" aria-label="Format">
       <IconButton
         label="Bold"
         aria-pressed={!!bold}
@@ -210,7 +216,13 @@ function Looks({ cell, act }: { cell?: Cell; act: Act }) {
       >
         <TableCellsMerge />
       </IconButton>
-    </>
+      <Button onClick={() => act("chart")}>Chart</Button>
+      {comment && (
+        <Button disabled={!cell} onClick={comment}>
+          Comment
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -218,15 +230,13 @@ function Looks({ cell, act }: { cell?: Cell; act: Act }) {
 // writes it; Escape puts back what the cell holds. Under it what a formula
 // may take at the caret: functions to choose from (the arrows walk them,
 // Enter and Tab take one, Escape shuts the list), or the arguments of the
-// call it stands in. Beside it the cell's looks, which a narrow pane folds
-// into one sheet.
+// call it stands in.
 export function FormulaBar({
   cell,
   typing,
   locked,
   type,
   act,
-  field,
   offer,
   ask,
 }: {
@@ -237,7 +247,6 @@ export function FormulaBar({
   // What is typed here is typed in the cell.
   type: (value: string) => void;
   act: Act;
-  field: RefObject<HTMLInputElement | null>;
   // What the page offers the text it was last asked about.
   offer?: Offer;
   ask: (text: string) => void;
@@ -248,6 +257,7 @@ export function FormulaBar({
   // field is left, as a cell's is.
   const [typed, setTyped] = useState<string>();
   const written = useRef<string>(undefined);
+  const field = useRef<HTMLInputElement>(null);
   // Keys typed meanwhile are newer than what is compared here.
   useEffect(() => {
     const said = typing ?? cell?.raw;
@@ -377,27 +387,6 @@ export function FormulaBar({
           </div>
         )}
       </div>
-      {!locked && (
-        <>
-          <div class="sheet-looks">
-            <Looks cell={cell} act={act} />
-          </div>
-          <SheetButton
-            className="sheet-looks-folded"
-            label="Format"
-            trigger={
-              <>
-                Format
-                <ChevronDown />
-              </>
-            }
-          >
-            <div class="sheet-looks-sheet">
-              <Looks cell={cell} act={act} />
-            </div>
-          </SheetButton>
-        </>
-      )}
     </div>
   );
 }
@@ -497,8 +486,7 @@ function TabActions({
   );
 }
 
-// A sheet's legend, as tabs. On a phone no key reaches the grid: Edit cell
-// brings up the keyboard on the formula bar.
+// A sheet's legend, as tabs.
 export function SheetBar({
   boards,
   index,
@@ -510,8 +498,6 @@ export function SheetBar({
   redo,
   locked,
   act,
-  edit,
-  comment,
 }: {
   boards: Board[];
   index: number;
@@ -525,8 +511,6 @@ export function SheetBar({
   // An Excel or CSV file: read, and saved as a sheet to change it.
   locked: boolean;
   act: Act;
-  edit: () => void;
-  comment?: () => void;
 }) {
   const list = useRef<HTMLDivElement>(null);
   useCurrentInView(list, index);
@@ -577,18 +561,7 @@ export function SheetBar({
           <IconButton label="Redo" disabled={!redo} onClick={() => act("redo")}>
             <Redo2 />
           </IconButton>
-          <Button variant="secondary" onClick={() => act("chart")}>
-            Chart
-          </Button>
-          <Button variant="secondary" class="sheet-edit-cell" onClick={edit}>
-            Edit cell
-          </Button>
         </>
-      )}
-      {comment && (
-        <Button variant="secondary" disabled={!cell} onClick={comment}>
-          Comment
-        </Button>
       )}
     </Bar>
   );

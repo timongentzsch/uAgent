@@ -285,22 +285,6 @@
 :is(.sheet-bar, .sheet-formula) > :not(.sheet-tabs, .sheet-typed) {
   flex: none;
 }
-/* A cell's looks in a row under what was typed in it; folded, in a sheet
-   of their own, whose button stands beside the field. */
-.sheet-formula {
-  flex-wrap: wrap;
-}
-.sheet-looks,
-.sheet-looks-sheet {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-.sheet-looks {
-  width: 100%;
-}
-.sheet-looks-folded,
 .page-tools-folded {
   display: none;
 }
@@ -412,10 +396,6 @@
 /* What asks the page something is disabled until the page has drawn. */
 .page-asks {
   display: contents;
-}
-/* Edit cell is a phone's way to the keyboard. */
-.sheet-edit-cell {
-  display: none;
 }
 .page-body {
   flex: 1;
@@ -575,6 +555,15 @@
 .page-stage:not([data-fixed]) .page-frame iframe {
   width: 100%;
   height: 100%;
+}
+/* A sheet's grid ends above its bar, so none of it lies under the bar:
+   not its last rows, a chart there, nor its scroll bar. */
+.page-stage:has(> .page-asks > .foot-bar) {
+  flex-direction: column;
+}
+.page-stage > .page-asks > .foot-bar {
+  position: static;
+  margin-block: var(--space-2);
 }
 /* Which board of how many, with the previous and the next: over the
    stage's corner, as the zoom is over the other. */
@@ -760,30 +749,26 @@
   .page-tools [aria-label="Legend"] > .lucide {
     rotate: -90deg;
   }
-  .sheet-edit-cell {
-    display: inline-flex;
+  /* A sheet's tools, folded, stand before its formula. */
+  .page-head:has(> .page-asks) {
+    display: flex;
   }
-  /* The tabs keep room for a tab's name; the buttons beside them take the
-     next row first. */
-  .sheet-bar {
-    flex-wrap: wrap;
+  .page-head:has(> .page-asks) > .page-tools {
+    flex: none;
   }
-  .sheet-tabs {
-    flex: 999 1 var(--pane-s);
-  }
-  .sheet-looks-folded {
-    display: block;
+  .page-head .sheet-formula {
+    flex: 1;
+    min-width: 0;
   }
   .page-tools-folded {
     display: contents;
   }
   /* A board's tools rise over the zoom and the step, which would cover
      them. */
-  .page-stage:has(> .zoom-controls, > .page-count) > .insert-bar {
+  .page-stage:has(> .zoom-controls, > .page-count) > .foot-bar {
     bottom: calc(2 * var(--space-4) + var(--control) + 2 * var(--space-1));
   }
   .sheet-note,
-  .sheet-looks,
   .page-tools-wide {
     display: none;
   }

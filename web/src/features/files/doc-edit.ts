@@ -3,6 +3,7 @@
 // And a slide's elements changed by hand (slideEdit).
 
 import { contentOf, identity } from "../../../sheet/slide.js";
+import { spliced } from "./splice.ts";
 import {
   maxItemEntries,
   maxItemPixels,
@@ -105,39 +106,21 @@ function note(aside: Element, text: string) {
 }
 
 // A file's text as a page, read without the byte order mark it may start
-// with. What follows </body> is parsed into the body: it is dropped there,
-// so that a save adds no line.
+// with.
 const BOM = "\uFEFF";
-function parsed(source: string) {
-  const page = new DOMParser().parseFromString(
+const parsed = (source: string) =>
+  new DOMParser().parseFromString(
     source.startsWith(BOM) ? source.slice(1) : source,
     "text/html",
   );
-  const tail = page.body.lastChild;
-  if (tail?.nodeType === Node.TEXT_NODE)
-    tail.textContent = tail.textContent!.trimEnd();
-  return page;
-}
-// A page as its file's text: the document's own nodes, a line each (its
-// doctype, the comments beside its html element), then the file's own
-// ending, with the mark it started with and in the line ending it had. The
-// line break a pre starts with, which a parser drops, is written twice.
-function written(page: Document, source: string) {
-  for (const kept of page.querySelectorAll("pre, textarea, listing"))
-    if (kept.firstChild?.nodeValue?.startsWith("\n")) kept.prepend("\n");
-  const nodes = [...page.childNodes].map((node) =>
-    node instanceof Element
-      ? node.outerHTML
-      : new XMLSerializer()
-          .serializeToString(node)
-          .replace(/^<!DOCTYPE/, "<!doctype"),
-  );
-  const text =
-    nodes.join("\n") + /\s*$/.exec(source)![0].replaceAll("\r\n", "\n");
-  return (
-    (source.startsWith(BOM) ? BOM : "") +
-    (source.includes("\r\n") ? text.replaceAll("\n", "\r\n") : text)
-  );
+// The changed page as its file's text: only what changed replaced, every
+// other byte kept; null where the file does not read back as the page that
+// way (white space between tags aside), as where an end tag is left out.
+function rewritten(page: Document, source: string) {
+  const text = spliced(source, parsed(source), page);
+  const flat = (read: Document) =>
+    read.documentElement.outerHTML.replace(/>\s+</g, "><");
+  return text !== undefined && flat(parsed(text)) === flat(page) ? text : null;
 }
 
 // A slide in the style of `source`: its head, its body's own attributes,
@@ -152,12 +135,12 @@ export function blankSlide(source: string) {
     content === page.body ? content : (content.cloneNode() as Element);
   into.innerHTML = "<h1>Heading</h1><p>Text</p>";
   if (into !== page.body) page.body.replaceChildren(into);
-  return written(page, source);
+  return `<!doctype html>\n${page.documentElement.outerHTML}`;
 }
 
 // A slide's source with a word of its mark set or taken away (skip: left
 // out of the talk; push: it comes in from the right), its other words kept:
-// beside its artboard, where the host reads it.
+// beside its artboard, where the host reads it. Null where it cannot be.
 export function markSlide(source: string, word: "skip" | "push", on: boolean) {
   const page = parsed(source);
   const mark = page.querySelector('meta[name="slide"]');
@@ -176,7 +159,7 @@ export function markSlide(source: string, word: "skip" | "push", on: boolean) {
         "afterend",
         `<meta name="slide" content="${content.replace(/"/g, "&quot;")}">`,
       );
-  return written(page, source);
+  return rewritten(page, source);
 }
 
 // A slide's element as its page showed it: its path from the body or from
@@ -254,7 +237,8 @@ export const SLIDE_MADE: Record<
 
 // The source with the change made, or null where the file is no slide, has
 // not every element the change names as the page showed it (the agent
-// changed it meanwhile), or the change is not one a slide takes. Its numbers
+// changed it meanwhile), or the change is not one a slide takes or can be
+// written by itself. Its numbers
 // are written as whole pixels and nothing the page says as text.
 export function slideEdit(source: string, edit: SlideEdit): string | null {
   const page = parsed(source);
@@ -342,7 +326,7 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
       if (!element.getAttribute("style")) element.removeAttribute("style");
       return taken;
     });
-    return elements.length && made ? written(page, source) : null;
+    return elements.length && made ? rewritten(page, source) : null;
   }
   if ("add" in edit) {
     const { kind, place, width, height } = edit.add ?? {};
@@ -355,7 +339,7 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
     if (!placed(made, place, width, tall)) return null;
     if (notes?.parentElement === content) notes.before(made);
     else content.append(made);
-    return written(page, source);
+    return rewritten(page, source);
   }
   if ("copy" in edit) {
     const elements = all(edit.copy, (one) => one?.at);
@@ -370,12 +354,12 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
     elements.forEach((element, index) =>
       element.after(copies[index] as HTMLElement),
     );
-    return written(page, source);
+    return rewritten(page, source);
   }
   if ("remove" in edit) {
     const elements = all(edit.remove, (one) => one);
     for (const element of elements) element.remove();
-    return elements.length ? written(page, source) : null;
+    return elements.length ? rewritten(page, source) : null;
   }
   if ("front" in edit || "back" in edit) {
     const over = "front" in edit;
@@ -391,7 +375,7 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
       end[over ? "after" : "before"](element);
       changed = true;
     }
-    return changed ? written(page, source) : null;
+    return changed ? rewritten(page, source) : null;
   }
   return null;
 }
@@ -470,7 +454,7 @@ function turn(block: Element, as: string) {
 // block the caret belongs in (a new one's first), or null when the file no
 // longer has the edit's place: the block and those around it as the page
 // showed them or as `wrote` says this last wrote them, among as many blocks
-// (the file changed meanwhile).
+// (the file changed meanwhile), or the edit cannot be written by itself.
 export function applyEdit(
   source: string,
   edit: BlockEdit,
@@ -543,11 +527,14 @@ export function applyEdit(
   const kind = kindOf(block.localName, block.parentElement!.localName);
   if (kind && edit.as && edit.as !== kind && Object.hasOwn(KINDS, edit.as))
     turn(block, edit.as);
-  return {
-    text: written(page, source),
-    wrote: text,
-    at: added ? blocks().indexOf(added) : edit.index,
-  };
+  const made = rewritten(page, source);
+  return made === null
+    ? null
+    : {
+        text: made,
+        wrote: text,
+        at: added ? blocks().indexOf(added) : edit.index,
+      };
 }
 
 // How long typing pauses before it is written.

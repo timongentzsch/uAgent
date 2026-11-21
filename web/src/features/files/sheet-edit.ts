@@ -5,6 +5,7 @@ import { maxTextFileBytes, maxUploadBytes } from "../../shared/limits.ts";
 import { CLOSING_BYTES } from "./doc-edit.ts";
 import { bytes } from "../../shared/quantities.ts";
 import type { PageMessage } from "../../shared/page-frame.tsx";
+import { elementAt, masked, TAG } from "./splice.ts";
 
 export type Cell = Extract<PageMessage, { type: "cell" }>;
 
@@ -117,9 +118,6 @@ export interface TableEdit {
   all?: boolean;
 }
 
-// A comment, or a tag with its quoted attribute values.
-const TAG =
-  /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][\w-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
 // A chart right after what came before, as the page finds a table's. One
 // left open ends at no later figure's end, nor past a table.
 const CHART =
@@ -130,26 +128,21 @@ const CHART =
 export function splice(source: string, { tab, tabs, table, all }: TableEdit) {
   if (!Number.isInteger(tab) || tab < 0 || typeof table !== "string")
     return null;
+  const mask = masked(source);
   const spans: [number, number][] = [];
-  let depth = 0;
-  let start = -1;
-  for (const tag of source.matchAll(TAG)) {
-    if (tag[2]?.toLowerCase() !== "table") continue;
-    const opens = !tag[1];
-    if (start < 0) {
-      if (!opens || !/\sdata-sheet(?![\w-])/i.test(tag[3])) continue;
-      start = tag.index;
-      depth = 0;
-    }
-    depth += opens ? 1 : -1;
-    if (!depth) {
-      spans.push([start, tag.index + tag[0].length]);
-      start = -1;
-    }
+  for (const tag of mask.matchAll(TAG)) {
+    if (
+      tag[1].toLowerCase() !== "table" ||
+      !/\sdata-sheet(?![\w-])/i.test(tag[0]) ||
+      tag.index < (spans.at(-1)?.[1] ?? 0)
+    )
+      continue;
+    const found = elementAt(source, mask, tag);
+    if (!found) return null;
+    spans.push([found.start, found.end]);
   }
   const cut = all ? [spans[0]?.[0], spans.at(-1)?.[1]] : spans[tab];
-  if (start >= 0 || spans.length !== tabs || cut?.[1] === undefined)
-    return null;
+  if (spans.length !== tabs || cut?.[1] === undefined) return null;
   let end = cut[1];
   for (CHART.lastIndex = end; CHART.test(source); ) end = CHART.lastIndex;
   return (

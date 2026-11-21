@@ -101,9 +101,12 @@ import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
 import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
 import { useResource } from "../../shared/use-resource.ts";
 
-// Why a change of items by hand was not written.
+// Why a change by hand was not written.
 const REFUSED =
   "That change was not made: the file does not take it as it stands. It is shown as the file is now.";
+const refuse = (): never => {
+  throw new Error(REFUSED);
+};
 // Said in the tools' row while a sheet's engine takes more than a moment.
 const CALCULATING = "Calculating…";
 // What a sheet says of itself, before it has.
@@ -895,15 +898,22 @@ export default function Sequence({
           }}
           pushed={info?.push}
           skip={() =>
-            rewrite?.(path, (source) =>
-              markSlide(source, "skip", !boards[index]?.skip),
+            rewrite?.(
+              path,
+              (source) =>
+                markSlide(source, "skip", !boards[index]?.skip) ?? refuse(),
             )
           }
           push={async () => {
             const push = !info?.push;
-            await rewrite?.(path, (source) => markSlide(source, "push", push));
             // The page is not drawn again for its own mark: it is as written.
-            setSaid((was) => was && { ...was, push });
+            if (
+              await rewrite?.(
+                path,
+                (source) => markSlide(source, "push", push) ?? refuse(),
+              )
+            )
+              setSaid((was) => was && { ...was, push });
           }}
         />
       )}
@@ -1326,8 +1336,7 @@ export default function Sequence({
                       void rewrite?.(path, (source) => {
                         const made = hand.edit(source, message as never);
                         taken = made !== null;
-                        if (!taken) throw new Error(REFUSED);
-                        return made as string;
+                        return made ?? refuse();
                       }).then(() => {
                         if (!taken) return setLoad((count) => count + 1);
                         wrote.current++;

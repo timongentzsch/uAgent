@@ -169,7 +169,15 @@ test.describe("touch interaction", () => {
     await page.getByRole("button", { name: "Model and effort" }).tap();
     const sheet = page.getByRole("dialog", { name: "Model and effort" });
     await expect(sheet.getByRole("button", { name: "Apply" })).toBeEnabled();
-    const heights = await page.evaluate(() => window.heights);
+    // Two frames more: the sheet is drawn at rest at least twice.
+    const heights = await page.evaluate(
+      () =>
+        new Promise((done) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => done(window.heights)),
+          ),
+        ),
+    );
     expect(heights.length).toBeGreaterThan(1);
     expect([...new Set(heights.map((height) => Math.round(height)))]).toEqual([
       Math.round(heights.at(-1)),

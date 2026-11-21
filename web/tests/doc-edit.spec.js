@@ -43,16 +43,15 @@ test("a save writes the document's own nodes: its comments stay where they stood
     "<!-- the <html> wrapper is written by hand -->\n<!doctype html>\n" +
       "<html><!-- head next --><head><title>T</title></head><body><p>Hi!</p></body></html>\n<!-- end -->\n",
   );
-  // No <html> tag at all, and no line at the file's end.
+  // A block whose end tag is left out has no end of its own to write up
+  // to: refused, as a guess would be.
   expect(
     await edited(
       page,
       "<!-- note -->\n<!doctype html>\n<title>T</title>\n<p>Hi",
       typed(0, "Hi"),
     ),
-  ).toBe(
-    "<!-- note -->\n<!doctype html>\n<html><head><title>T</title>\n</head><body><p>Hi!</p></body></html>",
-  );
+  ).toBeNull();
   // A byte order mark stays first, and a file of CRLF lines stays one.
   expect(
     await edited(
@@ -248,6 +247,13 @@ test("a slide's notes are lines, and no block of the slide; a new slide is laid 
       notes("Say:\none", "Say:\none\ntwo"),
     ),
   ).toContain("<aside><p>Say:</p><p>one</p><p>two</p></aside>");
+  // Only the notes' bytes change.
+  const own =
+    "<!doctype html>\r\n<meta name='artboard' content='1920x1080 slide'>\r\n" +
+    "<p class='t'>T\r\n<aside>Say it.</aside>\r\n";
+  expect(await edited(page, own, notes("Say it.", "Say it twice."))).toBe(
+    own.replace("Say it.", "Say it twice."),
+  );
   // Text where it held text; made where the slide has none.
   expect(
     await edited(page, slide("<h1>T</h1><aside>a</aside>"), notes("a", "a\nb")),
@@ -314,6 +320,23 @@ test("each write reads the file first, so what the agent wrote meanwhile is kept
     { at: 0 },
     ["read 7", "write on 7"],
     "<p>a1</p><p>b by the agent</p>",
+  ]);
+});
+
+test("an edit the file cannot take by itself is refused and said, and the file is left as it was", async ({
+  page,
+}) => {
+  const said = await page.evaluate(async (harness) => {
+    const { saverOn, edit, outcome } = await import(harness);
+    const { saver, file } = saverOn();
+    file.text = "<!doctype html>\n<ul><li>a<li>b</ul>\n";
+    const made = outcome(saver.save("f", edit(0, "a", "a1")));
+    return [await saver.flush(), await made, file.text];
+  }, HARNESS);
+  expect(said).toEqual([
+    false,
+    "Not saved: this text changed in the file meanwhile. Reopen it to edit.",
+    "<!doctype html>\n<ul><li>a<li>b</ul>\n",
   ]);
 });
 
@@ -437,4 +460,13 @@ test("skipping a slide keeps how it comes in, and taking the skip away leaves th
   expect(
     await skip(head('<meta name="slide" content="skip">'), false),
   ).not.toContain('name="slide"');
+  // Only the mark's bytes change, in a file of CRLF lines and single quotes.
+  const own =
+    "\uFEFF<!doctype html>\r\n<head><meta name='artboard' content='1920x1080 slide'>\r\n" +
+    "<title>T</title>\r\n</head>\r\n<body><h1 class='t'>T\r\n</body>\r\n";
+  const marked = await skip(own, true);
+  expect(marked).toBe(
+    own.replace("slide'>", `slide'><meta name="slide" content="skip">`),
+  );
+  expect(await skip(marked, false)).toBe(own);
 });

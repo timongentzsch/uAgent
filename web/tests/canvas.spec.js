@@ -1877,7 +1877,7 @@ test("a deck's slide menu adds a slide in the deck's style, and skips one: dimme
     "04-end.html",
   ]);
   expect(await talkFile(host.project, "02-slide.html")).toBe(
-    "<!doctype html><html><head><title>New slide</title>" +
+    "<!doctype html>\n<html><head><title>New slide</title>" +
       '<meta name="artboard" content="1920x1080 slide">' +
       "<style>h1{letter-spacing:2px}</style></head>" +
       "<body><h1>Heading</h1><p>Text</p></body></html>",

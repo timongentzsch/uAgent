@@ -113,18 +113,20 @@ test("a merged cell is selected as one: pressed anywhere, stepped into and out o
   await expect(cell("Costs", "B2")).not.toHaveClass(/sheet-in/);
 });
 
-test("cells are merged from the format row after a question where others hold text, unmerged from a menu, and Undo takes either back", async ({
+test("cells are merged from the format bar after a question where others hold text, unmerged from a menu, and Undo takes either back", async ({
   page: app,
   session,
   host,
 }) => {
-  const { files, stage, bar, cell, saved } = await openSheet(
+  const { files, stage, cell, saved } = await openSheet(
     app,
     session,
     host.project,
     BUDGET,
   );
-  const merge = bar.getByRole("button", { name: "Merge cells", exact: true });
+  const merge = files
+    .getByRole("toolbar", { name: "Format" })
+    .getByRole("button", { name: "Merge cells", exact: true });
   const undo = files.getByRole("button", { name: "Undo" });
   const listed = (list) =>
     BUDGET.replace(

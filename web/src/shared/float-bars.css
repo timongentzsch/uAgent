@@ -1,9 +1,17 @@
-/* The tools at the foot of the stage, in the middle. */
-.insert-bar {
+/* At the foot of the stage, in the middle: the tools that put something on
+   it, or a sheet's format; on a narrow stage it scrolls sideways. */
+.foot-bar {
   inset-inline: 0;
   bottom: var(--space-4);
   width: fit-content;
+  max-width: calc(100% - 2 * var(--space-4));
   margin-inline: auto;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.foot-bar > * {
+  flex: none;
 }
 /* Over what is picked, where its script places it; on a narrow stage it
    takes a second row before it leaves the stage. */

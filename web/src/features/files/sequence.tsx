@@ -56,7 +56,7 @@ import {
   sum,
 } from "./boards.ts";
 import Legend from "./legend.tsx";
-import { FormulaBar, SheetBar } from "./sheet.tsx";
+import { FormatBar, FormulaBar, SheetBar } from "./sheet.tsx";
 import {
   type Cell,
   cellOf,
@@ -438,7 +438,6 @@ export default function Sequence({
   };
   const [ranged, setRanged] = useState<string>();
   const [told, setTold] = useState(UNTOLD);
-  const formula = useRef<HTMLInputElement>(null);
   useEffect(() => setPart(0), [path]);
   const first = boards.findIndex((board) => board.path === path);
   const index = boards.findLastIndex(
@@ -941,128 +940,144 @@ export default function Sequence({
           <Notice tone="error">{failure.text}</Notice>
         </p>
       )}
-      <Bar edge="bottom" class="page-tools">
-        {boards.length > 1 &&
-          !sheet &&
-          toggle(
-            "Legend",
-            legend,
-            () => setLegend(!legend),
-            <PanelLeft />,
-            true,
-          )}
-        {!sheet &&
-          toggle(
-            "Select",
-            mode === "select",
-            () => flip("select"),
-            <MousePointerClick />,
-          )}
-        {save &&
-          editable &&
-          toggle(
-            "Edit",
-            mode === "edit",
-            () => flip("edit"),
-            <Pencil />,
-            false,
-            uneditable,
-          )}
-        {undoes && (
-          <>
-            <IconButton
-              label="Undo"
-              disabled={!undoable?.undo}
-              onClick={() => back(false)}
-            >
-              <Undo2 />
-            </IconButton>
-            <IconButton
-              label="Redo"
-              disabled={!undoable?.redo}
-              onClick={() => back(true)}
-            >
-              <Redo2 />
-            </IconButton>
-          </>
-        )}
-        {(declared.length > 0 || !!theme.value?.colors.length) &&
-          toggle(
-            "Tweaks",
-            tweaking,
-            () => setTweaking(!tweaking),
-            <SlidersHorizontal />,
-          )}
-        {/* raw: a narrow pane folds the tools after Edit into one menu. */}
-        <span class="page-tools-wide">
-          {gridded &&
-            toggle("Grid", grid, () => setGrid(!grid), <LayoutGrid />, true)}
-          {toggle(
-            "Find",
-            finding,
-            () => setFinding(!finding),
-            <Search />,
-            true,
-          )}
-          {!sheet && (
-            <IconButton label="Present" onClick={() => present(true)}>
-              <Presentation />
-            </IconButton>
-          )}
-          {drawn && (
-            <IconButton label="Draw on it" disabled={!png} onClick={draw}>
-              <PenLine />
-            </IconButton>
-          )}
-          <Menu
-            label="Export"
-            trigger={
-              <>
-                <FileOutput />
-                Export
-                <ChevronDown />
-              </>
-            }
-          >
-            {exportItems}
-          </Menu>
-          <IconButton label="Open alone" onClick={() => open(src)}>
-            <ExternalLink />
-          </IconButton>
-        </span>
-        <span class="page-tools-folded">
-          <Menu label="More tools">
-            {gridded && (
-              <MenuItem
-                role="menuitemcheckbox"
-                aria-checked={grid}
-                onClick={() => setGrid(!grid)}
-              >
-                Grid
-                {grid && <Check />}
-              </MenuItem>
+      {/* raw: rows, not a row: on a phone a sheet's two share one. */}
+      <div class="page-head">
+        <Bar edge="bottom" class="page-tools">
+          {boards.length > 1 &&
+            !sheet &&
+            toggle(
+              "Legend",
+              legend,
+              () => setLegend(!legend),
+              <PanelLeft />,
+              true,
             )}
-            <MenuItem onClick={() => setFinding(!finding)}>Find</MenuItem>
+          {!sheet &&
+            toggle(
+              "Select",
+              mode === "select",
+              () => flip("select"),
+              <MousePointerClick />,
+            )}
+          {save &&
+            editable &&
+            toggle(
+              "Edit",
+              mode === "edit",
+              () => flip("edit"),
+              <Pencil />,
+              false,
+              uneditable,
+            )}
+          {undoes && (
+            <>
+              <IconButton
+                label="Undo"
+                disabled={!undoable?.undo}
+                onClick={() => back(false)}
+              >
+                <Undo2 />
+              </IconButton>
+              <IconButton
+                label="Redo"
+                disabled={!undoable?.redo}
+                onClick={() => back(true)}
+              >
+                <Redo2 />
+              </IconButton>
+            </>
+          )}
+          {(declared.length > 0 || !!theme.value?.colors.length) &&
+            toggle(
+              "Tweaks",
+              tweaking,
+              () => setTweaking(!tweaking),
+              <SlidersHorizontal />,
+            )}
+          {/* raw: a narrow pane folds the tools after Edit into one menu. */}
+          <span class="page-tools-wide">
+            {gridded &&
+              toggle("Grid", grid, () => setGrid(!grid), <LayoutGrid />, true)}
+            {toggle(
+              "Find",
+              finding,
+              () => setFinding(!finding),
+              <Search />,
+              true,
+            )}
             {!sheet && (
-              <MenuItem onClick={() => present(true)}>Present</MenuItem>
+              <IconButton label="Present" onClick={() => present(true)}>
+                <Presentation />
+              </IconButton>
             )}
             {drawn && (
-              <MenuItem disabled={!png} onClick={draw}>
-                Draw on it
-              </MenuItem>
+              <IconButton label="Draw on it" disabled={!png} onClick={draw}>
+                <PenLine />
+              </IconButton>
             )}
-            <MenuSub label="Export">{exportItems}</MenuSub>
-            <MenuItem onClick={() => open(src)}>Open alone</MenuItem>
-            {touch && (
-              <MenuItem disabled={zoom === 1} onClick={() => setZoom(1)}>
-                Fit
-              </MenuItem>
-            )}
-          </Menu>
-        </span>
-        {writing && <span class="chip working">Agent writing</span>}
-        {!editable && status}
-      </Bar>
+            <Menu
+              label="Export"
+              trigger={
+                <>
+                  <FileOutput />
+                  Export
+                  <ChevronDown />
+                </>
+              }
+            >
+              {exportItems}
+            </Menu>
+            <IconButton label="Open alone" onClick={() => open(src)}>
+              <ExternalLink />
+            </IconButton>
+          </span>
+          <span class="page-tools-folded">
+            <Menu label="More tools">
+              {gridded && (
+                <MenuItem
+                  role="menuitemcheckbox"
+                  aria-checked={grid}
+                  onClick={() => setGrid(!grid)}
+                >
+                  Grid
+                  {grid && <Check />}
+                </MenuItem>
+              )}
+              <MenuItem onClick={() => setFinding(!finding)}>Find</MenuItem>
+              {!sheet && (
+                <MenuItem onClick={() => present(true)}>Present</MenuItem>
+              )}
+              {drawn && (
+                <MenuItem disabled={!png} onClick={draw}>
+                  Draw on it
+                </MenuItem>
+              )}
+              <MenuSub label="Export">{exportItems}</MenuSub>
+              <MenuItem onClick={() => open(src)}>Open alone</MenuItem>
+              {touch && (
+                <MenuItem disabled={zoom === 1} onClick={() => setZoom(1)}>
+                  Fit
+                </MenuItem>
+              )}
+            </Menu>
+          </span>
+          {writing && <span class="chip working">Agent writing</span>}
+          {!editable && status}
+        </Bar>
+        {sheet && (
+          <fieldset class="page-asks" disabled={!live}>
+            <FormulaBar
+              cell={cell}
+              typing={typed}
+              locked={locked}
+              type={(value) => tell(frame.current, { type: "input", value })}
+              act={act}
+              offer={offer}
+              ask={(text) => tell(frame.current, { type: "suggest", text })}
+            />
+          </fieldset>
+        )}
+      </div>
       {mode === "edit" && !board && (
         <Bar edge="bottom" class="page-tools">
           <FormatTools
@@ -1143,20 +1158,6 @@ export default function Sequence({
           />
         )}
         <div class="page-main">
-          {sheet && (
-            <fieldset class="page-asks" disabled={!live}>
-              <FormulaBar
-                cell={cell}
-                typing={typed}
-                locked={locked}
-                field={formula}
-                type={(value) => tell(frame.current, { type: "input", value })}
-                act={act}
-                offer={offer}
-                ask={(text) => tell(frame.current, { type: "suggest", text })}
-              />
-            </fieldset>
-          )}
           <div
             class="page-stage"
             ref={stage}
@@ -1560,6 +1561,15 @@ export default function Sequence({
                 }}
               />
             )}
+            {sheet && !locked && (
+              <fieldset class="page-asks" disabled={!live}>
+                <FormatBar
+                  cell={cell}
+                  act={act}
+                  comment={addToChat && (() => setRanged(cell?.range))}
+                />
+              </fieldset>
+            )}
             {wide && !presenting && !touch && (
               <ZoomControls
                 percent={Math.round(scale * 100)}
@@ -1604,8 +1614,6 @@ export default function Sequence({
                 {...told}
                 locked={locked}
                 act={act}
-                edit={() => formula.current?.focus()}
-                comment={addToChat && (() => setRanged(cell?.range))}
               />
             </fieldset>
           )}

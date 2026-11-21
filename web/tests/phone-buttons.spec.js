@@ -324,7 +324,7 @@ test.describe("files", () => {
     await toolsFit(page);
   });
 
-  test("a sheet's Format sheet and rules dialog", async ({
+  test("a sheet's format bar, its tools and its rules dialog", async ({
     page,
     session,
     host,
@@ -336,7 +336,17 @@ test.describe("files", () => {
       sheet("Plan", { Tasks: ["<th>Task<th>Cost", "<td>Write<td>1200"] }),
       { phone: true },
     );
+    // The format bar keeps inside the stage and scrolls sideways.
+    const format = files.getByRole("toolbar", { name: "Format" });
+    await expect(format).toBeVisible();
+    const [room, bar] = await Promise.all([
+      files.locator(".page-stage").boundingBox(),
+      format.boundingBox(),
+    ]);
+    expect(bar.x).toBeGreaterThanOrEqual(room.x);
+    expect(bar.x + bar.width).toBeLessThanOrEqual(room.x + room.width);
     await roomy(page);
+    await toolsFit(page);
     // Its tabs scroll, and keep room to show a tab whole.
     await cell("Tasks", "B2").click();
     expect(
@@ -348,11 +358,6 @@ test.describe("files", () => {
     expect(
       (await files.getByRole("tab", { name: "Tasks" }).boundingBox()).height,
     ).toBeGreaterThanOrEqual(44);
-    await cell("Tasks", "A2").click();
-    await files.getByRole("button", { name: "Format", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Format" })).toBeVisible();
-    await roomy(page);
-    await page.keyboard.press("Escape");
     await cell("Tasks", "B2").click({ button: "right" });
     await stage
       .getByRole("menuitem", { name: "Conditional formatting…" })

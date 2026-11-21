@@ -31,7 +31,7 @@ export function InsertBar({
 }) {
   return (
     <div
-      class="float-toolbar segmented insert-bar"
+      class="float-toolbar segmented foot-bar"
       role="group"
       aria-label="Insert"
     >

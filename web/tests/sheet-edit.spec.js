@@ -1634,7 +1634,7 @@ test("a link is read wherever white space lies round it: in a last cell before a
   ).toHaveCount(0);
 });
 
-test("the selection's cells are made bold, coloured, filled, aligned, patterned and wrapped from the formula bar, which shows how the active cell is", async ({
+test("the selection's cells are made bold, coloured, filled, aligned, patterned and wrapped from the format bar, which shows how the active cell is", async ({
   page: app,
   session,
   host,
@@ -1648,7 +1648,7 @@ test("the selection's cells are made bold, coloured, filled, aligned, patterned 
     host.project,
     narrow,
   );
-  const bar = files.getByRole("group", { name: "Formula bar" });
+  const bar = files.getByRole("toolbar", { name: "Format" });
   const press = (name) => bar.getByRole("button", { name, exact: true });
   const choice = (name) =>
     app.getByRole("menuitemradio", { name, exact: true });
@@ -1759,7 +1759,9 @@ test("the selection's cells are made bold, coloured, filled, aligned, patterned 
   await stage.getByRole("menuitem", { name: "Show only “Done”" }).click();
   await cell("Tasks", "A2").click();
   await app.keyboard.press("Shift+ArrowDown");
-  await expect(bar.getByRole("status")).toHaveText("Tasks!A2");
+  await expect(
+    files.getByRole("group", { name: "Formula bar" }).getByRole("status"),
+  ).toHaveText("Tasks!A2");
   await choose("Fill", "Warning");
   await expect.poll(saved).toBe(
     with_(looked, {
@@ -1781,24 +1783,77 @@ test("the selection's cells are made bold, coloured, filled, aligned, patterned 
   await undo.click();
   await expect.poll(saved).toBe(looked);
 
-  // A narrow pane folds the controls into one sheet.
+  // A narrow pane keeps the bar, which scrolls sideways: no sheet of its
+  // own covers the grid.
   await app.setViewportSize({ width: 390, height: 780 });
-  await expect(press("Bold")).toBeHidden();
+  await expect(
+    files.getByRole("button", { name: "Format", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    await bar.evaluate((row) => row.scrollWidth > row.clientWidth + 1),
+  ).toBe(true);
   await cell("Tasks", "A2").click();
-  await press("Format").click();
-  const folded = app.getByRole("dialog", { name: "Format" });
-  await folded.getByRole("button", { name: "Bold" }).click();
-  await expect(folded.getByRole("button", { name: "Bold" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await folded.getByRole("button", { name: "Fill" }).click();
+  await press("Bold").click();
+  await expect(press("Bold")).toHaveAttribute("aria-pressed", "true");
+  await press("Fill").click();
   await choice("Bad").click();
   await expect
     .poll(saved)
     .toBe(
       with_(looked, { "<td>Write": '<td class="bold" data-fill="bad">Write' }),
     );
+});
+
+test("the format bar stands at the foot of the grid, which ends above it: the formula bar holds no format, the keys reach the bar after the grid, and nothing of the grid lies under it at a desk or on a phone", async ({
+  page: app,
+  session,
+  host,
+  browserName,
+}) => {
+  const { files, bar, cell } = await openSheet(
+    app,
+    session,
+    host.project,
+    PLAN,
+  );
+  const format = files.getByRole("toolbar", { name: "Format" });
+  await expect(format).toBeVisible();
+  await expect(bar.getByRole("button")).toHaveCount(0);
+  // The grid's frame, and so its last rows, a chart there and its scroll
+  // bar, ends where the bar's room begins; the bar keeps inside the stage.
+  const clear = async () => {
+    const [stage, page, foot] = await Promise.all([
+      files.locator(".page-stage").boundingBox(),
+      files.locator(".page-stage iframe:not([inert])").boundingBox(),
+      format.boundingBox(),
+    ]);
+    expect(page.y + page.height).toBeLessThanOrEqual(foot.y + 1);
+    expect(foot.y + foot.height).toBeLessThanOrEqual(stage.y + stage.height);
+    expect(foot.x).toBeGreaterThanOrEqual(stage.x);
+    expect(foot.x + foot.width).toBeLessThanOrEqual(stage.x + stage.width);
+  };
+  await clear();
+  // Between the grid and the tabs; WebKit's Tab reaches a button with Alt.
+  await files.getByRole("tab", { name: "Tasks" }).focus();
+  await app.keyboard.press(
+    browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab",
+  );
+  await expect(
+    format.getByRole("button", { name: "Comment", exact: true }),
+  ).toBeFocused();
+  // Stepped down past the view, the active cell is in view above the bar.
+  await cell("Tasks", "A2").click();
+  for (let step = 0; step < 40; step++) await app.keyboard.press("ArrowDown");
+  await expect(bar.locator("output")).toHaveText("Tasks!A42");
+  const foot = await format.boundingBox();
+  await expect
+    .poll(async () => {
+      const box = await cell("Tasks", "A42").boundingBox();
+      return box && box.y + box.height <= foot.y + 1;
+    })
+    .toBe(true);
+  await app.setViewportSize({ width: 390, height: 780 });
+  await clear();
 });
 
 test("a row's number and a column's letter open what can be done to them: move, freeze, clear, format, copy and comment; a column's edge is dragged to its width", async ({
@@ -2024,8 +2079,24 @@ test("on a phone the rows and columns a sheet holds stay in view, and a cell is 
   await cell("Months", "L40").click();
   await expect(bar.locator("output")).toHaveText("Months!L40");
   await expect(field).toHaveValue("429");
-  // Edit cell brings the formula bar's field up to type in.
-  await files.getByRole("button", { name: "Edit cell" }).click();
+  // One row above the grid: the tools' menu stands before the formula, as
+  // the keys reach them.
+  const [tools, formula] = await Promise.all([
+    files.getByRole("button", { name: "More tools" }).boundingBox(),
+    bar.boundingBox(),
+  ]);
+  expect(tools.x + tools.width).toBeLessThanOrEqual(formula.x + 1);
+  expect(tools.y + tools.height / 2).toBeGreaterThan(formula.y);
+  expect(tools.y + tools.height / 2).toBeLessThan(formula.y + formula.height);
+  // One row under it: the tabs, and undo beside them.
+  const [tabs, undo] = await Promise.all([
+    files.getByRole("tablist", { name: "Tabs" }).boundingBox(),
+    files.getByRole("button", { name: "Undo" }).boundingBox(),
+  ]);
+  expect(undo.y + undo.height / 2).toBeGreaterThan(tabs.y);
+  expect(undo.y + undo.height / 2).toBeLessThan(tabs.y + tabs.height);
+  // The field brings up the keyboard.
+  await field.click();
   await expect(field).toBeFocused();
   await field.fill("=K40+1");
   await field.press("Enter");

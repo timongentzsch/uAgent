@@ -223,7 +223,7 @@ test("the formula bar lists the functions under its field and says a call's argu
   await field.pressSequentially("+1");
   await field.press("Tab");
   await expect(field).not.toBeFocused();
-  await expect(files.getByRole("button", { name: "Bold" })).toBeFocused();
+  await expect(files.locator(".page-stage iframe:not([inert])")).toBeFocused();
 
   // A function taken is typed as the letters were: left at once, the sheet
   // has it in its file.
@@ -322,8 +322,8 @@ test("on a phone the list lies clear of the cell typed in, and under the formula
   expect(last.list.y + last.list.height).toBeLessThanOrEqual(last.cell.y + 1);
   await app.keyboard.press("Escape");
   await app.keyboard.press("Escape");
-  // From Edit cell, the bar's list is under its field and in the window.
-  await files.getByRole("button", { name: "Edit cell" }).click();
+  // From the formula bar's field, its list is under it and in the window.
+  await field.click();
   await field.pressSequentially("=s");
   const offered = bar.getByRole("listbox", { name: "Functions" });
   await expect(offered).toBeInViewport({ ratio: 1 });

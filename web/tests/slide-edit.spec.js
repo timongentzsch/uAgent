@@ -124,6 +124,26 @@ test("a move is the element's translate, taken away at none; a size is its width
   ).toContain('<p id="first" style="translate: 5px;">');
 });
 
+test("a change writes only the elements it names: the rest of the file stays as the agent wrote it", async ({
+  page,
+}) => {
+  // An end tag left out, single quotes, CRLF lines and a byte order mark.
+  const source =
+    "\uFEFF<!doctype html>\r\n<html><head><meta name='artboard' content='1920x1080 slide'>\r\n" +
+    "<title>T</title></head>\r\n<body>\r\n<main>\r\n<h1 class='big'>Plan</h1>\r\n" +
+    "<ul><li>a<li>b</ul>\r\n<p>Note</main>\r\n<aside>Say it.</aside>\r\n</body>\r\n</html>\r\n";
+  const big = { path: "main > h1", tag: "h1", text: "Plan" };
+  expect(await edited(page, source, set(big, [4, 2]))).toBe(
+    source.replace(
+      "<h1 class='big'>",
+      '<h1 class="big" style="translate: 4px 2px;">',
+    ),
+  );
+  expect(await edited(page, source, { remove: [big] })).toBe(
+    source.replace("<h1 class='big'>Plan</h1>", ""),
+  );
+});
+
 test("an element is changed only where the file has it as the page showed it", async ({
   page,
 }) => {

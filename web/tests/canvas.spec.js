@@ -1877,7 +1877,7 @@ test("a deck's slide menu adds a slide in the deck's style, and skips one: dimme
     "04-end.html",
   ]);
   expect(await talkFile(host.project, "02-slide.html")).toBe(
-    "<!doctype html>\n<html><head><title>New slide</title>" +
+    "<!doctype html><html><head><title>New slide</title>" +
       '<meta name="artboard" content="1920x1080 slide">' +
       "<style>h1{letter-spacing:2px}</style></head>" +
       "<body><h1>Heading</h1><p>Text</p></body></html>",
@@ -2972,12 +2972,18 @@ test("a document exports Markdown, and a block edited on its third page is saved
   await files.getByRole("button", { name: "Edit" }).click();
   const paragraph = page.getByText(/^Paragraph 25 of the memo\./);
   await expect(paragraph).toHaveAttribute("contenteditable", "plaintext-only");
+  const before = await readFile(memo, "utf8");
   await paragraph.click();
   await app.keyboard.press("End");
   await app.keyboard.insertText(" Churn held flat.");
   await expect(saving(files)).toHaveText("Saved");
   const saved = await readFile(memo, "utf8");
-  expect(saved).toContain("<p>Paragraph 25 of the memo. Churn held flat.</p>");
+  expect(saved).toBe(
+    before.replace(
+      "25 of the memo.</p>",
+      "25 of the memo. Churn held flat.</p>",
+    ),
+  );
   await expect(paragraph).toHaveText(/Churn held flat\.$/);
   // The block left, the legend's picture of the page is of the file as saved.
   await page.getByText("Paragraph 26 of the memo.").click();
@@ -2990,10 +2996,6 @@ test("a document exports Markdown, and a block edited on its third page is saved
       .getByText(/Churn held flat\.$/),
   ).toBeAttached();
   await expect(count).toHaveText(`3 / ${MEMO_PAGES}`);
-  expect(saved).toContain("<td>Hire</td>");
-  expect(
-    saved.startsWith("<!doctype html>\n<html><head><title>Memo</title>"),
-  ).toBe(true);
 
   // The agent rewrote that block meanwhile: the edit is refused, not merged.
   await writeFile(memo, saved.replace("Churn held flat.", "Churn fell."));

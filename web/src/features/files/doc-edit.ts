@@ -3,6 +3,7 @@
 // And a slide's elements changed by hand (slideEdit).
 
 import { contentOf, identity } from "../../../sheet/slide.js";
+import { spliced } from "./splice.ts";
 import {
   maxItemEntries,
   maxItemPixels,
@@ -139,6 +140,17 @@ function written(page: Document, source: string) {
     (source.includes("\r\n") ? text.replaceAll("\n", "\r\n") : text)
   );
 }
+// The changed page as its file's text: only what changed replaced, every
+// other byte kept, unless the file does not read back as the page that way
+// (white space between tags aside); then the whole page is written.
+function rewritten(page: Document, source: string) {
+  const text = spliced(source, parsed(source), page);
+  const flat = (read: Document) =>
+    read.documentElement.outerHTML.replace(/>\s+</g, "><");
+  return text !== undefined && flat(parsed(text)) === flat(page)
+    ? text
+    : written(page, source);
+}
 
 // A slide in the style of `source`: its head, its body's own attributes,
 // and where its body is one element that wraps the slide, such a wrapper;
@@ -152,7 +164,7 @@ export function blankSlide(source: string) {
     content === page.body ? content : (content.cloneNode() as Element);
   into.innerHTML = "<h1>Heading</h1><p>Text</p>";
   if (into !== page.body) page.body.replaceChildren(into);
-  return written(page, source);
+  return rewritten(page, source);
 }
 
 // A slide's source with a word of its mark set or taken away (skip: left
@@ -176,7 +188,7 @@ export function markSlide(source: string, word: "skip" | "push", on: boolean) {
         "afterend",
         `<meta name="slide" content="${content.replace(/"/g, "&quot;")}">`,
       );
-  return written(page, source);
+  return rewritten(page, source);
 }
 
 // A slide's element as its page showed it: its path from the body or from
@@ -342,7 +354,7 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
       if (!element.getAttribute("style")) element.removeAttribute("style");
       return taken;
     });
-    return elements.length && made ? written(page, source) : null;
+    return elements.length && made ? rewritten(page, source) : null;
   }
   if ("add" in edit) {
     const { kind, place, width, height } = edit.add ?? {};
@@ -355,7 +367,7 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
     if (!placed(made, place, width, tall)) return null;
     if (notes?.parentElement === content) notes.before(made);
     else content.append(made);
-    return written(page, source);
+    return rewritten(page, source);
   }
   if ("copy" in edit) {
     const elements = all(edit.copy, (one) => one?.at);
@@ -370,12 +382,12 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
     elements.forEach((element, index) =>
       element.after(copies[index] as HTMLElement),
     );
-    return written(page, source);
+    return rewritten(page, source);
   }
   if ("remove" in edit) {
     const elements = all(edit.remove, (one) => one);
     for (const element of elements) element.remove();
-    return elements.length ? written(page, source) : null;
+    return elements.length ? rewritten(page, source) : null;
   }
   if ("front" in edit || "back" in edit) {
     const over = "front" in edit;
@@ -391,7 +403,7 @@ export function slideEdit(source: string, edit: SlideEdit): string | null {
       end[over ? "after" : "before"](element);
       changed = true;
     }
-    return changed ? written(page, source) : null;
+    return changed ? rewritten(page, source) : null;
   }
   return null;
 }
@@ -544,7 +556,7 @@ export function applyEdit(
   if (kind && edit.as && edit.as !== kind && Object.hasOwn(KINDS, edit.as))
     turn(block, edit.as);
   return {
-    text: written(page, source),
+    text: rewritten(page, source),
     wrote: text,
     at: added ? blocks().indexOf(added) : edit.index,
   };

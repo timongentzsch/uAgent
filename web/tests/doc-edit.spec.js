@@ -62,13 +62,28 @@ test("a save writes the document's own nodes: its comments stay where they stood
       typed(0, "Hi"),
     ),
   ).toBe(
-    "\uFEFF<!doctype html>\r\n<html><head>\r\n<title>T</title>\r\n</head>\r\n" +
-      "<body>\r\n<p>Hi!</p>\r\n<pre>\r\n\r\ncode</pre></body></html>\r\n",
+    "\uFEFF<!doctype html>\r\n<html>\r\n<head>\r\n<title>T</title>\r\n</head>\r\n" +
+      "<body>\r\n<p>Hi!</p>\r\n<pre>\r\n\r\ncode</pre>\r\n</body>\r\n</html>\r\n",
   );
   // Saved again with nothing changed, the text is the same.
   const once = await edited(page, page1("<p>Hi</p>\n\n"), typed(0, "Hi"));
-  expect(once).toBe(page1("<p>Hi!</p>"));
+  expect(once).toBe(page1("<p>Hi!</p>\n\n"));
   expect(await edited(page, once, typed(0, "Hi!", "Hi!"))).toBe(once);
+});
+
+test("an edit changes only its block's bytes: the rest of the file stays as the agent wrote it", async ({
+  page,
+}) => {
+  // An end tag left out, single quotes, CRLF lines and a byte order mark.
+  const source =
+    "\uFEFF<!DOCTYPE html>\r\n<html lang='en'>\r\n<head><title>T</title></head>\r\n<body>\r\n" +
+    "<p class='lead'>Intro\r\n<p>Hi</p>\r\n<ul><li>one<li>two</ul>\r\n</body>\r\n</html>\r\n";
+  expect(await edited(page, source, typed(1, "Hi"))).toBe(
+    source.replace("<p>Hi</p>", "<p>Hi!</p>"),
+  );
+  expect(await edited(page, source, { ...typed(1, "Hi"), insert: "p" })).toBe(
+    source.replace("<p>Hi</p>", "<p>Hi!</p><p>Paragraph</p>"),
+  );
 });
 
 test("a pre keeps the blank line it starts with through any number of saves", async ({

@@ -3,7 +3,8 @@
 A deck is a folder of slides, `decks/<name>/`: one HTML file per slide.
 Files shows the slide beside a legend of all of them, in name order, and
 presents from there; the person can reorder, duplicate, add, skip and
-delete slides and edit a slide's text and notes in place.
+delete slides, edit a slide's text and notes in place, and move, resize,
+add and delete what is on a slide.
 
 ## Files
 
@@ -17,6 +18,11 @@ delete slides and edit a slide's text and notes in place.
   (`@import url("../../design/system/tokens.css");` or the system's path) and
   holds the deck's type scale and slide layouts as classes. A slide holds
   its content, not its styles.
+- What the person placed by hand carries it in its `style` attribute: a
+  `translate`, a `width`, or `position: absolute` with `left` and `top`
+  (a text, a table or a `data-shape` they put in). Keep those attributes
+  and elements as they are when you change a slide; never write such a
+  style yourself.
 - Slides are read from across a room: in `style.css` set the root size so the
   system's `rem` sizes scale with the slide (`html { font-size: 28px; }` on a
   1920px-wide slide, in proportion on others).

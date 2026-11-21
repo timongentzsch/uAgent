@@ -4,8 +4,9 @@ A whiteboard is a page of notes, shapes and arrows laid out by position: a
 flow, a map, a retro, a plan. Alone it is a folder with one page,
 `boards/<name>/board.html`; inside a design it is one more page of that
 folder (`design/landing/00-board.html`) and lies on the canvas beside the
-screens. Files shows it as a board the person pans and zooms, and when it is
-opened alone they move, resize and retype items, which writes the file.
+screens. Files shows it as a board the person pans and zooms; with Edit on
+they add, move, resize, retype, recolour and delete items and draw arrows,
+which writes the file.
 
 ## The file
 

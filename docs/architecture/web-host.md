@@ -153,8 +153,7 @@ page into an opaque origin and limits loads to the preview address, with
 requests carry `Origin: null`; the pre-routing handler accepts that only for
 a GET or HEAD under `/preview/`.
 
-**Web Push.** Built only with `-DUAGENT_WEB_PUSH=ON` (OpenSSL 3), and
-enabled when `web.pushContact` names a `mailto:` or `https://` contact
+**Web Push.** Enabled when `web.pushContact` names a `mailto:` or `https://` contact
 and libcurl resolves asynchronously. A
 subscription's endpoint must be HTTPS on port 443 at FCM, Mozilla or Apple,
 and resolve to a public address at connect time. Payloads are `aes128gcm`

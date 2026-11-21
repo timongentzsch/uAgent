@@ -182,9 +182,6 @@ def _(root, home):
         env = {"UAGENT_WEB_PUSH_CONTACT": "mailto:test@example.invalid"}
         with web_host(binary, root, home, provider.url, extra_env=env) as (client, code, _, _):
             client.pair(code)
-            _, catalogue, _ = client.json("/api/sessions")
-            if not catalogue["capabilities"]["push"]:
-                return "built without UAGENT_WEB_PUSH"
             client.json(
                 "/api/push/subscriptions",
                 {

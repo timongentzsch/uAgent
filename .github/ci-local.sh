@@ -22,7 +22,7 @@ docker run --rm \
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
       g++ cmake make curl python3 libcurl4-openssl-dev zlib1g-dev libssl-dev >/dev/null
     cd /work/uagent
-    cmake --preset ci-release -B /work/build/release >/dev/null
+    cmake --preset release -B /work/build/release >/dev/null
     cmake --build /work/build/release --parallel "$(nproc)" -- -k
     if [ -n "$UNITS" ]; then
       curl -LsSf https://astral.sh/uv/0.11.28/install.sh | sh >/dev/null 2>&1

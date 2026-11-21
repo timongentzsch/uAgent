@@ -13,8 +13,7 @@ RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 instal
 WORKDIR /src
 COPY . .
 COPY --from=frontend /web/dist /src/web/dist
-RUN cmake -S . -B /tmp/uagent-build -DCMAKE_BUILD_TYPE=Release \
-    -DUAGENT_WEB_PUSH=ON -DBUILD_TESTING=OFF \
+RUN cmake -S . -B /tmp/uagent-build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
     && cmake --build /tmp/uagent-build --target uagent -j 4 \
     && UAGENT_BUILD_DIR=/tmp/uagent-build UAGENT_PREFIX=/opt/uagent \
        UAGENT_NONINTERACTIVE=1 UAGENT_REMOTE_BUNDLE="$(test ! -d /src/remote-bundle || echo /src/remote-bundle)" ./install.sh

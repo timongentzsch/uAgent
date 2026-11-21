@@ -24,6 +24,7 @@
 #include "include/api/client.h"
 #include "include/core/fs.h"
 #include "include/core/private_store.h"
+#include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/web/protocol.h"
@@ -120,7 +121,7 @@ curl_socket_t OpenSocket(void*, curlsocktype purpose, curl_sockaddr* address) {
 }  // namespace
 
 struct PushSender::Impl {
-  std::string reason = "native Web Push is not compiled (UAGENT_WEB_PUSH=OFF)";
+  std::string reason;
   struct Subscription {
     std::string device, endpoint, public_key, auth;
   };

@@ -63,6 +63,10 @@ std::string Utf8Prefix(std::string s, size_t cap);
 // digits, -._~) and those in `keep` written as %XX.
 std::string PercentEncode(std::string_view text, std::string_view keep = "");
 
+// RFC 4648 base64, padded, and base64url, unpadded.
+std::string Base64(std::string_view bytes);
+std::string Base64Url(std::string_view bytes);
+
 // The same bound with an ellipsis when truncation is required.
 std::string Utf8Trunc(std::string s, size_t cap);
 

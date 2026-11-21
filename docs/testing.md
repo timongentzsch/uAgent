@@ -62,7 +62,7 @@ Test presets exist for `debug`, `release`, `sanitize`, `tsan` and `coverage`.
 
 | CTest name | Covers |
 | --- | --- |
-| `core` | C++ unit tests (`tests/unit/`, binary `uagent_tests`; Web Push encryption only with `UAGENT_WEB_PUSH=ON`) |
+| `core` | C++ unit tests (`tests/unit/`, binary `uagent_tests`) |
 | `integration_runtime`, `_tools`, `_ui`, `_providers`, `_mcp`, `_agents`, `_sandbox` | end-to-end cases against the real binary with a scripted HTTP provider and a PTY (`tests/integration_<group>.py` or `tests/integration_<group>/`); `runtime` runs in three processes |
 | `integration_web`, `integration_management` | native web host |
 | `behavior_eval` | scenario scores against the committed baseline |
@@ -300,14 +300,14 @@ promotes, but not ThreadSanitizer; scheduled and manual runs run them all:
 | Job | Runs |
 | --- | --- |
 | `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |
-| `build-and-test` | `ci-release` builds (Web Push on) for Linux x86_64 and macOS ARM64, and Linux ARM64 where selected; `ctest`; packaging through `install.sh` with `UAGENT_LOCAL_ONLY=1`, `tests/package_contents.py`, and the target's remote payload |
+| `build-and-test` | `release` builds for Linux x86_64 and macOS ARM64, and Linux ARM64 where selected; `ctest`; packaging through `install.sh` with `UAGENT_LOCAL_ONLY=1`, `tests/package_contents.py`, and the target's remote payload |
 | `remote-bundle` | Where selected: assembles the three payloads into one verified bundle (`.github/remote_bundle.py`), adds it to each release archive and checks the archives; uploads `release-complete` |
 | `sanitizers` | `sanitize` preset, `ctest` in two legs: `integration_web` and `integration_providers` (with `behavior_eval`, `reference_docs`), and the rest |
 | `thread-sanitizer` | Where selected: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `coverage` | Weekly and by hand: `core` and every integration group with a branch report; fails under 67% line coverage |
 | `lint` | `.github/lint.sh`: clang-format, cpplint, Ruff, the source contracts and the docs check |
 | `clang-tidy` | clang-tidy, changed units on one runner or all units across three |
-| `web` | Biome format check and lint, Node tests, bundle and size report, a `ci-release` host with Web Push |
+| `web` | Biome format check and lint, Node tests, bundle and size report, a `release` host |
 | `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), each browser split across two runners |
 | `image` | Where selected: builds the container image for x86_64 from the tested Linux archive, starts it under `deploy/seccomp-chrome.json`, runs `deploy/check-network.sh` against a second listening container, and waits for the fetched Chrome |
 | `CI result` | fails if any required job failed or was cancelled |

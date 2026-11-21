@@ -11,6 +11,8 @@
   --sheet-tint: color-mix(in srgb, var(--sheet-accent) 14%, var(--sheet-ground));
   --sheet-error: #b42318;
   --sheet-pick: color-mix(in srgb, var(--sheet-accent) 12%, transparent);
+  --sheet-handle: 7px;
+  --sheet-reach: 17px;
   --sheet-series-0: var(--sheet-accent);
   --sheet-series-1: color-mix(in srgb, var(--sheet-accent) 55%, var(--sheet-ground));
   --sheet-series-2: color-mix(in srgb, var(--sheet-accent) 25%, var(--sheet-ground));
@@ -240,6 +242,28 @@ table[data-sheet] :is(.sheet-in, .sheet-read) {
 table[data-sheet] [aria-selected="true"] {
   outline: 2px solid var(--sheet-accent);
   outline-offset: -2px;
+}
+/* The handle at the selection's last corner, which fills from it; on a
+   touch screen its reach grows to the cell's corner, not its look. */
+table[data-sheet] tr:not(.sheet-frozen) > .sheet-corner:not(.sheet-pinned) {
+  position: relative;
+}
+.sheet-fill {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--sheet-handle);
+  height: var(--sheet-handle);
+  background: var(--sheet-accent);
+  cursor: crosshair;
+  touch-action: none;
+}
+@media (pointer: coarse) {
+  .sheet-fill::after {
+    content: "";
+    position: absolute;
+    inset: calc(-1 * var(--sheet-reach));
+  }
 }
 table[data-sheet] :is(td, th) {
   cursor: cell;

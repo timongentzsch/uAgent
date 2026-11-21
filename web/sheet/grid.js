@@ -389,8 +389,10 @@ export function draw(table, book, sheet, filters, view) {
 }
 
 // The cells drawn are marked by where the selection lies: its box and its
-// active cell; and those in `read`, the cells a picked chart draws from.
-export function paint(table, box, active, read) {
+// active cell; and those in `read`, the cells a picked chart draws from. The
+// selection's last cell holds the handle that fills from it.
+export function paint(table, box, active, read, fillable) {
+  table.querySelector(".sheet-fill")?.remove();
   for (const cell of table.querySelectorAll("tbody [data-column]")) {
     const [row, column] = [
       Number(cell.dataset.row),
@@ -410,6 +412,9 @@ export function paint(table, box, active, read) {
         column >= read.left &&
         column <= read.right,
     );
+    const corner = fillable && row === box.bottom && column === box.right;
+    cell.classList.toggle("sheet-corner", corner);
+    if (corner) cell.append(make("span", { className: "sheet-fill" }));
     if (row === active.row && column === active.column)
       cell.setAttribute("aria-selected", "true");
     else cell.removeAttribute("aria-selected");

@@ -138,8 +138,11 @@ test("a focus ring lies inside its control, in a pane too", async ({
   await page.getByRole("button", { name: "Send", exact: true }).click();
   const side = page.getByRole("complementary", { name: "Side chats" });
   const field = side.getByLabel("Follow up on side chat");
-  await field.fill("More");
   const send = side.getByRole("button", { name: "Send follow-up" });
+  // Its turn over: while it runs, Stop stands between the field and Send.
+  await expect(side).toContainText("Verified response");
+  await expect(send).toBeVisible();
+  await field.fill("More");
   await expect(send).toBeEnabled();
   // How far the ring reaches past the border box of what draws it.
   const reach = (locator, drawn) =>

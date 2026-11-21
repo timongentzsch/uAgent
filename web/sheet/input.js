@@ -3,6 +3,7 @@
 
 import { headOf, optionsOf } from "./book.js";
 import { actionsOf, linkActions } from "./actions.js";
+import { held } from "./items.js";
 import { openMenu } from "./menu.js";
 import { composing, suggest } from "./suggest.js";
 import {
@@ -340,6 +341,57 @@ export function listen(sheet) {
           );
       },
       { once: true },
+    );
+  });
+  // The selection's corner dragged to a cell fills what it passes over from
+  // the selection, along the way it is dragged furthest; the selection
+  // follows. A drag let go or lost off the cells, or back inside the
+  // selection, fills nothing.
+  addEventListener("pointerdown", (event) => {
+    if (!event.target.closest?.(".sheet-fill") || event.button || sheet.locked)
+      return;
+    event.preventDefault();
+    if (editing) commit();
+    const box = sheet.box();
+    let to;
+    const show = () =>
+      sheet.select(
+        {
+          row: Math.max(box.bottom, to?.row ?? 0),
+          column: Math.max(box.right, to?.column ?? 0),
+        },
+        {
+          row: Math.min(box.top, to?.row ?? box.top),
+          column: Math.min(box.left, to?.column ?? box.left),
+        },
+        true,
+      );
+    held(
+      event,
+      (next) => {
+        const over = document.elementFromPoint(next.clientX, next.clientY);
+        const at = over && hit({ target: over });
+        const rows = at?.row
+          ? Math.max(at.row - box.bottom, box.top - at.row)
+          : 0;
+        const columns = at?.column
+          ? Math.max(at.column - box.right, box.left - at.column)
+          : 0;
+        to =
+          Math.max(rows, columns) < 1
+            ? undefined
+            : rows >= columns
+              ? { row: at.row }
+              : { column: at.column };
+        show();
+      },
+      (up) => {
+        if (up && to) sheet.run("fill-to", { box, to });
+        else {
+          to = undefined;
+          show();
+        }
+      },
     );
   });
   let dragging = false;

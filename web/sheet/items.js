@@ -76,7 +76,7 @@ export function held(press, move, end, signal) {
       stop(),
     on,
   );
-  signal.addEventListener("abort", () => stop(), on);
+  signal?.addEventListener("abort", () => stop(), on);
   return stop;
 }
 

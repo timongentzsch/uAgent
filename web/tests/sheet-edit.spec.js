@@ -257,6 +257,95 @@ test("rows are put in and taken out, filled down and sorted: formulas follow on 
   expect(await saved()).toBe(written);
 });
 
+test("the corner of the selection is dragged to fill: a step goes on, a formula moves, a value repeats, a release elsewhere fills nothing, and one fill is one undo", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, cell, saved } = await openSheet(
+    app,
+    session,
+    host.project,
+    PLAN,
+  );
+  const handle = stage.locator("table:not([hidden]) .sheet-fill");
+  // The handle's centre, and the centre of a cell.
+  const centre = async (target) => {
+    const box = await target.boundingBox();
+    return [box.x + box.width / 2, box.y + box.height / 2];
+  };
+  const drag = async (from, to, release = true) => {
+    await cell("Tasks", from).click();
+    await app.mouse.move(...(await centre(handle)));
+    await app.mouse.down();
+    await app.mouse.move(...(await centre(cell("Tasks", to))), { steps: 4 });
+    if (release) await app.mouse.up();
+  };
+  // Two numbers go on by their step; the selection grows over what is filled.
+  await cell("Tasks", "D2").click();
+  await cell("Tasks", "D3").click({ modifiers: ["Shift"] });
+  await app.mouse.move(...(await centre(handle)));
+  await app.mouse.down();
+  await app.mouse.move(...(await centre(cell("Tasks", "D4"))), { steps: 4 });
+  await expect(cell("Tasks", "D4")).toHaveClass(/sheet-in/);
+  await app.mouse.up();
+  await expect(cell("Tasks", "D4")).toHaveText("15,601.00");
+  await expect(cell("Tasks", "E4")).toHaveText("31,202.00");
+  await expect.poll(saved).toContain("<td>15601<td>=D4*2");
+  await expect(handle).toHaveCount(1);
+  // One undo takes the whole fill back.
+  await app.keyboard.press("Control+z");
+  await expect(cell("Tasks", "D4")).toHaveText("300.00");
+  await expect.poll(saved).toBe(PLAN);
+  // A formula moves along to the right, past the table, with the format of its cell.
+  await drag("E2", "F2");
+  await expect(cell("Tasks", "F2")).toHaveText("4,800.00");
+  await expect.poll(saved).toContain("<td>=D2*2<td>=E2*2");
+  await app.keyboard.press("Control+z");
+  await expect.poll(saved).toBe(PLAN);
+  // A text repeats, to the right.
+  await drag("A2", "B2");
+  await expect(cell("Tasks", "B2")).toHaveText("Write");
+  await expect.poll(saved).toContain("<tr><td>Write<td>Write<td>TRUE<td>1200");
+  await app.keyboard.press("Control+z");
+  // Let go over the app, nothing is filled and the selection is as it was.
+  await drag("A2", "A4", false);
+  const frame = await app
+    .locator(".page-stage iframe:not([inert])")
+    .boundingBox();
+  await app.mouse.move(frame.x - 40, frame.y + 40, { steps: 3 });
+  await app.mouse.up();
+  await expect(cell("Tasks", "A4")).toHaveText("Brief");
+  await expect(cell("Tasks", "A2")).toHaveAttribute("aria-selected", "true");
+  expect(await saved()).toBe(PLAN);
+});
+
+test.describe("with a touch screen", () => {
+  test.use({ hasTouch: true, isMobile: true });
+  test("on a touch screen the handle's reach is a cell's corner while its look stays small", async ({
+    page: app,
+    session,
+    host,
+  }) => {
+    const { stage, cell } = await openSheet(app, session, host.project, PLAN, {
+      phone: true,
+    });
+    await cell("Tasks", "D2").click();
+    const handle = stage.locator("table:not([hidden]) .sheet-fill");
+    const sizes = await handle.evaluate((node) => {
+      const own = getComputedStyle(node);
+      const reach = getComputedStyle(node, "::after");
+      return {
+        look: parseFloat(own.width),
+        reach: parseFloat(reach.width),
+        matches: matchMedia("(pointer: coarse)").matches,
+      };
+    });
+    expect(sizes.matches).toBe(true);
+    expect(sizes.reach).toBeGreaterThanOrEqual(sizes.look * 3);
+  });
+});
+
 test("the keys move and stretch the selection, Delete clears it, and a column is put in from its letter", async ({
   page: app,
   session,

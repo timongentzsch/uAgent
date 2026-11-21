@@ -1509,7 +1509,8 @@ TEST_CASE(TestBrowserToolLook) {
                                    bool*) { return std::string(); });
   const fs::path folder = fs::canonical(fake.workspace.root) / "project";
   fs::create_directories(folder / "deck");
-  for (const char* page : {"memo.html", "slide.html", "deck/01.html"}) {
+  for (const char* page :
+       {"memo.html", "slide.html", "tall.html", "deck/01.html"}) {
     std::ofstream(folder / page) << "<p>page</p>";
   }
   std::ofstream(fake.workspace.root / "outside.html") << "<p>page</p>";
@@ -1535,10 +1536,16 @@ TEST_CASE(TestBrowserToolLook) {
         "Part 3 of 12; part=4-11 shows the next.");
   CHECK(!look("memo.html", "13", memo).Ok());
   CHECK(!look("memo.html", "4-2", memo).Ok());
-  CHECK(look("slide.html", "", R"({"w":1920,"h":1080,"fits":false})").output ==
-        "Part 1 of 1.");
+  CHECK(
+      look("slide.html", "", R"({"w":1920,"h":1080,"fits":false,"tall":1080})")
+          .output == "Part 1 of 1.");
   CHECK(look("deck", "", R"({"frames":[[0,0,1920,1080],[0,1080,1920,1080]]})")
             .output == "Parts 1-2 of 2.");
+  // A page that only fixes its width is cut into windows of its height.
+  const std::string tall = R"({"w":1440,"h":600,"fits":true,"tall":7000})";
+  CHECK(look("tall.html", "", tall).output ==
+        "Parts 1-8 of 12; part=9-12 shows the rest.");
+  CHECK(look("tall.html", "12", tall).output == "Part 12 of 12.");
   ToolResult outside =
       tool.run({{"action", "observe"},
                 {"path", (fake.workspace.root / "outside.html").string()}},
@@ -1560,8 +1567,9 @@ TEST_CASE(TestBrowserToolLook) {
       clips.push_back(command["params"]["clip"]);
     }
   }
-  // The memo's 8 + 4 + 1 pages, the slide, and the deck's two slides.
-  REQUIRE(clips.size() == 16);
+  // The memo's 8 + 4 + 1 pages, the slide, the deck's two slides, and the
+  // tall page's 8 + 1 windows.
+  REQUIRE(clips.size() == 25);
   CHECK(clips[0] == json({{"x", 0.0},
                           {"y", 0.0},
                           {"width", 794.0},
@@ -1569,8 +1577,15 @@ TEST_CASE(TestBrowserToolLook) {
                           {"scale", 1.0}}));
   CHECK(std::abs(clips[13].value("scale", 0.0) - 1568.0 / 1920) < 1e-9);
   CHECK(clips[15].value("y", 0.0) == 1080);
+  CHECK(clips[16] == json({{"x", 0.0},
+                           {"y", 0.0},
+                           {"width", 1440.0},
+                           {"height", 600.0},
+                           {"scale", 1.0}}));
+  CHECK(clips[24].value("y", 0.0) == 6600);
+  CHECK(clips[24].value("height", 0.0) == 400);
   // The slide is drawn again in the window its artboard asks for.
-  REQUIRE(navigated.size() == 7);
+  REQUIRE(navigated.size() == 9);
   CHECK(navigated[5] == navigated[4]);
   CHECK(navigated[6].value("url", "") ==
         "http://127.0.0.1:1/preview/t/deck/?deck&w=1920&h=1080");

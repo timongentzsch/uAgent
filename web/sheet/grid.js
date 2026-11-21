@@ -29,7 +29,7 @@ const linkIn = (cell) => {
   const [link, ...more] = cell.children;
   return link?.matches("a[href]") &&
     !more.length &&
-    link.textContent === cell.textContent
+    link.textContent.trim() === cell.textContent.trim()
     ? link
     : undefined;
 };

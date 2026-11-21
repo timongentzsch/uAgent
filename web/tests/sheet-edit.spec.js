@@ -1524,6 +1524,27 @@ test("a link in a cell is written as an anchor or an address alone, opens outsid
   await expect(cell("Tools", "A4").locator(".sheet-link")).toBeVisible();
 });
 
+test("a link is read wherever white space lies round it: in a last cell before a line break, in a middle cell, and written with closing tags and indentation", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const rows = [
+    // As the skill teaches: no closing tags, one row to a line.
+    '<tr><td class="bold">Make<td>C<td><a href="https://a.example/make">gnu.org/make</a>',
+    '<tr><td>Ninja<td><a href="https://a.example/ninja">Ninja</a><td>C++',
+    // As a model without the skill writes it.
+    '    <tr><td><a href="https://a.example/cmake">CMake</a></td><td>C++</td><td>\n      <a href="https://a.example/cmake2">cmake.org</a>\n    </td></tr>',
+  ];
+  const source = `<!doctype html>\n<meta charset="utf-8">\n<meta name="sheet" content="1">\n<title>Tools</title>\n<table data-sheet="Tools">\n<tr><th>Name<th>Language<th>Home\n${rows.join("\n")}\n</table>\n`;
+  const { files, cell } = await openSheet(app, session, host.project, source);
+  for (const ref of ["C2", "B3", "A4", "C4"])
+    await expect(cell("Tools", ref).locator(".sheet-link")).toBeVisible();
+  await expect(
+    files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
+  ).toHaveCount(0);
+});
+
 test("the selection's cells are made bold, coloured, filled, aligned, patterned and wrapped from the formula bar, which shows how the active cell is", async ({
   page: app,
   session,

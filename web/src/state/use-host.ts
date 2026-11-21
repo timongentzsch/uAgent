@@ -272,8 +272,10 @@ export function useHost(
           if (loads.current.get(id) !== request) return value;
           setOutgoing((items) => confirmOutgoing(items, { [id]: value }));
           const newer = live.current[id];
-          if (newer?.epoch === value.epoch && newer.cursor > value.cursor)
+          if (newer?.epoch === value.epoch && newer.cursor > value.cursor) {
+            snapshots.set({ ...live.current });
             return newer;
+          }
           live.current = retainedViews(
             {
               ...Object.fromEntries(

@@ -1759,6 +1759,87 @@ test("a slide that cannot be made once room was made for it says what was change
   await expect(count).toHaveText("1 / 5");
 });
 
+test("a slide is set to push in from its menu, which writes its mark and keeps its skip", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files } = await openDeck(app, session, host.project, {
+    "01-cover.html": slide("Cover"),
+    "02-plan.html": slide("Plan").replace(
+      "</head>",
+      '<meta name="slide" content="skip"></head>',
+    ),
+  });
+  // The slide's menu, opened: its Push in.
+  const push = async () => {
+    await files.getByRole("button", { name: "Slide actions" }).click();
+    return app.getByRole("menuitemcheckbox", { name: "Push in" });
+  };
+  let item = await push();
+  await expect(item).toHaveAttribute("aria-checked", "false");
+  await item.click();
+  await expect
+    .poll(() => talkFile(host.project, "01-cover.html"))
+    .toContain('<meta name="slide" content="push">');
+  item = await push();
+  await expect(item).toHaveAttribute("aria-checked", "true");
+  await app.keyboard.press("Escape");
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await (await push()).click();
+  await expect
+    .poll(() => talkFile(host.project, "02-plan.html"))
+    .toContain('<meta name="slide" content="skip push">');
+  await (await push()).click();
+  await expect
+    .poll(() => talkFile(host.project, "02-plan.html"))
+    .toContain('<meta name="slide" content="skip">');
+});
+
+test("a deck's grid shows every slide in the stage's place: a press opens one, a drag takes one to a new place", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { files, legend, count } = await openDeck(app, session, host.project, {
+    "01-cover.html": slide("Cover"),
+    "02-plan.html": slide("Plan"),
+    "03-numbers.html": slide("Numbers"),
+    "04-end.html": slide("End"),
+  });
+  const grid = files.getByRole("button", { name: "Grid", exact: true });
+  await grid.click();
+  await expect(grid).toHaveAttribute("aria-pressed", "true");
+  await expect(files.locator(".page-stage")).toBeHidden();
+  const tiles = legend.locator(".page-legend-item");
+  await expect(tiles).toHaveCount(4);
+  // In rows: the second stands beside the first, not under it.
+  const [first, second] = [
+    await tiles.nth(0).boundingBox(),
+    await tiles.nth(1).boundingBox(),
+  ];
+  expect(second.x).toBeGreaterThan(first.x + first.width - 1);
+  expect(Math.abs(second.y - first.y)).toBeLessThan(2);
+  // The last, dragged before the second.
+  const last = await tiles.nth(3).boundingBox();
+  await app.mouse.move(last.x + last.width / 2, last.y + last.height / 2);
+  await app.mouse.down();
+  await app.mouse.move(second.x + 4, second.y + second.height / 2, {
+    steps: 6,
+  });
+  await app.mouse.up();
+  await expect(legend.locator(".page-legend-name")).toHaveText([
+    "1 · Cover",
+    "2 · End",
+    "3 · Plan",
+    "4 · Numbers",
+  ]);
+  await legend.getByRole("option", { name: /Numbers/ }).click();
+  await expect(grid).toHaveAttribute("aria-pressed", "false");
+  await expect(files.locator(".page-stage")).toBeVisible();
+  await expect(count).toHaveText("4 / 4");
+});
+
 test("a deck's slide menu adds a slide in the deck's style, and skips one: dimmed in the legend, passed over when presenting", async ({
   page: app,
   session,

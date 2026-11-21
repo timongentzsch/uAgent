@@ -7,11 +7,13 @@ import {
   useState,
 } from "preact/hooks";
 import {
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
   FileOutput,
+  LayoutGrid,
   PanelLeft,
   PenLine,
   MousePointerClick,
@@ -84,7 +86,7 @@ import {
   blankSlide,
   notesEdit,
   type Saved,
-  skipSlide,
+  markSlide,
 } from "./doc-edit.ts";
 import {
   BOARD,
@@ -808,6 +810,9 @@ export default function Sequence({
     setRanged(undefined);
   };
   const [legend, setLegend] = useState(true);
+  // A deck's slides all at once, in place of the stage.
+  const [grid, setGrid] = useState(false);
+  const gridded = kind === "deck" && boards.length > 1;
   // A tool that is on or off: named, or `bare` its icon alone.
   const toggle = (
     label: string,
@@ -888,9 +893,18 @@ export default function Sequence({
             const { name, moves } = added(names, index);
             arrange(moves, name, { name, text: blankSlide(await read(path)) });
           }}
+          pushed={info?.push}
           skip={() =>
-            rewrite?.(path, (source) => skipSlide(source, !boards[index]?.skip))
+            rewrite?.(path, (source) =>
+              markSlide(source, "skip", !boards[index]?.skip),
+            )
           }
+          push={async () => {
+            const push = !info?.push;
+            await rewrite?.(path, (source) => markSlide(source, "push", push));
+            // The page is not drawn again for its own mark: it is as written.
+            setSaid((was) => was && { ...was, push });
+          }}
         />
       )}
     </div>
@@ -967,6 +981,8 @@ export default function Sequence({
           )}
         {/* raw: a narrow pane folds the tools after Edit into one menu. */}
         <span class="page-tools-wide">
+          {gridded &&
+            toggle("Grid", grid, () => setGrid(!grid), <LayoutGrid />, true)}
           {toggle(
             "Find",
             finding,
@@ -1002,6 +1018,16 @@ export default function Sequence({
         </span>
         <span class="page-tools-folded">
           <Menu label="More tools">
+            {gridded && (
+              <MenuItem
+                role="menuitemcheckbox"
+                aria-checked={grid}
+                onClick={() => setGrid(!grid)}
+              >
+                Grid
+                {grid && <Check />}
+              </MenuItem>
+            )}
             <MenuItem onClick={() => setFinding(!finding)}>Find</MenuItem>
             {!sheet && (
               <MenuItem onClick={() => present(true)}>Present</MenuItem>
@@ -1071,8 +1097,8 @@ export default function Sequence({
           close={() => setFinding(false)}
         />
       )}
-      <div class="page-body">
-        {legend && boards.length > 1 && !sheet && (
+      <div class="page-body" data-grid={grid || undefined}>
+        {(legend || grid) && boards.length > 1 && !sheet && (
           <Legend
             unit={unit}
             boards={boards}
@@ -1080,7 +1106,11 @@ export default function Sequence({
             stamp={stamp}
             index={index}
             heard={heard}
-            to={to}
+            grid={grid}
+            to={(at) => {
+              to(at);
+              setGrid(false);
+            }}
             move={
               arrange && !arranging
                 ? (from, place) => rearrange(moved(names, from, place))

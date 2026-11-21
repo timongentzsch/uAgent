@@ -405,7 +405,7 @@ test("skipping a slide keeps how it comes in, and taking the skip away leaves th
   const skip = (source, on) =>
     page.evaluate(
       async ([module, source, on]) =>
-        (await import(module)).skipSlide(source, on),
+        (await import(module)).markSlide(source, "skip", on),
       [MODULE, source, on],
     );
   const head = (meta) =>

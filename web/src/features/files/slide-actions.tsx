@@ -4,29 +4,34 @@ import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { ConfirmModal } from "../../shared/ui.tsx";
 import { duplicated, type Move, moved, removed } from "./boards.ts";
 
-// A deck's slide moved, duplicated, added to, skipped or deleted from its
-// menu, which stands beside the counter, not in the legend: a listbox holds
+// A deck's slide moved, duplicated, added to, skipped, pushed in or deleted
+// from its menu, which stands beside the counter, not in the legend: a listbox holds
 // only its options.
 export default function SlideActions({
   slides,
   index,
   title,
   skipped,
+  pushed,
   busy,
   act,
   add,
   skip,
+  push,
 }: {
   // The deck's slides by name, and the one the menu is for.
   slides: string[];
   index: number;
   title: string;
   skipped?: boolean;
+  pushed?: boolean;
   busy?: boolean;
   act: (moves: Move[]) => void;
-  // A new slide after this one; this one skipped, or no longer.
+  // A new slide after this one; this one skipped, or no longer; this one
+  // pushing the one before out as it comes in, or fading in.
   add: () => void;
   skip: () => void;
+  push: () => void;
 }) {
   const [deleting, setDeleting] = useState(false);
   const items: [string, boolean, () => void][] = [
@@ -55,6 +60,15 @@ export default function SlideActions({
         >
           Skip slide
           {skipped && <Check />}
+        </MenuItem>
+        <MenuItem
+          role="menuitemcheckbox"
+          aria-checked={!!pushed}
+          disabled={busy}
+          onClick={push}
+        >
+          Push in
+          {pushed && <Check />}
         </MenuItem>
         <MenuItem disabled={busy} onClick={() => setDeleting(true)}>
           Delete…

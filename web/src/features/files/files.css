@@ -483,6 +483,25 @@
 .page-legend-item[data-drop="after"]::before {
   inset: auto 0 calc(-1 * var(--space-2));
 }
+/* A deck's slides all at once, in the stage's place: rows of larger tiles,
+   and the line where a dragged one would drop stands beside a tile. */
+.page-body[data-grid] > .page-main {
+  display: none;
+}
+.page-legend.grid {
+  flex: 1;
+  flex-flow: row wrap;
+  align-content: flex-start;
+  border: 0;
+}
+.page-legend.grid > [data-drop]::before {
+  inset: 0 auto 0 calc(-1 * var(--space-2));
+  border-top: 0;
+  border-left: var(--focus-ring);
+}
+.page-legend.grid > [data-drop="after"]::before {
+  inset: 0 calc(-1 * var(--space-2)) 0 auto;
+}
 /* The part of a deck a slide opens, over it. */
 .page-legend-section {
   width: 0;

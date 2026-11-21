@@ -155,16 +155,20 @@ export function blankSlide(source: string) {
   return written(page, source);
 }
 
-// A slide's source with its mark to be skipped set or taken away, its other
-// words (how it comes in) kept: beside its artboard, where the host reads it.
-export function skipSlide(source: string, skip: boolean) {
+// A slide's source with a word of its mark set or taken away (skip: left
+// out of the talk; push: it comes in from the right), its other words kept:
+// beside its artboard, where the host reads it.
+export function markSlide(source: string, word: "skip" | "push", on: boolean) {
   const page = parsed(source);
   const mark = page.querySelector('meta[name="slide"]');
   const words = (mark?.getAttribute("content") ?? "")
     .split(/\s+/)
-    .filter((word) => word && word !== "skip");
+    .filter((other) => other && other !== word);
   mark?.remove();
-  const content = (skip ? ["skip", ...words] : words).join(" ");
+  // skip stands first, as the agent writes it.
+  const content = (on ? [word, ...words] : words)
+    .sort((a, b) => Number(b === "skip") - Number(a === "skip"))
+    .join(" ");
   if (content)
     page
       .querySelector('meta[name="artboard"]')

@@ -436,8 +436,9 @@ export const tableText = ({ name, attrs, columns, rows, charts }) =>
     ),
   ].join("\n");
 
-// Where each occurrence of `query` starts in `text`, without overlaps; only
-// A-Z fold, as Files' find does (src/shared/find.ts).
+// Where each occurrence of `query` starts in `text`, without overlaps. Only
+// A-Z fold, as the host's ContainsCaseInsensitive does, so their counts of
+// the same text agree.
 export function occurrences(text, query) {
   const fold = (said) => said.replace(/[A-Z]/g, (c) => c.toLowerCase());
   const [needle, haystack] = [fold(query), fold(text)];

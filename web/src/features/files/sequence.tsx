@@ -42,7 +42,7 @@ import Frame, {
 } from "../../shared/page-frame.tsx";
 import { pageSize } from "../../shared/page-size.ts";
 import { FindField } from "../../shared/find-field.tsx";
-import { occurrences } from "../../shared/find.ts";
+import { occurrences } from "../../../sheet/text.js";
 import {
   added,
   type Board,

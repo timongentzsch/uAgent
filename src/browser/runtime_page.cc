@@ -586,6 +586,103 @@ json Runtime::Capture(const json& command) {
   });
 }
 
+namespace {
+// What the page states once drawn (web/public/design-helper.js): its
+// artboard, whether this window is that, and its parts. A deck's page states
+// nothing: its slides are its frames.
+constexpr char kDrawn[] =
+    "document.fonts.ready.then(() => window.uagentReady).then(() => "
+    "window.uagentChecked).then((said) => said ? {...said, tall: "
+    "document.documentElement.scrollHeight} : {frames: "
+    "[...document.querySelectorAll('iframe')].map((frame) => { const box = "
+    "frame.getBoundingClientRect(); return [box.left + scrollX, box.top + "
+    "scrollY, box.width, box.height]; })})";
+}  // namespace
+
+json Runtime::Look(const json& command) {
+  // Past this long edge a model sees the picture scaled down.
+  constexpr double kEdge = 1568, kMost = 8000;
+  const int first = std::max(JsonValue(command, "first", 1), 1);
+  const int last = JsonValue(command, "last", first);
+  return Apart(command, [&](const std::string& session) -> json {
+    const auto size = [&](double w, double h) {
+      Call("Emulation.setDeviceMetricsOverride",
+           {{"width", w},
+            {"height", h},
+            {"deviceScaleFactor", 1},
+            {"mobile", false}},
+           session);
+    };
+    json drawn = Awaited(session, kDrawn, kCdpIoMs);
+    if (!JsonValue(drawn, "fits", true)) {
+      // Laid out from the start in the window its artboard asks for.
+      size(JsonValue(drawn, "w", 1.0), JsonValue(drawn, "h", 1.0));
+      Call("Page.navigate", {{"url", JsonValue(command, "url", "")}}, session);
+      drawn = Awaited(session, kDrawn, kCdpIoMs);
+    }
+    const json* frames = JsonArray(drawn, "frames");
+    const int parts = frames ? static_cast<int>(frames->size())
+                             : std::max(JsonValue(drawn, "parts", 1), 1);
+    if (first > parts) {
+      return {{"error", "part " + std::to_string(first) +
+                            " is past the last, " + std::to_string(parts)}};
+    }
+    json pictures = json::array();
+    for (int part = first; part <= std::min(last, parts); ++part) {
+      double box[4] = {0, 0, JsonValue(drawn, "w", 1.0),
+                       JsonValue(drawn, "h", 1.0)};
+      if (frames) {
+        const json& frame = (*frames)[static_cast<size_t>(part - 1)];
+        for (size_t at = 0; at < 4; ++at) {
+          box[at] =
+              frame.is_array() && frame.size() == 4 && frame[at].is_number()
+                  ? frame[at].get<double>()
+                  : 0;
+        }
+      } else {
+        // A page that scrolls is drawn whole, as tall as the pane shows it.
+        json tall = JsonValue(drawn, "tall", json());
+        if (parts > 1) {
+          tall = Awaited(session,
+                         "new Promise((done) => { addEventListener("
+                         "'hashchange', () => done(document.documentElement."
+                         "scrollHeight), {once: true}); location.hash = '" +
+                             std::to_string(part) + "'; })",
+                         kCheckedMs);
+        }
+        box[3] = std::max(
+            box[3], std::min(tall.is_number() ? tall.get<double>() : 0, kMost));
+      }
+      const double w = std::clamp(box[2], 1.0, kMost);
+      const double h = std::clamp(box[3], 1.0, kMost);
+      // The window is the part: a frame out of view is not drawn.
+      size(w, h);
+      if (frames) {
+        Awaited(session, "scrollTo(0, " + std::to_string(box[1]) + ")",
+                kCheckedMs);
+      }
+      const json shot =
+          Call("Page.captureScreenshot",
+               {{"format", "jpeg"},
+                {"quality", 70},
+                {"clip",
+                 {{"x", box[0]},
+                  {"y", box[1]},
+                  {"width", w},
+                  {"height", h},
+                  {"scale", std::min(1.0, kEdge / std::max(w, h))}}}},
+               session);
+      const json* result = JsonObject(shot, "result");
+      const std::string data = result ? JsonValue(*result, "data", "") : "";
+      if (data.empty()) {
+        return {{"error", "Chrome drew no picture: " + CdError(shot)}};
+      }
+      pictures.push_back(data);
+    }
+    return {{"ok", true}, {"pictures", std::move(pictures)}, {"parts", parts}};
+  });
+}
+
 // The page states, once it has checked itself, the window its artboard asks
 // for and whether its own is that (web/public/design-helper.js). Where it is
 // not, a throwaway tab that is says what is wrong, and the seen one is left

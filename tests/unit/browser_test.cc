@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <csignal>
@@ -1496,6 +1497,83 @@ TEST_CASE(TestBrowserToolSteps) {
         std::vector<std::string>({"click", "select", "type kestrel", "Enter",
                                   "click", "click", "click"}));
   CHECK(written);
+}
+
+// observe with a path pictures a page of the folder, part by part, or a
+// deck's slides, each in a throwaway tab at no more than 1568 px a side.
+TEST_CASE(TestBrowserToolLook) {
+  namespace fs = std::filesystem;
+  ServedBrowser fake("look");
+  const Tool tool = BrowserTool("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                                [](const std::string&, const std::string&,
+                                   bool*) { return std::string(); });
+  const fs::path folder = fs::canonical(fake.workspace.root) / "project";
+  fs::create_directories(folder / "deck");
+  for (const char* page : {"memo.html", "slide.html", "deck/01.html"}) {
+    std::ofstream(folder / page) << "<p>page</p>";
+  }
+  std::ofstream(fake.workspace.root / "outside.html") << "<p>page</p>";
+  const ScopedEnv served("UAGENT_INTERNAL_PREVIEW",
+                         folder.string() + "\nhttp://127.0.0.1:1/preview/t/");
+  const fs::path checked = fake.data / "profile" / "page-checked";
+  // Written before Chrome starts, in the profile it then takes.
+  fs::create_directories(checked.parent_path());
+  fs::permissions(checked.parent_path(), fs::perms::owner_all);
+  const auto look = [&](const std::string& path, const std::string& part,
+                        const std::string& said) {
+    std::ofstream(checked) << said;
+    json args = {{"action", "observe"}, {"path", (folder / path).string()}};
+    if (!part.empty()) args["part"] = part;
+    return tool.run(args, {});
+  };
+  const std::string memo = R"({"w":794,"h":1123,"fits":true,"parts":12})";
+  ToolResult pages = look("memo.html", "", memo);
+  CHECK(pages.output == "Parts 1-8 of 12; part=9-12 shows the rest.");
+  CHECK(std::ranges::count(pages.hint, '\n') == 7);
+  CHECK(look("memo.html", "9-16", memo).output == "Parts 9-12 of 12.");
+  CHECK(look("memo.html", "3", memo).output ==
+        "Part 3 of 12; part=4-11 shows the next.");
+  CHECK(!look("memo.html", "13", memo).Ok());
+  CHECK(!look("memo.html", "4-2", memo).Ok());
+  CHECK(look("slide.html", "", R"({"w":1920,"h":1080,"fits":false})").output ==
+        "Part 1 of 1.");
+  CHECK(look("deck", "", R"({"frames":[[0,0,1920,1080],[0,1080,1920,1080]]})")
+            .output == "Parts 1-2 of 2.");
+  ToolResult outside =
+      tool.run({{"action", "observe"},
+                {"path", (fake.workspace.root / "outside.html").string()}},
+               {});
+  CHECK(!outside.Ok() &&
+        outside.output.find("this conversation's folder") != std::string::npos);
+  fake.Stop();
+  std::vector<json> navigated, clips;
+  std::ifstream log(fake.data / "profile" / "cdp.jsonl");
+  for (std::string line; std::getline(log, line);) {
+    const json command = json::parse(line);
+    const std::string method = command.value("method", "");
+    // The agent's own tab is never opened or drawn.
+    if (method == "Page.navigate" || method == "Page.captureScreenshot") {
+      CHECK(command.value("sessionId", "") == "attached-new");
+    }
+    if (method == "Page.navigate") navigated.push_back(command["params"]);
+    if (method == "Page.captureScreenshot") {
+      clips.push_back(command["params"]["clip"]);
+    }
+  }
+  // The memo's 8 + 4 + 1 pages, the slide, and the deck's two slides.
+  REQUIRE(clips.size() == 16);
+  CHECK(clips[0] == json({{"x", 0.0},
+                          {"y", 0.0},
+                          {"width", 794.0},
+                          {"height", 1123.0},
+                          {"scale", 1.0}}));
+  CHECK(std::abs(clips[13].value("scale", 0.0) - 1568.0 / 1920) < 1e-9);
+  CHECK(clips[15].value("y", 0.0) == 1080);
+  // The slide is drawn again in the window its artboard asks for.
+  REQUIRE(navigated.size() == 7);
+  CHECK(navigated[5] == navigated[4]);
+  CHECK(navigated[6].value("url", "") ==
+        "http://127.0.0.1:1/preview/t/deck/?deck&w=1920&h=1080");
 }
 
 // A batch: steps in order on one look, the page once after them, and no step

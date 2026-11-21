@@ -754,13 +754,13 @@ test("alone, a slide says what is wrong with it in a window of its artboard's si
   for (const name of Object.keys(verdicts))
     expect(await says(name)).toEqual({
       said: [],
-      wants: { w: 1920, h: 1080, fits: false },
+      wants: { w: 1920, h: 1080, fits: false, parts: 1 },
     });
   await alone.setViewportSize({ width: 1920, height: 1080 });
   for (const [name, said] of Object.entries(verdicts))
     expect(await says(name)).toEqual({
       said,
-      wants: { w: 1920, h: 1080, fits: true },
+      wants: { w: 1920, h: 1080, fits: true, parts: 1 },
     });
 });
 
@@ -2578,6 +2578,10 @@ test("a document opened alone turns its pages by the keys", async ({
 }) => {
   const { files } = await openMemo(app, session, host.project);
   const alone = await openAlone(app, files);
+  // It states its pages to the agent's browser, which pictures them.
+  expect((await alone.evaluate(() => window.uagentChecked)).parts).toBe(
+    MEMO_PAGES,
+  );
   const shows = async (page) => {
     await expect
       .poll(() =>

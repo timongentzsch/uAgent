@@ -70,6 +70,9 @@ class Runtime {
   json Awaited(const std::string& session, const std::string& promise, int ms);
   // Such a page as a PNG or PDF.
   json Capture(const json& command);
+  // Such a page's parts `first` to `last` as JPEGs, as the Files pane draws
+  // them: a document's pages, a sheet's tabs, a deck's slides.
+  json Look(const json& command);
   // What such a page says is wrong with it, drawn at the artboard it states.
   json Problems(const json& command);
   // More of the page's text than a look carries, or the lines that match.

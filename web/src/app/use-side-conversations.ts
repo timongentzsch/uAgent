@@ -106,16 +106,17 @@ export function useSideConversations({
       await refresh();
       await command("activate", { id, generation: "" });
       const snapshot = await load(id);
+      await command("submit", snapshot.metadata, {
+        text: quoted ? `${quoted}\n\n${question}` : question,
+        request_id: firstRequest,
+      });
+      // Its conversation is shown once its turn has started, never idle before.
       change(parent.id, (open) => ({
         ...open,
         list: open.list.map((side) =>
           side.firstRequest === firstRequest ? { ...side, id } : side,
         ),
       }));
-      await command("submit", snapshot.metadata, {
-        text: quoted ? `${quoted}\n\n${question}` : question,
-        request_id: firstRequest,
-      });
       return id as string | undefined;
     })().catch((failure) => {
       change(parent.id, (open) => ({

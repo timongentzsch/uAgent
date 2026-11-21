@@ -20,6 +20,7 @@ import {
   unfiled,
   writeFiles,
 } from "./fixtures.js";
+import { uneven } from "./insets.js";
 import { unanswered } from "./press.js";
 
 test.use({
@@ -141,6 +142,7 @@ const cramped = (page) =>
 
 const roomy = async (page) => {
   await expect.poll(() => cramped(page)).toEqual([]);
+  expect(await uneven(page)).toEqual([]);
   expect(await unanswered(page)).toEqual([]);
 };
 
@@ -399,6 +401,10 @@ test.describe("a conversation", () => {
     const transcript = page.locator(".transcript");
     await expect(transcript.locator(".file-ref")).toBeVisible();
     await expect(transcript.locator("summary")).toBeVisible();
+    // Drawn: its controls are no longer replaced under the probe.
+    await expect(
+      transcript.getByRole("img", { name: "Mermaid diagram" }),
+    ).toBeVisible();
     await roomy(page);
   });
 

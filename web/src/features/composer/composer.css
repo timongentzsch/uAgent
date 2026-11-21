@@ -3,7 +3,7 @@
   flex-shrink: 0;
   min-width: 0;
   margin: 0 var(--column-inset);
-  padding: var(--space-2) 0;
+  padding: var(--space-2) 0 var(--pad);
   background: var(--bg);
   max-height: calc(var(--viewport-height) - 2 * var(--touch));
   overflow: visible;

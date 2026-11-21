@@ -6,7 +6,9 @@ import Frame, { type PageMessage } from "../../shared/page-frame.tsx";
 import { TAP_SLOP_PX } from "../../shared/zoom.ts";
 import type { Board } from "./boards.ts";
 
+// How wide a board is pictured: beside the stage, and as a grid in its place.
 const LEGEND_WIDTH = 128;
+const GRID_WIDTH = 176;
 
 // The current one of a list stays in view, and keeps the focus the list has.
 export function useCurrentInView(
@@ -36,6 +38,7 @@ export default function Legend({
   to,
   move,
   menu,
+  grid,
 }: {
   // "Slide" or "Page": what a board is called.
   unit: string;
@@ -50,6 +53,8 @@ export default function Legend({
   // A deck's alone: takes a slide to a new place, and opens a slide's menu.
   move?: (from: number, to: number) => void;
   menu?: (index: number) => void;
+  // Laid out in rows over the whole body.
+  grid?: boolean;
 }) {
   const list = useRef<HTMLDivElement>(null);
   // The boards near the legend's view, by their place.
@@ -96,26 +101,36 @@ export default function Legend({
       (event.target as Element).closest<HTMLElement>("[data-path]")!,
     );
   // The gap under the pointer: past the middles of how many slides it is,
-  // down the legend or, in a filmstrip, across it.
+  // down the legend or, in a filmstrip or a grid, across its rows.
   const gapAt = ({ clientX, clientY }: PointerEvent) => {
     const all = items();
     const across = all[1]?.offsetLeft > all[0].offsetLeft;
+    // In a row, though the pointer has left them.
+    const y = Math.min(
+      Math.max(clientY, all[0].getBoundingClientRect().top),
+      all.at(-1)!.getBoundingClientRect().bottom - 1,
+    );
     return all.filter((item) => {
       const box = item.getBoundingClientRect();
       return across
-        ? clientX > box.left + box.width / 2
+        ? box.bottom <= y ||
+            (box.top <= y && clientX > box.left + box.width / 2)
         : clientY > box.top + box.height / 2;
     }).length;
   };
   return (
     <div
-      class="page-legend"
+      class={grid ? "page-legend grid" : "page-legend"}
       role="listbox"
       aria-label={`${unit}s`}
       ref={list}
       // Up and Down walk it as a list; the pane's keys do the rest.
       onKeyDown={(event) => {
-        const by = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+        const by = {
+          ArrowDown: 1,
+          ArrowUp: -1,
+          ...(grid && { ArrowRight: 1, ArrowLeft: -1 }),
+        }[event.key];
         if (!by || !boards[index + by]) return;
         to(index + by);
         event.preventDefault();
@@ -200,7 +215,7 @@ export default function Legend({
             title={`${unit} ${at + 1}: ${board.title}`}
             width={board.w}
             height={board.h}
-            scale={LEGEND_WIDTH / board.w}
+            scale={(grid ? GRID_WIDTH : LEGEND_WIDTH) / board.w}
             far={!near.has(at)}
             onMessage={heard(board.path)}
           />

@@ -1270,7 +1270,8 @@
     }
   }
   /* Full height like the phone sheet: its surface runs under the home
-     indicator while its content stays above it. */
+     indicator while its content stays above it, and its one line is the
+     edge it has with the page. */
   dialog.sidebar.drawer[open] {
     top: calc(var(--viewport-top) + var(--safe-top));
     left: calc(var(--viewport-left) + var(--safe-left));
@@ -1279,6 +1280,7 @@
     height: calc(var(--content-height) + var(--safe-bottom));
     max-height: none;
     padding-bottom: var(--safe-bottom);
+    border-width: 0 var(--line-width) 0 0;
     width: min(var(--popover), calc(var(--content-width) - 2 * var(--pad)));
     gap: 0;
   }

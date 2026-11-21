@@ -9,6 +9,7 @@ import {
   splice,
   tableSaver,
 } from "../src/features/files/sheet-edit.ts";
+import { fileSaver } from "../src/features/files/file-save.ts";
 
 const head =
   '<!doctype html>\n<meta name="sheet" content="1">\n<title>Plan</title>\n';
@@ -220,24 +221,32 @@ test("what the page says of its selection is taken in the shape and size expecte
   );
 });
 
+// The saver as the pane makes it, over the files' one write (file-save.ts).
+const saverOver = (io, log) =>
+  tableSaver({
+    failed: (error) => log.push(`failed ${error.message}`),
+    write: fileSaver(io, undefined, 0).write,
+  });
 const saving = (file, held) => {
   const log = [];
-  const saver = tableSaver({
-    failed: (error) => log.push(`failed ${error.message}`),
-    read: async (path) => {
-      log.push(`read ${path}`);
-      return file.now;
+  const saver = saverOver(
+    {
+      read: async (path) => {
+        log.push(`read ${path}`);
+        return file.now;
+      },
+      // As the host: a write on another revision than the file's is refused.
+      write: async (path, text, revision, closing) => {
+        log.push(`write ${path} on ${revision}${closing ? ", closing" : ""}`);
+        await held;
+        if (revision !== file.now.revision)
+          throw Object.assign(new Error("conflict"), { status: 409 });
+        file.now = { text, revision: `r${Number(revision.slice(1)) + 1}` };
+        return { revision: file.now.revision };
+      },
     },
-    // As the host: a write on another revision than the file's is refused.
-    write: async ({ path, text, revision }, closing) => {
-      log.push(`write ${path} on ${revision}${closing ? ", closing" : ""}`);
-      await held;
-      if (revision !== file.now.revision)
-        throw Object.assign(new Error("conflict"), { status: 409 });
-      file.now = { text, revision: `r${Number(revision.slice(1)) + 1}` };
-      return { revision: file.now.revision };
-    },
-  });
+    log,
+  );
   return { saver, log };
 };
 const edit = (tab, value) => ({
@@ -246,7 +255,7 @@ const edit = (tab, value) => ({
   table: `<table data-sheet="T${tab}">\n<tr><td>${value}\n</table>`,
 });
 
-test("edits are saved in order, one at a time, each on the revision the last left", async () => {
+test("edits are saved in order, one at a time, each into the file as it then is", async () => {
   const file = { now: { text: `${head}${one}\n${two}`, revision: "r0" } };
   const { saver, log } = saving(file);
   await Promise.all([
@@ -257,7 +266,9 @@ test("edits are saved in order, one at a time, each on the revision the last lef
   assert.deepEqual(log, [
     "read a.html",
     "write a.html on r0",
+    "read a.html",
     "write a.html on r1",
+    "read a.html",
     "write a.html on r2",
   ]);
   assert.equal(
@@ -282,7 +293,7 @@ test("a refused save is said once, the edits queued behind it are dropped, and s
     outcomes.map((outcome) => outcome.reason?.message),
     ["conflict", "Not saved"],
   );
-  assert.deepEqual(log, ["write a.html on r1", "failed conflict"]);
+  assert.deepEqual(log, ["read a.html", "failed conflict"]);
   assert.equal(file.now.text, `${head}${one}\n${two}`);
   await saver.save("a.html", edit(0, 6));
   assert.equal(file.now.text, `${head}${edit(0, 6).table}\n${two}`);
@@ -310,6 +321,8 @@ test("a sheet drawn anew while a save is on its way: that save stands, and one q
   assert.deepEqual(log, ["read a.html", "write a.html on r1"]);
 });
 
+// What was written, the reads before each left out.
+const writes = (log) => log.filter((line) => !line.startsWith("read"));
 // A cell being typed in, as the saver holds it.
 const typed = (tab, value) => () => [edit(tab, value)];
 
@@ -321,7 +334,7 @@ test("a cell being typed in is held as its edit and written when the sheet is le
   saver.hold("a.html", typed(0, "ty"));
   saver.hold("a.html", typed(0, "typed"));
   assert.equal(await saver.flush(), true);
-  assert.deepEqual(log, ["read a.html", "write a.html on r0"]);
+  assert.deepEqual(writes(log), ["write a.html on r0"]);
   assert.equal(file.now.text, `${head}${edit(0, "typed").table}\n${two}`);
   // Written once: it is held no more.
   await saver.flush();
@@ -332,13 +345,13 @@ test("a cell being typed in is held as its edit and written when the sheet is le
   saver.hold("a.html", typed(1, "draft"));
   await saver.save("a.html", edit(1, "kept"));
   await saver.flush();
-  assert.deepEqual(log.slice(2), ["write a.html on r1"]);
+  assert.deepEqual(writes(log).slice(1), ["write a.html on r1"]);
   // The leave's write and then the cell's own edit, the same table: once.
   saver.hold("a.html", typed(0, "left"));
   const left = saver.flush();
   await saver.save("a.html", edit(0, "left"));
   assert.equal(await left, true);
-  assert.deepEqual(log.slice(3), ["write a.html on r2"]);
+  assert.deepEqual(writes(log).slice(2), ["write a.html on r2"]);
   assert.equal(
     file.now.text,
     `${head}${edit(0, "left").table}\n${edit(1, "kept").table}`,
@@ -400,16 +413,23 @@ test("a closing page writes a held cell into the file in hand; what it cannot se
   assert.ok(file.now.text.includes(large));
   // Its file not read yet: the same.
   const other = { now: { text: `${head}${one}\n${two}`, revision: "r0" } };
-  const slow = tableSaver({
-    failed: (error) => log.push(`failed ${error.message}`),
-    read: () => new Promise((go) => (answer = () => go(other.now))),
-    write: async ({ text }) => {
-      other.now = { text, revision: "r1" };
-      return other.now;
+  const slow = saverOver(
+    {
+      // Slow only the first time.
+      read: () =>
+        answer
+          ? Promise.resolve(other.now)
+          : new Promise((go) => (answer = () => go(other.now))),
+      write: async (_path, text) => {
+        other.now = { text, revision: "r1" };
+        return other.now;
+      },
     },
-  });
+    log,
+  );
   slow.hold("b.html", typed(0, "typed"));
   assert.equal(await slow.flush(true), false);
+  await new Promise(setImmediate);
   answer();
   assert.equal(other.now.revision, "r0");
   assert.equal(await slow.flush(), true);
@@ -431,21 +451,17 @@ test("a change being calculated is held as its edits: made, it is saved once; re
   await saver.save("a.html", edit(0, "made"));
   await saver.save("a.html", edit(1, "made"));
   await saver.flush();
-  assert.deepEqual(log, [
-    "read a.html",
-    "write a.html on r0",
-    "write a.html on r1",
-  ]);
+  assert.deepEqual(writes(log), ["write a.html on r0", "write a.html on r1"]);
   // Refused: let go, and nothing is written.
   saver.hold("a.html", changing(edit(0, "refused")));
   saver.hold("a.html");
   assert.equal(await saver.flush(), true);
-  assert.deepEqual(log.slice(3), []);
+  assert.deepEqual(writes(log).slice(2), []);
   // The sheet left before the answer: every tab it changes, in one write.
   saver.hold("a.html", changing(edit(0, "left"), edit(1, "left")));
   assert.equal(await saver.flush(), true);
   await saver.flush();
-  assert.deepEqual(log.slice(3), ["write a.html on r2"]);
+  assert.deepEqual(writes(log).slice(2), ["write a.html on r2"]);
   assert.equal(
     file.now.text,
     `${head}${edit(0, "left").table}\n${edit(1, "left").table}`,

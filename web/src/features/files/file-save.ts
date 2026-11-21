@@ -22,6 +22,8 @@ export function fileSaver(
   },
   // Said each time what can be undone or made again changes.
   changed = () => {},
+  // How many writes are kept to undo.
+  undoable = maxUndoable,
 ) {
   // The file as last read or written here: a closing page cannot wait for a
   // read, and writes into this.
@@ -38,8 +40,8 @@ export function fileSaver(
   };
   const drop = (path: string, from: Change[]) =>
     from.splice(0, from.length, ...from.filter((was) => was.path !== path));
-  // The file now. Written since by someone else, what was written here
-  // before is not this file's to undo.
+  // The file now, and whether someone else wrote it since the last write
+  // from here: what was written here before is then not this file's to undo.
   const read = async (path: string, closing: boolean) => {
     if (!closing) {
       const { text, revision = "" } = await io.read(path);
@@ -47,13 +49,14 @@ export function fileSaver(
     }
     if (seen?.path !== path || !seen.revision)
       throw new Error("the file was not read here.");
-    if (left.has(path) && left.get(path) !== seen.revision) {
+    const theirs = left.has(path) && left.get(path) !== seen.revision;
+    if (theirs) {
       left.delete(path);
       drop(path, past);
       drop(path, undone);
       changed();
     }
-    return seen;
+    return { ...seen, theirs };
   };
   const put = async (path: string, text: string, closing = false) => {
     const { revision } = await io.write(path, text, seen!.revision, closing);
@@ -61,17 +64,22 @@ export function fileSaver(
     left.set(path, revision);
   };
   return {
-    // Writes what `change` makes of the file's text, which throws where it
-    // cannot be made; whether that is another text.
-    write: (path: string, change: (text: string) => string, closing = false) =>
+    // Writes what `change` makes of the file's text (and whether someone
+    // else wrote it since), which throws where it cannot be made; whether
+    // that is another text.
+    write: (
+      path: string,
+      change: (text: string, theirs: boolean) => string,
+      closing = false,
+    ) =>
       queue(async () => {
-        const { text } = await read(path, closing);
-        const after = change(text);
+        const { text, theirs } = await read(path, closing);
+        const after = change(text, theirs);
         if (after === text) return false;
         await put(path, after, closing);
         drop(path, undone);
         past.push({ path, before: text, after });
-        if (past.length > maxUndoable) past.shift();
+        if (past.length > undoable) past.shift();
         changed();
         return true;
       }),

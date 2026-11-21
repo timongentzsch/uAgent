@@ -232,20 +232,17 @@ export default function Files({
       })
       .finally(() => writes.current.ended++);
   };
+  const io = {
+    read: (path: string) => api<FileText>(routes.files(id, "read", path)),
+    write: (path: string, text: string, revision: string, keepalive: boolean) =>
+      post({ path, text, revision }, keepalive),
+  };
   // Every change made to a file's text by hand is written by this, and kept
   // to be undone.
   const [, setUndoable] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the pane is keyed by its session
   const files = useMemo(
-    () =>
-      fileSaver(
-        {
-          read: (path) => api<FileText>(routes.files(id, "read", path)),
-          write: (path, text, revision, keepalive) =>
-            post({ path, text, revision }, keepalive),
-        },
-        () => setUndoable((count) => count + 1),
-      ),
+    () => fileSaver(io, () => setUndoable((count) => count + 1)),
     [],
   );
   // What is typed in a page's blocks, on its way to the file: after the
@@ -700,8 +697,8 @@ export default function Files({
   const tables = useMemo(
     () =>
       tableSaver({
-        read: (path) => api<FileText>(routes.files(id, "read", path)),
-        write: (held, keepalive) => post(held, keepalive),
+        // Sheets keep the engine's undo: no write is kept to undo here.
+        write: fileSaver(io, undefined, 0).write,
         failed(error, path) {
           setUnsaved(error);
           setSeen((all) => rewritten(all, path));

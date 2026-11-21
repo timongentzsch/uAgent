@@ -228,8 +228,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await composerInput.fill("/btw what did we just do?");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   // On a phone the side chat is a page of its own, and leaves no message
-  // in the conversation it came from. Its answer is in before the way back:
-  // until its turn has run, its Remove in Activity can still become Stop.
+  // in the conversation it came from.
   await expect(
     page.locator(
       '.transcript .message.user:has-text("what did we just do?") ~ .message.response',

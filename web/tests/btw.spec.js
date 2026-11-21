@@ -147,6 +147,43 @@ test("on a phone a side chat is a page of its own, listed in its conversation", 
   await expect(activity).toHaveCount(0);
 });
 
+test("a side chat is listed as working from the moment its question is taken until its turn ends", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  // Its question is held back on the way to the host.
+  const { promise: held, resolve: release } = Promise.withResolvers();
+  const { promise: reached, resolve: asked } = Promise.withResolvers();
+  await page.route("**/api/command", async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.kind !== "submit" || body.session_id === session.id)
+      return route.continue();
+    asked();
+    await held;
+    await route.continue();
+  });
+  await page.getByLabel("Message or guidance").fill("/btw Side tool probe");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await reached;
+  const activity = page.locator(".composer .activity-button");
+  const sheet = page.getByRole("dialog", { name: "Activity" });
+  await expect(activity).toHaveCount(0);
+  release();
+  await activity.click();
+  await expect(sheet.getByRole("button", { name: /^Stop .*/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  const side = page.getByRole("complementary", { name: "Side chats" });
+  await side.getByRole("button", { name: "Allow once", exact: true }).click();
+  await expect(side).toContainText("SIDE-TOOL-COMPLETE");
+  await activity.click();
+  await expect(
+    sheet.getByRole("button", { name: /^Remove .* from the side chats$/ }),
+  ).toBeVisible();
+});
+
 test("a side chat asked while the conversation is still waking starts once it is up", async ({
   command,
   session,

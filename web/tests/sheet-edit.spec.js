@@ -1949,10 +1949,16 @@ test("a row's number and a column's letter open what can be done to them: move, 
   const looks = files.getByRole("toolbar", { name: "Format" });
   await letter(4).click();
   await expect(stage.locator(".sheet-menu")).toHaveCount(1);
-  // The menu is left when the app is used elsewhere.
+  // The menu is left when the app is used elsewhere, and the focus stays
+  // with what was pressed: its menu walks by the arrows at once.
   await looks.getByRole("button", { name: "Fill", exact: true }).click();
   await expect(stage.locator(".sheet-menu")).toHaveCount(0);
-  await app.getByRole("menuitemradio", { name: "Good", exact: true }).click();
+  const choice = (name) =>
+    app.getByRole("menuitemradio", { name, exact: true });
+  await expect(choice("None")).toBeFocused();
+  await app.keyboard.press("ArrowDown");
+  await expect(choice("Accent")).toBeFocused();
+  await choice("Good").click();
   await expect(cell("Tasks", "D3")).toHaveAttribute("data-fill", "good");
   await looks.getByRole("button", { name: "Bold", exact: true }).click();
   await expect(cell("Tasks", "D3")).toHaveClass(/sheet-bold/);

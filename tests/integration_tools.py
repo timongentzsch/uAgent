@@ -17,6 +17,7 @@ from integration_support import (
     event,
     function_names,
     function_tools,
+    group_has_live_member,
     has_message,
     json_sentinel_command,
     keep_rule,
@@ -809,12 +810,10 @@ def test_detached_terminal_survives_and_is_readable(root, home, *, binary):
             assert_true(not record.exists(), record)
             assert_true(not log.exists(), log)
             assert_true(not pathlib.Path(str(log) + ".1").exists(), log)
-            try:
-                os.killpg(pid, 0)
-            except ProcessLookupError:
-                pass
-            else:
-                raise AssertionError(f"detached process group {pid} survived activity stop")
+            assert_true(
+                not group_has_live_member(pid),
+                f"detached process group {pid} survived activity stop",
+            )
             pid = None
     finally:
         signal_process_group(pid)
@@ -860,12 +859,7 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home, *, binary
 
     def verify_group_stopped(_, body):
         result = tool_results(body["messages"])[-1]
-        try:
-            os.killpg(state["pid"], 0)
-        except ProcessLookupError:
-            gone = True
-        else:
-            gone = False
+        gone = not group_has_live_member(state["pid"])
         cleaned = not (home / ".uagent" / "terminals" / f"{state['pid']}.json").exists()
         ok = "stopped process group" in result and gone and cleaned
         return event({"content": "group-tracking-ok" if ok else "group-tracking-bad"})

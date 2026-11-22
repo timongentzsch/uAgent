@@ -6,7 +6,7 @@ import { Actions, Button } from "./ui.tsx";
 // Deletes each entry the way its own menu does, one after another. What
 // could not be deleted is said, with why, and stays selected.
 
-export interface Doomed {
+interface Doomed {
   key: string;
   name: string;
   remove: () => Promise<unknown>;

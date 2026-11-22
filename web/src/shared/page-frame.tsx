@@ -53,7 +53,7 @@ export interface Pick {
   text: string;
 }
 // How a sheet's cell shows, which the format controls set.
-export interface Marks {
+interface Marks {
   bold: boolean;
   italic: boolean;
   wrap: boolean;

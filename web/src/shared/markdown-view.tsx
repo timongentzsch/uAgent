@@ -64,6 +64,9 @@ export async function prepareMarkdown(
   return blocks;
 }
 
+export const isPrepared = (text: string, refs = false) =>
+  prepared.has(preparedKey(text, refs));
+
 // Warms the renderer chunk outside the critical path, so the switch to
 // markdown at completion pays only the parse, never the download.
 export function prefetchMarkdown(text = "") {

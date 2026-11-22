@@ -1502,6 +1502,34 @@ TEST_CASE(TestAParentChainThatLoopsEnds) {
   CHECK(SessionsIn("/project").size() == 3);
 }
 
+TEST_CASE(TestAnAgentUnderAnUnreadableParentIsItsOwnTop) {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("unreadable-parent");
+  const fs::path dir = fs::path(UagentDir(kHistoryDir));
+  fs::create_directories(dir);
+  const std::string broken = (dir / "broken.json").string();
+  std::ofstream(broken) << "{not a header\n{}\n";
+  auto write = [&](const std::string& name, const std::string& parent) {
+    const std::string path = (dir / (name + ".json")).string();
+    std::ofstream(path) << JsonDump(
+                               {{"format", kSessionFormat},
+                                {"cwd", "/project"},
+                                {"model", "m"},
+                                {"session_id", name},
+                                {"turns", 1},
+                                {"title", name},
+                                {kSessionHeaderAgent, {{"parent", parent}}}})
+                        << "\n{}\n";
+    return path;
+  };
+  const std::string agent = write("agent-orphan", SessionIdFor(broken));
+  const std::string child = write("agent-child", SessionIdFor(agent));
+  CHECK(TopConversation(child).path == agent);
+  CHECK(SessionsIn("/project").size() == 2);
+  CHECK(SessionsBeside(agent).size() == 2);
+  CHECK(SessionsBeside(child).size() == 2);
+}
+
 TEST_CASE(TestMailbox) {
   namespace fs = std::filesystem;
   TestWorkspace workspace("mailbox");

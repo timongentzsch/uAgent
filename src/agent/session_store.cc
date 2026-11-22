@@ -341,6 +341,14 @@ json SessionHeader(const std::string& path) {
 namespace {
 using SessionsById = std::map<std::string, const SessionInfo*>;
 
+// An unreadable file is no parent: an agent under one is its own top.
+std::vector<SessionInfo> Readable() {
+  std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
+  std::erase_if(sessions,
+                [](const SessionInfo& info) { return !info.error.empty(); });
+  return sessions;
+}
+
 SessionsById ById(const std::vector<SessionInfo>& sessions) {
   SessionsById ids;
   for (const SessionInfo& info : sessions) ids[SessionIdFor(info.path)] = &info;
@@ -362,7 +370,7 @@ const SessionInfo& TopOf(const SessionInfo& info, const SessionsById& ids) {
 
 std::vector<SessionInfo> SessionsIn(const std::string& cwd,
                                     const std::string& host) {
-  const std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
+  const std::vector<SessionInfo> sessions = Readable();
   const SessionsById ids = ById(sessions);
   std::vector<SessionInfo> in;
   for (const SessionInfo& info : sessions) {
@@ -373,7 +381,7 @@ std::vector<SessionInfo> SessionsIn(const std::string& cwd,
 }
 
 SessionInfo TopConversation(const std::string& path) {
-  const std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
+  const std::vector<SessionInfo> sessions = Readable();
   const SessionsById ids = ById(sessions);
   const auto own = ids.find(SessionIdFor(path));
   return own == ids.end() ? SessionInfo{} : TopOf(*own->second, ids);

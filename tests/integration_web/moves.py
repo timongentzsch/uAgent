@@ -445,15 +445,35 @@ def test_web_move_that_stopped_halfway_is_finished_by_moving_again(root, home, *
     agent.write_text(
         json.dumps(json.loads(head) | {"cwd": str(beta.resolve())}) + "\n" + body, encoding="utf-8"
     )
+    ids = [session_id(old / f"{name}.json") for name in AGENTS]
+
+    def agents_of(client, frames, lead):
+        """What `/agents` lists: the folder of the conversation, by its top."""
+        session = client.command("activate", {"id": lead["id"], "generation": ""})["session"]
+        client.until(session, idle)
+        seen = len(frames)
+        client.command("submit", session, text="/agents")
+        wait_until(
+            lambda: any(f.get("type") == "command.completed" for f in frames[seen:]), "no list"
+        )
+        done = next(f for f in frames[seen:] if f.get("type") == "command.completed")
+        return done["data"]["output"]
+
     with Server([event({"content": "unused"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
-            # Halfway, the family is still listed where its conversation is.
+            frames = watch(client)
+            # Halfway, the whole family is one folder's: the old one, where
+            # its conversation still is, the moved agent too.
             lead = listed(client, LEAD)
             sessions = {item["title"]: item for item in sessions_of(client)}
             assert_true(lead["cwd"] == str(alpha.resolve()), lead)
             assert_true(sessions[AGENTS[1]]["parent"] == sessions[AGENTS[0]]["id"], sessions)
-            client.command("move", lead, cwd=str(beta))
+            before = agents_of(client, frames, lead)
+            assert_true(all(agent in before for agent in ids), before)
+            client.command("move", client.snapshot(lead)["metadata"], cwd=str(beta))
+            after = agents_of(client, frames, listed(client, LEAD))
+            assert_true(all(agent in after for agent in ids), after)
     assert_whole(home, alpha, beta)
 
 

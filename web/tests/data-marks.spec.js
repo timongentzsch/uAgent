@@ -7,6 +7,7 @@ import {
   expect,
   artboard,
   openAlone,
+  paper,
   openFiles,
   viewerOf,
   writeFiles,
@@ -87,4 +88,75 @@ test("a mark that names a missing file, column or row is said to the agent, and 
     "sales.csv has no row where region=APAC",
     "gone.csv did not load",
   ]);
+});
+
+// The code that fills marks loads only where a page has marks, once.
+const markCode = (app) => {
+  const loaded = [];
+  app.on("request", (request) => {
+    const name = /~sheet\/(marks|text)\.js$/.exec(request.url())?.[1];
+    if (name) loaded.push(name);
+  });
+  return loaded;
+};
+
+test("a page without marks loads no mark code", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const loaded = markCode(app);
+  await writeFiles(join(host.project, "plain"), {
+    "plain.html": paper("Plain", "<h1>Plain</h1><p>No values from files.</p>"),
+  });
+  const { stage } = viewerOf(await openFiles(app, session, "plain/plain.html"));
+  await expect(stage.locator("h1")).toHaveText("Plain");
+  await stage.locator("body").evaluate(async () => await window.uagentReady);
+  expect(loaded).toEqual([]);
+});
+
+test("a page with marks loads the mark code once", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const loaded = markCode(app);
+  await writeFiles(join(host.project, "marked"), {
+    "sales.csv": SALES,
+    "marked.html": paper(
+      "Marked",
+      '<p>EU <b id="eu" data-source="sales.csv" data-field="revenue"></b></p>' +
+        '<p>US <b id="us" data-source="sales.csv" data-field="revenue" data-where="region=US"></b></p>',
+    ),
+  });
+  const { stage } = viewerOf(
+    await openFiles(app, session, "marked/marked.html"),
+  );
+  await expect(stage.locator("#us")).toHaveText("266400");
+  await stage.locator("body").evaluate(async () => await window.uagentReady);
+  expect(loaded.sort()).toEqual(["marks", "text"]);
+});
+
+test("where the mark code cannot load, the page draws and says its values were not filled", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  await app.route("**/~sheet/marks.js", (route) => route.abort());
+  await writeFiles(join(host.project, "design/kpi"), {
+    "rows.json": '[{"region":"EU","orders":1302}]',
+    "01-march.html": artboard(
+      "March",
+      '<h1>Orders</h1><b id="orders" data-source="rows.json" data-field="orders"></b>',
+    ),
+  });
+  const files = await openFiles(app, session, "design/kpi/01-march.html");
+  const { stage } = viewerOf(files);
+  await expect(stage.locator("h1")).toHaveText("Orders");
+  const said = await stage
+    .locator("body")
+    .evaluate(async () => await window.uagentReady);
+  expect(said).toHaveLength(1);
+  expect(said[0]).toMatch(/^values from files were not filled: /);
+  await expect(stage.locator("#orders")).toHaveText("");
 });

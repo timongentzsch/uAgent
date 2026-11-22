@@ -537,6 +537,20 @@ def signal_process_group(pid, signal_number=signal.SIGTERM):
         pass
 
 
+def group_has_live_member(pgid):
+    """Whether a process of the group still runs. An exited member its
+    parent has not reaped yet still answers killpg(pgid, 0); it does not."""
+    listing = subprocess.run(
+        ["ps", "-A", "-o", "pgid=,stat="], text=True, capture_output=True, check=True
+    ).stdout
+    return any(
+        group == str(pgid) and not state.startswith("Z")
+        for group, state in (
+            line.split(maxsplit=1) for line in listing.splitlines() if line.strip()
+        )
+    )
+
+
 def live_process_states(pids):
     states = {}
     for pid in pids:

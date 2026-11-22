@@ -18,7 +18,7 @@ namespace uagent {
 // Mail has no kinds: a delivered message wakes an idle recipient, and a working
 // one reads it at its next step.
 struct Mail {
-  // Mailbox ids (MailboxIdFor), and the sender's session file, which the
+  // Session ids (SessionIdFor), and the sender's session file, which the
   // recipient reads to decide whether the two may talk.
   std::string id, from, to, sender_path;
   int hops = 0;
@@ -32,8 +32,6 @@ inline constexpr int kMailMaxHops = 8;
 inline constexpr int64_t kMailLifetimeMs = int64_t{24} * 60 * 60 * 1000;
 inline constexpr size_t kMailBytes = size_t{64} * 1024;
 
-// The session's canonical file, hashed: every spelling reaches one mailbox.
-std::string MailboxIdFor(const std::string& session_path);
 Mail MailFrom(const std::string& sender_path, std::string to, json body);
 std::string MailboxDir(const std::string& id);
 

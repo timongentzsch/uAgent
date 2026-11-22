@@ -122,7 +122,7 @@ inline constexpr int64_t kIdleSleepHours = 24;
 inline constexpr size_t kDigestChars = 12;
 inline constexpr size_t kOccurrenceChars = 16;
 inline constexpr size_t kDetailChars = 24;
-inline constexpr size_t kAgentNameChars = 8;
+inline constexpr size_t kAgentNameChars = 16;
 
 // The assembled system message, and what an external editor may return.
 inline constexpr size_t kSystemPromptBytes = KiB(64);

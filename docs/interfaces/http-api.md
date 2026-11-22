@@ -123,7 +123,7 @@ data: {"epoch":"6f0c…","generation":"","kind":"settings.changed","level":"defa
 | `node` | host | `node` (a whole transcript row), or `id` with `set`/`append` |
 | `state`, `turn_status`, `outcome`, `gap`, `error` | runtime | as on the session protocol ([Overview](../architecture/overview.md#protocol)) |
 | `metadata`, `activated`, `deactivated`, `closed` | host | `metadata` |
-| `deleted` | host | `moved_to` when moved |
+| `deleted`, `moved` | host | none |
 | `settings.changed` | host | `level`, `thinking` |
 | `pins.changed`, `spaces.changed`, `terminals.changed`, `scheduled.changed` | host | `pins`, `spaces`, `terminals`, `scheduled` |
 | `management.changed` | host | none: reread memories, skills, schedules |

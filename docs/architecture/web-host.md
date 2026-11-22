@@ -48,8 +48,7 @@ Beside the pool, `Master::Run` starts three threads:
 - `devices.json`: `id`, `token`, `name`, `expires` per device, at most 16
   (`kWebDeviceLimit`).
 - `vapid.pem` and `push-subscriptions.json`.
-- pins, drafts, and `move-<id>.json` while a move runs
-  ([Sessions](sessions.md)).
+- pins and drafts ([Sessions](sessions.md)).
 
 The replay log (`ReplayLog`, `include/app/replay_log.h`) holds the newest
 frames, at most 4 MiB (`kQueueBytes`) and 2,048 events, each preformatted

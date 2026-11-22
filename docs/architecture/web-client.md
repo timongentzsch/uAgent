@@ -92,12 +92,12 @@ return to visibility with no stream open all reconnect.
 
 **Reducing** (`state/apply-event.ts`, `store.ts`). Host frames
 (`settings.changed`, `pins.changed`, `spaces.changed`,
-`terminals.changed`, `scheduled.changed`) patch the catalogue. A `gap`
-refreshes. A session frame at or below the snapshot's cursor is dropped, and
+`terminals.changed`, `scheduled.changed`) patch the catalogue. A `gap` or
+`moved` refreshes. A session frame at or below the snapshot's cursor is dropped, and
 so is one from another runtime `generation` unless it is lifecycle
 metadata. `node` frames place or append transcript nodes, `state` replaces
-the snapshot's state and pending decision, `deleted` forgets a session or
-follows `moved_to`. Changes are written to the snapshot store once per
+the snapshot's state and pending decision, `deleted` forgets a session.
+Changes are written to the snapshot store once per
 animation frame, and only for the selected or watched conversations.
 
 **Outgoing messages.** A message gets a client `request_id` and an outgoing

@@ -360,7 +360,7 @@ int TerminalMain(Options options) {
     // A saved session reopens in its own folder.
     std::string cwd = JsonValue(SessionHeader(path), kSessionHeaderCwd, folder);
     if (path.empty()) {
-      path = HistoryPath(cwd, MakeSessionId());
+      path = HistoryPath(MakeSessionId());
     }
     std::string error;
     auto connection = Open(ExecutablePath(), cwd, path, "", options, error);

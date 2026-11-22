@@ -109,18 +109,11 @@ bool MailFromJson(const json& value, Mail& mail) {
 
 Mail MailFrom(const std::string& sender_path, std::string to, json body) {
   Mail mail;
-  mail.from = MailboxIdFor(sender_path);
+  mail.from = SessionIdFor(sender_path);
   mail.sender_path = sender_path;
   mail.to = std::move(to);
   mail.body = std::move(body);
   return mail;
-}
-
-std::string MailboxIdFor(const std::string& session_path) {
-  if (session_path.empty()) return "";
-  std::error_code error;
-  const fs::path canonical = fs::weakly_canonical(session_path, error);
-  return HashHex(error ? session_path : canonical.string());
 }
 
 std::string MailboxDir(const std::string& id) {

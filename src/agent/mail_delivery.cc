@@ -25,7 +25,7 @@ constexpr size_t kDeliveredIds = 256;
 bool MailAllowed(const Mail& mail, const std::string& own_path,
                  const json& role) {
   return !mail.sender_path.empty() &&
-         MailboxIdFor(mail.sender_path) == mail.from &&
+         SessionIdFor(mail.sender_path) == mail.from &&
          MayMail(SessionParty(mail.sender_path),
                  SessionParty(own_path, AgentOf(role)),
                  mail.body.contains("agent"));
@@ -34,7 +34,7 @@ bool MailAllowed(const Mail& mail, const std::string& own_path,
 
 bool Agent::DeliverMail() {
   const std::string own_path = OwnSessionFile();
-  const std::string own = MailboxIdFor(own_path);
+  const std::string own = SessionIdFor(own_path);
   if (own.empty()) return false;
   std::vector<Mail> taken = TakeMail(own, [&](const Mail& mail) {
     return MailAllowed(mail, own_path, session_role_);

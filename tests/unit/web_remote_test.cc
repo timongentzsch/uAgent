@@ -19,8 +19,6 @@ TEST_CASE(TestWorkspaceIdentityKeepsLocalHistoryAndSeparatesHosts) {
   CHECK(WorkspaceId(path) == HashHex(path));
   CHECK(WorkspaceId(path, "first") != WorkspaceId(path));
   CHECK(WorkspaceId(path, "first") != WorkspaceId(path, "second"));
-  CHECK(HistoryPath(path, "conversation", "first") !=
-        HistoryPath(path, "conversation", "second"));
 }
 TEST_CASE(TestExecutionResultKeepsUndoAndActivityFacts) {
   ToolResult original = ToolSuccess("finished");

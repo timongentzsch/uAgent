@@ -294,9 +294,8 @@ void Application::SaveSession(bool force) {
 
 void Application::EnsureSessionPath() {
   if (persist_ && session_file_.empty()) {
-    session_file_ = HistoryPath(
-        Workspace().path, UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId(),
-        Workspace().host);
+    session_file_ =
+        HistoryPath(UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId());
   }
   // Peer sessions address this process by its session file.
   if (!session_file_.empty()) {

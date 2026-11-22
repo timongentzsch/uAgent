@@ -712,8 +712,8 @@ TEST_CASE(TestHarnessNoteAndRepository) {
 TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
   TestWorkspace workspace("wake-before-turn");
   const std::string folder = workspace.workspace.string();
-  const std::string path = HistoryPath(folder, "parent");
-  const std::string own = MailboxIdFor(path);
+  const std::string path = HistoryPath("parent");
+  const std::string own = SessionIdFor(path);
   ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", path.c_str());
   // From its agent, saved beside it, which names it its parent.
   const std::filesystem::path agent =
@@ -728,7 +728,7 @@ TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
   std::ofstream(agent) << role << "\n";
   const Mail wake =
       MailFrom(agent.string(), own, {{"text", "the agent finished\n"}});
-  CHECK(wake.from == MailboxIdFor(wake.sender_path));
+  CHECK(wake.from == SessionIdFor(wake.sender_path));
   CHECK(SendMail(wake).empty());
 
   Api api(RuntimeConfig{});

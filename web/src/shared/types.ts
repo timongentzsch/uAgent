@@ -654,11 +654,11 @@ export type HostEvent = HostEnvelope &
           | "closed"
           | "error"
           | "gap"
+          | "moved"
           | "management.changed"
           | "scheduled.changed";
       }
-    // moved_to: the id it has now, when it was moved rather than removed.
-    | { kind: "deleted"; moved_to?: string }
+    | { kind: "deleted" }
     | { kind: "settings.changed"; level: string; thinking?: boolean }
     | { kind: "pins.changed"; pins: Pin[] }
     | { kind: "spaces.changed"; spaces: Space[] }

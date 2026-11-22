@@ -131,8 +131,7 @@ json ForkOrShare(AppSession& session, const json& request) {
   const std::string kind = JsonValue(request, "kind", "");
   if (session.session_file.empty()) {
     if (kind != "fork") return {{"error", "session has no file yet"}};
-    session.session_file =
-        HistoryPath(Workspace().path, MakeSessionId(), Workspace().host);
+    session.session_file = HistoryPath(MakeSessionId());
   }
   std::string error;
   if (!session.Save(error)) return {{"error", error}};

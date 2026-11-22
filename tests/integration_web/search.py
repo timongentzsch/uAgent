@@ -1,6 +1,6 @@
 from urllib.parse import urlencode
 
-from integration_support import Server, assert_true, event, fnv1a64, write_session
+from integration_support import Server, assert_true, event, session_id, write_session
 from web_support import web_host
 
 
@@ -42,7 +42,7 @@ def test_web_search_finds_rows_across_conversations(root, home, *, binary):
         # Saved escaped, so read without the raw-bytes shortcut.
         "quote": write_session(home, "quote", said('he said "Quokka!" in a café'), cwd=project),
     }
-    ids = {name: fnv1a64(str(path)) for name, path in sessions.items()}
+    ids = {name: session_id(path) for name, path in sessions.items()}
     with Server([lambda _, _body: event({"content": "unused"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)

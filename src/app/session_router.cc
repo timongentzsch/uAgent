@@ -216,12 +216,16 @@ std::string SessionHost::DeleteSpace(const std::string& path,
                                      const std::string& device) {
   const auto space = SpaceAt(path);
   if (!space) return "no such workspace";
-  // Agents that work elsewhere belong to it by where they are saved.
-  const fs::path history =
-      fs::path(UagentDir(kHistoryDir)) / WorkspaceId(space->string());
-  const auto belongs = [&](const HostSession& session) {
-    return (session.host.empty() && session.cwd == space->string()) ||
-           fs::path(session.path).parent_path() == history;
+  // Agents that work elsewhere belong to it by the conversation above them.
+  const auto belongs = [&](const HostSession& session) UAGENT_REQUIRES(mutex_) {
+    const HostSession* top = &session;
+    for (size_t hop = 0; !top->parent.empty() && hop < sessions_.size();
+         ++hop) {
+      const auto up = sessions_.find(top->parent);
+      if (up == sessions_.end()) break;
+      top = up->second.get();
+    }
+    return top->host.empty() && top->cwd == space->string();
   };
   const auto next = [&]() -> json {
     std::lock_guard lock(mutex_);
@@ -249,12 +253,12 @@ std::string SessionHost::DeleteSpace(const std::string& path,
   // Under the lock a conversation is created under: none starts in a
   // folder that is going.
   std::lock_guard lock(mutex_);
-  if (std::ranges::any_of(
-          sessions_, [&](const auto& held) { return belongs(*held.second); })) {
-    return "a conversation started in the workspace meanwhile; try again";
+  for (const auto& [id, held] : sessions_) {
+    if (belongs(*held)) {
+      return "a conversation started in the workspace meanwhile; try again";
+    }
   }
   std::error_code error;
-  fs::remove_all(history, error);
   fs::remove_all(*space, error);
   return error
              ? "the workspace's folder could not be removed: " + error.message()
@@ -326,9 +330,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
     const auto resolved = NamedFolder(command, result.error);
     if (!resolved) return result;
     const std::filesystem::path& cwd = *resolved;
-    auto session = CreateSession(
-        cwd.string(), HistoryPath(cwd.string(), "web-" + RandomToken(16), host),
-        "", result.error, host);
+    auto session =
+        CreateSession(cwd.string(), HistoryPath("web-" + RandomToken(16)), "",
+                      result.error, host);
     if (session) {
       result.wake = true;
       result.outcome["session"] = Metadata(*session);

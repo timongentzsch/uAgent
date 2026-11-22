@@ -3,11 +3,9 @@
 
 let open;
 
-// `items` are commands `{ label, run }` (with `keys` to show, `checked` for
-// one that is on or off, `swatch` for a colour), lists `{ label, items }`
-// that open in the menu's place, fields `{ field, value, change }`, which
-// say what was typed on Enter, and "-" between groups. `closed` runs once
-// it is gone.
+// `items` are commands `{ label, run }` (with `keys` to show), fields
+// `{ field, value, change }`, which say what was typed on Enter, and "-"
+// between groups. `closed` runs once it is gone.
 export function openMenu({ x, y }, items, closed) {
   open?.();
   const menu = document.createElement("div");
@@ -24,36 +22,19 @@ export function openMenu({ x, y }, items, closed) {
     close();
     act();
   };
-  const press = (label, role, act) => {
+  const press = (label, act) => {
     const control = document.createElement("button");
     Object.assign(control, { type: "button", textContent: label });
-    control.setAttribute("role", role);
+    control.setAttribute("role", "menuitem");
     control.addEventListener("click", act);
     return control;
   };
-  // A list shown in the menu's place leads back to the one it came from.
-  let leave;
-  const show = (list, back) => {
-    leave = back?.show;
+  const show = (list) => {
     const drawn = list.map((item) => {
       if (item === "-") return document.createElement("hr");
-      if (item.items)
-        return Object.assign(
-          press(item.label, "menuitem", () =>
-            show(item.items, {
-              label: item.label,
-              show: () => show(list, back),
-            }),
-          ),
-          { ariaHasPopup: "menu" },
-        );
       if (!item.field) {
-        const role =
-          item.checked === undefined ? "menuitem" : "menuitemcheckbox";
-        const control = press(item.label, role, () => done(item.run));
-        if (item.checked !== undefined) control.ariaChecked = !!item.checked;
+        const control = press(item.label, () => done(item.run));
         if (item.keys) control.dataset.keys = item.keys;
-        if (item.swatch) control.dataset.swatch = item.swatch;
         return control;
       }
       const control = Object.assign(document.createElement("input"), {
@@ -67,16 +48,10 @@ export function openMenu({ x, y }, items, closed) {
       });
       return control;
     });
-    if (back)
-      drawn.unshift(
-        Object.assign(press(back.label, "menuitem", back.show), {
-          className: "sheet-menu-back",
-        }),
-      );
     menu.replaceChildren(...drawn);
     menu.style.left = `${Math.max(0, Math.min(x, innerWidth - menu.offsetWidth))}px`;
     menu.style.top = `${Math.max(0, Math.min(y, innerHeight - menu.offsetHeight))}px`;
-    menu.querySelector("button:not(.sheet-menu-back), input").focus();
+    menu.querySelector("button, input").focus();
   };
   menu.addEventListener("keydown", (event) => {
     const by = { ArrowDown: 1, ArrowUp: -1 }[event.key];
@@ -85,11 +60,6 @@ export function openMenu({ x, y }, items, closed) {
       all[
         (all.indexOf(document.activeElement) + by + all.length) % all.length
       ].focus();
-    // Out of a list to the one it came from; out of the first, the menu.
-    else if (event.key === "ArrowLeft" && leave) leave();
-    else if (event.key === "ArrowRight" && document.activeElement.ariaHasPopup)
-      document.activeElement.click();
-    else if (event.key === "Escape" && leave) leave();
     else if (event.key === "Escape" || event.key === "Tab") close();
     else return;
     event.preventDefault();

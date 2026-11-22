@@ -310,7 +310,6 @@ json SessionHost::Metadata(const HostSession& session) const {
   return {
       {"id", session.id},
       {"task_id", session.task_id},
-      {"run_id", session.run_id},
       {"cwd", session.cwd},
       {"host", session.host},
       {"parent", session.parent},
@@ -334,7 +333,6 @@ json SessionHost::Metadata(const HostSession& session) const {
                    : session.todo},
       {"error", session.error},
       {"needs_you", waits},
-      {"pending_kind", waits ? JsonValue(session.pending, "kind", "") : ""},
       {"pending_prompt", waits ? JsonValue(session.pending, "prompt", "") : ""},
       {"updated", session.updated}};
 }

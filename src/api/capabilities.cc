@@ -145,20 +145,6 @@ void ProviderCapabilities::ResetNegotiated(WireApi wire_api,
   json modalities = std::move(input_modalities);
   input_modalities = nullptr;
   SetInputModalities(modalities, wire_api);
-  reasoning_text = false;
-  reasoning_details = false;
-  reasoning_content = false;
-  citations = false;
-  reported_usage = false;
-}
-
-void ProviderCapabilities::Observe(const ChatResult& result) {
-  reasoning_text = reasoning_text || result.reasoning_field;
-  reasoning_details = reasoning_details || result.reasoning_details_field;
-  reasoning_content = reasoning_content || result.reasoning_content_field;
-  citations = citations || !result.annotations.empty();
-  reported_usage =
-      reported_usage || (result.usage.is_object() && !result.usage.empty());
 }
 
 json ProviderCapabilities::DiagnosticJson(WireApi wire_api,
@@ -173,12 +159,7 @@ json ProviderCapabilities::DiagnosticJson(WireApi wire_api,
           {"file_input", file_input},
           {"audio_input", audio_input},
           {"video_input", video_input},
-          {"input_modalities", input_modalities},
-          {"observed_reasoning_text", reasoning_text},
-          {"observed_reasoning_details", reasoning_details},
-          {"observed_reasoning_content", reasoning_content},
-          {"observed_citations", citations},
-          {"observed_usage", reported_usage}};
+          {"input_modalities", input_modalities}};
 }
 
 ProviderCapabilities CapabilitiesForRoute(WireApi wire_api,

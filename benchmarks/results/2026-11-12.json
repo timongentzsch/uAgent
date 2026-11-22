@@ -3,44 +3,6 @@
   "measured_commit": "f3489142f7e6516cd74848bc720fb16f7d4c3242",
   "runtime_build": "4d62d7646287e6d1b60a4155889c422721aac28b8590c9832f60906889c9dd52",
   "ci_run": "https://github.com/timongentzsch/uAgent/actions/runs/43114586678",
-  "packages": [
-    {
-      "target": "linux-x86_64",
-      "main_binary_bytes": 7352560,
-      "complete_install_bytes": 23477649,
-      "remote_binary_bytes": 4821232,
-      "remote_install_bytes": 5176486,
-      "remote_transfer_bytes": 2309601,
-      "main_binary_sha256": "254bfce25a1333d68d6963ab992a412594fdd90c71105cd3b1b229d4d97e1fdb"
-    },
-    {
-      "target": "linux-arm64",
-      "main_binary_bytes": 6495264,
-      "complete_install_bytes": 22620353,
-      "remote_binary_bytes": 3939360,
-      "remote_install_bytes": 4294614,
-      "remote_transfer_bytes": 2100666,
-      "main_binary_sha256": "d4c264e06dd62e8e87704be3d34bda9c930241418b8988b918f2411b4fb107cc"
-    },
-    {
-      "target": "macos-x86_64",
-      "main_binary_bytes": 11636616,
-      "complete_install_bytes": 27761705,
-      "remote_binary_bytes": 9121568,
-      "remote_install_bytes": 9476822,
-      "remote_transfer_bytes": 3947320,
-      "main_binary_sha256": "5ecb3649b67574f66aaac2677b88dc16c9cfff623d21814d7e716fb0eb533869"
-    },
-    {
-      "target": "macos-arm64",
-      "main_binary_bytes": 10660648,
-      "complete_install_bytes": 26785737,
-      "remote_binary_bytes": 8117720,
-      "remote_install_bytes": 8472974,
-      "remote_transfer_bytes": 4254027,
-      "main_binary_sha256": "21ac62e01343cb02503b74e72b93a4cdae22bc1dfa5b8c09ec18e23697ef1023"
-    }
-  ],
   "local": {
     "machine": "Apple M1 Pro",
     "os": "macOS 27.0.1",
@@ -323,42 +285,6 @@
       "checks": 110,
       "passed": 16,
       "comparisons_passed": true
-    }
-  },
-  "web": {
-    "bytes": {
-      "diagrams": {
-        "raw": 3375646,
-        "gzip": 939235
-      },
-      "app": {
-        "raw": 2647699,
-        "gzip": 1359917
-      },
-      "initial_js": {
-        "raw": 377349,
-        "gzip": 138460
-      },
-      "initial_css": {
-        "raw": 89544,
-        "gzip": 20128
-      },
-      "lazy_and_shell": {
-        "raw": 5556452,
-        "gzip": 2140564
-      },
-      "optional_runtime": {
-        "raw": 5368783,
-        "gzip": 2067467
-      },
-      "precache": {
-        "raw": 602533,
-        "gzip": 213515
-      },
-      "total": {
-        "raw": 6023345,
-        "gzip": 2299152
-      }
     }
   }
 }

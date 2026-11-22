@@ -11,11 +11,6 @@ import type {
 // data. A side answer provides none of them.
 export interface MessageActions {
   report: Report;
-  read?: (
-    id: string,
-    raw: boolean,
-    signal?: AbortSignal,
-  ) => Promise<{ text: string }>;
   inspect?: (id: string) => void;
   statistics?: (node: Node) => void;
   activity?: (target: ActivityTarget) => void;

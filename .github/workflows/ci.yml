@@ -180,8 +180,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # The feature switches compile different #if paths. Each builds on its own
-  # runner instead of after the x86 leg.
   sanitizers:
     name: sanitizers (${{ matrix.leg }})
     needs: [changes, web-dist]

@@ -261,7 +261,7 @@ CommandReply RunSlashCommand(AppSession& session,
       HandleCost(session, reply);
       break;
     case SlashCommandId::kChanges:
-      result = session.ActiveAgent().ChangedFiles(0);
+      result = session.ActiveAgent().ChangedFiles();
       if (result.empty()) reply.Note(Tone::kNeutral, "no file changes to undo");
       for (const json& file : result) {
         reply.Print("%s (+%" PRId64 " -%" PRId64 ")%s\n",

@@ -123,7 +123,6 @@ function Message({
 }) {
   const { routes } = useApi();
   const {
-    read,
     report,
     recall,
     retry: resend,
@@ -136,7 +135,7 @@ function Message({
   const reply = node.role === "assistant";
   // A message with an origin (what woke the conversation) has no bubble.
   const chrome = reply ? "response" : node.origin ? "mail" : "user inverse";
-  const load = useNodeReader(session, read);
+  const load = useNodeReader(session);
   const truncated = node.body?.truncated;
   const fullText = useResource(
     (signal) =>

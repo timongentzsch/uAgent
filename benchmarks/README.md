@@ -29,9 +29,8 @@ the other options.
 ## Current measurements
 
 Snapshot: **2026-11-12**, production commit `f3489142`, runtime build
-`4d62d764…9c9dd52`. [Raw results](results/2026-11-12.json) retain package
-hashes, five native benchmark samples per case, the hermetic summary and web
-asset sizes. These are dated measurements, not floating claims about a later
+`4d62d764…9c9dd52`. [Raw results](results/2026-11-12.json) retain five
+native benchmark samples per case and the hermetic summary. These are dated measurements, not floating claims about a later
 checkout. Local CPU measurements use an Apple M1 Pro, macOS 27.0.1 and Apple
 clang 21.0.0, Release `-O3`, Web Push enabled.
 
@@ -99,8 +98,7 @@ CPUs, 4 GiB memory and no additional swap. Each row is a median of five
 interleaved runs of the same one-word prompt; all 25 headless turns
 succeeded. Startup uses 30 runs following three warm-ups.
 [Raw samples and provenance](results/comparison-2026-11-18.json) include
-actual versions, all samples and the CI archive hash;
-[the 2026-11-10 run](results/comparison-2026-11-10.json) is kept.
+actual versions, all samples and the CI archive hash.
 
 ![Idle memory and CPU per headless turn for µAgent, Claude Code, Codex CLI, omp and OpenCode](../docs/images/comparison.svg)
 
@@ -133,7 +131,7 @@ Render this chart again without calling a provider:
 
 ```sh
 python3 benchmarks/compare_agents.py \
-  --from-report benchmarks/results/comparison-2026-11-10.json \
+  --from-report benchmarks/results/comparison-2026-11-18.json \
   --chart docs/images/comparison.svg
 ```
 

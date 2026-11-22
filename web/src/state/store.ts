@@ -30,7 +30,6 @@ export function stateFrame(
   return {
     view: prior?.view,
     http: prior?.http,
-    system_prompt: prior?.system_prompt,
     ...frame,
     phase,
   };

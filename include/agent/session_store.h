@@ -141,7 +141,6 @@ struct SessionState {
   int64_t context_window = 0;
   Usage usage;
   RouteUsage route_usage;
-  std::string last_sent_prompt;
   json display = json::object();
   // Ids of the latest mail taken into the transcript (see core/mailbox.h).
   json delivered_mail = json::array();

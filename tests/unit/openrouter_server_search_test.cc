@@ -377,17 +377,11 @@ TEST_CASE(TestOpenRouterServerSearch) {
   StreamCtx stream;
   stream.res = &result;
   stream.HandleEvent(
-      {"message",
-       R"({"choices":[{"delta":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/a"}}]}}]})",
-       ""});
+      {R"({"choices":[{"delta":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/a"}}]}}]})"});
   stream.HandleEvent(
-      {"message",
-       R"({"choices":[{"message":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/b"}}]}}]})",
-       ""});
+      {R"({"choices":[{"message":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/b"}}]}}]})"});
   stream.HandleEvent(
-      {"message",
-       R"({"error":{"message":"upstream overloaded","type":"server_error"}})",
-       ""});
+      {R"({"error":{"message":"upstream overloaded","type":"server_error"}})"});
   CHECK(result.error == "upstream overloaded");
   stream.status = 200;
   stream.started = std::chrono::steady_clock::now();

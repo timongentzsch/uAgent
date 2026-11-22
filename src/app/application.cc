@@ -346,8 +346,6 @@ json Application::InterfaceState() const {
           {"context_tokens", agent_.ContextUsed()},
           {"context_window", api_.ctx_window},
           {"attachments", attachments_.size()},
-          {"background", runtime_.processes.Count()},
-          {"tools", context_.tools.size()},
           {"yolo", ApprovalIsYolo()}};
 }
 
@@ -372,8 +370,7 @@ void Application::ProcessInput(std::string input) {
                 {"argument", command.argument},
                 {"inspect", !command.spec->Has(kNoViewer)},
                 {"output", Trim(reply.output)},
-                {"result", std::move(reply.result)},
-                {"state", InterfaceState()}}});
+                {"result", std::move(reply.result)}}});
     return;
   }
   if (input[0] == '/') {

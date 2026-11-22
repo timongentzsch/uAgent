@@ -145,28 +145,17 @@ function createApi(host = "") {
   }
 
   // Reads a body the host serves in pages and joins it: `path` ends in a query
-  // and gets `&offset=`, or is a function of the offset. `limit` is in bytes of
-  // text; past it the read fails.
-  async function readPages(
-    path: string | ((offset: number) => Promise<BodyPage>),
-    signal?: AbortSignal,
-    limit = Infinity,
-  ) {
+  // and gets `&offset=`.
+  async function readPages(path: string, signal?: AbortSignal) {
     const parts: string[] = [];
-    let size = 0;
     let offset = 0,
       page: BodyPage;
     do {
       signal?.throwIfAborted();
-      page =
-        typeof path === "function"
-          ? await path(offset)
-          : await api<BodyPage>(`${path}&offset=${offset}`, undefined, {
-              signal,
-            });
+      page = await api<BodyPage>(`${path}&offset=${offset}`, undefined, {
+        signal,
+      });
       signal?.throwIfAborted();
-      size += new Blob([page.text || ""]).size;
-      if (size > limit) throw new Error("Content exceeds the download budget.");
       parts.push(page.text || "");
       if (page.more && page.next <= offset) throw new Error("Incomplete body.");
       offset = page.next;

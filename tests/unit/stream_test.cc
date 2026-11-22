@@ -57,10 +57,8 @@ TEST_CASE(TestReasoningPartReconciliation) {
       {"summary", json::array({{{"type", "summary_text"},
                                 {"text", "Final-only summary"}}})}};
   responses.HandleEvent(
-      {"",
-       JsonDump({{"type", "response.completed"},
-                 {"response", {{"output", json::array({item})}}}}),
-       ""});
+      {JsonDump({{"type", "response.completed"},
+                 {"response", {{"output", json::array({item})}}}})});
   CHECK(final.reasoning == "Final-only summary");
   CHECK(final.replay["items"][0] == item);
 
@@ -72,12 +70,10 @@ TEST_CASE(TestReasoningPartReconciliation) {
         {"type", "reasoning.summary"}, {"index", 0}, {"summary", text}};
     if (text == std::string("Check ")) detail["id"] = "first-chunk-only";
     chat.HandleEvent(
-        {"",
-         JsonDump({{"choices",
+        {JsonDump({{"choices",
                     {{{"delta",
                        {{"reasoning", text},
-                        {"reasoning_details", json::array({detail})}}}}}}}),
-         ""});
+                        {"reasoning_details", json::array({detail})}}}}}}})});
   }
   CHECK(router.reasoning == "Check code");
   CHECK(router.reasoning_details[0]["summary"] == "Check code");
@@ -577,12 +573,8 @@ TEST_CASE(TestSseFraming) {
     parser.TakeEvents(events);
     CHECK(events.size() == 2);
     if (events.size() == 2) {
-      CHECK(events[0].event == "update");
       CHECK(events[0].data == "first\nsecond");
-      CHECK(events[0].id == "7");
-      CHECK(events[1].event == "message");
       CHECK(events[1].data.empty());
-      CHECK(events[1].id == "7");
     }
   }
 

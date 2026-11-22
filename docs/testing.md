@@ -34,12 +34,12 @@ build with Ninja, in `build/dev`) and runs the narrowest test.
 | a docs edit | `python3 tests/docs_test.py` | seconds |
 | the native and integration suites | `ctest --preset debug` | minutes |
 | web work before a push | `npm run test:browser` in `web/` (both browsers) | minutes |
+| what only CI's compilers and linters report | `.github/ci-local.sh` | minutes; incremental after the first run |
 
 The specs need Playwright's own browsers, once: `npx playwright install
 chromium webkit` in `web/`. An installed Chrome is not a stand-in: sheet
 clicks into its sandboxed frames are dropped now and then, and the canvas
 specs fail in it.
-| what only CI's compilers and linters report | `.github/ci-local.sh` | minutes; incremental after the first run |
 
 Style checks (clang-format, cpplint, clang-tidy, Ruff, Biome) are
 in [CONTRIBUTING.md](../CONTRIBUTING.md); [CI](#ci) lists what a pull request

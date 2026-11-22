@@ -115,7 +115,6 @@ void Application::PublishChannelState(bool checkpoint) {
   // Clients keep these from the last checkpoint (session::kCheckpointFields).
   if (checkpoint) {
     state["view"] = agent_.DisplaySnapshot();
-    state["system_prompt"] = agent_.LastSentPrompt();
     state["http"] = agent_.HttpExchanges();
     // An agent's last answer whole, for the report to its parent, and a
     // merged side chat's: the view holds only a long one's opening.
@@ -130,7 +129,6 @@ void Application::PublishChannelState(bool checkpoint) {
     }
   }
   state["usage"] = UsageJson(agent_.SessionUsage());
-  state["route_usage"] = agent_.RouteUsageJson();
   state["statistics"] = agent_.Statistics();
   state["permissions"] = PermissionControl(context_, json::object());
   state["mcp"] = McpStatus(runtime_.mcp, context_.tools);

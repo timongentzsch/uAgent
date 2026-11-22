@@ -13,8 +13,8 @@ With no home directory (`HOME`, then the password entry) it is
 
 | Path | Format | Written by | Read by |
 | --- | --- | --- | --- |
-| `~/.uagent/history/<workspace id>/<name>.json` | session file, format 3 ([Sessions](../architecture/sessions.md)) | the runtime holding the lease | runtimes, the web host, `-c` |
-| `~/.uagent/history/<workspace id>/<name>.json.{lock,events.jsonl,edits/,assets/,plan.md}`, `<stem>.share.md` | sidecars ([Sessions](../architecture/sessions.md#data-and-formats)) | the runtime; uploads by the web host | the same |
+| `~/.uagent/history/<name>.json` | session file, format 3 ([Sessions](../architecture/sessions.md)) | the runtime holding the lease | runtimes, the web host, `-c` |
+| `~/.uagent/history/<name>.json.{lock,events.jsonl,edits/,assets/,plan.md}`, `<stem>.share.md` | sidecars ([Sessions](../architecture/sessions.md#data-and-formats)) | the runtime; uploads by the web host | the same |
 | `~/.uagent/mail/<id>/{new,cur}/*.json` | one message per file ([Sessions](../architecture/sessions.md#data-and-formats)) | the sender, the recipient | the recipient |
 | `~/.uagent/memory/` | Markdown memories, `events.jsonl`, `.processed/` ([Memory and schedules](../architecture/memory-and-schedules.md)) | the `memory` tool, the extractor, `--control` | every runtime |
 | `~/.uagent/skills/<name>/SKILL.md` | skills | the Library, import, the `uagent` tool | every runtime |
@@ -30,8 +30,7 @@ With no home directory (`HOME`, then the password entry) it is
 | `~/.uagent/models/<hash>.json` | a provider's model catalogue, no credentials | runtimes | runtimes |
 | `~/.uagent/openrouter-signin.json`, `.maintained` | a pending sign-in's verifier; the daily retention stamp | `setup`, `openrouter` control; runtimes | the same |
 
-`<workspace id>` (`WorkspaceId`) hashes the folder path, or
-`ssh:<host id>:<path>`. `<name>` is `<UTC stamp>-uagent-<hash>` (terminal,
+`<name>` is `<UTC stamp>-uagent-<hash>` (terminal,
 headless), `web-<32 hex>`, `agent-<hash>` or `scheduled-<id>`. Retention is
 in [Sessions](../architecture/sessions.md#failure-modes).
 
@@ -70,7 +69,6 @@ may reference as `$NAME`. The conversation scope lives in the session file.
 | `master.lock`, `discovery.json`, `devices.json` | single-instance lease; `v`, `port`, `url`, `secret`, `epoch`; devices: `id`, `token`, `name`, `expires` |
 | `vapid.pem`, `push-subscriptions.json` | Web Push key and subscriptions |
 | `pins.json`, `drafts/<session id>.json` | pins; titles of conversations not yet saved |
-| `move-<id>.json` | a move in progress ([Sessions](../architecture/sessions.md#protocol)) |
 | `hosts.json`, `client-<host id>.json`, `ssh-<host id>.log`, `remote-terminals.json` | saved SSH hosts, the client identity per host, the last SSH log, remote shells |
 
 ## Runtime directory: `/tmp/uagent-<euid>-<hash>`

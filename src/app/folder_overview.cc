@@ -35,10 +35,10 @@ std::time_t StampTime(const std::string& stamp) {
 
 std::string Day(std::time_t at) { return LocalTime(at, "%Y-%m-%d"); }
 
-// The folder's conversations, its own and the agents saved beside them.
+// The folder's conversations and the agents under them.
 std::vector<SessionInfo> Conversations(const std::string& folder,
                                        const std::string& host = "") {
-  return SessionsBeside(HistoryPath(folder, "overview", host));
+  return SessionsIn(folder, host);
 }
 
 // Spend and changes from the turn summaries of the last week.

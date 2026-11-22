@@ -244,10 +244,6 @@ bool Master::Initialize(std::string& error) {
   push_ =
       std::make_unique<PushSender>(directory_, options_.push_contact, capture);
   host_.LoadPins();
-  // Before the drafts, which a finished move removes, and the catalogue.
-  for (const std::string& reason : host_.RecoverMoves()) {
-    fprintf(stderr, "move not finished: %s\n", reason.c_str());
-  }
   host_.LoadDrafts();
   host_.RefreshCatalogue();
   host_.RefreshInvalidations({});

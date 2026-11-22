@@ -17,12 +17,11 @@ struct LaunchPaths {
   std::string cwd, path;
 };
 
-// The session file `name`.json in the history of folder `cwd`.
-std::string HistoryPath(const std::string& cwd, const std::string& name,
-                        const std::string& host = {});
+// The session file `name`.json in the history.
+std::string HistoryPath(const std::string& name);
 
 // With `worktree`, a fresh detached worktree under ~/.uagent/worktrees/<id>,
-// else `project` itself. The file is history/<folder-hash>/<prefix><id>.
+// else `project` itself. The file is history/<prefix><id>.json.
 LaunchPaths PlanLaunch(const std::string& project, bool worktree,
                        const std::string& prefix, const std::string& id);
 

@@ -29,7 +29,7 @@ bytes match the last write is skipped (`SavedFile`).
 
 ## Data and formats
 
-A session file lives in `history/<workspace id>/` and holds two lines:
+A session file lives in `history/` and holds two lines:
 
 1. A header object under 16 KiB (`kSessionHeaderBytes`): `format`
    (`kSessionFormat`, 3), `cwd`, `model`, `session_id`, `turns`, `title`,
@@ -111,14 +111,15 @@ Mail, sender to recipient:
    `delivered_mail` (latest 256). After the next save, `AckMail` deletes the
    files from `cur/`.
 
+A folder's conversations are those whose `cwd` (and `host`) is the
+folder, with the agents whose `agent.parent` chain leads to one
+(`SessionsIn`).
+
 Moving a conversation (`SessionHost::MoveConversation`): the family is the
-conversation and the agents beside it whose `agent.parent` chain leads to
-it. Busy members refuse the move; idle runtimes are closed. Under all their
-leases the host writes `move-<id>.json` (format 1: folders, note, `{from,
-to}` pairs) into its own directory, renames each file's sidecars and then
-the file, rewrites `cwd`, asset and edit paths, adds a transcript note, repoints
-scheduled runs, and deletes the move file last. Ids, and so pins, mail,
-agents' `parent` and the usage ledger, stay as they are.
+conversation and its agents. Busy members refuse the move; idle runtimes
+are closed. Each file, agents first, gets the new `cwd` where it had the
+old one, and the conversation a transcript note. No file moves, so ids,
+paths, pins, mail and scheduled runs stay as they are.
 
 ## Invariants and limits
 
@@ -127,9 +128,6 @@ agents' `parent` and the usage ledger, stay as they are.
   rewritten or migrated.
 - Mail enters a conversation at most once: an id in `delivered_mail` is
   acknowledged without being added again.
-- A move file is trusted only as far as `ValidMove`: every path a
-  `.json` in some folder's history, going to the new folder's history under
-  the same name, at most 256 files.
 
 ## Failure modes
 
@@ -144,9 +142,8 @@ agents' `parent` and the usage ledger, stay as they are.
   tool call that was running is not repeated. A detached terminal's record
   carries a boot-scoped process identity; one that does not match is
   treated as exited and never signalled.
-- A move interrupted partway is finished by `RecoverMoves` when the web
-  host starts; every step is a no-op for what is already done. A move file
-  that fails `ValidMove` is left in place and reported.
+- A move interrupted partway leaves some agents in the new folder and the
+  conversation in the old one; moving it again finishes it.
 
 Retention: once a day (`kMaintenanceIntervalHours`), a top-level runtime's
 bootstrap calls `MaintainArtifacts`. Files in `history/` older than
@@ -166,7 +163,7 @@ trees follow `logs.keepDays` and `logs.keepFiles` (mail by age only); see
 | `include/agent/edit_journal.h`, `src/agent/edit_journal.cc` | undo |
 | `include/core/mailbox.h`, `src/core/mailbox.cc`, `src/agent/mail_delivery.cc` | mail |
 | `include/app/asset_store.h`, `src/app/asset_store.cc` | uploads and quotas |
-| `src/app/session_move.cc` | moves and their recovery |
+| `src/app/session_move.cc` | moves |
 | `src/core/fs.cc` | `AtomicWriteFile`, `MaintainArtifacts` |
 | `tests/unit/session_command_test.cc`, `tests/unit/events_test.cc` | save, load, fork, rename; journal |
 | `tests/unit/activity_sessions_test.cc`, `tests/unit/filesystem_test.cc` | mail; undo, atomic writes |

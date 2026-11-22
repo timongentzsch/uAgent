@@ -285,8 +285,7 @@ TEST_CASE(TestSignalAndFileWatch) {
     ScopedEnv home("HOME", host_home);
     const std::string project = std::string(host_home) + "/project";
     const std::string web = std::string(host_home) + "/.uagent/web";
-    const std::string parent =
-        UagentDir(kHistoryDir) + "/" + WorkspaceId(project);
+    const std::string parent = UagentDir(kHistoryDir);
     CreatePrivateDirectories(web + "/drafts");
     CreatePrivateDirectories(parent);
     REQUIRE(PathExists(web + "/drafts"));
@@ -300,7 +299,7 @@ TEST_CASE(TestSignalAndFileWatch) {
     session::SessionHost host("test", 4096, {}, web);
     host.LoadDrafts();
     const auto paths = host.PresencePaths();
-    CHECK(paths.size() == 2);
+    CHECK(paths.size() == 1);
     CHECK(std::count(paths.begin(), paths.end(), parent) == 1);
   }
   std::error_code host_remove_error;
@@ -1414,8 +1413,7 @@ TEST_CASE(TestFolderOverviewText) {
 TEST_CASE(TestChildSessionsStayOutOfTheCatalogue) {
   namespace fs = std::filesystem;
   TestWorkspace workspace("child-sessions");
-  const fs::path dir =
-      fs::path(UagentDir(kHistoryDir)) / WorkspaceId(CanonicalCwd());
+  const fs::path dir = fs::path(UagentDir(kHistoryDir));
   fs::create_directories(dir);
   auto write = [&](const std::string& id, const json& extra) {
     json header = {{"format", kSessionFormat},

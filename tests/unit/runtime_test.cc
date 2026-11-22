@@ -712,7 +712,7 @@ TEST_CASE(TestHarnessNoteAndRepository) {
 TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
   TestWorkspace workspace("wake-before-turn");
   const std::string folder = workspace.workspace.string();
-  const std::string path = HistoryPath(folder, "parent");
+  const std::string path = HistoryPath("parent");
   const std::string own = SessionIdFor(path);
   ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", path.c_str());
   // From its agent, saved beside it, which names it its parent.

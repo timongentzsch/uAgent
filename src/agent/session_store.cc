@@ -338,15 +338,46 @@ json SessionHeader(const std::string& path) {
   return ValidHeader(header) ? header : json::object();
 }
 
-std::vector<SessionInfo> SessionsBeside(const std::string& path) {
-  const std::filesystem::path directory =
-      std::filesystem::path(path).parent_path();
+namespace {
+// The conversation above `info`: itself unless it is an agent.
+const SessionInfo& TopOf(const SessionInfo& info,
+                         const std::map<std::string, const SessionInfo*>& ids) {
+  const SessionInfo* top = &info;
+  for (size_t hop = 0; !top->parent.empty() && hop < ids.size(); ++hop) {
+    const auto up = ids.find(top->parent);
+    if (up == ids.end()) break;
+    top = up->second;
+  }
+  return *top;
+}
+}  // namespace
+
+std::vector<SessionInfo> SessionsIn(const std::string& cwd,
+                                    const std::string& host) {
   std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
-  std::erase_if(sessions, [&](const SessionInfo& info) {
-    return !info.error.empty() ||
-           std::filesystem::path(info.path).parent_path() != directory;
-  });
-  return sessions;
+  std::erase_if(sessions,
+                [](const SessionInfo& info) { return !info.error.empty(); });
+  std::map<std::string, const SessionInfo*> ids;
+  for (const SessionInfo& info : sessions) ids[SessionIdFor(info.path)] = &info;
+  std::vector<SessionInfo> in;
+  for (const SessionInfo& info : sessions) {
+    const SessionInfo& top = TopOf(info, ids);
+    if (top.cwd == cwd && top.host == host) in.push_back(info);
+  }
+  return in;
+}
+
+std::vector<SessionInfo> SessionsBeside(const std::string& path) {
+  std::string at = path;
+  for (std::string parent;
+       !(parent = AgentParentPath(
+             at, JsonValue(AgentOf(SessionHeader(at)), "parent", "")))
+            .empty();) {
+    at = parent;
+  }
+  const json header = SessionHeader(at);
+  return SessionsIn(JsonValue(header, kSessionHeaderCwd, ""),
+                    JsonValue(header, "host", ""));
 }
 
 std::string AgentParentPath(const std::string& path,
@@ -392,18 +423,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   namespace fs = std::filesystem;
   const WorkspaceIdentity current = Workspace();
   const fs::path base = fs::path(GlobalBase()) / kHistoryDir;
-  std::vector<fs::path> directories{base};
   std::error_code ec;
-  if (scope != SessionScope::kAll) {
-    directories.push_back(base / WorkspaceId(current.path, current.host));
-  } else {
-    for (const auto& entry : fs::directory_iterator(base, ec)) {
-      if (directories.size() >= kMaxCatalogueEntries) break;
-      if (fs::is_directory(entry.symlink_status(ec))) {
-        directories.push_back(entry.path());
-      }
-    }
-  }
   const auto listed = [&](const SessionInfo& info) {
     return scope == SessionScope::kAll ||
            (info.cwd == current.path && info.host == current.host &&
@@ -411,9 +431,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   };
   std::vector<SessionInfo> out;
   std::map<std::string, Entry> next;
-  for (const fs::path& directory : directories) {
-    if (!fs::is_directory(fs::symlink_status(directory, ec))) continue;
-    for (const auto& entry : fs::directory_iterator(directory, ec)) {
+  if (fs::is_directory(fs::symlink_status(base, ec))) {
+    for (const auto& entry : fs::directory_iterator(base, ec)) {
       if (out.size() >= kMaxCatalogueEntries) break;
       if (entry.path().extension() != ".json" ||
           !fs::is_regular_file(entry.symlink_status(ec))) {

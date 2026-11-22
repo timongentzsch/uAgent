@@ -223,7 +223,7 @@ def journal_metrics(path):
 
 def collect(history, since, cohorts=()):
     journals = sorted(
-        pathlib.Path(history).glob("*/*.events.jsonl"),
+        pathlib.Path(history).glob("*.events.jsonl"),
         key=os.path.getmtime,
         reverse=True,
     )

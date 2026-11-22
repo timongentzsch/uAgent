@@ -93,7 +93,7 @@ def test_ask_answered_elsewhere_closes_the_picker(root, home, *, binary):
             # A client that joins now hears the question open throughout what
             # it is sent, state frames replayed after the snapshot included.
             history = home / ".uagent" / "history"
-            session = max(history.glob("*/*.json"), key=lambda path: path.stat().st_mtime)
+            session = max(history.glob("*.json"), key=lambda path: path.stat().st_mtime)
             joined = SessionClient(runtime_directory(home) / f"{session_id(session)}.sock")
             joined.socket.settimeout(0.5)
             try:

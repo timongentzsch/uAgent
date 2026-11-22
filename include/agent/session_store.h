@@ -67,7 +67,11 @@ inline bool OpenSuggestion(const json& suggestion) {
          !JsonValue(suggestion, "dismissed", false);
 }
 
-// Every valid conversation saved in the directory of `path`, newest first.
+// Every valid conversation working in folder `cwd` on `host`, with the agents
+// under them, newest first.
+std::vector<SessionInfo> SessionsIn(const std::string& cwd,
+                                    const std::string& host = {});
+// SessionsIn the folder of the conversation `path` is, or is an agent under.
 std::vector<SessionInfo> SessionsBeside(const std::string& path);
 
 // The session file of `parent` (a session id) beside `path`; empty for none.

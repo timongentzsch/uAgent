@@ -17,17 +17,15 @@
 #include "include/core/time.h"
 
 namespace uagent {
-std::string HistoryPath(const std::string& cwd, const std::string& name,
-                        const std::string& host) {
-  return UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd, host) + "/" + name +
-         ".json";
+std::string HistoryPath(const std::string& name) {
+  return UagentDir(kHistoryDir) + "/" + name + ".json";
 }
 
 LaunchPaths PlanLaunch(const std::string& project, bool worktree,
                        const std::string& prefix, const std::string& id) {
   const std::string cwd =
       worktree ? UagentDir(kWorktreesDir) + "/" + id : project;
-  return {cwd, HistoryPath(cwd, prefix + id)};
+  return {cwd, HistoryPath(prefix + id)};
 }
 
 CapturedProcess HostGit(const std::string& dir, std::vector<std::string> args) {

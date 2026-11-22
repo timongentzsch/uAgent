@@ -30,7 +30,7 @@ MODEL = "mock/eval"
 sys.path.insert(0, str(ROOT / "tests"))
 
 # isort: off
-from integration_support import Server, event, fnv1a64, write_session  # noqa: E402
+from integration_support import Server, event, write_session  # noqa: E402
 from session_support import remove_runtime, stop_sessions  # noqa: E402
 from run_trace import (  # noqa: E402
     measured_command,
@@ -271,14 +271,12 @@ def run_case(
 
         script = Script(scenario.get("script", []), scenario.get("capture", {}))
         mock = Server([script])
-        # Saved conversations the folder already has, in its history, for
-        # the conversation to read.
-        history = fnv1a64(str(workspace.resolve()))
-        (home / ".uagent" / "history" / history).mkdir(parents=True)
+        # Saved conversations the folder already has, for the conversation
+        # to read.
         for saved in scenario.get("sessions", []):
             write_session(
                 home,
-                f"{history}/{saved['name']}",
+                saved["name"],
                 saved["messages"],
                 cwd=workspace,
                 title=saved["title"],

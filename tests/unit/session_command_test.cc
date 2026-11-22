@@ -524,8 +524,7 @@ TEST_CASE(TestCostRoutesCountCacheWrites) {
 
 TEST_CASE(TestSavedHistoryInvalidation) {
   TestWorkspace workspace("history-cache");
-  const std::string folder =
-      UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd());
+  const std::string folder = UagentDir(kHistoryDir);
   CreatePrivateDirectories(folder);
   const std::string path = folder + "/history.json";
   SessionRecord record;

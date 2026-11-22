@@ -13,7 +13,6 @@ from integration_support import (
     base_env,
     budget,
     event,
-    fnv1a64,
     function_names,
     run,
     save_settings,
@@ -31,7 +30,7 @@ ASKS = re.compile(r"\[agent ([0-9a-f]{16}) .*? \(interaction ([^)]+)\)\]")
 
 def agent_files(home):
     """Every agent saved, wherever it works."""
-    return sorted((home / ".uagent" / "history").glob("*/agent-*.json"))
+    return sorted((home / ".uagent" / "history").glob("agent-*.json"))
 
 
 def header(path):
@@ -652,9 +651,9 @@ def test_a_worktree_agent_works_in_a_worktree_of_a_git_folder_only(root, home, *
         assert_true(result.returncode == 0, result.stderr)
         (agent,) = agent_files(home)
         cwd = header(agent)["cwd"]
-        # Saved beside its parent, working in a worktree of its own.
+        # Saved in the history, working in a worktree of its own.
         assert_true(cwd.endswith("/worktrees/" + agent.stem), cwd)
-        assert_true(agent.parent.name == fnv1a64(str(root.resolve())), agent)
+        assert_true(agent.parent.name == "history", agent)
 
 
 def test_an_agent_in_auto_is_judged_as_its_parent_is(root, home, *, binary):

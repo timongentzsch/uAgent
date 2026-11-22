@@ -834,6 +834,10 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
   for (const fs::path& sibling : siblings) {
     if (!ec && sibling != lock) fs::remove_all(sibling, ec);
   }
+  // Its mailbox is kept by the session's identity, not beside it.
+  if (!ec) {
+    fs::remove_all(UagentDir(kMailDir) + "/" + SessionIdFor(path), ec);
+  }
   if (!ec) fs::remove(path, ec);
   if (!ec && loaded.record) {
     const json facts =

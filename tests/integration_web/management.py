@@ -141,6 +141,8 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
             assert_true(
                 client.snapshot(saved)["state"]["statistics"] == stats, "restart lost stats"
             )
+            mailboxes = list((home / ".uagent/mail").iterdir())
+            assert_true(mailboxes, "a conversation that ran has a mailbox")
             client.command("delete", saved)
             assert_true(
                 client.json(f"/api/sessions/{saved['id']}")[0] == 404,
@@ -150,6 +152,7 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
                 not path.exists()
                 and not Path(str(path) + ".assets").exists()
                 and not Path(str(path) + ".events.jsonl").exists()
+                and not any(box.exists() for box in mailboxes)
                 and not marker.exists(),
                 "owned sidecars remained",
             )

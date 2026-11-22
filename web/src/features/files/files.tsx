@@ -332,7 +332,12 @@ export default function Files({
   }, [expanded]);
   // The tree shows where the view is.
   useEffect(
-    () => setExpanded((all) => new Set([...all, ...ancestors(dir)])),
+    () =>
+      setExpanded((all) =>
+        ancestors(dir).every((path) => all.has(path))
+          ? all
+          : new Set([...all, ...ancestors(dir)]),
+      ),
     [dir],
   );
   const toggle = (path: string) =>

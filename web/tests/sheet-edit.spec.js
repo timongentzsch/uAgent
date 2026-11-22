@@ -1947,14 +1947,36 @@ test("a row's number and a column's letter open what can be done to them: move, 
   // A column selected whole takes the format bar's looks; cleared, it gives
   // up its own pattern too.
   const looks = files.getByRole("toolbar", { name: "Format" });
-  await letter(4).click();
-  await app.keyboard.press("Escape");
+  await cell("Tasks", "D3").click();
+  await cell("Tasks", "D4").click({ button: "right" });
+  await expect(stage.locator(".sheet-menu")).toHaveCount(1);
+  // The menu is left when the app is used elsewhere, and the focus stays
+  // with what was pressed, not taken by the sheet's field on the way.
+  const bold = looks.getByRole("button", { name: "Bold", exact: true });
+  await bold.click();
   await expect(stage.locator(".sheet-menu")).toHaveCount(0);
+  await expect(bold).toBeFocused();
+  expect(
+    await stage
+      .locator("html")
+      .evaluate(
+        () =>
+          document.activeElement === document.querySelector(".sheet-editor"),
+      ),
+  ).toBe(false);
+  await expect(cell("Tasks", "D4")).toHaveClass(/sheet-bold/);
+  // A menu opened by the press walks by the arrows at once.
+  await letter(4).click();
+  await expect(stage.locator(".sheet-menu")).toHaveCount(1);
   await looks.getByRole("button", { name: "Fill", exact: true }).click();
-  await app.getByRole("menuitemradio", { name: "Good", exact: true }).click();
+  await expect(stage.locator(".sheet-menu")).toHaveCount(0);
+  const choice = (name) =>
+    app.getByRole("menuitemradio", { name, exact: true });
+  await expect(choice("None")).toBeFocused();
+  await app.keyboard.press("ArrowDown");
+  await expect(choice("Accent")).toBeFocused();
+  await choice("Good").click();
   await expect(cell("Tasks", "D3")).toHaveAttribute("data-fill", "good");
-  await looks.getByRole("button", { name: "Bold", exact: true }).click();
-  await expect(cell("Tasks", "D3")).toHaveClass(/sheet-bold/);
   await letter(4).click();
   await item("Clear formatting").click();
   await expect(cell("Tasks", "D3")).not.toHaveAttribute("data-fill");

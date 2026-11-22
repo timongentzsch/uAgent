@@ -1,5 +1,6 @@
 // A menu the sheet draws itself, at a point of the page; the arrows walk
-// it, and Escape or a press elsewhere closes it.
+// it, and Escape, a press elsewhere or the page losing the focus (a press
+// in the app around it, where the focus is then left) closes it.
 
 let open;
 
@@ -11,10 +12,14 @@ export function openMenu({ x, y }, items, closed) {
   const menu = document.createElement("div");
   menu.className = "sheet-menu";
   menu.setAttribute("role", "menu");
-  const close = () => {
+  const leave = () => {
     menu.remove();
     removeEventListener("pointerdown", outside, true);
+    removeEventListener("blur", leave);
     open = undefined;
+  };
+  const close = () => {
+    leave();
     closed();
   };
   const outside = (event) => menu.contains(event.target) || close();
@@ -66,6 +71,7 @@ export function openMenu({ x, y }, items, closed) {
   });
   document.body.append(menu);
   addEventListener("pointerdown", outside, true);
+  addEventListener("blur", leave);
   open = close;
   show(items);
 }

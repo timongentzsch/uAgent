@@ -24,6 +24,7 @@ import {
   outgoingAfter,
   retainedViews,
   hasContent,
+  keepNodes,
   patchCatalogue,
 } from "./store.ts";
 import { applyEvent as applyHostEvent } from "./apply-event.ts";
@@ -294,7 +295,7 @@ export function useHost(
               ...Object.fromEntries(
                 Object.entries(live.current).filter(([key]) => key !== id),
               ),
-              [id]: value,
+              [id]: keepNodes(newer, value),
             },
             selection.current,
             snapshots.watching(),

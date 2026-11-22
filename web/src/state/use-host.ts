@@ -60,6 +60,13 @@ const kept = {
     },
   ),
   spaces: stored<NonNullable<Catalogue["spaces"]>>(storageKeys.spaces, []),
+  // A reload draws the transcript at the host's level at once: one drawn at
+  // another is built again when the list arrives, and the reader's place
+  // is lost with it.
+  display: stored<Pick<Catalogue, "detail" | "thinking">>(
+    storageKeys.display,
+    {},
+  ),
   drafts: stored<Record<string, Draft>>(
     storageKeys.drafts,
     {},
@@ -150,6 +157,7 @@ export function useHost(
   // everything stays inert until then (`online` is false).
   const [catalogue, setCatalogue] = useState<Catalogue>(() => ({
     sessions: kept.catalogue.read(),
+    ...kept.display.read(),
     spaces: kept.spaces.read(),
     pins: kept.pins.read(),
     capabilities: {},
@@ -253,6 +261,7 @@ export function useHost(
     kept.catalogue.write([]);
     kept.spaces.write([]);
     kept.pins.write([]);
+    kept.display.write({});
     setDrafts({});
     setOutgoing([]);
     setAuthenticated(false);
@@ -692,6 +701,13 @@ export function useHost(
   useEffect(() => {
     if (authenticated && catalogue.spaces) kept.spaces.write(catalogue.spaces);
   }, [authenticated, catalogue.spaces]);
+  useEffect(() => {
+    if (authenticated && catalogue.detail)
+      kept.display.write({
+        detail: catalogue.detail,
+        thinking: catalogue.thinking,
+      });
+  }, [authenticated, catalogue.detail, catalogue.thinking]);
   // The tab title and the installed app's badge count what needs you;
   // written only when that count changes.
   const attention = needsYou(listed);

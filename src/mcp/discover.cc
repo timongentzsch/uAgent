@@ -280,7 +280,15 @@ bool McpRefreshTools(std::vector<Tool>& tools, McpRuntime& runtime,
       continue;
     }
     if (server.alive) McpDrainInbound(server);
-    if (!server.alive || !server.tools_changed) continue;
+    // A server that has gone takes its tools out of what is offered.
+    if (!server.alive) {
+      const std::string provider = "mcp:" + server.name;
+      changed |= std::erase_if(tools, [&](const Tool& tool) {
+                   return tool.provider == provider;
+                 }) > 0;
+      continue;
+    }
+    if (!server.tools_changed) continue;
     auto deadline = DeadlineAfter(config.mcp_timeout_s);
     if (turn_deadline != std::chrono::steady_clock::time_point::max()) {
       deadline = std::min(deadline, turn_deadline);

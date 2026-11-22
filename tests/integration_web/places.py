@@ -733,3 +733,79 @@ def test_web_suggestion_shows_while_a_call_waits_for_approval(root, home, *, bin
             )
             web.command("reply", unfiled, interaction_id=waiting["pending"]["id"], text="y")
             web.until(unfiled, lambda value: value["metadata"]["status"] == "idle")
+
+
+def test_the_context_parts_count_a_real_mcp_servers_tools(root, home, *, binary):
+    project = root / "mcp-context"
+    project.mkdir()
+    fake = project / "fake_mcp.py"
+    write_mcp_server(
+        fake,
+        "    if method == 'server/discover':\n"
+        "        result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}}}\n"
+        "    elif method == 'tools/list':\n"
+        "        result = {'tools': [\n"
+        "            {'name': 'echo', 'description': 'Echoes', 'inputSchema': {'type': 'object'}},\n"
+        "            {'name': 'add', 'description': 'Adds two numbers', 'inputSchema':\n"
+        "             {'type': 'object', 'properties': {'a': {'type': 'number'}}}}]}\n"
+        "    else:\n"
+        "        result = {}\n",
+    )
+    (project / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "probe": {"command": sys.executable, "args": [str(fake)]},
+                    "broken": {"command": str(project / "missing"), "required": False},
+                }
+            }
+        )
+    )
+    with Server([lambda _, _body: event({"content": "fine"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project)
+            value = client.until(session, lambda value: bool(value.get("pending")))
+            client.command("reply", session, interaction_id=value["pending"]["id"], text="y")
+            value = client.until(
+                session,
+                lambda value: value["metadata"]["status"] == "idle" and "mcp" in value["state"],
+            )
+            parts = value["state"]["context_parts"]
+            catalogue = client.command("tools", session, operation="catalog")["result"]
+            mcp = [tool for tool in catalogue["tools"] if tool["provider"] == "mcp:probe"]
+            builtin = [tool for tool in catalogue["tools"] if tool["category"] != "mcp"]
+            assert_true(
+                sorted(tool["name"] for tool in mcp) == ["probe_add", "probe_echo"]
+                and parts["tools"]["mcp"]["count"] == 2
+                and parts["parts"]["mcp"] == parts["tools"]["mcp"]["bytes"] > 0
+                and parts["tools"]["tools"]["count"] == sum(tool["active"] for tool in builtin),
+                (parts, catalogue),
+            )
+
+            # A tool switched off is counted as not offered.
+            hidden = parts["tools"]["hidden"]["count"]
+            client.command("tools", session, operation="set", name="probe_echo", active=False)
+            parts = client.until(
+                session,
+                lambda value: value["state"]["context_parts"]["tools"]["mcp"]["count"] == 1,
+            )["state"]["context_parts"]
+            assert_true(parts["tools"]["hidden"]["count"] == hidden + 1, parts)
+
+            # A server that died is not offered at the next turn, nor counted.
+            subprocess.run(["pkill", "-f", str(fake)], check=False)
+            client.command("submit", session, text="hello")
+            value = client.until(
+                session,
+                lambda value: value["metadata"]["status"] == "idle" and value["state"]["turns"],
+            )
+            sent = [tool["function"]["name"] for tool in provider.requests[-1][1]["tools"]]
+            parts = value["state"]["context_parts"]
+            catalogue = client.command("tools", session, operation="catalog")["result"]
+            assert_true(
+                not any(name.startswith("probe_") for name in sent)
+                and "mcp" not in parts["tools"]
+                and parts["parts"]["mcp"] == 0
+                and not any(tool["provider"] == "mcp:probe" for tool in catalogue["tools"]),
+                (sent, parts),
+            )

@@ -69,7 +69,7 @@ const CATALOGUE = {
   ],
 };
 
-async function open(page, live = PARTS.tokens) {
+async function open(page, live = PARTS.tokens, parts = PARTS) {
   const sent = [];
   let release;
   const answered = new Promise((resolve) => {
@@ -99,7 +99,7 @@ async function open(page, live = PARTS.tokens) {
           phase: "idle",
           context_tokens: live,
           context_window: 200000,
-          context_parts: PARTS,
+          context_parts: parts,
           turns: 14,
           view: { nodes: [] },
         },
@@ -209,7 +209,10 @@ test("rows, bar and folds show what fills the window", async ({ page }) => {
   await expect(tools).toHaveAttribute("aria-expanded", "true");
   await expect(sheet.getByText("apply_patch")).toBeVisible();
   await sheet.getByRole("button", { name: /^MCP tools 2/ }).click();
-  await expect(sheet.getByText("github · create_issue")).toBeVisible();
+  // Each server's tool by name, its sizes adding up to the row's 1.6k.
+  await expect(
+    sheet.locator(".context-rows > li", { hasText: "MCP tools" }).locator("li"),
+  ).toHaveText([/^github · create_issue\s*975$/, /^github · get_file\s*625$/]);
   await sheet.getByRole("button", { name: /^Not offered 1 tool/ }).click();
   await expect(sheet.getByText("browser", { exact: true })).toBeVisible();
   expect(await sheet.evaluate((node) => node.getBoundingClientRect().top)).toBe(
@@ -244,6 +247,36 @@ test("a reply streaming in since the request counts as Replies", async ({
     ),
   );
   expect(used).toBeCloseTo(40, 6);
+});
+
+test("with automatic compaction off there is no mark and nothing kept", async ({
+  page,
+}) => {
+  const { sheet } = await open(page, PARTS.tokens, {
+    ...PARTS,
+    compacts_at: 0,
+  });
+  await expect(
+    sheet.getByRole("img", {
+      name: "38.8% of the context window is used, 61% left",
+    }),
+  ).toBeVisible();
+  await expect(sheet.getByText("no automatic compaction")).toBeVisible();
+  await expect(sheet.locator(".context-mark")).toHaveCount(0);
+  await expect(sheet.getByText("Kept for the summary")).toHaveCount(0);
+  await expect(sheet.getByText("Free until it compacts")).toHaveCount(0);
+  const free = sheet.locator(".context-rows > li", { hasText: /^Free/ });
+  await expect(free).toContainText("122.5k");
+  await expect(free).toContainText("61.3%");
+  // The used parts and what is free fill the window.
+  const used = await sheet.evaluate((node) =>
+    [...node.querySelectorAll(".context-segment")].reduce(
+      (sum, segment) =>
+        sum + Number.parseFloat(segment.style.getPropertyValue("--share")),
+      0,
+    ),
+  );
+  expect(used).toBeCloseTo(38.75, 6);
 });
 
 test("on a phone every row fits on its line", async ({ page }) => {

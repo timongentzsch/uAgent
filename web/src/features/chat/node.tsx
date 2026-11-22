@@ -1,22 +1,11 @@
 import "./node.css";
 import { Component, createContext } from "preact";
 import type { TargetedKeyboardEvent } from "preact";
-import {
-  useCallback,
-  useContext,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "preact/hooks";
+import { useCallback, useContext, useMemo, useState } from "preact/hooks";
 import { ChevronRight } from "lucide-preact";
 import { Button, ErrorBoundary } from "../../shared/ui.tsx";
 import { devicePrefs } from "../../shared/device-prefs.ts";
-import {
-  maxRememberedToggles,
-  maxShownSteps,
-  thoughtLines,
-} from "../../shared/limits.ts";
+import { maxRememberedToggles, maxShownSteps } from "../../shared/limits.ts";
 import { plural } from "../../shared/quantities.ts";
 import { useElapsed } from "../../shared/time.ts";
 import { useLatest } from "../../shared/use-latest.ts";
@@ -153,12 +142,7 @@ class NodeView extends Component<NodeProps> {
         {isRow(node) ? (
           <RowNode {...props} />
         ) : node.kind === "thinking" ? (
-          <Thought
-            node={node}
-            lines={props.level === Infinity ? undefined : thoughtLines}
-            online={props.online}
-            session={props.session}
-          />
+          <Thought node={node} online={props.online} session={props.session} />
         ) : (
           <MessageView
             node={node}
@@ -172,48 +156,24 @@ class NodeView extends Component<NodeProps> {
   }
 }
 
-// A thought reads as text among the steps, fainter than a reply: whole where
-// everything is open, else its first lines and a way to the rest.
+// A thought reads as text among the steps, fainter than a reply.
 function Thought({
   node,
-  lines,
   online,
   session,
 }: {
   node: Node;
-  lines?: number;
   online: boolean;
   session: SessionRef;
 }) {
-  const [whole, setWhole] = useState(false);
-  const [cut, setCut] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  const held = !!lines && !whole;
-  useLayoutEffect(() => {
-    const text = box.current?.querySelector(".node-text");
-    if (held && text) setCut(text.scrollHeight > text.clientHeight + 1);
-  }, [held, node]);
   return (
     <div
-      ref={box}
       class="node thought"
       data-kind="thinking"
       data-message-id={node.id}
       data-sequence={node.sequence}
-      data-held={held || undefined}
-      style={held ? { "--lines": lines } : undefined}
     >
       <NodeBody node={node} online={online} session={session} />
-      {!!lines && (cut || whole) && (
-        <Button
-          variant="quiet"
-          class="node-action small"
-          aria-expanded={whole}
-          onClick={() => setWhole(!whole)}
-        >
-          {whole ? "Less" : "More"}
-        </Button>
-      )}
     </div>
   );
 }
@@ -257,7 +217,7 @@ function RowNode({
       : refusalOf(node)
         ? [branch]
         : [];
-  // So does its latest thought, on one line, while it is the latest thing.
+  // So does its latest thought, while it is the latest thing.
   const working = !open && node.kind === "work" && node.state === "running";
   const thought =
     working && kids.at(-1)?.node.kind === "thinking"
@@ -297,9 +257,7 @@ function RowNode({
           scope={scope}
         />
       )}
-      {thought && (
-        <Thought node={thought} lines={1} online={online} session={session} />
-      )}
+      {thought && <Thought node={thought} online={online} session={session} />}
       {refused.map((kid) => (
         <Refusal
           key={kid.node.id}

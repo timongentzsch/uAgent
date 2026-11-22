@@ -99,7 +99,9 @@ function Chat({
     <div
       class="transcript"
       data-session={selected}
-      data-history-key={`chat:${selected}`}
+      // A reader's place is restored over the conversation, never over its
+      // load error: the retry that shows it comes after.
+      data-history-key={snapshot ? `chat:${selected}` : undefined}
       aria-busy={
         (!snapshot && !loadError) || (snapshot && !prepared) || undefined
       }

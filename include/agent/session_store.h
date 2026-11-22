@@ -139,6 +139,8 @@ struct SessionState {
   int64_t archive_dropped_segments = 0;
   int64_t context_tokens = 0;
   int64_t context_window = 0;
+  // Agent::ContextParts() as of the save; null in a file from before it.
+  json context_parts = nullptr;
   Usage usage;
   RouteUsage route_usage;
   json display = json::object();

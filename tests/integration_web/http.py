@@ -151,6 +151,17 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 attachment_ids=[asset["id"]],
             )
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
+            # The state says what fills the context, in parts that add up.
+            parts = snapshot["state"]["context_parts"]
+            assert_true(
+                sum(parts["parts"].values()) == parts["bytes"]
+                and parts["tokens"] == snapshot["state"]["context_tokens"]
+                and 0 < parts["compacts_at"] < 32768
+                and parts["parts"]["files"] > 0
+                and parts["parts"]["replies"] > 0
+                and parts["tools"]["tools"]["count"] > 0,
+                parts,
+            )
             rows = snapshot["state"]["view"]["nodes"]
             request = rows[0]
             # Clients get the asset id, never the private upload path.
@@ -187,7 +198,16 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 body_for(fork, exchange, "response")[0] == response, "fork lost HTTP capture"
             )
             client.command("close", session)
-            session = client.snapshot(session)["metadata"]
+            closed = client.snapshot(session)
+            session = closed["metadata"]
+            # Without a runtime the parts are read from the saved conversation.
+            saved_parts = closed["state"]["context_parts"]
+            assert_true(
+                not session["generation"]
+                and saved_parts["tokens"] == closed["state"]["context_tokens"]
+                and sum(saved_parts["parts"].values()) == saved_parts["bytes"],
+                closed["state"],
+            )
             client.command("delete", session)
             assert_true(
                 client.request(f"/api/sessions/{fork['id']}/assets/{asset['id']}")[1] == data,
@@ -631,3 +651,52 @@ def test_a_new_event_stream_replaces_the_oldest_one_when_the_limit_is_reached(
         assert_true(not any(ended.is_set() for _, ended in watched[1:]), "a newer stream ended")
         for open_connection, _ in [*open_streams, (connection, response)]:
             drop_event_stream(open_connection)
+
+
+def test_the_context_parts_follow_a_turn_and_reading_tools_changes_no_status(root, home, *, binary):
+    asked = threading.Event()
+    release = threading.Event()
+
+    def responder(_, _body):
+        asked.set()
+        release.wait(timeout=budget(10))
+        return event({"content": "done"})
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url, extra_env={"UAGENT_CONTEXT": "32768"}) as (
+            client,
+            code,
+            _,
+            _,
+        ):
+            client.pair(code)
+            session = client.create(root)
+            # A catalogue read is answered at once and the conversation stays idle.
+            connection, response = client.events()
+            read = client.command("tools", session, operation="catalog")
+            request_id = f"{client.sequence:032x}"
+            assert_true(not read.get("pending") and read["result"]["tools"], read)
+            for line in response:
+                if not line.startswith(b"data: "):
+                    continue
+                assert_true(b"processing" not in line, line)
+                if request_id.encode() in line:
+                    break
+            connection.close()
+
+            client.command("submit", session, text="Wait for the model")
+            assert_true(asked.wait(timeout=budget(10)), "the model was not asked")
+            try:
+                running = client.until(session, lambda value: value["metadata"]["turn_active"])
+                parts = running["state"]["context_parts"]
+                assert_true(
+                    sum(parts["parts"].values()) == parts["bytes"]
+                    and parts["tokens"] == running["state"]["context_tokens"]
+                    and parts["parts"]["messages"] > 0,
+                    running["state"],
+                )
+                during = client.command("tools", session, operation="catalog")
+                assert_true(not during.get("pending") and during["result"]["tools"], during)
+            finally:
+                release.set()
+            client.until(session, lambda value: value["metadata"]["status"] == "idle")

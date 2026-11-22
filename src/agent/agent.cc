@@ -50,7 +50,7 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ActivitySupervisor& processes,
       project_instructions_(std::move(project_instructions)),
       skills_(std::move(skills)),
       prompt_overlay_(PromptOverlay(&prompt_overlay_digest_)) {
-  schema_bytes_ = JsonDump(schemas_).size();
+  InvalidateToolSchemas(false);
   if (Debug().Enabled()) {
     json names = json::array();
     for (const Tool& tool : tools_) names.push_back(tool.name);
@@ -84,6 +84,7 @@ void Agent::PublishSideContext() {
   auto checkpoint = std::make_shared<SideCheckpoint>();
   checkpoint->record = Snapshot();
   checkpoint->archive = conversation_.SharedArchive();
+  checkpoint->catalogue = ToolCatalogue();
   SessionRecord* context = &checkpoint->record;
   context->state.messages = conversation_.Messages();
   context->state.message_kinds = conversation_.Kinds();
@@ -325,6 +326,10 @@ json Agent::Todo() const {
       json::array());
 }
 json Agent::ToolCatalogue() const { return tool_selection_.Catalogue(tools_); }
+json Agent::PublishedCatalogue() const {
+  std::lock_guard lock(side_mutex_);
+  return side_context_->catalogue;
+}
 
 std::vector<std::string> Agent::EnabledTools() const {
   std::vector<std::string> names;
@@ -408,8 +413,10 @@ SessionRecord Agent::Snapshot() const {
                      .agent = AgentOf(session_role_),
                      .memory = api_.config.memory_enabled,
                      .suggestion = suggestion_};
-  record.state = {.context_tokens = ContextUsed(),
+  json parts = ContextParts();
+  record.state = {.context_tokens = parts["tokens"],
                   .context_window = api_.ctx_window,
+                  .context_parts = std::move(parts),
                   .usage = session_usage_,
                   .route_usage = route_usage_,
                   .display = conversation_.DisplayMetadata(),
@@ -526,8 +533,21 @@ int64_t Agent::ContextUsed() const {
 
 void Agent::InvalidateToolSchemas(bool force_system) {
   available_schemas_.Reset();
-  schema_bytes_ = static_cast<size_t>(
-      JsonValue(tool_selection_.Catalogue(tools_), "schema_bytes", int64_t{0}));
+  // Estimated as a request's are, so the total between turns is the one a
+  // request starts from.
+  available_schemas_.Get(tools_, schemas_, &tool_selection_);
+  schema_bytes_ = available_schemas_.Bytes();
+  tool_counts_ = json::object();
+  for (size_t i = 0; i < tools_.size() && i < schemas_.size(); ++i) {
+    const Tool& tool = tools_[i];
+    if (tool.available && !tool.available()) continue;
+    json& count = tool_counts_[!tool_selection_.Enabled(tool)      ? "hidden"
+                               : tool.provider.starts_with("mcp:") ? "mcp"
+                                                                   : "tools"];
+    count["count"] = JsonValue(count, "count", size_t{0}) + 1;
+    count["bytes"] =
+        JsonValue(count, "bytes", size_t{0}) + JsonEstimatedBytes(schemas_[i]);
+  }
   logged_schemas_.clear();
   RefreshSystemMessage(force_system);
 }
@@ -535,6 +555,7 @@ void Agent::InvalidateToolSchemas(bool force_system) {
 void Agent::RebuildToolSchemas() {
   schemas_ = ToolSchemas(tools_);
   InvalidateToolSchemas(false);
+  PublishSideContext();
   DebugLog("tool_registry_refreshed",
            {{"tools", tools_.size()}, {"schema_bytes", schema_bytes_}});
 }

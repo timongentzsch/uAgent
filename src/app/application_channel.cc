@@ -50,6 +50,9 @@ int Application::RunChannel() {
     if (JsonValue(request, "kind", "") == "permissions") {
       return PermissionControl(context_, request);
     }
+    if (JsonValue(request, "kind", "") == "tools") {
+      return agent_.PublishedCatalogue();
+    }
     if (JsonValue(request, "kind", "") == "side") {
       if (JsonValue(request, "operation", "") != "create") {
         return json{{"error",

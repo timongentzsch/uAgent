@@ -341,9 +341,11 @@ void Application::RunPrompt(const std::string& input) {
 }
 
 json Application::InterfaceState() const {
+  json parts = agent_.ContextParts();
   return {{"route", RouteSelection(api_, context_.provider.providers)},
           {"effort", api_.reasoning_effort},
-          {"context_tokens", agent_.ContextUsed()},
+          {"context_tokens", parts["tokens"]},
+          {"context_parts", parts},
           {"context_window", api_.ctx_window},
           {"attachments", attachments_.size()},
           {"yolo", ApprovalIsYolo()}};

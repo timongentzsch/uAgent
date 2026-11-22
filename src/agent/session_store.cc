@@ -140,6 +140,7 @@ std::string StateText(const SessionState& state,
                                        : state.archive_dropped_segments},
       {"context_tokens", state.context_tokens},
       {"context_window", state.context_window},
+      {"context_parts", state.context_parts},
       {"usage", UsageJson(state.usage)},
       {"route_usage", RouteUsageJson(state.route_usage)},
       {"delivered_mail", state.delivered_mail}};
@@ -314,6 +315,7 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
       std::max(int64_t{0}, state["context_tokens"].get<int64_t>());
   record.state.context_window =
       std::max(int64_t{0}, state["context_window"].get<int64_t>());
+  record.state.context_parts = JsonValue(state, "context_parts", json());
   record.state.usage = UsageFromJson(state["usage"]);
   record.state.route_usage = RouteUsageFromJson(state["route_usage"]);
   record.state.display = std::move(state["display"]);

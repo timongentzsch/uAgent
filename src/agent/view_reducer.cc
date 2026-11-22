@@ -162,8 +162,8 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
                        json* patches) {
   if (type == AppType(EventId::kUsageUpdated)) {
     state["usage"] = JsonValue(data, "usage", json(nullptr));
-    if (data.contains("context_tokens")) {
-      state["context_tokens"] = data["context_tokens"];
+    for (const char* field : {"context_tokens", "context_parts"}) {
+      if (data.contains(field)) state[field] = data[field];
     }
     if (data.contains("statistics")) state["statistics"] = data["statistics"];
     return true;

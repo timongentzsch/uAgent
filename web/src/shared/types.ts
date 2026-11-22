@@ -482,6 +482,8 @@ export interface State {
   todo?: TodoItem[];
   context_tokens?: number;
   context_window?: number;
+  // Absent in a conversation saved before parts were recorded.
+  context_parts?: ContextParts;
   permissions?: Permissions;
   http?: Exchange[];
   mcp?: McpServer[];
@@ -740,6 +742,31 @@ export interface ToolCatalogueItem {
   available: boolean;
   schema_bytes: number;
   reason?: string;
+}
+// What fills a conversation's context (Agent::ContextParts): estimated
+// bytes per part, which sum to `bytes` and come to `tokens`; the tools
+// counted by kind; compacts_at is 0 where nothing compacts.
+export interface ContextParts {
+  tokens: number;
+  bytes: number;
+  compacts_at: number;
+  instructions: string;
+  parts: Record<
+    | "tool_results"
+    | "replies"
+    | "messages"
+    | "files"
+    | "notes"
+    | "tools"
+    | "mcp"
+    | "system"
+    | "instructions"
+    | "memory",
+    number
+  >;
+  tools: Partial<
+    Record<"tools" | "mcp" | "hidden", { count: number; bytes: number }>
+  >;
 }
 export interface ToolCatalogue {
   profile: string;

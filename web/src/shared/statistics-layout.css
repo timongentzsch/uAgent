@@ -17,10 +17,3 @@
   text-align: right;
   overflow-wrap: anywhere;
 }
-.stats-open {
-  width: 100%;
-  min-height: auto;
-  margin-block: calc(-1 * var(--space-3));
-  padding: var(--space-3) 0;
-  justify-content: flex-end;
-}

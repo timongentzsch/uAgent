@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <map>
 #include <string>
 #include <string_view>
@@ -265,6 +267,13 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   }
   const json& messages = *chosen;
   PublishSideContext();
+  // The parts the checkpoint just took ride on the request's usage events,
+  // which the batcher may coalesce.
+  json parts;
+  {
+    std::lock_guard lock(side_mutex_);
+    parts = side_context_->record.state.context_parts;
+  }
   const size_t schema_bytes = &schemas == &available_schemas_.Schemas()
                                   ? available_schemas_.Bytes()
                                   : JsonEstimatedBytes(schemas);
@@ -306,8 +315,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   size_t published_response_bytes = 0;
   bool progress_pending = false;
   auto emit_progress = [this, estimated_bytes, &published_usage,
-                        &published_response_bytes](const json& reported,
-                                                   size_t response_bytes) {
+                        &published_response_bytes,
+                        &parts](const json& reported, size_t response_bytes) {
     Usage provisional = session_usage_, current;
     current.Add(reported);
     provisional.Merge(current);
@@ -315,9 +324,10 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     // billing tokens. Keep the same estimate when a provider reports no usage.
     int64_t context =
         ContextTokens(SaturatingAdd(estimated_bytes, response_bytes));
-    Emit(Event{
-        EventId::kUsageUpdated,
-        {{"usage", UsageJson(provisional)}, {"context_tokens", context}}});
+    Emit(Event{EventId::kUsageUpdated,
+               {{"usage", UsageJson(provisional)},
+                {"context_tokens", context},
+                {"context_parts", parts}}});
     published_usage = reported;
     published_response_bytes = response_bytes;
   };
@@ -536,11 +546,7 @@ int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
   int64_t used = ContextTokens(bytes);
   int64_t pending = EstimatedTokens(pending_bytes);
   if (api_.ctx_window > 0) {
-    // An uncapped response can still only be budgeted by the ceiling.
-    int64_t ceiling = api_.ctx_window / kDefaultResponseReserveDivisor;
-    int64_t configured = MaxOutputTokens();
-    int64_t reserve = configured > 0 ? std::min(configured, ceiling) : ceiling;
-    int64_t tokens = used + pending + reserve;
+    int64_t tokens = used + pending + ResponseReserve();
     if (projected_tokens) *projected_tokens = tokens;
     double projected = static_cast<double>(tokens);
     if (projected >= static_cast<double>(api_.ctx_window)) return 100;
@@ -554,6 +560,13 @@ int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
                               static_cast<double>(kRequestBytes));
 }
 
+// An uncapped response can still only be budgeted by the ceiling.
+int64_t Agent::ResponseReserve() const {
+  int64_t ceiling = api_.ctx_window / kDefaultResponseReserveDivisor;
+  int64_t configured = MaxOutputTokens();
+  return configured > 0 ? std::min(configured, ceiling) : ceiling;
+}
+
 bool Agent::ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
                                    int64_t& pressure,
                                    int64_t& projected_tokens) const {
@@ -562,6 +575,97 @@ bool Agent::ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
   int64_t tokens = AutoCompactTokens();
   return (pct > 0 && pressure >= pct) ||
          (tokens > 0 && projected_tokens >= tokens);
+}
+
+json Agent::ContextParts() const {
+  std::map<std::string, size_t> bytes;
+  for (const char* part : {"tool_results", "replies", "messages", "files",
+                           "notes", "mcp", "instructions", "memory"}) {
+    bytes[part] = 0;
+  }
+  // The message list's own bytes, as JsonEstimatedBytes counts an array.
+  bytes["system"] = JsonEstimatedBytes(json::array());
+  const std::string instructions =
+      project_instructions_.text.empty() ? "" : ProjectInstructionText();
+  const std::string memory = MemoryText();
+  const json& messages = conversation_.Messages();
+  for (size_t index = 0; index < messages.size(); ++index) {
+    const json& message = messages[index];
+    const size_t size = JsonEstimatedBytes(message);
+    // Of the message, `own` bytes are `part`'s and the rest `rest`'s.
+    auto split = [&](const char* part, size_t own, const char* rest) {
+      own = std::min(own, size);
+      bytes[part] += own;
+      bytes[rest] += size - own;
+    };
+    switch (conversation_.KindAt(index)) {
+      case MessageKind::kSystem:
+        // ResolvePrompt joins the instructions on after a blank line.
+        split("instructions",
+              instructions.empty() ? 0 : instructions.size() + 2, "system");
+        break;
+      case MessageKind::kUser: {
+        size_t files = 0;
+        if (const json* content = JsonArray(message, "content")) {
+          for (const json& part : *content) {
+            if (JsonValue(part, "type", "") != "text") {
+              files += JsonEstimatedBytes(part);
+            }
+          }
+        }
+        split("files", files, "messages");
+        break;
+      }
+      case MessageKind::kAttachment:
+        bytes["files"] += size;
+        break;
+      case MessageKind::kAssistant:
+        bytes["replies"] += size;
+        break;
+      case MessageKind::kToolResult:
+        bytes["tool_results"] += size;
+        break;
+      case MessageKind::kRuntimeContext: {
+        const std::string* text = JsonStringRef(message, "content");
+        split("memory",
+              !memory.empty() && text && text->find(memory) != text->npos
+                  ? memory.size()
+                  : 0,
+              "notes");
+        break;
+      }
+      case MessageKind::kInternal:
+        bytes["notes"] += size;
+        break;
+    }
+  }
+  size_t total = 0;
+  for (const auto& [part, size] : bytes) total = SaturatingAdd(total, size);
+  bytes["mcp"] = std::min(
+      JsonValue(JsonValue(tool_counts_, "mcp", json()), "bytes", size_t{0}),
+      schema_bytes_);
+  // The rest of the offered schemas, the array around them included.
+  bytes["tools"] = schema_bytes_ - bytes["mcp"];
+  total = SaturatingAdd(total, schema_bytes_);
+  // The used tokens at which ContextNeedsCompaction starts one; 0 for never.
+  int64_t compacts_at = 0;
+  const int64_t pct = std::clamp(AutoCompactPct(), int64_t{0}, int64_t{100});
+  if (api_.ctx_window > 0 && (pct > 0 || AutoCompactTokens() > 0)) {
+    int64_t limit = pct > 0 ? (api_.ctx_window * pct + 99) / 100 : INT64_MAX;
+    if (AutoCompactTokens() > 0) limit = std::min(limit, AutoCompactTokens());
+    compacts_at = std::max<int64_t>(0, limit - ResponseReserve());
+  }
+  const std::vector<std::string>& sources = project_instructions_.sources;
+  return {{"tokens", ContextTokens(total)},
+          {"bytes", total},
+          {"parts", bytes},
+          {"compacts_at", compacts_at},
+          {"tools", tool_counts_},
+          {"instructions",
+           sources.size() == 1
+               ? std::filesystem::path(sources[0]).filename().string()
+           : sources.empty() ? ""
+                             : std::to_string(sources.size()) + " files"}};
 }
 
 Agent::MidturnCompact Agent::MaybeCompactDuringTurn(Usage& usage,

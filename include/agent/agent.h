@@ -127,6 +127,8 @@ class Agent {
   // The items its last todo call left; empty when it has none.
   json Todo() const;
   json ToolCatalogue() const;
+  // The catalogue as of the last side checkpoint; safe beside a running turn.
+  json PublishedCatalogue() const;
   // The tools switched on, by name: the most a delegated child may be given.
   std::vector<std::string> EnabledTools() const;
   json ConfigureTools(const json& request);
@@ -152,6 +154,10 @@ class Agent {
 
   // An estimate: provider usage may be cumulative or stale.
   int64_t ContextUsed() const;
+  // What fills ContextUsed(), which it equals as `tokens`: estimated bytes
+  // per part, which sum to `bytes`, the tools counted, and where compaction
+  // starts.
+  json ContextParts() const;
 
   // Summarizes the conversation with the model and restarts from the summary.
   bool Compact(bool automatic = false, Usage* turn_usage = nullptr);
@@ -333,6 +339,8 @@ class Agent {
                              const json* messages = nullptr) const;
   // The byte estimate, corrected by what the provider last reported beyond it.
   int64_t ContextTokens(size_t bytes) const;
+  // The tokens kept free for the reply when a window is known.
+  int64_t ResponseReserve() const;
   int64_t ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
                              int64_t* projected_tokens = nullptr) const;
   bool ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
@@ -418,6 +426,9 @@ class Agent {
   ToolSelection tool_selection_;
   ToolSchemaCache available_schemas_;
   size_t schema_bytes_ = 0;
+  // The offered tools, MCP's and the rest, and those not offered, with
+  // their schema bytes: the catalogue's rows counted where it is read.
+  json tool_counts_ = json::object();
   Approver approve_;
   ToolRefresher refresh_tools_;
   ReportJudge judge_report_;
@@ -498,6 +509,7 @@ class Agent {
   struct SideCheckpoint {
     SessionRecord record;
     std::shared_ptr<const json> archive;
+    json catalogue;
   };
   std::shared_ptr<const SideCheckpoint> side_context_
       UAGENT_GUARDED_BY(side_mutex_);

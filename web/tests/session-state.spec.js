@@ -544,3 +544,37 @@ test("denied browser storage keeps the conversation usable in memory", async ({
   await expect(page.locator(".transcript")).toContainText("Verified response");
   await expect(prompt).toHaveValue("");
 });
+
+test("opening a statistics fold leaves the conversation's status alone", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  await page
+    .getByRole("button", { name: "Conversation statistics", exact: true })
+    .click();
+  const sheet = page.getByRole("dialog", { name: "Conversation statistics" });
+  await expect(sheet.getByRole("img", { name: /compacts at/ })).toBeVisible();
+  await page.evaluate(() => {
+    globalThis.statusChanges = [];
+    const observer = new MutationObserver((records) =>
+      globalThis.statusChanges.push(
+        ...records.map((record) => record.target.textContent),
+      ),
+    );
+    for (const node of document.querySelectorAll(
+      ".conversation-head, .session-state",
+    ))
+      observer.observe(node, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        characterData: true,
+      });
+  });
+  await sheet.getByRole("button", { name: /^Tools \d+/ }).click();
+  await expect(sheet.locator(".context-tools li").first()).not.toHaveText(
+    "Loading the list…",
+  );
+  expect(await page.evaluate(() => globalThis.statusChanges)).toEqual([]);
+});

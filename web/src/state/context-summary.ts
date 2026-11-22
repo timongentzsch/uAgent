@@ -7,16 +7,7 @@ const share = (used: number, limit?: number) =>
     ? Math.floor((Math.max(0, Math.min(limit - used, limit)) * 100) / limit)
     : undefined;
 
-// Match the CLI's context summary; unknown limits never imply free capacity.
-export function contextSummary(used?: number, limit?: number) {
-  if (!known(used)) return "est. ctx —";
-  const left = share(used, limit);
-  return left === undefined
-    ? `est. ctx ${count(used)}`
-    : `est. ctx ${count(used)}/${count(limit)} · ${left}% left`;
-}
-
-// The same, short enough for the composer's one field.
+// Unknown limits never imply free capacity.
 export function contextLeft(used?: number, limit?: number) {
   if (!known(used)) return "Context —";
   const left = share(used, limit);

@@ -38,9 +38,20 @@ display fields that are not contract.
 `v`, `epoch`, `cursor`, `metadata`, `state`, `pending`, and `live_truncated`
 for a running conversation or `live: []` for a saved one. A saved
 conversation's `state` has `view` (one page of transcript rows), `usage`,
-`context_tokens`, `context_window`, `model`, `turns`, `statistics`, `http`,
-`route`, `permissions`; a running one's is the runtime's own state. Query
-parameters select other reads:
+`context_tokens`, `context_window`, `context_parts`, `model`, `turns`,
+`statistics`, `http`, `route`, `permissions`; a running one's is the
+runtime's own state. Query parameters select other reads:
+
+`context_parts` (`Agent::ContextParts()`, sent wherever `context_tokens`
+is, a model request's usage frames included; absent in a file saved before
+it) says what fills the context: `tokens` (`context_tokens` as of it),
+`bytes` and `parts`, the estimated request bytes of `tool_results`,
+`replies`, `messages`, `files`, `notes`, `tools`, `mcp`, `system`,
+`instructions` and `memory`, which sum to `bytes`; `tools` (`tools`, `mcp`,
+`hidden`: each `count` and schema `bytes`, hidden ones not offered);
+`compacts_at`, the `context_tokens` at which automatic compaction starts (0
+for none); `instructions`, the file's name. A part's tokens are its share of
+`bytes` times `tokens`.
 
 | Query | Returns |
 | --- | --- |

@@ -174,7 +174,6 @@ export default function Modals({
               modal={modal}
               held={held}
               loadSnapshot={load}
-              online={online}
               showContext={
                 modal.session_id === selected ? () => showContext() : undefined
               }

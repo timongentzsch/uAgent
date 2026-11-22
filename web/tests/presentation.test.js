@@ -1,4 +1,4 @@
-import { contextSummary, contextLeft } from "../src/state/context-summary.ts";
+import { contextLeft } from "../src/state/context-summary.ts";
 import { duration } from "../src/shared/duration.ts";
 import {
   diffLineClass,
@@ -153,12 +153,7 @@ test("durations scale consistently with the CLI", () => {
   assert.equal(duration(undefined), "Not recorded");
 });
 
-test("context headroom matches CLI rounding and handles unknown and exceeded limits", () => {
-  assert.equal(contextSummary(4600, 1300000), "est. ctx 4.6k/1.3M · 99% left");
-  assert.equal(contextSummary(20469, 0), "est. ctx 20.5k");
-  assert.equal(contextSummary(0, 1000), "est. ctx 0/1k · 100% left");
-  assert.equal(contextSummary(2000, 1000), "est. ctx 2k/1k · 0% left");
-  assert.equal(contextSummary(undefined, 1000), "est. ctx —");
+test("context headroom rounds down and handles unknown and exceeded limits", () => {
   assert.equal(contextLeft(4600, 1300000), "99% left");
   assert.equal(contextLeft(20469, 0), "Context 20.5k");
   assert.equal(contextLeft(2000, 1000), "0% left");

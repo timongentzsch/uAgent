@@ -150,17 +150,9 @@ void DrawRows(const json& node, size_t level, bool open, bool thinking) {
         UserEchoRow(InputPrompt(), text) + "\n" +
         AttachmentDeliveryRows(JsonValue(node, "deliveries", json::array())));
   } else if (kind == "thinking") {
-    // A thought reads as text, fainter than a reply: whole where it is open,
-    // its first lines where only its work is.
-    std::string thought = Trim(text);
+    // A thought reads as text, fainter than a reply, and whole.
+    const std::string thought = Trim(text);
     if (thought.empty()) return;
-    if (!open) {
-      std::ranges::replace(thought, '\n', ' ');
-      const size_t width = TerminalWidth(1);
-      thought = DisplayTrunc(
-          thought,
-          kThoughtLines * (width > pad.size() ? width - pad.size() : 1));
-    }
     std::string rows;
     std::istringstream input(thought);
     for (std::string line; std::getline(input, line);) {

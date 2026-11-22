@@ -348,8 +348,7 @@ TEST_CASE(TestGoldenChainOfCalls) {
     CHECK(drawn.find("look first") == std::string::npos);
     CHECK(drawn.find("· Read a.txt · 1 line · 5ms\n") != std::string::npos);
   }
-  // A long thought is cut to its first lines where only its work is open,
-  // and whole where everything is.
+  // A long thought is whole wherever it is drawn.
   {
     json nodes = ConversationView(turn.History())["nodes"];
     std::string lengthy;
@@ -366,9 +365,8 @@ TEST_CASE(TestGoldenChainOfCalls) {
       shown.ShowThinking(true);
       return Plain(CaptureStdout([&] { shown.Draw({{"nodes", nodes}}); }));
     };
-    CHECK(drawn("default").find("    reason reason") != std::string::npos);
-    CHECK(drawn("default").find("the end") == std::string::npos);
-    CHECK(drawn("full").find("the end") != std::string::npos);
+    CHECK(drawn("default").find("    " + lengthy + "\n") != std::string::npos);
+    CHECK(drawn("full").find("    " + lengthy + "\n") != std::string::npos);
   }
   // Live, a step is drawn once it ends, in the tree's order, and the work's
   // line once the turn does: after the answer, which streamed.

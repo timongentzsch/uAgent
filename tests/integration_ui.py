@@ -213,6 +213,31 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
         assert_true(b"\xc2\xb7 Thinking" not in compact, compact)
 
 
+def test_a_long_thought_is_drawn_whole_among_the_steps(root, home, *, binary):
+    # Where only the work is open, a thought is not cut to its first lines.
+    thought = " ".join(f"thought{n}" for n in range(60))
+
+    def work(handler, _):
+        write_sse_sequence(
+            handler,
+            [event({"reasoning": thought}, finish=None), tool_call("read_path", {"path": "."})],
+        )
+
+    with Server([work, event({"content": "Final answer"})]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_MEMORY"] = "0"
+        code, output = run_pty(
+            root,
+            env,
+            [(b"go\n", b"Final answer", b"Ready", None), b"/q\n"],
+            timeout=10,
+            binary=binary,
+        )
+    assert_true(code == 0, output)
+    plain = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", output)
+    assert_true(thought.encode() in plain, plain)
+
+
 def test_no_color_keeps_bold_italic_and_dim(root, home, *, binary):
     # NO_COLOR removes colour, and only colour: bold, italic and dim are
     # attributes, and inline code keeps the backticks that mark it.

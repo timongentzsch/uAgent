@@ -545,6 +545,12 @@ class WorkerChannel final : public ApplicationChannel {
     if (kind == SessionCommandKind::kSteer && !turn_active_) {
       kind = SessionCommandKind::kSubmit;
     }
+    // Reading the tool catalogue changes nothing: it is answered beside a
+    // turn, as an activity read is, and never shows the session busy.
+    if (kind == SessionCommandKind::kTools &&
+        JsonValue(parsed.raw, "operation", "catalog") == "catalog") {
+      kind = SessionCommandKind::kActivity;
+    }
     if (closed_) return false;
     switch (kind) {
       case SessionCommandKind::kClose:

@@ -59,12 +59,12 @@ const CATALOGUE = {
   schema_bytes: 24400,
   full_schema_bytes: 26008,
   tools: [
-    tool("read_path", 1184),
-    tool("apply_patch", 2448),
-    tool("run", 2192),
-    tool("skill", 800),
-    tool("github_create_issue", 1552, mcp),
-    tool("github_get_file", 1008, mcp),
+    tool("read_path", 3217),
+    tool("apply_patch", 6652),
+    tool("run", 5956),
+    tool("skill", 2175),
+    tool("github_create_issue", 3900, mcp),
+    tool("github_get_file", 2500, mcp),
     tool("browser", 1608, { active: false }),
   ],
 };
@@ -156,10 +156,10 @@ test("the parts are drawn with the sheet, and a fold reads its list", async ({
   await expect(sheet.locator(".context-tools")).toHaveText("Loading the list…");
   release();
   await expect(sheet.locator(".context-tools li")).toHaveText([
-    /^apply_patch\s*612$/,
-    /^run\s*548$/,
-    /^read_path\s*296$/,
-    /^skill\s*200$/,
+    /^apply_patch\s*1.7k$/,
+    /^run\s*1.5k$/,
+    /^read_path\s*804$/,
+    /^skill\s*544$/,
   ]);
   expect(sent.map((body) => [body.kind, body.operation])).toEqual([
     ["tools", "catalog"],

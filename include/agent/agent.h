@@ -127,6 +127,8 @@ class Agent {
   // The items its last todo call left; empty when it has none.
   json Todo() const;
   json ToolCatalogue() const;
+  // The catalogue as of the last side checkpoint; safe beside a running turn.
+  json PublishedCatalogue() const;
   // The tools switched on, by name: the most a delegated child may be given.
   std::vector<std::string> EnabledTools() const;
   json ConfigureTools(const json& request);
@@ -507,6 +509,7 @@ class Agent {
   struct SideCheckpoint {
     SessionRecord record;
     std::shared_ptr<const json> archive;
+    json catalogue;
   };
   std::shared_ptr<const SideCheckpoint> side_context_
       UAGENT_GUARDED_BY(side_mutex_);

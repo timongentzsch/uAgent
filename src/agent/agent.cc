@@ -84,6 +84,7 @@ void Agent::PublishSideContext() {
   auto checkpoint = std::make_shared<SideCheckpoint>();
   checkpoint->record = Snapshot();
   checkpoint->archive = conversation_.SharedArchive();
+  checkpoint->catalogue = ToolCatalogue();
   SessionRecord* context = &checkpoint->record;
   context->state.messages = conversation_.Messages();
   context->state.message_kinds = conversation_.Kinds();
@@ -325,6 +326,10 @@ json Agent::Todo() const {
       json::array());
 }
 json Agent::ToolCatalogue() const { return tool_selection_.Catalogue(tools_); }
+json Agent::PublishedCatalogue() const {
+  std::lock_guard lock(side_mutex_);
+  return side_context_->catalogue;
+}
 
 std::vector<std::string> Agent::EnabledTools() const {
   std::vector<std::string> names;
@@ -528,17 +533,20 @@ int64_t Agent::ContextUsed() const {
 
 void Agent::InvalidateToolSchemas(bool force_system) {
   available_schemas_.Reset();
-  const json catalogue = tool_selection_.Catalogue(tools_);
-  schema_bytes_ = catalogue["schema_bytes"];
+  // Estimated as a request's are, so the total between turns is the one a
+  // request starts from.
+  available_schemas_.Get(tools_, schemas_, &tool_selection_);
+  schema_bytes_ = available_schemas_.Bytes();
   tool_counts_ = json::object();
-  for (const json& tool : catalogue["tools"]) {
-    const char* kind = !tool["active"]             ? "hidden"
-                       : tool["category"] == "mcp" ? "mcp"
-                                                   : "tools";
-    json& count = tool_counts_[kind];
+  for (size_t i = 0; i < tools_.size() && i < schemas_.size(); ++i) {
+    const Tool& tool = tools_[i];
+    if (tool.available && !tool.available()) continue;
+    json& count = tool_counts_[!tool_selection_.Enabled(tool)      ? "hidden"
+                               : tool.provider.starts_with("mcp:") ? "mcp"
+                                                                   : "tools"];
     count["count"] = JsonValue(count, "count", size_t{0}) + 1;
-    count["bytes"] = JsonValue(count, "bytes", size_t{0}) +
-                     tool["schema_bytes"].get<size_t>();
+    count["bytes"] =
+        JsonValue(count, "bytes", size_t{0}) + JsonEstimatedBytes(schemas_[i]);
   }
   logged_schemas_.clear();
   RefreshSystemMessage(force_system);
@@ -547,6 +555,7 @@ void Agent::InvalidateToolSchemas(bool force_system) {
 void Agent::RebuildToolSchemas() {
   schemas_ = ToolSchemas(tools_);
   InvalidateToolSchemas(false);
+  PublishSideContext();
   DebugLog("tool_registry_refreshed",
            {{"tools", tools_.size()}, {"schema_bytes", schema_bytes_}});
 }

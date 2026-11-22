@@ -651,3 +651,52 @@ def test_a_new_event_stream_replaces_the_oldest_one_when_the_limit_is_reached(
         assert_true(not any(ended.is_set() for _, ended in watched[1:]), "a newer stream ended")
         for open_connection, _ in [*open_streams, (connection, response)]:
             drop_event_stream(open_connection)
+
+
+def test_the_context_parts_follow_a_turn_and_reading_tools_changes_no_status(root, home, *, binary):
+    asked = threading.Event()
+    release = threading.Event()
+
+    def responder(_, _body):
+        asked.set()
+        release.wait(timeout=budget(10))
+        return event({"content": "done"})
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url, extra_env={"UAGENT_CONTEXT": "32768"}) as (
+            client,
+            code,
+            _,
+            _,
+        ):
+            client.pair(code)
+            session = client.create(root)
+            # A catalogue read is answered at once and the conversation stays idle.
+            connection, response = client.events()
+            read = client.command("tools", session, operation="catalog")
+            request_id = f"{client.sequence:032x}"
+            assert_true(not read.get("pending") and read["result"]["tools"], read)
+            for line in response:
+                if not line.startswith(b"data: "):
+                    continue
+                assert_true(b"processing" not in line, line)
+                if request_id.encode() in line:
+                    break
+            connection.close()
+
+            client.command("submit", session, text="Wait for the model")
+            assert_true(asked.wait(timeout=budget(10)), "the model was not asked")
+            try:
+                running = client.until(session, lambda value: value["metadata"]["turn_active"])
+                parts = running["state"]["context_parts"]
+                assert_true(
+                    sum(parts["parts"].values()) == parts["bytes"]
+                    and parts["tokens"] == running["state"]["context_tokens"]
+                    and parts["parts"]["messages"] > 0,
+                    running["state"],
+                )
+                during = client.command("tools", session, operation="catalog")
+                assert_true(not during.get("pending") and during["result"]["tools"], during)
+            finally:
+                release.set()
+            client.until(session, lambda value: value["metadata"]["status"] == "idle")

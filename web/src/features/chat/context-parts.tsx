@@ -80,9 +80,8 @@ export default function ContextSection({
   const tokens = shown ? shown.tokens : state?.context_tokens;
   const capacity = state?.context_window;
   const [open, setOpen] = useState<Partial<Record<Kind, boolean>>>({});
-  const live = !!session?.generation && !session.turn_active && online;
+  const live = !!session?.generation && online;
   const wanted = Object.values(open).some(Boolean);
-  // The last list stays while a turn runs.
   const { value: catalogue, error } = useResource(
     () =>
       wanted && live
@@ -116,13 +115,9 @@ export default function ContextSection({
   const usedShare = capacity && tokens ? (tokens * 100) / capacity : 0;
   const missing = error
     ? failure(error).message
-    : session?.turn_active
-      ? "The list shows when this turn ends."
-      : !online
-        ? "The list shows when the host is back online."
-        : !session?.generation
-          ? "The list shows once this conversation runs."
-          : "Loading the list…";
+    : live
+      ? "Loading the list…"
+      : "The list shows once this conversation runs.";
 
   const row = (
     key: string,
@@ -148,7 +143,7 @@ export default function ContextSection({
           )}
         </span>
         <span>
-          <DataText>{count(size)}</DataText>
+          <DataText>{count(Math.round(size))}</DataText>
         </span>
         <span class="muted">
           <DataText>{ratio}</DataText>
@@ -161,7 +156,10 @@ export default function ContextSection({
           <div class="context-row">{body}</div>
         </li>
       );
+    // The catalogue measures schemas exactly, the parts as requests do:
+    // the list is spread over its row's tokens.
     const tools = lists[fold];
+    const each = size / tools.reduce((sum, tool) => sum + tool.schema_bytes, 0);
     return (
       <li key={key} data-quiet={quiet || undefined}>
         <Button
@@ -180,7 +178,7 @@ export default function ContextSection({
               tools.map((tool) => (
                 <li key={tool.name}>
                   <span>{toolName(tool)}</span>
-                  {count(tool.schema_bytes * scale)}
+                  {count(Math.round(tool.schema_bytes * each))}
                 </li>
               ))
             ) : (

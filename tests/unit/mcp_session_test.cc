@@ -459,9 +459,7 @@ TEST_CASE(TestContextBreakdown) {
   const int64_t compacts_at = breakdown["compacts_at"];
   CHECK(compacts_at > 0 && compacts_at < 200000);
   // The MCP server's tool alone; the skill-gated tool is not offered.
-  const json catalogue = agent.ToolCatalogue();
-  CHECK(parts.at("mcp") == catalogue["tools"][1]["schema_bytes"]);
-  CHECK(parts.at("tools") + parts.at("mcp") == catalogue["schema_bytes"]);
+  CHECK(parts.at("mcp") == breakdown["tools"]["mcp"]["bytes"]);
   CHECK(breakdown["tools"]["mcp"]["count"] == 1);
   CHECK(breakdown["tools"]["tools"]["count"] == 2);
   CHECK(breakdown["tools"]["hidden"]["count"] == 1);

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changes
+
+- **The home screen on a phone puts the question first.** "What are we working on?" stands in the middle with the last three conversations as plain lines under it and the box below; the lists give way while you type, so the question and the box have the screen.
+
 ### Fixes
 
 - **An MCP server that has stopped no longer has its tools offered.** Its tools leave what the model is offered, and the context view's MCP row, at the next turn; before, the model kept being offered them and every call failed until the server was restarted.

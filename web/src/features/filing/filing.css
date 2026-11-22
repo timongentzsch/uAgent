@@ -51,3 +51,19 @@
 .home-list li > :not(:first-child) {
   margin-right: var(--pad);
 }
+/* Narrow, the latest three stand as plain lines and the drawer holds the
+   rest. */
+@container column (max-width: 43rem) {
+  .home-list.recent ul {
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .home-list.recent li {
+    border-top: 0;
+  }
+  .home-list.recent li:nth-child(n + 4),
+  .home-list.recent .row-detail {
+    display: none;
+  }
+}

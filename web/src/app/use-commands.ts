@@ -15,6 +15,7 @@ import { requestId, useApi } from "../state/api.ts";
 import type { HostState } from "../state/use-host.ts";
 import {
   holdable,
+  guidanceKind,
   messageText,
   outgoingStatus,
   sendOf,
@@ -251,10 +252,11 @@ export function useCommands({
     request_id = requestId(),
   ) {
     setBusy(true);
-    const kind = running && !snapshots.get()[id]?.pending ? "steer" : "submit";
+    const kind =
+      running && !snapshots.get()[id]?.pending ? guidanceKind : "submit";
     const text = messageText(sent);
     const queued =
-      kind === "steer" &&
+      kind === guidanceKind &&
       (queue ? outgoingStatus.next : outgoingStatus.guidance);
     const visible = !text.startsWith("/") || sent.files.length;
     const row: Outgoing = {

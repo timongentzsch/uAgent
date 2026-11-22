@@ -30,6 +30,7 @@ import { applyEvent as applyHostEvent } from "./apply-event.ts";
 import { api, hostApi, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
 import {
+  guidanceKind,
   queuedGuidance,
   sendOf,
   waitingToSend,
@@ -571,7 +572,9 @@ export function useHost(
             const session = sessionById(list.sessions, item.session_id);
             if (receipt.unknown && queuedGuidance(item) && session?.turn_active)
               receipt = await hostApi(session.host || "")
-                .command("steer", session, sendOf(item), { streamed: false })
+                .command(guidanceKind, session, sendOf(item), {
+                  streamed: false,
+                })
                 // Not taken: it stays unconfirmed, to be sent again by hand.
                 .catch(() => receipt);
             settleOutgoing({ ...receipt, request_id: item.request_id });

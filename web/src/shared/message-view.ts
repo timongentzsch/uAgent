@@ -15,6 +15,9 @@ export const outgoingStatus = {
   unconfirmed: "Not confirmed",
 };
 
+// Guidance for a running turn, queued or not, goes as a steer.
+export const guidanceKind = "steer";
+
 // What a message of yours sends, read from its row: a first send and a send
 // again carry the same fields, so the host takes it once.
 export const sendOf = (

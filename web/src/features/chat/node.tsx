@@ -29,7 +29,7 @@ import { Refusal, refusalOf } from "./refusal.tsx";
 import { MessageView } from "./message.tsx";
 
 // How much of the agent's work is drawn: the level, and whether thinking is.
-export interface Display {
+interface Display {
   detail: string;
   thinking: boolean;
 }

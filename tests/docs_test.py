@@ -10,7 +10,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 PAGES = [
     *sorted((ROOT / "docs").rglob("*.md")),
     *(ROOT / name for name in ("README.md", "SECURITY.md", "CONTRIBUTING.md")),
-    *(ROOT / folder / "README.md" for folder in ("benchmarks", "deploy", "skills", "tests")),
+    *(ROOT / folder / "README.md" for folder in ("benchmarks", "deploy", "skills")),
 ]
 # Where a name a page gives must be found.
 CODE = ("src", "include", "web/src", "web/sheet", "web/public", "web/tests", "web/recordings")

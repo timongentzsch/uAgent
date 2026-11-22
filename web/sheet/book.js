@@ -489,7 +489,7 @@ const bytes = (text) => new TextEncoder().encode(text).length;
 // The tabs as an engine's workbook, made paused. Only a worker of the page
 // calculates one: a formula the engine never returns from holds still the
 // thread it calculates on.
-export const workbookOf = (engine, tabs, ruled = tabs.map(rulesOf)) => {
+const workbookOf = (engine, tabs, ruled = tabs.map(rulesOf)) => {
   const model = new engine.Model("Sheet", "en", "UTC", "en");
   model.pauseEvaluation();
   // Named as it is made: a later tab may bear the next default name.

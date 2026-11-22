@@ -7,17 +7,8 @@ First-party C++ follows the
 
 ## Verify
 
-Build and run the hermetic suite; it needs no API key or network:
-
-```sh
-(cd web && npm ci && npm run build)
-cmake --preset debug
-cmake --build --preset debug --parallel
-ctest --preset debug --output-on-failure
-```
-
-While iterating, run one case instead; [Testing](docs/testing.md#common-cases)
-shows how.
+The hermetic suite needs no API key or network. [Testing](docs/testing.md#common-cases)
+shows how to build and run it, and how to run one case while iterating.
 
 Before a commit, run what CI checks on every change:
 

@@ -1290,6 +1290,18 @@ test("the grid reaches the spreadsheet's last row whatever a browser can scroll:
     expect(await area()).toBe(span);
   }
 
+  // A scrollbar's thumb taken into the stretch's outer quarter is no rest
+  // that moves the stretch: the view stays where the thumb put it.
+  await app.clock.fastForward(RESTED);
+  await page.evaluate(async (_, y) => {
+    scrollTo(0, y);
+    await new Promise((done) =>
+      requestAnimationFrame(() => requestAnimationFrame(done)),
+    );
+  }, span * 0.9);
+  await app.clock.fastForward(RESTED);
+  expect(await placed()).toBeGreaterThan((span * 3) / 4);
+
   // Another look from the app, with higher rows, leaves the view on the
   // row it began with.
   const first = () =>

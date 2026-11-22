@@ -79,6 +79,17 @@ async function open(page) {
   });
   await page.addInitScript(
     ({ epoch, open }) => {
+      // No worker here: its failed registration's banner covers the page.
+      Object.defineProperty(navigator, "serviceWorker", {
+        value: {
+          register: () => new Promise(() => {}),
+          getRegistration: async () => undefined,
+          ready: new Promise(() => {}),
+          controller: null,
+          addEventListener() {},
+          removeEventListener() {},
+        },
+      });
       globalThis.EventSource = class extends EventTarget {
         readyState = 1;
         constructor() {
@@ -247,3 +258,55 @@ test("a list's marks are squares told apart by their fill", async ({
   }
   expect(await workAnimations(page)).toBe(0);
 });
+
+// A step at work shows its still mark where its arrow is; when it finishes
+// the arrow is back and its words have not moved.
+for (const width of [390, 1280])
+  test(`a finished step's words stay where they were (${width})`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await open(page);
+    const row = (id) => page.locator(`[data-message-id="${id}"] > .node-row`);
+    const words = (id) =>
+      row(id)
+        .locator(".node-headline")
+        .evaluate((node) => node.getBoundingClientRect().left);
+    await expect(row("w").locator(".status-led.running")).toBeVisible();
+    await expect(row("w").locator(".row-chevron")).toHaveCount(0);
+    await expect(row("w")).toHaveAttribute("aria-expanded", "false");
+    await row("w").click();
+    await expect(row("w")).toHaveAttribute("aria-expanded", "true");
+    // The running call has no arrow to open, and the same column.
+    await expect(row("c2").locator(".status-led.running")).toBeVisible();
+    const before = { group: await words("w"), step: await words("c2") };
+    expect(before.step).toBe(await words("c1"));
+    await page.evaluate(() => {
+      testSend({
+        kind: "node",
+        node: {
+          id: "c2",
+          parent: "w",
+          kind: "call",
+          state: "ok",
+          headline: { verb: "Read", target: "b.ts" },
+          body: { kind: "text", text: "read" },
+        },
+      });
+      testSend({
+        kind: "node",
+        node: {
+          id: "w",
+          parent: "u",
+          kind: "work",
+          state: "ok",
+          headline: { verb: "", target: "2 steps" },
+        },
+      });
+    });
+    await expect(row("w").locator(".row-chevron")).toBeVisible();
+    await expect(row("w").locator(".status-led")).toHaveCount(0);
+    await expect(row("c2").locator(".status-led")).toHaveCount(0);
+    expect(await words("w")).toBe(before.group);
+    expect(await words("c2")).toBe(before.step);
+  });

@@ -395,9 +395,12 @@ function RowLine({
   const word = [node.result?.word, elapsed].filter(Boolean).join(" · ");
   const content = (
     <>
-      <ChevronRight class="row-chevron" aria-hidden="true" />
-      {/* At work it says so by a still mark, not by motion. */}
-      {node.state === "running" && <StatusLed state="running" />}
+      {/* At work, a still mark stands in its arrow's place. */}
+      {node.state === "running" ? (
+        <StatusLed state="running" />
+      ) : (
+        <ChevronRight class="row-chevron" aria-hidden="true" />
+      )}
       <span class="node-headline" title={headline}>
         {node.state === "failed" && <span class="sr-only">Failed: </span>}
         {headline}

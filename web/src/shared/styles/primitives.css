@@ -695,8 +695,8 @@
     font-weight: var(--weight-regular);
   }
   /* A state as a square, told apart by its fill: outlined (idle), solid
-     (connected, unread, failed), or at work the status line band's
-     texture, standing still. */
+     (connected, unread), or at work the status line band's texture,
+     standing still; failed is the solid square turned on its point. */
   .status-led {
     display: inline-block;
     flex: none;
@@ -720,9 +720,11 @@
     margin-left: var(--space-4);
     background: currentColor;
   }
+  /* Failed: a diamond, so it is told apart in one colour too. */
   .status-led.failed {
     background: var(--removed);
     border-color: var(--removed);
+    rotate: 45deg;
   }
   /* The status line's sign of work (shared/work-band.tsx): its pixels are
      --space-1, three rows of them. */

@@ -389,7 +389,7 @@ int Master::Run() {
   fflush(stdout);
   std::thread stopping([&] {
     for (;;) {
-      std::vector<std::string> paths = host_.PresencePaths();
+      std::vector<std::string> paths{UagentDir(kHistoryDir)};
       // Whoever saves a setting (here, a terminal) reaches every browser.
       paths.push_back(SettingsPath());
       // Wakes for a catalogue scan the throttle deferred.

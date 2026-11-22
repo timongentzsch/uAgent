@@ -44,9 +44,11 @@ A session file lives in `history/` and holds two lines:
 
 The whole file is read with a 64 MiB cap (`kSessionReadBytes`); a save that
 would exceed it is refused. A session has two identities: the hash of its
-file name (`SessionIdFor`), which names its socket, its mailbox, the web's
-routes and agents' `parent`; and the header `session_id` (`uagent-<hash>`),
-which a fork names as its source. A move keeps both.
+file name (`SessionIdFor`), which names its socket, its mailbox, its usage
+ledger, the web's routes, pins and drafts, and agents' `parent`; and the
+header `session_id` (`uagent-<hash>`), which a fork names as its source and
+which keys the provider's prompt cache. Neither depends on the folder, and
+no file is ever renamed, so both last the conversation's life.
 
 Files beside `<name>.json`, all private:
 
@@ -118,8 +120,10 @@ folder, with the agents whose `agent.parent` chain leads to one
 Moving a conversation (`SessionHost::MoveConversation`): the family is the
 conversation and its agents. Busy members refuse the move; idle runtimes
 are closed. Each file, agents first, gets the new `cwd` where it had the
-old one, and the conversation a transcript note. No file moves, so ids,
-paths, pins, mail and scheduled runs stay as they are.
+old one, and the conversation a transcript note; the record the web host
+kept of it as a draft goes. No file moves, so ids, paths, pins, mail, the
+usage ledger, scheduled runs and side chats' link to it stay as they are.
+The host publishes `moved` for each member, and a page reads it again.
 
 ## Invariants and limits
 

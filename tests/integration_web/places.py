@@ -19,6 +19,7 @@ from integration_support import (
     tool_call,
     wait_until,
     write_mcp_server,
+    write_session,
 )
 from web_support import web_host
 
@@ -291,12 +292,24 @@ def test_web_space_is_renamed_and_deleted(root, home, *, binary):
             # One of its conversations is running: it is closed first.
             (space / "notes.txt").write_text("keep?")
             running = web.command("activate", session)["session"]
+            web.command("submit", running, text="hello")
+            web.until(running, lambda value: value["metadata"]["status"] == "idle")
+            elsewhere = root / "elsewhere"
+            elsewhere.mkdir()
+            agent = write_session(
+                home,
+                "agent-0123456789abcdef",
+                [{"role": "system", "content": "s"}],
+                cwd=elsewhere,
+                agent={"parent": running["id"], "edits": "folder", "depth": 1},
+            )
             assert_true(running.get("presence") == "active", running)
             deleted = web.command("space", action="delete", cwd=str(space))
             assert_true([s["name"] for s in deleted["result"]["spaces"]] == ["other"], deleted)
             assert_true(not space.exists(), "the workspace's folder is still there")
             left = [s["cwd"] for s in web.json("/api/sessions")[1]["sessions"]]
             assert_true(left == [other["cwd"]], left)
+            assert_true(not agent.exists(), "its agent working elsewhere is left")
 
 
 def test_idle_session_stops_and_a_message_starts_it_again(root, home, *, binary):

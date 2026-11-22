@@ -31,7 +31,8 @@ With no home directory (`HOME`, then the password entry) it is
 | `~/.uagent/openrouter-signin.json`, `.maintained` | a pending sign-in's verifier; the daily retention stamp | `setup`, `openrouter` control; runtimes | the same |
 
 `<name>` is `<UTC stamp>-uagent-<hash>` (terminal,
-headless), `web-<32 hex>`, `agent-<hash>` or `scheduled-<id>`. Retention is
+headless), `web-<32 hex>`, `agent-<16 hex>`, `fork-uagent-<hash>` or
+`scheduled-<id>`; unique across folders, since the name is the id. Retention is
 in [Sessions](../architecture/sessions.md#failure-modes).
 
 ## Settings and configuration: `~/.uagent/config`

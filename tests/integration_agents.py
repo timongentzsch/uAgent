@@ -654,6 +654,8 @@ def test_a_worktree_agent_works_in_a_worktree_of_a_git_folder_only(root, home, *
         # Saved in the history, working in a worktree of its own.
         assert_true(cwd.endswith("/worktrees/" + agent.stem), cwd)
         assert_true(agent.parent.name == "history", agent)
+        # Its name is its id among every folder's conversations: 16 hex digits.
+        assert_true(re.fullmatch(r"agent-[0-9a-f]{16}", agent.stem), agent)
 
 
 def test_an_agent_in_auto_is_judged_as_its_parent_is(root, home, *, binary):

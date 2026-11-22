@@ -17,7 +17,7 @@ from integration_support import (
     wait_until,
     write_session,
 )
-from web_support import web_host
+from web_support import WebClient, web_host
 
 LEAD = "lead"
 AGENTS = ("agent-0001", "agent-0002", "agent-0003")
@@ -206,9 +206,13 @@ def test_web_move_takes_a_conversation_and_its_agents_to_another_folder(root, ho
     with Server([lambda _, _body: event({"content": "resumed in beta"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
-            frames = watch(client)
             lead = listed(client, LEAD)
             assert_true(lead["id"] == session_id(old / f"{LEAD}.json"), lead)
+            # Another device has it open while this one moves it.
+            other = WebClient(client.port)
+            other.cookie = client.cookie
+            assert_true(note_for(alpha, beta) not in json.dumps(other.snapshot(lead)), "noted")
+            frames = watch(other)
             moved = client.command("move", lead, cwd=str(beta))["result"]
             ids = assert_whole(home, alpha, beta)
             assert_true(moved["id"] == ids[LEAD] and moved["cwd"] == str(beta.resolve()), moved)
@@ -220,6 +224,7 @@ def test_web_move_takes_a_conversation_and_its_agents_to_another_folder(root, ho
                 ),
                 f"no moved frame: {frames}",
             )
+            assert_true(note_for(alpha, beta) in json.dumps(other.snapshot(lead)), "not noted")
             # The agents are listed under it still, at the same ids.
             wait_until(
                 lambda: (
@@ -271,6 +276,7 @@ def test_web_move_of_a_conversation_made_in_the_web_closes_it_and_lists_it_once(
             assert_true(running["presence"] == "active", running)
             moved = client.command("move", running, cwd=str(beta))["result"]
             assert_true(moved["id"] == session["id"], moved)
+            assert_true(not list(drafts.glob("*.json")), "the draft record is left")
         with web_host(binary, root, home, provider.url) as (again, _, _, _):
             again.cookie = cookie
             ids = [item["id"] for item in sessions_of(again)]
@@ -338,6 +344,95 @@ def test_web_move_refuses_what_it_could_not_do_safely(root, home, *, binary):
             )
             client.command("move", client.snapshot(session)["metadata"], cwd=str(beta))
             assert_whole(home, alpha, beta)
+
+
+def test_web_move_lets_a_side_chat_merge_back_into_its_moved_conversation(root, home, *, binary):
+    """A side chat is no agent and stays where it is; it still finds the
+    conversation it branched from once that moved."""
+    alpha, beta = root / "alpha", root / "beta"
+    alpha.mkdir()
+    beta.mkdir()
+
+    def route(_, body):
+        text = text_of(body)
+        if "merges this side chat" in text:
+            return event({"content": "SIDE-SUMMARY"})
+        if "SIDE-SUMMARY" in text:
+            return event({"content": "PARENT-READ-IT"})
+        return event({"content": "said"})
+
+    with Server([route]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            parent = client.create(alpha)
+            client.command("submit", parent, text="hello")
+            client.until(parent, lambda value: idle(value) and "said" in json.dumps(value))
+            fork = client.command("side", parent, operation="create")["result"]
+            side = client.command("activate", {"id": fork["id"], "generation": ""})["session"]
+            client.until(side, idle)
+            parent = client.snapshot(parent)["metadata"]
+            client.command("move", parent, cwd=str(beta))
+            client.command("side", client.snapshot(side)["metadata"], operation="merge")
+            parent = client.command("activate", {"id": parent["id"], "generation": ""})["session"]
+            client.until(parent, lambda value: "PARENT-READ-IT" in json.dumps(value))
+
+
+def test_web_move_delivers_the_mail_waiting_for_its_conversation(root, home, *, binary):
+    alpha, beta = root / "alpha", root / "beta"
+    alpha.mkdir()
+    beta.mkdir()
+    old, _, _ = save_family(home, alpha, root)
+    lead, agent = old / f"{LEAD}.json", old / f"{AGENTS[0]}.json"
+    mailbox = home / ".uagent" / "mail" / session_id(lead)
+    (mailbox / "new").mkdir(parents=True)
+    (mailbox / "new" / "0000000000001-0-0-note.json").write_text(
+        json.dumps(
+            {
+                "format": 1,
+                "id": "note",
+                "from": session_id(agent),
+                "to": session_id(lead),
+                "sender_path": str(agent),
+                "hops": 0,
+                "created_ms": 1,
+                "expires_ms": 0,
+                "body": {"text": "MAIL-FROM-AGENT"},
+            }
+        )
+    )
+
+    def route(_, body):
+        sent = text_of(body)
+        return event({"content": "READ-MAIL" if "MAIL-FROM-AGENT" in sent else "nothing"})
+
+    with Server([route]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            moved = client.command("move", listed(client, LEAD), cwd=str(beta))["result"]
+            session = client.command("activate", {"id": moved["id"], "generation": ""})["session"]
+            client.until(session, lambda value: "READ-MAIL" in json.dumps(value))
+
+
+def test_web_move_keeps_the_spend_its_agents_left_to_count(root, home, *, binary):
+    alpha, beta = root / "alpha", root / "beta"
+    alpha.mkdir()
+    beta.mkdir()
+    old, _, _ = save_family(home, alpha, root)
+    ledger = home / ".uagent" / "activity" / f"usage-{session_id(old / f'{LEAD}.json')}.jsonl"
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.write_text(json.dumps({"usage": {"cost": 1.25}, "route": "test/test"}) + "\n")
+    with Server([event({"content": "counted"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            moved = client.command("move", listed(client, LEAD), cwd=str(beta))["result"]
+            session = client.command("activate", {"id": moved["id"], "generation": ""})["session"]
+            client.until(session, idle)
+            client.command("submit", session, text="go on")
+            value = client.until(
+                session, lambda value: idle(value) and "counted" in json.dumps(value)
+            )
+            assert_true(value["metadata"]["cost"] >= 1.25, value["metadata"])
+    assert_true(ledger.read_text() == "", "the agents' spend was not taken")
 
 
 def test_web_move_that_stopped_halfway_is_finished_by_moving_again(root, home, *, binary):

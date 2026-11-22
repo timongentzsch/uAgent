@@ -462,6 +462,23 @@ test("a state frame that restates its session keeps the session's object", async
   assert.equal(host.state.catalogue.sessions[0].turn_status, "Reading");
 });
 
+test("a moved conversation keeps its id and is read again", async () => {
+  const metadata = { id: "s", generation: "g" };
+  const { host, apply } = await eventHost({
+    epoch: "e",
+    cursor: 1,
+    metadata,
+    state: { phase: "idle" },
+  });
+  const calls = [];
+  host.refresh = () => calls.push("refresh");
+  host.forget = (id) => calls.push(`forget ${id}`);
+  apply({ kind: "moved", epoch: "e", sequence: 2, session_id: "s", generation: "" });
+  assert.deepEqual(calls, ["refresh"]);
+  assert.equal(host.selection.current, "s");
+  assert.equal(host.state.catalogue.sessions[0], metadata);
+});
+
 test("receipts retain queued guidance until the transcript consumes it", async () => {
   const { outgoingAfter } = await import("../src/state/store.ts");
   const { outgoingStatus: status } = await import(

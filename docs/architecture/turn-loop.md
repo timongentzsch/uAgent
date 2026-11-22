@@ -95,7 +95,7 @@ with the queued message. Guidance also ends a passive activity wait without
 stopping the command.
 
 Agents. `agent_start` (`src/app/agent_tools.cc`) writes a session file
-`agent-<hash>.json` beside the parent's with an `agent` header (`parent`,
+`agent-<16 hex>.json` in the history with an `agent` header (`parent`,
 `edits`, `depth`, `budget`), starts its runtime with `session::Open` and
 submits the brief with origin `parent`.
 

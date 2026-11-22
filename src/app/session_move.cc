@@ -234,6 +234,16 @@ std::string SessionHost::MoveConversation(
        ++member) {
     error = Rewrite(move, member->path, member == family.rend() - 1);
   }
+  // A conversation made in the web keeps the record it had as a draft; its
+  // folder is the file's now.
+  for (const SessionInfo& info : family) {
+    std::error_code ignored;
+    if (error.empty()) {
+      fs::remove(directory_ + "/" + kDraftsDir + "/" + SessionIdFor(info.path) +
+                     ".json",
+                 ignored);
+    }
+  }
   lock.lock();
   for (auto& [session, prior] : flagged) {
     session->status = prior;

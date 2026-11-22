@@ -279,31 +279,6 @@ TEST_CASE(TestSignalAndFileWatch) {
   CHECK(duplicate_changed == FileWaitResult::kInterrupted);
   CHECK(read(catalogue_wake[0], &byte, 1) == 1);
 
-  char host_home[] = "/tmp/uagent-watch-host-XXXXXX";
-  REQUIRE(mkdtemp(host_home) != nullptr);
-  {
-    ScopedEnv home("HOME", host_home);
-    const std::string project = std::string(host_home) + "/project";
-    const std::string web = std::string(host_home) + "/.uagent/web";
-    const std::string parent = UagentDir(kHistoryDir);
-    CreatePrivateDirectories(web + "/drafts");
-    CreatePrivateDirectories(parent);
-    REQUIRE(PathExists(web + "/drafts"));
-    REQUIRE(PathExists(parent));
-    for (size_t i = 0; i < 300; ++i) {
-      const std::string path = parent + "/web-" + std::to_string(i) + ".json";
-      const std::string id = SessionIdFor(path);
-      std::ofstream(web + "/drafts/" + id + ".json")
-          << JsonDump({{"id", id}, {"path", path}, {"cwd", project}});
-    }
-    session::SessionHost host("test", 4096, {}, web);
-    host.LoadDrafts();
-    const auto paths = host.PresencePaths();
-    CHECK(paths.size() == 1);
-    CHECK(std::count(paths.begin(), paths.end(), parent) == 1);
-  }
-  std::error_code host_remove_error;
-  std::filesystem::remove_all(host_home, host_remove_error);
   close(catalogue_wake[0]);
   close(catalogue_wake[1]);
   std::error_code remove_error;
@@ -1447,6 +1422,53 @@ TEST_CASE(TestChildSessionsStayOutOfTheCatalogue) {
     if (fs::path(info.path).stem() != "agent-aaaa1111") continue;
     CHECK(info.parent == SessionIdFor(parent));
     CHECK(AgentParentPath(info.path, info.parent) == parent);
+  }
+}
+
+TEST_CASE(TestAFolderHoldsWhatWorksInItAndTheAgentsUnderIt) {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("folder-sessions");
+  const fs::path dir = fs::path(UagentDir(kHistoryDir));
+  fs::create_directories(dir);
+  auto write = [&](const std::string& name, const json& extra) {
+    json header = {
+        {"format", kSessionFormat}, {"cwd", "/project"}, {"model", "m"},
+        {"session_id", name},       {"turns", 1},        {"title", name}};
+    header.update(extra);
+    std::ofstream(dir / (name + ".json")) << JsonDump(header) << "\n{}\n";
+    return (dir / (name + ".json")).string();
+  };
+  // The id is the file's name: the folder it is kept in does not count.
+  CHECK(SessionIdFor("/a/lead.json") == SessionIdFor("/b/lead.json"));
+  CHECK(SessionIdFor("/a/lead.json") != SessionIdFor("/a/lead-copy.json"));
+  const std::string lead = write("lead", json::object());
+  write("agent-00000000000000aa",
+        {{"cwd", "/elsewhere"},
+         {kSessionHeaderAgent, {{"parent", SessionIdFor(lead)}}}});
+  write("remote", {{"host", "box"}});
+  // A copy under another name is a conversation of its own; the agent stays
+  // under the one it names.
+  fs::copy_file(lead, dir / "lead-copy.json");
+  auto names = [](const std::vector<SessionInfo>& sessions) {
+    std::vector<std::string> out;
+    for (const SessionInfo& info : sessions) {
+      out.push_back(fs::path(info.path).stem().string());
+    }
+    std::ranges::sort(out);
+    return out;
+  };
+  CHECK(names(SessionsIn("/project")) ==
+        (std::vector<std::string>{"agent-00000000000000aa", "lead",
+                                  "lead-copy"}));
+  CHECK(names(SessionsIn("/project", "box")) ==
+        std::vector<std::string>{"remote"});
+  CHECK(names(SessionsIn("/elsewhere")).empty());
+  CHECK(names(SessionsBeside((dir / "agent-00000000000000aa.json").string())) ==
+        names(SessionsIn("/project")));
+  for (const SessionInfo& info : SessionsIn("/project")) {
+    if (fs::path(info.path).stem() == "agent-00000000000000aa") {
+      CHECK(info.parent == SessionIdFor(lead));
+    }
   }
 }
 

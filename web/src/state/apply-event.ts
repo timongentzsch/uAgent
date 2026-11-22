@@ -110,7 +110,8 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     event.kind !== "activated" &&
     event.kind !== "deactivated" &&
     event.kind !== "metadata" &&
-    event.kind !== "deleted"
+    event.kind !== "deleted" &&
+    event.kind !== "moved"
   )
     return;
   // Most state and activity frames restate the session unchanged: it

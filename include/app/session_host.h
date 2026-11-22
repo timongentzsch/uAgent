@@ -209,7 +209,6 @@ class SessionHost {
   }
   std::vector<json> RefreshInvalidations(
       const std::vector<std::string>& projects);
-  std::vector<std::string> PresencePaths() const;
   HostWaitState RunSchedules(bool& recovered);
   void Shutdown();
   json Catalogue() const;

@@ -142,18 +142,6 @@ std::vector<std::string> SessionHost::InvalidationPaths(
   return paths;
 }
 
-std::vector<std::string> SessionHost::PresencePaths() const {
-  std::lock_guard lock(mutex_);
-  std::vector<std::string> paths{UagentDir(kHistoryDir)};
-  for (const auto& [id, session] : sessions_) {
-    paths.push_back(
-        std::filesystem::path(session->path).parent_path().string());
-  }
-  std::sort(paths.begin(), paths.end());
-  paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
-  return paths;
-}
-
 SnapshotResult SessionHost::Snapshot(const std::string& id,
                                      const SnapshotQuery& query) {
   std::shared_ptr<HostSession> session;

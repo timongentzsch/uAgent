@@ -152,8 +152,8 @@ export function NodeBody({
 }) {
   const { routes, command } = useApi();
   const report = useContext(HostContext)?.report;
-  const { read, inspect, activity, open } = useContext(MessageActions);
-  const load = useNodeReader(session, read);
+  const { inspect, activity, open } = useContext(MessageActions);
+  const load = useNodeReader(session);
   const body = node.body;
   // A diff cut short loads whole as the row opens; other long bodies when
   // asked for.

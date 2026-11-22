@@ -15,8 +15,7 @@
 #include "include/transport/session.h"
 namespace uagent::session {
 // State only checkpoints carry; clients keep it from the last one.
-inline constexpr const char* kCheckpointFields[] = {"view", "http",
-                                                    "system_prompt", "answer"};
+inline constexpr const char* kCheckpointFields[] = {"view", "http", "answer"};
 
 // A detached process outlives its session by design and never counts.
 inline bool ActivityRuns(const json& activity) {

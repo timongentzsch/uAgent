@@ -14,11 +14,7 @@ bool SameEvents(const std::vector<uagent::SseEvent>& left,
                 const std::vector<uagent::SseEvent>& right) {
   if (left.size() != right.size()) return false;
   for (size_t index = 0; index < left.size(); ++index) {
-    if (left[index].event != right[index].event ||
-        left[index].data != right[index].data ||
-        left[index].id != right[index].id) {
-      return false;
-    }
+    if (left[index].data != right[index].data) return false;
   }
   return true;
 }

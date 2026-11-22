@@ -71,7 +71,6 @@ class Agent {
   void Reset();
   // What the model reads now, with its sources.
   json PromptPreview() const;
-  const std::string& LastSentPrompt() const { return last_sent_prompt_; }
 
   const Usage& SessionUsage() const { return session_usage_; }
   json RouteUsageJson() const { return uagent::RouteUsageJson(route_usage_); }
@@ -186,10 +185,8 @@ class Agent {
   void OpenEditJournal(std::string directory) {
     edits_.Open(std::move(directory));
   }
-  // The files `turn` changed (0: the latest turn that changed any).
-  json ChangedFiles(int64_t turn) {
-    return edits_.Files(turn ? turn : edits_.LastTurn());
-  }
+  // The files the latest turn that changed any changed.
+  json ChangedFiles() { return edits_.Files(edits_.LastTurn()); }
   // Puts them back; the model hears which at its next step, to re-read them.
   json Revert(int64_t turn, const std::string& path);
   json TurnTexts(int64_t turn, const std::string& path) const {
@@ -430,7 +427,6 @@ class Agent {
   std::string prompt_overlay_digest_;
   json prompt_overlay_;
   mutable std::string prompt_error_;
-  std::string last_sent_prompt_;
   Conversation conversation_;
   Usage session_usage_;
   RouteUsage route_usage_;

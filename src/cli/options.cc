@@ -70,12 +70,8 @@ constexpr FlagSpec kFlags[] = {
      .text = &Options::debug_path},
     {"--attach", FlagKind::kAttach, nullptr, nullptr, "PATH",
      "send an image or document with the first message"},
-    // Codex-style alias; empty help hides it from the listing.
-    {"--image", FlagKind::kAttach, nullptr, nullptr, "PATH", ""},
     {"-c", FlagKind::kToggle, &Options::resume_latest, nullptr, nullptr,
      "continue the most recent conversation"},
-    {"--continue", FlagKind::kToggle, &Options::resume_latest, nullptr, nullptr,
-     ""},
     {"--resume", FlagKind::kToggle, &Options::resume_pick, nullptr, nullptr,
      "pick a saved conversation to continue"},
     {"--version", FlagKind::kPrintVersion, nullptr, nullptr, nullptr,

@@ -17,7 +17,7 @@ import {
 import { useHostContext } from "../../state/host-context.ts";
 import { isRunning } from "../../state/attention.ts";
 import HistoryStart from "./history-start.tsx";
-import { prepareHistoryNodes } from "./message.tsx";
+import { prepareHistoryNodes, unprepared } from "./message.tsx";
 import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
 import "./chat.css";
@@ -91,6 +91,11 @@ function Chat({
             .then(() => selected)
         : undefined,
     [selected, !!snapshot],
+    // A page shown before draws in its first frame, without a placeholder.
+    () =>
+      snapshot && !unprepared(snapshot.state?.view?.nodes || []).length
+        ? selected
+        : undefined,
   );
   const prepared = !!snapshot && preparedKey === selected;
   const view = snapshot?.state?.view;

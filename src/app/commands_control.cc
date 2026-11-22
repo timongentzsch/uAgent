@@ -266,8 +266,7 @@ json SessionControl(AppSession& session, const json& request) {
   }
   if (JsonValue(request, "operation", "") == "catalog") {
     return ModelCatalogue(session.ApiClient(), session.context.provider.routes,
-                          session.context.provider.providers,
-                          JsonValue(request, "query", "all"));
+                          session.context.provider.providers);
   }
   if (JsonValue(request, "operation", "") != "select") {
     return {{"error", "unknown model operation"}};

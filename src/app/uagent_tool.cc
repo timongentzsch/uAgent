@@ -222,7 +222,6 @@ ToolResult Show(const json& arguments,
     value = describe(topic, name);
     if (topic == SelfTopic::kPrompt) {
       value.erase("inherited");
-      value.erase("last_sent");
       // The file `write` replaces.
       value["saved"] = ReadSavedPrompt();
     }

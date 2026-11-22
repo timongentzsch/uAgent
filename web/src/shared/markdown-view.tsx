@@ -64,6 +64,9 @@ export async function prepareMarkdown(
   return blocks;
 }
 
+export const isPrepared = (text: string, refs = false) =>
+  prepared.has(preparedKey(text, refs));
+
 // Warms the renderer chunk outside the critical path, so the switch to
 // markdown at completion pays only the parse, never the download.
 export function prefetchMarkdown(text = "") {
@@ -321,7 +324,12 @@ function RenderedMarkdown({
         const value = state.text;
         const output = await prepareMarkdown(value, refs);
         if (!state.active) return;
-        setRendered({ text: value, blocks: output });
+        // Prepared before it mounted: what it drew first is this.
+        setRendered((prior) =>
+          prior.text === value && prior.blocks === output
+            ? prior
+            : { text: value, blocks: output },
+        );
         setError(null);
         if (value !== state.text) paint();
         else state.running = false;

@@ -301,10 +301,10 @@ function App({ host, bindResult, reading }: HostAppProps) {
         else setSelected("", owner);
         setDrawer(false);
       };
-      if (id === selected) change();
+      if (id === selectedRef.current) change();
       else slide(false, id, change);
     },
-    [selected, setSelected, hosts.open, hosts.active],
+    [setSelected, hosts.open, hosts.active],
   );
   const { browserAvailable, install, setInstall, update, attach } = useBoot({
     host,

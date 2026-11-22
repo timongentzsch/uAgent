@@ -672,7 +672,6 @@ def write_session(
         "context_window": 0,
         "usage": usage or {},
         "route_usage": {},
-        "last_sent_prompt": "",
         "display": display or {},
         "delivered_mail": [],
     }

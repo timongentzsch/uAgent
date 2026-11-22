@@ -321,9 +321,8 @@ ModelSearch SearchModels(const Api& api, const std::vector<Route>& routes,
 }
 
 json ModelCatalogue(Api& api, const std::vector<Route>& routes,
-                    const std::vector<Endpoint>& providers,
-                    const std::string& query) {
-  ModelSearch search = SearchModels(api, routes, providers, query);
+                    const std::vector<Endpoint>& providers) {
+  ModelSearch search = SearchModels(api, routes, providers, "all");
   json models = json::array();
   for (const ModelCandidate& candidate : search.matches) {
     bool active = ProviderScope(candidate.route, providers) ==

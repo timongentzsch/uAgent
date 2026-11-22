@@ -104,7 +104,6 @@ struct Agent::TurnExecution {
   TurnMetrics metrics;
   TurnStop stop;
   int64_t model_calls_before = 0;
-  bool complete = false;
   // Stopped at a limit and answered all the same: not reported as a failure.
   bool answered_at_limit = false;
 };

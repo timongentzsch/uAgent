@@ -82,7 +82,6 @@ const kept = {
           {
             ...draft,
             files: draft.files.filter((file) => !file.pending),
-            quotes: draft.quotes ?? [],
           },
         ]),
       ),
@@ -271,7 +270,7 @@ export function useHost(
   const load = useCallback(
     (id: string) => {
       if (loads.current.has(id)) return loads.current.get(id)!;
-      setLoadErrors((prior) => ({ ...prior, [id]: null }));
+      setLoadErrors((prior) => (prior[id] ? { ...prior, [id]: null } : prior));
       const signal = lifetime.current.signal;
       const request = api<Snapshot>(routes.session(id), undefined, {
         signal,

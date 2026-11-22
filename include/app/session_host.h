@@ -99,7 +99,6 @@ struct HostSession {
   double cost = 0;
   int64_t turns = 0;
   json todo = nullptr;
-  int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;
   // Diffs stored whole, by node id, until a checkpoint saves their paths.

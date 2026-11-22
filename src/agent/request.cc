@@ -265,9 +265,6 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   }
   const json& messages = *chosen;
   PublishSideContext();
-  if (!messages.empty()) {
-    last_sent_prompt_ = JsonValue(messages[0], "content", "");
-  }
   const size_t schema_bytes = &schemas == &available_schemas_.Schemas()
                                   ? available_schemas_.Bytes()
                                   : JsonEstimatedBytes(schemas);
@@ -708,9 +705,7 @@ std::string Agent::SystemPrompt() const {
 }
 
 json Agent::PromptPreview() const {
-  json result = ResolvePrompt(PromptBase(), PromptContext());
-  if (!last_sent_prompt_.empty()) result["last_sent"] = last_sent_prompt_;
-  return result;
+  return ResolvePrompt(PromptBase(), PromptContext());
 }
 
 // One system message carries every static fact: strict chat templates reject

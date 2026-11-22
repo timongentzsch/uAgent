@@ -27,8 +27,9 @@ const SESSIONS = [
   session(ID, 0),
   PARENT,
   AGENT,
+  // Zero-padded, so no two ids are the same.
   ...Array.from({ length: 1000 }, (_, index) =>
-    session((index + 1).toString(16).padStart(32, "b"), index + 1),
+    session((index + 1).toString(16).padStart(32, "0"), index + 1),
   ),
 ];
 const HISTORY = Array.from({ length: 120 }, (_, index) => ({
@@ -69,11 +70,23 @@ async function open(page) {
           rows: 1,
         })),
       });
-    if (path === `/api/sessions/${ID}`)
+    // Every conversation reads as the same history; its folder lists one file.
+    const [, id, files] =
+      /^\/api\/sessions\/(\w{32})(\/files)?$/.exec(path) || [];
+    const metadata = SESSIONS.find((item) => item.id === id);
+    if (metadata && files)
+      return json({
+        entries: [{ name: "notes.md", dir: false, size: 1 }],
+        changes: [],
+        more: false,
+        repository: true,
+        stamps: {},
+      });
+    if (metadata)
       return json({
         epoch: EPOCH,
         cursor: HISTORY.length,
-        metadata: SESSIONS[0],
+        metadata,
         state: { phase: "idle", view: { nodes: HISTORY } },
         pending: null,
       });
@@ -125,12 +138,15 @@ async function open(page) {
       // Late lists and settings still render after the first paint: counting
       // starts once nothing has rendered for half a second.
       let marked;
-      globalThis.testMark = async () => {
+      globalThis.testQuiet = async () => {
         for (let still = 0, seen = ""; still < 25; await testFrame()) {
           const now = JSON.stringify(globalThis.renderCounts);
           still = now === seen ? still + 1 : 0;
           seen = now;
         }
+      };
+      globalThis.testMark = async () => {
+        await testQuiet();
         marked = {
           renders: { ...globalThis.renderCounts },
           writes: { ...writes },
@@ -393,4 +409,105 @@ test("state frames and an open dialog leave the shell alone", async ({
   measured("settings", renders);
   for (const name of ["Modals", "SettingsNav"])
     expect(renders[name] || 0, name).toBe(0);
+});
+
+// A conversation in the list and its id, by its title.
+const titled = (title) => SESSIONS.find((item) => item.title === title).id;
+const listed = (page, title) =>
+  page
+    .locator(".session-row")
+    .filter({ has: page.getByText(title, { exact: true }) })
+    .locator("button.session");
+
+// Chooses a conversation in the list and counts, until nothing renders, what
+// that drew and wrote, and the host reads it made.
+async function choose(page, title) {
+  const reads = [];
+  const read = (request) => {
+    const url = new URL(request.url());
+    reads.push(url.pathname + url.search);
+  };
+  page.on("request", read);
+  // The transcript's placeholder rows added on the way.
+  await page.evaluate(() => {
+    const placeholder = '[data-message-id^="placeholder-"]';
+    globalThis.testPlaceholders = 0;
+    globalThis.testWatch?.disconnect();
+    globalThis.testWatch = new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.addedNodes)
+          if (node instanceof Element)
+            testPlaceholders +=
+              node.querySelectorAll(placeholder).length +
+              (node.matches(placeholder) ? 1 : 0);
+    });
+    testWatch.observe(document.body, { subtree: true, childList: true });
+    return testMark();
+  });
+  await listed(page, title).click();
+  await expect(
+    page.locator(
+      `.transcript[data-session="${titled(title)}"]:not([aria-busy]) [data-message-id="m-119"]`,
+    ),
+  ).toBeVisible();
+  const counted = await page.evaluate(async () => {
+    await testQuiet();
+    return { ...testSince(), placeholders: testPlaceholders };
+  });
+  page.off("request", read);
+  return { ...counted, reads };
+}
+
+// Conversation 5 is in another folder than Conversation 0.
+test("a switch draws two rows of the list and each message once", async ({
+  page,
+}) => {
+  await open(page);
+  const first = await choose(page, "Conversation 5");
+  measured("first visit", first);
+  // Not read yet: its placeholder shows until it is.
+  expect.soft(first.placeholders).toBeGreaterThan(0);
+  // Each message is drawn once as it appears.
+  expect
+    .soft(first.renders.RenderedMarkdown)
+    .toBeLessThanOrEqual(HISTORY.length);
+  // Both are held now.
+  await choose(page, "Conversation 0");
+  const held = await choose(page, "Conversation 5");
+  measured("held", held);
+  // Held: its messages are drawn in the first frame, no placeholder.
+  expect.soft(held.placeholders).toBe(0);
+  // The rows that lost and gained the selection, not the whole list.
+  expect.soft(held.renders.SessionRow).toBeLessThanOrEqual(2);
+  // The shell once, for the press: the conversation's read adds nothing.
+  expect.soft(held.renders.App).toBe(1);
+  expect
+    .soft(
+      held.reads.filter(
+        (path) => path === `/api/sessions/${titled("Conversation 5")}`,
+      ),
+    )
+    .toHaveLength(1);
+});
+
+test("Files open over a switch reads and keeps its folder once", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page);
+  await page.getByRole("button", { name: "Files", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Files" })).toContainText(
+    "notes.md",
+  );
+  const { reads, writes } = await choose(page, "Conversation 5");
+  measured("files", { reads, writes });
+  expect
+    .soft(
+      reads.filter(
+        (path) =>
+          path === `/api/sessions/${titled("Conversation 5")}/files?list=`,
+      ),
+    )
+    .toHaveLength(1);
+  expect.soft(writes["uagent-files-at"]).toBe(1);
 });

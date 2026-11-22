@@ -332,7 +332,12 @@ export default function Files({
   }, [expanded]);
   // The tree shows where the view is.
   useEffect(
-    () => setExpanded((all) => new Set([...all, ...ancestors(dir)])),
+    () =>
+      setExpanded((all) =>
+        ancestors(dir).every((path) => all.has(path))
+          ? all
+          : new Set([...all, ...ancestors(dir)]),
+      ),
     [dir],
   );
   const toggle = (path: string) =>
@@ -384,8 +389,13 @@ export default function Files({
     [id, dir, turn, written, edition],
   );
   const here = listing.value?.dir === dir ? listing.value : undefined;
-  // The tree's top, read as the folder in context is.
-  const root = useResource(() => list(""), [id, turn, written, edition]);
+  // The tree's top, read as the folder in context is; at the top, that
+  // listing is it.
+  const top = useResource(
+    () => (dir ? list("") : undefined),
+    [id, turn, written, edition, !dir],
+  );
+  const root = dir ? top : { ...listing, value: here };
   const search = query.trim();
   const found = useResource<Found | undefined>(
     (signal) =>

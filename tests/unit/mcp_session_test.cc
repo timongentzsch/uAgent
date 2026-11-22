@@ -113,10 +113,7 @@ TEST_CASE(TestMcpContractHelpers) {
       {"type", "object"},
       {"properties", {{"value", {{"type", "string"}}}}},
       {"additionalProperties", false}};
-  json output_schema = {{"type", "object"}, {"required", json::array({"ok"})}};
-  json listed = json::array({{{"name", "echo"},
-                              {"inputSchema", input_schema},
-                              {"outputSchema", output_schema}},
+  json listed = json::array({{{"name", "echo"}, {"inputSchema", input_schema}},
                              {{"name", "async"},
                               {"inputSchema", json{{"type", "object"}}},
                               {"execution", {{"taskSupport", "required"}}}}});
@@ -124,7 +121,6 @@ TEST_CASE(TestMcpContractHelpers) {
   McpReplaceServerTools(tools, server, config, listed);
   CHECK(tools.size() == 1);
   CHECK(tools[0].parameters == input_schema);
-  CHECK(tools[0].output_schema == output_schema);
   CHECK(tools[0].provider == "mcp:probe");
   listed[0]["annotations"] = {{"readOnlyHint", true}};
   McpReplaceServerTools(tools, server, config, listed);

@@ -44,8 +44,7 @@ struct ModelSearch {
 };
 
 json ModelCatalogue(Api& api, const std::vector<Route>& routes,
-                    const std::vector<Endpoint>& providers,
-                    const std::string& query = "all");
+                    const std::vector<Endpoint>& providers);
 
 struct ProviderSetup {
   std::vector<Route> routes;

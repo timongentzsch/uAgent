@@ -3,7 +3,6 @@ import json
 import os
 import subprocess
 import threading
-import time
 
 from integration_support import (
     Server,
@@ -107,13 +106,14 @@ def test_web_push_names_the_conversation_unless_turned_off(root, home, *, binary
 def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):
     workspace = root / "steer-live"
     workspace.mkdir()
-    release = threading.Event()
+    release, started = threading.Event(), threading.Event()
 
     def responder(handler, body):
         content = json.dumps(body["messages"])
         if "steer-me" in content:
             release.wait(timeout=budget(10))
             return event({"content": "steered answer"})
+        started.set()
         write_sse_sequence(
             handler,
             [
@@ -136,7 +136,7 @@ def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):
             client.until(session, lambda value: value["state"].get("yolo", False))
             client.command("submit", session, text="Slow stream probe")
             client.until(session, lambda value: value["metadata"]["turn_active"])
-            time.sleep(budget(0.5))
+            assert_true(started.wait(budget(10)), "the slow request never began")
             client.command("steer", session, text="steer-me guidance")
             # The first model call lands while the steered turn still runs:
             # usage and statistics arrive through a live state publish.
@@ -310,7 +310,7 @@ def test_web_queue_next_runs_after_the_turn(root, home, *, binary):
 def test_web_recall_queued_guidance(root, home, *, binary):
     workspace = root / "recall-steer"
     workspace.mkdir()
-    release = threading.Event()
+    release, started = threading.Event(), threading.Event()
 
     def responder(handler, body):
         content = json.dumps(body["messages"])
@@ -319,6 +319,7 @@ def test_web_recall_queued_guidance(root, home, *, binary):
                 return event({"content": "delivered-ok"})
             release.wait(timeout=budget(10))
             return event({"content": "recalled-oops"})
+        started.set()
         write_sse_sequence(
             handler,
             [
@@ -339,7 +340,7 @@ def test_web_recall_queued_guidance(root, home, *, binary):
             session = client.create(workspace)
             client.command("submit", session, text="Slow recall probe")
             client.until(session, lambda value: value["metadata"]["turn_active"])
-            time.sleep(budget(0.5))
+            assert_true(started.wait(budget(10)), "the slow request never began")
             # Still inside the first slow model request: the queue is
             # untouched, so the recall lands deterministically.
             client.command("steer", session, text="recall-me guidance")

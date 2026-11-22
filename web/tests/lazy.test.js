@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { setImmediate } from "node:timers/promises";
 import { once, warm } from "../src/shared/lazy.ts";
 
 test("a load is shared, and one that failed is tried again", async () => {
@@ -19,7 +20,7 @@ test("a warm-up that fails raises nothing", async () => {
   const heard = (failure) => seen.push(failure);
   process.on("unhandledRejection", heard);
   warm(Promise.reject(new Error("offline")), Promise.resolve(1));
-  await new Promise((done) => setTimeout(done, 10));
+  await setImmediate();
   process.off("unhandledRejection", heard);
   assert.deepEqual(seen, []);
 });

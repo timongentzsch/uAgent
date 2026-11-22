@@ -127,14 +127,7 @@ def remove_suite(root):
     # Every home a case made, also one inside another.
     for state in root.rglob(".uagent"):
         remove_runtime(state.parent)
-    for attempt in range(10):
-        try:
-            shutil.rmtree(root)
-            return
-        except OSError:
-            if attempt == 9:
-                raise
-            time.sleep(0.5)
+    shutil.rmtree(root)
 
 
 def run_shards(arguments, names):

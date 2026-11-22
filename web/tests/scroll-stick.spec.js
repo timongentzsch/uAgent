@@ -26,6 +26,15 @@ const gap = (page) =>
         element.scrollHeight - element.scrollTop - element.clientHeight,
     );
 
+// Two frames on: the page has handled the scroll just made.
+const nextFrame = (page) =>
+  page.evaluate(
+    () =>
+      new Promise((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(done)),
+      ),
+  );
+
 // One sample per frame: samples by the clock thin out on a slow machine.
 async function framesUntilIdle(page) {
   await page.locator(".transcript").evaluate((element) => {
@@ -179,7 +188,7 @@ test("scrolled-up reader is never yanked down by streaming", async ({
     await page.locator(".transcript").evaluate((element) => {
       element.scrollTop -= 200;
     });
-    await page.waitForTimeout(50);
+    await nextFrame(page);
   }
   await expect(jump).toBeVisible();
   await expect.poll(() => gap(page)).toBeGreaterThan(100);
@@ -217,7 +226,7 @@ test("background completion badges while unfollowed, cleared on jump", async ({
     await page.locator(".transcript").evaluate((element) => {
       element.scrollTop -= 60;
     });
-    await page.waitForTimeout(100);
+    await nextFrame(page);
   }
   const jump = page.getByRole("button", { name: "Jump to latest" });
   await expect(jump).toBeVisible();
@@ -247,13 +256,13 @@ test("wheeling back down to the end follows again mid-stream", async ({
   await transcript.hover();
   for (let index = 0; index < 30 && !(await jump.isVisible()); ++index) {
     await page.mouse.wheel(0, -200);
-    await page.waitForTimeout(50);
+    await nextFrame(page);
   }
   await expect(jump).toBeVisible();
   // Real wheel steps: reaching the end clears the button without a click.
   for (let index = 0; index < 60 && (await jump.isVisible()); ++index) {
     await page.mouse.wheel(0, 400);
-    await page.waitForTimeout(60);
+    await nextFrame(page);
   }
   await expect(jump).toBeHidden();
   await expect.poll(() => gap(page)).toBeLessThan(100);

@@ -151,6 +151,18 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 attachment_ids=[asset["id"]],
             )
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
+            # An idle runtime says what fills its context, in parts that add up.
+            breakdown = client.command("context_parts", session)["result"]
+            assert_true(
+                sum(breakdown["parts"].values()) == breakdown["bytes"]
+                and breakdown["tokens"] == snapshot["state"]["context_tokens"]
+                and breakdown["window"] == 32768
+                and 0 < breakdown["compacts_at"] < 32768
+                and breakdown["parts"]["files"] > 0
+                and breakdown["parts"]["replies"] > 0
+                and any(tool["name"] == "read_path" for tool in breakdown["tools"]),
+                breakdown,
+            )
             rows = snapshot["state"]["view"]["nodes"]
             request = rows[0]
             # Clients get the asset id, never the private upload path.
@@ -187,7 +199,15 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 body_for(fork, exchange, "response")[0] == response, "fork lost HTTP capture"
             )
             client.command("close", session)
-            session = client.snapshot(session)["metadata"]
+            closed = client.snapshot(session)
+            session = closed["metadata"]
+            # Without a runtime the Statistics sheet has the totals alone.
+            assert_true(
+                not session["generation"]
+                and closed["state"]["context_tokens"] == breakdown["tokens"]
+                and closed["state"]["context_window"] == 32768,
+                closed["state"],
+            )
             client.command("delete", session)
             assert_true(
                 client.request(f"/api/sessions/{fork['id']}/assets/{asset['id']}")[1] == data,

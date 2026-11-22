@@ -78,7 +78,7 @@ without `generation` starts the runtime first; one with a stale
 | library | `memory`, `skills`, `schedule`, `import`, `instructions`, `permission_rules`, `models`, `provider`, `openrouter`: the [`--control`](headless.md#--control-json-) request; its reply is `result` |
 | browser | `browser` (`action` `takeover`, `done`, `stop`, `create_profile`, `select_profile`, `setup_profile`, `configure`, `viewport`; `instance_id`, `interaction_id`, `name`, `profile_id`, `viewport`, `parallel_capacity`) |
 | a conversation's lifecycle (host) | `create` (`cwd` or `space`), `activate`, `close`, `delete` (only when stopped), `move` (`cwd` or `space`) |
-| a conversation (runtime) | `submit` and `steer` (`text`, `attachment_ids`, `queue`), `reply` (`interaction_id`, `text`, `cancelled`), `interrupt`, `recall` and `insert` (`target_id`), `rename` (`title`), `keep`, `refresh`, `permissions` (`mode`), `activity`, `tools`, `model`, `config`, `context`, `revert` (`turn`, `path`), `changes` (`turn`, `path`: the file's change in that turn as a unified diff), `fork` (`argument` or `message_id`), `share`, `side` (`operation`: `create` with `text` starts a side chat; `merge`, sent to a side chat, sums it up for the conversation it branched from) |
+| a conversation (runtime) | `submit` and `steer` (`text`, `attachment_ids`, `queue`), `reply` (`interaction_id`, `text`, `cancelled`), `interrupt`, `recall` and `insert` (`target_id`), `rename` (`title`), `keep`, `refresh`, `permissions` (`mode`), `activity`, `tools`, `model`, `config`, `context`, `context_parts` (what fills the context, below; refused while a turn runs), `revert` (`turn`, `path`), `changes` (`turn`, `path`: the file's change in that turn as a unified diff), `fork` (`argument` or `message_id`), `share`, `side` (`operation`: `create` with `text` starts a side chat; `merge`, sent to a side chat, sums it up for the conversation it branched from) |
 
 A runtime command is forwarded with a host-made id
 (`SessionHost::ExecuteCommand`); `rename`, `keep`, `delete` and `fork` of a
@@ -87,6 +87,16 @@ names uploads (ids or `{id, name}`, at most 8, `kUploadCount`), which the
 host resolves before forwarding. `escalate`, which hands an agent's
 decision from its parent agent to the person, is sent by the agent link and
 the parent's tools, not by a client.
+
+`context_parts` returns `Agent::ContextBreakdown()`: `tokens` (the
+estimate `context_tokens` reports), `bytes` and `parts`, the estimated
+request bytes of `tool_results`, `replies`, `messages`, `files`, `notes`,
+`tools`, `mcp`, `system`, `instructions`, `memory` and `skills`, which sum
+to `bytes`; `tools` (`name`, schema `bytes`, `offered`, `server` for an MCP
+tool); `window`; `compacts_at`, the `context_tokens` at which automatic
+compaction starts (0 for none); `skills` (how many are listed) and
+`instructions` (the file's name). A part's tokens are its share of `bytes`
+times `tokens`.
 
 The receipt has `request_id`, `accepted` (false with HTTP 409 and an
 `error`), `pending` (the runtime has not answered within 2 s), `result`

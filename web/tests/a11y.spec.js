@@ -125,6 +125,22 @@ test("the conversation menu opens, moves and closes by keyboard", async ({
   await expect(menu).toHaveCount(0);
 });
 
+test("the context section of the statistics has no violations", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  await page
+    .getByRole("button", { name: "Conversation statistics", exact: true })
+    .click();
+  const sheet = page.getByRole("dialog", { name: "Conversation statistics" });
+  const tools = sheet.getByRole("button", { name: /^Tools \d+/ });
+  await tools.click();
+  await expect(tools).toHaveAttribute("aria-expanded", "true");
+  await expect(sheet.getByRole("img", { name: /compacts at/ })).toBeVisible();
+  expect(await violations(page, ".context")).toEqual([]);
+});
+
 test("a focus ring lies inside its control, in a pane too", async ({
   page,
   session,

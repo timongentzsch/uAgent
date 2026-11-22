@@ -637,6 +637,7 @@ class WorkerChannel final : public ApplicationChannel {
       case SessionCommandKind::kTools:
       case SessionCommandKind::kConfig:
       case SessionCommandKind::kContext:
+      case SessionCommandKind::kContextParts:
       case SessionCommandKind::kRevert:
       case SessionCommandKind::kChanges:
       case SessionCommandKind::kFork:

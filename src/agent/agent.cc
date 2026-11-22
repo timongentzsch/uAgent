@@ -50,7 +50,7 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ActivitySupervisor& processes,
       project_instructions_(std::move(project_instructions)),
       skills_(std::move(skills)),
       prompt_overlay_(PromptOverlay(&prompt_overlay_digest_)) {
-  schema_bytes_ = JsonDump(schemas_).size();
+  InvalidateToolSchemas(false);
   if (Debug().Enabled()) {
     json names = json::array();
     for (const Tool& tool : tools_) names.push_back(tool.name);

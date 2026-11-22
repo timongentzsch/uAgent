@@ -554,6 +554,21 @@ test.describe("a conversation", () => {
     await roomy(page);
   });
 
+  test("the statistics' context, its lists open", async ({ page, session }) => {
+    await page.goto(`/#session=${session.id}`);
+    await page
+      .getByRole("button", { name: "Conversation statistics", exact: true })
+      .click();
+    const sheet = page.getByRole("dialog", { name: "Conversation statistics" });
+    await expect(sheet.getByRole("img", { name: /compacts at/ })).toBeVisible();
+    for (const name of [/^Tools \d+/, /^Not offered/]) {
+      const fold = sheet.getByRole("button", { name });
+      if (await fold.isEnabled()) await fold.click();
+    }
+    await expect(sheet.locator(".context-tools").first()).toBeVisible();
+    await roomy(page);
+  });
+
   test("the tools", async ({ page, session }) => {
     await page.goto(`/#session=${session.id}`);
     await page

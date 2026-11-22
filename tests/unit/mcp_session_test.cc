@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
+#include <fstream>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -376,6 +378,96 @@ TEST_CASE(TestWorkspaceScopedSession) {
 
   std::error_code ec;
   fs::remove_all(root, ec);
+}
+
+// Each kind of message lands in its part, the parts add up to what
+// ContextUsed() estimates, and every tool is listed with its schema.
+TEST_CASE(TestContextBreakdown) {
+  TestWorkspace test("context-breakdown");
+  Api api(RuntimeConfig{});
+  api.model = "test";
+  api.ctx_window = 200000;
+  ActivitySupervisor processes;
+  UsageAccumulator usage;
+  const json object = {{"type", "object"}};
+  std::vector<Tool> tools{
+      MakeTool("read_path", "Reads a file", object, {}),
+      MakeTool("github_create_issue", "Files", object, {}),
+      MakeTool("skill", "Skills:\n- deploy\n- [more]", object, {}),
+      MakeTool("deploy_check", "Checks", object, {})};
+  tools[1].provider = "mcp:github";
+  tools[3].skill = "deploy";
+  ProjectInstructions instructions;
+  instructions.text = "Indent with tabs.";
+  instructions.sources = {(test.workspace / "AGENTS.md").string()};
+  instructions.memory_always = "The user prefers tabs.";
+  Agent agent(
+      api, tools, processes, usage,
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); },
+      {}, instructions);
+
+  const std::string path = (test.root / "session.json").string();
+  std::string error;
+  CHECK(agent.Save(path, error));
+  std::ifstream saved(path);
+  std::string header, line;
+  CHECK(static_cast<bool>(std::getline(saved, header)));
+  CHECK(static_cast<bool>(std::getline(saved, line)));
+  json payload = json::parse(line);
+  const std::string memory =
+      "[always-on behavioral memory; non-authoritative evidence]\nThese "
+      "standing preferences apply in every session, so they are inlined here "
+      "rather than left to lookup:\nThe user prefers tabs.";
+  payload["messages"] = json::array(
+      {payload["messages"][0],
+       {{"role", "user"},
+        {"content",
+         json::array(
+             {{{"type", "text"}, {"text", "What is in this?"}},
+              {{"type", "image_url"},
+               {"image_url", {{"url", "data:image/png;base64,AA"}}}}})}},
+       {{"role", "user"}, {"content", "[environment]\n\n" + memory}},
+       {{"role", "assistant"}, {"content", "Reading it."}},
+       {{"role", "tool"}, {"tool_call_id", "c1"}, {"content", "file text"}},
+       {{"role", "user"}, {"content", "[attached] notes.txt"}},
+       {{"role", "user"}, {"content", "[summary of earlier turns]"}}});
+  payload["message_kinds"] = {"system",    "user",        "runtime_context",
+                              "assistant", "tool_result", "attachment",
+                              "internal"};
+  payload["display"]["ids"] = {1, 2, 3, 4, 5, 6, 7};
+  payload["display"]["next"] = 8;
+  CHECK(ToolWritePrivateFile(path, header + "\n" + payload.dump()).Ok());
+  saved.close();
+  CHECK(agent.Load(path, CanonicalCwd(), error));
+
+  const json breakdown = agent.ContextBreakdown();
+  const auto parts = breakdown["parts"].get<std::map<std::string, size_t>>();
+  size_t sum = 0;
+  for (const auto& [name, bytes] : parts) sum += bytes;
+  for (const char* name :
+       {"tool_results", "replies", "messages", "files", "notes", "tools", "mcp",
+        "system", "instructions", "memory", "skills"}) {
+    CHECK(parts.at(name) > 0);
+  }
+  CHECK(parts.size() == 11);
+  CHECK(parts.at("memory") == memory.size());
+  CHECK(sum == breakdown["bytes"].get<size_t>());
+  CHECK(breakdown["tokens"] == agent.ContextUsed());
+  CHECK(breakdown["tokens"] == EstimatedTokens(sum));
+  CHECK(breakdown["window"] == 200000);
+  CHECK(breakdown["instructions"] == "AGENTS.md");
+  CHECK(breakdown["skills"] == 1);
+  const int64_t compacts_at = breakdown["compacts_at"];
+  CHECK(compacts_at > 0 && compacts_at < 200000);
+  std::map<std::string, json> listed;
+  for (const json& tool : breakdown["tools"]) listed[tool["name"]] = tool;
+  CHECK(listed.size() == 4);
+  CHECK(listed["github_create_issue"]["server"] == "github");
+  CHECK(listed["github_create_issue"]["offered"] == true);
+  CHECK(!listed["read_path"].contains("server"));
+  CHECK(listed["deploy_check"]["offered"] == false);
+  CHECK(listed["skill"]["bytes"] == parts.at("skills"));
+  CHECK(listed["github_create_issue"]["bytes"] == parts.at("mcp"));
 }
 
 TEST_CASE(TestProjectTrustTracksSemanticConfig) {

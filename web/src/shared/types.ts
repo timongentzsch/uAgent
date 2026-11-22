@@ -741,6 +741,32 @@ export interface ToolCatalogueItem {
   schema_bytes: number;
   reason?: string;
 }
+// What fills a conversation's context (Agent::ContextBreakdown): estimated
+// bytes per part and per tool schema; the parts sum to `bytes`, which the
+// host estimates as `tokens`. compacts_at is 0 where nothing compacts.
+export interface ContextParts {
+  tokens: number;
+  bytes: number;
+  window: number;
+  compacts_at: number;
+  parts: Record<
+    | "tool_results"
+    | "replies"
+    | "messages"
+    | "files"
+    | "notes"
+    | "tools"
+    | "mcp"
+    | "system"
+    | "instructions"
+    | "memory"
+    | "skills",
+    number
+  >;
+  tools: { name: string; bytes: number; offered: boolean; server?: string }[];
+  skills: number;
+  instructions: string;
+}
 export interface ToolCatalogue {
   profile: string;
   base_profile: string;
@@ -789,6 +815,7 @@ export interface CommandResults {
   tools: ToolCatalogue;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
+  context_parts: ContextParts;
   revert: { restored: string[]; conflicts: { path: string; reason: string }[] };
   // A turn's change to a file, as a unified diff.
   changes: { path: string; text: string };
@@ -904,6 +931,7 @@ export interface CommandInputs {
     activity_id?: number;
   };
   context: None;
+  context_parts: None;
   // The turn (0 = latest) and one file of it, or all.
   revert: { turn: number; path?: string };
   changes: { turn: number; path: string };

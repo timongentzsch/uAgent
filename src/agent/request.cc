@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <map>
 #include <string>
 #include <string_view>
@@ -536,11 +538,7 @@ int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
   int64_t used = ContextTokens(bytes);
   int64_t pending = EstimatedTokens(pending_bytes);
   if (api_.ctx_window > 0) {
-    // An uncapped response can still only be budgeted by the ceiling.
-    int64_t ceiling = api_.ctx_window / kDefaultResponseReserveDivisor;
-    int64_t configured = MaxOutputTokens();
-    int64_t reserve = configured > 0 ? std::min(configured, ceiling) : ceiling;
-    int64_t tokens = used + pending + reserve;
+    int64_t tokens = used + pending + ResponseReserve();
     if (projected_tokens) *projected_tokens = tokens;
     double projected = static_cast<double>(tokens);
     if (projected >= static_cast<double>(api_.ctx_window)) return 100;
@@ -554,6 +552,13 @@ int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
                               static_cast<double>(kRequestBytes));
 }
 
+// An uncapped response can still only be budgeted by the ceiling.
+int64_t Agent::ResponseReserve() const {
+  int64_t ceiling = api_.ctx_window / kDefaultResponseReserveDivisor;
+  int64_t configured = MaxOutputTokens();
+  return configured > 0 ? std::min(configured, ceiling) : ceiling;
+}
+
 bool Agent::ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
                                    int64_t& pressure,
                                    int64_t& projected_tokens) const {
@@ -562,6 +567,121 @@ bool Agent::ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
   int64_t tokens = AutoCompactTokens();
   return (pct > 0 && pressure >= pct) ||
          (tokens > 0 && projected_tokens >= tokens);
+}
+
+json Agent::ContextBreakdown() const {
+  std::map<std::string, size_t> bytes;
+  for (const char* part :
+       {"tool_results", "replies", "messages", "files", "notes", "tools", "mcp",
+        "instructions", "memory", "skills"}) {
+    bytes[part] = 0;
+  }
+  // The message list's own bytes, as JsonEstimatedBytes counts an array.
+  bytes["system"] = JsonEstimatedBytes(json::array());
+  const std::string instructions =
+      project_instructions_.text.empty() ? "" : ProjectInstructionText();
+  const std::string memory = MemoryText();
+  const json& messages = conversation_.Messages();
+  for (size_t index = 0; index < messages.size(); ++index) {
+    const json& message = messages[index];
+    const size_t size = JsonEstimatedBytes(message);
+    // Of the message, `own` bytes are `part`'s and the rest `rest`'s.
+    auto split = [&](const char* part, size_t own, const char* rest) {
+      own = std::min(own, size);
+      bytes[part] += own;
+      bytes[rest] += size - own;
+    };
+    switch (conversation_.KindAt(index)) {
+      case MessageKind::kSystem:
+        // ResolvePrompt joins the instructions on after a blank line.
+        split("instructions",
+              instructions.empty() ? 0 : instructions.size() + 2, "system");
+        break;
+      case MessageKind::kUser: {
+        size_t files = 0;
+        if (const json* content = JsonArray(message, "content")) {
+          for (const json& part : *content) {
+            if (JsonValue(part, "type", "") != "text") {
+              files += JsonEstimatedBytes(part);
+            }
+          }
+        }
+        split("files", files, "messages");
+        break;
+      }
+      case MessageKind::kAttachment:
+        bytes["files"] += size;
+        break;
+      case MessageKind::kAssistant:
+        bytes["replies"] += size;
+        break;
+      case MessageKind::kToolResult:
+        bytes["tool_results"] += size;
+        break;
+      case MessageKind::kRuntimeContext: {
+        const std::string* text = JsonStringRef(message, "content");
+        split("memory",
+              !memory.empty() && text && text->find(memory) != text->npos
+                  ? memory.size()
+                  : 0,
+              "notes");
+        break;
+      }
+      case MessageKind::kInternal:
+        bytes["notes"] += size;
+        break;
+    }
+  }
+  json tools = json::array();
+  size_t skills = 0;
+  const json catalogue = ToolCatalogue();
+  for (const json& row : catalogue["tools"]) {
+    const std::string name = row["name"];
+    const std::string provider = row["provider"];
+    json tool = {{"name", name},
+                 {"bytes", row["schema_bytes"]},
+                 {"offered", row["active"]}};
+    const char* part = nullptr;
+    if (name == "skill") {
+      part = "skills";
+      // Its description lists one skill per "- " line, the "- [more]" aside.
+      const std::string text = row["description"];
+      for (size_t at = text.find("\n- "); at != text.npos;
+           at = text.find("\n- ", at + 1)) {
+        skills += text.compare(at + 3, 1, "[") != 0;
+      }
+    }
+    if (provider.starts_with("mcp:")) {
+      tool["server"] = provider.substr(4);
+      part = "mcp";
+    }
+    if (part && row["active"]) bytes[part] += row["schema_bytes"].get<size_t>();
+    tools.push_back(std::move(tool));
+  }
+  // The rest of the offered schemas, the array around them included.
+  bytes["tools"] =
+      schema_bytes_ - std::min(schema_bytes_, bytes["mcp"] + bytes["skills"]);
+  const std::vector<std::string>& sources = project_instructions_.sources;
+  // The used tokens at which ContextNeedsCompaction starts one; 0 for never.
+  int64_t compacts_at = 0;
+  const int64_t pct = std::clamp(AutoCompactPct(), int64_t{0}, int64_t{100});
+  if (api_.ctx_window > 0 && (pct > 0 || AutoCompactTokens() > 0)) {
+    int64_t limit = pct > 0 ? (api_.ctx_window * pct + 99) / 100 : INT64_MAX;
+    if (AutoCompactTokens() > 0) limit = std::min(limit, AutoCompactTokens());
+    compacts_at = std::max<int64_t>(0, limit - ResponseReserve());
+  }
+  return {{"tokens", ContextUsed()},
+          {"bytes", RequestContextBytes(schema_bytes_)},
+          {"window", api_.ctx_window},
+          {"compacts_at", compacts_at},
+          {"parts", bytes},
+          {"tools", std::move(tools)},
+          {"skills", skills},
+          {"instructions",
+           sources.size() == 1
+               ? std::filesystem::path(sources[0]).filename().string()
+           : sources.empty() ? ""
+                             : std::to_string(sources.size()) + " files"}};
 }
 
 Agent::MidturnCompact Agent::MaybeCompactDuringTurn(Usage& usage,

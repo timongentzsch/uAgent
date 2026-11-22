@@ -152,6 +152,9 @@ class Agent {
 
   // An estimate: provider usage may be cumulative or stale.
   int64_t ContextUsed() const;
+  // What fills ContextUsed(): estimated bytes per part, which sum to
+  // `bytes`, every tool's schema, and where compaction starts.
+  json ContextBreakdown() const;
 
   // Summarizes the conversation with the model and restarts from the summary.
   bool Compact(bool automatic = false, Usage* turn_usage = nullptr);
@@ -333,6 +336,8 @@ class Agent {
                              const json* messages = nullptr) const;
   // The byte estimate, corrected by what the provider last reported beyond it.
   int64_t ContextTokens(size_t bytes) const;
+  // The tokens kept free for the reply when a window is known.
+  int64_t ResponseReserve() const;
   int64_t ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
                              int64_t* projected_tokens = nullptr) const;
   bool ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,

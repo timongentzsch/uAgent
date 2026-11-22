@@ -73,12 +73,20 @@ export function StatisticsLayout({
   );
 }
 
-// How many rows each scope lists before its usage rows.
-const SCOPE_ROWS = { Turn: 10, Message: 7, Conversation: 10 };
-export function StatisticsLoading({ unit }: { unit?: StatisticsUnit }) {
+// How many rows each scope lists before its usage rows; `children` draws
+// what comes before them.
+const SCOPE_ROWS = { Turn: 10, Message: 7, Conversation: 9 };
+export function StatisticsLoading({
+  unit,
+  children,
+}: {
+  unit?: StatisticsUnit;
+  children?: ComponentChildren;
+}) {
   return (
     <StatisticsLayout unit={unit} scope={unit ? "turn" : "session"}>
       <Placeholder label="Loading statistics…">
+        {children}
         <Rows
           rows={Array.from(
             { length: SCOPE_ROWS[unit || "Conversation"] },

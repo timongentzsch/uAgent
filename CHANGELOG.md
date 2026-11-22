@@ -13,6 +13,7 @@
 
 ### Changes
 
+- **See what fills the context.** Statistics opens with the context window broken down: tool results, replies, your messages, files, tools and MCP tools (each listed with its size), the system prompt, instructions, memory and skills, what is free until the conversation compacts, and the tools it is not offered. The numbers are estimates; **Compact now** and **Raw context** sit beside them.
 - **Ask about a selection.** Select text in an answer, a message or a tool's output and **Ask in side chat**: a side chat opens with the selection quoted, answers beside the conversation and leaves it untouched. **Quote** puts it over the input instead, in the message being written, with the lines of a file or the end of a terminal quoted the same way. Lines selected in Files can be asked about the same way.
 - **Merge a side chat back.** **Merge** has the side chat sum up what it found; the conversation receives the summary as it does an agent's report, answers, and the tab closes. Only the summary enters the conversation.
 - **Several side chats, in a column.** Side chats are tabs in a column beside the chat, between the chat and Files when Files is open, and under the transcript in a narrow window.

@@ -1,11 +1,14 @@
-import { ChevronRight } from "lucide-preact";
 import { duration } from "../../shared/duration.ts";
 import { count } from "../../shared/quantities.ts";
-import type { StatisticsModal, Snapshot, State } from "../../shared/types.ts";
+import type {
+  Session,
+  StatisticsModal,
+  Snapshot,
+  State,
+} from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { useResource } from "../../shared/use-resource.ts";
-import { Button, LoadError, Notice, Time } from "../../shared/ui.tsx";
-import { contextSummary } from "../../state/context-summary.ts";
+import { LoadError, Notice, Time } from "../../shared/ui.tsx";
 import {
   Rows,
   StatisticsLayout,
@@ -14,6 +17,7 @@ import {
   type Row,
 } from "../../shared/statistics-layout.tsx";
 import { servedBy, servedByRows } from "../../shared/display.ts";
+import ContextSection from "./context-parts.tsx";
 
 const rate = (value?: number) =>
   value && value > 0 ? `${count(value)} tok/s` : "Not recorded";
@@ -23,13 +27,11 @@ export default function Statistics({
   modal,
   held,
   loadSnapshot,
-  online,
   showContext,
 }: {
   modal: Extract<StatisticsModal, { type: "statistics" }>;
   held?: Snapshot;
   loadSnapshot: (id: string) => Promise<Snapshot>;
-  online: boolean;
   showContext?: () => void;
 }) {
   const {
@@ -46,27 +48,29 @@ export default function Statistics({
   const snapshot = held || fetched;
   return snapshot ? (
     <StatisticsContent
+      session={snapshot.metadata}
       state={snapshot.state}
       nodeId={modal.node_id}
-      online={online}
       showContext={showContext}
     />
   ) : error ? (
     <LoadError error={error} retry={retry} />
   ) : (
-    <StatisticsLoading unit={modal.unit} />
+    <StatisticsLoading unit={modal.unit}>
+      {!modal.unit && <ContextSection />}
+    </StatisticsLoading>
   );
 }
 
 function StatisticsContent({
+  session,
   state,
   nodeId,
-  online,
   showContext,
 }: {
+  session: Session;
   state?: State;
   nodeId?: string;
-  online: boolean;
   showContext?: () => void;
 }) {
   const [scope, setScope] = useState<"turn" | "session">(
@@ -88,7 +92,6 @@ function StatisticsContent({
   const reply = node?.role === "assistant" ? node : undefined;
   const side = summary?.background_statistics;
   const fork = state?.view?.fork;
-  const context = contextSummary(state?.context_tokens, state?.context_window);
   // A total of this conversation's and its side agents' work; none counted
   // is zero only where everything was recorded.
   const total = (own?: number, sides?: number) =>
@@ -130,23 +133,6 @@ function StatisticsContent({
           ["Throughput", rate(reply?.tokens_per_second)],
         ]
       : [
-          [
-            "Context",
-            showContext ? (
-              <Button
-                variant="quiet"
-                class="stats-open"
-                aria-label="Raw context"
-                disabled={!online}
-                onClick={showContext}
-              >
-                {context}
-                <ChevronRight class="row-chevron" />
-              </Button>
-            ) : (
-              context
-            ),
-          ],
           [
             fork ? "Turns in fork (all agents)" : "Turns (all agents)",
             count(
@@ -196,6 +182,15 @@ function StatisticsContent({
         </Notice>
       ) : (
         <>
+          {!node && (
+            <ContextSection
+              key={session.id}
+              session={session}
+              used={state?.context_tokens}
+              limit={state?.context_window}
+              showContext={showContext}
+            />
+          )}
           {!node && fork && (
             <p>Forked from “{fork.title}”. Totals count work in this fork.</p>
           )}

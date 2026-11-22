@@ -473,7 +473,13 @@ test("a moved conversation keeps its id and is read again", async () => {
   const calls = [];
   host.refresh = () => calls.push("refresh");
   host.forget = (id) => calls.push(`forget ${id}`);
-  apply({ kind: "moved", epoch: "e", sequence: 2, session_id: "s", generation: "" });
+  apply({
+    kind: "moved",
+    epoch: "e",
+    sequence: 2,
+    session_id: "s",
+    generation: "",
+  });
   assert.deepEqual(calls, ["refresh"]);
   assert.equal(host.selection.current, "s");
   assert.equal(host.state.catalogue.sessions[0], metadata);

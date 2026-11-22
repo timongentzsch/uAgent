@@ -253,9 +253,10 @@ std::string SessionHost::DeleteSpace(const std::string& path,
   // Under the lock a conversation is created under: none starts in a
   // folder that is going.
   std::lock_guard lock(mutex_);
-  if (std::ranges::any_of(
-          sessions_, [&](const auto& held) { return belongs(*held.second); })) {
-    return "a conversation started in the workspace meanwhile; try again";
+  for (const auto& [id, held] : sessions_) {
+    if (belongs(*held)) {
+      return "a conversation started in the workspace meanwhile; try again";
+    }
   }
   std::error_code error;
   fs::remove_all(*space, error);

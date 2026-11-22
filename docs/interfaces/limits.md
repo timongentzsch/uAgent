@@ -27,7 +27,6 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kGenericTitleReplacementMinChars` | `12` |  |
 | `kTitleInputChars` | `2000` | Generated titles: the first-message excerpt sent, and the title kept. |
 | `kTitleChars` | `80` | Generated titles: the first-message excerpt sent, and the title kept. |
-| `kThoughtLines` | `2` | The terminal lines a thought takes where its work is open but it is not. |
 | `kRemoteBuildDays` | `30` | A remote host keeps a build no main has connected with for this long. |
 | `kUserTitleChars` | `256` | The longest title a user may give a session, and the longest workspace name, in characters. The web form mirrors both (web/src/shared/limits.ts). |
 | `kSpaceNameChars` | `64` | The longest title a user may give a session, and the longest workspace name, in characters. The web form mirrors both (web/src/shared/limits.ts). |

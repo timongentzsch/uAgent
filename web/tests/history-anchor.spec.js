@@ -181,3 +181,64 @@ test("a reload keeps the place when the list arrives after the transcript", asyn
   );
   expect(Math.abs((await marker.boundingBox()).y - before.y)).toBeLessThan(2);
 });
+
+// A reload whose first read of the conversation is refused, its place, and a
+// place left in what is no longer there.
+test.describe("a reload's place", () => {
+  // A client without service workers: WebKit sends a controlled page's
+  // requests past routes.
+  test.beforeEach(({ page }) =>
+    page.addInitScript(() => delete Navigator.prototype.serviceWorker),
+  );
+
+  test("is kept when the first read of the conversation fails", async ({
+    page,
+    host,
+  }) => {
+    const { marker, before } = await readParagraph(page, host);
+    const id = new URL(page.url()).hash.match(/session=([^&]+)/)[1];
+    let refusing = true;
+    await page.route(new RegExp(`/api/sessions/${id}$`), (route) =>
+      refusing
+        ? route.fulfill({ status: 503, body: "unavailable" })
+        : route.continue(),
+    );
+    await page.reload();
+    const retry = page.getByRole("button", { name: "Retry", exact: true });
+    await expect(retry).toBeVisible();
+    refusing = false;
+    await retry.click();
+    await expect(marker).toBeVisible();
+    await expect
+      .poll(async () => Math.abs((await marker.boundingBox()).y - before.y))
+      .toBeLessThan(2);
+  });
+
+  test("whose message is gone is let go", async ({ page, host }) => {
+    await readParagraph(page, host);
+    const messages = [{ role: "user", content: "Only this now." }];
+    await saveHistory(host, "anchor.json", {
+      id: "paragraph-anchor",
+      title: "Paragraph anchor",
+      turns: 1,
+      messages,
+    });
+    await page.reload();
+    // Restored: rows that arrive from here on are live.
+    await expect(page.locator(".transcript")).toHaveAttribute("data-live", "");
+  });
+
+  test("in an empty conversation is let go", async ({ page, session }) => {
+    await page.addInitScript((id) => {
+      sessionStorage.setItem(
+        "uagent-transcript-bookmarks",
+        JSON.stringify({
+          [`chat:${id}`]: { follow: false, message: "m-25", inner: "28" },
+        }),
+      );
+    }, session.id);
+    await page.goto(`/#session=${session.id}`);
+    await expect(page.getByText("What are we working on?")).toBeVisible();
+    await expect(page.locator(".transcript")).toHaveAttribute("data-live", "");
+  });
+});

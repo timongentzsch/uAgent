@@ -782,16 +782,17 @@
     min-height: 100%;
   }
   /* A row that arrives in a live conversation fades in, never on load or
-     paging. Opacity only: the scroll maths reads true positions. */
+     paging; a message of yours is there at once, on its way from the input.
+     Opacity only: the scroll maths reads true positions. */
   .transcript[data-live]:not([aria-busy])
     :is(.transcript-content, .node-kids)
-    > * {
+    > :not([data-message-id^="outgoing-"]) {
     transition: opacity var(--motion-arrive) var(--ease-out);
   }
   @starting-style {
     .transcript[data-live]:not([aria-busy])
       :is(.transcript-content, .node-kids)
-      > * {
+      > :not([data-message-id^="outgoing-"]) {
       opacity: 0;
     }
   }

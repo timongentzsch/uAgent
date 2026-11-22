@@ -87,8 +87,7 @@ div.node-row > .row-chevron {
 .node.failed .node-text {
   color: var(--removed);
 }
-/* A thought is text in the flow, not a box: fainter than a reply, and cut
-   to its first lines where the level says so. */
+/* A thought is text in the flow, not a box: fainter than a reply. */
 .thought .node-text {
   max-height: none;
   padding: 0;
@@ -98,12 +97,6 @@ div.node-row > .row-chevron {
   white-space: pre-wrap;
   color: var(--muted);
   font-style: italic;
-}
-.thought[data-held] .node-text {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: var(--lines);
-  overflow: hidden;
 }
 .node-command {
   margin: 0;

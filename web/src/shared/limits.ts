@@ -108,8 +108,6 @@ export const sheetCloseShare = 0.3;
 export const sheetFlickSpeed = 0.6;
 export const edgeSwipeStartPx = 24;
 export const edgeSwipeOpenPx = 60;
-// The lines a thought takes among the steps where not everything is open.
-export const thoughtLines = 2;
 // The latest conversations the home screen lists.
 export const homeRecent = 6;
 

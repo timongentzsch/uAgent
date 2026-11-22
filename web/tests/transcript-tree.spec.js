@@ -193,40 +193,33 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await expect(work).toHaveAttribute("aria-expanded", "false");
 });
 
-test("a thought is text among the steps: one line under a folded work, two and the rest on asking at default, whole at full", async ({
+test("a thought is text among the steps, whole at every level and under a folded work", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await open(page, "minimal", pondering);
   const thought = page.locator(".thought");
   const text = thought.locator(".node-text");
-  const lines = async () => {
-    const { height, line } = await text.evaluate((node) => ({
-      height: node.getBoundingClientRect().height,
-      line: parseFloat(getComputedStyle(node).lineHeight),
-    }));
-    return Math.round(height / line);
-  };
+  const whole = () =>
+    text.evaluate((node) => node.scrollHeight <= node.clientHeight + 1);
   // Not a row: nothing to open, no box round it, and set apart by its face.
   await expect(thought.locator(".node-row")).toHaveCount(0);
+  await expect(thought.getByRole("button")).toHaveCount(0);
   await expect(text).toHaveCSS("font-style", "italic");
   await expect(text).toHaveCSS("border-top-width", "0px");
-  // Folded, the work still says what it is thinking, on one line.
+  // Folded, the work still says what it is thinking.
   await expect(
     page.locator('[data-message-id="w-m-40"] > .node-row'),
   ).toHaveAttribute("aria-expanded", "false");
-  expect(await lines()).toBe(1);
+  const said = await text.textContent();
+  expect(await whole()).toBe(true);
   const head = page.locator(".conversation-head");
-  await head.getByRole("tab", { name: "Default" }).click();
-  await expect(thought).toHaveCount(1);
-  expect(await lines()).toBe(2);
-  await thought.getByRole("button", { name: "More" }).click();
-  expect(await lines()).toBeGreaterThan(2);
-  await thought.getByRole("button", { name: "Less" }).click();
-  expect(await lines()).toBe(2);
-  await head.getByRole("tab", { name: "Full" }).click();
-  await expect(thought.getByRole("button", { name: "More" })).toHaveCount(0);
-  expect(await lines()).toBeGreaterThan(2);
+  for (const level of ["Default", "Full"]) {
+    await head.getByRole("tab", { name: level }).click();
+    await expect(text).toHaveText(said);
+    await expect(thought.getByRole("button")).toHaveCount(0);
+    expect(await whole()).toBe(true);
+  }
 });
 
 test("the header sets the level and shows or hides thinking", async ({

@@ -457,6 +457,8 @@ def test_web_move_that_stopped_halfway_is_finished_by_moving_again(root, home, *
             lambda: any(f.get("type") == "command.completed" for f in frames[seen:]), "no list"
         )
         done = next(f for f in frames[seen:] if f.get("type") == "command.completed")
+        # The final checkpoint, after the completion, frees the conversation.
+        client.until(session, idle)
         return done["data"]["output"]
 
     with Server([event({"content": "unused"})]) as provider:

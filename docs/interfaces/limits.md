@@ -74,7 +74,7 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kDigestChars` | `12` | Short digest widths; request construction and view projection share them. |
 | `kOccurrenceChars` | `16` | Short digest widths; request construction and view projection share them. |
 | `kDetailChars` | `24` | Short digest widths; request construction and view projection share them. |
-| `kAgentNameChars` | `8` | Short digest widths; request construction and view projection share them. |
+| `kAgentNameChars` | `16` | Short digest widths; request construction and view projection share them. |
 | `kSystemPromptBytes` | `64 KiB` | The assembled system message, and what an external editor may return. |
 | `kMemoryEventJournalBytes` | `256 KiB` | The journal's size before compaction, and the longest event line taken. |
 | `kMemoryEventLineBytes` | `4096` | The journal's size before compaction, and the longest event line taken. |

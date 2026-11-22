@@ -1451,6 +1451,7 @@ TEST_CASE(TestAFolderHoldsWhatWorksInItAndTheAgentsUnderIt) {
   fs::copy_file(lead, dir / "lead-copy.json");
   auto names = [](const std::vector<SessionInfo>& sessions) {
     std::vector<std::string> out;
+    out.reserve(sessions.size());
     for (const SessionInfo& info : sessions) {
       out.push_back(fs::path(info.path).stem().string());
     }

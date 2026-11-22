@@ -10,9 +10,9 @@ from integration_support import (
     assert_true,
     budget,
     event,
-    fnv1a64,
     save_settings,
     session_files,
+    session_id,
     tool_call,
     wait_until,
     write_session,
@@ -174,10 +174,10 @@ def test_web_delete_takes_what_the_conversation_owns(root, home, *, binary):
     said = [{"role": "user", "content": "hi"}]
     lead = write_session(home, "lead", said, cwd=root)
     agent = write_session(
-        home, "agent-0a1b2c3d", said, cwd=root, agent={"parent": fnv1a64(str(lead))}
+        home, "agent-0a1b2c3d", said, cwd=root, agent={"parent": session_id(lead)}
     )
     nested = write_session(
-        home, "agent-4e5f6a7b", said, cwd=root, agent={"parent": fnv1a64(str(agent))}
+        home, "agent-4e5f6a7b", said, cwd=root, agent={"parent": session_id(agent)}
     )
     (lead.parent / "lead.json.pinned").write_text("{}")
     with Server([event({"content": "unused"})]) as provider:
@@ -215,7 +215,7 @@ def test_web_delete_keeps_everything_while_an_agent_worktree_holds_work(root, ho
         "agent-0a1b2c3d",
         said,
         cwd=worktree.resolve(),
-        agent={"parent": fnv1a64(str(lead))},
+        agent={"parent": session_id(lead)},
     )
     with Server([event({"content": "unused"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):

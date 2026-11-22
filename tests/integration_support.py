@@ -560,6 +560,11 @@ def fnv1a64(text):
     return f"{value:016x}"
 
 
+def session_id(path):
+    """A conversation's id: its file's name hashed (SessionIdFor)."""
+    return fnv1a64(pathlib.Path(path).name)
+
+
 def keep_rule(home, folder, tool="run", match="*", effect="allow"):
     """A folder rule, as "Always allow here" keeps one; an allow rule is what
     lets a run with nobody to ask do what needs approval."""

@@ -338,23 +338,68 @@ json SessionHeader(const std::string& path) {
   return ValidHeader(header) ? header : json::object();
 }
 
-std::vector<SessionInfo> SessionsBeside(const std::string& path) {
-  const std::filesystem::path directory =
-      std::filesystem::path(path).parent_path();
+namespace {
+using SessionsById = std::map<std::string, const SessionInfo*>;
+
+// An unreadable file is no parent: an agent under one is its own top.
+std::vector<SessionInfo> Readable() {
   std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
-  std::erase_if(sessions, [&](const SessionInfo& info) {
-    return !info.error.empty() ||
-           std::filesystem::path(info.path).parent_path() != directory;
-  });
+  std::erase_if(sessions,
+                [](const SessionInfo& info) { return !info.error.empty(); });
   return sessions;
+}
+
+SessionsById ById(const std::vector<SessionInfo>& sessions) {
+  SessionsById ids;
+  for (const SessionInfo& info : sessions) ids[SessionIdFor(info.path)] = &info;
+  return ids;
+}
+
+// The conversation above `info`: itself unless it is an agent. A chain
+// longer than the list is a cycle.
+const SessionInfo& TopOf(const SessionInfo& info, const SessionsById& ids) {
+  const SessionInfo* top = &info;
+  for (size_t hop = 0; !top->parent.empty() && hop < ids.size(); ++hop) {
+    const auto up = ids.find(top->parent);
+    if (up == ids.end()) break;
+    top = up->second;
+  }
+  return *top;
+}
+}  // namespace
+
+std::vector<SessionInfo> SessionsIn(const std::string& cwd,
+                                    const std::string& host) {
+  const std::vector<SessionInfo> sessions = Readable();
+  const SessionsById ids = ById(sessions);
+  std::vector<SessionInfo> in;
+  for (const SessionInfo& info : sessions) {
+    const SessionInfo& top = TopOf(info, ids);
+    if (top.cwd == cwd && top.host == host) in.push_back(info);
+  }
+  return in;
+}
+
+SessionInfo TopConversation(const std::string& path) {
+  const std::vector<SessionInfo> sessions = Readable();
+  const SessionsById ids = ById(sessions);
+  const auto own = ids.find(SessionIdFor(path));
+  return own == ids.end() ? SessionInfo{} : TopOf(*own->second, ids);
+}
+
+std::vector<SessionInfo> SessionsBeside(const std::string& path) {
+  const SessionInfo top = TopConversation(path);
+  return top.cwd.empty() ? std::vector<SessionInfo>{}
+                         : SessionsIn(top.cwd, top.host);
 }
 
 std::string AgentParentPath(const std::string& path,
                             const std::string& parent) {
+  if (parent.empty()) return "";
   std::error_code ec;
   for (const auto& entry : std::filesystem::directory_iterator(
            std::filesystem::path(path).parent_path(), ec)) {
-    if (!parent.empty() && SessionIdFor(entry.path().string()) == parent) {
+    if (SessionIdFor(entry.path().string()) == parent) {
       return entry.path().string();
     }
   }
@@ -392,18 +437,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   namespace fs = std::filesystem;
   const WorkspaceIdentity current = Workspace();
   const fs::path base = fs::path(GlobalBase()) / kHistoryDir;
-  std::vector<fs::path> directories{base};
   std::error_code ec;
-  if (scope != SessionScope::kAll) {
-    directories.push_back(base / WorkspaceId(current.path, current.host));
-  } else {
-    for (const auto& entry : fs::directory_iterator(base, ec)) {
-      if (directories.size() >= kMaxCatalogueEntries) break;
-      if (fs::is_directory(entry.symlink_status(ec))) {
-        directories.push_back(entry.path());
-      }
-    }
-  }
   const auto listed = [&](const SessionInfo& info) {
     return scope == SessionScope::kAll ||
            (info.cwd == current.path && info.host == current.host &&
@@ -411,9 +445,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   };
   std::vector<SessionInfo> out;
   std::map<std::string, Entry> next;
-  for (const fs::path& directory : directories) {
-    if (!fs::is_directory(fs::symlink_status(directory, ec))) continue;
-    for (const auto& entry : fs::directory_iterator(directory, ec)) {
+  if (fs::is_directory(fs::symlink_status(base, ec))) {
+    for (const auto& entry : fs::directory_iterator(base, ec)) {
       if (out.size() >= kMaxCatalogueEntries) break;
       if (entry.path().extension() != ".json" ||
           !fs::is_regular_file(entry.symlink_status(ec))) {
@@ -614,7 +647,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   };
   VisitStrings(record.state, rewrite);
   record.state.display["facts"]["fork-origin"] = {
-      {"source", HashHex(source)},
+      {"source", SessionIdFor(source)},
       {"title", record.metadata.title},
       {"turns", record.metadata.turns},
       {"usage", UsageJson(record.state.usage)},
@@ -648,7 +681,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     return {{"error", result.message}};
   }
   json forked = {{"forked", true},
-                 {"id", HashHex(path)},
+                 {"id", SessionIdFor(path)},
                  {"path", path},
                  {"cwd", record.metadata.cwd},
                  {"title", record.metadata.title}};

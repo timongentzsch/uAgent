@@ -1247,8 +1247,7 @@ TEST_CASE(TestForkAtMessageAndShare) {
 
 TEST_CASE(TestSessionPrefixMatch) {
   TestWorkspace workspace("session-prefix");
-  const std::string dir =
-      UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd());
+  const std::string dir = UagentDir(kHistoryDir);
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
   auto save = [&](const std::string& file, const std::string& title) {

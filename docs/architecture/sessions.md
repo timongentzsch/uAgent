@@ -29,7 +29,7 @@ bytes match the last write is skipped (`SavedFile`).
 
 ## Data and formats
 
-A session file lives in `history/<workspace id>/` and holds two lines:
+A session file lives in `history/` and holds two lines:
 
 1. A header object under 16 KiB (`kSessionHeaderBytes`): `format`
    (`kSessionFormat`, 3), `cwd`, `model`, `session_id`, `turns`, `title`,
@@ -44,9 +44,11 @@ A session file lives in `history/<workspace id>/` and holds two lines:
 
 The whole file is read with a 64 MiB cap (`kSessionReadBytes`); a save that
 would exceed it is refused. A session has two identities: the hash of its
-file path (`SessionIdFor`), which names its socket, the web's routes and
-agents' `parent`; and the header `session_id` (`uagent-<hash>`), which
-stays fixed for the conversation's life.
+file name (`SessionIdFor`), which names its socket, its mailbox, its usage
+ledger, the web's routes, pins and drafts, and agents' `parent`; and the
+header `session_id` (`uagent-<hash>`), which a fork names as its source and
+which keys the provider's prompt cache. Neither depends on the folder, and
+no file is ever renamed, so both last the conversation's life.
 
 Files beside `<name>.json`, all private:
 
@@ -87,8 +89,8 @@ with Undo. Changes made by shell commands are not recorded.
 a session, 512 MiB in all (`asset_store.h`). A fork copies the directory
 and rewrites paths, so no asset is shared between sessions.
 
-**Mail.** `mail/<id>/new/` and `cur/`, `<id>` the hash of the canonical
-session path (`MailboxIdFor`). A message is one JSON file (`format` 1: `id`,
+**Mail.** `mail/<id>/new/` and `cur/`, `<id>` the session's id
+(`SessionIdFor`). A message is one JSON file (`format` 1: `id`,
 `from`, `to`, `sender_path`, `hops`, `created_ms`, `expires_ms`, `body`)
 named `<created_ms>-<pid>-<seq>-<id>.json`, so sorting gives send order.
 
@@ -111,14 +113,17 @@ Mail, sender to recipient:
    `delivered_mail` (latest 256). After the next save, `AckMail` deletes the
    files from `cur/`.
 
+A folder's conversations are those whose `cwd` (and `host`) is the
+folder, with the agents whose `agent.parent` chain leads to one
+(`SessionsIn`).
+
 Moving a conversation (`SessionHost::MoveConversation`): the family is the
-conversation and the agents beside it whose `agent.parent` chain leads to
-it. Busy members refuse the move; idle runtimes are closed. Under all their
-leases the host writes `move-<id>.json` (format 1: folders, note, `{from,
-to}` pairs) into its own directory, renames each file's sidecars and then
-the file, rewrites `cwd`, `agent.parent`, asset and edit paths and ids,
-adds a transcript note, moves the usage ledger, pins and scheduled runs,
-and deletes the move file last.
+conversation and its agents. Busy members refuse the move; idle runtimes
+are closed. Each file, agents first, gets the new `cwd` where it had the
+old one, and the conversation a transcript note; the record the web host
+kept of it as a draft goes. No file moves, so ids, paths, pins, mail, the
+usage ledger, scheduled runs and side chats' link to it stay as they are.
+The host publishes `moved` for each member, and a page reads it again.
 
 ## Invariants and limits
 
@@ -127,9 +132,6 @@ and deletes the move file last.
   rewritten or migrated.
 - Mail enters a conversation at most once: an id in `delivered_mail` is
   acknowledged without being added again.
-- A move file is trusted only as far as `ValidMove`: every path a
-  `.json` in some folder's history, going to the new folder's history under
-  the same name, at most 256 files.
 
 ## Failure modes
 
@@ -144,9 +146,8 @@ and deletes the move file last.
   tool call that was running is not repeated. A detached terminal's record
   carries a boot-scoped process identity; one that does not match is
   treated as exited and never signalled.
-- A move interrupted partway is finished by `RecoverMoves` when the web
-  host starts; every step is a no-op for what is already done. A move file
-  that fails `ValidMove` is left in place and reported.
+- A move interrupted partway leaves some agents in the new folder and the
+  conversation in the old one; moving it again finishes it.
 
 Retention: once a day (`kMaintenanceIntervalHours`), a top-level runtime's
 bootstrap calls `MaintainArtifacts`. Files in `history/` older than
@@ -166,7 +167,7 @@ trees follow `logs.keepDays` and `logs.keepFiles` (mail by age only); see
 | `include/agent/edit_journal.h`, `src/agent/edit_journal.cc` | undo |
 | `include/core/mailbox.h`, `src/core/mailbox.cc`, `src/agent/mail_delivery.cc` | mail |
 | `include/app/asset_store.h`, `src/app/asset_store.cc` | uploads and quotas |
-| `src/app/session_move.cc` | moves and their recovery |
+| `src/app/session_move.cc` | moves |
 | `src/core/fs.cc` | `AtomicWriteFile`, `MaintainArtifacts` |
 | `tests/unit/session_command_test.cc`, `tests/unit/events_test.cc` | save, load, fork, rename; journal |
 | `tests/unit/activity_sessions_test.cc`, `tests/unit/filesystem_test.cc` | mail; undo, atomic writes |

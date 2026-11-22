@@ -185,6 +185,8 @@ std::string CanonicalCwd();
 std::string UniqueSeed();
 // The same, hashed and named as a session.
 std::string MakeSessionId();
+// A conversation's id: its file's name hashed, so a move keeps it.
+std::string SessionIdFor(const std::string& path);
 // OS randomness for credentials and opaque identities. Empty on failure.
 std::string RandomToken(size_t bytes = 24);
 

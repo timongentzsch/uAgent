@@ -1,5 +1,5 @@
-// A conversation moves, with its agents, to another folder. Its id changes
-// with its place, so every open page follows it to the new one.
+// A conversation moves, with its agents, to another folder. Its id stays, and
+// every open page reads it again.
 import { mkdir } from "node:fs/promises";
 import {
   test,
@@ -33,7 +33,7 @@ async function openMove(page) {
   return page.getByRole("dialog", { name: /^Move “/ });
 }
 
-test("a conversation moves to a typed folder and the page follows it", async ({
+test("a conversation moves to a typed folder and every page shows it there", async ({
   page,
   browser,
   session,
@@ -64,7 +64,7 @@ test("a conversation moves to a typed folder and the page follows it", async ({
   const folders = page.getByRole("group", { name: "Folders" });
   await expect(folders.locator(".folder-own")).toHaveText("elsewhere");
   await expect(folders.locator(".session")).toHaveCount(1);
-  await expect.poll(() => idOf(page)).not.toBe(session.id);
+  expect(idOf(page)).toBe(session.id);
   await expect(page.locator(".message.response")).toContainText(
     "Verified response",
   );
@@ -72,10 +72,11 @@ test("a conversation moves to a typed folder and the page follows it", async ({
   await expect(page.getByLabel("Message or guidance")).toHaveValue(
     "Words not yet sent",
   );
-  await expect.poll(() => idOf(other)).toBe(idOf(page));
+  expect(idOf(other)).toBe(session.id);
   await expect(other.locator(".message.response")).toContainText(
     "Verified response",
   );
+  await expect(other.locator(".transcript")).toContainText("Moved");
 
   // The move's own row, open as a turn's work is, takes it back.
   await page.getByRole("button", { name: "Move back" }).click();

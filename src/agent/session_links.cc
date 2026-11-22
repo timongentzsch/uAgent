@@ -19,13 +19,13 @@ MailParty SessionParty(const std::string& path) {
 
 MailParty SessionParty(const std::string& path, const json& role) {
   const json header = SessionHeader(path);
-  MailParty party{.id = MailboxIdFor(path),
+  MailParty party{.id = SessionIdFor(path),
                   .path = path,
                   .identity = JsonValue(header, kSessionHeaderSessionId, ""),
                   .source = JsonValue(header, kSessionHeaderParent, "")};
   const std::string parent =
       AgentParentPath(path, JsonValue(role, "parent", ""));
-  if (!parent.empty()) party.parent = MailboxIdFor(parent);
+  if (!parent.empty()) party.parent = SessionIdFor(parent);
   return party;
 }
 
@@ -65,7 +65,7 @@ std::string SendSessionMail(SessionMail mail) {
   if (!mail.state.empty()) body["state"] = std::move(mail.state);
   if (!mail.agent.is_null()) body["agent"] = std::move(mail.agent);
   Mail sent =
-      MailFrom(mail.from_path, MailboxIdFor(mail.to_path), std::move(body));
+      MailFrom(mail.from_path, SessionIdFor(mail.to_path), std::move(body));
   sent.id = std::move(mail.id);
   sent.hops = mail.hops;
   // What an agent reports to its parent is the parent's to hear, however

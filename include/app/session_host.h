@@ -28,7 +28,6 @@
 #include "include/app/outcome_store.h"
 #include "include/app/replay_log.h"
 #include "include/app/session.h"
-#include "include/app/session_move.h"
 #include "include/cli/options.h"
 #include "include/core/events.h"
 #include "include/core/file_watch.h"
@@ -197,9 +196,6 @@ class SessionHost {
   void Stop();
   void LoadDrafts();
   void LoadPins();
-  // Finishes the moves a stopped host left unfinished, before anything reads
-  // the catalogue. Returns why any could not be finished.
-  std::vector<std::string> RecoverMoves();
   // Rescans the history on disk; a scan within a second of the last waits.
   bool RefreshCatalogue(bool force = false);
   std::optional<std::chrono::steady_clock::time_point> RescanDue() const;
@@ -213,7 +209,6 @@ class SessionHost {
   }
   std::vector<json> RefreshInvalidations(
       const std::vector<std::string>& projects);
-  std::vector<std::string> PresencePaths() const;
   HostWaitState RunSchedules(bool& recovered);
   void Shutdown();
   json Catalogue() const;
@@ -255,13 +250,10 @@ class SessionHost {
   std::optional<std::filesystem::path> NamedFolder(const json& command,
                                                    std::string& error)
       UAGENT_REQUIRES(mutex_);
-  // Moves a conversation and its agents to the history of `folder`.
+  // Moves a conversation and its agents to `folder`.
   std::string MoveConversation(const std::shared_ptr<HostSession>& top,
                                const std::filesystem::path& folder,
                                const std::string& device, json& moved);
-  std::string FinishMove(const SessionMove& move, MoveLeases& held);
-  // Pinned conversations follow their move; a pinned folder stays.
-  std::string FollowPins(const std::map<std::string, std::string>& ids);
   std::vector<SessionInfo> FamilyOf(const std::string& path)
       UAGENT_REQUIRES(scan_mutex_);
   std::string DeleteSpace(const std::string& path, const std::string& device);

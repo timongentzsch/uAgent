@@ -452,7 +452,7 @@ TEST_CASE(TestScheduleTool) {
 TEST_CASE(TestRemoteAgentDiffIsQuotedData) {
   TestWorkspace workspace("remote-agent-diff");
   const std::string folder = "/remote/project";
-  const std::filesystem::path own = HistoryPath(folder, "parent", "host");
+  const std::filesystem::path own = HistoryPath("parent");
   const std::filesystem::path agent = own.parent_path() / "agent-a.json";
   ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", own.c_str());
   std::filesystem::create_directories(own.parent_path());

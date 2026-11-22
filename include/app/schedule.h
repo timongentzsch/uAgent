@@ -6,7 +6,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <string>
 
 #include "include/core/json.h"
@@ -27,7 +26,5 @@ bool ScheduledRunActive(const std::string& status);
 json RunScheduleCheck(const std::string& cwd, const std::string& command);
 // The check itself, in this process's folder: the helper's, or a gateway's.
 json ScheduleCheck(const json& request);
-// Points the runs saved at a path of `moved` at the path it maps to.
-json MoveScheduledSessions(const std::map<std::string, std::string>& moved);
 }  // namespace uagent
 #endif

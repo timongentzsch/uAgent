@@ -160,36 +160,21 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
     scanned_ = std::chrono::steady_clock::now();
     bytes_ = 0;
     std::error_code ec;
-    std::vector<std::filesystem::path> folders{UagentDir(kHistoryDir)};
+    size_t scanned = 0;
     for (const auto& entry :
-         std::filesystem::directory_iterator(folders.front(), ec)) {
-      if (std::filesystem::is_directory(entry.symlink_status(ec)) &&
-          !entry.path().string().ends_with(kSessionAssetsSuffix)) {
-        folders.push_back(entry.path());
+         std::filesystem::directory_iterator(UagentDir(kHistoryDir), ec)) {
+      if (!entry.path().string().ends_with(std::string(".json") +
+                                           kSessionAssetsSuffix) ||
+          !std::filesystem::is_directory(entry.symlink_status(ec))) {
+        continue;
       }
-      if (folders.size() > kMaxCatalogueEntries) {
+      AssetUsage usage = InspectAssets(entry.path().string(), true);
+      if (++scanned > kMaxCatalogueEntries || !usage.valid ||
+          usage.bytes > kGlobalAssetBytes - bytes_) {
         bytes_ = kGlobalAssetBytes;
         break;
       }
-    }
-    size_t scanned = 0;
-    for (const auto& directory : folders) {
-      for (const auto& entry :
-           std::filesystem::directory_iterator(directory, ec)) {
-        if (!entry.path().string().ends_with(std::string(".json") +
-                                             kSessionAssetsSuffix) ||
-            !std::filesystem::is_directory(entry.symlink_status(ec))) {
-          continue;
-        }
-        AssetUsage usage = InspectAssets(entry.path().string(), true);
-        if (++scanned > kMaxCatalogueEntries || !usage.valid ||
-            usage.bytes > kGlobalAssetBytes - bytes_) {
-          bytes_ = kGlobalAssetBytes;
-          break;
-        }
-        bytes_ += usage.bytes;
-      }
-      if (bytes_ >= kGlobalAssetBytes) break;
+      bytes_ += usage.bytes;
     }
   }
   if (tool_copy) EvictToolCopies(folder, bytes.size());

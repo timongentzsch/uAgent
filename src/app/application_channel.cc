@@ -65,7 +65,7 @@ int Application::RunChannel() {
   });
   // Mail a previous runtime took but never saved is delivered again, and
   // mail that arrived while none ran starts a turn now.
-  RecoverMail(MailboxIdFor(session_file_));
+  RecoverMail(SessionIdFor(session_file_));
   if (agent_.DeliverMail()) SaveSession(false);
   PublishChannelState();
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {

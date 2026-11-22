@@ -16,6 +16,7 @@
 
 #include "include/agent/conversation.h"
 #include "include/core/file_watch.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 #include "include/core/usage.h"
@@ -66,8 +67,14 @@ inline bool OpenSuggestion(const json& suggestion) {
          !JsonValue(suggestion, "dismissed", false);
 }
 
-// Every valid conversation saved in the directory of `path`, newest first.
+// Every valid conversation working in folder `cwd` on `host`, with the agents
+// under them, newest first.
+std::vector<SessionInfo> SessionsIn(const std::string& cwd,
+                                    const std::string& host = {});
+// SessionsIn the folder of the conversation `path` is, or is an agent under.
 std::vector<SessionInfo> SessionsBeside(const std::string& path);
+// The conversation `path` is, or is an agent under; no cwd when not saved.
+SessionInfo TopConversation(const std::string& path);
 
 // The session file of `parent` (a session id) beside `path`; empty for none.
 std::string AgentParentPath(const std::string& path, const std::string& parent);
@@ -158,12 +165,6 @@ struct SessionLoadResult {
   SessionStoreStatus status;
   std::optional<SessionRecord> record;
 };
-
-// The session file's path, hashed as spelled. MailboxIdFor resolves links
-// first, so the two agree only for a path without them.
-inline std::string SessionIdFor(const std::string& path) {
-  return HashHex(path);
-}
 
 bool ValidSessionTitle(const std::string& title);
 std::string InvalidSessionTitleMessage();

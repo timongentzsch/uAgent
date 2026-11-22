@@ -134,8 +134,7 @@ void SessionHost::LoadDrafts() {
     session->host = JsonValue(draft, "host", "");
     const std::filesystem::path path(session->path);
     if (!OpaqueId(session->id) || session->id != SessionIdFor(session->path) ||
-        path.parent_path() != std::filesystem::path(UagentDir(kHistoryDir)) /
-                                  WorkspaceId(session->cwd, session->host) ||
+        path.parent_path() != std::filesystem::path(UagentDir(kHistoryDir)) ||
         !path.filename().string().starts_with("web-") ||
         path.extension() != ".json") {
       continue;

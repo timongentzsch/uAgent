@@ -458,6 +458,11 @@ TEST_CASE(TestContextBreakdown) {
   CHECK(breakdown["instructions"] == "AGENTS.md");
   const int64_t compacts_at = breakdown["compacts_at"];
   CHECK(compacts_at > 0 && compacts_at < 200000);
+  {
+    // Automatic compaction switched off: nowhere to mark.
+    ScopedEnv off("UAGENT_AUTO_COMPACT_PCT", "0");
+    CHECK(agent.ContextParts()["compacts_at"] == 0);
+  }
   // The MCP server's tool alone; the skill-gated tool is not offered.
   CHECK(parts.at("mcp") == breakdown["tools"]["mcp"]["bytes"]);
   CHECK(breakdown["tools"]["mcp"]["count"] == 1);

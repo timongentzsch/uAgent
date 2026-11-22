@@ -962,11 +962,11 @@ export default function Sequence({
   };
   const format = (said: Format) =>
     tell(frame.current, { type: "format", ...said });
-  const textTools = (
+  const textTools = caret && (
     <TextTools
       caret={caret}
       format={format}
-      linking={linking && !!caret}
+      linking={linking}
       link={() => setLinking(!linking)}
     />
   );
@@ -1102,7 +1102,7 @@ export default function Sequence({
             </Menu>
           </span>
           {writing && <span class="chip working">Agent writing</span>}
-          {(!editable || doc) && status}
+          {!board && status}
         </Bar>
         {sheet && (
           <fieldset class="page-asks" disabled={!live}>
@@ -1118,18 +1118,6 @@ export default function Sequence({
           </fieldset>
         )}
       </div>
-      {mode === "edit" && kind === "deck" && (
-        <Bar edge="bottom" class="page-tools">
-          <fieldset
-            class="page-asks"
-            disabled={!caret}
-            onMouseDown={(event) => event.preventDefault()}
-          >
-            {textTools}
-          </fieldset>
-          {status}
-        </Bar>
-      )}
       {linking && caret && (
         <LinkField
           key={caret.href}
@@ -1586,6 +1574,8 @@ export default function Sequence({
                 }
                 at={() => inWindow(chosen.rect)}
                 room={inside}
+                // A slide's text takes Edit's tools; a whiteboard's does not.
+                text={hand === SLIDE && textTools}
               />
             )}
             {mode === "edit" && doc && live && !presenting && (

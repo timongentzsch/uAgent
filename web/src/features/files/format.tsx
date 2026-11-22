@@ -71,15 +71,15 @@ export type Format =
   | { as: string }
   | { insert: string };
 
-// What is done to the text being edited, over its block while Edit is on,
-// each disabled where it does not apply.
+// What is done to the text being edited, in the bar over its block or its
+// slide's element, each disabled where it does not apply.
 export function TextTools({
   caret,
   format,
   linking,
   link,
 }: {
-  caret?: Caret;
+  caret: Caret;
   format: (format: Format) => void;
   // Whether the link's field is open, and what opens or closes it.
   linking: boolean;
@@ -88,8 +88,8 @@ export function TextTools({
   const mark = (name: "bold" | "italic", icon: ComponentChildren) => (
     <IconButton
       label={name === "bold" ? "Bold" : "Italic"}
-      aria-pressed={!!caret?.[name]}
-      disabled={!caret?.selected || caret[name] === null}
+      aria-pressed={!!caret[name]}
+      disabled={!caret.selected || caret[name] === null}
       onClick={() => format({ mark: name })}
     >
       {icon}
@@ -111,12 +111,12 @@ export function TextTools({
           <MenuItem
             key={kind}
             role="menuitemradio"
-            aria-checked={kind === caret?.kind}
-            disabled={!caret?.kind}
-            onClick={() => kind !== caret?.kind && format({ as: kind })}
+            aria-checked={kind === caret.kind}
+            disabled={!caret.kind}
+            onClick={() => kind !== caret.kind && format({ as: kind })}
           >
             {name}
-            {kind === caret?.kind && <Check />}
+            {kind === caret.kind && <Check />}
           </MenuItem>
         ))}
       </Menu>
@@ -125,7 +125,7 @@ export function TextTools({
       <IconButton
         label="Link"
         aria-pressed={linking}
-        disabled={!caret?.selected && !caret?.href}
+        disabled={!caret.selected && !caret.href}
         onClick={link}
       >
         <Link />

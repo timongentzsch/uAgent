@@ -1517,7 +1517,7 @@ test("what is typed in a slide saved before is in its file when the app itself i
     .toContain("<p>The plan for Q3</p>");
 });
 
-// What is being saved stands last in Edit's own row, so no tool moves for it.
+// What is being saved stands last in the tools' row, so no tool moves for it.
 test("a slide's tools keep their places while what is typed in it is saved", async ({
   page: app,
   session,
@@ -1525,9 +1525,10 @@ test("a slide's tools keep their places while what is typed in it is saved", asy
 }) => {
   const { files, stage } = await openDeck(app, session, host.project, TALK);
   await typeIn(app, files, stage.getByText("The plan"));
-  const rows = files.locator(".page-tools");
+  const row = files.locator(".page-tools");
+  await expect(row).toHaveCount(1);
   const places = () =>
-    rows.getByRole("button").evaluateAll((all) =>
+    row.getByRole("button").evaluateAll((all) =>
       all.map((tool) => {
         const { left, top, width, height } = tool.getBoundingClientRect();
         return [tool.textContent || tool.ariaLabel, left, top, width, height];
@@ -1535,12 +1536,11 @@ test("a slide's tools keep their places while what is typed in it is saved", asy
     );
   const bare = await places();
   await app.keyboard.insertText(" for Q3");
-  const status = rows.last().locator(".page-status");
+  const status = row.locator(".page-status");
   await expect(status).toHaveText("Saving…");
   expect(await places()).toEqual(bare);
   await app.clock.resume();
   await expect(status).toHaveText("Saved");
-  await expect(rows.first().locator(".page-status")).toHaveCount(0);
   expect(await places()).toEqual(bare);
 });
 
@@ -1656,7 +1656,8 @@ test("Edit goes off on a step to a slide too large to save", async ({
   });
   const edit = files.getByRole("button", { name: "Edit" });
   await edit.click();
-  await expect(files.getByRole("button", { name: "Bold" })).toBeVisible();
+  const inserts = files.getByRole("group", { name: "Insert" });
+  await expect(inserts).toBeVisible();
   await files.getByRole("button", { name: "Next slide" }).click();
   await expect(count).toHaveText("2 / 2");
   const long = stage.getByRole("heading", { name: "Long" });
@@ -1664,7 +1665,7 @@ test("Edit goes off on a step to a slide too large to save", async ({
   // Not on, not told to the page, and its tools gone.
   await expect(edit).toBeDisabled();
   await expect(edit).toHaveAttribute("aria-pressed", "false");
-  await expect(files.getByRole("button", { name: "Bold" })).toHaveCount(0);
+  await expect(inserts).toHaveCount(0);
   await expect(long).not.toHaveAttribute("contenteditable");
 });
 
@@ -3398,7 +3399,7 @@ test("the text bar comes with a selection, by it: clear of the selected lines an
   await expect(bar.locator(":focus")).toHaveCount(1);
 });
 
-test("a slide's block takes Edit's tools as a document's does", async ({
+test("a slide's text typed in takes Edit's text tools in the bar over it, before Duplicate, Delete and Ask; there is no row of them", async ({
   page: app,
   session,
   host,
@@ -3407,15 +3408,43 @@ test("a slide's block takes Edit's tools as a document's does", async ({
   const tool = (name) => files.getByRole("button", { name, exact: true });
   const cover = () => talkFile(host.project, "01-cover.html");
   await tool("Edit").click();
+  const bar = files.getByRole("toolbar", { name: "Picked" });
   const text = stage.getByText("The plan");
-  await typing(text);
-  // A slide's text does not flow on: nothing is put in after a block.
-  await expect(tool("Style")).toBeVisible();
+  // Picked, not typed in: what acts on the element alone.
+  await expect(files.getByRole("group", { name: "Insert" })).toBeVisible();
+  await text.click();
+  await expect(bar).toBeVisible();
+  await expect(tool("Style")).toHaveCount(0);
+  await expect(tool("Bold")).toHaveCount(0);
+  // Typed in: the text tools first. A slide's text does not flow on:
+  // nothing is put in after a block.
+  await text.click();
+  await expect(text).toHaveAttribute("contenteditable", "plaintext-only");
+  const labels = () =>
+    bar
+      .getByRole("button")
+      .evaluateAll((all) =>
+        all.map((one) => one.getAttribute("aria-label") || one.textContent),
+      );
+  await expect
+    .poll(labels)
+    .toEqual([
+      "Style",
+      "Bold",
+      "Italic",
+      "Link",
+      "Duplicate",
+      "Delete",
+      "Ask about it",
+    ]);
   await expect(tool("Insert")).toHaveCount(0);
+  // A press keeps the selection: the next acts on it too.
   await selectIn(text, "plan");
-  await tool("Bold").click();
+  await bar.getByRole("button", { name: "Bold" }).click();
   await expect.poll(cover).toContain("<p>The <b>plan</b></p><aside>");
-  await tool("Style").click();
+  await expect(bar.getByRole("button", { name: "Italic" })).toBeEnabled();
+  await expect(text).toBeFocused();
+  await bar.getByRole("button", { name: "Style" }).click();
   await app.getByRole("menuitemradio", { name: "Heading 2" }).click();
   await expect(stage.locator("h2")).toBeFocused();
   expect(await cover()).toContain(

@@ -428,7 +428,22 @@ async function choose(page, title) {
     reads.push(url.pathname + url.search);
   };
   page.on("request", read);
-  await page.evaluate(() => testMark());
+  // The transcript's placeholder rows added on the way.
+  await page.evaluate(() => {
+    const placeholder = '[data-message-id^="placeholder-"]';
+    globalThis.testPlaceholders = 0;
+    globalThis.testWatch?.disconnect();
+    globalThis.testWatch = new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.addedNodes)
+          if (node instanceof Element)
+            testPlaceholders +=
+              node.querySelectorAll(placeholder).length +
+              (node.matches(placeholder) ? 1 : 0);
+    });
+    testWatch.observe(document.body, { subtree: true, childList: true });
+    return testMark();
+  });
   await listed(page, title).click();
   await expect(
     page.locator(
@@ -437,7 +452,7 @@ async function choose(page, title) {
   ).toBeVisible();
   const counted = await page.evaluate(async () => {
     await testQuiet();
-    return testSince();
+    return { ...testSince(), placeholders: testPlaceholders };
   });
   page.off("request", read);
   return { ...counted, reads };
@@ -450,6 +465,8 @@ test("a switch draws two rows of the list and each message once", async ({
   await open(page);
   const first = await choose(page, "Conversation 5");
   measured("first visit", first);
+  // Not read yet: its placeholder shows until it is.
+  expect.soft(first.placeholders).toBeGreaterThan(0);
   // Each message is drawn once as it appears.
   expect
     .soft(first.renders.RenderedMarkdown)
@@ -458,6 +475,8 @@ test("a switch draws two rows of the list and each message once", async ({
   await choose(page, "Conversation 0");
   const held = await choose(page, "Conversation 5");
   measured("held", held);
+  // Held: its messages are drawn in the first frame, no placeholder.
+  expect.soft(held.placeholders).toBe(0);
   // The rows that lost and gained the selection, not the whole list.
   expect.soft(held.renders.SessionRow).toBeLessThanOrEqual(2);
   // The shell once, for the press: the conversation's read adds nothing.

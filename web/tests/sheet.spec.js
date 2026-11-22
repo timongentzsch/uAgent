@@ -327,6 +327,8 @@ test("a file with a formula the engine panics on is shown as written, with the r
 // The engine never returns from the factorial of so large a number: the
 // page lets the worker calculating it go once its time is up, 20 seconds.
 const NEVER = "=FACT(99999999999)";
+// Its time is the page's: the test moves the page's clock past it.
+const ENGINE_LIMIT_MS = 20_000;
 
 test("a formula the engine never finishes is refused once its time is up; meanwhile the sheet says it is calculating, answers and keeps its file", async ({
   page: app,
@@ -334,6 +336,7 @@ test("a formula the engine never finishes is refused once its time is up; meanwh
   host,
 }) => {
   test.setTimeout(90_000);
+  await app.clock.install();
   const { files, stage, bar, cell, saved } = await openCosts(
     app,
     session,
@@ -359,6 +362,7 @@ test("a formula the engine never finishes is refused once its time is up; meanwh
   await expect(cell("Costs", "A2")).toHaveText("Lease");
   expect(await saved()).toBe(COSTS);
   const why = files.locator(".open-page > .page-notice .notice");
+  await app.clock.fastForward(ENGINE_LIMIT_MS);
   await expect(why).toHaveText(
     "Not changed: the engine has not finished calculating after 20 seconds.",
     { timeout: 30_000 },
@@ -383,6 +387,7 @@ test("a file with a formula the engine never finishes is shown as written once i
   host,
 }) => {
   test.setTimeout(90_000);
+  await app.clock.install();
   const { files, stage } = await openSheet(
     app,
     session,
@@ -394,6 +399,7 @@ test("a file with a formula the engine never finishes is shown as written once i
   await expect(files.locator(".page-tools .page-status")).toHaveText(
     "Calculating…",
   );
+  await app.clock.fastForward(ENGINE_LIMIT_MS);
   await expect(stage.locator(".sheet-notice")).toHaveText(
     "This sheet is shown as written: the engine has not finished calculating it after 20 seconds",
     { timeout: 30_000 },

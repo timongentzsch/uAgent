@@ -70,14 +70,20 @@ export function InsertBar({
 }
 
 // Over what is picked, `at` in the window: above it, below it where there
-// is no room above, and inside the stage it floats in.
+// is no room above (or, `below`, the other way round), and inside the stage
+// it floats in, short of the scroll bars of what scrolls there (`room`, its
+// client size).
 export function PickBar({
   label,
   at,
+  room,
+  below,
   children,
 }: {
   label: string;
   at: () => Rect | undefined;
+  room?: () => { width: number; height: number } | undefined;
+  below?: boolean;
   children: ComponentChildren;
 }) {
   const bar = useRef<HTMLDivElement>(null);
@@ -90,14 +96,18 @@ export function PickBar({
     const { marginLeft, marginTop } = getComputedStyle(node);
     const w = node.offsetWidth + 2 * Number.parseFloat(marginLeft);
     const h = node.offsetHeight + 2 * Number.parseFloat(marginTop);
+    const { width, height } = room?.() ?? stage;
     const middle = rect.x + rect.width / 2 - stage.left;
     const above = rect.y - stage.top - h;
-    const x = Math.max(0, Math.min(middle - w / 2, stage.width - w));
+    const under = rect.y + rect.height - stage.top;
+    const x = Math.max(0, Math.min(middle - w / 2, width - w));
     const y = Math.max(
       0,
-      above >= 0
-        ? above
-        : Math.min(rect.y + rect.height - stage.top, stage.height - h),
+      below && under <= height - h
+        ? under
+        : above >= 0
+          ? above
+          : Math.min(under, height - h),
     );
     node.style.setProperty("--bar-x", `${x}px`);
     node.style.setProperty("--bar-y", `${y}px`);
@@ -118,6 +128,8 @@ export function PickBar({
       role="toolbar"
       aria-label={label}
       ref={bar}
+      // A press leaves the focus, and so the selection, in the page.
+      onMouseDown={(event) => event.preventDefault()}
     >
       {children}
     </div>

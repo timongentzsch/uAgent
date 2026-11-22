@@ -4,41 +4,65 @@ import {
   Bold,
   Check,
   ChevronDown,
+  Code,
+  Heading2,
+  Heading3,
   Italic,
   Link,
+  List,
+  ListChecks,
+  ListOrdered,
+  Minus,
   Pilcrow,
-  Plus,
+  Table,
+  TextQuote,
 } from "lucide-preact";
+import type { Tool } from "../../shared/float-bars.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
-import type { PageMessage } from "../../shared/page-frame.tsx";
+import {
+  type PageMessage,
+  type Rect,
+  rectOf,
+} from "../../shared/page-frame.tsx";
 import { Button, IconButton, Input, InputRow } from "../../shared/ui.tsx";
 import { INSERTS, KINDS, kindOf, LINK } from "./doc-edit.ts";
 
 // What is selected in the block being edited, as its page says it
 // (design-helper.js): the block's kind where it can become another, whether
 // anything is selected, its marks (null where the block's own style is the
-// mark) and the link it touches.
+// mark), the link it touches; where what is selected is in its page, and
+// the block as a comment names it.
 export interface Caret {
   kind: string;
   selected: boolean;
   bold: boolean | null;
   italic: boolean | null;
   href: string;
+  rect: Rect;
+  tag: string;
+  selector: string;
+  text: string;
 }
 // The page is untrusted: only what the tools show is taken. None while no
 // block is being edited.
 export const caretOf = (
   said: Extract<PageMessage, { type: "caret" }>,
-): Caret | undefined =>
-  typeof said.tag === "string"
+): Caret | undefined => {
+  const rect = rectOf(said.rect);
+  return typeof said.tag === "string" && rect
     ? {
         kind: kindOf(said.tag, String(said.parent)),
         selected: said.selected === true,
         bold: said.bold === null ? null : said.bold === true,
         italic: said.italic === null ? null : said.italic === true,
         href: String(said.href ?? "").slice(0, 2000),
+        rect,
+        tag: said.tag.slice(0, 40),
+        selector: String(said.selector).slice(0, 2000),
+        text: String(said.text ?? "").slice(0, 60),
       }
     : undefined;
+};
 
 export type Format =
   | { mark: "bold" | "italic" }
@@ -47,21 +71,16 @@ export type Format =
   | { as: string }
   | { insert: string };
 
-// Edit's tools, in a row of their own while Edit is on, each disabled where
-// it does not apply. A press leaves the focus, and so the selection, in the
-// page.
-export function FormatTools({
+// What is done to the text being edited, over its block while Edit is on,
+// each disabled where it does not apply.
+export function TextTools({
   caret,
   format,
-  inserts,
   linking,
   link,
 }: {
   caret?: Caret;
   format: (format: Format) => void;
-  // Whether blocks can be put in: a document's text flows on, a slide's
-  // does not.
-  inserts: boolean;
   // Whether the link's field is open, and what opens or closes it.
   linking: boolean;
   link: () => void;
@@ -77,21 +96,7 @@ export function FormatTools({
     </IconButton>
   );
   return (
-    <fieldset
-      class="page-asks"
-      disabled={!caret}
-      onMouseDown={(event) => event.preventDefault()}
-    >
-      {mark("bold", <Bold />)}
-      {mark("italic", <Italic />)}
-      <IconButton
-        label="Link"
-        aria-pressed={linking}
-        disabled={!caret?.selected && !caret?.href}
-        onClick={link}
-      >
-        <Link />
-      </IconButton>
+    <>
       <Menu
         label="Text style"
         trigger={
@@ -115,27 +120,36 @@ export function FormatTools({
           </MenuItem>
         ))}
       </Menu>
-      {inserts && (
-        <Menu
-          label="Insert after this block"
-          trigger={
-            <>
-              <Plus />
-              Insert
-              <ChevronDown />
-            </>
-          }
-        >
-          {Object.entries(INSERTS).map(([kind, name]) => (
-            <MenuItem key={kind} onClick={() => format({ insert: kind })}>
-              {name}
-            </MenuItem>
-          ))}
-        </Menu>
-      )}
-    </fieldset>
+      {mark("bold", <Bold />)}
+      {mark("italic", <Italic />)}
+      <IconButton
+        label="Link"
+        aria-pressed={linking}
+        disabled={!caret?.selected && !caret?.href}
+        onClick={link}
+      >
+        <Link />
+      </IconButton>
+    </>
   );
 }
+
+// What a document's insert bar puts in after the block being edited.
+const INSERT_ICONS: Record<string, ComponentChildren> = {
+  p: <Pilcrow />,
+  h2: <Heading2 />,
+  h3: <Heading3 />,
+  ul: <List />,
+  ol: <ListOrdered />,
+  checklist: <ListChecks />,
+  blockquote: <TextQuote />,
+  pre: <Code />,
+  table: <Table />,
+  hr: <Minus />,
+};
+export const DOC_INSERTS: Tool[] = Object.entries(INSERTS).map(
+  ([name, label]) => ({ name, label, icon: INSERT_ICONS[name] }),
+);
 
 // The address of the link on what is selected, typed under the tools; Esc
 // or the Link tool shuts it.

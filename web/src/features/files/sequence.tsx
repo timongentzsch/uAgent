@@ -13,6 +13,7 @@ import {
   ChevronRight,
   ExternalLink,
   FileOutput,
+  MessageSquare,
   LayoutGrid,
   PanelLeft,
   PenLine,
@@ -71,7 +72,15 @@ import {
 } from "./sheet-edit.ts";
 import { columnOf, RulesDialog } from "./sheet-rules.tsx";
 import SlideActions from "./slide-actions.tsx";
-import { type Caret, caretOf, FormatTools, LinkField } from "./format.tsx";
+import {
+  type Caret,
+  caretOf,
+  DOC_INSERTS,
+  type Format,
+  LinkField,
+  TextTools,
+} from "./format.tsx";
+import { InsertBar, PickBar } from "../../shared/float-bars.tsx";
 import Tweaks, { type Tweak } from "./tweaks.tsx";
 import { dirOf } from "./flow.ts";
 import { readTokens } from "./tokens.ts";
@@ -672,9 +681,10 @@ export default function Sequence({
       : 1;
   // How far the person zoomed from the fit; each page opens at the fit.
   const [zoom, setZoom] = useState(1);
-  // On a touch screen the tools for items changed by hand take the foot of
-  // the stage (two fingers zoom a whiteboard): Fit is in the tools' menu.
-  const touch = !!hand && coarsePointer();
+  // On a touch screen the tools for items changed by hand, or a document's
+  // inserts, take the foot of the stage (two fingers zoom a whiteboard): Fit
+  // is in the tools' menu.
+  const touch = (!!hand || (doc && mode === "edit")) && coarsePointer();
   const scale = fit * zoom;
   // The handles of items changed by hand keep a finger's size at any zoom.
   useEffect(() => {
@@ -930,6 +940,36 @@ export default function Sequence({
         </MenuItem>
       ),
   );
+  // What the stage's scroller shows, short of its scroll bars.
+  const inside = () => {
+    const box = scroller.current;
+    return box
+      ? { width: box.clientWidth, height: box.clientHeight }
+      : undefined;
+  };
+  // A box of the page, in the window.
+  const inWindow = (rect?: Rect) => {
+    const page = frame.current?.getBoundingClientRect();
+    return (
+      page &&
+      rect && {
+        x: page.left + rect.x * scale,
+        y: page.top + rect.y * scale,
+        width: rect.width * scale,
+        height: rect.height * scale,
+      }
+    );
+  };
+  const format = (said: Format) =>
+    tell(frame.current, { type: "format", ...said });
+  const textTools = (
+    <TextTools
+      caret={caret}
+      format={format}
+      linking={linking && !!caret}
+      link={() => setLinking(!linking)}
+    />
+  );
   const draw = () =>
     png &&
     settle().then(() => view({ src: png(1), name: `${stem}.png`, edit: true }));
@@ -1062,7 +1102,7 @@ export default function Sequence({
             </Menu>
           </span>
           {writing && <span class="chip working">Agent writing</span>}
-          {!editable && status}
+          {(!editable || doc) && status}
         </Bar>
         {sheet && (
           <fieldset class="page-asks" disabled={!live}>
@@ -1078,17 +1118,15 @@ export default function Sequence({
           </fieldset>
         )}
       </div>
-      {mode === "edit" && !board && (
+      {mode === "edit" && kind === "deck" && (
         <Bar edge="bottom" class="page-tools">
-          <FormatTools
-            caret={caret}
-            format={(format) =>
-              tell(frame.current, { type: "format", ...format })
-            }
-            inserts={doc}
-            linking={linking && !!caret}
-            link={() => setLinking(!linking)}
-          />
+          <fieldset
+            class="page-asks"
+            disabled={!caret}
+            onMouseDown={(event) => event.preventDefault()}
+          >
+            {textTools}
+          </fieldset>
           {status}
         </Bar>
       )}
@@ -1546,20 +1584,50 @@ export default function Sequence({
                       });
                   })
                 }
-                at={() => {
-                  const page = frame.current?.getBoundingClientRect();
-                  const rect = chosen.rect;
-                  return (
-                    page &&
-                    rect && {
-                      x: page.left + rect.x * scale,
-                      y: page.top + rect.y * scale,
-                      width: rect.width * scale,
-                      height: rect.height * scale,
-                    }
-                  );
-                }}
+                at={() => inWindow(chosen.rect)}
+                room={inside}
               />
+            )}
+            {mode === "edit" && doc && live && !presenting && (
+              <>
+                {caret?.selected && (
+                  <PickBar
+                    label="Text"
+                    at={() => inWindow(caret.rect)}
+                    room={inside}
+                    // A touch screen's own menu stands over a selection.
+                    below={coarsePointer()}
+                  >
+                    {textTools}
+                    {addToChat && (
+                      <IconButton
+                        label="Ask about it"
+                        onClick={() =>
+                          setPicked({
+                            rect: caret.rect,
+                            selector: caret.selector,
+                            tag: caret.tag,
+                            text: caret.text,
+                          })
+                        }
+                      >
+                        <MessageSquare />
+                      </IconButton>
+                    )}
+                  </PickBar>
+                )}
+                <fieldset
+                  class="page-asks"
+                  disabled={!caret}
+                  onMouseDown={(event) => event.preventDefault()}
+                >
+                  <InsertBar
+                    tools={DOC_INSERTS}
+                    armed=""
+                    arm={(insert) => format({ insert })}
+                  />
+                </fieldset>
+              </>
             )}
             {sheet && !locked && (
               <fieldset class="page-asks" disabled={!live}>

@@ -3079,7 +3079,7 @@ const contrastOf = (target) =>
     return (more + 0.05) / (less + 0.05);
   });
 
-test("Edit's tools mark and link what is selected in a block, and stand beside the stage's own without moving them", async ({
+test("Edit's text bar comes with a selection and marks and links it, and the stage's own tools do not move", async ({
   page: app,
   session,
   host,
@@ -3097,14 +3097,21 @@ test("Edit's tools mark and link what is selected in a block, and stand beside t
   await tool("Edit").click();
   const first = stage.getByText("Alpha beta gamma");
   await expect(first).toHaveAttribute("contenteditable", "plaintext-only");
-  // There from the start, off until something is selected.
-  for (const name of ["Bold", "Italic", "Link", "Style"])
-    await expect(tool(name)).toBeDisabled();
+  // No row of its own, and nothing over a block typed in: the bar comes
+  // with a selection.
+  const bar = files.getByRole("toolbar", { name: "Text" });
+  await expect(tool("Bold")).toHaveCount(0);
+  await first.click();
+  await expect(files.getByRole("button", { name: "Paragraph" })).toBeEnabled();
+  await expect(bar).toHaveCount(0);
   expect(await places()).toEqual(before);
 
+  // A press keeps the selection: the next acts on it too.
   await selectIn(first, "beta");
+  await expect(bar).toBeVisible();
   await tool("Bold").click();
   await expect(tool("Bold")).toHaveAttribute("aria-pressed", "true");
+  await expect(tool("Italic")).toBeEnabled();
   // Pressed, its icon keeps its contrast under the pointer.
   await tool("Bold").hover();
   await expect.poll(() => contrastOf(tool("Bold"))).toBeGreaterThan(4.5);
@@ -3152,6 +3159,9 @@ test("Edit's tools mark and link what is selected in a block, and stand beside t
   await tool("Remove").click();
   await expect.poll(body).toContain("<p><i>Alpha</i> beta gamma</p>");
 
+  // The selection collapsed, the bar goes.
+  await app.keyboard.press("End");
+  await expect(bar).toHaveCount(0);
   // A heading is bold by itself: there is no such mark to make in it.
   await selectIn(stage.locator("h1"), "Notes");
   await expect(tool("Italic")).toBeEnabled();
@@ -3184,7 +3194,7 @@ test("Edit's tools mark and link what is selected in a block, and stand beside t
     );
 });
 
-test("Edit's Style turns a block into a heading, a paragraph or a list item in the file, and the caret stays in it", async ({
+test("Edit's Style turns a block with text selected in it into a heading, a paragraph or a list item in the file, and the caret stays in it", async ({
   page: app,
   session,
   host,
@@ -3193,12 +3203,12 @@ test("Edit's Style turns a block into a heading, a paragraph or a list item in t
   await tool("Edit").click();
   const second = stage.getByText("Second kept one");
   await expect(second).toHaveAttribute("contenteditable", "plaintext-only");
-  const style = async (block, name) => {
-    await block.click();
+  const style = async (block, word, name) => {
+    await selectIn(block, word);
     await tool("Style").click();
     await app.getByRole("menuitemradio", { name }).click();
   };
-  await style(second, "Heading 2");
+  await style(second, "Second", "Heading 2");
   const heading = stage.locator("h2");
   await expect(heading).toBeFocused();
   await app.keyboard.type(" more");
@@ -3208,16 +3218,20 @@ test("Edit's Style turns a block into a heading, a paragraph or a list item in t
       '</p><h2>Second <span class="tag">kept</span> one more</h2><ul>',
     );
   // Its menu says what the block is.
+  await selectIn(heading, "more");
   await tool("Style").click();
   await expect(
     app.getByRole("menuitemradio", { name: "Heading 2" }),
   ).toHaveAttribute("aria-checked", "true");
   await app.keyboard.press("Escape");
+  // A press in the selection ends it, and the bar over the block above goes.
+  await heading.click();
+  await expect(app.getByRole("toolbar", { name: "Text" })).toHaveCount(0);
 
   // A paragraph starts a list; the block after it joins that list.
-  await style(stage.getByText("Alpha beta gamma"), "Bulleted list");
+  await style(stage.getByText("Alpha beta gamma"), "Alpha", "Bulleted list");
   await expect(stage.locator("ul").first()).toHaveText("Alpha beta gamma");
-  await style(heading, "Bulleted list");
+  await style(heading, "Second", "Bulleted list");
   await expect(heading).toHaveCount(0);
   await expect
     .poll(body)
@@ -3228,9 +3242,9 @@ test("Edit's Style turns a block into a heading, a paragraph or a list item in t
     );
   // An item takes its list along to the other kind, and leaves it as a
   // paragraph, the list cut in two around it and counting on.
-  await style(stage.getByText("Two", { exact: true }), "Numbered list");
+  await style(stage.getByText("Two", { exact: true }), "Two", "Numbered list");
   await expect(stage.locator("ol > li")).toHaveCount(3);
-  await style(stage.getByText("Two", { exact: true }), "Paragraph");
+  await style(stage.getByText("Two", { exact: true }), "Two", "Paragraph");
   await expect(stage.locator("ol")).toHaveCount(2);
   await expect
     .poll(body)
@@ -3239,19 +3253,27 @@ test("Edit's Style turns a block into a heading, a paragraph or a list item in t
     );
 });
 
-test("Edit's Insert puts a paragraph, a list, a table or a divider after the block in the file, its words to type over", async ({
+test("the insert bar at the foot puts a paragraph, a list, a table or a divider after the block in the file, its words to type over", async ({
   page: app,
   session,
   host,
 }) => {
-  const { stage, tool, body } = await openNotes(app, session, host.project);
+  const { files, stage, tool, body } = await openNotes(
+    app,
+    session,
+    host.project,
+  );
   await tool("Edit").click();
   const first = stage.getByText("Alpha beta gamma");
   await expect(first).toHaveAttribute("contenteditable", "plaintext-only");
+  const inserts = files.getByRole("group", { name: "Insert" });
+  // Nothing to put a block after until one is typed in.
+  await expect(
+    inserts.getByRole("button", { name: "Paragraph", exact: true }),
+  ).toBeDisabled();
   const insert = async (block, name) => {
     await block.click();
-    await tool("Insert").click();
-    await app.getByRole("menuitem", { name }).click();
+    await inserts.getByRole("button", { name, exact: true }).click();
   };
   await insert(first, "Paragraph");
   await expect(stage.getByText("Paragraph", { exact: true })).toBeFocused();
@@ -3270,12 +3292,110 @@ test("Edit's Insert puts a paragraph, a list, a table or a divider after the blo
   const title = stage.locator("h1");
   await insert(title, "Divider");
   await expect(title).toBeFocused();
-  expect(await body()).toContain('<h1 id="top">Notes</h1><hr><p>Alpha');
+  await expect.poll(body).toContain('<h1 id="top">Notes</h1><hr><p>Alpha');
   await insert(title, "Bulleted list");
   await expect(stage.getByText("Item", { exact: true })).toBeFocused();
   expect(await body()).toContain(
     '<h1 id="top">Notes</h1><ul><li>Item</li></ul><hr>',
   );
+});
+
+test("the text bar comes with a selection, by it: clear of the selected lines and inside what the stage shows, at the page's top and zoomed in; it goes when the selection collapses; a press on the line above a block typed in reaches it; the keys reach the bar after the page", async ({
+  page: app,
+  session,
+  host,
+  browserName,
+}) => {
+  const { files, stage, tool } = await openNotes(app, session, host.project);
+  await tool("Edit").click();
+  const bar = files.getByRole("toolbar", { name: "Text" });
+  const paragraph = files
+    .getByRole("group", { name: "Insert" })
+    .getByRole("button", { name: "Paragraph" });
+  const html = stage.locator("html");
+  const scroller = files.locator(".page-scroll");
+  const apart = (a, b) =>
+    a.y + a.height <= b.y + 1 ||
+    b.y + b.height <= a.y + 1 ||
+    a.x + a.width <= b.x + 1 ||
+    b.x + b.width <= a.x + 1;
+  const inside = (a, b) =>
+    a.x >= b.x - 1 &&
+    a.y >= b.y - 1 &&
+    a.x + a.width <= b.x + b.width + 1 &&
+    a.y + a.height <= b.y + b.height + 1;
+  // What is selected, in the window.
+  const selected = async () => {
+    const page = await html.boundingBox();
+    const [x, y, width, height, own] = await html.evaluate((root) => {
+      const at = getSelection().getRangeAt(0).getBoundingClientRect();
+      return [at.x, at.y, at.width, at.height, root.offsetWidth];
+    });
+    const by = page.width / own;
+    return {
+      x: page.x + x * by,
+      y: page.y + y * by,
+      width: width * by,
+      height: height * by,
+    };
+  };
+  // Clear of what is selected, and inside what the stage shows of the page,
+  // short of its scroll bars.
+  const clear = () =>
+    expect
+      .poll(async () => {
+        const [over, under, view] = await Promise.all([
+          bar.boundingBox(),
+          selected(),
+          scroller.evaluate((box) => {
+            const { x, y } = box.getBoundingClientRect();
+            return { x, y, width: box.clientWidth, height: box.clientHeight };
+          }),
+        ]);
+        return !!over && apart(over, under) && inside(over, view);
+      })
+      .toBe(true);
+  // Typed in, nothing over the text: a press on the line above reaches it.
+  const title = stage.locator("h1");
+  const first = stage.getByText("Alpha beta gamma");
+  await first.click();
+  await expect(paragraph).toBeEnabled();
+  await expect(bar).toHaveCount(0);
+  await title.click();
+  await expect(title).toBeFocused();
+  await expect(bar).toHaveCount(0);
+  // Words selected at the page's top: the bar under them.
+  await selectIn(title, "Notes");
+  await expect(bar).toBeVisible();
+  await clear();
+  await app.keyboard.press("End");
+  await expect(bar).toHaveCount(0);
+  // A selection of several lines: clear of all of them.
+  await first.click();
+  await app.keyboard.press("End");
+  await app.keyboard.insertText(" and more words".repeat(10));
+  await first.evaluate((block) => getSelection().selectAllChildren(block));
+  await expect(bar).toBeVisible();
+  await clear();
+  // With room above, above: a fine pointer's selection has nothing there.
+  await selectIn(first, "Alpha");
+  await expect
+    .poll(async () => {
+      const [over, under] = await Promise.all([bar.boundingBox(), selected()]);
+      return !!over && over.y + over.height <= under.y + 1;
+    })
+    .toBe(true);
+  // Zoomed in and scrolled, inside what the stage shows.
+  for (let step = 0; step < 4; step++)
+    await files.getByRole("button", { name: "Zoom in" }).click();
+  await scroller.evaluate((box) => box.scrollBy(40, 40));
+  await clear();
+  // The keys reach the bar after the page, before the insert bar.
+  await paragraph.focus();
+  await app.keyboard.press(
+    browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab",
+  );
+  await expect(bar.locator(":focus")).toHaveCount(1);
 });
 
 test("a slide's block takes Edit's tools as a document's does", async ({

@@ -1821,26 +1821,36 @@ test("the format bar stands at the foot of the grid, which ends above it: the fo
   await expect(bar.getByRole("button")).toHaveCount(0);
   // The grid's frame, and so its last rows, a chart there and its scroll
   // bar, ends where the bar's room begins; the bar keeps inside the stage.
-  const clear = async () => {
-    const [stage, page, foot] = await Promise.all([
-      files.locator(".page-stage").boundingBox(),
-      files.locator(".page-stage iframe:not([inert])").boundingBox(),
-      format.boundingBox(),
-    ]);
-    expect(page.y + page.height).toBeLessThanOrEqual(foot.y + 1);
-    expect(foot.y + foot.height).toBeLessThanOrEqual(stage.y + stage.height);
-    expect(foot.x).toBeGreaterThanOrEqual(stage.x);
-    expect(foot.x + foot.width).toBeLessThanOrEqual(stage.x + stage.width);
-  };
+  // A pane laid out again for another width is measured once it stands.
+  const clear = () =>
+    expect
+      .poll(async () => {
+        const [stage, page, foot] = await Promise.all([
+          files.locator(".page-stage").boundingBox(),
+          files.locator(".page-stage iframe:not([inert])").boundingBox(),
+          format.boundingBox(),
+        ]);
+        return (
+          !!stage &&
+          !!page &&
+          !!foot &&
+          page.y + page.height <= foot.y + 1 &&
+          foot.y + foot.height <= stage.y + stage.height &&
+          foot.x >= stage.x &&
+          foot.x + foot.width <= stage.x + stage.width
+        );
+      })
+      .toBe(true);
   await clear();
   // Between the grid and the tabs; WebKit's Tab reaches a button with Alt.
+  // Comment waits for the sheet to say its cell.
+  const comment = format.getByRole("button", { name: "Comment", exact: true });
+  await expect(comment).toBeEnabled();
   await files.getByRole("tab", { name: "Tasks" }).focus();
   await app.keyboard.press(
     browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab",
   );
-  await expect(
-    format.getByRole("button", { name: "Comment", exact: true }),
-  ).toBeFocused();
+  await expect(comment).toBeFocused();
   // Stepped down past the view, the active cell is in view above the bar.
   await cell("Tasks", "A2").click();
   for (let step = 0; step < 40; step++) await app.keyboard.press("ArrowDown");

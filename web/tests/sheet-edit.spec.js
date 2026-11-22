@@ -1945,6 +1945,8 @@ test("a row's number and a column's letter open what can be done to them: move, 
   // up its own pattern too.
   const looks = files.getByRole("toolbar", { name: "Format" });
   await letter(4).click();
+  await app.keyboard.press("Escape");
+  await expect(stage.locator(".sheet-menu")).toHaveCount(0);
   await looks.getByRole("button", { name: "Fill", exact: true }).click();
   await app.getByRole("menuitemradio", { name: "Good", exact: true }).click();
   await expect(cell("Tasks", "D3")).toHaveAttribute("data-fill", "good");

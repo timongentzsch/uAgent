@@ -4,6 +4,7 @@
 
 ### Upgrade notes
 
+- **Conversations kept before this update are no longer listed.** Saved conversations now live in one folder, `~/.uagent/history`, and a move between folders keeps a conversation's address. Earlier ones stay on disk in the old per-folder directories under `history/` and are not read. To bring them over, stop uAgent, back up `~/.uagent` and run the conversion script attached to this release. Each device's unread marks, unsent drafts and queued messages reset once.
 - **Name the reviewer if Auto should ask another provider.** A call judged in Auto is sent only to the provider the conversation runs on, or to the one `approval.reviewerModel` names (`openrouter/` for that provider's own decision model). Before, any configured provider with a decision endpoint was asked, so a conversation on a local model sent its commands to OpenRouter. With such a setup Auto now asks you, and says which setting to set.
 - **Models are offered `apply_patch` in place of `write_file`, `edit_file` and `delete_file`.** The three still run each file of a patch, so permission rules, approvals and tool settings that name them work as before; `write_file` is offered by itself only while the conversation has an attached file to copy.
 - **Previewed pages load nothing from another host.** The preview policy no longer admits Google Fonts, and the agent writes pages with system font stacks or a font file in the folder. A page that links a Google font is drawn in its fallback face and lists the link as not loaded.

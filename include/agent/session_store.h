@@ -73,6 +73,8 @@ std::vector<SessionInfo> SessionsIn(const std::string& cwd,
                                     const std::string& host = {});
 // SessionsIn the folder of the conversation `path` is, or is an agent under.
 std::vector<SessionInfo> SessionsBeside(const std::string& path);
+// The conversation `path` is, or is an agent under; no cwd when not saved.
+SessionInfo TopConversation(const std::string& path);
 
 // The session file of `parent` (a session id) beside `path`; empty for none.
 std::string AgentParentPath(const std::string& path, const std::string& parent);

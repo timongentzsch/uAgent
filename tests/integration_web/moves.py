@@ -448,6 +448,34 @@ def test_web_move_that_stopped_halfway_is_finished_by_moving_again(root, home, *
     with Server([event({"content": "unused"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
+            # Halfway, the family is still listed where its conversation is.
+            lead = listed(client, LEAD)
+            sessions = {item["title"]: item for item in sessions_of(client)}
+            assert_true(lead["cwd"] == str(alpha.resolve()), lead)
+            assert_true(sessions[AGENTS[1]]["parent"] == sessions[AGENTS[0]]["id"], sessions)
+            client.command("move", lead, cwd=str(beta))
+    assert_whole(home, alpha, beta)
+
+
+def test_web_move_stops_at_an_unreadable_member_and_loses_nothing(root, home, *, binary):
+    alpha, beta = root / "alpha", root / "beta"
+    alpha.mkdir()
+    beta.mkdir()
+    old, _, _ = save_family(home, alpha, root)
+    agent = old / f"{AGENTS[0]}.json"
+    whole = agent.read_text(encoding="utf-8")
+    agent.write_text(whole.split("\n", 1)[0] + "\nnot a transcript", encoding="utf-8")
+    names = sorted(path.name for path in old.glob("*.json"))
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            lead = listed(client, LEAD)
+            assert_true(AGENTS[0] in refusal(client, lead, cwd=str(beta)), "unreadable")
+            assert_true(sorted(path.name for path in old.glob("*.json")) == names, "a file went")
+            head, _ = read_session(old / f"{LEAD}.json")
+            assert_true(head["cwd"] == str(alpha.resolve()), "the conversation moved")
+            # Mended, moving again finishes it.
+            agent.write_text(whole, encoding="utf-8")
             client.command("move", listed(client, LEAD), cwd=str(beta))
     assert_whole(home, alpha, beta)
 

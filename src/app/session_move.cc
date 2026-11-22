@@ -221,7 +221,9 @@ std::string SessionHost::MoveConversation(
   }
   lock.unlock();
   // The rest takes no host lock but the scan's: a session it touches is
-  // marked updating, so no command or runtime starts on it.
+  // marked updating, so no command or runtime starts on it. A conversation
+  // open elsewhere is found before anything changes; each rewrite then takes
+  // its lease again.
   for (const SessionInfo& info : family) {
     FileLease lease;
     if (std::string held;
@@ -238,11 +240,10 @@ std::string SessionHost::MoveConversation(
   // folder is the file's now.
   for (const SessionInfo& info : family) {
     std::error_code ignored;
-    if (error.empty()) {
-      fs::remove(directory_ + "/" + kDraftsDir + "/" + SessionIdFor(info.path) +
-                     ".json",
-                 ignored);
-    }
+    if (!error.empty()) break;
+    fs::remove(
+        directory_ + "/" + kDraftsDir + "/" + SessionIdFor(info.path) + ".json",
+        ignored);
   }
   lock.lock();
   for (auto& [session, prior] : flagged) {
@@ -253,14 +254,14 @@ std::string SessionHost::MoveConversation(
   scan.unlock();
   RefreshCatalogue(true);
   lock.lock();
-  // Its id stays; what a page holds of its transcript does not.
-  for (const SessionInfo& info : family) {
-    const auto member = sessions_.find(SessionIdFor(info.path));
-    Record(SessionIdFor(info.path), "", {{"kind", "moved"}},
-           member != sessions_.end() && !member->second->run_id.empty());
-  }
+  // Its id stays; what a page holds of its transcript does not. Its agents'
+  // new folder reaches pages as their metadata.
+  const std::string id = SessionIdFor(family[0].path);
+  const auto member = sessions_.find(id);
+  Record(id, "", {{"kind", "moved"}},
+         member != sessions_.end() && !member->second->run_id.empty());
   moved = {{"moved", true},
-           {"id", SessionIdFor(family[0].path)},
+           {"id", id},
            {"path", family[0].path},
            {"cwd", to_cwd},
            {"title", family[0].title}};

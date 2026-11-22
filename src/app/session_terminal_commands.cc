@@ -166,14 +166,8 @@ Terminal::Command Terminal::SetDetail(const std::string& argument) {
 }
 
 std::string Terminal::Folder() const {
-  std::string path = path_;
-  for (std::string parent;
-       !(parent = AgentParentPath(
-             path, JsonValue(AgentOf(SessionHeader(path)), "parent", "")))
-            .empty();) {
-    path = parent;
-  }
-  return JsonValue(SessionHeader(path), kSessionHeaderCwd, CanonicalCwd());
+  const SessionInfo top = TopConversation(path_);
+  return top.cwd.empty() ? CanonicalCwd() : top.cwd;
 }
 
 std::string Terminal::MatchFolderSession(const std::string& argument) const {

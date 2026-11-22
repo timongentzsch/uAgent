@@ -339,9 +339,17 @@ json SessionHeader(const std::string& path) {
 }
 
 namespace {
-// The conversation above `info`: itself unless it is an agent.
-const SessionInfo& TopOf(const SessionInfo& info,
-                         const std::map<std::string, const SessionInfo*>& ids) {
+using SessionsById = std::map<std::string, const SessionInfo*>;
+
+SessionsById ById(const std::vector<SessionInfo>& sessions) {
+  SessionsById ids;
+  for (const SessionInfo& info : sessions) ids[SessionIdFor(info.path)] = &info;
+  return ids;
+}
+
+// The conversation above `info`: itself unless it is an agent. A chain
+// longer than the list is a cycle.
+const SessionInfo& TopOf(const SessionInfo& info, const SessionsById& ids) {
   const SessionInfo* top = &info;
   for (size_t hop = 0; !top->parent.empty() && hop < ids.size(); ++hop) {
     const auto up = ids.find(top->parent);
@@ -354,11 +362,8 @@ const SessionInfo& TopOf(const SessionInfo& info,
 
 std::vector<SessionInfo> SessionsIn(const std::string& cwd,
                                     const std::string& host) {
-  std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
-  std::erase_if(sessions,
-                [](const SessionInfo& info) { return !info.error.empty(); });
-  std::map<std::string, const SessionInfo*> ids;
-  for (const SessionInfo& info : sessions) ids[SessionIdFor(info.path)] = &info;
+  const std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
+  const SessionsById ids = ById(sessions);
   std::vector<SessionInfo> in;
   for (const SessionInfo& info : sessions) {
     const SessionInfo& top = TopOf(info, ids);
@@ -367,25 +372,26 @@ std::vector<SessionInfo> SessionsIn(const std::string& cwd,
   return in;
 }
 
+SessionInfo TopConversation(const std::string& path) {
+  const std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
+  const SessionsById ids = ById(sessions);
+  const auto own = ids.find(SessionIdFor(path));
+  return own == ids.end() ? SessionInfo{} : TopOf(*own->second, ids);
+}
+
 std::vector<SessionInfo> SessionsBeside(const std::string& path) {
-  std::string at = path;
-  for (std::string parent;
-       !(parent = AgentParentPath(
-             at, JsonValue(AgentOf(SessionHeader(at)), "parent", "")))
-            .empty();) {
-    at = parent;
-  }
-  const json header = SessionHeader(at);
-  return SessionsIn(JsonValue(header, kSessionHeaderCwd, ""),
-                    JsonValue(header, "host", ""));
+  const SessionInfo top = TopConversation(path);
+  return top.cwd.empty() ? std::vector<SessionInfo>{}
+                         : SessionsIn(top.cwd, top.host);
 }
 
 std::string AgentParentPath(const std::string& path,
                             const std::string& parent) {
+  if (parent.empty()) return "";
   std::error_code ec;
   for (const auto& entry : std::filesystem::directory_iterator(
            std::filesystem::path(path).parent_path(), ec)) {
-    if (!parent.empty() && SessionIdFor(entry.path().string()) == parent) {
+    if (SessionIdFor(entry.path().string()) == parent) {
       return entry.path().string();
     }
   }

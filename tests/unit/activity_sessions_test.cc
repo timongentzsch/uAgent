@@ -1473,6 +1473,35 @@ TEST_CASE(TestAFolderHoldsWhatWorksInItAndTheAgentsUnderIt) {
   }
 }
 
+TEST_CASE(TestAParentChainThatLoopsEnds) {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("parent-cycle");
+  const fs::path dir = fs::path(UagentDir(kHistoryDir));
+  fs::create_directories(dir);
+  auto write = [&](const std::string& name, const std::string& parent) {
+    const std::string path = (dir / (name + ".json")).string();
+    std::ofstream(path) << JsonDump(
+                               {{"format", kSessionFormat},
+                                {"cwd", "/project"},
+                                {"model", "m"},
+                                {"session_id", name},
+                                {"turns", 1},
+                                {"title", name},
+                                {kSessionHeaderAgent, {{"parent", parent}}}})
+                        << "\n{}\n";
+    return path;
+  };
+  const std::string self =
+      write("agent-self", SessionIdFor((dir / "agent-self.json").string()));
+  const std::string one =
+      write("agent-one", SessionIdFor((dir / "agent-two.json").string()));
+  write("agent-two", SessionIdFor(one));
+  CHECK(TopConversation(self).cwd == "/project");
+  CHECK(TopConversation(one).cwd == "/project");
+  CHECK(SessionsBeside(self).size() == 3);
+  CHECK(SessionsIn("/project").size() == 3);
+}
+
 TEST_CASE(TestMailbox) {
   namespace fs = std::filesystem;
   TestWorkspace workspace("mailbox");

@@ -110,7 +110,7 @@ the user's, or open to others is refused (`EnsurePrivateDirectory`).
 ## Compatibility
 
 Versioned files: `settings.json` and session files (`format` 3), the
-journal (`uagent.session.event.v1`), mail and move files (`format` 1),
+journal (`uagent.session.event.v1`), mail files (`format` 1),
 `permissions.json` (`version` 3), and each folder's record in
 `trusted-projects.json` (`format` 3). Only the current version is read and
 nothing is migrated; a `permissions.json` of another version is refused

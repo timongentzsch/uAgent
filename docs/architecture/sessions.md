@@ -38,7 +38,7 @@ A session file lives in `history/` and holds two lines:
    `cost`, `tokens`, `todo`, so a listing reads headers only.
 2. The state object: `messages`, `message_kinds` (same length),
    `archive`, `archive_dropped_segments`, `context_tokens`,
-   `context_window`, `usage`, `route_usage`, `display`
+   `context_window`, `context_parts` (absent in older files), `usage`, `route_usage`, `display`
    and `delivered_mail`. `display` holds the facts the transcript view needs
    after messages are pruned or compacted.
 

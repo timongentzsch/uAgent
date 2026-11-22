@@ -152,9 +152,10 @@ class Agent {
 
   // An estimate: provider usage may be cumulative or stale.
   int64_t ContextUsed() const;
-  // What fills ContextUsed(): estimated bytes per part, which sum to
-  // `bytes`, every tool's schema, and where compaction starts.
-  json ContextBreakdown() const;
+  // What fills ContextUsed(), which it equals as `tokens`: estimated bytes
+  // per part, which sum to `bytes`, the tools counted, and where compaction
+  // starts.
+  json ContextParts() const;
 
   // Summarizes the conversation with the model and restarts from the summary.
   bool Compact(bool automatic = false, Usage* turn_usage = nullptr);
@@ -423,6 +424,9 @@ class Agent {
   ToolSelection tool_selection_;
   ToolSchemaCache available_schemas_;
   size_t schema_bytes_ = 0;
+  // The offered tools, MCP's and the rest, and those not offered, with
+  // their schema bytes: the catalogue's rows counted where it is read.
+  json tool_counts_ = json::object();
   Approver approve_;
   ToolRefresher refresh_tools_;
   ReportJudge judge_report_;

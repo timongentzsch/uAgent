@@ -186,8 +186,7 @@ function StatisticsContent({
             <ContextSection
               key={session.id}
               session={session}
-              used={state?.context_tokens}
-              limit={state?.context_window}
+              state={state}
               showContext={showContext}
             />
           )}

@@ -1,7 +1,8 @@
 import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
 
-// The Statistics sheet's Context section on a mocked host, whose answer to
-// context_parts waits until the test lets it go.
+// The Statistics sheet's Context section on a mocked host. The parts come
+// with the conversation's state; its answer to the tools catalogue, which a
+// fold asks for, waits until the test lets it go.
 const ID = "c".repeat(32);
 const SESSION = {
   id: ID,
@@ -18,37 +19,54 @@ const BYTES = {
   messages: 24400,
   files: 9600,
   notes: 3200,
-  tools: 17200,
+  tools: 18000,
   mcp: 6400,
   system: 4800,
   instructions: 2000,
   memory: 1200,
-  skills: 800,
 };
 const bytes = Object.values(BYTES).reduce((sum, value) => sum + value, 0);
-const tool = (name, size, extra = {}) => ({
-  name,
-  bytes: size,
-  offered: true,
-  ...extra,
-});
 const PARTS = {
   tokens: bytes / 4,
   bytes,
-  window: 200000,
   compacts_at: 138000,
+  instructions: "AGENTS.md",
   parts: BYTES,
+  tools: {
+    tools: { count: 4, bytes: 6624 },
+    mcp: { count: 2, bytes: 2560 },
+    hidden: { count: 1, bytes: 1608 },
+  },
+};
+const tool = (name, size, extra = {}) => ({
+  name,
+  title: name,
+  description: "",
+  category: "workspace",
+  provider: "builtin",
+  active: true,
+  available: true,
+  schema_bytes: size,
+  ...extra,
+});
+const mcp = { category: "mcp", provider: "mcp:github" };
+const CATALOGUE = {
+  profile: "default",
+  base_profile: "default",
+  profiles: ["default"],
+  active: 6,
+  available: 7,
+  schema_bytes: 24400,
+  full_schema_bytes: 26008,
   tools: [
     tool("read_path", 1184),
     tool("apply_patch", 2448),
     tool("run", 2192),
     tool("skill", 800),
-    tool("github_create_issue", 1552, { server: "github" }),
-    tool("github_get_file", 1008, { server: "github" }),
-    tool("browser", 1608, { offered: false }),
+    tool("github_create_issue", 1552, mcp),
+    tool("github_get_file", 1008, mcp),
+    tool("browser", 1608, { active: false }),
   ],
-  skills: 4,
-  instructions: "AGENTS.md",
 };
 
 async function open(page) {
@@ -80,7 +98,8 @@ async function open(page) {
         state: {
           phase: "idle",
           context_tokens: PARTS.tokens,
-          context_window: PARTS.window,
+          context_window: 200000,
+          context_parts: PARTS,
           turns: 14,
           view: { nodes: [] },
         },
@@ -89,11 +108,11 @@ async function open(page) {
     if (path === "/api/command") {
       const body = route.request().postDataJSON();
       sent.push(body);
-      if (body.kind === "context_parts") await answered;
+      if (body.kind === "tools") await answered;
       return json({
         request_id: body.request_id,
         accepted: true,
-        result: body.kind === "context_parts" ? PARTS : {},
+        result: body.kind === "tools" ? CATALOGUE : {},
       });
     }
     return route.fulfill({ status: 404, json: { error: "Not in this mock" } });
@@ -125,26 +144,26 @@ async function open(page) {
   return { sheet, sent, release };
 }
 
-// Every row's place in the sheet, the Conversation rows after them included.
-const places = (sheet) =>
-  sheet.evaluate((node) =>
-    [...node.querySelectorAll(".context-rows > li, .stats > div")].map(
-      (row) => {
-        const box = row.getBoundingClientRect();
-        return [Math.round(box.top), Math.round(box.height)];
-      },
-    ),
-  );
-
-test("the parts arrive in the rows drawn for them", async ({ page }) => {
-  const { sheet, release } = await open(page);
-  await expect(
-    sheet.getByRole("status", { name: "Loading the parts…" }),
-  ).toBeAttached();
-  const before = await places(sheet);
-  release();
+test("the parts are drawn with the sheet, and a fold reads its list", async ({
+  page,
+}) => {
+  const { sheet, sent, release } = await open(page);
   await expect(sheet.getByText("Tool results")).toBeVisible();
-  expect(await places(sheet)).toEqual(before);
+  await expect(sheet.locator("[aria-busy]")).toHaveCount(0);
+  expect(sent).toEqual([]);
+  const tools = sheet.getByRole("button", { name: /^Tools 4/ });
+  await tools.click();
+  await expect(sheet.locator(".context-tools")).toHaveText("Loading the list…");
+  release();
+  await expect(sheet.locator(".context-tools li")).toHaveText([
+    /^apply_patch\s*612$/,
+    /^run\s*548$/,
+    /^read_path\s*296$/,
+    /^skill\s*200$/,
+  ]);
+  expect(sent.map((body) => [body.kind, body.operation])).toEqual([
+    ["tools", "catalog"],
+  ]);
 });
 
 test("rows, bar and folds show what fills the window", async ({ page }) => {
@@ -154,7 +173,6 @@ test("rows, bar and folds show what fills the window", async ({ page }) => {
   await expect(row("Tool results")).toContainText("41.2k");
   await expect(row("Tool results")).toContainText("20.6%");
   await expect(row("Instructions")).toContainText("AGENTS.md");
-  await expect(row("Skills")).toContainText("4 listed");
   await expect(row("Free until it compacts")).toContainText("60.5k");
   await expect(row("Kept for the summary")).toContainText("31%");
   await expect(
@@ -185,15 +203,11 @@ test("rows, bar and folds show what fills the window", async ({ page }) => {
 
   // A fold lists its tools biggest first and leaves the sheet's top alone.
   const top = await sheet.evaluate((node) => node.getBoundingClientRect().top);
-  const tools = sheet.getByRole("button", { name: /^Tools 3/ });
+  const tools = sheet.getByRole("button", { name: /^Tools 4/ });
   await expect(tools).toHaveAttribute("aria-expanded", "false");
   await tools.click();
   await expect(tools).toHaveAttribute("aria-expanded", "true");
-  await expect(sheet.locator(".context-tools li")).toHaveText([
-    /^apply_patch\s*612$/,
-    /^run\s*548$/,
-    /^read_path\s*296$/,
-  ]);
+  await expect(sheet.getByText("apply_patch")).toBeVisible();
   await sheet.getByRole("button", { name: /^MCP tools 2/ }).click();
   await expect(sheet.getByText("github · create_issue")).toBeVisible();
   await sheet.getByRole("button", { name: /^Not offered 1 tool/ }).click();
@@ -217,7 +231,7 @@ test("on a phone every row fits on its line", async ({ page }) => {
   release();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(sheet.getByText("Tool results")).toBeVisible();
-  await sheet.getByRole("button", { name: /^Tools 3/ }).click();
+  await sheet.getByRole("button", { name: /^Tools 4/ }).click();
   const fit = await sheet.evaluate((node) => ({
     overflow: node.scrollWidth - node.clientWidth,
     // A row one line tall: its label never wraps under the numbers.

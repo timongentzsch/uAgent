@@ -267,6 +267,13 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   }
   const json& messages = *chosen;
   PublishSideContext();
+  // The parts the checkpoint just took ride on the request's usage events,
+  // which the batcher may coalesce.
+  json parts;
+  {
+    std::lock_guard lock(side_mutex_);
+    parts = side_context_->record.state.context_parts;
+  }
   const size_t schema_bytes = &schemas == &available_schemas_.Schemas()
                                   ? available_schemas_.Bytes()
                                   : JsonEstimatedBytes(schemas);
@@ -308,8 +315,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   size_t published_response_bytes = 0;
   bool progress_pending = false;
   auto emit_progress = [this, estimated_bytes, &published_usage,
-                        &published_response_bytes](const json& reported,
-                                                   size_t response_bytes) {
+                        &published_response_bytes,
+                        &parts](const json& reported, size_t response_bytes) {
     Usage provisional = session_usage_, current;
     current.Add(reported);
     provisional.Merge(current);
@@ -317,9 +324,10 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     // billing tokens. Keep the same estimate when a provider reports no usage.
     int64_t context =
         ContextTokens(SaturatingAdd(estimated_bytes, response_bytes));
-    Emit(Event{
-        EventId::kUsageUpdated,
-        {{"usage", UsageJson(provisional)}, {"context_tokens", context}}});
+    Emit(Event{EventId::kUsageUpdated,
+               {{"usage", UsageJson(provisional)},
+                {"context_tokens", context},
+                {"context_parts", parts}}});
     published_usage = reported;
     published_response_bytes = response_bytes;
   };
@@ -569,11 +577,10 @@ bool Agent::ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
          (tokens > 0 && projected_tokens >= tokens);
 }
 
-json Agent::ContextBreakdown() const {
+json Agent::ContextParts() const {
   std::map<std::string, size_t> bytes;
-  for (const char* part :
-       {"tool_results", "replies", "messages", "files", "notes", "tools", "mcp",
-        "instructions", "memory", "skills"}) {
+  for (const char* part : {"tool_results", "replies", "messages", "files",
+                           "notes", "mcp", "instructions", "memory"}) {
     bytes[part] = 0;
   }
   // The message list's own bytes, as JsonEstimatedBytes counts an array.
@@ -632,36 +639,14 @@ json Agent::ContextBreakdown() const {
         break;
     }
   }
-  json tools = json::array();
-  size_t skills = 0;
-  const json catalogue = ToolCatalogue();
-  for (const json& row : catalogue["tools"]) {
-    const std::string name = row["name"];
-    const std::string provider = row["provider"];
-    json tool = {{"name", name},
-                 {"bytes", row["schema_bytes"]},
-                 {"offered", row["active"]}};
-    const char* part = nullptr;
-    if (name == "skill") {
-      part = "skills";
-      // Its description lists one skill per "- " line, the "- [more]" aside.
-      const std::string text = row["description"];
-      for (size_t at = text.find("\n- "); at != text.npos;
-           at = text.find("\n- ", at + 1)) {
-        skills += text.compare(at + 3, 1, "[") != 0;
-      }
-    }
-    if (provider.starts_with("mcp:")) {
-      tool["server"] = provider.substr(4);
-      part = "mcp";
-    }
-    if (part && row["active"]) bytes[part] += row["schema_bytes"].get<size_t>();
-    tools.push_back(std::move(tool));
-  }
+  size_t total = 0;
+  for (const auto& [part, size] : bytes) total = SaturatingAdd(total, size);
+  bytes["mcp"] = std::min(
+      JsonValue(JsonValue(tool_counts_, "mcp", json()), "bytes", size_t{0}),
+      schema_bytes_);
   // The rest of the offered schemas, the array around them included.
-  bytes["tools"] =
-      schema_bytes_ - std::min(schema_bytes_, bytes["mcp"] + bytes["skills"]);
-  const std::vector<std::string>& sources = project_instructions_.sources;
+  bytes["tools"] = schema_bytes_ - bytes["mcp"];
+  total = SaturatingAdd(total, schema_bytes_);
   // The used tokens at which ContextNeedsCompaction starts one; 0 for never.
   int64_t compacts_at = 0;
   const int64_t pct = std::clamp(AutoCompactPct(), int64_t{0}, int64_t{100});
@@ -670,13 +655,12 @@ json Agent::ContextBreakdown() const {
     if (AutoCompactTokens() > 0) limit = std::min(limit, AutoCompactTokens());
     compacts_at = std::max<int64_t>(0, limit - ResponseReserve());
   }
-  return {{"tokens", ContextUsed()},
-          {"bytes", RequestContextBytes(schema_bytes_)},
-          {"window", api_.ctx_window},
-          {"compacts_at", compacts_at},
+  const std::vector<std::string>& sources = project_instructions_.sources;
+  return {{"tokens", ContextTokens(total)},
+          {"bytes", total},
           {"parts", bytes},
-          {"tools", std::move(tools)},
-          {"skills", skills},
+          {"compacts_at", compacts_at},
+          {"tools", tool_counts_},
           {"instructions",
            sources.size() == 1
                ? std::filesystem::path(sources[0]).filename().string()

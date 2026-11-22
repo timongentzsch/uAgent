@@ -408,8 +408,10 @@ SessionRecord Agent::Snapshot() const {
                      .agent = AgentOf(session_role_),
                      .memory = api_.config.memory_enabled,
                      .suggestion = suggestion_};
-  record.state = {.context_tokens = ContextUsed(),
+  json parts = ContextParts();
+  record.state = {.context_tokens = parts["tokens"],
                   .context_window = api_.ctx_window,
+                  .context_parts = std::move(parts),
                   .usage = session_usage_,
                   .route_usage = route_usage_,
                   .display = conversation_.DisplayMetadata(),
@@ -526,8 +528,18 @@ int64_t Agent::ContextUsed() const {
 
 void Agent::InvalidateToolSchemas(bool force_system) {
   available_schemas_.Reset();
-  schema_bytes_ = static_cast<size_t>(
-      JsonValue(tool_selection_.Catalogue(tools_), "schema_bytes", int64_t{0}));
+  const json catalogue = tool_selection_.Catalogue(tools_);
+  schema_bytes_ = catalogue["schema_bytes"];
+  tool_counts_ = json::object();
+  for (const json& tool : catalogue["tools"]) {
+    const char* kind = !tool["active"]             ? "hidden"
+                       : tool["category"] == "mcp" ? "mcp"
+                                                   : "tools";
+    json& count = tool_counts_[kind];
+    count["count"] = JsonValue(count, "count", size_t{0}) + 1;
+    count["bytes"] = JsonValue(count, "bytes", size_t{0}) +
+                     tool["schema_bytes"].get<size_t>();
+  }
   logged_schemas_.clear();
   RefreshSystemMessage(force_system);
 }

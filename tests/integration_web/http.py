@@ -151,17 +151,16 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 attachment_ids=[asset["id"]],
             )
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
-            # An idle runtime says what fills its context, in parts that add up.
-            breakdown = client.command("context_parts", session)["result"]
+            # The state says what fills the context, in parts that add up.
+            parts = snapshot["state"]["context_parts"]
             assert_true(
-                sum(breakdown["parts"].values()) == breakdown["bytes"]
-                and breakdown["tokens"] == snapshot["state"]["context_tokens"]
-                and breakdown["window"] == 32768
-                and 0 < breakdown["compacts_at"] < 32768
-                and breakdown["parts"]["files"] > 0
-                and breakdown["parts"]["replies"] > 0
-                and any(tool["name"] == "read_path" for tool in breakdown["tools"]),
-                breakdown,
+                sum(parts["parts"].values()) == parts["bytes"]
+                and parts["tokens"] == snapshot["state"]["context_tokens"]
+                and 0 < parts["compacts_at"] < 32768
+                and parts["parts"]["files"] > 0
+                and parts["parts"]["replies"] > 0
+                and parts["tools"]["tools"]["count"] > 0,
+                parts,
             )
             rows = snapshot["state"]["view"]["nodes"]
             request = rows[0]
@@ -201,11 +200,12 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             client.command("close", session)
             closed = client.snapshot(session)
             session = closed["metadata"]
-            # Without a runtime the Statistics sheet has the totals alone.
+            # Without a runtime the parts are read from the saved conversation.
+            saved_parts = closed["state"]["context_parts"]
             assert_true(
                 not session["generation"]
-                and closed["state"]["context_tokens"] == breakdown["tokens"]
-                and closed["state"]["context_window"] == 32768,
+                and saved_parts["tokens"] == closed["state"]["context_tokens"]
+                and sum(saved_parts["parts"].values()) == saved_parts["bytes"],
                 closed["state"],
             )
             client.command("delete", session)

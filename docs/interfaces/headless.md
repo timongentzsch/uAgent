@@ -88,7 +88,7 @@ are those with a `public_type` in `kPolicies` (`src/core/events.cc`):
 | `turn.started` | `turn`, `origin`, `input` (the prompt text), `attachments`, `messages`, `context_tokens`, `local_time` |
 | `tool.call` | `turn`, `step`, `call_id`, `response_id`, `occurrence_id`, `detail_id`, `name`, `arguments_digest`, `issue_code`, `issue_field`, `argument_keys`, `argument_types`, `operation` when the arguments carry a short `operation` or `action`; never argument values |
 | `tool.result` | `turn`, `step`, `call_id`, `name`, `status`, `completion_status`, `error_code`, `issue_code`, `issue_field`, `duration_ms`, `result` (the output text), `result_chars`, … |
-| `usage.updated` | `usage`, with `context_tokens` while a response streams or `statistics` after it |
+| `usage.updated` | `usage`, with `context_tokens` and `context_parts` while a response streams or `statistics` after it |
 | `notice` | `text` |
 | `usage` | the turn summary: `turn`, `outcome`, `steps`, `tool_calls`, `model_calls`, `duration_ms`, `usage`, `messages`, `context_tokens`, … |
 | `answer` | the `--json` envelope; the last line when the status is 0 |

@@ -406,7 +406,7 @@ TEST_CASE(TestHostCommandKinds) {
             ? 1
             : 0;
   }
-  CHECK(forwarded == 22);
+  CHECK(forwarded == 21);
   for (auto local : {session::SessionCommandKind::kClose,
                      session::SessionCommandKind::kCreate,
                      session::SessionCommandKind::kDelete,

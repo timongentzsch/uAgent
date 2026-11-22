@@ -35,8 +35,6 @@ enum class SessionCommandKind {
   kModel,
   kConfig,
   kContext,
-  // What fills the context window (Agent::ContextBreakdown).
-  kContextParts,
   kRevert,
   kChanges,
   kFork,

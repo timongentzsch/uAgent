@@ -1,15 +1,19 @@
 import "./context-parts.css";
 import { ChevronRight } from "lucide-preact";
 import { useMemo, useState } from "preact/hooks";
-import type { ContextParts, Session } from "../../shared/types.ts";
+import {
+  failure,
+  type ContextParts,
+  type Session,
+  type State,
+  type ToolCatalogueItem,
+} from "../../shared/types.ts";
 import { count, plural } from "../../shared/quantities.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import {
   Button,
   Cluster,
   DataText,
-  LoadError,
-  Placeholder,
   SectionTitle,
   usePlaceholder,
 } from "../../shared/ui.tsx";
@@ -18,7 +22,7 @@ import { contextLeft } from "../../state/context-summary.ts";
 import { useHostContext } from "../../state/host-context.ts";
 
 type Part = keyof ContextParts["parts"];
-type Tool = ContextParts["tools"][number];
+type Kind = keyof ContextParts["tools"];
 // In the order the rows and the bar show them.
 const LABELS: Record<Part, string> = {
   tool_results: "Tool results",
@@ -31,77 +35,94 @@ const LABELS: Record<Part, string> = {
   system: "System prompt",
   instructions: "Instructions",
   memory: "Memory",
-  skills: "Skills",
 };
 const PARTS = Object.keys(LABELS) as Part[];
-// What the rows draw while the parts load.
+// What a loading sheet draws.
 const SAMPLE: ContextParts = {
   tokens: 1,
   bytes: 1,
-  window: 0,
   compacts_at: 0,
+  instructions: "",
   parts: Object.fromEntries(PARTS.map((part) => [part, 10000])) as Record<
     Part,
     number
   >,
-  tools: [],
-  skills: 0,
-  instructions: "",
+  tools: Object.fromEntries(
+    ["tools", "mcp", "hidden"].map((kind) => [kind, { count: 1, bytes: 1 }]),
+  ),
 };
 
 const percent = (value: number) => `${Number(value.toFixed(1))}%`;
-const toolName = ({ name, server }: Tool) =>
-  server
-    ? `${server} · ${name.startsWith(`${server}_`) ? name.slice(server.length + 1) : name}`
-    : name;
+const kindOf = (tool: ToolCatalogueItem): Kind =>
+  !tool.active ? "hidden" : tool.category === "mcp" ? "mcp" : "tools";
+const toolName = ({ name, provider, category }: ToolCatalogueItem) => {
+  if (category !== "mcp") return name;
+  const server = provider.replace(/^mcp:/, "");
+  return `${server} · ${name.startsWith(`${server}_`) ? name.slice(server.length + 1) : name}`;
+};
 
-// The parts are read from the conversation's runtime while it is idle; the
-// headline and bar stand on the totals every conversation has.
+// The parts come with the conversation's state; a fold's tools are read
+// from its runtime when the fold opens.
 export default function ContextSection({
   session,
-  used,
-  limit,
+  state,
   showContext,
 }: {
   session?: Session;
-  used?: number;
-  limit?: number;
+  state?: Pick<State, "context_tokens" | "context_window" | "context_parts">;
   // Set for the open conversation, which can also be compacted from here.
   showContext?: () => void;
 }) {
   const { command } = useApi();
   const { online, report } = useHostContext();
-  const live = !!session?.generation && !session.turn_active && online;
-  const { value, error, retry } = useResource(async () => {
-    if (!live) return undefined;
-    const result = await command("context_parts", session);
-    if (result.pending) throw new Error("The parts are not ready yet.");
-    return result.result;
-  }, [session?.id, session?.generation, live, used]);
   const drawing = usePlaceholder();
-  const parts = live ? value : undefined;
-  const loading = drawing || (live && !parts && !error);
-  const shown = parts || SAMPLE;
-  const tokens = parts ? parts.tokens : used;
-  const capacity = parts ? parts.window : limit;
-  const [open, setOpen] = useState<Record<string, boolean>>({});
-
+  const shown = drawing ? SAMPLE : state?.context_parts;
+  const tokens = shown ? shown.tokens : state?.context_tokens;
+  const capacity = state?.context_window;
+  const [open, setOpen] = useState<Partial<Record<Kind, boolean>>>({});
+  const live = !!session?.generation && !session.turn_active && online;
+  const wanted = Object.values(open).some(Boolean);
+  // The last list stays while a turn runs.
+  const { value: catalogue, error } = useResource(
+    () =>
+      wanted && live
+        ? command("tools", session, { operation: "catalog" }).then(
+            (response) => {
+              if (response.pending) throw new Error("The list is not ready.");
+              return response.result;
+            },
+          )
+        : undefined,
+    [session?.id, session?.generation, wanted, live],
+  );
   const lists = useMemo(() => {
-    const sorted = [...shown.tools].sort((a, b) => b.bytes - a.bytes);
-    return {
-      tools: sorted.filter((t) => t.offered && !t.server && t.name !== "skill"),
-      mcp: sorted.filter((t) => t.offered && t.server),
-      hidden: sorted.filter((t) => !t.offered),
+    const found: Record<Kind, ToolCatalogueItem[]> = {
+      tools: [],
+      mcp: [],
+      hidden: [],
     };
-  }, [shown]);
+    for (const tool of catalogue?.tools || []) found[kindOf(tool)].push(tool);
+    for (const list of Object.values(found))
+      list.sort((a, b) => b.schema_bytes - a.schema_bytes);
+    return found;
+  }, [catalogue]);
+
   // The host's total spread over the parts by their share of the bytes.
-  const scale = shown.bytes ? shown.tokens / shown.bytes : 0;
+  const scale = shown?.bytes ? shown.tokens / shown.bytes : 0;
   const share = (part: number) =>
     capacity ? percent((part * 100) / capacity) : "—";
-  const compacts = parts && capacity ? parts.compacts_at : 0;
-  const end = compacts || capacity || 0;
+  const compacts = shown && capacity ? shown.compacts_at : 0;
   const mark = capacity ? (compacts * 100) / capacity : 0;
   const usedShare = capacity && tokens ? (tokens * 100) / capacity : 0;
+  const missing = error
+    ? failure(error).message
+    : session?.turn_active
+      ? "The list shows when this turn ends."
+      : !online
+        ? "The list shows when the host is back online."
+        : !session?.generation
+          ? "The list shows once this conversation runs."
+          : "Loading the list…";
 
   const row = (
     key: string,
@@ -109,10 +130,10 @@ export default function ContextSection({
     size: number,
     {
       detail,
-      tools,
+      fold,
       quiet,
       ratio = share(size),
-    }: { detail?: string; tools?: Tool[]; quiet?: boolean; ratio?: string },
+    }: { detail?: string; fold?: Kind; quiet?: boolean; ratio?: string },
   ) => {
     const body = (
       <>
@@ -134,83 +155,43 @@ export default function ContextSection({
         </span>
       </>
     );
+    if (!fold)
+      return (
+        <li key={key} data-quiet={quiet || undefined}>
+          <div class="context-row">{body}</div>
+        </li>
+      );
+    const tools = lists[fold];
     return (
       <li key={key} data-quiet={quiet || undefined}>
-        {tools ? (
-          <>
-            <Button
-              variant="quiet"
-              class="context-row"
-              aria-expanded={!!open[key]}
-              disabled={!tools.length}
-              onClick={() => setOpen({ ...open, [key]: !open[key] })}
-            >
-              {body}
-              <ChevronRight class="row-chevron" />
-            </Button>
-            {open[key] && !!tools.length && (
-              <ul class="context-tools">
-                {tools.map((tool) => (
-                  <li key={tool.name}>
-                    <span>{toolName(tool)}</span>
-                    {count(tool.bytes * scale)}
-                  </li>
-                ))}
-              </ul>
+        <Button
+          variant="quiet"
+          class="context-row"
+          aria-expanded={!!open[fold]}
+          disabled={!shown?.tools[fold]?.count}
+          onClick={() => setOpen({ ...open, [fold]: !open[fold] })}
+        >
+          {body}
+          <ChevronRight class="row-chevron" />
+        </Button>
+        {open[fold] && (
+          <ul class="context-tools">
+            {catalogue ? (
+              tools.map((tool) => (
+                <li key={tool.name}>
+                  <span>{toolName(tool)}</span>
+                  {count(tool.schema_bytes * scale)}
+                </li>
+              ))
+            ) : (
+              <li>{missing}</li>
             )}
-          </>
-        ) : (
-          <div class="context-row">{body}</div>
+          </ul>
         )}
       </li>
     );
   };
-  const rows = (
-    <ul class="context-rows">
-      {PARTS.map((part) =>
-        row(part, LABELS[part], shown.parts[part] * scale, {
-          detail:
-            part === "tools"
-              ? String(lists.tools.length)
-              : part === "mcp"
-                ? String(lists.mcp.length)
-                : part === "skills"
-                  ? `${shown.skills} listed`
-                  : part === "instructions"
-                    ? shown.instructions
-                    : undefined,
-          tools:
-            part === "tools"
-              ? lists.tools
-              : part === "mcp"
-                ? lists.mcp
-                : undefined,
-        }),
-      )}
-      {(loading || !!capacity) &&
-        row(
-          "free",
-          loading || compacts ? "Free until it compacts" : "Free",
-          Math.max(0, end - shown.tokens),
-          {},
-        )}
-      {(loading || !!compacts) &&
-        row("kept", "Kept for the summary", (capacity || 0) - compacts, {
-          quiet: true,
-        })}
-      {row(
-        "hidden",
-        "Not offered",
-        lists.hidden.reduce((sum, tool) => sum + tool.bytes, 0) * scale,
-        {
-          detail: plural(lists.hidden.length, "tool"),
-          tools: lists.hidden,
-          quiet: true,
-          ratio: "—",
-        },
-      )}
-    </ul>
-  );
+  const counted = (kind: Kind) => shown?.tools[kind]?.count || 0;
   return (
     <section class="context">
       <div class="context-title">
@@ -236,60 +217,82 @@ export default function ContextSection({
           aria-label={`${percent(usedShare)} of the context window is used, ${contextLeft(tokens, capacity)}${compacts ? `; it compacts at ${percent(mark)}` : ""}`}
         >
           <div class="context-track">
-            {parts
-              ? PARTS.map(
+            {!drawing &&
+              (shown && capacity ? (
+                PARTS.map(
                   (part) =>
-                    !!parts.parts[part] && (
+                    !!shown.parts[part] && (
                       <span
                         key={part}
                         class="context-segment"
                         data-part={part}
                         style={{
-                          "--share": `${(parts.parts[part] * scale * 100) / parts.window}%`,
+                          "--share": `${(shown.parts[part] * scale * 100) / capacity}%`,
                         }}
                       />
                     ),
                 )
-              : !drawing && (
-                  <span
-                    class="context-segment"
-                    style={{ "--share": `${usedShare}%` }}
-                  />
-                )}
+              ) : (
+                <span
+                  class="context-segment"
+                  style={{ "--share": `${usedShare}%` }}
+                />
+              ))}
           </div>
           {!!compacts && (
             <span class="context-mark" style={{ "--at": `${mark}%` }} />
           )}
-          {/* Its line stays while the parts load, so they arrive in place. */}
-          <small
-            class="context-caption muted"
-            data-side={mark > 50 ? "end" : "start"}
-            style={{ "--at": `${mark}%` }}
-          >
-            {compacts
-              ? `compacts at ${percent(mark)}`
-              : parts
-                ? "no automatic compaction"
-                : "\u00a0"}
-          </small>
+          {shown && (
+            <small
+              class="context-caption muted"
+              data-side={mark > 50 ? "end" : "start"}
+              style={{ "--at": `${mark}%` }}
+            >
+              <DataText>
+                {compacts
+                  ? `compacts at ${percent(mark)}`
+                  : "no automatic compaction"}
+              </DataText>
+            </small>
+          )}
         </div>
       )}
-      {loading ? (
-        <div>
-          <Placeholder label="Loading the parts…">{rows}</Placeholder>
-        </div>
-      ) : parts ? (
-        rows
-      ) : error ? (
-        <LoadError error={error} retry={retry} />
-      ) : (
-        <p class="muted small">
-          {session?.turn_active
-            ? "The parts show when this turn ends."
-            : online
-              ? "The parts show once this conversation runs."
-              : "The parts show when the host is back online."}
-        </p>
+      {shown && (
+        <ul class="context-rows">
+          {PARTS.map((part) =>
+            row(part, LABELS[part], shown.parts[part] * scale, {
+              detail:
+                part === "tools" || part === "mcp"
+                  ? String(counted(part))
+                  : part === "instructions"
+                    ? shown.instructions
+                    : undefined,
+              fold: part === "tools" || part === "mcp" ? part : undefined,
+            }),
+          )}
+          {(drawing || !!capacity) &&
+            row(
+              "free",
+              drawing || compacts ? "Free until it compacts" : "Free",
+              Math.max(0, (compacts || capacity || 0) - shown.tokens),
+              {},
+            )}
+          {(drawing || !!compacts) &&
+            row("kept", "Kept for the summary", (capacity || 0) - compacts, {
+              quiet: true,
+            })}
+          {row(
+            "hidden",
+            "Not offered",
+            (shown.tools.hidden?.bytes || 0) * scale,
+            {
+              detail: plural(counted("hidden"), "tool"),
+              fold: "hidden",
+              quiet: true,
+              ratio: "—",
+            },
+          )}
+        </ul>
       )}
       {showContext && (
         <Cluster class="context-actions">

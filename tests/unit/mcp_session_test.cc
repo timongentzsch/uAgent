@@ -381,7 +381,8 @@ TEST_CASE(TestWorkspaceScopedSession) {
 }
 
 // Each kind of message lands in its part, the parts add up to what
-// ContextUsed() estimates, and every tool is listed with its schema.
+// ContextUsed() estimates, and the tools are counted by whether they are
+// offered and whose they are.
 TEST_CASE(TestContextBreakdown) {
   TestWorkspace test("context-breakdown");
   Api api(RuntimeConfig{});
@@ -440,34 +441,34 @@ TEST_CASE(TestContextBreakdown) {
   saved.close();
   CHECK(agent.Load(path, CanonicalCwd(), error));
 
-  const json breakdown = agent.ContextBreakdown();
+  const json breakdown = agent.ContextParts();
   const auto parts = breakdown["parts"].get<std::map<std::string, size_t>>();
   size_t sum = 0;
   for (const auto& [name, bytes] : parts) sum += bytes;
   for (const char* name :
        {"tool_results", "replies", "messages", "files", "notes", "tools", "mcp",
-        "system", "instructions", "memory", "skills"}) {
+        "system", "instructions", "memory"}) {
     CHECK(parts.at(name) > 0);
   }
-  CHECK(parts.size() == 11);
+  CHECK(parts.size() == 10);
   CHECK(parts.at("memory") == memory.size());
   CHECK(sum == breakdown["bytes"].get<size_t>());
   CHECK(breakdown["tokens"] == agent.ContextUsed());
   CHECK(breakdown["tokens"] == EstimatedTokens(sum));
-  CHECK(breakdown["window"] == 200000);
   CHECK(breakdown["instructions"] == "AGENTS.md");
-  CHECK(breakdown["skills"] == 1);
   const int64_t compacts_at = breakdown["compacts_at"];
   CHECK(compacts_at > 0 && compacts_at < 200000);
-  std::map<std::string, json> listed;
-  for (const json& tool : breakdown["tools"]) listed[tool["name"]] = tool;
-  CHECK(listed.size() == 4);
-  CHECK(listed["github_create_issue"]["server"] == "github");
-  CHECK(listed["github_create_issue"]["offered"] == true);
-  CHECK(!listed["read_path"].contains("server"));
-  CHECK(listed["deploy_check"]["offered"] == false);
-  CHECK(listed["skill"]["bytes"] == parts.at("skills"));
-  CHECK(listed["github_create_issue"]["bytes"] == parts.at("mcp"));
+  // The MCP server's tool alone; the skill-gated tool is not offered.
+  const json catalogue = agent.ToolCatalogue();
+  CHECK(parts.at("mcp") == catalogue["tools"][1]["schema_bytes"]);
+  CHECK(parts.at("tools") + parts.at("mcp") == catalogue["schema_bytes"]);
+  CHECK(breakdown["tools"]["mcp"]["count"] == 1);
+  CHECK(breakdown["tools"]["tools"]["count"] == 2);
+  CHECK(breakdown["tools"]["hidden"]["count"] == 1);
+  // Saved with the conversation, as context_tokens is.
+  CHECK(agent.Save(path, error));
+  const auto saved_record = SessionStore::Inspect(path).record;
+  CHECK(saved_record && saved_record->state.context_parts == breakdown);
 }
 
 TEST_CASE(TestProjectTrustTracksSemanticConfig) {

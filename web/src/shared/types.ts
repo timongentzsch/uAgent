@@ -482,6 +482,8 @@ export interface State {
   todo?: TodoItem[];
   context_tokens?: number;
   context_window?: number;
+  // Absent in a conversation saved before parts were recorded.
+  context_parts?: ContextParts;
   permissions?: Permissions;
   http?: Exchange[];
   mcp?: McpServer[];
@@ -741,14 +743,14 @@ export interface ToolCatalogueItem {
   schema_bytes: number;
   reason?: string;
 }
-// What fills a conversation's context (Agent::ContextBreakdown): estimated
-// bytes per part and per tool schema; the parts sum to `bytes`, which the
-// host estimates as `tokens`. compacts_at is 0 where nothing compacts.
+// What fills a conversation's context (Agent::ContextParts): estimated
+// bytes per part, which sum to `bytes` and come to `tokens`; the tools
+// counted by kind; compacts_at is 0 where nothing compacts.
 export interface ContextParts {
   tokens: number;
   bytes: number;
-  window: number;
   compacts_at: number;
+  instructions: string;
   parts: Record<
     | "tool_results"
     | "replies"
@@ -759,13 +761,12 @@ export interface ContextParts {
     | "mcp"
     | "system"
     | "instructions"
-    | "memory"
-    | "skills",
+    | "memory",
     number
   >;
-  tools: { name: string; bytes: number; offered: boolean; server?: string }[];
-  skills: number;
-  instructions: string;
+  tools: Partial<
+    Record<"tools" | "mcp" | "hidden", { count: number; bytes: number }>
+  >;
 }
 export interface ToolCatalogue {
   profile: string;
@@ -815,7 +816,6 @@ export interface CommandResults {
   tools: ToolCatalogue;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
-  context_parts: ContextParts;
   revert: { restored: string[]; conflicts: { path: string; reason: string }[] };
   // A turn's change to a file, as a unified diff.
   changes: { path: string; text: string };
@@ -931,7 +931,6 @@ export interface CommandInputs {
     activity_id?: number;
   };
   context: None;
-  context_parts: None;
   // The turn (0 = latest) and one file of it, or all.
   revert: { turn: number; path?: string };
   changes: { turn: number; path: string };

@@ -599,14 +599,14 @@ def test_headless_json_stream_emits_lifecycle_events(root, home, *, binary):
 def test_a_runtime_that_cannot_listen_says_so_at_once(root, home, *, binary):
     """Its socket path is taken by something it cannot replace. That is no
     other runtime holding the session, so nobody waits for one to leave."""
-    from integration_support import fnv1a64
+    from integration_support import session_id
     from session_support import runtime_directory
 
     with Server([event({"content": "saved"})]) as server:
         saved = run(root, base_env(home, server.url), "-p", "hi", binary=binary)
         assert_true(saved.returncode == 0, saved.stderr)
     session = next((home / ".uagent" / "history").glob("*/*.json"))
-    blocked = runtime_directory(home) / f"{fnv1a64(str(session))}.sock"
+    blocked = runtime_directory(home) / f"{session_id(session)}.sock"
     (blocked / "kept").mkdir(parents=True, mode=0o700)
     runtime_directory(home).chmod(0o700)
     blocked.chmod(0o700)

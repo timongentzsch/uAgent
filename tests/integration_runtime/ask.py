@@ -8,11 +8,11 @@ from integration_support import (
     assert_true,
     base_env,
     event,
-    fnv1a64,
     function_names,
     run,
     run_dialog,
     run_pty,
+    session_id,
     tool_call,
     tool_results,
     wait_until,
@@ -94,7 +94,7 @@ def test_ask_answered_elsewhere_closes_the_picker(root, home, *, binary):
             # it is sent, state frames replayed after the snapshot included.
             history = home / ".uagent" / "history"
             session = max(history.glob("*/*.json"), key=lambda path: path.stat().st_mtime)
-            joined = SessionClient(runtime_directory(home) / f"{fnv1a64(str(session))}.sock")
+            joined = SessionClient(runtime_directory(home) / f"{session_id(session)}.sock")
             joined.socket.settimeout(0.5)
             try:
                 while line := joined.stream.readline():

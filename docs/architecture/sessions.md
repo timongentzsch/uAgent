@@ -44,9 +44,9 @@ A session file lives in `history/<workspace id>/` and holds two lines:
 
 The whole file is read with a 64 MiB cap (`kSessionReadBytes`); a save that
 would exceed it is refused. A session has two identities: the hash of its
-file path (`SessionIdFor`), which names its socket, the web's routes and
-agents' `parent`; and the header `session_id` (`uagent-<hash>`), which
-stays fixed for the conversation's life.
+file name (`SessionIdFor`), which names its socket, its mailbox, the web's
+routes and agents' `parent`; and the header `session_id` (`uagent-<hash>`),
+which a fork names as its source. A move keeps both.
 
 Files beside `<name>.json`, all private:
 
@@ -87,8 +87,8 @@ with Undo. Changes made by shell commands are not recorded.
 a session, 512 MiB in all (`asset_store.h`). A fork copies the directory
 and rewrites paths, so no asset is shared between sessions.
 
-**Mail.** `mail/<id>/new/` and `cur/`, `<id>` the hash of the canonical
-session path (`MailboxIdFor`). A message is one JSON file (`format` 1: `id`,
+**Mail.** `mail/<id>/new/` and `cur/`, `<id>` the session's id
+(`SessionIdFor`). A message is one JSON file (`format` 1: `id`,
 `from`, `to`, `sender_path`, `hops`, `created_ms`, `expires_ms`, `body`)
 named `<created_ms>-<pid>-<seq>-<id>.json`, so sorting gives send order.
 
@@ -116,9 +116,9 @@ conversation and the agents beside it whose `agent.parent` chain leads to
 it. Busy members refuse the move; idle runtimes are closed. Under all their
 leases the host writes `move-<id>.json` (format 1: folders, note, `{from,
 to}` pairs) into its own directory, renames each file's sidecars and then
-the file, rewrites `cwd`, `agent.parent`, asset and edit paths and ids,
-adds a transcript note, moves the usage ledger, pins and scheduled runs,
-and deletes the move file last.
+the file, rewrites `cwd`, asset and edit paths, adds a transcript note, repoints
+scheduled runs, and deletes the move file last. Ids, and so pins, mail,
+agents' `parent` and the usage ledger, stay as they are.
 
 ## Invariants and limits
 

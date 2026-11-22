@@ -39,7 +39,7 @@ interface EventHost {
   upsertSession: (session: Session) => void;
   setUnread: Dispatch<StateUpdater<Set<string>>>;
   settleOutgoing: (outcome: Outcome) => boolean;
-  forget: (id: string, movedTo?: string) => void;
+  forget: (id: string) => void;
   refresh: () => void;
   report: (error: unknown) => void;
   onResult: (value: JSONValue, inspect: boolean) => void;
@@ -154,7 +154,10 @@ export function applyEvent(event: HostEvent, host: EventHost) {
         };
       break;
     case "deleted":
-      forget(id, event.moved_to);
+      forget(id);
+      break;
+    case "moved":
+      refresh();
       break;
     case "state": {
       const phase = event.phase || event.state?.phase || "idle";

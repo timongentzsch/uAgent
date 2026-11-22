@@ -614,7 +614,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   };
   VisitStrings(record.state, rewrite);
   record.state.display["facts"]["fork-origin"] = {
-      {"source", HashHex(source)},
+      {"source", SessionIdFor(source)},
       {"title", record.metadata.title},
       {"turns", record.metadata.turns},
       {"usage", UsageJson(record.state.usage)},
@@ -648,7 +648,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     return {{"error", result.message}};
   }
   json forked = {{"forked", true},
-                 {"id", HashHex(path)},
+                 {"id", SessionIdFor(path)},
                  {"path", path},
                  {"cwd", record.metadata.cwd},
                  {"title", record.metadata.title}};

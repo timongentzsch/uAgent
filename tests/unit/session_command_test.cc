@@ -540,7 +540,7 @@ TEST_CASE(TestSavedHistoryInvalidation) {
   REQUIRE(SessionStore::Save(path, record).Ok());
   session::SessionHost host("test", 4096);
   host.RefreshCatalogue(true);
-  const auto id = HashHex(path);
+  const auto id = SessionIdFor(path);
   const auto snapshot = host.Snapshot(id, {});
   REQUIRE(snapshot.status == 200);
   CHECK(snapshot.value["state"]["view"]["nodes"][0]["body"]["text"] == "old");
@@ -559,7 +559,7 @@ TEST_CASE(TestSavedHistoryInvalidation) {
     for (int index = 0; index < 3; ++index) {
       const std::string name = "other-" + std::to_string(index);
       const auto other =
-          host.Snapshot(HashHex(folder + "/" + name + ".json"), {});
+          host.Snapshot(SessionIdFor(folder + "/" + name + ".json"), {});
       REQUIRE(other.status == 200);
       CHECK(other.value["state"]["view"]["nodes"][0]["body"]["text"] == name);
     }

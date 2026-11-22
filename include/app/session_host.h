@@ -260,8 +260,6 @@ class SessionHost {
                                const std::filesystem::path& folder,
                                const std::string& device, json& moved);
   std::string FinishMove(const SessionMove& move, MoveLeases& held);
-  // Pinned conversations follow their move; a pinned folder stays.
-  std::string FollowPins(const std::map<std::string, std::string>& ids);
   std::vector<SessionInfo> FamilyOf(const std::string& path)
       UAGENT_REQUIRES(scan_mutex_);
   std::string DeleteSpace(const std::string& path, const std::string& device);

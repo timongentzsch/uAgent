@@ -111,7 +111,7 @@ class WorkerChannel final : public ApplicationChannel {
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
-        mail_(MailboxIdFor(path_)) {
+        mail_(SessionIdFor(path_)) {
     if (!agent.empty()) {
       link_.emplace(path_, id_,
                     AgentParentPath(path_, JsonValue(agent, "parent", "")));
@@ -216,7 +216,7 @@ class WorkerChannel final : public ApplicationChannel {
           if (link_) link_->Resend();
           if (merge_) merge_->Resend();
         }
-        if (mail_.Get() < 0 && !PendingMail(MailboxIdFor(path_)).empty()) {
+        if (mail_.Get() < 0 && !PendingMail(SessionIdFor(path_)).empty()) {
           return ApplicationInput{.wake = true};
         }
         // Idle is measured from the last input or wake.

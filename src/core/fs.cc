@@ -404,6 +404,12 @@ std::string UniqueSeed() {
 
 std::string MakeSessionId() { return "uagent-" + HashHex(UniqueSeed()); }
 
+std::string SessionIdFor(const std::string& path) {
+  return path.empty()
+             ? ""
+             : HashHex(std::filesystem::path(path).filename().string());
+}
+
 std::string RandomToken(size_t bytes) {
   if (bytes > 64) {
     return {};

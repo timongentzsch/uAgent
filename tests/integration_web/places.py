@@ -620,7 +620,7 @@ def test_web_unfiled_conversation_is_offered_where_it_belongs(root, home, *, bin
             # A suggested new workspace is created by the move that names it,
             # and what moved carries no suggestion with it.
             moved = web.command("move", unfiled, space="Lisbon trip")["result"]
-            assert_true("/spaces/" in moved["cwd"] and moved["id"] != unfiled["id"], moved)
+            assert_true("/spaces/" in moved["cwd"] and moved["id"] == unfiled["id"], moved)
             assert_true(not moved.get("suggestion"), moved)
 
 

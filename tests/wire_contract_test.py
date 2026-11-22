@@ -43,6 +43,7 @@ BROWSER_FRAMES = frozenset(
         "gap",
         "management.changed",
         "metadata",
+        "moved",
         "outcome",
         "pins.changed",
         "scheduled.changed",

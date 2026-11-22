@@ -16,6 +16,7 @@
 
 #include "include/agent/conversation.h"
 #include "include/core/file_watch.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 #include "include/core/usage.h"
@@ -158,12 +159,6 @@ struct SessionLoadResult {
   SessionStoreStatus status;
   std::optional<SessionRecord> record;
 };
-
-// The session file's path, hashed as spelled. MailboxIdFor resolves links
-// first, so the two agree only for a path without them.
-inline std::string SessionIdFor(const std::string& path) {
-  return HashHex(path);
-}
 
 bool ValidSessionTitle(const std::string& title);
 std::string InvalidSessionTitleMessage();

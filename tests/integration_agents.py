@@ -17,6 +17,7 @@ from integration_support import (
     function_names,
     run,
     save_settings,
+    session_id,
     tool_call,
     tool_calls,
     tool_results,
@@ -55,7 +56,7 @@ def text_of(body):
 
 
 def socket_of(home, path):
-    return runtime_directory(home) / f"{fnv1a64(str(path))}.sock"
+    return runtime_directory(home) / f"{session_id(path)}.sock"
 
 
 def client_of(home, path):
@@ -123,8 +124,8 @@ def test_a_waited_agent_answers_inline_and_keeps_its_conversation(root, home, *,
         role = header(agent)["agent"]
         assert_true(role["edits"] == "none" and role["depth"] == 1, role)
         # Saved beside its parent, which it names by the parent's id.
-        assert_true(row["id"] == fnv1a64(str(agent)), (row, agent))
-        parents = {fnv1a64(str(p)) for p in agent.parent.glob("*.json")}
+        assert_true(row["id"] == session_id(agent), (row, agent))
+        parents = {session_id(p) for p in agent.parent.glob("*.json")}
         assert_true(role["parent"] in parents, role)
         # agent_send started a turn on the saved agent; its report woke the
         # headless parent, which waited for it before it answered.
@@ -179,7 +180,7 @@ def test_an_agent_not_waited_for_reports_to_its_parent_and_its_spend_counts(root
         (parent,) = [
             p
             for p in agent.parent.glob("*.json")
-            if fnv1a64(str(p)) == header(agent)["agent"]["parent"]
+            if session_id(p) == header(agent)["agent"]["parent"]
         ]
         assert_true(len(held) == 2, held)
         assert_true(header(parent)["cost"] >= 0.05, header(parent))
@@ -188,7 +189,7 @@ def test_an_agent_not_waited_for_reports_to_its_parent_and_its_spend_counts(root
         (report,) = [fact for fact in facts.values() if fact.get("origin") == "agent"]
         assert_true(
             report["agent"]
-            == {"session": fnv1a64(str(agent)), "title": "BRIEF count", "outcome": "completed"},
+            == {"session": session_id(agent), "title": "BRIEF count", "outcome": "completed"},
             report,
         )
     # With too little of its budget left, a conversation starts none.
@@ -449,7 +450,7 @@ def test_an_agent_takes_its_parents_mode_auto_at_most(root, home, *, binary):
         if len(results) == 1 and '" finished (' in text_of(body):
             # Sent once its runtime is gone, so a new one starts for it.
             wait_until(lambda: not socket_of(home, agent_files(home)[0]).exists(), "still up")
-            agent = fnv1a64(str(agent_files(home)[0]))
+            agent = session_id(agent_files(home)[0])
             return tool_call("agent_send", {"id": agent, "text": "go"}, call_id="call-2")
         return event({"content": "parent ok"})
 
@@ -523,7 +524,7 @@ def test_agents_started_in_a_row_stop_at_three_and_depth_is_bounded(root, home, 
                 lambda: not socket_of(home, agent_files(home)[0]).exists(),
                 "the agent never finished its turn",
             )
-            agent = fnv1a64(str(agent_files(home)[0]))
+            agent = session_id(agent_files(home)[0])
             return tool_call(
                 "agent_send", {"id": agent, "text": "again"}, call_id=f"call-{len(results)}"
             )
@@ -612,7 +613,7 @@ def test_deleting_an_agent_needs_the_person(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         listed, read, deleted = results_of(server.requests[-1][1])[1:]
         (agent,) = agent_files(home)
-        assert_true(fnv1a64(str(agent)) in listed and "keep me" in listed, listed)
+        assert_true(session_id(agent) in listed and "keep me" in listed, listed)
         assert_true("agent ok" in read, read)
         assert_true("needs a person's approval" in deleted, deleted)
         assert_true(agent.exists(), "the agent was deleted without the person")

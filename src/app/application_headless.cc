@@ -106,7 +106,7 @@ int Application::RunHeadless() {
   // carries this run, not everything before it.
   used_before_ = UsageTotals();
   // A followup run first receives what the previous run took but never saved.
-  RecoverMail(MailboxIdFor(session_file_));
+  RecoverMail(SessionIdFor(session_file_));
   json content;
   if (!attachments_.empty()) {
     std::string error;

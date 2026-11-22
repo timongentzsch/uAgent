@@ -116,7 +116,7 @@ json Agent::SideConversation(const std::string& source,
       .display["facts"]["session-settings"]["chosen"]["UAGENT_APPROVAL"] =
       ApprovalModeName(CurrentApprovalMode());
   snapshot.state.display["facts"]["side-origin"] = {
-      {"parent", HashHex(source)},
+      {"parent", SessionIdFor(source)},
       {"tools",
        snapshot.state.display["facts"]["session-settings"]["tools"]["only"]}};
   const std::string title =
@@ -444,7 +444,7 @@ bool Agent::Save(const std::string& path, std::string& error) const {
   }
   // Only now is the mail part of the record a restart would load.
   const auto waiting = std::ranges::stable_partition(unacked_mail_, arriving);
-  AckMail(MailboxIdFor(path), {waiting.begin(), waiting.end()});
+  AckMail(SessionIdFor(path), {waiting.begin(), waiting.end()});
   unacked_mail_.erase(waiting.begin(), waiting.end());
   return true;
 }

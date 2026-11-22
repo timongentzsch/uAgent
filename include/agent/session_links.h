@@ -11,7 +11,7 @@
 namespace uagent {
 
 struct MailParty {
-  std::string id{};  // mailbox id (MailboxIdFor path)
+  std::string id{};  // SessionIdFor path
   std::string path{};
   std::string parent{};  // its parent's mailbox id, for an agent
   // What its header calls it, and the conversation it forked from.

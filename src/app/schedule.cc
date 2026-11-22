@@ -543,7 +543,6 @@ json MoveScheduledSessions(const std::map<std::string, std::string>& moved) {
       const auto found = moved.find(JsonValue(run, "session_path", ""));
       if (found == moved.end()) continue;
       run["session_path"] = found->second;
-      run["session_id"] = SessionIdFor(found->second);
     }
     return json::object();
   });

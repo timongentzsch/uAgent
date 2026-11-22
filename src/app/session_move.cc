@@ -107,16 +107,14 @@ bool AddNote(SessionRecord& record, const SessionMove& move,
 
 // Makes the moved session at `move.files[index].to` agree with where it is:
 // agents of the old folder work in the new one, others keep theirs, and asset
-// paths, edit paths and the moved sessions' ids follow.
-std::string Rewrite(const SessionMove& move, size_t index,
-                    const std::map<std::string, std::string>& ids) {
+// and edit paths follow.
+std::string Rewrite(const SessionMove& move, size_t index) {
   const MovedFile& file = move.files[index];
-  std::vector<std::pair<std::string, std::string>> renames = {
+  const std::pair<std::string, std::string> renames[] = {
       {file.from + kSessionAssetsSuffix + "/",
        file.to + kSessionAssetsSuffix + "/"},
       {file.from + kSessionEditsSuffix + "/",
        file.to + kSessionEditsSuffix + "/"}};
-  renames.insert(renames.end(), ids.begin(), ids.end());
   std::string failed;
   const SessionStoreStatus status =
       SessionStore::Edit(file.to, [&](SessionRecord& record) {
@@ -126,12 +124,6 @@ std::string Rewrite(const SessionMove& move, size_t index,
             CanonicalAccessPath(move.from_cwd)) {
           metadata.cwd = move.to_cwd;
           metadata.suggestion = nullptr;
-          changed = true;
-        }
-        if (const auto parent =
-                ids.find(JsonValue(metadata.agent, "parent", ""));
-            parent != ids.end()) {
-          metadata.agent["parent"] = parent->second;
           changed = true;
         }
         SessionStore::VisitStrings(record.state, [&](json& value) {
@@ -150,15 +142,6 @@ std::string Rewrite(const SessionMove& move, size_t index,
       });
   if (!failed.empty()) return failed;
   return status.Ok() ? "" : "cannot update " + file.to + ": " + status.message;
-}
-
-// Its token usage is kept under the session's id, which the move changes.
-void MoveLedger(const std::string& from_id, const std::string& to_id) {
-  const std::string from = UsageLedger(from_id), to = UsageLedger(to_id);
-  if (PathExists(from) && !PathExists(to)) {
-    std::error_code error;
-    fs::rename(from, to, error);
-  }
 }
 }  // namespace
 
@@ -213,14 +196,6 @@ bool MoveFromJson(const json& value, SessionMove& move) {
   return true;
 }
 
-std::map<std::string, std::string> MovedIds(const SessionMove& move) {
-  std::map<std::string, std::string> ids;
-  for (const MovedFile& file : move.files) {
-    ids[SessionIdFor(file.from)] = SessionIdFor(file.to);
-  }
-  return ids;
-}
-
 std::string HoldMove(const SessionMove& move, MoveLeases& held) {
   held = MoveLeases(move.files.size());
   for (size_t i = 0; i < move.files.size(); ++i) {
@@ -240,13 +215,11 @@ std::string CarryOutMove(const SessionMove& move, MoveLeases& held) {
     }
   }
   held.clear();
-  const auto ids = MovedIds(move);
   for (size_t i = 0; i < move.files.size(); ++i) {
-    if (std::string error = Rewrite(move, i, ids); !error.empty()) {
+    if (std::string error = Rewrite(move, i); !error.empty()) {
       return error;
     }
   }
-  for (const auto& [from, to] : ids) MoveLedger(from, to);
   std::map<std::string, std::string> paths;
   for (const MovedFile& file : move.files) paths[file.from] = file.to;
   // A run's record of where its conversation is cannot stop a move that is
@@ -301,40 +274,19 @@ std::vector<SessionInfo> SessionHost::FamilyOf(const std::string& path) {
   return FamilyIn(catalogue_.List(SessionScope::kAll), path);
 }
 
-std::string SessionHost::FollowPins(
-    const std::map<std::string, std::string>& ids) {
-  std::lock_guard lock(mutex_);
-  json pins = pins_;
-  bool changed = false;
-  for (json& pin : pins) {
-    const auto moved = ids.find(JsonValue(pin, "id", ""));
-    if (JsonValue(pin, "kind", "") == "session" && moved != ids.end()) {
-      pin["id"] = moved->second;
-      changed = true;
-    }
-  }
-  std::string error;
-  if (!changed ||
-      !WritePrivateFile(directory_ + "/" + kPinsFile, JsonDump(pins), error)) {
-    return error;
-  }
-  pins_ = std::move(pins);
-  Record("", "", {{"kind", "pins.changed"}, {"pins", pins_}}, false);
-  return "";
-}
-
 std::string SessionHost::FinishMove(const SessionMove& move, MoveLeases& held) {
   if (std::string error = CarryOutMove(move, held); !error.empty()) {
     return error;
   }
-  // A conversation made in the web keeps a record of its identity until it
-  // is deleted; left at the old id it would come back as a draft.
-  const auto ids = MovedIds(move);
+  // A conversation made in the web keeps a record of where it is until it is
+  // deleted; left naming the old place it would come back as a draft.
   std::error_code ignored;
-  for (const auto& [from, to] : ids) {
-    fs::remove(directory_ + "/" + kDraftsDir + "/" + from + ".json", ignored);
+  for (const MovedFile& file : move.files) {
+    fs::remove(
+        directory_ + "/" + kDraftsDir + "/" + SessionIdFor(file.from) + ".json",
+        ignored);
   }
-  return FollowPins(ids);
+  return "";
 }
 
 // Closes what is idle, then moves under the locks that keep the catalogue
@@ -454,7 +406,8 @@ std::string SessionHost::MoveConversation(
   }
   for (size_t i = 0; error.empty() && i < family.size(); ++i) {
     const SessionInfo& info = family[i];
-    if (!PendingMail(MailboxIdFor(info.path)).empty()) {
+    // Its sender is checked at the path the mail names, which a move changes.
+    if (!PendingMail(SessionIdFor(info.path)).empty()) {
       error =
           "mail is waiting for \"" + info.title + "\"; let it read it first";
     } else if (Occupied(move.files[i].to)) {
@@ -486,7 +439,6 @@ std::string SessionHost::MoveConversation(
     session->status = prior;
   }
   if (!error.empty()) return error;
-  const auto ids = MovedIds(move);
   std::vector<std::pair<std::string, bool>> gone;
   for (const MovedFile& file : move.files) {
     const std::string id = SessionIdFor(file.from);
@@ -499,15 +451,14 @@ std::string SessionHost::MoveConversation(
   asset_lock.unlock();
   assets_.Invalidate();
   scan.unlock();
-  // The new ids appear before the old ones go, so a page that follows
-  // `moved_to` finds its conversation.
   RefreshCatalogue(true);
   lock.lock();
+  // Its id stays; what a page holds of its transcript does not.
   for (const auto& [id, run_owned] : gone) {
-    Record(id, "", {{"kind", "deleted"}, {"moved_to", ids.at(id)}}, run_owned);
+    Record(id, "", {{"kind", "moved"}}, run_owned);
   }
   moved = {{"moved", true},
-           {"id", ids.at(gone[0].first)},
+           {"id", gone[0].first},
            {"path", move.files[0].to},
            {"cwd", to_cwd},
            {"title", family[0].title}};

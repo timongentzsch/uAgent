@@ -22,7 +22,7 @@ export interface Host {
   store: SnapshotStore;
   load: (id: string) => Promise<Snapshot>;
   refresh: () => Promise<void>;
-  forget: (id: string, movedTo?: string) => void;
+  forget: (id: string) => void;
   setModal: (modal: AppModal | null) => void;
   showContext: (item?: Session) => void;
 }

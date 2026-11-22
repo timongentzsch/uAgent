@@ -203,7 +203,7 @@ struct Batch {
 void Wait(Batch& batch, const ToolContext& context,
           const ReportJudge& judge_report) {
   std::vector<Child>& rows = batch.rows;
-  const std::string box = MailboxIdFor(batch.own);
+  const std::string box = SessionIdFor(batch.own);
   for (int tick = 0; batch.running > 0 && !context.Expired(); ++tick) {
     if (AbortRequested()) {
       for (Child& row : rows) {
@@ -231,7 +231,7 @@ void Wait(Batch& batch, const ToolContext& context,
     const auto waited = [&](const std::string& from) {
       return std::ranges::find_if(rows, [&](const Child& row) {
         return row.state == "working" && !row.path.empty() &&
-               MailboxIdFor(row.path) == from;
+               SessionIdFor(row.path) == from;
       });
     };
     bool asks = false;
@@ -784,10 +784,10 @@ bool AgentsOwe(const std::string& path) {
     if (status == "working" || (status == "idle" && info.turns == 0)) {
       return true;
     }
-    senders.insert(MailboxIdFor(info.path));
+    senders.insert(SessionIdFor(info.path));
   }
   // Mail from anyone else may never be taken, and is not waited for.
-  const std::string box = MailboxIdFor(path);
+  const std::string box = SessionIdFor(path);
   return std::ranges::any_of(
              PendingMail(box),
              [&](const Mail& mail) { return senders.contains(mail.from); }) ||

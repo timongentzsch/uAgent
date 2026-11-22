@@ -14,6 +14,7 @@ from integration_support import (
     event,
     fnv1a64,
     run,
+    session_id,
     tool_call,
     wait_until,
     write_session,
@@ -60,7 +61,7 @@ def save_family(home, folder, root):
         {"role": "user", "content": "first question"},
         {
             "role": "assistant",
-            "content": f"see {lead}.assets/pic.png, agent {fnv1a64(str(one))}",
+            "content": f"see {lead}.assets/pic.png, agent {session_id(one)}",
         },
     ]
     facts = {"t-1": {"change_path": f"{lead}.edits/diff-1", "output": "diff"}}
@@ -89,7 +90,7 @@ def save_family(home, folder, root):
             display={"ids": [1, 2], "next": 3, "facts": {}, "statistics": {"complete": True}},
             session_id=f"{path.stem}-sid",
             title=path.stem,
-            agent={"parent": fnv1a64(str(parent)), "edits": "folder", "depth": 1},
+            agent={"parent": session_id(parent), "edits": "folder", "depth": 1},
         )
     # As the host spells its own folders, which write_session resolves.
     head, body = tree.read_text(encoding="utf-8").split("\n", 1)
@@ -183,7 +184,7 @@ def assert_whole(home, alpha, beta, *, notes=1):
     left = sorted(path.name for path in old.iterdir()) if old.exists() else []
     assert_true(not left, f"left in the old folder: {left}")
     lead = new / f"{LEAD}.json"
-    ids = {name: fnv1a64(str(new / f"{name}.json")) for name in (LEAD, *AGENTS)}
+    ids = {name: session_id(new / f"{name}.json") for name in (LEAD, *AGENTS)}
     head, body = read_session(lead)
     assert_true(head["cwd"] == str(beta.resolve()), head)
     texts = [message["content"] for message in body["messages"]]
@@ -218,7 +219,7 @@ def test_web_move_takes_a_conversation_and_its_agents_to_another_folder(root, ho
             client.pair(code)
             frames = watch(client)
             lead = listed(client, LEAD)
-            assert_true(lead["id"] == fnv1a64(str(old / f"{LEAD}.json")), lead)
+            assert_true(lead["id"] == session_id(old / f"{LEAD}.json"), lead)
             moved = client.command("move", lead, cwd=str(beta))["result"]
             new = history_of(home, beta)
             ids = assert_whole(home, alpha, beta)
@@ -227,15 +228,14 @@ def test_web_move_takes_a_conversation_and_its_agents_to_another_folder(root, ho
             # left behind, and nothing is new but the leases.
             assert_true(tree_of(new) == before, (tree_of(new), before))
             assert_true(not list((home / ".uagent" / "web").glob("move-*.json")), "journal left")
+            assert_true(lead["id"] == ids[LEAD], (lead, ids))
             wait_until(
-                lambda: any(f.get("moved_to") == ids[LEAD] for f in frames),
-                f"no deleted frame follows the conversation: {frames}",
+                lambda: any(
+                    f.get("kind") == "moved" and f.get("session_id") == ids[LEAD] for f in frames
+                ),
+                f"no moved frame: {frames}",
             )
-            old_frame = next(f for f in frames if f.get("moved_to") == ids[LEAD])
-            assert_true(
-                old_frame["kind"] == "deleted" and old_frame["session_id"] == lead["id"], old_frame
-            )
-            # The agents are listed under it again, at their new ids.
+            # The agents are listed under it still, at the same ids.
             wait_until(
                 lambda: (
                     {item["id"] for item in sessions_of(client) if item.get("parent") == ids[LEAD]}
@@ -243,7 +243,6 @@ def test_web_move_takes_a_conversation_and_its_agents_to_another_folder(root, ho
                 ),
                 "the agents are not listed under the moved conversation",
             )
-            assert_true(lead["id"] not in {item["id"] for item in sessions_of(client)}, "old id")
             # It resumes in the new folder, and the model is told.
             session = client.command("activate", {"id": ids[LEAD], "generation": ""})["session"]
             client.until(session, idle)
@@ -286,7 +285,7 @@ def test_web_move_of_a_conversation_made_in_the_web_closes_it_and_leaves_no_draf
             running = client.snapshot(session)["metadata"]
             assert_true(running["presence"] == "active", running)
             moved = client.command("move", running, cwd=str(beta))["result"]
-            assert_true(moved["id"] != session["id"], moved)
+            assert_true(moved["id"] == session["id"], moved)
             assert_true(not list(drafts.glob("*.json")), "the draft is left")
         with web_host(binary, root, home, provider.url) as (again, _, _, _):
             again.cookie = cookie
@@ -337,9 +336,7 @@ def test_web_move_refuses_what_it_could_not_do_safely(root, home, *, binary):
             assert_true("nothing saved" in refusal(client, draft, cwd=str(beta)), "draft")
             assert_true("accessible" in refusal(client, lead, cwd=str(root / "none")), "folder")
             # Mail waiting for a member of the family.
-            mailbox = (
-                home / ".uagent" / "mail" / fnv1a64(str((old / f"{AGENTS[1]}.json").resolve()))
-            )
+            mailbox = home / ".uagent" / "mail" / session_id(old / f"{AGENTS[1]}.json")
             (mailbox / "new").mkdir(parents=True)
             (mailbox / "new" / "0000000000001-0-0-note.json").write_text(
                 json.dumps(
@@ -474,7 +471,7 @@ def test_web_move_keeps_the_worktree_of_an_agent_deletable(root, home, *, binary
         if results:
             done.extend(results)
             return event({"content": "removed"})
-        agent = fnv1a64(str(history_of(home, beta) / f"{AGENTS[2]}.json"))
+        agent = session_id(history_of(home, beta) / f"{AGENTS[2]}.json")
         return tool_call("agents", {"action": "delete", "id": agent})
 
     with Server([route]) as provider:
@@ -519,7 +516,7 @@ def test_web_move_carries_pins_and_scheduled_runs(root, home, *, binary):
                         "task_id": "task-1",
                         "status": "completed",
                         "session_path": str(lead_path),
-                        "session_id": fnv1a64(str(lead_path)),
+                        "session_id": session_id(lead_path),
                         "cwd": str(alpha),
                         "definition": {},
                     }
@@ -533,13 +530,10 @@ def test_web_move_carries_pins_and_scheduled_runs(root, home, *, binary):
             lead = listed(client, LEAD)
             pins = [{"kind": "session", "id": lead["id"]}, {"kind": "folder", "id": str(alpha)}]
             client.command("pins", pins=pins)
-            frames = watch(client)
             moved = client.command("move", lead, cwd=str(beta))["result"]
             expected = [{"kind": "session", "id": moved["id"]}, pins[1]]
+            assert_true(moved["id"] == lead["id"], moved)
             assert_true(client.json("/api/sessions")[1]["pins"] == expected, "pins")
-            wait_until(
-                lambda: any(f.get("kind") == "pins.changed" for f in frames), "pins not pushed"
-            )
     run_record = json.loads(state.read_text())["runs"][0]
     new_path = str(history_of(home, beta) / f"{LEAD}.json")
     assert_true(

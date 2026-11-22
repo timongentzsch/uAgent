@@ -5,7 +5,6 @@
 // Moving a conversation and its agents to another folder's history. The move
 // is journaled first, so one that stopped is finished, never left half done.
 
-#include <map>
 #include <string>
 #include <vector>
 
@@ -32,9 +31,6 @@ json MoveJson(const SessionMove& move);
 bool ValidMove(const SessionMove& move);
 // False unless `value` is a valid move.
 bool MoveFromJson(const json& value, SessionMove& move);
-
-// Each moved session's old id, with its new one.
-std::map<std::string, std::string> MovedIds(const SessionMove& move);
 
 // Leases of the sessions at their old place: while held, no process runs one.
 using MoveLeases = std::vector<FileLease>;

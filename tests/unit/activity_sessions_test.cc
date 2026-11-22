@@ -293,7 +293,7 @@ TEST_CASE(TestSignalAndFileWatch) {
     REQUIRE(PathExists(parent));
     for (size_t i = 0; i < 300; ++i) {
       const std::string path = parent + "/web-" + std::to_string(i) + ".json";
-      const std::string id = HashHex(path);
+      const std::string id = SessionIdFor(path);
       std::ofstream(web + "/drafts/" + id + ".json")
           << JsonDump({{"id", id}, {"path", path}, {"cwd", project}});
     }
@@ -1611,7 +1611,7 @@ TEST_CASE(TestSessionMail) {
   auto received = [](const SessionMail& mail) {
     CHECK(SendSessionMail(mail).empty());
     const std::vector<Mail> taken =
-        TakeMail(MailboxIdFor(mail.to_path), [](const Mail&) { return true; });
+        TakeMail(SessionIdFor(mail.to_path), [](const Mail&) { return true; });
     return taken.size() == 1 && taken[0].sender_path == mail.from_path
                ? JsonValue(taken[0].body, "text", "")
                : std::string();
@@ -1619,7 +1619,7 @@ TEST_CASE(TestSessionMail) {
   CHECK(received({.from_path = parent, .to_path = child, .text = "go on"}) ==
         "[parent guidance]\ngo on");
   CHECK(received({.from_path = sibling, .to_path = child, .text = "hello"}) ==
-        "[session T (" + HashHex(sibling) + ")]\nhello");
+        "[session T (" + SessionIdFor(sibling) + ")]\nhello");
   CHECK(received({.from_path = child,
                   .to_path = parent,
                   .text = "[event] done",

@@ -69,7 +69,7 @@ const CATALOGUE = {
   ],
 };
 
-async function open(page) {
+async function open(page, live = PARTS.tokens) {
   const sent = [];
   let release;
   const answered = new Promise((resolve) => {
@@ -97,7 +97,7 @@ async function open(page) {
         metadata: SESSION,
         state: {
           phase: "idle",
-          context_tokens: PARTS.tokens,
+          context_tokens: live,
           context_window: 200000,
           context_parts: PARTS,
           turns: 14,
@@ -224,6 +224,26 @@ test("rows, bar and folds show what fills the window", async ({ page }) => {
       generation: "g-context",
       text: "/compact",
     });
+});
+
+test("a reply streaming in since the request counts as Replies", async ({
+  page,
+}) => {
+  const { sheet } = await open(page, PARTS.tokens + 2500);
+  await expect(sheet.getByText("60% left", { exact: true })).toBeVisible();
+  await expect(sheet.getByText("80k of 200k tokens")).toBeVisible();
+  const replies = sheet.locator(".context-rows > li", { hasText: "Replies" });
+  await expect(replies).toContainText("21.4k");
+  await expect(replies).toContainText("10.7%");
+  // The bar's parts add up to the headline's total.
+  const used = await sheet.evaluate((node) =>
+    [...node.querySelectorAll(".context-segment")].reduce(
+      (sum, segment) =>
+        sum + Number.parseFloat(segment.style.getPropertyValue("--share")),
+      0,
+    ),
+  );
+  expect(used).toBeCloseTo(40, 6);
 });
 
 test("on a phone every row fits on its line", async ({ page }) => {

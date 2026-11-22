@@ -77,7 +77,13 @@ export default function ContextSection({
   const { online, report } = useHostContext();
   const drawing = usePlaceholder();
   const shown = drawing ? SAMPLE : state?.context_parts;
-  const tokens = shown ? shown.tokens : state?.context_tokens;
+  // A live total ahead of the parts is the reply streaming in since its
+  // request: it counts as Replies, so the section matches the header.
+  const streamed =
+    shown && !drawing
+      ? Math.max(0, (state?.context_tokens ?? 0) - shown.tokens)
+      : 0;
+  const tokens = shown ? shown.tokens + streamed : state?.context_tokens;
   const capacity = state?.context_window;
   const [open, setOpen] = useState<Partial<Record<Kind, boolean>>>({});
   const live = !!session?.generation && online;
@@ -108,6 +114,8 @@ export default function ContextSection({
 
   // The host's total spread over the parts by their share of the bytes.
   const scale = shown?.bytes ? shown.tokens / shown.bytes : 0;
+  const tokensOf = (part: Part) =>
+    (shown?.parts[part] ?? 0) * scale + (part === "replies" ? streamed : 0);
   const share = (part: number) =>
     capacity ? percent((part * 100) / capacity) : "—";
   const compacts = shown && capacity ? shown.compacts_at : 0;
@@ -219,13 +227,13 @@ export default function ContextSection({
               (shown && capacity ? (
                 PARTS.map(
                   (part) =>
-                    !!shown.parts[part] && (
+                    !!tokensOf(part) && (
                       <span
                         key={part}
                         class="context-segment"
                         data-part={part}
                         style={{
-                          "--share": `${(shown.parts[part] * scale * 100) / capacity}%`,
+                          "--share": `${(tokensOf(part) * 100) / capacity}%`,
                         }}
                       />
                     ),
@@ -258,7 +266,7 @@ export default function ContextSection({
       {shown && (
         <ul class="context-rows">
           {PARTS.map((part) =>
-            row(part, LABELS[part], shown.parts[part] * scale, {
+            row(part, LABELS[part], tokensOf(part), {
               detail:
                 part === "tools" || part === "mcp"
                   ? String(counted(part))
@@ -272,7 +280,7 @@ export default function ContextSection({
             row(
               "free",
               drawing || compacts ? "Free until it compacts" : "Free",
-              Math.max(0, (compacts || capacity || 0) - shown.tokens),
+              Math.max(0, (compacts || capacity || 0) - (tokens ?? 0)),
               {},
             )}
           {(drawing || !!compacts) &&

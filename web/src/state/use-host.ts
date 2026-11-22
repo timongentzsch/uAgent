@@ -82,7 +82,6 @@ const kept = {
           {
             ...draft,
             files: draft.files.filter((file) => !file.pending),
-            quotes: draft.quotes ?? [],
           },
         ]),
       ),

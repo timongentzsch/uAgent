@@ -257,7 +257,6 @@ Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
   DeliverMail();
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
   if (SteeringState().Requested()) return InterruptTurn(state);
-  state.complete = true;
   state.stop.outcome = TurnOutcome::kComplete;
   return StepFlow::kEndTurn;
 }

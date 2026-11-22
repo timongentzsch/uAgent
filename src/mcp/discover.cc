@@ -147,16 +147,11 @@ void McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
           return McpInvokeRemote(*server, remote_name, arguments, call_timeout,
                                  context);
         });
-    if (const json* schema = JsonObject(definition, "outputSchema")) {
-      tool.output_schema = *schema;
-    }
     tool.provider = provider;
     tool.timeout_s = config.mcp_timeout_s;
 
     size_t tool_schema_bytes =
-        tool.description.size() + JsonDump(tool.parameters).size() +
-        (tool.output_schema.is_null() ? 0
-                                      : JsonDump(tool.output_schema).size());
+        tool.description.size() + JsonDump(tool.parameters).size();
     if (schema_bytes + tool_schema_bytes > kMcpSchemaBytes) {
       McpNote(s.name, "remaining tools skipped (schema byte limit)");
       break;

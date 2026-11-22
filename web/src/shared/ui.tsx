@@ -312,22 +312,19 @@ export function Row({
 }
 
 export function Welcome({
-  level = 2,
   title,
   tips,
   children,
 }: {
-  level?: 1 | 2;
   title: string;
   // Each a short lead (a key, a word) and what it does.
   tips: [ComponentChildren, ComponentChildren][];
   children?: ComponentChildren;
 }) {
-  const Heading = `h${level}` as "h1";
   return (
     <div class="empty">
       <Mark className="cursor-mark" />
-      <Heading>{title}</Heading>
+      <h2>{title}</h2>
       {children}
       <dl class="tips">
         {tips.map(([lead, text], index) => (
@@ -464,14 +461,14 @@ export function InputRow({
   );
 }
 // A loading indicator that lives for a single frame IS the flash: it shows
-// once `delayMs` has passed, so fast resolves draw nothing.
-function useDelayed(delayMs: number) {
-  const [visible, setVisible] = useState(delayMs <= 0);
+// once SHOW_AFTER_MS has passed, so fast resolves draw nothing.
+const SHOW_AFTER_MS = 150;
+function useDelayed() {
+  const [visible, setVisible] = useState(false);
   useEffect(() => {
-    if (delayMs <= 0) return;
-    const timer = setTimeout(() => setVisible(true), delayMs);
+    const timer = setTimeout(() => setVisible(true), SHOW_AFTER_MS);
     return () => clearTimeout(timer);
-  }, [delayMs]);
+  }, []);
   return visible;
 }
 
@@ -481,13 +478,11 @@ function useDelayed(delayMs: number) {
 export function Skeleton({
   rows = 3,
   label = "Loading…",
-  delayMs = 150,
 }: {
   rows?: number;
   label?: string;
-  delayMs?: number;
 }) {
-  if (!useDelayed(delayMs)) return null;
+  if (!useDelayed()) return null;
   return (
     <div class="skeleton" role="status" aria-label={label} aria-busy="true">
       <small class="loading-label">{label}</small>
@@ -503,13 +498,11 @@ export function Skeleton({
 export function Spinner({
   label = "Loading…",
   surface = false,
-  delayMs = 150,
 }: {
   label?: string;
   surface?: boolean;
-  delayMs?: number;
 }) {
-  if (!useDelayed(delayMs)) return null;
+  if (!useDelayed()) return null;
   return (
     <div
       class={`loading-indicator small${surface ? " loading-surface" : ""}`}

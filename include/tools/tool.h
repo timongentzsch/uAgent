@@ -288,7 +288,6 @@ struct Tool {
   // Why this call needs a person, shown in the approval headline.
   Preview mandatory_reason;
   std::string provider;             // owner for live registry refresh
-  json output_schema;               // optional MCP output contract
   int64_t timeout_s = -1;           // -1 = global default; 0 = turn limit
   int64_t result_chars = -1;        // -1 = global result cap
   int64_t max_calls_per_turn = -1;  // -1 = global turn budget

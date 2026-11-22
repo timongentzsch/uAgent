@@ -476,7 +476,6 @@ export interface State {
   view?: View;
   turns?: number;
   usage?: Usage;
-  system_prompt?: string;
   statistics?: Statistics;
   turn_status?: string;
   activities?: Activity[];
@@ -625,7 +624,6 @@ interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
   sequence: number;
   session_id: string;
   generation?: string;
-  time?: string;
   type?: string;
   // Set by the host on events a person should be told about (push).
   attention_id?: string;
@@ -633,10 +631,6 @@ interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
   metadata?: Session;
   state?: State;
   phase?: ExecutionPhase;
-  guidance?: number;
-  presence?: "active" | "";
-  checkpoint?: boolean;
-  updated?: number;
   turn_status?: string;
 }
 export type HostEvent = HostEnvelope &

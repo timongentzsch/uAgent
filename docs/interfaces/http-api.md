@@ -31,7 +31,7 @@ Session metadata (`SessionHost::Metadata`): `id`, `generation`, `cwd`,
 `starting`, `interrupted`, `failed`, `closing`, `updating`, `deleting`,
 `waiting`, `running`, `processing`, `idle`), `presence` (`active` or `""`),
 `turn_active`, `needs_you` (a decision waits on a person, not on a parent
-agent) with its `pending_kind` and `pending_prompt`, `updated` (ms), and
+agent) with its `pending_prompt`, `updated` (ms), and
 display fields that are not contract.
 
 `GET /api/sessions/<id>` (`<id>` 16 to 64 hex digits) returns a snapshot:

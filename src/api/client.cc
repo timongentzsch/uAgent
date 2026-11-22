@@ -644,7 +644,6 @@ ChatResult Api::PerformChat(const std::string& payload, int64_t timeout_s,
   CollectCurlTimings(h, res);
   if (cancelled && !keep_abort) ClearAbort();
   ctx.Finish();
-  capabilities.Observe(res);
   if (ctx.show == StreamCtx::Show::kUndecided && !res.content.empty()) {
     ctx.OutputText(res.content);
   }

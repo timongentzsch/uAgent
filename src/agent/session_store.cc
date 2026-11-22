@@ -85,7 +85,6 @@ constexpr Field kStateFields[] = {
     {"context_window", json::value_t::number_integer, true},
     {"usage", json::value_t::object, true},
     {"route_usage", json::value_t::object, true},
-    {"last_sent_prompt", json::value_t::string, true},
     {"display", json::value_t::object, true},
     {"delivered_mail", json::value_t::array, true}};
 
@@ -143,7 +142,6 @@ std::string StateText(const SessionState& state,
       {"context_window", state.context_window},
       {"usage", UsageJson(state.usage)},
       {"route_usage", RouteUsageJson(state.route_usage)},
-      {"last_sent_prompt", state.last_sent_prompt},
       {"delivered_mail", state.delivered_mail}};
   // Serialize borrowed arrays directly: the live transcript stays in place.
   std::string text = JsonDump(value);
@@ -318,7 +316,6 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
       std::max(int64_t{0}, state["context_window"].get<int64_t>());
   record.state.usage = UsageFromJson(state["usage"]);
   record.state.route_usage = RouteUsageFromJson(state["route_usage"]);
-  record.state.last_sent_prompt = state["last_sent_prompt"].get<std::string>();
   record.state.display = std::move(state["display"]);
   record.state.delivered_mail = std::move(state["delivered_mail"]);
   if (!ValidState(record.state)) {

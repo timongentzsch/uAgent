@@ -262,7 +262,6 @@ void Agent::Reset() {
   writer_.Reset();
   DebugLog("session_reset", {{"dropped_messages", conversation_.Size()},
                              {"prior_usage", UsageJson(session_usage_)}});
-  last_sent_prompt_.clear();
   conversation_.Reset(BaselineMessages(), BaselineKinds());
   session_usage_ = Usage{};
   SyncApiSessionUsage();
@@ -413,7 +412,6 @@ SessionRecord Agent::Snapshot() const {
                   .context_window = api_.ctx_window,
                   .usage = session_usage_,
                   .route_usage = route_usage_,
-                  .last_sent_prompt = last_sent_prompt_,
                   .display = conversation_.DisplayMetadata(),
                   .delivered_mail = json::array()};
   return record;
@@ -484,7 +482,6 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
         key,
         {{"state", "cancelled"}, {"result", ResultJson({}, "cancelled", -1)}});
   }
-  last_sent_prompt_ = std::move(record.state.last_sent_prompt);
   delivered_mail_ = std::move(record.state.delivered_mail);
   RefreshBaseline();
   context_offset_ = 0;

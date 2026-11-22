@@ -99,18 +99,10 @@ struct ProviderCapabilities {
   bool audio_input = true;
   bool video_input = true;
 
-  // Observed in successful responses: diagnostic only, never drives a turn.
-  bool reasoning_text = false;
-  bool reasoning_details = false;
-  bool reasoning_content = false;
-  bool citations = false;
-  bool reported_usage = false;
-
   // Only Chat Completions has speech and video parts.
   void SetInputModalities(const json& modalities, WireApi wire_api);
   void SetModelFeatures(const json& features);
   void ResetNegotiated(WireApi wire_api, const FeatureSet& declared);
-  void Observe(const ChatResult& result);
   json DiagnosticJson(WireApi wire_api, const FeatureSet& declared) const;
 };
 

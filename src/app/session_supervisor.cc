@@ -368,7 +368,6 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       create_now = true;
       continue;
     }
-    session->activated = NowMillis();
     PublishLifecycle(*session, {{"kind", "activated"}});
     return true;
   }  // for (attempt): single pass unless a stale worker recycled above

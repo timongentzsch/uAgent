@@ -72,12 +72,6 @@ bool SseParser::ProcessLine() {
     if (has_data_) ok = Append(data_, "\n");
     if (ok) ok = Append(data_, value);
     has_data_ = ok;
-  } else if (field == "event") {
-    event_.clear();
-    ok = Append(event_, value);
-  } else if (field == "id" && value.find('\0') == std::string_view::npos) {
-    last_event_id_.clear();
-    ok = Append(last_event_id_, value);
   }
   line_.clear();
   return ok;
@@ -85,16 +79,12 @@ bool SseParser::ProcessLine() {
 
 bool SseParser::Dispatch() {
   line_.clear();
-  if (!has_data_) {
-    event_.clear();
-    return true;
-  }
+  if (!has_data_) return true;
   if (events_.size() >= kMaxPendingEvents) {
     error_ = "too many pending SSE events";
     return false;
   }
-  events_.push_back({event_.empty() ? "message" : std::move(event_),
-                     std::move(data_), last_event_id_});
+  events_.push_back({std::move(data_)});
   ResetEvent();
   return true;
 }
@@ -112,7 +102,6 @@ bool SseParser::Append(std::string& target, std::string_view value) {
 }
 
 void SseParser::ResetEvent() {
-  event_.clear();
   data_.clear();
   has_data_ = false;
 }

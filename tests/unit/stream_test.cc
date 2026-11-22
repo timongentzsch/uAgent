@@ -577,12 +577,8 @@ TEST_CASE(TestSseFraming) {
     parser.TakeEvents(events);
     CHECK(events.size() == 2);
     if (events.size() == 2) {
-      CHECK(events[0].event == "update");
       CHECK(events[0].data == "first\nsecond");
-      CHECK(events[0].id == "7");
-      CHECK(events[1].event == "message");
       CHECK(events[1].data.empty());
-      CHECK(events[1].id == "7");
     }
   }
 

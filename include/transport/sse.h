@@ -12,9 +12,7 @@
 namespace uagent {
 
 struct SseEvent {
-  std::string event;
   std::string data;
-  std::string id;
 };
 
 class SseParser {
@@ -41,9 +39,7 @@ class SseParser {
   bool pending_cr_ = false;
   bool has_data_ = false;
   std::string line_;
-  std::string event_;
   std::string data_;
-  std::string last_event_id_;
   std::vector<SseEvent> events_;
   std::string error_;
 };

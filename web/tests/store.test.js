@@ -368,26 +368,20 @@ test("a turn-status event sets the phase and its caption", () => {
   assert.equal(next.state.turn_status, "Running · Checking tests");
 });
 
-test("a state frame without the view keeps the last view, HTTP log and prompt", () => {
+test("a state frame without the view keeps the last view and HTTP log", () => {
   const view = { nodes: [{ id: "a", kind: "user", text: "hi" }] };
   const http = [{ id: "h", state: "done" }];
-  const prior = { phase: "idle", view, http, system_prompt: "SYS", turns: 1 };
+  const prior = { phase: "idle", view, http, turns: 1 };
   assert.deepEqual(stateFrame(prior, { turns: 2 }, "model"), {
     view,
     http,
-    system_prompt: "SYS",
     turns: 2,
     phase: "model",
   });
   const next = { nodes: [] };
-  const checkpoint = stateFrame(
-    prior,
-    { view: next, http: [], system_prompt: "NEW" },
-    "idle",
-  );
+  const checkpoint = stateFrame(prior, { view: next, http: [] }, "idle");
   assert.equal(checkpoint.view, next);
   assert.deepEqual(checkpoint.http, []);
-  assert.equal(checkpoint.system_prompt, "NEW");
 });
 
 // A host without a browser: its state is plain values the setters update.

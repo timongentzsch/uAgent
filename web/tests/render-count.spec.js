@@ -44,6 +44,7 @@ const HISTORY = Array.from({ length: 120 }, (_, index) => ({
 // In the page, testSend sends the host's next event; testSince counts the
 // renders and storage writes (by key) since testMark.
 async function open(page) {
+  let reads = 0;
   await page.route("**/sw.js", (route) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
   );
@@ -82,10 +83,12 @@ async function open(page) {
         repository: true,
         stamps: {},
       });
+    // Others are busy meanwhile: each later read of another conversation
+    // answers at a later cursor.
     if (metadata)
       return json({
         epoch: EPOCH,
-        cursor: HISTORY.length,
+        cursor: HISTORY.length + (id === ID ? 0 : ++reads),
         metadata,
         state: { phase: "idle", view: { nodes: HISTORY } },
         pending: null,
@@ -477,6 +480,8 @@ test("a switch draws two rows of the list and each message once", async ({
   measured("held", held);
   // Held: its messages are drawn in the first frame, no placeholder.
   expect.soft(held.placeholders).toBe(0);
+  // Its read answers later than the view held: the rows it restates stay.
+  expect.soft(held.renders.MessageView).toBeLessThanOrEqual(HISTORY.length);
   // The rows that lost and gained the selection, not the whole list.
   expect.soft(held.renders.SessionRow).toBeLessThanOrEqual(2);
   // The shell once, for the press: the conversation's read adds nothing.

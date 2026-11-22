@@ -130,6 +130,24 @@ export function applySessionEvent(
   };
 }
 
+// A read's rows that restate the held view's keep their objects, so the
+// views that show them skip it.
+export function keepNodes(
+  held: Snapshot | undefined,
+  read: Snapshot,
+): Snapshot {
+  const view = read.state?.view;
+  const prior = new Map(
+    held?.state?.view?.nodes.map((node) => [node.id, node]),
+  );
+  if (!view || !prior.size) return read;
+  const nodes = view.nodes.map((node) => {
+    const kept = prior.get(node.id);
+    return kept && JSON.stringify(kept) === JSON.stringify(node) ? kept : node;
+  });
+  return { ...read, state: { ...read.state, view: { ...view, nodes } } };
+}
+
 // One session's catalogue entry changes in place; unchanged entries keep
 // the catalogue's identity, so the shell skips the frame.
 export function patchCatalogue(

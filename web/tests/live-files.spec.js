@@ -257,8 +257,10 @@ test("while a call writes the open file the pane says so, and stops once it has"
   await selectProbeModel(command, session);
   await app.locator("#prompt").fill("Design probe");
   await app.locator("#prompt").press("Enter");
-  const writing = files.locator(".page-tools .chip.working");
-  await expect(writing).toHaveText("Agent writing");
+  const writing = files.locator(".page-tools .chip", {
+    hasText: "Agent writing",
+  });
+  await expect(writing).toBeVisible();
   await app.getByRole("button", { name: "Allow once", exact: true }).click();
   await expect(writing).toHaveCount(0);
   await expect(stage.getByRole("heading", { name: "Rewritten" })).toBeVisible();

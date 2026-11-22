@@ -1,5 +1,6 @@
 import "./activity.css";
 import { ConnectionStatus, StatusLed } from "./connection-status.tsx";
+import { WorkBand } from "./work-band.tsx";
 import { plural } from "./quantities.ts";
 import type {
   Activity,
@@ -136,10 +137,10 @@ function ActivityButtonView({
         sheetClass="activity-sheet"
         trigger={
           <>
-            {live && <StatusLed state="running" />}
+            {live && <WorkBand />}
             <span class="truncate">
               <DataText>
-                {running && <span class="working">Working</span>}
+                {running && "Working"}
                 {running && details && " · "}
                 {details}
               </DataText>

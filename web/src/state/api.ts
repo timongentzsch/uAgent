@@ -203,8 +203,9 @@ function createApi(host = "") {
         options,
       );
       // The stream delivers an outcome after the state it caused, so a
-      // caller that shows that state waits for it there.
-      if (result.pending || options.streamed) result = await receipt;
+      // caller that shows that state waits for it there; `streamed: false`
+      // takes the first answer.
+      if (options.streamed ?? result.pending) result = await receipt;
       options.signal?.throwIfAborted();
       if (result.accepted === false) {
         const error = failure(new Error(result.error || "Command rejected"));

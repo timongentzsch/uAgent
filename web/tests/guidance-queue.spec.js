@@ -14,6 +14,29 @@ async function start(page, session) {
   return prompt;
 }
 
+// Queues `text` with Queue next, or as guidance with Enter, and keeps its
+// send from the host: the row is queued, the host has nothing. Returns the
+// send's body.
+async function queueUnsent(page, prompt, text, how) {
+  let held;
+  await page.route("**/api/command", (route) => {
+    if (route.request().postDataJSON().kind !== "steer")
+      return route.continue();
+    held = route;
+  });
+  await prompt.fill(text);
+  if (how === "Enter") await prompt.press("Enter");
+  else await page.getByRole("button", { name: how }).click();
+  await expect(
+    page.getByRole("region", { name: "Queued messages" }),
+  ).toContainText(text);
+  await expect.poll(() => !!held).toBe(true);
+  const body = held.request().postData();
+  await held.abort();
+  await page.unroute("**/api/command");
+  return body;
+}
+
 for (const width of [320, 390, 1280]) {
   test(`queued messages stay with the composer until inserted (${width})`, async ({
     page,
@@ -150,6 +173,98 @@ for (const [how, lose] of [
       0,
     );
   });
+
+// A reload right after a message is queued can leave the host without it;
+// the page that comes back sends it again under its own id, and the row
+// stays queued all along. Its first send may still arrive after that: the
+// host takes it once either way.
+for (const [how, late] of [
+  ["Queue next", false],
+  ["Queue next", true],
+  ["Enter", false],
+])
+  test(`a message queued with ${how} that the reload beats to the host stays queued${late ? ", and its late first send is taken once" : ""}`, async ({
+    page,
+    session,
+  }) => {
+    const prompt = await start(page, session);
+    const text = "Queued as the page reloads.";
+    const sent = await queueUnsent(page, prompt, text, how);
+    // What every frame after the reload showed of the row.
+    await page.addInitScript((text) => {
+      const seen = { unconfirmed: false, trayLeft: false };
+      globalThis.testSeen = seen;
+      let shown = false;
+      new MutationObserver(() => {
+        const page = document.body?.textContent || "";
+        seen.unconfirmed ||= page.includes("Not confirmed");
+        const tray = document.querySelector(".guidance-queue");
+        const now = !!tray?.textContent?.includes(text);
+        seen.trayLeft ||= shown && !now;
+        shown ||= now;
+      }).observe(document, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
+    }, text);
+    await page.reload();
+    await online(page);
+    const tray = page.getByRole("region", { name: "Queued messages" });
+    await expect(tray).toContainText(text);
+    if (late) {
+      const answer = await page.request.post("/api/command", {
+        data: sent,
+        headers: {
+          "content-type": "application/json",
+          origin: new URL(page.url()).origin,
+        },
+      });
+      expect(answer.ok()).toBe(true);
+    }
+    expect(await page.evaluate(() => testSeen)).toEqual({
+      unconfirmed: false,
+      trayLeft: false,
+    });
+    await tray.getByRole("button", { name: "Insert now" }).click();
+    await expect(tray).toHaveCount(0);
+    await expect(page.locator(".message.user", { hasText: text })).toHaveCount(
+      1,
+    );
+  });
+
+// With no turn running any more, a send again would start one the person
+// did not ask for then: the row stays theirs to send, unconfirmed.
+test("a queued message the reload beats to the host, after its turn ended, waits to be sent by hand", async ({
+  page,
+  session,
+  command,
+  request,
+}) => {
+  const prompt = await start(page, session);
+  const text = "Queued as the turn ends.";
+  await queueUnsent(page, prompt, text, "Queue next");
+  const target = { session_id: session.id, generation: session.generation };
+  await command("interrupt", target);
+  const listed = async () =>
+    (await (await request.get("/api/sessions")).json()).sessions.find(
+      (item) => item.id === session.id,
+    );
+  await expect.poll(async () => !!(await listed())?.turn_active).toBe(false);
+  await page.reload();
+  await online(page);
+  await expect(page.locator(".message.user", { hasText: text })).toContainText(
+    "Not confirmed",
+  );
+  await expect(
+    page.getByRole("region", { name: "Queued messages" }),
+  ).toHaveCount(0);
+  expect((await listed()).turn_active).toBeFalsy();
+  const { state } = await (
+    await request.get(`/api/sessions/${session.id}`)
+  ).json();
+  expect(state.view.nodes.some((node) => node.body?.text === text)).toBe(false);
+});
 
 // The row is shown as queued before the host has said so: taking it back
 // then must not reach the host before the message itself has.

@@ -27,9 +27,14 @@ import {
   patchCatalogue,
 } from "./store.ts";
 import { applyEvent as applyHostEvent } from "./apply-event.ts";
-import { api, protocol, receiveOutcome, routes } from "./api.ts";
+import { api, hostApi, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
-import { waitingToSend } from "../shared/message-view.ts";
+import {
+  guidanceKind,
+  queuedGuidance,
+  sendOf,
+  waitingToSend,
+} from "../shared/message-view.ts";
 import { wentBack } from "../shared/dismiss.ts";
 import { slide } from "../shared/motion.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
@@ -43,7 +48,7 @@ import {
   reconnectGraceMs,
   reconnectMaxDelayMs,
 } from "../shared/limits.ts";
-import { needsYou } from "./attention.ts";
+import { needsYou, sessionById } from "./attention.ts";
 
 // A draft is saved once typing pauses, not per key; an upload still in
 // flight when the page went away never finishes, and its chip has no id.
@@ -556,11 +561,22 @@ export function useHost(
         outgoingRef.current
           .filter((item) => !waitingToSend(item))
           .map(async (item) => {
-            const receipt = await api<Outcome>(
+            let receipt = await api<Outcome>(
               routes.receipt(item.request_id),
               undefined,
               { signal },
             );
+            // A reload can beat a queued message to the host: it goes again,
+            // the same send under its own id, which the host takes once. Only
+            // behind a turn still running: with none, it would start one.
+            const session = sessionById(list.sessions, item.session_id);
+            if (receipt.unknown && queuedGuidance(item) && session?.turn_active)
+              receipt = await hostApi(session.host || "")
+                .command(guidanceKind, session, sendOf(item), {
+                  streamed: false,
+                })
+                // Not taken: it stays unconfirmed, to be sent again by hand.
+                .catch(() => receipt);
             settleOutgoing({ ...receipt, request_id: item.request_id });
           }),
       );

@@ -19,6 +19,9 @@ const browserStatus = async (page, initial) => {
   return status;
 };
 
+// Past the long press's hold time, which the page's clock is moved by.
+const PAST_HOLD = 500;
+
 const openBrowser = async (page, session) => {
   await page.goto(`/#session=${session.id}`);
   await headerAction(page, "Open browser");
@@ -231,8 +234,9 @@ test.describe("phone browser sheet", () => {
 
     // Hold, then drag: the left button stays down until the finger lifts.
     const hold = at(0.4, 0.4);
+    await page.clock.install();
     await touch(viewport, "pointerdown", 3, hold.x, hold.y);
-    await page.waitForTimeout(500);
+    await page.clock.fastForward(PAST_HOLD);
     await touch(viewport, "pointermove", 3, hold.x + 40, hold.y);
     await touch(viewport, "pointerup", 3, hold.x + 40, hold.y);
     await expect.poll(() => remote.pointers.at(-1)?.buttons).toBe(0);
@@ -296,10 +300,11 @@ test.describe("phone browser sheet", () => {
     const at = (fx, fy) => [box.x + box.width * fx, box.y + box.height * fy];
     const masks = () => remote.pointers.splice(0).map((p) => p.buttons);
     remote.pointers.length = 0;
+    await page.clock.install();
 
     for (const end of ["pointercancel", "blur"]) {
       await touch(viewport, "pointerdown", 2, ...at(0.3, 0.3));
-      await page.waitForTimeout(500);
+      await page.clock.fastForward(PAST_HOLD);
       if (end === "blur")
         await page.evaluate(() => dispatchEvent(new Event("blur")));
       else await touch(viewport, end, 2, ...at(0.3, 0.3));
@@ -309,7 +314,7 @@ test.describe("phone browser sheet", () => {
 
     // A held drag that ends past the screen's edge still lets go, there.
     await touch(viewport, "pointerdown", 4, ...at(0.5, 0.9));
-    await page.waitForTimeout(500);
+    await page.clock.fastForward(PAST_HOLD);
     const below = [box.x + box.width / 2, box.y + box.height + 40];
     await touch(viewport, "pointermove", 4, ...below);
     await touch(viewport, "pointerup", 4, ...below);
@@ -322,7 +327,7 @@ test.describe("phone browser sheet", () => {
     if (outside[1] > box.y + box.height) {
       await touch(viewport, "pointerdown", 3, ...outside);
       await touch(viewport, "pointerup", 3, ...outside);
-      await page.waitForTimeout(200);
+      await page.clock.fastForward(PAST_HOLD);
       expect(remote.pointers).toEqual([]);
     }
   });

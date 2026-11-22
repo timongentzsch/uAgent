@@ -197,16 +197,20 @@ test.describe("a reload's place", () => {
   }) => {
     const { marker, before } = await readParagraph(page, host);
     const id = new URL(page.url()).hash.match(/session=([^&]+)/)[1];
-    let refusing = true;
-    await page.route(new RegExp(`/api/sessions/${id}$`), (route) =>
-      refusing
-        ? route.fulfill({ status: 503, body: "unavailable" })
-        : route.continue(),
+    // The app reads the conversation more than once on its own while it
+    // boots: every read fails until Retry is pressed, and the press's read
+    // is let through.
+    await page.route(new RegExp(`/api/sessions/${id}$`), async (route) =>
+      (await page.evaluate(() => window.retried))
+        ? route.continue()
+        : route.fulfill({ status: 503, body: "unavailable" }),
     );
     await page.reload();
     const retry = page.getByRole("button", { name: "Retry", exact: true });
     await expect(retry).toBeVisible();
-    refusing = false;
+    await page.evaluate(() =>
+      document.addEventListener("click", () => (window.retried = true), true),
+    );
     await retry.click();
     await expect(marker).toBeVisible();
     await expect

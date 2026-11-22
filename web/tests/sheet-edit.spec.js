@@ -1252,17 +1252,20 @@ test("the grid reaches the spreadsheet's last row whatever a browser can scroll:
   expect(editor).toBe(active);
 
   // A scrollbar's thumb, which says no wheel, key or touch, rests near the
-  // stretch's end with the stretch still under it.
+  // stretch's end with the stretch still under it. A scroll rests after
+  // 150 ms, and a wheel counts for it within 300 ms: the page's clock moves.
+  await app.clock.install();
+  const RESTED = 400;
   const rows = 3_900;
   let row = await under();
   expect(row).toBeGreaterThan(1_048_500);
-  await page.evaluate(() => new Promise((done) => setTimeout(done, 400)));
+  await app.clock.fastForward(RESTED);
   await page.evaluate((_, by) => scrollBy(0, by), -10 * high);
   row -= 10;
   await expect.poll(under).toBe(row);
   const held = await placed();
   expect(held).toBeGreaterThan((span * 3) / 4);
-  await page.evaluate(() => new Promise((done) => setTimeout(done, 400)));
+  await app.clock.fastForward(RESTED);
   expect(await placed()).toBe(held);
   expect(await under()).toBe(row);
 
@@ -1312,7 +1315,7 @@ test("the grid reaches the spreadsheet's last row whatever a browser can scroll:
       ),
     )
     .toBeGreaterThan(high);
-  await page.evaluate(() => new Promise((done) => setTimeout(done, 400)));
+  await app.clock.fastForward(RESTED);
   expect(await first()).toBe(began);
 
   // And back to the table, where the area is as long as the grid again.
@@ -1789,9 +1792,9 @@ test("the selection's cells are made bold, coloured, filled, aligned, patterned 
   await expect(
     files.getByRole("button", { name: "Format", exact: true }),
   ).toHaveCount(0);
-  expect(
-    await bar.evaluate((row) => row.scrollWidth > row.clientWidth + 1),
-  ).toBe(true);
+  await expect
+    .poll(() => bar.evaluate((row) => row.scrollWidth > row.clientWidth + 1))
+    .toBe(true);
   await cell("Tasks", "A2").click();
   await press("Bold").click();
   await expect(press("Bold")).toHaveAttribute("aria-pressed", "true");

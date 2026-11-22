@@ -567,10 +567,12 @@ def test_headless_reaps_timed_out_process(root, home, *, binary):
             events,
         )
         pid = int(pid_file.read_text(encoding="utf-8"))
-        time.sleep(0.1)
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            pass
-        else:
-            raise AssertionError(f"timed-out process {pid} survived uagent exit")
+
+        def gone():
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return True
+            return False
+
+        wait_until(gone, f"timed-out process {pid} survived uagent exit", timeout=5)

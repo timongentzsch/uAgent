@@ -73,7 +73,8 @@ test("what arrives glides in, and nothing animates on load", async ({
   await page.reload();
   await online(page);
   await watch(page);
-  await page.waitForTimeout(300);
+  await expect(page.locator(".transcript .turn-footer")).toHaveCount(1);
+  await restingGap(page);
   expect(await page.evaluate(() => window.arrived)).toEqual({
     faded: 0,
     rose: 0,

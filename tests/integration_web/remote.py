@@ -848,12 +848,24 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
             assert_true(closed is None, output)
             viewer.close()
             web.command("terminal", action="close", id=terminal)
+
     # Main session teardown closes owned commands. Stop temporary idle workers
     # under this test HOME before its directory is removed.
-    rows = subprocess.check_output(["ps", "-axo", "pid=,args="], text=True)
-    for row in rows.splitlines():
-        fields = row.split(maxsplit=1)
-        if len(fields) == 2 and "--execution-worker" in fields[1] and str(project) in fields[1]:
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(int(fields[0]), signal.SIGTERM)
+    # Any worker of the remote home, whatever folder it serves.
+    def stop_workers():
+        rows = subprocess.check_output(["ps", "-axo", "pid=,args="], text=True)
+        left = 0
+        for row in rows.splitlines():
+            fields = row.split(maxsplit=1)
+            if (
+                len(fields) == 2
+                and "--execution-worker" in fields[1]
+                and str(remote_home) in fields[1]
+            ):
+                left += 1
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(int(fields[0]), signal.SIGTERM)
+        return left == 0
+
+    wait_until(stop_workers, timeout=budget(10), message="a remote worker did not exit")
     remove_runtime(remote_home)

@@ -1,7 +1,10 @@
 import { ArtifactCard } from "./artifact-card.tsx";
 import "../../shared/attachments.css";
 import "./message.css";
-import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
+import Markdown, {
+  isPrepared,
+  prepareMarkdown,
+} from "../../shared/markdown-view.tsx";
 import { count } from "../../shared/quantities.ts";
 import {
   queuedGuidance,
@@ -318,9 +321,8 @@ function Message({
   );
 }
 
-// Prepares only the page about to be mounted; Markdown reads the same
-// parser cache synchronously on its first render.
-export async function prepareHistoryNodes(nodes: Node[]) {
+// A page's texts not parsed yet: none for a page shown before.
+export function unprepared(nodes: Node[]) {
   const texts = new Set<string>();
   for (const node of nodes) {
     if (isRow(node) || node.streaming || !node.body?.text) continue;
@@ -328,5 +330,10 @@ export async function prepareHistoryNodes(nodes: Node[]) {
       if ("text" in part && part.text) texts.add(part.text);
     }
   }
-  await Promise.all([...texts].map((text) => prepareMarkdown(text, true)));
+  return [...texts].filter((text) => !isPrepared(text, true));
 }
+
+// Prepares only the page about to be mounted; Markdown reads the same
+// parser cache synchronously on its first render.
+export const prepareHistoryNodes = (nodes: Node[]) =>
+  Promise.all(unprepared(nodes).map((text) => prepareMarkdown(text, true)));

@@ -1792,9 +1792,9 @@ test("the selection's cells are made bold, coloured, filled, aligned, patterned 
   await expect(
     files.getByRole("button", { name: "Format", exact: true }),
   ).toHaveCount(0);
-  expect(
-    await bar.evaluate((row) => row.scrollWidth > row.clientWidth + 1),
-  ).toBe(true);
+  await expect
+    .poll(() => bar.evaluate((row) => row.scrollWidth > row.clientWidth + 1))
+    .toBe(true);
   await cell("Tasks", "A2").click();
   await press("Bold").click();
   await expect(press("Bold")).toHaveAttribute("aria-pressed", "true");

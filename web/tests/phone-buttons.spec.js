@@ -134,7 +134,8 @@ const cramped = (page) =>
     }
     // A line along the screen's edge, which a phone's round corners cut.
     for (const box of document.querySelectorAll("#app *, dialog[open]")) {
-      if (!shown(box)) continue;
+      if (!shown(box) || !box.checkVisibility({ opacityProperty: true }))
+        continue;
       const style = getComputedStyle(box);
       const at = box.getBoundingClientRect();
       for (const [side, edge] of [
@@ -548,7 +549,7 @@ test.describe("a conversation", () => {
     await remote.prepare();
     await headerAction(page, "Open browser");
     await expect(
-      page.getByRole("dialog", { name: "Browser", exact: true }),
+      page.getByRole("button", { name: /^You're driving/ }),
     ).toBeVisible();
     await roomy(page);
   });

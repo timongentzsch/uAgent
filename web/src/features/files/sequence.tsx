@@ -142,10 +142,10 @@ const ZOOM_STEP = 1.25;
 // slides, a document's pages, a design's boards. A sheet is its grid, which
 // keeps the keys and scrolls in its frame (sheet.tsx).
 
-// The lines it adds to the draft, which the artifact skill reads.
 // A number a page said, which is untrusted: whole, and none below zero.
 const natural = (said: unknown) =>
   Math.min(Math.max(0, Math.floor(Number(said)) || 0), 1e6);
+// The lines it adds to the draft, which the artifact skill reads.
 const commentLine = (path: string, where: string, comment: string) =>
   `\`${path}\` ${where} — ${comment}`;
 // A picked element as those lines name it, and as the pane does.
@@ -241,9 +241,9 @@ export default function Sequence({
     show: string,
     add?: { name: string; text: string },
   ) => void;
-  // A slide's file written as `change` makes it of what it holds.
   // A file of the folder opened at a line, from the page.
   cite?: (path: string, line: number) => void;
+  // A slide's file written as `change` makes it of what it holds.
   rewrite?: (
     path: string,
     change: (source: string) => string,

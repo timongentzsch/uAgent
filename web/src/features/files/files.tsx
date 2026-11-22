@@ -129,7 +129,6 @@ interface FileText {
 // A page that is text, which Source shows: not an Excel file's bytes.
 const TEXT_PAGE = /\.(html?|csv)$/i;
 // Search results shown at once; typing more narrows them.
-// A folder as it is drawn before its entries arrive (see <Placeholder>).
 const SHOWN = 50;
 // The folders open in the tree, per conversation folder, on this device.
 const folderStore = (host: string) =>
@@ -171,9 +170,6 @@ const beingWritten = (nodes: readonly Node[] = []) =>
 // How often the open folder is looked at for files changed.
 const LOOK_MS = 1000;
 
-// Where it is lives with the app (`flow`, see flow.ts), so it stays put while
-// closed or moved between the sheet and the docked pane. What is open is read
-// again when a turn ends: the turn may have changed the folder.
 // What a command still running when its answer was waited for says.
 const PENDING = "Still running. Refresh to see its result.";
 
@@ -190,6 +186,8 @@ export default function Files({
   session: Session;
   // Docked beside the chat; in a sheet, the sheet's own close.
   close?: () => void;
+  // Where it is lives with the app (see flow.ts), so it stays put while
+  // closed or moved between the sheet and the docked pane.
   flow: Flow;
   setFlow: (update: (flow: Flow) => Flow) => void;
   // Puts text in the conversation's draft; none where there is no draft.

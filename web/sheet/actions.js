@@ -7,31 +7,6 @@ import { boxName, fromTsv, hrefOf, letters, meeting } from "./text.js";
 
 const count = (n, one) => (n === 1 ? one : `${n} ${one}s`);
 const HELD = /Mac|iP/.test(navigator.platform) ? "⌘" : "Ctrl+";
-// The looks a cell may take (skills/artifact/references/sheet.md), as the
-// app's format row names them.
-const COLOURS = {
-  accent: "Accent",
-  good: "Good",
-  warn: "Warning",
-  bad: "Bad",
-  muted: "Muted",
-};
-const BORDERS = {
-  "": "None",
-  all: "All",
-  top: "Top",
-  bottom: "Bottom",
-  left: "Left",
-  right: "Right",
-};
-const FORMATS = {
-  general: "General",
-  "#,##0.00": "Number",
-  "$#,##0.00": "Currency",
-  "0%": "Percent",
-  "yyyy-mm-dd": "Date",
-};
-
 // The active cell's link: an address to type, and taking it away.
 export const linkActions = (sheet) => {
   const at = sheet.pick().anchor;
@@ -74,18 +49,6 @@ export const actionsOf = (sheet, clip) => (on) => {
     run(`Insert ${count(many, one)} ${before}`, `${one}-${before}`),
     run(`Insert ${count(many, one)} ${after}`, `${one}-${after}`),
     run(`Delete ${count(many, one)}`, `${one}-delete`),
-  ];
-  const looks = book.state(sheet.at, at.row, at.column);
-  const one = (name, value, label, swatch) => ({
-    ...run(label, name, value),
-    checked: (looks[name] ?? "").toLowerCase() === value,
-    swatch,
-  });
-  const colours = (name, none) => [
-    one(name, "", none),
-    ...Object.entries(COLOURS).map(([value, label]) =>
-      one(name, value, label, `${name}-${value}`),
-    ),
   ];
   const held = sheet.held();
   // The merged cells the selection meets: it is merged unless it is one.
@@ -197,40 +160,6 @@ export const actionsOf = (sheet, clip) => (on) => {
           !joined &&
           run("Merge cells", "merge"),
         merged.length > 0 && run("Unmerge", "unmerge"),
-        {
-          label: "Formatting",
-          items: [
-            { ...run("Bold", "bold"), checked: !!looks.bold },
-            { ...run("Italic", "italic"), checked: !!looks.italic },
-            { ...run("Wrap text", "wrap"), checked: !!looks.wrap },
-            {
-              label: "Align",
-              items: ["left", "center", "right"].map((way) =>
-                one("align", way, way[0].toUpperCase() + way.slice(1)),
-              ),
-            },
-            {
-              label: "Text size",
-              items: ["small", "large"].map((size) =>
-                one("size", size, size[0].toUpperCase() + size.slice(1)),
-              ),
-            },
-            { label: "Text colour", items: colours("ink", "Default") },
-            { label: "Fill", items: colours("fill", "None") },
-            {
-              label: "Borders",
-              items: Object.entries(BORDERS).map(([side, label]) =>
-                one("border", side, label),
-              ),
-            },
-            {
-              label: "Number format",
-              items: Object.entries(FORMATS).map(([pattern, label]) =>
-                one("format", pattern, label),
-              ),
-            },
-          ],
-        },
         // The app's dialog, on the active cell's column.
         column && {
           label: "Conditional formatting…",

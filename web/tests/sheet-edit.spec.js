@@ -1883,8 +1883,7 @@ test("a row's number and a column's letter open what can be done to them: move, 
     stage.locator(`${shown}.sheet-letters [data-column="${column}"]`);
   const number = (row) =>
     stage.locator(`${shown}tbody th.sheet-edge[data-row="${row}"]`);
-  const item = (name, role = "menuitem") =>
-    stage.getByRole(role, { name, exact: true });
+  const item = (name) => stage.getByRole("menuitem", { name, exact: true });
   const undo = files.getByRole("button", { name: "Undo" });
 
   // A column moves among its neighbours with its pattern; what read its
@@ -1942,20 +1941,16 @@ test("a row's number and a column's letter open what can be done to them: move, 
   for (let step = 0; step < 3; step++) await undo.click();
   await expect.poll(saved).toBe(PLAN);
 
-  // The format row's looks from the menu, ticked where the cell has one;
-  // cleared, a column selected whole gives up its own pattern too.
+  // A column selected whole takes the format bar's looks; cleared, it gives
+  // up its own pattern too.
+  const looks = files.getByRole("toolbar", { name: "Format" });
   await letter(4).click();
-  await item("Formatting").click();
-  await item("Fill").click();
-  await expect(item("None", "menuitemcheckbox")).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
-  await item("Good", "menuitemcheckbox").click();
+  await app.keyboard.press("Escape");
+  await expect(stage.locator(".sheet-menu")).toHaveCount(0);
+  await looks.getByRole("button", { name: "Fill", exact: true }).click();
+  await app.getByRole("menuitemradio", { name: "Good", exact: true }).click();
   await expect(cell("Tasks", "D3")).toHaveAttribute("data-fill", "good");
-  await letter(4).click();
-  await item("Formatting").click();
-  await item("Bold", "menuitemcheckbox").click();
+  await looks.getByRole("button", { name: "Bold", exact: true }).click();
   await expect(cell("Tasks", "D3")).toHaveClass(/sheet-bold/);
   await letter(4).click();
   await item("Clear formatting").click();

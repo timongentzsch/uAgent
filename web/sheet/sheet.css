@@ -390,9 +390,7 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
   padding: 0;
   border-top: 1px solid var(--sheet-line);
 }
-/* A command's keys, the mark of one that is on, of a list that opens, and
-   of the way back from it, none of them part of its name; a colour's
-   swatch before its name. */
+/* A command's keys, not part of its name. */
 .sheet-menu > button {
   display: flex;
   gap: 8px;
@@ -401,55 +399,6 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
   content: attr(data-keys) / "";
   margin-left: auto;
   color: var(--sheet-muted);
-}
-.sheet-menu > [aria-checked="true"]::after {
-  content: "✓" / "";
-  margin-left: auto;
-}
-.sheet-menu > [aria-haspopup]::after {
-  content: "›" / "";
-  margin-left: auto;
-}
-.sheet-menu-back::before {
-  content: "‹" / "";
-}
-.sheet-menu > [data-swatch]::before {
-  content: "";
-  width: 1em;
-  height: 1em;
-  align-self: center;
-  border: 1px solid var(--sheet-line);
-  background: var(--sheet-swatch);
-}
-[data-swatch="fill-accent"] {
-  --sheet-swatch: var(--sheet-tint);
-}
-[data-swatch="fill-good"] {
-  --sheet-swatch: var(--sheet-good);
-}
-[data-swatch="fill-warn"] {
-  --sheet-swatch: var(--sheet-warn);
-}
-[data-swatch="fill-bad"] {
-  --sheet-swatch: var(--sheet-bad);
-}
-[data-swatch="fill-muted"] {
-  --sheet-swatch: var(--sheet-edge);
-}
-[data-swatch="ink-accent"] {
-  --sheet-swatch: var(--sheet-accent);
-}
-[data-swatch="ink-good"] {
-  --sheet-swatch: var(--sheet-ink-good);
-}
-[data-swatch="ink-warn"] {
-  --sheet-swatch: var(--sheet-ink-warn);
-}
-[data-swatch="ink-bad"] {
-  --sheet-swatch: var(--sheet-error);
-}
-[data-swatch="ink-muted"] {
-  --sheet-swatch: var(--sheet-muted);
 }
 /* The edge of a column's letter, to drag it wider or narrower by, and the
    line that shows where it will stand. */

@@ -246,9 +246,9 @@ test.describe("with a model that places", () => {
     await expect(listed.locator(".session")).toHaveCount(1);
     const before = page.url();
     await bar.getByRole("button", { name: /^Move to / }).click();
-    // The page follows the conversation to its new address, in the folder.
-    await expect(page).not.toHaveURL(before);
+    // It keeps its address and shows in the folder.
     await expect(bar).toBeHidden();
+    await expect(page).toHaveURL(before);
     await expect(listed).toBeHidden();
     await expect(
       page.getByRole("group", { name: "Folders" }).locator(".session"),

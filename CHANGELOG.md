@@ -10,6 +10,7 @@
 - **Previewed pages load nothing from another host.** The preview policy no longer admits Google Fonts, and the agent writes pages with system font stacks or a font file in the folder. A page that links a Google font is drawn in its fallback face and lists the link as not loaded.
 - **Every `/btw` starts a side chat of its own.** A second `/btw` used to follow up in the first; follow up in the side chat's own field now.
 - **Building from source needs OpenSSL 3's headers** (Homebrew's `openssl@3` on macOS, `libssl-dev` on Debian and Ubuntu). Web Push is always built in: the `UAGENT_WEB_PUSH` option and the `ci-release` preset are gone (use `release`).
+- **`--image` and `--continue` are gone.** They were unlisted doubles: use `--attach` and `-c`.
 
 ### Changes
 
@@ -38,6 +39,13 @@
 - **A sent message lifts off the input.** The message you send starts as the draft in its box and travels up into its place on a spring, turning into its band on the way, and the rows above it are pushed up by the same motion. It moves from the first frame after the press, without fading in, and it is in its place within about a sixth of a second however far it travels; from high up the view it arrives without the overshoot. The times and both springs are tokens (`--motion-send`, `--motion-glide`, `--ease-send`, `--ease-settle`), and reduced motion turns all of it off as before.
 - **A deck as a grid, and a slide that pushes in.** **Grid** in a deck's tool row shows every slide as a tile in the stage's place: press one to open it, drag one to a new place. In the slide menu, **Push in** makes the slide push the one before it out when presenting, where the others fade; it sits beside **Skip slide** and keeps it.
 - **A thought is drawn whole.** With thinking shown, a thought is no longer cut to its first lines in the web or the terminal, whatever its work shows.
+- **A conversation keeps its address when it moves.** Moving a conversation to another folder rewrites only where it works: its link, pins, unread mark, drafts and queued messages stay with it, on every device, and a side chat can still be merged back afterwards.
+- **A sheet's format is a bar under the grid.** Bold, italic, wrap, alignment, text size, colours, borders and number format for the selection sit in one row at the foot of the sheet; the cell menu no longer repeats them.
+- **Fill a sheet by dragging.** The selection has a handle at its corner: dragged down or across it continues a series, repeats a value or carries a formula along, with the cells' looks.
+- **A cell can be a link.** A cell that holds only an address, or the agent's `<a href>`, reads as a link and opens it; ⌘K sets or removes one.
+- **Text tools where the text is.** In a document they appear by the text you select, with what can be inserted in a bar at the foot; on a slide they are in the bar over the element being typed in.
+- **The agent sees what it made.** `observe` with a path pictures a document, deck, sheet, whiteboard or design as Files draws it, a tall page in parts, so the agent can check its work by looking.
+- **Switching conversations is lighter.** A switch redraws two rows of the list where it redrew all of them, draws each message once, and a conversation shown before appears in the first frame without a loading placeholder: about half the time from press to content.
 
 ### Fixes
 
@@ -69,6 +77,13 @@
 - **Quote, as in a messaging app.** **Add to chat** is now **Quote**, in a selection's bar, in Files and in the terminal's menu. A quote no longer lands in the text field: it is a line over the input with an X to remove it, several stack, they stay with the draft, and they go before your text when it is sent; a quote alone can be sent, and a command typed under quotes runs as typed and leaves them for the next message. The selection's buttons are no longer covered by a pane's resize handle. A comment on a design is added with **Add comment**.
 - **The focus ring is drawn inside the control.** It stood outside every field, button and row, so in a pane, a sheet or a column it was cut off at the edge or lay over the control beside it, such as the quote above a side chat's message box. On a filled button it is drawn in the button's own ink, so it shows in both themes.
 - **The buttons of a toolbar keep an inset from its edges.** The browser's bar, the terminal's, a sheet's and a page's tools had no padding above and below, so on a touch screen a filled button such as **Done** touched the bar's top, bottom and the window's corner while its neighbours floated. They sit in the bar as the header's do.
+- **A queued message survives a reload.** A message queued behind a running turn could leave the queue when the page was reloaded at that moment, and read as not confirmed or as sent. It stays queued, and is taken once.
+- **A reload keeps your place.** In Safari the transcript could return to its end after a reload.
+- **A side chat reads as working at once**, in the Activity list and in its own column, from the moment its question is sent.
+- **A sheet's cell menu closes when you press elsewhere in the app**, and that press does its work at once.
+- **No line along a phone's screen edge.** The conversations drawer drew its frame into the display's round corners.
+- **Deleting a conversation removes its mailbox.**
+- **An MCP server's output schemas no longer count against the limit for tool schemas**, so a server that declares them keeps more of its tools.
 
 ## v1.10.1 - 2026-11-16
 

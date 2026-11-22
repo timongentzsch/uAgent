@@ -15,6 +15,17 @@ export const outgoingStatus = {
   unconfirmed: "Not confirmed",
 };
 
+// What a message of yours sends, read from its row: a first send and a send
+// again carry the same fields, so the host takes it once.
+export const sendOf = (
+  row: Pick<Node, "request_id" | "body" | "files" | "status">,
+) => ({
+  request_id: row.request_id,
+  text: row.body?.text || "",
+  ...(row.status === outgoingStatus.next && { queue: true }),
+  attachment_ids: (row.files ?? []).map(({ id, name }) => ({ id, name })),
+});
+
 // What a draft sends: its quotes, then what was typed; a command is what was
 // typed alone, and the quotes wait for the next message.
 export const messageText = (draft: Draft) =>

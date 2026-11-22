@@ -17,6 +17,7 @@ import {
   holdable,
   messageText,
   outgoingStatus,
+  sendOf,
   waitingToSend,
 } from "../shared/message-view.ts";
 import { restartConversation, shareTranscript } from "./menus.tsx";
@@ -256,26 +257,25 @@ export function useCommands({
       kind === "steer" &&
       (queue ? outgoingStatus.next : outgoingStatus.guidance);
     const visible = !text.startsWith("/") || sent.files.length;
-    if (visible) {
-      const row: Outgoing = {
-        id: `outgoing-${request_id}`,
-        parent: null,
-        request_id,
-        session_id: id,
-        kind: "turn",
-        body: { kind: "text", text },
-        files: sent.files,
-        time: new Date().toISOString(),
-        status: !online
-          ? outgoingStatus.waiting
-          : queued || outgoingStatus.sending,
-      };
+    const row: Outgoing = {
+      id: `outgoing-${request_id}`,
+      parent: null,
+      request_id,
+      session_id: id,
+      kind: "turn",
+      body: { kind: "text", text },
+      files: sent.files,
+      time: new Date().toISOString(),
+      status: !online
+        ? outgoingStatus.waiting
+        : queued || outgoingStatus.sending,
+    };
+    if (visible)
       setOutgoing((items) =>
         items.some((item) => item.request_id === request_id)
           ? items.map((item) => (item.request_id === request_id ? row : item))
           : [...items, row],
       );
-    }
     setDrafts((current) =>
       current[id] === sent
         ? {
@@ -292,15 +292,7 @@ export function useCommands({
       return;
     }
     try {
-      const result = await act(kind, {
-        request_id,
-        text,
-        ...(queued && queue && { queue }),
-        attachment_ids: sent.files.map((item) => ({
-          id: item.id,
-          name: item.name,
-        })),
-      });
+      const result = await act(kind, sendOf(row));
       patchOutgoing(request_id, {
         status:
           queued ||

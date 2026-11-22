@@ -254,7 +254,7 @@ export function HomeLists({
         </section>
       )}
       {all && recent.length > 0 && (
-        <section class="home-list" aria-label="Recent">
+        <section class="home-list recent" aria-label="Recent">
           <header>
             <SectionTitle>Recent</SectionTitle>
             <Button variant="quiet" size="compact" onClick={all}>

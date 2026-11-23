@@ -211,6 +211,24 @@ test("a tap on a text field's label is taken over like one on the field", async 
   expect(await page.evaluate(() => document.activeElement?.id)).toBe("name");
 });
 
+test("a button inside a text field's label keeps its tap", async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => {
+    const label = document.createElement("label");
+    label.style.cssText = "position:fixed;top:200px;left:20px;";
+    label.innerHTML =
+      '<input type="text" id="secret"> <button type="button" id="show">Show</button>';
+    document.body.append(label);
+    globalThis.shown = 0;
+    document.getElementById("show").addEventListener("click", () => shown++);
+  });
+  await page.locator("#show").tap();
+  expect(await page.evaluate(() => globalThis.shown)).toBe(1);
+  expect(await page.evaluate(() => document.activeElement?.id)).not.toBe(
+    "secret",
+  );
+});
+
 test("a tap on a colour or a time input is not taken over", async ({
   page,
 }) => {

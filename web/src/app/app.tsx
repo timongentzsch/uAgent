@@ -337,14 +337,17 @@ function App({ host, bindResult, reading }: HostAppProps) {
     redirect,
     projects,
   } = places;
-  // The home screen, ready to type on.
+  // The home screen, ready to type on where the field takes the focus on
+  // its own (StartField): not with the list in a drawer, a phone's layout,
+  // where a keyboard would cover the lists.
   const home = useCallback(() => {
-    void choose("").then(() =>
-      requestAnimationFrame(() =>
-        document.getElementById(startFieldId)?.focus(),
-      ),
-    );
-  }, [choose]);
+    void choose("").then(() => {
+      if (!compact)
+        requestAnimationFrame(() =>
+          document.getElementById(startFieldId)?.focus(),
+        );
+    });
+  }, [choose, compact]);
   const showInPlace = useCallback(
     (place: LibraryPlace, target: FileTarget) => {
       setFilesOpen(true);

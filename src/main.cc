@@ -36,6 +36,8 @@ extern char** environ;
 #include "include/core/effective_config.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
+#include "include/core/platform.h"
 #include "include/core/sandbox.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -244,6 +246,10 @@ int Main(int argc, char** argv) {
                ? ToolLogPump(argv[2], bytes)
                : 2;
   }
+  // Before hardening, which hands /proc/self to root.
+  const std::string_view mode = argc > 1 ? argv[1] : "";
+  if (mode == "--session-worker") PreferOomKill(kWorkerOomScore);
+  if (mode == "--browser-service") PreferOomKill(kBrowserOomScore);
   InitializeProcess();
   SetExecutablePath(argv[0]);
   if (argc > 1 && (std::string_view(argv[1]) == "--execution-start" ||

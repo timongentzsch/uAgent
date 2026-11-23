@@ -207,6 +207,11 @@ inline constexpr size_t kHistoryCacheEntries = 3;
 inline constexpr size_t kHistoryCacheBytes = MiB(32);
 inline constexpr size_t kTextPageBytes = KiB(16);
 inline constexpr int64_t kServerDrainMs = 500;
+// OOM scores above the web host's 0 (oom_score_adj, -1000 to 1000): out of
+// memory a conversation's runtime goes before the host, and the browser,
+// the largest and the cheapest to lose, before both.
+inline constexpr int kWorkerOomScore = 300;
+inline constexpr int kBrowserOomScore = 600;
 inline constexpr int64_t kSecondsPerHour = 3600;
 // Heads read: to tell a file's kind (an SVG prolog may run this long), of an
 // attached text file, and of the newest output an `until` marker is sought in.

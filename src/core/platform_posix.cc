@@ -226,6 +226,17 @@ std::optional<ProcStat> ParseProcStat(std::string_view record) {
   return ProcStat{state[0], group};
 }
 
+void PreferOomKill(int score) {
+#ifdef __linux__
+  if (FILE* file = fopen("/proc/self/oom_score_adj", "w")) {
+    fprintf(file, "%d", score);
+    fclose(file);
+  }
+#else
+  (void)score;
+#endif
+}
+
 bool ProcMountShowsEveryProcess(std::string_view mountinfo) {
   // "id parent major:minor root mount-point options ... - fstype source
   // super-options": the last /proc mount is the one in effect.

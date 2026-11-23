@@ -21,6 +21,7 @@
 #include <charconv>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -230,13 +231,14 @@ void PreferOomKill(int above) {
 #ifdef __linux__
   // Above what it was started with: a service manager or CI may already
   // have raised the host's, and a process may raise its own unprivileged.
-  int score = 0;
+  char text[16] = {};
   if (FILE* file = fopen("/proc/self/oom_score_adj", "r")) {
-    if (fscanf(file, "%d", &score) != 1) score = 0;
+    if (!fgets(text, sizeof text, file)) text[0] = '\0';
     fclose(file);
   }
+  const long score = std::strtol(text, nullptr, 10) + above;
   if (FILE* file = fopen("/proc/self/oom_score_adj", "w")) {
-    fprintf(file, "%d", std::min(score + above, 1000));
+    fprintf(file, "%ld", std::min(score, 1000L));
     fclose(file);
   }
 #else

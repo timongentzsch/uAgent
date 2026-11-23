@@ -35,7 +35,7 @@ export default defineConfig({
     {
       name: "webkit",
       testMatch:
-        "**/{action,btw,context-parts,guidance-queue,keyboard-tap,phone-layout,phone-home,edge-swipe,reload,mobile-navigation,loading-surfaces,session-state,ui-quality,browser,model-picker,ask,menu,image-viewer,dismiss,history-anchor,scroll-restore,scroll-stick,search,screen-motion,canvas,sheet,sheet-edit,sheet-files,sheet-rules,sheet-suggest,management,selection,hosts,doc-edit,drag-release}.spec.js",
+        "**/{action,btw,dead-runtime,context-parts,guidance-queue,keyboard-tap,phone-layout,phone-home,edge-swipe,reload,mobile-navigation,loading-surfaces,session-state,ui-quality,browser,model-picker,ask,menu,image-viewer,dismiss,history-anchor,scroll-restore,scroll-stick,search,screen-motion,canvas,sheet,sheet-edit,sheet-files,sheet-rules,sheet-suggest,management,selection,hosts,doc-edit,drag-release}.spec.js",
       use: { ...devices["Desktop Safari"] },
     },
   ],

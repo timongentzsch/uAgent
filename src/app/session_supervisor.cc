@@ -352,7 +352,11 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
         } else {
           session->status = SessionStatus::kInterrupted;
           session->state["turn_status"] = "Interrupted";
-          PublishLifecycle(*session, {{"kind", "closed"}});
+          // Shown as a turn the person stopped is: its runtime is gone.
+          session->state["stop"] = {{"reason", "cancelled"}};
+          PublishLifecycle(*session,
+                           {{"kind", "state"},
+                            {"state", session::LightState(session->state)}});
         }
       }
       session->exited = true;

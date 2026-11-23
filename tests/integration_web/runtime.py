@@ -704,3 +704,44 @@ def test_a_conversation_runtime_goes_before_the_host_when_memory_runs_out(root, 
             workers = session_workers(process.pid)
             assert_true(workers, "no runtime started")
             assert_true(all(score(pid) > score(process.pid) for pid in workers), workers)
+
+
+def test_a_message_restarts_a_conversation_whose_runtime_died(root, home, *, binary):
+    asked, release = threading.Event(), threading.Event()
+
+    def held(_, _body):
+        asked.set()
+        release.wait(timeout=budget(10))
+        return event({"content": "never seen"})
+
+    with Server([held, event({"content": "answered again"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, process, _):
+            client.pair(code)
+            session = client.create(root)
+            client.command("submit", session, text="a turn the runtime dies in")
+            assert_true(asked.wait(timeout=budget(10)), "the model was not asked")
+            (worker,) = session_workers(process.pid)
+            os.kill(worker, signal.SIGKILL)
+            value = client.until(
+                session, lambda value: value["metadata"]["status"] == "interrupted"
+            )
+            release.set()
+            assert_true(value["state"]["stop"]["reason"] == "cancelled", value["state"])
+            # The generation the client holds names the runtime that died.
+            assert_true(value["metadata"]["generation"] == session["generation"], value)
+            client.command("submit", session, text="go on")
+            client.until(session, lambda value: "answered again" in json.dumps(value["state"]))
+
+
+def test_a_message_with_the_generation_of_a_runtime_stopped_when_idle_is_answered(
+    root, home, *, binary
+):
+    with Server([event({"content": "answered after idle"})]) as provider:
+        with web_host(
+            binary, root, home, provider.url, extra_env={"UAGENT_INTERNAL_IDLE_S": "1"}
+        ) as (client, code, process, _):
+            client.pair(code)
+            session = client.create(root)
+            wait_until(lambda: not session_workers(process.pid), "the runtime did not stop")
+            client.command("submit", session, text="after a while")
+            client.until(session, lambda value: "answered after idle" in json.dumps(value["state"]))

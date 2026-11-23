@@ -127,6 +127,8 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kTextPageBytes` | `16 KiB` | The web host rescans the session catalogue this often and keeps a few histories parsed; a stopping runtime gives its clients kServerDrainMs. |
 | `kServerDrainMs` | `500` | The web host rescans the session catalogue this often and keeps a few histories parsed; a stopping runtime gives its clients kServerDrainMs. |
 | `kSecondsPerHour` | `3600` | The web host rescans the session catalogue this often and keeps a few histories parsed; a stopping runtime gives its clients kServerDrainMs. |
+| `kWorkerOomScore` | `300` | OOM scores above the web host's 0 (oom_score_adj, -1000 to 1000): out of memory a conversation's runtime goes before the host, and the browser, the largest and the cheapest to lose, before both. |
+| `kBrowserOomScore` | `600` | OOM scores above the web host's 0 (oom_score_adj, -1000 to 1000): out of memory a conversation's runtime goes before the host, and the browser, the largest and the cheapest to lose, before both. |
 | `kAttachmentSniffBytes` | `64 KiB` | Heads read: to tell a file's kind (an SVG prolog may run this long), of an attached text file, and of the newest output an `until` marker is sought in. |
 | `kAttachedTextBytes` | `64 KiB` | Heads read: to tell a file's kind (an SVG prolog may run this long), of an attached text file, and of the newest output an `until` marker is sought in. |
 | `kUntilWindowBytes` | `64 KiB` | Heads read: to tell a file's kind (an SVG prolog may run this long), of an attached text file, and of the newest output an `until` marker is sought in. |

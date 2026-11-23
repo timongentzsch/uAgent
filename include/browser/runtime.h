@@ -126,6 +126,9 @@ class Runtime {
   // dialog stops its page until it closes, and Chrome tells of it once.
   std::map<std::string, std::string> sessions_;
   std::map<std::string, json> dialogs_;
+  // The sessions whose page Chrome ended (its renderer died, often for lack
+  // of memory): nothing but a navigation is answered there until one.
+  std::set<std::string> crashed_;
   // The agent's own navigation is under way: the page's plea to stay is
   // what the agent already chose against.
   bool leaving_ = false;

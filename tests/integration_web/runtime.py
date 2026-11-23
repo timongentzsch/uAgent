@@ -1,6 +1,7 @@
 import json
 import os
 import pathlib
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -15,7 +16,9 @@ from integration_support import (
     event,
     timeout_setting,
     tool_call,
+    tool_results,
     wait_until,
+    write_http_response,
 )
 from web_support import session_workers, web_host
 
@@ -107,6 +110,76 @@ def test_a_conversation_uses_the_shared_browser(root, home, *, binary):
         )
         missing, answer, _ = web.json("/api/browser/status?instance_id=9")
         assert_true(missing == 503 and "error" in answer, answer)
+
+
+def test_a_crashed_tab_is_not_an_opened_page(root, home, *, binary):
+    if not (shutil.which("google-chrome-stable") and shutil.which("Xtigervnc")):
+        raise Skipped("needs Google Chrome and TigerVNC")
+    host = {}
+
+    def renderers():
+        rows = subprocess.check_output(["ps", "-axo", "pid=,ppid=,args="], text=True)
+        table = [row.split(maxsplit=2) for row in rows.splitlines()]
+        found, parents = [], {str(host["pid"])}
+        while parents:
+            children = [row for row in table if len(row) == 3 and row[1] in parents]
+            found += [int(pid) for pid, _, args in children if "--type=renderer" in args]
+            parents = {pid for pid, _, _ in children}
+        return found
+
+    def crash():
+        # What the OOM killer does to a page.
+        killed = renderers()
+        for pid in killed:
+            os.kill(pid, signal.SIGKILL)
+        wait_until(lambda: not set(killed) & set(renderers()), "the pages live on")
+
+    def page(handler):
+        if handler.path == "/crashing":
+            crash()  # while its page is on the way
+        write_http_response(handler, b"<title>Kept</title>Kept page", "text/html")
+
+    def browse(action, path="", before=lambda: None):
+        def answer(_, _body):
+            before()
+            url = {"url": host["site"] + path} if path else {}
+            return tool_call("browser", {"action": action, **url})
+
+        return answer
+
+    steps = [
+        browse("open", "/kept"),
+        browse("read", before=crash),
+        browse("tabs"),
+        browse("open", "/kept"),
+        browse("open", "/crashing"),
+        event({"content": "browsed"}),
+    ]
+    with (
+        tempfile.TemporaryDirectory(prefix="ua-b-", dir=os.path.realpath("/tmp")) as data,
+        Server(steps, page) as provider,
+        # Opening a site asks first otherwise.
+        web_host(
+            binary,
+            root,
+            home,
+            provider.url,
+            extra_env={"UAGENT_BROWSER_DATA": data, "UAGENT_APPROVAL": "yolo"},
+        ) as (client, code, process, _),
+    ):
+        host["site"] = provider.url.removesuffix("/v1")
+        host["pid"] = process.pid
+        client.pair(code)
+        client.command("submit", client.create(root), text="browse")
+        wait_until(lambda: len(provider.requests) == len(steps), "the turn did not end")
+        opened, read, tabs, reopened, cut = tool_results(provider.requests[-1][1]["messages"])
+        crashed = "error: the tab's page crashed"
+        assert_true(opened.startswith("open done.") and "Kept page" in opened, opened)
+        assert_true(read.startswith(crashed), read)
+        assert_true('"crashed":true' in tabs, tabs)
+        assert_true(reopened.startswith("open done."), reopened)
+        # Not "open done" with a page that is gone.
+        assert_true(cut.startswith(crashed), cut)
 
 
 def test_web_tool_sourced_attachment_marks_origin(root, home, *, binary):

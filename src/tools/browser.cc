@@ -454,7 +454,8 @@ ToolResult Observation(const BrowserAccess& access, const std::string& lead,
       std::lock_guard lock(seen.mutex);
       seen.page.Forget();
     }
-    if (lead.empty()) {
+    // A crashed page took what was done with it.
+    if (lead.empty() || outcome.contains("crashed")) {
       return ToolFailure(ToolErrorCode::kRemoteError, failed);
     }
     return ToolSuccess(done + "The page could not be observed (" + failed +

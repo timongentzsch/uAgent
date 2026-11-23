@@ -225,8 +225,9 @@ export interface Node {
   // A message's author: you (or what woke the conversation), or the agent.
   role?: "user" | "assistant";
   // Files a call read, or what wrote a message in your place: an agent's
-  // report, finished background work, or another conversation's message.
-  origin?: "tool" | "agent" | "activity" | "message";
+  // report, finished background work, another conversation's message, or
+  // the harness asking a side chat to sum itself up.
+  origin?: "tool" | "agent" | "activity" | "message" | "merge";
   agent?: AgentFacts;
   request_id?: string;
   incoming?: number;
@@ -439,13 +440,17 @@ export interface Session {
   parent?: string;
   // Where a side chat branched from, also once it was opened as a
   // conversation of its own (detached). `request` is its first question's
-  // request id; `asked` when, in ms.
+  // request id; `asked` when, in ms; `merged` when its summary last reached
+  // the conversation, and how many turns it had then.
   side?: {
     parent: string;
     request: string;
     asked: number;
+    merged?: { at: number; turns: number };
     detached?: boolean;
   } | null;
+  // A side chat summing itself up for its conversation.
+  merging?: boolean;
   // The model its file names.
   model?: string;
   status?: SessionStatus;

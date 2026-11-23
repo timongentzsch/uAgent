@@ -4,6 +4,7 @@
 #include <string_view>
 #include <utility>
 
+#include "include/agent/session_store.h"
 #include "include/cli/cli.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
@@ -93,6 +94,11 @@ int Application::RunChannel() {
         attachments_.push_back(std::move(attachment));
       }
       ProcessInput(std::move(input->text));
+      // A merge's summary written to its end goes to the conversation.
+      if (report_ &&
+          JsonValue(agent_.LastStop(), "reason", "") == "completed") {
+        agent_.MarkMerged();
+      }
       // Mail that came as the turn was ending starts the next one.
       agent_.DeliverMail();
       // An agent's spend is its parent's too, reported before the turn's
@@ -147,6 +153,7 @@ void Application::PublishChannelState(bool checkpoint) {
     }
   }
   state["turns"] = agent_.UserTurns();
+  state["side"] = SideOf(agent_.History().DisplayFacts());
   state["activities"] = runtime_.processes.ActivityViews();
   state["todo"] = todo_ = agent_.Todo();
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;

@@ -314,7 +314,8 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"cwd", session.cwd},
       {"host", session.host},
       {"parent", session.parent},
-      {"side", session.side},
+      // A runtime says its own, which its file lags behind.
+      {"side", JsonValue(session.state, "side", session.side)},
       {"model", session.model},
       {"title", session.title},
       {"suggestion", session.suggestion},
@@ -325,6 +326,8 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"guidance", session.guidance},
       {"incoming", session.incoming},
       {"turn_status", JsonValue(session.state, "turn_status", kIdleStatus)},
+      // A side chat summing itself up for its conversation.
+      {"merging", JsonValue(session.state, "merging", false)},
       {"phase", JsonValue(session.state, "phase", "idle")},
       {"activities", JsonValue(session.state, "activities", json::array())},
       {"cost", JsonValue(JsonValue(session.state, "usage", json::object()),

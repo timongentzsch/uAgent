@@ -173,6 +173,9 @@ struct SessionLoadResult {
 };
 
 bool ValidSessionTitle(const std::string& title);
+// Whose side chat a conversation is, from its display facts, as its header
+// and its runtime's state carry it; null for none.
+json SideOf(const json& facts);
 std::string InvalidSessionTitleMessage();
 
 // What the last save wrote, to skip a save of the same bytes.

@@ -1,8 +1,13 @@
 import { ArrowUpRight, CircleAlert, Square, X } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useEffect, useId, useRef } from "preact/hooks";
-import type { Act, Node, Session } from "../../shared/types.ts";
-import { Button, IconButton, LoadError } from "../../shared/ui.tsx";
+import {
+  failure,
+  type Act,
+  type Node,
+  type Session,
+} from "../../shared/types.ts";
+import { Button, IconButton, LoadError, Time } from "../../shared/ui.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { Tabs } from "../../shared/tabs.tsx";
 import { useAction } from "../../shared/use-action.ts";
@@ -18,15 +23,96 @@ import type { Asking, Side } from "../../app/use-side-conversations.ts";
 import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
 
+// The row of a summing up still under way, one per row the host drew, so
+// it keeps its identity while nothing changes.
+const summing = new WeakMap<Node, Node>();
+const underWay = (node: Node) => {
+  let shown = summing.get(node);
+  if (!shown) {
+    shown = {
+      ...node,
+      state: "running",
+      headline: { ...node.headline!, verb: "Summing up for" },
+    };
+    summing.set(node, shown);
+  }
+  return shown;
+};
+
 // A side chat's own part of its transcript, from its first question on.
 // Where that has left the window, everything held is its own; where it is
-// not there yet, nothing is.
-export function sideNodes(nodes: Node[], request: string, more?: boolean) {
-  if (!request) return nodes;
+// not there yet, nothing is. While it sums itself up, its last summing-up
+// row says so.
+export function sideNodes(
+  nodes: Node[],
+  request: string,
+  more?: boolean,
+  merging?: boolean,
+) {
   const first = nodes.findIndex(
     (node) => node.kind === "turn" && node.request_id === request,
   );
-  return first >= 0 ? nodes.slice(first) : more ? nodes : [];
+  const own =
+    !request || first === 0
+      ? nodes
+      : first > 0
+        ? nodes.slice(first)
+        : more
+          ? nodes
+          : [];
+  const last = merging
+    ? own.findLastIndex((node) => node.origin === "merge" && !!node.headline)
+    : -1;
+  return last < 0 ? own : own.with(last, underWay(own[last]));
+}
+
+// Merge, while it can be; "Summing up…" while the side chat does; when it
+// is done and nothing was said since, when. A merge that failed or was
+// stopped says why.
+export function MergeControl({ session }: { session: Session }) {
+  const { command } = useApi();
+  const { online, store } = useHostContext();
+  const merging = useAction();
+  const stop = useSnapshots(store, (all) => {
+    const nodes = all[session.id]?.state?.view?.nodes;
+    const last = nodes?.findLast((node) => node.kind === "turn");
+    return last?.origin === "merge" ? all[session.id]?.state?.stop : undefined;
+  });
+  const merged = session.side?.merged;
+  if (session.merging) return <Button disabled>Summing up…</Button>;
+  if (merged && merged.turns === session.turns)
+    return (
+      <span class="merged-at small muted">
+        Merged <Time value={merged.at} />
+      </span>
+    );
+  const why = merging.error
+    ? failure(merging.error).message
+    : stop && stop.reason !== "completed" && !merging.busy
+      ? stop.reason
+      : "";
+  return (
+    <>
+      {why && (
+        <span class="merge-error small truncate" role="status" title={why}>
+          Not merged: {why}
+        </span>
+      )}
+      <Button
+        title="Sum it up for the conversation, which answers"
+        disabled={
+          !online || merging.busy || statusOf(session, online) !== "idle"
+        }
+        onClick={() =>
+          void merging.run(() =>
+            command("side", session, { operation: "merge" }),
+          )
+        }
+      >
+        Merge
+      </Button>
+    </>
+  );
 }
 
 // The question, under what it is about, in the box every message is
@@ -113,7 +199,12 @@ function SideAnswer({
   const running = !!session?.turn_active;
   const act: Act = (kind, fields) => command(kind, session, fields);
   const view = snapshot?.state?.view;
-  const nodes = sideNodes(view?.nodes || [], side.request, view?.more);
+  const nodes = sideNodes(
+    view?.nodes || [],
+    side.request,
+    view?.more,
+    session?.merging,
+  );
   // Follows its end as the transcript does, through the same hook.
   const historyKey = `side:${side.id || ""}`;
   const thread = useTranscriptHistory(() => {}, historyKey, nodes);
@@ -215,13 +306,10 @@ export default function SideChats({
   ask: (question: string, quote: string) => void;
   detach: (session: Session) => Promise<void>;
 }) {
-  const { command } = useApi();
   const { online } = useHostContext();
-  const merging = useAction();
   const detaching = useAction();
   const side = sides.find((item) => item.key === shown);
   const session = sessions.find((one) => one.id === side?.id);
-  const idle = !!session && statusOf(session, online) === "idle";
   const fresh = asking && !asking.to;
   const mark = (item: Side) => {
     const session = sessions.find((one) => one.id === item.id);
@@ -268,24 +356,16 @@ export default function SideChats({
               : []),
           ]}
         />
-        {session && (
-          <Button
-            title="Sum it up for the conversation, which answers"
-            disabled={!online || merging.busy || !idle}
-            onClick={() =>
-              void merging.run(async () => {
-                await command("side", session, { operation: "merge" });
-                hide(shown);
-              })
-            }
-          >
-            Merge
-          </Button>
-        )}
+        {session && <MergeControl session={session} />}
         {session && (
           <IconButton
             label="Open as a conversation of its own"
-            disabled={!online || detaching.busy || !idle}
+            disabled={
+              !online ||
+              detaching.busy ||
+              !!session.merging ||
+              statusOf(session, online) !== "idle"
+            }
             onClick={() => void detaching.run(() => detach(session))}
           >
             <ArrowUpRight />
@@ -295,9 +375,7 @@ export default function SideChats({
           <X />
         </IconButton>
       </header>
-      {!!(merging.error || detaching.error) && (
-        <LoadError error={merging.error || detaching.error} />
-      )}
+      {!!detaching.error && <LoadError error={detaching.error} />}
       {side ? (
         <SideAnswer
           key={side.key}

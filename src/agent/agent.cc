@@ -134,6 +134,13 @@ void Agent::DetachSide() {
   ++revision_;
 }
 
+void Agent::MarkMerged() {
+  conversation_.RecordDisplay(
+      "side-origin",
+      {{"merged", {{"at", NowMillis()}, {"turns", UserTurns()}}}});
+  ++revision_;
+}
+
 std::string Agent::SideParent() const {
   const json side =
       JsonValue(conversation_.DisplayFacts(), "side-origin", json::object());

@@ -438,8 +438,16 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
     Keep(node, metadata,
          {"request_id", "files", "origin", "agent", "deliveries", "http",
           "incoming"});
+    // The instruction that sums a side chat up is the harness's, never
+    // shown as the person's words: a row naming where the summary goes.
+    if (JsonValue(metadata, "origin", "") == "merge") {
+      node["headline"] = {
+          {"verb", "Summed up for"},
+          {"target", "“" + JsonValue(metadata, "to", "") + "”"}};
+    }
   }
-  if (JsonValue(metadata, "origin", "") != "tool") {
+  if (JsonValue(metadata, "origin", "") != "tool" &&
+      JsonValue(metadata, "origin", "") != "merge") {
     SetBody(node, entry.kind == "assistant" ? "markdown" : "text",
             EntryText(facts, sequence, message));
   }

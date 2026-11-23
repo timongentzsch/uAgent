@@ -144,10 +144,15 @@ arrow beside **Merge** (in the page's menu on a phone), **Open as a
 conversation of its own**, makes it an ordinary conversation in the list,
 with the way back to where it was asked.
 
-**Merge** brings a side chat back: it writes a summary of
-what it found, the conversation receives that as it does an agent's
-report (data, not instructions; judged in Auto) and answers, and the tab
-closes. The conversation reads the summary, never the side chat.
+**Merge** brings a side chat back: it writes a summary of what it found,
+in view ("Summing up…", and a quiet row in the conversation while it
+does), and the conversation receives that as it does an agent's report
+(data, not instructions; judged in Auto) and answers. There it is one
+row, **Merged side chat**, that folds like a step and holds the summary,
+with **Show side chat**. The side chat stays, saying when it merged, and
+offers Merge again once it has said more; a merge that fails or is
+stopped leaves it as it was and says why. The conversation reads the
+summary, never the side chat, and a report never names a conversation.
 
 **Several at once.** Ctrl-click (⌘-click) picks a row, Shift-click a run,
 and **Select** in a row's menu starts picking by tap; the sidebar's footer

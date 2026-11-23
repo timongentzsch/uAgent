@@ -22,6 +22,8 @@ import { isBrowsing } from "./chat-page.tsx";
 import type { Page } from "./app.tsx";
 import type { DetailControl } from "./menus.tsx";
 import { Tabs } from "../shared/tabs.tsx";
+import { isSideChat } from "../state/attention.ts";
+import { MergeControl } from "../features/chat/side-answer.tsx";
 import { capitalize } from "../shared/display.ts";
 
 function Totals({
@@ -59,7 +61,6 @@ export default function ConversationHeader({
   filesOpen,
   setFilesOpen,
   outgoing,
-  merge,
   detach,
   openDrawer,
   choose,
@@ -71,9 +72,7 @@ export default function ConversationHeader({
   selected: string;
   session?: Session;
   parent?: Session;
-  // A side chat: sums it up for `parent` and goes back there, or opens it
-  // as a conversation of its own.
-  merge?: () => void;
+  // A side chat: opens it as a conversation of its own.
   detach?: () => void;
   opening: boolean;
   booting: boolean;
@@ -193,10 +192,8 @@ export default function ConversationHeader({
           </p>
         )}
       </div>
-      {page === "chat" && session && merge && (
-        <Button disabled={!!session.turn_active} onClick={merge}>
-          Merge
-        </Button>
+      {page === "chat" && session && isSideChat(session) && (
+        <MergeControl session={session} />
       )}
       {!inMenu && page === "chat" && session && (
         <>

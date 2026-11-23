@@ -59,3 +59,43 @@ def test_web_side_chats_are_deleted_with_their_conversation(root, home, *, binar
             assert_true(not {parent["id"], *sides} & left.keys(), left)
             history = home / ".uagent" / "history"
             assert_true(not list(history.rglob("fork-*.json")), list(history.rglob("*")))
+
+
+def test_web_merge_reaches_the_conversation_and_keeps_its_title(root, home, *, binary):
+    """The summary goes as a report the conversation answers; its first line
+    never names the conversation, and the side chat says when it merged."""
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        if "merges this side chat" in text:
+            return event({"content": "SIDE-SUMMARY"})
+        if "SIDE-SUMMARY" in text:
+            return event({"content": "PARENT-READ-IT"})
+        return event({"content": "said"})
+
+    with Server([route]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            parent = client.create(root)
+            client.command("submit", parent, text="hello")
+            client.until(parent, lambda value: idle(value) and "said" in json.dumps(value))
+            side = started(client, parent, "first-request")
+            session = client.command("activate", {"id": side, "generation": ""})["session"]
+            client.until(session, idle)
+            client.command("side", client.snapshot(session)["metadata"], operation="merge")
+            parent = client.command("activate", {"id": parent["id"], "generation": ""})["session"]
+            heard = client.until(parent, lambda value: "PARENT-READ-IT" in json.dumps(value))
+            assert_true(heard["metadata"]["title"] == "hello", heard["metadata"])
+            merged = client.until(
+                session, lambda value: (value["metadata"]["side"] or {}).get("merged")
+            )["metadata"]
+            assert_true(merged["side"]["merged"]["turns"] == merged["turns"], merged)
+            assert_true(not merged["merging"], merged)
+            rows = client.snapshot(session)["state"]["view"]["nodes"]
+            summed = [node for node in rows if node.get("origin") == "merge"]
+            assert_true(
+                summed
+                and summed[-1]["headline"]["verb"] == "Summed up for"
+                and "body" not in summed[-1],
+                summed,
+            )

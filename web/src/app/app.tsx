@@ -821,16 +821,6 @@ function App({ host, bindResult, reading }: HostAppProps) {
                         catalogue.sessions,
                         session?.parent || session?.side?.parent,
                       )}
-                      merge={
-                        session && isSideChat(session)
-                          ? () =>
-                              void command("side", session, {
-                                operation: "merge",
-                              })
-                                .then(() => choose(session.parent!))
-                                .catch(report)
-                          : undefined
-                      }
                       detach={
                         session && isSideChat(session)
                           ? () => void side.detach(session).catch(report)

@@ -110,6 +110,8 @@ class Agent {
   void DetachSide();
   // The session id of the conversation this is a side chat of; "" for none.
   std::string SideParent() const;
+  // A side chat's summary reached its conversation, as of this turn.
+  void MarkMerged();
   void PublishSideContext();
   // Snapshots a tool's file for clients: {id, name, mime, bytes} or null.
   using KeepFile =

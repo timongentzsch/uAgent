@@ -119,6 +119,109 @@ test("a side chat opened from anywhere is shown as one, its tab in front", async
   await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
 });
 
+// Says "Release the summary" in a conversation of its own, which lets the
+// probe write a held side chat's summary.
+const releaseSummary = async (command, host) => {
+  const { session } = await command("create", { cwd: host.project });
+  const { session: active } = await command("activate", {
+    session_id: session.id,
+  });
+  await selectProbeModel(command, active);
+  await command("submit", {
+    session_id: active.id,
+    generation: active.generation,
+    text: "Release the summary",
+  });
+};
+
+test("Merge sums up in view, then the conversation gets one row and answers", async ({
+  page,
+  session,
+  command,
+  host,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const transcript = page.locator(".transcript").first();
+  const title = await page.locator(".conversation-head h1").textContent();
+  await ask(page, "Held summary probe");
+  const { side, tabs } = parts(page);
+  await expect(side).toContainText("Native worker");
+  await side.getByRole("button", { name: "Merge", exact: true }).click();
+  // Summing up: the tab stays, working, and both sides say so.
+  const summing = side.getByRole("button", { name: "Summing up…" });
+  await expect(summing).toBeDisabled();
+  await expect(tabs.first().locator(".status-led.running")).toHaveCount(1);
+  await expect(side).toContainText("Summing up for");
+  const pending = transcript.locator('[data-message-id^="summing-"]');
+  await expect(pending).toContainText("is summing up");
+  await roomy(page);
+  // Hidden, it still says so in the conversation.
+  await side.getByRole("button", { name: "Hide side chat" }).click();
+  await expect(side).toHaveCount(0);
+  await expect(pending).toHaveCount(1);
+  await releaseSummary(command, host);
+  // One row, folded like a step, with the summary; then the answer.
+  const row = transcript.locator(".merged-row");
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Merged side chat · Held summary probe");
+  await expect(row).toContainText("SIDE-SUMMARY: the table has two columns.");
+  await expect(pending).toHaveCount(0);
+  await expect(transcript).toContainText("MERGE-HEARD");
+  await row.getByRole("button", { name: /Merged side chat/ }).click();
+  await expect(row).not.toContainText("SIDE-SUMMARY");
+  const { activity, rows } = parts(page);
+  await activity.click();
+  await expect(rows).toHaveText([/Held summary probe\s*Ready · merged/]);
+  await page.keyboard.press("Escape");
+  // The conversation's title is its own, never the report's.
+  await expect(page.locator(".conversation-head h1")).toHaveText(title);
+  await expect(page.locator(".conversation-head h1")).not.toContainText(
+    "merged",
+  );
+  // Show side chat brings the tab back: summed up, and saying when.
+  await row.getByRole("button", { name: "Show side chat" }).click();
+  await expect(tabs).toHaveText(["Held summary probe"]);
+  await expect(side).toContainText("Summed up for");
+  await expect(side).toContainText("SIDE-SUMMARY");
+  await expect(side).not.toContainText("The person merges");
+  await expect(side.locator(".merged-at")).toContainText("Merged");
+  await expect(side.getByRole("button", { name: "Merge" })).toHaveCount(0);
+  await roomy(page);
+  // A further answer offers Merge again.
+  const follow = side.getByLabel("Follow up on side chat");
+  await follow.fill("Anything else?");
+  await follow.press("Enter");
+  await expect(
+    side.getByRole("button", { name: "Merge", exact: true }),
+  ).toBeEnabled();
+  await expect(side.locator(".merged-at")).toHaveCount(0);
+});
+
+test("a merge that is stopped leaves the side chat as it was and says why", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  await ask(page, "Held summary probe");
+  const { side } = parts(page);
+  await expect(side).toContainText("Native worker");
+  await side.getByRole("button", { name: "Merge", exact: true }).click();
+  await expect(side.getByRole("button", { name: "Summing up…" })).toBeVisible();
+  await side.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(side.locator(".merge-error")).toContainText("Not merged");
+  await expect(
+    side.getByRole("button", { name: "Merge", exact: true }),
+  ).toBeEnabled();
+  await expect(page.locator(".transcript").first()).not.toContainText(
+    "is summing up",
+  );
+  await expect(page.locator(".merged-row")).toHaveCount(0);
+});
+
 test.describe("phone", () => {
   test.use({
     isMobile: true,

@@ -76,6 +76,45 @@ export const isBrowsing = (snapshot?: Snapshot) =>
       ),
   );
 
+// A quiet row for each side chat summing itself up for the conversation,
+// until its summary has arrived here.
+function useSumming(sides: Session[], nodes: Node[]) {
+  // The transcript's times are to the second; what it holds may start
+  // after the summary came.
+  const held = Date.parse(nodes.find((node) => node.time)?.time || "");
+  const arrived = (item: Session) => {
+    const since = Math.floor((item.side?.merged?.at ?? 0) / 1000) * 1000;
+    return (
+      held > since ||
+      nodes.some(
+        (node) =>
+          node.agent?.session === item.id &&
+          node.agent.outcome === "merged" &&
+          Date.parse(node.time || "") >= since,
+      )
+    );
+  };
+  const shown = sides.filter(
+    (item) => item.merging || (item.side?.merged && !arrived(item)),
+  );
+  const key = shown.map((item) => `${item.id}\n${item.title}`).join("\n");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the same rows while the same side chats sum up
+  return useMemo(
+    (): Node[] =>
+      shown.map((item) => ({
+        id: `summing-${item.id}`,
+        parent: null,
+        kind: "work",
+        state: "running",
+        headline: {
+          verb: "Side chat",
+          target: `“${item.title || "Side chat"}” is summing up`,
+        },
+      })),
+    [key],
+  );
+}
+
 // The one surface that reads the selected conversation's snapshot. It stays
 // mounted on the other pages, so the transcript history keeps its place.
 export default function ChatPage({
@@ -154,12 +193,17 @@ export default function ChatPage({
   );
   // A side chat's page starts where it was asked, as its tab does.
   const request = session?.side?.request;
+  const summing = useSumming(side.list, allNodes);
   const nodes = useMemo(() => {
     const own = queued.length
       ? allNodes.filter((node) => !queuedGuidance(node))
       : allNodes;
-    return request ? sideNodes(own, request, view?.more) : own;
-  }, [allNodes, queued, request, view?.more]);
+    return request
+      ? sideNodes(own, request, view?.more, session?.merging)
+      : summing.length
+        ? [...own, ...summing]
+        : own;
+  }, [allNodes, queued, request, view?.more, session?.merging, summing]);
   // The hook owns scroll restore per session: no pin-on-select here.
   const {
     scroller: transcript,
@@ -233,17 +277,28 @@ export default function ChatPage({
   // have a column, and the page where not.
   const latest = useLatest({ side, sideColumn, quote });
   const { list: sideList, starting } = side;
+  const showSide = useCallback(
+    (id: string) => {
+      const { side, sideColumn } = latest.current;
+      if (sideColumn) side.show(id);
+      else void choose(id);
+    },
+    [choose, latest],
+  );
   const sideRows = useMemo(
+    () => ({ list: sideList, starting, open: showSide }),
+    [sideList, starting, showSide],
+  );
+  // A message that opens a side chat shows it as a row of the list does.
+  const messageActions = useMemo(
     () => ({
-      list: sideList,
-      starting,
-      open: (id: string) => {
-        const { side, sideColumn } = latest.current;
-        if (sideColumn) side.show(id);
-        else void choose(id);
-      },
+      ...actions,
+      open: (id: string) =>
+        latest.current.side.list.some((item) => item.id === id)
+          ? showSide(id)
+          : actions.open?.(id),
     }),
-    [sideList, starting, choose, latest],
+    [actions, showSide, latest],
   );
   // The composer keeps its place above the input for a selection's actions,
   // so Jump to latest stays clear of them.
@@ -376,7 +431,7 @@ export default function ChatPage({
       <LiveActivities.Provider
         value={snapshot?.state?.activities || NO_ACTIVITIES}
       >
-        <MessageActions.Provider value={actions}>
+        <MessageActions.Provider value={messageActions}>
           <Chat
             key={selected}
             attachScroller={attachScroller}

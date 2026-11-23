@@ -191,15 +191,10 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
   }
   // And whose side chat it is, or was until it became a conversation of
   // its own.
-  if (const json side =
-          JsonValue(JsonValue(record.state.display, "facts", json::object()),
-                    "side-origin", json::object());
-      !JsonValue(side, "parent", "").empty()) {
-    header["side"] = json::object();
-    for (const char* key :
-         {"parent", "request", "asked", "merged", "detached"}) {
-      if (side.contains(key)) header["side"][key] = side[key];
-    }
+  if (json side =
+          SideOf(JsonValue(record.state.display, "facts", json::object()));
+      !side.is_null()) {
+    header["side"] = std::move(side);
   }
   // The header is built from a typed struct; only the state can be incomplete.
   if (!ValidState(record.state, conversation)) {
@@ -517,6 +512,16 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
               return a.mtime == b.mtime ? a.path < b.path : a.mtime > b.mtime;
             });
   return out;
+}
+
+json SideOf(const json& facts) {
+  const json origin = JsonValue(facts, "side-origin", json::object());
+  if (JsonValue(origin, "parent", "").empty()) return nullptr;
+  json side = json::object();
+  for (const char* key : {"parent", "request", "asked", "merged", "detached"}) {
+    if (origin.contains(key)) side[key] = origin[key];
+  }
+  return side;
 }
 
 bool ValidSessionTitle(const std::string& title) {

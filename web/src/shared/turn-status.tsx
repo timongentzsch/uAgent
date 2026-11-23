@@ -25,6 +25,7 @@ import {
   Button,
   IconButton,
   DataText,
+  Time,
   updateChecked,
 } from "./ui.tsx";
 import { SheetButton } from "./sheet.tsx";
@@ -364,6 +365,12 @@ function AgentRow({
               : working
                 ? ["Working", stepOf(agent)].filter(Boolean).join(" · ")
                 : "Ready"}
+            {agent.side?.merged && (
+              <>
+                {" · merged "}
+                <Time value={agent.side.merged.at} />
+              </>
+            )}
           </small>
         </span>
       </Button>

@@ -478,6 +478,12 @@ std::string Conversation::LastText(MessageKind kind) const {
 std::string Conversation::FirstUserText() const {
   for (size_t index = 0; index < messages_.size(); ++index) {
     if (kinds_[index] != MessageKind::kUser) continue;
+    // Mail, a report or finished work is never the person's first words.
+    if (index < display_ids_.size()) {
+      const auto facts =
+          display_facts_.find("m-" + std::to_string(display_ids_[index]));
+      if (facts != display_facts_.end() && facts->contains("origin")) continue;
+    }
     const json& message = messages_[index];
     if (JsonValue(message, "role", "") == "user" &&
         message.contains("content") && message["content"].is_string()) {

@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import { ArtifactCard } from "./artifact-card.tsx";
 import "../../shared/attachments.css";
 import "./message.css";
@@ -20,7 +21,7 @@ import { devicePrefs } from "../../shared/device-prefs.ts";
 import { useStored } from "../../shared/storage.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { MessageActions } from "./message-actions.ts";
-import { X } from "lucide-preact";
+import { ChevronRight, X } from "lucide-preact";
 import { Button, IconButton, Notice, Time } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
@@ -54,6 +55,55 @@ function MentionFile({
     <a class="chip file-chip mention-chip" href={href} download={file.name}>
       @{file.name}
     </a>
+  );
+}
+
+// A merged side chat's summary in its conversation: a row that folds as a
+// step does, with the way to the side chat and when it came.
+function MergedRow({
+  node,
+  title,
+  show,
+  children,
+}: {
+  node: Node;
+  title: string;
+  show?: () => void;
+  children: ComponentChildren;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <article
+      class="node merged-row"
+      data-message-id={node.id}
+      data-sequence={node.sequence}
+      aria-label={`Merged side chat ${title}`}
+    >
+      <div class="merged-head">
+        <Button
+          variant="quiet"
+          class="node-row"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          <ChevronRight class="row-chevron" aria-hidden="true" />
+          <span class="node-headline">Merged side chat · {title}</span>
+          <small class="node-word">
+            <Time value={node.time} />
+          </small>
+        </Button>
+        {show && (
+          <Button variant="quiet" size="compact" onClick={show}>
+            Show side chat
+          </Button>
+        )}
+      </div>
+      {open && (
+        <div class="node-open">
+          <div class="node-kids">{children}</div>
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -162,8 +212,6 @@ function Message({
     node.time,
   );
   const agent = node.agent;
-  // A side chat the person merged reports as an agent does.
-  const merged = agent?.outcome === "merged";
   const words =
     text &&
     splitMentionTokens(text).map((part, index) =>
@@ -188,6 +236,18 @@ function Message({
         />
       ),
     );
+  // A side chat the person merged: one row that folds like a step, its
+  // summary under it.
+  if (agent?.outcome === "merged")
+    return (
+      <MergedRow
+        node={node}
+        title={agent.title}
+        show={open && online ? () => open(agent.session) : undefined}
+      >
+        {words}
+      </MergedRow>
+    );
   return (
     <article
       data-message-id={node.id}
@@ -209,12 +269,8 @@ function Message({
             {agent && (
               <div class="message-event">
                 <span>
-                  {merged
-                    ? `Side chat “${agent.title}” merged`
-                    : `Agent “${agent.title}” finished`}
-                  {!merged &&
-                    agent.outcome !== "completed" &&
-                    ` (${agent.outcome})`}
+                  {`Agent “${agent.title}” finished`}
+                  {agent.outcome !== "completed" && ` (${agent.outcome})`}
                 </span>
                 {open && (
                   <Button
@@ -223,7 +279,7 @@ function Message({
                     disabled={!online}
                     onClick={() => open(agent.session)}
                   >
-                    {merged ? "Open side chat" : "Open agent"}
+                    Open agent
                   </Button>
                 )}
               </div>

@@ -157,11 +157,20 @@ test("on a phone a side chat is a page of its own, listed in its conversation", 
   await expect(transcript).toContainText("SIDE-FOLLOWUP-COMPLETE");
   // Its page starts where it was asked.
   await expect(transcript).not.toContainText("Verified response");
-  // Merged, its conversation answers and the side chat stays.
+  // Merged, the page stays, saying when; the conversation answers, and
+  // its title is its own.
   await expect(merge).toBeEnabled();
   await merge.click();
+  await expect(head).toContainText("Merged");
+  await expect(transcript).toContainText("Summed up for");
+  await expect(transcript).not.toContainText("The person merges");
+  await head.getByRole("button", { name: /^‹/ }).click();
   await expect(page).toHaveURL(here);
   await expect(transcript).toContainText("MERGE-HEARD");
+  await expect(transcript.locator(".merged-row")).toContainText(
+    "Merged side chat · Side tool probe",
+  );
+  await expect(head.locator("h1")).not.toContainText("merged");
   await expect(activity).toContainText("2 side chats");
   // Neither is in the list of conversations.
   await page.getByRole("button", { name: "Open conversations" }).click();

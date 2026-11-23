@@ -96,8 +96,8 @@ std::string ProcessIdentity(pid_t pid);
 void PreferOomKill(int above);
 
 // The memory this process and what it starts may use, in bytes: the smallest
-// cgroup v2 memory.max on its way to the root, else the machine's memory.
-// 0 where unknown (off Linux).
+// of the machine's memory and each cgroup v2 memory.max on its way to the
+// root, since a limit may exceed the machine. 0 where unknown (off Linux).
 size_t MemoryLimitBytes();
 
 }  // namespace uagent

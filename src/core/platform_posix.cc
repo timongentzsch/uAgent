@@ -258,6 +258,13 @@ size_t MemoryLimitBytes() {
     return text;
   };
   size_t limit = 0;
+  std::ifstream meminfo("/proc/meminfo");
+  std::string key;
+  size_t kib = 0;
+  while (meminfo >> key >> kib) {
+    if (key == "MemTotal:") limit = kib * 1024;
+    meminfo.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+  }
   // "0::/path": this process's cgroup, whose limits hold on every level.
   const std::string own = read("/proc/self/cgroup");
   if (own.starts_with("0::/")) {
@@ -273,16 +280,10 @@ size_t MemoryLimitBytes() {
       cgroup = cgroup.parent_path();
     }
   }
-  if (limit) return limit;
-  std::ifstream meminfo("/proc/meminfo");
-  std::string key;
-  size_t kib = 0;
-  while (meminfo >> key >> kib) {
-    if (key == "MemTotal:") return kib * 1024;
-    meminfo.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-  }
-#endif
+  return limit;
+#else
   return 0;
+#endif
 }
 
 bool ProcMountShowsEveryProcess(std::string_view mountinfo) {

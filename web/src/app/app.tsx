@@ -27,7 +27,7 @@ import { ConversationContext, HostContext } from "../state/host-context.ts";
 import { Modal, ErrorBoundary, Deferred, Spinner } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
-import { settled, useDismiss } from "../shared/dismiss.ts";
+import { closeTopLayer, settled, useDismiss } from "../shared/dismiss.ts";
 import { slide } from "../shared/motion.ts";
 import { useEdgeSwipe } from "../shared/swipe.ts";
 import Sidebar, {
@@ -191,7 +191,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const compact = useCompact(shown);
   useEffect(() => setDrawer(false), [compact]);
   const openDrawer = useCallback(() => setDrawer(true), []);
-  useEdgeSwipe(compact, openDrawer);
+  useEdgeSwipe(compact, () => closeTopLayer() || openDrawer());
   const filesSheet = useNarrowColumn(shown) || compact;
   const roomy = useRoomyColumn(shown);
   const side = useSideConversations(host);
@@ -764,6 +764,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       <Modal
                         title="Conversations"
                         className="sidebar drawer"
+                        edge={false}
                         close={() => setDrawer(false)}
                         actions={
                           <ListActions

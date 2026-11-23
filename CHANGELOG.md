@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changes
+
+- **A swipe from the left edge goes back in the app.** On a phone it closes what is open, Settings (a pane first), a sheet, a page of the list, with the app's own motion and without Safari's back animation; with nothing open it opens the conversations drawer as before. A drawer already open keeps its place.
+
 ### Fixes
 
 - **An MCP server that has stopped no longer has its tools offered.** Its tools leave what the model is offered, and the context view's MCP row, at the next turn; before, the model kept being offered them and every call failed until the server was restarted.

@@ -680,6 +680,7 @@ export function Modal({
   actions,
   header = true,
   swipeable = true,
+  edge = true,
   hidden = false,
 }: {
   title: string;
@@ -700,6 +701,8 @@ export function Modal({
   // False for a sheet whose content takes the touches itself (terminal,
   // browser); otherwise a sheet on a phone is pulled down to close.
   swipeable?: boolean;
+  // False for the drawer, which came in from the edge a swipe starts at.
+  edge?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const phone = usePhone();
@@ -731,7 +734,7 @@ export function Modal({
     // A parent that replaced this dialog meanwhile owns its state now.
     void animateOut(ref.current).then(() => mounted.current && close());
   };
-  useDismiss(!hidden, requestClose);
+  useDismiss(!hidden, requestClose, edge);
   useSheetSwipe(ref, requestClose, layout === "sheet" && swipeable && phone);
   useLayoutEffect(() => {
     const dialog = ref.current;

@@ -98,10 +98,12 @@ export function useSheetSwipe(
   }, [ref, enabled, latest]);
 }
 
-// A swipe from the left edge opens the conversations drawer. Text that scrolls
-// sideways, the terminal and anything inside a dialog keep their touches.
-export function useEdgeSwipe(enabled: boolean, open: () => void) {
-  const latest = useLatest(open);
+// A swipe from the left edge is the app's own back: `back` closes what is
+// open, or opens the conversations drawer. Text that scrolls sideways, what
+// takes its own touches (the terminal, the remote screen, a slider) and a
+// field keep theirs.
+export function useEdgeSwipe(enabled: boolean, back: () => void) {
+  const latest = useLatest(back);
   useEffect(() => {
     if (!enabled) return;
     let from: { x: number; y: number } | null = null;
@@ -112,16 +114,18 @@ export function useEdgeSwipe(enabled: boolean, open: () => void) {
       if (
         event.touches.length !== 1 ||
         touch.clientX > viewportBounds(true).left + edgeSwipeStartPx ||
-        document.querySelector("dialog[open]") ||
-        target.closest(".terminal-view")
+        target.closest('.terminal-view, input, textarea, [role="slider"]')
       )
         return;
-      for (let at: Element | null = target; at; at = at.parentElement)
+      for (let at: Element | null = target; at; at = at.parentElement) {
+        const style = getComputedStyle(at);
         if (
-          at.scrollWidth > at.clientWidth &&
-          /auto|scroll/.test(getComputedStyle(at).overflowX)
+          style.touchAction === "none" ||
+          (at.scrollWidth > at.clientWidth &&
+            /auto|scroll/.test(style.overflowX))
         )
           return;
+      }
       from = { x: touch.clientX, y: touch.clientY };
       // Safari starts its back swipe from here unless the touch is cancelled;
       // a control's touch has to stay a tap.

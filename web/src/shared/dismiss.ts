@@ -7,6 +7,8 @@ import { useLatest } from "./use-latest.ts";
 interface Layer {
   depth: number;
   close: () => void;
+  // False for a layer a swipe from the left edge does not close.
+  edge: boolean;
   // Set when history already left this layer's entry.
   popped: boolean;
 }
@@ -92,8 +94,17 @@ function sync() {
   });
 }
 
+// The swipe from the left edge is the app's own back: it takes the step the
+// browser's Back takes, so the topmost layer closes as it does for Back.
+// False when no layer is open; a layer that keeps its edge only holds it.
+export function closeTopLayer() {
+  const top = stack[stack.length - 1];
+  if (top?.edge && !pending) history.back();
+  return !!top;
+}
+
 // While `active`, the layer sits on the stack and back calls `close`.
-export function useDismiss(active: boolean, close: () => void) {
+export function useDismiss(active: boolean, close: () => void, edge = true) {
   const latest = useLatest(close);
   // Layout effect: the entry exists as soon as the layer is on screen, so a
   // quick back can never skip past it.
@@ -108,6 +119,7 @@ export function useDismiss(active: boolean, close: () => void) {
     const layer: Layer = {
       depth: reuse ? current : top,
       close: () => latest.current(),
+      edge,
       popped: false,
     };
     stack.push(layer);

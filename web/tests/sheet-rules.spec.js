@@ -195,6 +195,37 @@ test("a column without rules says so", async ({ page: app, session, host }) => {
   await expect(dialog).toBeHidden();
 });
 
+// The page tells the app the picked cell once a frame; a menu's request
+// sent before that frame must still find the cell it was asked on.
+test("the dialog opens on the cell just picked, before the page's next frame", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const { stage, cell } = await openSheet(app, session, host.project, PLAN);
+  const frames = stage.locator("body");
+  await frames.evaluate(() => {
+    const real = window.requestAnimationFrame;
+    const held = [];
+    window.requestAnimationFrame = (step) => held.push(step);
+    window.releaseFrames = () => {
+      window.requestAnimationFrame = real;
+      for (const step of held.splice(0)) real(step);
+    };
+  });
+  await cell("Tasks", "A2").click({ button: "right" });
+  await stage
+    .getByRole("menuitem", { name: "Conditional formatting…" })
+    .click();
+  await frames.evaluate(() => window.releaseFrames());
+  const dialog = app.getByRole("dialog", {
+    name: "Conditional formatting: column A",
+  });
+  await expect(dialog.getByRole("status")).toHaveText(
+    "No rule formats this column.",
+  );
+});
+
 test("a file that is only read offers no rules to set", async ({
   page: app,
   session,

@@ -132,6 +132,46 @@ TEST_CASE(TestACommandSentBeforeClosingIsTaken) {
   CHECK(WaitUntil([&] { return taken.load(); }, BudgetMs(5000)));
 }
 
+// What is published while the server is stopping reaches its clients: a
+// runtime that cannot start says why to a terminal that has just connected.
+// The command handler runs after the server has taken what was published,
+// so it publishes there and stops the server before handing back.
+TEST_CASE(TestAFramePublishedAsTheServerStopsIsDelivered) {
+  TestWorkspace test("publish-and-stop");
+  const std::string path = (test.workspace / "s.json").string();
+  CreatePrivateDirectories(
+      std::filesystem::path(session::SocketPath(path)).parent_path());
+  int delivered = 0;
+  constexpr int kRounds = 50;
+  for (int round = 0; round < kRounds; ++round) {
+    auto server = std::make_unique<session::Server>();
+    std::atomic<bool> stopping{false};
+    std::thread stopper;
+    CHECK(server->Start(path, RandomToken(16), [&](const json&) {
+      server->Publish(
+          {{"v", session::kProtocol}, {"kind", "error"}, {"error", "why"}});
+      stopper = std::thread([&] {
+        stopping = true;
+        server.reset();
+      });
+      while (!stopping) std::this_thread::yield();
+      return true;
+    }) == 0);
+    session::Connection connection = session::Connect(path);
+    REQUIRE(connection.socket.Valid());
+    CHECK(
+        session::WriteFrame(connection.socket.Get(),
+                            {{"v", session::kProtocol}, {"kind", "refresh"}}));
+    session::ReadFrames(connection.socket.Get(), -1, session::kFrameBytes,
+                        [&](const json& frame) {
+                          delivered += JsonValue(frame, "kind", "") == "error";
+                          return true;
+                        });
+    stopper.join();
+  }
+  CHECK(delivered == kRounds);
+}
+
 TEST_CASE(TestSessionFramePartitions) {
   const json first = {{"v", session::kProtocol}, {"text", "a\nbλ"}};
   const json second = {{"v", session::kProtocol}, {"sequence", 2}};

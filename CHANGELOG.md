@@ -10,6 +10,7 @@
 
 ### Fixes
 
+- **A conversation that cannot start says why in the terminal.** When the terminal had just connected as the runtime gave up (no provider set up, for one), the reason could be lost and only "Session connection closed" showed; the reason now always reaches it.
 - **An MCP server that has stopped no longer has its tools offered.** Its tools leave what the model is offered, and the context view's MCP row, at the next turn; before, the model kept being offered them and every call failed until the server was restarted.
 
 ## v1.11.0 - 2026-11-22

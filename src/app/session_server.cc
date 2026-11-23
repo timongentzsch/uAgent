@@ -265,7 +265,10 @@ struct Server::State {
   void Run() {
     auto drain_deadline = std::chrono::steady_clock::time_point::max();
     for (;;) {
-      if (stopped &&
+      // Read once, before the frames are taken: what was published before
+      // the stop is among them, so a drain that ends delivers all of it.
+      const bool stopping = stopped;
+      if (stopping &&
           drain_deadline == std::chrono::steady_clock::time_point::max()) {
         drain_deadline = std::chrono::steady_clock::now() +
                          std::chrono::milliseconds(kServerDrainMs);
@@ -280,7 +283,7 @@ struct Server::State {
              0});
       }
       if (poll(watches.data(), static_cast<nfds_t>(watches.size()),
-               stopped ? 10 : -1) < 0 &&
+               stopping ? 10 : -1) < 0 &&
           errno != EINTR) {
         break;
       }
@@ -375,14 +378,14 @@ struct Server::State {
         }
       }
       std::erase_if(clients, [](const auto& client) { return !client.fd; });
-      if (stopped &&
+      if (stopping &&
           (std::chrono::steady_clock::now() >= drain_deadline ||
            std::all_of(clients.begin(), clients.end(), [](const auto& client) {
              return client.output.empty();
            }))) {
         break;
       }
-      if (!stopped && (watches[0].revents & POLLIN)) {
+      if (!stopping && (watches[0].revents & POLLIN)) {
         Fd fd(accept(listener.Get(), nullptr, nullptr));
         if (fd && clients.size() < kMaxClients) {
           fcntl(fd.Get(), F_SETFL, O_NONBLOCK);

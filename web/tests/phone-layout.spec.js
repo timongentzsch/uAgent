@@ -25,7 +25,7 @@ test.describe("message layout", () => {
         {
           role: "user",
           content:
-            "how to serve those models whats the best setup? what are they optimized for",
+            "how to serve those models whats the best setup? what are they optimized for, and is it worth comparing them with a similarly sized one and reading the scaling off the difference in depth, or does that say too little",
         },
         {
           role: "assistant",
@@ -83,19 +83,36 @@ test.describe("message layout", () => {
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 1440, height: 900 });
+    // Wide, the time stands beside the text's last line, not its first.
     await expect
       .poll(() =>
         message.evaluate((node) => {
-          const body = node
-            .querySelector(".message-text")
-            .getBoundingClientRect();
+          const text = node.querySelector(".message-text");
+          const body = text.getBoundingClientRect();
           const metadata = node
             .querySelector(".message-meta")
             .getBoundingClientRect();
-          return Math.abs(body.y - metadata.y) < 1 && metadata.x >= body.right;
+          // The boxes of an element's lines of text.
+          const lines = (element) => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            return [...range.getClientRects()];
+          };
+          const middle = (box) => box.y + box.height / 2;
+          const last = lines(text).at(-1);
+          return {
+            wraps: last.y > body.y + last.height,
+            beside: metadata.x >= body.right,
+            // How far the time's middle is from the last line's.
+            off: Math.round(
+              Math.abs(
+                middle(lines(node.querySelector("time")).at(-1)) - middle(last),
+              ),
+            ),
+          };
         }),
       )
-      .toBe(true);
+      .toEqual({ wraps: true, beside: true, off: 0 });
   });
 });
 

@@ -298,6 +298,14 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
                                          : "Google Chrome is not installed";
     return false;
   }
+  if (const size_t memory = MemoryLimitBytes();
+      memory && memory < kBrowserMemoryBytes) {
+    error = "The agent's browser needs about " +
+            std::to_string(kBrowserMemoryBytes / MiB(1)) +
+            " MB of memory; this machine allows " +
+            std::to_string(memory / MiB(1)) + " MB";
+    return false;
+  }
   std::string profile = ProfilePath();
   if (!EnsureDataDirectory(profile)) {
     error = "cannot create persistent Chrome profile";

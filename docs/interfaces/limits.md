@@ -129,6 +129,7 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kSecondsPerHour` | `3600` | The web host rescans the session catalogue this often and keeps a few histories parsed; a stopping runtime gives its clients kServerDrainMs. |
 | `kWorkerOomScore` | `300` | How far above the web host's OOM score (oom_score_adj, -1000 to 1000) its children start: out of memory a conversation's runtime goes before the host, and the browser, the largest and the cheapest to lose, before both. |
 | `kBrowserOomScore` | `600` | How far above the web host's OOM score (oom_score_adj, -1000 to 1000) its children start: out of memory a conversation's runtime goes before the host, and the browser, the largest and the cheapest to lose, before both. |
+| `kBrowserMemoryBytes` | `600 MiB` | The memory the agent's browser needs (MemoryLimitBytes): on one core with three real-sized pages, all open at 640 MiB and one is lost at 512. |
 | `kAttachmentSniffBytes` | `64 KiB` | Heads read: to tell a file's kind (an SVG prolog may run this long), of an attached text file, and of the newest output an `until` marker is sought in. |
 | `kAttachedTextBytes` | `64 KiB` | Heads read: to tell a file's kind (an SVG prolog may run this long), of an attached text file, and of the newest output an `until` marker is sought in. |
 | `kUntilWindowBytes` | `64 KiB` | Heads read: to tell a file's kind (an SVG prolog may run this long), of an attached text file, and of the newest output an `until` marker is sought in. |

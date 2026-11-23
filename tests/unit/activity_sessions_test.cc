@@ -1712,4 +1712,14 @@ TEST_CASE(TestSessionMail) {
              .empty());
 }
 
+// What this process may use: known on Linux, from its cgroup or the
+// machine; unknown elsewhere.
+TEST_CASE(TestMemoryLimit) {
+#ifdef __linux__
+  CHECK(MemoryLimitBytes() > MiB(16));
+#else
+  CHECK(MemoryLimitBytes() == 0);
+#endif
+}
+
 }  // namespace uagent

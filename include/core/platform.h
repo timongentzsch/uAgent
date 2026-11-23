@@ -92,8 +92,8 @@ bool ProcessGroupHasLiveMember(pid_t group);
 std::string ProcessIdentity(pid_t pid);
 
 // Makes the kernel's OOM killer take this process and what it starts before
-// anything with a lower score (Linux; a no-op elsewhere). Only raises it.
-void PreferOomKill(int score);
+// the process that started it: its score `above` that one's (Linux only).
+void PreferOomKill(int above);
 
 }  // namespace uagent
 

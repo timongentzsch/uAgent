@@ -226,14 +226,21 @@ std::optional<ProcStat> ParseProcStat(std::string_view record) {
   return ProcStat{state[0], group};
 }
 
-void PreferOomKill(int score) {
+void PreferOomKill(int above) {
 #ifdef __linux__
+  // Above what it was started with: a service manager or CI may already
+  // have raised the host's, and a process may raise its own unprivileged.
+  int score = 0;
+  if (FILE* file = fopen("/proc/self/oom_score_adj", "r")) {
+    if (fscanf(file, "%d", &score) != 1) score = 0;
+    fclose(file);
+  }
   if (FILE* file = fopen("/proc/self/oom_score_adj", "w")) {
-    fprintf(file, "%d", score);
+    fprintf(file, "%d", std::min(score + above, 1000));
     fclose(file);
   }
 #else
-  (void)score;
+  (void)above;
 #endif
 }
 

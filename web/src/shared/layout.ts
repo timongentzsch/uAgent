@@ -1,6 +1,6 @@
 import type { RefObject } from "preact";
 import { useEffect, useLayoutEffect, useState } from "preact/hooks";
-import { defaultZoom } from "./limits.ts";
+import { defaultZoom, longPressMs, longPressSlopPx } from "./limits.ts";
 // The interface zoom in steps, as a browser offers it: choosing one rescales
 // once, where a slider rescaled the page under the finger dragging it.
 export const zoomSteps = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
@@ -186,17 +186,91 @@ function revealFocusedField() {
     scroller.scrollTop -= view.top - field.top + pad;
 }
 
+// A field a tap puts a text caret in, which brings up the on-screen
+// keyboard. An allow-list: file, colour, date and time inputs open a chooser
+// or a picker, and any type added later stays the browser's.
+const TYPED_FIELD = [
+  "textarea",
+  "input:not([type])",
+  ...["text", "search", "url", "tel", "email", "password", "number"].map(
+    (type) => `input[type="${type}"]`,
+  ),
+  '[contenteditable="true"]',
+  '[contenteditable=""]',
+  '[contenteditable="plaintext-only"]',
+].join(", ");
+
+// Where the touch began, so only a tap (not a drag or a long press, which
+// stay the browser's) is taken over.
+let touchStart: { x: number; y: number; at: number } | undefined;
+function noteTouch(event: TouchEvent) {
+  const touch = event.touches?.[0];
+  touchStart =
+    event.touches?.length === 1 && touch
+      ? { x: touch.clientX, y: touch.clientY, at: event.timeStamp }
+      : undefined;
+}
+
+// A tap into a field focuses it here, without scrolling. Focused by the tap
+// itself, iOS pans the whole page to keep the field above the rising keyboard,
+// fixed frame and all, until the app follows the smaller viewport; focused
+// with preventScroll, it reveals nothing (WebKit honours it since 15.5) and
+// the app's own resize brings the field up. Inside the touch, the keyboard
+// still opens. A field already focused keeps the tap, for the caret.
+function focusTappedField(event: TouchEvent) {
+  // The field itself, or the one its label focuses; a control inside the
+  // label (a button beside the field) keeps its own tap.
+  const target = event.target as Element | null;
+  const label = target?.closest?.("label");
+  const control = target?.closest?.(
+    "a[href], button, input, select, textarea, summary, [tabindex], [contenteditable]",
+  );
+  const field =
+    target?.closest?.(TYPED_FIELD) ??
+    (control && label?.contains(control)
+      ? null
+      : label?.control?.closest(TYPED_FIELD));
+  const touch = event.changedTouches?.[0];
+  if (
+    !touchStart ||
+    !touch ||
+    Math.hypot(touch.clientX - touchStart.x, touch.clientY - touchStart.y) >
+      longPressSlopPx ||
+    event.timeStamp - touchStart.at > longPressMs ||
+    !(field instanceof HTMLElement) ||
+    field === document.activeElement ||
+    (field as HTMLInputElement).disabled ||
+    (field as HTMLInputElement).readOnly
+  )
+    return;
+  event.preventDefault();
+  field.focus({ preventScroll: true });
+  // The tap placed no caret: it goes after what is typed.
+  if (field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement)
+    try {
+      field.setSelectionRange(field.value.length, field.value.length);
+    } catch {
+      /* Not a type with a selection. */
+    }
+}
+
 export function trackViewport() {
   const standalone = matchMedia("(display-mode: standalone)");
   // The visual height reported while the keyboard was up.
   let keyboardHeight = 0;
+  document.addEventListener("touchstart", noteTouch, {
+    capture: true,
+    passive: true,
+  });
+  document.addEventListener("touchend", focusTappedField, {
+    capture: true,
+    passive: false,
+  });
   const stop = observeViewport(() => {
     const root = document.documentElement;
     const viewport = globalThis.visualViewport;
     const bounds = readViewportBounds();
-    const editing = document.activeElement?.matches(
-      'textarea, input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), [contenteditable="true"]',
-    );
+    const editing = document.activeElement?.matches(TYPED_FIELD);
     // Only a field being typed into holds the keyboard up. iOS can keep
     // reporting the smaller visual viewport after the keyboard closes, until
     // the page scrolls, so a smaller viewport alone is not a keyboard.
@@ -237,6 +311,10 @@ export function trackViewport() {
   });
   return () => {
     stop();
+    document.removeEventListener("touchstart", noteTouch, { capture: true });
+    document.removeEventListener("touchend", focusTappedField, {
+      capture: true,
+    });
     currentViewport = undefined;
   };
 }

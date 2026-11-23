@@ -694,33 +694,47 @@
     min-width: 0;
     font-weight: var(--weight-regular);
   }
+  /* A state as a square, told apart by its fill: outlined (idle), solid
+     (connected, unread), or at work the status line band's texture,
+     standing still; failed is the solid square turned on its point. */
   .status-led {
     display: inline-block;
     flex: none;
     width: var(--space-4);
     height: var(--space-4);
-    border-radius: 50%;
     border: var(--stroke) solid currentColor;
     box-sizing: border-box;
     vertical-align: middle;
   }
-  .status-led.active,
-  .status-led.running {
+  .status-led.active {
     background: var(--live);
     border-color: var(--live);
+  }
+  .status-led.running {
+    border: 0;
+    background:
+      repeating-conic-gradient(currentColor 0 25%, transparent 0 50%) 0 0 /
+      var(--space-2) var(--space-2);
   }
   .status-led.unread {
     margin-left: var(--space-4);
     background: currentColor;
   }
-  /* Failure is a square, not only a colour. */
+  /* Failed: a diamond, so it is told apart in one colour too. */
   .status-led.failed {
     background: var(--removed);
     border-color: var(--removed);
-    border-radius: 0;
+    rotate: 45deg;
   }
-  .working,
-  .status-led.running,
+  /* The status line's sign of work (shared/work-band.tsx): its pixels are
+     --space-1, three rows of them. */
+  .work-band {
+    flex: none;
+    width: calc(var(--space-24) + var(--space-4));
+    height: var(--space-3);
+    margin-inline-end: var(--space-2);
+    image-rendering: pixelated;
+  }
   .skeleton > div,
   .text-skeleton,
   .placeholder .text-control {
@@ -809,7 +823,8 @@
   /* The home screen is one scrolling column: a heading, the box a
      conversation starts from, then what to file and what was last worked
      on. Narrow, the box is docked at the bottom, as a conversation's is, and
-     the lists scroll above it. */
+     the heading is centred in the room above it and the lists sit right over
+     it; they give way while the box has the focus or holds text. */
   .home {
     flex: 1;
     min-height: 0;
@@ -845,15 +860,22 @@
       gap: var(--space-6);
       padding-top: var(--pad);
     }
-    .home-head,
-    .home > .tips {
+    .home > .tips,
+    .home:has(.home-start:focus-within) .home-list,
+    .home:has(.home-start textarea:not(:placeholder-shown)) .home-list {
       display: none;
+    }
+    .home-head {
+      flex: 1 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
     .home-start {
       order: 1;
       position: sticky;
       bottom: 0;
-      margin-top: auto;
       padding-top: var(--space-4);
       padding-bottom: max(var(--pad), env(safe-area-inset-bottom, 0px));
       background: var(--bg);

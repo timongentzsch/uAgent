@@ -47,7 +47,7 @@ test("reload mid-stream resumes the answer without freezing", async ({
     "unfinished-looking content retained safely",
     { timeout: 20_000 },
   );
-  await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
+  await expect(page.locator(".composer .work-band")).toHaveCount(0);
   await expect(answer).toHaveCount(1);
   const text = (await answer.textContent()) || "";
   expect(text.split("Stable opening paragraph").length - 1).toBe(1);

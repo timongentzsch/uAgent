@@ -1101,7 +1101,7 @@ export default function Sequence({
               )}
             </Menu>
           </span>
-          {writing && <span class="chip working">Agent writing</span>}
+          {writing && <span class="chip">Agent writing</span>}
           {!board && status}
         </Bar>
         {sheet && (

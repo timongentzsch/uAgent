@@ -10,7 +10,7 @@ import {
 
 test.use({ places: true });
 
-test("on a phone the home screen lists the latest above a docked start box, with long titles cut and room to type", async ({
+test("on a phone the home screen lists the latest three above a docked start box, with long titles cut", async ({
   page,
   host,
   request,
@@ -24,7 +24,7 @@ test("on a phone the home screen lists the latest above a docked start box, with
   await page.setViewportSize({ width: 390, height: 700 });
   await page.goto("/");
   const waiting = page.getByRole("region", { name: "Recent" });
-  await expect(waiting.getByRole("listitem")).toHaveCount(6);
+  await expect(waiting.getByRole("listitem")).toHaveCount(3);
   // Nothing runs off the side, and the field keeps most of the width.
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
@@ -51,28 +51,16 @@ test("on a phone the home screen lists the latest above a docked start box, with
       .first()
       .evaluate((line) => line.scrollWidth > line.clientWidth),
   ).toBe(true);
-  // The start box is docked at the bottom, as wide as the screen allows,
-  // and a list too long for the room above it scrolls clear of it.
+  // The start box is docked at the bottom, as wide as the screen allows.
   await page.setViewportSize({ width: 390, height: 420 });
-  const start = page.locator(".home-start");
   const field = await page.getByLabel("Start a conversation").boundingBox();
   expect(field.width).toBeGreaterThan(300);
   await expect
     .poll(async () => {
-      const docked = await start.boundingBox();
+      const docked = await page.locator(".home-start").boundingBox();
       return docked.y > 210 && docked.y + docked.height <= 420;
     })
     .toBe(true);
-  const last = waiting.getByRole("listitem").last();
-  const under = async () =>
-    (await last.boundingBox()).y +
-    (await last.boundingBox()).height -
-    (await start.boundingBox()).y;
-  expect(await under()).toBeGreaterThan(0);
-  await page.locator(".home").evaluate((home) => {
-    home.scrollTop = home.scrollHeight;
-  });
-  await expect.poll(under).toBeLessThanOrEqual(1);
 });
 
 test("the start box is the composer's own box, and the list leads back to it from a conversation", async ({

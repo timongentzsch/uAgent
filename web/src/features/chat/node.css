@@ -20,14 +20,6 @@
   text-align: start;
   white-space: nowrap;
 }
-/* A step at work: its mark sits in the arrow's box, centred. */
-.node-row > .status-led {
-  width: var(--icon);
-  height: var(--icon);
-  padding: calc((var(--icon) - var(--space-4)) / 2);
-  background-clip: content-box;
-  background-origin: content-box;
-}
 /* A row with nothing to open keeps the chevron's place. */
 div.node-row > .row-chevron {
   visibility: hidden;

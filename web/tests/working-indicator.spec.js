@@ -156,10 +156,10 @@ test("while a turn works, the status line's band is the one thing that moves", a
   const first = await pixels(page);
   await expect.poll(() => pixels(page)).not.toBe(first);
   expect(await workAnimations(page)).toBe(0);
-  // The running step is told apart by a still square, a finished one has none.
-  await expect(
-    page.locator('[data-message-id="w"] > .node-row .status-led.running'),
-  ).toHaveCount(1);
+  // The running step keeps its arrow and carries no mark of its own.
+  const running = page.locator('[data-message-id="w"] > .node-row');
+  await expect(running.locator(".row-chevron")).toHaveCount(1);
+  await expect(running.locator(".status-led")).toHaveCount(0);
 
   // Done: the band goes with the work.
   await page.evaluate(
@@ -259,10 +259,10 @@ test("a list's marks are squares told apart by their fill", async ({
   expect(await workAnimations(page)).toBe(0);
 });
 
-// A step at work shows its still mark where its arrow is; when it finishes
-// the arrow is back and its words have not moved.
+// A step at work looks as it will when it is done: its arrow stays, it
+// carries no mark, and its words do not move when it finishes.
 for (const width of [390, 1280])
-  test(`a finished step's words stay where they were (${width})`, async ({
+  test(`a step keeps its arrow and its place while it works (${width})`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 800 });
@@ -272,13 +272,11 @@ for (const width of [390, 1280])
       row(id)
         .locator(".node-headline")
         .evaluate((node) => node.getBoundingClientRect().left);
-    await expect(row("w").locator(".status-led.running")).toBeVisible();
-    await expect(row("w").locator(".row-chevron")).toHaveCount(0);
-    await expect(row("w")).toHaveAttribute("aria-expanded", "false");
+    await expect(row("w").locator(".row-chevron")).toBeVisible();
+    await expect(row("w").locator(".status-led")).toHaveCount(0);
     await row("w").click();
     await expect(row("w")).toHaveAttribute("aria-expanded", "true");
-    // The running call has no arrow to open, and the same column.
-    await expect(row("c2").locator(".status-led.running")).toBeVisible();
+    await expect(row("c2").locator(".status-led")).toHaveCount(0);
     const before = { group: await words("w"), step: await words("c2") };
     expect(before.step).toBe(await words("c1"));
     await page.evaluate(() => {
@@ -304,9 +302,10 @@ for (const width of [390, 1280])
         },
       });
     });
+    await expect(row("c2").locator(".node-headline")).toContainText(
+      "Read b.ts",
+    );
     await expect(row("w").locator(".row-chevron")).toBeVisible();
-    await expect(row("w").locator(".status-led")).toHaveCount(0);
-    await expect(row("c2").locator(".status-led")).toHaveCount(0);
     expect(await words("w")).toBe(before.group);
     expect(await words("c2")).toBe(before.step);
   });

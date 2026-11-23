@@ -196,6 +196,21 @@ test("a tap on the attach button opens the file chooser", async ({ page }) => {
   await chooser;
 });
 
+test("a tap on a text field's label is taken over like one on the field", async ({
+  page,
+}) => {
+  await open(page);
+  await page.evaluate(() => {
+    const label = document.createElement("label");
+    label.id = "named";
+    label.style.cssText = "position:fixed;top:200px;left:20px;";
+    label.innerHTML = '<span>Name</span> <input type="text" id="name">';
+    document.body.append(label);
+  });
+  expect(await touch(page, "#named span", [4, 4])).toBe(true);
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe("name");
+});
+
 test("a tap on a colour or a time input is not taken over", async ({
   page,
 }) => {

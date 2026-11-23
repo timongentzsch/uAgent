@@ -218,7 +218,11 @@ function noteTouch(event: TouchEvent) {
 // the app's own resize brings the field up. Inside the touch, the keyboard
 // still opens. A field already focused keeps the tap, for the caret.
 function focusTappedField(event: TouchEvent) {
-  const field = (event.target as Element | null)?.closest?.(TYPED_FIELD);
+  // The field itself, or the one its label focuses.
+  const target = event.target as Element | null;
+  const field =
+    target?.closest?.(TYPED_FIELD) ??
+    target?.closest?.("label")?.control?.closest(TYPED_FIELD);
   const touch = event.changedTouches?.[0];
   if (
     !touchStart ||

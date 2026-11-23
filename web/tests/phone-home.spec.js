@@ -1,13 +1,21 @@
 // The home screen on a phone: the question centred over the last three
-// conversations as plain lines, the box docked below; while the box has the
-// focus or holds text, only the question and the box.
+// conversations as plain lines, the box docked below; while the keyboard is
+// up for the box, or the box holds text, only the question and the box.
 import { test, expect, savedConversation, unfiled } from "./fixtures.js";
 import { roomy } from "./roomy.js";
 
 test.use({ isMobile: true, hasTouch: true });
 
-// The keyboard cannot be shown here: it is modelled by the height it leaves
-// the app, 460px.
+// The keyboard cannot be shown here: it is modelled as the browser reports
+// it, a visual viewport 460px high.
+const keyboard = (page, height) =>
+  page.evaluate((height) => {
+    Object.defineProperty(visualViewport, "height", {
+      configurable: true,
+      value: height,
+    });
+    visualViewport.dispatchEvent(new Event("resize"));
+  }, height);
 for (const size of [
   { width: 390, height: 844 },
   { width: 320, height: 568 },
@@ -125,13 +133,14 @@ for (const size of [
       await whole(page, ".home-list li");
       await roomy(page);
       await field.tap();
+      await keyboard(page, 460);
       await expect(lists).toHaveCount(0);
       await expect(head).toBeVisible();
       await roomy(page);
-      expect(await dock(box)).toBeLessThan(40);
+      expect(await dock(box)).toBeLessThan(40 + size.height - 460);
     });
 
-    test("while the box has the focus or holds text the lists are gone, and the box stays where it is", async ({
+    test("only the keyboard or text in the box moves the lists away, and the box stays where it is", async ({
       page,
       host,
       request,
@@ -141,16 +150,22 @@ for (const size of [
       const { head, box, field, lists } = home(page);
       await expect(lists).toHaveCount(1);
       const docked = await dock(box);
+      // A focus that raises no keyboard changes nothing.
       await field.tap();
+      await expect(page.locator("html[data-keyboard]")).toHaveCount(0);
+      await expect(lists).toHaveCount(1);
+      expect(await dock(box)).toBe(docked);
+      // The keyboard up for the box: the question and the box fit above it.
+      await keyboard(page, 460);
+      await expect(page.locator("html[data-keyboard]")).toHaveCount(1);
       await expect(lists).toHaveCount(0);
       await expect(head).toBeVisible();
-      expect(await dock(box)).toBe(docked);
-      // The keyboard leaves the app 460px: the question and the box fit.
-      await page.setViewportSize({ width: size.width, height: 460 });
-      await expect(head).toBeVisible();
       await whole(page, ".home-head");
-      expect(await dock(box)).toBeLessThan(40);
       await roomy(page);
+      // Down again with the focus kept: the lists are back.
+      await keyboard(page, size.height);
+      await expect(lists).toHaveCount(1);
+      expect(await dock(box)).toBe(docked);
       // Text typed, then the focus left: the lists stay away.
       await field.fill("Look into the build");
       await head.tap();
@@ -160,6 +175,25 @@ for (const size of [
       await field.fill("");
       await head.tap();
       await expect(lists).toHaveCount(1);
+    });
+
+    test("Home from the list shows the last ones every time, with no field taking the focus", async ({
+      page,
+      host,
+      request,
+    }) => {
+      await talks(host, request, 3);
+      await page.goto("/");
+      const { field, rows } = home(page);
+      await expect(rows).toHaveCount(3);
+      for (let press = 0; press < 2; press++) {
+        await page.getByRole("button", { name: "Open conversations" }).tap();
+        const drawer = page.getByRole("dialog", { name: "Conversations" });
+        await drawer.getByRole("button", { name: "Home" }).tap();
+        await expect(drawer).toBeHidden();
+        await expect(rows).toHaveCount(3);
+        await expect(field).not.toBeFocused();
+      }
     });
   });
 }

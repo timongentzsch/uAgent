@@ -72,7 +72,8 @@
       "inherits": "debug",
       "cacheVariables": {
         "BUILD_TESTING": "OFF",
-        "UAGENT_BUILD_FUZZERS": "ON"
+        "UAGENT_BUILD_FUZZERS": "ON",
+        "UAGENT_EMBED_WEB": "OFF"
       }
     }
   ],

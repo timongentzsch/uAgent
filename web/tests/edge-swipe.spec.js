@@ -145,7 +145,7 @@ test("the Terminal keeps its screen's touches, and its tab row's", async ({
   await expect(terminal).toBeVisible();
 });
 
-test("a field, a slider, a scrolling line and what takes its own touches keep them", async ({
+test("a slider, a scrolling line and what takes its own touches keep them", async ({
   page,
 }) => {
   const sheet = dialog(page, "Conversation statistics");
@@ -155,7 +155,6 @@ test("a field, a slider, a scrolling line and what takes its own touches keep th
   await expect(sheet).toBeVisible();
   await sheet.evaluate((node) => {
     const keep = {
-      field: '<input aria-label="field">',
       slider: '<div role="slider" tabindex="0">slider</div>',
       line: `<div style="overflow-x: auto; width: 100px"><div style="width: 400px">a long line</div></div>`,
       own: '<div style="touch-action: none">its own touches</div>',
@@ -167,8 +166,39 @@ test("a field, a slider, a scrolling line and what takes its own touches keep th
       node.append(part);
     }
   });
-  for (const name of ["field", "slider", "line", "own"]) {
+  for (const name of ["slider", "line", "own"]) {
     await swipe(page, `#${name} > *`);
     await expect(sheet).toBeVisible();
   }
+});
+
+// The composer's field and the home screen's start box reach to within a few
+// pixels of the edge: a finger there is a tap, and a swipe from it goes back
+// as anywhere else.
+test("a swipe from the composer's field opens the drawer, and a tap in its first pixels focuses it", async ({
+  page,
+}) => {
+  const field = page.locator(".composer textarea");
+  const box = await field.boundingBox();
+  expect(box.x).toBeLessThan(24);
+  await page.touchscreen.tap(box.x + 2, box.y + box.height / 2);
+  await expect(field).toBeFocused();
+  await field.blur();
+  expect(await swipe(page, ".composer textarea")).toBe(false);
+  await expect(drawer(page)).toBeVisible();
+});
+
+test("a swipe from the home screen's start box opens the drawer, and a tap in its first pixels focuses it", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const field = page.getByLabel("Start a conversation");
+  await expect(field).toBeEnabled();
+  const box = await field.boundingBox();
+  expect(box.x).toBeLessThan(24);
+  await page.touchscreen.tap(box.x + 2, box.y + box.height / 2);
+  await expect(field).toBeFocused();
+  await field.blur();
+  expect(await swipe(page, ".start-field textarea")).toBe(false);
+  await expect(drawer(page)).toBeVisible();
 });

@@ -99,9 +99,9 @@ export function useSheetSwipe(
 }
 
 // A swipe from the left edge is the app's own back: `back` closes what is
-// open, or opens the conversations drawer. Text that scrolls sideways, what
-// takes its own touches (the terminal, the remote screen, a slider) and a
-// field keep theirs.
+// open, or opens the conversations drawer. Text that scrolls sideways and what
+// takes its own touches (the terminal, the remote screen, a slider) keep
+// theirs; a touch on a control or a field stays a tap, and is tracked.
 export function useEdgeSwipe(enabled: boolean, back: () => void) {
   const latest = useLatest(back);
   useEffect(() => {
@@ -114,7 +114,7 @@ export function useEdgeSwipe(enabled: boolean, back: () => void) {
       if (
         event.touches.length !== 1 ||
         touch.clientX > viewportBounds(true).left + edgeSwipeStartPx ||
-        target.closest('.terminal-view, input, textarea, [role="slider"]')
+        target.closest('.terminal-view, [role="slider"]')
       )
         return;
       for (let at: Element | null = target; at; at = at.parentElement) {
@@ -131,7 +131,7 @@ export function useEdgeSwipe(enabled: boolean, back: () => void) {
       // a control's touch has to stay a tap.
       if (
         event.cancelable &&
-        !target.closest("a, button, input, label, select")
+        !target.closest("a, button, input, label, select, textarea")
       )
         event.preventDefault();
     };

@@ -14,7 +14,16 @@ const quoted = (text: string) =>
     .map((line) => `> ${line}`)
     .join("\n");
 
-type Picked = { text: string; side?: string; x: number; y: number };
+// `x`, `y`: the end of what is selected; `left`: where it starts; `right`:
+// where its transcript ends.
+type Picked = {
+  text: string;
+  side?: string;
+  x: number;
+  y: number;
+  left: number;
+  right: number;
+};
 
 // What is selected inside one transcript: the conversation's or a side
 // chat's, which is then named.
@@ -27,9 +36,19 @@ function read(): Picked | undefined {
     node instanceof Element ? node : node.parentElement
   )?.closest<HTMLElement>(".transcript, .side-transcript");
   const text = selection.toString().trim();
-  const end = [...range.getClientRects()].at(-1);
+  // A selection that ends at the start of the next block reports an empty
+  // box there, which is not where its text ends.
+  const boxes = [...range.getClientRects()].filter((box) => box.width);
+  const end = boxes.at(-1);
   if (!within || !text || !end) return undefined;
-  return { text, side: within.dataset.side, x: end.right, y: end.bottom };
+  return {
+    text,
+    side: within.dataset.side,
+    x: end.right,
+    y: end.bottom,
+    left: Math.min(...boxes.map((box) => box.left)),
+    right: within.getBoundingClientRect().right,
+  };
 }
 
 // Offered at the end of a selection; a narrow column shows them as a bar
@@ -73,7 +92,12 @@ export function SelectionActions({
       class="float-toolbar selection-quote"
       role="group"
       aria-label="Selection"
-      style={{ "--at-x": `${picked.x}px`, "--at-y": `${picked.y}px` }}
+      style={{
+        "--at-x": `${picked.x}px`,
+        "--at-y": `${picked.y}px`,
+        "--at-left": `${picked.left}px`,
+        "--at-right": `${picked.right}px`,
+      }}
       // Pressing a button must not drop the selection it quotes.
       onMouseDown={(event) => event.preventDefault()}
     >

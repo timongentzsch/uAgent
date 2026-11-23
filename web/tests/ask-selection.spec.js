@@ -68,14 +68,16 @@ test("a selection in an answer is asked about in side chats beside it", async ({
     "Quote",
   ]);
   expect(await uneven(page)).toEqual([]);
-  // The buttons sit under the end of the selection.
+  // The buttons sit under the selection: shorter than they are, it has
+  // them start where it starts.
   const end = await page.evaluate(() => {
     const rects = getSelection().getRangeAt(0).getClientRects();
     return rects[rects.length - 1].toJSON();
   });
   const placed = await box(actions);
   expect(placed.top).toBeGreaterThanOrEqual(end.bottom);
-  expect(Math.abs(placed.right - end.right)).toBeLessThan(2);
+  expect(placed.width).toBeGreaterThan(end.width);
+  expect(Math.abs(placed.left - end.left)).toBeLessThan(2);
 
   await actions.getByRole("button", { name: "Ask in side chat" }).click();
   const side = page.getByRole("complementary", { name: "Side chats" });
@@ -155,6 +157,57 @@ test("a selection in an answer is asked about in side chats beside it", async ({
   await expect(tabs).toHaveText(["Which table?"]);
   await side.getByRole("button", { name: "Close side chat" }).click();
   await expect(side).toHaveCount(0);
+});
+
+test("the selection's buttons stay with the words selected", async ({
+  page,
+  session,
+}) => {
+  const transcript = await answered(page, session, {
+    width: 1440,
+    height: 900,
+  });
+  const actions = page.getByRole("group", { name: "Selection" });
+  // From `from` in the heading to `offset` in the text `to` (its end if -1).
+  const reach = (from, to, offset) =>
+    transcript.evaluate(
+      (root, [from, to, offset]) => {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const text = (words) => {
+          walker.currentNode = root;
+          while (walker.nextNode())
+            if (walker.currentNode.data === words) return walker.currentNode;
+          throw new Error(`"${words}" is not there`);
+        };
+        const last = text(to);
+        const range = document.createRange();
+        range.setStart(text("Verified response"), from);
+        range.setEnd(last, offset < 0 ? last.length : offset);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        const boxes = [...range.getClientRects()].filter((box) => box.width);
+        return {
+          left: Math.min(...boxes.map((box) => box.left)),
+          right: boxes.at(-1).right,
+          bottom: boxes.at(-1).bottom,
+          next: last.parentElement.getBoundingClientRect().top,
+        };
+      },
+      [from, to, offset],
+    );
+  // Longer than the buttons: they end where it ends.
+  const long = await reach(0, " answer with a table.", -1);
+  await expect
+    .poll(async () => Math.abs((await box(actions)).right - long.right))
+    .toBeLessThan(2);
+  expect((await box(actions)).top).toBeGreaterThanOrEqual(long.bottom);
+  // Ending at the start of the next block, it ends in the heading: the
+  // buttons stay under the heading's words, not under the block after.
+  const heading = await reach(9, "A ", 0);
+  await expect
+    .poll(async () => (await box(actions)).top)
+    .toBeLessThan(heading.next);
+  expect(Math.abs((await box(actions)).left - heading.left)).toBeLessThan(2);
 });
 
 test("Merge sums a side chat up for the conversation, which answers, and closes it", async ({

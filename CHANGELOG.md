@@ -10,6 +10,7 @@
 
 ### Fixes
 
+- **The buttons under a selection stay with it.** "Ask in side chat" and "Quote" jumped to the left edge of the next paragraph, over the list of conversations, when a selection ended exactly at the start of the next block; they now sit under the last selected words, start where a short selection starts, and never leave the transcript.
 - **A message's time stands beside its last line.** In a wide window the time and the menu of a message you sent sat beside its first line; they are level with the last one now, and a one-line message has its text in the middle of its band.
 - **A conversation that cannot start says why in the terminal.** When the terminal had just connected as the runtime gave up (no provider set up, for one), the reason could be lost and only "Session connection closed" showed; the reason now always reaches it.
 - **An MCP server that has stopped no longer has its tools offered.** Its tools leave what the model is offered, and the context view's MCP row, at the next turn; before, the model kept being offered them and every call failed until the server was restarted.

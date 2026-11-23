@@ -32,8 +32,13 @@
 .message-line {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
+  align-items: end;
   gap: var(--gap);
+}
+/* The first and the last line each stand in the middle of a row, so the
+   time beside the last one is level with it. */
+.message-line > .message-text {
+  padding-block: calc((var(--row) - 1lh) / 2);
 }
 .message-meta {
   display: flex;
@@ -50,6 +55,9 @@
   .message-line {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
+  }
+  .message-line > .message-text {
+    padding-block: 0;
   }
   .message-line > .message-meta {
     justify-content: flex-end;

@@ -24,6 +24,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -244,6 +245,44 @@ void PreferOomKill(int above) {
   }
 #else
   (void)above;
+#endif
+}
+
+size_t MemoryLimitBytes() {
+#ifdef __linux__
+  namespace fs = std::filesystem;
+  auto read = [](const fs::path& path) {
+    std::ifstream input(path);
+    std::string text;
+    std::getline(input, text);
+    return text;
+  };
+  size_t limit = 0;
+  std::ifstream meminfo("/proc/meminfo");
+  std::string key;
+  size_t kib = 0;
+  while (meminfo >> key >> kib) {
+    if (key == "MemTotal:") limit = kib * 1024;
+    meminfo.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+  }
+  // "0::/path": this process's cgroup, whose limits hold on every level.
+  const std::string own = read("/proc/self/cgroup");
+  if (own.starts_with("0::/")) {
+    for (fs::path cgroup = "/sys/fs/cgroup" + own.substr(3);;) {
+      size_t value = 0;
+      const std::string text = read(cgroup / "memory.max");
+      if (std::from_chars(text.data(), text.data() + text.size(), value).ec ==
+              std::errc() &&
+          (!limit || value < limit)) {
+        limit = value;
+      }
+      if (cgroup == "/sys/fs/cgroup" || !cgroup.has_parent_path()) break;
+      cgroup = cgroup.parent_path();
+    }
+  }
+  return limit;
+#else
+  return 0;
 #endif
 }
 

@@ -213,6 +213,9 @@ inline constexpr int64_t kSecondsPerHour = 3600;
 // host, and the browser, the largest and the cheapest to lose, before both.
 inline constexpr int kWorkerOomScore = 300;
 inline constexpr int kBrowserOomScore = 600;
+// The memory the agent's browser needs (MemoryLimitBytes): on one core with
+// three real-sized pages, all open at 640 MiB and one is lost at 512.
+inline constexpr size_t kBrowserMemoryBytes = MiB(600);
 // Heads read: to tell a file's kind (an SVG prolog may run this long), of an
 // attached text file, and of the newest output an `until` marker is sought in.
 inline constexpr size_t kAttachmentSniffBytes = KiB(64);

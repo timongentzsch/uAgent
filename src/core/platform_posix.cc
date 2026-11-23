@@ -21,6 +21,7 @@
 #include <charconv>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -224,6 +225,26 @@ std::optional<ProcStat> ParseProcStat(std::string_view record) {
     return std::nullopt;
   }
   return ProcStat{state[0], group};
+}
+
+void PreferOomKill(int above) {
+#ifdef __linux__
+  // Above what it was started with: a service manager or CI may already
+  // have raised the host's, and a process may raise its own unprivileged.
+  char text[16] = {};
+  if (FILE* file = fopen("/proc/self/oom_score_adj", "r")) {
+    if (!fgets(text, sizeof text, file)) text[0] = '\0';
+    fclose(file);
+  }
+  int score = 0;
+  std::from_chars(text, text + strlen(text), score);
+  if (FILE* file = fopen("/proc/self/oom_score_adj", "w")) {
+    fputs(std::to_string(std::min(score + above, 1000)).c_str(), file);
+    fclose(file);
+  }
+#else
+  (void)above;
+#endif
 }
 
 bool ProcMountShowsEveryProcess(std::string_view mountinfo) {

@@ -91,6 +91,10 @@ bool ProcessGroupHasLiveMember(pid_t group);
 // Identity of a live process that survives PID reuse; empty when unreadable.
 std::string ProcessIdentity(pid_t pid);
 
+// Makes the kernel's OOM killer take this process and what it starts before
+// the process that started it: its score `above` that one's (Linux only).
+void PreferOomKill(int above);
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_PLATFORM_H_

@@ -1,5 +1,6 @@
 import json
 import os
+import pathlib
 import signal
 import subprocess
 import tempfile
@@ -8,6 +9,7 @@ import time
 
 from integration_support import (
     Server,
+    Skipped,
     assert_true,
     budget,
     event,
@@ -15,7 +17,7 @@ from integration_support import (
     tool_call,
     wait_until,
 )
-from web_support import web_host
+from web_support import session_workers, web_host
 
 PARTIAL_USAGE_GATE_SECONDS = 10
 PARTIAL_USAGE_REQUEST_SECONDS = 25
@@ -686,3 +688,19 @@ def test_looks_fold_into_a_group_and_the_work_counts_by_kind(root, home, *, bina
             if status == 200:
                 kinds = [node["kind"] for node in saved.get("nodes", [])]
                 assert_true(kinds.count("group") == 1, kinds)
+
+
+def test_a_conversation_runtime_goes_before_the_host_when_memory_runs_out(root, home, *, binary):
+    if not pathlib.Path("/proc/self/oom_score_adj").exists():
+        raise Skipped("the OOM score is Linux's")
+    with Server([lambda _, _body: event({"content": "ok"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, process, _):
+            client.pair(code)
+            client.create(root)
+
+            def score(pid):
+                return int(pathlib.Path(f"/proc/{pid}/oom_score_adj").read_text())
+
+            workers = session_workers(process.pid)
+            assert_true(workers, "no runtime started")
+            assert_true(all(score(pid) > score(process.pid) for pid in workers), workers)

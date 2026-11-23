@@ -186,9 +186,19 @@ function revealFocusedField() {
     scroller.scrollTop -= view.top - field.top + pad;
 }
 
-// A field that brings up the on-screen keyboard.
-const TYPED_FIELD =
-  'textarea, input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), [contenteditable="true"]';
+// A field a tap puts a text caret in, which brings up the on-screen
+// keyboard. An allow-list: file, colour, date and time inputs open a chooser
+// or a picker, and any type added later stays the browser's.
+const TYPED_FIELD = [
+  "textarea",
+  "input:not([type])",
+  ...["text", "search", "url", "tel", "email", "password", "number"].map(
+    (type) => `input[type="${type}"]`,
+  ),
+  '[contenteditable="true"]',
+  '[contenteditable=""]',
+  '[contenteditable="plaintext-only"]',
+].join(", ");
 
 // Where the touch began, so only a tap (not a drag or a long press, which
 // stay the browser's) is taken over.

@@ -186,3 +186,33 @@ test("a click with a mouse is untouched", async ({ browser }) => {
   );
   await context.close();
 });
+
+// What a tap opens a chooser or a picker on stays the browser's: the file
+// input over the attach button, a colour and a time input.
+test("a tap on the attach button opens the file chooser", async ({ page }) => {
+  await open(page);
+  const chooser = page.waitForEvent("filechooser");
+  await page.locator('.composer input[type="file"]').tap();
+  await chooser;
+});
+
+test("a tap on a colour or a time input is not taken over", async ({
+  page,
+}) => {
+  await open(page);
+  for (const type of ["color", "time", "date", "file"]) {
+    await page.evaluate((type) => {
+      document.getElementById("picker")?.remove();
+      const input = document.createElement("input");
+      input.type = type;
+      input.id = "picker";
+      input.style.cssText = "position:fixed;top:200px;left:20px;";
+      document.body.append(input);
+    }, type);
+    expect(await touch(page, "#picker", [4, 4]), type).toBe(false);
+    expect(
+      await page.evaluate(() => document.activeElement?.id || ""),
+      type,
+    ).not.toBe("picker");
+  }
+});

@@ -21,7 +21,7 @@
 #include <charconv>
 #include <chrono>
 #include <cstdio>
-#include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -236,9 +236,10 @@ void PreferOomKill(int above) {
     if (!fgets(text, sizeof text, file)) text[0] = '\0';
     fclose(file);
   }
-  const long score = std::strtol(text, nullptr, 10) + above;
+  int score = 0;
+  std::from_chars(text, text + strlen(text), score);
   if (FILE* file = fopen("/proc/self/oom_score_adj", "w")) {
-    fprintf(file, "%ld", std::min(score, 1000L));
+    fputs(std::to_string(std::min(score + above, 1000)).c_str(), file);
     fclose(file);
   }
 #else

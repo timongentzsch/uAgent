@@ -129,5 +129,5 @@ export function useDismiss(active: boolean, close: () => void, edge = true) {
       if (index >= 0) stack.splice(index, 1);
       if (!layer.popped) sync();
     };
-  }, [active]);
+  }, [active, edge]);
 }

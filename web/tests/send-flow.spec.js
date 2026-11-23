@@ -17,7 +17,7 @@ for (const [name, viewport] of [
     await online(page);
     // A conversation with a turn in it, so nothing gives way to the first.
     const input = page.getByLabel("Message or guidance");
-    const idle = page.locator(".composer .status-led.running");
+    const idle = page.locator(".composer .work-band");
     await input.fill("Exploration probe");
     await page.locator(".composer-primary").click();
     await expect(idle).toBeHidden({ timeout: 60000 });
@@ -49,8 +49,8 @@ for (const [name, viewport] of [
       requestAnimationFrame(sample);
     });
     await page.locator(".composer-primary").click();
-    const status = page.locator(".status-line .working");
-    await expect(status).toHaveText("Working");
+    await expect(page.locator(".status-line .work-band")).toBeVisible();
+    await expect(page.locator(".status-line")).toContainText("Working");
     await expect(
       page.locator(".transcript").getByText("Working", { exact: true }),
     ).toHaveCount(0);

@@ -136,6 +136,8 @@
     --motion-glide: 220ms;
     --motion-arrive: var(--motion-base);
     --motion-send: 620ms;
+    /* One pass of the glow along the status line's band, end to end. */
+    --motion-work: 800ms;
     --motion-pulse: 1.6s;
     --motion-spin: 0.8s;
     --motion-spin-reduced: 2.4s;

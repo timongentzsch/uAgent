@@ -14,7 +14,7 @@ async function startProbe(
   await selectProbeModel(command, session);
   await prompt.fill(probe);
   await prompt.press("Enter");
-  await expect(page.locator(".composer .status-led.running")).toBeVisible();
+  await expect(page.locator(".composer .work-band")).toBeVisible();
   return prompt;
 }
 
@@ -48,7 +48,7 @@ async function framesUntilIdle(page) {
     };
     frame();
   });
-  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+  await expect(page.locator(".composer .work-band")).toBeHidden({
     timeout: 60000,
   });
   return page.evaluate(() => {
@@ -79,7 +79,7 @@ test("progressive rendering retains text while syntax highlighting loads", async
     await expect(stream.locator(".code-block").first()).toBeVisible();
     await expect(stream).not.toContainText("```");
     release();
-    await expect(page.locator(".composer .status-led.running")).toBeHidden();
+    await expect(page.locator(".composer .work-band")).toBeHidden();
     const final = page.locator(".message.response > .markdown");
     await expect(final).toContainText("print('stable copy control')");
     await expect(final).toContainText(
@@ -137,7 +137,7 @@ test("a glide that follows a long reply never steps back", async ({
   test.setTimeout(120000);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   const prompt = await startProbe(page, session, command);
-  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+  await expect(page.locator(".composer .work-band")).toBeHidden({
     timeout: 60000,
   });
   await prompt.fill("Long continuity probe");
@@ -153,7 +153,7 @@ test("a glide that follows a long reply never steps back", async ({
     };
     frame();
   });
-  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+  await expect(page.locator(".composer .work-band")).toBeHidden({
     timeout: 60000,
   });
   const tops = await page.evaluate(() => {
@@ -207,7 +207,7 @@ test("background completion badges while unfollowed, cleared on jump", async ({
 }) => {
   test.setTimeout(180000);
   await startProbe(page, session, command);
-  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+  await expect(page.locator(".composer .work-band")).toBeHidden({
     timeout: 60000,
   });
   // A run tool needs approval: the ~10s sleep is the deterministic
@@ -266,7 +266,7 @@ test("wheeling back down to the end follows again mid-stream", async ({
   }
   await expect(jump).toBeHidden();
   await expect.poll(() => gap(page)).toBeLessThan(100);
-  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+  await expect(page.locator(".composer .work-band")).toBeHidden({
     timeout: 60000,
   });
 });
@@ -278,7 +278,7 @@ test("a wheel at the end with no room below follows again", async ({
 }) => {
   test.setTimeout(120000);
   await startProbe(page, session, command);
-  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+  await expect(page.locator(".composer .work-band")).toBeHidden({
     timeout: 60000,
   });
   const transcript = page.locator(".transcript");
@@ -307,7 +307,7 @@ test("a wheel up inside nested output leaves following alone", async ({
 }) => {
   test.setTimeout(120000);
   await startProbe(page, session, command);
-  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+  await expect(page.locator(".composer .work-band")).toBeHidden({
     timeout: 60000,
   });
   await expect.poll(() => gap(page)).toBeLessThan(2);

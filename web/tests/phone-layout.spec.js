@@ -665,7 +665,7 @@ test.describe("composer rows", () => {
     expect(idle.below).toBe(0);
     await prompt.fill("Queue controls probe");
     await prompt.press("Enter");
-    await expect(page.locator(".composer .status-led.running")).toBeVisible();
+    await expect(page.locator(".composer .work-band")).toBeVisible();
     await expect(page.locator(".message.response")).toContainText(
       "Waiting for guidance",
     );
@@ -677,7 +677,7 @@ test.describe("composer rows", () => {
     await page.getByRole("button", { name: "Queue next" }).click();
     await page.getByRole("button", { name: "Insert now" }).click();
     await expect(page.locator(".turn-footer")).toHaveCount(1);
-    await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
+    await expect(page.locator(".composer .work-band")).toHaveCount(0);
     await expect.poll(async () => (await rows()).input).toBe(idle.input);
     await expect.poll(async () => (await rows()).off).toBeLessThanOrEqual(2);
   });

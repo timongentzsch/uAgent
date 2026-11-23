@@ -7,6 +7,7 @@
   --motion-glide: 0ms;
   --motion-arrive: 0ms;
   --motion-send: 0ms;
+  --motion-work: 0ms;
   &,
   & *,
   & *::before,
@@ -42,20 +43,11 @@
   /* The lights differ by fill and shape, not by colour alone. */
   .status-led {
     forced-color-adjust: none;
-    background: transparent;
+    color: CanvasText;
+    background-color: transparent;
     border-color: CanvasText;
   }
-  .status-led:is(.active, .unread) {
-    background: CanvasText;
-    border-color: CanvasText;
-  }
-  .status-led.running {
-    background: Highlight;
-    border-color: Highlight;
-  }
-  .status-led.failed {
-    background: CanvasText;
-    border-color: CanvasText;
-    border-radius: 0;
+  .status-led:is(.active, .unread, .failed) {
+    background-color: CanvasText;
   }
 }

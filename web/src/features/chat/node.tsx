@@ -2,6 +2,7 @@ import "./node.css";
 import { Component, createContext } from "preact";
 import type { TargetedKeyboardEvent } from "preact";
 import { useCallback, useContext, useMemo, useState } from "preact/hooks";
+import { StatusLed } from "../../shared/connection-status.tsx";
 import { ChevronRight } from "lucide-preact";
 import { Button, ErrorBoundary } from "../../shared/ui.tsx";
 import { devicePrefs } from "../../shared/device-prefs.ts";
@@ -394,13 +395,13 @@ function RowLine({
   const word = [node.result?.word, elapsed].filter(Boolean).join(" · ");
   const content = (
     <>
-      <ChevronRight class="row-chevron" aria-hidden="true" />
-      <span
-        class={
-          node.state === "running" ? "node-headline working" : "node-headline"
-        }
-        title={headline}
-      >
+      {/* At work, a still mark stands in its arrow's place. */}
+      {node.state === "running" ? (
+        <StatusLed state="running" />
+      ) : (
+        <ChevronRight class="row-chevron" aria-hidden="true" />
+      )}
+      <span class="node-headline" title={headline}>
         {node.state === "failed" && <span class="sr-only">Failed: </span>}
         {headline}
       </span>

@@ -243,7 +243,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await prompt.press("Enter");
   // The turn ends first: a reply arriving moves the row under a click on it.
   await expect(page.locator(".turn-footer")).toHaveCount(2);
-  await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
+  await expect(page.locator(".composer .work-band")).toHaveCount(0);
   await openRow(page, "Saved memory project/browser-proof");
   await page.getByRole("button", { name: "Open memory" }).first().click();
   const memory = page.getByRole("dialog", { name: "Memory" });
@@ -330,7 +330,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   await expect(prompt).toBeVisible();
   await prompt.fill("Long continuity probe");
   await prompt.press("Enter");
-  await expect(page.locator(".composer .status-led.running")).toBeVisible();
+  await expect(page.locator(".composer .work-band")).toBeVisible();
 
   // A thought shows as text as it streams, with nothing to open.
   const thinking = page.locator(".thought");
@@ -416,7 +416,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
       })),
     )
     .toEqual({ connected: true, copied: true, same: true });
-  await expect(page.locator(".composer .status-led.running")).toHaveCount(0, {
+  await expect(page.locator(".composer .work-band")).toHaveCount(0, {
     timeout: 30_000,
   });
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);

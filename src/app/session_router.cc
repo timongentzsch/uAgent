@@ -464,9 +464,11 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     return result;
   }
-  // A command that names no runtime is for the conversation: a saved one's
-  // runtime is started, and one that started meanwhile is used as it is.
-  if (ForwardsToWorker(kind) && JsonValue(command, "generation", "").empty()) {
+  // A command that names no runtime, or one that has ended (killed, crashed,
+  // stopped when idle), is for the conversation: a saved one's runtime is
+  // started, and one that started meanwhile is used as it is.
+  if (ForwardsToWorker(kind) && (JsonValue(command, "generation", "").empty() ||
+                                 session->pid <= 0 || session->exited)) {
     if (!ActivateLocked(session, result.error, lock, true)) return result;
     command["generation"] = session->generation;
     result.wake = true;

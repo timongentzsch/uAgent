@@ -647,7 +647,6 @@ export type HostEvent = HostEnvelope &
           | "metadata"
           | "activated"
           | "deactivated"
-          | "closed"
           | "error"
           | "gap"
           | "moved"

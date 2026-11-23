@@ -35,7 +35,6 @@ BROWSER_FRAMES = frozenset(
     {
         "activated",
         "node",
-        "closed",
         "deactivated",
         "deleted",
         "error",

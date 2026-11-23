@@ -210,19 +210,6 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     case "error":
       report(new Error(event.error));
       break;
-    case "closed": {
-      const metadata = event.metadata;
-      if (!metadata) break;
-      if (current)
-        live.current[id] = {
-          ...current,
-          cursor: event.sequence,
-          pending: null,
-          metadata,
-        };
-      patchSession(id, () => metadata);
-      break;
-    }
   }
   flush.current(id);
   if (isIncoming(event) && (id !== selection.current || !reading.current))

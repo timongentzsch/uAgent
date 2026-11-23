@@ -132,8 +132,8 @@ data: {"epoch":"6f0c…","generation":"","kind":"settings.changed","level":"defa
 | --- | --- | --- |
 | `event` | runtime | `type`, `data`, `time`: a runtime event the host does not fold into rows |
 | `node` | host | `node` (a whole transcript row), or `id` with `set`/`append` |
-| `state`, `turn_status`, `outcome`, `gap`, `error` | runtime | as on the session protocol ([Overview](../architecture/overview.md#protocol)) |
-| `metadata`, `activated`, `deactivated`, `closed` | host | `metadata` |
+| `state`, `turn_status`, `outcome`, `gap`, `error` | runtime | as on the session protocol ([Overview](../architecture/overview.md#protocol)); the host sends a `state` too when a runtime ends mid-turn, with the turn stopped |
+| `metadata`, `activated`, `deactivated` | host | `metadata` |
 | `deleted`, `moved` | host | none |
 | `settings.changed` | host | `level`, `thinking` |
 | `pins.changed`, `spaces.changed`, `terminals.changed`, `scheduled.changed` | host | `pins`, `spaces`, `terminals`, `scheduled` |

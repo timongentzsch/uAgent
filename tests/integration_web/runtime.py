@@ -178,8 +178,9 @@ def test_a_crashed_tab_is_not_an_opened_page(root, home, *, binary):
         assert_true(read.startswith(crashed), read)
         assert_true('"crashed":true' in tabs, tabs)
         assert_true(reopened.startswith("open done."), reopened)
-        # Not "open done" with a page that is gone.
-        assert_true(cut.startswith(crashed), cut)
+        # Not "open done" with a page that is gone: the crash, or the
+        # navigation it aborted, whichever Chrome tells first.
+        assert_true(cut.startswith(crashed) or "net::ERR_ABORTED" in cut, cut)
 
 
 def test_web_tool_sourced_attachment_marks_origin(root, home, *, binary):

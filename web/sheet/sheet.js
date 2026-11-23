@@ -563,7 +563,11 @@ async function open() {
   };
   const sheet = {
     book,
-    say: post,
+    // A cell picked this frame is said first: what follows is about it.
+    say: (message) => {
+      if (saying) sayCell();
+      post(message);
+    },
     locked: !!file,
     get at() {
       return at;

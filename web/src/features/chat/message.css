@@ -173,8 +173,9 @@
   min-width: 0;
 }
 
-/* What is selected in a transcript: the buttons sit at the selection's
-   end. */
+/* What is selected in a transcript: the buttons end where the selection
+   ends. Under a selection shorter than they are, they start where it starts,
+   and they stay inside its transcript. */
 .selection-quote {
   position: fixed;
   z-index: var(--z-popover);
@@ -182,10 +183,10 @@
     calc(var(--at-y) + var(--space-2)),
     calc(var(--viewport-height) - var(--control) - var(--space-4))
   );
-  right: clamp(
-    var(--space-4),
-    calc(var(--viewport-width) - var(--at-x)),
-    calc(var(--viewport-width) - var(--popover))
+  left: var(--at-x);
+  translate: min(
+    max(-100%, calc(var(--at-left) - var(--at-x))),
+    calc(var(--at-right) - var(--at-x) - 100%)
   );
 }
 .selection-quote > p {
@@ -196,6 +197,7 @@
   /* raw: a bar above the composer, under the passage it quotes. */
   .selection-quote {
     position: static;
+    translate: none;
     flex-wrap: wrap;
     gap: var(--space-2);
     margin-bottom: var(--gap);

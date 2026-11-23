@@ -22,7 +22,7 @@ import { useStored } from "../../shared/storage.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { MessageActions } from "./message-actions.ts";
 import { ChevronRight, X } from "lucide-preact";
-import { Button, IconButton, Notice, Time } from "../../shared/ui.tsx";
+import { Button, Cluster, IconButton, Notice, Time } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { useApi } from "../../state/api.ts";
@@ -79,7 +79,7 @@ function MergedRow({
       data-sequence={node.sequence}
       aria-label={`Merged side chat ${title}`}
     >
-      <div class="merged-head">
+      <Cluster class="merged-head">
         <Button
           variant="quiet"
           class="node-row"
@@ -97,7 +97,7 @@ function MergedRow({
             Show side chat
           </Button>
         )}
-      </div>
+      </Cluster>
       {open && (
         <div class="node-open">
           <div class="node-kids">{children}</div>

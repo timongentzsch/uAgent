@@ -189,6 +189,18 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
       !todo.is_null()) {
     header["todo"] = std::move(todo);
   }
+  // And whose side chat it is, or was until it became a conversation of
+  // its own.
+  if (const json side =
+          JsonValue(JsonValue(record.state.display, "facts", json::object()),
+                    "side-origin", json::object());
+      !JsonValue(side, "parent", "").empty()) {
+    header["side"] = json::object();
+    for (const char* key :
+         {"parent", "request", "asked", "merged", "detached"}) {
+      if (side.contains(key)) header["side"][key] = side[key];
+    }
+  }
   // The header is built from a typed struct; only the state can be incomplete.
   if (!ValidState(record.state, conversation)) {
     return Error(SessionStoreError::kInvalid,
@@ -481,7 +493,12 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.cost = JsonValue(header, "cost", 0.0);
         item.tokens = JsonValue(header, "tokens", int64_t{0});
         item.todo = JsonValue(header, "todo", json(nullptr));
-        item.parent = JsonValue(AgentOf(header), "parent", "");
+        item.side = JsonValue(header, "side", json(nullptr));
+        item.parent =
+            JsonValue(AgentOf(header), "parent",
+                      JsonValue(item.side, "detached", false)
+                          ? ""
+                          : JsonValue(item.side, "parent", std::string()));
         item.memory = JsonValue(header, "memory", true);
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
           item.error = "unsupported session format";

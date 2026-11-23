@@ -52,7 +52,12 @@ struct SessionInfo {
   int64_t bytes = 0;
   std::filesystem::file_time_type mtime;
   std::string error;
-  std::string parent;  // the session id of whoever started it, for an agent
+  // The session id of the conversation it belongs to: whoever started it,
+  // for an agent, or where it branched from, for a side chat.
+  std::string parent;
+  // {parent, request, asked, merged?, detached?} for a side chat, or for one
+  // opened as a conversation of its own.
+  json side = nullptr;
   bool memory = true;
   std::string host = {};
   json suggestion = nullptr;

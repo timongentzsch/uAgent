@@ -8,7 +8,7 @@ import type {
   TerminalInfo,
 } from "../../shared/types.ts";
 import { useApi } from "../../state/api.ts";
-import { statusOf, type SessionState } from "../../state/attention.ts";
+import { isAgent, statusOf, type SessionState } from "../../state/attention.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { folderOf } from "../../shared/display.ts";
 import { folderName } from "../../shared/folder-label.tsx";
@@ -72,7 +72,8 @@ export default function FolderOverview({
   const roots = here
     .filter((item) => !item.parent)
     .sort((a, b) => (b.updated || 0) - (a.updated || 0));
-  const agents = (item: Session) => here.filter((a) => a.parent === item.id);
+  const agents = (item: Session) =>
+    here.filter((a) => a.parent === item.id && isAgent(a));
   const state = (item: Session) => statusOf(item, online);
   // Read again whenever one of its conversations changes.
   const changed = Math.max(0, ...here.map((item) => item.updated || 0));
@@ -82,7 +83,7 @@ export default function FolderOverview({
   );
   const working = roots.filter((item) => state(item) === "working").length;
   const agentsWorking = here.filter(
-    (item) => item.parent && state(item) === "working",
+    (item) => isAgent(item) && state(item) === "working",
   ).length;
   const waiting = here.filter((item) => state(item) === "waiting").length;
   const week = roots.filter(

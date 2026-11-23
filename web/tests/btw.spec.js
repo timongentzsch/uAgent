@@ -70,10 +70,27 @@ test("btw side chats and their follow-ups stay beside the parent", async ({
   // A column beside the chat.
   expect(layout.left).toBeGreaterThanOrEqual(layout.chat);
   await page.screenshot({ path: testInfo.outputPath("btw.png") });
-  await side.getByRole("button", { name: "Open side chat" }).click();
+  // The arrow makes it a conversation of its own: it leaves the side chats
+  // for the list, and keeps the way back.
+  await side
+    .getByRole("button", { name: "Open as a conversation of its own" })
+    .click();
   await expect(page).not.toHaveURL(new RegExp(`session=${session.id}$`));
   await expect(page.locator(".transcript")).toContainText(
     "SIDE-FOLLOWUP-COMPLETE",
+  );
+  await expect(page.locator(".transcript")).not.toContainText(
+    "Verified response",
+  );
+  const sidebar = page.locator(".sidebar");
+  await expect(sidebar).toContainText("Side tool probe");
+  const head = page.locator(".conversation-head");
+  await expect(head.getByRole("button", { name: /^‹/ })).toBeVisible();
+  await expect(head.getByRole("button", { name: "Merge" })).toHaveCount(0);
+  await head.getByRole("button", { name: /^‹/ }).click();
+  await expect(tabs).toHaveText(["Second side question"]);
+  await expect(page.locator(".composer .activity-button")).toContainText(
+    "1 side chat",
   );
 });
 
@@ -123,28 +140,32 @@ test("on a phone a side chat is a page of its own, listed in its conversation", 
   await head.getByRole("button", { name: /^‹/ }).click();
   await expect(activity).toContainText("2 side chats");
   await activity.click();
-  await expect(rows).toHaveText([/Side tool probe/, /Second side question/]);
+  // The newest first; an idle one has nothing to end.
+  await expect(rows).toHaveText([
+    /Second side question\s*Ready/,
+    /Side tool probe\s*Ready/,
+  ]);
+  await expect(rows.getByRole("button")).toHaveCount(2);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
   // A row opens its side chat.
-  await rows.first().getByRole("button").first().click();
+  await rows.last().getByRole("button").click();
   await expect(page).not.toHaveURL(here);
   await expect(transcript).toContainText("SIDE-FOLLOWUP-COMPLETE");
-  // Merged, a side chat leaves the list and its conversation answers.
+  // Its page starts where it was asked.
+  await expect(transcript).not.toContainText("Verified response");
+  // Merged, its conversation answers and the side chat stays.
   await expect(merge).toBeEnabled();
   await merge.click();
   await expect(page).toHaveURL(here);
   await expect(transcript).toContainText("MERGE-HEARD");
-  await expect(activity).toContainText("1 side chat");
-  // Removed from the list, a side chat stays a conversation.
-  await activity.click();
-  await rows
-    .getByRole("button", { name: /^Remove .* from the side chats$/ })
-    .click();
-  await expect(activity).toHaveCount(0);
+  await expect(activity).toContainText("2 side chats");
+  // Neither is in the list of conversations.
+  await page.getByRole("button", { name: "Open conversations" }).click();
+  await expect(page.locator(".sidebar .session")).toHaveCount(1);
 });
 
 test("a side chat is listed as working from the moment its question is taken until its turn ends", async ({
@@ -170,18 +191,16 @@ test("a side chat is listed as working from the moment its question is taken unt
   await reached;
   const activity = page.locator(".composer .activity-button");
   const sheet = page.getByRole("dialog", { name: "Activity" });
-  await expect(activity).toHaveCount(0);
-  release();
   await activity.click();
-  await expect(sheet.getByRole("button", { name: /^Stop .*/ })).toBeVisible();
+  await expect(sheet.locator(".activity-row")).toHaveText([/Working/]);
   await page.keyboard.press("Escape");
+  release();
   const side = page.getByRole("complementary", { name: "Side chats" });
   await side.getByRole("button", { name: "Allow once", exact: true }).click();
   await expect(side).toContainText("SIDE-TOOL-COMPLETE");
   await activity.click();
-  await expect(
-    sheet.getByRole("button", { name: /^Remove .* from the side chats$/ }),
-  ).toBeVisible();
+  await expect(sheet.locator(".activity-row")).toHaveText([/Ready/]);
+  await expect(sheet.getByRole("button", { name: /^Stop .*/ })).toHaveCount(0);
 });
 
 test("a side chat is listed as working even when the host's answer is read before the stream delivers its turn", async ({
@@ -228,7 +247,6 @@ test("a side chat is listed as working even when the host's answer is read befor
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await reply;
   const activity = page.locator(".composer .activity-button");
-  await expect(activity).toHaveCount(0);
   await page.evaluate(() => globalThis.releaseUpdates());
   await activity.click();
   await expect(

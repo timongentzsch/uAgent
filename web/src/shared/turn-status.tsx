@@ -19,7 +19,6 @@ import {
   Square,
   Terminal,
   Users,
-  X,
 } from "lucide-preact";
 import {
   cleanText,
@@ -30,16 +29,17 @@ import {
 } from "./ui.tsx";
 import { SheetButton } from "./sheet.tsx";
 import { useApi } from "../state/api.ts";
-import { isRunning } from "../state/attention.ts";
+import { isRunning, statusOf } from "../state/attention.ts";
 import { useAction } from "./use-action.ts";
 import { useElapsed } from "./time.ts";
 import { focusDecision, revealLiveRow } from "./navigation.ts";
 
-// A conversation's side chats: which, and what a row of one does.
+// A conversation's side chats: which, those whose first question is still
+// on its way (by its request), and what a row of one does.
 export type SideRows = {
   list: Session[];
+  starting: string[];
   open: (id: string) => void;
-  remove: (id: string) => void;
 };
 
 export const active = (item: Activity) =>
@@ -93,6 +93,7 @@ function ActivityButtonView({
   const live =
     running ||
     rows.length + agents.length > 0 ||
+    sides.starting.length > 0 ||
     sides.list.some((side) => isRunning(side, online));
   const announcement = pending
     ? "Needs your input"
@@ -196,11 +197,12 @@ function ActivityButtonView({
                 }}
               />
             ))}
-            {sides.list.map((side) => (
+            {sideOrder(sides.list, online).map((side) => (
               <AgentRow
                 key={side.id}
                 agent={side}
-                remove={() => sides.remove(side.id)}
+                side
+                starting={sides.starting.includes(side.side!.request)}
                 online={online}
                 report={report}
                 open={() => {
@@ -310,24 +312,41 @@ function ActivityRow({
   );
 }
 
-// An agent at work, or a side chat, which stays listed until it is removed.
+// Side chats at work or waiting for you first, then the newest asked.
+const sideOrder = (list: Session[], online: boolean) =>
+  [...list].sort(
+    (a, b) =>
+      Number(statusOf(b, online) !== "idle") -
+        Number(statusOf(a, online) !== "idle") || b.side!.asked - a.side!.asked,
+  );
+
+// The step a turn is at, where it says more than that it works.
+const stepOf = (item: Session) =>
+  item.turn_status && !["Working", "Ready"].includes(item.turn_status)
+    ? cleanText(item.turn_status)
+    : "";
+
+// An agent at work, or a side chat, which stays listed while it exists.
 function AgentRow({
   agent,
-  remove,
+  side = false,
+  starting = false,
   online,
   report,
   open,
 }: {
   agent: Session;
-  remove?: () => void;
+  side?: boolean;
+  starting?: boolean;
   online: boolean;
   report: Report;
   open: () => void;
 }) {
   const { command } = useApi();
   const { run, busy } = useAction();
-  const name = cleanText(agent.title || (remove ? "Side chat" : "Agent"));
-  const working = !remove || isRunning(agent, online);
+  const name = cleanText(agent.title || (side ? "Side chat" : "Agent"));
+  const running = !side || isRunning(agent, online);
+  const working = running || starting;
   return (
     <li class="activity-row">
       <Button
@@ -336,32 +355,25 @@ function AgentRow({
         disabled={!online}
         onClick={open}
       >
-        {remove ? <MessagesSquare /> : <Users />}
+        {side ? <MessagesSquare /> : <Users />}
         <span class="activity-text">
           <strong>{name}</strong>
           <small>
-            {working
-              ? cleanText(agent.turn_status || "Working")
-              : agent.needs_you
-                ? "Needs you"
+            {online && agent.needs_you
+              ? "Needs you"
+              : working
+                ? ["Working", stepOf(agent)].filter(Boolean).join(" · ")
                 : "Ready"}
           </small>
         </span>
       </Button>
-      {working ? (
+      {running && (
         <IconButton
           label={`Stop ${name}`}
           disabled={!online || busy}
           onClick={() => run(() => command("interrupt", agent).catch(report))}
         >
           <Square />
-        </IconButton>
-      ) : (
-        <IconButton
-          label={`Remove ${name} from the side chats`}
-          onClick={remove}
-        >
-          <X />
         </IconButton>
       )}
     </li>

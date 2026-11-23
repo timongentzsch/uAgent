@@ -245,6 +245,10 @@ json SessionControl(AppSession& session, const json& request) {
     return result;
   }
   if (kind == "fork" || kind == "share") return ForkOrShare(session, request);
+  if (kind == "side" && JsonValue(request, "operation", "") == "detach") {
+    session.ActiveAgent().DetachSide();
+    return {{"detached", true}};
+  }
   if (kind == "config") return ConfigureSession(session, request);
   if (kind == "revert") {
     return session.ActiveAgent().Revert(JsonValue(request, "turn", int64_t{0}),

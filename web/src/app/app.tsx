@@ -38,7 +38,12 @@ import { livePins } from "../features/sidebar/pins.tsx";
 import { ConversationMenu, TerminalMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
-import { isRunning, sessionById, shownSessions } from "../state/attention.ts";
+import {
+  isRunning,
+  isSideChat,
+  sessionById,
+  shownSessions,
+} from "../state/attention.ts";
 import {
   lockPageZoom,
   useCompact,
@@ -802,17 +807,22 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       outgoing={outgoing}
                       parent={sessionById(
                         catalogue.sessions,
-                        session?.parent || side.origin?.parent,
+                        session?.parent || session?.side?.parent,
                       )}
                       merge={
-                        side.origin &&
-                        (() =>
-                          void command("side", session, { operation: "merge" })
-                            .then(() => {
-                              side.close(side.origin!.key, side.origin!.parent);
-                              return choose(side.origin!.parent);
-                            })
-                            .catch(report))
+                        session && isSideChat(session)
+                          ? () =>
+                              void command("side", session, {
+                                operation: "merge",
+                              })
+                                .then(() => choose(session.parent!))
+                                .catch(report)
+                          : undefined
+                      }
+                      detach={
+                        session && isSideChat(session)
+                          ? () => void side.detach(session).catch(report)
+                          : undefined
                       }
                       openDrawer={openDrawer}
                       choose={choose}

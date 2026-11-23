@@ -210,9 +210,11 @@ void SessionHost::Received(HostSession* session, json frame) {
   }
   if (kind == "outcome") {
     // A fork receipt must not become visible until its new conversation is
-    // in the catalogue; clients can inspect it immediately after the receipt.
-    if (JsonValue(JsonValue(frame, "result", json::object()), "forked",
-                  false)) {
+    // in the catalogue, nor a detach's before the list has it; clients can
+    // inspect it immediately after the receipt.
+    if (const json result = JsonValue(frame, "result", json::object());
+        JsonValue(result, "forked", false) ||
+        JsonValue(result, "detached", false)) {
       lock.unlock();
       RefreshCatalogue(true);
       lock.lock();

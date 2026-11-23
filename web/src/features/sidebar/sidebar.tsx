@@ -46,7 +46,12 @@ import { Menu, MenuItem, useLongPress } from "../../shared/menu.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { plural } from "../../shared/quantities.ts";
-import { statusOf, waiting, type SessionState } from "../../state/attention.ts";
+import {
+  isAgent,
+  statusOf,
+  waiting,
+  type SessionState,
+} from "../../state/attention.ts";
 import { collapsed, folded, opened, placeKey, useFolding } from "./folding.ts";
 import { DAYS, dayOf } from "./days.ts";
 import { PinItem } from "./pins.tsx";
@@ -104,6 +109,7 @@ function groupSessions(
       .filter(
         (agent) =>
           agent.parent === item.id &&
+          isAgent(agent) &&
           !needs.has(agent.id) &&
           statusOf(agent, online) !== "idle",
       )

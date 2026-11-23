@@ -346,9 +346,9 @@ def test_web_move_refuses_what_it_could_not_do_safely(root, home, *, binary):
             assert_whole(home, alpha, beta)
 
 
-def test_web_move_lets_a_side_chat_merge_back_into_its_moved_conversation(root, home, *, binary):
-    """A side chat is no agent and stays where it is; it still finds the
-    conversation it branched from once that moved."""
+def test_web_move_takes_a_side_chat_along_and_it_merges_back(root, home, *, binary):
+    """A side chat moves with the conversation it belongs to, and still
+    finds it to merge into."""
     alpha, beta = root / "alpha", root / "beta"
     alpha.mkdir()
     beta.mkdir()
@@ -372,7 +372,9 @@ def test_web_move_lets_a_side_chat_merge_back_into_its_moved_conversation(root, 
             client.until(side, idle)
             parent = client.snapshot(parent)["metadata"]
             client.command("move", parent, cwd=str(beta))
-            client.command("side", client.snapshot(side)["metadata"], operation="merge")
+            side = client.snapshot(side)["metadata"]
+            assert_true(side["cwd"] == str(beta.resolve()), side)
+            client.command("side", side, operation="merge")
             parent = client.command("activate", {"id": parent["id"], "generation": ""})["session"]
             client.until(parent, lambda value: "PARENT-READ-IT" in json.dumps(value))
 

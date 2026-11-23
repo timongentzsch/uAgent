@@ -175,7 +175,7 @@ test("a focus ring lies inside its control, in a pane too", async ({
   await expect(send).toBeFocused();
   expect(await reach(send)).toBeLessThanOrEqual(0);
   // Focus moved by script after a key keeps the keyboard's ring.
-  const close = side.getByRole("button", { name: "Close side chat" });
+  const close = side.getByRole("button", { name: "Hide side chat" });
   await close.focus();
   expect(await reach(close)).toBeLessThanOrEqual(0);
 });

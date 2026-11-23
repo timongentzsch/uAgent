@@ -39,9 +39,9 @@ import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { keepFirst, mergeNodes } from "../shared/tree.ts";
 import { maxHistoryNodes } from "../shared/limits.ts";
-import { isRunning } from "../state/attention.ts";
+import { isAgent, isRunning } from "../state/attention.ts";
 import { useLatest } from "../shared/use-latest.ts";
-import SideChats from "../features/chat/side-answer.tsx";
+import SideChats, { sideNodes } from "../features/chat/side-answer.tsx";
 import { SelectionActions } from "../features/chat/selection-actions.tsx";
 import type { useSideConversations } from "./use-side-conversations.ts";
 
@@ -152,13 +152,14 @@ export default function ChatPage({
       ),
     [outgoing, selected],
   );
-  const nodes = useMemo(
-    () =>
-      queued.length
-        ? allNodes.filter((node) => !queuedGuidance(node))
-        : allNodes,
-    [allNodes, queued],
-  );
+  // A side chat's page starts where it was asked, as its tab does.
+  const request = session?.side?.request;
+  const nodes = useMemo(() => {
+    const own = queued.length
+      ? allNodes.filter((node) => !queuedGuidance(node))
+      : allNodes;
+    return request ? sideNodes(own, request, view?.more) : own;
+  }, [allNodes, queued, request, view?.more]);
   // The hook owns scroll restore per session: no pin-on-select here.
   const {
     scroller: transcript,
@@ -170,7 +171,7 @@ export default function ChatPage({
     unseen,
   } = useTranscriptHistory(setFollowing, historyKey, nodes);
   // The transcript hook keeps the visible node in place; this only loads data.
-  const more = view?.more;
+  const more = view?.more && !(request && nodes[0]?.request_id === request);
   const before = view?.before;
   const older = useCallback(async () => {
     if (!more || !transcript.current) return;
@@ -223,33 +224,27 @@ export default function ChatPage({
   const agents = useMemo(
     () =>
       sessions.filter(
-        (item) => item.parent === selected && isRunning(item, online),
+        (item) =>
+          item.parent === selected && isAgent(item) && isRunning(item, online),
       ),
     [sessions, selected, online],
   );
-  // Its side chats that have a conversation, for the Activity list: a row
-  // shows the tab where they have a column, and the page where not.
-  const sides = side.sides;
+  // Its side chats, for the Activity list: a row shows the tab where they
+  // have a column, and the page where not.
   const latest = useLatest({ side, sideColumn, quote });
-  const sideRows = useMemo(() => {
-    const asked = (id: string) =>
-      latest.current.side.sides.find((item) => item.id === id);
-    return {
-      list: sides.flatMap(
-        (item) => sessions.find((session) => session.id === item.id) ?? [],
-      ),
+  const { list: sideList, starting } = side;
+  const sideRows = useMemo(
+    () => ({
+      list: sideList,
+      starting,
       open: (id: string) => {
         const { side, sideColumn } = latest.current;
-        const item = asked(id);
-        if (sideColumn && item) side.show(item.firstRequest);
+        if (sideColumn) side.show(id);
         else void choose(id);
       },
-      remove: (id: string) => {
-        const item = asked(id);
-        if (item) latest.current.side.close(item.firstRequest);
-      },
-    };
-  }, [sides, sessions, choose, latest]);
+    }),
+    [sideList, starting, choose, latest],
+  );
   // The composer keeps its place above the input for a selection's actions,
   // so Jump to latest stays clear of them.
   const selecting = !!quote;
@@ -336,12 +331,16 @@ export default function ChatPage({
       asking={side.asking}
       sessions={catalogue.sessions}
       show={side.show}
-      close={side.close}
+      hide={side.hide}
       cancel={side.cancel}
       unquote={() => side.quote("")}
       ask={(question, quote) => {
         void side.ask(session, question, quote);
         side.cancel();
+      }}
+      detach={async (item) => {
+        await side.detach(item);
+        await choose(item.id);
       }}
       choose={choose}
     />

@@ -434,8 +434,18 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
-  // The conversation that started this one as its agent.
+  // The conversation this one belongs to: it started it as its agent, or
+  // this is its side chat.
   parent?: string;
+  // Where a side chat branched from, also once it was opened as a
+  // conversation of its own (detached). `request` is its first question's
+  // request id; `asked` when, in ms.
+  side?: {
+    parent: string;
+    request: string;
+    asked: number;
+    detached?: boolean;
+  } | null;
   // The model its file names.
   model?: string;
   status?: SessionStatus;
@@ -937,8 +947,11 @@ export interface CommandInputs {
   // the message a fork is cut before ("m-<id>").
   fork: { argument?: string; message_id?: string };
   share: None;
-  // Starts a side chat of the conversation, or merges this one back.
-  side: { operation: "create"; text: string } | { operation: "merge" };
+  // Starts a side chat of the conversation, whose first question goes as
+  // `request`; merges this one back, or opens it as a conversation of its own.
+  side:
+    | { operation: "create"; text: string; request: string }
+    | { operation: "merge" | "detach" };
   // The folder or workspace to move to, by its path on the host.
   move: { cwd?: string; space?: string };
   // Answers a suggested place with "here".

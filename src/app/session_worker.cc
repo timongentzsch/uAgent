@@ -624,6 +624,10 @@ class WorkerChannel final : public ApplicationChannel {
           MergeLocked(parsed, error);
           break;
         }
+        if (parsed.operation == "detach") {
+          if (QueueIdleControl(request, parsed.raw, error)) return true;
+          break;
+        }
         lock.unlock();
         StartSideQuestion(request, parsed.raw);
         return true;

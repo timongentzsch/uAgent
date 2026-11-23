@@ -60,6 +60,7 @@ export default function ConversationHeader({
   setFilesOpen,
   outgoing,
   merge,
+  detach,
   openDrawer,
   choose,
   settings,
@@ -70,8 +71,10 @@ export default function ConversationHeader({
   selected: string;
   session?: Session;
   parent?: Session;
-  // A side chat: sums it up for `parent` and goes back there.
+  // A side chat: sums it up for `parent` and goes back there, or opens it
+  // as a conversation of its own.
   merge?: () => void;
+  detach?: () => void;
   opening: boolean;
   booting: boolean;
   browserAvailable: boolean;
@@ -102,20 +105,32 @@ export default function ConversationHeader({
   // A narrow column's conversation menu holds the header's other actions.
   const inMenu = narrow && page === "chat" && !!(session || opening);
   const titleOf = (item: Session) => item.title || "Conversation";
-  const phoneItems = inMenu && {
+  const items = (inMenu || detach) && {
     top: (
       <>
-        <MenuItem disabled={!session} onClick={() => setFilesOpen(!filesOpen)}>
-          Files
-        </MenuItem>
-        {terminal && (
-          <MenuItem onClick={terminal.toggle}>
-            {terminal.open ? "Hide terminal" : "Terminal"}
+        {detach && (
+          <MenuItem disabled={!!session?.turn_active} onClick={detach}>
+            Open as a conversation of its own
           </MenuItem>
+        )}
+        {inMenu && (
+          <>
+            <MenuItem
+              disabled={!session}
+              onClick={() => setFilesOpen(!filesOpen)}
+            >
+              Files
+            </MenuItem>
+            {terminal && (
+              <MenuItem onClick={terminal.toggle}>
+                {terminal.open ? "Hide terminal" : "Terminal"}
+              </MenuItem>
+            )}
+          </>
         )}
       </>
     ),
-    more: browserAvailable && (
+    more: inMenu && browserAvailable && (
       <MenuItem disabled={booting} onClick={openBrowser}>
         Open browser
       </MenuItem>
@@ -241,7 +256,7 @@ export default function ConversationHeader({
       )}
       {page === "chat" &&
         (session ? (
-          menu(session, true, phoneItems || undefined)
+          menu(session, true, items || undefined)
         ) : opening ? (
           <IconButton label="Conversation menu" disabled>
             <Ellipsis />

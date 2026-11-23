@@ -15,7 +15,8 @@ export const storageKeys = {
   read: "uagent-read",
   unread: "uagent-unread",
   browser: "uagent-browser",
-  sideConversations: "uagent-side-conversations",
+  // The side chats each conversation shows as tabs on this device.
+  sideTabs: "uagent-side-tabs",
   bookmarks: "uagent-transcript-bookmarks",
   theme: "uagent-theme",
   motion: "uagent-motion",

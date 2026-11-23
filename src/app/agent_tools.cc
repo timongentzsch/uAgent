@@ -76,10 +76,16 @@ std::optional<SessionInfo> Find(const std::string& own, const std::string& id) {
   return std::nullopt;
 }
 
+// Who started `info` as its agent: a side chat belongs to its conversation
+// but is the person's, not an agent of it.
+std::string AgentParent(const SessionInfo& info) {
+  return info.side.is_null() ? info.parent : "";
+}
+
 std::vector<SessionInfo> Children(const std::string& own) {
   std::vector<SessionInfo> children = SessionsBeside(own);
   std::erase_if(children, [&](const SessionInfo& info) {
-    return info.parent != SessionIdFor(own);
+    return AgentParent(info) != SessionIdFor(own);
   });
   return children;
 }
@@ -87,14 +93,14 @@ std::vector<SessionInfo> Children(const std::string& own) {
 // Whether `info` is an agent `own` started, or one of theirs.
 bool Descends(const SessionInfo& info, const std::string& own,
               const std::vector<SessionInfo>& all) {
-  std::string parent = info.parent;
+  std::string parent = AgentParent(info);
   for (size_t hop = 0; !parent.empty() && hop <= all.size(); ++hop) {
     if (parent == SessionIdFor(own)) return true;
     auto up = std::ranges::find_if(all, [&](const SessionInfo& one) {
       return SessionIdFor(one.path) == parent;
     });
     if (up == all.end()) return false;
-    parent = up->parent;
+    parent = AgentParent(*up);
   }
   return false;
 }
@@ -555,7 +561,7 @@ ToolResult Decide(const json& a) {
   const std::string own = OwnSessionFile();
   const std::string id = JsonValue(a, "id", "");
   const std::optional<SessionInfo> info = Find(own, id);
-  if (!info || info->parent != SessionIdFor(own)) {
+  if (!info || AgentParent(*info) != SessionIdFor(own)) {
     return ToolFailure(ToolErrorCode::kNotFound,
                        "no agent " + id + " of yours");
   }
@@ -753,7 +759,7 @@ Tool DecideTool() {
 void Tree(const std::vector<SessionInfo>& all, const std::string& parent,
           const std::string& indent, std::string& out) {
   for (const SessionInfo& info : all) {
-    if (info.parent != parent) continue;
+    if (AgentParent(info) != parent) continue;
     out += indent + Row(info) + "\n";
     Tree(all, SessionIdFor(info.path), indent + "  ", out);
   }

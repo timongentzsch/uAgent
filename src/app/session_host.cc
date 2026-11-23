@@ -189,6 +189,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.cwd = item.cwd;
     session.host = item.host;
     session.parent = item.parent;
+    session.side = item.side;
     session.model = item.model;
     session.cost = item.cost;
     session.turns = item.turns;
@@ -313,6 +314,7 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"cwd", session.cwd},
       {"host", session.host},
       {"parent", session.parent},
+      {"side", session.side},
       {"model", session.model},
       {"title", session.title},
       {"suggestion", session.suggestion},

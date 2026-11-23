@@ -1,7 +1,7 @@
-import { ArrowRight, CircleAlert, Square, X } from "lucide-preact";
+import { ArrowUpRight, CircleAlert, Square, X } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useEffect, useId, useRef } from "preact/hooks";
-import type { Act, Session } from "../../shared/types.ts";
+import type { Act, Node, Session } from "../../shared/types.ts";
 import { Button, IconButton, LoadError } from "../../shared/ui.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { Tabs } from "../../shared/tabs.tsx";
@@ -17,6 +17,17 @@ import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import type { Asking, Side } from "../../app/use-side-conversations.ts";
 import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
+
+// A side chat's own part of its transcript, from its first question on.
+// Where that has left the window, everything held is its own; where it is
+// not there yet, nothing is.
+export function sideNodes(nodes: Node[], request: string, more?: boolean) {
+  if (!request) return nodes;
+  const first = nodes.findIndex(
+    (node) => node.kind === "turn" && node.request_id === request,
+  );
+  return first >= 0 ? nodes.slice(first) : more ? nodes : [];
+}
 
 // The question, under what it is about, in the box every message is
 // written in. Escape leaves what is being asked.
@@ -92,7 +103,6 @@ function SideAnswer({
   const snapshot = useSnapshots(store, (all) =>
     side.id ? all[side.id] : undefined,
   );
-  const started = useRef(false);
   // Watch a second conversation through the host's existing event stream.
   useEffect(() => {
     if (!side.id || !online) return;
@@ -104,13 +114,8 @@ function SideAnswer({
   const pending = snapshot?.pending;
   const running = !!session?.turn_active;
   const act: Act = (kind, fields) => command(kind, session, fields);
-  const all = snapshot?.state?.view?.nodes || [];
-  const first = all.findIndex(
-    (node) => node.kind === "turn" && node.request_id === side.firstRequest,
-  );
-  if (first >= 0) started.current = true;
-  // Once older turns leave the live window, every retained node is side work.
-  const nodes = first >= 0 ? all.slice(first) : started.current ? all : [];
+  const view = snapshot?.state?.view;
+  const nodes = sideNodes(view?.nodes || [], side.request, view?.more);
   // Follows its end as the transcript does, through the same hook.
   const historyKey = `side:${side.id || ""}`;
   const thread = useTranscriptHistory(() => {}, historyKey, nodes);
@@ -118,7 +123,7 @@ function SideAnswer({
     <>
       <div
         class="side-transcript dense"
-        data-side={side.firstRequest}
+        data-side={side.key}
         data-history-key={historyKey}
         ref={thread.attachScroller}
       >
@@ -192,10 +197,11 @@ export default function SideChats({
   asking,
   sessions,
   show,
-  close,
+  hide,
   cancel,
   unquote,
   ask,
+  detach,
   choose,
 }: {
   sides: Side[];
@@ -203,18 +209,21 @@ export default function SideChats({
   asking?: Asking;
   sessions: Session[];
   show: (key: string) => void;
-  close: (key: string) => void;
+  hide: (key: string) => void;
   cancel: () => void;
   // The new side chat is asked without a quote.
   unquote: () => void;
   ask: (question: string, quote: string) => void;
+  detach: (session: Session) => Promise<void>;
   choose: (id: string) => Promise<void>;
 }) {
   const { command } = useApi();
   const { online } = useHostContext();
   const merging = useAction();
-  const side = sides.find((item) => item.firstRequest === shown);
+  const detaching = useAction();
+  const side = sides.find((item) => item.key === shown);
   const session = sessions.find((one) => one.id === side?.id);
+  const idle = !!session && statusOf(session, online) === "idle";
   const fresh = asking && !asking.to;
   const mark = (item: Side) => {
     const session = sessions.find((one) => one.id === item.id);
@@ -242,7 +251,7 @@ export default function SideChats({
           to={show}
           tabs={[
             ...sides.map((item) => ({
-              key: item.firstRequest,
+              key: item.key,
               title: item.question,
               label: (
                 <>
@@ -263,36 +272,37 @@ export default function SideChats({
         />
         {session && (
           <Button
-            title="Sum it up for the conversation, which answers, and close it"
-            disabled={
-              !online || merging.busy || statusOf(session, online) !== "idle"
-            }
+            title="Sum it up for the conversation, which answers"
+            disabled={!online || merging.busy || !idle}
             onClick={() =>
               void merging.run(async () => {
                 await command("side", session, { operation: "merge" });
-                close(shown);
+                hide(shown);
               })
             }
           >
             Merge
           </Button>
         )}
-        {side?.id && (
+        {session && (
           <IconButton
-            label="Open side chat"
-            onClick={() => void choose(side.id!)}
+            label="Open as a conversation of its own"
+            disabled={!online || detaching.busy || !idle}
+            onClick={() => void detaching.run(() => detach(session))}
           >
-            <ArrowRight />
+            <ArrowUpRight />
           </IconButton>
         )}
-        <IconButton label="Close side chat" onClick={() => close(shown)}>
+        <IconButton label="Hide side chat" onClick={() => hide(shown)}>
           <X />
         </IconButton>
       </header>
-      {!!merging.error && <LoadError error={merging.error} />}
+      {!!(merging.error || detaching.error) && (
+        <LoadError error={merging.error || detaching.error} />
+      )}
       {side ? (
         <SideAnswer
-          key={side.firstRequest}
+          key={side.key}
           side={side}
           asking={asking?.to === shown ? asking : undefined}
           cancel={cancel}

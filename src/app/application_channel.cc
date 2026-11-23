@@ -59,8 +59,9 @@ int Application::RunChannel() {
                      "Update or reload your client to start a "
                      "tool-capable side conversation."}};
       }
-      json side = agent_.SideConversation(session_file_,
-                                          JsonValue(request, "text", ""));
+      json side =
+          agent_.SideConversation(session_file_, JsonValue(request, "text", ""),
+                                  JsonValue(request, "request", ""));
       side["side_question"] = JsonValue(request, "text", "");
       return side;
     }
@@ -95,9 +96,13 @@ int Application::RunChannel() {
       // Mail that came as the turn was ending starts the next one.
       agent_.DeliverMail();
       // An agent's spend is its parent's too, reported before the turn's
-      // end wakes the parent.
-      if (const json agent = context_.options.AgentRole(); !agent.empty()) {
-        ReportUsage(UsageLedger(JsonValue(agent, "parent", "")));
+      // end wakes the parent; so is a side chat's.
+      const json agent = context_.options.AgentRole();
+      if (const std::string parent = agent.empty()
+                                         ? agent_.SideParent()
+                                         : JsonValue(agent, "parent", "");
+          !parent.empty()) {
+        ReportUsage(UsageLedger(parent));
       }
     }
     RunQueuedCommands();

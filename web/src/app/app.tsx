@@ -17,6 +17,7 @@ import { render, type ComponentChildren } from "preact";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -200,9 +201,20 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const filesSheet = useNarrowColumn(shown) || compact;
   const roomy = useRoomyColumn(shown);
   const side = useSideConversations(host);
+  // A side chat is shown as one wherever it is opened from (search, Needs
+  // you, a notification, an address): where the column fits, as its
+  // conversation with its tab in front; the page is for layouts without.
+  const opened = sessionById(catalogue.sessions, selected);
+  const sideOf = opened && isSideChat(opened) ? opened.parent : undefined;
   // The side chats have a column where it fits beside the chat (and beside
   // Files, when that is open); elsewhere each is a page of its own.
   const sideColumn = !filesSheet && (!filesOpen || roomy);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per side chat opened
+  useLayoutEffect(() => {
+    if (!sideOf || !sideColumn) return;
+    side.show(selected, sideOf);
+    setSelected(sideOf, undefined, true);
+  }, [sideOf, sideColumn, selected]);
   const [busy, setBusy] = useState(false);
   const [notificationMode, setNotificationMode] = useState(false);
   // Choosing a level forgets the rows opened or closed on this device.

@@ -160,6 +160,8 @@ export function useSideConversations({
   // It leaves the side chats for the list of conversations.
   async function detach(item: Session) {
     await command("side", item, { operation: "detach" });
+    // The list knows it is a conversation of its own before it is opened.
+    await refresh();
     hide(item.id);
   }
   const clearSides = () => setAll({});

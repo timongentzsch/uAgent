@@ -94,6 +94,31 @@ test("side chats that do not fit are tabs that scroll, the shown one in view", a
   await roomy(page);
 });
 
+test("a side chat opened from anywhere is shown as one, its tab in front", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  await ask(page, "Second side question");
+  const { side, tabs } = parts(page);
+  await expect(side).toContainText("Verified response");
+  await side.getByRole("button", { name: "Hide side chat" }).click();
+  await expect(side).toHaveCount(0);
+  // Its own address, as a notification or Search opens it.
+  const sideId = await page.evaluate(async (parent) => {
+    const listed = await (await fetch("/api/sessions")).json();
+    return listed.sessions.find((item) => item.parent === parent).id;
+  }, session.id);
+  await page.evaluate((target) => {
+    location.hash = `session=${target}`;
+  }, sideId);
+  await expect(page).toHaveURL(new RegExp(`session=${session.id}$`));
+  await expect(tabs).toHaveText(["Second side question"]);
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+});
+
 test.describe("phone", () => {
   test.use({
     isMobile: true,

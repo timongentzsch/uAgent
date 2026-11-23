@@ -342,7 +342,6 @@ export default function ChatPage({
         await side.detach(item);
         await choose(item.id);
       }}
-      choose={choose}
     />
   );
   return shown ? (

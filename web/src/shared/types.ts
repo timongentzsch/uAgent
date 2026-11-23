@@ -1049,8 +1049,9 @@ export interface RawOptions {
   prepare?: SessionRef;
 }
 export type AppModal =
-  // handoff: opened for the agent's request (take control, close on Done).
-  | { type: "browser"; handoff?: boolean }
+  // handoff: opened for the agent's request (take control, close on Done);
+  // session: whose browser, when not the open conversation's (a side chat).
+  | { type: "browser"; handoff?: boolean; session?: string }
   | { type: "instructions" }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)

@@ -91,12 +91,10 @@ function SideAnswer({
   side,
   asking,
   cancel,
-  choose,
 }: {
   side: Side;
   asking?: Asking;
   cancel: () => void;
-  choose: (id: string) => Promise<void>;
 }) {
   const { command } = useApi();
   const { store, load, online, report, setModal } = useHostContext();
@@ -138,11 +136,13 @@ function SideAnswer({
             pending &&
             (pending.kind === "browser" ? (
               <Button
-                onClick={() => {
-                  void choose(session.id).then(() =>
-                    setModal({ type: "browser" }),
-                  );
-                }}
+                onClick={() =>
+                  setModal({
+                    type: "browser",
+                    handoff: true,
+                    session: session.id,
+                  })
+                }
               >
                 Open browser
               </Button>
@@ -202,7 +202,6 @@ export default function SideChats({
   unquote,
   ask,
   detach,
-  choose,
 }: {
   sides: Side[];
   shown: string;
@@ -215,7 +214,6 @@ export default function SideChats({
   unquote: () => void;
   ask: (question: string, quote: string) => void;
   detach: (session: Session) => Promise<void>;
-  choose: (id: string) => Promise<void>;
 }) {
   const { command } = useApi();
   const { online } = useHostContext();
@@ -306,7 +304,6 @@ export default function SideChats({
           side={side}
           asking={asking?.to === shown ? asking : undefined}
           cancel={cancel}
-          choose={choose}
         />
       ) : (
         <>

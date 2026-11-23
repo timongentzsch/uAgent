@@ -5,7 +5,7 @@
 ### Changes
 
 - **The home screen on a phone puts the question first.** "What are we working on?" stands in the middle with the last three conversations as plain lines under it and the box below; the lists give way while you type, so the question and the box have the screen.
-- **Work is shown by one quiet band, not by things fading.** While a turn works, a short band of pixels before "Working" in the status line under the input has a dithered glow running to and fro along it, one pass in `--motion-work` (0.8 s); it is the only thing that moves to say so. Nothing else fades any more: the step at work carries a small still square of the band's texture before its words, as does a working conversation in the list, a side chat's tab and the browser button, and every state mark is a square, outlined when idle, solid when connected or unread, red when failed. Reduced motion stills the band too.
+- **Work is shown by one quiet band, not by things fading.** While a turn works, a short band of pixels before "Working" in the status line under the input has a dithered glow running to and fro along it, one pass in `--motion-work` (0.8 s); it is the only thing that moves to say so. Nothing else fades any more: the step at work shows a small still square of the band's texture in its arrow's place, so its words never move, and so do a working conversation in the list, a side chat's tab and the browser button. Every state mark is a square: outlined when idle, solid when connected or unread, and turned on its point in red when failed. Reduced motion stills the band too.
 
 ### Fixes
 

@@ -1,11 +1,22 @@
 # Manual
 
-What each control of the terminal client (`uagent`) and the web client
-(`uagent --web`) does and what state it changes. Both are clients of the
-same conversation runtimes: a conversation open in a terminal is the same
-one in the browser. Flags and slash commands are listed in
-[Command line](interfaces/cli.md), every setting in
-[Settings](interfaces/settings.md).
+The terminal and web clients share the same running conversations. For model
+setup, browser profiles and workspace artifacts, see the [feature guides](README.md).
+The [command reference](interfaces/cli.md) and [settings reference](interfaces/settings.md)
+list the available options.
+
+## Join a running conversation
+
+1. Run `uagent` in a project folder and start a task.
+2. On the same host, run `uagent --web` in another terminal. Open the pairing
+   link in your browser. To join from a phone, first give the host an address
+   the phone can reach. [Pairing and remote access](operations/remote-access.md)
+3. Open the conversation in the list. Both clients receive streamed replies,
+   tool activity and approval requests. Approve a tool call from either
+   device and watch the turn continue on both. You can close a client and
+   rejoin while the host keeps working.
+
+[Watch a terminal session and phone approve an edit and test run](images/terminal.gif)
 
 ## Models and providers
 
@@ -264,11 +275,10 @@ recent output to a device that opens it; one device types at a time, and
 
 ## Artifacts
 
-An artifact is an HTML file the agent writes in the folder; its `meta` tags
-make it a deck, a document, a design, a design system or a sheet
-([Artifact formats](interfaces/artifact-formats.md)). Files opens it in a
-viewer with a legend of its pages; how pages are framed, saved and
-exported is in [Artifacts](architecture/artifacts.md).
+Ask the agent to make a deck, document, sheet, whiteboard or design. Open
+its artifact card to see the result beside the conversation. Edits are saved
+in the workspace file, and the preview follows changes made by the agent.
+[File formats](interfaces/artifact-formats.md) · [How previews work](architecture/artifacts.md)
 
 - **Every kind.** **Find** searches all pages; **Select** turns a clicked
   element into a line in your message; **Tweaks** tries the levers a page
@@ -287,13 +297,12 @@ exported is in [Artifacts](architecture/artifacts.md).
   overwritten. Export adds Markdown.
 - **Designs** open as a canvas of every page, image and video at real
   size; a design system opens as its brand book.
+- **Whiteboards** let you move shapes, notes and connectors directly on the canvas.
 - **Sheets** are grids computed by IronCalc in the page's own worker.
   Edits, formats, merges, groups, rules, charts and tabs are written into
   that tab's table in the file; **Comment** adds the selected range to your
   message. `.xlsx` and `.csv` open read-only until **Save as sheet**;
   Export gives an Excel workbook or the open tab as CSV.
-
-A file handed over with `present` shows as a card; **Open** opens it.
 
 ## The agent's browser
 
@@ -304,6 +313,12 @@ globe button in a conversation's header opens the live screen, read-only.
 until **Done** hands back. When the agent asks for a person (a sign-in,
 MFA, a captcha, a payment), the card's **Open browser** opens the viewer
 already in control, and only that device can finish it.
+
+The active Chrome profile keeps its cookies and saved logins. On a sign-in
+page the agent can ask Chrome to autofill a field. The tool reports the
+length of the filled value and keeps the password in Chrome. For a new
+login or MFA, take control and enter the secret in the browser.
+[Browser automation and password handling](../SECURITY.md#browser-automation)
 
 The status menu holds **Page size**, **Browser scheduling** (the shared
 browser, or 1, 2 or 4 research browsers whose profiles are reset between
@@ -386,8 +401,10 @@ agent changes it only through the `uagent` tool, with your approval.
 A conversation's execution host is chosen when it starts, in the **Host**
 field of a new conversation or folder: Local, or a host added with **Add
 host** in the sidebar's Remote hosts panel, which shows each host's state
-and round trip with **Reconnect** and **Disconnect**. Keys, settings and
-history stay on the main; file, command and terminal work crosses SSH. A
+and round trip with **Reconnect** and **Disconnect**. Model requests,
+provider keys, approval decisions and history stay on the µAgent host. The
+remote worker executes file, Git, shell and terminal operations over SSH.
+Results return to the host for use in the conversation. A
 remote conversation has no browser and cannot be moved. See
 [Remote access](operations/remote-access.md) and
 [Execution gateway](architecture/execution-gateway.md).

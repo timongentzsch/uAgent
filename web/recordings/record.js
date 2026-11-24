@@ -1,7 +1,7 @@
-// Films the recordings and writes each as docs/images/<name>.gif.
+// Capture the README image and encode the terminal-and-phone recording.
 // Needs ffmpeg and a built host: UAGENT_TEST_BINARY, or build/debug/uagent.
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 const only = process.argv.slice(2);
@@ -39,37 +39,23 @@ const ffmpeg = (inputs, filter, out) => {
 };
 for (const folder of readdirSync(results, { withFileTypes: true })) {
   if (!folder.isDirectory()) continue;
-  const files = readdirSync(join(results, folder.name));
-  // A film of several windows says in film.json how they sit side by side.
-  if (files.includes("film.json")) {
-    const film = JSON.parse(
-      readFileSync(join(results, folder.name, "film.json"), "utf8"),
-    );
-    const inputs = film.parts.flatMap((part) => [
-      "-ss",
-      String(part.start),
-      "-t",
-      String(film.seconds),
-      "-i",
-      isAbsolute(part.path) ? part.path : join(results, folder.name, part.path),
-    ]);
-    const parts = film.parts
-      .map(
-        (part, index) =>
-          `[${index}:v]fps=12,crop=${part.crop.join(":")},scale=-2:${film.height}:flags=lanczos[v${index}]`,
-      )
-      .join(";");
-    const row = `${film.parts.map((_, index) => `[v${index}]`).join("")}hstack=inputs=${film.parts.length},${gif}`;
-    ffmpeg(inputs, `${parts};${row}`, `../docs/images/${film.name}.gif`);
-    continue;
-  }
-  const video = files.find((name) => name.endsWith(".webm"));
-  if (!video) continue;
-  // "files.rec.js-Files" films docs/images/files.gif.
-  const name = folder.name.split(".rec.")[0];
-  ffmpeg(
-    ["-i", join(results, folder.name, video)],
-    `fps=12,scale=1000:-1:flags=lanczos,${gif}`,
-    `../docs/images/${name}.gif`,
-  );
+  const manifest = join(results, folder.name, "film.json");
+  if (!existsSync(manifest)) continue;
+  const film = JSON.parse(readFileSync(manifest, "utf8"));
+  const inputs = film.parts.flatMap((part) => [
+    "-ss",
+    String(part.start),
+    "-t",
+    String(film.seconds),
+    "-i",
+    isAbsolute(part.path) ? part.path : join(results, folder.name, part.path),
+  ]);
+  const parts = film.parts
+    .map(
+      (part, index) =>
+        `[${index}:v]fps=12,crop=${part.crop.join(":")},scale=-2:${film.height}:flags=lanczos[v${index}]`,
+    )
+    .join(";");
+  const row = `${film.parts.map((_, index) => `[v${index}]`).join("")}hstack=inputs=${film.parts.length},${gif}`;
+  ffmpeg(inputs, `${parts};${row}`, `../docs/images/${film.name}.gif`);
 }

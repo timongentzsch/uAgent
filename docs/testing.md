@@ -201,10 +201,10 @@ including action admission and management flows. A failed test is not retried.
 Four workers run locally and two in CI. Traces and screenshots of failures are
 kept in `web/test-results`.
 
-The GIFs under `docs/images/` come from `web/recordings/*.rec.js`,
-Playwright scripts against the same fixture host: `npm run record` (with
-`UAGENT_TEST_BINARY` and ffmpeg) films them all, `npm run record -- files`
-one.
+The README screenshot and the terminal-and-phone recording use Playwright
+against the fixture host. From `web/`, set `UAGENT_TEST_BINARY` to a built
+native binary. Run `npm run record -- files` for the screenshot or
+`npm run record -- terminal` for the GIF. Generating the GIF requires ffmpeg.
 
 ## Behavioral evaluation
 

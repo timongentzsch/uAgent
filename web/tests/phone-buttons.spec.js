@@ -131,6 +131,17 @@ test.describe("files", () => {
     await openFiles(page, session, "deck/", { phone: true });
     await expect(page.locator(".page-stage iframe").first()).toBeVisible();
     await roomy(page);
+    await expect(
+      page.getByRole("button", { name: "Undo", exact: true }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "More tools" }).click();
+    await expect(
+      page.getByRole("menuitem", { name: "Undo", exact: true }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("menuitem", { name: "Redo", exact: true }),
+    ).toBeDisabled();
+    await page.keyboard.press("Escape");
     await toolsFit(page);
   });
 

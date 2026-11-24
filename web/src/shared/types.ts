@@ -400,6 +400,7 @@ interface Permissions {
   mode: string;
   default: string;
   effective?: string;
+  source?: string;
 }
 // A rule allows the calls of `tool` that `match` covers: "*" every call,
 // "PREFIX *" a command, "DIR/" a path under it, else that exact subject.
@@ -449,6 +450,7 @@ export interface Session {
   cwd?: string;
   // The conversation that started this one as its agent.
   parent?: string;
+  agent_edits?: "none" | "worktree" | "folder";
   // The model its file names.
   model?: string;
   status?: SessionStatus;
@@ -850,7 +852,9 @@ export interface CommandResults {
   insert: never;
   reply: never;
   interrupt: never;
-  permissions: Permissions;
+  permissions: Permissions & {
+    sandbox?: { summary?: string; network?: string };
+  };
   permission_rules: PermissionRules;
   revoke_device: never;
   test_notification: never;
@@ -975,7 +979,11 @@ export interface CommandInputs {
   };
   interrupt: None;
   // A mode, or a call a review refused allowed for this conversation.
-  permissions: { mode?: string; allow?: { tool: string; match: string } };
+  permissions: {
+    mode?: string;
+    inspect?: boolean;
+    allow?: { tool: string; match: string };
+  };
   permission_rules: {
     action: string;
     tool?: string;
@@ -1097,6 +1105,9 @@ export interface LibraryItem {
 export type LibraryKind = "memory" | "skill" | "file" | ArtifactType;
 // A folder or workspace the Library lists, with its latest conversation.
 export interface LibraryPlace {
+  // Local places use their path as the key; SSH workspaces also name the host.
+  key?: string;
+  host?: string;
   path: string;
   name: string;
   workspace: boolean;

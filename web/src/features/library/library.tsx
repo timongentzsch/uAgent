@@ -1,7 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/hooks";
 import type { FunctionComponent } from "preact";
 import { BookOpen, ChevronDown, Brain, FileText, Plus } from "lucide-preact";
 import { useApi } from "../../state/api.ts";
+import { useRemoteArtifacts } from "./use-remote-artifacts.ts";
 import type {
   FileTarget,
   LibraryItem,
@@ -19,6 +26,7 @@ import {
   Modal,
   Placeholder,
   Select,
+  Spinner,
   Time,
 } from "../../shared/ui.tsx";
 import { usePushDirection } from "../../shared/motion.ts";
@@ -29,7 +37,7 @@ import {
   artifactSize,
 } from "../../shared/artifact.ts";
 import { useResource } from "../../shared/use-resource.ts";
-import { matches } from "../../shared/fuzzy.ts";
+import { allPlaces as ALL, filterLibrary, placeId } from "./filters.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import FolderLabel from "../../shared/folder-label.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
@@ -97,8 +105,6 @@ const GOES: Record<LibraryKind, string> = {
 };
 // An item's id in the selection: its place and key.
 const idOf = (item: LibraryItem) => `${item.place ?? ""}\n${item.key}`;
-// Every place's own, as a place filter; "*" is every place.
-const ALL = "*";
 // Rows drawn while the list loads (see <Placeholder>).
 const SAMPLE = ["An item name", "A longer item name here", "A name"].map(
   (name, index): LibraryItem => ({
@@ -142,7 +148,7 @@ export default function Library({
   initialKind?: LibraryKind | "";
   // Shows a path in the Files pane of a conversation in the place.
   openFiles: (place: LibraryPlace, target: FileTarget) => void;
-  choose: (session: string) => void;
+  choose: (session: string, host?: string) => void;
 }) {
   const { api, routes, manage } = useApi();
   const listing = useResource(
@@ -178,25 +184,63 @@ export default function Library({
   }, [selection.selecting]);
   const moved = usePushDirection(!!selected);
   // Workspaces first, then folders, each by name, as the sidebar lists them.
-  const places = [...(listing.value?.places ?? [])].sort(
-    (a, b) =>
-      Number(b.workspace) - Number(a.workspace) || a.name.localeCompare(b.name),
+  const places = useMemo(
+    () =>
+      [...(listing.value?.places ?? [])].sort(
+        (a, b) =>
+          Number(b.workspace) - Number(a.workspace) ||
+          a.name.localeCompare(b.name),
+      ),
+    [listing.value?.places],
   );
-  const placeOf = (path?: string) =>
-    places.find((place) => place.path === path);
-  const items = listing.value?.items ?? (listing.error ? [] : SAMPLE);
-  const found = items.filter((item) =>
-    matches(query, item.name, item.description, placeOf(item.place)?.name),
+  const byPlace = useMemo(
+    () => new Map(places.map((p) => [placeId(p), p])),
+    [places],
   );
-  const ofKind = (item: LibraryItem, value = kind) =>
-    !value || item.kind === value;
-  const atPlace = (item: LibraryItem, value = where) =>
-    value === ALL || item.place === value;
-  const shown = found.filter((item) => ofKind(item) && atPlace(item));
-  const groups = [...places.map((place) => place.path), ""].flatMap((path) => {
-    const rows = shown.filter((item) => item.place === path);
-    return rows.length ? [{ path, rows }] : [];
-  });
+  const placeOf = (key?: string) => byPlace.get(key ?? "");
+  // Memory and skill management runs on the main host.
+  const localPlaces = places.filter((place) => !place.host);
+  const canManage = online && !!localPlaces.length && !placeOf(where)?.host;
+  // Session ids are stable across catalogue ticks. Each remote answer can
+  // arrive on its own, while local artifacts and attachment snapshots show.
+  const remotePlaces = useMemo(
+    () => places.filter((place) => place.host && place.session),
+    [places],
+  );
+  const { results: remote, retry: retryRemote } = useRemoteArtifacts(
+    remotePlaces,
+    online,
+  );
+  const items = useMemo(
+    () =>
+      listing.value
+        ? [
+            ...listing.value.items,
+            ...remotePlaces.flatMap(
+              (place) => remote[place.session!]?.items ?? [],
+            ),
+          ]
+        : listing.error
+          ? []
+          : SAMPLE,
+    [listing.value, listing.error, remotePlaces, remote],
+  );
+  const visibleRemote = remotePlaces.filter(
+    (place) => where === ALL || placeId(place) === where,
+  );
+  const loadingRemote =
+    online && visibleRemote.some((place) => !remote[place.session!]);
+  const failedRemote = visibleRemote.filter(
+    (place) => remote[place.session!]?.error,
+  );
+  const {
+    groups,
+    kinds: kindCounts,
+    locations,
+  } = useMemo(
+    () => filterLibrary(items, byPlace, kind, where, query),
+    [items, byPlace, kind, where, query],
+  );
   const current =
     selected && "key" in selected
       ? items.find(
@@ -205,7 +249,10 @@ export default function Library({
       : undefined;
   // A place's own controls run there; every place's run in any of them.
   const home = (path = "") =>
-    path || (where !== ALL && where) || places[0]?.path || "";
+    path ||
+    (where !== ALL && !placeOf(where)?.host && where) ||
+    localPlaces[0]?.path ||
+    "";
   const fresh = (value: LibraryKind) =>
     setSelected({ new: value, where: where === ALL ? "" : where });
   // Picking, as the sidebar picks: in the order the list shows.
@@ -213,9 +260,8 @@ export default function Library({
   const picked = items.filter((item) => selection.ids.has(idOf(item)));
   // biome-ignore lint/correctness/useExhaustiveDependencies: on a new listing
   useEffect(() => {
-    if (listing.value && selection.ids.size)
-      selection.keep(listing.value.items.map(idOf));
-  }, [listing.value]);
+    if (listing.value && selection.ids.size) selection.keep(items.map(idOf));
+  }, [listing.value, remote]);
   useShortcuts(
     selection.selecting
       ? {
@@ -253,8 +299,8 @@ export default function Library({
   const placeLabel = (path: string) => {
     const place = placeOf(path);
     return path ? (
-      <FolderLabel path={path} space={place?.workspace}>
-        {place?.workspace ? place.name : undefined}
+      <FolderLabel path={place?.path ?? path} space={place?.workspace}>
+        {place?.workspace || place?.host ? place.name : undefined}
       </FolderLabel>
     ) : (
       <FolderLabel>Everywhere</FolderLabel>
@@ -321,8 +367,6 @@ export default function Library({
       })}
     </section>
   ));
-  const count = (test: (item: LibraryItem) => boolean) =>
-    found.filter(test).length;
   const document =
     picked.length > 0 ? (
       <section class="library-summary" aria-label="Selection">
@@ -349,7 +393,7 @@ export default function Library({
           where: selected.where,
         }}
         cwd={home(selected.where)}
-        places={places}
+        places={localPlaces}
         online={online}
         limit={
           listing.value?.limits[selected.new === "skill" ? "skill" : "memory"]
@@ -364,7 +408,7 @@ export default function Library({
         kind={control(current.kind)}
         entry={current}
         cwd={home(current.place)}
-        places={places}
+        places={localPlaces}
         online={online}
         limit={listing.value?.limits[current.kind]}
         close={() => setSelected(null)}
@@ -380,7 +424,7 @@ export default function Library({
           const place = placeOf(current.place);
           if (place) openFiles(place, target);
         }}
-        choose={choose}
+        choose={(id) => choose(id, placeOf(current.place)?.host || "")}
       />
     ) : null;
   return (
@@ -434,7 +478,11 @@ export default function Library({
               <option value={ALL}>All places</option>
               <option value="">Everywhere</option>
               {places.map((place) => (
-                <option key={place.path} value={place.path} title={place.path}>
+                <option
+                  key={placeId(place)}
+                  value={placeId(place)}
+                  title={place.path}
+                >
                   {place.name}
                 </option>
               ))}
@@ -443,15 +491,12 @@ export default function Library({
         </SheetButton>
         {kind === "memory" || kind === "skill" ? (
           <>
-            <Button
-              disabled={!online || !places.length}
-              onClick={() => setImporting(kind)}
-            >
+            <Button disabled={!canManage} onClick={() => setImporting(kind)}>
               Import
             </Button>
             <Button
               variant="primary"
-              disabled={!online || !places.length}
+              disabled={!canManage}
               onClick={() => fresh(kind)}
             >
               <Plus />
@@ -474,7 +519,7 @@ export default function Library({
               {(["memory", "skill"] as const).map((value) => (
                 <MenuItem
                   key={value}
-                  disabled={!online || !places.length}
+                  disabled={!canManage}
                   onClick={() =>
                     action === "New" ? fresh(value) : setImporting(value)
                   }
@@ -520,16 +565,14 @@ export default function Library({
                   onClick={() => setKind(value)}
                 >
                   {label}
-                  <small class="muted">
-                    {count((item) => ofKind(item, value) && atPlace(item))}
-                  </small>
+                  <small class="muted">{kindCounts.get(value) ?? 0}</small>
                 </Button>
               ))}
             </div>
           ))}
           <div class="library-where" role="group" aria-label="Places">
             <h2 class="small muted">Where</h2>
-            {[ALL, "", ...places.map((place) => place.path)].map((value) => (
+            {[ALL, "", ...places.map(placeId)].map((value) => (
               <Button
                 key={value}
                 variant="quiet"
@@ -538,9 +581,7 @@ export default function Library({
                 onClick={() => setWhere(value)}
               >
                 {value === ALL ? "All places" : placeLabel(value)}
-                <small class="muted">
-                  {count((item) => ofKind(item) && atPlace(item, value))}
-                </small>
+                <small class="muted">{locations.get(value) ?? 0}</small>
               </Button>
             ))}
           </div>
@@ -561,7 +602,7 @@ export default function Library({
             </SelectionBar>
           ) : (
             listing.value &&
-            shown.length > 0 && (
+            groups.length > 0 && (
               <Button
                 variant="quiet"
                 size="compact"
@@ -578,13 +619,21 @@ export default function Library({
             <Placeholder label="Loading library…">{rows}</Placeholder>
           ) : groups.length ? (
             rows
-          ) : (
+          ) : loadingRemote || failedRemote.length ? null : (
             <EmptyState>
               {query
                 ? "Nothing here matches."
                 : "Nothing kept here yet. Memories and skills come from conversations or Import; designs and shared files from what agents make."}
             </EmptyState>
           )}
+          {loadingRemote && <Spinner label="Loading remote artifacts…" />}
+          {failedRemote.map((place) => (
+            <LoadError
+              key={placeId(place)}
+              error={`${place.name} · ${remote[place.session!].error}`}
+              retry={() => retryRemote(place.session!)}
+            />
+          ))}
         </div>
         {document && (
           <div class={moved ? "management-editor push" : "management-editor"}>
@@ -612,7 +661,18 @@ export default function Library({
               )
               .join("; ")}. `}
             online={online}
-            done={() => listing.retry()}
+            done={() => {
+              listing.retry();
+              const changed = new Set(
+                picked.flatMap((item) => {
+                  const place = placeOf(item.place);
+                  return item.kind !== "file" && place?.host && place.session
+                    ? [place.session]
+                    : [];
+                }),
+              );
+              for (const id of changed) retryRemote(id);
+            }}
             close={() => setDeleting(false)}
           />
         </Modal>

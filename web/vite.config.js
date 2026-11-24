@@ -119,8 +119,8 @@ export default defineConfig({
       injectManifest: {
         rollupFormat: "iife",
         globPatterns: ["**/*.{html,json,js,css,woff2,png,webmanifest}"],
-        // The host inlines it into previewed pages; this app never loads it.
-        globIgnores: ["**/design-helper.js"],
+        // Preview pages load these directly from their host.
+        globIgnores: ["**/design-helper.js", "**/deck-print.js"],
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
         manifestTransforms: [
           async (entries) => ({

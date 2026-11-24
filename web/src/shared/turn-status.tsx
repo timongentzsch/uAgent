@@ -497,7 +497,13 @@ function AgentRow({
           </IconButton>
         )
       )}
-      {title && <AgentAssignment title={title} name={name} />}
+      {!remove && (
+        <AgentAssignment
+          title={title || name}
+          name={name}
+          edits={agent.agent_edits}
+        />
+      )}
     </li>
   );
 }

@@ -69,15 +69,15 @@ int ParamNumber(const Request& request, const char* name, int fallback, int low,
   return std::clamp(value, low, high);
 }
 
-// `script` inlined first in the page: after its doctype, so the page keeps
-// standards mode, and the parser puts it first in <head>.
-std::string WithScript(std::string html, const std::string& script) {
+// After the doctype, so the page keeps standards mode and the parser puts
+// the host's script first in <head>, before any slide can report readiness.
+std::string WithHead(std::string html, const std::string& markup) {
   size_t at = html.starts_with("\xEF\xBB\xBF") ? 3 : 0;
   if (AsciiLower(html.substr(at, 9)) == "<!doctype") {
     const size_t close = html.find('>', at);
     at = close == std::string::npos ? at : close + 1;
   }
-  html.insert(at, "<script>" + script + "</script>");
+  html.insert(at, markup);
   return html;
 }
 
@@ -122,8 +122,11 @@ void Master::Files(const Request& request, Response& response) {
   }
   std::string bytes, name;
   if (workspace.Remote() || mode != "raw") {
-    const json result =
-        WorkspaceFiles(workspace, id, {{"mode", mode}, {"path", path}});
+    json operation = {{"mode", mode}, {"path", path}};
+    if (mode == "diff" && request.has_param("scope")) {
+      operation["scope"] = request.get_param_value("scope");
+    }
+    const json result = WorkspaceFiles(workspace, id, std::move(operation));
     if (result.contains("error")) {
       Error(response, JsonValue(result, "error", "File unavailable"),
             JsonValue(result, "status", workspace.Remote() ? 503 : 404));
@@ -304,10 +307,11 @@ void Master::Preview(const Request& request, Response& response) {
     return;
   }
   const bool deck = request.has_param("deck");
+  const bool review = deck && request.has_param("review");
   const json result =
       WorkspaceFiles(workspace, session,
                      {{"mode", deck ? "deck" : "preview"},
-                      {"review", deck && request.has_param("review")},
+                      {"review", review},
                       {"path", relative},
                       {"width", ParamNumber(request, "w", 1920, 1, 8000)},
                       {"height", ParamNumber(request, "h", 1080, 1, 8000)}});
@@ -322,6 +326,10 @@ void Master::Preview(const Request& request, Response& response) {
   std::string mime = JsonValue(result, "mime", "text/html");
   if (deck) {
     bytes = JsonValue(result, "text", "");
+    if (!review) {
+      bytes = WithHead(std::move(bytes),
+                       R"(<script src="/deck-print.js"></script>)");
+    }
   } else if (request.has_param("sheet") &&
              (mime == "text/csv" || mime.ends_with("spreadsheetml.sheet"))) {
     // An Excel or CSV file as a sheet: a page that names the file, which the
@@ -334,14 +342,16 @@ void Master::Preview(const Request& request, Response& response) {
     mime = "text/html";
   }
   if (!deck && mime == "text/html") {
-    bytes = WithScript(std::move(bytes), design_helper_);
+    bytes =
+        WithHead(std::move(bytes), "<script>" + design_helper_ + "</script>");
   }
   response.headers.erase("Content-Security-Policy");
   response.set_header(
       "Content-Security-Policy",
-      deck ? "default-src " + *origin + "/preview/" + token +
-                 "/; script-src 'none'; style-src 'unsafe-inline'; "
-                 "form-action 'none'; frame-ancestors 'none'"
+      deck ? "default-src " + *origin + "/preview/" + token + "/; script-src " +
+                 (review ? "'none'" : *origin + "/deck-print.js") +
+                 "; style-src 'unsafe-inline'; base-uri 'none'; form-action "
+                 "'none'; frame-ancestors 'none'"
            : PreviewPolicy(*origin, "/preview/" + token + "/"));
   if (!deck) {
     // The page's own origin is opaque: its loads are cross-origin.
@@ -417,9 +427,12 @@ void Master::Picture(const Request& request, Response& response,
           502);
     return;
   }
+  const std::string name =
+      deck && path.empty()
+          ? "deck"
+          : (deck ? target->filename() : target->stem()).string();
   ServeFile(response, std::move(bytes), pdf ? "application/pdf" : "image/png",
-            (deck ? target->filename() : target->stem()).string() + "." + kind,
-            !request.has_param("download"));
+            name + "." + kind, !request.has_param("download"));
 }
 
 }  // namespace uagent::web::master

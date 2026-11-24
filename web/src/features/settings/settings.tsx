@@ -37,6 +37,10 @@ export default function Settings(props: SettingsProps) {
   const [, title, , describe] = SCOPES.find(([id]) => id === current)!;
   const folder = session?.cwd && nameOf(session.cwd);
   const drilled = phone && picked !== null;
+  // The phone index opens without loading the fallback scope. Returning from
+  // All conversations keeps its filter, pending saves and restart notices.
+  const lastScope = useRef<Scope>(undefined);
+  if (!phone || drilled) lastScope.current = current;
   const instructions = (label: string, detail: string) => (
     <Group>
       <Row
@@ -111,24 +115,29 @@ export default function Settings(props: SettingsProps) {
           project={session && (folder || "project")}
           class={moved && "push"}
         />
-        <div ref={body} class={moved ? "settings-pane push" : "settings-pane"}>
-          {!phone && <h3 class="settings-pane-title">{title}</h3>}
-          <p class="settings-scope">{describe(session?.cwd)}</p>
-          {current === "user" || current === "project" ? (
-            <Configuration
-              key={current + session?.cwd}
-              scope={current}
-              folder={session?.cwd}
-              version={props.version}
-              online={online}
-              sessions={catalogue.sessions}
-            >
-              {pages[current]}
-            </Configuration>
-          ) : (
-            pages[current]
-          )}
-        </div>
+        {lastScope.current === current && (
+          <div
+            ref={body}
+            class={moved ? "settings-pane push" : "settings-pane"}
+          >
+            {!phone && <h3 class="settings-pane-title">{title}</h3>}
+            <p class="settings-scope">{describe(session?.cwd)}</p>
+            {current === "user" || current === "project" ? (
+              <Configuration
+                key={current + session?.cwd}
+                scope={current}
+                folder={session?.cwd}
+                version={props.version}
+                online={online}
+                sessions={catalogue.sessions}
+              >
+                {pages[current]}
+              </Configuration>
+            ) : (
+              pages[current]
+            )}
+          </div>
+        )}
       </div>
       {editingInstructions &&
         props.instructions(() => setEditingInstructions(false))}

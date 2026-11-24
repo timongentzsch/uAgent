@@ -34,8 +34,6 @@ export function useCommands({
   running,
   busy,
   setBusy,
-  draft,
-  uploading,
   setDraft,
   updateDraft,
   act,
@@ -58,8 +56,6 @@ export function useCommands({
   running: boolean;
   busy: boolean;
   setBusy: (busy: boolean) => void;
-  draft: Draft;
-  uploading: boolean;
   setDraft: (value: Draft, id?: string) => void;
   updateDraft: (id: string, change: (draft: Draft) => Draft) => void;
   act: Act;
@@ -88,7 +84,7 @@ export function useCommands({
     selected,
     online,
     outgoing,
-    setDrafts,
+    drafts,
     setOutgoing,
     patchOutgoing,
     report,
@@ -191,13 +187,14 @@ export function useCommands({
   async function submit(event: Event, jumpToLatest: () => void, queue = false) {
     event.preventDefault();
     const pending = snapshots.get()[selected]?.pending;
+    const draft = drafts.get()[selected] ?? emptyDraft();
     const text = messageText(draft);
     setNotice("");
     if (
       (!online && !holdable(draft)) ||
       pending ||
       (!text && !draft.files.length) ||
-      uploading ||
+      draft.files.some((file) => file.pending) ||
       busy
     )
       return;
@@ -218,7 +215,7 @@ export function useCommands({
             "Wait for this turn to finish before running a slash command.",
           );
         if (await localCommand(text)) {
-          setDrafts((current) =>
+          drafts.set((current) =>
             current[id] === sent
               ? { ...current, [id]: { ...sent, text: "" } }
               : current,
@@ -278,7 +275,7 @@ export function useCommands({
           ? items.map((item) => (item.request_id === request_id ? row : item))
           : [...items, row],
       );
-    setDrafts((current) =>
+    drafts.set((current) =>
       current[id] === sent
         ? {
             ...current,
@@ -353,7 +350,10 @@ export function useCommands({
       if (entry.argument && !entry.argument.startsWith("[")) {
         if (!session)
           throw new Error(`Open a conversation to use ${entry.command}`);
-        setDraft({ ...draft, text: `${entry.command} ` });
+        updateDraft(session.id, (draft) => ({
+          ...draft,
+          text: `${entry.command} `,
+        }));
         focusComposer();
       } else if (!(await localCommand(entry.command))) {
         if (!session)

@@ -45,7 +45,7 @@ type Row = {
   | {
       kind: "action";
       label: string;
-      detail: string;
+      detail?: string;
       shortcut?: ShortcutId;
       about?: string;
     }
@@ -168,7 +168,6 @@ export default function Spotlight({
       group: "Actions & commands",
       kind: "action",
       label: item.label,
-      detail: "Action",
       shortcut: item.id,
       run: actions[item.id]!,
     }),
@@ -181,7 +180,6 @@ export default function Spotlight({
       kind: "action",
       label: entry.command,
       about: entry.description,
-      detail: "Command",
       run: () => run(entry),
     }));
   const scopes: Row[] = SCOPES.map(([id, label]) => ({
@@ -189,7 +187,6 @@ export default function Spotlight({
     group: "Settings",
     kind: "action",
     label: `Settings: ${label}`,
-    detail: "Settings",
     run: () => settings(id),
   }));
   const label = (row: Row) => ("label" in row ? row.label : "");
@@ -343,7 +340,9 @@ export default function Spotlight({
                   {row.label}
                   {"about" in row && row.about && ` — ${row.about}`}
                 </span>
-                <span class="spotlight-detail small">{row.detail}</span>
+                {row.detail && (
+                  <span class="spotlight-detail small">{row.detail}</span>
+                )}
                 {row.kind === "action" && row.shortcut && (
                   <Keys id={row.shortcut} />
                 )}

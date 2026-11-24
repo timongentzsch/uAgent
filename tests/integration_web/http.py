@@ -55,9 +55,11 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             initial = client.snapshot(session)
             assert_true(
                 initial["state"]["permissions"]
-                == {"mode": "default", "effective": "yolo", "default": "yolo"},
+                == {"mode": "default", "effective": "yolo", "default": "yolo", "source": "user"},
                 initial,
             )
+            access = client.command("permissions", session, inspect=True)["result"]
+            assert_true(bool(access["sandbox"]["summary"]), access)
             client.command("permissions", session, mode="ask")
             # The conversation's mode is the approval setting, chosen at its
             # scope over the one saved for all conversations.
@@ -75,7 +77,7 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             )
             assert_true(
                 client.snapshot(session)["state"]["permissions"]
-                == {"mode": "ask", "effective": "ask", "default": "yolo"},
+                == {"mode": "ask", "effective": "ask", "default": "yolo", "source": "conversation"},
                 "conversation mode",
             )
 
@@ -93,13 +95,18 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             choose(value="auto")
             assert_true(
                 client.snapshot(session)["state"]["permissions"]
-                == {"mode": "auto", "effective": "auto", "default": "yolo"},
+                == {
+                    "mode": "auto",
+                    "effective": "auto",
+                    "default": "yolo",
+                    "source": "conversation",
+                },
                 "chosen through config",
             )
             choose(unset=True)
             assert_true(
                 client.snapshot(session)["state"]["permissions"]
-                == {"mode": "default", "effective": "yolo", "default": "yolo"},
+                == {"mode": "default", "effective": "yolo", "default": "yolo", "source": "user"},
                 "choice taken back",
             )
             status, refused = client.send(

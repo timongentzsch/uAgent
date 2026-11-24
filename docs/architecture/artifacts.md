@@ -32,7 +32,8 @@ page makes from a `blob:` URL (the only kind an opaque origin may make),
 one worker per answer, terminated when it answers or after 20 s (`LIMIT` in
 `web/sheet/sheet.js`). The WebAssembly module is fetched and compiled once
 per page and handed to each worker, since an opaque origin has no cache.
-PDF and PNG exports run in the agent's Chrome ([Browser](browser.md)).
+PNG and direct PDF downloads run in the agent’s Chrome. Without it,
+the deck viewer prints through the person’s browser ([Browser](browser.md)).
 
 ## Data and formats
 
@@ -237,8 +238,15 @@ the browser service for `capture` on instance 0 at the artboard's size
 (1440 × 900 for a page, 1920 × 1080 for a deck by default). A deck's PDF is
 the host's `?deck` page, one iframe per slide or design page (documents
 and sheets left out), each with a named `@page` of its own artboard's size,
-served with `script-src 'none'`. Chrome renders in a throwaway context,
-waits up to 10 s for fonts and `window.uagentReady`, and prints or shoots.
+with slide scripts confined to their opaque frames. The outer print page runs
+only the host’s `/deck-print.js`. Each included frame signals when its fonts,
+tracked fetch requests and rendering promise settle. A slide that draws
+asynchronously can assign its completion promise to `window.uagentReady`.
+Chrome renders in a throwaway
+context, waits up to 10 s for readiness, and prints or shoots. A browser
+print window at `?deck#print` uses the same ordered frames and page sizes.
+It opens Print when every slide is ready. After 10 s the person can print
+the slides as displayed. The review manifest keeps `script-src 'none'`.
 
 A browser `observe` on a deck folder uses the same ordered artboards,
 including their individual page sizes. The host serves them inside an inert

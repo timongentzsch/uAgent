@@ -75,6 +75,26 @@ test("the files pane does not remount the chat", async ({ page, session }) => {
   expect(await same()).toBe(true);
 });
 
+test("the keyboard Files toggle enters the pane and closing returns to the toggle", async ({
+  page,
+  session,
+}) => {
+  await openSession(page, session);
+  const toggle = page
+    .locator(".conversation-head")
+    .getByRole("button", { name: "Files", exact: true });
+  await toggle.press("Enter");
+  const pane = page.getByRole("region", { name: "Files" });
+  await expect(pane).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(pane.locator(":focus")).toHaveCount(1);
+  await pane.getByRole("button", { name: "Close files" }).press("Enter");
+  await expect(toggle).toBeFocused();
+  await toggle.click();
+  await expect(pane).toBeVisible();
+  await expect(pane.locator(":focus")).toHaveCount(0);
+});
+
 test("files beside the chat: browse, read, search and view", async ({
   page,
   session,
@@ -221,6 +241,33 @@ test("changes list what differs from the last commit and open as a diff", async 
   await expect(pane.locator(".files-head")).toContainText("+1 −3");
   await list.getByRole("button", { name: "Files", exact: true }).click();
   await expect(list.getByRole("button", { name: "src" })).toBeVisible();
+});
+
+test("staged and working views show opposing edits to the same file", async ({
+  page,
+  host,
+  session,
+}) => {
+  await repository(host.project);
+  execFileSync("git", ["add", "src/app.ts"], { cwd: host.project });
+  await folder(host.project);
+  const pane = await openFiles(page, session);
+  const list = pane.getByRole("navigation", { name: "Folder" });
+  await list.getByRole("button", { name: "Changes 2" }).click();
+  const working = list
+    .getByRole("region", { name: "Working tree" })
+    .getByRole("button", { name: "src/app.ts" });
+  const staged = list
+    .getByRole("region", { name: "Staged" })
+    .getByRole("button", { name: "src/app.ts" });
+  await working.click();
+  await expect(pane.locator(".diff-del")).toHaveText("-export const two = 3;");
+  await expect(working).toHaveAttribute("aria-current", "true");
+  await staged.click();
+  await expect(pane.locator(".diff-add")).toHaveText("+export const two = 3;");
+  await expect(staged).toHaveAttribute("aria-current", "true");
+  await expect(working).not.toHaveAttribute("aria-current", "true");
+  await expect(pane.locator(".files-head")).toContainText("Staged");
 });
 
 test("on a phone a change opens as a diff with Back to the list", async ({

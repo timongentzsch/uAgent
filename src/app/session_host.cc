@@ -189,6 +189,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.cwd = item.cwd;
     session.host = item.host;
     session.parent = item.parent;
+    session.agent_edits = item.agent_edits;
     session.model = item.model;
     session.cost = item.cost;
     session.turns = item.turns;
@@ -315,7 +316,7 @@ bool SessionHost::HasWorker(const std::string& id) const {
 json SessionHost::Metadata(const HostSession& session) const {
   // A decision routed to an agent's parent does not wait on a person.
   const bool waits = WaitsOnPerson(session.pending);
-  return {
+  json metadata = {
       {"id", session.id},
       {"task_id", session.task_id},
       {"cwd", session.cwd},
@@ -343,6 +344,9 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"needs_you", waits},
       {"pending_prompt", waits ? JsonValue(session.pending, "prompt", "") : ""},
       {"updated", session.updated}};
+  if (!session.agent_edits.empty())
+    metadata["agent_edits"] = session.agent_edits;
+  return metadata;
 }
 
 json SessionHost::SnapshotBody(const HostSession& session, json state) const {

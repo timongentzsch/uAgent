@@ -95,7 +95,9 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
             (project / "design/03-left-out.html").write_text(
                 '<meta name="artboard" content="1440x900 slide"><meta name="slide" content="push skip">'
             )
+            (project / "design/outside.html").symlink_to(root / "outside.html")
             status, deck, headers = page("design/?deck&w=1440&h=99999")
+            assert_true(b"outside.html" not in deck, deck)
             assert_true(status == 200, (status, deck))
             assert_true(b"@page{size:1440px 8000px;margin:0}" in deck, deck[:200])
             assert_true(
@@ -119,15 +121,21 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
             )
             # Review and print use identical ordering and dimensions. Only review
             # makes the slides inert until the browser chooses its bounded range.
-            review = page("design/?deck&review&w=1440&h=900")[1]
+            _, review, review_headers = page("design/?deck&review&w=1440&h=900")
+            print_script = b'<script src="/deck-print.js"></script>'
+            assert_true(print_script in deck and print_script not in review, deck)
+            assert_true(
+                "script-src 'none'" in review_headers["Content-Security-Policy"], review_headers
+            )
             assert_true(
                 b"<template id=slides>" in review
                 and review.replace(b"<template id=slides>", b"").replace(b"</template>", b"")
-                == deck,
+                == deck.replace(print_script, b""),
                 review,
             )
             policy = headers["Content-Security-Policy"]
             assert_true("sandbox" not in policy and "frame-ancestors 'none'" in policy, policy)
+            assert_true(f"script-src http://127.0.0.1:{port}/deck-print.js;" in policy, policy)
             assert_true(b"uagentDesign" not in deck, deck[:200])
             # A picture or a PDF needs the agent's browser, which this host has not.
             for asked in (

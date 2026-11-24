@@ -104,7 +104,7 @@ export function Time({
     </time>
   );
 }
-async function copyText(text: string) {
+export async function copyText(text: string) {
   if (navigator.clipboard) return navigator.clipboard.writeText(text);
   // The Clipboard API needs HTTPS; over HTTP a user-initiated copy still works.
   const field = document.createElement("textarea");
@@ -681,6 +681,7 @@ export function Modal({
   header = true,
   swipeable = true,
   edge = true,
+  backAddress,
   hidden = false,
 }: {
   title: string;
@@ -703,6 +704,7 @@ export function Modal({
   swipeable?: boolean;
   // False for the drawer, which came in from the edge a swipe starts at.
   edge?: boolean;
+  backAddress?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const phone = usePhone();
@@ -734,7 +736,7 @@ export function Modal({
     // A parent that replaced this dialog meanwhile owns its state now.
     void animateOut(ref.current).then(() => mounted.current && close());
   };
-  useDismiss(!hidden, requestClose, edge);
+  useDismiss(!hidden, requestClose, edge, backAddress);
   useSheetSwipe(ref, requestClose, layout === "sheet" && swipeable && phone);
   useLayoutEffect(() => {
     const dialog = ref.current;

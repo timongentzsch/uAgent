@@ -104,7 +104,13 @@ export function closeTopLayer() {
 }
 
 // While `active`, the layer sits on the stack and back calls `close`.
-export function useDismiss(active: boolean, close: () => void, edge = true) {
+export function useDismiss(
+  active: boolean,
+  close: () => void,
+  edge = true,
+  backAddress?: string,
+) {
+  const below = useLatest(backAddress);
   const latest = useLatest(close);
   // Layout effect: the entry exists as soon as the layer is on screen, so a
   // quick back can never skip past it.
@@ -123,11 +129,20 @@ export function useDismiss(active: boolean, close: () => void, edge = true) {
       popped: false,
     };
     stack.push(layer);
-    history[reuse ? "replaceState" : "pushState"](entry(layer.depth), "");
+    const address = !reuse && below.current ? location.href : undefined;
+    // A deep link can name the layer itself. Keep the view it closes to
+    // underneath, so moving inside the layer never alters that destination.
+    if (!reuse && below.current)
+      history.replaceState(history.state, "", below.current);
+    history[reuse ? "replaceState" : "pushState"](
+      entry(layer.depth),
+      "",
+      address,
+    );
     return () => {
       const index = stack.indexOf(layer);
       if (index >= 0) stack.splice(index, 1);
       if (!layer.popped) sync();
     };
-  }, [active, edge]);
+  }, [active, edge, below]);
 }

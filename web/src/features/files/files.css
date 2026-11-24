@@ -31,6 +31,13 @@
   flex: none;
   max-width: 100%;
 }
+.files-title a {
+  color: inherit;
+  text-decoration: none;
+}
+.files-title a:is(:hover, :focus-visible) {
+  text-decoration: underline;
+}
 .files-dir {
   color: var(--muted);
   font-weight: var(--weight-regular);
@@ -82,10 +89,14 @@
   list-style: none;
 }
 .files-tree,
-.files-results {
+.files-results,
+.files-changes {
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+.files-changes section + section {
+  margin-top: var(--space-4);
 }
 .files-tree ul {
   margin-left: var(--space-6);
@@ -288,6 +299,7 @@
 .page-tools-folded {
   display: none;
 }
+.page-history,
 .page-tools-wide {
   display: contents;
 }

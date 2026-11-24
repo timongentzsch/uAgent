@@ -12,7 +12,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: var(--space-3);
+  gap: var(--gap);
   width: 100%;
   min-width: 0;
   min-height: var(--row);
@@ -53,17 +53,22 @@ div.node-row > .row-chevron {
   min-width: 0;
 }
 .node-open {
-  margin-left: var(--space-4);
+  margin-inline-start: var(--space-4);
 }
 .node-body,
 .node-kids {
-  padding-left: var(--space-4);
+  padding-inline-start: var(--space-4);
 }
 .node-kids {
-  border-left: var(--border);
+  border-inline-start: var(--border);
 }
 .node[data-kind="call"] > .node-open {
   border-inline-start: var(--border);
+}
+/* The rail starts half an indent in; the text lines up with the heading
+   after its chevron and gap. */
+.node[data-kind="call"] > .node-open > .node-body {
+  padding-inline-start: calc(var(--icon) + var(--gap) - var(--space-4));
 }
 .node-section,
 .node-agent {
@@ -155,6 +160,11 @@ div.node-row > .row-chevron {
   min-height: 0;
   padding: 0;
   text-decoration: underline;
+}
+@media (pointer: coarse) {
+  .node-actions > .node-action {
+    min-height: var(--touch);
+  }
 }
 .node-source {
   display: grid;

@@ -82,6 +82,31 @@ for (const touch of [false, true]) {
   });
 }
 
+test("a keyboard user can reopen a menu during its exit", async ({
+  page,
+  session,
+}) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto(`/#session=${session.id}`);
+  const trigger = page
+    .locator(".conversation-head")
+    .getByRole("button", { name: "Conversation menu" });
+  const menu = page.getByRole("menu", { name: "Conversation menu" });
+  await trigger.press("Enter");
+  await expect(menu.getByRole("menuitem").first()).toBeFocused();
+  await menu.evaluate((el) =>
+    Promise.allSettled(el.getAnimations().map((a) => a.finished)),
+  );
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("ArrowUp");
+  await expect(menu.getByRole("menuitem").last()).toBeFocused();
+  await menu.evaluate((el) =>
+    Promise.allSettled(el.getAnimations().map((a) => a.finished)),
+  );
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await expect(menu).toBeVisible();
+});
+
 test("the conversation menu is short and More holds the rest", async ({
   page,
   session,

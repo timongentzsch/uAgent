@@ -228,8 +228,7 @@ json Designs(const fs::path& root) {
   for (const std::string& path : Candidates(root, more)) {
     const fs::path relative(path);
     const bool tokens = relative.filename() == "tokens.css";
-    if ((!tokens && relative.extension() != ".html") ||
-        !Shown(root / relative)) {
+    if ((!tokens && relative.extension() != ".html") || !Resolve(root, path)) {
       continue;
     }
     Folder& folder = folders[relative.parent_path().string()];
@@ -263,10 +262,14 @@ json Designs(const fs::path& root) {
                   {"modified", changed}}};
   };
   for (auto& [dir, folder] : folders) {
-    const bool inside = std::ranges::any_of(folders, [&](const auto& other) {
-      return other.second.kind.system && other.first != dir &&
-             (other.first.empty() || dir.starts_with(other.first + "/"));
-    });
+    // Only ancestors can own a component. Unrelated folders never enter the
+    // search, even when a workspace holds thousands of standalone artifacts.
+    bool inside = false;
+    for (fs::path parent = dir; !parent.empty() && !inside;) {
+      parent = parent.parent_path();
+      const auto owner = folders.find(parent.string());
+      inside = owner != folders.end() && owner->second.kind.system;
+    }
     const std::string type = folder.kind.Kind();
     std::vector<std::string> pages;
     for (const auto& [path, kind] : folder.pages) {
@@ -279,7 +282,6 @@ json Designs(const fs::path& root) {
       if (inside && kind != "sheet") continue;
       Found one = item(kind, path, {path}, modified(path));
       one.item["alone"] = true;
-      if (kind == "sheet") one.item["count"] = SheetTabs(root / path);
       found.push_back(std::move(one));
     }
     if (type == "system" || (!type.empty() && !inside)) {
@@ -291,7 +293,13 @@ json Designs(const fs::path& root) {
   });
   if (found.size() > kPlaceDesigns) found.resize(kPlaceDesigns);
   json items = json::array();
-  for (Found& entry : found) items.push_back(std::move(entry.item));
+  for (Found& entry : found) {
+    // Counting tabs opens the workbook. Read only sheets the Library returns.
+    if (entry.item["kind"] == "sheet") {
+      entry.item["count"] = SheetTabs(root / JsonValue(entry.item, "path", ""));
+    }
+    items.push_back(std::move(entry.item));
+  }
   return items;
 }
 
@@ -421,23 +429,41 @@ json Find(const fs::path& root, const std::string& query) {
 
 struct Change {
   std::string path;
-  char state;
-  bool untracked;
+  std::string code;  // Git's index and working-tree status columns.
+  std::string previous;
+
+  char State(std::string_view scope = {}) const {
+    if (scope.empty()) {
+      if (code.find('D') != std::string::npos) return 'D';
+      if (code.find('R') != std::string::npos) return 'R';
+      return code.find_first_of("A?") == std::string::npos ? 'M' : 'A';
+    }
+    // An unresolved merge has no single staged version.
+    if (code.find('U') != std::string::npos || code == "DD" || code == "AA") {
+      return scope == "working" ? 'U' : ' ';
+    }
+    if (code == "??") return scope == "working" ? 'A' : ' ';
+    return code[scope == "staged" ? 0 : 1];
+  }
 };
 struct Changes {
   bool repository = false;
   std::vector<Change> list;
   bool more = false;
 };
-Changes ReadChanges(const fs::path& folder, const std::string& pathspec) {
+Changes ReadChanges(const fs::path& folder, const std::string& pathspec,
+                    const std::string& rename_target = "") {
   Changes changes;
   const CapturedProcess prefix =
       HostGit(folder.string(), {"rev-parse", "--show-prefix"});
   if (!prefix.Ok()) return changes;
-  const std::string from_top = Trim(prefix.output);
+  const std::string from_top =
+      prefix.output.substr(0, prefix.output.rfind('\n'));
   const CapturedProcess status = HostGit(
       folder.string(),
-      {"status", "--porcelain", "-z", "--untracked-files=all", "--", pathspec});
+      {"--no-optional-locks", "status", "--porcelain", "-z", "--find-renames",
+       rename_target.empty() ? "--untracked-files=all" : "--untracked-files=no",
+       "--", pathspec});
   // Past the capture's limit, what arrived is still a list, cut.
   if (!status.error.empty() ? status.output.empty() : !status.Ok()) {
     return changes;
@@ -449,43 +475,68 @@ Changes ReadChanges(const fs::path& folder, const std::string& pathspec) {
   for (size_t at = 0; at + 3 < out.size();) {
     const size_t end = std::min(out.find('\0', at), out.size());
     const std::string code = out.substr(at, 2);
-    std::string path =
-        out.substr(at + 3 + from_top.size(), end - at - 3 - from_top.size());
+    const std::string name = out.substr(at + 3, end - at - 3);
     at = end + 1;
+    std::string previous;
     if (code.find_first_of("RC") != std::string::npos) {
-      at = std::min(out.find('\0', at), out.size()) + 1;
+      const size_t next = out.find('\0', at);
+      if (next == std::string::npos) break;
+      const std::string old = out.substr(at, next - at);
+      if (!rename_target.empty() && name == from_top + rename_target &&
+          old.starts_with(from_top) &&
+          Shown(folder / old.substr(from_top.size()))) {
+        previous = old.substr(from_top.size());
+      }
+      at = next + 1;
     }
-    if (!Shown(folder / path)) continue;
+    if (!name.starts_with(from_top)) continue;
+    std::string path = name.substr(from_top.size());
+    if ((!rename_target.empty() && rename_target != path) ||
+        !Shown(folder / path))
+      continue;
     if (changes.list.size() == kFileFindMatches) {
       changes.more = true;
       break;
     }
-    const char state = code.find('D') != std::string::npos             ? 'D'
-                       : code.find('R') != std::string::npos           ? 'R'
-                       : code.find_first_of("A?") != std::string::npos ? 'A'
-                                                                       : 'M';
-    changes.list.push_back({std::move(path), state, code == "??"});
+    changes.list.push_back({std::move(path), code, std::move(previous)});
+    if (!rename_target.empty()) break;
   }
   return changes;
 }
 
-// The change to `path` as a unified diff against HEAD, or an untracked file
-// against nothing. No program the repository names is run: git would take
-// an external diff or a textconv filter from its config.
-std::optional<json> ReadDiff(const fs::path& folder, const Changes& changes,
-                             const std::string& path) {
-  const auto found = std::ranges::find(changes.list, path, &Change::path);
+// A path's diff against HEAD (default), against the index (working), or
+// between HEAD and the index (staged, including before the first commit).
+std::optional<json> ReadDiff(const fs::path& folder, const std::string& path,
+                             const std::string& scope) {
+  const Changes changes = ReadChanges(folder, ":(literal)" + path);
+  const auto found = std::ranges::find_if(changes.list, [&](const Change& c) {
+    return c.path == path && c.State(scope) != ' ';
+  });
   if (found == changes.list.end()) return std::nullopt;
-  std::vector<std::string> args = {"diff", "--no-ext-diff", "--no-textconv",
+  std::vector<std::string> args = {"--no-optional-locks", "diff",
+                                   "--no-ext-diff", "--no-textconv",
                                    "--no-color"};
-  // A repository without commits has no HEAD to compare with.
-  const bool head =
-      HostGit(folder.string(), {"rev-parse", "-q", "--verify", "HEAD"}).Ok();
-  const bool whole = found->untracked || !head;
+  const bool whole =
+      found->code == "??" ||
+      (scope.empty() &&
+       !HostGit(folder.string(), {"rev-parse", "-q", "--verify", "HEAD"}).Ok());
   if (whole) {
     args.insert(args.end(), {"--no-index", "--", "/dev/null", path});
   } else {
-    args.insert(args.end(), {"--relative", "HEAD", "--", ":(literal)" + path});
+    args.push_back("--relative");
+    if (scope == "staged") args.push_back("--cached");
+    if (scope.empty()) args.push_back("HEAD");
+    args.insert(args.end(), {"--find-renames", "--", ":(literal)" + path});
+    // Restricting status to the destination reports a rename as an addition.
+    // Ask for the tracked paths only when that column could be a rename.
+    if (!scope.empty() && found->State(scope) == 'A') {
+      const Changes renamed = ReadChanges(folder, ".", path);
+      for (const auto& c : renamed.list) {
+        if (c.State(scope) == 'R' && !c.previous.empty()) {
+          args.push_back(":(literal)" + c.previous);
+        }
+      }
+    }
   }
   CapturedProcess diff = HostGit(folder.string(), args);
   // With --no-index, exit code 1 means the files differ. Past the capture's
@@ -531,8 +582,8 @@ std::string PreviewMime(const fs::path& path) {
 // (the asked size where it names none): a deck's slides, or a design's
 // pages. Documents and sheets are artifacts of their own, and a skipped
 // slide is left out.
-std::string DeckPage(const fs::path& folder, int width, int height,
-                     bool review) {
+std::string DeckPage(const fs::path& root, const fs::path& folder, int width,
+                     int height, bool review) {
   const auto px = [](int64_t n) { return std::to_string(n) + "px"; };
   // Each page by its file's name, and the named @page of its size.
   std::vector<std::pair<std::string, std::string>> pages;
@@ -542,7 +593,11 @@ std::string DeckPage(const fs::path& folder, int width, int height,
     if (!entry.is_regular_file(error) || entry.path().extension() != ".html") {
       continue;
     }
-    const std::string head = Head(entry.path());
+    // Only include a frame the workspace's preview route can actually serve.
+    const auto target =
+        Resolve(root, entry.path().lexically_relative(root).string());
+    if (!target) continue;
+    const std::string head = Head(*target);
     if (Alone(PageKind(head)) || Skipped(head)) continue;
     const json size = ArtboardSize(head);
     const auto side = [&](size_t at, int asked) {
@@ -647,18 +702,46 @@ json Move(const fs::path& folder, const json& moves) {
 json Request(const fs::path& root, const json& request) {
   const std::string mode = JsonValue(request, "mode", "");
   const std::string path = JsonValue(request, "path", "");
+  if (mode == "designs") return {{"items", Designs(root)}};
+  if (mode == "delete_design") {
+    const std::string kind = JsonValue(request, "kind", "");
+    const std::string key = JsonValue(request, "key", "");
+    for (const json& item : Designs(root)) {
+      if (item["kind"] != kind || item["key"] != key) continue;
+      const std::string relative = JsonValue(item, "path", "");
+      const auto target = Resolve(root, relative);
+      // A root design is the workspace itself and cannot be deleted.
+      if (!target || *target == root || relative.empty()) break;
+      std::error_code error;
+      fs::remove_all(root / relative, error);
+      return error ? json{{"error", "cannot delete: " + error.message()},
+                          {"status", 500}}
+                   : json::object();
+    }
+    return {{"error", "not found"}, {"status", 404}};
+  }
   if (mode == "find") return Find(root, path);
   if (mode == "changes" || mode == "diff") {
-    const Changes changes =
-        ReadChanges(root, mode == "changes" ? "." : ":(literal)" + path);
     if (mode == "diff") {
-      return ReadDiff(root, changes, path)
+      const std::string scope = JsonValue(request, "scope", "");
+      if (!scope.empty() && scope != "working" && scope != "staged") {
+        return {{"error", "unknown diff scope"}, {"status", 400}};
+      }
+      return ReadDiff(root, path, scope)
           .value_or(json{{"error", "not found"}, {"status", 404}});
     }
+    const Changes changes = ReadChanges(root, ".");
     json rows = json::array();
     for (const auto& change : changes.list) {
-      rows.push_back(
-          {{"path", change.path}, {"state", std::string(1, change.state)}});
+      json row = {{"path", change.path},
+                  {"state", std::string(1, change.State())}};
+      if (path == "split") {
+        for (const std::string scope : {"working", "staged"}) {
+          const char state = change.State(scope);
+          if (state != ' ') row[scope] = std::string(1, state);
+        }
+      }
+      rows.push_back(std::move(row));
     }
     return {{"changes", rows},
             {"more", changes.more},
@@ -726,7 +809,7 @@ json Request(const fs::path& root, const json& request) {
     if (!fs::is_directory(*target, error)) {
       return {{"error", "not found"}, {"status", 404}};
     }
-    return {{"text", DeckPage(*target, JsonValue(request, "width", 1920),
+    return {{"text", DeckPage(root, *target, JsonValue(request, "width", 1920),
                               JsonValue(request, "height", 1080),
                               JsonValue(request, "review", false))}};
   }

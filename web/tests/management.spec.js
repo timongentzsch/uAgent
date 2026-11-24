@@ -73,6 +73,95 @@ const LOADED_ROWS = ".library-row:not(.placeholder *)";
   }
 }
 
+test("an unavailable SSH workspace leaves local artifacts usable", async ({
+  page,
+  session,
+}) => {
+  const path = "/review/deck";
+  const peer = {
+    path,
+    key: `ssh:peer:${path}`,
+    host: "peer",
+    session: "remote",
+    name: "peer · deck",
+  };
+  const other = {
+    ...peer,
+    key: "ssh:other:/review/deck",
+    host: "other",
+    session: "other",
+    name: "other · deck",
+  };
+  const local = { path, session: session.id, name: "deck" };
+  const item = {
+    kind: "deck",
+    key: path + "/slides",
+    path: "slides",
+    count: 2,
+    name: "Slides",
+    place: path,
+  };
+  await page.route("**/api/library", (route) =>
+    route.fulfill({
+      json: {
+        places: [local, peer, other],
+        items: [item],
+        limits: {},
+      },
+    }),
+  );
+  const gate = Promise.withResolvers();
+  let otherReads = 0;
+  await page.route("**/api/library?session=other", (route) => {
+    otherReads++;
+    return route.fulfill({ json: { items: [] } });
+  });
+  let reads = 0;
+  await page.route("**/api/library?session=remote", async (route) => {
+    reads++;
+    if (reads === 1) {
+      await gate.promise;
+      await route.fulfill({ status: 503, json: { error: "Disconnected" } });
+    } else
+      await route.fulfill({
+        json: { items: [{ ...item, place: peer.key, session: peer.session }] },
+      });
+  });
+  await page.goto(`/#session=${session.id}`);
+  await page
+    .getByRole("complementary")
+    .getByRole("button", { name: "Library", exact: true })
+    .click();
+  try {
+    await expect(
+      page
+        .getByRole("region", { name: "deck", exact: true })
+        .getByText("Slides", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("status", { name: "Loading remote artifacts…" }),
+    ).toBeVisible();
+  } finally {
+    gate.resolve();
+  }
+  await expect(page.getByRole("alert")).toContainText(
+    "peer · deck · Disconnected",
+  );
+  await page.getByRole("button", { name: "Retry" }).click();
+  const remoteGroup = page.getByRole("region", {
+    name: "peer · deck",
+    exact: true,
+  });
+  await expect(remoteGroup.getByText("Slides", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "deck", exact: true })
+      .getByText("Slides", { exact: true }),
+  ).toBeVisible();
+  expect(reads).toBe(2);
+  expect(otherReads).toBe(1);
+});
+
 test("the Library lists every place's things, opens them beside and moves a memory", async ({
   page,
   host: fixture,
@@ -165,8 +254,14 @@ test("the Library lists every place's things, opens them beside and moves a memo
   await expect(page.locator(LOADED_ROWS)).toHaveCount(1);
   await page.locator(LOADED_ROWS).filter({ hasText: "design/landing" }).click();
   await expect(page.locator(".library-pages iframe")).toHaveCount(1);
-  await page.getByRole("button", { name: "Open canvas", exact: true }).click();
-  // A design of one page opens as that page.
+  await expect(
+    page.getByRole("button", { name: "Open canvas", exact: true }),
+  ).toBeVisible();
+  await page
+    .locator(".library-pages")
+    .getByRole("button", { name: /Open design\/landing\// })
+    .press("Enter");
+  // A thumbnail opens its own page.
   await expect(
     page.frameLocator('iframe[title="Hero"]').getByText("hi"),
   ).toBeVisible();

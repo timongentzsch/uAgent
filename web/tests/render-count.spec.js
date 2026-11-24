@@ -83,6 +83,17 @@ async function open(page) {
     const [, id, files] =
       /^\/api\/sessions\/(\w{32})(\/files)?$/.exec(path) || [];
     const metadata = SESSIONS.find((item) => item.id === id);
+    if (
+      metadata &&
+      files &&
+      new URL(route.request().url()).searchParams.has("read")
+    )
+      return json({
+        text: "# Project notes",
+        bytes: 15,
+        more: false,
+        revision: "1",
+      });
     if (metadata && files)
       return json({
         entries: [{ name: "notes.md", dir: false, size: 1 }],
@@ -351,31 +362,68 @@ test("streaming renders only what changed", async ({ page }) => {
   expect(await results.evaluate((list) => list.scrollTop)).toBe(scrolled);
 });
 
-test("typing renders the composer, not the transcript or the list", async ({
+for (const phone of [false, true])
+  test(`typing only renders the composer on ${phone ? "a phone" : "desktop beside Files"}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(
+      phone ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+    );
+    await open(page);
+    if (!phone) {
+      await page.getByRole("button", { name: "Files", exact: true }).click();
+      const files = page.getByRole("region", { name: "Files" });
+      await files.getByRole("button", { name: "notes.md" }).click();
+      await expect(files.locator(".markdown")).toContainText("Project notes");
+    }
+    const prompt = page.getByLabel("Message or guidance");
+    await prompt.focus();
+    await page.evaluate(() => testMark());
+    await prompt.pressSequentially("twenty characters!!!");
+    const { renders, writes } = await page.evaluate(() => testSince());
+    measured("typed", { renders, writes });
+    expect(renders.Composer).toBeGreaterThan(0);
+    for (const name of [
+      "HostsShell",
+      "App",
+      "ChatPage",
+      "ConversationHeader",
+      "Modals",
+      "Files",
+      "MarkdownFile",
+      "SidebarView",
+      "Chat",
+      "ModelControl",
+      "SessionSummaryView",
+      "ActivityButtonView",
+    ])
+      expect(renders[name] || 0, name).toBe(0);
+    const key = `uagent-drafts:${ID}`;
+    expect(writes[key] || 0).toBe(0);
+    await expect
+      .poll(() => page.evaluate((key) => testSince().writes[key], key))
+      .toBe(1);
+  });
+
+test("a background conversation resumes at the latest streamed reply", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await open(page);
-  const prompt = page.getByLabel("Message or guidance");
-  await prompt.focus();
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Library", exact: true }).first(),
+  ).toBeVisible();
   await page.evaluate(() => testMark());
-  await prompt.pressSequentially("twenty characters!!!");
-  const { renders, writes } = await page.evaluate(() => testSince());
-  measured("typed", { renders, writes });
-  expect(renders.Composer).toBeGreaterThan(0);
-  expect(renders.App || 0).toBeLessThanOrEqual(20);
-  expect(renders.ChatPage || 0).toBeLessThanOrEqual(20);
-  for (const name of [
-    "SidebarView",
-    "Chat",
-    "ModelControl",
-    "SessionSummaryView",
-    "ActivityButtonView",
-  ])
-    expect(renders[name] || 0, name).toBe(0);
-  expect(writes["uagent-drafts"] || 0).toBe(0);
-  await expect
-    .poll(() => page.evaluate(() => testSince().writes["uagent-drafts"]))
-    .toBe(1);
+  await streamReply(page);
+  const { renders } = await page.evaluate(() => testSince());
+  measured("background", renders);
+  // The first frame updates the catalogue; text frames only update its store.
+  expect(renders.ChatPage || 0).toBeLessThanOrEqual(1);
+  await page.goBack();
+  await expect(page.locator('[data-message-id="reply"]')).toContainText(
+    "word59",
+  );
 });
 
 test("state frames and an open dialog leave the shell alone", async ({

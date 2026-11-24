@@ -1,6 +1,6 @@
 // A reload looks like the app, not a page loading: its frame paints before
 // any script runs, the conversation fills it in place, and nothing jumps.
-import { test, expect } from "./fixtures.js";
+import { test, expect, online, draftOf } from "./fixtures.js";
 
 // What a page route holds or refuses must reach it: WebKit sends a page's
 // requests past routes once a service worker controls it. A client without
@@ -164,4 +164,48 @@ test("code that arrives within the delay shows no spinner", async ({
   await page.keyboard.press("ControlOrMeta+K");
   await expect(page.getByRole("dialog")).toBeVisible();
   expect(await page.evaluate(() => globalThis.spinners)).toBe(0);
+});
+
+test("separate tabs keep each conversation's draft through simultaneous saves and reload", async ({
+  page,
+  context,
+  session,
+  host,
+  command,
+}) => {
+  const other = (await command("create", { cwd: host.project })).session;
+  await command("activate", { session_id: other.id });
+  const second = await context.newPage();
+  try {
+    await Promise.all([
+      page.goto(`/#session=${session.id}`),
+      second.goto(`/#session=${other.id}`),
+    ]);
+    await Promise.all([online(page), online(second)]);
+    const firstPrompt = page.getByLabel("Message or guidance");
+    const secondPrompt = second.getByLabel("Message or guidance");
+    await Promise.all([
+      firstPrompt.fill("First draft"),
+      secondPrompt.fill("Second draft"),
+    ]);
+    await expect
+      .poll(async () => (await draftOf(page, session.id))?.text)
+      .toBe("First draft");
+    await expect
+      .poll(async () => (await draftOf(page, other.id))?.text)
+      .toBe("Second draft");
+    await Promise.all([page.reload(), second.reload()]);
+    await expect(firstPrompt).toHaveValue("First draft");
+    await expect(secondPrompt).toHaveValue("Second draft");
+    // Editing and clearing the same conversation is seen by its other tab.
+    await second.goto(`/#session=${session.id}`);
+    await expect(secondPrompt).toHaveValue("First draft");
+    await firstPrompt.fill("Updated in first tab");
+    await expect(secondPrompt).toHaveValue("Updated in first tab");
+    await secondPrompt.fill("");
+    await expect(firstPrompt).toHaveValue("");
+    expect((await draftOf(page, other.id))?.text).toBe("Second draft");
+  } finally {
+    await second.close();
+  }
 });

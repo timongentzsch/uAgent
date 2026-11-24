@@ -5,7 +5,6 @@ import type {
   Snapshot,
   Catalogue,
   ConnectionPhase,
-  Draft,
   Outgoing,
   HostEvent,
   Outcome,
@@ -23,7 +22,6 @@ import {
   confirmOutgoing,
   outgoingAfter,
   retainedViews,
-  hasContent,
   keepNodes,
   patchCatalogue,
 } from "./store.ts";
@@ -38,11 +36,11 @@ import {
 } from "../shared/message-view.ts";
 import { wentBack } from "../shared/dismiss.ts";
 import { slide } from "../shared/motion.ts";
+import { draftStore } from "./drafts.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import { refreshUserStyle } from "../shared/user-style.ts";
 import {
   catalogueSaveDelayMs,
-  draftSaveDelayMs,
   dropOldest,
   maxLocalRequests,
   reconnectBaseDelayMs,
@@ -72,32 +70,6 @@ const kept = {
   display: stored<Pick<Catalogue, "detail" | "thinking">>(
     storageKeys.display,
     {},
-  ),
-  drafts: stored<Record<string, Draft>>(
-    storageKeys.drafts,
-    {},
-    (value) =>
-      Object.fromEntries(
-        Object.entries(
-          (value && typeof value === "object" ? value : {}) as Record<
-            string,
-            Draft
-          >,
-        ).map(([id, draft]) => [
-          id,
-          {
-            ...draft,
-            files: draft.files.filter((file) => !file.pending),
-          },
-        ]),
-      ),
-    {
-      delay: draftSaveDelayMs,
-      kept: (value) =>
-        Object.fromEntries(
-          Object.entries(value).filter(([, draft]) => hasContent(draft)),
-        ),
-    },
   ),
   unread: stored(
     storageKeys.unread,
@@ -171,7 +143,8 @@ export function useHost(
   const [snapshots] = useState(snapshotStore);
   const [selected, setSelected] = useState(selectedFromURL);
   // Unsent drafts survive an evicted or reloaded app; logout clears them.
-  const [drafts, setDrafts] = useStored(kept.drafts);
+  const [drafts] = useState(draftStore);
+  useEffect(() => drafts.listen(), [drafts]);
   const [error, setError] = useState("");
   const [unread, setUnread] = useStored(kept.unread);
   const [outgoing, setOutgoing] = useStored(kept.outgoing);
@@ -267,12 +240,12 @@ export function useHost(
     kept.spaces.write([]);
     kept.pins.write([]);
     kept.display.write({});
-    setDrafts({});
+    drafts.clear();
     setOutgoing([]);
     setAuthenticated(false);
     live.current = {};
     snapshots.set({});
-  }, [snapshots]);
+  }, [snapshots, drafts]);
   const load = useCallback(
     (id: string) => {
       if (loads.current.has(id)) return loads.current.get(id)!;
@@ -334,7 +307,7 @@ export function useHost(
         return next;
       });
       snapshots.set({ ...live.current });
-      setDrafts((prior) => {
+      drafts.set((prior) => {
         const next = { ...prior };
         delete next[id];
         return next;
@@ -357,7 +330,7 @@ export function useHost(
         setSelected("");
       }
     },
-    [snapshots],
+    [snapshots, drafts],
   );
   // A command's outcome, from its receipt or the stream, settles the
   // outgoing row that sent it. True when a row or a waiting caller shows
@@ -816,7 +789,6 @@ export function useHost(
     selected,
     setSelected: select,
     drafts,
-    setDrafts,
     error,
     setError,
     unread,

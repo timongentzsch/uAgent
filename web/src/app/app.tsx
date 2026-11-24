@@ -21,10 +21,16 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { emptyDraft, hasContent } from "../state/store.ts";
+import { hasContent } from "../state/store.ts";
 import { useApi, localApi } from "../state/api.ts";
 import { ConversationContext, HostContext } from "../state/host-context.ts";
-import { Modal, ErrorBoundary, Deferred, Spinner } from "../shared/ui.tsx";
+import {
+  Modal,
+  ErrorBoundary,
+  Deferred,
+  Spinner,
+  copyText,
+} from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
 import { closeTopLayer, settled, useDismiss } from "../shared/dismiss.ts";
@@ -53,7 +59,7 @@ import { storageKeys } from "../shared/storage-keys.ts";
 
 import HostsShell, { type HostAppProps } from "./hosts.tsx";
 import { useHosts } from "../state/sources.ts";
-import { useSnapshots } from "../state/snapshot-store.ts";
+import { useStoreValue } from "../state/value-store.ts";
 import { DetailContext } from "../features/chat/node.tsx";
 import { detailLevels } from "../shared/tree.ts";
 import { devicePrefs } from "../shared/device-prefs.ts";
@@ -68,7 +74,12 @@ import { useSideConversations } from "./use-side-conversations.ts";
 import { usePlaces } from "./use-places.tsx";
 import { useCommands } from "./use-commands.ts";
 import { folderOf } from "../shared/display.ts";
-import { focusComposer } from "../shared/navigation.ts";
+import {
+  focusComposer,
+  fileFromURL,
+  withoutFileAddress,
+} from "../shared/navigation.ts";
+import { useLinkedFile } from "./use-linked-file.ts";
 import type { FindRequest } from "../features/chat/find-bar.tsx";
 import { useMessageActions } from "./use-message-actions.ts";
 import Library from "../features/library/library.tsx";
@@ -107,7 +118,9 @@ const keptPage = stored<Page>(
 function App({ host, bindResult, reading }: HostAppProps) {
   const hosts = useHosts();
   const { command, manage } = useApi();
-  const [page, setPage] = useState<Page>(keptPage.read);
+  const [page, setPage] = useState<Page>(() =>
+    fileFromURL() ? "chat" : keptPage.read(),
+  );
   useEffect(() => reading(page === "chat"), [page, reading]);
   useEffect(() => keptPage.write(page), [page]);
   const [place, setPlace] = useState("");
@@ -241,12 +254,31 @@ function App({ host, bindResult, reading }: HostAppProps) {
   // The catalogue entry changes with every session event; a snapshot's
   // metadata stands in only for a session not listed yet.
   const listedSession = sessionById(catalogue.sessions, selected);
-  const metadata = useSnapshots(snapshots, (all) =>
+  const metadata = useStoreValue(snapshots, (all) =>
     listedSession ? undefined : all[selected]?.metadata,
   );
   const session = listedSession || metadata;
   selectedRef.current = selected;
   folderRef.current = session ? folderOf(session) : "";
+  const showLinkedFile = useCallback(
+    (path: string) => {
+      setFilesOpen(!!path);
+      if (!path) return;
+      setPage("chat");
+      setDrawer(false);
+      setFlow(selected, () => ({
+        view: { kind: "resolve", path, fresh: true, exact: true },
+        back: [],
+      }));
+    },
+    [selected, setFlow],
+  );
+  useLinkedFile(
+    session?.id ?? "",
+    !!filesOpen,
+    flows[selected]?.view,
+    showLinkedFile,
+  );
   // Only an empty open conversation is passed on, so choosing among the
   // others does not filter the list again.
   const keep = listedSession?.turns === 0 ? selected : "";
@@ -257,15 +289,11 @@ function App({ host, bindResult, reading }: HostAppProps) {
   // Until the catalogue answers, placeholders fill the shell.
   const booting = authenticated === null;
   const opening = booting && !!selected;
-  const draft = drafts[selected] || emptyDraft();
-  const uploading = draft.files.some((file) => file.pending);
   const running = !!session && isRunning(session, online);
   useWakeLock(running);
   const { updateDraft, attachAnnotated, upload } = useDraftUploads({
     host,
     session,
-    draft,
-    uploading,
   });
   const setDraft = useCallback(
     (value: Draft, id = selected) => updateDraft(id, () => value),
@@ -316,11 +344,17 @@ function App({ host, bindResult, reading }: HostAppProps) {
     page,
     choose,
   });
-  const waiting = useSnapshots(
+  const waiting = useStoreValue(
     snapshots,
     (all) => !!update && Object.values(all).some((item) => item.pending),
+    !!update,
   );
-  const updateBlocked = Object.values(drafts).some(hasContent)
+  const unsentDraft = useStoreValue(
+    drafts,
+    (all) => !!update && Object.values(all).some(hasContent),
+    !!update,
+  );
+  const updateBlocked = unsentDraft
     ? "Send or copy unsent drafts first."
     : waiting
       ? "Wait for the running turn to finish."
@@ -361,8 +395,11 @@ function App({ host, bindResult, reading }: HostAppProps) {
         return;
       }
       revealNext.current = target;
-      if (place.session) void choose(place.session);
-      else void startConversation(place.path).catch(report);
+      if (place.session) void choose(place.session, place.host || "");
+      else
+        void startConversation(place.path, "", "", place.host || "").catch(
+          report,
+        );
     },
     [selected, openFile, choose, startConversation, report],
   );
@@ -373,8 +410,6 @@ function App({ host, bindResult, reading }: HostAppProps) {
       running,
       busy,
       setBusy,
-      draft,
-      uploading,
       setDraft,
       updateDraft,
       act,
@@ -593,6 +628,9 @@ function App({ host, bindResult, reading }: HostAppProps) {
           setFilesOpen((open) => !filesSheet && !!open);
         })
       }
+      copyLink={(link) =>
+        void copyText(link).then(() => setNotice("Link copied"), report)
+      }
       pictures={browserAvailable}
     />
   );
@@ -677,27 +715,16 @@ function App({ host, bindResult, reading }: HostAppProps) {
   );
   const conversation = useMemo(
     () => ({
-      draft,
+      drafts,
       setDraft,
       submit,
       act,
       upload: attach,
-      uploading,
       busy,
       following,
       setFollowing,
     }),
-    [
-      draft,
-      setDraft,
-      submit,
-      act,
-      attach,
-      uploading,
-      busy,
-      following,
-      setFollowing,
-    ],
+    [drafts, setDraft, submit, act, attach, busy, following, setFollowing],
   );
   const sidebar = (
     <Sidebar
@@ -838,6 +865,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                         title="Files"
                         layout="sheet"
                         className="files-sheet"
+                        backAddress={withoutFileAddress()}
                         header={false}
                         close={() => setFilesOpen(false)}
                       >

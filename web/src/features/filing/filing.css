@@ -1,5 +1,5 @@
 .filing {
-  margin: 0 var(--column-inset) var(--gap);
+  margin-bottom: var(--gap);
   padding: var(--pad);
 }
 .filing p {

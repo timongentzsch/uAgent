@@ -5,6 +5,7 @@ import type { FileTarget } from "../../shared/types.ts";
 import { HTML, MARKDOWN, nameOf, paged } from "../../shared/file-types.ts";
 import { join, type Listing, pagesOf, slideName, slidesOf } from "./boards.ts";
 
+export type GitScope = "working" | "staged";
 export type Lines = [number, number];
 export type View =
   // A folder's tree; with `note`, why the pane landed here.
@@ -14,7 +15,7 @@ export type View =
       path: string;
       lines?: Lines;
       source?: boolean;
-      diff?: boolean;
+      diff?: boolean | GitScope;
       // The diff is what this turn changed, not the uncommitted change.
       turn?: number;
     }
@@ -33,6 +34,7 @@ export type View =
       diff?: boolean;
       turn?: number;
       fresh: boolean;
+      exact?: boolean;
     }
   | { kind: "outside"; path: string };
 type ResolveView = Extract<View, { kind: "resolve" }>;
@@ -200,6 +202,7 @@ export async function resolve(
     );
     return settle(view, up);
   }
+  if (target.exact) return missing(target.path);
   // Reordering a deck changes the numeric prefix of its slides. Resolve an
   // older finding against this deck before searching the wider workspace.
   if (

@@ -17,6 +17,7 @@ list(APPEND _runtime_inputs "CMakeLists.txt"
      "cmake/build_identity.cc.in"
      "cmake/review_questions.cc.in"
      "web/public/design-helper.js"
+     "web/public/deck-print.js"
      "docs/architecture/overview.md"
      "web/src/shared/styles/tokens.css")
 list(SORT _runtime_inputs)

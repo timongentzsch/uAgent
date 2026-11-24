@@ -135,7 +135,17 @@ function SidePane({ pane }: { pane?: Docked }) {
   }, [open, !!shown]);
   useLayoutEffect(() => {
     if (open) {
-      opener.current = document.activeElement;
+      const trigger = document.activeElement;
+      opener.current = trigger;
+      const controlled = trigger?.getAttribute("aria-controls");
+      const target = controlled && document.getElementById(controlled);
+      if (
+        target &&
+        ref.current?.contains(target) &&
+        document.documentElement.dataset.input === "keyboard"
+      ) {
+        target.focus({ preventScroll: true });
+      }
       return;
     }
     const target = opener.current;
@@ -146,7 +156,7 @@ function SidePane({ pane }: { pane?: Docked }) {
       (active === document.body || active?.closest(".side-pane"))
     )
       target.focus({ preventScroll: true });
-  }, [open]);
+  }, [open, ref]);
   return shown ? (
     <div ref={ref} class="side-pane" data-pane={shown.name}>
       <ResizeHandle pane={shown.name} label={shown.label} edge="start" />

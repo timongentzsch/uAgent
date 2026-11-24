@@ -942,12 +942,14 @@
   // "#build=N", then by message; a step below 0 shows all.
   const hide = document.createElement("style");
   hide.textContent =
-    "html[data-uagent-build] [data-step]{transition:opacity .2s}" +
+    "@media (prefers-reduced-motion:no-preference){html[data-uagent-build] [data-step]{transition:opacity var(--uagent-build-duration,.2s)}}" +
     "html[data-uagent-build] [data-step]:not([data-uagent-shown]){opacity:0}";
   root.append(hide);
   const building = /^#build=(\d+)$/.exec(location.hash);
   if (building) root.toggleAttribute("data-uagent-build", true);
-  const build = (at) => {
+  const build = (at, duration) => {
+    if (Number.isFinite(duration))
+      root.style.setProperty("--uagent-build-duration", `${duration}ms`);
     root.toggleAttribute("data-uagent-build", at >= 0);
     for (const element of document.querySelectorAll("[data-step]"))
       element.toggleAttribute("data-uagent-shown", +element.dataset.step <= at);
@@ -1215,6 +1217,7 @@
     }
     if (event.data.type === "tweak")
       tweak(String(event.data.name), event.data.value);
-    if (event.data.type === "build") build(Number(event.data.at));
+    if (event.data.type === "build")
+      build(Number(event.data.at), event.data.duration);
   });
 })();

@@ -91,6 +91,12 @@ step to deliver it, **Edit** takes it back. **Queue next** (Alt+Enter)
 runs a message as its own turn after this one. Esc, or Send while it shows
 Stop, interrupts the turn.
 
+Type `@` in a message to find an attached file or a workspace path. Choose
+a workspace path to add a removable reference above the input. For a line
+or range, type `@src/main.cc:12` or `@src/main.cc:12-24` before choosing
+the file. The agent receives the path and line numbers. Use **Attach files**
+to include the file itself.
+
 **The status control** under the composer says how the conversation
 stands: Working with time, commands and agents; **Needs you** with
 **Show**; **Stopped** with **Continue** (sends `continue`); Reconnecting.
@@ -164,8 +170,11 @@ pipeline is in [Tools](architecture/tools.md).
 | `yolo` | YOLO | `/yolo`, `--yolo`, `/permissions yolo` |
 | `plan` | Plan | `/plan`, `/permissions plan` |
 
-The web's **Approval** control sets this conversation's mode; **Default**
-returns to the one `approval.mode` gives.
+Open **Approval** to see which setting supplied the mode. **Default** follows
+the applicable settings for an ordinary conversation. A delegated agent
+inherits its parent's mode at launch. Its assignment disclosure shows whether
+it may edit the shared folder, edit its own worktree or only read. Choosing
+another approval mode in the child keeps its assigned edit scope.
 
 An approval card shows what the call would do (the command, or a diff),
 the folder, the risks a reviewer saw and why it asks (the mode, a rule, the
@@ -205,12 +214,23 @@ by shell commands are not tracked.
 **Files** (the folder button in a conversation's header) shows the
 conversation's folder as a tree with name search. Code opens highlighted,
 Markdown rendered (**Source** shows the text), HTML live in a sandboxed
-frame; other files download. In a git repository **Changes** lists what
-differs from the last commit, each as a diff. **Quote** puts a reference
-to the selected lines over the input, **Ask in side chat** asks about them
-in a side chat. Open files are read again when a turn
-ends. Files writes to disk only by artifact editing (below). It serves
+frame; other files download. In a Git repository **Changes** groups files
+by **Working tree** and **Staged**. Open a working-tree change to compare
+the file with the index, or a staged change to compare the index with the
+last commit. A partially staged file appears in both groups. **Quote** puts
+a reference to the selected lines over the input. **Ask in side chat** asks
+about them in a side chat. Open files are read again when a turn ends. Files writes to disk only by artifact editing (below). It serves
 nothing outside the folder ([Web host](architecture/web-host.md)).
+
+In an artifact, **Export → Copy link** copies a link to the current file or
+slide. In Files, the filename in the heading is also a link. Open it on a
+device paired with the same µAgent server to see the current workspace
+version. If the file moves or is removed, Files shows its missing path.
+
+In a deck, **Export** offers the whole deck first and the current slide
+separately. Without the host’s browser service, **Print deck or save as PDF**
+opens the browser’s print dialog. Skipped slides stay out of the deck PDF.
+On a narrow screen, open **More tools → Export**.
 
 A terminal is your own login shell, unsandboxed, on the conversation's
 execution host, at most 8 at once. Its environment is the agent's
@@ -310,7 +330,9 @@ composer.
 
 A key is `global/NAME` or `project/NAME`. The **Library** lists the
 memories, skills, artifacts and presented files of every place a
-conversation works in, without copying; a memory offers **Move to…** and
+conversation works in. SSH folders are grouped by host. Local items and shared
+snapshots appear while the Library loads live artifacts from connected hosts.
+A memory offers **Move to…** and
 **Copy to everywhere**, and picked items go with **Delete…**. **Scheduled**
 edits tasks (**New task**, **Run now**, **Pause**, **Resume**), which run
 only while `uagent --web` runs. `--no-memory` turns memory off for one

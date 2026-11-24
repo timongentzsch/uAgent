@@ -82,8 +82,11 @@ export async function openFiles(page, session, path = "", options = {}) {
   const files = page.getByRole(options.phone ? "dialog" : "region", {
     name: "Files",
   });
-  for (const name of path.split("/").filter(Boolean))
-    await files.getByRole("button", { name, exact: true }).click();
+  for (const name of path.split("/").filter(Boolean)) {
+    const row = files.getByRole("button", { name, exact: true });
+    // A second tab can restore the folder expansion saved by the first.
+    if ((await row.getAttribute("aria-expanded")) !== "true") await row.click();
+  }
   if (path.endsWith("/"))
     await files
       .locator(`.tree-folder:has([data-path="${path.slice(0, -1)}"])`)
@@ -147,13 +150,13 @@ export const withoutServiceWorker = (page) =>
 export const online = (page) =>
   expect(page.locator('.composer input[type="file"]')).toBeEnabled();
 
-// The quotes of a conversation's draft, as this device keeps them.
-export const quotesOf = (page, id) =>
+// What this device keeps for one conversation's unsent message.
+export const draftOf = (page, id) =>
   page.evaluate(
-    (id) =>
-      JSON.parse(localStorage.getItem("uagent-drafts") || "{}")[id]?.quotes,
+    (id) => JSON.parse(localStorage.getItem(`uagent-drafts:${id}`) ?? "null"),
     id,
   );
+export const quotesOf = async (page, id) => (await draftOf(page, id))?.quotes;
 
 // The composer's totals open the statistics, which hold the way to the raw
 // context.

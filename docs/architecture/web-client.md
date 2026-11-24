@@ -22,7 +22,8 @@ gzips every text asset (level 9) and writes the list of files to embed,
 `web_assets.cc`: one `Asset` per file with its bytes (gzipped where a
 matching `.gz` exists), plain size, MIME type and ETag. A `.gz` whose source
 hash does not match `.gzip-manifest.json` fails the configure step. With
-`UAGENT_EMBED_WEB=OFF` only `design-helper.js` is embedded. The sheet code
+`UAGENT_EMBED_WEB=OFF` embeds the two preview scripts, `design-helper.js` and
+`deck-print.js`. The sheet code
 (`web/sheet/`) and its engine go to `dist/share/sheet` and are installed
 beside the binary, not embedded. Tests point the host at a fresh build with
 `UAGENT_INTERNAL_WEB_DIST`.
@@ -65,6 +66,12 @@ and unread marks, theme, zoom, panes and display preferences. Per tab, in
 `sessionStorage`: the page shown, outgoing messages and transcript scroll
 bookmarks. When storage is denied or full, values live in memory for the
 visit. Signing out clears the catalogue, drafts and outgoing rows.
+Each conversation persists its draft under its own key, so writes from
+different tabs preserve each other. Older draft maps migrate on first load.
+Only the composer subscribes to the selected draft. Upload and submit read
+its current value, and an available app update observes whether any
+conversation has unsent work. The transcript subscribes to live frames
+while its page is visible and catches up from the in-memory snapshot on return.
 Transcripts are never stored: snapshots live in memory (`snapshot-store.ts`),
 the selected one plus at most 4 background views (`retainedBackgroundViews`).
 

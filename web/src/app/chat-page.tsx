@@ -49,6 +49,7 @@ import { SelectionActions } from "../features/chat/selection-actions.tsx";
 import type { useSideConversations } from "./use-side-conversations.ts";
 
 // Empty lists, so an idle context value or prop never changes identity.
+const NO_NODES: Node[] = [];
 const NO_ACTIVITIES: Activity[] = [];
 const NO_COMMANDS: SlashCommand[] = [];
 const NO_SPACES: Space[] = [];
@@ -60,14 +61,14 @@ export function transcriptNodes(
   outgoing: Outgoing[],
   selected: string,
 ): Node[] {
-  return [
-    ...(view?.nodes || []),
-    ...outgoing.filter(
-      (item) =>
-        item.session_id === selected &&
-        !view?.nodes?.some((node) => node.request_id === item.request_id),
-    ),
-  ];
+  const nodes = view?.nodes ?? NO_NODES;
+  if (!outgoing.length) return nodes;
+  const unconfirmed = outgoing.filter(
+    (item) =>
+      item.session_id === selected &&
+      !nodes.some((node) => node.request_id === item.request_id),
+  );
+  return unconfirmed.length ? [...nodes, ...unconfirmed] : nodes;
 }
 
 export const isBrowsing = (snapshot?: Snapshot) =>
@@ -140,8 +141,8 @@ export default function ChatPage({
   const { store, online, report, load, setModal } = useHostContext();
   // The model picked on the home screen for the conversation it starts.
   const [model, setModel] = useState<ModelChoice>();
-  const { setFollowing, draft, setDraft, submit } = useConversation();
-  const snapshot = useSnapshots(store, (all) => all[selected]);
+  const { setFollowing, drafts, setDraft, submit } = useConversation();
+  const snapshot = useSnapshots(store, (all) => all[selected], active);
   const view = snapshot?.state?.view;
   const allNodes = useMemo(
     () => transcriptNodes(view, outgoing, selected),
@@ -287,7 +288,8 @@ export default function ChatPage({
     !sideColumn && side.asking && !side.asking.to ? side.asking : undefined;
   const askSide = (event: Event) => {
     event.preventDefault();
-    const question = draft.text.trim();
+    const draft = drafts.get()[selected];
+    const question = draft?.text.trim();
     if (!question || !session || !asking) return;
     setDraft({ ...draft, text: "" });
     side.cancel();
@@ -305,8 +307,6 @@ export default function ChatPage({
       commands={catalogue.commands || NO_COMMANDS}
       state={snapshot?.state}
       pending={snapshot?.pending}
-      draft={draft}
-      setDraft={setDraft}
       sides={sideRows}
       above={selection}
       submit={asking ? askSide : send}

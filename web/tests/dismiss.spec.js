@@ -81,8 +81,19 @@ test.describe("back closes what is open", () => {
     session,
   }) => {
     await page.goto(`/#session=${session.id}`);
+    let configReads = 0;
+    page.on("request", (request) => {
+      if (
+        request.url().endsWith("/api/command") &&
+        request.postDataJSON()?.kind === "config"
+      )
+        configReads++;
+    });
     await headerAction(page, "Settings");
     const settings = page.getByRole("dialog", { name: "Settings" });
+    await expect(settings.locator(".settings-nav")).toBeVisible();
+    await expect(settings.locator(".settings-pane")).toHaveCount(0);
+    expect(configReads).toBe(0);
     await settings
       .locator(".settings-nav")
       .getByRole("button", { name: "All conversations", exact: true })
@@ -99,6 +110,15 @@ test.describe("back closes what is open", () => {
     await expect(
       settings.getByRole("heading", { name: "All conversations", exact: true }),
     ).toBeVisible();
+    const filter = settings.getByRole("searchbox", { name: "Find a setting" });
+    await filter.fill("model");
+    await page.goBack();
+    await expect(settings.locator(".settings-nav")).toBeVisible();
+    await settings
+      .getByRole("button", { name: "All conversations", exact: true })
+      .tap();
+    await expect(filter).toHaveValue("model");
+    expect(configReads).toBe(1);
     await page.goBack();
     await expect(settings.locator(".settings-nav")).toBeVisible();
     await page.goBack();

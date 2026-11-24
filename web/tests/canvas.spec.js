@@ -809,6 +809,138 @@ async function openDeck(app, session, project, slides, options) {
   };
 }
 
+test("a deck's PDF menu puts all slides first on desktop and phone", async ({
+  page,
+  session,
+  host,
+}) => {
+  // Exercise the served export URLs without requiring a browser service.
+  await page.route("**/api/browser/status", (route) =>
+    route.fulfill({ json: {} }),
+  );
+  await page.route(/\/files\?pdf=/, (route) =>
+    route.fulfill({
+      contentType: "application/pdf",
+      body: "%PDF-1.4",
+    }),
+  );
+  await writeFiles(host.project, {
+    "01-intro.html": slide("Intro"),
+    "02-end.html": slide("End"),
+  });
+  const files = await openFiles(page, session, "01-intro.html");
+  await files.getByRole("button", { name: "Export", exact: true }).click();
+  await expect(page.getByRole("menuitem").first()).toHaveText("Deck as PDF");
+  const [deck] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("menuitem", { name: "Deck as PDF", exact: true }).click(),
+  ]);
+  expect(new URL(deck.url()).searchParams.get("pdf")).toBe("");
+  expect(deck.suggestedFilename()).toBe("deck.pdf");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await files.getByRole("button", { name: "More tools" }).click();
+  await page.getByRole("menuitem", { name: "Export", exact: true }).click();
+  const current = page.getByRole("menuitem", { name: "Current slide as PDF" });
+  await expect(current.locator("..").getByRole("menuitem").first()).toHaveText(
+    "Deck as PDF",
+  );
+  const [single] = await Promise.all([
+    page.waitForEvent("download"),
+    current.click(),
+  ]);
+  const query = new URL(single.url()).searchParams;
+  expect([query.get("pdf"), query.get("w"), query.get("h")]).toEqual([
+    "01-intro.html",
+    "1920",
+    "1080",
+  ]);
+});
+
+test("printing a deck waits for scripted slides, omits skipped slides and keeps each paper size", async ({
+  page,
+  session,
+  host,
+  browserName,
+}) => {
+  await page.context().addInitScript(() => {
+    let drawn = false;
+    addEventListener("message", (event) => {
+      if (event.data === "test-ink") drawn = true;
+    });
+    window.print = () => {
+      document.documentElement.dataset.inkAtPrint = String(drawn);
+    };
+  });
+  const { files } = await openDeck(
+    page,
+    session,
+    host.project,
+    {
+      "01-intro.html": artboard("Intro", "<h1>Intro</h1>", "800x600 slide"),
+      "02-skipped.html": artboard(
+        "Private",
+        '<meta name="slide" content="skip"><h1>Private</h1>',
+        "800x600 slide",
+      ),
+      "03-chart.html": artboard(
+        "Chart",
+        `<p id="chart"></p><script>
+      window.uagentReady = new Promise(resolve => setTimeout(() => {
+        document.getElementById("chart").textContent = "Drawn chart";
+        parent.postMessage("test-ink", "*");
+        resolve();
+      }, 200));
+    </script>`,
+        "640x320 slide",
+      ),
+    },
+    { phone: true },
+  );
+  await files.getByRole("button", { name: "More tools" }).click();
+  await page.getByRole("menuitem", { name: "Export", exact: true }).click();
+  const first = page.getByRole("menuitem", {
+    name: "Print deck or save as PDF",
+    exact: true,
+  });
+  await expect(first.locator("..").getByRole("menuitem").first()).toHaveText(
+    "Print deck or save as PDF",
+  );
+  await expect(
+    page.getByRole("menuitem", { name: "Print current slide or save as PDF" }),
+  ).toBeVisible();
+  const [popup] = await Promise.all([
+    page.waitForEvent("popup"),
+    first.click(),
+  ]);
+  await expect(popup).toHaveURL(/\/decks\/talk\/\?deck#print$/);
+  await expect(popup.locator("html")).toHaveAttribute(
+    "data-ink-at-print",
+    "true",
+  );
+  await expect(popup.locator("iframe")).toHaveCount(2);
+  expect(
+    await popup
+      .locator("iframe")
+      .evaluateAll((frames) => frames.map((f) => f.getAttribute("src"))),
+  ).toEqual(["01-intro.html", "03-chart.html"]);
+  await expect(
+    popup.frameLocator("iframe").nth(1).getByText("Drawn chart"),
+  ).toBeVisible();
+  if (browserName === "chromium") {
+    const pdf = await popup.pdf({ preferCSSPageSize: true });
+    const boxes = [
+      ...pdf
+        .toString("latin1")
+        .matchAll(/\/MediaBox\s*\[0 0 ([\d.]+) ([\d.]+)\]/g),
+    ].map((match) => [Math.round(+match[1]), Math.round(+match[2])]);
+    expect(boxes).toEqual([
+      [600, 450],
+      [480, 240],
+    ]);
+  }
+  await popup.close();
+});
+
 for (const phone of [false, true]) {
   test(`a finding opens a reordered slide and adds its reference to the draft (${phone ? "phone" : "desktop"})`, async ({
     page,
@@ -980,12 +1112,19 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
   const notes = await view.locator(".presenter-notes").boundingBox();
   expect(notes.y).toBeGreaterThanOrEqual(now.y + now.height);
   expect(notes.width).toBeGreaterThan(350);
+  // A second viewer in the same browser may have exactly the same file open.
+  const independent = await app.context().newPage();
+  const other = await openFiles(independent, session, "decks/talk/");
+  const otherStage = other.locator(".page-stage");
+  await expect(otherStage.getByText("1 / 3")).toBeVisible();
   await presenter.keyboard.press("ArrowRight");
   await expect(view.getByText("Slide 3 of 3")).toBeVisible();
   await expect(view.getByText("End of the deck")).toBeVisible();
   await expect(stage.getByText("3 / 3")).toBeVisible();
   await stage.getByRole("button", { name: "Previous slide" }).click();
   await expect(view.getByText("Slide 2 of 3")).toBeVisible();
+  await expect(otherStage.getByText("1 / 3")).toBeVisible();
+  await independent.close();
   await presenter.close();
 
   // Ended, the deck is on the slide it was presenting, in the viewer.
@@ -1540,11 +1679,13 @@ async function typing(block, press = (target) => target.click()) {
 }
 // Edit on, the caret at the end of a block of the stage's page, and time
 // stopped: what is typed next is written only by what the test then does.
+const lineEnd = process.platform === "darwin" ? "Meta+ArrowRight" : "End";
+
 async function typeIn(app, files, block, press = (target) => target.click()) {
   const edit = files.getByRole("button", { name: "Edit" });
   if ((await edit.getAttribute("aria-pressed")) !== "true") await press(edit);
   await typing(block, press);
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.clock.install();
   await app.clock.pauseAt((await app.evaluate(() => Date.now())) + 60_000);
 }
@@ -1666,7 +1807,7 @@ test("a block that was refused stays owed: its notice stands though another is s
   await typing(stage.getByRole("heading", { name: "Cover" }), (heading) =>
     heading.click({ position: { x: 20, y: 4 } }),
   );
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText(" page");
   await expect(saving(files)).toHaveText("Saving…");
   await app.clock.runFor(1000);
@@ -2089,7 +2230,7 @@ test("a slide's notes are typed under its stage while Edit is on, and made where
       "<aside><p>Say:</p><p>First point.</p><p>Second, changed.</p><p>Third.</p></aside>",
     );
   await typing(stage.getByRole("heading", { name: "End" }));
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText("!");
   await expect.poll(end).toContain("<h1>End!</h1><aside><p>Say:");
   await files.getByRole("button", { name: "Previous slide" }).click();
@@ -2151,7 +2292,7 @@ test("a document's typed block is undone and made again with the keys, the page 
   await files.getByRole("button", { name: "Edit" }).click();
   await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
   await block.click();
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText(" A");
   await expect.poll(note).toContain("<p>Plan A</p>");
   // Out of the block, the keys are the pane's.
@@ -2167,7 +2308,7 @@ test("a document's typed block is undone and made again with the keys, the page 
   await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
   await block.click();
   await app.keyboard.press("ControlOrMeta+z");
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText("!");
   await expect.poll(note).toContain("<p>Plan A!</p>");
 });
@@ -2998,7 +3139,7 @@ test("a document's forced breaks, dead links and wide lines: the pages are those
   await app.keyboard.press("PageUp");
   await files.getByRole("button", { name: "Edit" }).click();
   await page.getByText("Quote.", { exact: true }).click();
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.type(" More.");
   await page.getByText("Named three").click();
   await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
@@ -3185,7 +3326,7 @@ test("a document exports Markdown, and a block edited on its third page is saved
   await expect(paragraph).toHaveAttribute("contenteditable", "plaintext-only");
   const before = await readFile(memo, "utf8");
   await paragraph.click();
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText(" Churn held flat.");
   await expect(saving(files)).toHaveText("Saved");
   const saved = await readFile(memo, "utf8");
@@ -3359,7 +3500,7 @@ test("Edit's text bar comes with a selection and marks and links it, and the sta
   await expect.poll(body).toContain("<p><i>Alpha</i> beta gamma</p>");
 
   // The selection collapsed, the bar goes.
-  await app.keyboard.press("End");
+  await app.keyboard.press("ArrowRight");
   await expect(bar).toHaveCount(0);
   // A heading is bold by itself: there is no such mark to make in it.
   await selectIn(stage.locator("h1"), "Notes");
@@ -3567,11 +3708,11 @@ test("the text bar comes with a selection, by it: clear of the selected lines an
   await selectIn(title, "Notes");
   await expect(bar).toBeVisible();
   await clear();
-  await app.keyboard.press("End");
+  await app.keyboard.press("ArrowRight");
   await expect(bar).toHaveCount(0);
   // A selection of several lines: clear of all of them.
   await first.click();
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText(" and more words".repeat(10));
   await first.evaluate((block) => getSelection().selectAllChildren(block));
   await expect(bar).toBeVisible();
@@ -3731,6 +3872,10 @@ test("a deck's sections head the legend; presenting steps through a slide's buil
   await app.keyboard.press("ArrowRight");
   await expect(stage.getByText("1 / 3")).toBeVisible();
   await expect.poll(() => opacity(slideFrame, "Slow")).toBe("1");
+  await expect(slideFrame.getByText("Slow")).toHaveCSS(
+    "transition-duration",
+    "0s",
+  );
   await expect.poll(() => opacity(slideFrame, "Costly")).toBe("0");
   await app.keyboard.press("ArrowRight");
   await expect.poll(() => opacity(slideFrame, "Costly")).toBe("1");

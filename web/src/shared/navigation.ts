@@ -1,11 +1,58 @@
 import { entry, settled, underLayers } from "./dismiss.ts";
 import { decisionFocusWaitMs } from "./limits.ts";
 
-export const hostFromURL = () =>
-  new URLSearchParams(location.hash.slice(1)).get("host") || "";
+const addressParams = () => new URLSearchParams(location.hash.slice(1));
 
-export const selectedFromURL = () =>
-  new URLSearchParams(location.hash.slice(1)).get("session") || "";
+export const hostFromURL = () => addressParams().get("host") || "";
+
+export const selectedFromURL = () => addressParams().get("session") || "";
+
+function selectionParams(id: string, host: string) {
+  const params = new URLSearchParams();
+  if (host) params.set("host", host);
+  if (id) params.set("session", id);
+  return params;
+}
+
+function workspacePath(path: string) {
+  return (
+    path &&
+    !/[\\\u0000-\u001f]/.test(path) &&
+    !/^[a-z]:\//i.test(path) &&
+    path.split("/").every((part) => part && part !== "." && part !== "..")
+  );
+}
+
+export function artifactURL(session: string, host: string, path: string) {
+  if (!session || !workspacePath(path)) return undefined;
+  const params = selectionParams(session, host);
+  params.set("file", path);
+  return `${location.origin}${location.pathname}#${params}`;
+}
+
+export function fileFromURL() {
+  const path = addressParams().get("file") ?? "";
+  return workspacePath(path) ? path : "";
+}
+
+// Follow navigation inside a linked viewer without adding a history entry
+// on every slide. A normal Files pane leaves the conversation URL alone.
+export function replaceLinkedFile(id: string, previous: string, path = "") {
+  if (selectedFromURL() !== id || fileFromURL() !== previous) return false;
+  const params = addressParams();
+  if (path && workspacePath(path)) params.set("file", path);
+  else params.delete("file");
+  history.replaceState(history.state, "", `#${params}`);
+  return true;
+}
+
+// A linked phone sheet owns its file address. Back lands on the conversation.
+export function withoutFileAddress() {
+  const params = addressParams();
+  if (!params.has("file")) return undefined;
+  params.delete("file");
+  return `#${params}`;
+}
 
 // In an iOS home-screen app the left edge opens the drawer, and Safari
 // swipes back from that edge whenever there is an entry to go back to. So
@@ -20,9 +67,7 @@ export function writeSelection(
   host = hostFromURL(),
 ) {
   (edgeOpensDrawer ? underLayers : settled)(() => {
-    const params = new URLSearchParams();
-    if (host) params.set("host", host);
-    if (id) params.set("session", id);
+    const params = selectionParams(id, host);
     const hash = params.size ? `#${params}` : "";
     if (location.hash === hash) return;
     const url = `${location.pathname}${location.search}${hash}`;
@@ -75,7 +120,7 @@ export function revealLiveRow() {
 // #session=ID&decision=…: open the session and focus its decision. The
 // address keeps only the session, so back and reload stay plain.
 export function followDecisionLink() {
-  if (!new URLSearchParams(location.hash.slice(1)).has("decision")) return;
+  if (!addressParams().has("decision")) return;
   writeSelection(selectedFromURL(), true);
   focusDecision();
 }

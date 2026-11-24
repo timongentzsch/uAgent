@@ -18,9 +18,27 @@ export const permissionLabels = {
 export const permissionNotes: Record<string, string> = {
   ask: "You approve each change, command and network call.",
   auto: "Edits in this folder run; a judge decides commands and the rest, and asks you when unsure.",
-  yolo: "Everything runs, sandboxed. Folder rules that refuse or ask still hold.",
+  yolo: "Eligible calls run without approval. Folder rules and the execution sandbox still apply.",
   plan: "Reads only, and writes the plan.",
 };
+export const approvalSources: Record<string, string> = {
+  parent: "Inherited from the parent at launch",
+  agent_default: "Default for older agents",
+  default: "Built-in default",
+  user: "All conversations setting",
+  project: "Folder setting",
+  environment: "Environment setting",
+  cli: "Launch option",
+  conversation: "Chosen for this conversation",
+};
+export const agentScope = (scope: Session["agent_edits"]) =>
+  scope &&
+  {
+    none: "Read-only assignment",
+    folder: "May edit the shared folder",
+    worktree: "May edit its own Git worktree",
+  }[scope];
+
 // Any other mode asks.
 export const permissionLabel = (mode?: string) =>
   permissionLabels[

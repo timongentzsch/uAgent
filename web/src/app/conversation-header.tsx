@@ -92,7 +92,11 @@ export default function ConversationHeader({
     "Local";
   const compact = useCompact();
   const narrow = useNarrowColumn();
-  const browsing = useSnapshots(store, (all) => isBrowsing(all[selected]));
+  const browsing = useSnapshots(
+    store,
+    (all) => browserAvailable && isBrowsing(all[selected]),
+    browserAvailable,
+  );
   const openBrowser = () => setModal({ type: "browser" });
   // A narrow column's conversation menu holds the header's other actions.
   const inMenu = narrow && page === "chat" && !!(session || opening);
@@ -195,6 +199,7 @@ export default function ConversationHeader({
         <IconButton
           label="Files"
           disabled={!session}
+          aria-controls={filesOpen ? "workspace-files" : undefined}
           aria-pressed={filesOpen}
           onClick={() => setFilesOpen(!filesOpen)}
         >

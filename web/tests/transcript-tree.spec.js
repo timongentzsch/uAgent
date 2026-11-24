@@ -96,6 +96,48 @@ const gaps = (page) =>
     return found;
   });
 
+test("the composer and open receipt share the transcript's text edges", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "default", [
+    agents[0],
+    {
+      id: "receipt",
+      parent: null,
+      kind: "call",
+      headline: { verb: "Read", target: "notes.txt" },
+      body: { kind: "text", text: "A short note" },
+      state: "ok",
+    },
+  ]);
+  const row = page.locator('[data-message-id="receipt"]');
+  await row.getByRole("button", { name: /Read notes/ }).click();
+  await expect(row.getByRole("group", { name: "Response" })).toBeVisible();
+  const mismatch = () =>
+    page.evaluate(() => {
+      const box = (selector) =>
+        document.querySelector(selector).getBoundingClientRect();
+      const column = box(".transcript-content");
+      const draft = box(".message-box");
+      const edge = document.documentElement.dir === "rtl" ? "right" : "left";
+      return Math.max(
+        Math.abs(column.left - draft.left),
+        Math.abs(column.right - draft.right),
+        Math.abs(box(".node-headline")[edge] - box(".node-section")[edge]),
+      );
+    });
+  for (const dir of ["ltr", "rtl"]) {
+    await page.evaluate((dir) => {
+      document.documentElement.dir = dir;
+    }, dir);
+    for (const width of [1024, 1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect.poll(mismatch).toBeLessThan(1);
+    }
+  }
+});
+
 for (const [device, viewport] of [
   // Tall enough to hold the whole conversation open at full.
   ["desktop", { width: 1280, height: 1400 }],
@@ -302,6 +344,7 @@ for (const width of [390, 1280]) {
     const children = assignments.map((title, i) => ({
       ...SESSION,
       parent: ID,
+      agent_edits: "none",
       id: "child" + i,
       title,
       turn_active: i === 0,
@@ -378,9 +421,15 @@ for (const width of [390, 1280]) {
       children[0],
     );
     await expect(active).toHaveCount(0);
-    await page.getByRole("button", { name: "Past agents (2)" }).click();
+    const pastAgents = page.getByRole("button", { name: "Past agents (2)" });
+    const triggerHeight = (await pastAgents.boundingBox()).height;
+    await pastAgents.click();
     const roster = page.getByRole("dialog", { name: "Past agents" });
     const row = roster.getByRole("listitem").filter({ hasText: "firewall" });
+    // Only the trigger below the input uses the compact button size.
+    expect(
+      (await row.getByRole("button").boundingBox()).height,
+    ).toBeGreaterThan(triggerHeight);
     const task = row.locator("summary");
     await expect(task).toHaveAccessibleName(
       /^Assignment for firewall\. inspect active/,
@@ -391,6 +440,7 @@ for (const width of [390, 1280]) {
     await task.focus();
     await page.keyboard.press("Enter");
     await expect(row.locator("details")).toHaveJSProperty("open", true);
+    await expect(row.getByText("Read-only assignment")).toBeVisible();
     const expanded = await task.boundingBox();
     const rowAfter = await row.boundingBox();
     expect(expanded.x - rowAfter.x).toBe(folded.x - rowBefore.x);

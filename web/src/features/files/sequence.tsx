@@ -7,12 +7,8 @@ import {
   useState,
 } from "preact/hooks";
 import {
-  Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ExternalLink,
-  FileOutput,
   MessageSquare,
   LayoutGrid,
   PanelLeft,
@@ -20,10 +16,8 @@ import {
   MousePointerClick,
   Pencil,
   Presentation,
-  Redo2,
   Search,
   SlidersHorizontal,
-  Undo2,
 } from "lucide-preact";
 import {
   Bar,
@@ -44,6 +38,7 @@ import Frame, {
   tell,
 } from "../../shared/page-frame.tsx";
 import { pageSize } from "../../shared/page-size.ts";
+import { motionMs } from "../../shared/motion.ts";
 import { FindField } from "../../shared/find-field.tsx";
 import { occurrences } from "../../../sheet/text.js";
 import {
@@ -89,7 +84,7 @@ import { useLatest } from "../../shared/use-latest.ts";
 import { coarsePointer, useRoom } from "../../shared/layout.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
 import type { ViewedImage } from "../../shared/attachments.tsx";
-import { STEPS, usePresentChannel } from "./present.ts";
+import { presenterChannel, STEPS, usePresentChannel } from "./present.ts";
 import {
   type BlockEdit,
   blankSlide,
@@ -107,7 +102,7 @@ import {
 } from "./item-tools.tsx";
 import { downloadBlob } from "../../shared/share.ts";
 import { copyDrawn, type Drawn, saveDrawn } from "./drawn.ts";
-import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
+import PageTools, { type PageAction } from "./page-tools.tsx";
 import { nameOf, SHEET_FILE } from "../../shared/file-types.ts";
 import { useResource } from "../../shared/use-resource.ts";
 
@@ -174,6 +169,7 @@ export default function Sequence({
   go,
   addToChat,
   quoteSlide,
+  copyLink,
   base,
   read,
   drawn,
@@ -259,6 +255,7 @@ export default function Sequence({
   go: (path: string) => void;
   addToChat?: (text: string, keep?: boolean) => void;
   quoteSlide?: (text: string) => void;
+  copyLink?: () => void;
 }) {
   const doc = kind === "doc";
   const sheet = kind === "sheet";
@@ -410,11 +407,14 @@ export default function Sequence({
     else if (document.fullscreenElement) document.exitFullscreen();
   };
   // The presenter's window moves this one, and this one it.
-  const broadcast = usePresentChannel(({ at, build }) => {
-    if (!at || !boards.some((board) => board.path === at)) return;
-    if (at !== path) go(at);
-    else if (Number.isInteger(build)) showBuild(build as number);
-  });
+  const broadcast = usePresentChannel(
+    presenting && kind === "deck" ? presenterChannel() : undefined,
+    ({ at, build }) => {
+      if (!at || !boards.some((board) => board.path === at)) return;
+      if (at !== path) go(at);
+      else if (Number.isInteger(build)) showBuild(build as number);
+    },
+  );
   // Which of its file's boards shows: a document's page, a sheet's tab.
   const [part, setPart] = useState(0);
   // A sheet's selection, what it offers the formula being typed, the range
@@ -461,7 +461,7 @@ export default function Sequence({
   const builds = presenting && kind === "deck" ? (said?.steps ?? 0) : 0;
   const showBuild = (at: number) => {
     setBuild(at);
-    tell(frame.current, { type: "build", at });
+    tell(frame.current, { type: "build", at, duration: motionMs("base") });
   };
   // A document's, a slide's or a whiteboard's changes by hand are undone and
   // made again here; then the file is drawn again, its notes its own.
@@ -650,26 +650,46 @@ export default function Sequence({
   // The page in another format: what fits its kind. Its source is Download
   // in the pane's header.
   const exports: (false | undefined | [string, () => void])[] = [
-    drawn
-      ? ["PDF", () => download(drawn("pdf", path), `${stem}.pdf`)]
-      : ["Print or save as PDF", () => open(`${src}#print`)],
-    drawn &&
-      kind === "deck" && [
-        "PDF, a page per slide",
-        () =>
-          download(
-            `${drawn("pdf", `${dirOf(path)}/`)}${sized}`,
-            `${nameOf(dirOf(path)) || "deck"}.pdf`,
-          ),
+    kind === "deck" &&
+      boards.some((board) => !board.skip) && [
+        drawn ? "Deck as PDF" : "Print deck or save as PDF",
+        () => {
+          const folder = dirOf(path);
+          return drawn
+            ? download(drawn("pdf", folder), `${nameOf(folder) || "deck"}.pdf`)
+            : open(new URL("./?deck#print", new URL(src, location.href)).href);
+        },
       ],
-    png && ["PNG image", () => download(png(2), `${stem}.png`)],
-    png && ["Copy as image", () => copyDrawn(settle, png(2))],
+    drawn
+      ? [
+          kind === "deck" ? "Current slide as PDF" : "PDF",
+          () =>
+            download(
+              drawn("pdf", path) + (kind === "deck" ? sized : ""),
+              `${stem}.pdf`,
+            ),
+        ]
+      : [
+          kind === "deck"
+            ? "Print current slide or save as PDF"
+            : "Print or save as PDF",
+          () => open(`${src}#print`),
+        ],
+    png && [
+      kind === "deck" ? "Current slide as PNG" : "PNG image",
+      () => download(png(2), `${stem}.png`),
+    ],
+    png && [
+      kind === "deck" ? "Copy slide as image" : "Copy as image",
+      () => copyDrawn(settle, png(2)),
+    ],
     live &&
       doc && ["Markdown", () => tell(frame.current, { type: "markdown" })],
     live &&
       sheet &&
       !/\.xlsx$/i.test(path) && ["Excel workbook", () => act("xlsx")],
     live && sheet && ["CSV of this tab", () => act("csv")],
+    copyLink && ["Copy link", copyLink],
   ];
   // A fixed artboard fits the stage whole; a page that names only its width
   // fits it across and scrolls down inside.
@@ -938,14 +958,34 @@ export default function Sequence({
       )}
     </div>
   );
-  const exportItems = exports.map(
-    (item) =>
-      item && (
-        <MenuItem key={item[0]} onClick={item[1]}>
-          {item[0]}
-        </MenuItem>
-      ),
-  );
+  const draw = () =>
+    png &&
+    settle().then(() => view({ src: png(1), name: `${stem}.png`, edit: true }));
+  const tools: (PageAction | false)[] = [
+    gridded && {
+      label: "Grid",
+      icon: LayoutGrid,
+      checked: grid,
+      run: () => setGrid(!grid),
+    },
+    {
+      label: "Find",
+      icon: Search,
+      checked: finding,
+      run: () => setFinding(!finding),
+    },
+    !sheet && {
+      label: "Present",
+      icon: Presentation,
+      run: () => present(true),
+    },
+    !!drawn && {
+      label: "Draw on it",
+      icon: PenLine,
+      disabled: !png,
+      run: draw,
+    },
+  ];
   // What the stage's scroller shows, short of its scroll bars.
   const inside = () => {
     const box = scroller.current;
@@ -976,9 +1016,6 @@ export default function Sequence({
       link={() => setLinking(!linking)}
     />
   );
-  const draw = () =>
-    png &&
-    settle().then(() => view({ src: png(1), name: `${stem}.png`, edit: true }));
   return (
     <div class="open-page">
       {failure && (
@@ -1015,98 +1052,27 @@ export default function Sequence({
               false,
               uneditable,
             )}
-          {undoes && (
-            <>
-              <IconButton
-                label="Undo"
-                disabled={!undoable?.undo}
-                onClick={() => back(false)}
-              >
-                <Undo2 />
-              </IconButton>
-              <IconButton
-                label="Redo"
-                disabled={!undoable?.redo}
-                onClick={() => back(true)}
-              >
-                <Redo2 />
-              </IconButton>
-            </>
-          )}
-          {(declared.length > 0 || !!theme.value?.colors.length) &&
-            toggle(
-              "Tweaks",
-              tweaking,
-              () => setTweaking(!tweaking),
-              <SlidersHorizontal />,
-            )}
-          {/* raw: a narrow pane folds the tools after Edit into one menu. */}
-          <span class="page-tools-wide">
-            {gridded &&
-              toggle("Grid", grid, () => setGrid(!grid), <LayoutGrid />, true)}
-            {toggle(
-              "Find",
-              finding,
-              () => setFinding(!finding),
-              <Search />,
-              true,
-            )}
-            {!sheet && (
-              <IconButton label="Present" onClick={() => present(true)}>
-                <Presentation />
-              </IconButton>
-            )}
-            {drawn && (
-              <IconButton label="Draw on it" disabled={!png} onClick={draw}>
-                <PenLine />
-              </IconButton>
-            )}
-            <Menu
-              label="Export"
-              trigger={
-                <>
-                  <FileOutput />
-                  Export
-                  <ChevronDown />
-                </>
-              }
-            >
-              {exportItems}
-            </Menu>
-            <IconButton label="Open alone" onClick={() => open(src)}>
-              <ExternalLink />
-            </IconButton>
-          </span>
-          <span class="page-tools-folded">
-            <Menu label="More tools">
-              {gridded && (
-                <MenuItem
-                  role="menuitemcheckbox"
-                  aria-checked={grid}
-                  onClick={() => setGrid(!grid)}
-                >
-                  Grid
-                  {grid && <Check />}
-                </MenuItem>
+          <PageTools
+            tools={tools}
+            exports={exports}
+            open={() => open(src)}
+            back={undoes ? back : undefined}
+            undoable={undoable}
+            foldHistory={kind === "deck"}
+            fit={
+              touch
+                ? { disabled: zoom === 1, run: () => setZoom(1) }
+                : undefined
+            }
+          >
+            {(declared.length > 0 || !!theme.value?.colors.length) &&
+              toggle(
+                "Tweaks",
+                tweaking,
+                () => setTweaking(!tweaking),
+                <SlidersHorizontal />,
               )}
-              <MenuItem onClick={() => setFinding(!finding)}>Find</MenuItem>
-              {!sheet && (
-                <MenuItem onClick={() => present(true)}>Present</MenuItem>
-              )}
-              {drawn && (
-                <MenuItem disabled={!png} onClick={draw}>
-                  Draw on it
-                </MenuItem>
-              )}
-              <MenuSub label="Export">{exportItems}</MenuSub>
-              <MenuItem onClick={() => open(src)}>Open alone</MenuItem>
-              {touch && (
-                <MenuItem disabled={zoom === 1} onClick={() => setZoom(1)}>
-                  Fit
-                </MenuItem>
-              )}
-            </Menu>
-          </span>
+          </PageTools>
           {writing && <span class="chip">Agent writing</span>}
           {!board && status}
         </Bar>
@@ -1196,6 +1162,7 @@ export default function Sequence({
             data-fixed={fixed || undefined}
             data-wide={(wide && !fixed) || undefined}
             data-presenting={presenting || undefined}
+            data-backward={(presenting && backward.current) || undefined}
           >
             {!info && <Spinner label="Opening the page…" />}
             <div class="page-scroll" ref={scroller}>

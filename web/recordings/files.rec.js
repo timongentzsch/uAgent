@@ -1,7 +1,6 @@
 // docs/images/files.gif: Files beside a conversation. The README renders
 // with its image, a search opens a C++ source with line numbers, and the
 // pane is resized.
-import { join } from "node:path";
 import {
   test,
   expect,
@@ -13,12 +12,12 @@ import {
 
 // Wide enough for the list and a file side by side; the GIF is scaled down.
 const size = { width: 1280, height: 760 };
-test.use({ viewport: size, video: { mode: "on", size } });
+test.use({ viewport: size, video: "off" });
 
 const pause = (page, ms = 900) => page.waitForTimeout(ms);
 const type = (field, text) => field.pressSequentially(text, { delay: 90 });
 
-test("Files", async ({ page, host, request }) => {
+test("Files", async ({ page, host, request }, testInfo) => {
   await writeFiles(host.project, {
     "README.md": [
       "# Stockroom",
@@ -86,12 +85,17 @@ test("Files", async ({ page, host, request }) => {
   );
   await page.goto(`/#session=${session.id}`);
   await online(page);
-  await pause(page, 600);
   await headerAction(page, "Files");
   const files = page.getByRole("region", { name: "Files" });
-  await pause(page);
   await files.getByRole("button", { name: "README.md", exact: true }).click();
-  await expect(files.getByRole("heading", { name: "Stockroom" })).toBeVisible();
+  const flow = files.getByAltText(
+    "How a reservation moves through the stockroom",
+  );
+  await flow.evaluate((image) => image.decode());
+  await page.screencast.start({
+    path: testInfo.outputPath("video.webm"),
+    size,
+  });
   await pause(page, 1800);
   const search = files.getByRole("combobox", { name: "Search files" });
   await search.click();
@@ -117,4 +121,5 @@ test("Files", async ({ page, host, request }) => {
     await page.mouse.up();
   }
   await pause(page, 1200);
+  await page.screencast.stop();
 });

@@ -34,8 +34,8 @@ a reachable origin using the remote-access guide.
 
 ![Files open beside the conversation that produced them](docs/images/files.gif)
 
-The demo uses a scripted model with a sample project. The terminal and phone
-can also attach to one conversation. [Terminal and phone recording](docs/images/terminal.gif) ·
+Both demos were recorded on v1.12 using a scripted model and a sample project.
+The second shows a terminal and phone sharing one conversation. [Terminal and phone recording](docs/images/terminal.gif) ·
 [User manual](docs/manual.md)
 
 ## Process model

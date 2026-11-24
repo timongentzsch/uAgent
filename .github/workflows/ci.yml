@@ -279,7 +279,6 @@ jobs:
         run: |
           cmake --build --preset coverage --target uagent_tests uagent --parallel 4
           ctest --preset coverage -j 2 -R '^(core|integration_.*)$'
-      # The floor sits about two points below the measured line rate.
       - name: Generate branch report
         run: >-
           gcovr --root .

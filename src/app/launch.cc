@@ -160,8 +160,8 @@ std::string CloseRuntime(const std::string& path) {
 }
 std::string DeleteConversation(const std::string& path,
                                const std::string& draft_path) {
-  // Its agents breadth first, then reversed: an agent goes before the
-  // conversation that started it, and the conversation itself goes last.
+  // Its agents and side chats breadth first, then reversed: each goes before
+  // the conversation it belongs to, and the conversation itself goes last.
   const std::vector<SessionInfo> all = SessionsBeside(path);
   std::vector<std::string> ids = {SessionIdFor(path)};
   std::vector<SessionInfo> doomed;
@@ -176,7 +176,9 @@ std::string DeleteConversation(const std::string& path,
   }
   std::ranges::reverse(doomed);
   const auto named = [](const SessionInfo& info, const std::string& error) {
-    return (info.parent.empty() ? "conversation " : "agent ") +
+    return (info.parent.empty()   ? "conversation "
+            : info.side.is_null() ? "agent "
+                                  : "side chat ") +
            SessionIdFor(info.path) + " \"" + OneLine(info.title) +
            "\": " + error;
   };

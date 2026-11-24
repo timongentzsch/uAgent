@@ -102,9 +102,16 @@ class Agent {
 
   const Conversation& History() const { return conversation_; }
   json DisplaySnapshot() const;
-  // Forks a resumable side conversation (/btw); safe beside a running turn.
-  json SideConversation(const std::string& source,
-                        const std::string& question) const;
+  // Forks a side chat of this conversation (/btw), whose first question
+  // will be sent as `request`; safe beside a running turn.
+  json SideConversation(const std::string& source, const std::string& question,
+                        const std::string& request) const;
+  // A side chat becomes a conversation of its own.
+  void DetachSide();
+  // The session id of the conversation this is a side chat of; "" for none.
+  std::string SideParent() const;
+  // A side chat's summary reached its conversation, as of this turn.
+  void MarkMerged();
   void PublishSideContext();
   // Snapshots a tool's file for clients: {id, name, mime, bytes} or null.
   using KeepFile =

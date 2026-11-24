@@ -332,6 +332,7 @@ class WorkerChannel final : public ApplicationChannel {
     state_["notices"] = notices_;
     state_["turn_status"] = activity;
     state_["phase"] = phase;
+    state_["merging"] = merging_;
     if (!checkpoint) {
       // Live accounting only: the turn keeps running, so its phase, busy
       // state and queued guidance stay untouched.
@@ -347,10 +348,15 @@ class WorkerChannel final : public ApplicationChannel {
                     JsonValue(state_, "title", title_),
                     JsonValue(state, "answer", ""));
     }
-    if (finished_turn && std::exchange(merging_, false) && merge_) {
+    // Only a summary written to its end goes; a merge that failed or was
+    // stopped leaves the side chat as it was, its stop saying why.
+    if (finished_turn && std::exchange(merging_, false) && merge_ &&
+        JsonValue(JsonValue(state, "stop", json::object()), "reason", "") ==
+            "completed") {
       merge_->Report("merged", JsonValue(state_, "title", title_),
                      JsonValue(state, "answer", ""));
     }
+    state_["merging"] = merging_;
     if (!busy_) {
       // Completion events precede saved display/HTTP metadata. Only the final
       // application checkpoint makes the turn idle and accepts another input.
@@ -624,6 +630,10 @@ class WorkerChannel final : public ApplicationChannel {
           MergeLocked(parsed, error);
           break;
         }
+        if (parsed.operation == "detach") {
+          if (QueueIdleControl(request, parsed.raw, error)) return true;
+          break;
+        }
         lock.unlock();
         StartSideQuestion(request, parsed.raw);
         return true;
@@ -775,9 +785,16 @@ class WorkerChannel final : public ApplicationChannel {
         "lines. At most five sentences of prose; no preamble, no tools.";
     SubmitLocked(parsed, error);
     if (!error.empty()) return;
-    if (input_) input_->report = true;
+    if (input_) {
+      input_->report = true;
+      input_->origin = {
+          {"kind", "merge"},
+          {"to", JsonValue(SessionHeader(source), kSessionHeaderTitle, "")}};
+    }
     merge_.emplace(path_, id_, source, "side chat");
     merging_ = true;
+    state_["merging"] = true;
+    SendState();
   }
 
   // A message during a turn is guidance, as a steer is; otherwise it takes

@@ -167,7 +167,7 @@ TEST_CASE(TestSideArchiveForks) {
   std::string error;
   REQUIRE(agent.Load(source, CanonicalCwd(), error));
   auto side = std::async(std::launch::async, [&] {
-    return agent.SideConversation(source, "side question");
+    return agent.SideConversation(source, "side question", "");
   });
   for (int index = 0; index < 16; ++index) agent.PublishSideContext();
   const json result = side.get();
@@ -176,7 +176,7 @@ TEST_CASE(TestSideArchiveForks) {
   REQUIRE(child.record.has_value());
   CHECK(child.record->state.archive == record.state.archive);
   agent.Reset();
-  const json reset = agent.SideConversation(source, "after reset");
+  const json reset = agent.SideConversation(source, "after reset", "");
   REQUIRE(!reset.contains("error"));
   const auto fresh = SessionStore::Inspect(reset.value("path", ""));
   REQUIRE(fresh.record.has_value());

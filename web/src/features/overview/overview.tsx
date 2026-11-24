@@ -10,6 +10,7 @@ import type {
 import { useApi } from "../../state/api.ts";
 import {
   childrenByParent,
+  isAgent,
   statusOf,
   type SessionState,
 } from "../../state/attention.ts";
@@ -77,7 +78,8 @@ export default function FolderOverview({
   const roots = here
     .filter((item) => !item.parent)
     .sort((a, b) => (b.updated || 0) - (a.updated || 0));
-  const children = childrenByParent(here);
+  const agentsHere = here.filter(isAgent);
+  const children = childrenByParent(agentsHere);
   const state = (item: Session) => statusOf(item, online);
   // Read again whenever one of its conversations changes.
   const changed = Math.max(0, ...here.map((item) => item.updated || 0));
@@ -93,8 +95,8 @@ export default function FolderOverview({
   const facts = stats.value?.folder === folder ? stats.value.facts : undefined;
   const missing = stats.error ? "Unavailable" : "Loading…";
   const working = roots.filter((item) => state(item) === "working").length;
-  const agentsWorking = here.filter(
-    (item) => item.parent && state(item) === "working",
+  const agentsWorking = agentsHere.filter(
+    (item) => state(item) === "working",
   ).length;
   const waiting = here.filter((item) => state(item) === "waiting").length;
   const week = roots.filter(

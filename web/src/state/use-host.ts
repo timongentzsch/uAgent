@@ -723,15 +723,17 @@ export function useHost(
     },
     [snapshots],
   );
-  // The address names the conversation's execution host, or the given one.
+  // The address names the conversation's execution host, or the given one;
+  // `replace` stands in for the address being left, not after it.
   const select = useCallback(
     (
       id: string,
       host = catalogueRef.current?.sessions.find((session) => session.id === id)
         ?.host || "",
+      replace = false,
     ) => {
       selection.current = id;
-      writeSelection(id, false, host);
+      writeSelection(id, replace, host);
       // Following is owned solely by the transcript history controller: a
       // switch resumes the saved position or pins a fresh surface, and it
       // notifies through onFollow. Clearing it here would diverge from it.

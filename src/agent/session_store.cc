@@ -184,13 +184,21 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
   header["cost"] = record.state.usage.cost;
   header["tokens"] = SaturatingNonnegativeAdd(
       record.state.usage.PromptTokens(), record.state.usage.GeneratedTokens());
-  // So is how far its to-do list is.
-  if (json todo = TodoProgress(JsonValue(
-          JsonValue(JsonValue(record.state.display, "facts", json::object()),
-                    "todo", json::object()),
-          "items", json::array()));
-      !todo.is_null()) {
-    header["todo"] = std::move(todo);
+  // A listing reads the same header for progress and side-chat ownership.
+  const json* facts = JsonObject(record.state.display, "facts");
+  if (facts) {
+    if (const json* todo = JsonObject(*facts, "todo")) {
+      if (json progress =
+              TodoProgress(JsonValue(*todo, "items", json::array()));
+          !progress.is_null()) {
+        header["todo"] = std::move(progress);
+      }
+    }
+  }
+  // Even an ordinary fork records the answer. Older forks lack this field
+  // and the catalogue recovers it from saved display facts.
+  if (!record.metadata.parent_session_id.empty()) {
+    header["side"] = facts ? SideOf(*facts) : json(nullptr);
   }
   // The header is built from a typed struct; only the state can be incomplete.
   if (!ValidState(record.state, conversation)) {
@@ -498,8 +506,23 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.tokens = JsonValue(header, "tokens", int64_t{0});
         item.todo = JsonValue(header, "todo", json(nullptr));
         const json agent = AgentOf(header);
-        item.parent = JsonValue(agent, "parent", "");
         item.agent_edits = JsonValue(agent, "edits", "");
+        item.side = JsonValue(header, "side", json(nullptr));
+        if (!header.contains("side") &&
+            !JsonValue(header, kSessionHeaderParent, "").empty()) {
+          auto legacy = SessionStore::Inspect(item.path);
+          if (legacy.record) {
+            if (const json* facts =
+                    JsonObject(legacy.record->state.display, "facts")) {
+              item.side = SideOf(*facts);
+            }
+          }
+        }
+        item.parent =
+            JsonValue(agent, "parent",
+                      JsonValue(item.side, "detached", false)
+                          ? ""
+                          : JsonValue(item.side, "parent", std::string()));
         item.memory = JsonValue(header, "memory", true);
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
           item.error = "unsupported session format";
@@ -518,6 +541,21 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
               return a.mtime == b.mtime ? a.path < b.path : a.mtime > b.mtime;
             });
   return out;
+}
+
+json SideOf(const json& facts) {
+  const json* origin = JsonObject(facts, "side-origin");
+  if (!origin) return nullptr;
+  const auto parent = JsonValue(*origin, "parent", "");
+  const json* fork = JsonObject(facts, "fork-origin");
+  if (parent.empty() || (fork && JsonValue(*fork, "source", "") != parent)) {
+    return nullptr;
+  }
+  json side = json::object();
+  for (const char* key : {"parent", "request", "asked", "merged", "detached"}) {
+    if (origin->contains(key)) side[key] = (*origin)[key];
+  }
+  return side;
 }
 
 bool ValidSessionTitle(const std::string& title) {
@@ -663,12 +701,18 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     }
   };
   VisitStrings(record.state, rewrite);
-  record.state.display["facts"]["fork-origin"] = {
-      {"source", SessionIdFor(source)},
-      {"title", record.metadata.title},
-      {"turns", record.metadata.turns},
-      {"usage", UsageJson(record.state.usage)},
-      {"statistics", record.state.display["statistics"]}};
+  // Only a new side chat belongs to the source. A normal fork of a side
+  // chat must survive deletion of the conversation it branched away from.
+  json& facts = record.state.display["facts"];
+  if (const json* side = JsonObject(facts, "side-origin");
+      side && JsonValue(*side, "parent", "") != SessionIdFor(source)) {
+    facts.erase("side-origin");
+  }
+  facts["fork-origin"] = {{"source", SessionIdFor(source)},
+                          {"title", record.metadata.title},
+                          {"turns", record.metadata.turns},
+                          {"usage", UsageJson(record.state.usage)},
+                          {"statistics", record.state.display["statistics"]}};
   record.state.usage = {};
   record.state.route_usage.clear();
   record.state.display["statistics"] = {{"incoming", 0}, {"complete", true}};

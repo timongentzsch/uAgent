@@ -44,6 +44,9 @@ signal.signal(signal.SIGTERM, lambda *_: stop.set())
 # turn had taken by then.
 titled = threading.Event()
 titled_at = {}
+# A side chat asked "Held summary probe" writes its summary only once
+# another conversation says "Release the summary".
+released = threading.Event()
 
 
 def decide(handler, body):
@@ -313,7 +316,13 @@ def answer(handler, body):
         lines += ["*** Add File: patched-two.txt", "+two", "*** End Patch"]
         return tool_call("apply_patch", {"input": "\n".join(lines)}, call_id="patch-probe")
     # A side chat merged into its conversation, and the conversation hearing it.
+    if prompt == "Release the summary":
+        released.set()
+        return event({"content": "Released."})
     if prompt.startswith("The person merges this side chat"):
+        if "Held summary probe" in json.dumps(body["messages"]):
+            while not released.wait(0.05) and not stop.is_set():
+                pass
         return event({"content": "SIDE-SUMMARY: the table has two columns."})
     if "finished (merged)" in prompt:
         return event({"content": "MERGE-HEARD"})

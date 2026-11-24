@@ -102,7 +102,8 @@ void Agent::PublishSideContext() {
 }
 
 json Agent::SideConversation(const std::string& source,
-                             const std::string& question) const {
+                             const std::string& question,
+                             const std::string& request) const {
   std::shared_ptr<const SideCheckpoint> context;
   {
     std::lock_guard lock(side_mutex_);
@@ -118,13 +119,32 @@ json Agent::SideConversation(const std::string& source,
       ApprovalModeName(CurrentApprovalMode());
   snapshot.state.display["facts"]["side-origin"] = {
       {"parent", SessionIdFor(source)},
+      {"request", request},
+      {"asked", NowMillis()},
       {"tools",
        snapshot.state.display["facts"]["session-settings"]["tools"]["only"]}};
   const std::string title =
-      question.empty()
-          ? "Side conversation"
-          : Utf8Prefix("Btw: " + FirstLine(Trim(question)), kUserTitleChars);
+      question.empty() ? "Side chat"
+                       : Utf8Prefix(FirstLine(Trim(question)), kUserTitleChars);
   return SessionStore::Fork(source, title, true, 0, "", &snapshot);
+}
+
+void Agent::DetachSide() {
+  conversation_.RecordDisplay("side-origin", {{"detached", true}});
+  ++revision_;
+}
+
+void Agent::MarkMerged() {
+  conversation_.RecordDisplay(
+      "side-origin",
+      {{"merged", {{"at", NowMillis()}, {"turns", UserTurns()}}}});
+  ++revision_;
+}
+
+std::string Agent::SideParent() const {
+  const json side = SideOf(conversation_.DisplayFacts());
+  return JsonValue(side, "detached", false) ? ""
+                                            : JsonValue(side, "parent", "");
 }
 
 namespace {

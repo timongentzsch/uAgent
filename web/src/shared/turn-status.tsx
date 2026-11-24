@@ -19,29 +19,30 @@ import {
   Square,
   Terminal,
   Users,
-  X,
 } from "lucide-preact";
 import {
   cleanText,
   Button,
   IconButton,
   DataText,
+  Time,
   updateChecked,
 } from "./ui.tsx";
 import { SheetButton } from "./sheet.tsx";
 import { useApi } from "../state/api.ts";
 import { AgentAssignment } from "./agent-assignment.tsx";
 import { shortAgentName } from "./display.ts";
-import { isRunning } from "../state/attention.ts";
+import { isRunning, statusOf } from "../state/attention.ts";
 import { useAction } from "./use-action.ts";
 import { useElapsed } from "./time.ts";
 import { focusDecision, revealLiveRow } from "./navigation.ts";
 
-// A conversation's side chats: which, and what a row of one does.
+// A conversation's side chats: which, those whose first question is still
+// on its way (by its request), and what a row of one does.
 export type SideRows = {
   list: Session[];
+  starting: string[];
   open: (id: string) => void;
-  remove: (id: string) => void;
 };
 
 export const active = (item: Activity) =>
@@ -90,6 +91,7 @@ function ActivityButtonView({
   const live =
     running ||
     rows.length > 0 ||
+    sides.starting.length > 0 ||
     sides.list.some((side) => isRunning(side, online));
   const announcement = pending
     ? "Needs your input"
@@ -181,11 +183,11 @@ function ActivityButtonView({
                 }}
               />
             ))}
-            {sides.list.map((side) => (
+            {sideOrder(sides.list, online).map((side) => (
               <AgentRow
                 key={side.id}
                 agent={side}
-                remove={() => sides.remove(side.id)}
+                starting={sides.starting.includes(side.side!.request)}
                 online={online}
                 report={report}
                 open={() => {
@@ -432,13 +434,27 @@ export const AgentBar = updateChecked(function AgentBar(props: AgentListProps) {
   );
 });
 
-// An agent at work, or a side chat, which stays listed until it is removed.
+// Side chats at work or waiting for you first, then the newest asked.
+const sideOrder = (list: Session[], online: boolean) =>
+  [...list].sort(
+    (a, b) =>
+      Number(statusOf(b, online) !== "idle") -
+        Number(statusOf(a, online) !== "idle") || b.side!.asked - a.side!.asked,
+  );
+
+// The step a turn is at, where it says more than that it works.
+const stepOf = (item: Session) =>
+  item.turn_status && !["Working", "Ready"].includes(item.turn_status)
+    ? cleanText(item.turn_status)
+    : "";
+
+// Agent rosters and the side chat activity list share a row.
 function AgentRow({
   agent,
   title,
   name: label,
   status,
-  remove,
+  starting = false,
   online,
   report,
   open,
@@ -447,39 +463,46 @@ function AgentRow({
   title?: string;
   name?: string;
   status?: string;
-  remove?: () => void;
+  starting?: boolean;
   online: boolean;
   report: Report;
   open: () => void;
 }) {
   const { command } = useApi();
   const { run, busy } = useAction();
+  const side = agent.side;
   const name = cleanText(
-    label || agent.title || (remove ? "Side chat" : "Agent"),
+    label || agent.title || (side ? "Side chat" : "Agent"),
   );
-  const working = isRunning(agent, online);
+  const running = isRunning(agent, online);
   return (
-    <li class={remove ? "activity-row" : "activity-row agent-entry"}>
+    <li class={side ? "activity-row" : "activity-row agent-entry"}>
       <Button
         variant="quiet"
         class="activity-open"
         disabled={!online}
         onClick={open}
       >
-        {remove && <MessagesSquare />}
+        {side && <MessagesSquare />}
         <span class="activity-text">
           <strong>{name}</strong>
           <small>
             {status ||
               (online && agent.needs_you
                 ? "Needs you"
-                : working
-                  ? cleanText(agent.turn_status || "Working")
+                : running || starting
+                  ? ["Working", stepOf(agent)].filter(Boolean).join(" · ")
                   : "Ready")}
+            {side?.merged && (
+              <>
+                {" · merged "}
+                <Time value={side.merged.at} />
+              </>
+            )}
           </small>
         </span>
       </Button>
-      {working ? (
+      {running && (
         <IconButton
           label={`Stop ${name}`}
           disabled={!online || busy}
@@ -487,17 +510,8 @@ function AgentRow({
         >
           <Square />
         </IconButton>
-      ) : (
-        remove && (
-          <IconButton
-            label={`Remove ${name} from the side chats`}
-            onClick={remove}
-          >
-            <X />
-          </IconButton>
-        )
       )}
-      {!remove && (
+      {!side && (
         <AgentAssignment
           title={title || name}
           name={name}

@@ -20,6 +20,8 @@ import { useHostContext } from "../state/host-context.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { isBrowsing } from "./chat-page.tsx";
 import type { Page } from "./app.tsx";
+import { isSideChat } from "../state/attention.ts";
+import { MergeControl } from "../features/chat/side-answer.tsx";
 
 function Totals({
   session,
@@ -56,7 +58,7 @@ export default function ConversationHeader({
   filesOpen,
   setFilesOpen,
   outgoing,
-  merge,
+  detach,
   openDrawer,
   choose,
   settings,
@@ -66,8 +68,8 @@ export default function ConversationHeader({
   selected: string;
   session?: Session;
   parent?: Session;
-  // A side chat: sums it up for `parent` and goes back there.
-  merge?: () => void;
+  // A side chat: opens it as a conversation of its own.
+  detach?: () => void;
   opening: boolean;
   booting: boolean;
   browserAvailable: boolean;
@@ -101,13 +103,22 @@ export default function ConversationHeader({
   // A narrow column's conversation menu holds the header's other actions.
   const inMenu = narrow && page === "chat" && !!(session || opening);
   const titleOf = (item: Session) => item.title || "Conversation";
-  const phoneItems = inMenu && {
-    top: terminal && (
-      <MenuItem onClick={terminal.toggle}>
-        {terminal.open ? "Hide terminal" : "Terminal"}
-      </MenuItem>
+  const items = (inMenu || detach) && {
+    top: (
+      <>
+        {detach && (
+          <MenuItem disabled={!!session?.turn_active} onClick={detach}>
+            Open as a conversation of its own
+          </MenuItem>
+        )}
+        {inMenu && terminal && (
+          <MenuItem onClick={terminal.toggle}>
+            {terminal.open ? "Hide terminal" : "Terminal"}
+          </MenuItem>
+        )}
+      </>
     ),
-    more: browserAvailable && (
+    more: inMenu && browserAvailable && (
       <MenuItem disabled={booting} onClick={openBrowser}>
         Open browser
       </MenuItem>
@@ -170,10 +181,8 @@ export default function ConversationHeader({
           </p>
         )}
       </div>
-      {page === "chat" && session && merge && (
-        <Button disabled={!!session.turn_active} onClick={merge}>
-          Merge
-        </Button>
+      {page === "chat" && session && isSideChat(session) && (
+        <MergeControl session={session} />
       )}
       {browserAvailable && (!inMenu || browsing) && (
         <IconButton
@@ -215,7 +224,7 @@ export default function ConversationHeader({
       )}
       {page === "chat" &&
         (session ? (
-          menu(session, true, phoneItems || undefined)
+          menu(session, true, items || undefined)
         ) : opening ? (
           <IconButton label="Conversation menu" disabled>
             <Ellipsis />

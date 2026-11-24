@@ -1,5 +1,6 @@
 import { MessageText } from "./message-text.tsx";
 import { AgentSender } from "./agent-sender.tsx";
+import type { ComponentChildren } from "preact";
 import { ArtifactCard } from "./artifact-card.tsx";
 import "../../shared/attachments.css";
 import "./message.css";
@@ -22,7 +23,7 @@ import { useStored } from "../../shared/storage.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { MessageActions } from "./message-actions.ts";
 import { ChevronRight, X } from "lucide-preact";
-import { Button, IconButton, Notice, Time } from "../../shared/ui.tsx";
+import { Button, Cluster, IconButton, Notice, Time } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { AttachmentList } from "../../shared/attachments.tsx";
 import { useApi } from "../../state/api.ts";
@@ -30,6 +31,55 @@ import { useNodeReader } from "../../state/node-reader.ts";
 import { isRow } from "../../shared/tree.ts";
 import { TurnFooter } from "./turn-footer.tsx";
 import { SharedFile } from "./bodies.tsx";
+
+// A merged side chat's summary in its conversation: a row that folds as a
+// step does, with the way to the side chat and when it came.
+function MergedRow({
+  node,
+  title,
+  show,
+  children,
+}: {
+  node: Node;
+  title: string;
+  show?: () => void;
+  children: ComponentChildren;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <article
+      class="node merged-row"
+      data-message-id={node.id}
+      data-sequence={node.sequence}
+      aria-label={`Merged side chat ${title}`}
+    >
+      <Cluster class="merged-head">
+        <Button
+          variant="quiet"
+          class="node-row"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          <ChevronRight class="row-chevron" aria-hidden="true" />
+          <span class="node-headline">Merged side chat · {title}</span>
+          <small class="node-word">
+            <Time value={node.time} />
+          </small>
+        </Button>
+        {show && (
+          <Button variant="quiet" size="compact" onClick={show}>
+            Show side chat
+          </Button>
+        )}
+      </Cluster>
+      {open && (
+        <div class="node-open">
+          <div class="node-kids">{children}</div>
+        </div>
+      )}
+    </article>
+  );
+}
 
 // Smart and absolute time styles only, so it needs no ticking.
 function useRowName(who: string, time?: string) {
@@ -182,6 +232,18 @@ function Message({
       />
     </span>
   );
+  // A side chat the person merged: one row that folds like a step, its
+  // summary under it.
+  if (side)
+    return (
+      <MergedRow
+        node={node}
+        title={side.title}
+        show={open && online ? () => open(side.session) : undefined}
+      >
+        {words}
+      </MergedRow>
+    );
   return (
     <article
       data-message-id={node.id}
@@ -227,21 +289,6 @@ function Message({
           <div class="message-text">
             {node.origin === "activity" && (
               <div class="message-event">A background command finished</div>
-            )}
-            {side && (
-              <div class="message-event">
-                <span>Side chat “{side.title}” merged</span>
-                {open && (
-                  <Button
-                    variant="quiet"
-                    size="compact"
-                    disabled={!online}
-                    onClick={() => open(side.session)}
-                  >
-                    Open side chat
-                  </Button>
-                )}
-              </div>
             )}
             {words}
           </div>

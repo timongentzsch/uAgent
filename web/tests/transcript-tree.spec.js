@@ -679,13 +679,21 @@ test("a merged side chat stays inline and opens its side conversation", async ({
   };
   await open(page, "default", [merged, ...arrivals.slice(1)]);
   const message = page.locator('article[data-message-id="m-82"]');
-  await expect(message).toContainText("Side chat “One more idea” merged");
+  const toggle = message.getByRole("button", {
+    name: /Merged side chat · One more idea/,
+  });
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(message).toContainText("Include the cheaper flight.");
   // The fixture has no service worker. Its dismissible toast can cover the
   // first row on a short desktop viewport.
   const dismiss = page.getByRole("button", { name: "Dismiss", exact: true });
   if (await dismiss.isVisible()) await dismiss.click();
-  await message.getByRole("button", { name: "Open side chat" }).click();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(message).not.toContainText("Include the cheaper flight.");
+  await toggle.click();
+  await expect(message).toContainText("Include the cheaper flight.");
+  await message.getByRole("button", { name: "Show side chat" }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe("#session=side");
 });
 

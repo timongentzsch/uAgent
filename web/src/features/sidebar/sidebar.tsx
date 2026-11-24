@@ -48,6 +48,7 @@ import { ListRow } from "../../shared/list-row.tsx";
 import { plural } from "../../shared/quantities.ts";
 import {
   childrenByParent,
+  isAgent,
   statusOf,
   waiting,
   type SessionState,
@@ -106,7 +107,9 @@ function groupSessions(
   const children = childrenByParent(
     sorted.filter(
       (item) =>
-        item.parent && !needs.has(item.id) && statusOf(item, online) !== "idle",
+        isAgent(item) &&
+        !needs.has(item.id) &&
+        statusOf(item, online) !== "idle",
     ),
   );
   const entry = (item: Session): Entry => ({

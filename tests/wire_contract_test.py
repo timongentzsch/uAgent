@@ -75,8 +75,9 @@ DOCUMENTED_INTERNAL = frozenset(
 )
 
 # Spelled like a frame kind but never one: `activity` is the terminal's
-# command for activity operations.
-ROW_KINDS = frozenset({"activity"})
+# command for activity operations, `merge` the origin of a side chat's
+# summing-up turn.
+ROW_KINDS = frozenset({"activity", "merge"})
 
 PRODUCED = re.compile(r'\{"kind",\s*"([A-Za-z._-]+)"')
 

@@ -135,7 +135,9 @@ std::string SessionHost::MoveConversation(
       return "this conversation has nothing saved yet";
     }
     if (!top->parent.empty()) {
-      return "this is an agent; move the conversation that started it";
+      return top->side.is_null()
+                 ? "this is an agent; move the conversation that started it"
+                 : "this is a side chat; move its conversation";
     }
     if (Busy(*top)) {
       return "\"" + top->title + "\" is running; wait for it or stop it";

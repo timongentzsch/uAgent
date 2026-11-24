@@ -221,3 +221,8 @@ div.node-row > .row-chevron {
 .refusal-word {
   color: var(--removed);
 }
+/* A merged side chat's row: its fold takes the line, the way to the side
+   chat follows it. */
+.merged-head > .node-row {
+  flex: 1;
+}

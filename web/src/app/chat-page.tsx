@@ -43,8 +43,9 @@ import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { keepFirst, mergeNodes } from "../shared/tree.ts";
 import { maxHistoryNodes } from "../shared/limits.ts";
+import { isAgent } from "../state/attention.ts";
 import { useLatest } from "../shared/use-latest.ts";
-import SideChats from "../features/chat/side-answer.tsx";
+import SideChats, { sideNodes } from "../features/chat/side-answer.tsx";
 import { SelectionActions } from "../features/chat/selection-actions.tsx";
 import type { useSideConversations } from "./use-side-conversations.ts";
 
@@ -79,6 +80,45 @@ export const isBrowsing = (snapshot?: Snapshot) =>
         (part) => part.kind === "link" && part.to === "browser",
       ),
   );
+
+// A quiet row for each side chat summing itself up for the conversation,
+// until its summary has arrived here.
+function useSumming(sides: Session[], nodes: Node[]) {
+  // The transcript's times are to the second; what it holds may start
+  // after the summary came.
+  const held = Date.parse(nodes.find((node) => node.time)?.time || "");
+  const arrived = (item: Session) => {
+    const since = Math.floor((item.side?.merged?.at ?? 0) / 1000) * 1000;
+    return (
+      held > since ||
+      nodes.some(
+        (node) =>
+          node.agent?.session === item.id &&
+          node.agent.outcome === "merged" &&
+          Date.parse(node.time || "") >= since,
+      )
+    );
+  };
+  const shown = sides.filter(
+    (item) => item.merging || (item.side?.merged && !arrived(item)),
+  );
+  const key = shown.map((item) => `${item.id}\n${item.title}`).join("\n");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the same rows while the same side chats sum up
+  return useMemo(
+    (): Node[] =>
+      shown.map((item) => ({
+        id: `summing-${item.id}`,
+        parent: null,
+        kind: "work",
+        state: "running",
+        headline: {
+          verb: "Side chat",
+          target: `“${item.title || "Side chat"}” is summing up`,
+        },
+      })),
+    [key],
+  );
+}
 
 // The one surface that reads the selected conversation's snapshot. It stays
 // mounted on the other pages, so the transcript history keeps its place.
@@ -156,13 +196,19 @@ export default function ChatPage({
       ),
     [outgoing, selected],
   );
-  const nodes = useMemo(
-    () =>
-      queued.length
-        ? allNodes.filter((node) => !queuedGuidance(node))
-        : allNodes,
-    [allNodes, queued],
-  );
+  // A side chat's page starts where it was asked, as its tab does.
+  const request = session?.side?.request;
+  const summing = useSumming(side.list, allNodes);
+  const nodes = useMemo(() => {
+    const own = queued.length
+      ? allNodes.filter((node) => !queuedGuidance(node))
+      : allNodes;
+    return request
+      ? sideNodes(own, request, view?.more, session?.merging)
+      : summing.length
+        ? [...own, ...summing]
+        : own;
+  }, [allNodes, queued, request, view?.more, session?.merging, summing]);
   // The hook owns scroll restore per session: no pin-on-select here.
   const {
     scroller: transcript,
@@ -174,7 +220,7 @@ export default function ChatPage({
     unseen,
   } = useTranscriptHistory(setFollowing, historyKey, nodes);
   // The transcript hook keeps the visible node in place; this only loads data.
-  const more = view?.more;
+  const more = view?.more && !(request && nodes[0]?.request_id === request);
   const before = view?.before;
   const older = useCallback(async () => {
     if (!more || !transcript.current) return;
@@ -225,33 +271,35 @@ export default function ChatPage({
   );
   const sessions = catalogue.sessions;
   const agents = useMemo(
-    () => sessions.filter((item) => item.parent === selected),
+    () => sessions.filter((item) => item.parent === selected && isAgent(item)),
     [sessions, selected],
   );
   const participants = useParticipants(nodes, agents);
-  // Its side chats that have a conversation, for the Activity list: a row
-  // shows the tab where they have a column, and the page where not.
-  const sides = side.sides;
   const latest = useLatest({ side, sideColumn, quote });
-  const sideRows = useMemo(() => {
-    const asked = (id: string) =>
-      latest.current.side.sides.find((item) => item.id === id);
-    return {
-      list: sides.flatMap(
-        (item) => sessions.find((session) => session.id === item.id) ?? [],
-      ),
-      open: (id: string) => {
-        const { side, sideColumn } = latest.current;
-        const item = asked(id);
-        if (sideColumn && item) side.show(item.firstRequest);
-        else void choose(id);
-      },
-      remove: (id: string) => {
-        const item = asked(id);
-        if (item) latest.current.side.close(item.firstRequest);
-      },
-    };
-  }, [sides, sessions, choose, latest]);
+  const { list: sideList, starting } = side;
+  const showSide = useCallback(
+    (id: string) => {
+      const { side, sideColumn } = latest.current;
+      if (sideColumn) side.show(id);
+      else void choose(id);
+    },
+    [choose, latest],
+  );
+  const sideRows = useMemo(
+    () => ({ list: sideList, starting, open: showSide }),
+    [sideList, starting, showSide],
+  );
+  // A message that opens a side chat shows it as a row of the list does.
+  const messageActions = useMemo(
+    () => ({
+      ...actions,
+      open: (id: string) =>
+        latest.current.side.list.some((item) => item.id === id)
+          ? showSide(id)
+          : actions.open?.(id),
+    }),
+    [actions, showSide, latest],
+  );
   // The composer keeps its place above the input for a selection's actions,
   // so Jump to latest stays clear of them.
   const selecting = !!quote;
@@ -337,15 +385,19 @@ export default function ChatPage({
       shown={side.shown}
       asking={side.asking}
       sessions={catalogue.sessions}
+      choose={choose}
       show={side.show}
-      close={side.close}
+      hide={side.hide}
       cancel={side.cancel}
       unquote={() => side.quote("")}
       ask={(question, quote) => {
         void side.ask(session, question, quote);
         side.cancel();
       }}
-      choose={choose}
+      detach={async (item) => {
+        await side.detach(item);
+        await choose(item.id);
+      }}
     />
   );
   return shown ? (
@@ -380,7 +432,7 @@ export default function ChatPage({
       <LiveActivities.Provider
         value={snapshot?.state?.activities || NO_ACTIVITIES}
       >
-        <MessageActions.Provider value={actions}>
+        <MessageActions.Provider value={messageActions}>
           <AgentParticipants.Provider value={participants}>
             <Chat
               key={selected}

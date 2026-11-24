@@ -237,8 +237,9 @@ export interface Node {
   // A message's author: you (or what woke the conversation), or the agent.
   role?: "user" | "assistant";
   // Files a call read, or what wrote a message in your place: an agent's
-  // report, finished background work, or another conversation's message.
-  origin?: "tool" | "agent" | "activity" | "message";
+  // report, finished background work, another conversation's message, or
+  // the harness asking a side chat to sum itself up.
+  origin?: "tool" | "agent" | "activity" | "message" | "merge";
   agent?: AgentFacts;
   // Assignment from the retained start call, including when it is on an older page.
   agent_label?: string;
@@ -447,9 +448,23 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
-  // The conversation that started this one as its agent.
+  // The conversation this one belongs to: it started it as its agent, or
+  // this is its side chat.
   parent?: string;
   agent_edits?: "none" | "worktree" | "folder";
+  // Where a side chat branched from, also once it was opened as a
+  // conversation of its own (detached). `request` is its first question's
+  // request id; `asked` when, in ms; `merged` when its summary last reached
+  // the conversation, and how many turns it had then.
+  side?: {
+    parent: string;
+    request: string;
+    asked: number;
+    merged?: { at: number; turns: number };
+    detached?: boolean;
+  } | null;
+  // A side chat summing itself up for its conversation.
+  merging?: boolean;
   // The model its file names.
   model?: string;
   status?: SessionStatus;
@@ -953,8 +968,11 @@ export interface CommandInputs {
   // the message a fork is cut before ("m-<id>").
   fork: { argument?: string; message_id?: string };
   share: None;
-  // Starts a side chat of the conversation, or merges this one back.
-  side: { operation: "create"; text: string } | { operation: "merge" };
+  // Starts a side chat of the conversation, whose first question goes as
+  // `request`; merges this one back, or opens it as a conversation of its own.
+  side:
+    | { operation: "create"; text: string; request: string }
+    | { operation: "merge" | "detach" };
   // The folder or workspace to move to, by its path on the host.
   move: { cwd?: string; space?: string };
   // Answers a suggested place with "here".
@@ -1056,8 +1074,9 @@ export interface RawOptions {
   prepare?: SessionRef;
 }
 export type AppModal =
-  // handoff: opened for the agent's request (take control, close on Done).
-  | { type: "browser"; handoff?: boolean }
+  // handoff: opened for the agent's request (take control, close on Done);
+  // session: whose browser, when not the open conversation's (a side chat).
+  | { type: "browser"; handoff?: boolean; session?: string }
   | { type: "instructions" }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)

@@ -116,6 +116,17 @@ version that was read. A conversation saved with memory off stays
 ineligible for automatic extraction after resume. The conversation shows
 a notice when a note was created, updated or extraction failed.
 
+A deliberate `forget` records an empty marker for the key under its scope's
+private `.forgotten/` directory. The key marker protects a manually restored
+note from older conversations. The directory's modification time protects
+against the extractor inventing a different key for the same forgotten fact.
+A conversation last modified at or before that cutoff can still update an
+unrelated existing note, but it cannot create a new note in that scope.
+Newer conversations, explicit saves and other project scopes continue to
+work. Renaming a note and automatically merging two notes leave the cutoff
+alone. The markers survive rotation of the memory event journal. Deletions
+made before these markers were introduced have no recorded cutoff.
+
 **Opening a skill.** The `skill` tool's description lists names and
 descriptions within 8,000 characters, shortening descriptions first. A call
 with `name`, or `$name` in a message, returns the body (≤ 512 KiB) with

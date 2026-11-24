@@ -93,6 +93,10 @@ std::filesystem::path MemoryDirectory(const std::string& scope,
   return base / "projects" / name;
 }
 
+std::filesystem::path ForgottenMark(const std::filesystem::path& note) {
+  return note.parent_path() / ".forgotten" / note.stem();
+}
+
 void AddMarkdownMemories(std::vector<MemoryEntry>& entries,
                          const std::filesystem::path& directory,
                          const std::string& scope, size_t limit) {
@@ -257,6 +261,19 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     if (!ReadRegularFile(path.string(), MemoryBytes(), previous, error,
                          /*prefix=*/true)) {
       return ToolFailure(ToolErrorCode::kNotFound, error);
+    }
+    // Persist the cutoff before unlinking. A successful deliberate deletion
+    // survives audit-journal rotation, without keeping a copy of the note.
+    if (source.empty() && !replacing) {
+      const auto mark = ForgottenMark(path);
+      if (!LibraryPath(GlobalBase(), mark) ||
+          !EnsurePrivateDirectory(mark.parent_path())) {
+        return ToolFailure(ToolErrorCode::kInternal,
+                           "cannot record memory deletion");
+      }
+      if (!WritePrivateFile(mark.string(), "", error)) {
+        return ToolFailure(ToolErrorCode::kInternal, error);
+      }
     }
     std::error_code code;
     if (!fs::remove(path, code)) {
@@ -456,15 +473,29 @@ ToolResult SaveExtractedMemory(const std::string& key, const std::string& note,
     bool exists;
     std::string previous;
     const auto revision = seen == observed.end() ? "" : seen->second.revision;
-    return CheckRevision({{"revision", revision}}, path, MemoryBytes(),
-                         "memory", previous, exists)
-        .is_null();
+    if (!CheckRevision({{"revision", revision}}, path, MemoryBytes(), "memory",
+                       previous, exists)
+             .is_null())
+      return false;
+    // Replacing a deletion marker also advances its directory's mtime. New
+    // keys use that scope cutoff, since a model can rename a forgotten fact.
+    // Existing notes use their own cutoff, including a manually restored note.
+    auto cutoff = ForgottenMark(path);
+    if (!exists) cutoff = cutoff.parent_path();
+    if (!LibraryPath(GlobalBase(), cutoff)) return false;
+    if (!PathExists(cutoff)) return true;
+    std::error_code source_error, cutoff_error;
+    const auto learned = std::filesystem::last_write_time(source, source_error);
+    const auto forgotten =
+        std::filesystem::last_write_time(cutoff, cutoff_error);
+    return !source_error && !cutoff_error && learned > forgotten;
   };
   if (!current(key, false) ||
       (!folded.empty() &&
        (key == folded || !folded.starts_with(scope + "/") ||
         !LibraryName(folded.substr(slash + 1)) || !current(folded, true)))) {
     written.action = "no_change";
+    written.key = key;
     return ToolSuccess("memory changed or was not supplied for the merge");
   }
   auto saved =
@@ -609,7 +640,8 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
     auto saved = MemoryAction("set", target, previous, cwd);
     if (!saved.Ok()) return {{"error", saved.output}};
     if (action == "rename") {
-      auto removed = MemoryAction("forget", key, std::nullopt, cwd);
+      auto removed = AccessMemory(key.substr(slash + 1), scope, std::nullopt,
+                                  true, cwd, "", nullptr, /*replacing=*/true);
       if (!removed.Ok()) {
         return {{"error", "Copied, but could not remove the original: " +
                               removed.output}};

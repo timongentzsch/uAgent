@@ -326,3 +326,28 @@ docker run --rm --init --platform linux/arm64 --network=none \
 
 `resolv.conf` holds `nameserver 127.0.0.1`. Use the same package directory
 and runtime image as the release probe.
+
+## Live memory evaluation
+
+The November 24 memory evaluation used DeepSeek V4 Flash through OpenRouter.
+Each mode received a disposable home, two synthetic projects and the same
+correction to a saved preference. The corrected binary recalled the new
+preference with memory on. With memory off it answered `UNKNOWN`. Both modes
+answered `UNKNOWN` in the unrelated project. Both reread the dispatch fixture
+after its first six lines omitted the requested code, returned the exact code
+and included extra formatting or text. These are individual model responses.
+
+Four additional runs tested deliberate deletion using independently worded
+historical conversations. Before the fix, three restored the forgotten fact
+under a different key. After the fix, three runs proposed a key that the
+runtime declined and one proposed no note. All four libraries stayed empty.
+The report includes the native binary hashes, tool sequences and extraction
+receipts. [Before and after results](results/memory-quality-2026-11-24.json)
+
+Run the paid provider evaluation with a configured model. The script uses
+only that provider's credentials and saves aggregate observations.
+
+```sh
+python3 benchmarks/memory_quality.py build/dev/uagent \
+  --model openrouter/deepseek/deepseek-v4-flash --report /tmp/memory-quality.json
+```

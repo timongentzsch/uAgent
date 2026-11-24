@@ -475,8 +475,9 @@ ToolResult SaveExtractedMemory(const std::string& key, const std::string& note,
     const auto revision = seen == observed.end() ? "" : seen->second.revision;
     if (!CheckRevision({{"revision", revision}}, path, MemoryBytes(), "memory",
                        previous, exists)
-             .is_null())
+             .is_null()) {
       return false;
+    }
     // Replacing a deletion marker also advances its directory's mtime. New
     // keys use that scope cutoff, since a model can rename a forgotten fact.
     // Existing notes use their own cutoff, including a manually restored note.

@@ -194,11 +194,9 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
         header["todo"] = std::move(progress);
       }
     }
-  }
-  // Even an ordinary fork records the answer. Older forks lack this field
-  // and the catalogue recovers it from saved display facts.
-  if (!record.metadata.parent_session_id.empty()) {
-    header["side"] = facts ? SideOf(*facts) : json(nullptr);
+    if (json side = SideOf(*facts); !side.is_null()) {
+      header["side"] = std::move(side);
+    }
   }
   // The header is built from a typed struct; only the state can be incomplete.
   if (!ValidState(record.state, conversation)) {
@@ -508,16 +506,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         const json agent = AgentOf(header);
         item.agent_edits = JsonValue(agent, "edits", "");
         item.side = JsonValue(header, "side", json(nullptr));
-        if (!header.contains("side") &&
-            !JsonValue(header, kSessionHeaderParent, "").empty()) {
-          auto legacy = SessionStore::Inspect(item.path);
-          if (legacy.record) {
-            if (const json* facts =
-                    JsonObject(legacy.record->state.display, "facts")) {
-              item.side = SideOf(*facts);
-            }
-          }
-        }
+        if (!item.side.contains("asked")) item.side = nullptr;
         item.parent =
             JsonValue(agent, "parent",
                       JsonValue(item.side, "detached", false)
@@ -545,7 +534,10 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
 
 json SideOf(const json& facts) {
   const json* origin = JsonObject(facts, "side-origin");
-  if (!origin) return nullptr;
+  // Before 1.12, /btw forked an independent conversation. Its origin
+  // recorded the source and tools, without the timestamp of an attached side
+  // chat.
+  if (!origin || !origin->contains("asked")) return nullptr;
   const auto parent = JsonValue(*origin, "parent", "");
   const json* fork = JsonObject(facts, "fork-origin");
   if (parent.empty() || (fork && JsonValue(*fork, "source", "") != parent)) {

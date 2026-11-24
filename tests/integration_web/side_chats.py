@@ -44,38 +44,49 @@ def test_web_side_chat_belongs_to_its_conversation_until_detached(root, home, *,
             wait_until(own, "the side chat stayed one")
 
 
-def test_web_side_chat_legacy_forks_keep_their_actual_parent(root, home, *, binary):
-    messages = [{"role": "user", "content": "earlier question"}]
+def test_web_side_chat_from_v1_11_stays_independent_after_resume_and_parent_deletion(
+    root, home, *, binary
+):
+    messages = [
+        {"role": "system", "content": "baseline"},
+        {"role": "user", "content": "earlier question"},
+    ]
     lead = write_session(home, "lead", messages, cwd=root)
-    side_parent = session_id(lead)
-    source = lead
-    for name in ("side", "independent"):
-        source = write_session(
-            home,
-            name,
-            messages,
-            cwd=root,
-            parent_session_id=source.stem,
-            display={
-                "ids": [1],
-                "next": 2,
-                "facts": {
-                    "fork-origin": {"source": session_id(source)},
-                    "side-origin": {"parent": side_parent},
-                },
+    parent = session_id(lead)
+    old = write_session(
+        home,
+        "earlier-side",
+        messages,
+        cwd=root,
+        parent_session_id=lead.stem,
+        display={
+            "ids": [1, 2],
+            "next": 3,
+            "facts": {
+                "fork-origin": {"source": parent},
+                "side-origin": {"parent": parent, "tools": ["read_path"]},
             },
-        )
-    with Server([lambda *_: event({"content": "said"})]) as provider:
+        },
+    )
+    old_id = session_id(old)
+    with Server([lambda *_: event({"content": "new answer"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
-            rows = listing(client)
+
+            def check_standalone():
+                row = listing(client)[old_id]
+                assert_true(not row["parent"] and row.get("side") is None, row)
+
+            check_standalone()
+            active = client.command("activate", {"id": old_id, "generation": ""})["session"]
+            client.command("submit", active, text="resume")
+            client.until(active, lambda value: idle(value) and "new answer" in json.dumps(value))
+            client.command("close", client.snapshot(active)["metadata"])
+            check_standalone()
+            client.command("delete", listing(client)[parent])
+            check_standalone()
             assert_true(
-                rows[session_id(lead.with_name("side.json"))]["parent"] == side_parent, rows
-            )
-            assert_true(
-                not rows[session_id(source)]["parent"]
-                and rows[session_id(source)].get("side") is None,
-                rows,
+                old.is_file() and not lead.exists(), "only the original conversation is deleted"
             )
 
 

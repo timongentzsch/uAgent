@@ -116,9 +116,13 @@ bool ReadBounded(std::istream& input, size_t cap, std::string& out) {
   // Grows with what is actually there, not with the cap.
   out.clear();
   char chunk[KiB(64)];
-  while (out.size() <= cap && input.read(chunk, sizeof chunk).gcount() > 0) {
-    out.append(chunk, std::min(static_cast<size_t>(input.gcount()),
-                               cap + 1 - out.size()));
+  while (out.size() <= cap) {
+    // One extra byte distinguishes an exact fit from a truncated prefix.
+    const size_t want = std::min(sizeof chunk - 1, cap - out.size()) + 1;
+    input.read(chunk, static_cast<std::streamsize>(want));
+    const auto got = static_cast<size_t>(input.gcount());
+    out.append(chunk, got);
+    if (got < want) break;
   }
   const bool more = out.size() > cap;
   out = Utf8Prefix(std::move(out), cap);

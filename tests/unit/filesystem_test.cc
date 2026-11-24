@@ -4,6 +4,7 @@
 #include <sys/wait.h>
 
 #include <atomic>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,20 @@
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+
+TEST_CASE(TestBoundedRead) {
+  std::istringstream input("a€z trailing bytes");
+  std::string out;
+  CHECK(ReadBounded(input, 2, out));
+  CHECK(out == "a");
+  CHECK(input.tellg() == 3);
+  std::istringstream exact("abc");
+  CHECK(!ReadBounded(exact, 3, out));
+  CHECK(out == "abc");
+  std::istringstream nonempty("z");
+  CHECK(ReadBounded(nonempty, 0, out));
+  CHECK(out.empty());
+}
 
 TEST_CASE(TestFileTools) {
   namespace fs = std::filesystem;

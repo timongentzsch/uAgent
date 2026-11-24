@@ -20,6 +20,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/runtime_config.h"
+#include "include/core/sandbox.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/workspace.h"
@@ -41,17 +42,21 @@ json ApprovalState(const EffectiveConfigSnapshot& configured,
     if (!ParseApprovalMode(text, value)) value = ApprovalMode::kAsk;
     return value;
   };
-  const bool chosen =
-      JsonValue(configured.sources, kApprovalKey, "") == "conversation";
+  std::string source = JsonValue(configured.sources, kApprovalKey, "default");
+  const bool chosen = source == "conversation";
   ApprovalMode effective = parsed(configured.Get(kApprovalKey));
   ApprovalMode inherited = parsed(configured.Inherited(kApprovalKey));
   // Roles saved before mode inheritance used Auto as their default.
   if (!agent.empty()) {
     inherited = parsed(JsonValue(agent, "approval", "auto"));
-    if (!chosen) effective = inherited;
+    if (!chosen) {
+      effective = inherited;
+      source = agent.contains("approval") ? "parent" : "agent_default";
+    }
   }
   return {{"mode", chosen ? ApprovalModeName(effective) : "default"},
           {"effective", ApprovalModeName(effective)},
+          {"source", source},
           {"default", ApprovalModeName(inherited)}};
 }
 
@@ -86,6 +91,10 @@ json PermissionControl(AppContext& context, const json& request) {
     std::filesystem::remove(PlanFile(), ignored);
   }
   SetApprovalMode(effective);
+  if (JsonValue(request, "inspect", false)) {
+    const json sandbox = SandboxDiagnosticJson();
+    result["sandbox"] = JsonPick(sandbox, {"summary", "network"});
+  }
   if (!mode.empty()) {
     Emit(Event{EventId::kConfigChanged, {{"permissions", result}}});
   }

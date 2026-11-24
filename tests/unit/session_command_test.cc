@@ -264,6 +264,20 @@ TEST_CASE(TestReplayLogReadsInBatches) {
   CHECK(log.Read(0, true, 3, 1 << 20).events.size() == 3);
 }
 
+TEST_CASE(TestReplayLogResyncsAfterAnOversizedEvent) {
+  session::ReplayLog log(1024, 10);
+  log.Publish("e", "s", "g", {{"type", "small"}}, false);
+  log.Publish("e", "s", "g", {{"data", std::string(2048, 'x')}}, false);
+  CHECK(log.Read(0, true, 2, 1024).reset);
+  CHECK(log.Read(1, true, 2, 1024).reset);
+  CHECK(!log.Read(2, true, 2, 1024).reset);
+  log.Publish("e", "s", "g", {{"type", "next"}}, false);
+  CHECK(log.Read(1, true, 3, 1024).reset);
+  const auto recovered = log.Read(2, true, 3, 1024);
+  REQUIRE(!recovered.reset && recovered.events.size() == 1);
+  CHECK(recovered.events.front().sequence == 3);
+}
+
 // Streamed text and usage are held back between their first frames of a
 // turn; any other event sends what is held, in order, before itself.
 TEST_CASE(TestTransientBatcherHoldsStreamedText) {

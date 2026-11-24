@@ -495,12 +495,22 @@ def test_agent_inherits_yolo_and_keeps_its_chosen_mode_after_restart(root, home,
             assert_true(state["holding"].wait(budget(20)), "the agent never ran its brief")
             client = client_of(home, agent_files(home)[0])
             try:
+                inherited = client.send("permissions", inspect=True)
+                result = client.until(
+                    lambda f: (
+                        f.get("kind") == "outcome"
+                        and f.get("request_id") == inherited["request_id"]
+                    )
+                )["result"]
+                assert_true(result["source"] == "parent" and result["effective"] == "yolo", result)
+                assert_true(bool(result["sandbox"]["summary"]), result)
                 chosen = client.send("permissions", mode="ask")
-                client.until(
+                changed = client.until(
                     lambda f: (
                         f.get("kind") == "outcome" and f.get("request_id") == chosen["request_id"]
                     )
                 )
+                assert_true(changed["result"]["source"] == "conversation", changed)
             finally:
                 client.close()
             state["release"].set()

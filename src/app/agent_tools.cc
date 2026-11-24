@@ -9,7 +9,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <optional>
+#include <ranges>
 #include <set>
 #include <string>
 #include <utility>
@@ -840,14 +842,6 @@ Tool DecideTool() {
   return tool;
 }
 
-void Tree(const std::vector<SessionInfo>& all, const std::string& parent,
-          const std::string& indent, std::string& out) {
-  for (const SessionInfo& info : all) {
-    if (info.parent != parent) continue;
-    out += indent + Row(info, RuntimeStatus(info.path)) + "\n";
-    Tree(all, SessionIdFor(info.path), indent + "  ", out);
-  }
-}
 }  // namespace
 
 void AddAgentTools(std::vector<Tool>& tools, const Api& api,
@@ -890,8 +884,32 @@ bool AgentsOwe(const std::string& path) {
 }
 
 std::string AgentTree(const std::string& path) {
+  const auto sessions = SessionsBeside(path);
+  std::map<std::string, std::vector<const SessionInfo*>> children;
+  for (const auto& info : sessions) {
+    if (!info.parent.empty()) children[info.parent].push_back(&info);
+  }
+  std::vector<std::pair<const SessionInfo*, size_t>> pending;
+  const auto add_children = [&](const std::string& parent, size_t depth) {
+    auto group = children.extract(parent);
+    if (group.empty()) return;
+    // The stack visits siblings in the same order as the session listing.
+    for (const auto* info : std::views::reverse(group.mapped())) {
+      pending.emplace_back(info, depth);
+    }
+  };
+  const std::string root = SessionIdFor(path);
+  add_children(root, 0);
   std::string out;
-  Tree(SessionsBeside(path), SessionIdFor(path), "", out);
+  while (!pending.empty()) {
+    const auto [info, depth] = pending.back();
+    pending.pop_back();
+    const std::string id = SessionIdFor(info->path);
+    if (id == root) continue;  // A saved parent chain can loop back to itself.
+    out.append(2 * depth, ' ');
+    out += Row(*info, RuntimeStatus(info->path)) + "\n";
+    add_children(id, depth + 1);
+  }
   return out.empty() ? "no agents\n" : out;
 }
 }  // namespace uagent

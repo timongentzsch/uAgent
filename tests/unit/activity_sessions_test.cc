@@ -26,6 +26,7 @@
 #include "include/agent/activity.h"
 #include "include/agent/session_links.h"
 #include "include/agent/transcript.h"
+#include "include/app/agent_tools.h"
 #include "include/app/folder_overview.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"
@@ -1442,9 +1443,10 @@ TEST_CASE(TestAFolderHoldsWhatWorksInItAndTheAgentsUnderIt) {
   CHECK(SessionIdFor("/a/lead.json") == SessionIdFor("/b/lead.json"));
   CHECK(SessionIdFor("/a/lead.json") != SessionIdFor("/a/lead-copy.json"));
   const std::string lead = write("lead", json::object());
-  write("agent-00000000000000aa",
-        {{"cwd", "/elsewhere"},
-         {kSessionHeaderAgent, {{"parent", SessionIdFor(lead)}}}});
+  const std::string agent =
+      write("agent-00000000000000aa",
+            {{"cwd", "/elsewhere"},
+             {kSessionHeaderAgent, {{"parent", SessionIdFor(lead)}}}});
   write("remote", {{"host", "box"}});
   // A copy under another name is a conversation of its own; the agent stays
   // under the one it names.
@@ -1471,6 +1473,18 @@ TEST_CASE(TestAFolderHoldsWhatWorksInItAndTheAgentsUnderIt) {
       CHECK(info.parent == SessionIdFor(lead));
     }
   }
+  const auto nested = write(
+      "nested", {{kSessionHeaderAgent, {{"parent", SessionIdFor(agent)}}}});
+  const auto sibling = write(
+      "sibling", {{kSessionHeaderAgent, {{"parent", SessionIdFor(lead)}}}});
+  fs::last_write_time(sibling,
+                      fs::last_write_time(agent) - std::chrono::seconds(1));
+  const std::string tree = AgentTree(lead);
+  CHECK(std::count(tree.begin(), tree.end(), '\n') == 3);
+  CHECK(tree.starts_with(SessionIdFor(agent) + " "));
+  const auto nested_row = tree.find("\n  " + SessionIdFor(nested) + " ");
+  const auto sibling_row = tree.find("\n" + SessionIdFor(sibling) + " ");
+  CHECK(nested_row < sibling_row && sibling_row != std::string::npos);
 }
 
 TEST_CASE(TestAParentChainThatLoopsEnds) {
@@ -1495,11 +1509,15 @@ TEST_CASE(TestAParentChainThatLoopsEnds) {
       write("agent-self", SessionIdFor((dir / "agent-self.json").string()));
   const std::string one =
       write("agent-one", SessionIdFor((dir / "agent-two.json").string()));
-  write("agent-two", SessionIdFor(one));
+  const std::string two = write("agent-two", SessionIdFor(one));
   CHECK(TopConversation(self).cwd == "/project");
   CHECK(TopConversation(one).cwd == "/project");
   CHECK(SessionsBeside(self).size() == 3);
   CHECK(SessionsIn("/project").size() == 3);
+  CHECK(AgentTree(self) == "no agents\n");
+  const std::string tree = AgentTree(one);
+  CHECK(std::count(tree.begin(), tree.end(), '\n') == 1);
+  CHECK(tree.starts_with(SessionIdFor(two) + " "));
 }
 
 TEST_CASE(TestAnAgentUnderAnUnreadableParentIsItsOwnTop) {

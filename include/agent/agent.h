@@ -102,9 +102,16 @@ class Agent {
 
   const Conversation& History() const { return conversation_; }
   json DisplaySnapshot() const;
-  // Forks a resumable side conversation (/btw); safe beside a running turn.
-  json SideConversation(const std::string& source,
-                        const std::string& question) const;
+  // Forks a side chat of this conversation (/btw), whose first question
+  // will be sent as `request`; safe beside a running turn.
+  json SideConversation(const std::string& source, const std::string& question,
+                        const std::string& request) const;
+  // A side chat becomes a conversation of its own.
+  void DetachSide();
+  // The session id of the conversation this is a side chat of; "" for none.
+  std::string SideParent() const;
+  // A side chat's summary reached its conversation, as of this turn.
+  void MarkMerged();
   void PublishSideContext();
   // Snapshots a tool's file for clients: {id, name, mime, bytes} or null.
   using KeepFile =
@@ -393,7 +400,8 @@ class Agent {
 
   // The row of a finished call, as a person reads it.
   void RecordToolRow(const ToolCall& call, const ToolResult& original,
-                     double duration_ms);
+                     double duration_ms,
+                     const std::string* exchange_response = nullptr);
   // Keep receipts and read metadata from the original; send only `result`.
   void AppendToolResult(const ToolCall& call, const std::string& result,
                         const ToolResult& original, double duration_ms);
@@ -402,10 +410,11 @@ class Agent {
   void PushToolResultMessage(const ToolCall& call, json message);
 
   void PrepareCall(const ToolCall& call, CallTask& task, TurnExecution& state,
-                   StepState& loop);
+                   StepState& loop, const std::string& parent);
   void PublishWork(const std::vector<CallTask>& tasks);
   // Ends the work replying to the latest message of yours as `outcome`.
   void CloseWork(const std::string& outcome);
+  void RecordWorkNotice(json notice);
   // True when the user interrupted the batch.
   bool RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                 StepState& loop, std::vector<ToolRejection>& rejections,
@@ -472,6 +481,8 @@ class Agent {
   mutable SavedFile saved_file_;
   std::string session_title_;
   bool custom_title_ = false;
+  // A saved transcript containing a memory-off run stays out of extraction.
+  bool memory_source_ = true;
   // Fork lineage, kept across load and save.
   std::string parent_session_id_;
   int64_t forked_at_turn_ = 0;

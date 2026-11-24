@@ -37,8 +37,7 @@ jobs:
           cp -r tests/fuzz/corpus/${{ matrix.fuzzer }} /tmp/corpus
           build/fuzz/uagent_fuzz_${{ matrix.fuzzer }} \
             -max_total_time=300 -print_final_stats=1 -artifact_prefix=/tmp/corpus/ /tmp/corpus
-      # An artifact, not a commit: every input in tests/fuzz/corpus/ is
-      # replayed by each CI smoke run, so promoting one is a human decision.
+      # Keep newly discovered inputs for review before adding them to the seed corpus.
       - name: Upload corpus
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -184,10 +184,8 @@ Master::Master(WebOptions options, std::string executable,
       epoch_(RandomToken(16)),
       secret_(RandomToken()),
       host_(epoch_, kQueueBytes, executable_, directory_) {
-  host_.SetPreview([this](const std::string& id) {
-    const std::string base = PreviewBase(id);
-    return base.empty() ? base : local_ + base;
-  });
+  host_.SetPreview(
+      [this](const std::string& id) { return PreviewAddress(id, true); });
 }
 
 bool Master::Initialize(std::string& error) {
@@ -243,6 +241,8 @@ bool Master::Initialize(std::string& error) {
   }
   push_ =
       std::make_unique<PushSender>(directory_, options_.push_contact, capture);
+  // The master holds the host lease. Discard grants left by an abrupt exit.
+  ClearWorkerPreviews();
   host_.LoadPins();
   host_.LoadDrafts();
   host_.RefreshCatalogue();
@@ -348,6 +348,9 @@ bool Master::Initialize(std::string& error) {
   }
   remotes_ = std::make_unique<RemoteHosts>(executable_, options_.remote_bundle);
   RegisterRemoteRoutes();
+  // Detached workers may still be inspecting artifacts when their host
+  // restarts.
+  host_.RefreshPresence();
   LoadRemoteTerminals();
   RegisterApiRoutes();
   RegisterTerminalRoutes();
@@ -466,6 +469,7 @@ int Master::Run() {
   shutdown_fd = -1;
   // Browser service shutdown detaches; sessions belong to their runtimes.
   host_.Shutdown();
+  ClearWorkerPreviews();
   browser_process_.owner.Reset();
   return served ? 0 : 1;
 }
@@ -654,6 +658,10 @@ void Master::RegisterApiRoutes() {
   server_.Get(R"(/api/sessions/([a-f0-9]{16,64})/assets/([a-f0-9]{16,64}))",
               [this](const Request& request, Response& response) {
                 AssetRead(request, response);
+              });
+  server_.Get(R"(/api/sessions/([a-f0-9]{16,64})/file-origin)",
+              [this](const Request& request, Response& response) {
+                FileOrigin(request, response);
               });
   server_.Get(R"(/api/sessions/([a-f0-9]{16,64})/files)",
               [this](const Request& request, Response& response) {

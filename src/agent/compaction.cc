@@ -322,9 +322,8 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   conversation_.Push(std::move(summary), MessageKind::kInternal);
   // The next turn request measures the new history afresh.
   context_offset_ = 0;
-  json compact_node = conversation_.RecordEntry(
+  RecordWorkNotice(
       {{"kind", "compaction"},
-       {"turn_root", turn_root_},
        {"compaction",
         {{"automatic", automatic},
          {"messages_before", messages_before},
@@ -332,7 +331,6 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
          {"duration_ms", std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() - compact_started)
                              .count()}}}});
-  Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(compact_node)}}});
   ++revision_;
   DebugLog("compact_end", {{"automatic", automatic},
                            {"outcome", "ok"},

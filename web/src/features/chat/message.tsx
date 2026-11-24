@@ -1,59 +1,83 @@
+import { MessageText } from "./message-text.tsx";
+import { AgentSender } from "./agent-sender.tsx";
+import type { ComponentChildren } from "preact";
 import { ArtifactCard } from "./artifact-card.tsx";
 import "../../shared/attachments.css";
 import "./message.css";
-import Markdown, {
-  isPrepared,
-  prepareMarkdown,
-} from "../../shared/markdown-view.tsx";
+import { isPrepared, prepareMarkdown } from "../../shared/markdown-view.tsx";
 import { count } from "../../shared/quantities.ts";
 import {
+  agentReport,
+  messageExcerpt,
   queuedGuidance,
   recallable,
   shownText,
   splitMentionTokens,
   unsent,
 } from "../../shared/message-view.ts";
-import type { Asset, Node, SessionRef } from "../../shared/types.ts";
+import type { Node, SessionRef } from "../../shared/types.ts";
 import { useContext, useEffect, useId, useState } from "preact/hooks";
 import { formatMoment } from "../../shared/time.ts";
 import { devicePrefs } from "../../shared/device-prefs.ts";
 import { useStored } from "../../shared/storage.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { MessageActions } from "./message-actions.ts";
-import { X } from "lucide-preact";
-import { Button, IconButton, Notice, Time } from "../../shared/ui.tsx";
+import { ChevronRight, X } from "lucide-preact";
+import { Button, Cluster, IconButton, Notice, Time } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
-import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
+import { AttachmentList } from "../../shared/attachments.tsx";
 import { useApi } from "../../state/api.ts";
 import { useNodeReader } from "../../state/node-reader.ts";
 import { isRow } from "../../shared/tree.ts";
 import { TurnFooter } from "./turn-footer.tsx";
 import { SharedFile } from "./bodies.tsx";
 
-// Resolves against the message's own files: a renamed file shows its
-// current name, a removed one degrades to muted text.
-function MentionFile({
-  id,
-  alt,
-  files,
-  assets,
+// A merged side chat's summary in its conversation: a row that folds as a
+// step does, with the way to the side chat and when it came.
+function MergedRow({
+  node,
+  title,
+  show,
+  children,
 }: {
-  id: string;
-  alt: string;
-  files?: Asset[];
-  assets: string;
+  node: Node;
+  title: string;
+  show?: () => void;
+  children: ComponentChildren;
 }) {
-  const file = files?.find((item) => item.id === id);
-  if (!file) return <span class="muted">@{alt} (attachment removed)</span>;
-  const href = `${assets}${file.id}`;
-  return file.image ? (
-    <span class="mention-image">
-      <ImageTile src={href} name={file.name} />
-    </span>
-  ) : (
-    <a class="chip file-chip mention-chip" href={href} download={file.name}>
-      @{file.name}
-    </a>
+  const [open, setOpen] = useState(true);
+  return (
+    <article
+      class="node merged-row"
+      data-message-id={node.id}
+      data-sequence={node.sequence}
+      aria-label={`Merged side chat ${title}`}
+    >
+      <Cluster class="merged-head">
+        <Button
+          variant="quiet"
+          class="node-row"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          <ChevronRight class="row-chevron" aria-hidden="true" />
+          <span class="node-headline">Merged side chat · {title}</span>
+          <small class="node-word">
+            <Time value={node.time} />
+          </small>
+        </Button>
+        {show && (
+          <Button variant="quiet" size="compact" onClick={show}>
+            Show side chat
+          </Button>
+        )}
+      </Cluster>
+      {open && (
+        <div class="node-open">
+          <div class="node-kids">{children}</div>
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -79,11 +103,13 @@ const AS_SENT = new Set(["Image", "Document", "Text", "Audio", "Video"]);
 export function MessageView({
   node,
   answer,
+  parentReply,
   online,
   session,
 }: {
   node: Node;
   answer?: Node;
+  parentReply?: boolean;
   online: boolean;
   session: SessionRef;
 }) {
@@ -92,7 +118,12 @@ export function MessageView({
   return node.origin === "tool" ? (
     <BroughtFiles node={node} online={online} session={session} />
   ) : (
-    <Message node={node} online={online} session={session} />
+    <Message
+      node={node}
+      online={online}
+      session={session}
+      parentReply={parentReply}
+    />
   );
 }
 
@@ -117,10 +148,12 @@ function BroughtFiles({
 
 function Message({
   node,
+  parentReply,
   online,
   session,
 }: {
   node: Node;
+  parentReply?: boolean;
   online: boolean;
   session: SessionRef;
 }) {
@@ -135,8 +168,8 @@ function Message({
     openFile,
   } = useContext(MessageActions);
   const [wantFull, setWantFull] = useState(false);
-  const reply = node.role === "assistant";
-  // A message with an origin (what woke the conversation) has no bubble.
+  const sender = agentReport(node);
+  const reply = node.role === "assistant" || !!sender;
   const chrome = reply ? "response" : node.origin ? "mail" : "user inverse";
   const load = useNodeReader(session);
   const truncated = node.body?.truncated;
@@ -155,38 +188,61 @@ function Message({
     if (fullText.error) report(fullText.error);
   }, [fullText.error]);
   const text = shownText(node, full ?? node.body?.text ?? "");
+  const excerpt = sender ? messageExcerpt(text) : text;
+  const visible = wantFull ? text : excerpt;
   const assets = routes.assets(session.id);
   const nameId = useId();
   const name = useRowName(
-    reply ? "Assistant" : (node.origin && AUTHORS[node.origin]) || "You",
+    sender?.title ||
+      (reply ? "Assistant" : (node.origin && AUTHORS[node.origin]) || "You"),
     node.time,
   );
-  const agent = node.agent;
-  // A side chat the person merged reports as an agent does.
-  const merged = agent?.outcome === "merged";
-  const words =
-    text &&
-    splitMentionTokens(text).map((part, index) =>
-      "text" in part ? (
-        part.text ? (
-          // Segments render independently: emphasis spanning a token
-          // keeps its words but loses the styling (rare, accepted).
-          <Markdown
-            key={`t-${index}`}
-            text={part.text}
-            streaming={node.streaming}
-            refs={!!openFile}
-          />
-        ) : null
-      ) : (
-        <MentionFile
-          key={`m-${part.mention.id}-${index}`}
-          id={part.mention.id}
-          alt={part.mention.alt}
-          files={node.files}
-          assets={assets}
-        />
-      ),
+  const side = node.agent?.outcome === "merged" && node.agent;
+  const words = (!sender?.tool || wantFull) && visible && (
+    <MessageText
+      text={visible}
+      streaming={node.streaming}
+      refs={!!openFile}
+      files={node.files}
+      assets={assets}
+    />
+  );
+  const meta = (!reply || sender) && (
+    <span class="message-meta small">
+      {node.status && <span>{node.status}</span>}
+      <Time value={node.time} brief={!!sender} />
+      {recall && recallable(node, online) && (
+        <IconButton
+          label={
+            queuedGuidance(node)
+              ? "Recall guidance to composer"
+              : "Return message to composer"
+          }
+          title="Return to composer"
+          onClick={() => recall(node)}
+        >
+          <X />
+        </IconButton>
+      )}
+      <MessageMenu
+        label={sender ? "Actions for this message" : `Actions for ${name}`}
+        node={node}
+        http={http}
+        branch={branch}
+      />
+    </span>
+  );
+  // A side chat the person merged: one row that folds like a step, its
+  // summary under it.
+  if (side)
+    return (
+      <MergedRow
+        node={node}
+        title={side.title}
+        show={open && online ? () => open(side.session) : undefined}
+      >
+        {words}
+      </MergedRow>
     );
   return (
     <article
@@ -195,9 +251,37 @@ function Message({
       className={`message ${chrome}`}
       aria-labelledby={nameId}
     >
-      <h3 class="sr-only" id={nameId}>
-        {name}
-      </h3>
+      {!sender && (
+        <h3
+          class={parentReply ? "parent-speaker small" : "sr-only"}
+          id={nameId}
+        >
+          {parentReply ? "µAgent" : name}
+        </h3>
+      )}
+      {sender && (
+        <div class="message-byline">
+          <AgentSender
+            nameId={nameId}
+            id={sender.session}
+            title={node.agent_label || sender.title}
+            outcome={sender.tool ? undefined : sender.outcome}
+            online={online}
+          />
+          {sender.tool && (
+            <Button
+              variant="quiet"
+              class="message-expand request-tool small"
+              aria-expanded={wantFull}
+              onClick={() => setWantFull(!wantFull)}
+            >
+              <ChevronRight class="row-chevron" aria-hidden="true" />
+              Requested {sender.tool}
+            </Button>
+          )}
+          {(!sender.tool || wantFull) && meta}
+        </div>
+      )}
       {reply ? (
         words
       ) : (
@@ -206,53 +290,9 @@ function Message({
             {node.origin === "activity" && (
               <div class="message-event">A background command finished</div>
             )}
-            {agent && (
-              <div class="message-event">
-                <span>
-                  {merged
-                    ? `Side chat “${agent.title}” merged`
-                    : `Agent “${agent.title}” finished`}
-                  {!merged &&
-                    agent.outcome !== "completed" &&
-                    ` (${agent.outcome})`}
-                </span>
-                {open && (
-                  <Button
-                    variant="quiet"
-                    size="compact"
-                    disabled={!online}
-                    onClick={() => open(agent.session)}
-                  >
-                    {merged ? "Open side chat" : "Open agent"}
-                  </Button>
-                )}
-              </div>
-            )}
             {words}
           </div>
-          <span class="message-meta small">
-            {node.status && <span>{node.status}</span>}
-            <Time value={node.time} />
-            {recall && recallable(node, online) && (
-              <IconButton
-                label={
-                  queuedGuidance(node)
-                    ? "Recall guidance to composer"
-                    : "Return message to composer"
-                }
-                title="Return to composer"
-                onClick={() => recall(node)}
-              >
-                <X />
-              </IconButton>
-            )}
-            <MessageMenu
-              label={`Actions for ${name}`}
-              node={node}
-              http={http}
-              branch={branch}
-            />
-          </span>
+          {meta}
         </div>
       )}
       {node.deliveries
@@ -276,22 +316,39 @@ function Message({
           openFile && (
             <ArtifactCard
               key={index}
-              session={session.id}
+              session={session}
+              sequence={node.sequence}
               part={part}
               open={openFile}
             />
           )
         ),
       )}
-      {truncated && (
-        <Button disabled={expanding} onClick={() => setWantFull(full === null)}>
-          {expanding
-            ? "Loading…"
-            : full !== null
-              ? "Show less"
-              : "Show full message"}
-        </Button>
-      )}
+      {(!sender?.tool || !!fullText.error) &&
+        (truncated || excerpt !== text) && (
+          <Button
+            variant="quiet"
+            class="message-expand small"
+            aria-expanded={wantFull}
+            disabled={
+              expanding ||
+              (!online && !wantFull && excerpt === text && !!truncated)
+            }
+            onClick={() =>
+              fullText.error && wantFull
+                ? fullText.retry()
+                : setWantFull(!wantFull)
+            }
+          >
+            {expanding
+              ? "Loading…"
+              : wantFull && fullText.error
+                ? "Retry full message"
+                : wantFull
+                  ? "Show less"
+                  : "Show full message"}
+          </Button>
+        )}
       {(node.error || (resend && unsent(node))) && (
         <Notice
           tone="error"
@@ -326,7 +383,12 @@ export function unprepared(nodes: Node[]) {
   const texts = new Set<string>();
   for (const node of nodes) {
     if (isRow(node) || node.streaming || !node.body?.text) continue;
-    for (const part of splitMentionTokens(shownText(node, node.body.text))) {
+    const sender = agentReport(node);
+    if (sender?.tool) continue;
+    const text = shownText(node, node.body.text);
+    for (const part of splitMentionTokens(
+      sender ? messageExcerpt(text) : text,
+    )) {
       if ("text" in part && part.text) texts.add(part.text);
     }
   }

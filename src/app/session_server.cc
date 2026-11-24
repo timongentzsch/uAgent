@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <csignal>
 #include <cstddef>
 #include <cstdlib>
@@ -18,6 +19,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -32,6 +34,7 @@
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/thread_annotations.h"
+#include "include/core/time.h"
 
 namespace uagent::session {
 namespace {
@@ -68,16 +71,28 @@ Connection Connect(const std::string& path) {
   // The server's first frame is a small, newline-terminated handshake. Read
   // exactly through that newline, leaving snapshot/event frames on the socket.
   std::string line;
-  auto deadline = std::chrono::steady_clock::now() + kConnectTimeout;
-  while (line.size() < kHelloBytes &&
-         std::chrono::steady_clock::now() < deadline) {
+  const auto deadline = std::chrono::steady_clock::now() + kConnectTimeout;
+  char buffer[kHelloBytes];
+  while (line.size() < kHelloBytes) {
     pollfd ready{result.socket.Get(), POLLIN, 0};
-    if (poll(&ready, 1, static_cast<int>(kConnectPollInterval.count())) <= 0) {
-      continue;
-    }
-    char byte;
-    if (read(result.socket.Get(), &byte, 1) != 1) break;
-    if (byte == '\n') {
+    const int timeout = PollTimeoutMs(deadline);
+    if (timeout == 0) break;
+    const int polled = poll(&ready, 1, timeout);
+    if (polled < 0 && errno == EINTR) continue;
+    if (polled <= 0) break;
+    const ssize_t seen =
+        recv(result.socket.Get(), buffer, kHelloBytes - line.size(), MSG_PEEK);
+    if (seen < 0 && (errno == EINTR || errno == EAGAIN)) continue;
+    if (seen <= 0) break;
+    const std::string_view chunk(buffer, static_cast<size_t>(seen));
+    const size_t end = chunk.find('\n');
+    const size_t take = end == chunk.npos ? chunk.size() : end + 1;
+    const ssize_t count = read(result.socket.Get(), buffer, take);
+    if (count < 0 && (errno == EINTR || errno == EAGAIN)) continue;
+    if (count <= 0) break;
+    line.append(buffer, static_cast<size_t>(count));
+    if (line.back() == '\n') {
+      line.pop_back();
       json hello = json::parse(line, nullptr, false);
       result.generation = JsonValue(hello, "generation", "");
       result.pid = JsonValue(hello, "pid", -1);
@@ -90,7 +105,6 @@ Connection Connect(const std::string& path) {
       }
       break;
     }
-    line += byte;
   }
   result.socket.Reset();
   return result;

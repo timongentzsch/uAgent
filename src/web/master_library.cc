@@ -47,7 +47,29 @@ void AddShared(const std::string& session, const std::string& session_path,
 
 // Everything the Library lists, from every place a conversation works in and
 // every workspace. Each item names its place; "" is every place's.
-void Master::Library(const Request&, Response& response) {
+void Master::Library(const Request& request, Response& response) {
+  // Load each SSH workspace separately. An unavailable execution host cannot
+  // delay local files or the results from another host.
+  if (request.has_param("session")) {
+    const std::string id = request.get_param_value("session");
+    const WorkspaceIdentity workspace = host_.WorkspaceOf(id);
+    if (!workspace.Remote()) {
+      Error(response, "unknown remote workspace", 404);
+      return;
+    }
+    json result = WorkspaceFiles(workspace, id, {{"mode", "designs"}});
+    if (result.contains("error")) {
+      Error(response, JsonValue(result, "error", "Workspace unavailable"),
+            JsonValue(result, "status", 503));
+      return;
+    }
+    for (json& item : result["items"]) {
+      item["place"] = workspace.Key();
+      item["session"] = id;
+    }
+    Reply(response, result);
+    return;
+  }
   const json catalogue = host_.Catalogue();
   std::map<std::string, json> places;
   for (const json& space : catalogue["spaces"]) {
@@ -56,37 +78,52 @@ void Master::Library(const Request&, Response& response) {
                     {"name", JsonValue(space, "name", "")},
                     {"workspace", true}};
   }
+  std::map<std::string, std::string> addresses;
+  for (const json& host : remotes_->List()) {
+    addresses[JsonValue(host, "id", "")] = JsonValue(host, "address", "");
+  }
   json items = json::array();
   std::map<std::string, int64_t> latest;
   for (const json& session : catalogue["sessions"]) {
     const std::string cwd = JsonValue(session, "cwd", "");
     const std::string id = JsonValue(session, "id", "");
     if (cwd.empty()) continue;
-    if (!JsonValue(session, "host", "").empty()) {
-      AddShared(id, host_.AssetPath(id), cwd, items);
-      continue;
-    }
-    json& place = places[cwd];
+    const WorkspaceIdentity workspace{JsonValue(session, "host", ""), cwd};
+    const std::string key = workspace.Key();
+    json& place = places[key];
     if (place.is_null()) {
       place = {{"path", cwd},
                {"name", fs::path(cwd).filename().string()},
                {"workspace", false}};
+      if (workspace.Remote()) {
+        place["host"] = workspace.host;
+        place["key"] = key;
+        const auto address = addresses.find(workspace.host);
+        const std::string label =
+            address == addresses.end() ? workspace.host : address->second;
+        place["name"] = label + " · " + JsonValue(place, "name", "");
+      }
     }
     // The conversation a place's designs open in: its latest of its own.
     const int64_t updated = JsonValue(session, "updated", int64_t{0});
-    if (JsonValue(session, "parent", "").empty() && updated >= latest[cwd]) {
-      latest[cwd] = updated;
+    if (JsonValue(session, "parent", "").empty() && updated >= latest[key]) {
+      latest[key] = updated;
       place["session"] = id;
     }
-    AddShared(id, host_.AssetPath(id), cwd, items);
+    if (workspace.Remote() && !place.contains("session")) place["session"] = id;
+    // A conversation can be removed after the catalogue snapshot.
+    const std::string session_path = host_.AssetPath(id);
+    if (!session_path.empty()) AddShared(id, session_path, key, items);
   }
   json paths = json::array(), listed = json::array();
-  for (auto& [path, place] : places) {
-    paths.push_back(path);
-    listed.push_back(std::move(place));
-    for (json& design : workspace_files::Designs(path)) {
-      items.push_back(std::move(design));
+  for (auto& [key, place] : places) {
+    if (!place.contains("host")) {
+      paths.push_back(key);
+      for (json& design : workspace_files::Designs(key)) {
+        items.push_back(std::move(design));
+      }
     }
+    listed.push_back(std::move(place));
   }
   json library = host_.Manage(
       {{"kind", "library"}, {"action", "list"}, {"places", paths}});
@@ -117,32 +154,31 @@ void Master::LibraryDelete(const Request& request, Response& response) {
     return;
   }
   const std::string place = JsonValue(body, "place", "");
-  const json catalogue = host_.Catalogue();
-  const auto names = [&](const char* list, const char* field) {
-    return std::ranges::any_of(catalogue[list], [&](const json& each) {
-      return JsonValue(each, "host", "").empty() &&
-             JsonValue(each, field, "") == place;
-    });
-  };
-  json listed = json::array();
-  if (!place.empty() && (names("spaces", "path") || names("sessions", "cwd"))) {
-    listed = workspace_files::Designs(place);
+  const std::string session = JsonValue(body, "session_id", "");
+  WorkspaceIdentity workspace = host_.WorkspaceOf(session);
+  if (session.empty()) {
+    // Older clients identify local places by their absolute path.
+    const json catalogue = host_.Catalogue();
+    const auto known = [&](const char* list, const char* field) {
+      return std::ranges::any_of(catalogue[list], [&](const json& each) {
+        return JsonValue(each, "host", "").empty() &&
+               JsonValue(each, field, "") == place;
+      });
+    };
+    if (known("spaces", "path") || known("sessions", "cwd")) {
+      workspace.path = place;
+    }
   }
-  const auto found = std::ranges::find_if(listed, [&](const json& item) {
-    return JsonValue(item, "kind", "") == kind &&
-           JsonValue(item, "key", "") == key;
-  });
-  // A design at a place's root is the place: it stays.
-  const std::string path =
-      found == listed.end() ? "" : JsonValue(*found, "path", "");
-  if (path.empty()) {
+  if (workspace.path.empty() || workspace.Key() != place) {
     Error(response, "not found", 404);
     return;
   }
-  std::error_code ec;
-  fs::remove_all(fs::path(place) / path, ec);
-  if (ec) {
-    Error(response, "cannot delete: " + ec.message(), 500);
+  const json result =
+      WorkspaceFiles(workspace, session,
+                     {{"mode", "delete_design"}, {"kind", kind}, {"key", key}});
+  if (result.contains("error")) {
+    Error(response, JsonValue(result, "error", "cannot delete"),
+          JsonValue(result, "status", 503));
     return;
   }
   Reply(response, json::object());

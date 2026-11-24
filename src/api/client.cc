@@ -547,6 +547,12 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
   if (curl_easy_getinfo(h, CURLINFO_CONTENT_TYPE, &type) == CURLE_OK && type) {
     result.content_type = AsciiLower(type);
   }
+  char* effective_url = nullptr;
+  if (curl_easy_getinfo(h, CURLINFO_EFFECTIVE_URL, &effective_url) ==
+          CURLE_OK &&
+      effective_url) {
+    result.effective_url = effective_url;
+  }
   result.body = std::move(out.data);
   result.truncated = out.exceeded;
   // Hitting the cap aborts the transfer, so libcurl reports a write error;

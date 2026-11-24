@@ -100,21 +100,20 @@ test("the conversation menu opens, moves and closes by keyboard", async ({
   await expect(item("More")).toBeFocused();
   await page.keyboard.press("ArrowRight");
   await expect(item("Fork conversation")).toBeFocused();
-  await page.keyboard.press("d");
-  await expect(item(/^Detail/)).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("v");
+  await expect(item(/^View/)).toBeFocused();
   await page.keyboard.press("ArrowRight");
-  await expect(menu.getByRole("group", { name: "Detail" })).toBeVisible();
+  await expect(menu.getByRole("group", { name: "View" })).toBeVisible();
   await expect(item("Find in conversation")).toHaveCount(0);
   await expect(menu.getByRole("menuitemradio").first()).toBeFocused();
   expect(await violations(page, ".menu-panel")).toEqual([]);
   await page.keyboard.press("ArrowLeft");
-  await expect(item(/^Detail/)).toBeFocused();
+  await expect(item(/^View/)).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(menu.getByRole("menuitemradio").first()).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(item(/^Detail/)).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(item("More")).toBeFocused();
+  await expect(item(/^View/)).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   await expect(trigger).toBeFocused();
@@ -175,7 +174,7 @@ test("a focus ring lies inside its control, in a pane too", async ({
   await expect(send).toBeFocused();
   expect(await reach(send)).toBeLessThanOrEqual(0);
   // Focus moved by script after a key keeps the keyboard's ring.
-  const close = side.getByRole("button", { name: "Close side chat" });
+  const close = side.getByRole("button", { name: "Hide side chat" });
   await close.focus();
   expect(await reach(close)).toBeLessThanOrEqual(0);
 });

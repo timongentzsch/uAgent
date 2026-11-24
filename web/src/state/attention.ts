@@ -10,8 +10,25 @@ export const needsYou = (sessions: Session[]) => waiting(sessions).length;
 export const isRunning = (item: Session, online: boolean) =>
   online && !!item.turn_active;
 
+// A conversation's side chat, until it is opened as a conversation of its
+// own; an agent is the rest of what belongs to a conversation.
+export const isSideChat = (item: Session) => !!item.side && !item.side.detached;
+export const isAgent = (item: Session) => !!item.parent && !item.side;
+
 export const sessionById = (sessions: Session[], id?: string) =>
   sessions.find((item) => item.id === id);
+
+// Keep the catalogue's order when showing child sessions under their parent.
+export function childrenByParent(sessions: Session[]) {
+  const children = new Map<string, Session[]>();
+  for (const session of sessions) {
+    if (!session.parent) continue;
+    const siblings = children.get(session.parent);
+    if (siblings) siblings.push(session);
+    else children.set(session.parent, [session]);
+  }
+  return children;
+}
 
 export type SessionState = "waiting" | "failed" | "working" | "idle";
 

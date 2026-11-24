@@ -4,6 +4,7 @@ import { Button } from "./ui.tsx";
 // The current entry is marked with aria-current, which is also what styles it.
 export function ListRow({
   title,
+  leading,
   meta,
   unread,
   class: className = "",
@@ -11,6 +12,7 @@ export function ListRow({
   ...props
 }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "title"> & {
   title: ComponentChildren;
+  leading?: ComponentChildren;
   meta?: ComponentChildren;
   unread?: string | false;
 }) {
@@ -21,6 +23,7 @@ export function ListRow({
       {...props}
       class={`list-row ${className}`}
     >
+      {leading}
       <span class="row-text">
         <span class="row-label truncate">
           {title}

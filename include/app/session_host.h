@@ -92,8 +92,10 @@ struct HostSession {
   std::string host;
   std::string id, path, cwd, title, draft_title, generation, error, binary;
   SessionStatus status = SessionStatus::kSaved;
-  // `parent` is the session that started an agent, `model` the file's.
-  std::string parent, model;
+  // `parent` is the conversation an agent or side chat belongs to, `model`
+  // the file's.
+  std::string parent, agent_edits, model;
+  json side = nullptr;
   json suggestion = nullptr;
   // Spend, turns and to-do progress as last saved, until its runtime says.
   double cost = 0;
@@ -239,6 +241,7 @@ class SessionHost {
                            const std::string& asset);
   SnapshotResult Snapshot(const std::string& id, const SnapshotQuery& query);
   bool Contains(const std::string& id) const;
+  bool HasWorker(const std::string& id) const;
   SessionCommandResult ExecuteCommand(json command, const std::string& device,
                                       const std::string& request_id);
 

@@ -93,6 +93,10 @@ std::filesystem::path MemoryDirectory(const std::string& scope,
   return base / "projects" / name;
 }
 
+std::filesystem::path ForgottenMark(const std::filesystem::path& note) {
+  return note.parent_path() / ".forgotten" / note.stem();
+}
+
 void AddMarkdownMemories(std::vector<MemoryEntry>& entries,
                          const std::filesystem::path& directory,
                          const std::string& scope, size_t limit) {
@@ -137,11 +141,13 @@ std::string MemoryPreview(const std::string& content) {
 
 ToolResult ListMemoryKeys(const std::filesystem::path& cwd) {
   std::string output;
-  for (const MemoryEntry& memory : ListMemories(cwd)) {
+  const auto memories = ListMemories(cwd);
+  for (const MemoryEntry& memory : memories) {
     if (!output.empty()) output += '\n';
     output += memory.key;
   }
-  return ToolSuccess(output.empty() ? "(no memories)" : std::move(output));
+  return ListResult(output.empty() ? "(no memories)" : std::move(output),
+                    static_cast<int64_t>(memories.size()), "memory");
 }
 
 ToolResult SearchMemoryText(const std::string& query,
@@ -151,10 +157,10 @@ ToolResult SearchMemoryText(const std::string& query,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "memory search requires a non-empty key query");
   }
-  constexpr size_t kMaxMatches = 16;
+  constexpr int64_t kMaxMatches = 16;
   constexpr size_t kMaxLineBytes = 320;
   std::string output = "[memory search; non-authoritative evidence]\n";
-  size_t matches = 0;
+  int64_t matches = 0;
   auto capped = [&] {
     if (++matches < kMaxMatches) return false;
     output += "[more matches; narrow the query]";
@@ -175,15 +181,15 @@ ToolResult SearchMemoryText(const std::string& query,
       output += "- " + memory.key + ": " +
                 OneLine(RedactMemorySecrets(line), kMaxLineBytes) + "\n";
       emitted = true;
-      if (capped()) return ToolSuccess(std::move(output));
+      if (capped()) return ListResult(std::move(output), matches, "match");
       break;
     }
     if (key_match && !emitted) {
       output += "- " + memory.key + "\n";
-      if (capped()) return ToolSuccess(std::move(output));
+      if (capped()) return ListResult(std::move(output), matches, "match");
     }
   }
-  return matches ? ToolSuccess(std::move(output))
+  return matches ? ListResult(std::move(output), matches, "match")
                  : ToolFailure(ToolErrorCode::kNotFound,
                                "no memory matches: " + TerminalSafe(query));
 }
@@ -209,13 +215,20 @@ ToolResult ReadMemoryFile(const MemoryEntry& memory) {
   }
   // When it was last saved, so the model can weigh a fact that may be stale.
   const int64_t saved = SnapshotFile(memory.path).modified_seconds;
-  return ToolSuccess(
+  ToolResult result = ToolSuccess(
       "[memory " + memory.key +
       (saved > 0
            ? "; saved " + LocalTime(static_cast<std::time_t>(saved), "%Y-%m-%d")
            : "") +
       "; non-authoritative evidence" + (writable ? "" : "; read-only") + "]\n" +
       body);
+  if (!body.empty()) {
+    result.parts =
+        json::array({{{"kind", "markdown"},
+                      {"text", Utf8Trunc(std::move(body), kPreviewChars)}}});
+    result.body_kind = "fields";
+  }
+  return result;
 }
 
 // `source`: the conversation a background extraction learned it from.
@@ -223,7 +236,8 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
                         const std::optional<std::string>& content, bool forget,
                         const std::filesystem::path& cwd,
                         const std::string& source = "",
-                        MemoryEvent* written = nullptr) {
+                        MemoryEvent* written = nullptr,
+                        bool replacing = false) {
   namespace fs = std::filesystem;
   if (Trim(name).empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -248,6 +262,19 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
                          /*prefix=*/true)) {
       return ToolFailure(ToolErrorCode::kNotFound, error);
     }
+    // Persist the cutoff before unlinking. A successful deliberate deletion
+    // survives audit-journal rotation, without keeping a copy of the note.
+    if (source.empty() && !replacing) {
+      const auto mark = ForgottenMark(path);
+      if (!LibraryPath(GlobalBase(), mark) ||
+          !EnsurePrivateDirectory(mark.parent_path())) {
+        return ToolFailure(ToolErrorCode::kInternal,
+                           "cannot record memory deletion");
+      }
+      if (!WritePrivateFile(mark.string(), "", error)) {
+        return ToolFailure(ToolErrorCode::kInternal, error);
+      }
+    }
     std::error_code code;
     if (!fs::remove(path, code)) {
       return ToolFailure(ToolErrorCode::kInternal, "cannot delete memory");
@@ -257,10 +284,10 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
         scope + "/" + SafeFileComponent(name),
         "",
         MemoryPreview(previous),
-        "",
+        source.empty() ? "" : WorkspaceId(source),
         scope == "project" ? path.parent_path().filename().string() : "",
         UtcStamp(),
-        false};
+        !source.empty()};
     WriteMemoryEvent(event, error);
     LibraryChanged();
     return ToolSuccess("forgot " + path.string());
@@ -276,7 +303,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
                        "memory content must not be empty; use forget");
   }
   bool existed = fs::exists(path);
-  if (!existed) {
+  if (!existed && !replacing) {
     size_t count = 0;
     for (const MemoryEntry& memory : ListMemories(cwd)) {
       count += memory.key.starts_with(scope + "/");
@@ -331,7 +358,10 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   saved.facts.no_change = action == "unchanged";
   if (!saved.facts.no_change) {
     LibraryChanged();
-    saved.parts = json::array({LinkPart("memory", event.key, "Open memory")});
+    saved.parts = json::array(
+        {FieldsPart({{"Memory", event.key}, {"Change", event.action}}),
+         LinkPart("memory", event.key, "Open memory")});
+    saved.body_kind = "fields";
   }
   return saved;
 }
@@ -341,9 +371,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
 static ToolResult MemoryAction(const std::string& action,
                                const std::string& key,
                                const std::optional<std::string>& content,
-                               const std::filesystem::path& cwd,
-                               const std::string& source = "",
-                               MemoryEvent* written = nullptr) {
+                               const std::filesystem::path& cwd) {
   // Models fill unused fields with "": that is the same as leaving them out.
   const bool has_text = content.has_value() && !content->empty();
   if (action == "list") {
@@ -393,8 +421,7 @@ static ToolResult MemoryAction(const std::string& action,
     return AccessMemory(name, scope, std::nullopt, false, cwd);
   }
   if (action == "set" && has_content) {
-    return AccessMemory(name, scope, RedactMemorySecrets(*content), false, cwd,
-                        source, written);
+    return AccessMemory(name, scope, RedactMemorySecrets(*content), false, cwd);
   }
   if (action == "forget" && !has_content) {
     return AccessMemory(name, scope, std::nullopt, true, cwd);
@@ -416,18 +443,72 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
   return MemoryAction(action, key, content, *cwd);
 }
 
-ToolResult ExtractedMemoryAction(const std::string& action,
-                                 const std::string& key,
-                                 const std::optional<std::string>& content,
-                                 const std::filesystem::path& cwd,
-                                 const std::string& source,
-                                 MemoryEvent* written) {
+ToolResult SaveExtractedMemory(const std::string& key, const std::string& note,
+                               const std::string& folded,
+                               const std::filesystem::path& cwd,
+                               const std::string& source,
+                               const ObservedMemories& observed,
+                               MemoryEvent& written) {
+  const std::string scope{ScopePrefix(key)};
+  const auto slash = key.find('/');
+  if (slash == std::string::npos || !Ours(scope) ||
+      !LibraryName(key.substr(slash + 1))) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments, "invalid memory key");
+  }
   FileLease lease;
   std::string error;
   if (!AcquireLibraryWriteLease(lease, error)) {
     return ToolFailure(ToolErrorCode::kInternal, error);
   }
-  return MemoryAction(action, key, content, cwd, source, written);
+  const auto directory = MemoryDirectory(scope, Repository(cwd));
+  auto current = [&](const std::string& target, bool require_whole) {
+    const auto seen = observed.find(target);
+    if (seen == observed.end() && require_whole) return false;
+    if (seen != observed.end() && (seen->second.revision.empty() ||
+                                   (require_whole && !seen->second.whole))) {
+      return false;
+    }
+    const auto path = directory / (target.substr(slash + 1) + ".md");
+    if (!LibraryPath(GlobalBase(), path)) return false;
+    bool exists;
+    std::string previous;
+    const auto revision = seen == observed.end() ? "" : seen->second.revision;
+    if (!CheckRevision({{"revision", revision}}, path, MemoryBytes(), "memory",
+                       previous, exists)
+             .is_null()) {
+      return false;
+    }
+    // Replacing a deletion marker also advances its directory's mtime. New
+    // keys use that scope cutoff, since a model can rename a forgotten fact.
+    // Existing notes use their own cutoff, including a manually restored note.
+    auto cutoff = ForgottenMark(path);
+    if (!exists) cutoff = cutoff.parent_path();
+    if (!LibraryPath(GlobalBase(), cutoff)) return false;
+    if (!PathExists(cutoff)) return true;
+    std::error_code source_error, cutoff_error;
+    const auto learned = std::filesystem::last_write_time(source, source_error);
+    const auto forgotten =
+        std::filesystem::last_write_time(cutoff, cutoff_error);
+    return !source_error && !cutoff_error && learned > forgotten;
+  };
+  if (!current(key, false) ||
+      (!folded.empty() &&
+       (key == folded || !folded.starts_with(scope + "/") ||
+        !LibraryName(folded.substr(slash + 1)) || !current(folded, true)))) {
+    written.action = "no_change";
+    written.key = key;
+    return ToolSuccess("memory changed or was not supplied for the merge");
+  }
+  auto saved =
+      AccessMemory(key.substr(slash + 1), scope, RedactMemorySecrets(note),
+                   false, cwd, source, &written, !folded.empty());
+  if (!saved.Ok() || folded.empty()) return saved;
+  auto removed = AccessMemory(folded.substr(slash + 1), scope, std::nullopt,
+                              true, cwd, source);
+  if (!removed.Ok()) return removed;
+  written.action = "updated";
+  written.preview = "Merged " + folded + " into " + key;
+  return saved;
 }
 
 namespace {
@@ -560,7 +641,8 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
     auto saved = MemoryAction("set", target, previous, cwd);
     if (!saved.Ok()) return {{"error", saved.output}};
     if (action == "rename") {
-      auto removed = MemoryAction("forget", key, std::nullopt, cwd);
+      auto removed = AccessMemory(key.substr(slash + 1), scope, std::nullopt,
+                                  true, cwd, "", nullptr, /*replacing=*/true);
       if (!removed.Ok()) {
         return {{"error", "Copied, but could not remove the original: " +
                               removed.output}};
@@ -620,9 +702,15 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
 // fetching: a bare key says something exists and not what. Ours first, then
 // the newest, so a full budget drops the oldest.
 MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
-                            const std::vector<std::string>& inlined) {
+                            const std::vector<std::string>& inlined,
+                            ObservedMemories* observed) {
   constexpr size_t kHookChars = 96;
   std::vector<MemoryEntry> entries = ListMemories(cwd);
+  if (observed) {
+    for (const auto& memory : entries) {
+      if (Writable(memory)) observed->try_emplace(memory.key);
+    }
+  }
   auto changed = [](const MemoryEntry& memory) {
     std::error_code error;
     return std::filesystem::last_write_time(memory.path, error);
@@ -640,7 +728,11 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
       continue;
     }
     std::string head, ignored;
-    ReadRegularFile(memory.path, KiB(1), head, ignored, /*prefix=*/true);
+    const bool track = observed && Writable(memory);
+    const bool read = ReadRegularFile(memory.path, KiB(1) + (track ? 1 : 0),
+                                      head, ignored, /*prefix=*/true);
+    const bool complete = track && read && head.size() <= KiB(1);
+    if (head.size() > KiB(1)) head.resize(KiB(1));
     std::string hook = MemorySummary(head, kHookChars);
     std::string line =
         "- " + memory.key + (hook.empty() ? "" : ": " + hook) + "\n";
@@ -652,6 +744,11 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
     used = *total;
     index.text += line;
     index.sources.push_back(memory.path);
+    // A hook can stand for an entire short note. A title or excerpt alone
+    // cannot authorize replacing the handwritten text that follows it.
+    if (complete && Trim(head) == hook) {
+      (*observed)[memory.key].revision = DocumentRevision(memory.path, head);
+    }
   }
   return index;
 }

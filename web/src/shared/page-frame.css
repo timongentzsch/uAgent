@@ -47,6 +47,9 @@
 .page-frame iframe[data-leaving="push"] {
   animation: page-push-out var(--motion-slow) var(--ease-out) forwards;
 }
+.page-stage[data-backward] {
+  --page-push-from: -100%;
+}
 @keyframes page-fade-in {
   from {
     opacity: 0;
@@ -54,12 +57,12 @@
 }
 @keyframes page-push-out {
   to {
-    translate: -100% 0;
+    translate: calc(-1 * var(--page-push-from, 100%)) 0;
   }
 }
 @keyframes page-push-in {
   from {
-    translate: 100% 0;
+    translate: var(--page-push-from, 100%) 0;
   }
 }
 /* Until its first page has drawn a frame holds the outline of one: a title

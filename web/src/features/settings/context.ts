@@ -1,5 +1,5 @@
 import { createContext } from "preact";
-import type { RefObject } from "preact";
+import type { ComponentChildren, RefObject } from "preact";
 import { useContext } from "preact/hooks";
 import type { Dispatch, StateUpdater } from "preact/hooks";
 import type {
@@ -25,7 +25,7 @@ export interface SettingsProps {
   selected: string;
   session?: Session;
   logout: () => Promise<void>;
-  instructions: () => void;
+  instructions: (close: () => void) => ComponentChildren;
   // Counts every saved change, whoever made it.
   version: number;
   initialSection?: string;

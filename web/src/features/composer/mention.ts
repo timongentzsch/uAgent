@@ -32,7 +32,25 @@ export function matchMention(text: string, caret: number): MentionMatch | null {
   if (start === 0 || text[start - 1] !== "@") return null;
   start -= 1; // include the @ itself
   if (start > 0 && !/\s/.test(text[start - 1])) return null;
-  return { start, end: cursor, query: text.slice(start + 1, cursor) };
+  let end = cursor;
+  while (end < text.length && /[^\s@]/.test(text[end])) end += 1;
+  return { start, end, query: text.slice(start + 1, cursor) };
+}
+
+// A suffix narrows the reference, never the filename search.
+export function workspaceMention(word: string) {
+  const range = /(?::|#L?)([1-9]\d*)(?:-L?([1-9]\d*))?$/.exec(word);
+  if (!range || !range.index) return { path: word, lines: "" };
+  const [, first, last] = range;
+  if (
+    !Number.isSafeInteger(Number(last ?? first)) ||
+    Number(last ?? first) < Number(first)
+  )
+    return { path: word, lines: "" };
+  return {
+    path: word.slice(0, range.index),
+    lines: first + (last && last !== first ? `-${last}` : ""),
+  };
 }
 
 // The alt text is cosmetic (render looks the asset up by id), so bracket

@@ -21,6 +21,59 @@ void WriteGlobal(const std::filesystem::path& dir, const std::string& name,
 
 }  // namespace
 
+TEST_CASE(TestForgottenMemoryCutoff) {
+  namespace fs = std::filesystem;
+  TestWorkspace fixture("memory-forget");
+  const fs::path source = fixture.root / "conversation";
+  std::ofstream(source) << "synthetic evidence";
+  const auto now = fs::file_time_type::clock::now();
+  fs::last_write_time(source, now - std::chrono::hours(1));
+  auto save = [&](const fs::path& workspace, const std::string& key,
+                  const std::string& folded = "") {
+    ObservedMemories observed;
+    LoadMemoryIndex(workspace, 4096, {}, &observed);
+    if (!folded.empty()) observed.at(folded).whole = true;
+    MemoryEvent outcome;
+    CHECK(SaveExtractedMemory(key, "Updated rule", folded, workspace, source,
+                              observed, outcome)
+              .Ok());
+    return outcome.action;
+  };
+  const auto& workspace = fixture.workspace;
+  CHECK(ToolMemoryAction("set", "project/first", "Initial rule").Ok());
+  const auto first =
+      MemoryControl({{"action", "get"}, {"key", "project/first"}}, workspace);
+  REQUIRE(first.contains("item"));
+  CHECK(!MemoryControl({{"action", "rename"},
+                        {"key", "project/first"},
+                        {"target", "project/renamed"},
+                        {"revision", first["item"]["revision"]}},
+                       workspace)
+             .contains("error"));
+  CHECK(save(workspace, "project/after-rename") == "created");
+  CHECK(save(workspace, "project/consolidated", "project/renamed") ==
+        "updated");
+  CHECK(save(workspace, "project/after-merge") == "created");
+  CHECK(ToolMemoryAction("forget", "project/consolidated", std::nullopt).Ok());
+  fs::remove(fixture.home / ".uagent/memory/events.jsonl");
+  // Rewording a key cannot resurrect an old fact even after journal rotation.
+  CHECK(save(workspace, "project/alias") == "no_change");
+  CHECK(save(workspace, "project/consolidated") == "no_change");
+  CHECK(save(workspace, "project/after-merge") == "unchanged");
+  CHECK(
+      ToolMemoryAction("set", "project/consolidated", "Human correction").Ok());
+  CHECK(save(workspace, "project/consolidated") == "no_change");
+  CHECK(save(workspace, "project/after-merge", "project/consolidated") ==
+        "no_change");
+  CHECK(save(workspace, "global/unrelated") == "created");
+  const auto other = fixture.root / "other";
+  fs::create_directory(other);
+  CHECK(save(other, "project/alias") == "created");
+  fs::last_write_time(source, now + std::chrono::hours(1));
+  CHECK(save(workspace, "project/alias") == "created");
+  CHECK(save(workspace, "project/consolidated") == "updated");
+}
+
 TEST_CASE(TestMemoryAlwaysOnSelection) {
   namespace fs = std::filesystem;
   const char* prior_home = getenv("HOME");

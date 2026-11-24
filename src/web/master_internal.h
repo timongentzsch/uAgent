@@ -117,14 +117,22 @@ class Master {
   // A files operation on a conversation's folder, on the host it is on.
   json WorkspaceFiles(const WorkspaceIdentity& workspace,
                       const std::string& session, json operation);
+  void FileOrigin(const Request&, Response&);
   void Files(const Request&, Response&);
   void FileWrite(const Request&, Response&);
   // A conversation's folder, read only, for sandboxed pages that carry no
   // cookie: the token in the path is the grant.
   void PreviewGrant(const Request&, Response&);
-  // The preview address of a session's folder, minted once; empty when
-  // the session is unknown.
-  std::string PreviewBase(const std::string& id);
+  // A device receives the URL path, a worker receives its private grant file.
+  std::string PreviewAddress(const std::string& id, bool worker = false);
+  struct PreviewToken {
+    std::string token, workspace_key;
+    // A running worker reads its current grant here for each file it opens.
+    std::string file;
+  };
+  void PublishWorkerPreview(PreviewToken& grant);
+  void RevokePreviews();
+  void ClearWorkerPreviews() const;
   void Picture(const Request&, Response&, const WorkspaceIdentity& workspace);
   void Preview(const Request&, Response&);
   void Library(const Request&, Response&);
@@ -148,7 +156,7 @@ class Master {
   // Preview tokens by session id, lasting until the host stops or a device
   // is revoked. Their own lock: the host asks for one while starting a runtime.
   std::mutex previews_mutex_;
-  std::map<std::string, std::string> previews_
+  std::map<std::string, PreviewToken> previews_
       UAGENT_GUARDED_BY(previews_mutex_);
   // The script every previewed page runs first (web/public/design-helper.js).
   std::string design_helper_;

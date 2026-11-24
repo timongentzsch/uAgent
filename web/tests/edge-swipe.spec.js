@@ -137,11 +137,11 @@ test("the Terminal keeps its screen's touches, and its tab row's", async ({
   await headerAction(page, "Terminal");
   const terminal = dialog(page, "Terminal");
   await expect(terminal.locator(".terminal-view")).toBeVisible();
-  await swipe(page, ".terminal-view");
+  expect(await swipe(page, ".terminal-view")).toBe(false);
   await expect(terminal).toBeVisible();
-  // The tab row scrolls sideways, so a finger from its edge is its own.
+  // The tab row owns its horizontal gesture even when its first tab fits.
   const sheet = await terminal.boundingBox();
-  await swipe(page, undefined, { x: 6, y: sheet.y + 20 });
+  expect(await swipe(page, undefined, { x: 6, y: sheet.y + 20 })).toBe(false);
   await expect(terminal).toBeVisible();
 });
 

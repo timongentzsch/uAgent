@@ -239,14 +239,14 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     .getByRole("button", { name: /^‹/ })
     .click();
   await expect(page.locator(".transcript .message")).toHaveCount(messages);
-  // It is in the conversation's Activity list until it is removed there.
+  // It is in the conversation's Activity list, which is closed again.
   const activity = page.locator(".composer .activity-button");
   await expect(activity).toContainText("1 side chat");
   await activity.click();
-  await page
-    .getByRole("button", { name: /^Remove .* from the side chats$/ })
-    .click();
-  await expect(activity).toHaveCount(0);
+  await expect(
+    page.getByRole("dialog", { name: "Activity" }).locator(".activity-row"),
+  ).toHaveText([/what did we just do\?\s*Ready/]);
+  await page.keyboard.press("Escape");
   const toolResult = await openRow(page, "browser-proof.txt");
   await toolResult
     .getByRole("button", { name: "Input and output", exact: true })
@@ -268,7 +268,8 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
+  // Nothing works any more; the side chat stays counted.
+  await expect(activity).toHaveText(/^1 side chat$/);
   // The native host accepts the send while its HTTP acknowledgement is held.
   // Editing the next draft in that interval must not erase the new text.
   const { promise: held, resolve: release } = Promise.withResolvers();
@@ -302,7 +303,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(
     page.getByText("Delayed acknowledgement", { exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
+  await expect(activity).toHaveText(/^1 side chat$/);
   await page.getByLabel("Message or guidance").fill("");
   const answers = page.getByRole("heading", {
     name: "Verified response",
@@ -323,7 +324,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     page.locator(".message").getByAltText("one-pixel.png"),
   ).toBeVisible();
   await expect(answers).toHaveCount(answerCount + 1);
-  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
+  await expect(activity).toHaveText(/^1 side chat$/);
   answerCount = await answers.count();
   await page.locator('input[type="file"]').setInputFiles({
     name: "opaque.bin",
@@ -338,7 +339,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     page.locator(".message").getByRole("link", { name: /opaque.bin/ }),
   ).toBeVisible();
   await expect(answers).toHaveCount(answerCount + 1);
-  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
+  await expect(activity).toHaveText(/^1 side chat$/);
   await page.getByLabel("Message or guidance").fill("/help");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("/model");

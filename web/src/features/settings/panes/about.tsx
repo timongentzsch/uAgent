@@ -13,6 +13,7 @@ import {
   Row,
   Time,
 } from "../../../shared/ui.tsx";
+import { useResource } from "../../../shared/use-resource.ts";
 import { useAction } from "../../../shared/use-action.ts";
 import { useApi } from "../../../state/api.ts";
 import { useSettings } from "../context.ts";
@@ -48,14 +49,18 @@ export function AboutPane() {
   const { manage } = useApi();
   const { update, updateBlocked } = useSettings();
   const action = useAction();
-  const [state, setState] = useState<UpdateState>();
+  const {
+    value: state,
+    setValue: setState,
+    error,
+    retry,
+  } = useResource<UpdateState>(
+    () => manage("update", { action: "show" }),
+    [manage],
+  );
   const [open, setOpen] = useState<"notes" | "confirm">();
   const ask = (act: "show" | "check" | "apply" | "chrome", version?: string) =>
     manage("update", { action: act, version }).then(setState);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: read once
-  useEffect(() => {
-    void ask("show").catch(() => {});
-  }, []);
   // The host restarts when its installer is done: asked until it answers
   // again.
   const installing = state?.installing || state?.chrome?.checking;
@@ -68,8 +73,12 @@ export function AboutPane() {
   const [installed, where] = INSTALLED[state?.install ?? ""] ?? INSTALLED[""];
   return (
     <>
+      {error != null && <LoadError error={error} retry={retry} />}
       <Group title="This install">
-        <Row label="Version" detail={state?.version} />
+        <Row
+          label="Version"
+          detail={state?.version ?? (error ? "Unavailable" : "Loading…")}
+        />
         <Row label="Installed as" detail={state && installed} />
       </Group>
       <Group
@@ -91,7 +100,11 @@ export function AboutPane() {
               ? `µAgent ${state.latest} is available`
               : state?.latest
                 ? "Up to date"
-                : "Not checked yet"
+                : state
+                  ? "Not checked yet"
+                  : error
+                    ? "Update status unavailable"
+                    : "Loading update status…"
           }
         >
           <Button

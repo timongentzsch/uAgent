@@ -2,7 +2,6 @@
   position: relative;
   flex-shrink: 0;
   min-width: 0;
-  margin: 0 var(--column-inset);
   padding: var(--space-2) 0 var(--pad);
   background: var(--bg);
   max-height: calc(var(--viewport-height) - 2 * var(--touch));
@@ -94,12 +93,6 @@
 .status-line:has(button) {
   min-height: var(--control-slim);
 }
-/* raw: every control of the status line is as slim as the line. */
-.status-line button {
-  min-height: var(--control-slim);
-  padding-block: 0;
-  font-size: var(--font-small);
-}
 .queue-next {
   transition:
     opacity var(--motion-fast) var(--ease-out),
@@ -157,7 +150,6 @@
 }
 @container column (max-width: 43rem) {
   .composer {
-    margin: 0 var(--space-4);
     padding-top: var(--space-2);
   }
   .composer-actions {

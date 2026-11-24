@@ -49,6 +49,8 @@ class Conversation {
   std::string ArchiveText() const;
   const std::vector<MessageKind>& Kinds() const { return kinds_; }
   json DisplayMetadata() const;
+  // Workspace boundaries survive compaction and eviction of display receipts.
+  static json FileMoves(const json& display);
   const json& Statistics() const { return statistics_; }
   void AddStatistics(const json& delta);
   const std::vector<uint64_t>& DisplayIds() const { return display_ids_; }
@@ -113,6 +115,7 @@ class Conversation {
   json messages_ = json::array();
   std::vector<MessageKind> kinds_;
   std::vector<uint64_t> display_ids_;
+  json file_moves_ = json::array();
   json display_facts_ = json::object();
   // Serialized size of each display_facts_ entry, for evicting the largest.
   std::map<std::string, size_t> fact_bytes_;

@@ -153,10 +153,28 @@ test("a selection in an answer is asked about in side chats beside it", async ({
   await page.reload();
   await online(page);
   await expect(tabs).toHaveText(["Which table?", "Streamed how?"]);
-  await side.getByRole("button", { name: "Close side chat" }).click();
+  // X hides a tab; the side chat stays, counted and listed.
+  const hide = side.getByRole("button", { name: "Hide side chat" });
+  await hide.click();
   await expect(tabs).toHaveText(["Which table?"]);
-  await side.getByRole("button", { name: "Close side chat" }).click();
+  await hide.click();
   await expect(side).toHaveCount(0);
+  const activity = page.locator(".composer .activity-button");
+  await expect(activity).toContainText("2 side chats");
+  // A row shows its tab again, in the order asked.
+  const rows = page
+    .getByRole("dialog", { name: "Activity" })
+    .locator(".activity-row");
+  for (const name of ["Streamed how?", "Which table?"]) {
+    await activity.click();
+    await rows.filter({ hasText: name }).getByRole("button").first().click();
+    await expect(tabs.filter({ hasText: name })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  }
+  await expect(tabs).toHaveText(["Which table?", "Streamed how?"]);
+  await expect(transcript.locator(".message")).toHaveCount(messages);
 });
 
 test("the selection's buttons stay with the words selected", async ({
@@ -210,7 +228,7 @@ test("the selection's buttons stay with the words selected", async ({
   expect(Math.abs((await box(actions)).left - heading.left)).toBeLessThan(2);
 });
 
-test("Merge sums a side chat up for the conversation, which answers, and closes it", async ({
+test("Merge sums a side chat up for the conversation, which answers, and keeps it", async ({
   page,
   session,
 }) => {
@@ -232,14 +250,12 @@ test("Merge sums a side chat up for the conversation, which answers, and closes 
   const merge = side.getByRole("button", { name: "Merge", exact: true });
   await expect(merge).toBeEnabled();
   await merge.click();
-  await expect(side).toHaveCount(0);
-  // It arrives as a report: named, as the summary alone.
-  await expect(transcript.locator(".message-event")).toContainText(
-    "Side chat “Btw: Which table?” merged",
-  );
-  await expect(transcript).toContainText(
-    "SIDE-SUMMARY: the table has two columns.",
-  );
+  // It arrives as one row: named, with the summary alone under it.
+  const row = transcript.locator(".merged-row");
+  await expect(row).toContainText("Merged side chat · Which table?");
+  await expect(row).toContainText("SIDE-SUMMARY: the table has two columns.");
+  await expect(side.getByRole("tab")).toHaveText(["Which table?"]);
+  await expect(side).toContainText("Summed up for");
   await expect(transcript).toContainText("MERGE-HEARD");
   await expect(transcript).not.toContainText("Which table?”.");
   await expect(transcript).not.toContainText("The person merges");

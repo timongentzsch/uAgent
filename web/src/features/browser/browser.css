@@ -53,6 +53,13 @@ dialog.browser-view[data-layout="sheet"] {
   color: var(--screen-ink);
   pointer-events: none;
 }
+.browser-banner button {
+  pointer-events: auto;
+}
+.browser-overlay > button {
+  pointer-events: auto;
+  justify-self: center;
+}
 .browser-banner,
 .browser-toast {
   position: absolute;
@@ -131,7 +138,7 @@ dialog.browser-view[data-layout="sheet"] {
 .browser-status > svg {
   flex-shrink: 0;
 }
-/* Fixed width, so "Take over" and "Done" swap without moving the bar. */
+/* Both ownership actions use the same width during handoff. */
 .browser-primary {
   width: calc(9ch + 2 * var(--space-6));
   flex-shrink: 0;

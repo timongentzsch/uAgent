@@ -1,0 +1,80 @@
+{
+  "date": "2026-11-24",
+  "release": "v1.11.0",
+  "release_url": "https://github.com/timongentzsch/uAgent/releases/tag/v1.11.0",
+  "measured_commit": "6a4e1c10fe0633bc73d14c80027af3aa3e0306c9",
+  "method": "Verified each asset against the published SHA256SUMS. Complete install and remote install sum regular-file member sizes in the platform archive and matching embedded worker archive. Remote transfer is the embedded compressed payload. The web breakdown uses web/scripts/size.js at the release tag on the published web-dist asset.",
+  "packages": [
+    {
+      "target": "linux-x86_64",
+      "archive_bytes": 14817931,
+      "archive_sha256": "04bfbef475510f5a8937996455d41f32e2f9856f57982f107377b6da5e4c1f82",
+      "main_binary_bytes": 7598320,
+      "complete_install_bytes": 20357241,
+      "main_binary_sha256": "4994bfc9e98245a092f8b06eab6ac1219a7f7f366028993e5d9cfe203b471a03",
+      "remote_binary_bytes": 5034224,
+      "remote_install_bytes": 5386362,
+      "remote_transfer_bytes": 2395997
+    },
+    {
+      "target": "linux-arm64",
+      "archive_bytes": 14602907,
+      "archive_sha256": "39137c9d28390c982bdf52b8a96e40181ad9da76e9ea38e7de3ab0f112ee2458",
+      "main_binary_bytes": 6626496,
+      "complete_install_bytes": 19385417,
+      "main_binary_sha256": "0fc1f0334517c3aa87b0c2b2a6680dde9c2d78669dccf73836e2617aeeba110b",
+      "remote_binary_bytes": 4136128,
+      "remote_install_bytes": 4488266,
+      "remote_transfer_bytes": 2182057
+    },
+    {
+      "target": "macos-arm64",
+      "archive_bytes": 16783146,
+      "archive_sha256": "8d66f121939fbc33e61c2891b84bef464d901187c78e143023cf958fc8d9b761",
+      "main_binary_bytes": 10895544,
+      "complete_install_bytes": 23654465,
+      "main_binary_sha256": "d47ebfc38450cfd8ccde3069e324db08cb6d4f60e75ba35f95f4b538e89995e2",
+      "remote_binary_bytes": 8336088,
+      "remote_install_bytes": 8688226,
+      "remote_transfer_bytes": 4354620
+    }
+  ],
+  "runtime_build": "69caebe677f1eaaacbf5169e11b9793b49fc7ca604ca2cda3aba5c3e0b730422",
+  "web_asset_sha256": "f76af06fb83969e1c5ed7a76de7515c3def91a586c9d6793cd6f6a7ba0ba7272",
+  "web": {
+    "bytes": {
+      "diagrams": {
+        "raw": 3411250,
+        "gzip": 950945
+      },
+      "app": {
+        "raw": 2775483,
+        "gzip": 1402562
+      },
+      "initial_js": {
+        "raw": 464156,
+        "gzip": 169324
+      },
+      "initial_css": {
+        "raw": 102476,
+        "gzip": 23196
+      },
+      "lazy_and_shell": {
+        "raw": 5620101,
+        "gzip": 2160987
+      },
+      "optional_runtime": {
+        "raw": 5404618,
+        "gzip": 2079372
+      },
+      "precache": {
+        "raw": 702234,
+        "gzip": 247413
+      },
+      "total": {
+        "raw": 6186733,
+        "gzip": 2353507
+      }
+    }
+  }
+}

@@ -142,8 +142,10 @@ allow-popups`, SVG a script-free sandbox, anything else
 `default-src 'none'`; non-inline files are attachments.
 
 `POST /api/sessions/<id>/preview` returns `/preview/<token>/`, a 24-byte
-random token per conversation. It holds until the host stops or any device
-is revoked. The preview route needs no cookie: the token is the grant. It
+random token bound to the conversation and its current workspace. A preview
+opened before a move cannot serve the destination folder. Requesting a preview
+there rotates the token. Host restarts and device revocation also invalidate
+previous tokens. The preview route needs no cookie: the token is the grant. It
 serves only the types `PreviewMime` lists (pages, styles, scripts, JSON,
 CSV, `.xlsx`, fonts, images, media). Its CSP (`PreviewPolicy`) sandboxes the
 page into an opaque origin and limits loads to the preview address, with

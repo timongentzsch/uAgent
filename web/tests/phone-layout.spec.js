@@ -103,16 +103,16 @@ test.describe("message layout", () => {
           return {
             wraps: last.y > body.y + last.height,
             beside: metadata.x >= body.right,
-            // How far the time's middle is from the last line's.
-            off: Math.round(
+            // Body and timestamp glyphs at different sizes can center on
+            // adjacent half-pixels, even when their line boxes are aligned.
+            aligned:
               Math.abs(
                 middle(lines(node.querySelector("time")).at(-1)) - middle(last),
-              ),
-            ),
+              ) <= 0.5,
           };
         }),
       )
-      .toEqual({ wraps: true, beside: true, off: 0 });
+      .toEqual({ wraps: true, beside: true, aligned: true });
   });
 });
 
@@ -518,8 +518,14 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       page.getByLabel("Instructions", { exact: true }),
       "Do not schedule this draft.",
     );
+    const saveTask = page.getByRole("button", { name: "Save", exact: true });
+    await contained(saveTask, 390, 70);
     await viewport(844);
     await input(page.getByLabel("Timezone", { exact: true }), "UTC");
+    await page
+      .locator("html")
+      .evaluate((element) => element.style.setProperty("--zoom", "2"));
+    await contained(saveTask, 390, 70);
     await viewport(844);
     expect(
       await page.evaluate(

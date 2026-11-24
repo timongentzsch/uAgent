@@ -56,34 +56,36 @@ bool DecodeEntity(const std::string& text, size_t& at, char& c) {
   return true;
 }
 
+bool SameName(std::string_view a, std::string_view b) {
+  return a.size() == b.size() &&
+         std::equal(a.begin(), a.end(), b.begin(),
+                    [](unsigned char left, unsigned char right) {
+                      return tolower(left) == tolower(right);
+                    });
+}
+
 bool Listed(const auto& names, std::string_view name) {
-  return std::any_of(names.begin(), names.end(), [&](std::string_view listed) {
-    return name.size() == listed.size() &&
-           std::equal(name.begin(), name.end(), listed.begin(),
-                      [](char left, char lowered) {
-                        return tolower(static_cast<unsigned char>(left)) ==
-                               lowered;
-                      });
-  });
+  return std::ranges::any_of(
+      names, [&](auto listed) { return SameName(name, listed); });
 }
 
 // The tag name of `<...>` at `open`, without a leading slash; case folds at
 // comparison time so no lowercased copy is made.
-std::string_view TagName(const std::string& html, size_t open) {
+std::string_view TagName(std::string_view html, size_t open) {
   size_t at = open + 1;
   if (at < html.size() && html[at] == '/') ++at;
   size_t end = at;
   while (end < html.size() &&
-         (isalnum(static_cast<unsigned char>(html[end])) || html[end] == '!')) {
+         (isalnum(static_cast<unsigned char>(html[end])) || html[end] == '!' ||
+          html[end] == '-' || html[end] == ':')) {
     ++end;
   }
-  return std::string_view(html).substr(at, end - at);
+  return html.substr(at, end - at);
 }
 
 // Skips past a `<name ...>...</name>` pair, or past the opening tag alone
 // when it is never closed. Case-insensitive in place: no lowercased copy.
-size_t SkipElement(const std::string& html, size_t open,
-                   std::string_view name) {
+size_t SkipElement(std::string_view html, size_t open, std::string_view name) {
   std::string close = "</" + std::string(name);
   auto found =
       std::search(html.begin() + static_cast<ptrdiff_t>(open), html.end(),
@@ -143,7 +145,7 @@ std::string Verbatim(const std::string& text) {
 
 // The `>` that closes the tag opened at `open`, ignoring any inside a quoted
 // attribute value: pages embed JSON in attributes.
-size_t TagEnd(const std::string& html, size_t open) {
+size_t TagEnd(std::string_view html, size_t open) {
   char quote = '\0';
   for (size_t at = open + 1; at < html.size(); ++at) {
     char c = html[at];
@@ -167,9 +169,65 @@ bool Textual(const std::string& type) {
   return false;
 }
 
-}  // namespace
+// Remember complete semantic sections while converting the original page. A
+// closed section can be read independently without guessing at site markup.
+struct Section {
+  size_t begin = 0, end = 0, depth = 0;
+  void Visit(bool closing, size_t open, size_t close) {
+    if (end) return;
+    if (!closing) {
+      if (depth++ == 0) begin = close + 1;
+    } else if (depth) {
+      --depth;
+      if (depth == 0 && open > begin) end = open;
+    }
+  }
+  std::string_view Content(std::string_view html) const {
+    return end ? html.substr(begin, end - begin) : std::string_view{};
+  }
+};
 
-std::string HtmlToText(const std::string& html) {
+struct PageSections {
+  Section title, main, article, landmark;
+  std::string_view landmark_tag;
+};
+
+// Read whole attributes so a quoted value or data-role cannot manufacture a
+// landmark.
+bool HasMainRole(std::string_view attributes) {
+  constexpr std::string_view kSpace = " \t\n\r\f";
+  auto skip_space = [&] {
+    attributes.remove_prefix(
+        std::min(attributes.find_first_not_of(kSpace), attributes.size()));
+  };
+  skip_space();
+  while (!attributes.empty()) {
+    size_t end = attributes.find_first_of("= \t\n\r\f");
+    auto name = attributes.substr(0, end);
+    attributes.remove_prefix(name.size());
+    skip_space();
+    if (!attributes.starts_with('=')) continue;
+    attributes.remove_prefix(1);
+    skip_space();
+    const bool quoted =
+        attributes.starts_with('"') || attributes.starts_with('\'');
+    if (quoted) {
+      char quote = attributes.front();
+      attributes.remove_prefix(1);
+      end = attributes.find(quote);
+    } else {
+      end = attributes.find_first_of(kSpace);
+    }
+    auto value = attributes.substr(0, end);
+    if (SameName(name, "role") && SameName(value, "main")) return true;
+    attributes.remove_prefix(value.size() + (quoted && end != attributes.npos));
+    skip_space();
+  }
+  return false;
+}
+
+std::string RenderHtml(std::string_view html,
+                       PageSections* sections = nullptr) {
   std::string out;
   std::string text;
   out.reserve(html.size() / 2);
@@ -198,7 +256,8 @@ std::string HtmlToText(const std::string& html) {
     std::string_view name = TagName(html, at);
     bool closing = at + 1 < html.size() && html[at + 1] == '/';
     size_t end;
-    if (Listed(kDropped, name)) {
+    const bool dropped = Listed(kDropped, name);
+    if (dropped) {
       end = SkipElement(html, at, name);
     } else {
       bool heading = name.size() == 2 && (name[0] | 0x20) == 'h' &&
@@ -224,12 +283,32 @@ std::string HtmlToText(const std::string& html) {
     }
     // An unterminated tag means the rest of the document is markup.
     if (end == std::string::npos) break;
+    if (sections && !dropped) {
+      if (SameName(name, "title")) sections->title.Visit(closing, at, end);
+      if (SameName(name, "main")) sections->main.Visit(closing, at, end);
+      if (SameName(name, "article")) sections->article.Visit(closing, at, end);
+      if (!closing && !name.empty() && !sections->main.depth &&
+          !sections->main.end && !sections->landmark.depth &&
+          !sections->landmark.end &&
+          HasMainRole(
+              html.substr(at + 1 + name.size(), end - at - 1 - name.size()))) {
+        sections->landmark_tag = name;
+      }
+      if (!sections->landmark_tag.empty() &&
+          SameName(name, sections->landmark_tag)) {
+        sections->landmark.Visit(closing, at, end);
+      }
+    }
     at = end + 1;
   }
   flush();
   while (!out.empty() && out.back() == '\n') out.pop_back();
   return out;
 }
+
+}  // namespace
+
+std::string HtmlToText(const std::string& html) { return RenderHtml(html); }
 
 ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
                            const std::string& call_id) {
@@ -262,13 +341,35 @@ ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
   }
   // Non-markup arrives readable; reflowing it would only destroy the
   // indentation that carries meaning in JSON, XML and plain text.
-  std::string text = html ? HtmlToText(page.body) : std::move(page.body);
+  PageSections sections;
+  std::string text =
+      html ? RenderHtml(page.body, &sections) : std::move(page.body);
   if (text.find_first_not_of(" \t\r\n") == std::string::npos) {
     return ToolFailure(ToolErrorCode::kUnavailable,
                        "web_fetch found no text at " + TerminalSafe(url));
   }
   ToolResult result = ToolSuccess(std::move(text));
   result.body_kind = "markdown";
+  std::string title;
+  std::string excerpt;
+  if (html) {
+    title = RenderHtml(sections.title.Content(page.body));
+    excerpt = RenderHtml(sections.main.Content(page.body));
+    if (excerpt.empty()) {
+      excerpt = RenderHtml(sections.landmark.Content(page.body));
+    }
+    if (excerpt.empty()) {
+      excerpt = RenderHtml(sections.article.Content(page.body));
+    }
+  }
+  result.parts = json::array(
+      {SourcePart(page.effective_url.empty() ? url : page.effective_url, title,
+                  html ? excerpt : result.output)});
+  if (page.truncated) {
+    result.parts.push_back(
+        FieldsPart({{"Transfer", "Partial · byte limit reached"}}));
+  }
+  if (!html || !excerpt.empty()) result.body_kind = "link";
   result.hint = "[" + TerminalSafe(url) +
                 (page.truncated ? "; truncated at the byte cap]"
                  : html ? "; what the server sent, scripts not run: may be "

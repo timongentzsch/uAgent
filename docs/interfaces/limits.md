@@ -7,12 +7,13 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | Constant | Value | What |
 | --- | --- | --- |
 | `kPreviewChars` | `4096` | Separate budgets although equal: growing one must not grow the other. |
-| `kCatalogueHeaderBytes` | `4096` | Separate budgets although equal: growing one must not grow the other. |
+| `kSourceExcerptChars` | `800` |  |
+| `kCatalogueHeaderBytes` | `4096` |  |
 | `kChangePreviewChars` | `16 KiB` | The opening of a diff that a tool result carries; the rest is an artifact. |
 | `kAttachmentCacheBytes` | `16 MiB` | Cap of the encoded attachments kept for the model calls of a turn. |
 | `kMaxCatalogueEntries` | `4096` | Entries held in a session or asset catalogue scan. |
 | `kMaxPins` | `64` | Pinned conversations and folders, and the bytes the list may take on disk. |
-| `kPinsFileBytes` | `64 KiB` | Pinned conversations and folders, and the bytes the list may take on disk. |
+| `kPinsFileBytes` | `64 KiB` |  |
 | `kMaxSkillFiles` | `128` |  |
 | `kMaxSkillFileDepth` | `4` |  |
 | `kLibraryNameChars` | `100` |  |
@@ -22,72 +23,72 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kMaxPendingSessionCommands` | `32` |  |
 | `kMaxApprovedProposals` | `16` |  |
 | `kMaxToolSelectionOverrides` | `256` | Overrides may name tools of an absent MCP registry, so both are bounded. |
-| `kToolNameChars` | `128` | Overrides may name tools of an absent MCP registry, so both are bounded. |
+| `kToolNameChars` | `128` |  |
 | `kToolDedupeMinChars` | `256` |  |
 | `kGenericTitleReplacementMinChars` | `12` |  |
 | `kTitleInputChars` | `2000` | Generated titles: the first-message excerpt sent, and the title kept. |
-| `kTitleChars` | `80` | Generated titles: the first-message excerpt sent, and the title kept. |
+| `kTitleChars` | `80` |  |
 | `kRemoteBuildDays` | `30` | A remote host keeps a build no main has connected with for this long. |
 | `kUserTitleChars` | `256` | The longest title a user may give a session, and the longest workspace name, in characters. The web form mirrors both (web/src/shared/limits.ts). |
-| `kSpaceNameChars` | `64` | The longest title a user may give a session, and the longest workspace name, in characters. The web form mirrors both (web/src/shared/limits.ts). |
-| `kTitleTimeoutSeconds` | `30` | The longest title a user may give a session, and the longest workspace name, in characters. The web form mirrors both (web/src/shared/limits.ts). |
+| `kSpaceNameChars` | `64` |  |
+| `kTitleTimeoutSeconds` | `30` |  |
 | `kTitleMaxTokens` | `96` | Enough for a title once the model does not think first. |
 | `kAssetNameChars` | `128` | Upload and subsequent claim validation must accept the same display names. |
-| `kImageAnalysisCacheEntries` | `8` | Upload and subsequent claim validation must accept the same display names. |
-| `kModelPickerMatches` | `256` | Upload and subsequent claim validation must accept the same display names. |
-| `kConfigurationChangeLimit` | `64` | Upload and subsequent claim validation must accept the same display names. |
-| `kSharedToolResultChars` | `2000` | Upload and subsequent claim validation must accept the same display names. |
-| `kRetainedArtifactPathChars` | `4096` | Upload and subsequent claim validation must accept the same display names. |
-| `kKqueueWatchTargets` | `64` | Upload and subsequent claim validation must accept the same display names. |
-| `kModelRequestDeadlineReserveSeconds` | `1` | Upload and subsequent claim validation must accept the same display names. |
+| `kImageAnalysisCacheEntries` | `8` |  |
+| `kModelPickerMatches` | `256` |  |
+| `kConfigurationChangeLimit` | `64` |  |
+| `kSharedToolResultChars` | `2000` |  |
+| `kRetainedArtifactPathChars` | `4096` |  |
+| `kKqueueWatchTargets` | `64` |  |
+| `kModelRequestDeadlineReserveSeconds` | `1` |  |
 | `kLimitAnswerSeconds` | `60` | What the answering round of a turn stopped at a limit may take. |
 | `kUsageProgressIntervalMs` | `100` | Shared by model callbacks and browser publication. |
 | `kUsageProgressBytes` | `1 KiB` | Progress is also reported after this many bytes, inside the interval. |
-| `kStreamBatchIntervalMs` | `12` | Progress is also reported after this many bytes, inside the interval. |
-| `kStreamBatchBytes` | `8 KiB` | Progress is also reported after this many bytes, inside the interval. |
+| `kStreamBatchIntervalMs` | `12` |  |
+| `kStreamBatchBytes` | `8 KiB` |  |
 | `kStatusLabelBytes` | `160` | Short activity captions are presentation policies, not model limits. |
 | `kActivityCommandBytes` | `8 KiB` | A background command's full command, kept with its row and its result. |
-| `kStatusLineBytes` | `192` | A background command's full command, kept with its row and its result. |
+| `kStatusLineBytes` | `192` |  |
 | `kRepeatedCallAdviseAfter` | `3` | A repeated call is advised, then directed, then stopped. A rejected call stops sooner: rerunning it cannot produce new evidence. |
-| `kRepeatedCallDirectAfter` | `6` | A repeated call is advised, then directed, then stopped. A rejected call stops sooner: rerunning it cannot produce new evidence. |
-| `kRejectedCallStopAfter` | `3` | A repeated call is advised, then directed, then stopped. A rejected call stops sooner: rerunning it cannot produce new evidence. |
-| `kFailedToolAdviseAfter` | `3` | A repeated call is advised, then directed, then stopped. A rejected call stops sooner: rerunning it cannot produce new evidence. |
-| `kActivityPollAdviseAfter` | `2` | A repeated call is advised, then directed, then stopped. A rejected call stops sooner: rerunning it cannot produce new evidence. |
-| `kActivityPollDirectAfter` | `4` | A repeated call is advised, then directed, then stopped. A rejected call stops sooner: rerunning it cannot produce new evidence. |
-| `kActivityPollStopAfter` | `12` | A repeated call is advised, then directed, then stopped. A rejected call stops sooner: rerunning it cannot produce new evidence. |
+| `kRepeatedCallDirectAfter` | `6` |  |
+| `kRejectedCallStopAfter` | `3` |  |
+| `kFailedToolAdviseAfter` | `3` |  |
+| `kActivityPollAdviseAfter` | `2` |  |
+| `kActivityPollDirectAfter` | `4` |  |
+| `kActivityPollStopAfter` | `12` |  |
 | `kSecondsPerMinute` | `60` | A year is 365 days, as in HTTP `max-age`. |
-| `kSecondsPerYear` | `31536000` | A year is 365 days, as in HTTP `max-age`. |
-| `kMillisecondsPerSecond` | `1000` | A year is 365 days, as in HTTP `max-age`. |
+| `kSecondsPerYear` | `31536000` |  |
+| `kMillisecondsPerSecond` | `1000` |  |
 | `kMaxScheduleEpoch` | `4102444800LL` | Latest epoch accepted by schedule validation (2100-01-01T00:00:00Z). |
 | `kCompactionTranscriptBytes` | `256 KiB` | A route under kCompactionSmallWindowTokens reads twice its window in bytes, never below the floor; carried-over skills and user messages are capped. |
-| `kCompactionTranscriptFloorBytes` | `16 KiB` | A route under kCompactionSmallWindowTokens reads twice its window in bytes, never below the floor; carried-over skills and user messages are capped. |
-| `kCompactionSmallWindowTokens` | `int64_t{128} * 1024` | A route under kCompactionSmallWindowTokens reads twice its window in bytes, never below the floor; carried-over skills and user messages are capped. |
-| `kCompactionSkillBytes` | `32 KiB` | A route under kCompactionSmallWindowTokens reads twice its window in bytes, never below the floor; carried-over skills and user messages are capped. |
-| `kCompactionUserBytes` | `80 KiB` | A route under kCompactionSmallWindowTokens reads twice its window in bytes, never below the floor; carried-over skills and user messages are capped. |
-| `kCompactionRouteFloorBytes` | `4 KiB` | A route under kCompactionSmallWindowTokens reads twice its window in bytes, never below the floor; carried-over skills and user messages are capped. |
+| `kCompactionTranscriptFloorBytes` | `16 KiB` |  |
+| `kCompactionSmallWindowTokens` | `int64_t{128} * 1024` |  |
+| `kCompactionSkillBytes` | `32 KiB` |  |
+| `kCompactionUserBytes` | `80 KiB` |  |
+| `kCompactionRouteFloorBytes` | `4 KiB` |  |
 | `kPollTickMs` | `20` | A poll tick re-checks something that has no event to wake on; a wait tick bounds a blocking wait so an abort or a spinner is noticed. |
-| `kWaitTickMs` | `100` | A poll tick re-checks something that has no event to wake on; a wait tick bounds a blocking wait so an abort or a spinner is noticed. |
+| `kWaitTickMs` | `100` |  |
 | `kProposalLifetimeMinutes` | `5` | A proposal waits this long for the user's decision; an unclaimed upload or import is an orphan after a day; a host with no wake due sleeps a day. |
-| `kOrphanAgeHours` | `24` | A proposal waits this long for the user's decision; an unclaimed upload or import is an orphan after a day; a host with no wake due sleeps a day. |
-| `kIdleSleepHours` | `24` | A proposal waits this long for the user's decision; an unclaimed upload or import is an orphan after a day; a host with no wake due sleeps a day. |
+| `kOrphanAgeHours` | `24` |  |
+| `kIdleSleepHours` | `24` |  |
 | `kDigestChars` | `12` | Short digest widths; request construction and view projection share them. |
-| `kOccurrenceChars` | `16` | Short digest widths; request construction and view projection share them. |
-| `kDetailChars` | `24` | Short digest widths; request construction and view projection share them. |
-| `kAgentNameChars` | `16` | Short digest widths; request construction and view projection share them. |
+| `kOccurrenceChars` | `16` |  |
+| `kDetailChars` | `24` |  |
+| `kAgentNameChars` | `16` |  |
 | `kSystemPromptBytes` | `64 KiB` | The assembled system message, and what an external editor may return. |
 | `kMemoryEventJournalBytes` | `256 KiB` | The journal's size before compaction, and the longest event line taken. |
-| `kMemoryEventLineBytes` | `4096` | The journal's size before compaction, and the longest event line taken. |
+| `kMemoryEventLineBytes` | `4096` |  |
 | `kPrivateFileMode` | `0600` | Owner-only: a shared machine cannot read transcripts or credentials. |
-| `kPrivateDirMode` | `0700` | Owner-only: a shared machine cannot read transcripts or credentials. |
+| `kPrivateDirMode` | `0700` |  |
 | `kGroupOtherModeBits` | `0077` | The group and other permission bits; a private file has none set. |
 | `kSharedFileMode` | `0644` | Files written into the user's folder follow the world-readable convention. |
 | `kToolTextArgChars` | `65536` | Bounds on tool arguments; the schemas the model sees are built from these. |
-| `kToolMinOutputChars` | `256` | Bounds on tool arguments; the schemas the model sees are built from these. |
-| `kToolArgChars` | `4096` | Bounds on tool arguments; the schemas the model sees are built from these. |
-| `kPtyMaxDimension` | `1000` | Bounds on tool arguments; the schemas the model sees are built from these. |
+| `kToolMinOutputChars` | `256` |  |
+| `kToolArgChars` | `4096` |  |
+| `kPtyMaxDimension` | `1000` |  |
 | `kMinYieldMs` | `250` | Bounds for the `run` tool's initial yield: the lower one keeps a yield from becoming a busy poll, the upper one keeps a call from consuming the turn. |
-| `kMaxYieldMs` | `30000` | Bounds for the `run` tool's initial yield: the lower one keeps a yield from becoming a busy poll, the upper one keeps a call from consuming the turn. |
-| `kDefaultYieldMs` | `10000` | Bounds for the `run` tool's initial yield: the lower one keeps a yield from becoming a busy poll, the upper one keeps a call from consuming the turn. |
+| `kMaxYieldMs` | `30000` |  |
+| `kDefaultYieldMs` | `10000` |  |
 | `kActivityInputSettleMs` | `250` | Settle time for an activity write or resize that named no wait_ms. |
 | `kRequestBytes` | `64 MiB` |  |
 | `kResponseBytes` | `32 MiB` |  |
@@ -97,39 +98,41 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kReadFileMaxLines` | `10000` |  |
 | `kListDirScanEntries` | `100000` |  |
 | `kFileViewBytes` | `1 MiB` | The web file browser: bytes of a file shown as text, paths a search answers. |
-| `kFileFindMatches` | `200` | The web file browser: bytes of a file shown as text, paths a search answers. |
+| `kFileFindMatches` | `200` |  |
 | `kWebTerminals` | `8` | The web terminal: shells at once; twice as many connections, so a returning device attaches before its dropped one times out; scrollback; message size. |
-| `kWebTerminalSockets` | `16` | The web terminal: shells at once; twice as many connections, so a returning device attaches before its dropped one times out; scrollback; message size. |
-| `kWebTerminalScrollbackBytes` | `256 KiB` | The web terminal: shells at once; twice as many connections, so a returning device attaches before its dropped one times out; scrollback; message size. |
-| `kWebTerminalMessageBytes` | `64 KiB` | The web terminal: shells at once; twice as many connections, so a returning device attaches before its dropped one times out; scrollback; message size. |
+| `kWebTerminalSockets` | `16` |  |
+| `kWebTerminalScrollbackBytes` | `256 KiB` |  |
+| `kWebTerminalMessageBytes` | `64 KiB` |  |
 | `kWebSearchMaxTokens` | `6000` | A hosted search's own work counts against this as well as its answer. |
-| `kMemoryExtractBytes` | `32 KiB` | A hosted search's own work counts against this as well as its answer. |
-| `kMemoryExtractSeconds` | `300` | A hosted search's own work counts against this as well as its answer. |
-| `kMemoryCrowdedParts` | `3, kMemoryCrowdedOf = 4` | A scope this full of its limit, as a fraction, lets an extraction fold one of its notes into the one it writes. |
+| `kMemoryExtractBytes` | `32 KiB` |  |
+| `kMemoryExtractSeconds` | `300` |  |
+| `kMemoryCrowdedParts` | `3` | A scope this full of its limit, as a fraction, lets an extraction fold one of its notes into the one it writes. |
+| `kMemoryCrowdedOf` | `4` | A scope this full of its limit, as a fraction, lets an extraction fold one of its notes into the one it writes. |
 | `kPlacementCandidates` | `30` | What placing an unfiled conversation shows the model: this many of the newest conversations, and this much of the latest reply. |
-| `kPlacementReplyChars` | `2000` | What placing an unfiled conversation shows the model: this many of the newest conversations, and this much of the latest reply. |
-| `kSkillBodyBytes` | `512 KiB` | What placing an unfiled conversation shows the model: this many of the newest conversations, and this much of the latest reply. |
+| `kPlacementReplyChars` | `2000` |  |
+| `kSkillBodyBytes` | `512 KiB` |  |
 | `kMemoryFileBytes` | `512 KiB` | The most of a memory file the library reads. |
-| `kSkillDescriptionBytes` | `1024` | The most of a memory file the library reads. |
+| `kSkillDescriptionBytes` | `1024` |  |
 | `kMcpStartupGraceSeconds` | `2` | MCP servers are untrusted; these bound what one may make the agent hold. |
-| `kMcpPages` | `100` | MCP servers are untrusted; these bound what one may make the agent hold. |
-| `kMcpConfigBytes` | `1 MiB` | MCP servers are untrusted; these bound what one may make the agent hold. |
-| `kMcpResponseBytes` | `16 MiB` | MCP servers are untrusted; these bound what one may make the agent hold. |
+| `kMcpPages` | `100` |  |
+| `kMcpConfigBytes` | `1 MiB` |  |
+| `kMcpResponseBytes` | `16 MiB` |  |
 | `kSandboxPolicyArgBytes` | `96 KiB` | The Linux sandbox trampoline receives its policy as one argv word, which the kernel caps at 128 KiB. |
-| `kMcpSchemaBytes` | `256 KiB` | The Linux sandbox trampoline receives its policy as one argv word, which the kernel caps at 128 KiB. |
-| `kMcpLogBytes` | `16 MiB` | The Linux sandbox trampoline receives its policy as one argv word, which the kernel caps at 128 KiB. |
-| `kMcpDescriptionChars` | `400` | The Linux sandbox trampoline receives its policy as one argv word, which the kernel caps at 128 KiB. |
-| `kMaintenanceIntervalHours` | `24` | Stamp file and interval of the pass over every artifact directory. |
+| `kMcpSchemaBytes` | `256 KiB` |  |
+| `kMcpLogBytes` | `16 MiB` |  |
+| `kMcpDescriptionChars` | `400` |  |
+| `kMaintenanceStamp` | `".maintained"` | Stamp file and interval of the pass over every artifact directory. |
+| `kMaintenanceIntervalHours` | `24` |  |
 | `kLogPumpPollMs` | `100` | How often a stoppable log pump checks whether it was asked to stop. |
 | `kCatalogueRescanSeconds` | `1` | The web host rescans the session catalogue this often and keeps a few histories parsed; a stopping runtime gives its clients kServerDrainMs. |
-| `kHistoryCacheEntries` | `3` | The web host rescans the session catalogue this often and keeps a few histories parsed; a stopping runtime gives its clients kServerDrainMs. |
-| `kHistoryCacheBytes` | `32 MiB` | The web host rescans the session catalogue this often and keeps a few histories parsed; a stopping runtime gives its clients kServerDrainMs. |
-| `kTextPageBytes` | `16 KiB` | The web host rescans the session catalogue this often and keeps a few histories parsed; a stopping runtime gives its clients kServerDrainMs. |
-| `kServerDrainMs` | `500` | The web host rescans the session catalogue this often and keeps a few histories parsed; a stopping runtime gives its clients kServerDrainMs. |
-| `kSecondsPerHour` | `3600` | The web host rescans the session catalogue this often and keeps a few histories parsed; a stopping runtime gives its clients kServerDrainMs. |
+| `kHistoryCacheEntries` | `3` |  |
+| `kHistoryCacheBytes` | `32 MiB` |  |
+| `kTextPageBytes` | `16 KiB` |  |
+| `kServerDrainMs` | `500` |  |
+| `kSecondsPerHour` | `3600` |  |
 | `kWorkerOomScore` | `300` | How far above the web host's OOM score (oom_score_adj, -1000 to 1000) its children start: out of memory a conversation's runtime goes before the host, and the browser, the largest and the cheapest to lose, before both. |
-| `kBrowserOomScore` | `600` | How far above the web host's OOM score (oom_score_adj, -1000 to 1000) its children start: out of memory a conversation's runtime goes before the host, and the browser, the largest and the cheapest to lose, before both. |
+| `kBrowserOomScore` | `600` |  |
 | `kBrowserMemoryBytes` | `600 MiB` | The memory the agent's browser needs (MemoryLimitBytes): on one core with three real-sized pages, all open at 640 MiB and one is lost at 512. |
 | `kAttachmentSniffBytes` | `64 KiB` | Heads read: to tell a file's kind (an SVG prolog may run this long), of an attached text file, and of the newest output an `until` marker is sought in. |
-| `kAttachedTextBytes` | `64 KiB` | Heads read: to tell a file's kind (an SVG prolog may run this long), of an attached text file, and of the newest output an `until` marker is sought in. |
-| `kUntilWindowBytes` | `64 KiB` | Heads read: to tell a file's kind (an SVG prolog may run this long), of an attached text file, and of the newest output an `until` marker is sought in. |
+| `kAttachedTextBytes` | `64 KiB` |  |
+| `kUntilWindowBytes` | `64 KiB` |  |

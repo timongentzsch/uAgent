@@ -185,7 +185,8 @@ json Client::Call(json request, const ToolContext* context) {
   const bool run =
       op == "run" || op == "schedule_check" || completion || op == "undo" ||
       op == "activity_control" || op == "terminal" ||
-      (op == "files" && (mode == "write" || mode == "move")) ||
+      (op == "files" &&
+       (mode == "write" || mode == "move" || mode == "delete_design")) ||
       (op == "instructions" && JsonValue(request, "action", "") == "write");
   if (run) {
     if (!completion) request["id"] = RandomToken(16);

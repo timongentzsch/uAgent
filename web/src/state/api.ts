@@ -63,6 +63,19 @@ const localRoutes = {
     value: string,
   ) => `/api/sessions/${session}/files?${mode}=${encodeURIComponent(value)}`,
   // POST {path, text, revision}: a person's edit of a text file.
+  fileOrigin: (
+    session: string,
+    target: { path: string; origin?: string; sequence?: number },
+  ) => {
+    const query = new URLSearchParams();
+    if (target.origin !== undefined) query.set("origin", target.origin);
+    else {
+      if (target.sequence !== undefined)
+        query.set("sequence", String(target.sequence));
+      query.set("path", target.path.replace(/\/$/, ""));
+    }
+    return `/api/sessions/${session}/file-origin?${query}`;
+  },
   fileWrite: (session: string) => `/api/sessions/${session}/files`,
   // POST: the address the folder's pages are served from, sandboxed.
   preview: (session: string) => `/api/sessions/${session}/preview`,
@@ -124,6 +137,8 @@ function createApi(host = "") {
         new Error(data?.error || `HTTP ${response.status}`),
       );
       error.status = response.status;
+      if (response.status === 409 && Array.isArray(data?.choices))
+        error.choices = data.choices;
       error.rejected = data?.accepted === false;
       throw error;
     }

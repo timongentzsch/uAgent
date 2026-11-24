@@ -10,6 +10,7 @@ import {
   openSession,
   paper,
   selectProbeModel,
+  savedConversation,
   slide,
   viewerOf,
   writeFiles,
@@ -561,10 +562,10 @@ test("a page that runs past its size or misses a file says so", async ({
     "02-cover.html": artboard("Cover", "<p>ok</p>"),
   });
   const files = await openFiles(app, session, "design/book/");
-  await expect(files.getByText("1 page failed to run")).toBeVisible();
+  await expect(files.getByText("1 page with design issues")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   await expect(app.locator("#prompt")).toHaveValue(
-    /`design\/book\/book\.html` threw: .*missing\.png did not load.*page 1 runs 200px past its height/,
+    /`design\/book\/book\.html` has design issues: .*missing\.png did not load.*page 1 runs 200px past its height/,
   );
 });
 
@@ -593,20 +594,43 @@ test("a slide with text over text and a document block taller than a page say so
   });
   // The one slide is a deck; the document beside it is its own.
   const files = await openFiles(app, session, "design/checks/");
-  await expect(files.getByText("1 page failed to run")).toBeVisible();
+  await expect(files.getByText("1 page with design issues")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   const draft = app.locator("#prompt");
   await expect(draft).toHaveValue(
-    /`design\/checks\/01-slide\.html` threw: “Cut off” runs past the slide's 1920x1080 edge.*“Revenue grew” overlaps “Footer note”/,
+    /`design\/checks\/01-slide\.html` has design issues: “Cut off” runs past the slide's 1920x1080 edge.*“Revenue grew” overlaps “Footer note”/,
   );
   await files.getByRole("button", { name: "Back to the list" }).click();
   await files.getByRole("button", { name: "memo.html", exact: true }).click();
   await expect(viewerOf(files).stage.getByText("tall")).toBeVisible();
-  await expect(files.getByText("1 page failed to run")).toBeVisible();
+  await expect(files.getByText("1 page with design issues")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   await expect(draft).toHaveValue(
-    /`design\/checks\/memo\.html` threw: a figure is 1000px tall, more than a page \(605px\)/,
+    /`design\/checks\/memo\.html` has design issues: a figure is 1000px tall, more than a page \(605px\)/,
   );
+});
+
+test("tightly led slide lines pass while colliding letters are reported", async ({
+  page,
+}) => {
+  const helper = await readFile(
+    new URL("../public/design-helper.js", import.meta.url),
+    "utf8",
+  );
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await page.route("https://slides.test/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: `<!doctype html><meta charset="utf-8"><meta name="artboard" content="1000x700 slide"><script>${helper}</script>
+      <style>h1{font:700 80px/.96 sans-serif}p{font:40px serif;position:absolute;left:40px;top:350px}</style>
+      <h1>Heading<br>Second line</h1><p>Real collision</p><p>Other lettering</p>`,
+    }),
+  );
+  await page.goto("https://slides.test/cover");
+  const { problems } = await page.evaluate(() => window.uagentChecked);
+  expect(problems).toEqual([
+    expect.stringMatching(/“Real collision” overlaps “Other lettering”/),
+  ]);
 });
 
 // Slides whose verdict hangs on how they are drawn. Two follow the frame's
@@ -703,7 +727,10 @@ test("a slide is checked at its artboard's size with its fonts in and its script
   for (const frame of plain()) await frame.waitForLoadState();
   await app.evaluate(() => window.hear());
   // Sized now: the slides whose texts meet on their artboard, and only those.
-  const failed = legend.locator("[data-failed]");
+  const failed = legend.locator("[data-issue]");
+  await expect(
+    legend.getByRole("option", { name: /High, design issue$/ }),
+  ).toBeVisible();
   const said = () =>
     failed.evaluateAll((all) => all.map((item) => item.dataset.path));
   await expect(failed).toHaveCount(2);
@@ -730,7 +757,7 @@ test("alone, a slide says what is wrong with it in a window of its artboard's si
 }) => {
   const { files } = await openDeck(app, session, host.project, await DRAWN());
   // The notice of the failed pages moves the tools under it as it comes.
-  await expect(files.getByText("3 pages failed to run")).toBeVisible();
+  await expect(files.getByText("3 pages with design issues")).toBeVisible();
   const alone = await openAlone(app, files);
   // As the agent's browser reads a page: it waits for the page's word, and
   // where the window is another than the artboard asks for, reads one that is.
@@ -754,13 +781,19 @@ test("alone, a slide says what is wrong with it in a window of its artboard's si
   for (const name of Object.keys(verdicts))
     expect(await says(name)).toEqual({
       said: [],
-      wants: { w: 1920, h: 1080, fits: false, parts: 1 },
+      wants: { w: 1920, h: 1080, fits: false, parts: 1, problems: [] },
     });
   await alone.setViewportSize({ width: 1920, height: 1080 });
   for (const [name, said] of Object.entries(verdicts))
     expect(await says(name)).toEqual({
       said,
-      wants: { w: 1920, h: 1080, fits: true, parts: 1 },
+      wants: {
+        w: 1920,
+        h: 1080,
+        fits: true,
+        parts: 1,
+        problems: said.map((line) => line.slice("uagent page: ".length)),
+      },
     });
 });
 
@@ -774,6 +807,191 @@ async function openDeck(app, session, project, slides, options) {
     legend: files.getByRole("listbox", { name: "Slides" }),
     ...viewerOf(files),
   };
+}
+
+test("a deck's PDF menu puts all slides first on desktop and phone", async ({
+  page,
+  session,
+  host,
+}) => {
+  // Exercise the served export URLs without requiring a browser service.
+  await page.route("**/api/browser/status", (route) =>
+    route.fulfill({ json: {} }),
+  );
+  await page.route(/\/files\?pdf=/, (route) =>
+    route.fulfill({
+      contentType: "application/pdf",
+      body: "%PDF-1.4",
+    }),
+  );
+  await writeFiles(host.project, {
+    "01-intro.html": slide("Intro"),
+    "02-end.html": slide("End"),
+  });
+  const files = await openFiles(page, session, "01-intro.html");
+  await files.getByRole("button", { name: "Export", exact: true }).click();
+  await expect(page.getByRole("menuitem").first()).toHaveText("Deck as PDF");
+  const [deck] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("menuitem", { name: "Deck as PDF", exact: true }).click(),
+  ]);
+  expect(new URL(deck.url()).searchParams.get("pdf")).toBe("");
+  expect(deck.suggestedFilename()).toBe("deck.pdf");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await files.getByRole("button", { name: "More tools" }).click();
+  await page.getByRole("menuitem", { name: "Export", exact: true }).click();
+  const current = page.getByRole("menuitem", { name: "Current slide as PDF" });
+  await expect(current.locator("..").getByRole("menuitem").first()).toHaveText(
+    "Deck as PDF",
+  );
+  const [single] = await Promise.all([
+    page.waitForEvent("download"),
+    current.click(),
+  ]);
+  const query = new URL(single.url()).searchParams;
+  expect([query.get("pdf"), query.get("w"), query.get("h")]).toEqual([
+    "01-intro.html",
+    "1920",
+    "1080",
+  ]);
+});
+
+test("printing a deck waits for scripted slides, omits skipped slides and keeps each paper size", async ({
+  page,
+  session,
+  host,
+  browserName,
+}) => {
+  await page.context().addInitScript(() => {
+    let drawn = false;
+    addEventListener("message", (event) => {
+      if (event.data === "test-ink") drawn = true;
+    });
+    window.print = () => {
+      document.documentElement.dataset.inkAtPrint = String(drawn);
+    };
+  });
+  const { files } = await openDeck(
+    page,
+    session,
+    host.project,
+    {
+      "01-intro.html": artboard("Intro", "<h1>Intro</h1>", "800x600 slide"),
+      "02-skipped.html": artboard(
+        "Private",
+        '<meta name="slide" content="skip"><h1>Private</h1>',
+        "800x600 slide",
+      ),
+      "03-chart.html": artboard(
+        "Chart",
+        `<p id="chart"></p><script>
+      window.uagentReady = new Promise(resolve => setTimeout(() => {
+        document.getElementById("chart").textContent = "Drawn chart";
+        parent.postMessage("test-ink", "*");
+        resolve();
+      }, 200));
+    </script>`,
+        "640x320 slide",
+      ),
+    },
+    { phone: true },
+  );
+  await files.getByRole("button", { name: "More tools" }).click();
+  await page.getByRole("menuitem", { name: "Export", exact: true }).click();
+  const first = page.getByRole("menuitem", {
+    name: "Print deck or save as PDF",
+    exact: true,
+  });
+  await expect(first.locator("..").getByRole("menuitem").first()).toHaveText(
+    "Print deck or save as PDF",
+  );
+  await expect(
+    page.getByRole("menuitem", { name: "Print current slide or save as PDF" }),
+  ).toBeVisible();
+  const [popup] = await Promise.all([
+    page.waitForEvent("popup"),
+    first.click(),
+  ]);
+  await expect(popup).toHaveURL(/\/decks\/talk\/\?deck#print$/);
+  await expect(popup.locator("html")).toHaveAttribute(
+    "data-ink-at-print",
+    "true",
+  );
+  await expect(popup.locator("iframe")).toHaveCount(2);
+  expect(
+    await popup
+      .locator("iframe")
+      .evaluateAll((frames) => frames.map((f) => f.getAttribute("src"))),
+  ).toEqual(["01-intro.html", "03-chart.html"]);
+  await expect(
+    popup.frameLocator("iframe").nth(1).getByText("Drawn chart"),
+  ).toBeVisible();
+  if (browserName === "chromium") {
+    const pdf = await popup.pdf({ preferCSSPageSize: true });
+    const boxes = [
+      ...pdf
+        .toString("latin1")
+        .matchAll(/\/MediaBox\s*\[0 0 ([\d.]+) ([\d.]+)\]/g),
+    ].map((match) => [Math.round(+match[1]), Math.round(+match[2])]);
+    expect(boxes).toEqual([
+      [600, 450],
+      [480, 240],
+    ]);
+  }
+  await popup.close();
+});
+
+for (const phone of [false, true]) {
+  test(`a finding opens a reordered slide and adds its reference to the draft (${phone ? "phone" : "desktop"})`, async ({
+    page,
+    host,
+    request,
+  }) => {
+    const dir = "decks/review";
+    const plan = "03-plan.html";
+    await writeFiles(join(host.project, dir), {
+      "01-cover.html": slide("Cover"),
+      [plan]: slide("Plan"),
+    });
+    const session = await savedConversation(
+      host,
+      request,
+      "Review",
+      `Make the chart larger on [Slide 1: Plan](${dir}/01-plan.html).`,
+    );
+    await openSession(page, session, { phone });
+    const link = page.getByRole("button", { name: "Slide 1: Plan" });
+    const prompt = page.locator("#prompt");
+    await prompt.fill("Keep this draft");
+    await link.click();
+    const pane = page.getByRole("region", { name: "Files" });
+    const heading = viewerOf(pane).stage.getByRole("heading", { name: "Plan" });
+    await expect(heading).toBeVisible();
+    const split = (await pane.boundingBox()).width;
+    if (phone) {
+      await page.keyboard.press("Escape");
+      await expect(pane).toBeHidden();
+      await expect(link).toBeFocused();
+      await link.click();
+      await expect(heading).toBeVisible();
+    } else {
+      await pane.getByRole("button", { name: "Expand workspace" }).click();
+      await expect(
+        pane.getByRole("button", { name: "Restore split view" }),
+      ).toBeVisible();
+      expect((await pane.boundingBox()).width).toBeGreaterThan(split);
+      await expect(heading).toBeVisible();
+    }
+    await pane.getByRole("button", { name: "Slide actions" }).click();
+    await page.getByRole("menuitem", { name: "Comment on this slide" }).click();
+    await expect(prompt).toBeFocused();
+    await expect(prompt).toHaveValue("Keep this draft");
+    if (phone) await expect(pane).toBeHidden();
+    else expect((await pane.boundingBox()).width).toBeCloseTo(split, 0);
+    await expect(page.locator(".quote-bar")).toContainText(`${dir}/${plan}`);
+    await page.getByRole("button", { name: "Remove the quote" }).click();
+    await expect(prompt).toHaveValue("Keep this draft");
+  });
 }
 
 test("a deck opens in slide order, presents with its notes, and the presenter's window follows", async ({
@@ -889,12 +1107,24 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
   const view = presenter.getByRole("main", { name: "Presenter view" });
   await expect(view.getByText("Slide 2 of 3")).toBeVisible();
   await expect(view.locator(".presenter-notes")).toHaveText("Three steps.");
+  await presenter.setViewportSize({ width: 390, height: 844 });
+  const now = await view.locator(".presenter-now").boundingBox();
+  const notes = await view.locator(".presenter-notes").boundingBox();
+  expect(notes.y).toBeGreaterThanOrEqual(now.y + now.height);
+  expect(notes.width).toBeGreaterThan(350);
+  // A second viewer in the same browser may have exactly the same file open.
+  const independent = await app.context().newPage();
+  const other = await openFiles(independent, session, "decks/talk/");
+  const otherStage = other.locator(".page-stage");
+  await expect(otherStage.getByText("1 / 3")).toBeVisible();
   await presenter.keyboard.press("ArrowRight");
   await expect(view.getByText("Slide 3 of 3")).toBeVisible();
   await expect(view.getByText("End of the deck")).toBeVisible();
   await expect(stage.getByText("3 / 3")).toBeVisible();
   await stage.getByRole("button", { name: "Previous slide" }).click();
   await expect(view.getByText("Slide 2 of 3")).toBeVisible();
+  await expect(otherStage.getByText("1 / 3")).toBeVisible();
+  await independent.close();
   await presenter.close();
 
   // Ended, the deck is on the slide it was presenting, in the viewer.
@@ -1449,11 +1679,13 @@ async function typing(block, press = (target) => target.click()) {
 }
 // Edit on, the caret at the end of a block of the stage's page, and time
 // stopped: what is typed next is written only by what the test then does.
+const lineEnd = process.platform === "darwin" ? "Meta+ArrowRight" : "End";
+
 async function typeIn(app, files, block, press = (target) => target.click()) {
   const edit = files.getByRole("button", { name: "Edit" });
   if ((await edit.getAttribute("aria-pressed")) !== "true") await press(edit);
   await typing(block, press);
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.clock.install();
   await app.clock.pauseAt((await app.evaluate(() => Date.now())) + 60_000);
 }
@@ -1575,7 +1807,7 @@ test("a block that was refused stays owed: its notice stands though another is s
   await typing(stage.getByRole("heading", { name: "Cover" }), (heading) =>
     heading.click({ position: { x: 20, y: 4 } }),
   );
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText(" page");
   await expect(saving(files)).toHaveText("Saving…");
   await app.clock.runFor(1000);
@@ -1998,7 +2230,7 @@ test("a slide's notes are typed under its stage while Edit is on, and made where
       "<aside><p>Say:</p><p>First point.</p><p>Second, changed.</p><p>Third.</p></aside>",
     );
   await typing(stage.getByRole("heading", { name: "End" }));
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText("!");
   await expect.poll(end).toContain("<h1>End!</h1><aside><p>Say:");
   await files.getByRole("button", { name: "Previous slide" }).click();
@@ -2060,7 +2292,7 @@ test("a document's typed block is undone and made again with the keys, the page 
   await files.getByRole("button", { name: "Edit" }).click();
   await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
   await block.click();
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText(" A");
   await expect.poll(note).toContain("<p>Plan A</p>");
   // Out of the block, the keys are the pane's.
@@ -2076,7 +2308,7 @@ test("a document's typed block is undone and made again with the keys, the page 
   await expect(block).toHaveAttribute("contenteditable", "plaintext-only");
   await block.click();
   await app.keyboard.press("ControlOrMeta+z");
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText("!");
   await expect.poll(note).toContain("<p>Plan A!</p>");
 });
@@ -2130,6 +2362,113 @@ test("on a phone a deck's legend is a filmstrip under the stage", async ({
   await expect(
     legend.getByRole("option", { name: "Slide 1: Cover" }),
   ).toBeInViewport();
+});
+
+test("selecting a filmstrip thumbnail preserves its position in a clipped viewer", async ({
+  page,
+  session,
+  host,
+}) => {
+  const { legend, count } = await openDeck(
+    page,
+    session,
+    host.project,
+    Object.fromEntries(
+      ["Cover", "Detail", "Results", "End"].map((title, at) => [
+        `0${at + 1}.html`,
+        slide(title),
+      ]),
+    ),
+    { phone: true },
+  );
+  const options = legend.getByRole("option");
+  await options.nth(1).click();
+  await expect(count).toHaveText("2 / 4");
+  // Leave part of the filmstrip below the enclosing scrollport and part
+  // of the first thumbnail beyond the strip's left edge.
+  await page.addStyleTag({
+    content:
+      ".files-stage { overflow: auto } .files-stage > .open-page { min-height: calc(100% + 46px) }",
+  });
+  await legend.evaluate((list) => {
+    list.scrollLeft = 55;
+  });
+  const read = () =>
+    legend.evaluate((list) => ({
+      top: list.getBoundingClientRect().top,
+      left: list.scrollLeft,
+    }));
+  const before = await read();
+  const strip = await legend.boundingBox();
+  await page.mouse.click(strip.x + 12, strip.y + 20);
+  await expect(count).toHaveText("1 / 4");
+  await expect(options.first()).toBeFocused();
+  // Wait through the navigation effect before reading geometry.
+  await page.evaluate(
+    () =>
+      new Promise((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(done)),
+      ),
+  );
+  expect(await read()).toEqual(before);
+  await page.keyboard.press("End");
+  await expect(count).toHaveText("4 / 4");
+  await expect(options.last()).toBeFocused();
+  await expect
+    .poll(async () => (await read()).left)
+    .toBeGreaterThan(before.left);
+  expect((await read()).top).toBe(before.top);
+});
+
+test("a section heading leaves slide thumbnails and their captions aligned across the filmstrip", async ({
+  page,
+  session,
+  host,
+}) => {
+  const { legend } = await openDeck(page, session, host.project, {
+    "01-cover.html": slide("Cover"),
+    "02-detail.html": slide(
+      "Detail",
+      "",
+      '<meta name="section" content="Findings">',
+    ),
+    "03-summary.html": slide("Summary"),
+  });
+  const heading = legend.locator(".page-legend-section");
+  const frames = legend.locator(".page-frame");
+  const captions = legend.locator(".page-legend-name");
+  const tops = (items) =>
+    items.evaluateAll((nodes) =>
+      nodes.map((n) => n.getBoundingClientRect().top),
+    );
+  const aligned = async () => {
+    for (const items of [frames, captions]) {
+      await expect(items).toHaveCount(3);
+      const y = await tops(items);
+      expect(Math.max(...y) - Math.min(...y)).toBeLessThan(1);
+    }
+    expect(
+      (await heading.boundingBox()).y + (await heading.boundingBox()).height,
+    ).toBeLessThanOrEqual((await frames.nth(1).boundingBox()).y);
+  };
+  await expect(heading).toHaveText("Findings");
+  await expect(
+    legend.getByRole("option", { name: "Findings, Slide 2: Detail" }),
+  ).toBeVisible();
+  // A wide Files pane keeps each section immediately before its own slide.
+  const resize = page.getByRole("separator", { name: "Resize the files" });
+  await resize.press("Shift+ArrowLeft");
+  const wide = await tops(frames);
+  expect(wide[1]).toBeGreaterThan(wide[0]);
+  expect(wide[2]).toBeGreaterThan(wide[1]);
+  const first = await legend.locator(".page-legend-item").first().boundingBox();
+  expect(wide[0]).toBeCloseTo(first.y, 0);
+  // The same desktop chat with a narrow pane, then the phone sheet.
+  for (let i = 0; i < 4; i++) await resize.press("Shift+ArrowRight");
+  await aligned();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(legend).toBeVisible();
+  await aligned();
 });
 
 test("a slide that fails is marked in the legend, and its errors go to the agent once", async ({
@@ -2485,7 +2824,7 @@ test("find follows what the agent rewrites while it is open", async ({
   await selectProbeModel(command, session, { yolo: true });
   await app.locator("#prompt").fill("Design probe");
   await app.locator("#prompt").press("Enter");
-  await expect(app.getByText("Wrote design/01-hero-a.html")).toBeVisible();
+  await expect(app.getByText("Replaced design/01-hero-a.html")).toBeVisible();
   release();
   // The page it rewrote is read again, and holds the words now.
   await expect(bar).toContainText("1 of 1");
@@ -2800,7 +3139,7 @@ test("a document's forced breaks, dead links and wide lines: the pages are those
   await app.keyboard.press("PageUp");
   await files.getByRole("button", { name: "Edit" }).click();
   await page.getByText("Quote.", { exact: true }).click();
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.type(" More.");
   await page.getByText("Named three").click();
   await expect(files.locator(".page-tools").getByRole("status")).toHaveText(
@@ -2987,7 +3326,7 @@ test("a document exports Markdown, and a block edited on its third page is saved
   await expect(paragraph).toHaveAttribute("contenteditable", "plaintext-only");
   const before = await readFile(memo, "utf8");
   await paragraph.click();
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText(" Churn held flat.");
   await expect(saving(files)).toHaveText("Saved");
   const saved = await readFile(memo, "utf8");
@@ -3161,7 +3500,7 @@ test("Edit's text bar comes with a selection and marks and links it, and the sta
   await expect.poll(body).toContain("<p><i>Alpha</i> beta gamma</p>");
 
   // The selection collapsed, the bar goes.
-  await app.keyboard.press("End");
+  await app.keyboard.press("ArrowRight");
   await expect(bar).toHaveCount(0);
   // A heading is bold by itself: there is no such mark to make in it.
   await selectIn(stage.locator("h1"), "Notes");
@@ -3369,11 +3708,11 @@ test("the text bar comes with a selection, by it: clear of the selected lines an
   await selectIn(title, "Notes");
   await expect(bar).toBeVisible();
   await clear();
-  await app.keyboard.press("End");
+  await app.keyboard.press("ArrowRight");
   await expect(bar).toHaveCount(0);
   // A selection of several lines: clear of all of them.
   await first.click();
-  await app.keyboard.press("End");
+  await app.keyboard.press(lineEnd);
   await app.keyboard.insertText(" and more words".repeat(10));
   await first.evaluate((block) => getSelection().selectAllChildren(block));
   await expect(bar).toBeVisible();
@@ -3533,6 +3872,10 @@ test("a deck's sections head the legend; presenting steps through a slide's buil
   await app.keyboard.press("ArrowRight");
   await expect(stage.getByText("1 / 3")).toBeVisible();
   await expect.poll(() => opacity(slideFrame, "Slow")).toBe("1");
+  await expect(slideFrame.getByText("Slow")).toHaveCSS(
+    "transition-duration",
+    "0s",
+  );
   await expect.poll(() => opacity(slideFrame, "Costly")).toBe("0");
   await app.keyboard.press("ArrowRight");
   await expect.poll(() => opacity(slideFrame, "Costly")).toBe("1");

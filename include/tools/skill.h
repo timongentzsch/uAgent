@@ -54,6 +54,7 @@ inline ToolResult OpenSkill(const Skill& skill,
     return ToolFailure(ToolErrorCode::kInternal, std::move(result.output));
   }
   ToolResult opened = ToolSuccess(std::move(result.output));
+  opened.body_kind = "markdown";
   opened.opened_skill = skill.name;
   return opened;
 }
@@ -180,7 +181,7 @@ inline Tool SkillTool(std::vector<Skill> skills,
 
         std::string query = JsonValue(a, "query", "");
         const Skill* match = nullptr;
-        size_t matches = 0;
+        int64_t matches = 0;
         for (const Skill& skill : skills) {
           if (!SkillMatches(skill, query)) continue;
           match = &skill;
@@ -195,7 +196,7 @@ inline Tool SkillTool(std::vector<Skill> skills,
                   "; call skill with {} to list installed "
                   "names");
         }
-        return ToolSuccess(std::move(catalogue));
+        return ListResult(std::move(catalogue), matches, "skill");
       });
   // Reading a skill changes nothing; what it asks for needs its own approval.
   t.parallel_safe = true;
@@ -204,8 +205,13 @@ inline Tool SkillTool(std::vector<Skill> skills,
   t.result_chars = static_cast<int64_t>(kSkillBodyBytes) + 1024;
   t.headline = [](const json& a) {
     std::string name = JsonValue(a, "name", "");
-    return Headline{"Loading skill", "Loaded skill",
-                    name.empty() ? JsonValue(a, "query", "list") : name};
+    if (!name.empty()) return Headline{"Opening skill", "Opened skill", name};
+    const std::string query = JsonValue(a, "query", "");
+    return query.empty() ? Headline{"Checking", "Checked", "installed skills"}
+                         : Headline{"Finding skills", "Searched skills", query};
+  };
+  t.present = [](const json& a) {
+    return GenericInputParts(a, {"name", "query"});
   };
   return t;
 }

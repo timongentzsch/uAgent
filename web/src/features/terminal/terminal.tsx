@@ -362,9 +362,11 @@ type PageTerminal = Omit<TerminalInfo, "title" | "started"> & {
 // The shell runs on when this page leaves it.
 export function FolderTerminal({
   terminal,
+  hide,
   close,
 }: {
   terminal: TerminalInfo;
+  hide: () => void;
   close: (terminal: TerminalInfo) => void;
 }) {
   return (
@@ -374,7 +376,12 @@ export function FolderTerminal({
     >
       <Bar edge="bottom" class="terminal-bar">
         <Place name={terminal.title} cwd={terminal.cwd} />
-        <Button onClick={() => close(terminal)}>Close terminal</Button>
+        <Menu label="Terminal menu">
+          <MenuItem onClick={() => close(terminal)}>Stop terminal</MenuItem>
+        </Menu>
+        <IconButton label="Hide the terminal" onClick={hide}>
+          <ChevronDown />
+        </IconButton>
       </Bar>
       <TerminalView key={terminal.id} id={terminal.id} />
     </section>
@@ -386,6 +393,8 @@ export default function TerminalPanel({
   cwd,
   quote,
   shown,
+  expanded,
+  expand,
   hide,
   close,
   report,
@@ -394,6 +403,8 @@ export default function TerminalPanel({
   cwd: string;
   quote?: (text: string) => void;
   shown: boolean;
+  expanded: boolean;
+  expand?: () => void;
   hide: () => void;
   // Its last tab closed.
   close: () => void;
@@ -467,7 +478,7 @@ export default function TerminalPanel({
                 />
               </Button>
               <IconButton
-                label={`Close Terminal ${tab.number}`}
+                label={`${ended.includes(tab.id) ? "Dismiss" : "Stop"} Terminal ${tab.number}`}
                 onClick={() => void remove(tab.id)}
               >
                 <X />
@@ -483,6 +494,11 @@ export default function TerminalPanel({
           <Plus />
         </IconButton>
         <Menu label="Terminal menu">
+          {expand && (
+            <MenuItem onClick={expand}>
+              {expanded ? "Restore dock" : "Expand terminal"}
+            </MenuItem>
+          )}
           {quote && (
             <MenuItem
               disabled={!current}
@@ -493,11 +509,11 @@ export default function TerminalPanel({
                   quote(fenced(text.slice(-maxTerminalChatChars), "console"));
               }}
             >
-              Quote
+              Quote output
             </MenuItem>
           )}
           <MenuItem disabled={!current} onClick={() => void remove(active)}>
-            Close terminal
+            {ended.includes(active) ? "Dismiss terminal" : "Stop terminal"}
           </MenuItem>
         </Menu>
         <IconButton label="Hide the terminal" onClick={hide}>

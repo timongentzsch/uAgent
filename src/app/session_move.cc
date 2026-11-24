@@ -77,7 +77,8 @@ std::string Rewrite(const SessionMove& move, const std::string& path,
           metadata.suggestion = nullptr;
           changed = true;
         }
-        if (top && AddNote(record, move, failed)) changed = true;
+        // A child working in its own worktree keeps that workspace.
+        if ((changed || top) && AddNote(record, move, failed)) changed = true;
         return changed && failed.empty();
       });
   if (!failed.empty()) return failed;
@@ -134,7 +135,9 @@ std::string SessionHost::MoveConversation(
       return "this conversation has nothing saved yet";
     }
     if (!top->parent.empty()) {
-      return "this is an agent; move the conversation that started it";
+      return top->side.is_null()
+                 ? "this is an agent; move the conversation that started it"
+                 : "this is a side chat; move its conversation";
     }
     if (Busy(*top)) {
       return "\"" + top->title + "\" is running; wait for it or stop it";

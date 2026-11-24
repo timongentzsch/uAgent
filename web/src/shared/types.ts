@@ -15,6 +15,7 @@ interface Failure extends Error {
   network?: boolean;
   status?: number;
   rejected?: boolean;
+  choices?: FileOrigin[];
 }
 export function failure(error: unknown): Failure {
   return error instanceof Error ? error : new Error(String(error));
@@ -82,7 +83,7 @@ export interface Exchange {
   generation_id?: string;
 }
 // One state vocabulary for every call and receipt.
-type RowState = "running" | "ok" | "failed" | "cancelled";
+type RowState = "running" | "ok" | "failed" | "cancelled" | "recorded";
 // What a finished call's result was. The host words it: `word` is the
 // whole subtitle ("exit 1 · 2.3s"), absent when there is none; the facts
 // behind it are for reading.
@@ -113,8 +114,16 @@ export type BodyKind =
 export type ToolPart =
   | RefusalPart
   | { kind: "command"; text: string }
-  | { kind: "code"; text: string; language?: string; label?: string }
+  | {
+      kind: "code";
+      text?: string;
+      first_line?: number;
+      language?: string;
+      label?: string;
+    }
   | { kind: "fields"; rows: [string, string][] }
+  | { kind: "source"; url: string; title?: string; excerpt?: string }
+  | { kind: "markdown"; text: string }
   | FilePart
   | ArtifactPart
   | LinkPart;
@@ -145,7 +154,9 @@ export interface FilePart {
 }
 export interface LinkPart {
   kind: "link";
-  to: "agent" | "activity" | "memory" | "browser";
+  to: "agent" | "activity" | "memory" | "browser" | "file";
+  state?: string;
+  report?: string;
   id: string | number;
   label: string;
 }
@@ -219,15 +230,19 @@ export interface Node {
   time?: string;
   state?: RowState;
   routine?: boolean;
+  tool?: string;
   headline?: { verb: string; target: string };
   result?: ResultFacts;
   body?: { kind: BodyKind; text: string; truncated?: boolean; tail?: string };
   // A message's author: you (or what woke the conversation), or the agent.
   role?: "user" | "assistant";
   // Files a call read, or what wrote a message in your place: an agent's
-  // report, finished background work, or another conversation's message.
-  origin?: "tool" | "agent" | "activity" | "message";
+  // report, finished background work, another conversation's message, or
+  // the harness asking a side chat to sum itself up.
+  origin?: "tool" | "agent" | "activity" | "message" | "merge";
   agent?: AgentFacts;
+  // Assignment from the retained start call, including when it is on an older page.
+  agent_label?: string;
   request_id?: string;
   incoming?: number;
   streaming?: boolean;
@@ -264,14 +279,11 @@ interface Delivery {
   delivery: string;
   path: string;
 }
-// A file a message cites, as the Files pane opens it: its lines ("12" or
-// "12-20"), or its diff: among the uncommitted changes, or what a turn
-// changed in it.
-export interface FileTarget {
-  path: string;
-  lines?: string;
-  changes?: boolean;
-  turn?: number;
+export interface FileOrigin {
+  cwd: string;
+  host: string;
+  origin: string;
+  current: boolean;
 }
 // What the inspector opens: a row's own work, or the one a link names.
 export interface ActivityTarget {
@@ -387,6 +399,7 @@ interface Permissions {
   mode: string;
   default: string;
   effective?: string;
+  source?: string;
 }
 // A rule allows the calls of `tool` that `match` covers: "*" every call,
 // "PREFIX *" a command, "DIR/" a path under it, else that exact subject.
@@ -424,6 +437,7 @@ export interface PlaceOption {
 }
 export interface Session {
   host?: string;
+  file_origin?: string;
   suggestion?: {
     options?: PlaceOption[];
     reason?: string;
@@ -434,8 +448,23 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
-  // The conversation that started this one as its agent.
+  // The conversation this one belongs to: it started it as its agent, or
+  // this is its side chat.
   parent?: string;
+  agent_edits?: "none" | "worktree" | "folder";
+  // Where a side chat branched from, also once it was opened as a
+  // conversation of its own (detached). `request` is its first question's
+  // request id; `asked` when, in ms; `merged` when its summary last reached
+  // the conversation, and how many turns it had then.
+  side?: {
+    parent: string;
+    request: string;
+    asked: number;
+    merged?: { at: number; turns: number };
+    detached?: boolean;
+  } | null;
+  // A side chat summing itself up for its conversation.
+  merging?: boolean;
   // The model its file names.
   model?: string;
   status?: SessionStatus;
@@ -463,7 +492,7 @@ export interface FolderFacts {
   changed: { files: number; added: number; removed: number };
   git?: { branch: string; uncommitted: number };
 }
-export type SessionRef = Pick<Session, "id" | "generation">;
+export type SessionRef = Pick<Session, "id" | "generation" | "file_origin">;
 export interface State {
   phase?: ExecutionPhase;
   // When the running turn started, on the host's clock.
@@ -837,7 +866,9 @@ export interface CommandResults {
   insert: never;
   reply: never;
   interrupt: never;
-  permissions: Permissions;
+  permissions: Permissions & {
+    sandbox?: { summary?: string; network?: string };
+  };
   permission_rules: PermissionRules;
   revoke_device: never;
   test_notification: never;
@@ -937,8 +968,11 @@ export interface CommandInputs {
   // the message a fork is cut before ("m-<id>").
   fork: { argument?: string; message_id?: string };
   share: None;
-  // Starts a side chat of the conversation, or merges this one back.
-  side: { operation: "create"; text: string } | { operation: "merge" };
+  // Starts a side chat of the conversation, whose first question goes as
+  // `request`; merges this one back, or opens it as a conversation of its own.
+  side:
+    | { operation: "create"; text: string; request: string }
+    | { operation: "merge" | "detach" };
   // The folder or workspace to move to, by its path on the host.
   move: { cwd?: string; space?: string };
   // Answers a suggested place with "here".
@@ -962,7 +996,11 @@ export interface CommandInputs {
   };
   interrupt: None;
   // A mode, or a call a review refused allowed for this conversation.
-  permissions: { mode?: string; allow?: { tool: string; match: string } };
+  permissions: {
+    mode?: string;
+    inspect?: boolean;
+    allow?: { tool: string; match: string };
+  };
   permission_rules: {
     action: string;
     tool?: string;
@@ -1036,14 +1074,22 @@ export interface RawOptions {
   prepare?: SessionRef;
 }
 export type AppModal =
-  // handoff: opened for the agent's request (take control, close on Done).
-  | { type: "browser"; handoff?: boolean }
+  // handoff: opened for the agent's request (take control, close on Done);
+  // session: whose browser, when not the open conversation's (a side chat).
+  | { type: "browser"; handoff?: boolean; session?: string }
   | { type: "instructions" }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
   | { type: "new"; place: "conversation" | "workspace" | "folder" }
   // `sessions`: several moved at once, from the sidebar's selection.
   | { type: "move"; session: Session; sessions?: Session[] }
+  | {
+      type: "file-origin";
+      path: string;
+      choices: FileOrigin[];
+      pick: (origin: string) => void;
+      linked: boolean;
+    }
   | { type: "delete-many"; sessions: Session[]; spaces: Space[] }
   // section: a settings section to open on, e.g. from /permissions.
   | { type: "settings"; section?: string }
@@ -1084,6 +1130,9 @@ export interface LibraryItem {
 export type LibraryKind = "memory" | "skill" | "file" | ArtifactType;
 // A folder or workspace the Library lists, with its latest conversation.
 export interface LibraryPlace {
+  // Local places use their path as the key; SSH workspaces also name the host.
+  key?: string;
+  host?: string;
   path: string;
   name: string;
   workspace: boolean;

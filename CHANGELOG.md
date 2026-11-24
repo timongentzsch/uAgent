@@ -1,22 +1,24 @@
 # Changelog
 
-## Unreleased
+## v1.12.0 - 2026-11-24
 
 ### Changes
 
-- **The home screen on a phone puts the question first.** "What are we working on?" stands in the middle with the last three conversations as plain lines under it and the box below; the lists give way while you type, so the question and the box have the screen.
-- **Work is shown by one quiet band, not by things fading.** While a turn works, a short band of pixels before "Working" in the status line under the input has a dithered glow running to and fro along it, one pass in `--motion-work` (0.8 s); it is the only thing that moves to say so. Nothing else fades any more: a step at work looks as it will when it is done, told by its wording, and a working conversation in the list, a side chat's tab and the browser button show a small still square of the band's texture. Every state mark is a square: outlined when idle, solid when connected or unread, and turned on its point in red when failed. Reduced motion stills the band too.
-- **A swipe from the left edge goes back in the app.** On a phone it closes what is open, Settings (a pane first), a sheet, a page of the list, with the app's own motion and without Safari's back animation; with nothing open it opens the conversations drawer as before. A drawer already open keeps its place.
+- Delegated agents inherit the parent's approval mode, including YOLO and Plan. Their edit scope still applies. Running agents appear above the composer, and completed agents can be reopened below it as ordinary conversations.
+- File citations and copied artifact links open in their original workspace after a conversation moves. Older links with multiple matches offer a folder picker. A deck review finding opens the affected slide directly.
+- New side chats move with their parent, count toward its spend and are deleted with it. Closing a tab hides it. Reopen it from Activity, or choose **Open as a conversation of its own** to detach it. Existing v1.11 side chats remain independent. Open side-chat tabs reset once on upgrade.
+- Merging a side chat keeps its transcript visible while the summary streams. The parent receives one expandable summary with a link to the side chat. Further replies can be merged again. An interrupted or failed merge leaves the side chat available.
+- On phones, Home shows the prompt and three recent conversations. Typing gives the composer more room. A swipe from the left edge closes the topmost pane or opens the conversation drawer.
+- A single animated band under the composer indicates work in progress. Other status marks stay still, and reduced-motion settings also stop the band.
 
 ### Fixes
 
-- **On a machine with too little memory, the agent's browser says so.** Below 600 MB for µAgent (a container's limit, else the machine's memory) it answers "The agent's browser needs about 600 MB of memory; this machine allows 512 MB" instead of starting Chrome and losing pages to the out-of-memory killer; PDF and PNG export, which use it, say the same.
-- **A conversation whose runtime ended mid-turn goes on with the next message.** When its runtime was killed (out of memory, a crash) or had stopped while the page held it, the next message was refused with "session needs activation" or "stale generation"; it now starts the runtime again and is answered. The turn that was running shows as stopped, as one you stop does.
-- **When memory runs out, the web host is not the first to go.** A conversation's runtime and what it runs, and the agent's browser, are now the processes the kernel ends first; before, the host went first and every conversation with it. On a 512 MB machine with 150 conversations streaming, the host stayed up and two conversations' runtimes were ended instead.
-- **The buttons under a selection stay with it.** "Ask in side chat" and "Quote" jumped to the left edge of the next paragraph, over the list of conversations, when a selection ended exactly at the start of the next block; they now sit under the last selected words, start where a short selection starts, and never leave the transcript.
-- **A message's time stands beside its last line.** In a wide window the time and the menu of a message you sent sat beside its first line; they are level with the last one now, and a one-line message has its text in the middle of its band.
-- **A conversation that cannot start says why in the terminal.** When the terminal had just connected as the runtime gave up (no provider set up, for one), the reason could be lost and only "Session connection closed" showed; the reason now always reaches it.
-- **An MCP server that has stopped no longer has its tools offered.** Its tools leave what the model is offered, and the context view's MCP row, at the next turn; before, the model kept being offered them and every call failed until the server was restarted.
+- Background memory updates recheck the source and the note before saving. Older conversations cannot recreate a forgotten note under another name. A conversation saved with memory disabled keeps that setting on resume.
+- Deck thumbnails stay aligned when a slide has a section heading and when the selection changes. Preview inspection can recover when its access grant rotates.
+- After a runtime stops mid-turn, the conversation shows the interruption and starts a new runtime on the next message. The terminal reports the cause if startup fails. Reports and tool activity arriving before the user's message no longer supply the conversation title.
+- The agent browser reports a crashed tab and supports reopening it. Browser tools and PDF or PNG export explain when the available memory is below the 600 MiB startup minimum. On Linux, out-of-memory scoring favors ending a runtime or browser before the shared web host.
+- Selection actions stay beside the selected words and inside the transcript. A sent message's time and menu align with its last line.
+- Tools from a stopped MCP server leave the model's tool list and the context display on the next turn.
 
 ## v1.11.0 - 2026-11-22
 
@@ -225,7 +227,7 @@
 - **A wait on background work shows as a row.** An `activity` wait or poll was hidden, so a turn spent waiting looked like thinking.
 - **"1 turn", and a separator in the turn footer.** The composer said "1 turns", and a turn's changed files ran into its token count.
 - **The browser no longer asks for a screenshot of a page that has text.** A short page, such as an order confirmation, got the hint meant for pages with no text.
-- **No flag warning across the agent's browser.** Chrome 154 shows "You are using an unsupported command-line flag: --disable-blink-features=AutomationControlled" in a bar over every page, in the live view and the agent's screenshots. The managed policy now turns that warning off (`CommandLineFlagSecurityWarningsEnabled`); reinstall it with `install.sh` or the command in [Browser](docs/BROWSER.md).
+- **No flag warning across the agent's browser.** Chrome 154 shows "You are using an unsupported command-line flag: --disable-blink-features=AutomationControlled" in a bar over every page, in the live view and the agent's screenshots. The managed policy now turns that warning off (`CommandLineFlagSecurityWarningsEnabled`); reinstall it with `install.sh` or the command in [Browser](docs/architecture/browser.md).
 - **Agents started with `items` and without `wait` run in the background.** `items` always waited for every agent, so a parent that asked for background agents sat idle until they finished and then did the rest of the work itself. Without `wait` the call now returns at once, and each agent reports when it is done.
 - **Memory extraction no longer leaves conversations behind.** Each background extraction was saved as a conversation of its own, titled "This is bounded background memory extraction…", in the space of the conversation it read.
 - **The find box keeps focus while you type.** When a message held more matches than it showed, such as a word in a link's address, Find clicked the message's actions button to open it; the menu then took the focus.

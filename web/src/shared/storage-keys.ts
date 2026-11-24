@@ -10,12 +10,14 @@ export const storageKeys = {
   // The remote hosts last listed, shown disconnected until the host answers.
   hosts: "uagent-hosts",
   page: "uagent-page",
-  drafts: "uagent-drafts",
+  drafts: "uagent-drafts", // Legacy map; each chat now has its own key below.
+  draftPrefix: "uagent-drafts:",
   outgoing: "uagent-outgoing",
   read: "uagent-read",
   unread: "uagent-unread",
   browser: "uagent-browser",
-  sideConversations: "uagent-side-conversations",
+  // The side chats each conversation shows as tabs on this device.
+  sideTabs: "uagent-side-tabs",
   bookmarks: "uagent-transcript-bookmarks",
   theme: "uagent-theme",
   motion: "uagent-motion",

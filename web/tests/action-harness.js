@@ -23,27 +23,23 @@ export function mountAction(options) {
 export async function mountUploads() {
   const { useDraftUploads } = await import("../src/app/use-draft-uploads.ts");
   const { useState } = await import("preact/hooks");
-  const { emptyDraft } = await import("../src/state/store.ts");
+  const { valueStore } = await import("../src/state/value-store.ts");
+  const drafts = valueStore({});
   const root = document.body.appendChild(document.createElement("div"));
-  let uploads, drafts, select, selected;
+  let uploads, select, selected;
   const errors = [];
   function Probe() {
     const [id, setId] = useState("first");
-    const [value, setDrafts] = useState({});
     selected = id;
     select = setId;
-    drafts = value;
-    const draft = value[id] || emptyDraft();
     uploads = useDraftUploads({
       host: {
         online: true,
         selected: id,
-        setDrafts,
+        drafts,
         report: (error) => errors.push(error.message),
       },
       session: { id },
-      draft,
-      uploading: draft.files.some((file) => file.pending),
     });
     return null;
   }
@@ -51,7 +47,7 @@ export async function mountUploads() {
   return {
     upload: () => uploads.upload([new File(["text"], "note.txt")]),
     select: (id) => select(id),
-    state: () => ({ selected, drafts, errors }),
+    state: () => ({ selected, drafts: drafts.get(), errors }),
     close: () => {
       render(null, root);
       root.remove();

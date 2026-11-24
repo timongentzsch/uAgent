@@ -124,6 +124,10 @@ TEST_CASE(TestMcpContractHelpers) {
   CHECK(tools.size() == 1);
   CHECK(tools[0].parameters == input_schema);
   CHECK(tools[0].provider == "mcp:probe");
+  const auto headline = ToolHeadline(
+      &tools[0], {{"api_key", "private"}, {"query", "first line\nsecond"}});
+  CHECK(headline.past == "Called probe/echo");
+  CHECK(headline.target == "first line");
   listed[0]["annotations"] = {{"readOnlyHint", true}};
   McpReplaceServerTools(tools, server, config, listed);
   CHECK(tools[0].mutating);
@@ -234,6 +238,16 @@ TEST_CASE(TestMcpContractHelpers) {
                     std::istreambuf_iterator<char>()) == "image");
   CHECK(rendered.find("file:///tmp/value") != std::string::npos);
   CHECK(rendered.find("structuredContent") != std::string::npos);
+  CHECK(mcp_result.body_kind == "fields");
+  REQUIRE(mcp_result.parts.size() == 2);
+  CHECK(JsonValue(mcp_result.parts[0], "text", "").find("file:///tmp/value") !=
+        std::string::npos);
+  CHECK(mcp_result.parts.back()["rows"][0] == json::array({"ok", "true"}));
+  response["result"]["content"] =
+      json::array({{{"type", "text"}, {"text", R"({"ok":true})"}}});
+  CHECK(McpResultText(server, response).parts.size() == 1);
+  response["result"]["isError"] = true;
+  CHECK(McpResultText(server, response).parts.is_null());
   ToolResult error_text = McpResultText(
       server,
       {{"result",
@@ -547,17 +561,19 @@ TEST_CASE(TestScopedBaseAndMemory) {
 
   // A global memory lands in the home directory even from inside a workspace.
   MemoryEvent memory_event;
-  CHECK(ExtractedMemoryAction("set", "global/prefers-tabs",
-                              std::string("The user prefers tabs."), workspace,
-                              "/tmp/source-session.json", &memory_event)
+  ObservedMemories observed;
+  CHECK(SaveExtractedMemory("global/prefers-tabs", "The user prefers tabs.", "",
+                            workspace, "/tmp/source-session.json", observed,
+                            memory_event)
             .output.starts_with("wrote "));
   CHECK(memory_event.action == "created");
   CHECK(memory_event.key == "global/prefers-tabs");
   CHECK(memory_event.automatic);
   CHECK(memory_event.source_session == WorkspaceId("/tmp/source-session.json"));
-  CHECK(ExtractedMemoryAction("set", "global/prefers-tabs",
-                              std::string("The user prefers tabs."), workspace,
-                              "/tmp/source-session.json", &memory_event)
+  LoadMemoryIndex(workspace, KiB(4), {}, &observed);
+  CHECK(SaveExtractedMemory("global/prefers-tabs", "The user prefers tabs.", "",
+                            workspace, "/tmp/source-session.json", observed,
+                            memory_event)
             .output.starts_with("unchanged "));
   CHECK(memory_event.action == "unchanged");
   std::vector<MemoryEvent> memory_events = LoadMemoryEvents();

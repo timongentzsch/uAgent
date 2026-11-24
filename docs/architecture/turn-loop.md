@@ -96,7 +96,7 @@ stopping the command.
 
 Agents. `agent_start` (`src/app/agent_tools.cc`) writes a session file
 `agent-<16 hex>.json` in the history with an `agent` header (`parent`,
-`edits`, `depth`, `budget`), starts its runtime with `session::Open` and
+`edits`, `approval`, `depth`, `budget`), starts its runtime with `session::Open` and
 submits the brief with origin `parent`.
 
 - `edits`: `none` (default) runs commands in the `readonly` sandbox and
@@ -105,8 +105,10 @@ submits the brief with origin `parent`.
   starts only read-only agents; plan mode forces `none`.
 - Approval: the start is judged by the parent's Auto review, and needs no
   person in the other modes (`kDelegation`, [Tools](tools.md)). The agent
-  runs in Auto, or Ask if the parent was in Ask. What Auto cannot settle
-  goes to the parent as mail (state `needs decision`), answered with
+  inherits the parent's effective mode at launch, including YOLO and Plan.
+  A mode chosen in the child's conversation overrides that default. Older
+  roles without a recorded mode default to Auto. A request that needs a
+  decision goes to the parent as mail (state `needs decision`), answered with
   `decide` or yielded; after 300 s (`kParentDecisionS`) it goes to the
   person. Mandatory-human requests, and those in a turn the person wrote
   into, go to the person directly.

@@ -8,7 +8,12 @@ import type {
   TerminalInfo,
 } from "../../shared/types.ts";
 import { useApi } from "../../state/api.ts";
-import { statusOf, type SessionState } from "../../state/attention.ts";
+import {
+  childrenByParent,
+  isAgent,
+  statusOf,
+  type SessionState,
+} from "../../state/attention.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { folderOf } from "../../shared/display.ts";
 import { folderName } from "../../shared/folder-label.tsx";
@@ -27,6 +32,7 @@ import {
   DataText,
   EmptyState,
   IconButton,
+  Notice,
   Row,
   SectionTitle,
   Time,
@@ -72,17 +78,25 @@ export default function FolderOverview({
   const roots = here
     .filter((item) => !item.parent)
     .sort((a, b) => (b.updated || 0) - (a.updated || 0));
-  const agents = (item: Session) => here.filter((a) => a.parent === item.id);
+  const agentsHere = here.filter(isAgent);
+  const children = childrenByParent(agentsHere);
   const state = (item: Session) => statusOf(item, online);
   // Read again whenever one of its conversations changes.
   const changed = Math.max(0, ...here.map((item) => item.updated || 0));
-  const { value: facts } = useResource(
-    () => api<FolderFacts>(routes.folder(folder)),
-    [folder, changed],
+  const stats = useResource(
+    async (signal) => ({
+      folder,
+      facts: await api<FolderFacts>(routes.folder(folder), undefined, {
+        signal,
+      }),
+    }),
+    [folder, changed, api],
   );
+  const facts = stats.value?.folder === folder ? stats.value.facts : undefined;
+  const missing = stats.error ? "Unavailable" : "Loading…";
   const working = roots.filter((item) => state(item) === "working").length;
-  const agentsWorking = here.filter(
-    (item) => item.parent && state(item) === "working",
+  const agentsWorking = agentsHere.filter(
+    (item) => state(item) === "working",
   ).length;
   const waiting = here.filter((item) => state(item) === "waiting").length;
   const week = roots.filter(
@@ -128,6 +142,22 @@ export default function FolderOverview({
           )
         }
       </StartField>
+      {waiting > 0 && (
+        <div class="overview-section">
+          <SectionTitle>Needs you</SectionTitle>
+          <WaitingList sessions={here} choose={choose} />
+        </div>
+      )}
+      {stats.error != null && (
+        <Notice
+          tone="warning"
+          action={<Button onClick={stats.retry}>Retry</Button>}
+        >
+          {facts
+            ? "Couldn’t refresh folder statistics. Showing the last values."
+            : "Couldn’t load folder statistics."}
+        </Notice>
+      )}
       <dl class="overview-stats card divided" aria-label="Summary">
         <Stat
           label="Working"
@@ -137,13 +167,15 @@ export default function FolderOverview({
         <Stat label="Needs you" value={waiting} detail="decisions" />
         <Stat
           label="Today"
-          value={cost(facts?.spend.today || 0)}
-          detail={`7 days ${cost(facts?.spend.week || 0)}`}
+          value={facts ? cost(facts.spend.today) : missing}
+          detail={facts ? `7 days ${cost(facts.spend.week)}` : ""}
         />
         <Stat
           label="Changed today"
-          value={plural(facts?.changed.files || 0, "file")}
-          detail={`+${facts?.changed.added || 0} −${facts?.changed.removed || 0}`}
+          value={facts ? plural(facts.changed.files, "file") : missing}
+          detail={
+            facts ? `+${facts.changed.added} −${facts.changed.removed}` : ""
+          }
         />
         <Stat
           label="Conversations"
@@ -151,12 +183,6 @@ export default function FolderOverview({
           detail={`${week.length} this week`}
         />
       </dl>
-      {waiting > 0 && (
-        <div class="overview-section">
-          <SectionTitle>Needs you</SectionTitle>
-          <WaitingList sessions={here} choose={choose} />
-        </div>
-      )}
       {shells.length > 0 && (
         <div class="overview-section">
           <SectionTitle>Terminals</SectionTitle>
@@ -197,20 +223,23 @@ export default function FolderOverview({
           <ul
             class={`overview-${layout}${layout === "list" ? " divided" : ""}`}
           >
-            {roots.map((item) => (
-              <li key={item.id}>
-                <Card
-                  item={item}
-                  state={state(item)}
-                  agents={agents(item)}
-                  working={
-                    agents(item).filter((a) => state(a) === "working").length
-                  }
-                  card={layout === "grid"}
-                  open={() => choose(item.id)}
-                />
-              </li>
-            ))}
+            {roots.map((item) => {
+              const agents = children.get(item.id) || [];
+              return (
+                <li key={item.id}>
+                  <Card
+                    item={item}
+                    state={state(item)}
+                    agents={agents.length}
+                    working={
+                      agents.filter((a) => state(a) === "working").length
+                    }
+                    card={layout === "grid"}
+                    open={() => choose(item.id)}
+                  />
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <EmptyState>No conversations here yet.</EmptyState>
@@ -250,7 +279,7 @@ function Card({
 }: {
   item: Session;
   state: SessionState;
-  agents: Session[];
+  agents: number;
   working: number;
   card: boolean;
   open: () => void;
@@ -295,7 +324,7 @@ function Card({
           <DataText>{step}</DataText>
         </small>
       )}
-      {todo && (
+      {todo && todo.done < todo.total && (
         <span class="overview-todo small">
           <progress max={todo.total} value={todo.done} />
           <DataText>
@@ -305,8 +334,8 @@ function Card({
       )}
       <small class="overview-foot">
         <span>
-          {agents.length
-            ? `${plural(agents.length, "agent")}${working ? ` · ${working} working` : ""}`
+          {agents
+            ? `${plural(agents, "agent")}${working ? ` · ${working} working` : ""}`
             : "No agents"}
         </span>
         <span>

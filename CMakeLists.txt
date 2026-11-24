@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(uagent VERSION 1.11.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
+project(uagent VERSION 1.12.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 # The build id hashes the runtime's inputs, not HEAD, so an unpublished edit
@@ -17,6 +17,7 @@ list(APPEND _runtime_inputs "CMakeLists.txt"
      "cmake/build_identity.cc.in"
      "cmake/review_questions.cc.in"
      "web/public/design-helper.js"
+     "web/public/deck-print.js"
      "docs/architecture/overview.md"
      "web/src/shared/styles/tokens.css")
 list(SORT _runtime_inputs)

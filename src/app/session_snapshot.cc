@@ -203,14 +203,11 @@ std::optional<SnapshotResult> SessionHost::LiveDetail(
   // stored exchange is read from the saved conversation.
   std::string path;
   json inline_exchange = nullptr;
-  bool turn_active = false;
   {
     std::lock_guard lock(mutex_);
-    turn_active = session.turn_active;
     auto active = session.active_exchanges.find(query.detail);
     if (active != session.active_exchanges.end()) {
       inline_exchange = active->second;
-      turn_active = true;
     }
     if (const auto found = session.change_paths.find(query.detail);
         found != session.change_paths.end() && !query.raw) {
@@ -223,7 +220,7 @@ std::optional<SnapshotResult> SessionHost::LiveDetail(
     const int status = body.contains("error") ? 404 : 200;
     return SnapshotResult{std::move(body), status};
   }
-  if (query.raw && turn_active && !inline_exchange.is_null()) {
+  if (query.raw && !inline_exchange.is_null()) {
     return SnapshotResult{PageText(JsonDump(inline_exchange), start), 200};
   }
   return std::nullopt;
@@ -264,8 +261,7 @@ SnapshotResult SessionHost::SavedSnapshot(std::shared_ptr<HostSession> session,
     const EffectiveConfigSnapshot configured = config.Read();
     const std::string route = configured.Get("UAGENT_MODEL");
     state["route"] = route.empty() ? record.metadata.model : route;
-    state["permissions"] =
-        ApprovalState(configured, !record.metadata.agent.empty());
+    state["permissions"] = ApprovalState(configured, record.metadata.agent);
   } else if (PathExists(session->path)) {
     return {{{"error", loaded.status.message}}, 422};
   }

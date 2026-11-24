@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <future>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -67,7 +68,8 @@ void Agent::PushToolResultMessage(const ToolCall& call, json message) {
 }
 
 void Agent::RecordToolRow(const ToolCall& call, const ToolResult& original,
-                          double duration_ms) {
+                          double duration_ms,
+                          const std::string* exchange_response) {
   conversation_.AddStatistics({{"tool_ms", duration_ms}});
   // The row as a person reads it: the output without the model's hints, and
   // its facts. The tool message below is what the model reads.
@@ -97,7 +99,8 @@ void Agent::RecordToolRow(const ToolCall& call, const ToolResult& original,
   if (retain_exchanges_) {
     json exchange = {
         {"request", {{"name", call.name}, {"arguments", call.args}}},
-        {"response", ModelText(original)},
+        {"response",
+         exchange_response ? *exchange_response : ModelText(original)},
         {"status", CompletionStatusName(original.status)},
         {"complete", true}};
     std::string body = JsonDump(exchange);
@@ -152,7 +155,8 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
 // Validates one call, publishes its activity row and asks for approval. A
 // call that may run leaves with task.execute set; any other has its result.
 void Agent::PrepareCall(const ToolCall& call, CallTask& task,
-                        TurnExecution& state, StepState& loop) {
+                        TurnExecution& state, StepState& loop,
+                        const std::string& parent) {
   int64_t& tool_count = state.metrics.tool_count;
   auto& tool_counts = loop.tool_counts;
   const int64_t step = loop.step;
@@ -256,9 +260,9 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   if (tool && tool->routine && tool->routine(arguments)) row["routine"] = true;
   const std::string kind(StepKind(JsonValue(task.headline, "verb", "")));
   ++work_.kinds[kind];
-  if (const std::string group = JoinRun(call.detail_id, kind); !group.empty()) {
-    row["group"] = group;
-  }
+  const std::string group =
+      parent.empty() ? JoinRun(call.detail_id, kind) : parent;
+  if (!group.empty()) row["group"] = group;
   conversation_.RecordDisplay(call.detail_id, row);
   Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
   call_event.data["work"] = WorkId(reply_to_);
@@ -379,6 +383,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& asked, TurnExecution& state,
   // results together.
   std::vector<ToolCall> calls;
   std::vector<size_t> answers;  // for each call, the asked one it is part of
+  std::vector<json> batches(asked.size());
   for (size_t index = 0; index < asked.size(); ++index) {
     const ToolCall& call = asked[index];
     const Tool* tool = FindTool(tools_, call.name);
@@ -387,7 +392,13 @@ bool Agent::RunCalls(const std::vector<ToolCall>& asked, TurnExecution& state,
         call.malformed.empty()) {
       parts = tool->parts(json::parse(call.args, nullptr, false));
     }
-    if (parts.empty()) calls.push_back(call);
+    if (parts.empty()) {
+      calls.push_back(call);
+      answers.push_back(index);
+      continue;
+    }
+    std::set<std::string> paths;
+    json children = json::array();
     for (size_t part = 0; part < parts.size(); ++part) {
       const std::string id = call.id + ":" + std::to_string(part + 1);
       calls.push_back({.id = id,
@@ -396,7 +407,16 @@ bool Agent::RunCalls(const std::vector<ToolCall>& asked, TurnExecution& state,
                        .response_id = call.response_id,
                        .occurrence_id = OccurrenceId(call.response_id, id),
                        .detail_id = DetailId(call.response_id, id)});
+      children.push_back(calls.back().detail_id);
+      paths.insert(JsonValue(parts[part].args, "path", ""));
     }
+    batches[index] = {{"detail_id", call.detail_id},
+                      {"name", call.name},
+                      {"children", std::move(children)},
+                      {"time", UtcStamp()},
+                      {"view",
+                       {{"verb", {"Patching", "Patched"}},
+                        {"target", Plural(paths.size(), "file")}}}};
     answers.resize(calls.size(), index);
   }
   const int64_t step = loop.step;
@@ -410,7 +430,16 @@ bool Agent::RunCalls(const std::vector<ToolCall>& asked, TurnExecution& state,
     ++revision_;
   }
   for (size_t index = 0; index < calls.size(); ++index) {
-    PrepareCall(calls[index], tasks[index], state, loop);
+    const size_t answer = answers[index];
+    const json& batch = batches[answer];
+    if (!batch.is_null() && (index == 0 || answers[index - 1] != answer)) {
+      EndRun();
+      conversation_.RecordDisplay(asked[answer].detail_id, batch);
+      Emit(Event{EventId::kMessageChanged,
+                 {{"node", CallNode(batch, WorkId(reply_to_))}}});
+    }
+    PrepareCall(calls[index], tasks[index], state, loop,
+                batch.is_null() ? "" : asked[answer].detail_id);
   }
 
   std::vector<size_t> runnable;
@@ -494,6 +523,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& asked, TurnExecution& state,
   std::vector<std::string> model_results = ModelFacingToolResults(tasks);
   size_t original_chars = 0;
   size_t model_chars = 0;
+  size_t succeeded = 0;
   std::string patched;  // the results of a patch's calls so far
   for (size_t index = 0; index < tasks.size(); ++index) {
     const ToolCall& call = calls[index];
@@ -506,9 +536,23 @@ bool Agent::RunCalls(const std::vector<ToolCall>& asked, TurnExecution& state,
                        task.duration_ms);
     } else {
       RecordToolRow(call, task.result, task.duration_ms);
+      if (task.result.Ok()) ++succeeded;
       patched += model_results[index] + "\n";
       if (index + 1 == tasks.size() || answers[index + 1] != answers[index]) {
         patched.pop_back();
+        const json& batch = batches[answers[index]];
+        const size_t count = batch["children"].size();
+        const std::string word = std::to_string(succeeded) + " of " +
+                                 std::to_string(count) + " succeeded";
+        ToolResult receipt = ToolSuccess(word);
+        if (succeeded < count) receipt.status = CompletionStatus::kFailed;
+        RecordToolRow(answered, receipt, 0, &patched);
+        json headline = CallHeadline(batch["view"], "ok", "");
+        if (succeeded < count) headline["verb"] = "Attempted patch on";
+        conversation_.RecordDisplay(
+            answered.detail_id,
+            {{"headline", std::move(headline)}, {"result", {{"word", word}}}});
+        succeeded = 0;
         PushToolResultMessage(answered,
                               {{"role", "tool"},
                                {"tool_call_id", answered.id},

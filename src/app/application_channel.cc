@@ -4,6 +4,7 @@
 #include <string_view>
 #include <utility>
 
+#include "include/agent/session_store.h"
 #include "include/cli/cli.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
@@ -59,8 +60,9 @@ int Application::RunChannel() {
                      "Update or reload your client to start a "
                      "tool-capable side conversation."}};
       }
-      json side = agent_.SideConversation(session_file_,
-                                          JsonValue(request, "text", ""));
+      json side =
+          agent_.SideConversation(session_file_, JsonValue(request, "text", ""),
+                                  JsonValue(request, "request", ""));
       side["side_question"] = JsonValue(request, "text", "");
       return side;
     }
@@ -92,12 +94,21 @@ int Application::RunChannel() {
         attachments_.push_back(std::move(attachment));
       }
       ProcessInput(std::move(input->text));
+      // A merge's summary written to its end goes to the conversation.
+      if (report_ &&
+          JsonValue(agent_.LastStop(), "reason", "") == "completed") {
+        agent_.MarkMerged();
+      }
       // Mail that came as the turn was ending starts the next one.
       agent_.DeliverMail();
       // An agent's spend is its parent's too, reported before the turn's
-      // end wakes the parent.
-      if (const json agent = context_.options.AgentRole(); !agent.empty()) {
-        ReportUsage(UsageLedger(JsonValue(agent, "parent", "")));
+      // end wakes the parent; so is a side chat's.
+      const json agent = context_.options.AgentRole();
+      if (const std::string parent = agent.empty()
+                                         ? agent_.SideParent()
+                                         : JsonValue(agent, "parent", "");
+          !parent.empty()) {
+        ReportUsage(UsageLedger(parent));
       }
     }
     RunQueuedCommands();
@@ -142,6 +153,7 @@ void Application::PublishChannelState(bool checkpoint) {
     }
   }
   state["turns"] = agent_.UserTurns();
+  state["side"] = SideOf(agent_.History().DisplayFacts());
   state["activities"] = runtime_.processes.ActivityViews();
   state["todo"] = todo_ = agent_.Todo();
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;

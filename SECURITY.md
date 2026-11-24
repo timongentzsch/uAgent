@@ -103,11 +103,12 @@ In every mode:
   - `run(sandbox=false)`, `run(root=true)`, and `agents` `delete`.
 
 An **agent**, a conversation another one started, acts for you unattended.
-It runs in Auto, or in Ask when its parent asks, unless a mode is chosen
-for its own conversation (`/permissions`, `--yolo`, the web's approval
-control); the saved setting does not reach it. With `edits` `none`, the
-default and the only choice in plan mode, it runs at `readonly` with no
-tool that edits, and so do the agents it starts. Otherwise it runs at
+At launch it records its parent's effective approval mode, including YOLO
+and Plan. That mode survives a restart. Choosing a mode in the agent's own
+conversation overrides it. Older agents with no recorded parent mode default
+to Auto. With `edits` set to `none`, the default and the only choice in Plan,
+it runs at `readonly` with no editing tools. The same limit applies to its
+own agents. Otherwise it runs at
 `default`, or `relaxed` in yolo. In Auto it is held to the same order as
 the conversation that started it: its file changes inside the folder run,
 its commands and the rest go to the decision model.

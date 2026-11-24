@@ -91,6 +91,12 @@ step to deliver it, **Edit** takes it back. **Queue next** (Alt+Enter)
 runs a message as its own turn after this one. Esc, or Send while it shows
 Stop, interrupts the turn.
 
+Type `@` in a message to find an attached file or a workspace path. Choose
+a workspace path to add a removable reference above the input. For a line
+or range, type `@src/main.cc:12` or `@src/main.cc:12-24` before choosing
+the file. The agent receives the path and line numbers. Use **Attach files**
+to include the file itself.
+
 **The status control** under the composer says how the conversation
 stands: Working with time, commands and agents; **Needs you** with
 **Show**; **Stopped** with **Continue** (sends `continue`); Reconnecting.
@@ -114,9 +120,13 @@ folded rows to reach a match.
 conversation**, **Statistics**, **Tools**, **Export transcript**,
 **Detail**, **Compact**, **Restart**, **Close conversation** and
 **Delete**. Fork waits for a running turn. **Move to…** moves a Local
-conversation and its agents to another folder or workspace; its files stay
-where they were, and it is refused while the conversation or an agent of
-it runs or has mail waiting. **Close conversation** saves it and stops its
+conversation, its attached side chats and its agents to another folder or workspace; its files stay
+where they were. Earlier file references open in their original workspace.
+New copied file links retain their workspace after a move. An older path-only
+link opens when exactly one workspace contains that path. If several contain
+it, choose the original folder from the list. Move is available
+when the conversation and its agents are idle and have no mail waiting.
+**Close conversation** saves it and stops its
 runtime and supervised children. **Delete** removes its saved messages and
 attachments, closing a live runtime first; files in the folder stay.
 `/fork [@N]`, `/rewind N` and `/btw QUESTION` branch a conversation; a
@@ -130,19 +140,29 @@ remove it, and they go before your text when the message is sent. A side
 chat is a `/btw` conversation: it has read the conversation so far,
 answers beside it and leaves it untouched, while a turn runs too. Each question starts a side chat of its own, shown as tabs;
 selecting in a side chat's answer follows up there. They sit in a column
-beside the chat (with Files open, between the chat and Files); closing a
-tab leaves the conversation in the list. Where there is no room for the
-column, on a phone or in a narrow window, the input itself asks, marked
-**Side chat** with the quote above it, and the side chat opens as a page
-of its own, with the way back and **Merge** in its header. Everywhere, a
-conversation's side chats are listed in its **Activity** list under the
-input, with its commands and agents ("2 side chats"): a row opens the
-side chat or removes it from the list.
+beside the chat (with Files open, between the chat and Files); X hides a
+tab, and the side chat stays. Where there is no room for the column, on a
+phone or in a narrow window, the input itself asks, marked **Side chat**
+with the quote above it, and the side chat opens as a page of its own,
+with the way back and **Merge** in its header. A side chat belongs to its
+conversation, on every device: it is not in the list of conversations, it
+moves and is deleted with it, and its spend counts toward it. Everywhere,
+a conversation's side chats are counted and listed in its **Activity**
+list under the input, with its commands and agents ("2 side chats"),
+working ones first: a row shows the side chat's tab, or its page. The
+arrow beside **Merge** (in the page's menu on a phone), **Open as a
+conversation of its own**, makes it an ordinary conversation in the list,
+with the way back to where it was asked.
 
-**Merge** brings a side chat back: it writes a summary of
-what it found, the conversation receives that as it does an agent's
-report (data, not instructions; judged in Auto) and answers, and the tab
-closes. The conversation reads the summary, never the side chat.
+**Merge** brings a side chat back: it writes a summary of what it found,
+in view ("Summing up…", and a quiet row in the conversation while it
+does), and the conversation receives that as it does an agent's report
+(data, not instructions; judged in Auto) and answers. There it is one
+row, **Merged side chat**, that folds like a step and holds the summary,
+with **Show side chat**. The side chat stays, saying when it merged, and
+offers Merge again once it has said more; a merge that fails or is
+stopped leaves it as it was and says why. The conversation reads the
+summary, never the side chat, and a report never names a conversation.
 
 **Several at once.** Ctrl-click (⌘-click) picks a row, Shift-click a run,
 and **Select** in a row's menu starts picking by tap; the sidebar's footer
@@ -164,8 +184,11 @@ pipeline is in [Tools](architecture/tools.md).
 | `yolo` | YOLO | `/yolo`, `--yolo`, `/permissions yolo` |
 | `plan` | Plan | `/plan`, `/permissions plan` |
 
-The web's **Approval** control sets this conversation's mode; **Default**
-returns to the one `approval.mode` gives.
+Open **Approval** to see which setting supplied the mode. **Default** follows
+the applicable settings for an ordinary conversation. A delegated agent
+inherits its parent's mode at launch. Its assignment disclosure shows whether
+it may edit the shared folder, edit its own worktree or only read. Choosing
+another approval mode in the child keeps its assigned edit scope.
 
 An approval card shows what the call would do (the command, or a diff),
 the folder, the risks a reviewer saw and why it asks (the mode, a rule, the
@@ -205,12 +228,23 @@ by shell commands are not tracked.
 **Files** (the folder button in a conversation's header) shows the
 conversation's folder as a tree with name search. Code opens highlighted,
 Markdown rendered (**Source** shows the text), HTML live in a sandboxed
-frame; other files download. In a git repository **Changes** lists what
-differs from the last commit, each as a diff. **Quote** puts a reference
-to the selected lines over the input, **Ask in side chat** asks about them
-in a side chat. Open files are read again when a turn
-ends. Files writes to disk only by artifact editing (below). It serves
+frame; other files download. In a Git repository **Changes** groups files
+by **Working tree** and **Staged**. Open a working-tree change to compare
+the file with the index, or a staged change to compare the index with the
+last commit. A partially staged file appears in both groups. **Quote** puts
+a reference to the selected lines over the input. **Ask in side chat** asks
+about them in a side chat. Open files are read again when a turn ends. Files writes to disk only by artifact editing (below). It serves
 nothing outside the folder ([Web host](architecture/web-host.md)).
+
+In an artifact, **Export → Copy link** copies a link to the current file or
+slide. In Files, the filename in the heading is also a link. Open it on a
+device paired with the same µAgent server to see the current workspace
+version. If the file moves or is removed, Files shows its missing path.
+
+In a deck, **Export** offers the whole deck first and the current slide
+separately. Without the host’s browser service, **Print deck or save as PDF**
+opens the browser’s print dialog. Skipped slides stay out of the deck PDF.
+On a narrow screen, open **More tools → Export**.
 
 A terminal is your own login shell, unsandboxed, on the conversation's
 execution host, at most 8 at once. Its environment is the agent's
@@ -310,7 +344,9 @@ composer.
 
 A key is `global/NAME` or `project/NAME`. The **Library** lists the
 memories, skills, artifacts and presented files of every place a
-conversation works in, without copying; a memory offers **Move to…** and
+conversation works in. SSH folders are grouped by host. Local items and shared
+snapshots appear while the Library loads live artifacts from connected hosts.
+A memory offers **Move to…** and
 **Copy to everywhere**, and picked items go with **Delete…**. **Scheduled**
 edits tasks (**New task**, **Run now**, **Pause**, **Resume**), which run
 only while `uagent --web` runs. `--no-memory` turns memory off for one

@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 tree=build/dev
 build() {
-  [ -f web/dist/.assets ] || (cd web && npm run build >/dev/null)
+  node web/scripts/build-state.js check || (cd web && npm run build >/dev/null)
   [ -f "$tree/build.ninja" ] || cmake --preset dev >/dev/null
   cmake --build --preset dev --parallel
 }
@@ -16,7 +16,6 @@ case "${1:-}" in
   int) [ -n "${2:-}" ] && build && python3 tests/integration.py "$tree/uagent" -k "$2" -j 4 ;;
   web)
     shift
-    (cd web && npm run build >/dev/null)
     build
     cd web && UAGENT_TEST_BINARY="../$tree/uagent" npx playwright test --project=chromium "$@"
     ;;

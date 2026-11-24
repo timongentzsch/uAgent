@@ -28,7 +28,8 @@ void ReplayLog::Publish(const std::string& epoch, const std::string& session,
   notice.session = session;
   // A decision routed to an agent's parent reaches a person only once
   // the parent yields it (approval.escalated).
-  const bool routed = RoutedToParent(JsonValue(value, "data", json::object()));
+  const json* data = JsonObject(value, "data");
+  const bool routed = data && RoutedToParent(*data);
   if (type == AppType(EventId::kTurnCompleted) ||
       ((type == AppType(EventId::kApprovalRequested) ||
         type == "ask.requested") &&
@@ -83,12 +84,14 @@ ReplayBatch ReplayLog::Read(uint64_t next, bool valid, uint64_t watermark,
                             size_t byte_budget) const {
   ReplayBatch batch;
   batch.cursor = sequence_;
-  batch.reset = !valid || next > sequence_ ||
-                (!replay_.empty() && next + 1 < replay_.front().sequence);
+  // The retained tail is consecutive, even when one oversized frame evicted
+  // itself. Readers behind that tail must resync instead of polling a gap.
+  const uint64_t before = sequence_ - replay_.size();
+  batch.reset = !valid || next < before || next > sequence_;
   if (batch.reset) return batch;
   // Sequences are consecutive, so the first unread frame is found by index.
   size_t bytes = 0;
-  for (size_t index = replay_.empty() ? 0 : next + 1 - replay_.front().sequence;
+  for (size_t index = static_cast<size_t>(next - before);
        index < replay_.size(); ++index) {
     const HostReplay& event = replay_[index];
     if (event.sequence > watermark || bytes >= byte_budget) break;

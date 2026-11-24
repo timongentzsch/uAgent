@@ -18,9 +18,27 @@ export const permissionLabels = {
 export const permissionNotes: Record<string, string> = {
   ask: "You approve each change, command and network call.",
   auto: "Edits in this folder run; a judge decides commands and the rest, and asks you when unsure.",
-  yolo: "Everything runs, sandboxed. Folder rules that refuse or ask still hold.",
+  yolo: "Eligible calls run without approval. Folder rules and the execution sandbox still apply.",
   plan: "Reads only, and writes the plan.",
 };
+export const approvalSources: Record<string, string> = {
+  parent: "Inherited from the parent at launch",
+  agent_default: "Default for older agents",
+  default: "Built-in default",
+  user: "All conversations setting",
+  project: "Folder setting",
+  environment: "Environment setting",
+  cli: "Launch option",
+  conversation: "Chosen for this conversation",
+};
+export const agentScope = (scope: Session["agent_edits"]) =>
+  scope &&
+  {
+    none: "Read-only assignment",
+    folder: "May edit the shared folder",
+    worktree: "May edit its own Git worktree",
+  }[scope];
+
 // Any other mode asks.
 export const permissionLabel = (mode?: string) =>
   permissionLabels[
@@ -69,3 +87,23 @@ export const servedByRows = (
       .filter(Boolean)
       .join(" · "),
   ]);
+
+const agentTopic = /^([^:\n]{1,44}):(?:\s|$)/u;
+
+export function agentAssignmentText(assignment: string) {
+  return cleanText(assignment).trim().replace(agentTopic, "").trim();
+}
+
+// Assignment prompts often start with a topic ("fstab: validate syntax…").
+// Keep the original text for inspection; the conversation control needs a name.
+export function shortAgentName(assignment: string) {
+  const first = cleanText(assignment).trim().split("\n", 1)[0] || "Agent";
+  const topic = agentTopic.exec(first)?.[1];
+  if (topic) return topic.trim();
+  if (first.length <= 40) return first;
+  const words = first
+    .slice(0, 38)
+    .replace(/\s+\S*$/, "")
+    .trimEnd();
+  return (words || first.slice(0, 38)) + "…";
+}

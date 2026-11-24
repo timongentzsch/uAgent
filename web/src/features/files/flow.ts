@@ -1,10 +1,11 @@
 // Where the Files pane is: exactly one view, and the views Back returns to.
 // A view's data is looked up by the path it names, never "the current one".
 
-import type { FileTarget } from "../../shared/types.ts";
+import type { FileTarget } from "../../shared/file-types.ts";
 import { HTML, MARKDOWN, nameOf, paged } from "../../shared/file-types.ts";
-import { join, type Listing, pagesOf, slidesOf } from "./boards.ts";
+import { join, type Listing, pagesOf, slideName, slidesOf } from "./boards.ts";
 
+export type GitScope = "working" | "staged";
 export type Lines = [number, number];
 export type View =
   // A folder's tree; with `note`, why the pane landed here.
@@ -14,13 +15,14 @@ export type View =
       path: string;
       lines?: Lines;
       source?: boolean;
-      diff?: boolean;
+      diff?: boolean | GitScope;
       // The diff is what this turn changed, not the uncommitted change.
       turn?: number;
+      journal?: string;
     }
   // A page across the pane, with the legend of what it is part of (a deck's
   // slides, a document's pages, a design's boards).
-  | { kind: "sequence"; path: string }
+  | { kind: "sequence"; path: string; note?: string }
   // A design's pages on a plane.
   | { kind: "canvas"; dir: string }
   // Several files share a cited name: the person picks one.
@@ -32,7 +34,9 @@ export type View =
       lines?: Lines;
       diff?: boolean;
       turn?: number;
+      journal?: string;
       fresh: boolean;
+      exact?: boolean;
     }
   | { kind: "outside"; path: string };
 type ResolveView = Extract<View, { kind: "resolve" }>;
@@ -82,8 +86,10 @@ export function cite(target: FileTarget, folder: string): Flow {
       kind: "resolve",
       path,
       lines: lineRange(target.lines),
+      ...(target.exact && { exact: true }),
       diff: !!target.changes,
       ...(target.turn && { turn: target.turn }),
+      ...(target.journal && { journal: target.journal }),
       fresh: true,
     },
     back: [],
@@ -130,7 +136,10 @@ export function folderView(dir: string, listing: Listing): View | undefined {
     kind: "sequence",
     path: join(dir, name),
   });
-  if (listing.kind === "deck") return at(slidesOf(listing)[0]);
+  if (listing.kind === "deck") {
+    const first = slidesOf(listing)[0];
+    return first ? at(first) : undefined;
+  }
   if (listing.kind === "system" && pages.includes("book.html"))
     return at("book.html");
   if (pages.length > 1) return { kind: "canvas", dir };
@@ -144,12 +153,19 @@ function landing(
   lines?: Lines,
   diff?: boolean,
   turn?: number,
+  journal?: string,
 ): { view: View; up: View[] } {
   const dir = dirOf(path);
   const list: View = { kind: "list", dir };
   if (diff)
     return {
-      view: { kind: "file", path, diff: true, ...(turn && { turn }) },
+      view: {
+        kind: "file",
+        path,
+        diff: true,
+        ...(turn && { turn }),
+        ...(journal && { journal }),
+      },
       up: [list],
     };
   // A design's page lies on its canvas; a document, a sheet and a deck's
@@ -194,8 +210,44 @@ export async function resolve(
       target.lines,
       target.diff,
       target.turn,
+      target.journal,
     );
     return settle(view, up);
+  }
+  if (target.exact) return missing(target.path);
+  // Reordering a deck changes the numeric prefix of its slides. Resolve an
+  // older finding against this deck before searching the wider workspace.
+  if (
+    listing?.kind === "deck" &&
+    HTML.test(name) &&
+    !target.lines &&
+    !target.diff
+  ) {
+    const slides = slidesOf(listing);
+    const dir = dirOf(target.path);
+    const up: View = { kind: "list", dir };
+    const matches = slides.filter(
+      (file) => slideName(file) === slideName(name),
+    );
+    if (matches.length > 1)
+      return settle(
+        {
+          kind: "pick",
+          name: target.path,
+          paths: matches.map((file) => join(dir, file)),
+        },
+        [up],
+      );
+    const next = matches[0] ?? slides[0];
+    const note = matches.length
+      ? undefined
+      : `${name} is no longer in this deck.`;
+    return next
+      ? settle(
+          { kind: "sequence", path: join(dir, next), ...(note && { note }) },
+          [up],
+        )
+      : settle({ ...up, note }, []);
   }
   // Not there as written: a name the folder holds somewhere else.
   const named = (await io.find(name)).filter(

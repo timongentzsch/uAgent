@@ -62,10 +62,17 @@ export function note(
     return setting.source === "cli"
       ? "Set on the command line for this run"
       : `Set by environment variable ${setting.name} — change it there`;
-  if (overridden(setting, scope)) return "Overridden in this folder";
+  if (overridden(setting, scope)) {
+    const value = secret(setting) ? "" : shown(setting.effective);
+    return value
+      ? `Overridden in this folder · ${value}`
+      : "Overridden in this folder";
+  }
   if (scope === "project" && setting.set?.project !== undefined)
     return `Overrides ${inherited(setting, scope, find)} from all conversations`;
   if (restart) return "Takes effect after restart";
+  if (scope === "project" && setting.source === "user")
+    return "Inherited from all conversations";
   return setting.terminal
     ? `${setting.purpose || setting.description} · read by the terminal and the host as they start`
     : undefined;

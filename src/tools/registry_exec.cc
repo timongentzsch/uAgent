@@ -138,7 +138,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                         : "runs as root on " + host;
   };
   run.clamped_arguments = {"yield_ms", "max_output_chars"};
-  run.mutating = true;
+  // The same tool survives permission changes, including leaving Plan.
+  run.mutates = [](const json&) {
+    const SandboxStatus& sandbox = SandboxRuntime();
+    return sandbox.mode != SandboxMode::kEnforced || !sandbox.policy.read_only;
+  };
   run.capabilities = Capability(ToolCapability::kExecute) |
                      Capability(ToolCapability::kMutate);
   run.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {

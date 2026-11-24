@@ -107,6 +107,7 @@ function Screen({
   report,
   connection,
   setConnection,
+  reconnect,
   children,
 }: {
   instance: string;
@@ -116,6 +117,7 @@ function Screen({
   report: Report;
   connection: ConnectionPhase;
   setConnection: (phase: ConnectionPhase) => void;
+  reconnect: () => void;
   children: ComponentChildren;
 }) {
   const { routes } = useApi();
@@ -189,6 +191,9 @@ function Screen({
             : connection === "reconnecting"
               ? "Reconnecting…"
               : "Connecting…"}
+          {connection === "disconnected" && (
+            <Button onClick={reconnect}>Reconnect</Button>
+          )}
         </p>
       )}
       {children}
@@ -212,7 +217,9 @@ export default function BrowserPanel({
 }) {
   const { api, routes, command } = useApi();
   const [instance, setInstance] = useState("0");
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [status, setStatus] = useState<BrowserStatus>({});
+  const [statusError, setStatusError] = useState("");
   const [busy, setBusy] = useState(false);
   const [connection, setConnection] = useState<ConnectionPhase>("connecting");
   const [typing, setTyping] = useState(false);
@@ -266,10 +273,13 @@ export default function BrowserPanel({
         },
       )
         .then((value) => {
-          if (!signal.aborted) setStatus(value);
+          if (!signal.aborted) {
+            setStatus(value);
+            setStatusError("");
+          }
         })
         .catch((error) => {
-          if (!signal.aborted) report(error);
+          if (!signal.aborted) setStatusError(failure(error).message);
         })
         .finally(() => {
           if (inFlight.current === request) inFlight.current = null;
@@ -277,7 +287,7 @@ export default function BrowserPanel({
       inFlight.current = request;
       return request;
     },
-    [instance, report, routes.browserStatus, api],
+    [instance, routes.browserStatus, api],
   );
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -538,14 +548,17 @@ export default function BrowserPanel({
   const canChangeProfile =
     driving || (status.mode === "idle" && !status.running && !status.leased);
   // Short enough to fit beside the tools on a phone; the menu says more.
+  const owner =
+    (status.waiting || status.mode === "agent") &&
+    sessionById(sessions, status.session_id)?.title;
   const [state, detail] = !status.ok
     ? ["Browser", "Loading"]
     : otherDevice
-      ? ["In use", "Another device is driving"]
+      ? ["Other device", "Another device is driving"]
       : driving
         ? status.waiting
           ? ["Your turn", "The agent is waiting for you"]
-          : ["Driving", "You're driving"]
+          : ["You", "You're driving"]
         : status.waiting
           ? ["Needs you", "The agent needs you"]
           : status.mode === "agent" && status.running
@@ -568,7 +581,7 @@ export default function BrowserPanel({
   };
   const statusMenu = (
     <SheetButton
-      label={`${detail}. Browser status and profiles`}
+      label={`${detail}${owner ? ` · ${owner}` : ""}. Browser status and profiles`}
       className="browser-status-menu"
       buttonClass="browser-status"
       heading="Browser"
@@ -586,7 +599,9 @@ export default function BrowserPanel({
           />
           <span class="truncate">
             {state}
-            {profileName !== "Default" && ` · ${profileName}`}
+            {owner
+              ? ` · ${owner}`
+              : profileName !== "Default" && ` · ${profileName}`}
           </span>
           <ChevronDown />
         </>
@@ -746,12 +761,18 @@ export default function BrowserPanel({
     </SheetButton>
   );
 
-  const banner = status.error ? (
+  const banner = statusError ? (
+    <Notice
+      tone="error"
+      action={<Button onClick={() => void refresh()}>Retry</Button>}
+    >
+      Browser status unavailable. {statusError}
+    </Notice>
+  ) : status.error ? (
     <Notice tone="error">{status.error}</Notice>
   ) : driving && status.profile_setup ? (
     <Notice tone="info">
-      Sign in to your sites. Done reopens this profile for the agent with your
-      saved logins.
+      Hand back when you finish signing in. The agent will use this profile.
     </Notice>
   ) : !driving && status.waiting && viewing ? (
     <Notice tone="info">
@@ -759,7 +780,9 @@ export default function BrowserPanel({
     </Notice>
   ) : null;
   const overlay = !status.ok
-    ? "Loading browser…"
+    ? statusError
+      ? ""
+      : "Loading browser…"
     : otherDevice
       ? "Another device is driving. Closing the browser there hands it back to the agent."
       : !status.running
@@ -862,7 +885,7 @@ export default function BrowserPanel({
       screen={
         viewing ? (
           <Screen
-            key={`${instance}-${status.display}`}
+            key={`${instance}-${status.display}-${connectionAttempt}`}
             instance={instance}
             viewer={viewer}
             screen={screen}
@@ -870,6 +893,7 @@ export default function BrowserPanel({
             report={report}
             connection={connection}
             setConnection={setConnection}
+            reconnect={() => setConnectionAttempt((attempt) => attempt + 1)}
           >
             {overlays}
           </Screen>
@@ -914,7 +938,7 @@ export default function BrowserPanel({
               title={driving ? "Hand the browser back to the agent" : undefined}
               onClick={() => void (driving ? done() : control("takeover"))}
             >
-              {driving ? "Done" : "Take over"}
+              {driving ? "Hand back" : "Take over"}
             </Button>
           </>
         )

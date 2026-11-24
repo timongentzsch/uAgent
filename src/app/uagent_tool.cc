@@ -15,6 +15,7 @@
 #include "include/app/permissions.h"
 #include "include/app/schedule.h"
 #include "include/cli/cli.h"
+#include "include/core/debug.h"
 #include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -50,6 +51,20 @@ int Reach(ApprovalMode mode) {
 json TaskBrief(const json& task) {
   return JsonPick(task, {"id", "name", "schedule", "check", "permissions",
                          "model", "cwd", "enabled", "upcoming", "error"});
+}
+
+// The scheduled instant is absolute. Include the zone used to display it.
+std::string ScheduledTime(int64_t at) {
+  return at > 0 ? LocalTime(at, "%Y-%m-%d %H:%M %Z") : "";
+}
+
+std::string TaskWhen(const json& task) {
+  if (!JsonValue(task, "enabled", true)) return "Paused";
+  const json* times = JsonArray(task, "upcoming");
+  if (!times || times->empty() || !times->front().is_number_integer()) {
+    return "";
+  }
+  return ScheduledTime(times->front().get<int64_t>());
 }
 
 ToolResult Schedule(const json& arguments, const std::string& model) {
@@ -120,7 +135,42 @@ ToolResult Schedule(const json& arguments, const std::string& model) {
   }
   out["host_running"] = hosted;
   if (!hosted) out["note"] = "tasks run only while uagent --web runs";
-  return ToolSuccess(JsonDump(out, 2));
+  ToolResult receipt = ToolSuccess(JsonDump(out, 2));
+  json rows = json::array();
+  if (const json* tasks = JsonArray(out, "tasks")) {
+    receipt.facts.items = tasks->size();
+    receipt.facts.unit = "task";
+    for (const json& task : *tasks) {
+      std::string detail = TaskWhen(task);
+      const std::string workspace = JsonValue(task, "cwd", "");
+      if (!workspace.empty()) {
+        detail += (detail.empty() ? "" : " · ") + workspace;
+      }
+      rows.push_back({JsonValue(task, "name", ""), std::move(detail)});
+    }
+    if (tasks->empty()) rows.push_back({"Scheduled tasks", "None"});
+  } else if (out.contains("schedule")) {
+    rows.push_back({"Task", JsonValue(out, "name", "")});
+    rows.push_back({"Workspace", JsonValue(out, "cwd", "")});
+    const std::string when = TaskWhen(out);
+    if (!when.empty()) rows.push_back({"Schedule", when});
+  } else if (const json* run = JsonObject(out, "run")) {
+    rows.push_back({"Run", JsonValue(*run, "status", "")});
+    rows.push_back({"Workspace", JsonValue(*run, "cwd", "")});
+    rows.push_back({"Scheduled for", ScheduledTime(JsonValue(
+                                         *run, "scheduled_for", int64_t{0}))});
+  } else if (out.contains("deleted")) {
+    rows.push_back({"Deleted", JsonValue(out, "deleted", "")});
+  }
+  if (!rows.empty()) {
+    if (const std::string error = JsonValue(out, "error", ""); !error.empty()) {
+      rows.push_back({"Error", error});
+    }
+    if (!hosted) rows.push_back({"Host", out["note"]});
+    receipt.parts = json::array({FieldsPart(std::move(rows))});
+    receipt.body_kind = "fields";
+  }
+  return receipt;
 }
 }  // namespace
 
@@ -190,6 +240,9 @@ Tool ScheduleTool(std::function<std::string()> model) {
     if (action == "run") return Headline{"Starting", "Started", target};
     return Headline{"Deleting", "Deleted", target};
   };
+  tool.present = [](const json& a) {
+    return GenericInputParts(a, {"action", "name", "key"});
+  };
   return tool;
 }
 
@@ -242,7 +295,56 @@ ToolResult Show(const json& arguments,
   }
   std::string output = JsonDump(value, 2);
   const int64_t limit = whole ? static_cast<int64_t>(output.size()) : -1;
-  return ToolSuccess(std::move(output), limit);
+  ToolResult result = ToolSuccess(std::move(output), limit);
+  const json* entries = JsonArray(value, "settings");
+  if (asked == "config" && entries) {
+    result.facts.items = entries->size();
+    result.facts.unit = "setting";
+    if (!name.empty() && entries->size() == 1) {
+      result.parts = GenericInputParts(JsonPick(
+          entries->front(), {"key", "effective", "source", "description"}));
+    }
+  } else if (asked == "status") {
+    result.parts = GenericInputParts(
+        JsonPick(value, {"model", "route", "approval", "context_window",
+                         "tools", "version", "restart_required"}));
+  } else {
+    // These catalogues have named rows. Leave other shapes in the inspector's
+    // ordinary text view, including responses from older hosts.
+    struct Catalogue {
+      const char* topic;
+      const char* array;
+      const char* unit;
+      const char* label;
+      const char* detail;
+    };
+    constexpr Catalogue kCatalogues[] = {
+        {"skills", nullptr, "skill", "name", "description"},
+        {"mcp", "servers", "server", "name", "state"},
+        {"cli", "flags", "flag", "usage", "description"},
+        {"commands", "commands", "command", "usage", "description"},
+        {"tools", "tools", "tool", "name", "description"}};
+    for (const auto& catalogue : kCatalogues) {
+      if (asked != catalogue.topic) continue;
+      const json* items =
+          catalogue.array ? JsonArray(value, catalogue.array) : &value;
+      if (!items || !items->is_array()) break;
+      result.facts.items = items->size();
+      result.facts.unit = catalogue.unit;
+      json rows = json::array();
+      for (const auto& item : *items) {
+        const std::string label = JsonValue(item, catalogue.label, "");
+        if (label.empty()) continue;
+        rows.push_back({label, JsonValue(item, catalogue.detail, "")});
+      }
+      if (!rows.empty()) {
+        result.parts = json::array({FieldsPart(std::move(rows))});
+      }
+      break;
+    }
+  }
+  if (!result.parts.empty()) result.body_kind = "fields";
+  return result;
 }
 
 // A file `write` replaces, named by kind and a skill by its folder, never by
@@ -328,8 +430,16 @@ ToolResult SaveEdited(const json& arguments, const Edited& file,
     error = WriteEditedFile(file.path, EditedText(arguments, file), text, shown,
                             /*shared=*/false);
   }
-  return error.empty() ? ToolSuccess(std::string("saved. ") + file.effect)
-                       : ToolFailure(ToolErrorCode::kProcessFailed, error);
+  if (!error.empty()) return ToolFailure(ToolErrorCode::kProcessFailed, error);
+  ToolResult result = ToolSuccess(std::string("saved. ") + file.effect);
+  result.facts.no_change = shown == text;
+  // A server definition can contain credentials. Keep its previous contents
+  // out of the saved transcript.
+  if (kind != "mcp" && !result.facts.no_change) {
+    result.diff = ConfigUnifiedDiff(shown, text, file.path.filename().string());
+    result.body_kind = "diff";
+  }
+  return result;
 }
 
 ToolResult CommitSettings(const ConfigProposal& approved) {
@@ -338,10 +448,19 @@ ToolResult CommitSettings(const ConfigProposal& approved) {
     return ToolFailure(ToolErrorCode::kProcessFailed, error);
   }
   std::string report = "saved for " + approved.target;
+  json rows = json::array({{"Scope", approved.target}});
   for (const ConfigChangeEffect& effect : approved.effects) {
     report += "\n" + effect.key + ": " + ConfigEffectName(effect.effect);
+    rows.push_back({effect.key, effect.configured + " → " + effect.proposed +
+                                    " (" + ConfigEffectName(effect.effect) +
+                                    ")"});
   }
-  return ToolSuccess(report);
+  ToolResult result =
+      ListResult(std::move(report),
+                 static_cast<int64_t>(approved.effects.size()), "setting");
+  result.parts = json::array({FieldsPart(std::move(rows))});
+  result.body_kind = "fields";
+  return result;
 }
 
 std::string CommandLine(const json& arguments) {
@@ -579,6 +698,11 @@ Tool UagentTool(SelfDescriptionProvider describe, ConfigProposalFactory prepare,
   tool.category = "system";
   tool.skill = kConfigSkill;
   tool.headline = UagentHeadline;
+  tool.present = [](const json& a) {
+    // Proposed values are shown by the redacted approval/commit preview.
+    return GenericInputParts(
+        a, {"action", "topic", "name", "scope", "file", "changes", "line"});
+  };
   if (prepare) OfferChanges(tool, std::move(prepare), std::move(queue));
   return tool;
 }

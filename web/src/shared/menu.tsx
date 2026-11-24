@@ -16,7 +16,6 @@ import {
   type TargetedMouseEvent,
 } from "preact";
 import {
-  useCallback,
   useContext,
   useEffect,
   useId,
@@ -127,7 +126,8 @@ export function Menu({
   pressed?: boolean;
   children: ComponentChildren;
 }) {
-  const [open, setOpen] = useState(false);
+  const [phase, setPhase] = useState<"closed" | "open" | "closing">("closed");
+  const open = phase === "open";
   const [view, show] = useState("");
   // Which item takes focus on opening: ArrowUp on the button opens at the
   // last, everything else at the first.
@@ -135,28 +135,27 @@ export function Menu({
   const anchor = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const id = useId();
-  // The panel unmounts once its exit has played. Our own close does not wait
-  // for the toggle event: WebKit drops it when a menu item opens a modal
-  // dialog, which leaves the menu unable to reopen.
-  const unmount = useCallback(
-    () =>
-      void settled(panel.current).then(() => {
-        setOpen(false);
-        show("");
-      }),
-    [],
-  );
   const close = () => {
     panel.current?.hidePopover();
     anchor.current?.focus({ preventScroll: true });
-    unmount();
+    setPhase("closing");
   };
   const openAt = (at: "first" | "last") => {
     start.current = at;
-    setOpen(true);
+    show("");
+    setPhase("open");
   };
   useLayoutEffect(() => {
-    if (!open) return;
+    // Keep the panel mounted through its exit. Reopening cancels this
+    // cleanup, so an old transition cannot close the new menu.
+    if (phase === "closing") {
+      let closing = true;
+      void settled(panel.current).then(() => closing && setPhase("closed"));
+      return () => {
+        closing = false;
+      };
+    }
+    if (phase !== "open") return;
     const element = panel.current;
     const button = anchor.current;
     if (!element || !button) return;
@@ -177,7 +176,8 @@ export function Menu({
       frame = requestAnimationFrame(follow);
     });
     const toggled = (event: ToggleEvent) => {
-      if (event.newState === "closed") unmount();
+      if (event.newState === "closed" && !element.matches(":popover-open"))
+        setPhase("closing");
     };
     element.addEventListener("toggle", toggled);
     const stopViewport = observeViewport(place);
@@ -187,7 +187,7 @@ export function Menu({
       element.removeEventListener("toggle", toggled);
       stopViewport();
     };
-  }, [open, unmount]);
+  }, [phase]);
   const button = {
     buttonRef: anchor,
     "aria-haspopup": "menu" as const,
@@ -220,7 +220,7 @@ export function Menu({
           <Ellipsis />
         </IconButton>
       )}
-      {open && (
+      {phase !== "closed" && (
         <div
           ref={panel}
           id={id}

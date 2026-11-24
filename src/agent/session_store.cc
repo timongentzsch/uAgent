@@ -173,6 +173,9 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
                                       const Conversation* conversation,
                                       SavedFile* saved) {
   json header = HeaderJson(record.metadata);
+  if (const json* moves = JsonArray(record.state.display, "file_moves")) {
+    header["has_file_moves"] = !moves->empty();
+  }
   header["incoming"] =
       JsonValue(JsonValue(record.state.display, "statistics", json::object()),
                 "incoming", uint64_t{0});
@@ -181,13 +184,19 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
   header["cost"] = record.state.usage.cost;
   header["tokens"] = SaturatingNonnegativeAdd(
       record.state.usage.PromptTokens(), record.state.usage.GeneratedTokens());
-  // So is how far its to-do list is.
-  if (json todo = TodoProgress(JsonValue(
-          JsonValue(JsonValue(record.state.display, "facts", json::object()),
-                    "todo", json::object()),
-          "items", json::array()));
-      !todo.is_null()) {
-    header["todo"] = std::move(todo);
+  // A listing reads the same header for progress and side-chat ownership.
+  const json* facts = JsonObject(record.state.display, "facts");
+  if (facts) {
+    if (const json* todo = JsonObject(*facts, "todo")) {
+      if (json progress =
+              TodoProgress(JsonValue(*todo, "items", json::array()));
+          !progress.is_null()) {
+        header["todo"] = std::move(progress);
+      }
+    }
+    if (json side = SideOf(*facts); !side.is_null()) {
+      header["side"] = std::move(side);
+    }
   }
   // The header is built from a typed struct; only the state can be incomplete.
   if (!ValidState(record.state, conversation)) {
@@ -298,6 +307,7 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.metadata.turns = header[kSessionHeaderTurns].get<int64_t>();
   record.metadata.title = header[kSessionHeaderTitle].get<std::string>();
   record.metadata.custom_title = JsonValue(header, "custom_title", false);
+  record.metadata.memory = JsonValue(header, "memory", true);
   record.metadata.suggestion = JsonValue(header, "suggestion", json(nullptr));
   record.metadata.parent_session_id =
       JsonValue(header, kSessionHeaderParent, "");
@@ -365,12 +375,16 @@ const SessionInfo& TopOf(const SessionInfo& info, const SessionsById& ids) {
   }
   return *top;
 }
-}  // namespace
 
-std::vector<SessionInfo> SessionsIn(const std::string& cwd,
-                                    const std::string& host) {
-  const std::vector<SessionInfo> sessions = Readable();
-  const SessionsById ids = ById(sessions);
+SessionInfo TopAt(const std::string& path, const SessionsById& ids) {
+  const auto own = ids.find(SessionIdFor(path));
+  return own == ids.end() ? SessionInfo{} : TopOf(*own->second, ids);
+}
+
+std::vector<SessionInfo> InWorkspace(const std::vector<SessionInfo>& sessions,
+                                     const SessionsById& ids,
+                                     const std::string& cwd,
+                                     const std::string& host) {
   std::vector<SessionInfo> in;
   for (const SessionInfo& info : sessions) {
     const SessionInfo& top = TopOf(info, ids);
@@ -378,18 +392,25 @@ std::vector<SessionInfo> SessionsIn(const std::string& cwd,
   }
   return in;
 }
+}  // namespace
+
+std::vector<SessionInfo> SessionsIn(const std::string& cwd,
+                                    const std::string& host) {
+  const std::vector<SessionInfo> sessions = Readable();
+  return InWorkspace(sessions, ById(sessions), cwd, host);
+}
 
 SessionInfo TopConversation(const std::string& path) {
   const std::vector<SessionInfo> sessions = Readable();
-  const SessionsById ids = ById(sessions);
-  const auto own = ids.find(SessionIdFor(path));
-  return own == ids.end() ? SessionInfo{} : TopOf(*own->second, ids);
+  return TopAt(path, ById(sessions));
 }
 
 std::vector<SessionInfo> SessionsBeside(const std::string& path) {
-  const SessionInfo top = TopConversation(path);
+  const std::vector<SessionInfo> sessions = Readable();
+  const SessionsById ids = ById(sessions);
+  const SessionInfo top = TopAt(path, ids);
   return top.cwd.empty() ? std::vector<SessionInfo>{}
-                         : SessionsIn(top.cwd, top.host);
+                         : InWorkspace(sessions, ids, top.cwd, top.host);
 }
 
 std::string AgentParentPath(const std::string& path,
@@ -408,11 +429,12 @@ std::string AgentParentPath(const std::string& path,
 std::string ForkSourcePath(const std::string& path) {
   const std::string source =
       JsonValue(SessionHeader(path), kSessionHeaderParent, "");
+  if (source.empty()) return "";
   std::error_code ec;
   for (const auto& entry : std::filesystem::directory_iterator(
            std::filesystem::path(path).parent_path(), ec)) {
-    if (!source.empty() && JsonValue(SessionHeader(entry.path().string()),
-                                     kSessionHeaderSessionId, "") == source) {
+    if (JsonValue(SessionHeader(entry.path().string()), kSessionHeaderSessionId,
+                  "") == source) {
       return entry.path().string();
     }
   }
@@ -481,7 +503,15 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.cost = JsonValue(header, "cost", 0.0);
         item.tokens = JsonValue(header, "tokens", int64_t{0});
         item.todo = JsonValue(header, "todo", json(nullptr));
-        item.parent = JsonValue(AgentOf(header), "parent", "");
+        const json agent = AgentOf(header);
+        item.agent_edits = JsonValue(agent, "edits", "");
+        item.side = JsonValue(header, "side", json(nullptr));
+        if (!item.side.contains("asked")) item.side = nullptr;
+        item.parent =
+            JsonValue(agent, "parent",
+                      JsonValue(item.side, "detached", false)
+                          ? ""
+                          : JsonValue(item.side, "parent", std::string()));
         item.memory = JsonValue(header, "memory", true);
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
           item.error = "unsupported session format";
@@ -500,6 +530,24 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
               return a.mtime == b.mtime ? a.path < b.path : a.mtime > b.mtime;
             });
   return out;
+}
+
+json SideOf(const json& facts) {
+  const json* origin = JsonObject(facts, "side-origin");
+  // Before 1.12, /btw forked an independent conversation. Its origin
+  // recorded the source and tools, without the timestamp of an attached side
+  // chat.
+  if (!origin || !origin->contains("asked")) return nullptr;
+  const auto parent = JsonValue(*origin, "parent", "");
+  const json* fork = JsonObject(facts, "fork-origin");
+  if (parent.empty() || (fork && JsonValue(*fork, "source", "") != parent)) {
+    return nullptr;
+  }
+  json side = json::object();
+  for (const char* key : {"parent", "request", "asked", "merged", "detached"}) {
+    if (origin->contains(key)) side[key] = (*origin)[key];
+  }
+  return side;
 }
 
 bool ValidSessionTitle(const std::string& title) {
@@ -645,12 +693,18 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     }
   };
   VisitStrings(record.state, rewrite);
-  record.state.display["facts"]["fork-origin"] = {
-      {"source", SessionIdFor(source)},
-      {"title", record.metadata.title},
-      {"turns", record.metadata.turns},
-      {"usage", UsageJson(record.state.usage)},
-      {"statistics", record.state.display["statistics"]}};
+  // Only a new side chat belongs to the source. A normal fork of a side
+  // chat must survive deletion of the conversation it branched away from.
+  json& facts = record.state.display["facts"];
+  if (const json* side = JsonObject(facts, "side-origin");
+      side && JsonValue(*side, "parent", "") != SessionIdFor(source)) {
+    facts.erase("side-origin");
+  }
+  facts["fork-origin"] = {{"source", SessionIdFor(source)},
+                          {"title", record.metadata.title},
+                          {"turns", record.metadata.turns},
+                          {"usage", UsageJson(record.state.usage)},
+                          {"statistics", record.state.display["statistics"]}};
   record.state.usage = {};
   record.state.route_usage.clear();
   record.state.display["statistics"] = {{"incoming", 0}, {"complete", true}};

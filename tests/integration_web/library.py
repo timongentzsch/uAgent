@@ -1,4 +1,5 @@
 import json
+import subprocess
 
 from integration_support import Server, assert_true, event, tool_call
 from web_support import web_host
@@ -42,6 +43,12 @@ def test_web_library_lists_everything_by_place(root, home, *, binary):
         '<!doctype html><meta name="print" content="flow a4"><title>book</title>'
     )
     (app / "report.html").write_text("<p>report</p>")
+    # Git lists symlinks as paths. An external document must stay outside
+    # the workspace even when an in-project name has an artifact extension.
+    outside = root / "outside.html"
+    outside.write_text('<meta name="print" content="flow a4">')
+    (site / "linked.html").symlink_to(outside)
+    subprocess.run(["git", "init", "-q", str(site)], check=True)
 
     def responder(_, body):
         if any(message.get("role") == "tool" for message in body["messages"]):

@@ -52,7 +52,13 @@ struct SessionInfo {
   int64_t bytes = 0;
   std::filesystem::file_time_type mtime;
   std::string error;
-  std::string parent;  // the session id of whoever started it, for an agent
+  // The session id of the conversation it belongs to: whoever started it,
+  // for an agent, or where it branched from, for a side chat.
+  std::string parent;
+  std::string agent_edits = {};  // delegated scope from the same header
+  // {parent, request, asked, merged?, detached?} for a side chat, or for one
+  // opened as a conversation of its own.
+  json side = nullptr;
   bool memory = true;
   std::string host = {};
   json suggestion = nullptr;
@@ -168,6 +174,9 @@ struct SessionLoadResult {
 };
 
 bool ValidSessionTitle(const std::string& title);
+// Whose side chat a conversation is, from its display facts, as its header
+// and its runtime's state carry it; null for none.
+json SideOf(const json& facts);
 std::string InvalidSessionTitleMessage();
 
 // What the last save wrote, to skip a save of the same bytes.

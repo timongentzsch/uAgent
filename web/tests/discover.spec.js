@@ -113,6 +113,11 @@ test.describe("in Places", () => {
       "Lists the commands",
     );
 
+    await page.route(
+      "**/api/folder?**",
+      (route) => route.fulfill({ status: 503, body: "Unavailable" }),
+      { times: 1 },
+    );
     await page.getByTitle(/^Overview of /).click();
     const overview = page.getByRole("region", { name: /^Overview of / });
     await expect(overview.getByRole("term")).toHaveText([
@@ -122,6 +127,11 @@ test.describe("in Places", () => {
       "Changed today",
       "Conversations",
     ]);
+    await expect(
+      overview.getByText("Unavailable", { exact: true }),
+    ).toHaveCount(2);
+    await overview.getByRole("button", { name: "Retry" }).click();
+    await expect(overview.getByText("0 files", { exact: true })).toBeVisible();
     await expect(overview.locator(".overview-card")).toHaveCount(1);
     await overview.locator(".overview-card").click();
     await expect(page.locator(".transcript .tips")).toContainText(
@@ -160,10 +170,10 @@ test.describe("pairing by link", () => {
     expect(new URL(page.url()).hash).toBe("");
   });
 
-  test("a refused code says it expired", async ({ page }) => {
+  test("a refused code explains how to get a new one", async ({ page }) => {
     await page.goto("/#pair=not-a-code");
     await expect(page.getByRole("alert")).toContainText(
-      "Expired — run uagent --web again",
+      "This code wasn’t accepted. Run uagent --web",
     );
     expect(new URL(page.url()).hash).toBe("");
   });

@@ -98,7 +98,9 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
   if (origin.is_object()) {
     std::erase(arriving_mail_, JsonValue(origin, "mail", ""));
     json facts = {{"origin", JsonValue(origin, "kind", "message")}};
-    if (origin.contains("agent")) facts["agent"] = origin["agent"];
+    for (const char* key : {"agent", "to"}) {
+      if (origin.contains(key)) facts[key] = origin[key];
+    }
     conversation_.RecordDisplay(conversation_.LastDisplayId(), facts);
   }
   PublishMessage(request_id);
@@ -284,11 +286,14 @@ void Agent::Turn(const std::string& user_input, json user_content,
   reply_to_.clear();
   ++revision_;
   ++total_user_turns_;
+  // Only the person's own words name the conversation: mail, a report or
+  // finished work arriving first never do.
   std::string title = FirstLine(user_input);
-  if (session_title_.empty() ||
-      (!custom_title_ && GenericSessionTitle(session_title_) &&
-       title.size() >= kGenericTitleReplacementMinChars &&
-       !GenericSessionTitle(title))) {
+  const bool person = JsonValue(origin, "kind", "user") == "user";
+  if (person && (session_title_.empty() ||
+                 (!custom_title_ && GenericSessionTitle(session_title_) &&
+                  title.size() >= kGenericTitleReplacementMinChars &&
+                  !GenericSessionTitle(title)))) {
     if (generate_titles_ && !GenericSessionTitle(title)) StartTitle(user_input);
     session_title_ = std::move(title);
   }
@@ -326,6 +331,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
     PushUserInput(attachment ? std::move(user_content) : json(user_input),
                   attachment, images, request_id, origin);
     Emit(NoticeEvent(PresentationStatus::kWarned, "interrupted"));
+    reply_to_.clear();
     Emit(Event{EventId::kTurnStopped,
                {{"turn", turn_id_}, {"outcome", "interrupted"}, {"steps", 0}}});
     return;
@@ -607,6 +613,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   summary.update(
       {{"messages", conversation_.Size()}, {"context_tokens", ContextUsed()}});
   CloseWork(TurnOutcomeName(state.stop.outcome));
+  reply_to_.clear();
   json entry = {{"kind", "turn_summary"},
                 {"turn_root", turn_root_},
                 {"summary", summary}};

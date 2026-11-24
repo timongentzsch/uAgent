@@ -6,6 +6,8 @@ import re
 import subprocess
 import unittest
 
+from reference_docs import limits_page
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PAGES = [
     *sorted((ROOT / "docs").rglob("*.md")),
@@ -40,9 +42,25 @@ def anchors(page):
 
 
 class DocsTest(unittest.TestCase):
+    def test_limit_comments_describe_their_declaration(self):
+        page = limits_page(
+            "// A ratio.\ninline constexpr int kParts = 3, kTotal = 4;\n"
+            'inline constexpr char kMarker[] = ".done";\n'
+        )
+        self.assertIn("| `kParts` | `3` | A ratio. |", page)
+        self.assertIn("| `kTotal` | `4` | A ratio. |", page)
+        self.assertIn('| `kMarker` | `".done"` |  |', page)
+
     def test_links_resolve(self):
-        for page in PAGES:
-            for link in LINK.findall(FENCE.sub("", page.read_text())):
+        # Check historical and skill documentation too. Historical code names
+        # can legitimately be absent from the current tree.
+        tracked = subprocess.check_output(
+            ["git", "ls-files", "-z", "--", "*.md"], cwd=ROOT, text=True
+        )
+        for page in (ROOT / name for name in tracked.split("\0") if name):
+            prose = FENCE.sub("", page.read_text())
+            prose = re.sub(r"(?<!`)(`+)(?!`)[^\n]*?(?<!`)\1(?!`)", "", prose)
+            for link in LINK.findall(prose):
                 if re.match(r"[a-z]+:", link):
                     continue
                 path, _, anchor = link.partition("#")

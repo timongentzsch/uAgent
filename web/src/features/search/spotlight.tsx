@@ -1,12 +1,18 @@
 import "./spotlight.css";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import type {
   Node,
   Session,
   SlashCommand,
   Snapshot,
 } from "../../shared/types.ts";
-import { EmptyState, Input, useDialogClose } from "../../shared/ui.tsx";
+import {
+  Button,
+  EmptyState,
+  Input,
+  Notice,
+  useDialogClose,
+} from "../../shared/ui.tsx";
 import { folderName } from "../../shared/folder-label.tsx";
 import { folderOf } from "../../shared/display.ts";
 import { useCompact } from "../../shared/layout.ts";
@@ -16,6 +22,7 @@ import { fuzzy, matches } from "../../shared/fuzzy.ts";
 import { occurrences } from "../../../sheet/text.js";
 import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
+import { useResource } from "../../shared/use-resource.ts";
 import { useApi } from "../../state/api.ts";
 
 // A row that holds the words, as GET /api/search returns it.
@@ -38,7 +45,7 @@ type Row = {
   | {
       kind: "action";
       label: string;
-      detail: string;
+      detail?: string;
       shortcut?: ShortcutId;
       about?: string;
     }
@@ -111,10 +118,6 @@ export default function Spotlight({
   const close = useDialogClose();
   const wide = !useCompact();
   const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<{ words: string; items: Hit[] }>({
-    words: "",
-    items: [],
-  });
   const [index, setIndex] = useState(0);
   const root = useRef<HTMLDivElement>(null);
   const commandsOnly = query.trimStart().startsWith(">");
@@ -122,22 +125,19 @@ export default function Spotlight({
   const searching = !commandsOnly && words.length >= HITS_FROM;
   // The host reads every conversation, so it is asked once typing pauses,
   // and an answer to older words is dropped.
-  useEffect(() => {
-    if (!searching) return;
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      api<{ hits: Hit[] }>(routes.search(words), undefined, {
-        signal: controller.signal,
-      })
-        .then((value) => setHits({ words, items: value.hits }))
-        .catch(() => {});
-    }, HITS_AFTER_MS);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [words, searching, routes.search, api]);
-
+  const hits = useResource(
+    (signal) =>
+      searching
+        ? api<{ hits: Hit[] }>(routes.search(words), undefined, {
+            signal,
+          }).then((value) => ({ words, items: value.hits }))
+        : undefined,
+    [words, searching, routes.search, api],
+    undefined,
+    HITS_AFTER_MS,
+  );
+  const items =
+    searching && hits.value?.words === words ? hits.value.items : undefined;
   const byId = new Map(sessions.map((item) => [item.id, item]));
   const recent = [...sessions].sort(
     (a, b) => (b.updated || 0) - (a.updated || 0),
@@ -168,7 +168,6 @@ export default function Spotlight({
       group: "Actions & commands",
       kind: "action",
       label: item.label,
-      detail: "Action",
       shortcut: item.id,
       run: actions[item.id]!,
     }),
@@ -181,7 +180,6 @@ export default function Spotlight({
       kind: "action",
       label: entry.command,
       about: entry.description,
-      detail: "Command",
       run: () => run(entry),
     }));
   const scopes: Row[] = SCOPES.map(([id, label]) => ({
@@ -189,7 +187,6 @@ export default function Spotlight({
     group: "Settings",
     kind: "action",
     label: `Settings: ${label}`,
-    detail: "Settings",
     run: () => settings(id),
   }));
   const label = (row: Row) => ("label" in row ? row.label : "");
@@ -209,17 +206,17 @@ export default function Spotlight({
   // One group per place, the open conversation's first, then as the host
   // ranked them; each conversation once, with its newest hits under it.
   const messages: Row[] = [];
-  if (searching && hits.words === words) {
+  if (items) {
     const where = (hit: Hit) => {
       const item = byId.get(hit.session_id);
       return item ? folderOf(item) : "";
     };
-    const places = [...new Set(hits.items.map(where))].sort(
+    const places = [...new Set(items.map(where))].sort(
       (a, b) => Number(b === place) - Number(a === place),
     );
     for (const at of places) {
       const group = at ? folderName(at) : "Other conversations";
-      const inPlace = hits.items.filter((hit) => where(hit) === at);
+      const inPlace = items.filter((hit) => where(hit) === at);
       for (const id of new Set(inPlace.map((hit) => hit.session_id))) {
         const own = inPlace
           .filter((hit) => hit.session_id === id)
@@ -343,7 +340,9 @@ export default function Spotlight({
                   {row.label}
                   {"about" in row && row.about && ` — ${row.about}`}
                 </span>
-                <span class="spotlight-detail small">{row.detail}</span>
+                {row.detail && (
+                  <span class="spotlight-detail small">{row.detail}</span>
+                )}
                 {row.kind === "action" && row.shortcut && (
                   <Keys id={row.shortcut} />
                 )}
@@ -361,10 +360,23 @@ export default function Spotlight({
             <div class="spotlight-preview" />
           ))}
       </div>
-      {!shown.length && (
-        <EmptyState>
-          {commandsOnly ? "No command matches." : "Nothing matches."}
-        </EmptyState>
+      {searching && hits.error != null ? (
+        <Notice
+          tone="error"
+          action={<Button onClick={hits.retry}>Retry</Button>}
+        >
+          Couldn’t search messages.
+        </Notice>
+      ) : searching && !items ? (
+        <p class="small muted" role="status">
+          Searching messages…
+        </p>
+      ) : (
+        !shown.length && (
+          <EmptyState>
+            {commandsOnly ? "No command matches." : "Nothing matches."}
+          </EmptyState>
+        )
       )}
     </div>
   );
@@ -372,32 +384,26 @@ export default function Spotlight({
 
 function Preview({ hit, words }: { hit: Hit; words: string }) {
   const { api, routes } = useApi();
-  const [rows, setRows] = useState<Node[] | null>(null);
   const cache = useRef(new Map<string, Node[]>());
   const id = `${hit.session_id}:${hit.sequence}`;
-  useEffect(() => {
-    const held = cache.current.get(id);
-    setRows(held ?? null);
-    if (held) return;
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      api<Snapshot>(
+  const preview = useResource(
+    async (signal) => {
+      const held = cache.current.get(id);
+      if (held) return { id, rows: held };
+      const value = await api<Snapshot>(
         routes.session(hit.session_id, `before=${hit.sequence + 1}`),
         undefined,
-        { signal: controller.signal },
-      )
-        .then((value) => {
-          const nodes = (value.state?.view?.nodes || []).slice(-3);
-          cache.current.set(id, nodes);
-          setRows(nodes);
-        })
-        .catch(() => {});
-    }, PREVIEW_AFTER_MS);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [id, hit.session_id, hit.sequence, routes.session, api]);
+        { signal },
+      );
+      const rows = (value.state?.view?.nodes || []).slice(-3);
+      if (!signal.aborted) cache.current.set(id, rows);
+      return { id, rows };
+    },
+    [id, routes.session, api],
+    undefined,
+    PREVIEW_AFTER_MS,
+  );
+  const rows = preview.value?.id === id ? preview.value.rows : undefined;
   const who = (node: Node) =>
     node.headline
       ? [node.headline.verb, node.headline.target].filter(Boolean).join(" ")
@@ -406,7 +412,14 @@ function Preview({ hit, words }: { hit: Hit; words: string }) {
         : "You";
   return (
     <aside class="spotlight-preview" aria-label="Preview">
-      {rows === null ? (
+      {preview.error != null ? (
+        <Notice
+          tone="error"
+          action={<Button onClick={preview.retry}>Retry</Button>}
+        >
+          Preview unavailable.
+        </Notice>
+      ) : !rows ? (
         <p class="small">Loading…</p>
       ) : (
         rows.map((node) => (

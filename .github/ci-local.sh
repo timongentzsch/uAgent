@@ -30,6 +30,6 @@ docker run --rm \
       files=$(python3 .github/changes.py --tidy-files /work/build/tidy "$UNITS")
       [ -z "$files" ] || "$HOME/.local/bin/uvx" --from clang-tidy==22.1.8 \
         run-clang-tidy.py -quiet -p /work/build/tidy \
-        -header-filter=".*/(include|src|tests|benchmarks)/.*" $files
+        -header-filter=".*/(include|src|tests|benchmarks)/.*" "$files"
     fi'
 echo "== all CI-only checks passed"

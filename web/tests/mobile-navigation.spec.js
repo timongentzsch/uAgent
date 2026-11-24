@@ -6,6 +6,7 @@ import {
   openMore,
   savedConversation,
   startInFolder,
+  draftOf,
 } from "./fixtures.js";
 
 test.describe("mobile navigation and commands", () => {
@@ -210,10 +211,12 @@ test.describe("mobile navigation and commands", () => {
     await startInFolder(page, fixture.project);
     await expect(page.locator(".message.user")).toHaveCount(0);
     await prompt.fill("Survives reload");
-    // Saved after the next paint; reload once it is stored.
+    const id = new URLSearchParams(new URL(page.url()).hash.slice(1)).get(
+      "session",
+    );
     await expect
-      .poll(() => page.evaluate(() => localStorage.getItem("uagent-drafts")))
-      .toContain("Survives reload");
+      .poll(async () => (await draftOf(page, id))?.text)
+      .toBe("Survives reload");
     await page.reload();
     await expect(prompt).toHaveValue("Survives reload");
     await page

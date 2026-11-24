@@ -548,7 +548,7 @@ test("side conversations stay main-owned across execution host navigation", asyn
     location.hash = `session=${id}`;
   }, session.id);
   await expect(side).toContainText("SIDE-TOOL-COMPLETE");
-  await side.getByRole("button", { name: "Close side chat" }).click();
+  await side.getByRole("button", { name: "Hide side chat" }).click();
   await page.reload();
   await online(page);
   await expect(side).toHaveCount(0);

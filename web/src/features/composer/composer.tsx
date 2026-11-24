@@ -1,19 +1,11 @@
 import { ImageTile } from "../../shared/attachments.tsx";
 import "../../shared/attachments.css";
 import { useCommandSuggestions } from "./command-suggestions.tsx";
-import { SuggestionList } from "../../shared/suggestion-list.tsx";
+import { useFileMentions } from "./file-mentions.tsx";
 import { useExit } from "../../shared/motion.ts";
-import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
+import { plainKey } from "../../shared/listbox-nav.ts";
 import { parseSlash } from "./slash.ts";
-import {
-  Button,
-  Field,
-  IconButton,
-  Select,
-  Input,
-  DataText,
-  updateChecked,
-} from "../../shared/ui.tsx";
+import { Button, IconButton, Input, updateChecked } from "../../shared/ui.tsx";
 import { bytes, plural } from "../../shared/quantities.ts";
 import { holdable } from "../../shared/message-view.ts";
 import type {
@@ -21,26 +13,28 @@ import type {
   SlashCommand,
   Session,
   State,
-  Draft,
   Pending,
   Node,
   Outgoing,
 } from "../../shared/types.ts";
 import type { ComponentChildren, TargetedKeyboardEvent } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
-import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { ArrowUp, Paperclip, Square, X } from "lucide-preact";
+import { emptyDraft } from "../../state/store.ts";
+import { useStoreValue } from "../../state/value-store.ts";
 import { useApi } from "../../state/api.ts";
 import { useConversation, useHostContext } from "../../state/host-context.ts";
 import { isRunning } from "../../state/attention.ts";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
+import { dedupeName } from "./mention.ts";
+import ApprovalControl from "./approval-control.tsx";
 import {
-  dedupeName,
-  encodeMention,
-  matchMention,
-  mentionOptions,
-} from "./mention.ts";
-import { SheetButton } from "../../shared/sheet.tsx";
-import { ActivityButton, type SideRows } from "../../shared/turn-status.tsx";
+  AgentBar,
+  AgentRoster,
+  groupAgents,
+  ActivityButton,
+  type SideRows,
+} from "../../shared/turn-status.tsx";
 import MessageInput, { QuoteBar } from "../../shared/message-input.tsx";
 import ModelControl from "../../shared/model-control.tsx";
 import { useNarrowColumn } from "../../shared/layout.ts";
@@ -52,17 +46,14 @@ import {
   maxRecalledPromptSessions,
   stopGuardMs,
 } from "../../shared/limits.ts";
-import {
-  permissionLabel,
-  permissionLabels,
-  permissionNotes,
-} from "../../shared/display.ts";
+
 import GuidanceQueue from "./guidance-queue.tsx";
 import TodoList from "./todo-list.tsx";
 import { focusComposer } from "../../shared/navigation.ts";
 import "./composer.css";
 // Prompts sent from this page per session, oldest first, for Up/Down recall.
 const sentPrompts = new Map<string, string[]>();
+const EMPTY_DRAFT = emptyDraft();
 const NONE: [] = [];
 
 function Composer({
@@ -73,8 +64,6 @@ function Composer({
   commands,
   state,
   pending,
-  draft,
-  setDraft,
   submit,
   asking,
   jump,
@@ -85,6 +74,7 @@ function Composer({
   stopped,
   resume,
   agents,
+  agentNames,
   sides,
   above,
   choose,
@@ -96,8 +86,6 @@ function Composer({
   commands: SlashCommand[];
   state?: State;
   pending?: Pending | null;
-  draft: Draft;
-  setDraft: (draft: Draft) => void;
   submit: (event: Event, queue?: boolean) => void;
   // The message is a side chat's question about this, not the conversation's.
   asking?: { quote: string; cancel: () => void };
@@ -109,79 +97,37 @@ function Composer({
   stopped?: string;
   resume?: () => void;
   agents: Session[];
+  agentNames: ReadonlyMap<string, string>;
   // The conversation's side chats, for the Activity list.
   sides: SideRows;
   // What sits on the input: Jump to latest stays clear of it.
   above?: ComponentChildren;
   choose: (id: string) => void;
 }) {
-  const { routes, command } = useApi();
+  const { routes } = useApi();
   const { online, connection, report } = useHostContext();
   const narrow = useNarrowColumn();
-  const { upload, uploading, busy, act, following } = useConversation();
+  const { drafts, setDraft, upload, busy, act, following } = useConversation();
+  const draft = useStoreValue(drafts, (all) => all[session.id] ?? EMPTY_DRAFT);
+  const uploading = draft.files.some((file) => file.pending);
+  const { current, past } = useMemo(
+    () => groupAgents(agents, agentNames, sides.list),
+    [agents, agentNames, sides.list],
+  );
   const input = useRef<HTMLTextAreaElement>(null);
   const recalled = useRef(-1);
   // A send empties the draft and turns Send into Stop under the same
   // finger: a second tap that soon is the first one repeated, not a stop.
   const lastSent = useRef(0);
   const [renaming, setRenaming] = useState<string | null>(null);
-  // @-mention is caret-driven and independent of the slash menu.
-  const [caret, setCaret] = useState(0);
-  const [mentionIndex, setMentionIndex] = useState(-1);
-  const [mentionClosed, setMentionClosed] = useState(false);
-  const mention = matchMention(draft.text, caret);
-  const mentionCandidates = mention
-    ? mentionOptions(
-        draft.files.filter((item) => !item.pending),
-        mention.query,
-      )
-    : [];
-  const mentionOpen =
-    !!mention && !mentionClosed && mentionCandidates.length > 0;
-  const insertMention = (id: string) => {
-    const target = draft.files.find((item) => item.id === id);
-    if (!mention || !target || !input.current) return;
-    const token = `${encodeMention(target.name, target.id)} `;
-    setDraft({
-      ...draft,
-      text:
-        draft.text.slice(0, mention.start) +
-        token +
-        draft.text.slice(mention.end),
-    });
-    setMentionIndex(-1);
-    setMentionClosed(true);
-    const position = mention.start + token.length;
-    // The textarea value commits on the next render; place the caret after.
-    requestAnimationFrame(() => {
-      input.current?.setSelectionRange(position, position);
-      input.current?.focus({ preventScroll: true });
-    });
-  };
-  const mentionKeyDown = (
-    event: TargetedKeyboardEvent<HTMLTextAreaElement>,
-  ) => {
-    if (!plainKey(event)) return false;
-    if (event.key === "Escape") setMentionClosed(true);
-    else if (event.key === "ArrowDown" || event.key === "ArrowUp")
-      setMentionIndex(
-        nextIndex(mentionIndex, event.key, mentionCandidates.length),
-      );
-    else if (
-      event.key === "Tab" ||
-      (event.key === "Enter" && mentionIndex >= 0)
-    ) {
-      const target =
-        mentionCandidates[
-          Math.min(mentionIndex, mentionCandidates.length - 1)
-        ] ??
-        (mentionCandidates.length === 1 ? mentionCandidates[0] : undefined);
-      if (target && !event.repeat) insertMention(target.id);
-      else return false;
-    } else return false;
-    event.preventDefault();
-    return true;
-  };
+  const mentions = useFileMentions(
+    session.id,
+    draft,
+    setDraft,
+    input,
+    online && !pending,
+    !!asking,
+  );
   const commitRename = (id: string, raw: string) => {
     setRenaming(null);
     const taken = draft.files
@@ -203,9 +149,7 @@ function Composer({
     (text) => setDraft({ ...draft, text }),
     input,
   );
-  const suggestionCount = mentionOpen
-    ? mentionCandidates.length
-    : suggestions.count;
+  const suggestionCount = mentions.count || suggestions.count;
   const send = (event: Event, queue = false) => {
     if (pending) {
       event.preventDefault();
@@ -282,10 +226,6 @@ function Composer({
         : `Stopped: ${stopped.replaceAll("_", " ")}`;
   const queueing = running && !pending && !empty;
   const continuing = !running && !pending && !!stopLabel && !!resume;
-  const permission = state?.permissions;
-  const effective =
-    permission?.mode === "default" ? permission.default : permission?.mode;
-  const effectiveLabel = permissionLabel(effective);
   // What is asked about is asked at once.
   const side = !!asking;
   useEffect(() => {
@@ -326,26 +266,15 @@ function Composer({
         recall={recall}
         insert={insert}
       />
+      <AgentBar
+        entries={current}
+        online={online}
+        report={report}
+        choose={choose}
+      />
       <form class="message-box" onSubmit={send}>
         {suggestions.list}
-        {mentionOpen && (
-          <SuggestionList
-            id="mention-suggestions"
-            label="Attached files"
-            prefix="mention"
-            items={mentionCandidates}
-            index={mentionIndex}
-            pick={(item) => insertMention(item.id)}
-            keyOf={(item) => item.id}
-          >
-            {(item) => (
-              <>
-                <strong>@{item.name}</strong>
-                <small>{bytes(item.bytes)}</small>
-              </>
-            )}
-          </SuggestionList>
-        )}
+        {mentions.list}
         {asking ? (
           <QuoteBar
             quote={asking.quote}
@@ -377,12 +306,11 @@ function Composer({
         <MessageInput
           submit={send}
           {...suggestions.attributes}
-          {...(mentionOpen && {
-            "aria-expanded": true,
-            "aria-controls": "mention-suggestions",
-            "aria-activedescendant":
-              mentionIndex >= 0 ? `mention-${mentionIndex}` : undefined,
-          })}
+          {...mentions.attributes}
+          onBlur={() => {
+            suggestions.attributes.onBlur();
+            mentions.blur();
+          }}
           id="prompt"
           inputRef={input}
           rows={1}
@@ -399,12 +327,14 @@ function Composer({
           value={draft.text}
           onInput={(event) => {
             setDraft({ ...draft, text: event.currentTarget.value });
-            setCaret(event.currentTarget.selectionStart ?? 0);
-            setMentionIndex(-1);
-            setMentionClosed(false);
+            mentions.changed(event.currentTarget.selectionStart ?? 0);
           }}
-          onKeyUp={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
-          onClick={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+          onKeyUp={(event) =>
+            mentions.at(event.currentTarget.selectionStart ?? 0)
+          }
+          onClick={(event) =>
+            mentions.changed(event.currentTarget.selectionStart ?? 0)
+          }
           onPaste={(event) => {
             const files = [...(event.clipboardData?.files || [])];
             // Spreadsheets and web pages put a rendered image beside the
@@ -415,7 +345,7 @@ function Composer({
             }
           }}
           onKeyDown={(event) => {
-            if (mentionOpen && mentionKeyDown(event)) return;
+            if (mentions.keyDown(event)) return;
             if (queueing && event.key === "Enter" && event.altKey) {
               event.preventDefault();
               if (!event.repeat) send(event, true);
@@ -539,46 +469,12 @@ function Composer({
             online={online}
             running={running || !!pending}
           />
-          <SheetButton
-            label="Approval"
-            title={`${effectiveLabel}${permission?.mode === "default" ? " · the default" : " · chosen for this conversation"}`}
-            className={`permission-control${effective === "yolo" ? " yolo" : ""}`}
-            disabled={!online}
-            trigger={
-              <>
-                <Shield />
-                <span>
-                  <DataText>{effectiveLabel}</DataText>
-                </span>
-              </>
-            }
-          >
-            {(close) => (
-              <Field
-                label="This conversation's approval mode"
-                help={`${permissionNotes[effective ?? "ask"] ?? permissionNotes.ask} Always needs you: µAgent's own settings, startup files, unsandboxed and root commands. The default is the mode in Settings, unless a folder or the environment sets another.`}
-              >
-                <Select
-                  aria-label="Approval"
-                  value={permission?.mode || "default"}
-                  onChange={(event) =>
-                    command("permissions", session, {
-                      mode: event.currentTarget.value,
-                    })
-                      .then(close)
-                      .catch(report)
-                  }
-                >
-                  <option value="default">
-                    Default ({permissionLabel(permission?.default)})
-                  </option>
-                  {Object.entries(permissionLabels).map(([value, label]) => (
-                    <option value={value}>{label}</option>
-                  ))}
-                </Select>
-              </Field>
-            )}
-          </SheetButton>
+          <ApprovalControl
+            session={session}
+            permission={state?.permissions}
+            online={online}
+            report={report}
+          />
           <IconButton
             class="composer-primary"
             data-mode={stopping ? "stop" : "send"}
@@ -606,19 +502,24 @@ function Composer({
         <div class="status-line">
           <ActivityButton
             open={openInspector}
-            choose={choose}
             session={session}
             online={online}
             connection={connection}
             report={report}
             items={state?.activities || NONE}
-            agents={agents}
             sides={sides}
             running={running}
             started={state?.turn_started_ms}
             pending={!!pending}
             stopped={continuing ? stopLabel : undefined}
             resume={resume}
+          />
+          <AgentRoster
+            entries={past}
+            past
+            online={online}
+            report={report}
+            choose={choose}
           />
           {running && (
             <Button

@@ -155,33 +155,34 @@ def tools_page(tools):
     return "\n".join(parts)
 
 
-CONSTANT = re.compile(r"inline constexpr [\w:<> ]+? (k\w+)\s*=\s*([^;]+);", re.S)
+CONSTANT = re.compile(r"inline constexpr [\w:<> ]+? (k\w+(?:\[\])?\s*=\s*[^;]+);", re.S)
 UNIT = re.compile(r"\b(KiB|MiB)\((\d+)\)")
 
 
 def limits_page(header):
     """Every constant of limits.h with the comment above it."""
     rows, note = [], []
-    statement, used = "", False
+    statement = ""
     for line in header.splitlines():
         text = line.strip()
         if text.startswith("//") and not statement:
-            # A comment after a constant opens the next note.
-            note = [] if used else note
-            used = False
             note.append(text.lstrip("/ ").strip())
             continue
         if not text and not statement:
-            note, used = [], False
+            note = []
             continue
         statement += " " + text
         if ";" not in text and "{" not in text:
             continue
         match = CONSTANT.search(statement)
-        if match and match.group(1) not in ("kKiB", "kMiB"):
-            value = UNIT.sub(r"\2 \1", " ".join(match.group(2).split()))
-            rows.append([code(match.group(1)), code(value), cell(" ".join(note))])
-            used = True
+        if match:
+            for declaration in re.split(r",\s*(?=k\w+\s*=)", match.group(1)):
+                name, value = declaration.split("=", 1)
+                name = name.strip().removesuffix("[]")
+                if name not in ("kKiB", "kMiB"):
+                    value = UNIT.sub(r"\2 \1", " ".join(value.split()))
+                    rows.append([code(name), code(value), cell(" ".join(note))])
+        note = []
         statement = ""
     return "\n".join(
         [

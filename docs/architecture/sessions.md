@@ -34,13 +34,16 @@ A session file lives in `history/` and holds two lines:
 1. A header object under 16 KiB (`kSessionHeaderBytes`): `format`
    (`kSessionFormat`, 3), `cwd`, `model`, `session_id`, `turns`, `title`,
    `custom_title`, `parent_session_id`, `forked_at_turn`, `forked_at_time`;
-   when set `host`, `agent`, `memory: false`, `suggestion`; and `incoming`,
-   `cost`, `tokens`, `todo`, so a listing reads headers only.
+   and optional `host`, `agent`, `side`, `memory: false` and `suggestion`.
+   Listings use header fields for activity, cost, token counts and to-do
+   progress. `has_file_moves` tells the file resolver whether the body
+   contains workspace history.
 2. The state object: `messages`, `message_kinds` (same length),
    `archive`, `archive_dropped_segments`, `context_tokens`,
    `context_window`, `context_parts` (absent in older files), `usage`, `route_usage`, `display`
    and `delivered_mail`. `display` holds the facts the transcript view needs
-   after messages are pruned or compacted.
+   after messages are pruned or compacted. Its `file_moves` array preserves
+   the previous working folder and transcript sequence at each move.
 
 The whole file is read with a 64 MiB cap (`kSessionReadBytes`); a save that
 would exceed it is refused. A session has two identities: the hash of its
@@ -113,17 +116,17 @@ Mail, sender to recipient:
    `delivered_mail` (latest 256). After the next save, `AckMail` deletes the
    files from `cur/`.
 
-A folder's conversations are those whose `cwd` (and `host`) is the
-folder, with the agents whose `agent.parent` chain leads to one
-(`SessionsIn`).
+Moving a conversation includes its attached side chats and agent descendants.
+A busy member blocks the move. Idle runtimes close before the host updates
+the saved sessions, children first. Each member that worked in the original
+folder gets the new working folder and a move receipt. An agent in a separate
+worktree keeps working there. Detached side chats and standalone conversations
+created by earlier versions keep their folders.
 
-Moving a conversation (`SessionHost::MoveConversation`): the family is the
-conversation and its agents. Busy members refuse the move; idle runtimes
-are closed. Each file, agents first, gets the new `cwd` where it had the
-old one, and the conversation a transcript note; the record the web host
-kept of it as a draft goes. No file moves, so ids, paths, pins, mail, the
-usage ledger, scheduled runs and side chats' link to it stay as they are.
-The host publishes `moved` for each member, and a page reads it again.
+Workspace files stay where they were. The lead conversation emits a `moved`
+event and the catalogue refreshes the family’s metadata. Session IDs, pins,
+mail and scheduled runs survive. A file reference uses its transcript sequence
+to find the workspace where it was recorded. [File lookup API](../interfaces/http-api.md)
 
 ## Invariants and limits
 

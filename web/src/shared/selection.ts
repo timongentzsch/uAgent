@@ -65,8 +65,12 @@ export function useSelection() {
           ),
         })),
       // Select mode from a row's menu: that row picked, taps pick.
-      start: (id: string) =>
-        setState({ ids: new Set([id]), anchor: id, mode: true }),
+      start: (id?: string) =>
+        setState({
+          ids: new Set(id ? [id] : []),
+          anchor: id || "",
+          mode: true,
+        }),
       clear: () => setState(NONE),
       keep: (there: readonly string[]) => setState((was) => kept(was, there)),
       // A click that picks instead of opening; true when it picked.

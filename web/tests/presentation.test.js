@@ -26,9 +26,11 @@ import {
   visible,
 } from "../src/shared/tree.ts";
 import * as golden from "./golden-turns.js";
-import { dedupeName } from "../src/features/composer/mention.ts";
+
 import {
+  dedupeName,
   encodeMention,
+  workspaceMention,
   matchMention,
   mentionOptions,
 } from "../src/features/composer/mention.ts";
@@ -214,6 +216,11 @@ test("@-mention matches the caret word, never emails", () => {
     query: "cha",
   });
   assert.deepEqual(matchMention("@", 1), { start: 0, end: 1, query: "" });
+  assert.deepEqual(matchMention("look @sample.ts next", 9), {
+    start: 5,
+    end: 15,
+    query: "sam",
+  });
   assert.equal(matchMention("a@b", 3), null);
   assert.equal(matchMention("mail x@y", 8), null);
   assert.equal(matchMention("see chart", 9), null);
@@ -226,6 +233,24 @@ test("@-mention matches the caret word, never emails", () => {
   assert.deepEqual(mentionOptions(files, "ch"), [{ name: "chart.png" }]);
   assert.deepEqual(mentionOptions(files, ""), files);
   assert.equal(encodeMention("a]b(c", "f1"), "![a b c](attachment:f1)");
+});
+
+test("workspace mentions separate positive line ranges from the search", () => {
+  for (const suffix of [":12-24", "#L12-L24", "#12-24"])
+    assert.deepEqual(workspaceMention("src/a.ts" + suffix), {
+      path: "src/a.ts",
+      lines: "12-24",
+    });
+  assert.deepEqual(workspaceMention("a:2"), { path: "a", lines: "2" });
+  assert.deepEqual(workspaceMention("a:3-3"), { path: "a", lines: "3" });
+  for (const path of [
+    "a#draft.ts",
+    "a:0",
+    "a:3-2",
+    ":7",
+    "a:999999999999999999",
+  ])
+    assert.deepEqual(workspaceMention(path), { path, lines: "" });
 });
 
 test("mention tokens split outside fences, never without files", () => {

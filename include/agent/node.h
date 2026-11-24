@@ -8,7 +8,8 @@
 // A work holds its replies, thinking, calls, and a group for each run of
 // calls that only looked: its summary counts them by kind.
 // kind: turn, message, work, group, call, thinking, notice, footer;
-// state: running, ok, failed, cancelled. `parent` is null at the root.
+// state: running, ok, failed, cancelled, or recorded for a legacy batch
+// with no retained overall outcome. `parent` is null at the root.
 
 #include <string>
 #include <string_view>

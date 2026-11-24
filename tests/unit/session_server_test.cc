@@ -2,6 +2,7 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <string>
 #include <thread>
@@ -12,6 +13,7 @@
 #include "include/app/session.h"
 #include "include/app/session_host.h"
 #include "include/core/fs.h"
+#include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/tools/files.h"
 #include "tests/unit/test_support.h"
@@ -67,6 +69,46 @@ TEST_CASE(TestWorkerBinaryIdentity) {
     CHECK(FileIdentity(probe.string()) != connection.binary);
   }
   SetExecutablePath(prior);
+}
+
+TEST_CASE(TestSessionHandshakeKeepsTheFollowingFrame) {
+  TestWorkspace test("session-handshake");
+  const std::string path = (test.workspace / "s.json").string();
+  const std::string address = session::SocketPath(path);
+  CreatePrivateDirectories(std::filesystem::path(address).parent_path());
+  const Fd listener = ListenUnix(address, 1);
+  REQUIRE(listener.Valid());
+
+  const json hello = {{"v", session::kProtocol},
+                      {"session_id", SessionIdFor(path)},
+                      {"generation", RandomToken(16)},
+                      {"pid", 42}};
+  for (const size_t bytes : {session::kHelloBytes, session::kHelloBytes + 1}) {
+    auto opening =
+        std::async(std::launch::async, [&] { return session::Connect(path); });
+    const Fd peer(accept(listener.Get(), nullptr, nullptr));
+    REQUIRE(peer.Valid());
+    std::string line = JsonDump(hello);
+    line.resize(bytes - 1, ' ');
+    const json state = {{"v", session::kProtocol}, {"kind", "state"}};
+    CHECK(WriteAll(peer.Get(), line.substr(0, 5)));
+    CHECK(WriteAll(peer.Get(), line.substr(5) + "\n" + JsonDump(state) + "\n"));
+    shutdown(peer.Get(), SHUT_WR);
+    const auto connection = opening.get();
+    if (bytes > session::kHelloBytes) {
+      CHECK(!connection.socket);
+      continue;
+    }
+    REQUIRE(connection.socket.Valid());
+    std::vector<json> frames;
+    session::ReadFrames(connection.socket.Get(), -1, session::kFrameBytes,
+                        [&](json frame) {
+                          frames.push_back(std::move(frame));
+                          return true;
+                        });
+    CHECK(frames == std::vector<json>{state});
+  }
+  unlink(address.c_str());
 }
 
 // Closing a runtime waits for the runtime, not for its socket file: one that

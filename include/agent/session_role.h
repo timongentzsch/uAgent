@@ -10,7 +10,8 @@ namespace uagent {
 // The route of a decision, and the origin of a command, that is the parent's.
 inline constexpr const char* kRouteParent = "parent";
 
-// {parent (session id), edits (none|worktree|folder), depth, budget, streak}.
+// {parent (session id), edits (none|worktree|folder), approval at spawn, depth,
+// budget, streak}.
 inline json AgentOf(const json& session) {
   return JsonValue(session, "agent", json::object());
 }

@@ -45,8 +45,27 @@ function referenceOpen({ path, lines }: { path: string; lines?: string }) {
 function referenceLink(env: unknown, href: string) {
   if (!(env as FileEnv)?.refs || (env as FileEnv).url) return undefined;
   if (!relative(href) && !/^\/(?!\/)/.test(href)) return undefined;
+  // Markdown already marks this as a link. Keep the conservative filename
+  // heuristic for unmarked code spans, and decode literal filenames here.
+  const split = href.indexOf("#");
+  const written = split < 0 ? href : href.slice(0, split);
+  if (
+    !written ||
+    written === "/" ||
+    written.includes("?") ||
+    /^\/(api|preview)(\/|$)/.test(written)
+  )
+    return undefined;
   try {
-    return fileReference(decodeURIComponent(href));
+    const path = decodeURIComponent(written);
+    if (/[\\\u0000-\u001f]/.test(path) || path.startsWith("//"))
+      return undefined;
+    const anchor = split < 0 ? "" : href.slice(split);
+    const parsed = !path.includes("#") && fileReference(path + anchor);
+    if (parsed) return parsed;
+    const lines = /^#L(\d+)(?:-L?(\d+))?$/.exec(anchor);
+    if (!lines) return { path };
+    return { path, lines: lines[2] ? lines[1] + "-" + lines[2] : lines[1] };
   } catch {
     return undefined;
   }

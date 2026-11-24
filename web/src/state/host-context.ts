@@ -10,6 +10,7 @@ import type {
   Session,
   Snapshot,
 } from "../shared/types.ts";
+import type { ValueStore } from "./value-store.ts";
 import type { SnapshotStore } from "./snapshot-store.ts";
 
 // What every surface needs of the host. It changes only with the connection,
@@ -27,16 +28,13 @@ export interface Host {
   showContext: (item?: Session) => void;
 }
 
-// What the open conversation's surfaces share. It changes with every send,
-// upload and key typed, so only the page, its composer and the dialogs read
-// it, never a list row.
+// What the open conversation’s surfaces share. The composer subscribes to its draft.
 export interface Conversation {
-  draft: Draft;
+  drafts: ValueStore<Record<string, Draft>>;
   setDraft: (value: Draft) => void;
   submit: (event: Event, jump: () => void, queue?: boolean) => Promise<void>;
   act: Act;
   upload: (files: File[]) => Promise<boolean>;
-  uploading: boolean;
   // A message or a new conversation is on its way.
   busy: boolean;
   following: boolean;

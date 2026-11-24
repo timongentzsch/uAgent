@@ -19,38 +19,40 @@ import {
   Square,
   Terminal,
   Users,
-  X,
 } from "lucide-preact";
 import {
   cleanText,
   Button,
   IconButton,
   DataText,
+  Time,
   updateChecked,
 } from "./ui.tsx";
 import { SheetButton } from "./sheet.tsx";
 import { useApi } from "../state/api.ts";
-import { isRunning } from "../state/attention.ts";
+import { AgentAssignment } from "./agent-assignment.tsx";
+import { shortAgentName } from "./display.ts";
+import { isRunning, statusOf } from "../state/attention.ts";
 import { useAction } from "./use-action.ts";
 import { useElapsed } from "./time.ts";
 import { focusDecision, revealLiveRow } from "./navigation.ts";
 
-// A conversation's side chats: which, and what a row of one does.
+// A conversation's side chats: which, those whose first question is still
+// on its way (by its request), and what a row of one does.
 export type SideRows = {
   list: Session[];
+  starting: string[];
   open: (id: string) => void;
-  remove: (id: string) => void;
 };
 
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
 
-// Reads like "Working · 4m 02s · 1 command · 2 agents · 1 side chat". It
+// Reads like "Working · 4m 02s · 1 command · 1 side chat". It
 // never names a step, which its own row shows, and is absent while nothing
 // needs saying. Side chats stay listed while they exist, at work or not.
 function ActivityButtonView({
   items,
-  agents,
   sides,
   session,
   online,
@@ -62,10 +64,8 @@ function ActivityButtonView({
   resume,
   report,
   open,
-  choose,
 }: {
   items: Activity[];
-  agents: Session[];
   sides: SideRows;
   session: SessionRef;
   online: boolean;
@@ -77,7 +77,6 @@ function ActivityButtonView({
   resume?: () => void;
   report: Report;
   open: (target: InspectorTarget) => void;
-  choose: (id: string) => void;
 }) {
   // A listener hears a turn's edges: when a response starts, needs input
   // or ends.
@@ -87,12 +86,12 @@ function ActivityButtonView({
   const rows = items.filter(active);
   const counts = [
     rows.length ? plural(rows.length, "command") : "",
-    agents.length ? plural(agents.length, "agent") : "",
     sides.list.length ? plural(sides.list.length, "side chat") : "",
   ].filter(Boolean);
   const live =
     running ||
-    rows.length + agents.length > 0 ||
+    rows.length > 0 ||
+    sides.starting.length > 0 ||
     sides.list.some((side) => isRunning(side, online));
   const announcement = pending
     ? "Needs your input"
@@ -184,23 +183,11 @@ function ActivityButtonView({
                 }}
               />
             ))}
-            {agents.map((agent) => (
-              <AgentRow
-                key={agent.id}
-                agent={agent}
-                online={online}
-                report={report}
-                open={() => {
-                  close();
-                  choose(agent.id);
-                }}
-              />
-            ))}
-            {sides.list.map((side) => (
+            {sideOrder(sides.list, online).map((side) => (
               <AgentRow
                 key={side.id}
                 agent={side}
-                remove={() => sides.remove(side.id)}
+                starting={sides.starting.includes(side.side!.request)}
                 online={online}
                 report={report}
                 open={() => {
@@ -310,45 +297,212 @@ function ActivityRow({
   );
 }
 
-// An agent at work, or a side chat, which stays listed until it is removed.
+type AgentEntry = {
+  agent: Session;
+  title: string;
+  name: string;
+  status: string;
+};
+type AgentListProps = {
+  entries: AgentEntry[];
+  online: boolean;
+  report: Report;
+  choose: (id: string) => void;
+};
+
+// The host distinguishes a request routed to the parent from one that
+// actually needs the person. Both conversations are still active.
+function agentRosterStatus(agent: Session) {
+  if (agent.needs_you) return "Needs you";
+  if (agent.status === "waiting") return "Waiting";
+  if (agent.status === "starting") return "Starting";
+  if (agent.turn_active || agent.status === "running") return "Working";
+  if (agent.status === "interrupted") return "Interrupted";
+  if (agent.error || agent.status === "failed") return "Failed";
+  return "Finished";
+}
+
+export function groupAgents(
+  agents: Session[],
+  names: ReadonlyMap<string, string>,
+  sides: Session[],
+) {
+  const current: AgentEntry[] = [];
+  const past: AgentEntry[] = [];
+  const sideIds = new Set(sides.map((side) => side.id));
+  const byName = new Map<string, AgentEntry[]>();
+  for (const agent of agents) {
+    if (sideIds.has(agent.id)) continue;
+    const title = names.get(agent.id) || agent.title || "Agent";
+    const name = shortAgentName(title);
+    const status = agentRosterStatus(agent);
+    const entry = { agent, title, name, status };
+    (["Needs you", "Waiting", "Starting", "Working"].includes(status)
+      ? current
+      : past
+    ).push(entry);
+    const matches = byName.get(name);
+    if (matches) matches.push(entry);
+    else byName.set(name, [entry]);
+  }
+  // A shared opening sentence is common in older assignments. Give each
+  // conversation a stable, readable number even when catalogue order changes.
+  for (const matches of byName.values()) {
+    if (matches.length < 2) continue;
+    matches.sort((a, b) => a.agent.id.localeCompare(b.agent.id));
+    matches.forEach((entry, i) => {
+      entry.name =
+        (entry.name.endsWith("…") ? "Agent" : entry.name) + " " + (i + 1);
+    });
+  }
+  return { current, past };
+}
+
+export const AgentRoster = updateChecked(function AgentRoster({
+  entries,
+  online,
+  report,
+  choose,
+  past = false,
+}: AgentListProps & { past?: boolean }) {
+  if (!entries.length) return null;
+  const working =
+    !past &&
+    online &&
+    entries.some(({ status }) => status === "Starting" || status === "Working");
+  const label = past
+    ? `Past agents (${entries.length})`
+    : plural(entries.length, "active agent");
+  return (
+    <SheetButton
+      label={label}
+      heading={past ? "Past agents" : "Active agents"}
+      size="compact"
+      buttonClass="agent-roster small"
+      trigger={
+        <>
+          {working ? <WorkBand /> : <Users aria-hidden="true" />}
+          {past ? label : entries.length}
+        </>
+      }
+    >
+      {(close) => (
+        <ul class="activity-list divided">
+          {entries.map(({ agent, title, name, status }) => (
+            <AgentRow
+              key={agent.id}
+              agent={agent}
+              title={title}
+              name={name}
+              status={status}
+              report={report}
+              online={online}
+              open={() => {
+                close();
+                choose(agent.id);
+              }}
+            />
+          ))}
+        </ul>
+      )}
+    </SheetButton>
+  );
+});
+
+export const AgentBar = updateChecked(function AgentBar(props: AgentListProps) {
+  if (!props.entries.length) return null;
+  return (
+    <nav class="agent-bar" aria-label="Active agents">
+      <AgentRoster {...props} />
+      <div class="agent-tabs">
+        {props.entries.map(({ agent, title, name, status }) => (
+          <Button
+            key={agent.id}
+            variant="quiet"
+            class="agent-tab small"
+            title={title}
+            aria-label={name + " · " + status}
+            onClick={() => props.choose(agent.id)}
+          >
+            {agent.needs_you && <CircleAlert aria-hidden="true" />}
+            <span class="truncate">{name}</span>
+            <span class="muted">{status}</span>
+          </Button>
+        ))}
+      </div>
+    </nav>
+  );
+});
+
+// Side chats at work or waiting for you first, then the newest asked.
+const sideOrder = (list: Session[], online: boolean) =>
+  [...list].sort(
+    (a, b) =>
+      Number(statusOf(b, online) !== "idle") -
+        Number(statusOf(a, online) !== "idle") || b.side!.asked - a.side!.asked,
+  );
+
+// The step a turn is at, where it says more than that it works.
+const stepOf = (item: Session) =>
+  item.turn_status && !["Working", "Ready"].includes(item.turn_status)
+    ? cleanText(item.turn_status)
+    : "";
+
+// Agent rosters and the side chat activity list share a row.
 function AgentRow({
   agent,
-  remove,
+  title,
+  name: label,
+  status,
+  starting = false,
   online,
   report,
   open,
 }: {
   agent: Session;
-  remove?: () => void;
+  title?: string;
+  name?: string;
+  status?: string;
+  starting?: boolean;
   online: boolean;
   report: Report;
   open: () => void;
 }) {
   const { command } = useApi();
   const { run, busy } = useAction();
-  const name = cleanText(agent.title || (remove ? "Side chat" : "Agent"));
-  const working = !remove || isRunning(agent, online);
+  const side = agent.side;
+  const name = cleanText(
+    label || agent.title || (side ? "Side chat" : "Agent"),
+  );
+  const running = isRunning(agent, online);
   return (
-    <li class="activity-row">
+    <li class={side ? "activity-row" : "activity-row agent-entry"}>
       <Button
         variant="quiet"
         class="activity-open"
         disabled={!online}
         onClick={open}
       >
-        {remove ? <MessagesSquare /> : <Users />}
+        {side && <MessagesSquare />}
         <span class="activity-text">
           <strong>{name}</strong>
           <small>
-            {working
-              ? cleanText(agent.turn_status || "Working")
-              : agent.needs_you
+            {status ||
+              (online && agent.needs_you
                 ? "Needs you"
-                : "Ready"}
+                : running || starting
+                  ? ["Working", stepOf(agent)].filter(Boolean).join(" · ")
+                  : "Ready")}
+            {side?.merged && (
+              <>
+                {" · merged "}
+                <Time value={side.merged.at} />
+              </>
+            )}
           </small>
         </span>
       </Button>
-      {working ? (
+      {running && (
         <IconButton
           label={`Stop ${name}`}
           disabled={!online || busy}
@@ -356,13 +510,13 @@ function AgentRow({
         >
           <Square />
         </IconButton>
-      ) : (
-        <IconButton
-          label={`Remove ${name} from the side chats`}
-          onClick={remove}
-        >
-          <X />
-        </IconButton>
+      )}
+      {!side && (
+        <AgentAssignment
+          title={title || name}
+          name={name}
+          edits={agent.agent_edits}
+        />
       )}
     </li>
   );

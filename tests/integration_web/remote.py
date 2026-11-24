@@ -318,25 +318,32 @@ def test_file_operations_match_local_http_and_execution_gateway(root, home, *, b
     (root / "secret.txt").write_text("outside")
     (project / "outside").symlink_to(root / "secret.txt")
     subprocess.run(["git", "init", "-q", str(project)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(project), "add", "note.txt"], check=True)
+    (project / "note.txt").write_text("working")
     with web_host(binary, root, home, "http://127.0.0.1:1") as (client, code, _, _):
         client.pair(code)
         session = client.create(project, activate=False)
         endpoint = f"/api/sessions/{session['id']}/files"
         with gateway(binary, home, project) as (_, call):
-            for mode, path in (
-                ("list", ""),
-                ("read", "note.txt"),
-                ("read", "large.txt"),
-                ("find", "nt"),
-                ("changes", ""),
-                ("diff", "note.txt"),
-                ("read", "missing.txt"),
-                ("read", "../secret.txt"),
-                ("read", "outside"),
+            for mode, path, extra in (
+                ("list", "", {}),
+                ("read", "note.txt", {}),
+                ("read", "large.txt", {}),
+                ("find", "nt", {}),
+                ("changes", "", {}),
+                ("changes", "split", {}),
+                ("diff", "note.txt", {}),
+                ("diff", "note.txt", {"scope": "working"}),
+                ("diff", "note.txt", {"scope": "staged"}),
+                ("read", "missing.txt", {}),
+                ("read", "../secret.txt", {}),
+                ("read", "outside", {}),
             ):
-                status, local, _ = client.json(endpoint + "?" + urlencode({mode: path}))
-                remote = call({"op": "files", "mode": mode, "path": path})
-                assert_true(status == remote.pop("status", 200) and local == remote, (mode, path))
+                status, local, _ = client.json(endpoint + "?" + urlencode({mode: path, **extra}))
+                remote = call({"op": "files", "mode": mode, "path": path, **extra})
+                assert_true(
+                    status == remote.pop("status", 200) and local == remote, (mode, path, extra)
+                )
             for transport in ("local", "remote"):
                 read = call({"op": "files", "mode": "read", "path": "note.txt"})
                 operation = {
@@ -559,6 +566,10 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
         )
     )
 
+    deck = project / "slides"
+    deck.mkdir()
+    slide = deck / "01-cover.html"
+    slide.write_text('<meta name="artboard" content="1920x1080 slide">')
     main_copy = ""
     copied_bytes = bytes(range(256)) * 1024
 
@@ -598,6 +609,9 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
             # An empty `from` is none: the content is written.
             tool_call("write_file", {"path": "plain.txt", "content": "plain", "from": ""}),
             answer,
+            tool_call("present", {"path": str(deck.resolve())}, call_id="present-deck"),
+            tool_call("present", {"path": str(slide.resolve())}, call_id="present-slide"),
+            tool_call("present", {"path": "plain.txt"}, call_id="present-snapshot"),
             tool_call("read_path", {"path": "pixel.png"}),
             received_image,
             tool_call(
@@ -655,7 +669,47 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
                 text="Write a marker in the remote project",
                 attachment_ids=[upload[1]["id"]],
             )
-            web.until(session, lambda value: "main-provider-complete" in json.dumps(value))
+            value = web.until(session, lambda value: "main-provider-complete" in json.dumps(value))
+            parts = [
+                part
+                for node in value["state"]["view"]["nodes"]
+                if node["kind"] == "message"
+                for part in node.get("parts") or []
+                if part["kind"] == "artifact"
+            ]
+            assert_true(
+                [part["path"] for part in parts] == ["slides/", "slides/01-cover.html"], parts
+            )
+
+            # The fixture's SSH process and the main can see the same path.
+            # Their workspaces, snapshots and delete targets must still be distinct.
+            local_session = web.create(project, activate=False)
+            listing = web.json("/api/library")[1]
+            identity = f"ssh:{host}:{project.resolve()}"
+            places = {place.get("key", place["path"]): place for place in listing["places"]}
+            assert_true(places[identity]["session"] == session["id"], places)
+            assert_true(places[str(project.resolve())]["session"] == local_session["id"], places)
+            assert_true(
+                any(
+                    item["place"] == identity and item["name"] == "plain.txt"
+                    for item in listing["items"]
+                ),
+                listing["items"],
+            )
+            remote_library = f"/api/library?session={session['id']}"
+            remote_designs = web.json(remote_library)[1]["items"]
+            design = next(item for item in remote_designs if item["kind"] == "deck")
+            assert_true(design["place"] == identity and design["session"] == session["id"], design)
+            delete = dict(kind="deck", key=design["key"], place=identity, session_id=session["id"])
+            for refused in (
+                dict(place=str(project.resolve())),
+                dict(session_id=local_session["id"]),
+                dict(key="../"),
+            ):
+                assert_true(web.request("/api/library/delete", delete | refused)[0] == 404, refused)
+            assert_true(slide.exists(), slide)
+            assert_true(web.request("/api/library/delete", delete)[0] == 200, delete)
+            assert_true(not deck.exists() and not web.json(remote_library)[1]["items"], deck)
             assert_true(
                 (project / "remote.txt").read_text() == "remote-command-ok",
                 "remote command missing",
@@ -678,6 +732,8 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
                 list((remote_home / ".uagent").iterdir()) == [remote_home / ".uagent/remote"],
                 "remote acquired app state",
             )
+            status, found, _ = web.json(f"/api/sessions/{session['id']}/files?find=remote.txt")
+            assert_true(status == 200 and found["paths"] == ["remote.txt"], found)
             result = web.json(
                 f"/api/sessions/{session['id']}/files?" + urlencode({"read": "remote.txt"})
             )[1]
@@ -813,6 +869,8 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
                 lambda: phase() == "disconnected", timeout=budget(5), message="disconnect ignored"
             )
             assert_true(web.snapshot(session)["metadata"]["host"] == host, "offline history lost")
+            assert_true(web.request("/api/library")[0] == 200, "offline host blocked local library")
+            assert_true(web.request(remote_library)[0] == 503, "offline artifact scan did not fail")
             assert_true(
                 web.request(f"/api/hosts/{host}/ping")[0] == 503, "offline ping reconnected"
             )

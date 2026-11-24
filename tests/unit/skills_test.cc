@@ -255,6 +255,7 @@ TEST_CASE(TestSkillDiscovery) {
   ToolResult arguments =
       tool.run({{"name", "release"}, {"arguments", "v1.2.3"}}, {});
   CHECK(arguments.output.find("v1.2.3") != std::string::npos);
+  CHECK(arguments.body_kind == "markdown");
   CHECK(tool.run({{"query", "lint"}}, {}).output.find("Run ruff.") !=
         std::string::npos);
   CHECK(tool.run(json::object(), {}).output.find("release") !=
@@ -290,6 +291,7 @@ TEST_CASE(TestSkillDiscovery) {
 
   Tool crowded = SkillTool(catalogue_skills, {});
   CHECK(crowded.description.size() <= 8000);
+  CHECK(crowded.run(json::object(), {}).facts.items == 64);
   CHECK(crowded.description.find("skill-63") != std::string::npos);
 }
 

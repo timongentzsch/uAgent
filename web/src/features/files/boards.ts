@@ -7,7 +7,7 @@ import { HTML, IMAGE, VIDEO } from "../../shared/file-types.ts";
 import { maxUploadBytes } from "../../shared/limits.ts";
 import type { PageInfo, PageMessage } from "../../shared/page-frame.tsx";
 import { pageSize } from "../../shared/page-size.ts";
-import { bytes } from "../../shared/quantities.ts";
+import { bytes, plural } from "../../shared/quantities.ts";
 
 // A document on paper, a sheet of tabs, a deck of slides, a whiteboard, a
 // design system, or a design: any other pages.
@@ -60,9 +60,10 @@ export interface Board {
   skip?: true;
   // The part of a deck it opens.
   section?: string;
-  // Why it failed, in a few words, else empty: a page threw or is not as it
-  // should be drawn (design-helper.js); a picture or a film did not load.
+  // A page threw, or a picture or film did not load.
   failed: string;
+  // What the checker found on a page that did draw.
+  issue?: string;
 }
 
 // What a page's frames said, by its path: what it is, what failed in it,
@@ -70,6 +71,8 @@ export interface Board {
 interface Seen {
   info?: PageInfo;
   errors: string[];
+  issues: string[];
+  cells: string[];
   pages?: number;
   tabs?: string[];
 }
@@ -94,7 +97,7 @@ export function hear(
   path: string,
   message: PageMessage,
 ): SeenPages {
-  const was = all[path] ?? { errors: [] };
+  const was = all[path] ?? { errors: [], issues: [], cells: [] };
   let next: Seen | undefined;
   if (message.type === "ready") next = { ...was, info: message };
   else if (message.type === "size") {
@@ -107,11 +110,15 @@ export function hear(
     const tabs = strings(message.tabs);
     if (was.tabs?.join("\n") !== tabs.join("\n")) next = { ...was, tabs };
   } else if (message.type === "edit") {
-    if ("errors" in message) next = { ...was, errors: strings(message.errors) };
-  } else if (message.type === "error") {
-    const error = `${message.message}${message.line ? ` (line ${message.line})` : ""}`;
-    if (!was.errors.includes(error))
-      next = { ...was, errors: [...was.errors, error] };
+    if ("errors" in message) next = { ...was, cells: strings(message.errors) };
+  } else if (message.type === "error" || message.type === "issue") {
+    const key =
+      message.type === "error" ? "errors" : message.cell ? "cells" : "issues";
+    const text =
+      message.type === "error" && message.line
+        ? `${message.message} (line ${message.line})`
+        : message.message;
+    if (!was[key].includes(text)) next = { ...was, [key]: [...was[key], text] };
   }
   return next ? { ...all, [path]: next } : all;
 }
@@ -122,7 +129,7 @@ export const rewritten = (all: SeenPages, path: string): SeenPages =>
   Object.fromEntries(
     Object.entries(all).map(([at, was]) => [
       at,
-      path && at !== path ? was : { ...was, errors: [] },
+      path && at !== path ? was : { ...was, errors: [], issues: [], cells: [] },
     ]),
   );
 
@@ -157,7 +164,7 @@ export interface Move {
 }
 
 // What a slide is called apart from its place.
-const rest = (name: string) => name.replace(/^\d+-/, "");
+export const slideName = (name: string) => name.replace(/^\d+-/, "");
 
 // The renames that make `order` the deck's order: each slide is its place,
 // as two digits (three from a hundred slides), then its own name. Only
@@ -166,7 +173,7 @@ const renames = (order: string[]): Move[] =>
   order
     .map((from, at) => ({
       from,
-      to: `${String(at + 1).padStart(order.length < 100 ? 2 : 3, "0")}-${rest(from)}`,
+      to: `${String(at + 1).padStart(order.length < 100 ? 2 : 3, "0")}-${slideName(from)}`,
     }))
     .filter((move) => move.from !== move.to);
 
@@ -179,7 +186,7 @@ export function moved(slides: string[], from: number, to: number) {
 // A slide's name from `stem` that no slide has, apart from its place: with
 // a number, while another is called so.
 function free(slides: string[], stem: string) {
-  const taken = new Set(slides.map(rest));
+  const taken = new Set(slides.map(slideName));
   let name = `${stem}.html`;
   for (let n = 2; taken.has(name); n++) name = `${stem}-${n}.html`;
   return name;
@@ -187,7 +194,7 @@ function free(slides: string[], stem: string) {
 
 // A copy of the slide at `at` right after it, named for it with `-copy`.
 export function duplicated(slides: string[], at: number) {
-  const copy = free(slides, rest(slides[at]).replace(/\.html$/, "-copy"));
+  const copy = free(slides, slideName(slides[at]).replace(/\.html$/, "-copy"));
   const order = [...slides];
   order.splice(at + 1, 0, copy);
   return renames(order).map((move) =>
@@ -272,17 +279,26 @@ export function boardsOf(
 ): Board[] {
   const board = (file: string, like?: PageInfo): Board => {
     const path = join(dir, file);
-    const { w, h } = pageSize(seen[path]?.info ?? like);
     const [width, height] =
       listing.entries.find((entry) => entry.name === file)?.artboard ?? [];
+    const named = width ? { w: width, h: height || 0 } : undefined;
+    const { w, h } = pageSize(
+      seen[path]?.info ?? (named ? { artboard: named } : like),
+    );
     return {
       path,
-      ...(width ? { named: { w: width, h: height || 0 } } : {}),
+      named,
       title: seen[path]?.info?.title || file,
       media: "page",
       w,
       h,
       failed: seen[path]?.errors[0] ?? "",
+      issue: [
+        seen[path]?.issues.length && "design issue",
+        seen[path]?.cells.length && "cell errors",
+      ]
+        .filter(Boolean)
+        .join(", "),
     };
   };
   const kind = name === undefined ? undefined : kindOf(listing, name);
@@ -299,7 +315,7 @@ export function boardsOf(
     return titles.map((title, at) => ({ ...page, title, at }));
   }
   if (kind === "deck") {
-    // A slide not drawn yet is taken to be as large as one that is.
+    // A slide with no declared size borrows one from a loaded neighbour.
     const slides = slidesOf(listing);
     const like = slides
       .map((file) => seen[join(dir, file)]?.info)
@@ -377,28 +393,41 @@ export const settled = (board: Board, seen: SeenPages) =>
     ? board.media !== "stack" || !!board.count
     : still(board) && !!board.failed;
 
-// The boards' failed pages, and what they threw as lines for the agent. A
-// sheet opened fails by the cell: each is counted.
-export function failures(boards: Board[], seen: SeenPages, kind?: Kind) {
-  const paths = [
-    ...new Set(
-      boards
-        .filter((board) => board.failed && !still(board))
-        .map((board) => board.path),
-    ),
-  ];
-  const cells = kind === "sheet";
+// Frames of the same file report the same diagnostics. Count files for
+// runtime and design checks, and individual cells for formula errors.
+export function boardDiagnostics(boards: Board[], seen: SeenPages) {
+  const paths = new Set(
+    boards
+      .filter((board) => !still(board) && (board.failed || board.issue))
+      .map((board) => board.path),
+  );
+  let failed = 0,
+    flagged = 0,
+    cells = 0;
+  const lines: string[] = [];
+  for (const path of paths) {
+    const page = seen[path];
+    if (!page) continue;
+    const add = (what: string, details: string[]) => {
+      if (details.length)
+        lines.push(`\`${path}\` ${what}: ${details.join("; ")}`);
+    };
+    add("threw", page.errors);
+    add("has design issues", page.issues);
+    add("has cells in error", page.cells);
+    if (page.errors.length) failed++;
+    if (page.issues.length) flagged++;
+    cells += page.cells.length;
+  }
   return {
-    count: cells
-      ? sum(paths.map((path) => seen[path].errors.length))
-      : paths.length,
-    text: paths
-      .map(
-        (path) =>
-          `\`${path}\` ${cells ? "has cells in error" : "threw"}: ${seen[path].errors.join("; ")}`,
-      )
-      .join("\n")
-      .slice(0, ERRORS_MAX),
+    summary: [
+      failed && `${plural(failed, "page")} failed to run`,
+      flagged && `${plural(flagged, "page")} with design issues`,
+      cells && `${plural(cells, "cell")} in error`,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    text: lines.join("\n").slice(0, ERRORS_MAX),
   };
 }
 

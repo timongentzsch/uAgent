@@ -82,8 +82,11 @@ export async function openFiles(page, session, path = "", options = {}) {
   const files = page.getByRole(options.phone ? "dialog" : "region", {
     name: "Files",
   });
-  for (const name of path.split("/").filter(Boolean))
-    await files.getByRole("button", { name, exact: true }).click();
+  for (const name of path.split("/").filter(Boolean)) {
+    const row = files.getByRole("button", { name, exact: true });
+    // A second tab can restore the folder expansion saved by the first.
+    if ((await row.getAttribute("aria-expanded")) !== "true") await row.click();
+  }
   if (path.endsWith("/"))
     await files
       .locator(`.tree-folder:has([data-path="${path.slice(0, -1)}"])`)
@@ -147,13 +150,13 @@ export const withoutServiceWorker = (page) =>
 export const online = (page) =>
   expect(page.locator('.composer input[type="file"]')).toBeEnabled();
 
-// The quotes of a conversation's draft, as this device keeps them.
-export const quotesOf = (page, id) =>
+// What this device keeps for one conversation's unsent message.
+export const draftOf = (page, id) =>
   page.evaluate(
-    (id) =>
-      JSON.parse(localStorage.getItem("uagent-drafts") || "{}")[id]?.quotes,
+    (id) => JSON.parse(localStorage.getItem(`uagent-drafts:${id}`) ?? "null"),
     id,
   );
+export const quotesOf = async (page, id) => (await draftOf(page, id))?.quotes;
 
 // The composer's totals open the statistics, which hold the way to the raw
 // context.
@@ -321,7 +324,7 @@ export async function headerAction(page, name) {
     (node) =>
       getComputedStyle(node).getPropertyValue("--narrow").trim() === "1",
   );
-  if (narrow && (await menu.count())) {
+  if (name !== "Files" && narrow && (await menu.count())) {
     if (name === "Settings") {
       await showList(page);
       return page
@@ -575,15 +578,17 @@ export const test = base.extend({
 });
 
 // Chooses this device's detail level from the open conversation's menu.
-export async function chooseDetail(page, level) {
+export async function openView(page) {
   await page
     .locator(".conversation-head")
     .getByLabel("Conversation menu", { exact: true })
     .click();
   // One row opens the levels in place, with a way back.
-  await openMore(page);
-  await page.getByRole("menuitem", { name: /^Detail/ }).click();
-  await expect(page.getByText("On this device.")).toBeVisible();
+  await page.getByRole("menuitem", { name: /^View/ }).click();
+}
+
+export async function chooseDetail(page, level) {
+  await openView(page);
   await page.getByRole("menuitemradio", { name: level, exact: true }).click();
 }
 

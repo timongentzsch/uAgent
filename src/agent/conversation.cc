@@ -146,6 +146,7 @@ bool ParseMessageKind(const std::string& name, MessageKind& kind) {
 
 void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
   next_display_id_ = 1;
+  file_moves_ = json::array();
   display_facts_ = json::object();
   fact_bytes_.clear();
   announced_deliveries_ = json::object();
@@ -217,6 +218,7 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   }
   dropped_segments_ = std::max(int64_t{0}, dropped_segments);
   display_ids_ = std::move(restored_ids);
+  file_moves_ = FileMoves(display);
   display_facts_ = std::move(restored_facts);
   display_bytes_ = JsonEstimatedBytes(display_facts_);
   fact_bytes_.clear();
@@ -246,12 +248,26 @@ void Conversation::ResetHistory(json baseline, std::vector<MessageKind> kinds) {
   }
 }
 
+json Conversation::FileMoves(const json& display) {
+  if (const json* saved = JsonArray(display, "file_moves")) return *saved;
+  // Sessions written before the boundary list kept only the move receipt.
+  json moves = json::array();
+  if (const json* facts = JsonObject(display, "facts")) {
+    for (const auto& fact : *facts) {
+      if (const json* moved = JsonObject(fact, "moved")) {
+        moves.push_back({{"sequence", JsonValue(fact, "sequence", uint64_t{0})},
+                         {"from", JsonValue(*moved, "from", "")},
+                         {"lead_only", true}});
+      }
+    }
+  }
+  return moves;
+}
+
 json Conversation::DisplayMetadata() const {
-  return {{"ids", display_ids_},
-          {"facts", display_facts_},
-          {"announced", announced_deliveries_},
-          {"statistics", statistics_},
-          {"next", next_display_id_}};
+  return {{"ids", display_ids_},       {"file_moves", file_moves_},
+          {"facts", display_facts_},   {"announced", announced_deliveries_},
+          {"statistics", statistics_}, {"next", next_display_id_}};
 }
 
 void Conversation::AddStatistics(const json& delta) {
@@ -264,6 +280,10 @@ std::string Conversation::LastDisplayId() const {
 
 json Conversation::RecordEntry(json facts) {
   facts["sequence"] = next_display_id_++;
+  if (const json* moved = JsonObject(facts, "moved")) {
+    file_moves_.push_back({{"sequence", facts["sequence"]},
+                           {"from", JsonValue(*moved, "from", "")}});
+  }
   facts["id"] = "m-" + std::to_string(next_display_id_ - 1);
   if (!facts.contains("kind")) facts["kind"] = "activity";
   facts["time"] = UtcStamp();
@@ -478,6 +498,12 @@ std::string Conversation::LastText(MessageKind kind) const {
 std::string Conversation::FirstUserText() const {
   for (size_t index = 0; index < messages_.size(); ++index) {
     if (kinds_[index] != MessageKind::kUser) continue;
+    // Mail, a report or finished work is never the person's first words.
+    if (index < display_ids_.size()) {
+      const auto facts =
+          display_facts_.find("m-" + std::to_string(display_ids_[index]));
+      if (facts != display_facts_.end() && facts->contains("origin")) continue;
+    }
     const json& message = messages_[index];
     if (JsonValue(message, "role", "") == "user" &&
         message.contains("content") && message["content"].is_string()) {

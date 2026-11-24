@@ -197,6 +197,88 @@ def assert_whole(home, alpha, beta, *, notes=1):
     return ids
 
 
+def test_web_file_origin_survives_repeated_moves_and_legacy_receipts(root, home, *, binary):
+    old, middle, latest = (root / name for name in ("old", "middle", "latest"))
+    for folder in (old, middle, latest):
+        folder.mkdir()
+        (folder / "same.html").write_text(folder.name)
+    (old / "only-old.md").write_text("old file")
+    directory, _, _ = save_family(home, old, root)
+    with Server([event({"content": "ok"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            lead = listed(client, LEAD)
+            route = "/api/sessions/" + lead["id"] + "/file-origin?"
+
+            def origin(query):
+                status, value, _ = client.json(route + query)
+                assert_true(status == 200, (status, value))
+                return value
+
+            original = lead["file_origin"]
+            grant = f"/api/sessions/{lead['id']}/preview"
+            base = client.json(grant, {})[1]["base"]
+            assert_true(client.request(base + "same.html")[0] == 200, "original preview")
+            assert_true(origin("sequence=2")["current"], lead)
+            client.command("move", lead, cwd=str(middle))
+            moved = listed(client, LEAD)
+            middle_id = moved["file_origin"]
+            assert_true(
+                client.request(base + "same.html")[0] == 404, "preview belongs to old folder"
+            )
+            new_base = client.json(grant, {})[1]["base"]
+            assert_true(
+                new_base != base and b"middle" in client.request(new_base + "same.html")[1],
+                "new preview",
+            )
+            assert_true(middle_id != original, moved)
+            display = read_session(directory / "lead.json")[1]["display"]
+            first_boundary = display["file_moves"][0]["sequence"]
+            client.command("move", moved, cwd=str(latest))
+            assert_true(origin("sequence=2")["origin"] == original, "old reference")
+            assert_true(origin(f"sequence={first_boundary}")["origin"] == middle_id, "middle")
+            assert_true(origin("origin=" + original)["cwd"] == str(old.resolve()), "copied URL")
+            assert_true(origin("path=only-old.md")["origin"] == original, "old path-only URL")
+            status, conflict, _ = client.json(route + "path=same.html")
+            assert_true(
+                status == 409
+                and {row["cwd"] for row in conflict["choices"]}
+                == {str(folder.resolve()) for folder in (old, middle, latest)},
+                conflict,
+            )
+            assert_true(client.json(route + "path=missing.md")[0] == 404, "missing old link")
+            assert_true(client.json(route + "origin=unknown")[0] == 404, "unrecorded origin")
+            child = "/api/sessions/" + session_id(directory / "agent-0001.json")
+            assert_true(
+                client.json(child + "/file-origin?sequence=2")[1]["origin"] == original, child
+            )
+
+        # A previously moved lead has only structured move receipts in its saved display.
+        saved = directory / "lead.json"
+        head, body = read_session(saved)
+        head.pop("has_file_moves")
+        body["display"].pop("file_moves")
+        saved.write_text(json.dumps(head) + "\n" + json.dumps(body))
+        legacy_child = directory / "agent-0001.json"
+        child_head, child_body = read_session(legacy_child)
+        child_head.pop("has_file_moves")
+        child_body["display"].pop("file_moves")
+        child_body["display"]["facts"] = {}
+        legacy_child.write_text(json.dumps(child_head) + "\n" + json.dumps(child_body))
+        with web_host(binary, root, home, provider.url) as (again, code, _, _):
+            again.pair(code)
+            listed(again, LEAD)
+            assert_true(again.json(route + "sequence=2")[1]["origin"] == original, "old receipt")
+            assert_true(again.json(route + "path=same.html")[0] == 409, "legacy collision")
+            query = child + "/file-origin?sequence=2&path="
+            assert_true(again.json(query + "only-old.md")[1]["origin"] == original, "old child")
+            assert_true(again.json(query + "same.html")[0] == 409, "ambiguous old child")
+            assert_true(
+                again.json(query + str(old.resolve() / "same.html"))[1]["origin"] == original,
+                "absolute reference in old child",
+            )
+
+
 def test_web_move_takes_a_conversation_and_its_agents_to_another_folder(root, home, *, binary):
     alpha, beta = root / "alpha", root / "beta"
     alpha.mkdir()
@@ -346,9 +428,9 @@ def test_web_move_refuses_what_it_could_not_do_safely(root, home, *, binary):
             assert_whole(home, alpha, beta)
 
 
-def test_web_move_lets_a_side_chat_merge_back_into_its_moved_conversation(root, home, *, binary):
-    """A side chat is no agent and stays where it is; it still finds the
-    conversation it branched from once that moved."""
+def test_web_move_takes_a_side_chat_along_and_it_merges_back(root, home, *, binary):
+    """A side chat moves with the conversation it belongs to, and still
+    finds it to merge into."""
     alpha, beta = root / "alpha", root / "beta"
     alpha.mkdir()
     beta.mkdir()
@@ -372,7 +454,9 @@ def test_web_move_lets_a_side_chat_merge_back_into_its_moved_conversation(root, 
             client.until(side, idle)
             parent = client.snapshot(parent)["metadata"]
             client.command("move", parent, cwd=str(beta))
-            client.command("side", client.snapshot(side)["metadata"], operation="merge")
+            side = client.snapshot(side)["metadata"]
+            assert_true(side["cwd"] == str(beta.resolve()), side)
+            client.command("side", side, operation="merge")
             parent = client.command("activate", {"id": parent["id"], "generation": ""})["session"]
             client.until(parent, lambda value: "PARENT-READ-IT" in json.dumps(value))
 

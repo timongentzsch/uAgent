@@ -9,7 +9,6 @@ import {
 import { useAction } from "../../../shared/use-action.ts";
 import { manage } from "../../../state/api.ts";
 import { useSettings } from "../context.ts";
-import { NotificationsPane } from "./notifications.tsx";
 
 // The display mode and the device are fixed for the page's life.
 const installed =
@@ -19,15 +18,12 @@ const ios =
   /iPhone|iPad/.test(navigator.userAgent) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
-export function DevicesPane() {
-  const { install, setInstall, catalogue, refresh, logout } = useSettings();
+export function InstallPane() {
+  const { install, setInstall } = useSettings();
   const action = useAction();
-  const [confirm, setConfirm] = useState<
-    { id: string; name: string } | "logout" | null
-  >(null);
   return (
     <>
-      {action.error != null && !confirm && <LoadError error={action.error} />}
+      {action.error != null && <LoadError error={action.error} />}
       <Group title="Install">
         {installed ? (
           <Row label="Installed" detail="Running as an installed app." />
@@ -51,7 +47,19 @@ export function DevicesPane() {
           />
         )}
       </Group>
-      <NotificationsPane />
+    </>
+  );
+}
+
+export function DevicesPane() {
+  const { catalogue, refresh, logout } = useSettings();
+  const action = useAction();
+  const [confirm, setConfirm] = useState<
+    { id: string; name: string } | "logout" | null
+  >(null);
+  return (
+    <>
+      {action.error != null && !confirm && <LoadError error={action.error} />}
       <Group title="Paired devices">
         {catalogue.devices.map((device) => (
           <Row

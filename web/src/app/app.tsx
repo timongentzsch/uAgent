@@ -1,3 +1,5 @@
+import { failure } from "../shared/types.ts";
+import type { FileTarget } from "../shared/file-types.ts";
 import type {
   JSONValue,
   Draft,
@@ -9,7 +11,7 @@ import type {
   AppModal,
   InspectorTarget,
   TerminalInfo,
-  FileTarget,
+  FileOrigin,
   LibraryKind,
   LibraryPlace,
 } from "../shared/types.ts";
@@ -17,17 +19,29 @@ import { render, type ComponentChildren } from "preact";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "preact/hooks";
-import { emptyDraft, hasContent } from "../state/store.ts";
+import { hasContent } from "../state/store.ts";
 import { useApi, localApi } from "../state/api.ts";
 import { ConversationContext, HostContext } from "../state/host-context.ts";
-import { Modal, ErrorBoundary, Deferred, Spinner } from "../shared/ui.tsx";
+import {
+  Modal,
+  ErrorBoundary,
+  Deferred,
+  Spinner,
+  copyText,
+} from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
-import { closeTopLayer, settled, useDismiss } from "../shared/dismiss.ts";
+import {
+  closeTopLayer,
+  settled,
+  underLayers,
+  useDismiss,
+} from "../shared/dismiss.ts";
 import { slide } from "../shared/motion.ts";
 import { useEdgeSwipe } from "../shared/swipe.ts";
 import Sidebar, {
@@ -38,7 +52,12 @@ import { livePins } from "../features/sidebar/pins.tsx";
 import { ConversationMenu, TerminalMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
-import { isRunning, sessionById, shownSessions } from "../state/attention.ts";
+import {
+  isRunning,
+  isSideChat,
+  sessionById,
+  shownSessions,
+} from "../state/attention.ts";
 import {
   lockPageZoom,
   useCompact,
@@ -53,7 +72,7 @@ import { storageKeys } from "../shared/storage-keys.ts";
 
 import HostsShell, { type HostAppProps } from "./hosts.tsx";
 import { useHosts } from "../state/sources.ts";
-import { useSnapshots } from "../state/snapshot-store.ts";
+import { useStoreValue } from "../state/value-store.ts";
 import { DetailContext } from "../features/chat/node.tsx";
 import { detailLevels } from "../shared/tree.ts";
 import { devicePrefs } from "../shared/device-prefs.ts";
@@ -68,7 +87,13 @@ import { useSideConversations } from "./use-side-conversations.ts";
 import { usePlaces } from "./use-places.tsx";
 import { useCommands } from "./use-commands.ts";
 import { folderOf } from "../shared/display.ts";
-import { focusComposer } from "../shared/navigation.ts";
+import {
+  focusComposer,
+  fileFromURL,
+  artifactURL,
+  withoutFileAddress,
+} from "../shared/navigation.ts";
+import { useLinkedFile } from "./use-linked-file.ts";
 import type { FindRequest } from "../features/chat/find-bar.tsx";
 import { useMessageActions } from "./use-message-actions.ts";
 import Library from "../features/library/library.tsx";
@@ -106,8 +131,10 @@ const keptPage = stored<Page>(
 // a streamed frame re-renders <ChatPage>, not the shell and its sidebar.
 function App({ host, bindResult, reading }: HostAppProps) {
   const hosts = useHosts();
-  const { command, manage } = useApi();
-  const [page, setPage] = useState<Page>(keptPage.read);
+  const { api, routes, command, manage } = useApi();
+  const [page, setPage] = useState<Page>(() =>
+    fileFromURL() ? "chat" : keptPage.read(),
+  );
   useEffect(() => reading(page === "chat"), [page, reading]);
   useEffect(() => keptPage.write(page), [page]);
   const [place, setPlace] = useState("");
@@ -115,7 +142,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const [libraryKind, setLibraryKind] = useState<LibraryKind | "">("");
   useDismiss(page !== "chat", () => setPage("chat"));
   const [drawer, setDrawer] = useState(false);
-  const [filesOpen, setFilesOpen] = useState(false);
+  const [filesOpen, setFilesOpen] = useState<boolean | "expanded">(false);
   const [flows, setFlows] = useState<Record<string, Flow>>({});
   const setFlow = useCallback(
     (id: string, update: (flow: Flow) => Flow) =>
@@ -124,15 +151,17 @@ function App({ host, bindResult, reading }: HostAppProps) {
   );
   const selectedRef = useRef("");
   const folderRef = useRef("");
-  const openFile = useCallback(
-    (target: FileTarget, id = selectedRef.current) => {
-      setFlow(id, () => cite(target, folderRef.current));
+  const flowRef = useRef("");
+  const openHere = useCallback(
+    (target: FileTarget) => {
+      setFlow(flowRef.current, () => cite(target, folderRef.current));
       setFilesOpen(true);
     },
     [setFlow],
   );
   // Hidden (false), its panel stays and its shells run on; none started
   // without a value.
+  const [terminalExpanded, setTerminalExpanded] = useState(false);
   const [terminalShown, setTerminalShown] = useState<boolean>();
   const [modal, setModal] = useState<AppModal | null>(null);
   const [overlay, setOverlay] = useState<"search" | "shortcuts" | null>(null);
@@ -193,11 +222,25 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const openDrawer = useCallback(() => setDrawer(true), []);
   useEdgeSwipe(compact, () => closeTopLayer() || openDrawer());
   const filesSheet = useNarrowColumn(shown) || compact;
+  useDismiss(filesOpen === "expanded" && !filesSheet && page === "chat", () =>
+    setFilesOpen(true),
+  );
   const roomy = useRoomyColumn(shown);
   const side = useSideConversations(host);
+  // A side chat is shown as one wherever it is opened from (search, Needs
+  // you, a notification, an address): where the column fits, as its
+  // conversation with its tab in front; the page is for layouts without.
+  const opened = sessionById(catalogue.sessions, selected);
+  const sideOf = opened && isSideChat(opened) ? opened.parent : undefined;
   // The side chats have a column where it fits beside the chat (and beside
   // Files, when that is open); elsewhere each is a page of its own.
   const sideColumn = !filesSheet && (!filesOpen || roomy);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per side chat opened
+  useLayoutEffect(() => {
+    if (!sideOf || !sideColumn) return;
+    side.show(selected, sideOf);
+    setSelected(sideOf, undefined, true);
+  }, [sideOf, sideColumn, selected]);
   const [busy, setBusy] = useState(false);
   const [notificationMode, setNotificationMode] = useState(false);
   // Choosing a level forgets the rows opened or closed on this device.
@@ -227,22 +270,21 @@ function App({ host, bindResult, reading }: HostAppProps) {
     }),
     [levels, detail, changeDetail, thinking, chooseThinking],
   );
-  // A path asked for in another conversation opens once that one is shown.
-  const revealNext = useRef<FileTarget | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: on each conversation chosen
-  useEffect(() => {
-    if (revealNext.current) openFile(revealNext.current, selected);
-    revealNext.current = null;
-  }, [selected]);
   // The catalogue entry changes with every session event; a snapshot's
   // metadata stands in only for a session not listed yet.
   const listedSession = sessionById(catalogue.sessions, selected);
-  const metadata = useSnapshots(snapshots, (all) =>
+  const metadata = useStoreValue(snapshots, (all) =>
     listedSession ? undefined : all[selected]?.metadata,
   );
   const session = listedSession || metadata;
   selectedRef.current = selected;
   folderRef.current = session ? folderOf(session) : "";
+  // A move invalidates this workspace's file data and navigation history.
+  const fileScope = JSON.stringify([
+    selected,
+    session?.file_origin || folderRef.current,
+  ]);
+  flowRef.current = fileScope;
   // Only an empty open conversation is passed on, so choosing among the
   // others does not filter the list again.
   const keep = listedSession?.turns === 0 ? selected : "";
@@ -253,15 +295,11 @@ function App({ host, bindResult, reading }: HostAppProps) {
   // Until the catalogue answers, placeholders fill the shell.
   const booting = authenticated === null;
   const opening = booting && !!selected;
-  const draft = drafts[selected] || emptyDraft();
-  const uploading = draft.files.some((file) => file.pending);
   const running = !!session && isRunning(session, online);
   useWakeLock(running);
   const { updateDraft, attachAnnotated, upload } = useDraftUploads({
     host,
     session,
-    draft,
-    uploading,
   });
   const setDraft = useCallback(
     (value: Draft, id = selected) => updateDraft(id, () => value),
@@ -312,11 +350,17 @@ function App({ host, bindResult, reading }: HostAppProps) {
     page,
     choose,
   });
-  const waiting = useSnapshots(
+  const waiting = useStoreValue(
     snapshots,
     (all) => !!update && Object.values(all).some((item) => item.pending),
+    !!update,
   );
-  const updateBlocked = Object.values(drafts).some(hasContent)
+  const unsentDraft = useStoreValue(
+    drafts,
+    (all) => !!update && Object.values(all).some(hasContent),
+    !!update,
+  );
+  const updateBlocked = unsentDraft
     ? "Send or copy unsent drafts first."
     : waiting
       ? "Wait for the running turn to finish."
@@ -348,19 +392,159 @@ function App({ host, bindResult, reading }: HostAppProps) {
         );
     });
   }, [choose, compact]);
+  // Only release a pending reveal in the exact workspace the host resolved.
+  const revealNext = useRef<
+    { path: string; host: string; target: FileTarget } | undefined
+  >(undefined);
+  const cwd = session ? folderOf(session) : "";
+  const ownerHost = session?.host || hosts.active;
+  useEffect(() => {
+    const pending = revealNext.current;
+    if (
+      !selected ||
+      !pending ||
+      cwd !== pending.path ||
+      ownerHost !== pending.host
+    )
+      return;
+    revealNext.current = undefined;
+    openHere(pending.target);
+  }, [selected, cwd, ownerHost, openHere]);
   const showInPlace = useCallback(
-    (place: LibraryPlace, target: FileTarget) => {
-      setFilesOpen(true);
-      if (place.session === selected) {
+    (
+      place: Pick<LibraryPlace, "path" | "host" | "session">,
+      target: FileTarget,
+      linked = false,
+    ) => {
+      if (place.path === cwd && (place.host || "") === ownerHost && selected) {
         setPage("chat");
-        openFile(target);
+        openHere(target);
         return;
       }
-      revealNext.current = target;
-      if (place.session) void choose(place.session);
-      else void startConversation(place.path).catch(report);
+      // A copied link stays reloadable when its original chat has moved.
+      // Navigate with the complete file address in one history transition.
+      const followLink = (id: string) => {
+        const url = artifactURL(
+          id,
+          place.host || "",
+          target.path,
+          target.origin,
+        );
+        if (url) location.replace(url);
+      };
+      if (linked && place.session) {
+        followLink(place.session);
+        return;
+      }
+      const pending = { path: place.path, host: place.host || "", target };
+      revealNext.current = pending;
+      setFilesOpen(false);
+      if (place.session) void choose(place.session, pending.host);
+      else
+        void startConversation(place.path, "", "", pending.host)
+          .then((id) => {
+            if (id && linked && selectedRef.current === id) followLink(id);
+            if (!id && revealNext.current === pending)
+              revealNext.current = undefined;
+          })
+          .catch((error) => {
+            if (revealNext.current === pending) revealNext.current = undefined;
+            report(error);
+          });
     },
-    [selected, openFile, choose, startConversation, report],
+    [cwd, ownerHost, selected, openHere, choose, startConversation, report],
+  );
+  const lookup = useRef(0);
+  // Catalogue refreshes should not replace every transcript action. Resolve
+  // against the latest catalogue when the paired host answers.
+  const fileNav = useRef({
+    sessions: catalogue.sessions,
+    active: hosts.active,
+    showInPlace,
+  });
+  fileNav.current = {
+    sessions: catalogue.sessions,
+    active: hosts.active,
+    showInPlace,
+  };
+  const openFile = useCallback(
+    async (target: FileTarget, linked = false): Promise<void> => {
+      const request = ++lookup.current;
+      revealNext.current = undefined;
+      const id = selectedRef.current;
+      if (!id) return;
+      try {
+        const source = await api<FileOrigin>(routes.fileOrigin(id, target));
+        if (id !== selectedRef.current || request !== lookup.current) return;
+        const nav = fileNav.current;
+        const executionHost = source.host || nav.active;
+        const at = nav.sessions.find(
+          (s) =>
+            s.id !== id &&
+            folderOf(s) === source.cwd &&
+            (s.host || nav.active) === executionHost,
+        );
+        const resolved = {
+          ...target,
+          origin: source.origin,
+          ...(target.turn && !source.current && { journal: id }),
+        };
+        if (source.current && source.cwd === folderRef.current)
+          openHere(resolved);
+        else
+          nav.showInPlace(
+            { path: source.cwd, host: executionHost, session: at?.id },
+            resolved,
+            linked,
+          );
+      } catch (error) {
+        if (id !== selectedRef.current || request !== lookup.current) return;
+        setFilesOpen(false);
+        const { choices } = failure(error);
+        if (!target.origin && choices?.length) {
+          open({
+            type: "file-origin",
+            path: target.path,
+            choices,
+            linked,
+            pick: (origin) => {
+              if (id !== selectedRef.current || request !== lookup.current)
+                return;
+              if (linked) {
+                const url = artifactURL(
+                  id,
+                  fileNav.current.active,
+                  target.path,
+                  origin,
+                );
+                if (url) underLayers(() => location.replace(url));
+              } else void openFile({ ...target, origin });
+            },
+          });
+        } else report(error);
+      }
+    },
+    [api, routes, openHere, open, report],
+  );
+  const showLinkedFile = useCallback(
+    (path: string, origin?: string) => {
+      if (!path) {
+        ++lookup.current;
+        revealNext.current = undefined;
+        setFilesOpen(false);
+        return;
+      }
+      setPage("chat");
+      setDrawer(false);
+      void openFile({ path, origin, exact: true }, true);
+    },
+    [openFile],
+  );
+  useLinkedFile(
+    session?.id ?? "",
+    !!filesOpen,
+    flows[fileScope]?.view,
+    showLinkedFile,
   );
   const { submit, deliver, forkAndOpen, showContext, runCommand } = useCommands(
     {
@@ -369,8 +553,6 @@ function App({ host, bindResult, reading }: HostAppProps) {
       running,
       busy,
       setBusy,
-      draft,
-      uploading,
       setDraft,
       updateDraft,
       act,
@@ -542,7 +724,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
       updateDraft(selected, change);
       if (keep) return;
       if (compact) hideTerminal();
-      if (filesSheet) setFilesOpen(false);
+      setFilesOpen((open) => !filesSheet && !!open);
       focusComposer();
     },
     [updateDraft, selected, compact, filesSheet, hideTerminal],
@@ -568,19 +750,29 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const quote = drafting ? addQuote : undefined;
   const files = session && (
     <Files
-      key={session.id}
+      key={fileScope}
       session={session}
       close={filesSheet ? undefined : () => setFilesOpen(false)}
-      flow={flows[session.id] ?? START}
-      setFlow={(update) => setFlow(session.id, update)}
+      expanded={filesOpen === "expanded" && !filesSheet}
+      expand={
+        filesSheet
+          ? undefined
+          : () =>
+              setFilesOpen((open) => (open === "expanded" ? true : "expanded"))
+      }
+      flow={flows[fileScope] ?? START}
+      setFlow={(update) => setFlow(fileScope, update)}
       addToChat={toChat}
       quote={quote}
       askSide={
         toChat &&
         ((quote) => {
           side.quote(quote);
-          if (filesSheet) setFilesOpen(false);
+          setFilesOpen((open) => !filesSheet && !!open);
         })
+      }
+      copyLink={(link) =>
+        void copyText(link).then(() => setNotice("Link copied"), report)
       }
       pictures={browserAvailable}
     />
@@ -592,6 +784,10 @@ function App({ host, bindResult, reading }: HostAppProps) {
       cwd={session ? folderOf(session) : ""}
       quote={quote}
       shown={!!terminalShown}
+      expanded={terminalExpanded}
+      expand={
+        compact ? undefined : () => setTerminalExpanded(!terminalExpanded)
+      }
       hide={hideTerminal}
       close={() => setTerminalShown(undefined)}
       report={report}
@@ -662,27 +858,16 @@ function App({ host, bindResult, reading }: HostAppProps) {
   );
   const conversation = useMemo(
     () => ({
-      draft,
+      drafts,
       setDraft,
       submit,
       act,
       upload: attach,
-      uploading,
       busy,
       following,
       setFollowing,
     }),
-    [
-      draft,
-      setDraft,
-      submit,
-      act,
-      attach,
-      uploading,
-      busy,
-      following,
-      setFollowing,
-    ],
+    [drafts, setDraft, submit, act, attach, busy, following, setFollowing],
   );
   const sidebar = (
     <Sidebar
@@ -785,7 +970,6 @@ function App({ host, bindResult, reading }: HostAppProps) {
                   )}
                   <main class="conversation" id="conversation" tabIndex={-1}>
                     <ConversationHeader
-                      detail={detailControl}
                       page={page}
                       selected={selected}
                       session={session}
@@ -797,22 +981,17 @@ function App({ host, bindResult, reading }: HostAppProps) {
                           ? { open: !!terminalShown, toggle: toggleTerminal }
                           : undefined
                       }
-                      filesOpen={filesOpen}
+                      filesOpen={!!filesOpen}
                       setFilesOpen={setFilesOpen}
                       outgoing={outgoing}
                       parent={sessionById(
                         catalogue.sessions,
-                        session?.parent || side.origin?.parent,
+                        session?.parent || session?.side?.parent,
                       )}
-                      merge={
-                        side.origin &&
-                        (() =>
-                          void command("side", session, { operation: "merge" })
-                            .then(() => {
-                              side.close(side.origin!.key, side.origin!.parent);
-                              return choose(side.origin!.parent);
-                            })
-                            .catch(report))
+                      detach={
+                        session && isSideChat(session)
+                          ? () => void side.detach(session).catch(report)
+                          : undefined
                       }
                       openDrawer={openDrawer}
                       choose={choose}
@@ -824,6 +1003,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                         title="Files"
                         layout="sheet"
                         className="files-sheet"
+                        backAddress={withoutFileAddress()}
                         header={false}
                         close={() => setFilesOpen(false)}
                       >
@@ -865,6 +1045,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                         load={folderTerminal}
                         fallback={<Spinner label="Opening the terminal…" />}
                         terminal={shell}
+                        hide={() => overview(shell.folder)}
                         close={closeTerminal}
                       />
                     )}
@@ -909,6 +1090,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                     {terminalStarted && !compact && (
                       <section
                         class="terminal-dock"
+                        data-expanded={terminalExpanded || undefined}
                         aria-label="Terminal"
                         hidden={!terminalShown}
                       >

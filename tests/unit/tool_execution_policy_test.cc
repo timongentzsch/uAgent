@@ -428,6 +428,12 @@ TEST_CASE(TestScheduleTool) {
   ToolResult saved = tool.run(save, ToolContext{});
   CHECK(saved.Ok());
   const json item = json::parse(saved.output);
+  CHECK(saved.body_kind == "fields");
+  CHECK(saved.parts.dump().find("Stock check") != std::string::npos);
+  CHECK(saved.parts.dump().find(item["cwd"].get<std::string>()) !=
+        std::string::npos);
+  const ToolResult listed = tool.run({{"action", "list"}}, {});
+  CHECK(listed.facts.items == 1 && listed.facts.unit == "task");
   CHECK(item["permissions"] == "auto" && item["model"] == "local/haiku");
   CHECK(item["check"] == "./in_stock.sh");
   CHECK(item["cwd"] == workspace.workspace.string());

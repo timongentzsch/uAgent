@@ -3,90 +3,121 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A coding agent you can account for. One native C++20 executable is the agent
-runtime, the web host its browser and phone clients connect to, and the
-execution gateway it starts on other machines over SSH. By default it
-contacts the model endpoint you configure and nothing else: conversations,
-settings and credentials stay on one machine you own, and there is no µAgent
-account, relay or telemetry. [Every other contact is
-listed](SECURITY.md#what-leaves-the-machine), and a test holds the source to
-that list.
+µAgent is a self-hosted coding agent written in C++20. Start a conversation in
+a terminal, follow the same turn from a browser or phone, and inspect the
+files it produces beside the chat. The host can also run tools in a remote
+workspace over SSH.
+
+The host stores your transcript, settings and provider credentials. Each turn
+sends conversation context to the model endpoint you configure. µAgent operates
+without its own account or relay service. Network-capable tools and optional
+services can contact other destinations.
+[What leaves the machine](SECURITY.md#what-leaves-the-machine)
+
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | sh
+```
+
+The installer offers provider setup and, when Docker is available, a container
+installation. Run `uagent` in a project folder to start a terminal session.
+Run `uagent --web` for a local browser pairing link. For a phone, configure
+a reachable origin using the remote-access guide.
+[Release downloads](https://github.com/timongentzsch/uAgent/releases/latest) ·
+[Verify a download](docs/operations/install.md#verify-a-release) ·
+[Install and update](docs/operations/install.md) ·
+[Container](docs/operations/container.md) ·
+[Remote access](docs/operations/remote-access.md)
+
+## In use
+
+![Files open beside the conversation that produced them](docs/images/files.gif)
+
+Both demos were recorded on v1.12 using a scripted model and a sample project.
+The second shows a terminal and phone sharing one conversation. [Terminal and phone recording](docs/images/terminal.gif) ·
+[User manual](docs/manual.md)
 
 ## Process model
 
 ```mermaid
 flowchart LR
   term[terminal: uagent] -->|Unix socket| run
-  dev[browser or phone] -->|HTTPS, SSE, WebSocket| web[web host: uagent --web]
+  dev[browser or phone] -->|HTTP, SSE, WebSocket| web[web host: uagent --web]
   web -->|Unix socket| run[session runtime, one per conversation]
-  script[script: uagent -p] -->|JSON, JSONL| head[headless run]
-  run -->|HTTPS| model[model endpoint]
-  head -->|HTTPS| model
+  head[headless: uagent -p] -->|text, JSON or JSONL| script[calling script]
+  run -->|model request| model[model endpoint]
+  head -->|model request| model
   run -->|OS sandbox| cmd[commands and MCP servers]
   run -->|service socket| chrome[browser service: Chrome]
   run -->|RPC over SSH| gw[execution gateway on another host]
 ```
 
-A conversation is one runtime process, whichever client started it; the
-terminal and paired browsers attach to it and detach without stopping it. The
+An active interactive conversation has a runtime process that terminal and
+paired browser clients can attach to. A turn continues after a client disconnects. The
+web host serves HTTP directly and can sit behind an HTTPS reverse proxy. The
 gateway executes file, Git, command and terminal operations and holds no
 settings, history or provider keys.
 [Architecture](docs/architecture/overview.md) has each process and channel.
 
 ## Properties
 
-| | |
+| Property | Details |
 | --- | --- |
-| Code | about 74k lines of C++20; the web client, about 43k lines of TypeScript and CSS, is embedded in the binary |
-| Size | binary 6.6–10.8 MB; complete installation 19–23 MB with the web client, skills and three gateway payloads |
-| Footprint | 27.1 MiB idle, 29 ms CPU per headless turn ([measured 2026-11-18](benchmarks/README.md#footprint-comparison)) |
-| First request | 12 tools and their instructions in 3,152 tokens ([measured 2026-11-18](benchmarks/README.md#outside-contacts-and-first-request)) |
-| Outside contacts | the configured model endpoint; updates, push and Auto review at another provider only when turned on ([recorded 2026-11-18](benchmarks/README.md#outside-contacts-and-first-request)) |
+| Release size | 6.6–10.9 MB executable, 19.4–23.7 MB unpacked installation across the three 1.11.0 release targets. [Archive measurements](benchmarks/results/packages-2026-11-24.json) |
+| Footprint | µAgent 1.11.0 used 27.3 MiB idle and 20.6 ms local CPU per one-word headless turn in the Linux ARM64 comparison. [Measurement, 2026-11-24](benchmarks/README.md#footprint-comparison) |
+| First request | 13 tools in the fresh 1.11.0 release profile. Compact schemas plus system instructions count to 3,023 tokens with o200k_base. The historical benchmark serialization gives 3,479. [Measurement, 2026-11-24](benchmarks/README.md#current-measurements) |
+| Outside contacts | The v1.11.0 default headless DNS probe observed only the configured endpoint hostname. Tools, SSH and optional services have their own network behavior. [Recorded scenarios](benchmarks/README.md#outside-contacts-and-first-request) |
 | Model APIs | OpenAI Chat Completions, OpenAI Responses, Anthropic Messages |
-| Sandbox | Seatbelt on macOS, Landlock on Linux, on in every approval mode |
+| Command sandbox | Seatbelt on macOS and Landlock on Linux. Enabled by default independently of approval mode. [Platform limits and exceptions](SECURITY.md#sandboxing) |
 | Runtime dependencies | libcurl, zlib, the C++ runtime and, on Linux, OpenSSL 3; no language runtime, no plugin loader |
 | Platforms | Linux x86_64 and ARM64 (glibc 2.38 or newer), macOS 15 or newer on Apple silicon |
 | Tests | native unit and integration suites against mock providers, Chromium and WebKit, sanitizers, fuzzers, clang-tidy |
 
-![Idle memory and CPU per headless turn compared with Claude Code, Codex CLI, omp and OpenCode](docs/images/comparison.svg)
+## Compared with other coding agents
 
-Sizes are of the 1.9.0 archives.
-[Versions, raw results and method](benchmarks/README.md).
+![Idle memory and local CPU per scripted CLI turn on Linux ARM64](docs/images/comparison-scripted.svg)
 
-## Compared with Claude Code and OpenCode
+On 2026-11-24, five CLI releases ran against a loopback provider returning
+the same one-word reply, with external networking disabled. All 25 headless
+turns returned that reply. Claude Code 2.1.331 exited each interactive start
+before the idle sample, so its idle memory is unavailable. The chart measures
+local process work. Model inference and response quality require a different
+workload. [Versions, raw samples and method](benchmarks/README.md#footprint-comparison)
 
-Measured on 2026-11-18 with µAgent 1.10.1, Claude Code 2.1.327 and OpenCode
-1.19.6, except the two rows from each project's own documentation.
-
-| | µAgent | Claude Code | OpenCode |
+| Documented behavior, reviewed 2026-11-24 | µAgent | Claude Code | OpenCode |
 | --- | --- | --- | --- |
-| Hosts asked for during one headless turn, besides the model endpoint | none | `api.anthropic.com` | `models.opencode.ai`, `registry.npmjs.org` |
-| A phone or second device attaches to | your own web host, after pairing | Anthropic's API, which stores the transcript while connected (its docs) | your own server |
-| OS sandbox for the agent's commands | on in every approval mode | off by default (its docs) | none (its SECURITY.md) |
-| First request, tools and instructions | 3,152 tokens | 11,509 | 6,904 |
-| Idle memory | 27 MiB | 161 MiB | 585 MiB |
+| A phone or second device connects to | a paired, self-hosted web server | Anthropic Remote Control, which stores the transcript while connected | a self-hosted server |
+| OS sandbox for agent commands | enabled by default where supported | off by default | no built-in agent sandbox |
 
-Both do things µAgent does not: Claude Code has cloud sessions, IDE and
-desktop apps and a plugin ecosystem; OpenCode has more providers built in,
-LSP integration and desktop and IDE clients.
-[Method and raw results](benchmarks/README.md#outside-contacts-and-first-request).
+Claude Code also provides cloud sessions, IDE and desktop clients, and
+plugins. OpenCode provides built-in LSP integration and desktop and IDE
+clients. The benchmark report also includes DNS and tool-schema captures for
+the specific versions measured.
+[Method and raw results](benchmarks/README.md#outside-contacts-and-first-request) ·
+[Claude Remote Control](https://code.claude.com/docs/en/remote-control#connection-and-security) ·
+[Claude sandbox defaults](https://code.claude.com/docs/en/sandboxing#what-the-sandbox-restricts) ·
+[OpenCode server](https://opencode.ai/docs/api) ·
+[OpenCode security model](https://github.com/anomalyco/opencode/security/policy)
 
 ## Design decisions
 
-- **The main owns everything.** Provider requests, keys, settings, history and
-  the agent loop run on one machine. A remote host receives execution requests,
-  an authentication token and a sandbox preset, nothing else.
+- **Provider access stays on the host.** Provider requests, keys, settings, history and
+  the agent loop run on one machine. An SSH target receives a matching gateway
+  bundle, its authentication token and sandbox preset, then the data required
+  for its execution requests.
   [Execution gateway](docs/architecture/execution-gateway.md)
-- **One binary, three roles.** No server-side language runtime and no
-  dynamically loaded plugins; the web client ships inside the executable.
+- **The web client ships inside the executable.** The terminal, session runtime
+  and web host share the native code. Optional tools run in separate processes.
   [Overview](docs/architecture/overview.md)
-- **The OS confines commands.** The approval mode decides who is asked; the
-  sandbox decides what a command can reach, and no mode turns it off.
+- **Approvals and sandboxing are separate.** The approval mode determines
+  when a person is asked. The sandbox limits filesystem and network access.
+  Explicit unsandboxed and root commands require approval.
   [Sandbox](docs/architecture/sandbox.md) · [Security](SECURITY.md)
-- **Configuration is described once.** One registry yields the flags,
-  `/config`, the web's settings and the
+- **Settings share one registry.** The same definitions power `/config`,
+  the web settings and the
   [generated reference](docs/interfaces/settings.md).
-- **Pages cannot reach the app.** Decks, documents, sheets and designs the
+- **Artifact previews run in isolated frames.** Decks, documents, sheets and designs the
   agent writes render in opaque-origin frames from a capability address; a
   sheet calculates in a worker of its own page.
   [Artifacts](docs/architecture/artifacts.md)
@@ -109,6 +140,10 @@ LSP integration and desktop and IDE clients.
 
 ## Build and verify
 
+A source build needs a C++20 compiler, CMake 3.21+, libcurl, zlib and OpenSSL 3.
+CI builds the web client with Node.js 24 and npm. Install Python 3 to run the
+native test suite. [Build prerequisites](docs/operations/install.md#platforms-and-the-loader-check)
+
 ```sh
 (cd web && npm ci && npm run build)
 cmake --preset debug
@@ -116,31 +151,10 @@ cmake --build --preset debug --parallel
 ctest --preset debug --output-on-failure
 ```
 
-The suite needs no API key or network. [Testing](docs/testing.md) covers the
+With build dependencies installed, the default native suite uses local fixtures
+and loopback connections. It needs no provider API key. [Testing](docs/testing.md) covers the
 browser tests, sanitizers and the behavioural evaluation;
 [Contributing](CONTRIBUTING.md) the conventions and the release.
-
-## Install
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | sh
-```
-
-The installer offers a local install or a container, then asks for a provider.
-`uagent` starts a conversation in the current folder; `uagent --web` prints a
-pairing link for a browser or phone.
-[Install and update](docs/operations/install.md) ·
-[Container](docs/operations/container.md) ·
-[Remote access](docs/operations/remote-access.md)
-
-## In use
-
-![The terminal interface and a paired phone on one conversation](docs/images/terminal.gif)
-
-![Files beside a conversation in the web client](docs/images/files.gif)
-
-Recorded from the running client with a scripted model. The
-[manual](docs/manual.md) covers what each control does.
 
 ## Documentation
 

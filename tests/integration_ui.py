@@ -390,7 +390,7 @@ def test_long_diff_reads_the_same_live_and_on_resume(root, home, *, binary):
             code, output = run_pty(root, env, payload, args=args, startup_marker=b"", binary=binary)
             assert_true(code == 0, output[-2000:])
             # The headline and the facts' words; this terminal draws ASCII.
-            assert_true(b"result: Wrote long.txt - +2001 -0" in output, output[-2000:])
+            assert_true(b"result: Created long.txt - +2001 -0" in output, output[-2000:])
             # Opened, the diff's opening ends where it was cut, and says so.
             assert_true(b"+line 0" in output and b"| ...\r\n" in output, output[-2000:])
             assert_true(b"LAST_DIFF_LINE" not in output, output[-2000:])

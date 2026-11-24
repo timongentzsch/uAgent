@@ -295,7 +295,7 @@ def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
     (project / "blob.bin").write_bytes(b"\x00\x02")
     # A folder inside a larger repository shows only itself.
     outer = root / "outer"
-    inner = outer / "inner"
+    inner = outer / " inner"
     inner.mkdir(parents=True)
     git(outer, "init", "-q")
     (outer / "beside.txt").write_text("beside one\n")
@@ -319,10 +319,13 @@ def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
 
+            sessions = {}
+
             def answer(folder, **query):
-                session = client.create(folder, activate=False)
+                if folder not in sessions:
+                    sessions[folder] = client.create(folder, activate=False)["id"]
                 status, value, _ = client.json(
-                    f"/api/sessions/{session['id']}/files?{urlencode(query)}"
+                    f"/api/sessions/{sessions[folder]}/files?{urlencode(query)}"
                 )
                 return status, value
 
@@ -360,12 +363,82 @@ def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
             # Too long to carry whole, it is cut rather than refused.
             assert_true(diffs["huge.txt"]["more"] and "+a line" in diffs["huge.txt"]["text"], "cut")
 
+            # A combined diff can be empty while both sides have an edit.
+            (project / "staged.txt").write_text("staged.txt one\n")
+
+            def split(folder):
+                status, value = answer(folder, changes="split")
+                assert_true(status == 200, value)
+                return value["changes"]
+
+            by_path = {row["path"]: row for row in split(project)}
+            assert_true(
+                by_path["staged.txt"]
+                == {
+                    "path": "staged.txt",
+                    "state": "M",
+                    "working": "M",
+                    "staged": "M",
+                },
+                by_path,
+            )
+            assert_true(
+                by_path["added.txt"].get("working") == "A" and "staged" not in by_path["added.txt"],
+                by_path,
+            )
+            assert_true(by_path["new name.txt"].get("staged") == "R", by_path)
+
+            def patch(folder, path, scope):
+                status, value = answer(folder, diff=path, scope=scope)
+                assert_true(status == 200, value)
+                return value["text"]
+
+            assert_true(answer(project, diff="staged.txt")[1]["text"] == "", "combined diff")
+            assert_true(
+                "+staged.txt one" in patch(project, "staged.txt", "working"), "working diff"
+            )
+            assert_true("+staged.txt two" in patch(project, "staged.txt", "staged"), "staged diff")
+            rename = patch(project, "new name.txt", "staged")
+            assert_true(
+                "rename from old name.txt" in rename and "rename to new name.txt" in rename, rename
+            )
+            assert_true("+added" in patch(project, "added.txt", "working"), "untracked diff")
+            assert_true(answer(project, diff="added.txt", scope="staged")[0] == 404, "wrong scope")
+            assert_true(
+                answer(project, diff="edited.txt", scope="unknown")[0] == 400, "unknown scope"
+            )
+            # A staged deletion followed by an untracked replacement has two status records.
+            git(project, "rm", "same.txt")
+            (project / "same.txt").write_text("replacement\n")
+            assert_true("-same.txt one" in patch(project, "same.txt", "staged"), "staged deletion")
+            assert_true("+replacement" in patch(project, "same.txt", "working"), "replacement")
+            # Intent-to-add allows Git to recognize a working-tree rename.
+            (project / "blob.bin").write_bytes(b"\x00\x01")
+            (project / "blob.bin").rename(project / "moved.bin")
+            git(project, "add", "-N", "moved.bin")
+            working_rename = patch(project, "moved.bin", "working")
+            assert_true(
+                "rename from blob.bin" in working_rename
+                and "rename to moved.bin" in working_rename,
+                working_rename,
+            )
+            assert_true(not marker.exists(), "a configured program ran")
+
             status, value = answer(inner, changes="")
             assert_true(value["changes"] == [{"path": "within.txt", "state": "M"}], value)
             status, value = answer(inner, diff="within.txt")
             assert_true(status == 200 and "+within two" in value["text"], value)
             for path in ("../beside.txt", "beside.txt", "inner/within.txt"):
                 assert_true(answer(inner, diff=path)[0] == 404, path)
+
+            git(inner, "mv", "within.txt", "renamed.txt")
+            inner_rename = patch(inner, "renamed.txt", "staged")
+            assert_true(
+                "rename from within.txt" in inner_rename and "inner/" not in inner_rename,
+                inner_rename,
+            )
+            for scope in ("working", "staged"):
+                assert_true(answer(inner, diff="../beside.txt", scope=scope)[0] == 404, scope)
 
             status, value = answer(searched, find="types.ts")
             assert_true(
@@ -380,6 +453,11 @@ def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
             assert_true(value["changes"] == [{"path": "first.txt", "state": "A"}], value)
             status, value = answer(fresh, diff="first.txt")
             assert_true(status == 200 and "+first" in value["text"], value)
+            git(fresh, "add", "first.txt")
+            (fresh / "first.txt").write_text("next\n")
+            assert_true("+first" in patch(fresh, "first.txt", "staged"), "unborn index")
+            unborn_working = patch(fresh, "first.txt", "working")
+            assert_true("-first" in unborn_working and "+next" in unborn_working, unborn_working)
 
 
 def test_web_files_save_a_person_s_edit_against_its_revision(root, home, *, binary):

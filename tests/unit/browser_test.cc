@@ -1402,6 +1402,7 @@ TEST_CASE(TestBrowserToolSteps) {
   // In the folder the host serves it opens at its address there, and is told
   // what is wrong with it as a window of its artboard's size draws it.
   {
+    // Older web hosts supplied the preview URL directly at worker launch.
     const ScopedEnv served("UAGENT_INTERNAL_PREVIEW",
                            fs::canonical(fake.workspace.root).string() +
                                "\nhttp://127.0.0.1:1/preview/token/");
@@ -1435,6 +1436,10 @@ TEST_CASE(TestBrowserToolSteps) {
   // console and network answer in lines and ask no approval; a drag is
   // approved for both its ends.
   ToolResult logged = tool.run({{"action", "console"}}, {});
+  CHECK(logged.facts.items == 2 && logged.facts.unit == "message");
+  CHECK(ToolSummary(
+            tool, {{"action", "type"}, {"element", 2}, {"text", "private"}}) ==
+        "Typed into element 2");
   CHECK(logged.Ok() &&
         logged.output.starts_with("2 console messages and uncaught errors:\n"
                                   "log: hello 42"));
@@ -1500,7 +1505,8 @@ TEST_CASE(TestBrowserToolSteps) {
 }
 
 // observe with a path pictures a page of the folder, part by part, or a
-// deck's slides, each in a throwaway tab at no more than 1568 px a side.
+// contact sheet of deck slides, in a throwaway tab at no more than 1568 px a
+// side.
 TEST_CASE(TestBrowserToolLook) {
   namespace fs = std::filesystem;
   ServedBrowser fake("look");
@@ -1514,8 +1520,10 @@ TEST_CASE(TestBrowserToolLook) {
     std::ofstream(folder / page) << "<p>page</p>";
   }
   std::ofstream(fake.workspace.root / "outside.html") << "<p>page</p>";
+  const fs::path grant = fake.workspace.root / "preview-grant";
+  std::ofstream(grant) << "http://127.0.0.1:1/preview/t/";
   const ScopedEnv served("UAGENT_INTERNAL_PREVIEW",
-                         folder.string() + "\nhttp://127.0.0.1:1/preview/t/");
+                         folder.string() + "\n" + grant.string());
   const fs::path checked = fake.data / "profile" / "page-checked";
   // Written before Chrome starts, in the profile it then takes.
   fs::create_directories(checked.parent_path());
@@ -1536,22 +1544,62 @@ TEST_CASE(TestBrowserToolLook) {
         "Part 3 of 12; part=4-11 shows the next.");
   CHECK(!look("memo.html", "13", memo).Ok());
   CHECK(!look("memo.html", "4-2", memo).Ok());
-  CHECK(
-      look("slide.html", "", R"({"w":1920,"h":1080,"fits":false,"tall":1080})")
-          .output == "Part 1 of 1.");
-  CHECK(look("deck", "", R"({"frames":[[0,0,1920,1080],[0,1080,1920,1080]]})")
-            .output == "Parts 1-2 of 2.");
+  ToolResult page = look(
+      "slide.html", "",
+      R"({"w":1920,"h":1080,"fits":false,"tall":1080,"problems":["clipped heading"]})");
+  CHECK(page.output == "Part 1 of 1.\n  - clipped heading");
+  CHECK(page.parts.empty());
+  ToolResult deck = look("deck", "", R"({"parts":3,"w":1452,"h":435,"slides":[
+      {"file":"01.html","title":"The plan","problems":[]},
+      {"file":"02-R&D #2.html","title":"Evidence","problems":["clipped heading","missing value"]},
+      {"file":"03.html","title":"Next","problems":[]}]})");
+  CHECK(deck.output ==
+        "Parts 1-3 of 3.\n1. The plan (01.html)\n2. Evidence (02-R&D #2.html)"
+        "\n  - clipped heading\n  - missing value\n3. Next (03.html)");
+  CHECK(!deck.hint.empty() && deck.hint.find('\n') == std::string::npos);
+  REQUIRE(deck.parts.size() == 3);
+  CHECK(deck.parts.front() == FieldsPart({{"Reviewed", "Parts 1-3 of 3."}}));
+  CHECK(deck.parts[1] ==
+        LinkPart("file", "deck/02-R&D #2.html", "Slide 2 · clipped heading"));
+  CHECK(deck.parts[2] ==
+        LinkPart("file", "deck/02-R&D #2.html", "Slide 2 · missing value"));
   // A page that only fixes its width is cut into windows of its height.
   const std::string tall = R"({"w":1440,"h":600,"fits":true,"tall":7000})";
   CHECK(look("tall.html", "", tall).output ==
         "Parts 1-8 of 12; part=9-12 shows the rest.");
   CHECK(look("tall.html", "12", tall).output == "Part 12 of 12.");
+  std::ofstream(checked) << R"({"w":1440,"h":900,"fits":true,"parts":1})";
+  const json crop = {{"action", "observe"},
+                     {"path", (folder / "slide.html").string()},
+                     {"selector", "img"}};
+  CHECK(tool.run(crop, {}).output == "Part 1 of 1.");
   ToolResult outside =
       tool.run({{"action", "observe"},
                 {"path", (fake.workspace.root / "outside.html").string()}},
                {});
   CHECK(!outside.Ok() &&
         outside.output.find("this conversation's folder") != std::string::npos);
+  const ToolResult empty = look("deck", "", R"({"parts":0})");
+  CHECK(!empty.Ok());
+  CHECK(empty.output.find("No slides to review in this folder") !=
+        std::string::npos);
+  // A logout between navigation and rendering invalidates the first request.
+  // The same tool call draws the replacement URL without another model turn.
+  const fs::path profile = checked.parent_path();
+  std::ofstream(profile / "pause-navigation").close();
+  std::ofstream(profile / "fail-first-look").close();
+  auto observing = std::async(std::launch::async, [&] {
+    return look("deck", "", R"({"parts":1,"w":1920,"h":1080,"slides":[
+      {"file":"01.html","title":"Evidence","problems":[]}]})");
+  });
+  CHECK(WaitUntil([&] { return fs::exists(profile / "navigation-paused"); },
+                  BudgetMs(2000)));
+  std::ofstream(grant) << "http://127.0.0.1:1/preview/new/";
+  fs::remove(profile / "pause-navigation");
+  const ToolResult single = observing.get();
+  CHECK(single.Ok());
+  CHECK(single.output == "Part 1 of 1.\n1. Evidence (01.html)");
+  CHECK(single.parts.empty());
   fake.Stop();
   std::vector<json> navigated, clips;
   std::ifstream log(fake.data / "profile" / "cdp.jsonl");
@@ -1567,28 +1615,36 @@ TEST_CASE(TestBrowserToolLook) {
       clips.push_back(command["params"]["clip"]);
     }
   }
-  // The memo's 8 + 4 + 1 pages, the slide, the deck's two slides, and the
-  // tall page's 8 + 1 windows.
-  REQUIRE(clips.size() == 25);
+  // The memo's 8 + 4 + 1 pages, the slide, one deck overview, the tall page's
+  // 8 + 1 windows, one element crop and the single-slide deck.
+  REQUIRE(clips.size() == 26);
   CHECK(clips[0] == json({{"x", 0.0},
                           {"y", 0.0},
                           {"width", 794.0},
                           {"height", 1123.0},
                           {"scale", 1.0}}));
   CHECK(std::abs(clips[13].value("scale", 0.0) - 1568.0 / 1920) < 1e-9);
-  CHECK(clips[15].value("y", 0.0) == 1080);
-  CHECK(clips[16] == json({{"x", 0.0},
+  CHECK(clips[14].value("width", 0.0) == 1452);
+  CHECK(clips[15] == json({{"x", 0.0},
                            {"y", 0.0},
                            {"width", 1440.0},
                            {"height", 600.0},
                            {"scale", 1.0}}));
-  CHECK(clips[24].value("y", 0.0) == 6600);
-  CHECK(clips[24].value("height", 0.0) == 400);
+  CHECK(clips[23].value("y", 0.0) == 6600);
+  CHECK(clips[23].value("height", 0.0) == 400);
   // The slide is drawn again in the window its artboard asks for.
-  REQUIRE(navigated.size() == 9);
+  CHECK(clips[24] == json({{"x", 148},
+                           {"y", 203},
+                           {"width", 740},
+                           {"height", 465},
+                           {"scale", 1.0}}));
+  REQUIRE(navigated.size() == 13);
   CHECK(navigated[5] == navigated[4]);
   CHECK(navigated[6].value("url", "") ==
-        "http://127.0.0.1:1/preview/t/deck/?deck&w=1920&h=1080");
+        "http://127.0.0.1:1/preview/t/deck/?deck&review");
+  CHECK(navigated[11] == navigated[6]);
+  CHECK(navigated.back().value("url", "") ==
+        "http://127.0.0.1:1/preview/new/deck/?deck&review");
 }
 
 // A batch: steps in order on one look, the page once after them, and no step
@@ -1628,6 +1684,7 @@ TEST_CASE(TestBrowserToolBatch) {
   // A number of the batch's look still names its element after the steps
   // before it.
   ToolResult filled = tool.run(form, {});
+  CHECK(filled.facts.items == 3);
   CHECK(
       filled.output.starts_with("1 type done.\n2 press done.\n3 click done.\n"
                                 "No change on the page.\nView ID: "));
@@ -1637,6 +1694,7 @@ TEST_CASE(TestBrowserToolBatch) {
                                   {{"action", "click"}, {"element", 2}},
                                   {{"action", "press"}, {"key", "Escape"}}})),
                {});
+  CHECK(stopped.facts.items == 1);
   CHECK(stopped.output.starts_with(
       "1 click done.\n2 click failed: that element is gone; look again.\n"
       "The remaining steps did not run.\nNo change on the page.\nView ID: "));

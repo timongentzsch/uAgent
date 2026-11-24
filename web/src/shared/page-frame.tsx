@@ -78,6 +78,7 @@ export type PageMessage =
   | { type: "drawn" }
   | { type: "size"; height: number }
   | { type: "error"; message: string; line: number }
+  | { type: "issue"; message: string; cell?: boolean }
   // What is wrong with it as drawn has all been said.
   | { type: "checked" }
   // A new version of its file taken in place, held while a person changes
@@ -249,7 +250,7 @@ export const tell = (
       }
     | { type: "markdown" }
     | { type: "tweak"; name: string; value: unknown }
-    | { type: "build"; at: number }
+    | { type: "build"; at: number; duration: number }
     | { type: "find"; text: string; index: number }
     | { type: "replace"; text: string; with: string; index: number }
     | { type: "input"; value: string }
@@ -373,15 +374,15 @@ export default function Frame({
       live = false;
     };
   }, [gone, frame]);
-  const paged = !far && !media;
-  useLayoutEffect(() => {
-    if (!paged) setDrawn(undefined);
-  }, [paged]);
+  const paged = !far && media !== "image" && media !== "video";
   // A sheet takes the app's look as it loads, and again when that changes
   // (the theme, the zoom).
   const [sheet, setSheet] = useState(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: one listener per frame, before the page can answer
   useLayoutEffect(() => {
+    if (!paged) {
+      setDrawn(undefined);
+      return;
+    }
     const heard = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
       if (event.data?.uagentDesign !== 1) return;
@@ -398,9 +399,9 @@ export default function Frame({
     };
     addEventListener("message", heard);
     return () => removeEventListener("message", heard);
-  }, []);
+  }, [paged, frame, going, wanted, handle]);
   useEffect(() => {
-    if (!live) return;
+    if (!live || !paged) return;
     const released = () => tell(frame.current, { type: "release" });
     addEventListener("pointerup", released, true);
     addEventListener("pointercancel", released, true);
@@ -408,16 +409,16 @@ export default function Frame({
       removeEventListener("pointerup", released, true);
       removeEventListener("pointercancel", released, true);
     };
-  }, [live, frame]);
+  }, [live, paged, frame]);
   useEffect(() => {
-    if (!sheet) return;
+    if (!sheet || !paged) return;
     const restyle = new MutationObserver(() => tellLook(frame.current, true));
     restyle.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-theme", "style"],
     });
     return () => restyle.disconnect();
-  }, [sheet, frame]);
+  }, [sheet, paged, frame]);
   const sized = width !== undefined && height !== undefined;
   const said = (w: number, h: number) =>
     onMessage?.({

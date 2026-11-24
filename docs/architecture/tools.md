@@ -41,6 +41,13 @@ long-lived children of the runtime.
 count, outcome), `diff` (person only), an `artifact` (spilled log), a
 `FileEffect` for `/undo`, the to-do list, and `background` (an activity id).
 
+Built-in tools and discovered MCP tools share a transcript row. The headline
+and result facts stay visible when folded. The body uses the tool's recorded
+parts for fields, code, links, sources and agent reports. Calls with a
+retained exchange expose their original request and response in the inspector.
+A patch records its child receipt IDs in execution order so reopening it
+shows each path's diff or failure.
+
 The offered set is filtered three ways. `UAGENT_TOOL_CAPABILITIES` removes
 every tool needing a capability not listed (`ApplyToolPolicy`); an unknown
 name removes all tools. A conversation's `ToolSelection` (profiles
@@ -142,8 +149,12 @@ flowchart TD
   runs nothing itself, but its brief becomes the agent's request, which
   that agent's own review then trusts. Auto sends it to the decision
   model, sandbox or not; every other mode allows it (`kDelegation`).
-  Rules hold it back as any call. Its preview is the brief or text, headed
-  by `edits`, `model`, `wait` and the item count, then the items.
+  Each child records the parent's effective approval mode in its role at
+  launch, including YOLO and Plan. A child with read-only edits stays
+  read-only. Its default mode survives restarts and an explicit conversation
+  setting takes precedence. Folder rules also apply to delegation. The
+  preview includes the brief or message, edit scope, model, wait setting
+  and batch items.
 - In Auto an agent's report is judged before the conversation that started
   the agent reads it, in `Agent::DeliverMail` (mailed) and the `wait` of
   `agent_start`, by `MakeReportJudge` (`src/app/approvals.cc`). The model

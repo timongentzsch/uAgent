@@ -171,10 +171,7 @@ void Master::RevokeDevice(CommandCall& call) {
     return;
   }
   push_->Revoke(remove);
-  {
-    std::lock_guard lock(previews_mutex_);
-    previews_.clear();
-  }
+  RevokePreviews();
   if (remove == call.device) {
     call.response.set_header(
         "Set-Cookie",

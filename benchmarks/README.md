@@ -331,16 +331,20 @@ and runtime image as the release probe.
 
 The November 24 memory evaluation used DeepSeek V4 Flash through OpenRouter.
 Each mode received a disposable home, two synthetic projects and the same
-correction to a saved preference. The corrected binary recalled the new
-preference with memory on. With memory off it answered `UNKNOWN`. Both modes
-answered `UNKNOWN` in the unrelated project. Both reread the dispatch fixture
+correction to a saved preference. With memory on, the model saved and recalled
+the correction in one of two completed pairs. In the repeat the extractor
+proposed no change and retained the old note. With memory off it answered
+`UNKNOWN` both times. Both modes answered `UNKNOWN` in the unrelated project.
+Both reread the dispatch fixture
 after its first six lines omitted the requested code, returned the exact code
 and included extra formatting or text. These are individual model responses.
 
-Four additional runs tested deliberate deletion using independently worded
+Four additional fixtures tested deliberate deletion using independently worded
 historical conversations. Before the fix, three restored the forgotten fact
-under a different key. After the fix, three runs proposed a key that the
-runtime declined and one proposed no note. All four libraries stayed empty.
+under a different key. Across two runs of all four fixtures after the fix,
+the runtime declined six proposed keys and two extractions proposed no note.
+All eight libraries stayed empty. One additional paired attempt stopped on
+a nonzero process exit and yielded no quality score.
 The report includes the native binary hashes, tool sequences and extraction
 receipts. [Before and after results](results/memory-quality-2026-11-24.json)
 

@@ -70,6 +70,13 @@ def provider_environment(model):
     return env
 
 
+def scored(measurement, **checks):
+    return {
+        **measurement,
+        **{name: None if measurement["exit_code"] else value for name, value in checks.items()},
+    }
+
+
 def arm(binary, env, enabled, deletion_probe=None):
     with tempfile.TemporaryDirectory(prefix="uagent-memory-quality-") as temp:
         root = Path(temp).resolve()
@@ -88,6 +95,15 @@ def arm(binary, env, enabled, deletion_probe=None):
                 text=True,
                 timeout=120,
             )
+            if args[0] == "--json":
+                try:
+                    reply = json.loads(p.stdout)
+                except json.JSONDecodeError:
+                    if not p.returncode:
+                        raise
+                    reply = {"stop": {"reason": "no_response_envelope"}}
+                reply["process_exit"] = p.returncode
+                return reply
             if p.returncode:
                 # The provider's error and its request may include credentials.
                 raise RuntimeError(f"uagent {args[0]} exited {p.returncode}")
@@ -169,6 +185,8 @@ def arm(binary, env, enabled, deletion_probe=None):
             records = read_trace(trace)
             metrics = trace_metrics(records)
             result = {
+                "exit_code": reply["process_exit"],
+                "stop_reason": (reply.get("stop") or {}).get("reason"),
                 "model_requests": metrics["model_requests"],
                 "tools": [r["data"]["name"] for r in records if r.get("event") == "tool_start"],
             }
@@ -279,26 +297,26 @@ def arm(binary, env, enabled, deletion_probe=None):
                 "mode": "on" if enabled else "off",
                 "correction_extraction": first,
                 "corrected_note": persisted,
-                "recall": {
-                    **recall,
-                    "corrected": answer.upper() == NEW,
-                    "correct_value_returned": NEW in answer.upper() and OLD not in answer.upper(),
-                    "unknown": answer.upper() == "UNKNOWN",
-                },
-                "cross_project": {
-                    **isolation,
-                    "unknown": foreign.upper() == "UNKNOWN",
-                    "leaked_token": NEW in foreign or OLD in foreign,
-                },
+                "recall": scored(
+                    recall,
+                    corrected=answer.upper() == NEW,
+                    correct_value_returned=NEW in answer.upper() and OLD not in answer.upper(),
+                    unknown=answer.upper() == "UNKNOWN",
+                ),
+                "cross_project": scored(
+                    isolation,
+                    unknown=foreign.upper() == "UNKNOWN",
+                    leaked_token=NEW in foreign or OLD in foreign,
+                ),
                 "deletion": {
                     "initially_deleted_keys": deleted_at_start,
                     "subsequent_passes": after_forget,
                 },
-                "shortened_read": {
-                    **recovery,
-                    "exact_value_returned": DETAIL in exact.upper(),
-                    "bare_value": exact.upper() == DETAIL,
-                },
+                "shortened_read": scored(
+                    recovery,
+                    exact_value_returned=DETAIL in exact.upper(),
+                    bare_value=exact.upper() == DETAIL,
+                ),
             }
         finally:
             stop_sessions(home, settle=0.25)
